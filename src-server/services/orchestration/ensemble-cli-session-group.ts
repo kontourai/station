@@ -119,6 +119,9 @@ export class EnsembleCliSessionGroupPreparation {
     return {
       operationId: input.operationId,
       maxConcurrent: input.maxConcurrent,
+      ...(input.maxDispatches === undefined
+        ? {}
+        : { maxDispatches: input.maxDispatches }),
       deadlineAt: input.deadlineAt,
       members,
       preset: {

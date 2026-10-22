@@ -374,6 +374,9 @@ test('preset creation saves exact scoped bindings without starting engines; expl
     (screen.getByLabelText('Shared brief') as HTMLTextAreaElement).value,
   ).toBe('Review this work.');
   expect(fetch).toHaveBeenCalledTimes(1);
+  fireEvent.change(screen.getByLabelText('Maximum reserved starts'), {
+    target: { value: '0' },
+  });
   fireEvent.click(screen.getByRole('button', { name: 'Save session group' }));
   await screen.findByText(/Saved session group/);
   expect(fetch).toHaveBeenCalledTimes(2);
@@ -387,6 +390,7 @@ test('preset creation saves exact scoped bindings without starting engines; expl
     expectedPresetHash: result.source.sha256,
     brief: 'Review this work.',
     maxConcurrent: 1,
+    maxDispatches: 0,
     bindings: {
       lead: {
         target: {

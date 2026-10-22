@@ -42,6 +42,7 @@ const inputSchema = z
   .object({
     operationId: seatId,
     maxConcurrent: z.number().int().min(1).max(32),
+    maxDispatches: z.number().int().min(0).max(32).optional(),
     deadlineAt: z.number().int().positive(),
     members: z
       .array(
@@ -106,7 +107,9 @@ const viewSchema = z
     cancelled: z.boolean(),
     deadlineAt: z.number().int().positive(),
     maxConcurrent: z.number().int().min(1).max(32),
+    maxDispatches: z.number().int().min(0).max(32).optional(),
     dispatchCount: z.number().int().min(0).max(32),
+    admissionClosed: z.literal('dispatch-limit-exhausted').optional(),
     preset: z
       .object({
         presetId: z.string().min(1).max(64),
@@ -225,6 +228,7 @@ const eventPageSchema: z.ZodType<CliSessionGroupEventPage> = z
             revision: revisionSchema,
             members: z.array(viewSchema.shape.members.element).max(32),
             cancelled: z.boolean().optional(),
+            admissionClosed: z.literal('dispatch-limit-exhausted').optional(),
             schedule: z
               .array(
                 z

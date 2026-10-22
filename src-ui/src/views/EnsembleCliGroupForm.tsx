@@ -37,6 +37,7 @@ export function EnsembleCliGroupForm({
   const [brief, setBrief] = useState('');
   const [concurrency, setConcurrency] = useState(Math.min(2, memberIds.length));
   const [minutes, setMinutes] = useState(10);
+  const [maxDispatches, setMaxDispatches] = useState(memberIds.length);
   const [bindings, setBindings] = useState<
     Record<
       string,
@@ -70,8 +71,8 @@ export function EnsembleCliGroupForm({
         <>
           <p>
             Save this roster and brief as a group. Engines start only when the
-            group is run. Dollar, token and attempt caps are unavailable. The
-            deadline begins when the group is saved.
+            group is run. Dollar, token and physical attempt caps are
+            unavailable. The deadline begins when the group is saved.
           </p>
           <form
             onSubmit={(event) => {
@@ -86,6 +87,7 @@ export function EnsembleCliGroupForm({
                   brief,
                   operationId,
                   maxConcurrent: concurrency,
+                  maxDispatches,
                   deadlineAt: Date.now() + minutes * 60_000,
                   bindings: Object.fromEntries(
                     memberIds.map((id) => {
@@ -151,6 +153,25 @@ export function EnsembleCliGroupForm({
                   }
                 />
               </label>
+              <label>
+                Maximum reserved starts
+                <input
+                  type="number"
+                  min={0}
+                  max={memberIds.length}
+                  required
+                  value={maxDispatches}
+                  onChange={(event) => {
+                    setMaxDispatches(Number(event.target.value));
+                    onDirtyChange(true);
+                  }}
+                />
+              </label>
+              <p>
+                Each reserved member start uses this allowance, including
+                uncertain or refused starts. It does not cap provider retries or
+                charges.
+              </p>
               <label>
                 Deadline in minutes
                 <input

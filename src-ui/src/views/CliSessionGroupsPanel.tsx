@@ -85,7 +85,7 @@ export function CliSessionGroupsPanel({
       <p>
         Inspect actual members and Flow dependencies. Station session
         permissions apply; portable lineage is incomplete and hard dollar, token
-        and attempt caps are unavailable.
+        and physical attempt caps are unavailable.
       </p>
       <Button
         variant="secondary"
@@ -135,9 +135,16 @@ export function CliSessionGroupsPanel({
                 it does not prove the engine stopped.
               </p>
               <p>
-                {group.dispatchCount} of {group.members.length} seats dispatched
-                · At most {group.maxConcurrent} occupied seats
+                {group.dispatchCount} of{' '}
+                {group.maxDispatches ?? group.members.length} starts reserved ·
+                At most {group.maxConcurrent} occupied seats
               </p>
+              {group.admissionClosed === 'dispatch-limit-exhausted' && (
+                <p role="status">
+                  Dispatch allowance exhausted. No additional starts can be
+                  reserved; existing reservations remain accounted for.
+                </p>
+              )}
               <section
                 className="cli-session-groups__table"
                 // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users scroll this wide member table.

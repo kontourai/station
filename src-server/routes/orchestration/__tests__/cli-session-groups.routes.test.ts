@@ -112,11 +112,13 @@ function fixture(home = temporary('station-cli-group-')) {
       member('third', ['first', 'second']),
     ],
     maxConcurrent = 2,
+    maxDispatches?: number,
   ) => {
     const body = {
       operationId: 'create-one',
       members,
       maxConcurrent,
+      ...(maxDispatches === undefined ? {} : { maxDispatches }),
       deadlineAt: Date.now() + 60_000,
     };
     const response = await request('/session-groups', body);
@@ -408,15 +410,59 @@ test('a full retained journal cannot block cancellation and evicts with an expli
   expect(reopened.calls).toHaveLength(0);
 });
 
+test.each([0, 1, 2])(
+  'reserved-start limit %i closes admission before another launcher call and survives reopen',
+  async (limit) => {
+    const f = fixture();
+    const { group, body } = await f.create(
+      [member('first'), member('second'), member('third')],
+      2,
+      limit,
+    );
+    await f.request(`/session-groups/${group.groupId}/run`, {});
+    expect(f.calls).toHaveLength(limit);
+    const final = await view(f, group.groupId);
+    expect(final).toMatchObject({
+      maxDispatches: limit,
+      dispatchCount: limit,
+      admissionClosed: 'dispatch-limit-exhausted',
+    });
+    expect(final.guarantees.dollarCap).toBe('unavailable');
+    expect(
+      final.members.filter((seat) => seat.state === 'pending'),
+    ).toHaveLength(3 - limit);
+    const page = await f.request(
+      `/session-groups/${group.groupId}/events?afterRevision=0`,
+    );
+    expect(await page.text()).toContain('dispatch-limit-exhausted');
+    const reopened = fixture(f.home);
+    await reopened.request(`/session-groups/${group.groupId}/run`, {});
+    expect(reopened.calls).toHaveLength(0);
+    expect((await view(reopened, group.groupId)).dispatchCount).toBe(limit);
+    expect(
+      (
+        await reopened.request('/session-groups', {
+          ...body,
+          maxDispatches: limit + 1,
+        })
+      ).status,
+    ).toBe(409);
+  },
+  30_000,
+);
+
 test('an ambiguous start stays occupied across reopen and never authorizes another launch', async () => {
   const f = fixture();
   f.setBeforeDispatch(async () => {
     throw new Error('lost member acknowledgement');
   });
-  const { group } = await f.create([member('first'), member('second')], 1);
+  const { group } = await f.create([member('first'), member('second')], 1, 1);
   await f.request(`/session-groups/${group.groupId}/run`, {});
   expect(f.calls).toHaveLength(1);
   expect(f.interruptDelegatedTask).not.toHaveBeenCalled();
+  expect((await view(f, group.groupId)).admissionClosed).toBe(
+    'dispatch-limit-exhausted',
+  );
   const reopened = fixture(f.home);
   const response = await reopened.request(
     `/session-groups/${group.groupId}/run`,

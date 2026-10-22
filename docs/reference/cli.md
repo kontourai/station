@@ -1194,8 +1194,13 @@ station group session-cancel <group-id> --json
 
 The JSON file follows the [CLI session-group API](api.md#cli-session-groups): an
 explicit operation ID, bounded roster, expected engine connection, concurrency
-and absolute deadline. It is validated before submission; create does not start
-members. Run supervises the server's Flow frontier and can wait up to its deadline.
+and absolute deadline. Optional `maxDispatches` sets the total reserved-start
+allowance (zero through roster size); omission permits one reserved start per
+seat. The CLI validates request shape before submission; the server enforces
+the allowance against the saved roster. Create does not start members.
+Exhaustion is retained as `admissionClosed: "dispatch-limit-exhausted"`; uncertain
+and refused starts still use the allowance. Physical provider attempts and
+charges remain outside this logical bound. Run supervises the server's Flow frontier and can wait up to its deadline.
 
 `session-from-ensemble` instead reads the preset-group request described in that
 API reference. Its `path` names the preset on the receiving Station; `--file`

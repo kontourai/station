@@ -53,6 +53,34 @@ test.each([
   },
 );
 
+test.each(['dispatch-limit-exhausted', 'unknown-policy'])(
+  'event pages validate the closed dispatch allowance reason %s',
+  async (reason) => {
+    const value = page();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              success: true,
+              data: {
+                ...value,
+                events: [{ ...value.events[0], admissionClosed: reason }],
+              },
+            }),
+          ),
+      ),
+    );
+    const read = readCliSessionGroupEvents('https://station.test', 'cli-test');
+    if (reason === 'dispatch-limit-exhausted')
+      expect((await read).events[0].admissionClosed).toBe(
+        'dispatch-limit-exhausted',
+      );
+    else await expect(read).rejects.toThrow();
+  },
+);
+
 test('an id-only frame cannot skip undisclosed history or enter the retained checkpoint', async () => {
   const onPage = vi.fn();
   const onTerminal = vi.fn();

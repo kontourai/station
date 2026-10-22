@@ -163,7 +163,10 @@ export type CliSessionGroupView = {
   cancelled: boolean;
   deadlineAt: number;
   maxConcurrent: number;
+  /** Maximum reserved seat starts, not physical provider requests. Defaults to roster size. */
+  maxDispatches?: number;
   dispatchCount: number;
+  admissionClosed?: 'dispatch-limit-exhausted';
   preset?: CliSessionGroupPresetIdentity;
   guarantees: {
     authority: 'station-session';
@@ -202,6 +205,8 @@ export type CliSessionGroupView = {
 export type CliSessionGroupCreateInput = {
   operationId: string;
   maxConcurrent: number;
+  /** Maximum reserved seat starts, not physical provider requests. Defaults to roster size. */
+  maxDispatches?: number;
   deadlineAt: number;
   members: {
     seatId: string;
@@ -234,6 +239,7 @@ export type CliSessionGroupEvent = {
   revision: number;
   members: CliSessionGroupView['members'];
   cancelled?: boolean;
+  admissionClosed?: 'dispatch-limit-exhausted';
   schedule: { kind: string; stepId: string; claimId: string }[];
 };
 export type CliSessionGroupEventPage = {

@@ -1682,7 +1682,15 @@ native acceptance. This path does not activate the separate hard-cap API group
 runtime or complete #205.
 
 Creation takes `operationId`, `maxConcurrent` (1–32), an absolute `deadlineAt`
-within 30 minutes, and 1–32 `members`. Each member has `seatId`, `prompt`, a local
+within 30 minutes, and 1–32 `members`. Optional `maxDispatches` bounds total
+reserved seat starts from zero through the roster size; omission uses the roster
+size. Reservations count even when a start is refused or remains uncertain.
+When this allowance is used while seats remain pending, `admissionClosed` is
+`dispatch-limit-exhausted` in the group view and revision journal. Reopen retains
+the count and closed admission; changing the allowance under the same operation
+conflicts. Previously reserved starts retain their accounting and supervision,
+and Flow continues to own its state. This bounds logical seat starts, not hidden
+provider attempts, tokens or charges. Each member has `seatId`, `prompt`, a local
 execution `target`, optional `parentTaskId` and optional `needs` naming predecessor
 seats. The target must include its expected engine connection. Station waits for its existing engine-start lease during group dispatch;
 accepted member turns can still overlap. Station reuses the

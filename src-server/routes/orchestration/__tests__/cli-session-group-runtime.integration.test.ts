@@ -908,6 +908,43 @@ test('a separately minted local operator can inspect CLI-owned groups through re
   expect(foreign.status).toBe(404);
 }, 30_000);
 
+test('registered CLI preserves a zero reserved-start allowance through run without starting an adapter', async () => {
+  const f = await fixture();
+  const output: string[] = [];
+  vi.spyOn(console, 'log').mockImplementation((value) =>
+    output.push(String(value)),
+  );
+  const file = join(f.root, 'zero-starts.json');
+  writeFileSync(
+    file,
+    JSON.stringify({ ...groupInput(1), maxConcurrent: 1, maxDispatches: 0 }),
+  );
+  await runCli([
+    'group',
+    'session-create',
+    `--file=${file}`,
+    `--api-base=${f.apiBase}`,
+    '--credential=group-test',
+    '--json',
+  ]);
+  const created: CliSessionGroupView = JSON.parse(output.splice(0).join('\n'));
+  expect(created.maxDispatches).toBe(0);
+  await runCli([
+    'group',
+    'session-run',
+    created.groupId,
+    `--api-base=${f.apiBase}`,
+    '--credential=group-test',
+    '--json',
+  ]);
+  const observed: CliSessionGroupView = JSON.parse(output.splice(0).join('\n'));
+  expect(observed.admissionClosed).toBe('dispatch-limit-exhausted');
+  expect(observed.dispatchCount).toBe(0);
+  expect(observed.members[0]?.state).toBe('pending');
+  expect(f.adapter.starts).toHaveLength(0);
+  expect(f.adapter.turns).toHaveLength(0);
+}, 30_000);
+
 test('a locally authorized preset produces actual member turns with authored models, additions and the same complete roster', async () => {
   const f = await fixture(true);
   const security = f.security!;
@@ -1008,6 +1045,7 @@ test('a locally authorized preset produces actual member turns with authored mod
     ...inline,
     presetJson: bytes,
     operationId: 'uploaded-preset',
+    maxDispatches: 0,
   };
   const submitUpload = (value: unknown) =>
     f.app.request('/api/orchestration/session-groups/from-ensemble', {
@@ -1023,6 +1061,7 @@ test('a locally authorized preset produces actual member turns with authored mod
   const uploadedView = (
     (await uploaded.clone().json()) as { data: CliSessionGroupView }
   ).data;
+  expect(uploadedView.maxDispatches).toBe(0);
   expect(uploadedView.preset).toEqual({
     presetId: 'team',
     name: 'Delivery team',

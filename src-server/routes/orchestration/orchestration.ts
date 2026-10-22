@@ -4226,6 +4226,7 @@ export function createOrchestrationRoutes(
       operationId: z.string().min(1).max(128),
       members: z.array(groupMemberSchema).min(1).max(32),
       maxConcurrent: z.number().int().min(1).max(32),
+      maxDispatches: z.number().int().min(0).max(32).optional(),
       deadlineAt: z.number().int().positive(),
     })
     .strict();
@@ -4484,6 +4485,9 @@ export function createOrchestrationRoutes(
             input: delegateTaskSchema.parse(member),
           })),
           maxConcurrent: input.maxConcurrent,
+          ...(input.maxDispatches === undefined
+            ? {}
+            : { maxDispatches: input.maxDispatches }),
           deadlineAt: input.deadlineAt,
         },
         authority.assertCurrent,
@@ -4592,6 +4596,9 @@ export function createOrchestrationRoutes(
             input: delegateTaskSchema.parse(member),
           })),
           maxConcurrent: validated.maxConcurrent,
+          ...(validated.maxDispatches === undefined
+            ? {}
+            : { maxDispatches: validated.maxDispatches }),
           deadlineAt: validated.deadlineAt,
           preset,
         },

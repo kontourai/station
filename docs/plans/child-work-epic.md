@@ -159,6 +159,15 @@ unchanged source and launch inputs. It returns the old record without inferred
 names; new records still bind their full identity. Focused owner checks cover
 changed-hash/brief refusal, case-duplicate corruption and the UI seat-ID fallback.
 
+CLI groups now accept an authored `maxDispatches` allowance for reserved seat
+starts, including zero. The locked intent reservation consumes it before the
+launcher; refused and unknown reservations are not refunded. Exhaustion closes
+further admission durably and appears in group views and revision events.
+Reopen and same-operation replay cannot reset or increase it. The SDK/CLI and
+browser form carry the policy; the inspector labels reserved starts and
+exhaustion. This is a logical host count only. The fiscal, token and physical
+provider-attempt guarantees remain unavailable, and Flow owns joins/outcomes.
+
 ## Production adoption sequence
 
 The personal `/api/orchestration/session-groups` path now composes the shared

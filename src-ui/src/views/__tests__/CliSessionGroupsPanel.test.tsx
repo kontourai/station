@@ -26,6 +26,8 @@ const group: CliSessionGroupView = {
   deadlineAt: 1792629000000,
   maxConcurrent: 2,
   dispatchCount: 5,
+  maxDispatches: 5,
+  admissionClosed: 'dispatch-limit-exhausted',
   preset: {
     presetId: 'team',
     name: 'Retained team',
@@ -202,6 +204,8 @@ test('explicit inspection uses real SDK inventory, shows actual dependencies and
     'https://station.test/api/orchestration/session-groups',
   );
   expect(screen.getByText('first, second')).toBeTruthy();
+  expect(screen.getByText(/5 of 5 starts reserved/)).toBeDefined();
+  expect(screen.getByText(/Dispatch allowance exhausted/)).toBeDefined();
   expect(screen.getByText('Start outcome unresolved')).toBeTruthy();
   expect(screen.getByText('Needs input · last observed')).toBeDefined();
   expect(
@@ -218,7 +222,9 @@ test('explicit inspection uses real SDK inventory, shows actual dependencies and
   ).toBeDefined();
   expect(screen.queryByText('Work accepted')).toBeNull();
   expect(
-    screen.getByText(/hard dollar, token and attempt caps are unavailable/),
+    screen.getByText(
+      /hard dollar, token and physical attempt caps are unavailable/,
+    ),
   ).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Open first session' }));
   expect(navigationStore.getSnapshot().pathname).toBe('/');

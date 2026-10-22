@@ -5166,6 +5166,11 @@ checkout exports do not establish registry availability.
 request-scope options as other client calls. Parsing accepts local named Agents,
 explicit expected engine connections, prompts and dependencies. It does not
 choose credentials, authorize an engine, or grant access to a workspace.
+Both create inputs accept optional `maxDispatches` (zero through roster size),
+which bounds total reserved member starts. Group views report the effective
+allowance and `admissionClosed: "dispatch-limit-exhausted"` when exhausted with
+pending work; event pages retain that reason. Unknown/refused reservations count
+and survive reopen. Dollar, token and physical-attempt guarantees stay unavailable.
 
 `parseEnsembleCliSessionGroupInput` and `createEnsembleCliSessionGroup` use the
 preset entry point in that API. The request supplies exactly one of a preset

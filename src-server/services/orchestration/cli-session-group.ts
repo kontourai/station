@@ -90,6 +90,7 @@ const groupEventSchema = z
     revision: z.number().int().positive().safe(),
     members: z.array(memberViewSchema).max(32),
     cancelled: z.boolean().optional(),
+    admissionClosed: z.literal('dispatch-limit-exhausted').optional(),
     schedule: z.array(scheduleEventSchema).max(32),
   })
   .strict();
@@ -103,10 +104,12 @@ const recordSchema = z
     eventHistoryStart: z.number().int().positive().safe().optional(),
     events: z.array(groupEventSchema).max(4096).optional(),
     maxConcurrent: z.number().int().min(1).max(32),
+    maxDispatches: z.number().int().min(0).max(32).optional(),
     deadlineAt: z.number().int().positive(),
     cancelled: z.boolean(),
     flowReady: z.boolean(),
     dispatchCount: z.number().int().min(0).max(32),
+    admissionClosed: z.literal('dispatch-limit-exhausted').optional(),
     preset: z
       .object({
         presetId: z.string().min(1).max(64),
@@ -285,6 +288,9 @@ export class CliSessionGroups<T> {
       new Set(record.seats.map((s) => s.seatId)).size !== record.seats.length ||
       record.dispatchCount !==
         record.seats.filter((s) => s.state !== 'pending').length ||
+      (record.maxDispatches !== undefined &&
+        (record.maxDispatches > record.seats.length ||
+          record.dispatchCount > record.maxDispatches)) ||
       record.seats.some(
         (s) =>
           (s.state === 'started' || s.state === 'terminal') &&
@@ -334,6 +340,7 @@ export class CliSessionGroups<T> {
         ]),
       );
       const cancelled = record.cancelled;
+      const admissionClosed = record.admissionClosed;
       const scheduleCount = record.scheduleEvents.length;
       record.eventHistoryStart ??= record.revision + 1;
       record.events ??= [];
@@ -347,6 +354,9 @@ export class CliSessionGroups<T> {
             .filter((seat) => canonicalJson(seat) !== before.get(seat.seatId)),
           ...(cancelled !== record.cancelled
             ? { cancelled: record.cancelled }
+            : {}),
+          ...(admissionClosed !== record.admissionClosed
+            ? { admissionClosed: record.admissionClosed }
             : {}),
           schedule: record.scheduleEvents.slice(scheduleCount),
         }),
@@ -389,6 +399,7 @@ export class CliSessionGroups<T> {
     input: {
       seats: { seatId: string; input: T; needs: string[] }[];
       maxConcurrent: number;
+      maxDispatches?: number;
       deadlineAt: number;
       preset?: CliSessionGroupPresetIdentity;
     },
@@ -448,6 +459,9 @@ export class CliSessionGroups<T> {
         eventHistoryStart: 1,
         events: [],
         maxConcurrent: input.maxConcurrent,
+        ...(input.maxDispatches === undefined
+          ? {}
+          : { maxDispatches: input.maxDispatches }),
         deadlineAt: input.deadlineAt,
         cancelled: false,
         flowReady: false,
@@ -457,7 +471,10 @@ export class CliSessionGroups<T> {
         scheduleEvents: [],
       });
       if (
-        new Set(record.seats.map((s) => s.seatId)).size !== record.seats.length
+        new Set(record.seats.map((s) => s.seatId)).size !==
+          record.seats.length ||
+        (record.maxDispatches !== undefined &&
+          record.maxDispatches > record.seats.length)
       )
         throw new CliSessionGroupUnavailable('group_invalid');
       if (
@@ -663,6 +680,8 @@ export class CliSessionGroups<T> {
       cancelled: record.cancelled,
       deadlineAt: record.deadlineAt,
       maxConcurrent: record.maxConcurrent,
+      maxDispatches: record.maxDispatches ?? record.seats.length,
+      admissionClosed: record.admissionClosed,
       dispatchCount: record.dispatchCount,
       ...(record.preset ? { preset: record.preset } : {}),
       guarantees: {
@@ -877,7 +896,22 @@ export class CliSessionGroups<T> {
       const seat = record.seats.find((s) => s.seatId === seatId);
       if (!seat) throw new CliSessionGroupUnavailable('group_invalid');
       if (seat.state !== 'pending')
-        return { seat: structuredClone(seat), dispatch: false };
+        return {
+          seat: structuredClone(seat),
+          dispatch: false,
+          exhausted: false,
+        };
+      if (
+        record.admissionClosed ||
+        record.dispatchCount >= (record.maxDispatches ?? record.seats.length)
+      ) {
+        record.admissionClosed = 'dispatch-limit-exhausted';
+        return {
+          seat: structuredClone(seat),
+          dispatch: false,
+          exhausted: true,
+        };
+      }
       const occupied = record.seats.filter(
         (s) => s.state === 'launch-intent' || s.state === 'started',
       ).length;
@@ -888,8 +922,15 @@ export class CliSessionGroups<T> {
       seat.state = 'launch-intent';
       seat.claimId = execution.claim.claim_id;
       record.dispatchCount += 1;
-      return { seat: structuredClone(seat), dispatch: true };
+      if (
+        record.dispatchCount >= (record.maxDispatches ?? record.seats.length) &&
+        record.seats.some((member) => member.state === 'pending')
+      )
+        record.admissionClosed = 'dispatch-limit-exhausted';
+      return { seat: structuredClone(seat), dispatch: true, exhausted: false };
     });
+    if (launch.exhausted)
+      throw new CliSessionGroupUnavailable('group_dispatch_limit');
     let handle = launch.seat.handle;
     if (launch.dispatch) {
       host.assertCurrent();

@@ -25,6 +25,7 @@ export interface EnsembleCliSessionGroupInput {
   brief: string;
   operationId: string;
   maxConcurrent: number;
+  maxDispatches?: number;
   deadlineAt: number;
   bindings: Record<
     string,
