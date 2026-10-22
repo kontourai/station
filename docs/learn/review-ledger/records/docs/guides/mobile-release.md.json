@@ -130,7 +130,9 @@
 
     "src-ui/src/platform/native/iosNetworkCost.ts",
 
-    "src-ui/src/__tests__/useConversationInbox.test.tsx"
+    "src-ui/src/__tests__/useConversationInbox.test.tsx",
+
+    "src-desktop/src/mobile_recovery_ios.rs"
   ],
 
   "checks": [
