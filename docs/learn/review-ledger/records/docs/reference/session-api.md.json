@@ -140,7 +140,13 @@
 
     "src-server/domain/migrations/021-conversation-start-context.ts",
 
-    "src-server/routes/orchestration/__tests__/conversation-fork.qualification.test.ts"
+    "src-server/routes/orchestration/__tests__/conversation-fork.qualification.test.ts",
+
+    "src-server/providers/adapters/claude-adapter-events.ts",
+
+    "src-server/providers/adapters/native-resume-binding.ts",
+
+    "src-server/providers/__tests__/claude-adapter-events.test.ts"
   ],
 
   "checks": [
