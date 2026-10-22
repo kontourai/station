@@ -1639,6 +1639,21 @@ owner projections remain unavailable or unknown. Stationmaster is an identity,
 not a routing edge or grant. Native engine identity is separate from API model
 connection identity. A successful inspection grants no execution authority.
 
+For Project bindings, the inspector also reads the owning Project's tool defaults
+and knowledge namespace configuration. Built-in namespace identities take
+precedence over conflicting custom entries. It uses the storage owner's bounded,
+zero-write registry observation for registered Project stores; an unavailable
+registry is disclosed rather than treated as empty. A digest change before
+publication makes the response stale. Directory-only bindings never acquire a
+Project's tools or stores from a matching path.
+
+Each member shows at most four namespace details and four registered store
+metadata entries, with total configured/registered counts. Knowledge content,
+storage paths, embeddings, backend construction and secret resolution are not
+part of inspection. Registered metadata is not proof of adapter availability,
+retrieval, injection, conversation memory, delivery or write authority. The
+ordinary memory/continuity fact remains unavailable without a bound Session.
+
 Host-path requests are limited to 16 KiB; uploaded requests to 256 KiB, with the
 preset itself bounded to 128 KiB of UTF-8. Responses are limited to 256 KiB, with at most 512 facts and
 eight displayed tool references per member. Responses use `Cache-Control: no-store`.

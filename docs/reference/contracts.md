@@ -90,7 +90,7 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/harness-questions` | Deprecated since 0.9.0; retained in 0.10.0 for stored events and legacy `answers` callers. Use the `input-request` shapes for new callers |
 | `@kontourai/station-contracts/input-request` | `station.input-request/v1`: the envelope, `form` and `decision` bodies, accept/decline/cancel response, and the transcript record of a harness question, a tool server's elicitation or an approval; reading and validation live in shared |
 | `@kontourai/station-contracts/mcp-prompts` | An agent's MCP server prompts offered as slash commands (named string arguments), the listing with unreadable servers, and a prompt run's inserted text |
-| `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata |
+| `@kontourai/station-contracts/knowledge` | Knowledge namespaces, tree/search/document metadata; `resolveKnowledgeNamespaceConfiguration` merges built-ins before authored Project entries, retaining the first occurrence of each ID |
 | `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header, input events, control lease, stream params, their strict wire parsers and the length-prefixed binary record envelope |
 | `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state referencing a server-owned browser session, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads |
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |

@@ -4975,6 +4975,9 @@ export function configureRuntimeRoutes(
       context.orchestrationService.getProviderAdapter(provider),
   });
   const ensembleInspection = new EnsembleInspectionService({
+    readProject: (slug) => context.projectService.getProject(slug),
+    observeKnowledgeRoots: () =>
+      context.storageAdapter.observeKnowledgeStoreRoots(),
     readIntegration: (id) =>
       context.configLoader.readIntegrationAppDefinition(id),
     security: context.environmentSecurityService,

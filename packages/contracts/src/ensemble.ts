@@ -8,6 +8,7 @@ export const ENSEMBLE_INSPECTION_LIMITS = {
   responseBytes: 256 * 1024,
   facts: 512,
   toolsPerMember: 8,
+  knowledgeDetailsPerMember: 4,
 } as const;
 
 /** Receiver-owned selections only; the model always belongs to the preset. */

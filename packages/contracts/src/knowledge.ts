@@ -191,3 +191,13 @@ export const BUILTIN_KNOWLEDGE_NAMESPACES: KnowledgeNamespaceConfig[] = [
   { id: 'default', label: 'Documents', behavior: 'rag', builtIn: true },
   { id: 'rules', label: 'Rules & Steering', behavior: 'inject', builtIn: true },
 ];
+
+/** Built-in namespaces win over Project declarations with the same identity. */
+export function resolveKnowledgeNamespaceConfiguration(
+  configured: readonly KnowledgeNamespaceConfig[] = [],
+): KnowledgeNamespaceConfig[] {
+  const namespaces = new Map<string, KnowledgeNamespaceConfig>();
+  for (const namespace of [...BUILTIN_KNOWLEDGE_NAMESPACES, ...configured])
+    if (!namespaces.has(namespace.id)) namespaces.set(namespace.id, namespace);
+  return [...namespaces.values()];
+}

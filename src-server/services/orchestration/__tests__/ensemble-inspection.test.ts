@@ -20,6 +20,7 @@ import { createOrchestrationRequestPrincipalResolver } from '../../../runtime/bo
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import { createLogger } from '../../../utils/logger.js';
 import { AgentService } from '../../agents/agent-service.js';
+import { KnowledgeService } from '../../knowledge/knowledge-service.js';
 import { SchedulerService } from '../../scheduling/scheduler-service.js';
 import { FileSecretBindingAdministration } from '../../secrets/secret-binding-administration.js';
 import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
@@ -101,6 +102,8 @@ async function fixture() {
     vi.spyOn(adapter, 'listModelCatalog'),
     vi.spyOn(adapter, 'observeExecutionAuthentication'),
     vi.spyOn(SchedulerService.prototype, 'listJobs'),
+    vi.spyOn(KnowledgeService.prototype, 'getInjectContext'),
+    vi.spyOn(KnowledgeService.prototype, 'getRAGContextDetailed'),
     vi.spyOn(FileSecretBindingAdministration.prototype, 'list'),
     vi.spyOn(FileSecretBindingAdministration.prototype, 'get'),
     vi.spyOn(
@@ -187,10 +190,13 @@ async function fixture() {
     locality: 'home-possession',
     mintKind: 'ui-bootstrap',
   });
+  const readProject = vi.fn((slug: string) => storage.getProject(slug));
   const service = new EnsembleInspectionService({
     security,
     inventory,
     readIntegration,
+    readProject,
+    observeKnowledgeRoots: () => storage.observeKnowledgeStoreRoots(),
   });
   const app = new Hono();
   configureRuntimeHttp({
@@ -248,6 +254,7 @@ async function fixture() {
     path,
     bytes,
     root,
+    storage,
     preset,
     loader,
     service,
@@ -260,6 +267,7 @@ async function fixture() {
       ),
     tripwires,
     readIntegration,
+    readProject,
     setOnIntegration: (callback: () => void) => {
       onIntegration = callback;
     },
@@ -621,4 +629,211 @@ test('uploaded inspection cannot publish resolved facts after its browser grant 
   );
   expect(response.status).toBe(403);
   expect(await response.text()).not.toMatch(/SECRET_|resolution|facts/);
+});
+
+test('Project tool and knowledge configuration appears with owner provenance without exposing content or storage paths', async () => {
+  const f = await fixture();
+  const revision = f.storage.projectRevision('project');
+  await revision.replace({
+    ...revision.value,
+    toolDefaults: { mcpServers: ['project-tool'], knowledge: true },
+    knowledgeNamespaces: [
+      { id: 'rules', label: 'SECRET_OVERRIDE', behavior: 'rag' },
+      {
+        id: 'research',
+        label: 'Research',
+        behavior: 'rag',
+        storageDir: 'SECRET_STORAGE_PATH',
+      },
+    ],
+  });
+  await f.storage.saveKnowledgeStoreRoot({
+    id: 'root:project-project',
+    scope: { kind: 'project', projectSlug: 'project' },
+    adapterId: 'kit-default-store',
+    storeRoot: 'SECRET_ROOT_PATH',
+    displayName: 'Project store',
+    createdAt: '2026-10-22T00:00:00Z',
+  });
+  const list = vi
+    .spyOn(f.storage, 'listKnowledgeStoreRoots')
+    .mockImplementation(() => {
+      throw new Error('Ordinary root list forbidden');
+    });
+  const observe = vi.spyOn(f.storage, 'observeKnowledgeStoreRoots');
+  const response = await f.request(f.input);
+  expect(response.status).toBe(200);
+  const { data } = (await response.json()) as { data: EnsembleInspection };
+  expect(data.facts).toContainEqual(
+    expect.objectContaining({
+      id: 'tool:lead:project-tool',
+      owner: expect.objectContaining({ href: '/projects/project/edit' }),
+    }),
+  );
+  expect(data.facts).toContainEqual(
+    expect.objectContaining({
+      id: 'tool:lead:station-knowledge',
+      origin: 'default',
+    }),
+  );
+  expect(data.facts).toContainEqual(
+    expect.objectContaining({
+      category: 'memory',
+      label: 'Rules & Steering',
+      origin: 'default',
+      value: expect.stringContaining('inject'),
+    }),
+  );
+  expect(data.facts).toContainEqual(
+    expect.objectContaining({
+      category: 'memory',
+      label: 'Research',
+      origin: 'authored',
+    }),
+  );
+  expect(data.facts).toContainEqual(
+    expect.objectContaining({
+      id: 'knowledge-roots:lead',
+      state: 'configured',
+      value: expect.stringContaining('1 registered'),
+    }),
+  );
+  expect(JSON.stringify(data)).not.toMatch(/SECRET_|storeRoot|storageDir/);
+  expect(list).not.toHaveBeenCalled();
+  expect(observe).toHaveBeenCalledTimes(2);
+  const directoryResponse = await f.request(
+    {
+      presetJson: f.bytes,
+      expectedPresetHash: f.input.expectedPresetHash,
+      bindings: {},
+      groupBindings: {
+        lead: {
+          target: {
+            agent: 'reviewer',
+            expectedEngine: { kind: 'connection', connectionId: 'codex' },
+            workspace: { kind: 'directory', cwd: f.root },
+          },
+          needs: [],
+        },
+      },
+    },
+    f.browser,
+  );
+  expect(directoryResponse.status).toBe(200);
+  const directory = (await directoryResponse.json()) as {
+    data: EnsembleInspection;
+  };
+  expect(directory.data.facts).not.toContainEqual(
+    expect.objectContaining({ id: 'tool:lead:project-tool' }),
+  );
+  expect(directory.data.facts).not.toContainEqual(
+    expect.objectContaining({ id: 'knowledge-roots:lead' }),
+  );
+  for (const spy of f.tripwires) expect(spy).not.toHaveBeenCalled();
+});
+
+test('an unavailable knowledge registry is disclosed without adding a default tool or inventing empty successful storage', async () => {
+  const f = await fixture();
+  vi.spyOn(f.storage, 'observeKnowledgeStoreRoots').mockImplementation(() => {
+    throw new Error('SECRET_REGISTRY_FAILURE');
+  });
+  const response = await f.request(f.input);
+  expect(response.status).toBe(200);
+  const { data } = (await response.json()) as { data: EnsembleInspection };
+  expect(data.facts).toContainEqual(
+    expect.objectContaining({
+      id: 'knowledge-roots:lead',
+      state: 'unavailable',
+    }),
+  );
+  expect(data.facts).not.toContainEqual(
+    expect.objectContaining({ id: 'tool:lead:station-knowledge' }),
+  );
+  expect(JSON.stringify(data)).not.toContain('SECRET_');
+});
+
+test('knowledge registry changes after Project inspection refuse the whole response as stale', async () => {
+  const f = await fixture();
+  const root = {
+    id: 'root:project-project',
+    scope: { kind: 'project' as const, projectSlug: 'project' },
+    adapterId: 'kit-default-store',
+    storeRoot: 'SECRET_STORE',
+    displayName: 'Before',
+    createdAt: '2026-10-22T00:00:00Z',
+  };
+  await f.storage.saveKnowledgeStoreRoot(root);
+  f.setOnIntegration(() => {
+    writeFileSync(
+      join(f.root, 'home/config/knowledge-store-roots.json'),
+      JSON.stringify([{ ...root, displayName: 'After' }]),
+    );
+  });
+  const response = await f.request(f.input);
+  expect(response.status).toBe(409);
+  expect(await response.json()).toMatchObject({
+    code: 'ensemble_inspection_stale',
+  });
+});
+
+test('a full roster batches Project configuration and bounds every namespace, root and tool detail projection', async () => {
+  const f = await fixture();
+  const revision = f.storage.projectRevision('project');
+  await revision.replace({
+    ...revision.value,
+    toolDefaults: {
+      mcpServers: Array.from({ length: 12 }, (_, i) => `project-tool-${i}`),
+    },
+    knowledgeNamespaces: Array.from({ length: 8 }, (_, i) => ({
+      id: `namespace-${i}`,
+      label: `Namespace ${i}`,
+      behavior: 'rag' as const,
+    })),
+  });
+  for (let i = 0; i < 6; i++)
+    await f.storage.saveKnowledgeStoreRoot({
+      id: `root:project-project:${i}`,
+      scope: { kind: 'project', projectSlug: 'project' },
+      adapterId: 'kit-default-store',
+      storeRoot: `SECRET_STORE_${i}`,
+      displayName: `Store ${i}`,
+      createdAt: '2026-10-22T00:00:00Z',
+    });
+  const preset = {
+    ...f.preset,
+    stationmaster: 'member0',
+    members: Array.from({ length: 16 }, (_, i) => ({
+      ...f.preset.members[0],
+      id: `member${i}`,
+      codename: `Member${i}`,
+    })),
+  };
+  const presetJson = JSON.stringify(preset);
+  const observe = vi.spyOn(f.storage, 'observeKnowledgeStoreRoots');
+  const response = await f.request(
+    {
+      presetJson,
+      expectedPresetHash: `sha256:${createHash('sha256').update(presetJson).digest('hex')}`,
+      bindings: Object.fromEntries(
+        preset.members.map((member) => [member.id, f.input.bindings.lead]),
+      ),
+    },
+    f.browser,
+  );
+  expect(response.status).toBe(200);
+  const { data } = (await response.json()) as { data: EnsembleInspection };
+  expect(data.resolutions).toHaveLength(16);
+  expect(
+    data.facts.filter((fact) => fact.id.startsWith('namespace:')),
+  ).toHaveLength(64);
+  expect(
+    data.facts.filter((fact) => fact.id.startsWith('knowledge-root:')),
+  ).toHaveLength(64);
+  expect(data.facts.filter((fact) => fact.id.startsWith('tool:'))).toHaveLength(
+    128,
+  );
+  expect(data.facts.length).toBeLessThanOrEqual(512);
+  expect(f.readProject).toHaveBeenCalledTimes(1);
+  expect(observe).toHaveBeenCalledTimes(2);
+  expect(JSON.stringify(data)).not.toMatch(/SECRET_/);
 });

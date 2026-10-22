@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { BUILTIN_STATION_AGENT_MCP_SERVER_IDS } from '@kontourai/station-contracts/agent';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
   ENSEMBLE_INSPECTION_LIMITS,
@@ -11,8 +12,14 @@ import type {
   ExecutionResolutionReceipt,
   ExecutionTarget,
 } from '@kontourai/station-contracts/execution-target';
+import {
+  BUILTIN_KNOWLEDGE_NAMESPACES,
+  resolveKnowledgeNamespaceConfiguration,
+} from '@kontourai/station-contracts/knowledge';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
+import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
+import type { KnowledgeRootObservation } from '../../knowledge-store/knowledge-record-observation.js';
 import { createPersonalRuntimeRequestGuard } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
 import {
@@ -25,6 +32,7 @@ import {
   resolveExecutionTarget,
 } from '../execution-target/execution-target-resolver.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../identity/principal-resolver.js';
+import { projectMcpServers } from '../projects/project-tools.js';
 import { loadEnsemblePreset } from './ensemble-presets.js';
 
 export class EnsembleInspectionRefusal extends Error {
@@ -105,6 +113,8 @@ export class EnsembleInspectionService {
       security: CurrentRuntimeRequestPrincipalSecurity;
       inventory: ExecutionTargetResolverDependencies;
       readIntegration: (id: string) => ToolDef | undefined;
+      readProject?: (slug: string) => ProjectConfig;
+      observeKnowledgeRoots?: () => KnowledgeRootObservation;
     },
   ) {}
 
@@ -205,11 +215,19 @@ export class EnsembleInspectionService {
       environment: { kind: 'current' },
       agent: agentId('station'),
     });
+    current();
     const fence = this.owners.inventory.capturePreparationFence?.([
       ...targets.values(),
     ]);
     if (!fence)
       throw new EnsembleInspectionRefusal('ensemble_inspection_unavailable');
+    let knowledgeRoots: KnowledgeRootObservation | undefined;
+    try {
+      knowledgeRoots = this.owners.observeKnowledgeRoots?.();
+    } catch {
+      // An unavailable registry cannot establish an empty store inventory.
+    }
+    const projects = new Map<string, ProjectConfig>();
     const facts: EnsembleInspectionFact[] = [];
     const resolutions: EnsembleInspection['resolutions'][number][] = [];
     const presetOwner = { label: 'Preset source', receipt: source.sha256 };
@@ -328,7 +346,117 @@ export class EnsembleInspectionService {
             owner: workspace.owner,
           });
           const spec = resolved.preparationDefinitions?.agent;
-          const ids = spec?.tools?.mcpServers ?? [];
+          const projectSlug =
+            resolved.workspace?.kind === 'project'
+              ? resolved.workspace.projectSlug
+              : undefined;
+          let project: ProjectConfig | undefined;
+          if (projectSlug && this.owners.readProject) {
+            project = projects.get(projectSlug);
+            if (!project) {
+              project = structuredClone(this.owners.readProject(projectSlug));
+              projects.set(projectSlug, project);
+            }
+          }
+          const roots =
+            knowledgeRoots?.roots.filter(
+              (root) =>
+                root.scope.kind === 'project' &&
+                root.scope.projectSlug === projectSlug,
+            ) ?? [];
+          const declared = spec?.tools?.mcpServers ?? [];
+          const projectServers = project
+            ? projectMcpServers(project, roots.length > 0)
+            : [];
+          const ids = [...new Set([...declared, ...projectServers])];
+          if (projectSlug) {
+            const projectOwner = {
+              label: 'Project knowledge and tool settings',
+              href: `/projects/${encodeURIComponent(projectSlug)}/edit`,
+              receipt: `resolution:${member.id}`,
+            };
+            add({
+              id: `knowledge-policy:${member.id}`,
+              memberId: member.id,
+              category: 'tools/services',
+              label: 'Project Knowledge tool default',
+              value: project
+                ? project.toolDefaults?.knowledge === false
+                  ? 'Project-added Knowledge tools disabled; explicit Agent references retain their own policy.'
+                  : 'Knowledge tools are added when a Project store is registered. Effective engine delivery and grants remain unverified.'
+                : 'Project configuration observation unavailable.',
+              origin: !project
+                ? 'unknown'
+                : project.toolDefaults?.knowledge === undefined
+                  ? 'default'
+                  : 'authored',
+              state: project ? 'configured' : 'unavailable',
+              owner: projectOwner,
+            });
+            const namespaces = project
+              ? resolveKnowledgeNamespaceConfiguration(
+                  project.knowledgeNamespaces,
+                )
+              : [];
+            add({
+              id: `knowledge-namespaces:${member.id}`,
+              memberId: member.id,
+              category: 'memory',
+              label: 'Project knowledge namespaces',
+              value: project
+                ? `${namespaces.length} configured; showing at most ${ENSEMBLE_INSPECTION_LIMITS.knowledgeDetailsPerMember}. Configuration only; retrieval, injection and content availability are unverified.`
+                : 'Project namespace configuration unavailable.',
+              origin: 'unknown',
+              state: project ? 'configured' : 'unavailable',
+              owner: projectOwner,
+            });
+            for (const [index, namespace] of namespaces
+              .slice(0, ENSEMBLE_INSPECTION_LIMITS.knowledgeDetailsPerMember)
+              .entries())
+              add({
+                id: `namespace:${member.id}:${index}`,
+                memberId: member.id,
+                category: 'memory',
+                label: label(namespace.label),
+                value: `${label(namespace.id)} · ${namespace.behavior}; content and storage paths are not inspected.`,
+                origin: BUILTIN_KNOWLEDGE_NAMESPACES.some(
+                  (entry) => entry.id === namespace.id,
+                )
+                  ? 'default'
+                  : 'authored',
+                state: 'configured',
+                owner: projectOwner,
+              });
+            add({
+              id: `knowledge-roots:${member.id}`,
+              memberId: member.id,
+              category: 'memory',
+              label: 'Registered Project knowledge stores',
+              value: knowledgeRoots
+                ? `${roots.length} registered; showing at most ${ENSEMBLE_INSPECTION_LIMITS.knowledgeDetailsPerMember}. Adapter availability, content and write authority are unverified.`
+                : 'Registry observation unavailable; this is not an empty store inventory.',
+              origin: 'runtime-derived',
+              state: !knowledgeRoots
+                ? 'unavailable'
+                : roots.length
+                  ? 'configured'
+                  : 'missing',
+              owner: projectOwner,
+            });
+            for (const [index, root] of roots
+              .slice(0, ENSEMBLE_INSPECTION_LIMITS.knowledgeDetailsPerMember)
+              .entries())
+              add({
+                id: `knowledge-root:${member.id}:${index}`,
+                memberId: member.id,
+                category: 'memory',
+                label: label(root.displayName),
+                value: `${label(root.id)} · ${label(root.adapterId)}; registered metadata only.`,
+                origin: 'authored',
+                state: 'configured',
+                owner: projectOwner,
+              });
+          }
           for (const id of [...new Set(ids)].slice(
             0,
             ENSEMBLE_INSPECTION_LIMITS.toolsPerMember,
@@ -340,6 +468,9 @@ export class EnsembleInspectionService {
             } catch {
               /* An unreadable definition is not an empty capability inventory. */
             }
+            const builtin = BUILTIN_STATION_AGENT_MCP_SERVER_IDS.some(
+              (builtinId) => builtinId === id,
+            );
             add({
               id: `tool:${member.id}:${id}`,
               memberId: member.id,
@@ -347,16 +478,28 @@ export class EnsembleInspectionService {
               label: id,
               value: definition
                 ? `${definition.kind} · ${definition.transport ?? 'built-in'} · ${definition.enabled === false ? 'disabled' : 'configured'}; definition currency, delivery and authorization unknown`
-                : 'Configured reference; definition unavailable.',
-              origin: 'authored',
+                : builtin
+                  ? 'Built-in reference; runtime availability, delivery and authorization unknown.'
+                  : 'Configured reference; definition unavailable.',
+              origin:
+                declared.includes(id) ||
+                project?.toolDefaults?.mcpServers?.includes(id)
+                  ? 'authored'
+                  : 'default',
               state: !definition
-                ? 'missing'
+                ? builtin
+                  ? 'unknown'
+                  : 'missing'
                 : definition.enabled === false
                   ? 'unavailable'
                   : 'unknown',
               owner: {
-                label: 'Tool connection settings',
-                href: `/connections/tools/${encodeURIComponent(id)}`,
+                label: declared.includes(id)
+                  ? 'Agent tool connection settings'
+                  : 'Project tool connection settings',
+                href: declared.includes(id)
+                  ? `/connections/tools/${encodeURIComponent(id)}`
+                  : `/projects/${encodeURIComponent(projectSlug ?? '')}/edit`,
               },
             });
           }
@@ -365,7 +508,7 @@ export class EnsembleInspectionService {
             memberId: member.id,
             category: 'tools/services',
             label: 'Tool policy',
-            value: `Configured MCP references: ${ids.length}. Showing at most ${ENSEMBLE_INSPECTION_LIMITS.toolsPerMember}. Harness tools, effective grants and external service access are unknown.`,
+            value: `Observed Agent and Project MCP references: ${ids.length}. Showing at most ${ENSEMBLE_INSPECTION_LIMITS.toolsPerMember}. Harness tools, effective grants and external service access are unknown; unavailable Project/store observations may hide additional defaults.`,
             origin: 'authored',
             state: 'unknown',
             owner,
@@ -487,6 +630,11 @@ export class EnsembleInspectionService {
     )
       throw new EnsembleInspectionRefusal('ensemble_inspection_stale');
     try {
+      if (
+        knowledgeRoots &&
+        this.owners.observeKnowledgeRoots?.().digest !== knowledgeRoots.digest
+      )
+        throw new Error('Knowledge registry changed');
       fence();
     } catch {
       throw new EnsembleInspectionRefusal('ensemble_inspection_stale');
