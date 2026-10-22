@@ -1238,6 +1238,15 @@ See [Publisher analytics](../guides/plugins.md#publisher-analytics).
 
 ## Project knowledge registration ownership
 
+The `project` subpath also owns `ProjectS3Source`,
+`ProjectS3ObjectReference`, `ProjectS3ObjectPage` and `ProjectS3ObjectRead`.
+A source has an immutable UUID and durable Project ID plus bucket-owner account,
+region, bucket and prefix. Public projections omit the host credential-profile
+name and actor. Object pages expose continuation/truncation, while reads retain
+ETag, optional returned version, SHA-256, observation time and citation. These
+shapes describe bounded live reads; they confer no write, execution or indexing
+authority. The implementation remains default-off pending AWS acceptance.
+
 `KnowledgeStoreRoot.projectId` is an optional durable Project binding. Older
 registrations omit it; member access never infers it from `scope.projectSlug`.
 The pure `isProjectKnowledgeRoot(root, projectId)` helper owns matching for

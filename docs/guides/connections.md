@@ -11,6 +11,15 @@ For the precise vocabulary used below, see [docs/glossary.md](../glossary.md).
 
 See the [application walkthrough](../learn/walkthroughs.md#connections) for a captured example and its evidence limits.
 
+## S3 source profiles
+
+Experimental Project S3 sources use an explicitly selected named AWS profile on
+the Station host. They remain default-off pending real AWS acceptance and are
+configured in Project **Sources**, separately from model connections and personal
+connected-tool accounts. Sharing a prefix explicitly lets current Project readers
+use that host profile for bounded reads; it does not copy its credentials to
+members or choose a person's account by fallback. See [the S3 source guide](knowledge.md#experimental-read-only-s3-prefixes).
+
 ## Read the connection list
 
 Each row shows one readiness state and a next action. Model connections distinguish

@@ -2384,6 +2384,18 @@ the store. See the [Knowledge guide](../guides/knowledge.md#agent-tools) and
 
 ## KnowledgeStoreProvider
 
+Experimental S3 sources use the separate
+[ProjectS3Sources service](../../src-server/services/projects/project-s3-sources.ts),
+not a fabricated file-store root. It owns immutable Project-bound registrations,
+bounded read-only AWS calls and object provenance. The runtime binds current
+Project/principal authority; the AWS HTTP handler checks it after credential
+resolution and the response guard checks it at release. Project tool detection
+adds Knowledge tools when an enabled S3 source exists, preserving Agent tool
+restrictions. S3 data tools are omitted when the default-off server flag is
+unset. [Routes](../../src-server/routes/projects/project-s3-source-routes.ts)
+and [Sources UI](../../src-ui/src/views/project-settings/ProjectS3Sources.tsx)
+own selection and live object reads. Local SDK fixtures do not qualify AWS.
+
 The [document import service](../../src-server/services/knowledge/knowledge-document-import-service.ts)
 uses the provider's optional registration lease for bounded canonical imports.
 It retains exact originals and intent before publication, observes stable record

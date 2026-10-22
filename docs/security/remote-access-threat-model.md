@@ -150,6 +150,16 @@ per-caller session reader. Registry/path management and HTTP member writes
 remain denied. No additional index, migration or host-path capability follows
 from this read allowlist.
 
+When the default-off experimental S3 flag is enabled, separate Knowledge leaves
+admit current Project readers to source metadata, a bounded selected-prefix page
+and one ETag-pinned object. A source is an explicit operator grant to use a named
+host AWS profile for that Project's prefix; it is not a fallback to another
+person's connected account. Profile discovery, attachment and disconnect remain
+operator-only. Bucket owner/prefix/size/time limits and current authority are
+checked in the source owner and again at response release. S3 never grants a
+mount, execution path or object write/delete. Real AWS acceptance remains
+outstanding; see [the experimental source contract](../guides/knowledge.md#experimental-read-only-s3-prefixes).
+
 The account-authentication exception is specified in the
 [deployment authentication guide](../guides/deployment-authentication.md).
 With authentication unconfigured, that router reports unavailable (`501`),

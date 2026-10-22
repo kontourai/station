@@ -762,6 +762,18 @@ disabled. Client fetchers are `importKnowledgeDocuments`,
 entry point. The caller retains recovery identity before dispatch and must not
 turn a lost response into a new import UUID. See [the import API](api.md#project-document-imports).
 
+Experimental S3 source hooks require a captured `ApiRequestScope`:
+`useProjectS3CapabilitiesQuery`, `useProjectS3ProfilesQuery`,
+`useProjectS3SourcesQuery`, `useProjectS3ObjectsQuery`,
+`useProjectS3ObjectQuery`, `useAttachProjectS3SourceMutation` and
+`useDisconnectProjectS3SourceMutation`. Source/object caches include endpoint
+and active authority; attachment invalidates only the selected Project's S3
+queries. Mutations do not retry automatically. Object reads require the exact
+selected key/ETag. The client entry point exposes matching capability/profile,
+list/attach/disconnect and object-list/read functions in `client/knowledge`.
+Feature availability comes from the server capability read; the server retains
+the default-off enforcement independently of the UI. See [the S3 API](api.md#experimental-project-s3-sources).
+
 #### `useKnowledgeDocs(projectSlug: string, namespace?: string)`
 
 Returns a query whose `data` is the project's `KnowledgeDocumentMeta[]`,

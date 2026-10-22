@@ -438,6 +438,61 @@ own this journey. Focused service and UI tests cover bounded input, restart,
 lost acknowledgement, revocation at real file locks and separate tab pointers;
 they do not establish browser rendering or a live model's cited answer.
 
+### Experimental read-only S3 prefixes
+
+S3 sources are **disabled by default pending real AWS acceptance**. An operator
+may set `STATION_EXPERIMENTAL_S3_SOURCES=1` before starting Station to expose
+**Settings → Sources → S3 prefixes** and the three S3 Knowledge tools. Local
+SDK/transport fixtures do not establish real AWS verification.
+
+Choose a named AWS profile already configured on the Station host, the expected
+12-digit bucket-owner account ID, region, bucket and a nonempty prefix ending
+in `/`. Confirm that this Project's members and Agents may read that prefix
+using the host profile. This is an explicit shared source grant, separate from
+a person's connected-tool account; Station never falls back to another profile
+or the AWS default credential chain. Profile names are shown to the operator;
+secret values stay with the AWS credential provider. An attachment records the
+selection and does not claim successful AWS access.
+
+**Browse prefix** requests one page of at most 50 objects. Continue pagination
+explicitly. **Read** fetches one selected nonempty Markdown/plain-text object,
+at most 256 KiB, conditional on its listed ETag. Each operation allows one SDK
+attempt and a 20-second deadline, including a bounded object body. Only valid
+UTF-8 text is returned. Changed/deleted objects, permission failures and expired
+credentials are errors; a failed refresh withholds cached text. The source
+enforces the prefix and expected bucket owner at the AWS request seam. It does
+not accept custom endpoints or follow region redirects.
+
+Readers need current Project view access. Attachment, host-profile discovery
+and disconnect require the operator. Agent requests retain their session owner;
+caller revocation and membership changes are rechecked before HTTP dispatch,
+during body reads and before response delivery. Citations include bucket/key,
+observed ETag, optional returned version ID and content SHA-256. An ETag is a
+conditional object identity, not a claim that it is a SHA-256 digest.
+
+No S3 write/delete, whole-bucket scan, local mount, execution root, import or
+index follows from attachment. **Disconnect** invalidates the registration and
+retains its tombstone, so retrying an old attachment UUID cannot reconnect it.
+S3 originals and any copies saved elsewhere remain intact. The registry admits
+at most 1,000 retained registrations and 2 MiB serialized bytes; a capacity
+rejection preserves existing sources. Prepare a new registration explicitly
+if reconnecting is intended.
+
+For least privilege, the selected profile needs `s3:ListBucket` on the bucket
+restricted by `s3:prefix`, plus `s3:GetObject` on the selected prefix's objects.
+It needs no S3 write permission; encrypted objects may also require the bucket's
+configured KMS decrypt permissions. Configure any required profile sign-in outside
+Station, then use the Sources listing/read to check current access. For a
+non-production acceptance run, use a dedicated bucket/prefix containing small
+UTF-8 `.md`/`.txt` objects, verify pagination and ETag changes, then disconnect
+and confirm reads stop. This procedure remains unexecuted against real AWS.
+
+The [service](../../src-server/services/projects/project-s3-sources.ts),
+[route boundary](../../src-server/routes/projects/project-s3-source-routes.ts)
+and [Sources UI](../../src-ui/src/views/project-settings/ProjectS3Sources.tsx)
+own this feature. These sources can coexist with repository and canonical
+document sources; their readiness and permission checks remain independent.
+
 ### Project settings → Older documents and migration
 
 The Project knowledge section keeps the older document upload, indexing and

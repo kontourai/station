@@ -217,6 +217,39 @@ before releasing the response. Original storage is retained after disconnect;
 the route refuses a replaced registration. None of these routes expose a host
 path or raw credential in errors. See [document import](../guides/knowledge.md#import-documents-from-your-computer).
 
+## Experimental Project S3 sources
+
+Only `STATION_EXPERIMENTAL_S3_SOURCES=1` enables these routes; otherwise data
+routes return 404 and S3 Knowledge tools are not advertised. Real AWS acceptance
+is outstanding. `GET /api/knowledge/s3-sources/capabilities` returns
+`{ enabled, canManage }`. Operator-only `GET /api/knowledge/s3-sources/profiles`
+returns existing host profile names and availability, never credential values.
+
+The base path is `/api/knowledge/s3-sources/projects/:projectSlug`:
+
+| Method and suffix | Contract |
+| --- | --- |
+| `GET` base | Current Project-visible `ProjectS3Source[]`; no profile or actor secret material |
+| `POST` base | Operator selection `{ id: UUID, expectedProjectId, displayName, profile, accountId, region, bucket, prefix, shareWithProject: true }`; missing sharing consent refuses; stale Project returns409 |
+| `POST /:sourceId/disconnect` | Operator `{ expectedSource }` exact comparison; retains a tombstone and never deletes S3 objects |
+| `GET /:sourceId/objects?cursor=…` | One page of at most50 selected-prefix objects with ETag/size and optional continuation token; never a whole-bucket coverage claim |
+| `GET /:sourceId/object?key=…&etag=…` | One nonempty UTF-8 Markdown/text object, at most256KiB, conditional on its listed ETag; returns source/object/hash/version/citation and observed text |
+
+POST bodies are bounded to16KiB. Registrations bind the durable Project ID;
+renames retain that binding and replacement slugs do not inherit it. Source
+UUID reuse must match the exact original selection and actor. Disconnected UUIDs
+cannot reconnect. Active reads require current Project view authority and exact
+source identity, including after credential resolution, during body consumption
+and at transport release. Operator-selected profiles are explicit shared source
+grants, not a fallback for personal connected accounts. Client source listings
+omit the profile identifier; only the operator profile chooser returns names.
+
+Listings and reads use one AWS SDK attempt and a20-second bound. The bucket
+owner is supplied as `ExpectedBucketOwner`; reads supply `IfMatch`. Unknown
+credentials/permission/network failures return503, changed/deleted objects409,
+and oversized supported reads413. No custom endpoint, S3 write/delete, import,
+index or execution mount is exposed. See [the S3 guide](../guides/knowledge.md#experimental-read-only-s3-prefixes).
+
 ## Knowledge source disconnect
 
 `POST /api/knowledge/roots/:id/disconnect` accepts `{ expectedRoot }`, the exact
