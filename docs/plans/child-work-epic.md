@@ -212,6 +212,25 @@ filesystem admission, authentication and caller-scoped dispatch remain separate;
 memory, external routes and portable authority remain unfinished. No live-provider,
 hosted, browser-layout or full #453 acceptance follows from this increment.
 
+At `af67f9c5526`, Project-bound inspection adds canonical Project MCP defaults,
+configured knowledge namespaces and registered Project-store metadata. Namespace
+precedence is shared with the existing KnowledgeService. The bounded zero-write
+registry observation is rechecked before response publication; unknown registry
+state is not an empty inventory. Directory-only targets inherit none of these
+Project facts from a matching path. Content and raw storage paths stay private;
+operator-authored labels are displayed metadata, not comprehensively redacted.
+
+HTTP and KnowledgeService focused evidence passed 45/45, including actual registry
+file drift and a 16-member projection with bounded details and request-scoped
+Project reads. Server-test types and lint passed. The preceding inspector fails
+four new assertions with sixteen controls green. Inverting the registry comparison
+produces ten failures and ten passes: stale bytes are accepted and unchanged bytes
+are over-refused. Byte-exact restoration returns 45/45. Independent source-only
+review found no confirmed P1/P2; no independent execution or browser proof is
+claimed. Registered metadata does not establish usable stores, retrieved/injected
+content, shared conversation memory, engine tool delivery or write authority.
+External routes, full launch equivalence and portable authority remain unfinished.
+
 Published Flow Agents 9.3.0 exports v2 authority/grants, ancestor allocations and
 invocation holds, a durable group controller, Flow-owned scheduling, mailbox
 admission and bounded no-tools context acknowledgement. Station now composes the
