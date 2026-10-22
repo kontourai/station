@@ -22,7 +22,7 @@ import { chatInputLimitRefusals } from '../../../telemetry/metrics.js';
  * dispatched for a Task carries its brief there on the first turn; at the
  * old 4000 bound that first turn was refused.
  */
-export const CHAT_AMBIENT_CONTEXT_MAX_CHARS = 4000 + 1 + TASK_BRIEF_MAX_CHARS;
+const CHAT_AMBIENT_CONTEXT_MAX_CHARS = 4000 + 1 + TASK_BRIEF_MAX_CHARS;
 
 // ACP
 export const acpConnectionSchema = z.object({

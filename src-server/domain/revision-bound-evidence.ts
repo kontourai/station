@@ -30,7 +30,7 @@ const MAX_REVISION_EVIDENCE_ATTESTATION_BYTES = 4 * 1024;
  * The ledger bounds a default-composed module enforces. Room admission reads
  * these same values, so a write it admits is one this module can freeze.
  */
-export const REVISION_EVIDENCE_DEFAULT_BOUNDS = Object.freeze({
+const REVISION_EVIDENCE_DEFAULT_BOUNDS = Object.freeze({
   maxRevisions: DEFAULT_REVISION_EVIDENCE_CAPACITY,
   maxPortableBytes: DEFAULT_REVISION_EVIDENCE_IMPORT_BYTES,
   maxSnapshotBytes: DEFAULT_REVISION_EVIDENCE_SNAPSHOT_BYTES,

@@ -68,7 +68,7 @@ import type {
 } from './thread-inbox.js';
 
 /** The origin a wake's turn records: Station's own server code, never a person. */
-export const TASK_QUESTION_WAKE_CLIENT_ORIGIN: ClientOrigin = Object.freeze({
+const TASK_QUESTION_WAKE_CLIENT_ORIGIN: ClientOrigin = Object.freeze({
   version: CLIENT_ORIGIN_VERSION,
   actor: Object.freeze({ kind: 'internal' as const }),
   reported: UNKNOWN_CLIENT_REPORTED_ORIGIN,
@@ -200,7 +200,7 @@ function quotedRecordText(text: string): string[] {
 }
 
 /** The short message the lead receives. */
-export function composeTaskQuestionWakeText(record: TaskMemoryRecord): string {
+function composeTaskQuestionWakeText(record: TaskMemoryRecord): string {
   if (record.action === 'answer')
     return [
       wakeHeader(record, 'answered'),
@@ -222,7 +222,7 @@ export function composeTaskQuestionWakeText(record: TaskMemoryRecord): string {
  * The wake's client origin: Station's own server code, and, when a Session
  * wrote the record, that Session as the sender.
  */
-export function taskQuestionWakeClientOrigin(
+function taskQuestionWakeClientOrigin(
   record: TaskMemoryRecord,
 ): ClientOrigin {
   return record.author.kind === 'session'

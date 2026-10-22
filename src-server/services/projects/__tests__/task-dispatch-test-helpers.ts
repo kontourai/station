@@ -26,7 +26,7 @@ import type {
 /** The Environment the fixture Agent resolver answers for. */
 export const FIXTURE_ENVIRONMENT_ID = 'environment-test';
 /** The directory the fixture Agent resolver runs a Project in. */
-export const FIXTURE_PROJECT_CWD = '/tmp/project-alpha';
+const FIXTURE_PROJECT_CWD = '/tmp/project-alpha';
 
 /**
  * #4005: a stand-in for `resolveTaskDispatchAgentStart` that answers every

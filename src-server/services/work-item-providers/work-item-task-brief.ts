@@ -15,7 +15,7 @@ import type { WorkItemObservation } from '@kontourai/station-contracts/work-item
 import { splitLines } from '../orchestration/quoted-text.js';
 
 /** How many of the item's newest comments the seed carries. */
-export const WORK_ITEM_BRIEF_COMMENTS = 2;
+const WORK_ITEM_BRIEF_COMMENTS = 2;
 /**
  * The seeded brief, in UTF-16 code units, not counting the one link back to
  * the item.

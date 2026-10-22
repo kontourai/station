@@ -150,7 +150,7 @@ const taskFromWorkItemSchema = taskCreateSchema
   .strict();
 
 /** Why a Task's ref is not read: it never went through a board check. */
-export const UNCHECKED_WORK_ITEM_REASON =
+const UNCHECKED_WORK_ITEM_REASON =
   "This Task's work item was not checked against the Project's board, so Station does not read it from the tracker.";
 
 /**

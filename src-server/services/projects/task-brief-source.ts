@@ -64,7 +64,7 @@ import {
  * Past it the read is aborted, which stops its gh process, and the brief says
  * the item was not re-read; the dispatch goes ahead.
  */
-export const TASK_BRIEF_OBSERVE_TIMEOUT_MS = 10_000;
+const TASK_BRIEF_OBSERVE_TIMEOUT_MS = 10_000;
 
 export interface TaskBriefSessionFactsRead {
   /** The ladder word `list_project_activity` reports. */

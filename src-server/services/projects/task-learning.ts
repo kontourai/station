@@ -125,7 +125,7 @@ const incarnationOf = (task: TaskRecord): TaskMemoryIncarnation => ({
  * ones). The fixed-length digest at the end keeps one candidate's id from
  * being a prefix of another's, since a store's `get` also resolves prefixes.
  */
-export function taskLearningKnowledgeRecordId(
+function taskLearningKnowledgeRecordId(
   incarnation: TaskMemoryIncarnation,
   record: { readonly kind: TaskLearningKind; key: string; version: number },
 ): string {

@@ -37,9 +37,9 @@ const candidateFields = {
   version: z.number().int().min(1),
 };
 
-export const taskLearningDismissSchema = z.object(candidateFields).strict();
+const taskLearningDismissSchema = z.object(candidateFields).strict();
 
-export const taskLearningPromoteSchema = z
+const taskLearningPromoteSchema = z
   .object({
     ...candidateFields,
     rootId: z.string().min(1).max(300),

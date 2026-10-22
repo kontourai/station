@@ -90,7 +90,7 @@ export interface SessionWorkClaimRoutesDeps {
 }
 
 /** A claim as a tool or the UI reads it. */
-export function workClaimView(claim: WorkClaimRecord): WorkClaimView {
+function workClaimView(claim: WorkClaimRecord): WorkClaimView {
   return {
     claimId: claim.claimId,
     sessionId: claim.sessionId,
