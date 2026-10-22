@@ -52,6 +52,8 @@ const { EngineCredentials, registerEngineCredentials } = await import(
 const { EngineSignInService, registerEngineSignIn } = await import(
   '../../../services/acp/engine-sign-in.js'
 );
+const { recordEngineAuthenticated, engineSignInStatus, resetEngineAuthStatus } =
+  await import('../../../services/acp/engine-auth-status.js');
 const { getACPManagerStatus } = await import(
   '../../../services/acp/acp-manager-view.js'
 );
@@ -1410,10 +1412,14 @@ describe('ACP Routes', () => {
       });
       const app = asOperator(createACPRoutes(ctx as any));
 
+      recordEngineAuthenticated(stored.connections[0]);
       const res = await app.request('/connections/droid', { method: 'DELETE' });
 
       expect(res.status).toBe(200);
       expect(forget).toHaveBeenCalledWith('droid');
+      expect((await engineSignInStatus({ id: 'droid', command })).state).toBe(
+        'unknown',
+      );
       expect(keys.envFor('droid', ['FACTORY_API_KEY'])).toEqual({});
       expect(keys.envFor('other', ['FACTORY_API_KEY'])).toEqual({
         FACTORY_API_KEY: 'fk-keep-me',
@@ -1421,6 +1427,32 @@ describe('ACP Routes', () => {
     } finally {
       registerEngineCredentials(null);
       registerEngineSignIn(null);
+    }
+  });
+
+  test('changing the invocation retires sign-in evidence before rechecking the connection', async () => {
+    const ctx = createMockRuntimeContext();
+    const original = { id: 'pi', name: 'Pi', command: 'pi-acp', enabled: true };
+    ctx.configLoader.loadACPConfig.mockResolvedValue({
+      connections: [original],
+    });
+    recordEngineAuthenticated(original);
+    const signIn = new EngineSignInService({ terminal: null });
+    const forget = vi.spyOn(signIn, 'forget');
+    registerEngineSignIn(signIn);
+    try {
+      const app = asOperator(createACPRoutes(ctx as any));
+      const res = await app.request('/connections/pi', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: 'goose', args: ['acp'] }),
+      });
+      expect(res.status).toBe(200);
+      expect(forget).toHaveBeenCalledExactlyOnceWith('pi');
+      expect((await engineSignInStatus(original)).state).toBe('unknown');
+    } finally {
+      registerEngineSignIn(null);
+      resetEngineAuthStatus();
     }
   });
 

@@ -809,7 +809,10 @@ and says where that came from:
 - What the engine said: a chat or a check it refused with "Authentication
   required" reads as **Not signed in** until a later chat gets an answer, and a
   sign-in started here that finished reads as **Signed in**. Neither changes
-  readiness.
+  readiness. These observations belong to the command and arguments that
+  produced them; changing the invocation or removing the connection forgets
+  them. A status check already running at that point cannot restore its old
+  answer.
 - Otherwise **Not checked**, and the panel says the engine has no check
   Station can run.
 

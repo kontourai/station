@@ -1033,7 +1033,7 @@ export class ACPProbe {
         return false;
       }
       // The engine's own "sign in first" answer is sign-in evidence.
-      if (isAcpAuthRequired(err)) recordEngineSignInRefused(this.config.id);
+      if (isAcpAuthRequired(err)) recordEngineSignInRefused(this.config);
       this.lastError = {
         message: probeErrorMessage(err, this.config),
         // `process.start()` both launches and initializes; a command that

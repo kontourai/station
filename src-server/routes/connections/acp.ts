@@ -28,6 +28,7 @@ import { listProviders } from '../../providers/registries/registry.js';
 import type { RuntimeContext } from '../../runtime/types.js';
 import { listValidatedACPRegistryEntries } from '../../services/acp/acp-engine-descriptors.js';
 import { ACPProviderRouteValidationError } from '../../services/acp/acp-process.js';
+import { forgetEngineAuthStatus } from '../../services/acp/engine-auth-status.js';
 import { engineCredentials } from '../../services/acp/engine-credentials.js';
 import { engineSignIn } from '../../services/acp/engine-sign-in.js';
 import {
@@ -743,6 +744,10 @@ export function createACPRoutes(ctx: RuntimeContext) {
             config.connections[idx] = next;
             await ctx.configLoader.saveACPConfig(config);
             beginMutation();
+            if (changesAny(updates, previous, ['command', 'args', 'cwd'])) {
+              engineSignIn()?.forget(id);
+              forgetEngineAuthStatus(id);
+            }
             await ctx.acpBridge.removeConnection(id);
             // Same gate as the create paths: an edit that still cannot
             // handshake does not (re)materialize the engine's Agent. An
@@ -787,9 +792,9 @@ export function createACPRoutes(ctx: RuntimeContext) {
           );
           await ctx.configLoader.saveACPConfig(config);
           beginMutation();
-          await ctx.acpBridge.removeConnection(id);
-          // Nor may a sign-in it was running, or what it learned about it.
           engineSignIn()?.forget(id);
+          forgetEngineAuthStatus(id);
+          await ctx.acpBridge.removeConnection(id);
           // A key stored for this connection must not outlive it.
           await engineCredentials()
             ?.removeConnection(id)

@@ -7,7 +7,7 @@ import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
   TerminalEvent,
@@ -187,6 +187,48 @@ describe.runIf(posix)('engine sign-in through a live handshake', () => {
       source: 'sign-in',
     });
   });
+
+  test.each([
+    ['cancel', (s: EngineSignInService) => s.cancel('pi')],
+    ['forget', (s: EngineSignInService) => s.forget('pi')],
+    ['dispose', (s: EngineSignInService) => s.dispose()],
+  ] as const)(
+    '%s closes a terminal whose opening is still pending',
+    async (_how, end) => {
+      const pi = engineProgram('pi-acp', 'pi-acp.json');
+      const terminal = recordingTerminal();
+      let finishOpen!: (snapshot: { sessionId: string }) => void;
+      let opening!: () => void;
+      const opened = new Promise<void>((resolve) => {
+        opening = resolve;
+      });
+      const close = vi.fn(async () => undefined);
+      terminal.host.close = close;
+      terminal.host.open = (input) => {
+        terminal.opened.push(input);
+        opening();
+        return new Promise((resolve) => {
+          finishOpen = resolve;
+        });
+      };
+      const service = new EngineSignInService({ terminal: terminal.host });
+      const started = service.startTerminal(
+        connection('pi', pi.command),
+        'pi_terminal_login',
+      );
+      await opened;
+      end(service);
+      const input = terminal.opened[0];
+      const sessionId = `${input.projectSlug}:${input.terminalId}`;
+      finishOpen({ sessionId });
+      expect(await started).toMatchObject({ state: 'cancelled' });
+      expect(close).toHaveBeenCalledExactlyOnceWith(sessionId);
+      terminal.exit(input, 0);
+      expect(
+        (await engineSignInStatus(connection('pi', pi.command))).state,
+      ).toBe('unknown');
+    },
+  );
 
   test('a terminal sign-in that exits non-zero fails and claims nothing', async () => {
     const pi = engineProgram('pi-acp', 'pi-acp.json');

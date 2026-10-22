@@ -42,6 +42,7 @@ import { createAcpInboundExtensionRequestHandler } from './acp-inbound-extension
 import { createProbeClient } from './acp-probe.js';
 import { ACPProcess, type ACPProcessOptions } from './acp-process.js';
 import {
+  forgetEngineAuthStatus,
   invalidateEngineStatus,
   recordEngineAuthenticated,
 } from './engine-auth-status.js';
@@ -387,25 +388,25 @@ export class EngineSignInService {
   }
 
   #register(
-    connectionId: string,
+    config: ACPConnectionConfig,
     view: EngineSignInAttempt,
     cancel: () => void,
     onFinish: () => void,
   ): LiveAttempt {
     const live: LiveAttempt = {
       view,
-      connectionId,
+      connectionId: config.id,
       cancel,
       finish: (state, message) => {
         if (live.view.state !== 'running') return;
         live.view = { ...live.view, state, ...(message ? { message } : {}) };
         live.finishedAt = this.#now();
-        if (state === 'succeeded') recordEngineAuthenticated(connectionId);
-        else invalidateEngineStatus(connectionId);
+        if (state === 'succeeded') recordEngineAuthenticated(config);
+        else invalidateEngineStatus(config.id);
         onFinish();
       },
     };
-    this.#attempts.set(connectionId, live);
+    this.#attempts.set(config.id, live);
     return live;
   }
 
@@ -472,7 +473,7 @@ export class EngineSignInService {
       if (sessionId) void terminal.close(sessionId).catch(() => undefined);
     };
     const live = this.#register(
-      config.id,
+      config,
       view,
       () => {
         live.finish('cancelled');
@@ -506,6 +507,7 @@ export class EngineSignInService {
         env,
       });
       sessionId = snapshot.sessionId;
+      if (live.view.state === 'cancelled') close();
     } catch (error) {
       live.finish('failed', errorText(error));
       throw new EngineSignInError(
@@ -552,7 +554,7 @@ export class EngineSignInService {
       if (links.length !== current.length) live.view = { ...live.view, links };
     });
     const live = this.#register(
-      config.id,
+      config,
       view,
       () => live.finish('cancelled'),
       () => void process.destroy().catch(() => undefined),
@@ -589,6 +591,7 @@ export class EngineSignInService {
     this.cancel(connectionId);
     this.#methods.delete(connectionId);
     this.#attempts.delete(connectionId);
+    forgetEngineAuthStatus(connectionId);
   }
 
   dispose(): void {

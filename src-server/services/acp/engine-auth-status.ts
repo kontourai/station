@@ -59,6 +59,11 @@ export const ENGINE_STATUS_TTL_MS = 60_000;
 interface ConnectionLike {
   id: string;
   command: string;
+  args?: string[];
+}
+
+function executionKey(connection: ConnectionLike): string {
+  return JSON.stringify([connection.command, connection.args ?? []]);
 }
 
 function jsonField(stdout: string, field: string): unknown {
@@ -124,8 +129,14 @@ const commandResults = new Map<
   string,
   { key: string; observation: Observation | null }
 >();
-const inFlight = new Map<string, Promise<Observation | null>>();
-const engineEvidence = new Map<string, Observation>();
+const inFlight = new Map<
+  string,
+  { key: string; promise: Promise<Observation | null> }
+>();
+const engineEvidence = new Map<
+  string,
+  { key: string; observation: Observation }
+>();
 let runner: StatusCommandRunner = defaultRunner;
 let now: () => number = Date.now;
 
@@ -147,23 +158,21 @@ export function resetEngineAuthStatus(): void {
 }
 
 /** The engine refused a chat because it needs a sign-in. */
-export function recordEngineSignInRefused(connectionId: string): void {
-  engineEvidence.set(connectionId, {
-    state: 'unauthenticated',
-    source: 'refusal',
-    at: now(),
+export function recordEngineSignInRefused(connection: ConnectionLike): void {
+  engineEvidence.set(connection.id, {
+    key: executionKey(connection),
+    observation: { state: 'unauthenticated', source: 'refusal', at: now() },
   });
-  commandResults.delete(connectionId);
+  invalidateEngineStatus(connection.id);
 }
 
 /** A Station-started sign-in succeeded (`authenticate` answered, or the terminal login exited 0). */
-export function recordEngineAuthenticated(connectionId: string): void {
-  engineEvidence.set(connectionId, {
-    state: 'authenticated',
-    source: 'sign-in',
-    at: now(),
+export function recordEngineAuthenticated(connection: ConnectionLike): void {
+  engineEvidence.set(connection.id, {
+    key: executionKey(connection),
+    observation: { state: 'authenticated', source: 'sign-in', at: now() },
   });
-  commandResults.delete(connectionId);
+  invalidateEngineStatus(connection.id);
 }
 
 /**
@@ -171,14 +180,25 @@ export function recordEngineAuthenticated(connectionId: string): void {
  * (the person may have signed in outside Station). Clears only a refusal;
  * an answer is not itself sign-in evidence.
  */
-export function clearEngineSignInRefusal(connectionId: string): void {
-  if (engineEvidence.get(connectionId)?.source === 'refusal')
-    engineEvidence.delete(connectionId);
+export function clearEngineSignInRefusal(connection: ConnectionLike): void {
+  const evidence = engineEvidence.get(connection.id);
+  if (
+    evidence?.key === executionKey(connection) &&
+    evidence.observation.source === 'refusal'
+  )
+    engineEvidence.delete(connection.id);
 }
 
 /** Forget a cached status-command answer so the next read runs it again. */
 export function invalidateEngineStatus(connectionId: string): void {
   commandResults.delete(connectionId);
+  inFlight.delete(connectionId);
+}
+
+/** Retire observations when a connection is removed or its invocation changes. */
+export function forgetEngineAuthStatus(connectionId: string): void {
+  invalidateEngineStatus(connectionId);
+  engineEvidence.delete(connectionId);
 }
 
 async function statusCommandFor(
@@ -236,7 +256,7 @@ async function commandObservation(
   refresh: boolean,
 ): Promise<Observation | null> {
   // A changed command means a different program; never reuse its answer.
-  const key = connection.command;
+  const key = executionKey(connection);
   const cached = commandResults.get(connection.id);
   if (
     !refresh &&
@@ -247,15 +267,19 @@ async function commandObservation(
   )
     return cached.observation;
   const pending = inFlight.get(connection.id);
-  if (pending) return pending;
+  if (pending?.key === key) return pending.promise;
   const run = runStatusCommand(connection)
     .catch(() => null)
     .then((observation) => {
+      if (inFlight.get(connection.id)?.promise !== run) return null;
       commandResults.set(connection.id, { key, observation });
       return observation;
     })
-    .finally(() => inFlight.delete(connection.id));
-  inFlight.set(connection.id, run);
+    .finally(() => {
+      if (inFlight.get(connection.id)?.promise === run)
+        inFlight.delete(connection.id);
+    });
+  inFlight.set(connection.id, { key, promise: run });
   return run;
 }
 
@@ -274,12 +298,15 @@ export async function engineSignInStatus(
   const fromCommand = checkable
     ? await commandObservation(connection, options.refresh === true)
     : null;
+  const evidence = engineEvidence.get(connection.id);
   const chosen =
     fromCommand && fromCommand.state !== 'unknown'
       ? fromCommand
       : options.commandOnly
         ? null
-        : (engineEvidence.get(connection.id) ?? null);
+        : evidence?.key === executionKey(connection)
+          ? evidence.observation
+          : null;
   if (!chosen) return { state: 'unknown', source: 'none', checkable };
   return {
     state: chosen.state,

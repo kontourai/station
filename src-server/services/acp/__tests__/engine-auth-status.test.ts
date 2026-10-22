@@ -17,6 +17,8 @@ import {
 import {
   clearEngineSignInRefusal,
   engineSignInStatus,
+  forgetEngineAuthStatus,
+  invalidateEngineStatus,
   readStatusCommandResult,
   recordEngineAuthenticated,
   recordEngineSignInRefused,
@@ -167,6 +169,75 @@ describe.runIf(posix)('built-in status commands, run for real', () => {
     expect(stub.calls()).toHaveLength(3);
   });
 
+  test('a replacement invocation never joins or caches the previous pending status check', async () => {
+    const old = stubEngine('cursor-agent', {});
+    const replacement = stubEngine('cursor-agent', {});
+    const pending: Array<
+      (result: { stdout: string; stderr: string; code: number }) => void
+    > = [];
+    setEngineStatusTestHooks({
+      runner: async () =>
+        new Promise((resolve) => {
+          pending.push(resolve);
+        }),
+    });
+    const previous = engineSignInStatus({ id: 'cursor', command: old.command });
+    await expect.poll(() => pending.length).toBe(1);
+    const current = engineSignInStatus({
+      id: 'cursor',
+      command: replacement.command,
+    });
+    await expect.poll(() => pending.length).toBe(2);
+    pending[0]({ stdout: '{"isAuthenticated":true}', stderr: '', code: 0 });
+    expect((await previous).state).toBe('unknown');
+    // The retired run's cleanup must leave the replacement's lease intact.
+    const joined = engineSignInStatus({
+      id: 'cursor',
+      command: replacement.command,
+    });
+    pending[1]({ stdout: '{"isAuthenticated":false}', stderr: '', code: 0 });
+    expect((await current).state).toBe('unauthenticated');
+    expect((await joined).state).toBe('unauthenticated');
+    expect(
+      (await engineSignInStatus({ id: 'cursor', command: replacement.command }))
+        .state,
+    ).toBe('unauthenticated');
+    expect(pending).toHaveLength(2);
+  });
+
+  test.each([
+    ['invalidate', invalidateEngineStatus],
+    ['forget', forgetEngineAuthStatus],
+  ] as const)(
+    '%s retires a pending status result for both its caller and cache',
+    async (_how, retire) => {
+      const stub = stubEngine('cursor-agent', {});
+      const config = { id: 'cursor', command: stub.command };
+      const pending: Array<
+        (result: { stdout: string; stderr: string; code: number }) => void
+      > = [];
+      setEngineStatusTestHooks({
+        runner: async () =>
+          new Promise((resolve) => {
+            pending.push(resolve);
+          }),
+      });
+      const previous = engineSignInStatus(config);
+      await expect.poll(() => pending.length).toBe(1);
+      retire(config.id);
+      const current = engineSignInStatus(config);
+      await expect.poll(() => pending.length).toBe(2);
+      pending[0]({ stdout: '{"isAuthenticated":true}', stderr: '', code: 0 });
+      expect((await previous).state).toBe('unknown');
+      const joined = engineSignInStatus(config);
+      pending[1]({ stdout: '{"isAuthenticated":false}', stderr: '', code: 0 });
+      expect((await current).state).toBe('unauthenticated');
+      expect((await joined).state).toBe('unauthenticated');
+      expect((await engineSignInStatus(config)).state).toBe('unauthenticated');
+      expect(pending).toHaveLength(2);
+    },
+  );
+
   test('with a stored key present, a "signed out" answer is not trusted', async () => {
     const home = makeTempDir('station-engine-status-home-');
     const credentials = new EngineCredentials(home);
@@ -220,7 +291,7 @@ describe.runIf(posix)('the engine readiness row', () => {
   });
 
   test('a refusal alone never gates readiness', async () => {
-    recordEngineSignInRefused('cursor');
+    recordEngineSignInRefused({ id: 'cursor', command: 'cursor-agent' });
     expect(await authRow('{}')).toMatchObject({ category: 'optional' });
   });
 });
@@ -229,7 +300,7 @@ describe('what the engine said', () => {
   const engine = { id: 'pi', command: 'pi-acp' };
 
   test('a refusal reads as signed out until a later answer clears it', async () => {
-    recordEngineSignInRefused(engine.id);
+    recordEngineSignInRefused(engine);
     expect(await engineSignInStatus(engine)).toMatchObject({
       state: 'unauthenticated',
       source: 'refusal',
@@ -239,13 +310,31 @@ describe('what the engine said', () => {
     expect(
       (await engineSignInStatus(engine, { commandOnly: true })).state,
     ).toBe('unknown');
-    clearEngineSignInRefusal(engine.id);
+    clearEngineSignInRefusal(engine);
     expect((await engineSignInStatus(engine)).state).toBe('unknown');
   });
 
+  test.each([
+    { ...engine, command: 'goose' },
+    { ...engine, args: ['--other-profile'] },
+  ])(
+    'evidence belongs to the invocation that produced it: %j',
+    async (replacement) => {
+      recordEngineAuthenticated(engine);
+      expect((await engineSignInStatus(replacement)).state).toBe('unknown');
+      recordEngineSignInRefused(replacement);
+      clearEngineSignInRefusal(engine);
+      expect((await engineSignInStatus(replacement)).state).toBe(
+        'unauthenticated',
+      );
+      forgetEngineAuthStatus(engine.id);
+      expect((await engineSignInStatus(replacement)).state).toBe('unknown');
+    },
+  );
+
   test('a finished sign-in reads as signed in, and an answer does not clear it', async () => {
-    recordEngineAuthenticated(engine.id);
-    clearEngineSignInRefusal(engine.id);
+    recordEngineAuthenticated(engine);
+    clearEngineSignInRefusal(engine);
     expect(await engineSignInStatus(engine)).toMatchObject({
       state: 'authenticated',
       source: 'sign-in',

@@ -1910,7 +1910,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     } catch (caught) {
       // The engine's own "not signed in" answer is a refusal with a typed
       // code, so a surface can say "sign in" instead of showing raw text.
-      if (isAcpAuthRequired(caught)) recordEngineSignInRefused(config.id);
+      if (isAcpAuthRequired(caught)) recordEngineSignInRefused(config);
       const error = isAcpAuthRequired(caught)
         ? new SessionStartRefusedError(
             `${config.name} needs you to sign in before it can start a chat. ${errorMessage(caught)}`,
@@ -3742,7 +3742,11 @@ export class AcpAdapter implements ProviderAdapterShape {
         // or a superseded turn's quarantine would never clear.
         record.quarantinedTurnIds?.delete(turnId);
         // The engine answered, so a sign-in refusal it gave earlier is stale.
-        clearEngineSignInRefusal(record.connectionId);
+        clearEngineSignInRefusal({
+          id: record.connectionId,
+          command: record.command,
+          args: record.args,
+        });
         if (record.promptEpoch !== promptEpoch) return;
         if (!this.ownsActiveTurn(threadId, record, turnId)) return;
         record.turnErrorNotifications = undefined;
@@ -3787,7 +3791,11 @@ export class AcpAdapter implements ProviderAdapterShape {
             details: providerQuotaEventDetails(quota),
           } satisfies ProviderRuntimeErrorEvent);
         } else if (isAcpAuthRequired(error)) {
-          recordEngineSignInRefused(record.connectionId);
+          recordEngineSignInRefused({
+            id: record.connectionId,
+            command: record.command,
+            args: record.args,
+          });
           this.publish({
             eventId: crypto.randomUUID(),
             provider: this.provider,
