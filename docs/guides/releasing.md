@@ -40,6 +40,36 @@ edges. Nightly's source gate never emits a full qualification receipt. Source,
 signed artifact, provider publication and installed-device evidence remain
 separate claims.
 
+## Dependency advisory admission
+
+Feature PRs, merge groups and Nightly builds do not run advisory audits. One
+central six-hourly scan owns disclosure tracking; its assigned owner and
+operational-versus-finding distinction are documented in
+[dependency security](dependency-security.md#where-the-scan-runs).
+
+Preview/Beta and Stable publication use the shared
+[release advisory gate](../../.github/workflows/release-advisory.yml) against the
+immutable candidate SHA and lockfile. The evaluator and exception records come
+from a trusted default-branch policy checkout with its own tooling install. A supplied
+policy snapshot must be an ancestor of the freshly selected default branch.
+The protected publish workflow passes the same policy snapshot its other gates
+use. Each audit is fresh for that publication invocation; full-regression
+receipt reuse cannot stand in for it. The retained receipt names source, policy,
+dependency digests and scan times. Registry errors, malformed results,
+incomplete scopes, patch mismatches and changed inputs block publication.
+
+Tagged staging gates its direct GHCR and store effects. Protected release and
+host-pointer publication, manual npm publication and independent Beta/Stable
+TestFlight upload retain the gate; pointer-repair break glass cannot skip it.
+New gate coverage applies to reviewed post-policy workflow definitions only;
+old tag staging/reruns remain tag-owned YAML. Protected publication/provider
+environments must enforce the admitted workflow source. Main-dispatched release
+publication can check old source afresh, but pre-pnpm-11/lock-v9 sources fail
+closed rather than gaining compatibility by passing a tag name.
+Nightly calls skip advisory execution, not their signing, integrity, provenance,
+functional or provider checks. Local tests do not establish completed hosted
+publication or all-artifact acceptance.
+
 ## Delivery stages
 
 | Stage | Evidence | Failure consequence |
