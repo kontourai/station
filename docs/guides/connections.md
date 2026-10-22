@@ -1169,8 +1169,9 @@ The receipt records a completed acquisition, not continuing checkout integrity,
 build readiness or a successful Agent turn. Project creation separately rechecks
 the receipt and records historical provenance; later checkout changes still need
 the normal workspace checks. Provider repository
-pickers, account-specific Git credentials, cancellation and persistent Sources
-management remain part of the [onboarding epic](https://github.com/kontourai/station/issues/4027).
+pickers, account-specific Git credentials and cancellation remain part of the [onboarding epic](https://github.com/kontourai/station/issues/4027).
+Project Settings → Sources combines repository repair with knowledge-store
+registration, refresh and disconnect; see [knowledge sources](knowledge.md#project-settings--sources).
 See the [API contract](../reference/api.md#repository-acquisition).
 
 ## Developer services and computers

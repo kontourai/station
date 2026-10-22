@@ -2397,8 +2397,12 @@ contract; the conversation adapter is a read-only projection of Session history.
 Personal and Project are scope tags, not a universal uniqueness or authorization proof:
 the registry can allocate suffixed personal IDs, and the conversation root also has
 personal scope. The Settings card currently selects the first personal root. Root
-removal clears the cached adapter, but there is no atomic replacement operation exposed
-by this interface.
+removal clears the cached adapter. File storage registers newly allocated root IDs
+with create-only conflict checks; concurrent providers cannot overwrite a registered
+root. Exact disconnect compares the observed root inside the registry mutation and
+refuses a changed incarnation. Neither removal form deletes source files. There is
+no atomic replacement operation exposed by this interface. Project Settings Sources
+composes repository repair and knowledge registration through scoped SDK requests.
 
 **Follow the code.** [The
 provider](../../src-server/knowledge-store/knowledge-store-provider.ts) is constructed

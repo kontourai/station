@@ -165,6 +165,19 @@ remote, commit and acquisition time. Clients cannot set or update this record.
 It describes acquisition at creation, rather than granting execution authority
 or asserting that future filesystem contents are unchanged.
 
+## Knowledge source disconnect
+
+`POST /api/knowledge/roots/:id/disconnect` accepts `{ expectedRoot }`, the exact
+`KnowledgeStoreRoot` observed from the root listing. It requires the ordinary
+Knowledge operate transport scope and the root management policy. An invalid or
+missing reference returns 400, an unavailable or unauthorized root returns 404,
+and a changed registry entry returns 409. The built-in conversation root cannot
+be disconnected. Successful disconnect removes only the registry entry and keeps
+source files. Refresh and review a changed source before retrying.
+
+`DELETE /api/knowledge/roots/:id` retains the older unguarded deregistration
+protocol for existing callers. Sources uses the exact POST protocol.
+
 ## Choosing a working folder
 
 Naming a folder takes the authority to run commands there: for a paired
