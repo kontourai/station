@@ -83,14 +83,17 @@ import { fullAccessGrantForTesting } from '../../../security/coding-authority.js
 import { EventBus } from '../../orchestration/event-bus.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { OrchestrationService } from '../../orchestration/orchestration-service.js';
-import { composeTaskDispatcher } from '../task-dispatch-composition.js';
 import {
   TaskDeclaredOutputKeepConflictError,
   TaskDeclaredOutputKeepDeletedError,
   TaskGraphService,
   TaskReferenceAuthorizationError,
 } from '../task-graph-service.js';
-import { dispatchTaskForTest } from './task-dispatch-test-helpers.js';
+import {
+  composeTestTaskDispatcher,
+  dispatchTaskForTest,
+  FIXTURE_ENVIRONMENT_ID,
+} from './task-dispatch-test-helpers.js';
 
 const makeTempDir = trackTempDirs();
 
@@ -561,6 +564,7 @@ describe('TaskGraphService', () => {
     const second = new TaskGraphService(home);
 
     const firstDispatch = dispatchTaskForTest(first, TASK_DISPATCH_RACE_ID, {
+      agentId: 'agent-one',
       provider: 'claude',
     });
     await vi.waitFor(() => expect(started).toHaveBeenCalledTimes(1));
@@ -572,6 +576,7 @@ describe('TaskGraphService', () => {
       vi.setSystemTime(new Date(Date.parse(reservation.expiresAt) + 1));
       await expect(
         dispatchTaskForTest(second, TASK_DISPATCH_RACE_ID, {
+          agentId: 'agent-one',
           provider: 'claude',
         }),
       ).rejects.toThrow('explicit reconciliation is required');
@@ -733,6 +738,7 @@ describe('TaskGraphService', () => {
     );
 
     const dispatching = dispatchTaskForTest(service, task.id, {
+      agentId: 'agent-one',
       provider: 'claude',
     });
     await vi.waitFor(() => expect(started).toHaveBeenCalledTimes(1));
@@ -1484,6 +1490,7 @@ describe('TaskGraphService', () => {
     });
 
     const result = await dispatchTaskForTest(service, task.id, {
+      agentId: 'agent-one',
       runtimeConfig: {
         provider: 'codex',
         modelId: 'gpt-5.5',
@@ -1503,7 +1510,13 @@ describe('TaskGraphService', () => {
       },
       undefined,
       // Room binding is independent of the optional Builder sidecar.
-      { roomExecutionBinding: { projectId: task.projectId, taskId: task.id } },
+      {
+        roomExecutionBinding: { projectId: task.projectId, taskId: task.id },
+        conversationIdentity: {
+          conversationId: `task-${task.id}-1`,
+          environmentId: FIXTURE_ENVIRONMENT_ID,
+        },
+      },
     );
     expect(result.dispatch.outcome).toBe('started');
     expect(result.task.status).toBe('in_progress');
@@ -1530,21 +1543,26 @@ describe('TaskGraphService', () => {
         title: 'Start runtime',
       });
       const grant = granted ? fullAccessGrantForTesting() : null;
-      const outcome = await composeTaskDispatcher(service).dispatch(task.id, {
-        runtimeConfig: {
-          provider: 'codex',
-          modelOptions: { approvalMode: 'never' },
+      const outcome = await composeTestTaskDispatcher(service).dispatch(
+        task.id,
+        {
+          agentId: 'agent-one',
+          runtimeConfig: {
+            provider: 'codex',
+            modelOptions: { approvalMode: 'never' },
+          },
+          ownerUserId: 'test-owner',
+          fullAccessGrant: grant,
         },
-        ownerUserId: 'test-owner',
-        fullAccessGrant: grant,
-      });
+      );
       expect(outcome.kind).toBe(granted ? 'dispatched' : 'forbidden');
       if (!granted) {
         // Asking for `never` without the grant is refused before a start.
         expect(dispatch).not.toHaveBeenCalled();
-        const defaulted = await composeTaskDispatcher(service).dispatch(
+        const defaulted = await composeTestTaskDispatcher(service).dispatch(
           task.id,
           {
+            agentId: 'agent-one',
             runtimeConfig: { provider: 'codex' },
             ownerUserId: 'test-owner',
             fullAccessGrant: null,
@@ -1580,7 +1598,8 @@ describe('TaskGraphService', () => {
       actor: { kind: 'device', deviceId: 'device-1' },
       reported: { version: 1, surface: 'unknown', build: null },
     } as const;
-    const outcome = await composeTaskDispatcher(service).dispatch(task.id, {
+    const outcome = await composeTestTaskDispatcher(service).dispatch(task.id, {
+      agentId: 'agent-one',
       runtimeConfig: { provider: 'codex' },
       ownerUserId: 'test-owner',
       fullAccessGrant: null,
@@ -1628,6 +1647,7 @@ describe('TaskGraphService', () => {
         ...(options.workItemRef ? { workItemRef: options.workItemRef } : {}),
       });
       await dispatchTaskForTest(service, task.id, {
+        agentId: 'agent-one',
         runtimeConfig: { provider: 'codex', cwd: '/tmp/project-alpha' },
       });
       return { dispatch, readState };
@@ -1648,22 +1668,22 @@ describe('TaskGraphService', () => {
           type: 'startSession',
           input: expect.objectContaining({
             // The dispatching principal always owns the session.
-            metadata: {
+            metadata: expect.objectContaining({
               userId: 'test-owner',
               taskSlug: 'kontourai-station-1388',
-            },
+            }),
           }),
         },
         undefined,
         // Review M1: the Builder run behind this slug is driven by
         // flow-agents, so the attach must read it, never write it.
-        {
+        expect.objectContaining({
           workflowSidecarAttachMode: 'read-only-join',
           roomExecutionBinding: {
             projectId: 'project-alpha',
             taskId: expect.any(String),
           },
-        },
+        }),
       );
     });
 
@@ -1676,9 +1696,7 @@ describe('TaskGraphService', () => {
         readState: () => null,
       });
 
-      expect(dispatch.mock.calls[0][0].input.metadata).toEqual({
-        userId: 'test-owner',
-      });
+      expect(dispatch.mock.calls[0][0].input.metadata.taskSlug).toBeUndefined();
     });
 
     test('never derives a slug from a namespaced work item ref', async () => {
@@ -1690,9 +1708,7 @@ describe('TaskGraphService', () => {
       });
 
       expect(readState).not.toHaveBeenCalled();
-      expect(dispatch.mock.calls[0][0].input.metadata).toEqual({
-        userId: 'test-owner',
-      });
+      expect(dispatch.mock.calls[0][0].input.metadata.taskSlug).toBeUndefined();
       // No slug means no join, so the attach mode must not be forced either.
       expect(
         dispatch.mock.calls[0][2].workflowSidecarAttachMode,
@@ -1705,9 +1721,7 @@ describe('TaskGraphService', () => {
       });
 
       expect(readState).not.toHaveBeenCalled();
-      expect(dispatch.mock.calls[0][0].input.metadata).toEqual({
-        userId: 'test-owner',
-      });
+      expect(dispatch.mock.calls[0][0].input.metadata.taskSlug).toBeUndefined();
     });
 
     test('declares nothing when the dispatch supplies no cwd', async () => {
@@ -1734,13 +1748,12 @@ describe('TaskGraphService', () => {
         workItemRef: 'kontourai-station-1388',
       });
       await dispatchTaskForTest(service, task.id, {
+        agentId: 'agent-one',
         runtimeConfig: { provider: 'codex' },
       });
 
       expect(readState).not.toHaveBeenCalled();
-      expect(dispatch.mock.calls[0][0].input.metadata).toEqual({
-        userId: 'test-owner',
-      });
+      expect(dispatch.mock.calls[0][0].input.metadata.taskSlug).toBeUndefined();
     });
 
     test('an unreadable sidecar degrades to no slug instead of failing the dispatch', async () => {
@@ -1751,9 +1764,7 @@ describe('TaskGraphService', () => {
         },
       });
 
-      expect(dispatch.mock.calls[0][0].input.metadata).toEqual({
-        userId: 'test-owner',
-      });
+      expect(dispatch.mock.calls[0][0].input.metadata.taskSlug).toBeUndefined();
     });
   });
 

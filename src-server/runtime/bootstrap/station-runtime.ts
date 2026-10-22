@@ -433,7 +433,10 @@ import {
   type RuntimeSearch,
 } from '../../services/search/runtime-search.js';
 import type { ServerUpdateCoordinator } from '../../services/server-update/server-update-coordinator.js';
-import { continueExecutionTargetMessage } from '../../tools/station-control-delegation.js';
+import {
+  continueExecutionTargetMessage,
+  resolveTaskDispatchAgentStart,
+} from '../../tools/station-control-delegation.js';
 import { buildRuntimeContext as createRuntimeContext } from '../agents/runtime-context-builder.js';
 import { bootstrapRuntimeDefaultAgent } from '../agents/runtime-default-agent.js';
 import { replaceRuntimeTemplateVariables } from '../agents/runtime-template-variables.js';
@@ -4011,6 +4014,17 @@ export class StationRuntime {
                   workItemObserver: this.workItemObserver,
                   logger: this.logger,
                 }),
+                // #4005: an engine-started Task Session runs as the Task's
+                // Agent, resolved through the foreground `/chat` resolver so
+                // it carries the binding its turns are checked against. Its
+                // loopback reads run as server code, as `/chat`'s do.
+                resolveAgentStart: (input) =>
+                  runAsStationServer(() =>
+                    resolveTaskDispatchAgentStart(
+                      input,
+                      this.orchestrationService,
+                    ),
+                  ),
               },
               {
                 prepareAgentStarted: (result) => {

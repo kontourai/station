@@ -150,7 +150,7 @@ export interface ExecutionTargetResolverDependencies {
   now?: () => Date;
 }
 
-interface ResolvedExecutionTarget {
+export interface ResolvedExecutionTarget {
   /** Private access authority. Never serialize this object. */
   access: EnvironmentAccess;
   agentId: AgentId;
@@ -540,6 +540,44 @@ function launchCapabilities(
   getProviderAdapter: ExecutionTargetResolverDependencies['getProviderAdapter'],
 ): ModelLaunchCapabilities | undefined {
   return getProviderAdapter(provider)?.metadata.modelLaunch;
+}
+
+/**
+ * The Agent and Environment binding a Session started for `resolved` records
+ * in its start metadata. Continuations (`/chat` follow-ups, the conversation
+ * inbox) read exactly these fields back from `session.started` /
+ * `session.configured` before they send a turn, and the session-start Agent
+ * resolution reads `agentSlug` to apply the Agent's prompt, skills and tools.
+ * Every writer of an Agent Session's start uses this one shape (#4005).
+ */
+export function agentExecutionBindingMetadata(
+  resolved: Pick<
+    ResolvedExecutionTarget,
+    | 'access'
+    | 'agentId'
+    | 'engine'
+    | 'executionAgentId'
+    | 'expectedDefinitionFingerprint'
+  >,
+): Record<string, string> {
+  return {
+    agentId: resolved.agentId,
+    agentSlug: resolved.agentId,
+    ...(resolved.expectedDefinitionFingerprint
+      ? {
+          expectedDefinitionFingerprint: resolved.expectedDefinitionFingerprint,
+        }
+      : {}),
+    ...(resolved.executionAgentId
+      ? { executionAgentId: resolved.executionAgentId }
+      : {}),
+    targetKind: 'agent',
+    targetId: resolved.agentId,
+    ...(resolved.engine.kind === 'connection'
+      ? { connectionId: resolved.engine.connectionId }
+      : {}),
+    environmentId: resolved.access.environmentId,
+  };
 }
 
 /**

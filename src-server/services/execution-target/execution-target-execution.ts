@@ -61,6 +61,7 @@ import {
   type WorktreeProvisionRequest,
 } from '../projects/worktree-provisioning-service.js';
 import {
+  agentExecutionBindingMetadata,
   type EnvironmentAccess,
   type ExecutionTargetResolverDependencies,
   resolveExecutionTarget,
@@ -1159,27 +1160,11 @@ export async function executeForegroundMessage(
           ? { modelOptions: { ...resolved.modelOptions } }
           : {}),
         metadata: {
-          agentId: resolved.agentId,
-          agentSlug: resolved.agentId,
-          ...(resolved.expectedDefinitionFingerprint
-            ? {
-                expectedDefinitionFingerprint:
-                  resolved.expectedDefinitionFingerprint,
-              }
-            : {}),
-          ...(resolved.executionAgentId
-            ? { executionAgentId: resolved.executionAgentId }
-            : {}),
           // Continuations validate this canonical Environment + Agent binding
           // before they can reuse a persisted conversation. Keep it alongside
           // the legacy agent fields so a foreground-created session is as
           // resumable as every delegated session.
-          targetKind: 'agent',
-          targetId: resolved.agentId,
-          ...(resolved.engine.kind === 'connection'
-            ? { connectionId: resolved.engine.connectionId }
-            : {}),
-          environmentId: resolved.access.environmentId,
+          ...agentExecutionBindingMetadata(resolved),
           conversationId,
           ...(continuation?.contextBoundary
             ? {

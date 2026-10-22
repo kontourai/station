@@ -81,7 +81,10 @@ import {
   type WorkspacePathResolver,
 } from './project-workspace-path.js';
 import type { TaskBriefSource } from './task-brief-source.js';
-import type { TaskDispatchExecutionAuthority } from './task-dispatcher.js';
+import type {
+  TaskDispatchAgentStart,
+  TaskDispatchExecutionAuthority,
+} from './task-dispatcher.js';
 import {
   type TaskDispatchReservation as DispatcherReservation,
   type DispatchIntent,
@@ -287,6 +290,20 @@ export interface TaskDispatchAdapterDeps {
    * attaches no brief.
    */
   taskBrief?: Pick<TaskBriefSource, 'forDispatch'>;
+  /**
+   * #4005: resolves the Agent an engine-started Task Session runs as, through
+   * the same resolver a foreground `/chat` start uses
+   * (`resolveTaskDispatchAgentStart`). Absent, a dispatch that would start an
+   * engine is refused: an engine Session with no Agent binding can never
+   * take a turn. The seeded `task-dispatch` path does not need it.
+   */
+  resolveAgentStart?: (input: {
+    agentId: string;
+    projectSlug: string;
+    cwd?: string;
+    modelId?: string;
+    modelOptions?: Readonly<Record<string, unknown>>;
+  }) => Promise<TaskDispatchAgentStart>;
 }
 
 /**
@@ -1826,6 +1843,19 @@ export class TaskGraphService {
     );
   }
 
+  /**
+   * The slug of the Project a Task names. A Task's `projectId` is the slug it
+   * was created with; a Project that cannot be read keeps that value, and the
+   * Agent resolution then refuses it.
+   */
+  private projectSlugFor(projectId: string): string {
+    try {
+      return this.projectService?.getProject(projectId)?.slug || projectId;
+    } catch {
+      return projectId;
+    }
+  }
+
   /** Whether two Project identities (ids or slugs) name one Project. */
   sameProject(a: string, b: string): boolean {
     if (a === b) return true;
@@ -3235,6 +3265,7 @@ export class TaskGraphService {
     const resolveProjectWorkspace =
       deps.resolveProjectWorkspace ?? this.resolveProjectWorkspace;
     const taskBrief = deps.taskBrief;
+    const resolveAgentStart = deps.resolveAgentStart;
     const graph: TaskDispatchGraphState = {
       reserve: async (taskId, input) => {
         try {
@@ -3301,12 +3332,69 @@ export class TaskGraphService {
       mayHaveStarted: (reservation: DispatcherReservation) =>
         reservation.provider !== 'task-dispatch' &&
         orchestrationService !== undefined,
+      // #4005: an engine start runs as the Task's Agent: the dispatch's
+      // `agentId`, else the Agent the Task records (the same fallback the
+      // association writes). Resolved here, before any claim or provider
+      // effect, so an unknown Agent, an engine that is not ready, a model
+      // that cannot launch, or a provider other than the Agent's refuses
+      // definitely and restores the Task, instead of starting a Session no
+      // turn can reach or stranding the Task indeterminate.
+      prepare: async (
+        reservation: DispatcherReservation,
+        input: DispatchIntent,
+      ) => {
+        if (reservation.provider === 'task-dispatch' || !orchestrationService)
+          return { kind: 'ready' as const };
+        const agentId =
+          normalizeText(input.agentId) || reservation.task.agentId;
+        if (!agentId)
+          return {
+            kind: 'refused' as const,
+            reason:
+              'A Task dispatch that starts an engine needs an Agent: name agentId, or assign an Agent to the Task',
+          };
+        if (!resolveAgentStart)
+          return {
+            kind: 'refused' as const,
+            reason: 'Agent execution is unavailable for Task dispatch',
+          };
+        let agentStart: TaskDispatchAgentStart;
+        try {
+          agentStart = await resolveAgentStart({
+            agentId,
+            projectSlug: this.projectSlugFor(reservation.task.projectId),
+            ...(input.runtimeConfig?.cwd !== undefined
+              ? { cwd: input.runtimeConfig.cwd }
+              : {}),
+            ...(reservation.modelId ? { modelId: reservation.modelId } : {}),
+            ...(input.runtimeConfig?.modelOptions
+              ? { modelOptions: input.runtimeConfig.modelOptions }
+              : {}),
+          });
+        } catch (error) {
+          return {
+            kind: 'refused' as const,
+            reason: `Agent '${agentId}' cannot start this Task: ${errorMessage(error)}`,
+          };
+        }
+        if (agentStart.provider !== reservation.provider)
+          return {
+            kind: 'refused' as const,
+            reason: `Agent '${agentId}' runs on ${agentStart.provider}, not ${reservation.provider}`,
+          };
+        return { kind: 'ready' as const, agentStart };
+      },
       startOrSeed: async (
         reservation: DispatcherReservation,
         input: DispatchIntent,
         admission?: SessionStartBoundaryClaim,
+        agentStart?: TaskDispatchAgentStart,
       ) => {
         if (reservation.provider !== 'task-dispatch' && orchestrationService) {
+          // `prepare` resolved the Agent for every engine start; without it
+          // the Session would have no binding, so never start one.
+          if (!agentStart)
+            throw new Error('Task dispatch has no resolved Agent to start');
           const taskSlug = this.resolveDispatchTaskSlug(
             reservation.task,
             input.runtimeConfig?.cwd,
@@ -3343,10 +3431,19 @@ export class TaskGraphService {
               input: {
                 threadId: reservation.sessionId,
                 provider: reservation.provider,
-                cwd: input.runtimeConfig?.cwd,
-                modelId: reservation.modelId,
-                modelOptions: input.runtimeConfig?.modelOptions,
+                cwd: agentStart.cwd,
+                ...(agentStart.modelId ? { modelId: agentStart.modelId } : {}),
+                ...(agentStart.modelOptions
+                  ? { modelOptions: { ...agentStart.modelOptions } }
+                  : {}),
+                workspaceIsolation: { mode: 'shared' },
                 metadata: {
+                  // #4005: the Environment + Agent binding a continuation
+                  // verifies, and the Agent whose prompt, skills and tools
+                  // the start applies. The service strips and re-stamps
+                  // `environmentId`/`conversationId` from
+                  // `conversationIdentity` below.
+                  ...agentStart.metadata,
                   userId: input.ownerUserId,
                   ...(taskSlug ? { taskSlug } : {}),
                 },
@@ -3379,6 +3476,11 @@ export class TaskGraphService {
                 taskId: reservation.task.id,
               },
               ...(brief ? { taskBrief: brief } : {}),
+              // The dispatched Session is the root of its own conversation.
+              conversationIdentity: {
+                conversationId: reservation.sessionId,
+                environmentId: agentStart.environmentId,
+              },
               ...(admission ? { sessionStartAdmission: admission } : {}),
               ...(taskSlug
                 ? { workflowSidecarAttachMode: 'read-only-join' as const }
