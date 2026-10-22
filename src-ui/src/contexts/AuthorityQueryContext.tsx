@@ -86,8 +86,9 @@
  *      the captured origin string and `seedBootPayloadGuarded` evaluates
  *      the captured scope's currency AND the destination client's liveness
  *      immediately before EACH cache write, so a same-origin rotation
- *      resolving mid-fetch drops every write. Runs only when the verified
- *      scope is the page's own origin.
+ *      resolving mid-fetch drops every write. Browser seeding requires the
+ *      page's own origin and local session; native seeding uses the captured
+ *      scoped host transport.
  * Residual (stated, not covered): real SDK callers `useUserLookup` and
  * `useServerFetch` (packages/sdk/src/hooks/operations.ts) resolve the
  * global origin at fetch time and thread NO AbortSignal, so retirement
@@ -410,16 +411,18 @@ export function AuthorityQueryProvider({
   // comparison alone cannot cover same-origin identity changes, so a slow
   // seed resolving after a switch or a same-origin rotation is dropped,
   // never written into another identity's shelf. Additionally the seed runs
-  // only when the verified scope IS the page's own origin: the local-UI
-  // session proof is meaningless for a remote home, which fetches on demand
-  // instead. Seeding is tracked per live client, never in a set that could
+  // for browsers only when the verified scope IS the page's own origin:
+  // local-UI session proof is meaningless for a remote home. Native uses
+  // the captured host transport and opaque binding instead of that session. Seeding is tracked per live client, never in a set that could
   // survive client replacement and skip a new client's seed.
+  const [nativeBootFinished, setNativeBootFinished] =
+    useState<QueryClient | null>(null);
   const seededRef = useRef<{
     namespace: string;
     client: QueryClient;
   } | null>(null);
   useEffect(() => {
-    if (!verifiedNamespace || !active || profile.isTauri || !boundScope) return;
+    if (!verifiedNamespace || !active || !boundScope) return;
     if (active.namespace !== verifiedNamespace) return;
     if (
       seededRef.current?.namespace === verifiedNamespace &&
@@ -433,7 +436,7 @@ export function AuthorityQueryProvider({
     } catch {
       sameOrigin = false;
     }
-    if (!sameOrigin) return;
+    if (!profile.isTauri && !sameOrigin) return;
     const scopeAtSeed = boundScope;
     const apiBaseAtSeed = boundScope.apiBase;
     const startedAtSeed = Date.now();
@@ -453,9 +456,18 @@ export function AuthorityQueryProvider({
         const { fetchBootPayloadAt, seedBootPayloadGuarded } = await import(
           '../../../packages/sdk/src/boot'
         );
-        const resolution = await resolveLocalUiSession(localUiApiBase);
-        if (!stillCurrent() || resolution.kind !== 'authenticated') return;
-        const payload = await fetchBootPayloadAt(apiBaseAtSeed);
+        if (!profile.isTauri) {
+          const resolution = await resolveLocalUiSession(localUiApiBase);
+          if (!stillCurrent() || resolution.kind !== 'authenticated') return;
+        }
+        if (!stillCurrent()) return;
+        const payload = await fetchBootPayloadAt(apiBaseAtSeed, {
+          requestScope: scopeAtSeed,
+          requireCredential: scopeAtSeed.requiresEnrolledCredential,
+          ...(profile.isTauri
+            ? { timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS }
+            : {}),
+        });
         await seedBootPayloadGuarded(
           clientAtSeed,
           payload,
@@ -469,6 +481,9 @@ export function AuthorityQueryProvider({
         };
       } catch {
         // Best-effort fast path only; ordinary queries fetch on demand.
+      } finally {
+        if (profile.isTauri && stillCurrent())
+          setNativeBootFinished(clientAtSeed);
       }
     })();
     return () => {
@@ -525,6 +540,11 @@ export function AuthorityQueryProvider({
   // PersistQueryClientProvider remount per namespace, so each authority
   // restores exactly its own blob through the standard isRestoring gate.
   if (verifiedNamespace && active?.namespace === verifiedNamespace) {
+    // Let the native aggregate seed before boot-critical hooks mount; otherwise
+    // it would compete with the individual requests it is meant to replace.
+    if (profile.isTauri && nativeBootFinished !== active.queryClient) {
+      return <StartupScreen message="Loading Station" />;
+    }
     return (
       <AuthorityPersistenceContext.Provider
         value={{

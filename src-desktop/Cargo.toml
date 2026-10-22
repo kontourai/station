@@ -35,7 +35,7 @@ serde_json = "1"
 # Tailscale-served host is the normal remote case. Without a TLS backend every
 # such request fails with "TLS required, but transport is unsecured"
 # (pinned by native_http_agent_can_actually_speak_tls).
-ureq = { version = "3", default-features = false, features = ["rustls"] }
+ureq = { version = "3", default-features = false, features = ["rustls", "gzip"] }
 url = "2"
 uuid = { version = "1", features = ["v4"] }
 dunce = "1"

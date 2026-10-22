@@ -20,6 +20,8 @@ mod login_shell;
 mod native_enrollment;
 mod native_enrollment_host;
 mod native_enrollment_peer;
+#[cfg(test)]
+mod native_http_performance_tests;
 mod native_relay_ice;
 #[cfg(not(mobile))]
 mod notification_feed;
@@ -589,6 +591,7 @@ struct NativeProfileAuthorityState {
     /// are renderer metadata and are never an authority key.
     bindings: std::collections::HashMap<String, NativeCredentialBinding>,
     transitioning: std::collections::HashSet<String>,
+    http_pool: NativeHttpAgentPool,
 }
 
 /// A bearer returned by the public pairing exchange is never returned across
@@ -694,7 +697,7 @@ struct NativeHttpRequest {
     method: String,
     #[serde(default)]
     headers: std::collections::HashMap<String, String>,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_native_http_body")]
     body: Option<Vec<u8>>,
     /// Basis captures this opaque receipt when its exact connection becomes
     /// authorized. Ordinary native transport consumers remain deliberately
@@ -708,6 +711,32 @@ struct NativeHttpRequest {
     /// (`validate_native_liveness_probe`).
     #[serde(default)]
     liveness_probe: bool,
+}
+
+fn deserialize_native_http_body<'de, D>(deserializer: D) -> Result<Option<Vec<u8>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use base64::Engine;
+    let encoded = Option::<String>::deserialize(deserializer)?;
+    encoded
+        .map(|encoded| {
+            if encoded.len() > NATIVE_HTTP_BODY_LIMIT.div_ceil(3) * 4 {
+                return Err(serde::de::Error::custom(
+                    "native Station request body is too large",
+                ));
+            }
+            let bytes = base64::engine::general_purpose::STANDARD
+                .decode(encoded)
+                .map_err(serde::de::Error::custom)?;
+            if bytes.len() > NATIVE_HTTP_BODY_LIMIT {
+                return Err(serde::de::Error::custom(
+                    "native Station request body is too large",
+                ));
+            }
+            Ok(bytes)
+        })
+        .transpose()
 }
 
 #[derive(Serialize)]
@@ -744,9 +773,16 @@ trait NativeHttpMessageSink {
     fn send(&mut self, message: NativeHttpMessage) -> Result<(), NativeHttpBrokerFailure>;
 }
 
-impl NativeHttpMessageSink for Channel<NativeHttpMessage> {
+impl NativeHttpMessageSink for Channel<tauri::ipc::InvokeResponseBody> {
     fn send(&mut self, message: NativeHttpMessage) -> Result<(), NativeHttpBrokerFailure> {
-        Channel::send(self, message).map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))
+        let body = match message {
+            NativeHttpMessage::Chunk { bytes } => tauri::ipc::InvokeResponseBody::Raw(bytes),
+            control => tauri::ipc::InvokeResponseBody::Json(
+                serde_json::to_string(&control)
+                    .map_err(|_| NativeHttpBrokerFailure::coded("transport"))?,
+            ),
+        };
+        Channel::send(self, body).map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))
     }
 }
 
@@ -1362,6 +1398,7 @@ fn invalidate_active_profile_receipt_after_store_write(
     authority: &mut NativeProfileAuthorityState,
     next_store: &CredentialProfileStore,
 ) {
+    authority.http_pool = NativeHttpAgentPool::default();
     let Some(active) = authority.active.as_ref() else {
         return;
     };
@@ -1865,9 +1902,30 @@ fn station_profiles_path(app: &AppHandle) -> Result<std::path::PathBuf, String> 
         .app_config_dir()
         .map_err(|error| format!("resolve Station mobile config directory: {error}"))?;
     let path = secure_mobile_station_profiles_path(&app_config_dir)?;
-    let _lock = lock_station_profiles_for_app(app, &path)?;
-    ensure_mobile_profile_store_genesis(&path)?;
+    prepare_mobile_station_profile_read(&path, || {
+        let _lock = lock_station_profiles_for_app(app, &path)?;
+        ensure_mobile_profile_store_genesis(&path)
+    })?;
     Ok(path)
+}
+
+#[cfg(any(mobile, test))]
+fn prepare_mobile_station_profile_read(
+    path: &std::path::Path,
+    initialize: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    match std::fs::symlink_metadata(path.with_file_name(".profiles-initialized")) {
+        Ok(metadata) if metadata.file_type().is_file() => {
+            validate_station_profile_store(path)?;
+            // A disappeared initialized store is a refusal, never first-install recovery.
+            std::fs::symlink_metadata(path)
+                .map_err(|error| format!("read saved Stations on this device: {error}"))?;
+            Ok(())
+        }
+        Ok(_) => Err("mobile profile initialization marker must be a regular file".into()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => initialize(),
+        Err(error) => Err(format!("inspect mobile profile marker: {error}")),
+    }
 }
 
 /// Profile metadata controls which native credentials and local service are
@@ -2396,6 +2454,117 @@ fn read_station_profile_contents(app: &AppHandle) -> Result<String, String> {
         .map_err(|error| format!("read saved Station metadata for credential access: {error}"))
 }
 
+#[cfg(unix)]
+#[derive(PartialEq, Eq)]
+struct StationProfileFileVersion {
+    device: u64,
+    inode: u64,
+    size: u64,
+    modified: (i64, i64),
+    changed: (i64, i64),
+}
+
+#[cfg(unix)]
+impl StationProfileFileVersion {
+    fn of(metadata: &std::fs::Metadata) -> Self {
+        use std::os::unix::fs::MetadataExt;
+        Self {
+            device: metadata.dev(),
+            inode: metadata.ino(),
+            size: metadata.len(),
+            modified: (metadata.mtime(), metadata.mtime_nsec()),
+            changed: (metadata.ctime(), metadata.ctime_nsec()),
+        }
+    }
+}
+
+#[derive(Default)]
+struct StationProfileSnapshotCache {
+    #[cfg(unix)]
+    snapshot: Option<(
+        std::path::PathBuf,
+        StationProfileFileVersion,
+        std::sync::Arc<CredentialProfileStore>,
+    )>,
+}
+
+impl StationProfileSnapshotCache {
+    fn read(
+        &mut self,
+        path: &std::path::Path,
+    ) -> Result<std::sync::Arc<CredentialProfileStore>, String> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+            validate_station_profile_store(path)?;
+            let mut file = std::fs::OpenOptions::new()
+                .read(true)
+                .custom_flags(libc::O_NOFOLLOW)
+                .open(path)
+                .map_err(|error| format!("read saved Station metadata: {error}"))?;
+            let metadata = file.metadata().map_err(|error| error.to_string())?;
+            if !metadata.is_file()
+                || metadata.mode() & 0o077 != 0
+                || !profile_lock_owned_by_current_user(metadata.uid())
+            {
+                return Err(
+                    "saved Station metadata must be current-user owned and owner-only".into(),
+                );
+            }
+            let version = StationProfileFileVersion::of(&metadata);
+            if let Some((cached_path, cached_version, store)) = &self.snapshot {
+                if cached_path == path && *cached_version == version {
+                    return Ok(std::sync::Arc::clone(store));
+                }
+            }
+            // Never let a failed refresh fall back to an older authorized snapshot.
+            self.snapshot = None;
+            let mut contents = String::new();
+            file.read_to_string(&mut contents)
+                .map_err(|error| error.to_string())?;
+            if StationProfileFileVersion::of(&file.metadata().map_err(|error| error.to_string())?)
+                != version
+            {
+                return Err("saved Station metadata changed while reading".into());
+            }
+            let store = std::sync::Arc::new(parse_station_profile_store(&contents)?);
+            self.snapshot = Some((path.to_owned(), version, std::sync::Arc::clone(&store)));
+            Ok(store)
+        }
+        #[cfg(not(unix))]
+        {
+            // Do not substitute mtime/length for Windows file identity and ACL validation.
+            let contents = read_station_profile_store(path).map_err(|error| error.to_string())?;
+            parse_station_profile_store(&contents).map(std::sync::Arc::new)
+        }
+    }
+}
+
+static NATIVE_HTTP_PROFILE_SNAPSHOTS: std::sync::OnceLock<
+    std::sync::Mutex<StationProfileSnapshotCache>,
+> = std::sync::OnceLock::new();
+
+fn invalidate_native_http_profile_snapshot() -> Result<(), String> {
+    if let Some(cache) = NATIVE_HTTP_PROFILE_SNAPSHOTS.get() {
+        *cache
+            .lock()
+            .map_err(|_| "saved Station snapshot is unavailable".to_string())? =
+            StationProfileSnapshotCache::default();
+    }
+    Ok(())
+}
+
+fn native_http_profile_snapshot(
+    app: &AppHandle,
+) -> Result<std::sync::Arc<CredentialProfileStore>, String> {
+    let path = station_profiles_path(app)?;
+    NATIVE_HTTP_PROFILE_SNAPSHOTS
+        .get_or_init(Default::default)
+        .lock()
+        .map_err(|_| "saved Station snapshot is unavailable".to_string())?
+        .read(&path)
+}
+
 /// Publish a fully-synced profile replacement. POSIX rename replaces the
 /// destination atomically, while Windows requires ReplaceFileW for the same
 /// existing-destination contract.
@@ -2404,6 +2573,7 @@ fn replace_station_profile_store(
     temporary: &std::path::Path,
     destination: &std::path::Path,
 ) -> Result<(), String> {
+    invalidate_native_http_profile_snapshot()?;
     use std::os::windows::ffi::OsStrExt;
 
     #[link(name = "kernel32")]
@@ -2460,6 +2630,7 @@ fn replace_station_profile_store(
     temporary: &std::path::Path,
     destination: &std::path::Path,
 ) -> Result<(), String> {
+    invalidate_native_http_profile_snapshot()?;
     std::fs::rename(temporary, destination)
         .map_err(|error| format!("replace saved Station metadata: {error}"))
 }
@@ -2827,7 +2998,7 @@ fn authorized_profile_for_origin(
     origin: &str,
 ) -> Result<NativeCredentialReference, NativeCommandError> {
     // Store read before the authority mutex; see `authorized_credential_reference`.
-    let store = parse_station_profile_store(&read_station_profile_contents(app)?)?;
+    let store = native_http_profile_snapshot(app)?;
     let state = authority
         .0
         .lock()
@@ -2921,9 +3092,7 @@ fn scoped_profile_for_origin(
         return Err(native_request_binding_stale());
     }
     // Store read before the authority mutex; see `authorized_credential_reference`.
-    let store = read_station_profile_contents(app)
-        .and_then(|contents| parse_station_profile_store(&contents))
-        .map_err(|_| native_request_binding_stale())?;
+    let store = native_http_profile_snapshot(app).map_err(|_| native_request_binding_stale())?;
     let state = authority
         .0
         .lock()
@@ -3801,6 +3970,89 @@ fn native_http_agent_with(config: ureq::config::Config) -> ureq::Agent {
     return config.into();
 }
 
+#[derive(PartialEq, Eq)]
+struct NativeHttpPoolKey {
+    origin: String,
+    binding_id: String,
+    reference: NativeCredentialReference,
+    profile_revision: u64,
+    credential_digest: [u8; 32],
+}
+
+#[derive(Default)]
+struct NativeHttpAgentPool {
+    current: Option<(NativeHttpPoolKey, ureq::Agent)>,
+}
+
+impl NativeHttpAgentPool {
+    fn agent(&mut self, key: NativeHttpPoolKey) -> ureq::Agent {
+        if let Some((current, agent)) = &self.current {
+            if *current == key {
+                return agent.clone();
+            }
+        }
+        let agent = native_http_agent();
+        self.current = Some((key, agent.clone()));
+        agent
+    }
+}
+
+fn native_http_agent_for_profile(
+    app: &AppHandle,
+    authority: &NativeProfileAuthority,
+    expected_binding_id: Option<&str>,
+    origin: &str,
+    reference: &NativeCredentialReference,
+    credential: &str,
+) -> Result<ureq::Agent, NativeCommandError> {
+    let store = native_http_profile_snapshot(app).map_err(NativeCommandError::from)?;
+    let mut state = authority
+        .0
+        .lock()
+        .map_err(|_| native_request_binding_stale())?;
+    native_http_agent_in_store(
+        &mut state,
+        &store,
+        expected_binding_id,
+        origin,
+        reference,
+        credential,
+    )
+}
+
+fn native_http_agent_in_store(
+    state: &mut NativeProfileAuthorityState,
+    store: &CredentialProfileStore,
+    expected_binding_id: Option<&str>,
+    origin: &str,
+    reference: &NativeCredentialReference,
+    credential: &str,
+) -> Result<ureq::Agent, NativeCommandError> {
+    let current = match expected_binding_id {
+        Some(binding_id) => scoped_profile_for_origin_in_store(state, store, binding_id, origin)?,
+        None => authorized_direct_profile_for_origin_in_store(state, store, origin)?,
+    };
+    if current != *reference {
+        return Err(native_request_binding_stale());
+    }
+    let binding_id = state
+        .active
+        .as_ref()
+        .ok_or_else(native_request_binding_stale)?
+        .binding_id
+        .clone();
+    let digest = ring::digest::digest(&ring::digest::SHA256, credential.as_bytes());
+    let mut credential_digest = [0; 32];
+    credential_digest.copy_from_slice(digest.as_ref());
+    Ok(state.http_pool.agent(NativeHttpPoolKey {
+        origin: origin.to_owned(),
+        binding_id,
+        reference: reference.clone(),
+        profile_revision: store.revision,
+        credential_digest,
+    }))
+}
+
 fn native_request_transport_detail(error: &ureq::Error) -> NativeHttpTransportDetail {
     use std::io::ErrorKind;
     match error {
@@ -3953,7 +4205,7 @@ fn station_native_http_request_blocking(
     authority: NativeProfileAuthority,
     cancellations: NativeHttpCancellation,
     request: NativeHttpRequest,
-    mut channel: Channel<NativeHttpMessage>,
+    mut channel: Channel<tauri::ipc::InvokeResponseBody>,
 ) -> Result<(), NativeCommandError> {
     station_native_http_request_to_sink_blocking(
         app,
@@ -4123,7 +4375,15 @@ fn station_native_http_request_to_sink_blocking(
         // must never select a replacement active profile.
         revalidate_native_http_profile(&app, &authority, expected_binding_id, &origin, &reference)
             .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
-        let agent = native_http_agent();
+        let agent = native_http_agent_for_profile(
+            &app,
+            &authority,
+            expected_binding_id,
+            &origin,
+            &reference,
+            &credential,
+        )
+        .map_err(|error| NativeHttpBrokerFailure::coded(error.code))?;
         let response_body_budget =
             body_deadline.map(|deadline| deadline.saturating_duration_since(Instant::now()));
         if response_body_budget.is_some_and(|budget| budget.is_zero()) {
@@ -4179,7 +4439,7 @@ fn station_native_http_request_to_sink_blocking(
                 })
                 .map_err(|_| NativeHttpBrokerFailure::coded("cancelled"))?;
                 let mut reader = response.body_mut().as_reader();
-                let mut buffer = [0_u8; 16 * 1024];
+                let mut buffer = [0_u8; 64 * 1024];
                 let mut total = 0_usize;
                 loop {
                     if cancel.load(Ordering::SeqCst) {
@@ -4265,7 +4525,7 @@ async fn station_native_http_request(
     authority: State<'_, NativeProfileAuthority>,
     cancellations: State<'_, NativeHttpCancellation>,
     request: NativeHttpRequest,
-    channel: Channel<NativeHttpMessage>,
+    channel: Channel<tauri::ipc::InvokeResponseBody>,
 ) -> Result<(), NativeCommandError> {
     let authority = authority.inner().clone();
     let cancellations = cancellations.inner().clone();
