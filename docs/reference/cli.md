@@ -749,8 +749,11 @@ station telemetry producers revoke flow-agents
 `create` prints the token once, with the ingest URL (`<api-base>/v1/agent-events`).
 With `--token-file=<path>` it writes the token to a new file with mode `0600`
 instead and does not print it; an existing path is refused before any token is
-made. A token works only from this machine unless created with
-`--allow-remote`, and has no expiry unless `--expires-in-days=<n>` is given.
+made. Unless created with `--allow-remote`, a token accepts only requests the
+server classifies as local. A plain SSH local forward also counts as local;
+this is not proof that the sender runs on the same machine. See the
+[ingest locality rules](api.md#telemetry-ingest). A token has no expiry unless
+`--expires-in-days=<n>` is given.
 Value flags take the `--flag=value` form; the switches `--allow-remote` and
 `--json` take no value (`--allow-remote=true` is a usage error). `--json`
 prints the result object. If the request was sent but no usable reply came back
