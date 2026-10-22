@@ -214,36 +214,7 @@ export function createEventRoutes({
       // promise closures, pending authorization jobs, or missed toast payloads.
       const resync = {
         event: SERVER_EVENTS.DATA_CHANGED,
-        data: JSON.stringify({
-          keys: [
-            'agents',
-            'acp-connections',
-            'system-status',
-            'config',
-            'trust-bundles',
-            'trust-report',
-            'task-turn-references',
-            'answer-support',
-            'answer-basis',
-            'task-basis',
-            'session-inventory',
-            'session-inventory-page',
-            'server-update-state',
-            'integrations',
-            'skills',
-            'providers',
-            'scheduler-jobs',
-            'knowledge',
-            'connections',
-            'projects',
-            'plugins',
-            'layouts',
-            'plugin-draft',
-            'plugin-updates',
-            'notifications',
-            'attention',
-          ],
-        }),
+        data: JSON.stringify({ resync: true }),
       };
       const drain = async () => {
         if (draining || !replayComplete || stopped) return;
@@ -257,7 +228,13 @@ export function createEventRoutes({
             }
             const next = pendingEvents.shift()!;
             pendingBytes -= next.bytes;
-            if (await canRelay(next.evt)) {
+            let allowed = false;
+            try {
+              allowed = await canRelay(next.evt);
+            } catch {
+              // An unavailable per-event gate denies this event, not the stream.
+            }
+            if (allowed) {
               if (stopped) return;
               await writeFrame({ event: next.evt.event, data: next.data });
             }

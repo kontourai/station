@@ -2065,10 +2065,11 @@ any request; a name outside the token-name grammar is refused by the route
 rows require. The window is always bounded — `--days` (default 14) unless you
 pass `--start` or `--end` — because an unbounded request reaches that
 endpoint's live SSE branch and never returns. `--limit` has **no default**:
-omit it and you get every row in the window. It takes the most recent N by
+omit it and the reader budgets still bound the returned window. It takes the most recent N by
 timestamp (the endpoint orders rows by their own timestamp, so "most recent"
 does not depend on the order the log files happened to be read), it caps at
-5000, and `truncated` is reported only when rows were actually dropped.
+5000, and `truncated` reports dropped rows or an exhausted scan/line budget.
+A scan cut short cannot certify the newest timestamps in unread bytes.
 Content is redacted on read. A `--start`/`--end` that cannot be parsed is an
 error rather than a wider window. `--engine` reads the engine attribution added in
 station#3074, so events written before it are excluded by that filter rather

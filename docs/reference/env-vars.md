@@ -9,10 +9,12 @@ the process; a shell change does not reconfigure an already running service.
 
 ## Server
 
-`STATION_CONFIG_WATCH_POLL=1` enables a five-second `app.json` signature fallback
-on filesystems with unreliable native notifications. Watcher errors or an empty
-watch registration enable it automatically; otherwise the native config watcher
-handles changes. See [configuration and logging](config.md#logging).
+`STATION_CONFIG_WATCH_POLL=1` starts the five-second `app.json` safety poll
+before watcher readiness. The poll runs after readiness regardless of watch
+registration health and also starts immediately on watcher errors. It checks
+ctime as well as mtime to recover silent notifications and preserved-mtime
+rewrites. See [configuration and logging](config.md#logging).
+
 
 | Variable | Default | Description | Source |
 |----------|---------|-------------|--------|

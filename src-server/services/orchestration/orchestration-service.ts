@@ -4788,13 +4788,22 @@ export class OrchestrationService {
     return undefined;
   }
 
-  hasReadableSession(threadId: string, authority: SessionReadScope): boolean {
+  async hasReadableSession(
+    threadId: string,
+    authority: SessionReadScope,
+  ): Promise<boolean> {
     this.initialize();
-    const persisted = this.options.eventStore?.readSessionByThread(threadId);
+    let persisted = this.options.eventStore?.readSessionByThread(threadId);
+    let loaded = this.sessionReadModel.get(threadId);
+    if (!persisted && !loaded) {
+      await this.listSessions(INTERNAL_SESSION_READ_SCOPE);
+      persisted = this.options.eventStore?.readSessionByThread(threadId);
+      loaded = this.sessionReadModel.get(threadId);
+    }
     if (persisted)
       this.sessionAuthz.hydratePersistedTenantContexts([persisted]);
     return (
-      Boolean(persisted || this.sessionReadModel.get(threadId)) &&
+      Boolean(persisted || loaded) &&
       this.sessionAuthz.canReadSession(threadId, authority)
     );
   }

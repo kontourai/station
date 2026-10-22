@@ -2027,6 +2027,9 @@ export class EventStore {
       if (this.readStatements.size >= 32)
         this.readStatements.delete(this.readStatements.keys().next().value!);
       this.readStatements.set(sql, statement);
+    } else {
+      this.readStatements.delete(sql);
+      this.readStatements.set(sql, statement);
     }
     return statement;
   }
@@ -4931,7 +4934,7 @@ export class EventStore {
       threadId,
       ...(methods ?? []),
       ...(methods && includeLatest ? [threadId] : []),
-    );
+    ) as Array<{ payload: string }>;
     return rows.map((row) => JSON.parse(row.payload as string));
   }
 
@@ -4940,8 +4943,10 @@ export class EventStore {
     const row = this.readStatement(
       `SELECT id, global_sequence FROM orchestration_events
        WHERE thread_id = ? ORDER BY sequence DESC LIMIT 1`,
-    ).get(threadId);
-    const external = this.readStatement('PRAGMA data_version').get();
+    ).get(threadId) as { id: string; global_sequence: number } | undefined;
+    const external = this.readStatement('PRAGMA data_version').get() as
+      | { data_version: number }
+      | undefined;
     return JSON.stringify([
       row?.id,
       row?.global_sequence,
@@ -4971,7 +4976,7 @@ export class EventStore {
          OR id = (SELECT id FROM orchestration_events WHERE thread_id = ? ORDER BY sequence DESC LIMIT 1)
          OR id = (SELECT id FROM orchestration_events WHERE thread_id = ? AND provider != 'station-agent' LIMIT 1))
        ORDER BY sequence ASC`,
-    ).all(threadId, threadId, threadId);
+    ).all(threadId, threadId, threadId) as Array<{ payload: string }>;
     const events: CanonicalRuntimeEvent[] = rows.map((row) =>
       JSON.parse(row.payload as string),
     );

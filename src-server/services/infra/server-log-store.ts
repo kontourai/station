@@ -21,7 +21,7 @@
  * extend that), then written in one synchronous batch, or drained at 64 KiB.
  * This avoids a blocking syscall for each line without an in-flight async
  * write racing the fatal flush. flushSync(), close(), and day rollover drain
- * pending bytes. A hard kill may lose the pending batch; writes reach the OS
+ * pending bytes. The installed sink also drains on process exit. A hard kill may lose the pending batch; writes reach the OS
  * page cache, not an fsync guarantee against power loss.
  */
 
@@ -97,7 +97,7 @@ export interface ServerLogStore {
   readonly directory: string;
   /** Append one already-serialized log line (a trailing newline is added if missing). */
   writeLine(line: string): void;
-  /** Best-effort synchronous drain for the fatal-crash path. */
+  /** Best-effort synchronous drain for exit, crash and read paths. */
   flushSync(): void;
   /** Closes the currently-open day fd, if any. `installServerLogSink` calls
    * this on the store it replaces so a double-install (e.g. a config
@@ -129,7 +129,7 @@ class FsServerLogStore implements ServerLogStore {
   private fd: number | undefined;
   private currentDay: string | undefined;
   private lastRetentionDay: string | undefined;
-  private pending: string[] = [];
+  private pending: Buffer[] = [];
   private pendingBytes = 0;
   private flushTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -156,9 +156,13 @@ class FsServerLogStore implements ServerLogStore {
     try {
       this.ensureOpenForToday();
       if (this.fd === undefined) return;
-      const payload = line.endsWith('\n') ? line : `${line}\n`;
+      if (this.pendingBytes >= 64 * 1024) {
+        this.flushSync();
+        if (this.pendingBytes >= 64 * 1024) return;
+      }
+      const payload = Buffer.from(line.endsWith('\n') ? line : `${line}\n`);
       this.pending.push(payload);
-      this.pendingBytes += Buffer.byteLength(payload);
+      this.pendingBytes += payload.length;
       if (this.pendingBytes >= 64 * 1024) this.flushSync();
       else if (!this.flushTimer) {
         this.flushTimer = setTimeout(() => this.flushSync(), 10);
@@ -182,12 +186,11 @@ class FsServerLogStore implements ServerLogStore {
     clearTimeout(this.flushTimer);
     this.flushTimer = undefined;
     if (this.pendingBytes === 0) return;
-    const payload = Buffer.from(this.pending.join(''));
-    this.pending = [];
-    this.pendingBytes = 0;
+    const payload = Buffer.concat(this.pending);
+    let offset = 0;
     try {
+      if (this.fd === undefined) this.ensureOpenForToday();
       if (this.fd === undefined) return;
-      let offset = 0;
       while (offset < payload.length) {
         const written = writeSync(
           this.fd,
@@ -200,7 +203,18 @@ class FsServerLogStore implements ServerLogStore {
       }
     } catch {
       countInstrument('serverLogStoreWriteErrors', 1);
-      this.close();
+      if (this.fd !== undefined) {
+        try {
+          closeSync(this.fd);
+        } catch {
+          /* best-effort close */
+        }
+      }
+      this.fd = undefined;
+    } finally {
+      // Retain only unwritten bytes, including a partial UTF-8 code point.
+      this.pending = offset < payload.length ? [payload.subarray(offset)] : [];
+      this.pendingBytes = payload.length - offset;
     }
   }
 
@@ -350,6 +364,9 @@ export function createServerLogStore(
 }
 
 let installedSink: ServerLogStore | undefined;
+const flushOnExit = () => {
+  installedSink?.flushSync();
+};
 
 /** Installs the process-wide server log sink and points the logger seam's
  * durable tee at it (`installLoggerLineSink`), so one call keeps this
@@ -361,9 +378,11 @@ let installedSink: ServerLogStore | undefined;
 export function installServerLogSink(
   options: CreateServerLogStoreOptions,
 ): ServerLogStore {
+  process.removeListener('exit', flushOnExit);
   const previous = installedSink;
   installedSink = createServerLogStore(options);
   installLoggerLineSink(installedSink);
+  process.on('exit', flushOnExit);
   if (previous) {
     try {
       previous.close();
@@ -387,6 +406,7 @@ export function getInstalledServerLogSink(): ServerLogStore | undefined {
  * Clears the logger seam's tee as well, so a later logger write does not
  * reach the store this just closed. */
 export function resetServerLogSinkForTests(): void {
+  process.removeListener('exit', flushOnExit);
   installedSink?.close();
   installedSink = undefined;
   installLoggerLineSink(undefined);
