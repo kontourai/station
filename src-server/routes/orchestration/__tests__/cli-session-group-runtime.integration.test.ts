@@ -11,12 +11,17 @@ import type {
   CliSessionGroupEventPage,
   CliSessionGroupView,
 } from '@kontourai/station-contracts/delegation-group';
+import type {
+  InputRequestContent,
+  InputRequestForm,
+} from '@kontourai/station-contracts/input-request';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type {
   ProviderSendTurnInput,
   ProviderSessionStartInput,
 } from '@kontourai/station-contracts/provider';
 import {
+  respondToRequest as answerSessionRequest,
   respondToDelegatedTaskRequest as answerTaskRequest,
   createCliSessionGroup,
   createEnsembleCliSessionGroup,
@@ -25,6 +30,7 @@ import {
   setClientCredentialResolver,
   subscribeCliSessionGroupEvents,
 } from '@kontourai/station-sdk/client';
+import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { runCli } from '../../../../packages/cli/src/cli.js';
@@ -77,20 +83,34 @@ class MemberAdapter extends GateTestAdapter {
   >();
   readonly turns: ProviderSendTurnInput[] = [];
   needsInputNext = false;
+  formNext = false;
+  responseAttempts = 0;
   readonly questions = new Map<
     string,
-    { input: ProviderSendTurnInput; turnId: string; eventId: string }
+    {
+      input: ProviderSendTurnInput;
+      turnId: string;
+      eventId: string;
+      form?: InputRequestForm;
+    }
   >();
   readonly answers: {
     threadId: string;
     requestId: string;
     decision: string;
+    eventId?: string;
+    content?: InputRequestContent;
   }[] = [];
   override async respondToRequest(
     threadId = '',
     requestId = '',
     decision = 'cancel',
+    context?: {
+      expectedRequestEventId?: string;
+      inputContent?: InputRequestContent;
+    },
   ) {
+    this.responseAttempts += 1;
     const question = this.questions.get(requestId);
     if (
       !question ||
@@ -100,7 +120,17 @@ class MemberAdapter extends GateTestAdapter {
       throw new Error(
         'Request does not match the live controlled engine question',
       );
-    this.answers.push({ threadId, requestId, decision });
+    if (question.form && context?.expectedRequestEventId !== question.eventId)
+      throw new Error('Question event identity changed');
+    const content = question.form
+      ? validateInputRequestContent(question.form, context?.inputContent)
+      : undefined;
+    this.answers.push({
+      threadId,
+      requestId,
+      decision,
+      ...(question.form ? { eventId: question.eventId, content } : {}),
+    });
     this.questions.delete(requestId);
     this.events.push({
       eventId: randomUUID(),
@@ -118,7 +148,9 @@ class MemberAdapter extends GateTestAdapter {
       threadId,
       turnId: question.turnId,
       method: 'turn.completed',
-      outputText: 'Returned after approval',
+      outputText: question.form
+        ? 'Returned after input'
+        : 'Returned after approval',
       finishReason: 'stop',
       createdAt: new Date().toISOString(),
       invocationId: question.input.invocationId,
@@ -162,7 +194,32 @@ class MemberAdapter extends GateTestAdapter {
       this.needsInputNext = false;
       const requestId = randomUUID();
       const eventId = randomUUID();
-      this.questions.set(requestId, { input, turnId, eventId });
+      const form: InputRequestForm | undefined = this.formNext
+        ? {
+            schema: 'station.input-request/v1',
+            source: 'mcp:controlled',
+            requester: 'Controlled tool',
+            message: 'Choose the controlled token',
+            body: {
+              kind: 'form',
+              fields: [
+                {
+                  name: 'token',
+                  kind: 'choice',
+                  required: true,
+                  options: [{ value: 'CONTROLLED_OK', label: 'CONTROLLED_OK' }],
+                },
+              ],
+            },
+          }
+        : undefined;
+      this.formNext = false;
+      this.questions.set(requestId, {
+        input,
+        turnId,
+        eventId,
+        ...(form ? { form } : {}),
+      });
       this.events.push({
         eventId,
         provider: this.provider,
@@ -171,7 +228,8 @@ class MemberAdapter extends GateTestAdapter {
         method: 'request.opened',
         requestId,
         requestType: 'approval',
-        title: 'Controlled member approval',
+        title: form?.message ?? 'Controlled member approval',
+        ...(form ? { payload: { inputRequest: form } } : {}),
         createdAt: new Date().toISOString(),
       });
       return { threadId: input.threadId, turnId };
@@ -621,105 +679,145 @@ test('cancellation after Agent preparation starts prevents the actual adapter sp
   expect(f.adapter.turns).toHaveLength(0);
 }, 30_000);
 
-test('a group member approval stays visible and occupies its seat until the canonical response reaches that engine and raw output returns', async () => {
-  const f = await fixture(true);
-  const credential = f.operatorCredential!;
-  const headers = { Authorization: `Bearer ${credential}` };
-  f.adapter.needsInputNext = true;
-  const input = groupInput(2);
-  input.maxConcurrent = 1;
-  input.members[1].needs = ['seat-0'];
-  const group = await createCliSessionGroup(
-    f.apiBase,
-    parseCliSessionGroupInput(input),
-    { credential, credentialOrigin: f.apiBase },
-  );
-  const stop = new AbortController();
-  const running = f.app.request(
-    `/api/orchestration/session-groups/${group.groupId}/run`,
-    { method: 'POST', headers, signal: stop.signal },
-  );
-  try {
-    let waiting: CliSessionGroupView | undefined;
-    await vi.waitFor(
-      async () => {
-        const response = await f.app.request(
-          `/api/orchestration/session-groups/${group.groupId}`,
+test.each(['approval', 'form'] as const)(
+  'a group member %s holds its seat until the authorized canonical reply reaches its exact engine request',
+  async (kind) => {
+    const f = await fixture(true);
+    const credential = f.operatorCredential!;
+    const headers = { Authorization: `Bearer ${credential}` };
+    f.adapter.needsInputNext = true;
+    f.adapter.formNext = kind === 'form';
+    const input = groupInput(2);
+    input.maxConcurrent = 1;
+    input.members[1].needs = ['seat-0'];
+    const group = await createCliSessionGroup(
+      f.apiBase,
+      parseCliSessionGroupInput(input),
+      { credential, credentialOrigin: f.apiBase },
+    );
+    const stop = new AbortController();
+    const running = f.app.request(
+      `/api/orchestration/session-groups/${group.groupId}/run`,
+      { method: 'POST', headers, signal: stop.signal },
+    );
+    try {
+      let waiting: CliSessionGroupView | undefined;
+      await vi.waitFor(
+        async () => {
+          const response = await f.app.request(
+            `/api/orchestration/session-groups/${group.groupId}`,
+            { headers },
+          );
+          waiting = ((await response.json()) as { data: CliSessionGroupView })
+            .data;
+          expect(waiting.members[0].attention?.kind).toBe('review-pending');
+        },
+        { timeout: 5000 },
+      );
+      const member = waiting!.members[0];
+      expect(JSON.stringify(waiting)).not.toContain(
+        'Controlled member approval',
+      );
+      const request = member.attention!.request!;
+      expect(f.adapter.turns).toHaveLength(1);
+      expect(waiting!.members[1].state).toBe('pending');
+      const question = f.adapter.questions.get(request.id)!;
+      expect(request.eventId).toBe(question.eventId);
+      const answer = (
+        replyCredential: string,
+        eventId = request.eventId,
+        token = 'CONTROLLED_OK',
+      ) =>
+        kind === 'form'
+          ? answerSessionRequest(
+              f.apiBase,
+              {
+                threadId: member.handle!.sessionId,
+                requestId: request.id,
+                expectedRequestEventId: eventId,
+                decision: 'accept',
+                content: { token },
+              },
+              { credential: replyCredential, credentialOrigin: f.apiBase },
+            )
+          : answerTaskRequest(
+              f.apiBase,
+              member.handle!.taskId,
+              { requestId: request.id, decision: 'accept' },
+              { credential: replyCredential, credentialOrigin: f.apiBase },
+            );
+      if (kind === 'form') {
+        const details = await f.app.request(
+          `/api/orchestration/sessions/${encodeURIComponent(member.handle!.sessionId)}/events`,
           { headers },
         );
-        waiting = ((await response.json()) as { data: CliSessionGroupView })
-          .data;
-        expect(waiting.members[0].attention?.kind).toBe('review-pending');
-      },
-      { timeout: 5000 },
-    );
-    const member = waiting!.members[0];
-    expect(JSON.stringify(waiting)).not.toContain('Controlled member approval');
-    const request = member.attention!.request!;
-    expect(f.adapter.turns).toHaveLength(1);
-    expect(waiting!.members[1].state).toBe('pending');
-    const question = f.adapter.questions.get(request.id)!;
-    expect(request.eventId).toBe(question.eventId);
-    await expect(
-      answerTaskRequest(
-        f.apiBase,
-        member.handle!.taskId,
-        { requestId: request.id, decision: 'accept' },
+        expect(details.status).toBe(200);
+        const body = (await details.json()) as {
+          data: {
+            method: string;
+            eventId: string;
+            payload?: { inputRequest?: InputRequestForm };
+          }[];
+        };
+        expect(
+          body.data.find((event) => event.eventId === request.eventId)?.payload
+            ?.inputRequest,
+        ).toMatchObject({ source: 'mcp:controlled', body: { kind: 'form' } });
+        await expect(answer(credential, 'foreign-event')).rejects.toThrow();
+        await expect(
+          answer(credential, request.eventId, 'invalid-choice'),
+        ).rejects.toThrow();
+        expect(f.adapter.responseAttempts).toBe(0);
+      }
+      await expect(answer('invalid-fixture-credential')).rejects.toThrow();
+      expect(f.adapter.answers).toEqual([]);
+      await answer(credential);
+      expect(f.adapter.answers).toEqual([
         {
-          credential: 'invalid-fixture-credential',
-          credentialOrigin: f.apiBase,
+          threadId: member.handle!.sessionId,
+          requestId: request.id,
+          decision: 'accept',
+          ...(kind === 'form'
+            ? { eventId: request.eventId, content: { token: 'CONTROLLED_OK' } }
+            : {}),
         },
-      ),
-    ).rejects.toThrow();
-    expect(f.adapter.answers).toEqual([]);
-    const answer = await answerTaskRequest(
-      f.apiBase,
-      member.handle!.taskId,
-      { requestId: request.id, decision: 'accept' },
-      { credential, credentialOrigin: f.apiBase },
-    );
-    expect(answer.requestId).toBe(request.id);
-    expect(f.adapter.answers).toEqual([
-      {
-        threadId: member.handle!.sessionId,
-        requestId: request.id,
-        decision: 'accept',
-      },
-    ]);
-    const response = await running;
-    expect(response.status, await response.clone().text()).toBe(200);
-    const final = ((await response.json()) as { data: CliSessionGroupView })
-      .data;
-    expect(final.flow?.status).toBe('completed');
-    expect(final.members[0].attention).toBeUndefined();
-    expect(f.adapter.turns).toHaveLength(2);
-    await expect(
-      answerTaskRequest(
+      ]);
+      const response = await running;
+      expect(response.status, await response.clone().text()).toBe(200);
+      const final = ((await response.json()) as { data: CliSessionGroupView })
+        .data;
+      expect(final.flow?.status).toBe('completed');
+      expect(final.members[0].attention).toBeUndefined();
+      expect(f.adapter.turns).toHaveLength(2);
+      await expect(answer(credential)).rejects.toThrow();
+      expect(f.adapter.answers).toHaveLength(1);
+      const events = await readTaskEvents(
         f.apiBase,
         member.handle!.taskId,
-        { requestId: request.id, decision: 'accept' },
+        {},
         { credential, credentialOrigin: f.apiBase },
-      ),
-    ).rejects.toThrow();
-    expect(f.adapter.answers).toHaveLength(1);
-    const events = await readTaskEvents(
-      f.apiBase,
-      member.handle!.taskId,
-      {},
-      { credential, credentialOrigin: f.apiBase },
-    );
-    expect(
-      events.events.some(
-        (event) =>
-          event.kind === 'message' && event.text === 'Returned after approval',
-      ),
-    ).toBe(true);
-    expect(JSON.stringify(final)).not.toContain('Returned after approval');
-  } finally {
-    stop.abort();
-    await running;
-  }
-}, 15_000);
+      );
+      expect(
+        events.events.some(
+          (event) =>
+            event.kind === 'message' &&
+            event.text ===
+              (kind === 'form'
+                ? 'Returned after input'
+                : 'Returned after approval'),
+        ),
+      ).toBe(true);
+      expect(JSON.stringify(final)).not.toContain(
+        kind === 'form' ? 'Returned after input' : 'Returned after approval',
+      );
+      expect(JSON.stringify(final)).not.toContain('CONTROLLED_OK');
+    } finally {
+      stop.abort();
+      await running;
+    }
+  },
+  15_000,
+);
 
 test('a separately minted local operator can inspect CLI-owned groups through real session read authority but cannot inherit mutation ownership', async () => {
   const f = await fixture(true);
