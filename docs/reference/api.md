@@ -1651,6 +1651,7 @@ when current authority is lost or a refresh is refused.
 
 
 - `POST /api/orchestration/session-groups`: create or replay an operation.
+- `POST /api/orchestration/session-groups/from-ensemble`: create from a preset and explicit receiver bindings.
 - `GET /api/orchestration/session-groups?afterGroupId=<cursor>`: list credential-owned groups in bounded pages.
 - `GET /api/orchestration/session-groups/:groupId`: inspect its durable members.
 - `POST /api/orchestration/session-groups/:groupId/run`: supervise the ready Flow frontier until return, cancellation or deadline.
@@ -1671,6 +1672,20 @@ seats. The target must include its expected engine connection. Station waits for
 accepted member turns can still overlap. Station reuses the
 ordinary delegation route's actor, posture, full-access, workspace, receiver and
 lineage decisions; a group does not authorize anything those decisions refuse.
+The preset entry point requires the current locally granted operator. Supply
+`path` (canonical JSON path on this Station), `expectedPresetHash`, `brief`,
+`operationId`, `maxConcurrent`, `deadlineAt`, and `bindings` keyed by every preset
+member ID. Each binding supplies a local `target` with an Agent, expected engine
+connection and explicit Project or directory workspace, plus `needs` (an array,
+empty for independent members). The preset supplies the model, options, prompt
+additions and shared roster; bindings cannot override them. Native engine names
+match the provider identity; a configured CLI engine uses its connection identity
+(for example `opencode`). Station resolves configuration without starting an
+authentication or model-discovery process. Creation persists composed member
+briefs; it does not start sessions or prove authentication. Editing the preset
+after creation does not change those briefs. Run performs the normal current
+delegation and engine-start checks. Hard fiscal guarantees remain unavailable.
+
 The authenticated credential/caller binding owns group mutations. The current
 in-person local operator may also inspect a group from another credential, but
 every accepted member must pass Station's existing session-read check. Inspection

@@ -7,6 +7,7 @@ import type {
   CliSessionGroupListPage,
   CliSessionGroupView,
 } from '@kontourai/station-contracts/delegation-group';
+import type { EnsembleCliSessionGroupInput } from '@kontourai/station-contracts/ensemble';
 import { z } from 'zod/v3';
 import {
   type ClientRequestOptions,
@@ -156,6 +157,42 @@ const viewSchema: z.ZodType<CliSessionGroupView> = z
   })
   .strict();
 
+const ensembleInputSchema = inputSchema
+  .omit({ members: true })
+  .extend({
+    path: z.string().min(1).max(4096),
+    expectedPresetHash: z
+      .string()
+      .max(71)
+      .regex(/^sha256:[0-9a-f]{64}$/),
+    brief: z.string().min(1).max(100_000),
+    bindings: z
+      .record(
+        z.string().min(1).max(64),
+        z
+          .object({
+            target: inputSchema.shape.members.element.shape.target
+              .omit({
+                model: true,
+              })
+              .extend({
+                workspace:
+                  inputSchema.shape.members.element.shape.target.shape.workspace.unwrap(),
+              }),
+            needs: z.array(seatId).max(16),
+          })
+          .strict(),
+      )
+      .refine((bindings) => Object.keys(bindings).length <= 16),
+  })
+  .strict();
+
+export function parseEnsembleCliSessionGroupInput(
+  value: unknown,
+): EnsembleCliSessionGroupInput {
+  return ensembleInputSchema.parse(value);
+}
+
 /** Local named Agents, with an expected engine and explicit operation identity. */
 export function parseCliSessionGroupInput(
   value: unknown,
@@ -186,6 +223,19 @@ export function createCliSessionGroup(
   options?: ClientRequestOptions,
 ): Promise<CliSessionGroupView> {
   return command(root(apiBase), parseCliSessionGroupInput(input), options);
+}
+
+/** Saves a preset-derived group; engine startup remains an explicit run command. */
+export function createEnsembleCliSessionGroup(
+  apiBase: string,
+  input: EnsembleCliSessionGroupInput,
+  options?: ClientRequestOptions,
+): Promise<CliSessionGroupView> {
+  return command(
+    `${root(apiBase)}/from-ensemble`,
+    parseEnsembleCliSessionGroupInput(input),
+    options,
+  );
 }
 export async function getCliSessionGroup(
   apiBase: string,

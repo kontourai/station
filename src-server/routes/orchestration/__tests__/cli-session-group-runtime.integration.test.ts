@@ -1,8 +1,12 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { realpathSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
 import type { CliSessionGroupView } from '@kontourai/station-contracts/delegation-group';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type {
@@ -11,6 +15,7 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import {
   createCliSessionGroup,
+  createEnsembleCliSessionGroup,
   parseCliSessionGroupInput,
   setClientCredentialResolver,
 } from '@kontourai/station-sdk/client';
@@ -30,6 +35,9 @@ import {
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
 import { createRuntimeResourcePostureController } from '../../../services/infra/resource-posture.js';
+import { EnsembleCliSessionGroupPreparation } from '../../../services/orchestration/ensemble-cli-session-group.js';
+import { createLocalEnsembleInventory } from '../../../services/orchestration/ensemble-execution-context.js';
+import { EnsembleInspectionService } from '../../../services/orchestration/ensemble-inspection.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -123,6 +131,49 @@ async function fixture(operatorInspection = false) {
       })
     : () => actor;
   const adapter = new MemberAdapter();
+  Object.assign(adapter.metadata, {
+    connectionId: 'claude',
+    modelLaunch: {
+      defaultAtStart: 'engine-selected',
+      omissionAtResume: 'engine-selected',
+      omissionPerTurn: 'engine-selected',
+      overrideAtStart: true,
+      overrideAtResume: true,
+      overridePerTurn: true,
+    },
+  });
+  const inventory = createLocalEnsembleInventory({
+    environmentId: () => 'group-host',
+    captureAgentConfigurationFence: () => () => {},
+    getProjectRevision: () => ({ value: null, assertCurrent() {} }),
+    getProviderRevision: () => 1,
+    getAgent: async () => ({
+      name: 'Reviewer',
+      prompt: 'Review the supplied brief.',
+      execution: { agentConnectionId: engineConnectionId('claude') },
+    }),
+    listEngineConnectionIdentities: async () => [
+      { id: engineConnectionId('claude'), engineId: 'claude', type: 'claude' },
+    ],
+    loadAppConfig: async () => ({
+      defaultModel: '',
+      invokeModel: '',
+      structureModel: '',
+      systemPrompt: '',
+    }),
+    getProject: () => undefined,
+    getProviderAdapter: () => adapter,
+  });
+  const ensembleGroups = security
+    ? new EnsembleCliSessionGroupPreparation(
+        new EnsembleInspectionService({
+          security,
+          inventory,
+          readIntegration: () => undefined,
+        }),
+        inventory,
+      )
+    : undefined;
   const store = new EventStore(join(root, 'events.sqlite'));
   cleanup.push(async () => {
     store.close();
@@ -212,6 +263,12 @@ async function fixture(operatorInspection = false) {
     '/api/orchestration',
     createOrchestrationRoutes(service, {
       cliSessionGroupHome: root,
+      ...(ensembleGroups
+        ? {
+            prepareEnsembleSessionGroup:
+              ensembleGroups.compose.bind(ensembleGroups),
+          }
+        : {}),
       eventBus: bus,
       logger: { debug() {}, warn() {} },
       resolvePrincipal,
@@ -522,4 +579,127 @@ test('a separately minted local operator can inspect CLI-owned groups through re
     { headers: { Authorization: `Bearer ${device.credential}` } },
   );
   expect(foreign.status).toBe(404);
+}, 30_000);
+
+test('a locally authorized preset produces actual member turns with authored models, additions and the same complete roster', async () => {
+  const f = await fixture(true);
+  const security = f.security!;
+  const offer = security.devicePairing.createOffer({ endpoint: f.apiBase });
+  const requested = security.devicePairing.requestPairing({
+    requesterPosition: 'off-box',
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    deviceName: 'Preset operator',
+  });
+  security.devicePairing.confirmRequest(requested.requestId, {
+    kind: 'local-grant',
+  });
+  const local = security.devicePairing.exchange({
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    requestId: requested.requestId,
+    locality: 'home-possession',
+    mintKind: 'local-grant',
+  });
+  const preset = {
+    version: 'station.ensemble/v1',
+    id: 'team',
+    name: 'Delivery team',
+    stationmaster: 'lead',
+    members: ['lead', 'check', 'join'].map((id) => ({
+      id,
+      codename: id,
+      color: '#123ABC',
+      role: `Role for ${id}`,
+      engine: 'claude',
+      model: 'fixture-model',
+      reasoning: null,
+      options: {},
+      promptAppends: [`Private addition for ${id}`],
+    })),
+  };
+  const path = join(f.root, 'team.json');
+  const bytes = `${JSON.stringify(preset)}\n`;
+  writeFileSync(path, bytes);
+  const input = {
+    path,
+    expectedPresetHash: `sha256:${createHash('sha256').update(bytes).digest('hex')}`,
+    brief: 'Review this work.',
+    operationId: 'preset-group',
+    maxConcurrent: 2,
+    deadlineAt: Date.now() + 60_000,
+    bindings: Object.fromEntries(
+      preset.members.map(({ id }) => [
+        id,
+        {
+          target: {
+            agent: agentId('reviewer'),
+            expectedEngine: {
+              kind: 'connection' as const,
+              connectionId: engineConnectionId('claude'),
+            },
+            workspace: { kind: 'directory' as const, cwd: f.root },
+          },
+          needs: id === 'join' ? ['lead', 'check'] : [],
+        },
+      ]),
+    ),
+  };
+  const denied = await f.app.request(
+    '/api/orchestration/session-groups/from-ensemble',
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${f.operatorCredential}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(input),
+    },
+  );
+  expect(denied.status).toBe(403);
+  setClientCredentialResolver(() => ({
+    origin: f.apiBase,
+    credential: local.credential,
+  }));
+  const group = await createEnsembleCliSessionGroup(f.apiBase, input);
+  expect(f.adapter.starts).toHaveLength(0);
+  expect(group.members.map((member) => member.seatId)).toEqual([
+    'lead',
+    'check',
+    'join',
+  ]);
+  const ran = await f.app.request(
+    `/api/orchestration/session-groups/${group.groupId}/run`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${local.credential}` },
+    },
+  );
+  expect(ran.status, await ran.clone().text()).toBe(200);
+  const final = ((await ran.json()) as { data: CliSessionGroupView }).data;
+  expect(final.flow?.status).toBe('completed');
+  expect(f.adapter.turns).toHaveLength(3);
+  for (const member of preset.members) {
+    const handle = final.members.find((entry) => entry.seatId === member.id)!
+      .handle!;
+    const turn = f.adapter.turns.find(
+      (entry) => entry.threadId === handle.sessionId,
+    )!;
+    expect(turn.input).toContain('Review this work.');
+    expect(turn.input).toContain(`Private addition for ${member.id}`);
+    for (const id of ['lead', 'check', 'join'])
+      expect(turn.input).toContain(`"id":"${id}"`);
+    expect(
+      f.adapter.starts.find((entry) => entry.threadId === handle.sessionId)
+        ?.modelId,
+    ).toBe('fixture-model');
+  }
+  writeFileSync(path, `${bytes} `);
+  await expect(
+    createEnsembleCliSessionGroup(f.apiBase, {
+      ...input,
+      operationId: 'stale',
+    }),
+  ).rejects.toThrow();
+  expect(f.adapter.turns).toHaveLength(3);
 }, 30_000);

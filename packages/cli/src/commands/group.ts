@@ -5,12 +5,14 @@ import {
   cancelDelegationGroup,
   createCliSessionGroup,
   createDelegationGroup,
+  createEnsembleCliSessionGroup,
   getCliSessionGroup,
   getDelegationGroup,
   launchDelegationGroup,
   listCliSessionGroups,
   listDelegationGroups,
   parseCliSessionGroupInput,
+  parseEnsembleCliSessionGroupInput,
   readDelegationGroupEvents,
   readDelegationGroupMemberEvents,
   readDelegationGroupMemberOutput,
@@ -169,11 +171,13 @@ async function runSessionGroupCommand(
   parsed: ParsedCoreArgs,
 ): Promise<void> {
   const [action, groupId, ...extra] = parsed.positionals;
-  const create = action === 'session-create';
+  const fromEnsemble = action === 'session-from-ensemble';
+  const create = action === 'session-create' || fromEnsemble;
   const list = action === 'session-list';
   if (
     ![
       'session-create',
+      'session-from-ensemble',
       'session-list',
       'session-get',
       'session-run',
@@ -231,10 +235,15 @@ async function runSessionGroupCommand(
     } finally {
       closeSync(descriptor);
     }
-    const input = parseCliSessionGroupInput(
-      JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
+    const input: unknown = JSON.parse(
+      new TextDecoder('utf-8', { fatal: true }).decode(bytes),
     );
-    result = await createCliSessionGroup(apiBase, input);
+    result = fromEnsemble
+      ? await createEnsembleCliSessionGroup(
+          apiBase,
+          parseEnsembleCliSessionGroupInput(input),
+        )
+      : await createCliSessionGroup(apiBase, parseCliSessionGroupInput(input));
   } else if (list)
     result = await listCliSessionGroups(apiBase, {
       afterGroupId: optionalValueFlag(parsed, 'after-group'),

@@ -1183,6 +1183,7 @@ confinement. It has separate commands from the hard-cap API transport below:
 
 ```bash
 station group session-create --file=local-group.json --json
+station group session-from-ensemble --file=ensemble-group.json --json
 station group session-list --json
 station group session-get <group-id> --json
 station group session-run <group-id> --json
@@ -1193,6 +1194,12 @@ The JSON file follows the [CLI session-group API](api.md#cli-session-groups): an
 explicit operation ID, bounded roster, expected engine connection, concurrency
 and absolute deadline. It is validated before submission; create does not start
 members. Run supervises the server's Flow frontier and can wait up to its deadline.
+
+`session-from-ensemble` instead reads the preset-group request described in that
+API reference. Its `path` names the preset on the receiving Station; `--file`
+names the request file on the CLI host. It requires a locally granted operator
+and an exact preset hash. The saved briefs include each member's prompt additions
+and the full roster. It does not call an engine until `session-run`.
 Ctrl-C disconnects that supervision and requests interruption; it is not proof of
 physical termination. Inspect the same group after an uncertain response; never
 create a replacement merely because the response was lost. Member handles use

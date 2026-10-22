@@ -26,6 +26,8 @@ import type {
   ConversationContextBoundaryProjection,
   ConversationContextBoundaryRequest,
 } from '@kontourai/station-contracts/conversation-context-boundary';
+import type { CliSessionGroupCreateInput } from '@kontourai/station-contracts/delegation-group';
+import type { EnsembleCliSessionGroupInput } from '@kontourai/station-contracts/ensemble';
 import {
   type EnvironmentRef,
   EXECUTION_ENGINE_CHANGED_CODE,
@@ -2123,6 +2125,12 @@ export function createOrchestrationRoutes(
     isRequestPrincipalCurrent?: (request: Request) => boolean;
     /** Personal runtime composition; absent means session-group routes refuse. */
     cliSessionGroupHome?: string;
+    prepareEnsembleSessionGroup?: (
+      input: EnsembleCliSessionGroupInput,
+      request: Request,
+      principal: PrincipalRef,
+      assertCurrent: () => void,
+    ) => Promise<CliSessionGroupCreateInput>;
     /** Personal-only producer binding authority. Hosted requires a tenant adapter. */
     answerAssessmentModule?: AnswerAssessmentModule;
     /** Personal-only exact retained narrative binding owner. */
@@ -4398,6 +4406,112 @@ export function createOrchestrationRoutes(
           })),
           maxConcurrent: input.maxConcurrent,
           deadlineAt: input.deadlineAt,
+        },
+        authority.assertCurrent,
+      );
+    }),
+  );
+  app.post('/session-groups/from-ensemble', (c) =>
+    respondSessionGroup(c, async (groups, authority) => {
+      if (!deps.prepareEnsembleSessionGroup)
+        throw new CliSessionGroupUnavailable('group_unavailable');
+      const body = await readBoundedRequestBody(c.req.raw, 262_144);
+      if (body.status !== 'ok')
+        throw new CliSessionGroupUnavailable('group_invalid');
+      const schema = groupCreateSchema
+        .omit({ members: true })
+        .extend({
+          path: z.string().min(1).max(4096),
+          expectedPresetHash: z
+            .string()
+            .max(71)
+            .regex(/^sha256:[0-9a-f]{64}$/),
+          brief: z.string().min(1).max(100_000),
+          bindings: z
+            .record(
+              z.string().min(1).max(64),
+              z
+                .object({
+                  target: executionTargetSchema
+                    .omit({ model: true })
+                    .extend({
+                      agent: z.string().min(1).max(64),
+                      environment: z
+                        .object({ kind: z.literal('current') })
+                        .strict()
+                        .optional(),
+                      expectedEngine: z
+                        .object({
+                          kind: z.literal('connection'),
+                          connectionId: z.string().min(1).max(256),
+                        })
+                        .strict(),
+                      workspace: z.discriminatedUnion('kind', [
+                        z
+                          .object({
+                            kind: z.literal('project'),
+                            projectSlug: z.string().min(1).max(256),
+                            cwd: z.string().min(1).max(4096).optional(),
+                          })
+                          .strict(),
+                        z
+                          .object({
+                            kind: z.literal('directory'),
+                            cwd: z.string().min(1).max(4096),
+                          })
+                          .strict(),
+                      ]),
+                    })
+                    .strict(),
+                  needs: z.array(z.string().min(1).max(128)).max(16),
+                })
+                .strict(),
+            )
+            .refine((bindings) => Object.keys(bindings).length <= 16),
+        })
+        .strict();
+      const parsed = schema.parse(JSON.parse(body.body));
+      const principal = resolveActorPrincipal(deps, c).principal;
+      if (!principal)
+        throw new CliSessionGroupUnavailable('group_authority_required');
+      const input = await deps.prepareEnsembleSessionGroup(
+        {
+          ...parsed,
+          bindings: Object.fromEntries(
+            Object.entries(parsed.bindings).map(([id, binding]) => [
+              id,
+              {
+                ...binding,
+                target: {
+                  ...binding.target,
+                  agent: agentId(binding.target.agent),
+                  expectedEngine: {
+                    kind: 'connection' as const,
+                    connectionId: engineConnectionId(
+                      binding.target.expectedEngine.connectionId,
+                    ),
+                  },
+                },
+              },
+            ]),
+          ),
+        },
+        c.req.raw,
+        principal,
+        authority.assertCurrent,
+      );
+      const validated = groupCreateSchema.parse(input);
+      return groups.create(
+        authority.owner,
+        validated.operationId,
+        {
+          seats: validated.members.map(({ seatId, needs, ...member }) => ({
+            seatId,
+            needs,
+            input: delegateTaskSchema.parse(member),
+          })),
+          maxConcurrent: validated.maxConcurrent,
+          deadlineAt: validated.deadlineAt,
         },
         authority.assertCurrent,
       );

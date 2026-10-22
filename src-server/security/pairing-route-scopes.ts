@@ -3293,6 +3293,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     },
     { method: 'GET', path: '/api/orchestration/session-groups' },
     { method: 'POST', path: '/api/orchestration/session-groups' },
+    { method: 'POST', path: '/api/orchestration/session-groups/from-ensemble' },
     { method: 'GET', path: '/api/orchestration/session-groups/:groupId' },
     { method: 'POST', path: '/api/orchestration/session-groups/:groupId/run' },
     {

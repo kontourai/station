@@ -373,3 +373,67 @@ function sessionGroupView() {
     members: [{ seatId: 'one', needs: [], state: 'pending' }],
   };
 }
+
+test('registered preset-group creation submits exact receiver bindings and refuses model injection', async () => {
+  const { writeFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const file = join(
+    sessionGroupTemp('station-cli-preset-group-'),
+    'input.json',
+  );
+  const target = {
+    agent: 'reviewer',
+    expectedEngine: { kind: 'connection', connectionId: 'opencode' },
+    workspace: { kind: 'directory', cwd: '/work' },
+  };
+  const input = {
+    path: '/work/team.json',
+    expectedPresetHash: `sha256:${'a'.repeat(64)}`,
+    brief: 'Review',
+    operationId: 'preset',
+    maxConcurrent: 1,
+    deadlineAt: Date.now() + 60_000,
+    bindings: { lead: { target, needs: [] } },
+  };
+  writeFileSync(file, JSON.stringify(input));
+  const fetch = vi.fn(
+    async (_url: Parameters<typeof globalThis.fetch>[0], _init?: RequestInit) =>
+      new Response(JSON.stringify({ success: true, data: sessionGroupView() })),
+  );
+  vi.stubGlobal('fetch', fetch);
+  vi.spyOn(console, 'log').mockImplementation(() => {});
+  await runCli([
+    'group',
+    'session-from-ensemble',
+    `--file=${file}`,
+    '--api-base=https://station.test',
+    '--credential=fixture',
+    '--json',
+  ]);
+  assert.equal(fetch.mock.calls.length, 1);
+  const [url, init] = fetch.mock.calls[0];
+  assert.equal(
+    String(url),
+    'https://station.test/api/orchestration/session-groups/from-ensemble',
+  );
+  assert.deepEqual(JSON.parse(String(init?.body)), input);
+  writeFileSync(
+    file,
+    JSON.stringify({
+      ...input,
+      bindings: {
+        lead: {
+          needs: [],
+          target: { ...target, model: { override: 'injected' } },
+        },
+      },
+    }),
+  );
+  await assert.rejects(
+    runGroupCommand(
+      'https://station.test',
+      parseCoreArgs(['session-from-ensemble', `--file=${file}`]),
+    ),
+  );
+  assert.equal(fetch.mock.calls.length, 1);
+});

@@ -119,6 +119,7 @@ import {
 import { PULL_REQUEST_GUIDE_SERVICE_PRINCIPAL } from '../../services/identity/service-principals.js';
 import { LiveSurfaceRegistry } from '../../services/live-surface/registry.js';
 import { LocalMobileDeviceHost } from '../../services/mobile-device/mobile-device-host.js';
+import { EnsembleCliSessionGroupPreparation } from '../../services/orchestration/ensemble-cli-session-group.js';
 import {
   createLocalEnsembleInventory,
   EnsembleExecutionContext,
@@ -4943,39 +4944,49 @@ export function configureRuntimeRoutes(
     }
   })();
 
+  const ensembleInventory = createLocalEnsembleInventory({
+    getConfiguredAcpConnection: async (id) =>
+      (await context.configLoader.loadACPConfig()).connections.find(
+        (entry) => entry.id === id,
+      ),
+    captureAgentConfigurationFence: (ids) =>
+      context.agentService.capturePreparationConfigurationFence(
+        ids,
+        context.getAgentConfigurationRevision,
+      ),
+    getProjectRevision: (slug) => context.storageAdapter.projectRevision(slug),
+    getProviderRevision: () =>
+      context.providerService.getLaunchabilityRevision() +
+      context.configLoader.getLaunchabilityRevision(),
+    environmentId: () =>
+      context.environmentSecurityService.devicePairing.environmentId(),
+    getAgent: (id) => context.agentService.getAgent(id),
+    listEngineConnectionIdentities: async () => {
+      const identities =
+        await context.connectionService.listEngineConnectionIdentities();
+      if (identities.length > 256)
+        throw new Error('Inspection inventory exceeds its limit');
+      return identities;
+    },
+    loadAppConfig: () => context.configLoader.loadAppConfig(),
+    getProject: (slug) => context.projectService.getProject(slug),
+    getProviderAdapter: (provider) =>
+      context.orchestrationService.getProviderAdapter(provider),
+  });
+  const ensembleInspection = new EnsembleInspectionService({
+    readIntegration: (id) =>
+      context.configLoader.readIntegrationAppDefinition(id),
+    security: context.environmentSecurityService,
+    inventory: ensembleInventory,
+  });
+  const ensembleCliGroups = new EnsembleCliSessionGroupPreparation(
+    ensembleInspection,
+    ensembleInventory,
+  );
   context.app.route(
     '/api/orchestration/ensembles',
     createEnsembleInspectionRoutes(
-      new EnsembleInspectionService({
-        readIntegration: (id) =>
-          context.configLoader.readIntegrationAppDefinition(id),
-        security: context.environmentSecurityService,
-        inventory: createLocalEnsembleInventory({
-          captureAgentConfigurationFence: (ids) =>
-            context.agentService.capturePreparationConfigurationFence(
-              ids,
-              context.getAgentConfigurationRevision,
-            ),
-          getProjectRevision: (slug) =>
-            context.storageAdapter.projectRevision(slug),
-          getProviderRevision: () =>
-            context.providerService.getLaunchabilityRevision(),
-          environmentId: () =>
-            context.environmentSecurityService.devicePairing.environmentId(),
-          getAgent: (id) => context.agentService.getAgent(id),
-          listEngineConnectionIdentities: async () => {
-            const identities =
-              await context.connectionService.listEngineConnectionIdentities();
-            if (identities.length > 256)
-              throw new Error('Inspection inventory exceeds its limit');
-            return identities;
-          },
-          loadAppConfig: () => context.configLoader.loadAppConfig(),
-          getProject: (slug) => context.projectService.getProject(slug),
-          getProviderAdapter: (provider) =>
-            context.orchestrationService.getProviderAdapter(provider),
-        }),
-      }),
+      ensembleInspection,
       resolveOrchestrationRequestPrincipal,
     ),
   );
@@ -5014,7 +5025,21 @@ export function configureRuntimeRoutes(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
       ...(isPersonalHost
-        ? { cliSessionGroupHome: context.configLoader.getProjectHomeDir() }
+        ? {
+            cliSessionGroupHome: context.configLoader.getProjectHomeDir(),
+            prepareEnsembleSessionGroup: (
+              input,
+              request,
+              principal,
+              assertCurrent,
+            ) =>
+              ensembleCliGroups.compose(
+                input,
+                request,
+                principal,
+                assertCurrent,
+              ),
+          }
         : {}),
       eventBus: context.eventBus,
       ...(delegationResults ? { delegationResults } : {}),

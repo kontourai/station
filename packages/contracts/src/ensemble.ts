@@ -16,6 +16,30 @@ export interface EnsembleInspectionInput {
   bindings: Record<string, { agent: string; projectSlug: string }>;
 }
 
+/** Preset content supplies briefs and models; receiver bindings supply no new authority. */
+export interface EnsembleCliSessionGroupInput {
+  path: string;
+  expectedPresetHash: string;
+  brief: string;
+  operationId: string;
+  maxConcurrent: number;
+  deadlineAt: number;
+  bindings: Record<
+    string,
+    {
+      target: Omit<
+        import('./delegation-group').CliSessionGroupCreateInput['members'][number]['target'],
+        'model' | 'workspace'
+      > & {
+        workspace: NonNullable<
+          import('./delegation-group').CliSessionGroupCreateInput['members'][number]['target']['workspace']
+        >;
+      };
+      needs: string[];
+    }
+  >;
+}
+
 export type EnsembleInspectionCategory =
   | 'members/models'
   | 'routing/triggers'
@@ -69,7 +93,7 @@ export interface EnsembleMember {
   readonly codename: string;
   readonly color: string;
   readonly role: string;
-  /** Expected provider, never a connection or credential selector. */
+  /** Expected engine identity; a precondition, never a credential selector. */
   readonly engine: string;
   readonly model: string;
   /** Preserved verbatim; preparation validates values against the selected engine catalog. */

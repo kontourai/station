@@ -47,6 +47,9 @@ export function createLocalEnsembleInventory(owners: {
     slug: string,
   ) => Awaited<ReturnType<ExecutionTargetResolverDependencies['getProject']>>;
   getProviderAdapter: ExecutionTargetResolverDependencies['getProviderAdapter'];
+  getConfiguredAcpConnection?: (
+    id: string,
+  ) => Promise<{ id: string; name: string; enabled: boolean } | undefined>;
 }): ExecutionTargetResolverDependencies {
   return {
     capturePreparationFence: (targets) => {
@@ -115,6 +118,25 @@ export function createLocalEnsembleInventory(owners: {
         (entry) => entry.id === id,
       );
       const adapter = identity && owners.getProviderAdapter(identity.engineId);
+      if (identity?.type === 'acp' && adapter) {
+        const connection = await owners.getConfiguredAcpConnection?.(id);
+        if (!connection || connection.id !== id)
+          throw new EnsemblePreparationRefusal(
+            'ensemble_auth_unsupported',
+            'Configured engine unavailable.',
+          );
+        return {
+          id,
+          name: connection.name,
+          kind: 'agent',
+          type: 'acp',
+          enabled: connection.enabled,
+          status: 'unknown',
+          capabilities: [...adapter.metadata.capabilities],
+          config: { provider: 'acp' },
+          prerequisites: [],
+        };
+      }
       if (!identity || !adapter || adapter.metadata.connectionId !== id)
         throw new EnsemblePreparationRefusal(
           'ensemble_auth_unsupported',

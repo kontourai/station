@@ -5127,6 +5127,12 @@ request-scope options as other client calls. Parsing accepts local named Agents,
 explicit expected engine connections, prompts and dependencies. It does not
 choose credentials, authorize an engine, or grant access to a workspace.
 
+`parseEnsembleCliSessionGroupInput` and `createEnsembleCliSessionGroup` use the
+preset entry point in that API. The request supplies an exact preset path/hash,
+brief and receiver bindings; the server composes the authored models, additions
+and roster. Creation requires the current locally granted operator and starts
+no engines. Use the returned group ID with `runCliSessionGroup` to start work.
+
 The root and `/queries` entries also export `useCliSessionGroupsQuery(scope,
 {enabled, afterGroupId?})`. Its cache key includes the API base and authority
 key; it rechecks the supplied `isCurrent()` fence around the HTTP read. The
