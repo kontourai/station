@@ -1,4 +1,5 @@
 import { type RefObject, useEffect, useId, useRef, useState } from 'react';
+import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNewProjectFormSubmit } from '../../hooks/useNewProjectFormSubmit';
 import type { useNewProjectModalState } from '../../hooks/useNewProjectModalState';
 import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
@@ -112,6 +113,7 @@ function NewProjectDirectoryInput({ state }: { state: NewProjectModalState }) {
         draft.setIcon('');
         draft.setShowIconChoices(false);
         draft.setDirectory(directory);
+        draft.setRepositoryAcquisition(null);
       }}
     />
   );
@@ -156,11 +158,18 @@ function NewProjectDetails({
   onAcquisitionBusy: (busy: boolean) => void;
 }) {
   const { draft, starter, submission } = state;
+  const authority = useHostRequestAuthorityScope();
   return (
     <>
       <NewProjectRepositorySource
         onBusyChange={onAcquisitionBusy}
-        onUseCheckout={(path, name) => {
+        onUseCheckout={(path, name, acquisitionId) => {
+          if (!authority?.isCurrent()) return;
+          draft.setRepositoryAcquisition({
+            id: acquisitionId,
+            directory: path,
+            authorityKey: authority.authorityKey,
+          });
           starter.resetForDirectory();
           draft.setDirectory(path);
           if (!draft.nameTouched) {
@@ -205,7 +214,7 @@ function NewProjectForm({
   state: NewProjectModalState;
   onClose: () => void;
 }) {
-  const { canSubmit, submit } = useNewProjectFormSubmit(state);
+  const { canSubmit, submit, sourceError } = useNewProjectFormSubmit(state);
   const [acquisitionBusy, setAcquisitionBusy] = useState(false);
 
   return (
@@ -230,6 +239,7 @@ function NewProjectForm({
           />
         </fieldset>
       </div>
+      {sourceError && <p role="alert">{sourceError}</p>}
       {state.submission.hasCreatedProject && (
         <p className="new-project-modal__recovery" role="status">
           Project created. Retry the selected starter layout to finish setup.

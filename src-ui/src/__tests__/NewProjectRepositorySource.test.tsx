@@ -102,7 +102,7 @@ test('explicit source and ref reach transport, checkout handoff is deliberate, a
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
       if (
-        url.endsWith('/projects/repository-acquisitions') &&
+        url.endsWith('/api/projects/repository-acquisitions') &&
         init?.method === 'POST'
       ) {
         posts++;
@@ -112,7 +112,7 @@ test('explicit source and ref reach transport, checkout handoff is deliberate, a
       if (
         record &&
         url.endsWith(
-          `/projects/repository-acquisitions/${record.request.requestId}`,
+          `/api/projects/repository-acquisitions/${record.request.requestId}`,
         )
       )
         return Response.json({ success: true, data: record });
@@ -131,6 +131,7 @@ test('explicit source and ref reach transport, checkout handoff is deliberate, a
   expect(first.onUseCheckout).toHaveBeenCalledWith(
     '/host/owned/checkout-1',
     'research',
+    record?.request.requestId,
   );
   expect(first.onBusyChange).toHaveBeenCalledWith(true);
   first.unmount();
@@ -147,7 +148,7 @@ test('a lost POST response is reconciled by reading the retained request, and an
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
       if (
-        url.endsWith('/projects/repository-acquisitions') &&
+        url.endsWith('/api/projects/repository-acquisitions') &&
         init?.method === 'POST'
       ) {
         posts++;
@@ -157,7 +158,7 @@ test('a lost POST response is reconciled by reading the retained request, and an
       if (
         record &&
         url.endsWith(
-          `/projects/repository-acquisitions/${record.request.requestId}`,
+          `/api/projects/repository-acquisitions/${record.request.requestId}`,
         )
       )
         return Response.json({ success: true, data: record });
@@ -195,7 +196,7 @@ test('failure exposes an explicit retry under the original request ID', async ()
     vi.fn(async (url: string, init?: RequestInit) => {
       if (
         init?.method === 'POST' &&
-        url.endsWith('/projects/repository-acquisitions')
+        url.endsWith('/api/projects/repository-acquisitions')
       ) {
         calls.push(url);
         record = {
@@ -210,7 +211,7 @@ test('failure exposes an explicit retry under the original request ID', async ()
         record &&
         init?.method === 'POST' &&
         url.endsWith(
-          `/projects/repository-acquisitions/${record.request.requestId}/retry`,
+          `/api/projects/repository-acquisitions/${record.request.requestId}/retry`,
         )
       ) {
         calls.push(url);
@@ -224,7 +225,7 @@ test('failure exposes an explicit retry under the original request ID', async ()
       if (
         record &&
         url.endsWith(
-          `/projects/repository-acquisitions/${record.request.requestId}`,
+          `/api/projects/repository-acquisitions/${record.request.requestId}`,
         )
       )
         return Response.json({ success: true, data: record });
@@ -242,6 +243,7 @@ test('failure exposes an explicit retry under the original request ID', async ()
     expect(view.onUseCheckout).toHaveBeenCalledWith(
       '/host/owned/checkout-2',
       'research',
+      record?.request.requestId,
     ),
   );
   expect(calls).toHaveLength(2);

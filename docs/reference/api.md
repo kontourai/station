@@ -103,6 +103,18 @@ preserves uncertainty; inspect the operation before retrying. These endpoints do
 not create a Project, install dependencies, authorize setup or promise that a
 previously acquired directory remains unchanged.
 
+To create a Project from a ready acquisition, send its UUID as
+`repositoryAcquisitionId` in `POST /api/projects`. This requires the operator.
+Station derives the owned checkout path; a supplied `workingDirectory` must
+match it. Creation rechecks repository containment, origin, HEAD and a clean
+working tree against a fresh index, including ignored/untracked files. Existing
+index flags cannot hide edits from this check. Missing, changed or unverifiable
+checkouts return 409 without deleting files. The Project retains a server-owned
+`repositorySource` with acquisition ID/attempt, explicit source/ref, canonical
+remote, commit and acquisition time. Clients cannot set or update this record.
+It describes acquisition at creation, rather than granting execution authority
+or asserting that future filesystem contents are unchanged.
+
 ## Choosing a working folder
 
 Naming a folder takes the authority to run commands there: for a paired

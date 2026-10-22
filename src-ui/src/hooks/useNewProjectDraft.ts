@@ -11,6 +11,11 @@ function useProjectDraftValues() {
   const [icon, setIcon] = useState('');
   const [description, setDescription] = useState('');
   const [directory, setDirectory] = useState('');
+  const [repositoryAcquisition, setRepositoryAcquisition] = useState<{
+    id: string;
+    directory: string;
+    authorityKey: string;
+  } | null>(null);
   const [nameTouched, setNameTouched] = useState(false);
   const [showIconChoices, setShowIconChoices] = useState(false);
   const [defaultEnvironment, setDefaultEnvironment] = useState<EnvironmentRef>({
@@ -21,6 +26,8 @@ function useProjectDraftValues() {
     description,
     defaultEnvironment,
     directory,
+    repositoryAcquisition,
+    setRepositoryAcquisition,
     icon,
     name,
     nameTouched,
@@ -63,6 +70,7 @@ export function useNewProjectDraft(isOpen: boolean) {
     draft.setDescription('');
     draft.setDefaultEnvironment({ kind: 'current' });
     draft.setDirectory('');
+    draft.setRepositoryAcquisition(null);
     draft.setNameTouched(false);
     draft.setShowIconChoices(false);
   };

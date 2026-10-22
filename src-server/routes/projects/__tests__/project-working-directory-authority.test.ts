@@ -408,3 +408,140 @@ test('repository acquisition uses operator Git authority and returns one durable
   );
   expect(invalid.status).toBe(400);
 });
+
+test('Project creation revalidates the acquisition and persists server-owned provenance', async () => {
+  const f = await fixture();
+  execGitSync(['init', '--initial-branch=main', f.folderA]);
+  writeFileSync(join(f.folderA, 'README.md'), 'repository bytes');
+  execGitSync(['add', '.'], { cwd: f.folderA });
+  execGitSync(
+    [
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.test',
+      'commit',
+      '-m',
+      'seed',
+    ],
+    { cwd: f.folderA },
+  );
+  const request = {
+    requestId: randomUUID(),
+    sourceUrl: f.folderA,
+    sourceRef: 'main',
+  };
+  const acquired = await f.send(
+    f.operator.credential,
+    'POST',
+    '/repository-acquisitions',
+    request,
+  );
+  expect(acquired.status).toBe(200);
+  expect(acquired.body.data.phase).toBe('ready');
+  const draft = {
+    name: 'Acquired',
+    slug: 'acquired',
+    repositoryAcquisitionId: request.requestId,
+  };
+  const device = await f.send(
+    f.pair('standard', [PAIRING_SCOPE_CODING_EXEC]),
+    'POST',
+    '',
+    draft,
+  );
+  expect(device.status).toBe(403);
+  const mismatched = await f.send(f.operator.credential, 'POST', '', {
+    ...draft,
+    workingDirectory: f.folderB,
+  });
+  expect(mismatched.status).toBe(409);
+  const forged = await f.send(f.operator.credential, 'POST', '', {
+    ...draft,
+    repositorySource: { resolvedCommit: 'fabricated' },
+  });
+  expect(forged.status).toBe(400);
+  const created = await f.send(f.operator.credential, 'POST', '', draft);
+  expect(created.status).toBe(201);
+  expect(created.body.data.workingDirectory).toBe(
+    acquired.body.data.checkoutPath,
+  );
+  expect(f.stored('acquired').repositorySource).toEqual({
+    acquisitionId: request.requestId,
+    attempt: 1,
+    sourceUrl: request.sourceUrl,
+    sourceRef: 'main',
+    canonicalRemote: acquired.body.data.canonicalRemote,
+    resolvedCommit: acquired.body.data.resolvedCommit,
+    acquiredAt: acquired.body.data.updatedAt,
+  });
+  expect(f.stored('acquired')).not.toHaveProperty('repositoryAcquisitionId');
+  const forgedUpdate = await f.send(f.operator.credential, 'PUT', '/acquired', {
+    repositorySource: undefined,
+    repositoryAcquisitionId: request.requestId,
+  });
+  expect(forgedUpdate.status).toBe(400);
+  writeFileSync(
+    join(acquired.body.data.checkoutPath, 'README.md'),
+    'edits after acquisition',
+  );
+  const changed = await f.send(f.operator.credential, 'POST', '', {
+    ...draft,
+    name: 'Changed',
+    slug: 'changed',
+  });
+  expect(changed.status).toBe(409);
+  expect(changed.body.error).toContain('Existing files were preserved');
+  execGitSync(['update-index', '--assume-unchanged', 'README.md'], {
+    cwd: acquired.body.data.checkoutPath,
+  });
+  const hiddenEdit = await f.send(f.operator.credential, 'POST', '', {
+    ...draft,
+    slug: 'hidden-edit',
+  });
+  expect(hiddenEdit.status).toBe(409);
+  execGitSync(['update-index', '--no-assume-unchanged', 'README.md'], {
+    cwd: acquired.body.data.checkoutPath,
+  });
+
+  expect(() => f.stored('changed')).toThrow();
+  writeFileSync(
+    join(acquired.body.data.checkoutPath, 'README.md'),
+    'repository bytes',
+  );
+  execGitSync(['remote', 'set-url', 'origin', f.folderB], {
+    cwd: acquired.body.data.checkoutPath,
+  });
+  const remoteChanged = await f.send(f.operator.credential, 'POST', '', {
+    ...draft,
+    slug: 'remote-changed',
+  });
+  expect(remoteChanged.status).toBe(409);
+  execGitSync(['remote', 'set-url', 'origin', f.folderA], {
+    cwd: acquired.body.data.checkoutPath,
+  });
+  writeFileSync(
+    join(acquired.body.data.checkoutPath, 'README.md'),
+    'new committed revision',
+  );
+  execGitSync(['add', '.'], { cwd: acquired.body.data.checkoutPath });
+  execGitSync(
+    [
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.test',
+      'commit',
+      '-m',
+      'move checkout HEAD',
+    ],
+    { cwd: acquired.body.data.checkoutPath },
+  );
+  const commitChanged = await f.send(f.operator.credential, 'POST', '', {
+    ...draft,
+    slug: 'commit-changed',
+  });
+  expect(commitChanged.status).toBe(409);
+  expect(() => f.stored('remote-changed')).toThrow();
+  expect(() => f.stored('commit-changed')).toThrow();
+});

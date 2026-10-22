@@ -5,6 +5,7 @@ import {
   useFileSystemBrowseQuery,
 } from '@kontourai/station-sdk';
 import { type FormEvent, useEffect, useState } from 'react';
+import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { userFacingErrorMessage } from '../utils/errorText';
 import { trackRecentLayout } from './useRecentLayouts';
 
@@ -14,6 +15,7 @@ interface ProjectDraft {
   icon?: string;
   description?: string;
   workingDirectory?: string;
+  repositoryAcquisitionId?: string;
   defaultEnvironment?: EnvironmentRef;
 }
 
@@ -45,6 +47,7 @@ interface RejectedSlug {
 }
 
 interface CreatedProject {
+  authorityKey?: string;
   slug: string;
   layoutId: string | null;
   layoutSlug?: string;
@@ -90,7 +93,8 @@ export function useNewProjectSubmit({
   verifySlugAvailability,
   onComplete,
 }: UseNewProjectSubmitOptions) {
-  const createProjectMutation = useCreateProjectMutation();
+  const authority = useHostRequestAuthorityScope();
+  const createProjectMutation = useCreateProjectMutation(authority);
   const { refetch: validateDirectory } = useFileSystemBrowseQuery(
     normalizedDirectory || undefined,
     { enabled: false },
@@ -189,13 +193,29 @@ export function useNewProjectSubmit({
           setRejectedSlug(null);
         }
 
+        if (authority && !authority.isCurrent())
+          throw new Error(
+            'Station access changed. Retry this Project on the selected Station.',
+          );
         const created = await createProjectMutation.mutateAsync(draft);
         // Retained with the created identity so a retry applies the SAME
         // starter this attempt chose, even if the picker moves underneath.
-        project = { slug: created.slug, layoutId: starterLayoutId };
+        project = {
+          slug: created.slug,
+          layoutId: starterLayoutId,
+          authorityKey: authority?.authorityKey,
+        };
         setCreatedProject(project);
       }
 
+      if (
+        project.authorityKey !== authority?.authorityKey ||
+        (authority && !authority.isCurrent())
+      ) {
+        throw new Error(
+          'Station access changed. Return to the Station account that created this Project to finish its starter.',
+        );
+      }
       if (project.layoutId) {
         const layoutId = project.layoutId;
         setApplyingStarter(true);
@@ -204,6 +224,7 @@ export function useNewProjectSubmit({
             apiBase,
             project.slug,
             layoutId,
+            authority ? { requestScope: authority } : undefined,
           );
           project = { ...project, layoutSlug: layout.slug };
           setCreatedProject(project);
@@ -213,6 +234,10 @@ export function useNewProjectSubmit({
         }
       }
 
+      if (authority && !authority.isCurrent())
+        throw new Error(
+          'Station access changed after setup. Return to the Station account that created this Project.',
+        );
       onComplete(project.slug, project.layoutSlug);
     } catch (err: unknown) {
       setError(

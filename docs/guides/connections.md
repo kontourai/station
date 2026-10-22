@@ -1134,7 +1134,10 @@ In **New Project**, open **Start from a Git repository**, enter the explicit
 HTTPS or SSH repository URL, and optionally choose a branch or tag. Choose
 **Acquire repository**, then **Use this checkout** to put the working copy into
 the Project draft. Station uses the repository name for an untouched name field.
-Create the Project and select its starter through the usual form.
+Create the Project and select its starter through the usual form. At creation,
+Station rechecks the checkout's origin, commit and unchanged files, then retains
+the acquisition source and exact commit on the Project. If files changed, Station
+preserves them and asks you to reacquire or deliberately choose the folder.
 
 Acquisition uses this host's Git credentials and currently requires the Station
 operator. URLs containing HTTPS user information, passwords, query strings or
@@ -1151,7 +1154,9 @@ can remain acquiring until inspected or explicitly retried. **Choose another
 source** clears the browser selection; it does not delete a working copy.
 
 The receipt records a completed acquisition, not continuing checkout integrity,
-Project binding, build readiness or a successful Agent turn. Provider repository
+build readiness or a successful Agent turn. Project creation separately rechecks
+the receipt and records historical provenance; later checkout changes still need
+the normal workspace checks. Provider repository
 pickers, account-specific Git credentials, cancellation and persistent Sources
 management remain part of the [onboarding epic](https://github.com/kontourai/station/issues/4027).
 See the [API contract](../reference/api.md#repository-acquisition).

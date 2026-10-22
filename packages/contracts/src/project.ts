@@ -11,6 +11,17 @@ export interface ProjectToolDefaults {
   knowledge?: boolean;
 }
 
+/** Historical verified acquisition used when this Project was created. */
+export interface ProjectRepositorySource {
+  acquisitionId: string;
+  attempt: number;
+  sourceUrl: string;
+  sourceRef?: string;
+  canonicalRemote: string;
+  resolvedCommit: string;
+  acquiredAt: string;
+}
+
 export interface ProjectConfig {
   id: string;
   name: string;
@@ -18,6 +29,7 @@ export interface ProjectConfig {
   icon?: string;
   description?: string;
   workingDirectory?: string;
+  repositorySource?: ProjectRepositorySource;
   /** Default workspace mode for newly started project threads. */
   defaultWorkspaceIsolation?: WorkspaceIsolationMode;
   /** Environment used when project execution does not select one explicitly. */

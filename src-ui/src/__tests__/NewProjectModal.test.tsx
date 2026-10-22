@@ -567,6 +567,11 @@ describe('NewProjectModal starter layout picker', () => {
         'http://localhost:3000',
         'my-project',
         'plugin:review',
+        {
+          requestScope: expect.objectContaining({
+            authorityKey: 'new-project-test-authority',
+          }),
+        },
       ),
     );
     expect(JSON.parse(localStorage.getItem('recentLayouts') ?? '[]')).toEqual([
@@ -650,6 +655,11 @@ describe('NewProjectModal starter layout picker', () => {
         'http://localhost:3000',
         'repo',
         'builtin:coding',
+        {
+          requestScope: expect.objectContaining({
+            authorityKey: 'new-project-test-authority',
+          }),
+        },
       ),
     );
     await waitFor(() =>

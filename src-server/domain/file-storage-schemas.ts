@@ -51,6 +51,18 @@ const projectSchema = z
     icon: optionalString,
     description: optionalString,
     workingDirectory: optionalString,
+    repositorySource: z
+      .object({
+        acquisitionId: z.string().uuid(),
+        attempt: z.number().int().positive(),
+        sourceUrl: nonEmptyString,
+        sourceRef: optionalString,
+        canonicalRemote: nonEmptyString,
+        resolvedCommit: z.string().regex(/^[a-f0-9]{40,64}$/),
+        acquiredAt: timestamp,
+      })
+      .strict()
+      .optional(),
     defaultWorkspaceIsolation: z.enum(['shared', 'worktree']).optional(),
     defaultEnvironment: z
       .discriminatedUnion('kind', [

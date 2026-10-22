@@ -59,6 +59,7 @@ import {
   type IStorageAdapter,
 } from '../../domain/storage-adapter.js';
 import {
+  isOperatorInPersonNotAgent,
   mayChooseWorkingDirectory,
   WORKING_DIRECTORY_NOT_GRANTED_CODE,
 } from '../../security/coding-authority.js';
@@ -93,6 +94,10 @@ import {
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import type { ProjectService } from '../../services/projects/project-service.js';
 import { resolveProjectWorkspacePath } from '../../services/projects/project-workspace-path.js';
+import {
+  RepositoryAcquisitionConflict,
+  RepositoryAcquisitionService,
+} from '../../services/projects/repository-acquisition-service.js';
 import { workspacePaneAvailabilityMetricAttributes } from '../../services/projects/workspace-pane-availability-resolver.js';
 import { readCurrentWorkspacePaneCatalog } from '../../services/projects/workspace-pane-catalog.js';
 import type { TerminalService } from '../../services/terminal/terminal-service.js';
@@ -507,6 +512,7 @@ export function createProjectRoutes(
   deps: ProjectRouteDeps = {},
 ) {
   const app = new Hono();
+  const acquisitions = new RepositoryAcquisitionService(projectHomeDir);
   app.route('/', createRepositoryAcquisitionRoutes(projectHomeDir));
   const resolution = deps.resolution;
   const listProjectCatalogue = createProjectCatalogueReader(
@@ -891,6 +897,28 @@ export function createProjectRoutes(
   app.post('/', validate(projectCreateSchema), async (c) => {
     const body = normalizeProjectBody(getBody(c));
     try {
+      if (Object.hasOwn(body, 'repositorySource')) {
+        return c.json(
+          {
+            success: false,
+            error: 'Repository provenance is owned by Station.',
+          },
+          400,
+        );
+      }
+      if (
+        body.repositoryAcquisitionId &&
+        !isOperatorInPersonNotAgent(c.req.raw)
+      ) {
+        return c.json(
+          {
+            success: false,
+            error:
+              'Using an acquired repository requires its Station operator.',
+          },
+          403,
+        );
+      }
       const knownAgents = await readKnownAgents();
       if (knownAgents) {
         const diagnostics = validateProjectAgentScope(body as any, {
@@ -928,10 +956,23 @@ export function createProjectRoutes(
         undefined,
       );
       if (folderRefusal) return folderRefusal;
-      const project = await projectService.createProject(body);
+      const { repositoryAcquisitionId, ...input } = body;
+      const acquired = repositoryAcquisitionId
+        ? await acquisitions.projectSource(
+            repositoryAcquisitionId,
+            input.workingDirectory,
+          )
+        : {};
+      const project = await projectService.createProject({
+        ...input,
+        ...acquired,
+      });
       projectOps.add(1, { op: 'create' });
       return c.json({ success: true, data: project }, 201);
     } catch (error: unknown) {
+      if (error instanceof RepositoryAcquisitionConflict) {
+        return c.json({ success: false, error: error.message }, 409);
+      }
       // 4-HOME-007: a name collision and a lost CAS race are both 409s from
       // the storage layer, and reporting both as "Project storage changed
       // before the operation could commit" told a user creating a second
@@ -1048,6 +1089,18 @@ export function createProjectRoutes(
     try {
       const slug = param(c, 'slug');
       const body = normalizeProjectBody(getBody(c));
+      if (
+        Object.hasOwn(body, 'repositorySource') ||
+        Object.hasOwn(body, 'repositoryAcquisitionId')
+      ) {
+        return c.json(
+          {
+            success: false,
+            error: 'Repository acquisition provenance cannot be edited.',
+          },
+          400,
+        );
+      }
       const knownAgents = await readKnownAgents();
       if (knownAgents) {
         const existing = await projectService.getProject(slug);

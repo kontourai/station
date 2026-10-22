@@ -211,6 +211,7 @@ export const projectCreateSchema = z
     slug: z.string().optional(),
     icon: projectIconSchema,
     workingDirectory: z.string().optional(),
+    repositoryAcquisitionId: z.string().uuid().optional(),
     description: z.string().optional(),
     defaultEnvironment: projectEnvironmentRefSchema.optional(),
     toolDefaults: z

@@ -1,9 +1,11 @@
 import { mkdirSync } from 'node:fs';
-import { devNull } from 'node:os';
-import { isAbsolute, join } from 'node:path';
+import { lstat, mkdtemp, realpath, rm } from 'node:fs/promises';
+import { devNull, tmpdir } from 'node:os';
+import { isAbsolute, join, resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { normalizeGitOrigin } from '@kontourai/station-contracts/git-remote-identity';
 import type {
+  ProjectRepositorySource,
   RepositoryAcquisition,
   RepositoryAcquisitionRequest,
 } from '@kontourai/station-contracts/project';
@@ -12,6 +14,7 @@ import { z } from 'zod/v3';
 import { execGit, isLocalGitSource } from '../../utils/git-exec.js';
 import { JsonFileStore } from '../infra/json-store.js';
 import { readCheckoutRemotes } from './checkout-remote-reader.js';
+import { requireProjectRepository } from './git-read-repository.js';
 import { checkRepositoryConfig } from './git-repository-config.js';
 
 export const repositoryAcquisitionRequestSchema = z
@@ -138,6 +141,112 @@ export class RepositoryAcquisitionService {
       throw new Error('Ready repository receipt is incomplete.');
     }
     return record;
+  }
+
+  async projectSource(
+    id: string,
+    directory?: string,
+  ): Promise<{
+    workingDirectory: string;
+    repositorySource: ProjectRepositorySource;
+  }> {
+    const record = this.get(id);
+    if (
+      record?.phase !== 'ready' ||
+      !record.resolvedCommit ||
+      !record.canonicalRemote
+    ) {
+      throw new RepositoryAcquisitionConflict(
+        'Acquire and verify the repository before creating the Project.',
+      );
+    }
+    if (directory && resolve(directory) !== record.checkoutPath) {
+      throw new RepositoryAcquisitionConflict(
+        'The selected directory no longer matches this acquisition.',
+      );
+    }
+    try {
+      const repository = await requireProjectRepository(
+        record.checkoutPath,
+        record.checkoutPath,
+      );
+      const checkout = await lstat(record.checkoutPath);
+      if (
+        !checkout.isDirectory() ||
+        checkout.isSymbolicLink() ||
+        repository.top !== (await realpath(record.checkoutPath))
+      )
+        throw new Error('Checkout root changed.');
+      const config = await checkRepositoryConfig(record.checkoutPath, 'read');
+      if (!config.ok) throw new Error('Checkout configuration was refused.');
+      const options = {
+        cwd: record.checkoutPath,
+        timeout: 10000,
+        env: { GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: '1' },
+      };
+      const commit = (
+        await execGit(['rev-parse', '--verify', 'HEAD^{commit}'], options)
+      ).stdout.trim();
+      const indexDirectory = await mkdtemp(
+        join(tmpdir(), 'station-acquisition-index-'),
+      );
+      let status: string;
+      try {
+        // A fresh index does not inherit assume-unchanged or skip-worktree bits.
+        const indexedOptions = {
+          ...options,
+          env: {
+            ...options.env,
+            GIT_INDEX_FILE: join(indexDirectory, 'index'),
+          },
+        };
+        await execGit(['read-tree', record.resolvedCommit], indexedOptions);
+        status = (
+          await execGit(
+            [
+              'status',
+              '--porcelain=v1',
+              '--untracked-files=normal',
+              '--ignored=matching',
+            ],
+            indexedOptions,
+          )
+        ).stdout;
+      } finally {
+        await rm(indexDirectory, { recursive: true, force: true });
+      }
+      const remotes = await readCheckoutRemotes(record.checkoutPath);
+      if (
+        commit !== record.resolvedCommit ||
+        status.trim() ||
+        !remotes.ok ||
+        !remotes.remotes.some(
+          (remote) =>
+            remote.name === 'origin' &&
+            normalizeGitOrigin(remote.url) === record.canonicalRemote,
+        )
+      ) {
+        throw new Error('Checkout no longer matches acquisition.');
+      }
+    } catch {
+      throw new RepositoryAcquisitionConflict(
+        'The acquired working copy changed or could not be verified. Reacquire it, or choose the folder explicitly. Existing files were preserved.',
+      );
+    }
+    return {
+      workingDirectory: record.checkoutPath,
+      repositorySource: {
+        acquisitionId: record.request.requestId,
+        attempt: record.attempt,
+        sourceUrl: record.request.sourceUrl,
+        ...(record.request.sourceRef
+          ? { sourceRef: record.request.sourceRef }
+          : {}),
+        canonicalRemote: record.canonicalRemote,
+        resolvedCommit: record.resolvedCommit,
+        acquiredAt: record.updatedAt,
+      },
+    };
   }
 
   async acquire(

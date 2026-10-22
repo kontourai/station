@@ -21,7 +21,8 @@ without adding a model API key:
 4. When you want to work with files, choose **Open local project** on Home and
    select an existing folder. To acquire a working copy instead, open **New
    Project → Start from a Git repository**, enter its HTTPS or SSH URL, choose
-   **Acquire repository**, then **Use this checkout**. Acquisition currently
+   **Acquire repository**, then **Use this checkout**. Creating the Project rechecks
+   that working copy and retains its source and exact commit. Acquisition currently
    requires the Station operator and uses that host's Git credentials.
    Station recommends **Coding** for a Git repository. Choose **Create** to open
    the Project. See [repository setup and recovery](../guides/connections.md#start-a-project-from-a-repository).

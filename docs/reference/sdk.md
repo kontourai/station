@@ -1388,7 +1388,14 @@ Renames a conversation and invalidates that agent's conversation list on success
 
 Deletes a conversation, invalidates that agent's conversation list, and removes its cached message query on success.
 
-### `useCreateProjectMutation()`
+### `useCreateProjectMutation(requestScope?)`
+
+`useCreateProjectMutation(requestScope?)` accepts an optional captured host
+request scope and a `repositoryAcquisitionId` in its input. Station revalidates
+the ready acquisition and derives the working directory before creating the
+Project. The returned `ProjectConfig.repositorySource` is historical,
+server-owned provenance. It does not authorize execution or replace the
+workspace checks when an Agent starts. See [repository acquisition](api.md#repository-acquisition).
 
 Creates a new project. Invalidates `['projects']` on success.
 

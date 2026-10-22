@@ -746,7 +746,8 @@ export function useDeleteProjectLayoutMutation(
   });
 }
 
-export function useCreateProjectMutation() {
+export function useCreateProjectMutation(requestScope?: ApiRequestScope) {
+  const scope = captureProjectScope(requestScope);
   return useApiMutation(
     async (data: {
       name: string;
@@ -754,11 +755,17 @@ export function useCreateProjectMutation() {
       description?: string;
       icon?: string;
       workingDirectory?: string;
+      /** Retained acquisition reverified by Station before Project creation. */
+      repositoryAcquisitionId?: string;
       /** Per-Project override of the Station's workspace isolation. */
       defaultWorkspaceIsolation?: 'shared' | 'worktree';
     }) => {
-      const apiBase = await _getApiBase();
-      return createProjectRaw(apiBase, data);
+      const apiBase = scope?.apiBase ?? (await _getApiBase());
+      return createProjectRaw(
+        apiBase,
+        data,
+        scope ? { requestScope: scope } : undefined,
+      );
     },
     { invalidateKeys: [['projects']] },
   );

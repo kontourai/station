@@ -14,7 +14,7 @@ import { userFacingErrorMessage } from '../../utils/errorText';
 import { Button } from '../Button';
 
 interface Props {
-  onUseCheckout: (path: string, name: string) => void;
+  onUseCheckout: (path: string, name: string, acquisitionId: string) => void;
   onBusyChange: (busy: boolean) => void;
 }
 
@@ -70,8 +70,8 @@ function RepositorySourceControls({
       retry: boolean;
     }) => {
       const path = input.retry
-        ? `/projects/repository-acquisitions/${encodeURIComponent(input.request.requestId)}/retry`
-        : '/projects/repository-acquisitions';
+        ? `/api/projects/repository-acquisitions/${encodeURIComponent(input.request.requestId)}/retry`
+        : '/api/projects/repository-acquisitions';
       const response = await mutateJson(
         `${scope.apiBase}${path}`,
         'POST',
@@ -102,7 +102,7 @@ function RepositorySourceControls({
       query.state.data?.phase === 'acquiring' ? 2000 : false,
     queryFn: async () => {
       const response = await getJson(
-        `${scope.apiBase}/projects/repository-acquisitions/${encodeURIComponent(requestId)}`,
+        `${scope.apiBase}/api/projects/repository-acquisitions/${encodeURIComponent(requestId)}`,
         { requestScope: scope },
       );
       const data = await readEnvelopeOrThrow<RepositoryAcquisition>(response);
@@ -217,6 +217,7 @@ function RepositorySourceControls({
                       .filter(Boolean)
                       .pop()
                       ?.replace(/\.git$/, '') ?? 'Repository',
+                    record.request.requestId,
                   );
                 }}
               >
