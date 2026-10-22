@@ -5,9 +5,10 @@ Status: active implementation plan; unfinished acceptance is not qualified.
 This is the single ongoing branch `feat/continuity-epic-followthrough`, owned by
 the continuity/Happier thread `7d385283-8974-4eeb-8f3b-8ba915efc58a`.
 Its initial base is published master #3991 at
-`d96f54887837be058c5e5119b8028daab0befea1`. That master is open and unmerged.
-Merge subsequent published master changes and final main normally before
-publication. Preserve the superseded original branches, unfinished index and
+`d96f54887837be058c5e5119b8028daab0befea1`. Master #3991 subsequently landed
+on main as `1dd83e0f305149b2d28e2eaff6645358cde5ad7f` and was merged normally
+into this branch at `750f63e4a94`. Continue merging relevant main changes
+normally before publication. Preserve the superseded original branches, unfinished index and
 evidence. Open one PR only after this branch's agreed work is complete.
 
 ## Work already supplied by the master or earlier main
@@ -425,3 +426,25 @@ The feature is not ready for publication: remaining documentation reviews,
 independent branch review, fresh live onboarding/provider lifecycle and the real
 two-account acceptance are still open. Sign-in remains deferred; this checkpoint
 adds no PR, push, queue, landing or live-account claim.
+
+### October 22 source and review continuation
+
+The October 21 integration at `750f63e4a94` passed 34 focused fork/handoff/pin
+tests and scoped Veritas boundary readiness. The documentation freshness check
+against landed main still selected 111 records and two media captures. Those
+results do not qualify subsequent source.
+
+Latest main `d5c4a9a78e1271f0fb8212f2816b13466ae541e8` was merged normally at
+`a98687bd457`. The SDK ledger conflict retains both the conversation-open
+source relationship and the landed SDK relationships. The first MCP reader
+generation failed because this worktree's managed dependencies were missing,
+and the merge accidentally retained the generated file's conflict markers.
+`dependencies:ci` restored the managed graph and armed hooks; canonical
+regeneration then replaced those markers and produced 117 topics with digest
+`e163e1a4f9dbcbeb533e245eceb022dff0a7f29c89a78e620ecd2699f1a508b3`.
+The failed attempt is retained in the October 22 reader log; it is not a passing
+receipt. The resulting source still needs exact-head qualification.
+
+No unrelated lane is a landing prerequisite. Documentation and independent
+review, live external-client onboarding, native lifecycle, and real two-account
+selection/application remain separate acceptance work. Sign-in remains deferred.

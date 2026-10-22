@@ -13,11 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-<<<<<<< HEAD
-  'e399ecf6976c892529a3eb7046c060dca94f9fc5801c1f457d01b8c371f2f2b0';
-=======
-  '8bd9537e60eb05d46f97f2d99df03bf68dc2ec54acb0b53d42c5d8e23a9c303c';
->>>>>>> origin/main
+  'e163e1a4f9dbcbeb533e245eceb022dff0a7f29c89a78e620ecd2699f1a508b3';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
