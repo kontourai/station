@@ -50,10 +50,10 @@ import { engineCredentialEnvFor } from './engine-credentials.js';
 
 /** Terminal sessions for sign-ins live under this project slug, which no Project can take. */
 export const ENGINE_SIGN_IN_TERMINAL_PROJECT = '.engine-sign-in';
-export const SIGN_IN_HANDSHAKE_TIMEOUT_MS = 30_000;
-export const SIGN_IN_METHODS_TTL_MS = 5 * 60_000;
-export const AGENT_SIGN_IN_TIMEOUT_MS = 5 * 60_000;
-export const TERMINAL_SIGN_IN_TIMEOUT_MS = 15 * 60_000;
+const SIGN_IN_HANDSHAKE_TIMEOUT_MS = 30_000;
+const SIGN_IN_METHODS_TTL_MS = 5 * 60_000;
+const AGENT_SIGN_IN_TIMEOUT_MS = 5 * 60_000;
+const TERMINAL_SIGN_IN_TIMEOUT_MS = 15 * 60_000;
 /** How long a finished attempt stays readable. */
 const FINISHED_ATTEMPT_TTL_MS = 10 * 60_000;
 const MAX_LIVE_ATTEMPTS = 4;
@@ -129,7 +129,7 @@ function boundedText(value: unknown, max: number): string | undefined {
 }
 
 /** https links in engine output, deduplicated, never anything else. */
-export function linksIn(text: string): string[] {
+function linksIn(text: string): string[] {
   const found: string[] = [];
   for (const match of text.matchAll(/https:\/\/[^\s"'<>`]+/g)) {
     const raw = match[0].replace(/[).,;:\]]+$/, '');

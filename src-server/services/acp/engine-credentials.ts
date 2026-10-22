@@ -12,7 +12,7 @@ import { registryAuthFor } from './acp-engine-descriptors.js';
 
 const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 /** Generous for any vendor key; refuses pasted files. */
-export const ENGINE_CREDENTIAL_VALUE_MAX = 8192;
+const ENGINE_CREDENTIAL_VALUE_MAX = 8192;
 
 /** One bucket per connection; the document holds nothing else. */
 function bucket(connectionId: string): string {

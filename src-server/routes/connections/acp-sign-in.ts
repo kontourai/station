@@ -52,7 +52,7 @@ function granted(c: Context): string | undefined {
 }
 
 /** May start a sign-in or change a key: the operator in person, or a device granted `engine:login`. */
-export function maySignInEngines(c: Context): boolean {
+function maySignInEngines(c: Context): boolean {
   const request = c.req.raw;
   if (requestMayBeAnAgent(request)) return false;
   if (isOperatorInPersonNotAgent(request)) return true;
@@ -65,7 +65,7 @@ export function maySignInEngines(c: Context): boolean {
 }
 
 /** May run an engine's login in a host terminal and attach to it. */
-export function mayRunTerminalSignIn(c: Context): boolean {
+function mayRunTerminalSignIn(c: Context): boolean {
   if (!maySignInEngines(c)) return false;
   const request = c.req.raw;
   if (isOperatorInPersonNotAgent(request)) return true;
