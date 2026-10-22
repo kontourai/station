@@ -74,7 +74,17 @@ export function CliSessionGroupsPanel({
               key={group.groupId}
               aria-label={`Session group ${group.groupId}`}
             >
-              <h3>{group.groupId}</h3>
+              <h3>{group.preset?.name ?? group.groupId}</h3>
+              {group.preset && (
+                <p>
+                  Preset {group.preset.presetId} · Stationmaster{' '}
+                  {group.preset.stationmaster}
+                  <br />
+                  Source <code>{group.preset.sha256}</code>
+                  <br />
+                  Group <code>{group.groupId}</code>
+                </p>
+              )}
               <p>
                 Flow: {group.flow?.status ?? 'not prepared'} · Supervision:{' '}
                 {group.supervision === 'active' ? 'active' : 'not running here'}

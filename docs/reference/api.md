@@ -1703,6 +1703,13 @@ briefs; it does not start sessions or prove authentication. Editing the preset
 after creation does not change those briefs. Run performs the normal current
 delegation and engine-start checks. Hard fiscal guarantees remain unavailable.
 
+New preset-derived records also retain `preset` identity (`presetId`, `name`,
+`sha256`, `stationmaster`). The inventory shows that name and source digest;
+neither the host path nor raw preset JSON is included in the view. Exact source
+identity participates in operation replay, so changed bytes conflict even when
+they parse to the same roster. Older groups have no recorded preset identity;
+the server does not reconstruct it from prompt text.
+
 The authenticated credential/caller binding owns group mutations. The current
 in-person local operator may also inspect a group from another credential, but
 every accepted member must pass Station's existing session-read check. Inspection

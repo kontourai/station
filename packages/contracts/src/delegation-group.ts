@@ -128,6 +128,13 @@ export type DelegationGroupRawOutputResult = {
 };
 
 /** Session groups use Station authority; they do not claim portable envelope enforcement. */
+export type CliSessionGroupPresetIdentity = {
+  presetId: string;
+  name: string;
+  sha256: string;
+  stationmaster: string;
+};
+
 export type CliSessionGroupView = {
   version: 'station.cli-session-group/v1';
   groupId: string;
@@ -137,6 +144,7 @@ export type CliSessionGroupView = {
   deadlineAt: number;
   maxConcurrent: number;
   dispatchCount: number;
+  preset?: CliSessionGroupPresetIdentity;
   guarantees: {
     authority: 'station-session';
     portableFlowLineage: 'unbound';

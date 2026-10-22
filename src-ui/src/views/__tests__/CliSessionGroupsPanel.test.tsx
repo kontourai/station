@@ -25,6 +25,12 @@ const group: CliSessionGroupView = {
   deadlineAt: 1792629000000,
   maxConcurrent: 2,
   dispatchCount: 2,
+  preset: {
+    presetId: 'team',
+    name: 'Retained team',
+    sha256: `sha256:${'b'.repeat(64)}`,
+    stationmaster: 'first',
+  },
   guarantees: {
     authority: 'station-session',
     portableFlowLineage: 'unbound',
@@ -116,6 +122,8 @@ test('explicit inspection uses real SDK inventory, shows actual dependencies and
   await screen.findByRole('table', {
     name: 'Members and dependencies for cli-observed',
   });
+  expect(screen.getByRole('heading', { name: 'Retained team' })).toBeDefined();
+  expect(screen.getByText(group.preset!.sha256)).toBeDefined();
   expect(String(fetch.mock.calls[0]?.[0])).toBe(
     'https://station.test/api/orchestration/session-groups',
   );

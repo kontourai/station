@@ -97,6 +97,18 @@ const viewSchema: z.ZodType<CliSessionGroupView> = z
     deadlineAt: z.number().int().positive(),
     maxConcurrent: z.number().int().min(1).max(32),
     dispatchCount: z.number().int().min(0).max(32),
+    preset: z
+      .object({
+        presetId: z.string().min(1).max(64),
+        name: z.string().min(1).max(128),
+        sha256: z
+          .string()
+          .max(71)
+          .regex(/^sha256:[0-9a-f]{64}$/),
+        stationmaster: seatId,
+      })
+      .strict()
+      .optional(),
     guarantees: z
       .object({
         authority: z.literal('station-session'),

@@ -1046,6 +1046,7 @@ describe('production Ensemble preparation authentication', () => {
         'projection',
         'provider',
         'executable',
+        'acp-config',
       ] as const) {
         const f = await fixture(engine);
         let privateSetup = false;
@@ -1059,6 +1060,18 @@ describe('production Ensemble preparation authentication', () => {
           if (!privateSetup || changed) return result;
           changed = true;
           await Promise.resolve();
+          if (change === 'acp-config') {
+            await f.configLoader.saveACPConfig({
+              connections: [
+                {
+                  id: 'opencode',
+                  name: 'Changed during preparation',
+                  command: 'unused',
+                  enabled: false,
+                },
+              ],
+            });
+          }
           if (change === 'pin') {
             f.execution.credentialProfileRef = 'new-pin';
             await f.persist();

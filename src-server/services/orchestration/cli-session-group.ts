@@ -15,7 +15,10 @@ import {
   orchestrateFlowMultiCursor,
 } from '@kontourai/flow-agents';
 import { canonicalJson } from '@kontourai/relay';
-import type { CliSessionGroupView } from '@kontourai/station-contracts/delegation-group';
+import type {
+  CliSessionGroupPresetIdentity,
+  CliSessionGroupView,
+} from '@kontourai/station-contracts/delegation-group';
 import {
   publishJsonFileWithOwnedLock,
   readJsonFile,
@@ -54,6 +57,18 @@ const recordSchema = z
     cancelled: z.boolean(),
     flowReady: z.boolean(),
     dispatchCount: z.number().int().min(0).max(32),
+    preset: z
+      .object({
+        presetId: z.string().min(1).max(64),
+        name: z.string().min(1).max(128),
+        sha256: z
+          .string()
+          .max(71)
+          .regex(/^sha256:[0-9a-f]{64}$/),
+        stationmaster: id,
+      })
+      .strict()
+      .optional(),
     seats: z
       .array(
         z
@@ -189,7 +204,11 @@ export class CliSessionGroups<T> {
         record.seats.filter((s) => s.state !== 'pending').length ||
       record.seats.some(
         (s) => (s.state === 'started' || s.state === 'terminal') && !s.handle,
-      )
+      ) ||
+      (record.preset !== undefined &&
+        !record.seats.some(
+          (seat) => seat.seatId === record.preset?.stationmaster,
+        ))
     )
       throw new CliSessionGroupUnavailable('group_storage_unavailable');
     return record;
@@ -221,6 +240,7 @@ export class CliSessionGroups<T> {
       seats: { seatId: string; input: T; needs: string[] }[];
       maxConcurrent: number;
       deadlineAt: number;
+      preset?: CliSessionGroupPresetIdentity;
     },
     assertCurrent: () => void,
   ): Promise<CliSessionGroupView> {
@@ -264,11 +284,19 @@ export class CliSessionGroups<T> {
         cancelled: false,
         flowReady: false,
         dispatchCount: 0,
+        ...(input.preset ? { preset: input.preset } : {}),
         seats: input.seats.map((s) => ({ ...s, state: 'pending' })),
         scheduleEvents: [],
       });
       if (
         new Set(record.seats.map((s) => s.seatId)).size !== record.seats.length
+      )
+        throw new CliSessionGroupUnavailable('group_invalid');
+      if (
+        record.preset &&
+        !record.seats.some(
+          (seat) => seat.seatId === record.preset?.stationmaster,
+        )
       )
         throw new CliSessionGroupUnavailable('group_invalid');
       for (const seat of record.seats) this.parseInput(seat.input);
@@ -408,6 +436,7 @@ export class CliSessionGroups<T> {
       deadlineAt: record.deadlineAt,
       maxConcurrent: record.maxConcurrent,
       dispatchCount: record.dispatchCount,
+      ...(record.preset ? { preset: record.preset } : {}),
       guarantees: {
         authority: 'station-session',
         portableFlowLineage: 'unbound',

@@ -26,7 +26,6 @@ import type {
   ConversationContextBoundaryProjection,
   ConversationContextBoundaryRequest,
 } from '@kontourai/station-contracts/conversation-context-boundary';
-import type { CliSessionGroupCreateInput } from '@kontourai/station-contracts/delegation-group';
 import type { EnsembleCliSessionGroupInput } from '@kontourai/station-contracts/ensemble';
 import {
   type EnvironmentRef,
@@ -157,6 +156,7 @@ import type {
   DelegationResultDelivery,
 } from '../../services/orchestration/delegation-result-delivery.js';
 import type { DispatchCwdAdmission } from '../../services/orchestration/dispatch-cwd-admission.js';
+import type { PreparedEnsembleCliSessionGroup } from '../../services/orchestration/ensemble-cli-session-group.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import {
   AdoptionContinuationInProgressError,
@@ -2130,7 +2130,7 @@ export function createOrchestrationRoutes(
       request: Request,
       principal: PrincipalRef,
       assertCurrent: () => void,
-    ) => Promise<CliSessionGroupCreateInput>;
+    ) => Promise<PreparedEnsembleCliSessionGroup>;
     /** Personal-only producer binding authority. Hosted requires a tenant adapter. */
     answerAssessmentModule?: AnswerAssessmentModule;
     /** Personal-only exact retained narrative binding owner. */
@@ -4501,7 +4501,8 @@ export function createOrchestrationRoutes(
         principal,
         authority.assertCurrent,
       );
-      const validated = groupCreateSchema.parse(input);
+      const { preset, ...creation } = input;
+      const validated = groupCreateSchema.parse(creation);
       return groups.create(
         authority.owner,
         validated.operationId,
@@ -4513,6 +4514,7 @@ export function createOrchestrationRoutes(
           })),
           maxConcurrent: validated.maxConcurrent,
           deadlineAt: validated.deadlineAt,
+          preset,
         },
         authority.assertCurrent,
       );

@@ -5135,6 +5135,11 @@ current locally granted operator; caller-supplied JSON uses ordinary group
 request authority. Creation starts no engines. Use the returned group ID with
 `runCliSessionGroup` to start work.
 
+Preset-derived views may include the retained `preset` identity: preset ID,
+name, exact source hash and Stationmaster member ID. Older records omit it.
+The value describes the source saved with the group, not a fresh file read or
+an execution-authority receipt.
+
 The root SDK exports `useCreateEnsembleCliSessionGroup(scope)`,
 `useRunCliSessionGroup(scope)` and `useCancelCliSessionGroup(scope)` for these
 explicit actions. They use the captured request scope and recheck its currency

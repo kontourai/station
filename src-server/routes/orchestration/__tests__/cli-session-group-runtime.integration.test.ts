@@ -693,6 +693,23 @@ test('a locally authorized preset produces actual member turns with authored mod
     });
   const uploaded = await submitUpload(upload);
   expect(uploaded.status, await uploaded.clone().text()).toBe(200);
+  const uploadedView = (
+    (await uploaded.clone().json()) as { data: CliSessionGroupView }
+  ).data;
+  expect(uploadedView.preset).toEqual({
+    presetId: 'team',
+    name: 'Delivery team',
+    sha256: input.expectedPresetHash,
+    stationmaster: 'lead',
+  });
+  const spaced = `${bytes} `;
+  const changedSourceReplay = await submitUpload({
+    ...upload,
+    presetJson: spaced,
+    expectedPresetHash: `sha256:${createHash('sha256').update(spaced).digest('hex')}`,
+  });
+  expect(changedSourceReplay.status).toBe(409);
+  expect(await changedSourceReplay.text()).toContain('group_conflict');
   expect(
     ((await uploaded.json()) as { data: CliSessionGroupView }).data.members.map(
       (member) => member.seatId,
@@ -731,6 +748,14 @@ test('a locally authorized preset produces actual member turns with authored mod
   expect(ran.status, await ran.clone().text()).toBe(200);
   const final = ((await ran.json()) as { data: CliSessionGroupView }).data;
   expect(final.flow?.status).toBe('completed');
+  const retained = await f.app.request(
+    `/api/orchestration/session-groups/${group.groupId}`,
+    { headers: { Authorization: `Bearer ${local.credential}` } },
+  );
+  expect(
+    ((await retained.json()) as { data: CliSessionGroupView }).data.preset,
+  ).toEqual(group.preset);
+  expect(group.preset?.sha256).toBe(input.expectedPresetHash);
   expect(f.adapter.turns).toHaveLength(3);
   for (const member of preset.members) {
     const handle = final.members.find((entry) => entry.seatId === member.id)!

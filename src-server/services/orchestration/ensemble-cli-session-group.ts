@@ -1,5 +1,8 @@
 import { createHash } from 'node:crypto';
-import type { CliSessionGroupCreateInput } from '@kontourai/station-contracts/delegation-group';
+import type {
+  CliSessionGroupCreateInput,
+  CliSessionGroupPresetIdentity,
+} from '@kontourai/station-contracts/delegation-group';
 import {
   composeEnsembleBrief,
   type EnsembleCliSessionGroupInput,
@@ -13,6 +16,10 @@ import {
 import { CliSessionGroupUnavailable } from './cli-session-group.js';
 import type { EnsembleInspectionService } from './ensemble-inspection.js';
 import { loadEnsemblePreset } from './ensemble-presets.js';
+
+export type PreparedEnsembleCliSessionGroup = CliSessionGroupCreateInput & {
+  preset: CliSessionGroupPresetIdentity;
+};
 
 /** Resolves configuration only. Actual startup authentication belongs to the member runtime. */
 export class EnsembleCliSessionGroupPreparation {
@@ -29,7 +36,7 @@ export class EnsembleCliSessionGroupPreparation {
     request: Request,
     principal: PrincipalRef,
     assertCurrent: () => void,
-  ): Promise<CliSessionGroupCreateInput> {
+  ): Promise<PreparedEnsembleCliSessionGroup> {
     input = structuredClone(input);
     if ((input.path === undefined) === (input.presetJson === undefined))
       throw new CliSessionGroupUnavailable('group_invalid');
@@ -114,6 +121,12 @@ export class EnsembleCliSessionGroupPreparation {
       maxConcurrent: input.maxConcurrent,
       deadlineAt: input.deadlineAt,
       members,
+      preset: {
+        presetId: source.preset.id,
+        name: source.preset.name,
+        sha256: source.sha256,
+        stationmaster: source.preset.stationmaster,
+      },
     };
   }
 }
