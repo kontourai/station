@@ -272,7 +272,7 @@ expiry** — so a long Station chat previously received `{}` *as its refreshed
 token* and then failed downstream in a confusing way.
 
 Station holds `STATION_INTERNAL_API_TOKEN` and model-connection credentials
-in the same process; an external agent is a less-trusted principal. And
+in the same process; an external agent is a less-trusted principal.
 Station does not read or bridge an engine's own login tokens or answer its
 credential callbacks. **Station does not become an engine's auth host.**
 A person may separately save an API key for a connection; Station stores it
@@ -282,7 +282,7 @@ environment (see [Sign an engine in](connections.md#sign-an-engine-in)).
 After refusing the credential callback on the wire, the adapter attempts at
 most one bounded re-establishment from its own validated resume cursor. It
 requires the same connection/fingerprint and live `loadSession` support; it
-does not read, refresh, or forward an engine credential. A missing safe cursor,
+does not read, refresh, or forward the engine's own login tokens. A missing safe cursor,
 failed recovery, or repeated refusal falls back to one `runtime.warning` per
 session per method (`code: acp.credential-request-refused`) telling the user
 to sign in with the engine's own CLI and start a new chat, since a fresh
