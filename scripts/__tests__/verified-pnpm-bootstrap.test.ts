@@ -1,4 +1,3 @@
-import { readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 import { afterEach, expect, test, vi } from 'vitest';
 import {
@@ -8,12 +7,7 @@ import {
   verifyMetadata,
 } from '../../.github/actions/setup-verified-pnpm/bootstrap.mjs';
 
-const metadata = JSON.parse(
-  readFileSync(
-    new URL('./fixtures/pnpm-bootstrap/11.25.0.json', import.meta.url),
-    'utf8',
-  ),
-);
+import metadata from './fixtures/pnpm-bootstrap/11.25.0.json';
 
 afterEach(() => vi.unstubAllGlobals());
 
