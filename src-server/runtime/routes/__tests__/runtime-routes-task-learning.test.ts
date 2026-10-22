@@ -17,6 +17,8 @@
  * provider (no engine), with the room execution binding written by the same
  * store method a provider start uses.
  */
+
+import { mkdirSync, realpathSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
@@ -399,10 +401,11 @@ describe("a done Task's lessons are promoted by a person, never by an agent", ()
       return read.json.data;
     };
 
-    const createProjectStore = async () => {
+    const createProjectStore = async (storeRoot?: string) => {
       const created = await asOperator('POST', '/api/knowledge/roots', {
         scope: { kind: 'project', projectSlug: PROJECT },
         adapterId: 'kit-default-store',
+        ...(storeRoot ? { storeRoot } : {}),
       });
       expect(created.status, JSON.stringify(created.json)).toBe(201);
       return created.json.data as KnowledgeStoreRoot;
@@ -697,6 +700,127 @@ describe("a done Task's lessons are promoted by a person, never by an agent", ()
     expect(
       await (await e.knowledge.adapterFor(root.id)).listByType('raw'),
     ).toEqual([]);
+  });
+
+  const DECISION = { kind: 'decision', key: 'storage-engine', version: 1 };
+  const promotionBody = (rootId: string) => ({
+    ...DECISION,
+    rootId,
+    title: 'Queue storage engine',
+    text: 'The queue stores in SQLite.',
+  });
+  const reviewOf = async (
+    e: Awaited<ReturnType<typeof setup>>,
+    taskId: string,
+  ) =>
+    (await e.learning(taskId)).candidates.find(
+      (candidate: any) => candidate.record.key === 'storage-engine',
+    ).review;
+
+  test('the store registered again under another spelling of its directory reads as promoted, as promote answers (review round 6)', async () => {
+    const e = await setup();
+    const { taskId } = await e.closedTaskWithLessons();
+    const directory = join(makeTempDir('task-learning-store-'), 'store');
+    mkdirSync(directory);
+    const first = await e.createProjectStore(directory);
+    expect(
+      (
+        await e.asOperator(
+          'POST',
+          `/api/tasks/${taskId}/room/memory/learning/promote`,
+          promotionBody(first.id),
+        )
+      ).status,
+    ).toBe(201);
+    // Removed, then registered again as its real path with a trailing '/'
+    // (the temp directory sits under a symlinked ancestor, `/var` on macOS,
+    // so the spelling differs). The kit store refuses a root that is itself
+    // a symlink, so that case is pinned on storeIdentity alone.
+    expect(
+      (await e.asOperator('DELETE', `/api/knowledge/roots/${first.id}`)).status,
+    ).toBe(200);
+    const again = await e.createProjectStore(`${realpathSync(directory)}/`);
+    expect(await reviewOf(e, taskId)).toMatchObject({
+      state: 'promoted',
+      rootId: again.id,
+    });
+    const repeat = await e.asOperator(
+      'POST',
+      `/api/tasks/${taskId}/room/memory/learning/promote`,
+      promotionBody(again.id),
+    );
+    expect([repeat.status, repeat.json.data.status]).toEqual([
+      200,
+      'already-promoted',
+    ]);
+  });
+
+  test('a pending promotion whose store is registered under another spelling can still be finished there (review round 6)', async () => {
+    const e = await setup();
+    const { taskId } = await e.closedTaskWithLessons();
+    const task = e.taskGraph.readTask(taskId)!;
+    const directory = join(makeTempDir('task-learning-store-'), 'store');
+    mkdirSync(directory);
+    // The promotion recorded this directory, then its write never ran.
+    e.store.taskMemoryStore().claimLearningPromotion({
+      taskId,
+      taskCreatedAt: task.createdAt,
+      ...(DECISION as { kind: 'decision'; key: string; version: number }),
+      projectId: task.projectId,
+      rootId: 'root:project-alpha',
+      adapterId: 'kit-default-store',
+      storeRoot: directory,
+      principalId: LOCAL_OPERATOR_PRINCIPAL_ID,
+    });
+    // The Project's store is that directory, spelled with './'.
+    const store = await e.createProjectStore(join(directory, '.', '.') + '/./');
+    expect(await reviewOf(e, taskId)).toEqual({
+      state: 'pending',
+      rootId: store.id,
+    });
+    const finished = await e.asOperator(
+      'POST',
+      `/api/tasks/${taskId}/room/memory/learning/promote`,
+      promotionBody(store.id),
+    );
+    expect([finished.status, finished.json.data?.status]).toEqual([
+      201,
+      'promoted',
+    ]);
+    expect(await reviewOf(e, taskId)).toMatchObject({ state: 'promoted' });
+  });
+
+  test('promoting a version whose recorded store is gone is 409 task_learning_store_gone, and nothing is written (review round 6)', async () => {
+    const e = await setup();
+    const { taskId } = await e.closedTaskWithLessons();
+    const task = e.taskGraph.readTask(taskId)!;
+    e.store.taskMemoryStore().claimLearningPromotion({
+      taskId,
+      taskCreatedAt: task.createdAt,
+      ...(DECISION as { kind: 'decision'; key: string; version: number }),
+      projectId: task.projectId,
+      rootId: 'root:project-alpha',
+      adapterId: 'kit-default-store',
+      storeRoot: join(makeTempDir('task-learning-gone-'), 'removed'),
+      principalId: LOCAL_OPERATOR_PRINCIPAL_ID,
+    });
+    const current = await e.createProjectStore();
+    expect(await reviewOf(e, taskId)).toEqual({
+      state: 'promotion-store-gone',
+      rootId: 'root:project-alpha',
+    });
+    const refused = await e.asOperator(
+      'POST',
+      `/api/tasks/${taskId}/room/memory/learning/promote`,
+      promotionBody(current.id),
+    );
+    expect(refused.status).toBe(409);
+    expect(refused.json).toMatchObject({
+      success: false,
+      code: 'task_learning_store_gone',
+    });
+    const adapter = await e.knowledge.adapterFor(current.id);
+    expect(await adapter.listByType('raw')).toEqual([]);
   });
 
   test("an agent's station-control request to every learning route is refused before it runs", async () => {

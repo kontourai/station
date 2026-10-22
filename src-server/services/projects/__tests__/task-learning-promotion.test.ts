@@ -8,6 +8,7 @@
  * already hold, as the Kit's stores do. Each create waits on a gate, so two
  * promotions are both past their read-back before either writes.
  */
+import { mkdirSync, realpathSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
   KitRecord,
@@ -22,6 +23,7 @@ import {
   dismissTaskLearning,
   promoteTaskLearning,
   readTaskLearning,
+  storeIdentity,
   type TaskLearningAccess,
 } from '../task-learning.js';
 
@@ -404,4 +406,25 @@ test('a pending promotion with its store present reads as pending and can be fin
   expect((await readTaskLearning(provider, access)).candidates).toMatchObject([
     { review: { state: 'promoted', rootId: stores[0]!.id } },
   ]);
+});
+
+test('one store directory is one identity however it is spelled, through a symlink too (review round 6)', () => {
+  const directory = join(temp('station-store-identity-'), 'store');
+  mkdirSync(directory);
+  const link = join(temp('station-store-link-'), 'link');
+  symlinkSync(directory, link);
+  const identity = storeIdentity(directory);
+  expect(identity).toBe(realpathSync(directory));
+  for (const spelling of [
+    `${directory}/`,
+    join(directory, '.'),
+    `${directory}/./`,
+    link,
+    `${link}/`,
+    realpathSync(directory),
+  ])
+    expect(storeIdentity(spelling)).toBe(identity);
+  // A directory that does not exist keeps its resolved path.
+  const gone = join(directory, 'missing');
+  expect(storeIdentity(`${gone}/`)).toBe(gone);
 });

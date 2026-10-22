@@ -4627,6 +4627,7 @@ export function configureRuntimeRoutes(
       '/api/tasks',
       createTaskLearningRoutes({
         store: context.knowledgeStoreProvider,
+        logger: context.logger,
         access: async (taskId, request) => {
           const access = await roomRuntime.personTaskLearningAccess({
             taskId,

@@ -50,6 +50,14 @@ export const taskLearningPromoteSchema = z
 
 interface TaskLearningRouteDeps {
   readonly store: KnowledgeStoreProvider;
+  /**
+   * Where a failure the person only sees as 503 or 502 is recorded: its
+   * name, code and message, never the record's text (review round 6). A
+   * Task-memory table missing a column is otherwise invisible.
+   */
+  readonly logger?: {
+    warn(message: string, meta?: Record<string, unknown>): void;
+  };
   /** A person's Task-room access; refused for anyone the room refuses. */
   readonly access: (
     taskId: string,
@@ -143,7 +151,7 @@ function refusal(c: Context, refused: TaskLearningRefusal) {
           success: false,
           code: 'task_learning_store_failed',
           error:
-            'The knowledge store did not accept the record. Nothing was promoted; try again.',
+            'The knowledge store did not accept the record, so it was not written. Finish the promotion to try again.',
         },
         502,
       );
@@ -165,6 +173,24 @@ function accessRefused(c: Context, kind: 'not-found' | 'unavailable') {
 
 export function createTaskLearningRoutes(deps: TaskLearningRouteDeps) {
   const app = new Hono();
+  const logFailure = (operation: string, taskId: string, error: unknown) => {
+    const failure = error as {
+      name?: unknown;
+      code?: unknown;
+      message?: unknown;
+    };
+    deps.logger?.warn('task learning request failed', {
+      operation,
+      taskId,
+      error: typeof failure?.name === 'string' ? failure.name : typeof error,
+      ...(typeof failure?.code === 'string' || typeof failure?.code === 'number'
+        ? { code: failure.code }
+        : {}),
+      ...(typeof failure?.message === 'string'
+        ? { message: failure.message.slice(0, 300) }
+        : {}),
+    });
+  };
 
   app.get('/:taskId/room/memory/learning', async (c) => {
     const access = await deps.access(param(c, 'taskId'), c.req.raw);
@@ -174,7 +200,8 @@ export function createTaskLearningRoutes(deps: TaskLearningRouteDeps) {
         success: true,
         data: await readTaskLearning(deps.store, access),
       });
-    } catch {
+    } catch (error) {
+      logFailure('read', param(c, 'taskId'), error);
       return accessRefused(c, 'unavailable');
     }
   });
@@ -202,6 +229,8 @@ export function createTaskLearningRoutes(deps: TaskLearningRouteDeps) {
           },
           result.kind === 'promoted' ? 201 : 200,
         );
+      if (result.kind === 'store-failed')
+        logFailure('promote', param(c, 'taskId'), result.error);
       return refusal(c, result);
     },
   );
@@ -218,7 +247,8 @@ export function createTaskLearningRoutes(deps: TaskLearningRouteDeps) {
           access,
           getBody(c) as z.infer<typeof taskLearningDismissSchema>,
         );
-      } catch {
+      } catch (error) {
+        logFailure('dismiss', param(c, 'taskId'), error);
         return accessRefused(c, 'unavailable');
       }
       if ('dismissal' in result)

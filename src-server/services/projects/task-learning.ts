@@ -32,6 +32,8 @@
  * No station-control tool names these routes, so an agent never reaches them.
  */
 import { createHash } from 'node:crypto';
+import { realpathSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type {
   KitRecord,
   KnowledgeStoreProvider,
@@ -158,19 +160,79 @@ function standingCandidates(
 }
 
 /**
+ * A store directory as one identity (review round 6): absolute, without
+ * trailing separators, and through `realpath` when it exists, so `/tmp` and
+ * `/private/tmp`, a trailing `/`, a `./` segment or a symlink name one
+ * directory. A directory that no longer exists falls back to its resolved
+ * path. Case is left alone: whether it matters is the filesystem's, and
+ * `realpath` answers that where it does. Registration stores the path as
+ * given, so every comparison goes through this.
+ */
+export function storeIdentity(storeRoot: string): string {
+  const resolved = resolve(storeRoot);
+  try {
+    return realpathSync(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
+/**
  * The current Project store a promotion row pinned: the same adapter and
- * directory. A root id alone is not enough, since a removed store's id is
- * reused by the next store created (review round 5).
+ * directory identity. A root id alone is not enough, since a removed
+ * store's id is reused by the next store created (review round 5).
  */
 function pinnedRoot(
   roots: readonly KnowledgeStoreRoot[],
   promotion: { readonly adapterId: string; readonly storeRoot: string },
 ): KnowledgeStoreRoot | undefined {
+  const pinned = storeIdentity(promotion.storeRoot);
   return roots.find(
     (root) =>
       root.adapterId === promotion.adapterId &&
-      root.storeRoot === promotion.storeRoot,
+      storeIdentity(root.storeRoot) === pinned,
   );
+}
+
+type PromotionState =
+  /** The record is in a current Project store. */
+  | {
+      readonly kind: 'promoted';
+      readonly rootId: string;
+      readonly record: KitRecord;
+    }
+  /** A promotion is recorded, its store is here, the record is not in it. */
+  | { readonly kind: 'pending'; readonly target: KnowledgeStoreRoot }
+  /** A promotion is recorded, the record is nowhere, its store is gone. */
+  | { readonly kind: 'store-gone'; readonly rootId: string }
+  /** No promotion recorded and no record. */
+  | { readonly kind: 'none' };
+
+/**
+ * The one decision of a version's promotion state, which the candidate
+ * list and `promoteTaskLearning` both use, so a read and a write can never
+ * disagree (review round 6): promoted whenever the record is in ANY current
+ * Project store; otherwise pending or store-gone by the pinned store.
+ */
+async function promotionState(
+  store: KnowledgeStoreProvider,
+  roots: readonly KnowledgeStoreRoot[],
+  knowledgeRecordId: string,
+  promotion:
+    | {
+        readonly rootId: string;
+        readonly adapterId: string;
+        readonly storeRoot: string;
+      }
+    | undefined,
+): Promise<PromotionState> {
+  const found = await findPromoted(store, roots, knowledgeRecordId);
+  if (found) return { kind: 'promoted', ...found };
+  if (!promotion) return { kind: 'none' };
+  const target = pinnedRoot(roots, promotion);
+  return target
+    ? { kind: 'pending', target }
+    : { kind: 'store-gone', rootId: promotion.rootId };
 }
 
 /** The store holding this id, if any: a promotion is read back, not recorded. */
@@ -214,33 +276,23 @@ export async function readTaskLearning(
       const identity = `${record.kind}:${record.key}:${record.version}`;
       const dismissed = dismissals.get(identity);
       const promotion = promotions.get(identity);
-      // Three states from data (review round 5): the pinned store holds the
-      // record (promoted), it is here without it (pending), or it is gone.
-      const pinned = promotion ? pinnedRoot(roots, promotion) : undefined;
+      // One state function for reads and writes (review round 6).
+      const state = dismissed
+        ? undefined
+        : await promotionState(store, roots, knowledgeRecordId, promotion);
       const review: TaskLearningCandidate['review'] = dismissed
         ? {
             state: 'dismissed',
             dismissedAt: dismissed.dismissedAt,
             dismissedBy: dismissed.principalId,
           }
-        : promotion
-          ? !pinned
-            ? { state: 'promotion-store-gone', rootId: promotion.rootId }
-            : (await findPromoted(store, [pinned], knowledgeRecordId))
-              ? { state: 'promoted', rootId: pinned.id, knowledgeRecordId }
-              : { state: 'pending', rootId: pinned.id }
-          : await (async () => {
-              // No row: a promotion made before the row existed is read
-              // back from the stores.
-              const found = await findPromoted(store, roots, knowledgeRecordId);
-              return found
-                ? ({
-                    state: 'promoted',
-                    rootId: found.rootId,
-                    knowledgeRecordId,
-                  } as const)
-                : ({ state: 'open' } as const);
-            })();
+        : state!.kind === 'promoted'
+          ? { state: 'promoted', rootId: state!.rootId, knowledgeRecordId }
+          : state!.kind === 'pending'
+            ? { state: 'pending', rootId: state!.target.id }
+            : state!.kind === 'store-gone'
+              ? { state: 'promotion-store-gone', rootId: state!.rootId }
+              : { state: 'open' };
       candidates.push({ record, knowledgeRecordId, review });
     }
   }
@@ -324,8 +376,13 @@ export async function promoteTaskLearning(
   const id = taskLearningKnowledgeRecordId(incarnation, record);
   try {
     // Any Project store already holding this version: it was promoted.
-    const existing = await findPromoted(store, roots, id);
-    if (existing) return { kind: 'already-promoted', ...existing };
+    const before = await promotionState(store, roots, id, undefined);
+    if (before.kind === 'promoted')
+      return {
+        kind: 'already-promoted',
+        rootId: before.rootId,
+        record: before.record,
+      };
     // The one decision across stores, made before the knowledge write.
     const claim = access.memory.claimLearningPromotion({
       ...incarnation,
@@ -341,14 +398,18 @@ export async function promoteTaskLearning(
     });
     if (claim.kind === 'stale') return { kind: 'stale' };
     if (claim.kind === 'dismissed') return { kind: 'was-dismissed' };
-    // The store this version's promotion pinned, by identity. If it is no
+    // The same state the candidate list reads. Its pinned store, by
+    // identity, is the only place it is written; if that store is no
     // longer one of the Project's, nothing is written anywhere else.
-    const target = pinnedRoot(roots, claim.promotion);
-    if (!target) return { kind: 'promotion-store-gone' };
-    if (claim.kind === 'existing') {
-      const done = await findPromoted(store, [target], id);
-      if (done) return { kind: 'already-promoted', ...done };
-    }
+    const state = await promotionState(store, roots, id, claim.promotion);
+    if (state.kind === 'promoted')
+      return {
+        kind: 'already-promoted',
+        rootId: state.rootId,
+        record: state.record,
+      };
+    if (state.kind !== 'pending') return { kind: 'promotion-store-gone' };
+    const target = state.target;
     if (!access.isCurrent()) return { kind: 'stale' };
     const adapter = await store.adapterFor(target.id);
     try {

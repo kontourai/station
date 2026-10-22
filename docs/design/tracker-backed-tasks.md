@@ -401,14 +401,19 @@ step.
   is reused by the next store created. Promotion and dismissal each check
   the other inside their own transaction, so the first to commit wins: a
   dismissed version is not promoted, and a version with a promotion row
-  cannot be dismissed (`409 task_learning_promoted`). A version with a row
-  reads as one of three states: **promoted** when its pinned store holds
-  the record; **pending** when the pinned store is one of the Project's but
-  the record is not in it, offering only to finish the promotion there; and
-  a closed review when the pinned store is no longer one of the Project's,
+  cannot be dismissed (`409 task_learning_promoted`). One function decides
+  a version's state for both the candidate list and promote, so they cannot
+  disagree. A version is **promoted** whenever its record is in any of the
+  Project's current stores. Otherwise, with a promotion row, it is
+  **pending** when the pinned store is still one of the Project's, offering
+  only to finish the promotion there, or a closed review when it is not,
   which is never offered again and says nothing about whether the record
-  was written. Promoting such a version answers `409
-  task_learning_store_gone`, and nothing is written elsewhere. "Promoted" in the candidate list is read back from
+  was written. Promoting a closed version answers `409
+  task_learning_store_gone`, and nothing is written elsewhere. The pinned
+  store is compared by adapter and by its directory's identity: absolute,
+  without trailing separators, and through `realpath` when the directory
+  exists, so `/tmp` and `/private/tmp`, a trailing `/` or a `./` segment
+  name one store. Registration keeps the path as given. "Promoted" in the candidate list is read back from
   the stores. A later version of the same key is a new candidate.
 - **Dismissals** are kept as an append-only row per dismissed record version
   (`task_learning_dismissals`, migration 021).
