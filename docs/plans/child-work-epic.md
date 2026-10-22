@@ -313,6 +313,14 @@ completion observation. Controlled HTTP tests cover three actual orchestration
 sessions and event-store joins, plus refusal at the adapter boundary after
 cancellation during Agent preparation.
 
+The `44fc5580235` repair restricts that observation to the shared positive
+provider finish-reason authority. An absent or `other` finish reason retains
+uncertainty and cannot release a dependent. The HTTP route suite passes 21
+cases after byte-identical restoration; a compiling authority-broadening
+mutation produces the two intended failures. Independent source review found
+no confirmed P1/P2, without borrowing execution evidence. This is initial-turn
+completion authority, not semantic acceptance or a live-provider qualification.
+
 At `fe998248b601ac6f5e135267ca2866d6772a5164`, an isolated personal Station
 completed a live three-seat group through the registered CLI and existing
 signed-in OpenCode `zai-coding-plan/glm-5.3-flash` connection. All three returned
