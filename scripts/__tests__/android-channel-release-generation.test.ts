@@ -11,6 +11,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   applyAndroidReleaseSigning,
   gradleWithAndroidReleaseSigning,
@@ -348,6 +349,7 @@ describe('clean Android channel release generation', () => {
 });
 
 describe('hosted Android verification identity admission', () => {
+  const makeTempDir = trackTempDirs();
   const workflow = parse(
     readFileSync('.github/workflows/build-android.yml', 'utf8'),
   );
@@ -377,9 +379,7 @@ describe('hosted Android verification identity admission', () => {
   ])(
     'admits %s/%s/%s only for its exact artifact identity',
     (isolated, event, ref, status, packageId, artifactName) => {
-      const directory = mkdtempSync(
-        join(tmpdir(), 'station-android-identity-'),
-      );
+      const directory = makeTempDir('station-android-identity-');
       const output = join(directory, 'output');
       writeFileSync(output, '');
       const result = spawnSyncBounded('bash', ['-e', '-c', selection], {
