@@ -172,7 +172,14 @@ export async function observeNativeAuthenticationLaunch(input: {
   );
   if (!executable) return undefined;
   const assertFiles = await observeNativeAuthenticationFiles(input);
-  const expected = environment(input.env);
+  const expected = environment(
+    input.engine === 'claude' &&
+      !Object.keys(input.env).some(
+        (key) => key.toUpperCase() === 'CLAUDE_CODE_SDK_READS_SESSION_STATE',
+      )
+      ? { ...input.env, CLAUDE_CODE_SDK_READS_SESSION_STATE: '1' }
+      : input.env,
+  );
   const assertCurrent = () => {
     input.assertCurrent();
     executable.assertCurrent();

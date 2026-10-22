@@ -430,6 +430,16 @@ variants with 60 controls passing. The repair excludes only that SDK telemetry
 stamp from the ambient comparison; authentication-variable changes still refuse.
 This is not yet native success evidence; qualification continues on repaired source.
 
+The next installed-native attempt at `c8191efaa8c` reached the child-launch fence
+and identified one additional SDK default: `CLAUDE_CODE_SDK_READS_SESSION_STATE=1`
+is added to the child environment when no case-insensitive key was supplied.
+No model request occurred. The owner fixture reproduces that SDK transformation
+and fails both Claude launch variants on the pre-fix source, with 60 controls
+passing. The continuation now binds exactly that default when the observation
+omits the key, while retaining and comparing an explicitly observed value. A
+changed child value still refuses; this variable is not a blanket env exemption.
+Native successful qualification remains pending the repaired run.
+
 ## Production adoption sequence
 
 The personal `/api/orchestration/session-groups` path now composes the shared

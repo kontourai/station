@@ -113,6 +113,8 @@ beforeEach(() => {
         ...options.env,
         CLAUDE_CODE_ENTRYPOINT: 'sdk-ts',
         CLAUDE_AGENT_SDK_VERSION: '0.3.302',
+        CLAUDE_CODE_SDK_READS_SESSION_STATE:
+          options.env.CLAUDE_CODE_SDK_READS_SESSION_STATE ?? '1',
       },
     });
   });
@@ -568,6 +570,26 @@ describe('production Ensemble preparation authentication', () => {
         );
         expect(nativeSpawn).not.toHaveBeenCalled();
         vi.stubEnv('ANTHROPIC_API_KEY', previousApiKey);
+        nativeQuery.mockImplementationOnce(({ options }) =>
+          options.spawnClaudeCodeProcess({
+            command: options.pathToClaudeCodeExecutable?.endsWith('.js')
+              ? 'node'
+              : options.pathToClaudeCodeExecutable,
+            args: [
+              ...(options.pathToClaudeCodeExecutable?.endsWith('.js')
+                ? [options.pathToClaudeCodeExecutable]
+                : []),
+              '--model',
+              options.model,
+            ],
+            cwd: options.cwd,
+            env: { ...options.env, CLAUDE_CODE_SDK_READS_SESSION_STATE: '0' },
+          }),
+        );
+        await expect(start()).rejects.toThrow(
+          'ensemble_auth_native_context_changed',
+        );
+        expect(nativeSpawn).not.toHaveBeenCalled();
       }
       if (engine === 'codex') {
         f.setConnectionArgs(['-c', 'cli_auth_credentials_store="keyring"']);
@@ -585,7 +607,11 @@ describe('production Ensemble preparation authentication', () => {
               '{"apiKeyHelper":"different-account"}',
             ],
             cwd: options.cwd,
-            env: options.env,
+            env: {
+              ...options.env,
+              CLAUDE_CODE_SDK_READS_SESSION_STATE:
+                options.env.CLAUDE_CODE_SDK_READS_SESSION_STATE ?? '1',
+            },
           }),
         );
       }
@@ -606,7 +632,12 @@ describe('production Ensemble preparation authentication', () => {
               options.model,
             ],
             cwd: options.cwd,
-            env: { ...options.env, ANTHROPIC_API_KEY: 'changed-after-query' },
+            env: {
+              ...options.env,
+              CLAUDE_CODE_SDK_READS_SESSION_STATE:
+                options.env.CLAUDE_CODE_SDK_READS_SESSION_STATE ?? '1',
+              ANTHROPIC_API_KEY: 'changed-after-query',
+            },
           }),
         );
         await expect(start()).rejects.toThrow(
