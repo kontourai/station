@@ -50,7 +50,17 @@
 
     "src-server/services/orchestration/conversation-start-context.ts",
 
-    "src-server/services/orchestration/conversation-fork-context.ts"
+    "src-server/services/orchestration/conversation-fork-context.ts",
+
+    "src-server/providers/adapters/claude-adapter.ts",
+
+    "src-server/providers/adapters/claude-adapter-events.ts",
+
+    "src-server/providers/adapters/native-resume-binding.ts",
+
+    "src-server/providers/__tests__/claude-adapter-events.test.ts",
+
+    "src-server/routes/orchestration/__tests__/conversation-fork.qualification.test.ts"
   ],
 
   "checks": [
