@@ -359,6 +359,23 @@ failure and cleanup predicates. The qualification separately checks those
 recorded failures and a current exact-owned-path process scan; historical
 listener identities were not retained.
 
+At `ff10907787a`, a further owned loopback check exercises the production
+`CliSessionGroups` → `OrchestrationService` → Claude adapter path with native
+Agent delegation. Ordinary and restored turns produce child model requests.
+The retained-session sync ACKs without tools; an injected Agent call during a
+second sync produces a native error, no child request, and one failed retained
+attempt without retry. Both sync receipts name the same native identity hash
+and prior/folded history remains. Separate direct-native controls remove only
+wildcard denial and catch the restricted child request; that mutation does not
+claim to mutate the production path.
+
+Independent source/artifact review accepts those bounded observations. Child
+detection uses the controlled prompt marker, not an inventory of all internal
+effects; two positive requests per ordinary phase are not labeled one physical
+invocation. Qualification checks recorded errors and current owned-path process
+absence separately from the harness pass flag. HTTP routing, production plugin
+composition, other engines, real-provider sync and fiscal authority remain open.
+
 ## Production adoption sequence
 
 The personal `/api/orchestration/session-groups` path now composes the shared
