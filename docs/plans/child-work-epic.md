@@ -611,6 +611,22 @@ later helpers explicitly exit after awaited cleanup. This qualifies the exercise
 HTTP/native path, not the `index.ts` entrypoint, a real-provider account, model
 entitlement, billing, resume continuity or whole-epic acceptance.
 
+At `016b53f11b7`, a second completed two-member loopback group is reopened by a
+fresh `StationRuntime` process using its retained synthetic owner credential.
+The roster, member session/initial-turn identities and terminal references match
+the stored group. Authorized session-event reads return both exact authored
+outputs. Completed replay starts no session, probes no login and makes no model
+request; a new local credential receives 404 when attempting to run that group.
+All seven recovery checks pass. An earlier recovery assertion incorrectly
+expected the local operator's cross-credential inspection to fail; its failed
+receipt remains retained, and the corrected check targets owner-only mutation.
+
+Two intervening fresh-start attempts refused during configuration reconciliation
+before any model request. The successful retry does not establish reliable
+immediate post-listening admission. The retained refusal and login-observer
+diagnostics require further investigation; no fence was weakened to obtain the
+successful run. Restarted completed replay is not native conversation resumption.
+
 ## Production adoption sequence
 
 The personal `/api/orchestration/session-groups` path now composes the shared
