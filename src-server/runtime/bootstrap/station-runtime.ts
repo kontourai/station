@@ -1538,6 +1538,8 @@ export class StationRuntime {
       // same composition seam for the identical reason.
       this.taskGraphService = new TaskGraphService(projectHomeDir, {
         projectService: this.projectService,
+        localProjectIdFor: (identity) =>
+          localProjectIdFor(this.projectService, identity),
         workflowSidecarReader: new WorkflowSidecarService({
           logger: this.logger,
         }),

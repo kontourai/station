@@ -41,7 +41,10 @@ import type {
   EngineId,
   ProviderSession,
 } from '@kontourai/station-contracts/provider';
-import { workItemRefKey } from '@kontourai/station-contracts/work-item-provider';
+import {
+  canonicalGitHubWorkItemRef,
+  workItemRefKey,
+} from '@kontourai/station-contracts/work-item-provider';
 import { looksLikeWorkflowTaskSlugRef } from '@kontourai/station-contracts/workflow';
 import {
   acquireFileMutationLockAsync,
@@ -234,6 +237,11 @@ type TaskDispatchOrchestration = Pick<
 interface TaskGraphServiceDeps {
   orchestrationService?: TaskDispatchOrchestration;
   projectService?: Pick<ProjectService, 'getProject'>;
+  /**
+   * The opaque id of the Project an id or slug names (`localProjectIdFor`).
+   * Absent: Projects compare as exact strings.
+   */
+  localProjectIdFor?: (identity: string) => string | undefined;
   execGit?: typeof execGit;
   /** AssignmentProvider claim/release/status backend (roadmap archive#584). When
    * absent (e.g. most tests), dispatch of a workItemRef-bearing task simply
@@ -324,23 +332,35 @@ function normalizeText(value: string | undefined): string {
 /**
  * Cardinality (#4003): the one Task, not done or canceled, whose primary
  * work item is `workItemRef`. Refs compare by `workItemRefKey` (a GitHub
- * ref's lowercase spelling, anything else exactly). A namespaced ref names
- * one item everywhere, so it is unique across Projects; a bare ref (a Flow
- * sidecar slug) means something only inside its Project, so it is unique
- * there.
+ * ref's lowercase spelling, anything else exactly).
+ *
+ * Only a ref the Project's board offered (a canonical GitHub ref with
+ * `workItemProvenance: 'project-board'`) is unique across Projects, and only
+ * against other board-checked Tasks: Station has checked that both name one
+ * real item. Every other ref (`linear:ENG-1`, a Flow slug, an unchecked
+ * `github:` ref) is unique only within its Project, so a caller cannot use
+ * a typed ref to find, or squat on, another Project's Task (review round 2,
+ * P2-1). Projects compare by `sameProject`, an id or slug resolved to one
+ * Project (P3-1).
  */
 function openTaskForWorkItem(
   tasks: readonly TaskRecord[],
   workItemRef: string,
-  projectId?: string,
+  where: {
+    readonly projectId: string;
+    readonly boardChecked: boolean;
+    readonly sameProject: (a: string, b: string) => boolean;
+  },
 ): TaskRecord | undefined {
   const key = workItemRefKey(workItemRef);
-  const global = isNamespacedWorkItemRef(workItemRef);
+  const global =
+    where.boardChecked && canonicalGitHubWorkItemRef(workItemRef) !== null;
   return tasks.find(
     (task) =>
       task.workItemRef !== undefined &&
       workItemRefKey(task.workItemRef) === key &&
-      (global || task.projectId === projectId) &&
+      ((global && task.workItemProvenance === 'project-board') ||
+        where.sameProject(task.projectId, where.projectId)) &&
       task.status !== 'done' &&
       task.status !== 'canceled',
   );
@@ -1499,6 +1519,7 @@ export class TaskGraphService {
   private readonly store: JsonFileStore<TaskGraphStoreData>;
   private readonly acquireMutationLock: FileMutationLock;
   private readonly projectService?: Pick<ProjectService, 'getProject'>;
+  private readonly localProjectIdFor?: (identity: string) => string | undefined;
   /**
    * archive#1501, seam S4. Captured with `projectService` at this
    * Module's construction seam, so the two can never answer differently about
@@ -1520,6 +1541,7 @@ export class TaskGraphService {
   constructor(projectHomeDir: string, deps: TaskGraphServiceDeps = {}) {
     this.orchestrationService = deps.orchestrationService;
     this.projectService = deps.projectService;
+    this.localProjectIdFor = deps.localProjectIdFor;
     this.projectResourceResolver = deps.projectService
       ? buildProjectResourceResolver(projectHomeDir, deps.projectService)
       : undefined;
@@ -1787,15 +1809,30 @@ export class TaskGraphService {
     );
   }
 
-  /** The open Task whose primary work item is `workItemRef`, if any. */
+  /**
+   * The open Task whose primary work item is `workItemRef` as seen from
+   * `projectId`: any Project's board-checked Task when `boardChecked`, else
+   * only that Project's (see `openTaskForWorkItem`).
+   */
   findOpenTaskForWorkItem(
     workItemRef: string,
-    projectId?: string,
+    where: { projectId: string; boardChecked: boolean },
   ): TaskRecord | null {
     return (
-      openTaskForWorkItem(this.readStore().tasks, workItemRef, projectId) ??
-      null
+      openTaskForWorkItem(this.readStore().tasks, workItemRef, {
+        ...where,
+        sameProject: (a, b) => this.sameProject(a, b),
+      }) ?? null
     );
+  }
+
+  /** Whether two Project identities (ids or slugs) name one Project. */
+  sameProject(a: string, b: string): boolean {
+    if (a === b) return true;
+    const resolve = this.localProjectIdFor;
+    if (!resolve) return false;
+    const left = resolve(a);
+    return left !== undefined && left === resolve(b);
   }
 
   private async createTaskRecord(
@@ -1889,7 +1926,11 @@ export class TaskGraphService {
       // At most one open Task per work item, for every create that names
       // one (review F5), decided here under the mutation lock.
       const open = task.workItemRef
-        ? openTaskForWorkItem(data.tasks, task.workItemRef, task.projectId)
+        ? openTaskForWorkItem(data.tasks, task.workItemRef, {
+            projectId: task.projectId,
+            boardChecked: task.workItemProvenance === 'project-board',
+            sameProject: (a, b) => this.sameProject(a, b),
+          })
         : undefined;
       if (open) {
         if (workItem.onTaken === 'return-existing')

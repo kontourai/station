@@ -36,11 +36,16 @@ for its brief with `get_task_brief`. Nothing polls.
   canceled**. **Start Task** on an item that already has such a Task opens
   that Task. Every create that names a work item keeps this rule under the
   task store's lock: `POST /api/tasks` answers 409 with the open Task's id
-  and Project. A namespaced ref (`github:…`) is unique across Projects; a
-  bare ref (a Flow sidecar slug) means something only inside its Project, so
-  it is unique there. GitHub owner and repository names are lowercased when
-  a ref is parsed (GitHub compares them case-insensitively), and refs are
-  compared in that canonical form.
+  and Project, and nothing else. Only a ref the Project's board offered (a
+  canonical GitHub ref recorded with `workItemProvenance: project-board`) is
+  unique across Projects, and only against other board-checked Tasks. Every
+  other ref, such as `linear:ENG-1`, a Flow sidecar slug or a `github:` ref
+  that was never board-checked, is unique only within its Project, so a
+  typed ref can neither find nor squat on another Project's Task. Projects
+  compare as one identity whether a Task recorded the Project's slug or its
+  id. GitHub owner and repository names are lowercased when a ref is parsed
+  (GitHub compares them case-insensitively), and refs are compared in that
+  canonical form.
 - A Task may have **any number of secondary** items, stored as typed
   `external` references: an epic's sub-issues, a bug found along the way, a
   related item. They are displayed and linked from the PR with `Closes #N`

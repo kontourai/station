@@ -13,13 +13,18 @@ export interface ProjectIdentityLookup {
   listProjects(): ReadonlyArray<{ readonly id: string; readonly slug: string }>;
 }
 
-/** The opaque id of the Project `identity` (an id or a slug) names, if any. */
+/**
+ * The opaque id of the Project `identity` (an id or a slug) names, if any.
+ * An exact id match wins over a slug match, so a slug that equals another
+ * Project's id cannot make the answer depend on list order.
+ */
 export function localProjectIdFor(
   projects: ProjectIdentityLookup,
   identity: string,
 ): string | undefined {
-  return projects
-    .listProjects()
-    .find((project) => project.id === identity || project.slug === identity)
-    ?.id;
+  const listed = projects.listProjects();
+  return (
+    listed.find((project) => project.id === identity)?.id ??
+    listed.find((project) => project.slug === identity)?.id
+  );
 }

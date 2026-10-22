@@ -146,7 +146,9 @@ only when it is a github.com issue ref (else `422`) and the Project's board
 lists it (else `404`), and records `workItemProvenance: "project-board"`.
 Any create naming a work item that already has a Task that is not done or
 canceled is `409` `work_item_has_open_task`, with `data: {taskId,
-projectId}`.
+projectId}`. A board-checked GitHub ref is matched across Projects (against
+other board-checked Tasks); every other ref only within the same Project.
+`workItemRef` is at most 512 characters and `sourceProvider` at most 128.
 
 `GET /api/tasks/:taskId/work-item` re-reads the linked item for the Task
 header, returning comments created after the Task's `workItemObservedAt`.

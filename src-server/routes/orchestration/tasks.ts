@@ -132,8 +132,9 @@ const taskCreateSchema = z.object({
   // provider-backed identity, creating a local-only task that could never
   // enter dispatch-as-claim (TaskGraphService.createTask/TaskRecord already
   // carry both — the schema was the only place they were missing).
-  sourceProvider: z.string().optional(),
-  workItemRef: z.string().optional(),
+  sourceProvider: z.string().max(128).optional(),
+  // Bounded like Start Task's ref (review round 2, P3-3).
+  workItemRef: z.string().max(512).optional(),
 });
 
 // Start Task on a tracker item (#4003). The item is named by its ref only;
@@ -152,10 +153,12 @@ export const UNCHECKED_WORK_ITEM_REASON =
  * Project, only that Task's id and Project (review F6).
  */
 function existingTaskResult(
+  graph: Pick<TaskGraphService, 'sameProject'>,
   task: TaskRecord,
   projectId: string,
 ): StartTaskFromWorkItemResult {
-  return task.projectId === projectId
+  // Projects compare as one identity, id or slug (review round 2, P3-1).
+  return graph.sameProject(task.projectId, projectId)
     ? { task, existing: true, briefSaved: false }
     : {
         task: { id: task.id, projectId: task.projectId },
@@ -949,11 +952,14 @@ export function createTaskRoutes(
         },
         404,
       );
-    const existing = taskGraphService.findOpenTaskForWorkItem(workItemRef);
+    const existing = taskGraphService.findOpenTaskForWorkItem(workItemRef, {
+      projectId: input.projectId,
+      boardChecked: true,
+    });
     if (existing)
       return c.json({
         success: true,
-        data: existingTaskResult(existing, input.projectId),
+        data: existingTaskResult(taskGraphService, existing, input.projectId),
       });
     const observed = await options.workItemObserver.observeWorkItem(
       workItemRef,
@@ -990,7 +996,11 @@ export function createTaskRoutes(
     if (created.existing)
       return c.json({
         success: true,
-        data: existingTaskResult(created.task, input.projectId),
+        data: existingTaskResult(
+          taskGraphService,
+          created.task,
+          input.projectId,
+        ),
       });
     let briefSaved = false;
     try {

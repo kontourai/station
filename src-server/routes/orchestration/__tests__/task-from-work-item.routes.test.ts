@@ -76,6 +76,15 @@ async function fixture(
 ) {
   const directory = temp('station-from-work-item-');
   const service = new TaskGraphService(directory, {
+    // Each Project by its slug or its opaque id, as `localProjectIdFor`
+    // resolves the runtime's Projects.
+    localProjectIdFor: (identity: string) =>
+      ({
+        alpha: 'id-alpha',
+        'id-alpha': 'id-alpha',
+        beta: 'id-beta',
+        'id-beta': 'id-beta',
+      })[identity],
     projectService: {
       getProject: (id: string) => ({
         id,
@@ -408,11 +417,24 @@ test('every ref-bearing create keeps one open Task per item, comparing GitHub ow
   // Start Task in another spelling opens it.
   const started = await json(await start('github:ACME/widgets#42'));
   expect(started.data).toMatchObject({ existing: true, task: { id: firstId } });
-  // A service create is held to the same rule under the store lock.
+  // A board-checked ref is unique across Projects: beta's board-checked
+  // create is refused with alpha's Task id and Project only.
+  const beta = await create({ projectId: 'beta', workItemRef: REF });
+  expect(beta.status).toBe(409);
+  expect((await json(beta)).data).toEqual({
+    taskId: firstId,
+    projectId: 'alpha',
+  });
+  // A service create is held to the same rule under the store lock, in its
+  // own Project (by slug or by id).
   await expect(
     Promise.all([
-      service.createTask({ projectId: 'beta', title: 'x', workItemRef: REF }),
-      service.createTask({ projectId: 'beta', title: 'y', workItemRef: REF }),
+      service.createTask({ projectId: 'alpha', title: 'x', workItemRef: REF }),
+      service.createTask({
+        projectId: 'id-alpha',
+        title: 'y',
+        workItemRef: REF,
+      }),
     ]),
   ).rejects.toThrow('This work item already has an open Task.');
   expect(service.listTasks()).toHaveLength(1);
@@ -434,6 +456,57 @@ test('every ref-bearing create keeps one open Task per item, comparing GitHub ow
       workItemRef: 'slug',
     }),
   ).toMatchObject({ projectId: 'beta' });
+});
+
+test("a ref Station did not board-check is unique only within its Project, and a 409 never names another Project's Task for it (review round 2, P2-1)", async () => {
+  const { service, create } = await fixture();
+  // A non-GitHub namespaced ref in alpha.
+  const alpha = await create({ workItemRef: 'linear:ENG-1' });
+  expect(alpha.status).toBe(201);
+  const alphaId = (await json(alpha)).data.id;
+  // Beta naming the same text creates its own Task: no probe, no squat.
+  const beta = await create({ projectId: 'beta', workItemRef: 'linear:ENG-1' });
+  expect(beta.status, await beta.clone().text()).toBe(201);
+  expect(JSON.stringify(await json(beta))).not.toContain(alphaId);
+  // Within alpha, by slug or by id, it is one open Task.
+  for (const projectId of ['alpha', 'id-alpha']) {
+    const again = await create({ projectId, workItemRef: 'linear:ENG-1' });
+    expect(again.status).toBe(409);
+    expect((await json(again)).data).toEqual({
+      taskId: alphaId,
+      projectId: 'alpha',
+    });
+  }
+  // An unchecked github: ref (a service create) does not reach across
+  // Projects either, in either direction.
+  const unchecked = await service.createTask({
+    projectId: 'beta',
+    title: 'typed',
+    workItemRef: 'github:acme/widgets#7',
+  });
+  expect(unchecked.workItemProvenance).toBeUndefined();
+  expect(
+    await service.createTask({
+      projectId: 'alpha',
+      title: 'typed too',
+      workItemRef: 'github:acme/widgets#7',
+    }),
+  ).toMatchObject({ projectId: 'alpha' });
+});
+
+test("Start Task names its own Project's open Task in full whether the Task recorded the Project's slug or id (review round 2, P3-1)", async () => {
+  const { service, start } = await fixture();
+  const task = await service.createTask({
+    projectId: 'id-alpha',
+    title: 'By id',
+    workItemRef: REF,
+  });
+  const started = await json(await start(REF, 'alpha'));
+  expect(started.data).toMatchObject({
+    existing: true,
+    task: { id: task.id, title: 'By id' },
+  });
+  expect(started.data).not.toHaveProperty('elsewhere');
 });
 
 test("Start Task checks this Project's board before the open-Task lookup, and names another Project's Task by id only (review F6)", async () => {
