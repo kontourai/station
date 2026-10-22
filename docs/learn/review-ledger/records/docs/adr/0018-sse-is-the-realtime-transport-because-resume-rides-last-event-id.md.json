@@ -122,7 +122,9 @@
 
     "src-ui/src/workspace-panes/BrowserPreviewWorkspacePane.tsx",
 
-    "src-ui/src/workspace-panes/DeviceWorkspacePane.tsx"
+    "src-ui/src/workspace-panes/DeviceWorkspacePane.tsx",
+
+    "src-server/routes/orchestration/cli-session-group-events.ts"
   ],
 
   "checks": [
