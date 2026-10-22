@@ -9,7 +9,13 @@
 
   "limits": "Scope/status classification only. Local and delegated receipts remain revision-bound; no final runtime, provider, native, hosted, publication or delivery qualification follows from this plan.",
 
-  "sources": [],
+  "sources": [
+    "src-ui/src/views/CliSessionGroupsPanel.tsx",
+
+    "src-ui/src/views/CliSessionGroupsPanel.css",
+
+    "src-ui/src/views/__tests__/CliSessionGroupsPanel.test.tsx"
+  ],
 
   "checks": [
     "Compared the plan with the existing feature branch, reviewed Ensemble handoff and current unpublished upstream source. Remaining group, credential, launch, UI and final exact-source obligations stay open."
