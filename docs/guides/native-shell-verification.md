@@ -159,8 +159,10 @@ ones use its binary channel fetch path. This is not zero-copy IPC.
 
 Native boot uses the verified captured request scope to request `/api/boot`
 through the host transport, then checks authority and destination-client liveness
-before each cache seed. It does not require the browser page's local session.
-A refused aggregate falls back to ordinary query reads; native broker routes
+before each cache seed. Native boot-critical hooks mount after that bounded
+attempt, so their individual reads do not race the aggregate. The aggregate has
+a 30-second request deadline and does not require the page's local session.
+A refused aggregate releases ordinary query reads; native broker routes
 keep their own route and account admission. Browser boot keeps its same-origin
 local-session requirement.
 

@@ -1,12 +1,10 @@
 // @vitest-environment jsdom
+import { useProjectsQuery } from '@kontourai/station-sdk';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
-import {
-  QueryClient,
-  QueryClientProvider,
-  useQuery,
-} from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
+import { _setApiBase } from '../../../packages/sdk/src/api-core';
 import { AuthorityQueryProvider } from '../contexts/AuthorityQueryContext';
 import { nativeAuthenticatedTransport } from '../platform/native/authenticatedTransport';
 
@@ -59,13 +57,7 @@ vi.mock('../hooks/useInvalidateCachesOnConnectionSwitch', () => ({
 }));
 
 function Projects() {
-  const query = useQuery({
-    queryKey: ['projects'],
-    queryFn: async () => {
-      throw new Error('individual read must not run');
-    },
-    enabled: false,
-  });
+  const query = useProjectsQuery();
   return (
     <output data-testid="projects">{JSON.stringify(query.data ?? [])}</output>
   );
@@ -128,6 +120,7 @@ function configureHost() {
     requiresEnrolledCredential: true,
     isCurrent: () => host.generation === 1,
   };
+  _setApiBase(host.scope.apiBase);
   host.channels = [];
   host.invoke.mockReset();
   setClientCredentialResolver(() => {
@@ -210,4 +203,45 @@ test('native boot drops a late binary payload across a same-origin authorization
   expect(screen.getByTestId('projects').textContent).not.toContain(
     'stale-project',
   );
+});
+
+test('a refused native boot releases mounted queries to their individual reads', async () => {
+  configureHost();
+  host.invoke.mockImplementation(async (command: string, args) => {
+    if (command !== 'station_native_http_request') return;
+    const channel = host.channels.at(-1)!;
+    queueMicrotask(() => {
+      if (args.request.url.endsWith('/api/boot')) {
+        channel({ type: 'response', status: 404, headers: {}, bodyLength: 0 });
+        channel({ type: 'end' });
+      } else if (args.request.url.endsWith('/api/projects')) {
+        const bytes = new TextEncoder().encode(
+          JSON.stringify({
+            success: true,
+            data: [{ id: 'individual-project' }],
+          }),
+        );
+        const buffer = new ArrayBuffer(bytes.length);
+        new Uint8Array(buffer).set(bytes);
+        channel({
+          type: 'response',
+          status: 200,
+          headers: {},
+          bodyLength: bytes.length,
+        });
+        channel(buffer);
+        channel({ type: 'end' });
+      } else throw new Error(`unexpected native request: ${args.request.url}`);
+    });
+  });
+  renderNative();
+  await waitFor(() =>
+    expect(screen.getByTestId('projects').textContent).toContain(
+      'individual-project',
+    ),
+  );
+  expect(host.invoke.mock.calls.map(([, args]) => args.request.url)).toEqual([
+    `${host.scope.apiBase}/api/boot`,
+    `${host.scope.apiBase}/api/projects`,
+  ]);
 });

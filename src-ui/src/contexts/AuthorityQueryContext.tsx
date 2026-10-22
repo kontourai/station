@@ -415,6 +415,8 @@ export function AuthorityQueryProvider({
   // local-UI session proof is meaningless for a remote home. Native uses
   // the captured host transport and opaque binding instead of that session. Seeding is tracked per live client, never in a set that could
   // survive client replacement and skip a new client's seed.
+  const [nativeBootFinished, setNativeBootFinished] =
+    useState<QueryClient | null>(null);
   const seededRef = useRef<{
     namespace: string;
     client: QueryClient;
@@ -462,6 +464,9 @@ export function AuthorityQueryProvider({
         const payload = await fetchBootPayloadAt(apiBaseAtSeed, {
           requestScope: scopeAtSeed,
           requireCredential: scopeAtSeed.requiresEnrolledCredential,
+          ...(profile.isTauri
+            ? { timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS }
+            : {}),
         });
         await seedBootPayloadGuarded(
           clientAtSeed,
@@ -476,6 +481,9 @@ export function AuthorityQueryProvider({
         };
       } catch {
         // Best-effort fast path only; ordinary queries fetch on demand.
+      } finally {
+        if (profile.isTauri && stillCurrent())
+          setNativeBootFinished(clientAtSeed);
       }
     })();
     return () => {
@@ -532,6 +540,11 @@ export function AuthorityQueryProvider({
   // PersistQueryClientProvider remount per namespace, so each authority
   // restores exactly its own blob through the standard isRestoring gate.
   if (verifiedNamespace && active?.namespace === verifiedNamespace) {
+    // Let the native aggregate seed before boot-critical hooks mount; otherwise
+    // it would compete with the individual requests it is meant to replace.
+    if (profile.isTauri && nativeBootFinished !== active.queryClient) {
+      return <StartupScreen message="Loading Station" />;
+    }
     return (
       <AuthorityPersistenceContext.Provider
         value={{
