@@ -40,13 +40,7 @@ WRY_RUSTWEBVIEWCLIENT_CLASS_EXTENSION = '''
     override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
         if (!stationRendererRecoveryPending) {
             stationRendererRecoveryPending = true
-            (view.parent as? android.view.ViewGroup)?.removeView(view)
-            view.destroy()
-            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                if (!stationActivity.isFinishing && !stationActivity.isDestroyed) {
-                    stationActivity.recreate()
-                }
-            }
+            io.kontourai.station.agentactivity.StationRendererRecovery.recover(stationActivity, view)
         }
         return true
     }

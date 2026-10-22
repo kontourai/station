@@ -1068,3 +1068,47 @@ describe('Station envelope marker through the native broker (#3166)', () => {
     expect(error.stationEnvelope).toBe(false);
   });
 });
+
+describe('profile changes before native dispatch', () => {
+  beforeEach(() => {
+    bridge.invoke.mockReset();
+    bridge.channels.length = 0;
+  });
+  test.each(['invoke', 'channel'])(
+    'routes an unscoped %s refusal to credential recovery without replay',
+    async (path) => {
+      bridge.invoke.mockImplementation(async (command: string) => {
+        if (command !== 'station_native_http_request') return;
+        if (path === 'invoke')
+          throw { code: 'request_binding_stale', message: 'stale' };
+        emit({ type: 'error', code: 'request_binding_stale' });
+      });
+      await expect(
+        nativeAuthenticatedTransport(
+          'https://station.example.test/api/agents',
+          {
+            method: 'POST',
+            body: 'create',
+          },
+        ),
+      ).rejects.toMatchObject({ code: 'credential_binding_changed' });
+      expect(
+        bridge.invoke.mock.calls.filter(
+          ([command]) => command === 'station_native_http_request',
+        ),
+      ).toHaveLength(1);
+    },
+  );
+
+  test('preserves scoped stale receipts without adopting ambient authority', async () => {
+    bridge.invoke.mockImplementation(async (command: string) => {
+      if (command === 'station_native_http_request')
+        emit({ type: 'error', code: 'request_binding_stale' });
+    });
+    await expect(
+      nativeAuthenticatedTransport('https://station.example.test/api/agents', {
+        expectedBindingId: 'captured-binding',
+      } as RequestInit),
+    ).rejects.toMatchObject({ code: 'request_binding_stale' });
+  });
+});

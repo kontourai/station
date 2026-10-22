@@ -163,9 +163,13 @@ change notification covering external replacement, deletion and locked storage,
 so a cached bearer could hide a refusal. The two request-path keyring reads are
 mutually exclusive, one for ambient requests and one for scoped requests.
 
-On Unix, profile reads validate the directory and opened file's owner/mode and
+On Unix, profile reads validate the directory and file's owner/mode and
 reject symlinks on every lookup. Parsed snapshots reuse only the same path,
-opened device/inode, size, mtime and ctime, including nanoseconds. Atomic
+device/inode, size, mtime and ctime, including nanoseconds. Settled high-resolution
+metadata avoids opening the file. Recent, coarse or future timestamps require a
+byte comparison to cover timestamp collisions. File I/O runs outside the global
+cache mutex; a write generation prevents publishing a snapshot across invalidation.
+Poisoned cache locks recover on reads as well as writes. Atomic
 replacement and in-place edits invalidate the snapshot, including a same-size
 edit that restores mtime. Errors never fall back to cached authority. Windows
 retains the full trusted read/parse until an equivalent file-change identity is
@@ -304,6 +308,34 @@ Approval delivery has a separate bounded send and inspection path; see
 [tool-policy delivery](../conformance/tool-policy-delivery.md#answering-on-a-phone-and-recovering-delivery).
 Adapter and browser tests are diagnostic evidence, separate from a real shell,
 physical phone, notification lifecycle or release-provider journey.
+
+## Mobile connection and renderer recovery
+
+Native authenticated HTTP agents keep mobile connections idle for at most two
+seconds. Android default-network availability/loss and iOS's Network.framework
+path monitor invalidate pooled connections. Capability-only Android callbacks
+still update metering without advancing the epoch; iOS activation alone does
+not advance it. Existing agent clones reject an earlier network epoch at pool
+checkout. An epoch change never interrupts an upload already underway.
+
+A failed pooled exchange can retry once with a new agent only before any HTTP
+write was attempted. There is no shortened stale-connection response probe;
+slow GETs, long-polls and streams keep their configured budgets and are never
+replayed after a write attempt. A failed write is treated as possibly sent
+because ureq does not report partial-write counts. Cancellation and captured
+profile authority are checked before any pre-send retry.
+
+An unscoped request whose profile changes during dispatch reports the existing
+`credential_binding_changed` recovery code to the renderer. Scoped requests
+retain `request_binding_stale`; neither case silently adopts another profile.
+
+Both mobile shells allow at most three automatic renderer recoveries within
+60 seconds. Android stores the budget outside the recreated WebView client and
+shows native error/Reload controls on exhaustion. iOS defers background
+termination recovery until `UIApplicationDidBecomeActiveNotification`, then
+uses a native Reload/Close dialog if the budget is exhausted. Explicit Reload
+starts a new budget. These are source contracts; physical sleep/wake, network
+handoff, repeated renderer death and background recovery require device proof.
 
 ## Native foreground dispatch deadlines
 

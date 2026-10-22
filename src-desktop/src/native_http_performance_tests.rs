@@ -25,6 +25,7 @@ impl KeepAliveStation {
             while !stopping.load(Ordering::SeqCst) {
                 match listener.accept() {
                     Ok((stream, _)) => {
+                        stream.set_nonblocking(false).unwrap();
                         let id = count.fetch_add(1, Ordering::SeqCst) + 1;
                         stream
                             .set_read_timeout(Some(Duration::from_secs(3)))
@@ -40,18 +41,32 @@ impl KeepAliveStation {
                                     Ok(0) | Err(_) => break,
                                     Ok(_) => {}
                                 }
-                                assert!(line.starts_with("GET /"));
+                                assert!(line.starts_with("GET /") || line.starts_with("POST /"));
                                 let mut authorization = String::new();
+                                let mut length = 0;
                                 loop {
                                     line.clear();
                                     assert!(reader.read_line(&mut line).unwrap() > 0);
                                     if line == "\r\n" {
                                         break;
                                     }
+                                    if let Some(value) =
+                                        line.to_ascii_lowercase().strip_prefix("content-length:")
+                                    {
+                                        length = value.trim().parse::<u64>().unwrap();
+                                    }
                                     if line.to_ascii_lowercase().starts_with("authorization:") {
                                         authorization = line.trim().to_owned();
                                     }
                                 }
+                                assert_eq!(
+                                    std::io::copy(
+                                        &mut std::io::Read::by_ref(&mut reader).take(length),
+                                        &mut std::io::sink(),
+                                    )
+                                    .unwrap(),
+                                    length
+                                );
                                 let body = format!("{id}:{authorization}");
                                 write!(
                                     reader.get_mut(),
@@ -413,4 +428,402 @@ fn native_http_initialized_mobile_reads_do_not_acquire_a_writer_lock() {
     assert!(
         prepare_mobile_station_profile_read(&path, || Err("must not recreate".into())).is_err()
     );
+}
+
+#[test]
+fn native_http_profile_replacement_recovers_a_poisoned_snapshot_cache() {
+    const WORKER: &str = "STATION_SNAPSHOT_POISON_WORKER";
+    if std::env::var_os(WORKER).is_none() {
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "native_http_performance_tests::native_http_profile_replacement_recovers_a_poisoned_snapshot_cache", "--nocapture"])
+            .env(WORKER, "1").status().unwrap();
+        assert!(status.success());
+        return;
+    }
+    let root = tempfile::tempdir().unwrap();
+    let path = secure_mobile_station_profiles_path(root.path()).unwrap();
+    write_empty_station_profile_store(&path).unwrap();
+    let cache = NATIVE_HTTP_PROFILE_SNAPSHOTS.get_or_init(Default::default);
+    cache.lock().unwrap().read(&path).unwrap();
+    let _ = std::panic::catch_unwind(|| {
+        let _held = cache.lock().unwrap();
+        panic!("injected snapshot panic");
+    });
+    assert_eq!(
+        read_native_http_profile_snapshot(&path, || Err("unexpected initialization".into()))
+            .unwrap()
+            .revision,
+        0
+    );
+    assert!(!cache.is_poisoned());
+    let next = root.path().join("next.json");
+    std::fs::copy(&path, &next).unwrap();
+    replace_station_profile_store(&next, &path).unwrap();
+    assert_eq!(cache.lock().unwrap().read(&path).unwrap().revision, 0);
+}
+
+#[test]
+fn native_http_genesis_read_waits_for_publication_but_missing_initialized_store_still_refuses() {
+    let root = tempfile::tempdir().unwrap();
+    let path = secure_mobile_station_profiles_path(root.path()).unwrap();
+    let writer = lock_station_profiles(&path).unwrap();
+    std::fs::write(
+        path.with_file_name(".profiles-initialized"),
+        b"station-mobile-profiles-v1\n",
+    )
+    .unwrap();
+    let reading = path.clone();
+    let (entered, waiting) = std::sync::mpsc::sync_channel(1);
+    let reader = std::thread::spawn(move || {
+        prepare_mobile_station_profile_read(&reading, || {
+            entered.send(()).unwrap();
+            let _lock = lock_station_profiles(&reading)?;
+            ensure_mobile_profile_store_genesis(&reading)
+        })?;
+        let contents = read_station_profile_store(&reading).map_err(|e| e.to_string())?;
+        parse_station_profile_store(&contents)
+    });
+    waiting
+        .recv_timeout(Duration::from_secs(3))
+        .expect("reader waits on genesis publication");
+    write_empty_station_profile_store(&path).unwrap();
+    drop(writer);
+    assert_eq!(reader.join().unwrap().unwrap().revision, 0);
+    std::fs::remove_file(&path).unwrap();
+    assert!(prepare_mobile_station_profile_read(&path, || {
+        let _lock = lock_station_profiles(&path)?;
+        ensure_mobile_profile_store_genesis(&path)
+    })
+    .is_err());
+}
+
+#[test]
+fn native_http_failed_sent_requests_are_never_replayed() {
+    for (method, partial_response) in [
+        ("GET", false),
+        ("HEAD", false),
+        ("POST", false),
+        ("GET", true),
+    ] {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            stream.set_nonblocking(false).unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(3)))
+                .unwrap();
+            let mut reader = BufReader::new(stream);
+            let read_request = |reader: &mut BufReader<std::net::TcpStream>| {
+                let mut line = String::new();
+                loop {
+                    line.clear();
+                    assert!(reader.read_line(&mut line).unwrap() > 0);
+                    if line == "\r\n" {
+                        break;
+                    }
+                }
+            };
+            read_request(&mut reader);
+            reader
+                .get_mut()
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+                .unwrap();
+            read_request(&mut reader);
+            // The peer accepted this request; GET can be a long-poll too.
+            // Neither an EOF nor a partial response permits replay.
+            if partial_response {
+                reader.get_mut().write_all(b"HTTP/1.1 ").unwrap();
+            }
+            drop(reader);
+            listener.set_nonblocking(true).unwrap();
+            let deadline = Instant::now() + Duration::from_secs(2);
+            let mut retried = false;
+            while Instant::now() < deadline {
+                match listener.accept() {
+                    Ok((stream, _)) => {
+                        stream.set_nonblocking(false).unwrap();
+                        stream
+                            .set_read_timeout(Some(Duration::from_secs(3)))
+                            .unwrap();
+                        let mut reader = BufReader::new(stream);
+                        read_request(&mut reader);
+                        reader
+                            .get_mut()
+                            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+                            .unwrap();
+                        retried = true;
+                        break;
+                    }
+                    Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(1))
+                    }
+                    Err(error) => panic!("accept: {error}"),
+                }
+            }
+            retried
+        });
+        let agent = native_http_agent();
+        agent
+            .get(&origin)
+            .call()
+            .unwrap()
+            .body_mut()
+            .read_to_string()
+            .unwrap();
+        let request = ureq::http::Request::builder()
+            .method(method)
+            .uri(&origin)
+            .body(Vec::new())
+            .unwrap();
+        let mut revalidated = false;
+        let result =
+            native_http_transport::run(&agent, request, &AtomicBool::new(false), None, || {
+                revalidated = true;
+                Ok(())
+            });
+        assert_eq!(result.is_ok(), false, "{method} partial={partial_response}");
+        assert!(!revalidated);
+        assert!(!server.join().unwrap());
+    }
+}
+
+#[test]
+fn native_http_network_change_retires_pool_and_already_cloned_agents() {
+    const WORKER: &str = "STATION_NETWORK_EPOCH_WORKER";
+    if std::env::var_os(WORKER).is_none() {
+        assert!(std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "native_http_performance_tests::native_http_network_change_retires_pool_and_already_cloned_agents", "--nocapture"])
+            .env(WORKER, "1").status().unwrap().success());
+        return;
+    }
+    let station = KeepAliveStation::start();
+    let mut pool = NativeHttpAgentPool::default();
+    let saved = pool.agent(pool_key(&station.origin));
+    assert!(station.get(&saved, "a").starts_with("1:"));
+    native_http_transport::network_changed();
+    assert!(station.get(&saved, "a").starts_with("2:"));
+    let replacement = pool.agent(pool_key(&station.origin));
+    assert!(station.get(&replacement, "a").starts_with("3:"));
+}
+
+#[test]
+fn native_http_network_change_during_upload_does_not_interrupt_or_replay_post() {
+    const WORKER: &str = "STATION_BEFORE_SEND_EPOCH_WORKER";
+    if std::env::var_os(WORKER).is_none() {
+        assert!(std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "native_http_performance_tests::native_http_network_change_during_upload_does_not_interrupt_or_replay_post", "--nocapture"])
+            .env(WORKER, "1").status().unwrap().success());
+        return;
+    }
+    use ureq::unversioned::transport::{
+        Buffers, ConnectionDetails, Connector, DefaultConnector, NextTimeout, Transport,
+    };
+    #[derive(Debug)]
+    struct ChangeDuringUpload;
+    #[derive(Debug)]
+    struct ChangingTransport {
+        inner: Box<dyn Transport>,
+        writes: usize,
+    }
+    impl Connector<Box<dyn Transport>> for ChangeDuringUpload {
+        type Out = ChangingTransport;
+        fn connect(
+            &self,
+            _: &ConnectionDetails,
+            inner: Option<Box<dyn Transport>>,
+        ) -> Result<Option<Self::Out>, ureq::Error> {
+            Ok(inner.map(|inner| ChangingTransport { inner, writes: 0 }))
+        }
+    }
+    impl Transport for ChangingTransport {
+        fn buffers(&mut self) -> &mut dyn Buffers {
+            self.inner.buffers()
+        }
+        fn transmit_output(
+            &mut self,
+            amount: usize,
+            timeout: NextTimeout,
+        ) -> Result<(), ureq::Error> {
+            self.inner.transmit_output(amount, timeout)?;
+            self.writes += 1;
+            if self.writes == 3 {
+                native_http_transport::network_changed();
+            }
+            Ok(())
+        }
+        fn await_input(&mut self, timeout: NextTimeout) -> Result<bool, ureq::Error> {
+            self.inner.await_input(timeout)
+        }
+        fn is_open(&mut self) -> bool {
+            self.inner.is_open()
+        }
+        fn is_tls(&self) -> bool {
+            self.inner.is_tls()
+        }
+    }
+    let station = KeepAliveStation::start();
+    let connector = DefaultConnector::default()
+        .chain(ChangeDuringUpload)
+        .chain(native_http_transport::ObserveConnector);
+    let agent = ureq::Agent::with_parts(
+        native_http_agent_config().build(),
+        connector,
+        ureq::unversioned::resolver::DefaultResolver::default(),
+    );
+    assert!(station.get(&agent, "first").starts_with("1:"));
+    let request = ureq::http::Request::builder()
+        .method("POST")
+        .uri(&station.origin)
+        .body(vec![42; 10 * 1024 * 1024])
+        .unwrap();
+    let epoch = native_http_transport::network_epoch();
+    let mut revalidated = false;
+    let mut response =
+        native_http_transport::run(&agent, request, &AtomicBool::new(false), None, || {
+            revalidated = true;
+            Ok(())
+        })
+        .unwrap();
+    assert!(response
+        .body_mut()
+        .read_to_string()
+        .unwrap()
+        .starts_with("1:"));
+    assert_ne!(native_http_transport::network_epoch(), epoch);
+    assert!(!revalidated);
+    assert_eq!(station.connections.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn native_http_slow_reused_get_waits_for_response_without_replay() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+    let server = std::thread::spawn(move || {
+        let (stream, _) = listener.accept().unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(6)))
+            .unwrap();
+        let mut reader = BufReader::new(stream);
+        for request in 0..2 {
+            loop {
+                let mut line = String::new();
+                assert!(reader.read_line(&mut line).unwrap() > 0);
+                if line == "\r\n" {
+                    break;
+                }
+            }
+            if request == 1 {
+                std::thread::sleep(Duration::from_millis(3300));
+            }
+            reader
+                .get_mut()
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+                .unwrap();
+        }
+        listener.set_nonblocking(true).unwrap();
+        assert!(matches!(listener.accept(), Err(e) if e.kind() == std::io::ErrorKind::WouldBlock));
+    });
+    let agent = native_http_agent();
+    assert_eq!(
+        agent
+            .get(&origin)
+            .call()
+            .unwrap()
+            .body_mut()
+            .read_to_string()
+            .unwrap(),
+        "ok"
+    );
+    let request = ureq::http::Request::builder()
+        .uri(&origin)
+        .body(Vec::new())
+        .unwrap();
+    let mut response =
+        native_http_transport::run(&agent, request, &AtomicBool::new(false), None, || {
+            panic!("slow GET must not replay")
+        })
+        .unwrap();
+    assert_eq!(response.body_mut().read_to_string().unwrap(), "ok");
+    server.join().unwrap();
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn native_http_snapshot_hot_reads_do_not_read_profile_bytes_or_repeat_genesis() {
+    const WORKER: &str = "STATION_SNAPSHOT_IO_WORKER";
+    if std::env::var_os(WORKER).is_none() {
+        assert!(std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "native_http_performance_tests::native_http_snapshot_hot_reads_do_not_read_profile_bytes_or_repeat_genesis", "--nocapture"])
+            .env(WORKER, "1").status().unwrap().success());
+        return;
+    }
+    let root = tempfile::tempdir().unwrap();
+    let path = secure_mobile_station_profiles_path(root.path()).unwrap();
+    write_empty_station_profile_store(&path).unwrap();
+    let contents = format!("{}{}", EMPTY_STATION_PROFILE_STORE, " ".repeat(1024 * 1024));
+    std::fs::write(&path, &contents).unwrap();
+    let first = read_native_http_profile_snapshot(&path, || Ok(())).unwrap();
+    std::thread::sleep(Duration::from_millis(2100));
+    let settled =
+        read_native_http_profile_snapshot(&path, || Err("repeated genesis".into())).unwrap();
+    assert!(Arc::ptr_eq(&first, &settled));
+    let read_bytes = || -> u64 {
+        let io = std::fs::read_to_string("/proc/thread-self/io").unwrap();
+        io.lines()
+            .find_map(|line| line.strip_prefix("rchar: "))
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap()
+    };
+    let before = read_bytes();
+    for _ in 0..16 {
+        assert!(Arc::ptr_eq(
+            &first,
+            &read_native_http_profile_snapshot(&path, || Err("repeated genesis".into())).unwrap()
+        ));
+    }
+    assert!(
+        read_bytes() - before < 16 * 1024,
+        "hot cache must not read a megabyte per request"
+    );
+    // Same-size external edits with restored mtime must still be observed.
+    let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
+    std::fs::write(&path, contents.replace("\"revision\":0", "\"revision\":1")).unwrap();
+    std::fs::OpenOptions::new()
+        .write(true)
+        .open(&path)
+        .unwrap()
+        .set_modified(modified)
+        .unwrap();
+    assert_eq!(
+        read_native_http_profile_snapshot(&path, || Ok(()))
+            .unwrap()
+            .revision,
+        1
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn native_http_recent_metadata_collision_compares_bytes() {
+    let root = tempfile::tempdir().unwrap();
+    let path = secure_mobile_station_profiles_path(root.path()).unwrap();
+    write_empty_station_profile_store(&path).unwrap();
+    let mut cache = StationProfileSnapshotCache::default();
+    assert_eq!(cache.read(&path).unwrap().revision, 0);
+    std::fs::write(
+        &path,
+        EMPTY_STATION_PROFILE_STORE.replace("\"revision\":0", "\"revision\":1"),
+    )
+    .unwrap();
+    // Model a filesystem timestamp collision: metadata matches the cached
+    // version even though the bytes changed in the same timestamp window.
+    cache.snapshot.as_mut().unwrap().1 =
+        StationProfileFileVersion::of(&std::fs::metadata(&path).unwrap());
+    // Waiting out the collision window must not turn the old byte snapshot
+    // into trusted metadata without another read.
+    std::thread::sleep(Duration::from_millis(2100));
+    assert_eq!(cache.read(&path).unwrap().revision, 1);
 }

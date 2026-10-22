@@ -1,0 +1,7 @@
+{
+  "revision": "1d20068f7a980551ea3040f0eacfccb2a9899377",
+
+  "notes": [
+    {"path":"docs/guides/mobile-release.md","note":"Native review r2: traced RendererRecovery Instant-based 60-second window and one-error latch, iOS main-thread callers, and Android foreground deferral. Source and focused wiring tests only; physical renderer death, sleep/wake and dialog behavior NOT_VERIFIED.","inputs":["docs/guides/mobile-release.md","src-desktop/src/lib.rs"]}
+  ]
+}

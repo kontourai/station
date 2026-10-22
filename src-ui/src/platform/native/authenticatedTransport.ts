@@ -214,6 +214,13 @@ const nativeAuthenticatedTransportWithoutDnsRetry: ClientAuthenticatedTransport 
       if (finished) return;
       finished = true;
       cleanup();
+      // Ambient callers recover through the existing credential-binding path.
+      // A scoped receipt stays stale and must never silently adopt another binding.
+      if (code === 'request_binding_stale' && !expectedBindingId) {
+        code = 'credential_binding_changed';
+        detail =
+          'The saved Station connection changed. Refresh the connection and try again.';
+      }
       const error = Object.assign(
         new Error(`Native Station request failed: ${detail ?? code}`),
         code === undefined ? {} : { code },
