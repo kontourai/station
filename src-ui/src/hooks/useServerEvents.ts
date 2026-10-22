@@ -5,7 +5,11 @@
 
 import { TURN_COMPLETION_NOTIFICATION_SOURCE } from '@kontourai/station-contracts/notification';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import { applyServerUpdateStateEvent, fetchSSE } from '@kontourai/station-sdk';
+import {
+  applyACPStatusEvent,
+  applyServerUpdateStateEvent,
+  fetchSSE,
+} from '@kontourai/station-sdk';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef } from 'react';
 import {
@@ -173,11 +177,6 @@ const DATA_HANDLERS: Record<string, (data: Record<string, unknown>) => void> = {
 const EVENT_HANDLERS: Record<string, (queryClient: any) => void> = {
   [SERVER_EVENTS.AGENTS_CHANGED]: (qc) =>
     qc.invalidateQueries({ queryKey: ['agents'], refetchType: 'none' }),
-  [SERVER_EVENTS.ACP_STATUS]: (qc) => {
-    qc.invalidateQueries({ queryKey: ['agents'] });
-    qc.invalidateQueries({ queryKey: ['acp-connections'] });
-    qc.invalidateQueries({ queryKey: ['system-status'] });
-  },
   [SERVER_EVENTS.CONFIG_CHANGED]: (qc) => {
     qc.invalidateQueries({ queryKey: ['config'], refetchType: 'none' });
     qc.invalidateQueries({ queryKey: ['agents'], refetchType: 'none' });
@@ -329,6 +328,17 @@ export function useServerEvents(handlers?: Record<string, EventHandler>) {
             // A malformed payload leaves the last known state.
           }
           return;
+        }
+        if (event === SERVER_EVENTS.ACP_STATUS) {
+          try {
+            applyACPStatusEvent(
+              queryClient,
+              JSON.parse(message.data),
+              subscriptionAuthority,
+            );
+          } catch {
+            // A malformed status cannot replace the last applied observation.
+          }
         }
         if (EVENT_HANDLERS[event]) {
           invalidateQueriesForServerEvent(event, queryClient);

@@ -1,6 +1,10 @@
 // @vitest-environment jsdom
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  QueryClient,
+  QueryClientProvider,
+  QueryObserver,
+} from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import * as React from 'react';
@@ -19,7 +23,9 @@ const streams = vi.hoisted(
     }>,
 );
 
-vi.mock('@kontourai/station-sdk', () => ({
+vi.mock('@kontourai/station-sdk', async () => ({
+  applyACPStatusEvent: (await import('../../../packages/sdk/src/server-events'))
+    .applyACPStatusEvent,
   _setApiBase: vi.fn(),
   fetchSSE: vi.fn(
     (
@@ -160,6 +166,77 @@ describe('useServerEvents authority stability through the real host capture hook
     next.rerender();
     expect(next.result.current?.draftRecoveryKey).not.toBe(authorized);
     next.unmount();
+    client.clear();
+  });
+
+  test('ACP reconnect compares the last applied status and repairs a change missed while disconnected', async () => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const offline = { connected: false, connections: [] };
+    const online = {
+      connected: true,
+      connections: [{ id: 'engine', status: 'available', detail: 'ready' }],
+    };
+    client.setQueryData(['system-status', 'https://station.test'], {
+      acp: offline,
+    });
+    let observedStatus = 0;
+    const fetchAgents = vi.fn(async () => observedStatus);
+    const observer = new QueryObserver(client, {
+      queryKey: ['agents'],
+      queryFn: fetchAgents,
+      initialData: 0,
+      staleTime: Infinity,
+    });
+    const unsubscribe = observer.subscribe(() => {});
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    const hook = renderHook(() => useServerEvents(), {
+      wrapper: provider(client),
+    });
+    const send = async (index: number, status: unknown) =>
+      act(async () => {
+        streams[index]!.onMessage({
+          event: SERVER_EVENTS.ACP_STATUS,
+          data: JSON.stringify(status),
+        });
+      });
+    await send(0, offline);
+    expect(invalidate).not.toHaveBeenCalled();
+    expect(fetchAgents).not.toHaveBeenCalled();
+    observedStatus = 1;
+    await send(0, online);
+    expect(fetchAgents).toHaveBeenCalledTimes(1);
+    expect(client.getQueryData(['agents'])).toBe(1);
+    expect(invalidate.mock.calls.map(([options]) => options?.queryKey)).toEqual(
+      [['agents'], ['acp-connections'], ['system-status']],
+    );
+    invalidate.mockClear();
+    hook.unmount();
+    expect(streams[0]!.close).toHaveBeenCalledTimes(1);
+    // No frame is delivered during the disconnect. The status has reverted
+    // to the old REST snapshot, but differs from the last applied live frame.
+    const reconnected = renderHook(() => useServerEvents(), {
+      wrapper: provider(client),
+    });
+    observedStatus = 2;
+    await send(1, offline);
+    expect(invalidate).toHaveBeenCalledTimes(3);
+    expect(fetchAgents).toHaveBeenCalledTimes(2);
+    expect(client.getQueryData(['agents'])).toBe(2);
+    invalidate.mockClear();
+    await send(1, { connections: [], connected: false });
+    expect(invalidate).not.toHaveBeenCalled();
+    await send(1, online);
+    invalidate.mockClear();
+    // Preserve changes beyond id/status, even when connection identity is unchanged.
+    await send(1, {
+      ...online,
+      connections: [{ ...online.connections[0], detail: 'changed' }],
+    });
+    expect(invalidate).toHaveBeenCalledTimes(3);
+    reconnected.unmount();
+    unsubscribe();
     client.clear();
   });
 

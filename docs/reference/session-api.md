@@ -1490,7 +1490,14 @@ outside the replay budget requires snapshot recovery. The
 `orchestration:caughtUp` marker carries the safe resume cursor (and epoch when
 available) after the replay/snapshot boundary, before buffered live delivery.
 Do not assume the first frame is a snapshot; keepalive frames may arrive while
-history is being read.
+history is being read. Each connection buffers at most 8 MiB of serialized live
+payloads and 16,384 frames before caught-up. At caught-up, the frame cap becomes the
+backlog remaining at that moment plus 1,024 frames; the 8 MiB byte cap continues. Overflow discards that buffer and
+replays persisted events in pages of at most 64 rows and approximately 1 MiB
+(one larger ingress-bounded event may occupy its own page). Recovery stays on
+the same connection, so CLI observers do not see a false completion. A snapshot
+reconciles compacted activity/projection notifications; per-session read access
+is checked again before queued content is written.
 
 Snapshot and caught-up session summaries use the same scope as the stream:
 `?threadId=X` includes only X; the global stream includes all readable sessions.
@@ -1498,6 +1505,17 @@ Snapshot and caught-up session summaries use the same scope as the stream:
 Live `orchestration:event` frames carry `{ event: CanonicalRuntimeEvent }`;
 `threadId` filters the stream and caller authorization still applies. Coalesced
 activity may also arrive as `orchestration:activity`, without a durable cursor.
+The separate bare `/events` feed carries ephemeral notifications and cache
+invalidation hints. It bounds its queue to 1,024 frames or 8 MiB and compacts an
+overflow into a `data:changed` cache-resync hint while keeping the connection.
+Transient effects such as toasts and navigation are best effort. The initial
+`acp:status` frame repairs status changes missed while disconnected.
+The SDK consumer compares the full last-applied status for that server authority,
+including changes missed while disconnected, before invalidating status queries. It has no SSE
+IDs or replay promise: EventBus events are not persisted, and replaying effects
+would require a retained, authority-aware protocol. Use durable owner APIs for
+state and the orchestration feed for cursor-based conversation recovery.
+
 Ignore `ping` for application state. Use the JSON replay or message projection
 for bounded diagnostic polling; a live feed is not evidence that all provider
 output was persisted.

@@ -1460,24 +1460,12 @@ export interface FetchSseOptions extends ClientRequestOptions {
    */
   healthyConnectionMs?: number;
   /**
-   * station#2301: abandon an attempt whose body has delivered NO bytes for
-   * this long, and reconnect through the ordinary transient-failure path
-   * (Last-Event-ID kept). Unset — the default — waits on `reader.read()`
-   * forever, which is what an open-ended stream with no server heartbeat
-   * needs.
-   *
-   * A socket that dies without an error (doze, NAT rebind, a frozen WebView
-   * resuming onto a dead connection) never rejects that read: the stream
-   * looks open, delivers nothing, and nothing notices. Only a caller whose
-   * server writes a heartbeat can tell silence from death, so only it can
-   * choose this number; set it to a few heartbeat intervals. Any bytes count
-   * as activity, including comments and keepalive frames the caller ignores.
-   *
-   * Checked on a timer and again whenever the page becomes visible, so a
-   * resumed background page — whose timers were frozen — notices at once
-   * rather than one check interval later.
+   * Reconnect after this many milliseconds without any body bytes. Defaults
+   * to 75_000, allowing two missed 30-second Station keepalives. Comments
+   * and ping frames count as activity. Set null for a server without heartbeats.
+   * Visibility, focus and online transitions also check the elapsed silence.
    */
-  stallTimeoutMs?: number;
+  stallTimeoutMs?: number | null;
   onOpen?: (response: Response) => void;
   /** Return false when the frame was rejected and must not advance its checkpoint. */
   onMessage: (message: FetchSseMessage) => unknown;
@@ -1961,7 +1949,9 @@ export function fetchSSE(
             }
             opts.onCheckpoint?.(checkpoint);
           },
-          opts.stallTimeoutMs,
+          opts.stallTimeoutMs === null
+            ? undefined
+            : (opts.stallTimeoutMs ?? 75_000),
         );
         if (!controller.signal.aborted) {
           throw new Error('SSE stream ended unexpectedly');
