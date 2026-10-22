@@ -344,26 +344,28 @@ export class KnowledgeDocumentImportService {
       assertCurrent();
       const record = this.read(requestId);
       if (!record || record.expectedRoot.id !== rootId) return null;
-      const receipt = await this.pinned(
-        record.expectedRoot,
-        async (adapter) => {
-          const observed = await this.observe(record, adapter);
-          let changed = false;
-          observed.documents.forEach((file, index) => {
-            if (
-              file.phase === 'imported' &&
-              record.states[index] !== 'imported'
-            ) {
-              record.states[index] = 'imported';
-              changed = true;
+      const receipt = await withKnowledgeWriteAuthority(
+        record.expectedRoot.storeRoot,
+        assertCurrent,
+        () =>
+          this.pinned(record.expectedRoot, async (adapter) => {
+            const observed = await this.observe(record, adapter);
+            let changed = false;
+            observed.documents.forEach((file, index) => {
+              if (
+                file.phase === 'imported' &&
+                record.states[index] !== 'imported'
+              ) {
+                record.states[index] = 'imported';
+                changed = true;
+              }
+            });
+            if (changed) {
+              assertCurrent();
+              this.receiptFile(requestId).write(record);
             }
-          });
-          if (changed) {
-            assertCurrent();
-            this.receiptFile(requestId).write(record);
-          }
-          return observed;
-        },
+            return observed;
+          }),
       );
       return { root: record.expectedRoot, receipt };
     } finally {

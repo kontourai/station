@@ -304,3 +304,54 @@ test('revocation while waiting for the actual record lock prevents publication a
     'uncertain',
   );
 });
+
+test('receipt observation cannot repair store files after authority ends while waiting for the record lock', async () => {
+  const input = request();
+  await service.import(input, authority);
+  const adapter = await provider.adapterFor(root.id);
+  const aliasPath = join(root.storeRoot, 'alias-index.json');
+  unlinkSync(aliasPath);
+  let locked!: () => void;
+  let release!: () => void;
+  let entered!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    locked = resolve;
+  });
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const reading = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const holding = new KnowledgeFileTransactions(root.storeRoot).mutate(
+    'external writer',
+    async () => {
+      locked();
+      await held;
+    },
+  );
+  await ready;
+  const get = adapter.get.bind(adapter);
+  vi.spyOn(adapter, 'get').mockImplementationOnce((id) => {
+    entered();
+    return get(id);
+  });
+  const outcome = service
+    .get(root.id, input.requestId, authority.assertCurrent)
+    .catch((error) => error);
+  try {
+    await reading;
+    allowed = false;
+  } finally {
+    release();
+    await holding;
+  }
+  expect(await outcome).toMatchObject({ message: 'Import authority ended' });
+  expect(existsSync(aliasPath)).toBe(false);
+  allowed = true;
+  expect(
+    (await service.get(root.id, input.requestId, authority.assertCurrent))
+      ?.receipt.phase,
+  ).toBe('imported');
+  expect(existsSync(aliasPath)).toBe(true);
+});
