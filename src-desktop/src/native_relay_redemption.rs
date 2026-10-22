@@ -2858,7 +2858,7 @@ fn native_broker_request_agent(
         .max_redirects(0)
         .timeout_global(Some(timeout))
         .http_status_as_error(false)
-        .max_idle_connections(2)
+        .max_idle_connections(0)
         .max_idle_connections_per_host(2)
         .max_idle_age(Duration::from_secs(15))
         .build()
