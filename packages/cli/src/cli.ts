@@ -111,20 +111,14 @@ import {
 import { runTargetCommand } from './commands/target-command.js';
 import { runTelemetryCommand } from './commands/telemetry.js';
 import { runTriageCommand } from './commands/triage.js';
-import { versionText } from './commands/version.js';
 import { type DevFlags, startDevServer } from './dev/server.js';
 import {
   assertCommandAvailable,
   assertDefaultInvocationAvailable,
   isBundledDistribution,
 } from './distribution.js';
-import {
-  actionsFor,
-  commandHelpText,
-  didYouMean,
-  knownCommands,
-  usageText,
-} from './help.js';
+import { actionsFor, didYouMean, knownCommands, usageText } from './help.js';
+import { runPassiveCli } from './passive-cli.js';
 
 export { usageText };
 
@@ -150,25 +144,6 @@ function failUnknownCommand(
   if (extra) console.error(extra);
   console.error(`${suggestion}Run \`station --help\` for the command list.`);
   process.exitCode = 1;
-}
-
-/**
- * `--help`/`-h` at any depth is a help request, not a positional. Before this,
- * `station agents --help` failed with `Missing action for agents` and
- * `station chat --help` with `Missing required argument: agent`, because the
- * flag fell through to the command's own argument parsing.
- */
-function printHelpFor(command: string | undefined): boolean {
-  if (command === undefined) {
-    console.log(usageText());
-    return true;
-  }
-  const help = commandHelpText(command);
-  if (help) {
-    console.log(help);
-    return true;
-  }
-  return false;
 }
 
 export interface ParsedLifecycleArgs {
@@ -1462,36 +1437,7 @@ export async function runCli(
   const interactive =
     dependencies.isInteractive ?? Boolean(process.stdin.isTTY);
 
-  if (command === '--version' || command === '-v' || command === 'version') {
-    console.log(versionText().trimEnd());
-    return;
-  }
-
-  // Explicit help (`--help`/`-h`, `station help`, `station help --help`) prints
-  // usage as a success. Handled before the default launcher so a bare `--help`
-  // never lazy-starts.
-  if (
-    command === '--help' ||
-    command === '-h' ||
-    (command === 'help' && (args.length === 0 || args[0].startsWith('-')))
-  ) {
-    console.log(usageText());
-    return;
-  }
-
-  // `station help <verb>` and `station <verb> [...] --help` land here, at any
-  // depth: a help flag anywhere wins over the command's own parsing.
-  if (command === 'help') {
-    if (printHelpFor(args[0])) return;
-    failUnknownCommand(args[0], didYouMean(args[0], knownCommands()));
-    return;
-  }
-  if (
-    command !== undefined &&
-    (args.includes('--help') || args.includes('-h'))
-  ) {
-    if (printHelpFor(command)) return;
-  }
+  if (runPassiveCli(argv)) return;
 
   // Bare `station [dir]` / `station <default-flag>` — the launcher. In a TTY it
   // resolves a running Station and opens it (or offers to start one); with no
