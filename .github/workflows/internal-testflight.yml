@@ -266,7 +266,6 @@ jobs:
       marketing_version: ${{ needs.plan.outputs.version }}
       bundle_version: ${{ needs.plan.outputs.nightly_build }}
       release_label: internal-nightly-${{ needs.plan.outputs.nightly_build }}
-      mobile_endpoint: ${{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_NIGHTLY }}
     secrets: inherit
 
   deliver-beta:
@@ -281,7 +280,6 @@ jobs:
       marketing_version: ${{ needs.plan.outputs.version }}
       bundle_version: ${{ needs.plan.outputs.beta_build }}
       release_label: internal-beta-${{ needs.plan.outputs.beta_build }}
-      mobile_endpoint: ${{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_BETA }}
     secrets: inherit
 
   deliver-stable:
@@ -296,5 +294,4 @@ jobs:
       marketing_version: ${{ needs.plan.outputs.version }}
       bundle_version: ${{ needs.plan.outputs.stable_build }}
       release_label: internal-stable-${{ needs.plan.outputs.stable_build }}
-      mobile_endpoint: ${{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_STABLE }}
     secrets: inherit

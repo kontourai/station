@@ -220,6 +220,14 @@ Query result, with values in `data` and separate loading/error state; they do
 not return the data array itself. A hook being exported also does not prove
 that the default Station host supplies its optional context.
 
+### Task mutations
+
+Successful Task creation refreshes all Task lists, including project and
+connection-scoped lists. Status and dispatch mutations also refresh the changed
+Task's record, graph and claim. Reference mutations refresh those surfaces and
+the Task's answer and user-input references. Other Tasks' detail caches and
+unrelated domains remain unchanged; a failed mutation does not invalidate them.
+
 ### Immutable output review
 
 `@kontourai/station-sdk/project-task-rooms` exports
@@ -318,9 +326,14 @@ or use client functions that take an explicit API base and request options.
 | `useApiBase` | Returns `{ apiBase }`, not a string |
 | Create/send/open chat | Bound host callbacks; see their UI identity/async distinctions below |
 | `useActiveChatActions(id)` | Forwards the host's unbound store-actions object; the supplied id is not bound to those actions |
-| `useConversations(agentSlug?)` | Forwards the adapter's captured list; the argument is not forwarded to the core query |
-| `useConfig`, `useConversation`, `useConversationMessages`, `useActiveChatState` | Corresponding methods are not supplied; calling them through this adapter fails |
-| Model, stats and workflow contexts; the deprecated keyboard slots; slash-command/tool-approval hook slots | Not supplied by this adapter |
+| `useConversations(agentSlug?)` | Uses the core conversation-list hook for that Agent; defaults to the selected Agent, never the layout slug |
+| `useConfig()` | Core configuration snapshot (`Partial<AppConfig>` or `null`); use `useConfigQuery` for read status/errors |
+| `useModels()`, `useAvailableModels()` | Core text-model catalog with picker labels; catalog presence does not establish live inference readiness |
+| `useActiveChatState(id)` | Reactive core Dock-entry state, or `null` when absent; `id` is a local Dock ID |
+| `useSlashCommandHandler()` | Core chat command dispatcher; requires a local Dock entry and its command context |
+| `useToolApproval()` | Core approval handler; preserves server refusal and settled-request outcomes |
+| `useConversation`, `useConversationMessages` | Corresponding methods are not supplied; calling them through this adapter fails |
+| Stats and workflow contexts; deprecated keyboard slots; slash-command-list hook slot | Not supplied by this adapter |
 
 The unbound hooks remain exported custom-host contracts, not deprecated or
 removed APIs. A custom `SDKProvider` may implement their slots. Default plugin
@@ -328,9 +341,17 @@ examples should use an available query or bound host action instead; do not
 interpret an unavailable hook as empty data. Query alternatives still require
 the host Query Client and the server's normal access policy.
 
-The default-host gaps and their caller-level acceptance criteria are tracked
-in [#2780](https://github.com/kontourai/station/issues/2780). That recommendation
-does not require every custom host to provide every optional slot.
+Bindings to configuration, models, conversation lists and Dock-entry state run
+when the plugin calls their hook. They use the core query cache and stores;
+mounting a plugin does not eagerly subscribe it to every service. Host bindings
+supply behavior, not additional authorization. Plugin identity remains owned by
+the individual Pane boundary and server access checks still apply.
+
+Remaining default-host gaps and their caller-level acceptance criteria are
+tracked in [#2780](https://github.com/kontourai/station/issues/2780). This does
+not require every custom host to provide every optional slot. These bindings
+are available to trusted in-process plugin components; isolated frames use
+[the frame host protocol](../guides/plugins.md), not React contexts.
 
 ### Scoped coding file mention queries
 
@@ -462,9 +483,10 @@ Project view API described below for guests.
 
 #### `useConversations(agentSlug?: string): Conversation[]`
 
-Calls the host's supplied conversation-list function. The current Station
-adapter captures that list without forwarding this argument; use
-`useConversationsQuery(agentSlug)` when an explicit Agent query is required.
+Calls the core conversation-list hook for the requested Agent. When omitted,
+Station uses the selected Agent; with neither, the list is empty and no Agent
+query runs. A layout slug is not an Agent identity. Use
+`useConversationsQuery(agentSlug)` when read status or errors are needed.
 
 #### `useConversation(conversationId: string): Conversation | undefined`
 
@@ -514,7 +536,10 @@ per-session stop/clear interface from this compatibility wrapper.
 
 #### `useActiveChatState(sessionId: string)`
 
-Custom-host state slot; currently unbound in Station's default adapter.
+Returns the core Dock-entry state for this local UI ID, or `null` when it
+does not exist. Subscribes to the same store as the built-in chat UI and
+updates as the entry changes or is removed. A durable server Session ID is
+not interchangeable with a local Dock-entry ID.
 
 #### `useSendToChat(agent: QualifiedPluginAgentId | AgentId): (message: string) => void`
 
@@ -572,8 +597,10 @@ type AuthStateExcerpt = {
 
 #### `useConfig()`
 
-Custom-host configuration slot, currently unbound in the default adapter.
-`useConfigQuery()` is the explicit server-read query surface.
+Returns the core configuration snapshot as `Partial<AppConfig> | null`, sharing the
+core query cache. `null` means no successful snapshot is available; it does
+not distinguish a pending read from an error. Use `useConfigQuery()` for
+loading, errors and retry controls.
 
 #### `useApiBase(): { apiBase: string }`
 
@@ -678,12 +705,16 @@ The writable payload stays on the existing editable fields (`name`, `enabled`, `
 
 #### `useModels()`
 
-Custom-host model-list slot, currently unbound by the default adapter.
+Returns the core text-model catalog as `SDKModel[]`, with `id`, `name`,
+`originalId`, and optional inference-profile metadata. The core filters out
+models without text output, disambiguates duplicate names and sorts by name.
+Use `useModelsQuery()` for the raw catalog and loading/error state.
 
 #### `useAvailableModels()`
 
-Custom-host model-availability slot, also unbound by the default adapter. The
-explicit model query surfaces below are separate from these compatibility hooks.
+Returns the same text-model catalog as `useModels()`. Availability here means
+listed in that catalog, not a successful inference or readiness of a particular
+engine connection. Both hooks share the core query cache.
 
 ---
 
@@ -769,8 +800,10 @@ from `@kontourai/station-contracts/notification-preferences`.
 
 ### Slash Command Hooks
 
-These optional custom-host slots are not bound by the default Station adapter;
-calling either hook there throws.
+The default Station adapter supplies the command handler. The command-list
+slot remains a custom-host contract; `useSlashCommands()` still throws in the
+default host. The built-in list additionally requires Agent, binding and model
+context that this no-argument compatibility hook does not express.
 
 #### `useSlashCommands(): SlashCommand[]`
 
@@ -778,18 +811,33 @@ Returns all registered slash commands.
 
 #### `useSlashCommandHandler()`
 
-Returns the handler function for processing slash command input.
+Returns the core handler `(dockId, command, context) => Promise<boolean | string>`.
+It resolves `false` for a missing Dock entry, delegates known commands to the
+core dispatcher, and leaves ACP command execution to the engine. The context
+is the core composer's command context, not just command text; see
+[the dispatcher](../../src-ui/src/slashCommands/dispatch.ts).
 
 ---
 
 ### Tool Approval Hook
 
-The default Station adapter does not supply this optional hook slot. A custom
-host must supply it before use; exporting the hook does not grant tool approval.
+The default Station adapter supplies the same handler used by the core approval
+UI. Binding the handler adds no approval permission. The server remains the
+authority for accepting the exact request and decision.
 
 #### `useToolApproval()`
 
-Returns the tool approval state and actions (approve/reject pending tool calls).
+Returns an `SDKToolApprovalHandler`:
+
+```ts
+(sessionId, agentSlug, approvalId, toolName, action,
+ approvalThreadId?, approvalEventId?) => Promise<'answered' | 'already-settled'>
+```
+
+`action` is `once`, `trust`, or `deny`. Pass the request's own thread and event
+identity for orchestration approvals. Refused or failed decisions reject;
+local bookkeeping changes only after the server accepts the outcome. This
+hook returns a decision function, not pending-request state.
 
 ---
 

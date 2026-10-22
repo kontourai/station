@@ -4282,7 +4282,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     // endpoint as `http://<node>.ts.net` — which createOffer rejects. That is
     // why those apps could not pair over the tailnet at all (archive#3645).
     const TAILNET_URL =
-      'http://kontour.python-smelt.ts.net/.well-known/station/v1/pairing/access-request';
+      'http://station.example.ts.net/.well-known/station/v1/pairing/access-request';
 
     const directRequest = (
       harness: ReturnType<typeof createHarness>,
@@ -4305,7 +4305,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     test('records the resolved public origin when Host is our own ingress', async () => {
       const harness = createHarness({
         resolvePublicIngressOrigin: async () => [
-          'https://kontour.python-smelt.ts.net',
+          'https://station.example.ts.net',
         ],
       });
       const recorded = vi.spyOn(harness.pairing, 'requestAccess');
@@ -4314,7 +4314,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
 
       expect(response.status).toBe(202);
       expect(recorded.mock.calls[0]?.[0]).toMatchObject({
-        endpoint: 'https://kontour.python-smelt.ts.net',
+        endpoint: 'https://station.example.ts.net',
       });
     });
 
@@ -4325,18 +4325,18 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       // request never used.
       const harness = createHarness({
         resolvePublicIngressOrigin: async () => [
-          'https://kontour.python-smelt.ts.net',
+          'https://station.example.ts.net',
         ],
       });
       const recorded = vi.spyOn(harness.pairing, 'requestAccess');
 
       await directRequest(
         harness,
-        'http://other-node.python-smelt.ts.net/.well-known/station/v1/pairing/access-request',
+        'http://other-node.example.ts.net/.well-known/station/v1/pairing/access-request',
       );
 
       expect(recorded.mock.calls[0]?.[0]).toMatchObject({
-        endpoint: 'http://other-node.python-smelt.ts.net',
+        endpoint: 'http://other-node.example.ts.net',
       });
     });
 
@@ -4355,18 +4355,18 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
         used: boolean;
       }> = [
         {
-          hostHeader: 'kontour.python-smelt.ts.net:8444',
-          resolvedOrigins: ['https://kontour.python-smelt.ts.net:8444'],
+          hostHeader: 'station.example.ts.net:8444',
+          resolvedOrigins: ['https://station.example.ts.net:8444'],
           used: true,
         },
         {
-          hostHeader: 'kontour.python-smelt.ts.net',
-          resolvedOrigins: ['https://kontour.python-smelt.ts.net:8444'],
+          hostHeader: 'station.example.ts.net',
+          resolvedOrigins: ['https://station.example.ts.net:8444'],
           used: false,
         },
         {
-          hostHeader: 'kontour.python-smelt.ts.net:443',
-          resolvedOrigins: ['https://kontour.python-smelt.ts.net'],
+          hostHeader: 'station.example.ts.net:443',
+          resolvedOrigins: ['https://station.example.ts.net'],
           used: false,
         },
       ];
@@ -4393,20 +4393,20 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       // that authority for the later credential exchange.
       const harness = createHarness({
         resolvePublicIngressOrigin: async () => [
-          'https://kontour.python-smelt.ts.net:3773',
-          'https://kontour.python-smelt.ts.net:8444',
+          'https://station.example.ts.net:3773',
+          'https://station.example.ts.net:8444',
         ],
       });
       const recorded = vi.spyOn(harness.pairing, 'requestAccess');
 
       const response = await directRequest(
         harness,
-        'http://kontour.python-smelt.ts.net:8444/.well-known/station/v1/pairing/access-request',
+        'http://station.example.ts.net:8444/.well-known/station/v1/pairing/access-request',
       );
 
       expect(response.status).toBe(202);
       expect(recorded.mock.calls[0]?.[0]).toMatchObject({
-        endpoint: 'https://kontour.python-smelt.ts.net:8444',
+        endpoint: 'https://station.example.ts.net:8444',
       });
     });
 
@@ -4421,7 +4421,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       await directRequest(harness);
       expect(recorded).toHaveBeenCalledTimes(1);
       expect(recorded.mock.calls[0]?.[0]).toMatchObject({
-        endpoint: 'http://kontour.python-smelt.ts.net',
+        endpoint: 'http://station.example.ts.net',
       });
     });
 
@@ -4431,7 +4431,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       const harness = createHarness({
         resolvePublicIngressOrigin: async () => {
           consulted += 1;
-          return ['https://kontour.python-smelt.ts.net'];
+          return ['https://station.example.ts.net'];
         },
       });
       const recorded = vi.spyOn(harness.pairing, 'requestAccess');
@@ -4477,7 +4477,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
     test('an attested proxy request records the resolved public origin', async () => {
       const harness = createHarness({
         resolvePublicIngressOrigin: async () => [
-          'https://kontour.python-smelt.ts.net',
+          'https://station.example.ts.net',
         ],
       });
       const recorded = vi.spyOn(harness.pairing, 'requestAccess');
@@ -4492,7 +4492,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       expect(response.requestId).toBeTruthy();
       expect(recorded).toHaveBeenCalledTimes(1);
       expect(recorded.mock.calls[0]?.[0]).toMatchObject({
-        endpoint: 'https://kontour.python-smelt.ts.net',
+        endpoint: 'https://station.example.ts.net',
       });
     });
 
@@ -4503,8 +4503,8 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       // selected by a forwarded header or other client input.
       const harness = createHarness({
         resolvePublicIngressOrigin: async () => [
-          'https://kontour.python-smelt.ts.net:3773',
-          'https://kontour.python-smelt.ts.net:8444',
+          'https://station.example.ts.net:3773',
+          'https://station.example.ts.net:8444',
         ],
       });
       const recorded = vi.spyOn(harness.pairing, 'requestAccess');
@@ -4515,7 +4515,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
       });
 
       expect(recorded.mock.calls[0]?.[0]).toMatchObject({
-        endpoint: 'https://kontour.python-smelt.ts.net:3773',
+        endpoint: 'https://station.example.ts.net:3773',
       });
     });
 
@@ -4534,7 +4534,7 @@ describe('pairing approval requires a runtime credential (station#1490)', () => 
 
       expect(recorded).toHaveBeenCalledTimes(1);
       expect(recorded.mock.calls[0]?.[0]).not.toMatchObject({
-        endpoint: 'https://kontour.python-smelt.ts.net',
+        endpoint: 'https://station.example.ts.net',
       });
     });
 

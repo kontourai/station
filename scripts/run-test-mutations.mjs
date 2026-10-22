@@ -56,6 +56,40 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'basis-chip-hidden-at-rest',
+    test: 'src-ui/src/__tests__/MessageBubble.basisChip.test.tsx',
+    failure:
+      'is visible and hittable while the hover-revealed row is hidden (delayed entry)',
+    files: [
+      {
+        path: 'src-ui/src/components/chat/chat.css',
+        change: (source) =>
+          exactReplace(
+            source,
+            '.answer-basis-chip {\n  display: inline-flex;',
+            '.answer-basis-chip {\n  opacity: 0;\n  pointer-events: none;\n  display: inline-flex;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'testflight-required-mobile-endpoint',
+    test: 'scripts/__tests__/testflight-live-activity-workflow.test.ts',
+    failure:
+      'admits nightly signing without a mobile endpoint and still rejects missing protected prerequisites',
+    files: [
+      {
+        path: '.github/workflows/testflight-delivery.yml',
+        change: (source) =>
+          exactReplace(
+            source,
+            'TESTFLIGHT_INTERNAL_GROUP_ID VITE_NATIVE_APP_UPDATE_CHANNEL',
+            'TESTFLIGHT_INTERNAL_GROUP_ID STATION_MOBILE_DEFAULT_ENDPOINT VITE_NATIVE_APP_UPDATE_CHANNEL',
+          ),
+      },
+    ],
+  },
+  {
     id: 'plugin-telemetry-undeclared-event',
     test: 'src-server/routes/operations/__tests__/telemetry-events.routes.test.ts',
     failure:
