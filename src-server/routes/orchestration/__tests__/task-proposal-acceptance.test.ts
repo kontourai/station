@@ -474,4 +474,30 @@ test('a ledger that fills between the check and the seed is reported without a r
     "Task created, but its brief was not saved. Station's revision history is full, so it cannot save a Task brief. Retrying will not help until the history has room.",
   );
   expect(body.error).not.toMatch(/Retry Create Task/);
+  // The created Task is named so the client can open it.
+  const created = service
+    .listTasks()
+    .find((task) => task.title === 'Installer progress');
+  expect(created).toBeDefined();
+  expect(body).toMatchObject({ details: { taskId: created?.id } });
+}, 300_000);
+
+test('re-accepting an accepted proposal while the revision ledger is full returns the existing Task (#4007, #4055)', async () => {
+  const { accept, service, room } = await fixture();
+  const first = await accept();
+  expect(first.status, await first.clone().text()).toBe(201);
+  const accepted = ((await first.json()) as { data: { id: string } }).data;
+  await fillRevisionLedger(service, room);
+  // A lost response or a double-click: the same source again.
+  const again = await accept();
+  expect(again.status, await again.clone().text()).toBe(201);
+  expect(((await again.json()) as { data: { id: string } }).data.id).toBe(
+    accepted.id,
+  );
+  expect(
+    await room.document({
+      taskId: accepted.id,
+      request: new Request('http://station.test'),
+    }),
+  ).toMatchObject({ text: brief });
 }, 300_000);

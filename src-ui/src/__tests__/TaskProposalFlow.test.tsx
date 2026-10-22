@@ -313,3 +313,27 @@ test.each([
     expect(host.navigate).not.toHaveBeenCalled();
   },
 );
+
+test('a Task created without its brief can be opened, with no retry promised (#4007)', async () => {
+  const message =
+    "Task created, but its brief was not saved. Station's revision history is full, so it cannot save a Task brief. Retrying will not help until the history has room.";
+  host.create.mockRejectedValue(
+    new StationHttpError(507, message, {
+      code: 'revision-history-full',
+      details: { taskId: 'created-task' },
+    }),
+  );
+  render(
+    <TaskProposalCard
+      proposal={proposal}
+      sessionId="shape-session"
+      turnId="shape-turn"
+      projectId="alpha"
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Create Task' }));
+  expect((await screen.findByRole('alert')).textContent).toBe(message);
+  expect(screen.queryByRole('button', { name: 'Create Task' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Open Task' }));
+  expect(host.navigate).toHaveBeenCalledWith('/tasks/created-task');
+});

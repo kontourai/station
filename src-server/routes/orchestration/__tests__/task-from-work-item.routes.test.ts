@@ -73,6 +73,12 @@ async function fixture(
   hosted = false,
   /** Each Project's board; defaults to `board` for every Project. */
   boardFor?: (projectId: string) => ProviderWorkItem[],
+  /** Replaces the room's brief seeding, e.g. with a capacity refusal. */
+  seed?: (input: {
+    taskId: string;
+    request: Request;
+    text: string;
+  }) => Promise<boolean | 'document-full' | 'evidence-ledger-full'>,
 ) {
   const directory = temp('station-from-work-item-');
   const service = new TaskGraphService(directory, {
@@ -144,7 +150,7 @@ async function fixture(
         ? ({ mode: 'hosted' } as never)
         : sessionReadAuthorityFromRequest('owner', undefined, undefined),
     canReadSession: () => true,
-    seedProposalBrief: (input) => room.seedProposalBrief(input),
+    seedProposalBrief: seed ?? ((input) => room.seedProposalBrief(input)),
     workItemObserver: observer,
     resolveProviderWorkItem,
   });
@@ -578,3 +584,22 @@ test('cross-Project uniqueness needs a board check on both sides (review round 3
     }),
   ).toMatchObject({ projectId: 'id-gamma' });
 });
+
+test.each(['evidence-ledger-full', 'document-full'] as const)(
+  'a %s refusal of the brief is reported as not saved (#4007)',
+  async (refusal) => {
+    const seed = vi.fn(async () => refusal);
+    const { start } = await fixture(
+      undefined,
+      undefined,
+      false,
+      undefined,
+      seed,
+    );
+    const response = await start();
+    expect(response.status, await response.clone().text()).toBe(201);
+    const { data } = await json(response);
+    expect(seed).toHaveBeenCalledTimes(1);
+    expect(data).toMatchObject({ existing: false, briefSaved: false });
+  },
+);
