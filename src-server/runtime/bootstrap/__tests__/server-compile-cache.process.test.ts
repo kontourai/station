@@ -125,7 +125,7 @@ describe.skipIf(process.platform === 'win32')(
               ...process.env,
               NODE_COMPILE_CACHE: cache,
               STATION_HOME: home,
-              STATION_INSTANCE: 'desktop-cache-test',
+              STATION_INSTANCE_ID: 'desktop-cache-test',
               STATION_PORT: '43127',
               SHELL: shell,
             },
