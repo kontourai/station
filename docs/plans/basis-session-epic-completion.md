@@ -112,3 +112,25 @@ boundaries and fault evidence. The small SDK error-envelope clone preserves the
 same public error vocabulary in independent client modules; no new generic error
 framework is needed for this slice. The unused refresh export was made private;
 its production caller remains. Final exact-head gate result is recorded separately.
+
+## Successor qualification after pre-push findings
+
+Normal hooks refused the first push at `476d4cdf08e`: a status-only Keep error
+lost safe refusal metadata, and the new feature-local container rule violated
+the responsive ownership gate. No branch was published by that attempt.
+
+- `e812cddb553` uses the existing generic-message envelope adapter for Keep.
+  Eleven client cases pass; old-source injection fails the exact code/retry
+  assertion (one failure, ten keepers), and restored eleven pass. SDK types pass.
+- `4d048e04ece` moves structural main/support ownership into the real opt-in
+  `SplitPaneCompanion` inspection mode. ChatDock adopts those slots and preserves
+  the lazy portal, occurrence and request authority. Default rail/sheet callers
+  are unchanged; no mobile baseline/allowlist was widened (106/106 gate passes).
+- Real 1440/1600/400px layout and focus passed on that head. Removing the shared
+  container takeover caused the intended visible-background assertion failure
+  at 400px; exact restoration passed the complete journey again. Shared/default
+  and host suites passed 79 tests with one existing environment-declared skip;
+  context-card and current-answer suites passed 34. UI types and lint pass.
+- Existing-owner bounded source review found no blocker in either successor.
+  The earlier full-room result remains tied to `8474675419d`; later layout work
+  does not add provider, native or deployment qualification.
