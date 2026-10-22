@@ -1801,8 +1801,8 @@ fn converge_service_action(
     mut wait: impl FnMut(Duration),
 ) {
     for attempt in 0..4 {
-        update();
         invalidate();
+        update();
         if attempt < 3 {
             wait(Duration::from_secs(2));
         }

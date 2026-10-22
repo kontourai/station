@@ -12553,7 +12553,7 @@ fn refresh_home_ownership_with(state: &DesktopServerState, derive: impl FnOnce()
         .ownership_refresh
         .lock()
         .unwrap_or_else(|error| error.into_inner());
-    if refresh.generation >= generation {
+    if refresh.generation == generation {
         *state
             .owner
             .lock()
