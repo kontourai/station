@@ -1,5 +1,6 @@
 import {
   chmodSync,
+  cpSync,
   mkdirSync,
   readdirSync,
   readFileSync,
@@ -14,10 +15,11 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 const tempDir = trackTempDirs();
 const root = process.cwd();
+const buildTempDir = trackTempDirs({ base: root });
 const moduleUrl = (path: string) => pathToFileURL(resolve(root, path)).href;
 
 // The executable proof below owns cache and descendant behavior. This small
-// source-only composition guard owns ordering before dependency evaluation.
+// source-only composition guard owns the first import in the source entry.
 test('source-only wiring: compile-cache isolation is the first server import', () => {
   expect(
     readFileSync(resolve(root, 'src-server/index.ts'), 'utf8').split('\n')[0],
@@ -27,6 +29,124 @@ test('source-only wiring: compile-cache isolation is the first server import', (
 describe.skipIf(process.platform === 'win32')(
   'server compile cache process boundary',
   () => {
+    test('the built server entry removes dotenv cache settings before child inheritance', () => {
+      const directory = tempDir('station-dotenv-cache-');
+      const build = buildTempDir('dist-server-cache-entry-');
+      const env: NodeJS.ProcessEnv = {};
+      for (const [key, value] of Object.entries(process.env)) {
+        if (
+          key.startsWith('STATION_') ||
+          key.startsWith('OTEL_') ||
+          key.startsWith('DOTENV_')
+        )
+          continue;
+        if (key === 'PORT' || key === 'NODE_COMPILE_CACHE') continue;
+        env[key] = value;
+      }
+      const built = spawnSyncBounded('npm', ['run', 'build:server'], {
+        cwd: root,
+        encoding: 'utf8',
+        timeout: 120000,
+        windowsHide: true,
+        env: { ...env, STATION_BUILD_SERVER_DIR: build },
+      });
+      expect(built.error).toBeUndefined();
+      expect(built.status, built.stderr).toBe(0);
+      writeFileSync(
+        join(directory, '.env'),
+        `NODE_COMPILE_CACHE=${JSON.stringify(join(directory, 'dotenv-cache'))}\nENTRY_DOTENV_WITNESS=loaded\n`,
+      );
+      cpSync(join(root, 'schemas'), join(directory, 'schemas'), {
+        recursive: true,
+      });
+      const observation = join(directory, 'observation.json');
+      const preload = join(directory, 'observe-entry.mjs');
+      writeFileSync(
+        preload,
+        `
+        import childProcess from 'node:child_process';
+        import { syncBuiltinESMExports, getCompileCacheDir } from 'node:module';
+        import { writeFileSync } from 'node:fs';
+        import { spawnSyncBounded } from ${JSON.stringify(moduleUrl('scripts/lib/bounded-capture.mjs'))};
+        const originalSpawnSync = childProcess.spawnSync;
+        const launches = [];
+        for (const method of ['spawn', 'spawnSync', 'fork', 'exec', 'execSync', 'execFile', 'execFileSync']) {
+          const original = childProcess[method];
+          const wrapped = function(...args) {
+            launches.push(method);
+            return Reflect.apply(original, this, args);
+          };
+          Object.assign(wrapped, original);
+          const custom = Symbol.for('nodejs.util.promisify.custom');
+          if (original[custom]) wrapped[custom] = function(...args) {
+            launches.push(method);
+            return Reflect.apply(original[custom], this, args);
+          };
+          childProcess[method] = wrapped;
+        }
+        syncBuiltinESMExports();
+        process.on('exit', code => {
+          const dependencyLaunches = [...launches];
+          const child = spawnSyncBounded(process.execPath,
+            ['-e', 'process.stdout.write(JSON.stringify({ cache: process.env.NODE_COMPILE_CACHE ?? null }))'],
+            { encoding: 'utf8', timeout: 10000, windowsHide: true },
+            { run: originalSpawnSync });
+          writeFileSync(${JSON.stringify(observation)}, JSON.stringify({
+            code, dotenvWitness: process.env.ENTRY_DOTENV_WITNESS,
+            cacheDir: getCompileCacheDir() ?? null, dependencyLaunches,
+            childStatus: child.status, childError: child.error?.message ?? null,
+            child: JSON.parse(child.stdout),
+          }));
+        });
+      `,
+      );
+      // Fail at a deliberate runtime configuration boundary: every static
+      // dependency and dotenv has evaluated, without starting server listeners.
+      // The probe is a real child of that entry process, not another bootstrap
+      // import or a simulated environment spread.
+      for (const startupCache of [
+        undefined,
+        join(directory, 'startup-cache'),
+      ]) {
+        const launched = spawnSyncBounded(
+          process.execPath,
+          ['--import', preload, join(build, 'command-station.js')],
+          {
+            cwd: directory,
+            encoding: 'utf8',
+            timeout: 60000,
+            windowsHide: true,
+            env: {
+              ...env,
+              ...(startupCache ? { NODE_COMPILE_CACHE: startupCache } : {}),
+              PORT: 'invalid',
+              STATION_HOME: join(directory, 'home'),
+              STATION_INSTANCE_ID: 'dotenv-cache-test',
+              STATION_TEMP_ROOT: join(directory, 'temp'),
+              STATION_OWNED_PROCESS_REGISTRY: join(
+                directory,
+                'owned-processes',
+              ),
+            },
+          },
+        );
+        expect(launched.error).toBeUndefined();
+        expect(launched.status, launched.stderr).toBe(1);
+        expect(launched.stderr).toContain('PORT must be an integer');
+        const observed = JSON.parse(readFileSync(observation, 'utf8'));
+        expect(observed.dotenvWitness).toBe('loaded');
+        expect(observed.childError).toBeNull();
+        expect(observed.childStatus).toBe(0);
+        expect(observed.child).toEqual({ cache: null });
+        expect(observed.cacheDir?.startsWith(startupCache) ?? false).toBe(
+          Boolean(startupCache),
+        );
+        // External ESM dependencies evaluate before bundled bootstrap code.
+        // No child launch is observed in that dependency graph for this build.
+        expect(observed.dependencyLaunches).toEqual([]);
+      }
+    }, 240000);
+
     test('keeps its active cache across two starts while every affected child path sees no setting', () => {
       const home = tempDir('station-server-cache-');
       const cache = join(home, 'cache');

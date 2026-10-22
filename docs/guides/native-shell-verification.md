@@ -460,8 +460,9 @@ exact binary, revision, host and completed lane result when running it.
 
 The desktop sidecar starts Node with a home-scoped compile cache. The first
 [server bootstrap import](../../src-server/runtime/bootstrap/server-compile-cache.ts)
-removes `NODE_COMPILE_CACHE` from the server environment after Node has consumed
-it, so generic child launchers do not inherit the server's cache directory.
+loads `.env`, then removes `NODE_COMPILE_CACHE` from the server environment
+after Node has consumed its startup setting, so dotenv cannot restore it for
+generic child launchers.
 Targeted child environment scrubs remain in place. The process supervisor keeps
 the setting when launching replacement Station server generations; each enters
 through the same server bootstrap. The
@@ -469,7 +470,13 @@ through the same server bootstrap. The
 checks Node's active cache across two starts and executes real stdio MCP,
 Strands, Flow Agents, Veritas and login-shell child paths. Its first-import
 ordering assertion is a source-only wiring guard, separate from packaged-shell
-startup evidence.
+startup evidence. A second regression builds the real server entry and runs it
+from a working directory whose `.env` contains the cache setting. It verifies
+that dotenv loaded, reaches a deliberate invalid-port refusal, and observes a
+real child without that variable, both with and without a startup cache.
+External ESM dependencies evaluate before the bundled bootstrap. The regression
+observes no Node child-process launches during evaluation of the installed
+dependency graph; this evidence is specific to those dependency versions.
 
 Ownership refresh reserves a generation before the registry bridge runs and
 publishes only while that generation remains current. Explicit invalidation
