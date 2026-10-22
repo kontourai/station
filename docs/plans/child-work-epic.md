@@ -55,9 +55,12 @@ The initial probe is retained as failed evidence: it omitted the explicit
 foreground flag and read a turn window rather than unscoped child-work history.
 Independent source/evidence review accepted the corrected controls without
 independently executing them. This establishes controlled native foreground
-return and cold SQLite/service reconstruction in one OS process, not crash
-recovery, native reattachment, every background/order/error case, independent
-network isolation, real-provider behavior or full #1879 acceptance.
+return and cold SQLite/service reconstruction. A separate fresh Node process
+then reopened the closed store with no engine adapters: transcript recovery,
+persisted provenance and foreign-user refusal passed all three checks. This
+does not establish crash recovery, native reattachment, full server boot,
+every background/order/error case, independent network isolation, real-provider
+behavior or full #1879 acceptance.
 
 At `3669442358f`, the existing audited Agents-pane browser journey passes both
 desktop and 390px phone-width cases against a built isolated Station. It checks
