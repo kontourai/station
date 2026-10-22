@@ -1,0 +1,36 @@
+name: "Tool: Server performance scenario"
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: server-scenario-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  scenario:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with: { install: false }
+      - run: npm run dependencies:ci
+      - name: Measure real server (report only, no latency thresholds)
+        run: npm run perf:server-scenario
+      - name: Upload receipt and failure logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: server-scenario-${{ github.sha }}-${{ github.run_id }}
+          path: .kontourai/server-scenario/
+          if-no-files-found: error
+          retention-days: 30
