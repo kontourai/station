@@ -404,9 +404,11 @@ describe('an approved check-back on an ACP chat reaches the engine', () => {
     );
   });
 
-  // The restart's abort must name the send's invocation, or its row never
-  // retires and the chat reads busy for good.
-  test('a credential-refusal restart ends the turn, and the chat is not busy after', async () => {
+  // The restart's abort must name the send's invocation: a wait on that
+  // invocation reads its end from the terminal that names it. (The exit that
+  // follows the abort clears the chat's rows either way, so busy alone would
+  // not catch an abort that dropped the invocation.)
+  test('a credential-refusal restart ends the send’s invocation, and the chat is not busy after', async () => {
     loadSessionCapable = true;
     await startChat();
     await service.dispatchWithReceipt(
@@ -442,5 +444,15 @@ describe('an approved check-back on an ACP chat reaches the engine', () => {
       'the turn row to retire',
     );
     expect(service.hasActiveTurn(THREAD)).toBe(false);
+    expect(
+      store.readInvocationTerminal(
+        THREAD,
+        turnStarted!.invocationId!,
+        turnStarted!.turnId,
+      ),
+    ).toMatchObject({
+      kind: 'found',
+      fact: { terminalEventId: aborted!.eventId, retire: true },
+    });
   });
 });
