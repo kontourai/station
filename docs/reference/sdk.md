@@ -5127,6 +5127,12 @@ request-scope options as other client calls. Parsing accepts local named Agents,
 explicit expected engine connections, prompts and dependencies. It does not
 choose credentials, authorize an engine, or grant access to a workspace.
 
+The root and `/queries` entries also export `useCliSessionGroupsQuery(scope,
+{enabled, afterGroupId?})`. Its cache key includes the API base and authority
+key; it rechecks the supplied `isCurrent()` fence around the HTTP read. The
+inspector enables this query only after the user requests live groups. Polling
+is bounded to the mounted view, stops on errors, and does not retry dispatches.
+
 Run waits for server supervision and opts out of the ordinary 30-second client
 timeout; pass `signal` or an explicit `timeoutMs` to bound the caller's wait.
 Aborting requests interruption and preserves unknown occupied seats. There is no

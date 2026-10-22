@@ -164,15 +164,24 @@ export class CliSessionGroups<T> {
     return join(this.root, `${id.parse(groupId)}.json`);
   }
 
-  private read(groupId: string, owner: string): GroupRecord {
+  private read(
+    groupId: string,
+    owner: string,
+    authorizeInspection?: () => void,
+  ): GroupRecord {
     const value = readJsonFile(this.path(groupId), null, {
       maxBytes: MAX_BYTES,
       label: 'CLI session group',
     });
     if (value === null) throw new CliSessionGroupUnavailable('group_not_found');
     const record = recordSchema.parse(value);
-    if (record.groupId !== groupId || record.ownerKey !== digest(owner))
+    if (record.groupId !== groupId)
       throw new CliSessionGroupUnavailable('group_not_found');
+    if (record.ownerKey !== digest(owner)) {
+      if (!authorizeInspection)
+        throw new CliSessionGroupUnavailable('group_not_found');
+      authorizeInspection();
+    }
     for (const seat of record.seats) this.parseInput(seat.input);
     if (
       new Set(record.seats.map((s) => s.seatId)).size !== record.seats.length ||
@@ -320,6 +329,7 @@ export class CliSessionGroups<T> {
   async list(
     owner: string,
     afterGroupId?: string,
+    authorizeInspection?: () => void,
   ): Promise<{
     groups: CliSessionGroupView[];
     nextGroupId: string | null;
@@ -344,12 +354,15 @@ export class CliSessionGroups<T> {
       );
       if (record.groupId !== groupId)
         throw new CliSessionGroupUnavailable('group_storage_unavailable');
-      if (record.ownerKey !== digest(owner)) continue;
+      if (record.ownerKey !== digest(owner)) {
+        if (!authorizeInspection) continue;
+        authorizeInspection();
+      }
       if (groups.length === 16) {
         hasMore = true;
         break;
       }
-      const group = await this.view(groupId, owner);
+      const group = await this.view(groupId, owner, authorizeInspection);
       if (
         Buffer.byteLength(
           JSON.stringify({
@@ -376,11 +389,16 @@ export class CliSessionGroups<T> {
     };
   }
 
-  async view(groupId: string, owner: string): Promise<CliSessionGroupView> {
-    const record = this.read(groupId, owner);
+  async view(
+    groupId: string,
+    owner: string,
+    authorizeInspection?: () => void,
+  ): Promise<CliSessionGroupView> {
+    const record = this.read(groupId, owner, authorizeInspection);
     const flow = record.flowReady
       ? await loadRun(groupId, join(this.root, groupId))
       : null;
+    authorizeInspection?.();
     return {
       version: 'station.cli-session-group/v1',
       groupId,

@@ -100,7 +100,10 @@ import {
 } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
-import type { FullAccessGrant } from '../../security/coding-authority.js';
+import {
+  type FullAccessGrant,
+  isOperatorInPersonNotAgent,
+} from '../../security/coding-authority.js';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import {
@@ -119,7 +122,10 @@ import {
   ForegroundMessageIndeterminateError,
   ForegroundMessageTurnIdentityUnavailableError,
 } from '../../services/execution-target/execution-target-execution.js';
-import { PrincipalUnresolvedError } from '../../services/identity/principal-resolver.js';
+import {
+  LOCAL_OPERATOR_PRINCIPAL_ID,
+  PrincipalUnresolvedError,
+} from '../../services/identity/principal-resolver.js';
 import { actionOperationActorForRequest } from '../../services/operations/action-operation-authority.js';
 import {
   type ActionOperationTrackingService,
@@ -4233,7 +4239,39 @@ export function createOrchestrationRoutes(
         throw new CliSessionGroupUnavailable('group_authority_required');
     };
     assertCurrent();
-    return { owner: JSON.stringify([actor.userId, binding]), assertCurrent };
+    const authorizeInspection =
+      actor.userId === LOCAL_OPERATOR_PRINCIPAL_ID &&
+      isOperatorInPersonNotAgent(c.req.raw)
+        ? () => {
+            assertCurrent();
+            if (!isOperatorInPersonNotAgent(c.req.raw))
+              throw new CliSessionGroupUnavailable('group_authority_required');
+          }
+        : undefined;
+    const assertReadable = (
+      group: import('@kontourai/station-contracts/delegation-group').CliSessionGroupView,
+    ) => {
+      if (!authorizeInspection) return;
+      authorizeInspection();
+      const authority = readAuthorityFor(c);
+      if (
+        group.members.some(
+          (member) =>
+            member.handle &&
+            !orchestrationService.canUserReadSession(
+              member.handle.sessionId,
+              authority,
+            ),
+        )
+      )
+        throw new CliSessionGroupUnavailable('group_not_found');
+    };
+    return {
+      owner: JSON.stringify([actor.userId, binding]),
+      assertCurrent,
+      authorizeInspection,
+      assertReadable,
+    };
   };
   const sessionGroupHost = (
     c: Context,
@@ -4366,14 +4404,26 @@ export function createOrchestrationRoutes(
     }),
   );
   app.get('/session-groups', (c) =>
-    respondSessionGroup(c, (groups, authority) =>
-      groups.list(authority.owner, c.req.query('afterGroupId')),
-    ),
+    respondSessionGroup(c, async (groups, authority) => {
+      const page = await groups.list(
+        authority.owner,
+        c.req.query('afterGroupId'),
+        authority.authorizeInspection,
+      );
+      page.groups.forEach(authority.assertReadable);
+      return page;
+    }),
   );
   app.get('/session-groups/:groupId', (c) =>
-    respondSessionGroup(c, (groups, authority) =>
-      groups.view(param(c, 'groupId'), authority.owner),
-    ),
+    respondSessionGroup(c, async (groups, authority) => {
+      const group = await groups.view(
+        param(c, 'groupId'),
+        authority.owner,
+        authority.authorizeInspection,
+      );
+      authority.assertReadable(group);
+      return group;
+    }),
   );
   app.post('/session-groups/:groupId/run', (c) =>
     respondSessionGroup(c, (groups, authority) =>

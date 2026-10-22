@@ -1642,6 +1642,14 @@ filesystem custody. The Agents inspector is reached at `/agents?tab=ensembles`.
 
 The personal runtime exposes an initial Station-authorized session-group path:
 
+The Agents inspector (`/agents?tab=ensembles`) has an explicit **Show session
+groups** action. Its bounded inventory displays the persisted members, their
+Flow dependencies, observed turn outcomes and unresolved starts. **Open member
+session** navigates to the ordinary Activity session view. Inspection neither
+starts a group nor inherits mutation authority. The view withholds observations
+when current authority is lost or a refresh is refused.
+
+
 - `POST /api/orchestration/session-groups`: create or replay an operation.
 - `GET /api/orchestration/session-groups?afterGroupId=<cursor>`: list credential-owned groups in bounded pages.
 - `GET /api/orchestration/session-groups/:groupId`: inspect its durable members.
@@ -1663,8 +1671,10 @@ seats. The target must include its expected engine connection. Station waits for
 accepted member turns can still overlap. Station reuses the
 ordinary delegation route's actor, posture, full-access, workspace, receiver and
 lineage decisions; a group does not authorize anything those decisions refuse.
-The authenticated credential/caller binding owns the group. Another credential
-cannot inherit it merely by naming the same user.
+The authenticated credential/caller binding owns group mutations. The current
+in-person local operator may also inspect a group from another credential, but
+every accepted member must pass Station's existing session-read check. Inspection
+does not transfer run/cancel authority; a supplied user ID grants nothing.
 
 Published Flow owns readiness, durable claims, dependency joins and gate
 appraisal. Station records launch intent and server-minted session/client-turn

@@ -1226,6 +1226,7 @@ export {
   fetchCodingFileMentionCandidates,
   useCodingFileMentionCandidatesQuery,
 } from './query-domains/chatRuntimeCoding.js';
+export { useCliSessionGroupsQuery } from './query-domains/cliSessionGroups';
 export {
   confirmDevicePairingRequest,
   DevicePairingRequestActionError,

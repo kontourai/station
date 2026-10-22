@@ -22,12 +22,20 @@ import {
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { createOrchestrationRequestPrincipalResolver } from '../../../runtime/bootstrap/orchestration-request-principal.js';
+import {
+  bindRuntimeLocalOperator,
+  getRuntimeAuthenticatedRequestPrincipal,
+  isRuntimeRequestPrincipalCurrent,
+  setRuntimeAuthenticatedRequestPrincipal,
+} from '../../../security/runtime-request-security.js';
 import { createRuntimeResourcePostureController } from '../../../services/infra/resource-posture.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
 import { createRemoteStationForwarder } from '../../../services/remote-stations/remote-station-forwarder.js';
+import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import {
   delegateTask,
   interruptDelegatedTask,
@@ -100,9 +108,20 @@ class MemberAdapter extends GateTestAdapter {
   }
 }
 
-async function fixture() {
+async function fixture(operatorInspection = false) {
   const root = realpathSync(temporary('station-real-cli-group-'));
   const actor = humanPrincipal('test', 'group-owner', 'Group owner');
+  const security = operatorInspection
+    ? new EnvironmentSecurityService({ homeDir: root })
+    : undefined;
+  const operatorCredential = security
+    ? (await security.initialize()).credential
+    : undefined;
+  const resolvePrincipal = security
+    ? createOrchestrationRequestPrincipalResolver({
+        environmentSecurityService: security,
+      })
+    : () => actor;
   const adapter = new MemberAdapter();
   const store = new EventStore(join(root, 'events.sqlite'));
   cleanup.push(async () => {
@@ -137,6 +156,31 @@ async function fixture() {
   });
   const pendingDispatches: Promise<unknown>[] = [];
   const app = new Hono();
+  if (security)
+    app.use('/api/orchestration/session-groups*', async (c, next) => {
+      const credential =
+        c.req.header('Authorization')?.replace(/^Bearer /, '') ?? '';
+      if (
+        !security.authorizeCredential(credential, {
+          method: c.req.method,
+          path: c.req.path,
+        })
+      )
+        return c.json({ success: false }, 403);
+      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+        kind: 'credential',
+        credential,
+        authority: security.verifyOperatorCredential(credential)
+          ? 'operator-credential'
+          : 'device-credential',
+        source: 'bearer',
+        deviceId: security.identifyDevice(credential)?.id,
+        locality: security.credentialLocality(credential),
+        mintKind: security.credentialMintKind(credential),
+      });
+      bindRuntimeLocalOperator(c.req.raw);
+      await next();
+    });
   app.get('/.well-known/station/v1', (c) =>
     c.json({ environmentId: 'group-host' }),
   );
@@ -170,9 +214,13 @@ async function fixture() {
       cliSessionGroupHome: root,
       eventBus: bus,
       logger: { debug() {}, warn() {} },
-      resolvePrincipal: () => actor,
-      callerBindingForRequest: () => 'fixture-group-owner',
-      isRequestPrincipalCurrent: () => true,
+      resolvePrincipal,
+      callerBindingForRequest: (request) =>
+        security
+          ? getRuntimeAuthenticatedRequestPrincipal(request)?.credential
+          : 'fixture-group-owner',
+      isRequestPrincipalCurrent: (request) =>
+        security ? isRuntimeRequestPrincipalCurrent(request, security) : true,
       delegateTask: (input) => {
         const pending = delegateTask(input, service, remote);
         pendingDispatches.push(pending);
@@ -198,6 +246,9 @@ async function fixture() {
   vi.stubEnv('STATION_INTERNAL_API_TOKEN', 'group-test');
   return {
     app,
+    service,
+    security,
+    operatorCredential,
     apiBase,
     root,
     adapter,
@@ -229,7 +280,10 @@ async function create(f: Awaited<ReturnType<typeof fixture>>, seats = 3) {
   return createCliSessionGroup(
     f.apiBase,
     parseCliSessionGroupInput(groupInput(seats)),
-    { credential: 'group-test', credentialOrigin: f.apiBase },
+    {
+      credential: f.operatorCredential ?? 'group-test',
+      credentialOrigin: f.apiBase,
+    },
   );
 }
 
@@ -379,4 +433,93 @@ test('cancellation after Agent preparation starts prevents the actual adapter sp
   await Promise.allSettled(f.pendingDispatches);
   expect(f.adapter.starts).toHaveLength(0);
   expect(f.adapter.turns).toHaveLength(0);
+}, 30_000);
+
+test('a separately minted local operator can inspect CLI-owned groups through real session read authority but cannot inherit mutation ownership', async () => {
+  const f = await fixture(true);
+  const security = f.security!;
+  const group = await create(f, 1);
+  const headers = {
+    Authorization: `Bearer ${f.operatorCredential}`,
+    'Content-Type': 'application/json',
+  };
+  const ran = await f.app.request(
+    `/api/orchestration/session-groups/${group.groupId}/run`,
+    { method: 'POST', headers },
+  );
+  expect(ran.status).toBe(200);
+  const offer = security.devicePairing.createOffer({ endpoint: f.apiBase });
+  const request = security.devicePairing.requestPairing({
+    requesterPosition: 'off-box',
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    deviceName: 'Group inspector',
+  });
+  security.devicePairing.confirmRequest(request.requestId, {
+    kind: 'local-grant',
+  });
+  const local = security.devicePairing.exchange({
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    requestId: request.requestId,
+    locality: 'home-possession',
+    mintKind: 'local-grant',
+  });
+  const localHeaders = { Authorization: `Bearer ${local.credential}` };
+  const observed = await f.app.request(
+    `/api/orchestration/session-groups/${group.groupId}`,
+    { headers: localHeaders },
+  );
+  expect(observed.status, await observed.clone().text()).toBe(200);
+  expect(
+    ((await observed.json()) as { data: CliSessionGroupView }).data.members[0]
+      ?.outcome,
+  ).toBe('completed');
+  const listed = await f.app.request('/api/orchestration/session-groups', {
+    headers: localHeaders,
+  });
+  expect(
+    (
+      (await listed.json()) as { data: { groups: CliSessionGroupView[] } }
+    ).data.groups.map((value) => value.groupId),
+  ).toEqual([group.groupId]);
+  const cancelled = await f.app.request(
+    `/api/orchestration/session-groups/${group.groupId}/cancel`,
+    { method: 'POST', headers: localHeaders },
+  );
+  expect(cancelled.status).toBe(404);
+  const permission = vi
+    .spyOn(f.service, 'canUserReadSession')
+    .mockReturnValue(false);
+  const denied = await f.app.request(
+    `/api/orchestration/session-groups/${group.groupId}`,
+    { headers: localHeaders },
+  );
+  expect(denied.status).toBe(404);
+  expect(await denied.text()).not.toContain(
+    group.members[0]?.handle?.sessionId ?? 'task:',
+  );
+  permission.mockRestore();
+  const deviceOffer = security.devicePairing.createOffer({
+    endpoint: f.apiBase,
+  });
+  const deviceRequest = security.devicePairing.requestPairing({
+    requesterPosition: 'off-box',
+    offerId: deviceOffer.offerId,
+    proof: deviceOffer.challenge,
+    deviceName: 'Ordinary device',
+  });
+  security.devicePairing.confirmRequest(deviceRequest.requestId, {
+    kind: 'presented-credential',
+  });
+  const device = security.devicePairing.exchange({
+    offerId: deviceOffer.offerId,
+    proof: deviceOffer.challenge,
+    requestId: deviceRequest.requestId,
+  });
+  const foreign = await f.app.request(
+    `/api/orchestration/session-groups/${group.groupId}`,
+    { headers: { Authorization: `Bearer ${device.credential}` } },
+  );
+  expect(foreign.status).toBe(404);
 }, 30_000);

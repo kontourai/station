@@ -299,6 +299,7 @@ export {
   useTerminalProcessesQuery,
   useTerminalProcessQuery,
 } from './query-domains/chatRuntime';
+export { useCliSessionGroupsQuery } from './query-domains/cliSessionGroups';
 export {
   fetchPairedDevices,
   pairedDeviceQueries,

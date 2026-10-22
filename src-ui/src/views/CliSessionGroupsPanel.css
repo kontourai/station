@@ -1,0 +1,38 @@
+.cli-session-groups {
+  display: grid;
+  gap: var(--k-space-3);
+  margin-top: var(--k-space-6);
+  padding-block: var(--k-space-4);
+  border-top: 1px solid var(--k-line);
+}
+.cli-session-groups article {
+  min-width: 0;
+  padding: var(--k-space-4);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+}
+.cli-session-groups h3,
+.cli-session-groups dd {
+  overflow-wrap: anywhere;
+}
+.cli-session-groups__table {
+  max-width: 100%;
+  overflow-x: auto;
+}
+.cli-session-groups__table table {
+  min-width: 36rem;
+}
+.cli-session-groups__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}
+.cli-session-groups__refusal {
+  display: block;
+  margin-top: var(--k-space-2);
+  color: var(--k-text-muted);
+}
+.cli-session-groups button {
+  min-height: 44px;
+}

@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { Button } from '../components/Button';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { useNavigationActions } from '../contexts/NavigationContext';
+import { CliSessionGroupsPanel } from './CliSessionGroupsPanel';
 import { layoutEnsembleInspection } from './ensemble-inspection-layout';
 import './EnsembleInspectionView.css';
 
@@ -28,6 +29,12 @@ export function EnsembleInspectionView() {
         />
       ) : (
         <p role="alert">Current Station authority is unavailable.</p>
+      )}
+      {scope && (
+        <CliSessionGroupsPanel
+          key={`groups:${scope.apiBase}:${scope.authorityKey}`}
+          scope={scope}
+        />
       )}
     </section>
   );
