@@ -5,12 +5,12 @@ import type {
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
-import { errorMessage } from '../schemas/schemas.js';
 import {
   KnowledgeDocumentImportError,
   type KnowledgeDocumentImportService,
   type KnowledgeImportAuthority,
 } from '../../services/knowledge/knowledge-document-import-service.js';
+import { errorMessage } from '../schemas/schemas.js';
 
 interface Dependencies {
   service: KnowledgeDocumentImportService;
@@ -43,7 +43,10 @@ export function createKnowledgeDocumentImportRoutes(deps: Dependencies) {
   };
   const failure = (c: Context, error: unknown) => {
     if (error instanceof KnowledgeDocumentImportError)
-      return c.json({ success: false, error: errorMessage(error) }, error.status);
+      return c.json(
+        { success: false, error: errorMessage(error) },
+        error.status,
+      );
     if (error instanceof z.ZodError || error instanceof SyntaxError)
       return c.json(
         { success: false, error: 'Invalid document import request.' },
