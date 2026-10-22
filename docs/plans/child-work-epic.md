@@ -190,6 +190,12 @@ thread-bound authored MCP inventory before reporting a ready session, and
 refuses a turn while the session is still connecting. Focused startup-order and
 inventory-refusal checks pass. A fresh live Station elicitation check remains
 required; the earlier model refusals are not silently converted into success.
+The next run did call the tool, but the connection's native `never` approval
+policy declined its form before Station received it. Its completion text is
+not answer evidence. The Codex MCP edge now maps supported data forms into the
+canonical input-request contract and returns validated content through the
+exact-event reply path. A fresh live check will use an explicit asking posture;
+shared connection/proxy configuration remains unchanged.
 
 This establishes only the exercised CLI paths. Live elicitation, second-device
 lifecycle, the remaining lineage/context/recovery obligations, final combined

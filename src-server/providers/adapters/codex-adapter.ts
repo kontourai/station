@@ -38,6 +38,7 @@ import type {
   Prerequisite,
 } from '@kontourai/station-contracts/tool';
 import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
+import { inputRequestFromMcpElicitation } from '@kontourai/station-shared/mcp-elicitation';
 import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
 import {
   assertRequiredConfinementObserved,
@@ -3326,8 +3327,18 @@ export class CodexAdapter implements ProviderAdapterShape {
       throw new Error('This Codex approval request is not open.');
     }
 
-    if (pending.method === 'item/tool/requestUserInput') {
-      const form = codexInputRequest(pending.payload);
+    const mcpForm =
+      pending.method === 'mcpServer/elicitation/request'
+        ? inputRequestFromMcpElicitation(
+            string(pending.payload.serverName) ?? 'an MCP server',
+            pending.payload,
+          )
+        : null;
+    if (
+      pending.method === 'item/tool/requestUserInput' ||
+      mcpForm?.body.fields.length
+    ) {
+      const form = mcpForm ?? codexInputRequest(pending.payload);
       if (
         !form ||
         !context?.expectedRequestEventId ||
@@ -3347,9 +3358,17 @@ export class CodexAdapter implements ProviderAdapterShape {
         rpcRequestId: pending.rpcRequestId,
         method: pending.method,
         ...(pending.blocking === false ? { blocking: false } : {}),
-        result: {
-          answers: content ? codexAnswers(form, content) : {},
-        },
+        result: mcpForm
+          ? {
+              action:
+                decision === 'accept'
+                  ? 'accept'
+                  : decision === 'decline'
+                    ? 'decline'
+                    : 'cancel',
+              ...(content ? { content } : {}),
+            }
+          : { answers: content ? codexAnswers(form, content) : {} },
         status: mapApprovalResolutionStatus(decision),
       });
       return;

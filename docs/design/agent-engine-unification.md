@@ -260,6 +260,15 @@ unavailable or ambiguous inventory refuses startup and stops the process.
 This is MCP availability evidence, not proof that a model selected or called
 a tool. Sessions without authored servers make no additional inventory call.
 
+Codex MCP data forms use the shared MCP-to-input-request parser and the same
+exact opened-event binding as harness questions. Accepted answers are validated
+against that form and returned as MCP `action`/`content`; they never create a
+session grant. Empty-schema tool gates keep their existing decision behavior.
+Malformed or unsupported forms cannot acquire fabricated content. A recorded
+answer is distinct from Codex's acknowledgement of its reply. A native
+connection configured to never ask may decline an elicitation before Station
+receives it; that is not a successful answer.
+
 ### 4.1b Declared vs observed capability basis (archive#1549, slice 1)
 
 A matrix cell is *static per engine*. Some capabilities are not: ACP's HTTP

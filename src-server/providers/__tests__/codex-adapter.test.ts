@@ -3820,7 +3820,7 @@ describe('CodexAdapter', () => {
     },
   );
 
-  test('declines a data-required MCP elicitation on the wire and in the canonical event', async () => {
+  test('binds an MCP data form to its opened event and returns only validated content', async () => {
     processHandle = new FakeCodexProcess();
     const adapter = new CodexAdapter({
       processFactory: () => processHandle!,
@@ -3850,9 +3850,10 @@ describe('CodexAdapter', () => {
       method: 'mcpServer/elicitation/request',
       params: {
         serverName: 'test-server',
+        message: 'Why continue?',
         requestedSchema: {
           type: 'object',
-          properties: { reason: { type: 'string' } },
+          properties: { reason: { type: 'string', maxLength: 5 } },
           required: ['reason'],
         },
       },
@@ -3860,20 +3861,85 @@ describe('CodexAdapter', () => {
     await flushIo();
     const opened = await nextEvent(iterator, 'request.opened');
 
+    expect(opened.payload.inputRequest).toMatchObject({
+      source: 'mcp:test-server',
+      message: 'Why continue?',
+      body: { kind: 'form' },
+    });
+    await expect(
+      adapter.respondToRequest(
+        'thread-elicitation-data',
+        opened.requestId,
+        'accept',
+      ),
+    ).rejects.toThrow('Inspect this question');
+    await expect(
+      adapter.respondToRequest(
+        'thread-elicitation-data',
+        opened.requestId,
+        'accept',
+        {
+          expectedRequestEventId: 'foreign-event',
+          inputContent: { reason: 'yes' },
+        },
+      ),
+    ).rejects.toThrow('Inspect this question');
+    await expect(
+      adapter.respondToRequest(
+        'thread-elicitation-data',
+        opened.requestId,
+        'acceptForSession',
+        {
+          expectedRequestEventId: opened.eventId,
+          inputContent: { reason: 'yes' },
+        },
+      ),
+    ).rejects.toThrow('Inspect this question');
+    await expect(
+      adapter.respondToRequest(
+        'thread-elicitation-data',
+        opened.requestId,
+        'accept',
+        {
+          expectedRequestEventId: opened.eventId,
+          inputContent: { reason: 'too long' },
+        },
+      ),
+    ).rejects.toThrow();
+    expect(
+      processHandle.stdin.lines
+        .map(parseLine)
+        .some((line) => line.id === 'elicitation-data'),
+    ).toBe(false);
     await adapter.respondToRequest(
       'thread-elicitation-data',
       opened.requestId,
       'accept',
+      {
+        expectedRequestEventId: opened.eventId,
+        inputContent: { reason: 'yes' },
+      },
     );
-
     expect(parseLine(processHandle.stdin.lines.at(-1)!)).toMatchObject({
       id: 'elicitation-data',
-      result: { action: 'decline' },
+      result: { action: 'accept', content: { reason: 'yes' } },
     });
     expect(await nextEvent(iterator, 'request.resolved')).toMatchObject({
       requestId: opened.requestId,
-      status: 'denied',
+      status: 'approved',
     });
+    await expect(
+      adapter.respondToRequest(
+        'thread-elicitation-data',
+        opened.requestId,
+        'accept',
+        {
+          expectedRequestEventId: opened.eventId,
+          inputContent: { reason: 'yes' },
+        },
+      ),
+    ).rejects.toThrow('not open');
+    await adapter.stopAll();
   });
 
   test('accepts an empty-schema MCP elicitation on the wire and in the canonical event', async () => {
