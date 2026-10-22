@@ -1813,6 +1813,23 @@ read current preset files. Revision, retained preset hash and exact member
 handles remain inspectable. Both presentations disappear on authority loss or a
 refused refresh.
 
+Before creation, the [Ensemble inspector](../../src-server/services/orchestration/ensemble-inspection.ts)
+resolves the exact preset and receiver draft through the execution-target owner.
+Its [route](../../src-server/routes/orchestration/ensemble-inspection.ts) accepts
+uploaded bytes under current personal-operator authority; reading a host path
+also requires a locally minted operator grant. Project tool defaults and bounded
+Knowledge root/namespace observations retain their existing owners. Inspection
+does not authenticate engines, read Knowledge content or start members.
+
+The [result component](../../src-ui/src/views/EnsembleInspectionResult.tsx) uses
+the same configuration facts for its provenance table and diagram. Optional
+`needs` references supply declared prerequisite arrows; node cards and labelled
+prerequisite references link to the corresponding fact rows. The
+[layout helper](../../src-ui/src/views/ensemble-inspection-layout.ts) computes
+display geometry only, including cyclic declarations. These facts do not create
+a second execution graph, prove effective tool delivery or determine Flow's
+ready frontier. Missing runtime and unsupported owner projections remain visible.
+
 For preset-derived groups, `ensemble-session-group-authentication.ts` runs
 under exclusive group supervision before Flow claims. It resolves support for
 all saved targets before native login commands, binds observations to group
