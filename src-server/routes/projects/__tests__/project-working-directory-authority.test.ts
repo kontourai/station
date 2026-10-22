@@ -589,3 +589,61 @@ test('durable creation requests recover exactly one Project through real authent
     (await f.send(device, 'GET', `/creation-requests/${requestId}`, {})).status,
   ).toBe(403);
 });
+
+test('the canonical layout apply route joins a retained starter rather than creating a duplicate', async () => {
+  const f = await fixture();
+  const id = randomUUID();
+  const draft = {
+    name: 'Starter',
+    slug: 'starter',
+    workingDirectory: f.folderA,
+    creationRequestId: id,
+    starterLayoutId: 'builtin:coding',
+  };
+  expect(
+    (await f.send(f.operator.credential, 'GET', '/creation-requests', {})).body
+      .data.available,
+  ).toBe(true);
+  expect(
+    (await f.send(f.pair('standard'), 'GET', '/creation-requests', {})).body
+      .data.available,
+  ).toBe(false);
+  const created = await f.send(f.operator.credential, 'POST', '', draft);
+  expect(created.status).toBe(201);
+  expect(created.body.data).not.toHaveProperty('starterLayoutId');
+  const body = { layoutId: 'builtin:coding', creationRequestId: id };
+  const first = await f.send(
+    f.operator.credential,
+    'POST',
+    '/starter/layouts/apply',
+    body,
+  );
+  expect(first.status).toBe(201);
+  const repeated = await f.send(
+    f.operator.credential,
+    'POST',
+    '/starter/layouts/apply',
+    body,
+  );
+  expect(repeated.status).toBe(201);
+  expect(repeated.body.data.id).toBe(first.body.data.id);
+  const inspected = await f.send(
+    f.operator.credential,
+    'GET',
+    `/creation-requests/${id}`,
+    {},
+  );
+  expect(inspected.body.data.starter).toMatchObject({
+    phase: 'applied',
+    layoutId: first.body.data.id,
+    layoutSlug: first.body.data.slug,
+  });
+  expect(
+    (
+      await f.send(f.operator.credential, 'POST', '/starter/layouts/apply', {
+        ...body,
+        layoutId: 'builtin:review',
+      })
+    ).status,
+  ).toBe(409);
+});

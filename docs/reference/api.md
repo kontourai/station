@@ -93,8 +93,32 @@ same request returns that Project while it still exists; held or unavailable
 outcomes return 409 with the operation in `data`. Station does not replay an
 uncertain effect or resurrect a deleted Project. Receipts are corruption-checked;
 unreadable storage fails rather than becoming an empty intent. These endpoints
-currently cover Project creation, not durable starter-layout application or
-browser draft recovery across reloads.
+also cover a selected starter when `starterLayoutId` (or explicit `null`) is
+retained with the creation request. That selection is metadata, not Project
+configuration. `GET /api/projects/creation-requests` reports `{available}` for
+the current caller, so other callers retain the ordinary creation path.
+
+`POST /api/projects/:slug/layouts/apply` optionally accepts
+`{layoutId, creationRequestId, retryUncertain?}`. The creation request must name
+that exact starter and still resolve to the same Project identity. Station
+persists a reserved layout ID before calling the existing catalog application
+owner. A duplicate or lost response recovers that layout, including its current
+slug. A held attempt without an observed layout returns 409 until a deliberate
+`retryUncertain:true` request. A confirmed applied starter that was removed is
+unavailable and is never recreated through the old receipt. Existing catalog
+visibility, namespace convergence and Project revision checks still apply.
+Recovery metadata does not install a layout or change its execution grants.
+
+The New Project UI retains operator creation intent and its selected starter in
+browser local storage, partitioned by Station/account. It reads the server
+receipt after reload and only continues on an explicit action. A lost create or
+starter response does not choose a different starter or create another Project.
+Corrupt browser state must be explicitly set aside; failed browser storage
+prevents dispatch. Setting aside only clears browser recovery selection and
+preserves Projects, checkouts and server receipts. For callers whose capability
+is false, or a Station predates the capability endpoint and returns 404, creation
+uses the existing path without this durable-recovery claim. Other capability
+errors block dispatch until checked again.
 
 ## Repository acquisition
 

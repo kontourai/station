@@ -61,6 +61,12 @@ export interface ProjectCreationRequest {
   projectId: string;
   phase: 'created' | 'uncertain' | 'unavailable';
   project?: ProjectConfig;
+  starter?: {
+    catalogId: string;
+    layoutId: string;
+    phase: 'applied' | 'uncertain' | 'unavailable';
+    layoutSlug?: string;
+  };
 }
 
 export interface ProjectMetadata {

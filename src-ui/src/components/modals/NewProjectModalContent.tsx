@@ -61,11 +61,15 @@ function NewProjectModalHeader({
 function NewProjectFormActions({
   canSubmit,
   hasCreatedProject,
+  hasRecoveryIntent,
+  openCreatedProject,
   submitting,
   onClose,
 }: {
   canSubmit: boolean;
   hasCreatedProject: boolean;
+  hasRecoveryIntent: boolean;
+  openCreatedProject: boolean;
   submitting: boolean;
   onClose: () => void;
 }) {
@@ -86,10 +90,22 @@ function NewProjectFormActions({
         type="submit"
         variant="primary"
         pending={submitting}
-        pendingLabel={hasCreatedProject ? 'Applying layout…' : 'Creating…'}
+        pendingLabel={
+          openCreatedProject
+            ? 'Opening…'
+            : hasCreatedProject
+              ? 'Applying layout…'
+              : 'Creating…'
+        }
         disabled={!canSubmit}
       >
-        {hasCreatedProject ? 'Retry layout' : 'Create'}
+        {openCreatedProject
+          ? 'Open Project'
+          : hasCreatedProject
+            ? 'Retry layout'
+            : hasRecoveryIntent
+              ? 'Continue creation'
+              : 'Create'}
       </Button>
     </ResponsiveSurfaceActions>
   );
@@ -234,7 +250,10 @@ function NewProjectForm({
       <div className="new-project-modal__draft-scroll">
         <fieldset
           className="new-project-modal__draft-fields"
-          disabled={state.submission.hasCreatedProject}
+          disabled={
+            state.submission.hasCreatedProject ||
+            state.submission.hasRecoveryIntent
+          }
         >
           <NewProjectDetails
             state={state}
@@ -243,14 +262,66 @@ function NewProjectForm({
         </fieldset>
       </div>
       {sourceError && <p role="alert">{sourceError}</p>}
+      {state.submission.hasRecoveryIntent && (
+        <div className="new-project-modal__recovery">
+          <p role={state.submission.recovery.corrupt ? 'alert' : 'status'}>
+            {state.submission.recovery.corrupt
+              ? 'The saved Project setup could not be read.'
+              : `Saved setup: ${state.submission.recovery.pending?.draft.name}. Station checks the same request before continuing.`}
+          </p>
+          {state.submission.recovery.pending && (
+            <p>
+              Starter:{' '}
+              {state.submission.recovery.pending.starterLayoutId
+                ? (state.starter.eligibleLayouts.find(
+                    (layout) =>
+                      layout.id ===
+                      state.submission.recovery.pending?.starterLayoutId,
+                  )?.name ?? 'Selected starter unavailable')
+                : 'No starter layout'}
+            </p>
+          )}
+          {state.submission.recovery.statusMessage && (
+            <p role="status">{state.submission.recovery.statusMessage}</p>
+          )}
+          {state.submission.recovery.pending && (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={
+                state.submission.recoveryBusy || state.submission.submitting
+              }
+              onClick={() => void state.submission.recovery.operation.refetch()}
+            >
+              Check setup
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={state.submission.submitting}
+            onClick={state.submission.setAsideRecovery}
+          >
+            Set aside this setup
+          </Button>
+          <p className="editor-hint">
+            This keeps any Project, checkout and server setup receipt.
+          </p>
+        </div>
+      )}
+
       {state.submission.hasCreatedProject && (
         <p className="new-project-modal__recovery" role="status">
-          Project created. Retry the selected starter layout to finish setup.
+          {state.submission.canOpenCreatedProject
+            ? 'Project created. Continue to open it.'
+            : 'Project created. Retry the selected starter layout to finish setup.'}
         </p>
       )}
       <NewProjectFormActions
         canSubmit={canSubmit && !acquisitionBusy}
         hasCreatedProject={state.submission.hasCreatedProject}
+        hasRecoveryIntent={state.submission.hasRecoveryIntent}
+        openCreatedProject={state.submission.canOpenCreatedProject}
         submitting={state.submission.submitting}
         onClose={onClose}
       />

@@ -58,6 +58,11 @@ beforeEach(() => {
   authorityState.recoveryKey = 'creating-account';
 });
 
+const savedCreationFixture = vi.hoisted(() => ({ enabled: false }));
+beforeEach(() => {
+  savedCreationFixture.enabled = false;
+});
+
 const createProjectMock = vi.fn();
 const applyProjectLayoutMock = vi.fn();
 const validateDirectoryMock = vi.fn();
@@ -135,7 +140,38 @@ const reviewLayout = {
   lifecycle: { state: 'installed' },
 };
 
-vi.mock('@kontourai/station-sdk', () => ({
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  getJson: async (url: string) => {
+    if (url === 'http://localhost:3000/api/projects/creation-requests')
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: { available: savedCreationFixture.enabled },
+        }),
+      );
+    if (
+      savedCreationFixture.enabled &&
+      url ===
+        'http://localhost:3000/api/projects/creation-requests/1c1e8d6c-a5f4-4305-9c21-6d86a8cf94df'
+    )
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            requestId: '1c1e8d6c-a5f4-4305-9c21-6d86a8cf94df',
+            projectId: 'reserved-project',
+            phase: 'created',
+            project: {
+              id: 'reserved-project',
+              slug: 'saved-project',
+              name: 'Saved project',
+            },
+          },
+        }),
+      );
+    throw new Error(`Unexpected fixture request: ${url}`);
+  },
   applyProjectLayout: (...args: unknown[]) => applyProjectLayoutMock(...args),
   useAvailableProjectLayoutsQuery: (config: unknown) => {
     availableLayoutsQueryMock(config);
@@ -725,6 +761,63 @@ describe('NewProjectModal starter layout picker', () => {
       ).toBeTruthy(),
     );
     expect(screen.queryByText(/Validation failed/)).toBeNull();
+  });
+
+  test('reopening saved setup restores its immutable form and visible starter before continuing', async () => {
+    savedCreationFixture.enabled = true;
+    localStorage.setItem(
+      JSON.stringify([
+        'project-creation',
+        'http://localhost:3000',
+        'creating-account',
+      ]),
+      JSON.stringify({
+        requestId: '1c1e8d6c-a5f4-4305-9c21-6d86a8cf94df',
+        draft: {
+          name: 'Saved project',
+          slug: 'saved-project',
+          description: 'Retained description',
+          workingDirectory: '/saved/repository',
+        },
+        starterLayoutId: 'plugin:review',
+      }),
+    );
+    render(<NewProjectModal isOpen onClose={onCloseMock} />);
+    await screen.findByText(
+      'Saved setup: Saved project. Station checks the same request before continuing.',
+    );
+    await waitFor(() =>
+      expect(
+        (screen.getByPlaceholderText('My Project') as HTMLInputElement).value,
+      ).toBe('Saved project'),
+    );
+    expect(
+      (screen.getByLabelText(/Project folder/) as HTMLInputElement).value,
+    ).toBe('/saved/repository');
+    expect(screen.getByText('Starter: Review')).toBeTruthy();
+    await screen.findByText(
+      'Project created. Retry the selected starter layout to finish setup.',
+    );
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('button', { name: 'Retry layout' })
+          .matches(':disabled'),
+      ).toBe(false),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry layout' }));
+    await waitFor(() =>
+      expect(applyProjectLayoutMock).toHaveBeenCalledWith(
+        'http://localhost:3000',
+        'saved-project',
+        'plugin:review',
+        expect.objectContaining({
+          creationRequestId: '1c1e8d6c-a5f4-4305-9c21-6d86a8cf94df',
+        }),
+      ),
+    );
+    expect(createProjectMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(onCloseMock).toHaveBeenCalled());
   });
 
   test('retries a failed starter apply without creating the project again', async () => {

@@ -759,6 +759,7 @@ export function useCreateProjectMutation(requestScope?: ApiRequestScope) {
       repositoryAcquisitionId?: string;
       /** Operator-only durable creation identity; reuse after uncertain responses. */
       creationRequestId?: string;
+      starterLayoutId?: string | null;
       /** Per-Project override of the Station's workspace isolation. */
       defaultWorkspaceIsolation?: 'shared' | 'worktree';
     }) => {

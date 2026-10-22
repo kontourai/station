@@ -1153,6 +1153,18 @@ directory, preserving earlier attempts and their edits. An interrupted operation
 can remain acquiring until inspected or explicitly retried. **Choose another
 source** clears the browser selection; it does not delete a working copy.
 
+For the Station operator, **Create** also saves the immutable Project draft and
+selected starter before sending. Reopening New Project, including after a page
+reload, checks the same server request. **Continue creation** resumes an
+unrecorded request; **Retry layout** retains the saved starter and checks for an
+already-applied layout before an explicit retry. **Check setup** only inspects.
+An unknown creation outcome stays held. An unavailable/deleted result is not
+silently replaced. **Set aside this setup** clears only the browser selection;
+it keeps Projects, checkouts and server receipts. Recovery is partitioned by
+Station/account and requires current request authority at every action.
+Other callers keep the existing creation path; this durable flow currently
+requires the operator. Unreadable browser storage prevents dispatch.
+
 The receipt records a completed acquisition, not continuing checkout integrity,
 build readiness or a successful Agent turn. Project creation separately rechecks
 the receipt and records historical provenance; later checkout changes still need

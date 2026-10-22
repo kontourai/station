@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
+import type { LayoutConfig } from '@kontourai/station-contracts/layout';
 import type {
   ProjectConfig,
   ProjectCreationRequest,
@@ -18,6 +19,14 @@ const recordSchema = z
     projectId: z.string().uuid(),
     request: z.record(z.unknown()),
     phase: z.enum(['creating', 'created']),
+    starter: z
+      .object({
+        catalogId: z.string().min(1),
+        id: z.string().uuid(),
+        phase: z.enum(['applying', 'applied']),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 type CreationRecord = z.infer<typeof recordSchema>;
@@ -31,7 +40,7 @@ export class ProjectCreationService {
     homeDir: string,
     private readonly storage: Pick<
       IStorageAdapter,
-      'getProject' | 'listProjects'
+      'getProject' | 'listProjects' | 'listLayouts' | 'getLayout'
     >,
   ) {
     this.root = join(homeDir, 'project-creation-requests');
@@ -59,6 +68,11 @@ export class ProjectCreationService {
     ) {
       throw new Error('Project creation receipt does not match its request.');
     }
+    if (
+      record.starter &&
+      record.starter.catalogId !== record.request.starterLayoutId
+    )
+      throw new Error('Starter receipt does not match its creation request.');
     return record;
   }
   private observe(record: CreationRecord): ProjectCreationRequest {
@@ -88,8 +102,113 @@ export class ProjectCreationService {
           ? 'unavailable'
           : 'uncertain',
       ...(project ? { project } : {}),
+      ...(record.starter
+        ? { starter: this.observeStarter(record, project) }
+        : {}),
     };
   }
+  private observeStarter(
+    record: CreationRecord,
+    project?: ProjectConfig,
+  ): NonNullable<ProjectCreationRequest['starter']> {
+    const starter = record.starter;
+    if (!starter) throw new Error('Starter receipt is absent.');
+    let layout: LayoutConfig | undefined;
+    if (project) {
+      const entry = this.storage
+        .listLayouts(project.slug)
+        .find((candidate) => candidate.id === starter.id);
+      if (entry) {
+        const candidate = this.storage.getLayout(project.slug, entry.slug);
+        if (candidate.id === starter.id) layout = candidate;
+      }
+    }
+    return {
+      catalogId: starter.catalogId,
+      layoutId: starter.id,
+      phase: layout
+        ? 'applied'
+        : starter.phase === 'applied'
+          ? 'unavailable'
+          : 'uncertain',
+      ...(layout ? { layoutSlug: layout.slug } : {}),
+    };
+  }
+  async applyStarter(
+    id: string,
+    projectSlug: string,
+    catalogId: string,
+    publish: (
+      reservedLayoutId: string,
+      expectedProjectId: string,
+    ) => Promise<LayoutConfig>,
+    retryUncertain = false,
+  ): Promise<LayoutConfig> {
+    const directory = join(this.root, z.string().uuid().parse(id));
+    mkdirSync(directory, { recursive: true });
+    const release = await acquireFileMutationLockAsync(
+      join(directory, 'operation.mutation'),
+    );
+    try {
+      const record = this.read(id);
+      if (!record || record.request.starterLayoutId !== catalogId)
+        throw new ProjectCreationConflict(
+          'The creation request did not select this starter.',
+        );
+      const observed = this.observe(record);
+      if (
+        observed.phase !== 'created' ||
+        !observed.project ||
+        observed.project.slug !== projectSlug
+      )
+        throw new ProjectCreationConflict(
+          'The original Project is unavailable.',
+        );
+      if (record.starter) {
+        if (record.starter.catalogId !== catalogId)
+          throw new ProjectCreationConflict('The starter selection changed.');
+        if (
+          observed.starter?.phase === 'applied' &&
+          observed.starter.layoutSlug
+        ) {
+          const layout = this.storage.getLayout(
+            projectSlug,
+            observed.starter.layoutSlug,
+          );
+          this.store(id).write({
+            ...record,
+            phase: 'created',
+            starter: { ...record.starter, phase: 'applied' },
+          });
+          return layout;
+        }
+        if (record.starter.phase === 'applied' || !retryUncertain)
+          throw new ProjectCreationConflict(
+            'Starter outcome is unresolved or unavailable.',
+          );
+      }
+      const starter = {
+        catalogId,
+        id: record.starter?.id ?? randomUUID(),
+        phase: 'applying' as const,
+      };
+      this.store(id).write({ ...record, phase: 'created', starter });
+      const layout = await publish(starter.id, observed.project.id);
+      if (layout.id !== starter.id)
+        throw new Error(
+          'Starter publication did not retain its reserved identity.',
+        );
+      this.store(id).write({
+        ...record,
+        phase: 'created',
+        starter: { ...starter, phase: 'applied' },
+      });
+      return layout;
+    } finally {
+      await release();
+    }
+  }
+
   get(id: string): ProjectCreationRequest | null {
     const record = this.read(id);
     return record ? this.observe(record) : null;

@@ -1397,6 +1397,16 @@ Project. The returned `ProjectConfig.repositorySource` is historical,
 server-owned provenance. It does not authorize execution or replace the
 workspace checks when an Agent starts. See [repository acquisition](api.md#repository-acquisition).
 
+Operator callers may additionally supply `creationRequestId` and
+`starterLayoutId` (or `null`) to retain one exact create/setup intent. Query
+`GET /api/projects/creation-requests` for caller availability, then inspect the
+UUID at `/api/projects/creation-requests/:id` after an uncertain response.
+`applyProjectLayout(apiBase, slug, layoutId, opts?)` accepts
+`opts.creationRequestId` and optional `opts.retryUncertain` alongside the
+captured request scope. These fields are sent as apply input; the server still
+owns reserved Project/Layout IDs and refuses a changed starter or Project.
+The no-UUID paths retain their existing behavior. See [durable creation](api.md#durable-project-creation).
+
 Creates a new project. Invalidates `['projects']` on success.
 
 ### `useUpdateProjectMutation()`

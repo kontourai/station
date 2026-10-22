@@ -4,6 +4,7 @@ import {
   type ProjectMetadata,
 } from '@kontourai/station-contracts/project';
 import { useProjectIconCandidatesQuery } from '@kontourai/station-sdk';
+import { useEffect, useRef } from 'react';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
@@ -121,6 +122,26 @@ export function useNewProjectModalState(isOpen: boolean, onClose: () => void) {
       onClose();
     },
   });
+
+  const restoredRequest = useRef<string | null>(null);
+  const pending = submission.recovery.pending;
+  useEffect(() => {
+    if (!isOpen || !pending) {
+      restoredRequest.current = null;
+      return;
+    }
+    if (restoredRequest.current === pending.requestId) return;
+    restoredRequest.current = pending.requestId;
+    draft.setName(pending.draft.name);
+    draft.setNameTouched(true);
+    draft.setIcon(pending.draft.icon ?? '');
+    draft.setDescription(pending.draft.description ?? '');
+    draft.setDirectory(pending.draft.workingDirectory ?? '');
+    draft.setDefaultEnvironment(
+      pending.draft.defaultEnvironment ?? { kind: 'current' },
+    );
+    starter.selectLayout(pending.starterLayoutId);
+  }, [isOpen, pending, draft, starter]);
 
   return { apiBase, draft, iconCandidates, nameAdvisory, starter, submission };
 }

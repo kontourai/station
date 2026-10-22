@@ -226,11 +226,16 @@ async function registerPluginNamespaces(
   storageAdapter: IStorageAdapter,
   projectSlug: string,
   manifest: PluginManifest,
+  expectedProjectId?: string,
 ): Promise<void> {
   const namespaces = manifest.knowledge?.namespaces;
   if (!namespaces?.length) return;
   const revision = storageAdapter.projectRevision(projectSlug);
   const project = revision.value;
+  if (expectedProjectId && project.id !== expectedProjectId)
+    throw new FileStorageConflictError(
+      'Project identity changed before starter preparation.',
+    );
   const existing: KnowledgeNamespaceConfig[] =
     project.knowledgeNamespaces ?? [];
   const existingIds = new Set(existing.map((n) => n.id));
@@ -902,6 +907,13 @@ export function createProjectRoutes(
     }
   });
 
+  app.get('/creation-requests', (c) =>
+    c.json({
+      success: true,
+      data: { available: isOperatorInPersonNotAgent(c.req.raw) },
+    }),
+  );
+
   app.get('/creation-requests/:id', async (c) => {
     if (!isOperatorInPersonNotAgent(c.req.raw))
       return c.json(
@@ -996,9 +1008,21 @@ export function createProjectRoutes(
         undefined,
       );
       if (folderRefusal) return folderRefusal;
+      if (body.starterLayoutId !== undefined && !body.creationRequestId)
+        return c.json(
+          {
+            success: false,
+            error: 'Retaining a starter requires a creation request.',
+          },
+          400,
+        );
       const { creationRequestId, ...request } = body;
       const publish = async (reservedId?: string, admitted = request) => {
-        const { repositoryAcquisitionId, ...input } = admitted;
+        const {
+          repositoryAcquisitionId,
+          starterLayoutId: _starterLayoutId,
+          ...input
+        } = admitted;
         const acquired = repositoryAcquisitionId
           ? await acquisitions.projectSource(
               repositoryAcquisitionId,
@@ -1175,7 +1199,8 @@ export function createProjectRoutes(
       if (
         Object.hasOwn(body, 'repositorySource') ||
         Object.hasOwn(body, 'repositoryAcquisitionId') ||
-        Object.hasOwn(body, 'creationRequestId')
+        Object.hasOwn(body, 'creationRequestId') ||
+        Object.hasOwn(body, 'starterLayoutId')
       ) {
         return c.json(
           {
@@ -1968,8 +1993,17 @@ export function createProjectRoutes(
     slug: string,
     layoutId: string,
     canSeePlugin?: (pluginId: string) => boolean,
+    reservedId?: string,
+    expectedProjectId?: string,
   ) {
     assertSafeLayoutPathSegment('project slug', slug);
+    if (
+      expectedProjectId &&
+      storageAdapter.getProject(slug).id !== expectedProjectId
+    )
+      throw new FileStorageConflictError(
+        'Project identity changed before starter preparation.',
+      );
     // #2103 — apply had no visibility check at all, so a member could apply a
     // hidden plugin's layout into a shared project (and learn it exists from
     // the 201).
@@ -2021,10 +2055,19 @@ export function createProjectRoutes(
     // completes before any Layout effect, so a Project CAS conflict cannot
     // leave a created Layout behind or make retry choose another slug.
     if (pluginManifest) {
-      await registerPluginNamespaces(storageAdapter, slug, pluginManifest);
+      await registerPluginNamespaces(
+        storageAdapter,
+        slug,
+        pluginManifest,
+        expectedProjectId,
+      );
     }
     const projectRevision = storageAdapter.projectRevision(slug);
     const project = projectRevision.value;
+    if (expectedProjectId && project.id !== expectedProjectId)
+      throw new FileStorageConflictError(
+        'Project identity changed before starter publication.',
+      );
     const existingSlugs = new Set(
       storageAdapter.listLayouts(slug).map((layout) => layout.slug),
     );
@@ -2034,7 +2077,7 @@ export function createProjectRoutes(
     }
     const now = new Date().toISOString();
     const layout = {
-      id: randomUUID(),
+      id: reservedId ?? randomUUID(),
       projectSlug: slug,
       type: resolved.definition.type,
       name: resolved.definition.name,
@@ -2084,13 +2127,62 @@ export function createProjectRoutes(
     validate(projectLayoutApplySchema),
     async (c) => {
       try {
-        const layout = await applyCatalogLayout(
-          param(c, 'slug'),
-          getBody(c).layoutId,
-          viewerPluginSight(c),
-        );
+        const { layoutId, creationRequestId, retryUncertain } = getBody(c);
+        if (creationRequestId && !isOperatorInPersonNotAgent(c.req.raw))
+          return c.json(
+            {
+              success: false,
+              error: 'Starter recovery requires the Station operator.',
+            },
+            403,
+          );
+        const slug = param(c, 'slug');
+        const layout = creationRequestId
+          ? await creationRequests.applyStarter(
+              creationRequestId,
+              slug,
+              layoutId,
+              (reservedId, expectedProjectId) =>
+                applyCatalogLayout(
+                  slug,
+                  layoutId,
+                  viewerPluginSight(c),
+                  reservedId,
+                  expectedProjectId,
+                ),
+              retryUncertain === true,
+            )
+          : await applyCatalogLayout(slug, layoutId, viewerPluginSight(c));
+        if (creationRequestId) {
+          if (
+            layoutPluginBindingWithheld(layout, {
+              canSeePlugin: viewerPluginSight(c),
+            })
+          )
+            throw new Error('Layout is not a known installed contribution');
+          const project = projectService.getProject(slug);
+          return c.json(
+            {
+              success: true,
+              data: withDerivedWorkingDirectory(
+                layout,
+                project.workingDirectory,
+              ),
+            },
+            201,
+          );
+        }
         return c.json({ success: true, data: layout }, 201);
       } catch (error: unknown) {
+        if (error instanceof ProjectCreationConflict)
+          return c.json(
+            {
+              success: false,
+              error:
+                'The starter conflicts with its retained creation request or its outcome is unresolved. Inspect Project setup before retrying.',
+            },
+            409,
+          );
         if (error instanceof FileStorageConflictError) {
           return c.json(
             { success: false, error: projectMutationMessage(error) },

@@ -25,7 +25,12 @@ export function useNewProjectFormSubmit(state: NewProjectModalState) {
       : undefined;
 
   function submit(event: FormEvent) {
-    if (!resolvedName || sourceError) {
+    if (
+      (!resolvedName &&
+        !submission.hasRecoveryIntent &&
+        !submission.hasCreatedProject) ||
+      sourceError
+    ) {
       event.preventDefault();
       return;
     }
@@ -68,7 +73,11 @@ export function useNewProjectFormSubmit(state: NewProjectModalState) {
     sourceError,
     canSubmit:
       !sourceError &&
-      Boolean(resolvedName) &&
+      (Boolean(resolvedName) ||
+        submission.hasRecoveryIntent ||
+        submission.hasCreatedProject) &&
+      !submission.recoveryBusy &&
+      !submission.recovery.corrupt &&
       !submission.directoryError &&
       !submission.slugError &&
       !projectIconInputProblem(draft.icon.trim()),

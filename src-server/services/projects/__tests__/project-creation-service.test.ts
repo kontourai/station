@@ -139,3 +139,103 @@ test('a completed receipt cannot recreate a deleted Project or bind a replacemen
   expect(result.project).toBeUndefined();
   expect(f.storage.getProject('research').id).toBe(replacement.id);
 });
+
+async function starterFixture() {
+  const f = fixture();
+  const id = randomUUID();
+  await f.service.create(
+    id,
+    { ...f.request, starterLayoutId: 'builtin:coding' },
+    (projectId) => f.projects.createProject(f.request, projectId),
+  );
+  const publish = async (layoutId: string) => {
+    const now = new Date().toISOString();
+    const layout = {
+      id: layoutId,
+      projectSlug: f.request.slug,
+      slug: 'coding',
+      name: 'Coding',
+      type: 'coding' as const,
+      config: {},
+      createdAt: now,
+      updatedAt: now,
+    };
+    await f.storage.createLayout(f.request.slug, layout);
+    return layout;
+  };
+  return { ...f, id, publish };
+}
+
+test('starter publication is recovered by its reserved identity after a lost result without another layout', async () => {
+  const f = await starterFixture();
+  await expect(
+    f.service.applyStarter(
+      f.id,
+      f.request.slug,
+      'builtin:coding',
+      async (layoutId) => {
+        await f.publish(layoutId);
+        throw new Error('response lost after layout publication');
+      },
+    ),
+  ).rejects.toThrow('response lost');
+  const restarted = new ProjectCreationService(f.home, f.storage);
+  expect(restarted.get(f.id)?.starter).toMatchObject({
+    phase: 'applied',
+    layoutSlug: 'coding',
+  });
+  const recovered = await restarted.applyStarter(
+    f.id,
+    f.request.slug,
+    'builtin:coding',
+    async () => {
+      throw new Error('must not duplicate');
+    },
+  );
+  expect(recovered.id).toBe(restarted.get(f.id)?.starter?.layoutId);
+  expect(f.storage.listLayouts(f.request.slug)).toHaveLength(1);
+  await f.storage.deleteLayout(f.request.slug, 'coding');
+  await expect(
+    restarted.applyStarter(
+      f.id,
+      f.request.slug,
+      'builtin:coding',
+      f.publish,
+      true,
+    ),
+  ).rejects.toThrow('unresolved or unavailable');
+  expect(f.storage.listLayouts(f.request.slug)).toHaveLength(0);
+});
+
+test('an uncertain starter requires deliberate retry and cannot change Project or selected starter', async () => {
+  const f = await starterFixture();
+  await expect(
+    f.service.applyStarter(f.id, f.request.slug, 'builtin:review', f.publish),
+  ).rejects.toThrow('did not select');
+  await expect(
+    f.service.applyStarter(
+      f.id,
+      'another-project',
+      'builtin:coding',
+      f.publish,
+    ),
+  ).rejects.toThrow('unavailable');
+  await expect(
+    f.service.applyStarter(f.id, f.request.slug, 'builtin:coding', async () => {
+      throw new Error('interrupted before publication');
+    }),
+  ).rejects.toThrow('interrupted');
+  await expect(
+    f.service.applyStarter(f.id, f.request.slug, 'builtin:coding', f.publish),
+  ).rejects.toThrow('unresolved');
+  expect(f.storage.listLayouts(f.request.slug)).toHaveLength(0);
+  const retry = await f.service.applyStarter(
+    f.id,
+    f.request.slug,
+    'builtin:coding',
+    f.publish,
+    true,
+  );
+  expect(retry.id).toBe(f.service.get(f.id)?.starter?.layoutId);
+  expect(f.storage.listLayouts(f.request.slug)).toHaveLength(1);
+});
