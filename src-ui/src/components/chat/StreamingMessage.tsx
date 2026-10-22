@@ -12,6 +12,7 @@ import { deriveToolProgressSummary } from '../../utils/chat-progress';
 import { openTurnStartedAtMs } from '../../utils/conversation-activity';
 import type { OwnerAttribution } from '../../utils/ownerAttribution';
 import type { PermissionPosture } from '../../utils/sessionDisplay';
+import { PermissionPostureBadge } from '../badges/PermissionPostureBadge';
 import { ElapsedWait } from '../ElapsedWait';
 import { LoadingDots } from '../LoadingDots';
 import { FilePartPreview } from './FilePartPreview';
@@ -219,6 +220,7 @@ function StreamingMessageWithApps({
             permissionPosture={permissionPosture}
           />
         )}
+        {isMobile && <PermissionPostureBadge posture={permissionPosture} />}
 
         {/* Render completed content parts in order */}
         {blocks.map((block) => {
