@@ -1609,19 +1609,28 @@ normal request authentication runs first. See the
 > Local source at `21de0f40`; independent review and browser qualification are
 > pending. This diagnostic does not establish group execution or launch readiness.
 
-`POST /api/orchestration/ensembles/inspect` reads a preset on This Station without
+`POST /api/orchestration/ensembles/inspect` observes receiver configuration without
 model discovery, login probes or provider turns. It uses `orchestration:operate`
-and additionally requires the current bound, locally minted, in-person operator
-on a personal Station before reading the file. Hosted, Agent and device callers
-are unsupported.
+and requires a current in-person operator on a personal Station. Hosted, Agent
+and paired-device callers are unsupported. Reading a host `path` additionally
+requires the locally minted operator grant; a host browser can instead send
+`presetJson` without gaining host-path read authority.
 
-The closed JSON body contains `path`, `bindings` and optional `expectedPresetHash`.
-Bindings map exact preset member IDs to `{agent, projectSlug}`; nonempty bindings
-require the expected source hash. Empty bindings permit an initial declaration
-inspection. The response envelope is `{success:true,data}` with version
+The closed JSON body contains exactly one of `path` or `presetJson`, `bindings`
+and optional `expectedPresetHash` and `groupBindings`. Legacy `bindings` map exact
+preset member IDs to `{agent, projectSlug}`. Alternatively, with empty `bindings`,
+`groupBindings` carries the group draft's `{target, needs}` per member: exact
+Agent ID, expected engine connection, current environment, and Project or directory
+workspace. Model overrides are refused here: models/options always come from the
+preset. A source hash is required for uploaded bytes or either nonempty binding
+form. Empty legacy bindings permit an initial host-file declaration inspection.
+
+The response envelope is `{success:true,data}` with version
 `station.ensemble.inspection/v1`, exact source hash, environment, observation time,
-allowlisted resolution receipts and bounded facts. No prompt appends, credentials
-or raw definitions are returned.
+allowlisted resolution receipts and bounded facts. Declared prerequisites remain
+authored draft facts, separate from runtime observations. Missing and disabled
+MCP definitions are labeled; effective delivery and grants remain unknown. No
+prompt appends, credentials or raw definitions are returned.
 
 Each fact identifies its category, origin, state and owner reference. Categories
 cover members/models, routing/triggers, tools/services, workspace, memory,
@@ -1630,13 +1639,18 @@ owner projections remain unavailable or unknown. Stationmaster is an identity,
 not a routing edge or grant. Native engine identity is separate from API model
 connection identity. A successful inspection grants no execution authority.
 
-Requests are limited to 16 KiB and responses to 256 KiB, with at most 512 facts and
+Host-path requests are limited to 16 KiB; uploaded requests to 256 KiB, with the
+preset itself bounded to 128 KiB of UTF-8. Responses are limited to 256 KiB, with at most 512 facts and
 eight displayed tool references per member. Responses use `Cache-Control: no-store`.
 Authority refusal returns 403, stale source/configuration 409, and unavailable
 inspection 422; oversized requests return 413. Request validation errors use
 `ensemble_inspection_invalid`. Errors omit raw filesystem/provider diagnostics.
 Final source/configuration/request checks are observations, not atomic external
 filesystem custody. The Agents inspector is reached at `/agents?tab=ensembles`.
+The group form's **Inspect group configuration** action uses its exact draft
+bindings and the same read-only projection. Editing the draft clears that
+observation. Inspection neither saves nor launches the group; saving and running
+resolve and authorize current configuration again.
 
 ## CLI session groups
 

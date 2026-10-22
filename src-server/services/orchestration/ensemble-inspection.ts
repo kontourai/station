@@ -1,11 +1,16 @@
+import { createHash } from 'node:crypto';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
   ENSEMBLE_INSPECTION_LIMITS,
   type EnsembleInspection,
   type EnsembleInspectionFact,
   type EnsembleInspectionInput,
+  parseEnsemblePreset,
 } from '@kontourai/station-contracts/ensemble';
-import type { ExecutionResolutionReceipt } from '@kontourai/station-contracts/execution-target';
+import type {
+  ExecutionResolutionReceipt,
+  ExecutionTarget,
+} from '@kontourai/station-contracts/execution-target';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { createPersonalRuntimeRequestGuard } from '../../runtime/bootstrap/runtime-tenant-context.js';
@@ -103,14 +108,24 @@ export class EnsembleInspectionService {
     },
   ) {}
 
-  assertAuthority(request: Request, principal: PrincipalRef): void {
+  assertConfigurationAuthority(
+    request: Request,
+    principal: PrincipalRef,
+  ): void {
     if (
       !this.personalRequest(request) ||
       !isOperatorInPersonNotAgent(request) ||
-      !isBoundLocalGrantMintedOperator(request) ||
       principal.id !== LOCAL_OPERATOR_PRINCIPAL_ID ||
       !isRuntimeRequestPrincipalCurrent(request, this.owners.security)
     )
+      throw new EnsembleInspectionRefusal(
+        'ensemble_inspection_authority_required',
+      );
+  }
+
+  assertAuthority(request: Request, principal: PrincipalRef): void {
+    this.assertConfigurationAuthority(request, principal);
+    if (!isBoundLocalGrantMintedOperator(request))
       throw new EnsembleInspectionRefusal(
         'ensemble_inspection_authority_required',
       );
@@ -121,48 +136,78 @@ export class EnsembleInspectionService {
     request: Request,
     principal: PrincipalRef,
   ): Promise<EnsembleInspection> {
-    this.assertAuthority(request, principal);
     input = structuredClone(input);
+    if ((input.path === undefined) === (input.presetJson === undefined))
+      throw new EnsembleInspectionRefusal('ensemble_inspection_invalid');
+    const current = () => {
+      request.signal.throwIfAborted();
+      if (input.path !== undefined) this.assertAuthority(request, principal);
+      else this.assertConfigurationAuthority(request, principal);
+    };
+    current();
     const bindings = new Map(Object.entries(input.bindings));
-    const source = await loadEnsemblePreset(input.path);
+    const source =
+      input.path !== undefined
+        ? await loadEnsemblePreset(input.path)
+        : {
+            preset: parseEnsemblePreset(input.presetJson ?? ''),
+            sha256: `sha256:${createHash('sha256')
+              .update(input.presetJson ?? '')
+              .digest('hex')}`,
+          };
+    current();
     if (input.expectedPresetHash && input.expectedPresetHash !== source.sha256)
       throw new EnsembleInspectionRefusal('ensemble_inspection_stale');
     if (
-      Object.keys(input.bindings).some(
-        (id) => !source.preset.members.some((member) => member.id === id),
-      )
+      [
+        ...Object.keys(input.bindings),
+        ...Object.keys(input.groupBindings ?? {}),
+      ].some((id) => !source.preset.members.some((member) => member.id === id))
     )
       throw new EnsembleInspectionRefusal('ensemble_inspection_invalid');
 
-    const targets = source.preset.members.flatMap((member) => {
+    const targets = new Map<string, ExecutionTarget>();
+    for (const member of source.preset.members) {
       const binding = bindings.get(member.id);
-      return binding
-        ? [
-            {
-              environment: { kind: 'current' as const },
+      const selected =
+        input.groupBindings?.[member.id]?.target ??
+        (binding
+          ? {
               agent: agentId(binding.agent),
               workspace: {
                 kind: 'project' as const,
                 projectSlug: binding.projectSlug,
               },
-              model: {
-                override: member.model,
-                options: {
-                  ...member.options,
-                  ...(member.reasoning
-                    ? { [member.reasoning.option]: member.reasoning.value }
-                    : {}),
-                },
-              },
-            },
-          ]
-        : [];
-    });
+            }
+          : undefined);
+      if (!selected) continue;
+      targets.set(member.id, {
+        ...selected,
+        environment: { kind: 'current' },
+        model: {
+          override: member.model,
+          options: {
+            ...member.options,
+            ...(member.reasoning
+              ? { [member.reasoning.option]: member.reasoning.value }
+              : {}),
+          },
+        },
+      });
+      if (
+        input.groupBindings?.[member.id]?.needs.some(
+          (id) => !source.preset.members.some((member) => member.id === id),
+        )
+      )
+        throw new EnsembleInspectionRefusal('ensemble_inspection_invalid');
+    }
     const access = await this.owners.inventory.resolveEnvironmentAccess({
       environment: { kind: 'current' },
       agent: agentId('station'),
     });
-    const fence = this.owners.inventory.capturePreparationFence?.(targets);
+    const fence = this.owners.inventory.capturePreparationFence?.([
+      ...targets.values(),
+    ]);
     if (!fence)
       throw new EnsembleInspectionRefusal('ensemble_inspection_unavailable');
     const facts: EnsembleInspectionFact[] = [];
@@ -206,10 +251,11 @@ export class EnsembleInspectionService {
         owner: memberOwner,
       });
       const binding = bindings.get(member.id);
-      const owner = binding
+      const target = targets.get(member.id);
+      const owner = target
         ? {
             label: 'Agent settings',
-            href: `/agents/${encodeURIComponent(binding.agent)}`,
+            href: `/agents/${encodeURIComponent(typeof target.agent === 'string' ? target.agent : target.agent.agent)}`,
           }
         : memberOwner;
       let workspace: EnsembleInspectionFact = {
@@ -223,28 +269,19 @@ export class EnsembleInspectionService {
         state: 'missing',
         owner,
       };
-      if (binding) {
+      if (target) {
         try {
           const resolved = await resolveExecutionTarget(
-            {
-              environment: { kind: 'current' },
-              agent: agentId(binding.agent),
-              workspace: { kind: 'project', projectSlug: binding.projectSlug },
-              model: {
-                override: member.model,
-                options: {
-                  ...member.options,
-                  ...(member.reasoning
-                    ? { [member.reasoning.option]: member.reasoning.value }
-                    : {}),
-                },
-              },
-            },
+            target,
             this.owners.inventory,
             { purpose: 'preparation' },
           );
+          current();
           if (
-            resolved.provider !== member.engine ||
+            (resolved.provider === 'acp' &&
+            resolved.engine.kind === 'connection'
+              ? resolved.engine.connectionId
+              : resolved.provider) !== member.engine ||
             resolved.modelId !== member.model
           )
             throw new Error('Binding differs');
@@ -264,12 +301,16 @@ export class EnsembleInspectionService {
           });
           workspace = {
             ...workspace,
-            value: `${resolved.workspace?.cwd ?? 'Unknown directory'}; expanded Project path configuration, filesystem availability unverified`,
+            value: `${resolved.workspace?.cwd ?? 'Unknown directory'}; ${binding ? 'expanded Project path configuration' : 'receiver workspace configuration'}, filesystem availability unverified`,
             origin: 'authored',
             state: 'configured',
             owner: {
-              label: 'Project settings',
-              href: `/projects/${encodeURIComponent(binding.projectSlug)}/edit`,
+              ...(binding
+                ? {
+                    label: 'Project settings',
+                    href: `/projects/${encodeURIComponent(binding.projectSlug)}/edit`,
+                  }
+                : { label: 'Group workspace draft' }),
               receipt: `resolution:${member.id}`,
             },
           };
@@ -278,7 +319,10 @@ export class EnsembleInspectionService {
             memberId: member.id,
             category: 'workspace',
             label: 'Workspace isolation',
-            value: `${resolved.workspace?.kind === 'project' ? resolved.workspace.workspaceIsolation.mode : 'unknown'}; Project > Station > shared default precedence. Origin is not separately witnessed.`,
+            value:
+              resolved.workspace?.kind === 'directory'
+                ? 'shared; explicit directory binding, no worktree requested'
+                : `${resolved.workspace?.kind === 'project' ? resolved.workspace.workspaceIsolation.mode : 'unknown'}; Project > Station > shared default precedence. Origin is not separately witnessed.`,
             origin: 'unknown',
             state: 'unknown',
             owner: workspace.owner,
@@ -305,7 +349,11 @@ export class EnsembleInspectionService {
                 ? `${definition.kind} · ${definition.transport ?? 'built-in'} · ${definition.enabled === false ? 'disabled' : 'configured'}; definition currency, delivery and authorization unknown`
                 : 'Configured reference; definition unavailable.',
               origin: 'authored',
-              state: 'unknown',
+              state: !definition
+                ? 'missing'
+                : definition.enabled === false
+                  ? 'unavailable'
+                  : 'unknown',
               owner: {
                 label: 'Tool connection settings',
                 href: `/connections/tools/${encodeURIComponent(id)}`,
@@ -358,6 +406,20 @@ export class EnsembleInspectionService {
           owner,
         });
       }
+      const groupBinding = input.groupBindings?.[member.id];
+      if (groupBinding)
+        add({
+          id: `needs:${member.id}`,
+          memberId: member.id,
+          category: 'routing/triggers',
+          label: 'Declared prerequisites',
+          value: groupBinding.needs.length
+            ? `${groupBinding.needs.join(', ')} → ${member.id}`
+            : 'No prerequisites; eligible at group start subject to admission.',
+          origin: 'authored',
+          state: 'configured',
+          owner: { label: 'Group dependency draft' },
+        });
       add(workspace);
       add({
         id: `api:${member.id}`,
@@ -389,7 +451,9 @@ export class EnsembleInspectionService {
       [
         'routing',
         'routing/triggers',
-        'Preset v1 declares no routing or trigger edges. Stationmaster grants no routing authority.',
+        input.groupBindings
+          ? 'Member prerequisites are declared in this group draft. Stationmaster grants no routing authority; additional triggers and routes are not declared.'
+          : 'Preset v1 declares no routing or trigger edges. Stationmaster grants no routing authority.',
       ],
       [
         'schedules',
@@ -411,14 +475,15 @@ export class EnsembleInspectionService {
         state: 'unavailable',
         owner: presetOwner,
       });
-    this.assertAuthority(request, principal);
+    current();
     const finalAccess = await this.owners.inventory.resolveEnvironmentAccess({
       environment: { kind: 'current' },
       agent: agentId('station'),
     });
     if (
       access.environmentId !== finalAccess.environmentId ||
-      (await loadEnsemblePreset(source.path)).sha256 !== source.sha256
+      (input.path !== undefined &&
+        (await loadEnsemblePreset(input.path)).sha256 !== source.sha256)
     )
       throw new EnsembleInspectionRefusal('ensemble_inspection_stale');
     try {
@@ -426,7 +491,7 @@ export class EnsembleInspectionService {
     } catch {
       throw new EnsembleInspectionRefusal('ensemble_inspection_stale');
     }
-    this.assertAuthority(request, principal);
+    current();
     return {
       version: 'station.ensemble.inspection/v1',
       source: {

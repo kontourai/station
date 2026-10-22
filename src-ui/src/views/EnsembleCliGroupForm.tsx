@@ -6,6 +6,7 @@ import type { EnsembleCliSessionGroupInput } from '@kontourai/station-contracts/
 import {
   useCancelCliSessionGroup,
   useCreateEnsembleCliSessionGroup,
+  useInspectEnsemble,
   useRunCliSessionGroup,
 } from '@kontourai/station-sdk';
 import {
@@ -14,6 +15,7 @@ import {
 } from '@kontourai/station-sdk/client';
 import { useState } from 'react';
 import { Button } from '../components/Button';
+import { EnsembleInspectionResult } from './EnsembleInspectionResult';
 
 export function EnsembleCliGroupForm({
   scope,
@@ -31,6 +33,7 @@ export function EnsembleCliGroupForm({
   onDirtyChange(dirty: boolean): void;
 }) {
   const create = useCreateEnsembleCliSessionGroup(scope);
+  const inspection = useInspectEnsemble(scope);
   const run = useRunCliSessionGroup(scope);
   const cancel = useCancelCliSessionGroup(scope);
   const [expanded, setExpanded] = useState(false);
@@ -75,6 +78,7 @@ export function EnsembleCliGroupForm({
             unavailable. The deadline begins when the group is saved.
           </p>
           <form
+            onChange={() => inspection.reset()}
             onSubmit={(event) => {
               event.preventDefault();
               if (!current || submitted || !complete) return;
@@ -122,11 +126,25 @@ export function EnsembleCliGroupForm({
                 return;
               }
               setInputError(false);
-              onDirtyChange(false);
-              create.mutate(input);
+              if (
+                event.nativeEvent instanceof SubmitEvent &&
+                event.nativeEvent.submitter?.getAttribute('data-action') ===
+                  'inspect'
+              ) {
+                inspection.mutate({
+                  path,
+                  presetJson,
+                  expectedPresetHash: hash,
+                  bindings: {},
+                  groupBindings: input.bindings,
+                });
+              } else {
+                onDirtyChange(false);
+                create.mutate(input);
+              }
             }}
           >
-            <fieldset disabled={submitted || !current}>
+            <fieldset disabled={submitted || inspection.isPending || !current}>
               <legend>Group work</legend>
               <label>
                 Shared brief
@@ -192,7 +210,10 @@ export function EnsembleCliGroupForm({
                 needs: '',
               };
               return (
-                <fieldset key={id} disabled={submitted || !current}>
+                <fieldset
+                  key={id}
+                  disabled={submitted || inspection.isPending || !current}
+                >
                   <legend>Member {id}</legend>
                   {(
                     [
@@ -226,13 +247,42 @@ export function EnsembleCliGroupForm({
             })}
             <Button
               type="submit"
+              data-action="inspect"
+              variant="secondary"
+              pending={inspection.isPending}
+              pendingLabel="Inspecting configuration…"
+              disabled={
+                !current || submitted || !complete || inspection.isPending
+              }
+            >
+              Inspect group configuration
+            </Button>
+            <Button
+              type="submit"
               pending={create.isPending}
               pendingLabel="Saving group…"
-              disabled={!current || submitted || !complete}
+              disabled={
+                !current || submitted || !complete || inspection.isPending
+              }
             >
               Save session group
             </Button>
           </form>
+          {inspection.data && current && (
+            <>
+              <p>
+                Configuration observation only. Saving and running resolve the
+                current configuration again.
+              </p>
+              <EnsembleInspectionResult result={inspection.data} />
+            </>
+          )}
+          {inspection.isError && current && (
+            <p role="alert">
+              Group configuration could not be inspected. Check the exact
+              receiver bindings and current Station authority.
+            </p>
+          )}
           {saved && (
             <p role="status">
               Saved session group <code>{saved.groupId}</code>. Use Show session

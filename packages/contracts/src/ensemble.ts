@@ -4,6 +4,7 @@ export const ENSEMBLE_MAX_MEMBERS = 16;
 
 export const ENSEMBLE_INSPECTION_LIMITS = {
   requestBytes: 16 * 1024,
+  uploadedRequestBytes: 256 * 1024,
   responseBytes: 256 * 1024,
   facts: 512,
   toolsPerMember: 8,
@@ -11,8 +12,10 @@ export const ENSEMBLE_INSPECTION_LIMITS = {
 
 /** Receiver-owned selections only; the model always belongs to the preset. */
 export interface EnsembleInspectionInput {
-  path: string;
+  path?: string;
+  presetJson?: string;
   expectedPresetHash?: string;
+  groupBindings?: EnsembleCliSessionGroupInput['bindings'];
   bindings: Record<string, { agent: string; projectSlug: string }>;
 }
 

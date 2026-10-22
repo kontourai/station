@@ -5150,6 +5150,14 @@ before becoming available. Keep preset paths in the POST body, outside URLs and
 persistent application state.
 
 The input and result types live in `@kontourai/station-contracts/ensemble`.
+Pass exactly one of `path` or `presetJson`; uploaded bytes require their exact
+`expectedPresetHash`. For a launch draft, send empty `bindings` and its
+`groupBindings` (`{target, needs}` per member). The target names an Agent, expected
+engine connection and Project/directory workspace, never a model override.
+Host-file requests retain the stricter local-grant requirement; uploaded
+inspection is available to the current personal Station's in-person operator.
+The response is a configuration observation, not a retained launch capability.
+
 Inspection observes configuration only; unavailable facts and unknown effective
 capabilities are not readiness or permission to launch. See the
 [API contract](api.md#ensemble-configuration-inspection). The increment at

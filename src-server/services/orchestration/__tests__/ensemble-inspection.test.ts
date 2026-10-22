@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { mkdir, realpath, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -7,6 +8,7 @@ import {
   ENSEMBLE_INSPECTION_LIMITS,
   type EnsembleInspection,
 } from '@kontourai/station-contracts/ensemble';
+import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -115,7 +117,7 @@ async function fixture() {
       throw new Error('Forbidden execution, discovery or secret call');
     });
   let onIntegration = () => {};
-  const readIntegration = vi.fn(() => {
+  const readIntegration = vi.fn((): ToolDef | undefined => {
     onIntegration();
     return {
       id: 'external',
@@ -165,6 +167,25 @@ async function fixture() {
     requestId: requested.requestId,
     locality: 'home-possession',
     mintKind: 'local-grant',
+  });
+  const browserOffer = security.devicePairing.createOffer({
+    endpoint: 'http://127.0.0.1',
+  });
+  const browserRequest = security.devicePairing.requestPairing({
+    requesterPosition: 'off-box',
+    offerId: browserOffer.offerId,
+    proof: browserOffer.challenge,
+    deviceName: 'Host browser',
+  });
+  security.devicePairing.confirmRequest(browserRequest.requestId, {
+    kind: 'ui-bootstrap',
+  });
+  const browser = security.devicePairing.exchange({
+    offerId: browserOffer.offerId,
+    proof: browserOffer.challenge,
+    requestId: browserRequest.requestId,
+    locality: 'home-possession',
+    mintKind: 'ui-bootstrap',
   });
   const service = new EnsembleInspectionService({
     security,
@@ -231,6 +252,12 @@ async function fixture() {
     loader,
     service,
     raw,
+    browser: browser.credential,
+    revokeBrowser: () =>
+      security.devicePairing.revokeDevice(
+        browser.device.id,
+        'operator-credential',
+      ),
     tripwires,
     readIntegration,
     setOnIntegration: (callback: () => void) => {
@@ -441,4 +468,157 @@ test('a missing exact receiver never silently substitutes another engine', async
     expect.objectContaining({ id: 'tools:lead', state: 'unavailable' }),
   );
   for (const spy of f.tripwires) expect(spy).not.toHaveBeenCalled();
+});
+
+test('a host browser inspects exact uploaded group bindings without gaining host-path access or execution', async () => {
+  const f = await fixture();
+  const load = vi.spyOn(presets, 'loadEnsemblePreset');
+  const presetJson = ' '.repeat(20_000) + f.bytes;
+  const input = {
+    presetJson,
+    expectedPresetHash: `sha256:${createHash('sha256').update(presetJson).digest('hex')}`,
+    bindings: {},
+    groupBindings: {
+      lead: {
+        target: {
+          agent: 'reviewer',
+          expectedEngine: { kind: 'connection', connectionId: 'codex' },
+          workspace: { kind: 'directory', cwd: f.root },
+        },
+        needs: [],
+      },
+    },
+  };
+  const response = await f.request(input, f.browser);
+  expect(response.status).toBe(200);
+  const { data } = (await response.json()) as { data: EnsembleInspection };
+  expect(data.source.sha256).toBe(input.expectedPresetHash);
+  expect(data.resolutions[0].receipt.workspace).toEqual({
+    kind: 'directory',
+    cwd: f.root,
+  });
+  expect(data.facts).toContainEqual(
+    expect.objectContaining({
+      id: 'needs:lead',
+      origin: 'authored',
+      state: 'configured',
+    }),
+  );
+  expect(data.facts).toContainEqual(
+    expect.objectContaining({ id: 'tool:lead:external', state: 'unknown' }),
+  );
+  expect(JSON.stringify(data)).not.toMatch(
+    /SECRET_|preparationDefinitions|requestOptions|credentialProfile/,
+  );
+  expect(load).not.toHaveBeenCalled();
+  expect((await f.request(f.input, f.browser)).status).toBe(403);
+  expect(load).not.toHaveBeenCalled();
+  const mismatch = structuredClone(input);
+  mismatch.groupBindings.lead.target.expectedEngine.connectionId = 'claude';
+  const refused = await f.request(mismatch, f.browser);
+  expect(refused.status).toBe(200);
+  const unavailable = (await refused.json()) as { data: EnsembleInspection };
+  expect(unavailable.data.resolutions).toEqual([]);
+  expect(unavailable.data.facts).toContainEqual(
+    expect.objectContaining({ id: 'binding:lead', state: 'unavailable' }),
+  );
+  for (const spy of f.tripwires) expect(spy).not.toHaveBeenCalled();
+});
+
+test('uploaded inspection rejects injected models, ambiguous sources and changed source hashes before resolving owners', async () => {
+  const f = await fixture();
+  const input = {
+    presetJson: f.bytes,
+    expectedPresetHash: f.input.expectedPresetHash,
+    bindings: {},
+    groupBindings: {
+      lead: {
+        target: {
+          agent: 'reviewer',
+          expectedEngine: { kind: 'connection', connectionId: 'codex' },
+          workspace: { kind: 'directory', cwd: f.root },
+        },
+        needs: [],
+      },
+    },
+  };
+  expect((await f.request({ ...input, path: f.path }, f.browser)).status).toBe(
+    400,
+  );
+  expect(
+    (
+      await f.request(
+        { ...input, expectedPresetHash: `sha256:${'0'.repeat(64)}` },
+        f.browser,
+      )
+    ).status,
+  ).toBe(409);
+  expect(
+    (
+      await f.request(
+        {
+          ...input,
+          groupBindings: {
+            lead: {
+              ...input.groupBindings.lead,
+              target: {
+                ...input.groupBindings.lead.target,
+                model: { override: 'injected' },
+              },
+            },
+          },
+        },
+        f.browser,
+      )
+    ).status,
+  ).toBe(400);
+  expect(f.readIntegration).not.toHaveBeenCalled();
+  for (const spy of f.tripwires) expect(spy).not.toHaveBeenCalled();
+});
+
+test.each(['missing', 'disabled'] as const)(
+  'the inspector discloses a %s configured tool without claiming an empty or usable capability inventory',
+  async (state) => {
+    const f = await fixture();
+    f.readIntegration.mockReturnValue(
+      state === 'missing'
+        ? undefined
+        : { id: 'external', kind: 'mcp', transport: 'stdio', enabled: false },
+    );
+    const response = await f.request(f.input);
+    expect(response.status).toBe(200);
+    const { data } = (await response.json()) as { data: EnsembleInspection };
+    expect(data.facts).toContainEqual(
+      expect.objectContaining({
+        id: 'tool:lead:external',
+        state: state === 'missing' ? 'missing' : 'unavailable',
+      }),
+    );
+    for (const spy of f.tripwires) expect(spy).not.toHaveBeenCalled();
+  },
+);
+
+test('uploaded inspection cannot publish resolved facts after its browser grant is revoked', async () => {
+  const f = await fixture();
+  f.setOnIntegration(f.revokeBrowser);
+  const response = await f.request(
+    {
+      presetJson: f.bytes,
+      expectedPresetHash: f.input.expectedPresetHash,
+      bindings: {},
+      groupBindings: {
+        lead: {
+          target: {
+            agent: 'reviewer',
+            expectedEngine: { kind: 'connection', connectionId: 'codex' },
+            workspace: { kind: 'directory', cwd: f.root },
+          },
+          needs: [],
+        },
+      },
+    },
+    f.browser,
+  );
+  expect(response.status).toBe(403);
+  expect(await response.text()).not.toMatch(/SECRET_|resolution|facts/);
 });

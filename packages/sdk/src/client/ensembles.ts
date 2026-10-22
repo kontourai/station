@@ -16,7 +16,9 @@ export async function inspectEnsemble(
 ): Promise<EnsembleInspection> {
   if (
     new TextEncoder().encode(JSON.stringify(input)).length >
-    ENSEMBLE_INSPECTION_LIMITS.requestBytes
+    (input.presetJson === undefined
+      ? ENSEMBLE_INSPECTION_LIMITS.requestBytes
+      : ENSEMBLE_INSPECTION_LIMITS.uploadedRequestBytes)
   )
     throw new Error('Ensemble inspection request exceeds its byte limit.');
   const response = await mutateJson(

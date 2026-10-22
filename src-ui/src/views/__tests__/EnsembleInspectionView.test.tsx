@@ -614,3 +614,63 @@ test.each(['Agent ID for lead', 'Engine connection ID for lead'])(
     expect(fetch).toHaveBeenCalledTimes(2);
   },
 );
+
+test('group inspection uses the launch draft and discards its facts when the draft changes without saving or running', async () => {
+  navigationStore.navigate('/agents?tab=ensembles');
+  const fetch = vi.fn(
+    async (_url: unknown, _init?: RequestInit) =>
+      new Response(JSON.stringify({ success: true, data: result })),
+  );
+  vi.stubGlobal('fetch', fetch);
+  mount();
+  await draftGroup();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Inspect group configuration' }),
+  );
+  await screen.findByText(
+    'Configuration observation only. Saving and running resolve the current configuration again.',
+  );
+  expect(fetch).toHaveBeenCalledTimes(2);
+  const [url, init] = fetch.mock.calls[1];
+  expect(String(url)).toBe(
+    'https://station.test/api/orchestration/ensembles/inspect',
+  );
+  expect(JSON.parse(String(init?.body))).toEqual({
+    path: '/private/team.json',
+    expectedPresetHash: result.source.sha256,
+    bindings: {},
+    groupBindings: {
+      lead: {
+        target: {
+          agent: 'reviewer',
+          expectedEngine: { kind: 'connection', connectionId: 'opencode' },
+          workspace: { kind: 'directory', cwd: '/work' },
+        },
+        needs: [],
+      },
+    },
+  });
+  expect(
+    screen.getAllByRole('table', {
+      name: 'Ensemble configuration and provenance',
+    }),
+  ).toHaveLength(2);
+  fireEvent.change(
+    screen.getByLabelText('Working directory on This Station for lead'),
+    { target: { value: '/changed' } },
+  );
+  await waitFor(() =>
+    expect(
+      screen.queryByText(
+        'Configuration observation only. Saving and running resolve the current configuration again.',
+      ),
+    ).toBeNull(),
+  );
+  expect(
+    screen.getAllByRole('table', {
+      name: 'Ensemble configuration and provenance',
+    }),
+  ).toHaveLength(1);
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(screen.queryByText(/Saved session group/)).toBeNull();
+});
