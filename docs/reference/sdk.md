@@ -5158,11 +5158,18 @@ Host-file requests retain the stricter local-grant requirement; uploaded
 inspection is available to the current personal Station's in-person operator.
 The response is a configuration observation, not a retained launch capability.
 
+Prerequisite facts may carry an optional `needs` list of declared member IDs.
+The configuration table and diagram consume the same facts; these references
+describe the draft, not Flow readiness or observed execution. Older responses
+without the list do not establish that the draft has no prerequisites.
+
 Inspection observes configuration only; unavailable facts and unknown effective
 capabilities are not readiness or permission to launch. See the
-[API contract](api.md#ensemble-configuration-inspection). The increment at
-`21de0f40` awaits independent review, browser qualification and package publication;
-checkout exports do not establish registry availability.
+[API contract](api.md#ensemble-configuration-inspection). The
+[epic record](../plans/child-work-epic.md) retains scoped HTTP, mounted UI, browser
+and independent-review evidence with its source revisions and limits. Checkout
+exports and those checks do not establish package publication, native/provider
+operation or whole-epic acceptance.
 
 ## CLI session groups
 
