@@ -4271,8 +4271,12 @@ identities and bounded responses.
 for a configured local endpoint, an already-consented managed helper, or an
 operator-managed SSH host. Hosted tenant execution does not mount this path.
 Resolving a connection may start a consented helper; helper installation and
-process ownership remain with the toolchain/host services. There is no peer
-Station device transport merely because the resolver is extensible.
+process ownership remain with the toolchain/host services. Managed device tools
+resolve a user-installed Node.js 24 or later and its matching npm through
+[device-tool-runtime.ts](../../src-server/services/devices/toolchain/device-tool-runtime.ts).
+Missing prerequisites block device setup with guidance; the desktop's private
+Node continues to run bundled Station services. There is no peer Station device
+transport merely because the resolver is extensible.
 
 [Mobile-device routes](../../src-server/routes/mobile-device.ts) check current
 request authority and device access before calling the helper, then recheck

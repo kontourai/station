@@ -89,8 +89,8 @@ Node.js 24 or later and npm from that same installation, because their external
 native add-ons are outside the app's signed bundle. Missing prerequisites block
 only device setup with guidance; see
 [device setup](mobile-device-workspace.md#configure-a-device-host). On macOS, the
-release signer seals `station-node` with Kontour's
-Developer ID and only the JIT entitlement; the outer app stays entitlement-free.
+release signer seals `station-node` with Kontour's Developer ID and only the JIT
+entitlement; the outer app stays entitlement-free.
 
 The frontend remains a production Vite build embedded in Tauri. The backend
 ships compiled JavaScript plus its external runtime dependencies, native
