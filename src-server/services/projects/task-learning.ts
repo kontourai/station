@@ -164,14 +164,16 @@ function standingCandidates(
  * trailing separators, and through `realpath` when it exists, so `/tmp` and
  * `/private/tmp`, a trailing `/`, a `./` segment or a symlink name one
  * directory. A directory that no longer exists falls back to its resolved
- * path. Case is left alone: whether it matters is the filesystem's, and
- * `realpath` answers that where it does. Registration stores the path as
- * given, so every comparison goes through this.
+ * path. The native `realpath` is used because it returns the filesystem's
+ * own spelling: on a case-insensitive volume (macOS by default) `.../A`
+ * and `.../a` come back as one path, which `realpathSync`'s JS form does
+ * not do (review round 7). Paths are never lowercased by hand. Registration
+ * stores the path as given, so every comparison goes through this.
  */
 export function storeIdentity(storeRoot: string): string {
   const resolved = resolve(storeRoot);
   try {
-    return realpathSync(resolved);
+    return realpathSync.native(resolved);
   } catch {
     return resolved;
   }
@@ -218,6 +220,7 @@ async function promotionState(
   store: KnowledgeStoreProvider,
   roots: readonly KnowledgeStoreRoot[],
   knowledgeRecordId: string,
+  taskId: string,
   promotion:
     | {
         readonly rootId: string;
@@ -226,7 +229,7 @@ async function promotionState(
       }
     | undefined,
 ): Promise<PromotionState> {
-  const found = await findPromoted(store, roots, knowledgeRecordId);
+  const found = await findPromoted(store, roots, knowledgeRecordId, taskId);
   if (found) return { kind: 'promoted', ...found };
   if (!promotion) return { kind: 'none' };
   const target = pinnedRoot(roots, promotion);
@@ -240,13 +243,29 @@ async function findPromoted(
   store: KnowledgeStoreProvider,
   roots: readonly KnowledgeStoreRoot[],
   id: string,
+  taskId: string,
 ): Promise<{ rootId: string; record: KitRecord } | undefined> {
   for (const root of roots) {
     const record = await (await store.adapterFor(root.id)).get(id);
     // `get` also resolves aliases and id prefixes; only the exact id counts.
-    if (record?.id === id) return { rootId: root.id, record };
+    if (record?.id === id && isTaskLearningRecord(record, taskId))
+      return { rootId: root.id, record };
   }
   return undefined;
+}
+
+/**
+ * Whether a record with a candidate's id is this Task's promotion: written
+ * by this process (`provenance.agent`) with this Task in its note. A person
+ * can create a record under any id, so the id alone proves nothing (review
+ * round 7).
+ */
+function isTaskLearningRecord(record: KitRecord, taskId: string): boolean {
+  return (
+    record.provenance?.agent === TASK_LEARNING_PROVENANCE_AGENT &&
+    typeof record.provenance.note === 'string' &&
+    record.provenance.note.split('\n').includes(`task: ${taskId}`)
+  );
 }
 
 export async function readTaskLearning(
@@ -279,7 +298,13 @@ export async function readTaskLearning(
       // One state function for reads and writes (review round 6).
       const state = dismissed
         ? undefined
-        : await promotionState(store, roots, knowledgeRecordId, promotion);
+        : await promotionState(
+            store,
+            roots,
+            knowledgeRecordId,
+            access.task.id,
+            promotion,
+          );
       const review: TaskLearningCandidate['review'] = dismissed
         ? {
             state: 'dismissed',
@@ -376,7 +401,13 @@ export async function promoteTaskLearning(
   const id = taskLearningKnowledgeRecordId(incarnation, record);
   try {
     // Any Project store already holding this version: it was promoted.
-    const before = await promotionState(store, roots, id, undefined);
+    const before = await promotionState(
+      store,
+      roots,
+      id,
+      access.task.id,
+      undefined,
+    );
     if (before.kind === 'promoted')
       return {
         kind: 'already-promoted',
@@ -401,7 +432,13 @@ export async function promoteTaskLearning(
     // The same state the candidate list reads. Its pinned store, by
     // identity, is the only place it is written; if that store is no
     // longer one of the Project's, nothing is written anywhere else.
-    const state = await promotionState(store, roots, id, claim.promotion);
+    const state = await promotionState(
+      store,
+      roots,
+      id,
+      access.task.id,
+      claim.promotion,
+    );
     if (state.kind === 'promoted')
       return {
         kind: 'already-promoted',
@@ -431,7 +468,7 @@ export async function promoteTaskLearning(
     } catch (error) {
       // A concurrent promotion of the same version won the create: the store
       // refuses an existing id, so read back the record it wrote.
-      const raced = await findPromoted(store, [target], id);
+      const raced = await findPromoted(store, [target], id, access.task.id);
       if (raced) return { kind: 'already-promoted', ...raced };
       throw error;
     }

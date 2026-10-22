@@ -217,13 +217,15 @@ routes, so an agent's request is refused (`403`,
 - `POST /api/tasks/:taskId/room/memory/learning/dismiss` takes `{kind, key,
   version}` and records the dismissal; a second one answers
   `status: "already-dismissed"`. A version with a recorded promotion is
-  `409` `task_learning_promoted`, and nothing is written. A version reads
-  as `review.state` `promoted` whenever its record is in any of the
-  Project's current stores. Otherwise, with a recorded promotion, it is
+  `409` `task_learning_promoted`, and nothing is written. A dismissal is
+  checked first and wins: a dismissed version reads `dismissed` whatever
+  the stores hold. Otherwise a version reads as `review.state` `promoted`
+  whenever its record, written by Station's Task Learning for this Task, is
+  in any of the Project's current stores. Otherwise, with a recorded promotion, it is
   `pending` when the recorded store is still one of the Project's
   (promoting finishes it there), or `promotion-store-gone` when it is not,
   a closed review. The recorded store is matched by its adapter and its
-  directory's resolved real path. Promote decides by the same rule, so
+  directory's native real path. Promote decides by the same rule, so
   promoting a `promotion-store-gone` version is `409`
   `task_learning_store_gone`, and promoting a `promoted` one is `200`
   `already-promoted`.

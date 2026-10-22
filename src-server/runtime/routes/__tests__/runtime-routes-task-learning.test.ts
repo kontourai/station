@@ -18,8 +18,16 @@
  * store method a provider start uses.
  */
 
-import { mkdirSync, realpathSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+} from 'node:fs';
 import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import type { IEmbeddingProvider } from '@kontourai/station-contracts/knowledge-index';
@@ -83,6 +91,17 @@ const OPERATOR_CREDENTIAL = 'test-only-operator-credential-task-learning';
 const PROJECT = 'project-alpha';
 const AT = '2026-10-04T00:00:00.000Z';
 const makeTempDir = trackTempDirs();
+
+/** Whether the temp filesystem ignores case: decided by trying, not by OS. */
+const caseInsensitiveTemp = (() => {
+  const probe = mkdtempSync(join(tmpdir(), 'station-case-probe-'));
+  try {
+    mkdirSync(join(probe, 'CaseProbe'));
+    return existsSync(join(probe, 'caseprobe'));
+  } finally {
+    rmSync(probe, { recursive: true, force: true });
+  }
+})();
 
 /** The root registry's persistence, kept in memory (the shape the file
  * storage adapter implements). */
@@ -202,6 +221,13 @@ describe("a done Task's lessons are promoted by a person, never by an agent", ()
       () => new Promise<void>((resolve) => server.close(() => resolve())),
     );
     const port = await listening;
+    // The runtime's logger, which the Learning routes must reach (round 7).
+    const runtimeLogger = {
+      debug() {},
+      info() {},
+      warn: vi.fn(),
+      error() {},
+    };
     const context = deepStub({
       projectSharedTasks: undefined,
       deploymentAuthentication: undefined,
@@ -214,7 +240,7 @@ describe("a done Task's lessons are promoted by a person, never by an agent", ()
         getProjectHomeDir: () => homeDir,
         loadAppConfig: () => ({}),
       },
-      logger: { debug() {}, info() {}, warn() {}, error() {} },
+      logger: runtimeLogger,
       activeAgents: new Map(),
       agentService: { listAgents: () => [] },
       agentMetadataMap: new Map(),
@@ -453,6 +479,7 @@ describe("a done Task's lessons are promoted by a person, never by an agent", ()
 
     return {
       store,
+      runtimeLogger,
       knowledge,
       taskGraph,
       asOperator,
@@ -821,6 +848,126 @@ describe("a done Task's lessons are promoted by a person, never by an agent", ()
     });
     const adapter = await e.knowledge.adapterFor(current.id);
     expect(await adapter.listByType('raw')).toEqual([]);
+  });
+
+  test.skipIf(!caseInsensitiveTemp)(
+    'a pending promotion whose store is registered in another letter case is the same store on a case-insensitive volume (review round 7; skipped where the temp filesystem is case-sensitive, since two spellings are then two directories)',
+    async () => {
+      const e = await setup();
+      const { taskId } = await e.closedTaskWithLessons();
+      const task = e.taskGraph.readTask(taskId)!;
+      const directory = join(makeTempDir('task-learning-case-'), 'Store');
+      mkdirSync(directory);
+      e.store.taskMemoryStore().claimLearningPromotion({
+        taskId,
+        taskCreatedAt: task.createdAt,
+        ...(DECISION as { kind: 'decision'; key: string; version: number }),
+        projectId: task.projectId,
+        rootId: 'root:project-alpha',
+        adapterId: 'kit-default-store',
+        storeRoot: directory,
+        principalId: LOCAL_OPERATOR_PRINCIPAL_ID,
+      });
+      const store = await e.createProjectStore(join(directory, '..', 'store'));
+      expect(await reviewOf(e, taskId)).toEqual({
+        state: 'pending',
+        rootId: store.id,
+      });
+      const finished = await e.asOperator(
+        'POST',
+        `/api/tasks/${taskId}/room/memory/learning/promote`,
+        promotionBody(store.id),
+      );
+      expect(finished.status, JSON.stringify(finished.json)).toBe(201);
+    },
+  );
+
+  test('a store whose directory moved, registered at its new path, still reads promoted, as promote answers (review round 7)', async () => {
+    const e = await setup();
+    const { taskId } = await e.closedTaskWithLessons();
+    const parent = makeTempDir('task-learning-move-');
+    const before = join(parent, 'before');
+    mkdirSync(before);
+    const first = await e.createProjectStore(before);
+    expect(
+      (
+        await e.asOperator(
+          'POST',
+          `/api/tasks/${taskId}/room/memory/learning/promote`,
+          promotionBody(first.id),
+        )
+      ).status,
+    ).toBe(201);
+    expect(
+      (await e.asOperator('DELETE', `/api/knowledge/roots/${first.id}`)).status,
+    ).toBe(200);
+    const after = join(parent, 'after');
+    renameSync(before, after);
+    const moved = await e.createProjectStore(after);
+    expect(await reviewOf(e, taskId)).toMatchObject({
+      state: 'promoted',
+      rootId: moved.id,
+    });
+    const repeat = await e.asOperator(
+      'POST',
+      `/api/tasks/${taskId}/room/memory/learning/promote`,
+      promotionBody(moved.id),
+    );
+    expect([repeat.status, repeat.json.data?.status]).toEqual([
+      200,
+      'already-promoted',
+    ]);
+  });
+
+  test("a record a person made under a candidate's id is not its promotion (review round 7)", async () => {
+    const e = await setup();
+    const { taskId } = await e.closedTaskWithLessons();
+    const root = await e.createProjectStore();
+    const view = await e.learning(taskId);
+    const candidate = view.candidates.find(
+      (c: any) => c.record.key === 'storage-engine',
+    );
+    const adapter = await e.knowledge.adapterFor(root.id);
+    await adapter.create({
+      id: candidate.knowledgeRecordId,
+      type: 'raw',
+      title: 'Forged',
+      body: 'Not what the Task decided.',
+      category: 'task-learning.decisions',
+      tags: ['task-learning', 'decision'],
+      provenance: { agent: 'a-person', note: `task: ${taskId}` },
+    } as never);
+    expect(await reviewOf(e, taskId)).toEqual({ state: 'open' });
+    const promoted = await e.asOperator(
+      'POST',
+      `/api/tasks/${taskId}/room/memory/learning/promote`,
+      promotionBody(root.id),
+    );
+    // Not 'already-promoted' with the forged content: the store refuses the
+    // taken id, so the promotion fails and nothing forged is returned.
+    expect(promoted.json.data?.status).not.toBe('already-promoted');
+    expect(JSON.stringify(promoted.json)).not.toContain('Not what the Task');
+  });
+
+  test("a Learning route failure reaches the runtime's logger (review round 7)", async () => {
+    const e = await setup();
+    const { taskId } = await e.closedTaskWithLessons();
+    vi.spyOn(e.knowledge, 'listRoots').mockRejectedValueOnce(
+      Object.assign(new Error('roots unreadable'), { code: 'EIO' }),
+    );
+    const read = await e.asOperator(
+      'GET',
+      `/api/tasks/${taskId}/room/memory/learning`,
+    );
+    expect(read.status).toBe(503);
+    expect(e.runtimeLogger.warn).toHaveBeenCalledWith(
+      'task learning request failed',
+      expect.objectContaining({
+        operation: 'read',
+        errorName: 'Error',
+        code: 'EIO',
+      }),
+    );
   });
 
   test("an agent's station-control request to every learning route is refused before it runs", async () => {

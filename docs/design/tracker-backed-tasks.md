@@ -403,17 +403,22 @@ step.
   dismissed version is not promoted, and a version with a promotion row
   cannot be dismissed (`409 task_learning_promoted`). One function decides
   a version's state for both the candidate list and promote, so they cannot
-  disagree. A version is **promoted** whenever its record is in any of the
-  Project's current stores. Otherwise, with a promotion row, it is
+  disagree. A dismissal is checked first and wins: a dismissed version
+  reads as dismissed whatever the stores hold. Otherwise a version is
+  **promoted** whenever its record is in any of the Project's current
+  stores; a record counts only if this process wrote it for this Task
+  (`provenance.agent` is `station-task-learning` and its note names the
+  Task), since a person can create a record under any id. Otherwise, with a promotion row, it is
   **pending** when the pinned store is still one of the Project's, offering
   only to finish the promotion there, or a closed review when it is not,
   which is never offered again and says nothing about whether the record
   was written. Promoting a closed version answers `409
   task_learning_store_gone`, and nothing is written elsewhere. The pinned
   store is compared by adapter and by its directory's identity: absolute,
-  without trailing separators, and through `realpath` when the directory
-  exists, so `/tmp` and `/private/tmp`, a trailing `/` or a `./` segment
-  name one store. Registration keeps the path as given. "Promoted" in the candidate list is read back from
+  without trailing separators, and through the native `realpath` when the
+  directory exists, so `/tmp` and `/private/tmp`, a trailing `/`, a `./`
+  segment or, on a case-insensitive volume, another letter case name one
+  store. Registration keeps the path as given. "Promoted" in the candidate list is read back from
   the stores. A later version of the same key is a new candidate.
 - **Dismissals** are kept as an append-only row per dismissed record version
   (`task_learning_dismissals`, migration 021).

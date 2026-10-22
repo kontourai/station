@@ -56,7 +56,7 @@ test('a failed read answers 503 and logs the underlying error, without record te
   expect(warn).toHaveBeenCalledWith('task learning request failed', {
     operation: 'read',
     taskId: 'task-1',
-    error: 'Error',
+    errorName: 'Error',
     code: 'ERR_SQLITE_ERROR',
     message: 'no such column: adapter_id',
   });

@@ -182,7 +182,9 @@ export function createTaskLearningRoutes(deps: TaskLearningRouteDeps) {
     deps.logger?.warn('task learning request failed', {
       operation,
       taskId,
-      error: typeof failure?.name === 'string' ? failure.name : typeof error,
+      // `errorName`, not `error`: pino-pretty hides a field named `error`.
+      errorName:
+        typeof failure?.name === 'string' ? failure.name : typeof error,
       ...(typeof failure?.code === 'string' || typeof failure?.code === 'number'
         ? { code: failure.code }
         : {}),
