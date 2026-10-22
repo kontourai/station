@@ -100,3 +100,15 @@ Each repaired behavior needs its own baseline or injected failure and restored r
 - Actual main `b94401f21ed` merged normally at `bf03e142e47`.
 - Final documentation/readiness and code-health checks remain in progress.
   Provider/native/live-account proof remains outside this epic's local claims.
+
+## Code-health review disposition
+
+The review candidates are advisory complexity in bounded inventory folding,
+Output descriptor/cursor validation, exact-answer reads and Keep, the MCP route,
+Task tab identity, and the real browser fixture. These branches enforce different
+failure/provenance cases; moving them into helpers solely to lower a score would
+hide those cases without reducing total branching. Keep the current owner
+boundaries and fault evidence. The small SDK error-envelope clone preserves the
+same public error vocabulary in independent client modules; no new generic error
+framework is needed for this slice. The unused refresh export was made private;
+its production caller remains. Final exact-head gate result is recorded separately.
