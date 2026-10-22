@@ -124,8 +124,12 @@ async function rawHistory(page: Page) {
   const disclosure = page
     .locator('details')
     .filter({ has: page.getByText('Raw room history', { exact: true }) });
-  await disclosure.locator('summary').click();
-  return disclosure.locator('pre');
+  const summary = disclosure.locator('summary');
+  if ((await disclosure.getAttribute('open')) !== null) await summary.click();
+  await summary.click();
+  const history = disclosure.locator('pre');
+  await expect(history).toBeVisible();
+  return history;
 }
 async function expectAgentPresence(
   page: Page,
