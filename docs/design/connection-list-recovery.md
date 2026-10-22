@@ -142,8 +142,12 @@ chosen file. A symlink/reparse input or file changed during capture is refused.
 
 The private review window shows the operator the proposed names/endpoints only
 after an explicit import and disclosure action; logs/diagnostic export do not.
-The proposed list resets revision to 0, default to null, project selections to
-an empty object and every row to `requires-auth`/`manual`. Remove credential
+The proposed list starts at revision **at least 1**, default at null, project selections at
+an empty object and every row at `requires-auth`/`manual`. Set publication revision
+strictly above any valid imported/observed store revision; reject safe-integer
+overflow. With no known prior revision use 1. An old CLI that read the missing
+list as empty holds expected revision 0, which must not match the recovered
+store. Remove credential
 references, local-service identities, client-instance identities, relay routes
 and development-HTTP approvals. Preserve validated name, endpoint and optional
 Environment association as descriptive data only. Do not silently widen allowed
@@ -179,8 +183,8 @@ list. Add and pair your previous Stations again.” Require an unchecked
 acknowledgement and a distinct final **Create new list** action; no default
 confirmation, command-line `--force` shortcut or timeout approval.
 
-The target is exactly the shared empty schema-1 store: revision 0,
-`defaultProfile: null`, `profiles: []`, `projectProfiles: {}`. This is authorized
+The target has the shared empty schema-1 shape with publication revision at
+least 1 as above: `defaultProfile: null`, `profiles: []`, `projectProfiles: {}`. This is authorized
 recovery over retained history, **not** a conclusion that history was absent.
 Marker-present/missing-list can enter only this explicit transaction after all
 checks; ordinary startup remains Exit-only for that state. An invalid marker
@@ -207,7 +211,7 @@ blob. Existing backup, cutover and marker bytes stay in place; do not copy them.
 | --- | --- |
 | `intent.json` | Schema `station.connection-list-recovery/v1`, attempt UUID, mode, root binding, observation time/source version, assessment classes, evidence manifest, embedded normalized target with exact serialization/digest/size, acknowledgement version and excluded inventory scope. |
 | `acknowledged.json` | Intent/evidence/target digests, acknowledgement text version, mode, time and current local operator-process identity. Required for import and new-list modes. A local OS-user action, not a remote-authentication proof. |
-| `commit.json` | Intent/acknowledgement/target digests, stage identity, publication-protocol version and commit time. Fully durable **before** the list can appear. It authorizes only consumption of the existing exact stage, never regeneration of a missing stage. |
+| `commit.json` | Bounded root binding, intent/acknowledgement/target digests, publication revision, stage identity, publication-protocol version and commit time. Fully durable **before** the list can appear. It authorizes only consumption of the existing exact stage, never regeneration of a missing stage. |
 | `publish.tmp` | Full target bytes in the same filesystem as `config/profiles.json`. Atomic no-replace rename consumes this file into the list as the last durable publication step. |
 | `import.json` (import only) | Exact operator-selected export bytes, retained privately and never modified. |
 
@@ -232,9 +236,9 @@ rewriting both data and receipt; do not claim a cryptographic audit trail.
 existing valid marker in place, and record its digest. When no marker exists,
 the committed recovery receipt is the updated CLI/native admission alternative
 for this explicit flow, not a widening of ordinary genesis. This removes a
-marker-only crash window that would otherwise prevent safe abandonment. An old
-client may create the normal v1 marker after it sees the final committed list;
-that later ordinary action must remain compatible. Invalid pre-existing markers
+separate marker publication step. An old CLI writer will create the normal v1
+marker when it admits the final committed list if the marker is absent; that
+later ordinary action must remain compatible. Invalid pre-existing markers
 are never repaired here. Vault entries and payloads remain untouched; store only
 the readable/unreadable observation and bounded class counts, not accounts or
 attribute/bearer digests.
@@ -247,7 +251,9 @@ Add a cheap bounded receipt-state parse inside `readPersistedProfileStore` /
 version/root binding plus stage/list presence through no-follow file
 observations; absent/invalid commit is pending, never success. Intent/target
 parsing and full acknowledgement/digest validation remain in the coordinator. It must run before the CLI's missing-file empty fallback.
-No PowerShell ACL subprocess, recursive evidence hash or vault query belongs on
+The committed header is capped at 16 KiB so this guard need not read the
+embedded target in intent. No PowerShell ACL subprocess, recursive evidence hash
+or vault query belongs on
 these normal read paths. Existing profile-file trust checks remain; full receipt
 ACL/root/evidence verification belongs to the recovery coordinator. Cross-language
 fixtures pin the same admission outcomes without duplicating the protocol.
@@ -263,8 +269,10 @@ For the pinned pre-#4022 main and #4022 clients, the permanent unknown journal
 directory/legacy marker already makes missing-store genesis refuse. They can
 see only a missing list, or a list whose commit record already exists. There is
 no published-but-uncommitted interval and no later completion write to strand an
-old writer's valid update. After publication, old-client CAS edits are legitimate
-later revisions, not a reason to compare back to the initial target. Clients
+old writer's valid update. Publication revision is at least 1, so an old CLI
+write carrying the missing-view expected revision 0 fails CAS. An old client
+that actually reads the recovered list may make a legitimate later revision;
+that is not a reason to compare back to the initial target. Clients
 predating the genesis-marker fence are **NOT_VERIFIED** and unsupported during
 recovery; require upgrading them. Compatibility tests must execute the actual
 pinned old builds, not a simulated writer.
@@ -308,7 +316,7 @@ On explicit final confirmation:
    `MoveFileExW` without `MOVEFILE_REPLACE_EXISTING` or cross-volume copy flags.
    A destination that appeared is never overwritten. No hard-link publication,
    copying fallback, overwrite-rename or stage reconstruction is allowed.
-   Flush the destination/directory where supported; release profile then genesis
+   Use the platform durability operations below, then release profile then genesis
    lock. There is no post-publication completion record or evidence recheck that
    could lock out a valid old-client edit. The operator explicitly continues or
    restarts; recovery does not auto-attach an old service.
@@ -335,13 +343,16 @@ from the owning checkout. Recovery never runs either command automatically.
 ### Abandon an unpublished attempt
 
 Offer **Abandon attempt and reassess** with a separate acknowledgement. Under
-both existing locks, validate current root/owner/process identity, no live
-service, absent list and unchanged pre-existing marker. Recovery creates no
-marker, so it cannot leave one to undo. A `preparing/<uuid>/` path, including
+both existing locks, validate current root/owner/process identity and exclusive
+control of this journal attempt. This action only archives the journal: it is
+allowed **regardless of whether the list is missing, restored, edited or
+corrupt**. Do not require the list/marker to equal the old plan, parse or change
+the list, or roll back a marker that another client created. Existing services
+are not stopped; fresh assessment after archival may still report Busy. A `preparing/<uuid>/` path, including
 partial intent/import/stage bytes, cannot publish by construction and can be
 archived without inferring publication from absent records. An active attempt
-can be archived only when its known-v1 intent and still-present exact stage
-prove the stage unconsumed; a partial acknowledgement/commit does not defeat
+can be archived only when its known-v1 intent and still-present regular stage
+with link count 1 and matching target digest prove the stage unconsumed; a partial acknowledgement/commit does not defeat
 that positive proof. An absent stage, unsafe path, unknown protocol or
 unverifiable active intent does not prove it. Never infer unpublished from a
 missing commit alone: power loss might have lost that directory entry.
@@ -352,14 +363,18 @@ or modifying payloads; retain partial bytes and names exactly. Refuse unsafe
 source/destination paths, sharing violations or unsupported rename semantics.
 Do not delete locks, markers, profile evidence, vault data or archive contents.
 A crash before/after the archive rename leaves either the original directory
-or its archive, never a fresh root. No active directory plus archive history permits
-only a **new explicit recovery assessment/acknowledgement**, not genesis.
+or its archive, never a fresh root. With no active attempt, a restored valid
+list returns to ordinary store admission; archives do not block it. If the list
+is missing, archive history permits only a **new explicit recovery assessment/
+acknowledgement**, not genesis. A corrupt restored list remains a normal repair
+condition; this action cannot replace it.
 
 This handles partial preparation intent/import/stage writes, active partial
 ack/commit writes, cancellation before publication and stale root binding on a
 demonstrably unpublished attempt.
-A consumed/missing stage, unknown publication state, or a present list disables
-abandonment. There is no unspecified manual deletion/receipt-edit repair path:
+A consumed/missing stage or unknown publication state disables abandonment of
+an active attempt. A present list does **not** disable abandonment when the
+verified stage is still present. There is no unspecified manual deletion/receipt-edit repair path:
 show Exit and retain evidence; restoration of a known valid list or a separately
 reviewed subsequent-loss flow is required. Abandonment must not masquerade as
 recovery of a list that was published and later lost.
@@ -375,16 +390,38 @@ recovery of a list that was published and later lost.
 | Valid acknowledgement, no commit/list | Revalidate and publish commit, or abandon/archive. |
 | Valid commit, exact stage present, list absent | Explicit Resume rechecks and consumes only that stage; abandonment/archive remains possible. |
 | Valid commit, stage consumed, valid list present | Publication finished; normal reads and later CAS revisions proceed. No completion write remains. |
-| Commit plus stage and list both present | Collision/contradiction: preserve and Exit; never overwrite. |
-| Commit plus stage and list both absent, or corrupt list | Publication may have happened and been lost: Exit; never replay or abandon as unpublished. |
+| Exact stage plus any present/restored list | Never publish over it. Allow journal-only archive, then normal admission of a valid list or the existing corruption refusal. |
+| Commit plus consumed/missing stage and absent/corrupt list | Publication may have happened and been lost: Exit; never replay or abandon as unpublished. |
+| List present, stage gone, commit absent | Accepted Exit-only uncertainty: preserve the list; do not invent a commit or claim an unpublished attempt. |
 | Unknown protocol, unsafe journal, missing active intent/stage or uncertain publication | Exit; never infer absence. Only positive preparation/stage proof authorizes archive. |
 | Archive rename interrupted | Re-read active/archive identity under both locks; retain bytes, then resume the observed side of the atomic operation. |
 
-On Windows, file flush plus atomic rename does not promise portable directory
-fsync behavior. Power loss can leave missing/partial records. A step-3 partial
-preparation attempt can be safely archived; an uncertain active commit/publication
-state still refuses. Process-crash tests do not establish power-loss durability.
-No resume rewrites old evidence to make it fit.
+### Durability and second-loss limits
+
+On macOS, require `F_FULLFSYNC` for the intent/import/stage, acknowledgement and
+commit records before their dependent step, not just `fsync`; sync directory
+entries with the supported native operation. Linux uses file/directory fsync
+plus atomic `renameat2`. On Windows, target local NTFS/ReFS only: verified ACLs,
+`FlushFileBuffers` on the staged data and immutable records, followed by
+same-volume `MoveFileExW` without replacement or cross-volume flags, provide the
+required atomic publication contract. FAT is excluded by the owner-only ACL
+requirement. Qualify the native helper and filesystem behavior in Phase 2;
+these are design requirements, not executed durability proof.
+
+Windows still has no portable directory-fsync promise. Power loss can leave
+missing/partial records: a preparation path is safely archivable, but uncertain
+active publication remains refused. Explicitly accept **list present, stage
+gone, commit absent** as Exit-only, preserving that list. Do not regenerate a
+stage or commit to reinterpret it. Process-crash tests do not prove power-loss
+durability. No resume rewrites old evidence to make it fit.
+
+**Version 1 limitation:** after successful publication, `active/` stays occupied
+by the consumed committed attempt. A second independent loss of the list cannot
+start another recovery here; restore a known valid list, or wait for a separately
+reviewed subsequent-loss flow. Do not archive a consumed attempt as if it were
+unpublished. Version 1 provides retry/abandon for unpublished attempts, not an
+unbounded recovery history. Moving successful attempts to `committed/<uuid>/`
+and admitting later losses requires a future versioned protocol and review.
 
 ## Desktop experience and privacy
 
@@ -481,6 +518,9 @@ caller, not only a classifier helper.
   Cover truncated records, partial directories, destination appearance, replaced
   paths, symlink/reparse OS-metadata files, root moves and lost identity. Prove
   partial precommit attempts archive byte-for-byte and attempt N can proceed.
+  Restore a valid backup while intent/commit and stage are pending: journal-only
+  abandonment must preserve list/marker bytes and unblock normal admission.
+  Also cover a corrupt present list without granting replacement authority.
   Remove the cheap receipt guard at each real shared read/initialized-entry
   caller and prove admission fails its test; a consumed stage plus missing list
   must never replay. There must be no post-publication completion write.
@@ -498,9 +538,15 @@ caller, not only a classifier helper.
 - After publication, real CLI writes increment revision normally; restart reads
   the edited list rather than demanding its initial target digest. Run real
   pinned old builds from pre-#4022 main and merged #4022: before rename they
-  refuse missing-list genesis; after a crash following rename, their CAS write
+  refuse missing-list genesis; a write computed from the old missing-file
+  revision-0 projection must fail CAS against the recovered revision >=1. After
+  a crash following rename, a write based on a fresh read of the recovered list
   is accepted as a later committed revision and cannot cause receipt lockout.
   A simulated old writer is insufficient version-skew evidence.
+- A second post-success list loss refuses without replay or a new attempt, as
+  the stated v1 limit requires. Fault-inject list-present/stage-gone/commit-absent
+  and verify Exit with byte preservation. Exercise macOS full-sync and Windows
+  NTFS/ReFS flush/no-replace native helpers; unsupported storage must refuse.
 - Packaged Windows (implementation lane) and signed macOS (independent lane):
   import, new-list acknowledgement, denied vault, unknown lock, crash/resume,
   Exit, app kill and post-recovery CLI interoperability. Inspect rendered UI,
