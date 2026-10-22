@@ -535,3 +535,14 @@ test("Start Task checks this Project's board before the open-Task lookup, and na
   });
   expect(observer.observeWorkItem).toHaveBeenCalledTimes(1);
 });
+
+test('POST /api/tasks refuses a work-item ref past 512 characters (review round 2, P3-3)', async () => {
+  const { service, create } = await fixture();
+  expect((await create({ workItemRef: `x:${'y'.repeat(510)}` })).status).toBe(
+    201,
+  );
+  expect((await create({ workItemRef: `x:${'y'.repeat(511)}` })).status).toBe(
+    400,
+  );
+  expect(service.listTasks()).toHaveLength(1);
+});
