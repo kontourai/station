@@ -1559,7 +1559,7 @@ test('#1879 a late return cannot attach to a different known child', () => {
   expect(
     children.find((item) => item.childId === background)?.result,
   ).toMatchObject({
-    summary: 'background-ok',
+    summary: 'The output is:\n\n```\nbackground-ok\n```',
     source: 'provider-summary',
   });
 });
