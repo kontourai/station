@@ -56,6 +56,8 @@ fence. Known native identities are captured with the prepared invocation. A
 first identity learned during the turn must come from its correlated engine
 completion, never a later mutable carrier binding; a conflicting report cannot
 qualify the seed. A carrier rebind cannot borrow another identity's completion.
+The handoff fence runs synchronously again at provider dispatch, including
+prepared-turn resumption, after any awaited continuation preparation.
 A context-projection failure
 retains the canonical terminal and leaves delivery unverified. Opening an owned
 saved fork reports `fork-ready` before any provider Session exists.

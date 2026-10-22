@@ -13,6 +13,7 @@ import type {
 import type {
   EngineId,
   NativeResumeIdentityStatus,
+  ProviderSendTurnInput,
 } from '@kontourai/station-contracts/provider';
 import {
   NATIVE_RESUME_BINDING_METADATA_KEY,
@@ -223,6 +224,67 @@ export class ConversationContextBoundaryNotFoundError extends Error {
  */
 export class ConversationLineage {
   constructor(private readonly deps: ConversationLineageDeps) {}
+
+  /** Synchronous final fence, shared by new dispatch and prepared-turn resumption. */
+  assertHandoffContextAtProviderTurn(input: ProviderSendTurnInput): void {
+    const store = this.deps.eventStore;
+    const marker = store?.conversationHandoffForSession(input.threadId);
+    if (!store || !marker) return;
+    const provider = store.readSessionByThread(input.threadId)?.provider;
+    if (
+      (provider && this.deps.nativeMemoryOwnsTranscriptFor?.(provider)) ||
+      (!marker.contextSeed &&
+        store.conversationContextBoundaryForSuccessor(input.threadId)
+          ?.policy === 'empty-next-cold-start')
+    )
+      return;
+    const clientTurnId = conversationHandoffClientTurnId(
+      marker.conversationId,
+      marker.idempotencyKey,
+    );
+    const pin = marker.contextSeed;
+    if (
+      pin &&
+      input.clientTurnId === clientTurnId &&
+      input.ambientContext?.includes(pin.text)
+    )
+      return;
+    const completed =
+      pin &&
+      hasCompletedConversationSeedTurn({
+        store,
+        threadId: input.threadId,
+        clientTurnId,
+        expected: {
+          kind: 'handoff',
+          contextId: input.threadId,
+          contextDigest: pin.pinDigest,
+          seedDigest: pin.seedDigest,
+        },
+        requiresNativeIdentity:
+          marker.nativeReturnSourceSessionId !== undefined,
+      });
+    let nativeIdentity: NativeResumeIdentityStatus | undefined;
+    if (marker.nativeReturnSourceSessionId) {
+      for (const event of store.listEvents(input.threadId)) {
+        const payload = event.payload;
+        if (
+          payload.method !== 'session.configured' &&
+          payload.method !== 'runtime.error'
+        )
+          continue;
+        const value = payload.metadata?.[NATIVE_RESUME_IDENTITY_METADATA_KEY];
+        if (value === 'matched' || value === 'mismatch') nativeIdentity = value;
+      }
+    }
+    if (
+      !completed ||
+      (marker.nativeReturnSourceSessionId && nativeIdentity !== 'matched')
+    )
+      throw new ConversationStartContextError(
+        'Handoff context delivery has not completed for the current native identity. Reconcile the handoff before continuing.',
+      );
+  }
 
   /**
    * Reuse the current execution session when its lifecycle, engine binding

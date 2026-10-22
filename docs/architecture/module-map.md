@@ -1701,7 +1701,9 @@ ancestry; neither a return request nor lineage alone proves native identity.
 An ordinary follow-up after a native return requires observed completion of
 that handoff's seed-bearing turn. A failed or uncertain catch-up refuses ordinary
 continuation before reuse or cursor resume; it does not reopen the accepted-start
-boundary or automatically resend context.
+boundary or automatically resend context. The same synchronous handoff
+check runs at the final provider-effect boundary for fresh dispatch and prepared
+resumption, so a native rebind during awaited preparation cannot borrow proof.
 
 New cursorless continuations and history-preserving context starts also pin
 text and source cutoffs before provider start. The

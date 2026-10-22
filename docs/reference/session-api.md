@@ -25,6 +25,9 @@ An ordinary follow-up is refused while the native return's seed-bearing turn
 has no observed completion, including a failed or uncertain turn. Acceptance of
 the native Session start alone does not confirm delivery of its catch-up context.
 This refusal does not automatically resend the seed or reopen the start boundary.
+Delivery and current native identity are checked again synchronously at provider
+dispatch, including resumption of a prepared turn. An identity replacement after
+continuation resolution cannot borrow the earlier identity's completion.
 
 New native-return reservations pin the exact catch-up text and its SHA-256 digest
 alongside ordered source Session cutoffs and omission facts in the existing event

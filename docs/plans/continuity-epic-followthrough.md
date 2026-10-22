@@ -484,3 +484,26 @@ new explanation: 117 topics, digest
 `bf8a207eb109cd86ae566afb4ac52d0ff2bcbbc47947e06fb90d8ed8f63cb515`.
 No live provider, native-shell, client-onboarding or two-account
 acceptance was performed. No PR or push has occurred.
+
+### Independent review: final handoff dispatch fence
+
+The full-feature read-only review of `04db68f2146..c4ff7a09572` identified
+an identity-rebind race between continuation resolution and provider dispatch.
+The regression reproduced it on that snapshot: the ordinary send resolved
+instead of refusing (13 other handoff cases passed).
+
+The lineage owner now synchronously rechecks the pinned handoff's exact
+seed invocation, canonical completion and current native identity at the shared
+provider-turn guard. Both fresh dispatch and prepared-turn resumption use that
+guard. The exact initial seed turn, native-memory ownership and deliberate
+empty-context exceptions remain explicit. No automatic replay is introduced.
+The regression also restores the qualified identity and observes successful
+continuation. All 14 handoff qualification cases pass; adjacent handoff-route
+and fork qualification suites passed separately. Server-test types pass.
+These are scripted local observations, not live-provider or account proof.
+
+The earlier `c4ff7a09572` local `ci:fast` and measured Veritas readiness passed.
+They do not qualify this repair. Full-source readiness and independent review
+of the repair remain pending. Public-client onboarding, installed-provider
+lifecycle and real two-account quota/selection/credential application remain
+unverified; account sign-in is deferred at the user's request.

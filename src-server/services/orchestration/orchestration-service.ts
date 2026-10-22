@@ -5920,6 +5920,7 @@ export class OrchestrationService {
           actor?.tenantExecutionContext ??
           this.sessionAuthz.tenantContextFor(input.threadId),
       });
+      this.conversationLineage.assertHandoffContextAtProviderTurn(input);
       const provider = this.options.eventStore?.readSessionByThread(
         input.threadId,
       )?.provider;

@@ -173,6 +173,15 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       missingSeedInvocation: true,
     },
     {
+      label:
+        'Codex native return fences identity replacement after continuation resolution',
+      source: CODEX,
+      target: CLAUDE,
+      nativeReturn: true,
+      preserveProfile: false,
+      rebindBeforeDispatch: true,
+    },
+    {
       label: 'Claude first handoff seed failure fences ordinary native reuse',
       source: CODEX,
       target: CLAUDE,
@@ -194,6 +203,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       restartBeforeReturnStart = false,
       missingSeedInvocation = false,
       failFirstHandoffSeed = false,
+      rebindBeforeDispatch = false,
     }) => {
       const targetProfileId = preserveProfile ? source.agent : target.agent;
       const targetRef = preserveProfile
@@ -252,6 +262,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
 
       const pathFor = (id: AgentId): AgentPath =>
         id === source.agent ? source : target;
+      let beforeDispatch: (() => void) | undefined;
       const executionDeps: ExecutionTargetExecutionDependencies = {
         resolveEnvironmentAccess: async () => ({
           apiBase: 'http://qualification.station',
@@ -383,6 +394,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           return undefined;
         },
         sendTurn: async (_access, input, context) => {
+          beforeDispatch?.();
           const dispatched = await service.dispatchWithReceipt(
             { type: 'sendTurn', input },
             { userId: OWNER },
@@ -988,9 +1000,52 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
             missingInvocation.mockRestore();
           }
         }
+        if (rebindBeforeDispatch) {
+          const nativeId = `${source.provider}:native:${conversationId}`;
+          const originalIdentity = nativeSessionIdentityKey(
+            source.provider,
+            'a'.repeat(64),
+            nativeId,
+          );
+          const turnsBefore = sourceAdapter.turns.length;
+          beforeDispatch = () =>
+            store.claimNativeSessionIdentity(
+              nativeSessionIdentityKey(
+                source.provider,
+                'b'.repeat(64),
+                nativeId,
+              ),
+              returnedSessionId!,
+              true,
+            );
+          try {
+            await expect(
+              execute(source, {
+                conversationId,
+                message:
+                  'Continue after a concurrent native identity replacement.',
+              }),
+            ).rejects.toThrow(/context.*delivery|delivery.*context/i);
+            expect(sourceAdapter.turns).toHaveLength(turnsBefore);
+          } finally {
+            beforeDispatch = undefined;
+            store.claimNativeSessionIdentity(
+              originalIdentity,
+              returnedSessionId!,
+              true,
+            );
+          }
+        }
         firstReturnSeedDigest = createHash('sha256')
           .update(sourceAdapter.turns.at(-1)!.ambientContext!)
           .digest('hex');
+        if (rebindBeforeDispatch) {
+          await execute(source, {
+            conversationId,
+            message: 'Continue under the restored qualified native identity.',
+          });
+          await eventually(() => expect(sourceAdapter.turns).toHaveLength(3));
+        }
         if (restartBeforeReturnStart)
           expect(firstReturnSeedDigest).toBe(reservedSeedDigest);
         if (oversizedCatchup) {
@@ -1182,14 +1237,20 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         restored?.events.filter(
           (entry) => entry.event.method === 'turn.completed',
         ),
-      ).toHaveLength(repeatNativeReturn ? 6 : nativeReturn ? 4 : 3);
+      ).toHaveLength(
+        (repeatNativeReturn ? 6 : nativeReturn ? 4 : 3) +
+          (rebindBeforeDispatch ? 1 : 0),
+      );
       expect(
         restored?.events.filter(
           (entry) =>
             entry.event.method === 'turn.completed' &&
             entry.event.outputText?.includes(CONTEXT_TOKEN),
         ),
-      ).toHaveLength(repeatNativeReturn ? 6 : nativeReturn ? 4 : 3);
+      ).toHaveLength(
+        (repeatNativeReturn ? 6 : nativeReturn ? 4 : 3) +
+          (rebindBeforeDispatch ? 1 : 0),
+      );
 
       if (preserveProfile) {
         const returned = await execute(source, {
