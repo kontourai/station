@@ -730,6 +730,13 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: [],
   },
   {
+    id: 'lan-discovery',
+    title: 'Discover this Station nearby',
+    section: 'pairing',
+    searchKeywords: ['LAN', 'nearby', 'discovery', 'Bonjour'],
+    configKeys: ['lanDiscoveryEnabled'],
+  },
+  {
     id: 'open-last-station',
     title: 'Open last Station on launch',
     section: 'pairing',

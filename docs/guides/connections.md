@@ -1225,3 +1225,64 @@ The invitation intake controller loads only on iOS and still waits for launch
 delivery handling before starting protected roots. No-expiry links have no local
 expiry timer. Longer finite deadlines are checked in bounded timer intervals,
 so browser timer overflow cannot close a valid link early.
+
+## Make this host discoverable on the LAN
+
+On the host, open **Settings → Pairing → Discover this Station nearby**.
+This saved Station setting (`lanDiscoveryEnabled`) defaults to off. Only the
+Station's local operator may change it. Enabling it exposes the Station service
+name and local API address to nearby devices. The status below the switch is a
+runtime observation: a saved enabled choice does not prove publication. A
+loopback-only listener needs an explicitly configured LAN listener; discovery
+never changes the listener binding or firewall. Failed publication reports an
+unavailable state without stopping Station. Check network permissions and toggle
+off and on to retry. Private IPv4 LAN interfaces are supported; IPv6 listeners (including `::`, whose dual-stack reachability is not assumed)
+and public-only listeners report unavailable.
+
+The Node API publishes `_station._tcp.local` only after its listener binds,
+using that listener's actual port. TXT contains only `v=1` and `transport=http`.
+The adapter restricts address records and multicast sockets to private IPv4
+interfaces reachable through the actual listener binding. A specific bind does
+not advertise another interface. Disable, listener stop, port restart, and
+shutdown withdraw the service and close its multicast sockets; cleanup waits at
+most 1.5 seconds; the responder closes its sockets even if a goodbye send fails. Abrupt power loss can leave cached DNS-SD
+records until their TTL expires. mDNS publication cannot prove another device
+can reach the host through its firewall or Wi-Fi isolation.
+
+Discovery names and addresses are untrusted hints, never identity or access
+grants. Selecting a LAN HTTP result still requires explicit **Allow unencrypted**
+consent for that exact origin and the existing host approval ceremony before a
+connection can be saved or activated. The advertisement contains no arbitrary
+URL, credentials, pairing token, or trusted identity. The strict HTTPS pairing
+QR flow remains available for remote access; LAN discovery does not enumerate
+another app's tailnet inventory or change Tailscale settings.
+
+The producer is owned by the [API listener lifecycle](../../src-server/runtime/frameworks/voltagent-hono-runtime.ts)
+and [LAN discovery controller](../../src-server/services/connections/lan-discovery.ts).
+Its saved intent and observed status are read through the authorized config API.
+
+
+The producer pins `@homebridge/ciao` 1.3.12 and uses its supported responder
+interface allowlist plus service `restrictedAddresses` and `disabledIpv6`
+options. [The maintained pnpm patch](../../patches/homebridge-ciao-1.3.12.patch)
+corrects two source-confirmed lifecycle errors in that exact upstream release:
+`advertise()` previously resolved before announcement sends completed, and a
+rejected goodbye could skip socket shutdown. The patch propagates probe and
+announcement failure (including empty or partially failed send sets) to the caller,
+closes sockets in shutdown's `finally`, and prevents pending binds from escaping
+shutdown. An owner withdraws its own service before releasing a shared responder.
+The [installed-package UDP tests](../../src-server/services/connections/__tests__/ciao-lifecycle.test.ts)
+exercise those contracts through the real dependency. No runtime private fields
+or DNS record overrides are used. Interface changes are checked every five
+seconds; publication is rebuilt using the current eligible addresses.
+
+When creating a pairing code, the host can suggest an existing HTTPS Tailscale
+Serve mapping. `GET /api/pairing/endpoint-suggestions` requires the existing
+pairing-management authority and revalidates the principal after lookup. It
+returns at most eight canonical endpoints, or an empty list if the daemon cannot
+establish a mapping. The existing resolver caches reads for 30 seconds and
+checks this node's MagicDNS name and Serve mappings to the Station's configured
+API or UI-proxy port. This proves daemon configuration, not reachability from a
+phone. `ALLOWED_ORIGINS` is not used as mapping evidence. The selected address
+stays visible and an explicit edit takes precedence over a suggestion. No
+Tailscale configuration or listener binding is changed.
