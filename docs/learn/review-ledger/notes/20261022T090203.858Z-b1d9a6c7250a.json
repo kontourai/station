@@ -1,0 +1,7 @@
+{
+  "revision": "4f60879215815f10b10f583f8b54e2acde7ba500",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed the native restriction candidate against installed SDK 0.3.302 declarations and owned Claude 2.1.308 wildcard restart, causal Write-enabled, and permission-state probes. The builtin catalog is explicitly incomplete. CLI wildcard deny blocks the exercised Write and late MCP effects and stays effective under managed-only settings; model-wire emptiness still fails. No production sync, plugin/delegation/direct-call coverage, fiscal guarantee, or epic acceptance is claimed.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}
