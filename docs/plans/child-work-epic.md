@@ -389,8 +389,9 @@ control after an exact thread inventory read did call it and returned its form
 answer; that bypassed Station and is diagnostic only. The adapter now checks
 thread-bound authored MCP inventory before reporting a ready session, and
 refuses a turn while the session is still connecting. Focused startup-order and
-inventory-refusal checks pass. A fresh live Station elicitation check remains
-required; the earlier model refusals are not silently converted into success.
+inventory-refusal checks pass. At that checkpoint a fresh live Station
+elicitation check remained required; the earlier model refusals are not
+silently converted into success.
 The next run did call the tool, but the connection's native `never` approval
 policy declined its form before Station received it. Its completion text is
 not answer evidence. The Codex MCP edge now maps supported data forms into the
@@ -413,6 +414,32 @@ findings and independently exercised the exact-event/content path, native reply
 acknowledgement, sanitized diagnostics and real-service group integration. It
 left live answered elicitation open. Its diagnostic reason assertion advisory
 is addressed by pinning the expected closed reason for each inventory defect.
+
+At `a39212fabf0`, a fresh live Station CLI group answered the controlled MCP
+form through Codex `gpt-6-luna` at low effort alongside two OpenCode
+`zai-coding-plan/glm-5.3-flash` members. The earlier asking-mode failure's exact
+native transcript showed a lookup for the bare tool name, not a tool call.
+The new brief discovered the qualified callable by suffix and invoked it once;
+no production permission or shared connection change was needed.
+
+The dependent remained pending while the form was open. A mismatched opened
+event was refused with 409, the exact answer received 200 and an engine
+acknowledgement, and a duplicate received 409. The MCP server recorded one
+accepted `ELICIT_OK`. All three initial turns completed once, returning
+`ELICIT_OK`, `CONTROL_OK` and `JOIN_OK`; the first two overlapped for 2.5 seconds
+and the dependent started after both completed. Authorized raw event reads and
+subsequent SDK SSE replay retained those outputs and the question. That stream
+receipt is retrospective, not delivery while waiting for the answer. An invalid
+bearer was refused by the group metadata read; it was not a negative SSE test.
+
+Source provenance was checkout-derived. The direct source boot omitted a
+supervisor boot ID, so its identity endpoint stayed unavailable; this is not
+packaged identity evidence. An initial retrospective stream probe used the
+wrong cursor option and completion marker; its failed receipt is retained, and
+the corrected read made no provider calls. The owned runtime and listeners
+were stopped afterward. This advances live answered-form evidence on that
+source, without establishing billing, fiscal/physical caps, portable authority,
+native/physical/hosted/release or whole-epic acceptance.
 
 At `1c682a5a2dd`, a read-only retained-session check observed the earlier mixed
 CLI group's completed tasks and closed, idle, resumable conversations. The real

@@ -1234,8 +1234,11 @@ token and physical-attempt caps. Unknown cost is not free. These commands have
 controlled-adapter integration evidence. Historical source-runtime receipts
 include a three-seat OpenCode/GLM Flash group at `fe998248b601` and a mixed
 OpenCode/GLM Flash and Codex group at `ca15aa85c11`, with overlapping independent
-turns and an exact-initial-turn dependency join. Those checks do not qualify the
-current source, answered live elicitation, billing or a published client. The
+turns and an exact-initial-turn dependency join. At `a39212fabf0`, another mixed
+group answered an exact-event MCP form through Station, refused a mismatched
+event and duplicate reply, and retained all three exact outputs. Its member SSE
+receipt is retrospective replay. These revision-bound source checks do not
+qualify every runtime, packaged identity, billing or a published client. The
 following legacy group transport commands remain separate.
 
 The local CLI has group transport commands. They require a serving Station with

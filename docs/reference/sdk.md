@@ -5229,8 +5229,10 @@ automatic launch retry. Responses validate the unbound-lineage and unavailable-c
 disclosures; they cannot silently become a hard fiscal authority. Group completion
 is distinct from work acceptance. Historical live session-group receipts are
 bound to the source revisions recorded in the [epic plan](../plans/child-work-epic.md);
-they do not qualify this checkout's complete SDK/server pair, answered live
-elicitation, billing or package publication.
+the `a39212fabf0` check includes a live exact-event MCP form answer and later
+authenticated member-event replay. These bounded receipts do not qualify the
+complete SDK/server surface, live-at-question stream delivery, billing or
+package publication.
 
 ## Delegation group transport
 
