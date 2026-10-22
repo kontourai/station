@@ -153,8 +153,13 @@ export function ACPConnectionsSection({
     return createConnectionMutation.mutateAsync(data);
   };
 
-  const installRegistryEntry = async (id: string) => {
-    return installRegistryEntryMutation.mutateAsync(id);
+  const installRegistryEntry = async (
+    id: string,
+    confirmCommand?: { command: string; args: string[] },
+  ) => {
+    return installRegistryEntryMutation.mutateAsync(
+      confirmCommand ? { id, confirmCommand } : id,
+    );
   };
 
   // Edit setup saves through PUT, which re-probes and registers on success.

@@ -1,6 +1,10 @@
 import { Fragment, type RefObject } from 'react';
 import type { ACPConnectionRegistryEntry } from '../../hooks/useACPConnections';
 import { resolveProviderChoicePresentation } from '../../views/provider-settings/providerCatalog';
+import {
+  PublicRegistryFacts,
+  publicRegistryCommandLine,
+} from '../engine-install/PublicRegistry';
 import { RegistryEntryInstallHint } from '../engine-install/RegistryEntryInstallHint';
 import { registryEntryDiscovery } from '../engine-install/registryEntryDiscovery';
 import {
@@ -286,9 +290,11 @@ export function ACPConnectionCatalogStage({
   onSelect: (entry: ACPConnectionRegistryEntry) => void;
   onCustom: () => void;
 }) {
+  const stationEntries = entries.filter((entry) => entry.source !== 'registry');
+  const publicEntries = entries.filter((entry) => entry.source === 'registry');
   return (
     <div className="acp-add-dialog__catalog">
-      {entries.map((entry) => {
+      {stationEntries.map((entry) => {
         const presentation = resolveProviderChoicePresentation({
           id: entry.id,
           kind: 'command',
@@ -317,7 +323,7 @@ export function ACPConnectionCatalogStage({
           </Fragment>
         );
       })}
-      {entries.length > 0 && <div className="acp-add-dialog__divider" />}
+      {stationEntries.length > 0 && <div className="acp-add-dialog__divider" />}
       <button
         type="button"
         className="acp-add-dialog__choice"
@@ -328,6 +334,36 @@ export function ACPConnectionCatalogStage({
           Enter a name and command first; optional details stay advanced.
         </span>
       </button>
+      {publicEntries.length > 0 && (
+        <>
+          <div className="acp-add-dialog__divider" />
+          <h4 className="acp-add-dialog__group-heading">
+            From the public registry
+          </h4>
+          {publicEntries.map((entry) => {
+            const listing = entry.publicRegistry;
+            return (
+              <button
+                key={entry.id}
+                type="button"
+                className="acp-add-dialog__choice"
+                disabled={!listing?.hostLaunch}
+                onClick={() => onSelect(entry)}
+              >
+                <span className="acp-add-dialog__choice-name">
+                  {entry.name}
+                </span>
+                <span className="acp-add-dialog__choice-detail">
+                  {listing?.hostLaunch
+                    ? `By ${listing.publishers.join(', ')} · version ${listing.version}`
+                    : (listing?.unavailableReason ??
+                      'Station cannot connect it.')}
+                </span>
+              </button>
+            );
+          })}
+        </>
+      )}
     </div>
   );
 }
@@ -343,6 +379,11 @@ export function ACPConnectionConfirmStage({
 }: {
   entry: ACPConnectionRegistryEntry;
 }) {
+  // A public listing is confirmed by its exact command line; the server
+  // refuses the add when the listing no longer matches it.
+  const listing =
+    entry.source === 'registry' ? entry.publicRegistry : undefined;
+  const launch = listing?.hostLaunch;
   return (
     <div className="acp-add-dialog__confirm">
       <p className="acp-add-dialog__confirm-lead">
@@ -357,9 +398,33 @@ export function ACPConnectionConfirmStage({
           connects.
         </li>
         <li>
-          Runs <code>{entry.command}</code> to check whether it is ready.
+          Runs{' '}
+          <code>
+            {launch ? publicRegistryCommandLine(launch) : entry.command}
+          </code>{' '}
+          to check whether it is ready.
         </li>
       </ul>
+      {listing ? (
+        <div className="acp-add-dialog__confirm-registry">
+          <p>
+            {entry.name} is listed in the public registry, not by Station.
+            Station runs the copy of <code>{launch?.command}</code> it finds on
+            the computer it runs on and does not download anything.
+          </p>
+          <PublicRegistryFacts listing={listing} />
+          {listing.recommendedEnv ? (
+            <p>
+              The registry also recommends these settings, which Station does
+              not apply:{' '}
+              {Object.entries(listing.recommendedEnv)
+                .map(([name, value]) => `${name}=${value}`)
+                .join(', ')}
+              .
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       <p className="acp-add-dialog__confirm-note">
         You can remove the connection and its agent at any time.
       </p>

@@ -459,6 +459,7 @@ import {
 } from '../../services/access/personal-token-store.js';
 import { StationGroupsError } from '../../services/access/station-groups-service.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
+import { createPublicAgentRegistrySource } from '../../services/acp/public-agent-registry.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
 import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
 import type { SkillService } from '../../services/agents/skill-service.js';
@@ -5338,7 +5339,14 @@ export function configureRuntimeRoutes(
     }),
   );
 
-  context.app.route('/acp', createACPRoutes(runtimeContext));
+  context.app.route(
+    '/acp',
+    createACPRoutes(runtimeContext, {
+      publicAgentRegistry: createPublicAgentRegistrySource(
+        context.configLoader.getProjectHomeDir(),
+      ),
+    }),
+  );
   context.app.route('/agents', createAgentToolRoutes(runtimeContext));
   context.app.route(
     '/agents',

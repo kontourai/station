@@ -37,6 +37,11 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Checkbox } from '../components/Checkbox';
 import { ConnectionReadinessNotice } from '../components/connections/ConnectionReadinessNotice';
 import { DetailHeader } from '../components/DetailHeader';
+import {
+  PublicRegistryCatalogGroup,
+  PublicRegistryFacts,
+  PublicRegistryUpdateNotice,
+} from '../components/engine-install/PublicRegistry';
 import { RegistryEntryInstallHint } from '../components/engine-install/RegistryEntryInstallHint';
 import { registryEntryDiscovery } from '../components/engine-install/registryEntryDiscovery';
 import { BrandIcon } from '../components/icons/BrandIcon';
@@ -569,6 +574,11 @@ export function AgentConnectionView({
                   engine={form.type}
                 />
               )}
+            <PublicRegistryUpdateNotice
+              entry={acpRegistryEntries.find(
+                (entry) => entry.installed && entry.id === form.id,
+              )}
+            />
             {providerPresentation?.readiness !== 'Ready' && (
               <ConnectionReadinessNotice
                 readiness={providerPresentation?.readiness ?? ''}
@@ -1043,7 +1053,15 @@ function EngineAddCatalog({
   onAdd: (connection: AgentConnectionViewData) => void;
   onChooseCommand: (entry: ACPConnectionRegistryEntry | 'custom') => void;
 }) {
-  const hasCatalogEntries = connections.length > 0 || commandEntries.length > 0;
+  // Public registry listings get their own group; they are never presented
+  // as one of Station's own engines.
+  const stationEntries = commandEntries.filter(
+    (entry) => entry.source !== 'registry',
+  );
+  const publicEntries = commandEntries.filter(
+    (entry) => entry.source === 'registry',
+  );
+  const hasCatalogEntries = connections.length > 0 || stationEntries.length > 0;
   return (
     <div className="editor-layout agent-app-catalog">
       <DetailHeader
@@ -1114,7 +1132,7 @@ function EngineAddCatalog({
             </div>
           );
         })}
-        {commandEntries.map((entry) => {
+        {stationEntries.map((entry) => {
           const presentation = resolveProviderPresentation({
             id: entry.id,
             kind: 'command',
@@ -1145,6 +1163,9 @@ function EngineAddCatalog({
                 <div className="plugins__registry-desc">
                   {presentation.detail}
                 </div>
+                {entry.publicRegistry ? (
+                  <PublicRegistryFacts listing={entry.publicRegistry} />
+                ) : null}
                 <RegistryEntryInstallHint entry={entry} />
               </div>
               <button
@@ -1175,6 +1196,10 @@ function EngineAddCatalog({
           </button>
         </div>
       </div>
+      <PublicRegistryCatalogGroup
+        entries={publicEntries}
+        onChoose={onChooseCommand}
+      />
     </div>
   );
 }

@@ -13,7 +13,10 @@ import {
   ACPConnectionSetupStatus,
 } from './ACPConnectionSetupStages';
 import type { ACPConnectionDraft } from './types';
-import { useACPConnectionSetup } from './useACPConnectionSetup';
+import {
+  type InstallRegistryEntry,
+  useACPConnectionSetup,
+} from './useACPConnectionSetup';
 import { getACPConnectionStatusView } from './utils';
 
 export function ACPAddConnectionModal({
@@ -43,7 +46,7 @@ export function ACPAddConnectionModal({
   connectionQueryError?: unknown;
   connectionQueryFetching?: boolean;
   onAdd: (data: ACPConnectionDraft) => unknown;
-  onInstallRegistryEntry?: (id: string) => unknown;
+  onInstallRegistryEntry?: InstallRegistryEntry;
   onRefreshConnections?: () => unknown;
   onCancel: () => void;
   returnFocusTarget?: HTMLElement | null;
@@ -145,7 +148,13 @@ export function ACPAddConnectionModal({
         {state.stage === 'catalog' && (
           <ACPConnectionCatalogStage
             entries={availableEntries}
-            onSelect={(entry) => void submit(entry)}
+            onSelect={(entry) =>
+              // A public listing always stops at the confirm step, which
+              // shows the exact command it runs.
+              entry.source === 'registry'
+                ? dispatch({ type: 'confirm', entry })
+                : void submit(entry)
+            }
             onCustom={() => dispatch({ type: 'custom' })}
           />
         )}
