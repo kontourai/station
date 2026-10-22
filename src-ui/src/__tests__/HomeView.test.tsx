@@ -558,21 +558,18 @@ describe('HomeView', () => {
       initialPrompt: 'Help me plan my day',
       selection: { context: '__global__', agentSlug: 'codex-agent' },
     });
-    fireEvent.click(
-      screen.getByRole('button', { name: /Open local project/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: /New Project/i }));
     expect(onNavigate).toHaveBeenCalledWith({ type: 'project-new' });
   });
 
-  test('the project-folder card names this Station, not this computer', () => {
-    renderHomeView({ continuation: null, onNavigate: vi.fn() });
-
-    // The folder lives on the Station host, which is a different machine
-    // when this UI runs as a remote client (e.g. the paired phone app).
-    expect(
-      screen.getByRole('button', { name: /Add a folder on this Station/i }),
-    ).toBeTruthy();
-    expect(screen.queryByText(/from this computer/i)).toBeNull();
+  test('Project creation advertises more than a folder and opens the shared flow', () => {
+    const onNavigate = vi.fn();
+    renderHomeView({ continuation: null, onNavigate });
+    const entry = screen.getByRole('button', {
+      name: /New Project.*Repository, folder or blank workspace/i,
+    });
+    fireEvent.click(entry);
+    expect(onNavigate).toHaveBeenCalledWith({ type: 'project-new' });
   });
 
   test('renders shimmer cards while Home actions are unresolved instead of claiming an agent is absent', () => {

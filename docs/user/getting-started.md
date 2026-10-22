@@ -18,9 +18,9 @@ without adding a model API key:
 3. On Home, choose **Codex** in the Agent picker, write a request, and choose
    **Start**. You can start without a Project. The detected Codex Agent is
    enough; creating a custom Agent is optional.
-4. When you want to work with files, choose **Open local project** on Home and
-   select an existing folder. To acquire a working copy instead, open **New
-   Project → Start from a Git repository**, enter its HTTPS or SSH URL, choose
+4. Choose **New Project** on Home to start from a repository, an existing folder
+   on this Station, or a blank workspace. For a repository, open **Start from a
+   Git repository**, enter its HTTPS or SSH URL, choose
    **Acquire repository**, then **Use this checkout**. Creating the Project rechecks
    that working copy and retains its source and exact commit. Acquisition currently
    requires the Station operator and uses that host's Git credentials.

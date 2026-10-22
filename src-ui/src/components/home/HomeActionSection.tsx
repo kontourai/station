@@ -4,8 +4,6 @@ import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useGitLocationByThreadId } from '../../hooks/useGitLocationByThreadId';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
 import { useProjectIcons } from '../../hooks/useProjectIcons';
-import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
-import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import type { NavigationView } from '../../types';
 import type {
   HomeViewNavigation,
@@ -96,8 +94,6 @@ export function HomeActionSection({
   onNavigate,
   showPrimary = true,
 }: HomeActionSectionProps) {
-  const profile = usePlatformProfile();
-  const showLocalProject = hasLocalStationForProfile(profile);
   // The sidebar's colours, from the one project list it shows.
   const accents = useProjectAccents();
   const continuationSlug = continuation
@@ -119,17 +115,12 @@ export function HomeActionSection({
         title="Explore agents"
         onClick={() => onNavigate({ type: 'agents' })}
       />
-      {showLocalProject ? (
-        <HomeActionCard
-          label="Project"
-          // "This Station", not "this computer": the folder lives on the
-          // Station host, which is a different machine when this UI runs as
-          // a remote client (e.g. the phone app paired to a desktop).
-          title="Open local project"
-          detail="Add a folder on this Station"
-          onClick={() => onNavigate({ type: 'project-new' })}
-        />
-      ) : null}
+      <HomeActionCard
+        label="Project"
+        title="New Project"
+        detail="Repository, folder or blank workspace"
+        onClick={() => onNavigate({ type: 'project-new' })}
+      />
       {continuation && (
         <HomeActionCard
           className="home-view__action--quiet"
