@@ -160,7 +160,7 @@ When the server runs inside a `station-*.service` user unit on Linux,
 places owned child workloads in systemd scopes outside the server unit. Engine
 tools inherit their engine's scope; separately launched terminals, MCP servers,
 ACP commands, Flow commands, plugin builds, project commands, Veritas readiness
-runs, Claude model discovery and owned browser/device helpers
+runs, Claude model discovery, engine CLI probes and owned browser/device helpers
 receive their own scopes. This separates their memory accounting and OOM failure
 domain from the control server. It does not isolate filesystem or network access.
 

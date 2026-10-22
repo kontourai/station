@@ -1370,13 +1370,15 @@ is diagnostic and does not replace the final `npm run full:regression` receipt.
 
 ### Host typecheck slots and incremental compiles
 
-On Linux, `ci:fast` and the full `typecheck` aggregate refuse to run inside a
-live `station-<instance>.service` cgroup. Verification started by a hosted Agent
-inherits that service's memory failure domain: an OOM kill can terminate Station
-and every active conversation with it. Run those aggregates from an external
-shell or hosted CI. Focused tests and individual typecheck lanes remain available
-inside Station; the admission guard does not impose a memory budget on arbitrary
-shell commands.
+On Linux, `ci:fast`, the full `typecheck` aggregate and managed dependency
+installs refuse admission inside an unisolated live `station-<instance>.service`
+cgroup. An unisolated Agent command shares the server's OOM failure domain and
+can terminate Station and active conversations. Run these commands from an
+external shell, hosted CI or an enforced workload scope. Managed Linux service
+workloads use separate accounting and bounded scopes as described in
+[Linux service workload budgets](development.md#linux-service-workload-budgets).
+Focused tests and individual typecheck lanes remain available inside Station;
+the admission guard itself does not impose resource limits on arbitrary commands.
 
 Station uses the pinned native TypeScript 7 compiler for type checks and
 package declaration builds. `typescript-api` is an alias for TypeScript 5.9.3,

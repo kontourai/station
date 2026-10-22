@@ -3328,6 +3328,12 @@ its own sample time/age. Older hosts omit `resources`. A missing CPU probe still
 returns 503; unknown CPU load is never fabricated as zero. These observations
 do not grant execution authority or influence admission.
 
+`data.workloads` reports workload enforcement state, configured budgets, active
+scopes, recent outcomes and available slice measurements. Measurement failure
+is separate from enforcement state; see
+[Linux service workload budgets](../guides/development.md#linux-service-workload-budgets)
+for platform scope and admission behavior.
+
 `GET /api/system/status` returns a plain status object. It includes prerequisites
 and `prerequisitesState`, configured/detected providers, CLI observations,
 external-engine readiness, capability summaries, recommendation, build/server

@@ -37,8 +37,10 @@ Every way Station restarts interrupts running work.
   - `station upgrade` allows five seconds and refuses to run under a service.
   - The archive launcher stops the old version before starting the new one.
 - Boot kills engines left by the previous server
-  (`sweepOrphanedOwnedProcesses`) and marks their turns interrupted. Claude
-  Code is not even an owned child; it dies with its stdin pipe.
+  (`sweepOrphanedOwnedProcesses`) and marks their turns interrupted. Managed
+  Linux service scopes additionally own Claude Code and its descendants and
+  reclaim scopes from dead server generations. Other launch modes retain their
+  existing cleanup paths. This ownership does not make turns survive a restart.
 - No engine can be reattached mid-turn. Claude Code, Codex, ACP agents, and
   Muse all speak over the stdio of the process that spawned them, so only a
   new turn can resume their session.
