@@ -43,6 +43,7 @@ describe('Android native bootstrap', () => {
   it.each([
     ['stable', 'io.kontourai.station'],
     ['dev', 'io.kontourai.station'],
+    ['onboarding verification', 'io.kontourai.station.onboarding'],
     ['beta', 'io.kontourai.station.beta'],
     ['nightly', 'io.kontourai.station.nightly'],
   ])(

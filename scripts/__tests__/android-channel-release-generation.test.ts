@@ -16,6 +16,7 @@ import {
   gradleWithAndroidReleaseSigning,
 } from '../apply-android-release-signing.mjs';
 import { normalizeDevPairingDeepLinkSuffix } from '../channel-platform-matrix.mjs';
+import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 import { resetAndroidGeneratedProject } from '../reset-android-generated-project.mjs';
 
 it('debug build entrypoints carry the scheme expected by the native development identity', () => {
@@ -344,4 +345,61 @@ describe('clean Android channel release generation', () => {
       'node scripts/verify-android-aab-signature.mjs cohort-android/station-nightly-universal.aab "$ANDROID_UPLOAD_CERT_SHA256"',
     );
   });
+});
+
+describe('hosted Android verification identity admission', () => {
+  const workflow = parse(
+    readFileSync('.github/workflows/build-android.yml', 'utf8'),
+  );
+  const selection = workflow.jobs['build-android-verification'].steps.find(
+    (step: { id?: string }) => step.id === 'identity',
+  ).run;
+  it.each([
+    [
+      'false',
+      'push',
+      'refs/heads/main',
+      0,
+      'io.kontourai.station.debug',
+      'station-android-debug',
+    ],
+    [
+      'true',
+      'workflow_dispatch',
+      'refs/heads/verify-onboarding',
+      0,
+      'io.kontourai.station.onboarding.debug',
+      'station-android-onboarding-debug',
+    ],
+    ['true', 'workflow_dispatch', 'refs/heads/main', 1, '', ''],
+    ['true', 'push', 'refs/heads/verify-onboarding', 1, '', ''],
+    ['invalid', 'workflow_dispatch', 'refs/heads/verify-onboarding', 1, '', ''],
+  ])(
+    'admits %s/%s/%s only for its exact artifact identity',
+    (isolated, event, ref, status, packageId, artifactName) => {
+      const directory = mkdtempSync(
+        join(tmpdir(), 'station-android-identity-'),
+      );
+      const output = join(directory, 'output');
+      writeFileSync(output, '');
+      const result = spawnSyncBounded('bash', ['-e', '-c', selection], {
+        windowsHide: true,
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          ISOLATED_ONBOARDING: isolated,
+          GITHUB_EVENT_NAME: event,
+          GITHUB_REF: ref,
+          GITHUB_OUTPUT: output,
+        },
+      });
+      expect(result.error).toBeUndefined();
+      expect(result.status, result.stderr).toBe(status);
+      const values = readFileSync(output, 'utf8');
+      if (status === 0) {
+        expect(values).toContain(`package_id=${packageId}\n`);
+        expect(values).toContain(`artifact_name=${artifactName}\n`);
+      } else expect(values).toBe('');
+    },
+  );
 });
