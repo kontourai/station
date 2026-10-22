@@ -4382,6 +4382,7 @@ dependencies = [
  "base64 0.22.1",
  "block2",
  "dirs",
+ "dispatch2",
  "dunce",
  "hpke",
  "jni 0.21.1",

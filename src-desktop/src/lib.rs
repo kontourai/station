@@ -13,6 +13,7 @@ mod desktop_companion;
 mod desktop_installation;
 #[cfg(not(mobile))]
 mod desktop_update;
+mod ios_background_task;
 #[cfg(not(mobile))]
 mod local_access_watch;
 #[cfg(all(not(mobile), unix))]
@@ -753,6 +754,8 @@ impl NativeHttpMessageSink for Channel<NativeHttpMessage> {
 struct NativeHttpDeadlineGuard {
     stop: std::sync::mpsc::SyncSender<()>,
     worker: Option<std::thread::JoinHandle<()>>,
+    #[cfg(target_os = "ios")]
+    _background_task: ios_background_task::BackgroundTask,
 }
 
 impl NativeHttpDeadlineGuard {
@@ -777,6 +780,8 @@ impl NativeHttpDeadlineGuard {
         Self {
             stop,
             worker: Some(worker),
+            #[cfg(target_os = "ios")]
+            _background_task: ios_background_task::BackgroundTask::begin(),
         }
     }
 }
@@ -13109,6 +13114,13 @@ If a stable instance is running, this launch will focus its window and exit.",
         ));
     }
     let builder = tauri::Builder::default();
+    #[cfg(target_os = "ios")]
+    let builder = builder.on_web_content_process_terminate(|webview| {
+        log::warn!("iOS web content process terminated; reloading persisted application state");
+        if let Err(error) = webview.reload() {
+            log::error!("iOS web content process recovery failed: {error}");
+        }
+    });
 
     // FIRST plugin, deliberately. In a secondary instance this plugin exits
     // the process during registration, so no OTHER plugin or setup side effect

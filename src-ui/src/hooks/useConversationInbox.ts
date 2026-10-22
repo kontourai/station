@@ -12,6 +12,7 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
+import { useConstrainedNetwork } from '../platform/networkCost';
 
 type InboxScope = NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
 interface Cancellation {
@@ -24,6 +25,7 @@ interface Cancellation {
 
 export function useConversationInbox(conversationId: string) {
   const scope = useHostRequestAuthorityScope();
+  const constrainedNetwork = useConstrainedNetwork();
   const client = useQueryClient();
   const enabled = Boolean(conversationId && scope?.isCurrent());
   const queryKey = [
@@ -45,7 +47,9 @@ export function useConversationInbox(conversationId: string) {
       current.state.error instanceof StationHttpError &&
       [401, 403, 404].includes(current.state.error.status)
         ? false
-        : 2_000,
+        : constrainedNetwork
+          ? 10_000
+          : 2_000,
     refetchIntervalInBackground: false,
     queryFn: async ({ signal }): Promise<ConversationInboxEntry[]> => {
       if (!scope?.isCurrent())

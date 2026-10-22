@@ -3,6 +3,7 @@ import type { ConversationInboxEntry } from '@kontourai/station-contracts/orches
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -237,3 +238,54 @@ test('successful removal targets the exact key and an older read cannot restore 
     'http://station.test/api/orchestration/conversations/conversation/inbox/own%2Ffirst',
   ]);
 });
+
+test.each(['browser', 'android'] as const)(
+  'lengthens actual inbox polling on an explicit %s constrained-network signal and restores it on change',
+  async (source) => {
+    vi.useFakeTimers();
+    const connection = Object.assign(new EventTarget(), { saveData: false });
+    let nativeMetered = false;
+    if (source === 'android')
+      window.StationAndroidInsets = {
+        safeArea: () => '{}',
+        networkCost: () => (nativeMetered ? 'metered' : 'unknown'),
+      };
+    const changeCost = (value: boolean) => {
+      act(() => {
+        if (source === 'browser') {
+          connection.saveData = value;
+          connection.dispatchEvent(new Event('change'));
+        } else {
+          nativeMetered = value;
+          window.dispatchEvent(new Event('station-network-cost-change'));
+        }
+      });
+    };
+    Object.defineProperty(navigator, 'connection', {
+      configurable: true,
+      value: connection,
+    });
+    const fetchMock = vi.fn(async () => response([entry('queued', 'own')]));
+    vi.stubGlobal('fetch', fetchMock);
+    const { unmount } = mount();
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      changeCost(true);
+      await vi.advanceTimersByTimeAsync(9_999);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      changeCost(false);
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+    } finally {
+      unmount();
+      delete window.StationAndroidInsets;
+      delete (navigator as Navigator & { connection?: unknown }).connection;
+      vi.useRealTimers();
+    }
+  },
+);

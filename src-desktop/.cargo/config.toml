@@ -28,3 +28,26 @@ rustflags = ["-C", "link-arg=-Wl,-z,max-page-size=16384"]
 
 [target.i686-linux-android]
 rustflags = ["-C", "link-arg=-Wl,-z,max-page-size=16384"]
+
+# Wry 0.57 generates this member into its own RustWebViewClient. Returning
+# true requires retiring the dead WebView; recreate() lets Wry restore the
+# activity's saved attributes and IPC callbacks instead of reloading a dead view.
+[env]
+WRY_RUSTWEBVIEWCLIENT_CLASS_EXTENSION = '''
+    private val stationActivity = context as android.app.Activity
+    private var stationRendererRecoveryPending = false
+
+    override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+        if (!stationRendererRecoveryPending) {
+            stationRendererRecoveryPending = true
+            (view.parent as? android.view.ViewGroup)?.removeView(view)
+            view.destroy()
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                if (!stationActivity.isFinishing && !stationActivity.isDestroyed) {
+                    stationActivity.recreate()
+                }
+            }
+        }
+        return true
+    }
+'''

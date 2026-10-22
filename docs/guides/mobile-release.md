@@ -30,6 +30,29 @@ candidate source SHA, IPA digest, app ID, build ID, and build number. A new
 upload and an already-existing provider build have different provenance: see
 the receipt boundary at the end of this guide.
 
+## Mobile process lifetime
+
+On iOS, Tauri's web-content termination callback reloads the page after
+WebKit loses its process. Recovery uses the state the application already
+persists; it does not promise recovery of unsaved text or resend an uncertain
+write. Finite native HTTP requests hold a UIKit background assertion until
+completion or expiration, so an in-flight send can use the OS's discretionary
+grace when the app leaves the foreground. UIKit can refuse or expire that
+assertion; it does not establish background execution, provider acceptance or
+completion after suspension. Streams do not hold an indefinite assertion.
+Physical-device background-send, expiration and memory-pressure checks are
+required independently of compilation and state-lifetime unit tests.
+
+SDK stream backoff waits coalesce browser resume signals and spread early
+reconnects by 100–999 ms, bounded by their existing retry deadline. Explicit
+retry and cancellation remain immediate. Android metering and browser data-saving
+signals lengthen optional inbox polling; iOS Low Data Mode has no native signal
+in this change and retains the normal interval when WebKit provides none.
+The desktop-only notification feed pauses while the document is hidden and
+polls once on return. Its constrained-network interval is 60 seconds, inside
+the existing 90-second host lease; the native desktop consumer still owns
+background delivery.
+
 ## Connection setup
 
 Mobile artifacts contain no default Station backend address. Dev, Nightly,

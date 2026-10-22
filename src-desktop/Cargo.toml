@@ -147,6 +147,8 @@ jni = "0.21"
 ndk-context = "0.1"
 
 [target."cfg(target_os = \"ios\")".dependencies]
+block2 = "=0.6.2"
+dispatch2 = "=0.3.1"
 objc2 = "=0.6.4"
 objc2-foundation = "=0.3.2"
 

@@ -1661,18 +1661,29 @@ function interruptibleDelay(
   if (signal.aborted) return { promise: Promise.resolve(), wake: () => {} };
   const startedAt = Date.now();
   let settled = false;
+  let resumeTimer: ReturnType<typeof setTimeout> | undefined;
   let finish = () => {};
   const promise = new Promise<void>((resolve) => {
     const onWake = () => {
       // A hidden tab's `visibilitychange` is the tab LEAVING, not returning.
       if (browserDocument()?.hidden === true) return;
       if (Date.now() - startedAt < minElapsedBeforeWake) return;
-      finish();
+      // Coalesce focus/online/visibility for this wait, while spreading the
+      // independent streams returning from suspension. Explicit retry stays immediate.
+      if (resumeTimer !== undefined) return;
+      resumeTimer = setTimeout(
+        () => {
+          resumeTimer = undefined;
+          if (browserDocument()?.hidden !== true) finish();
+        },
+        100 + Math.floor(Math.random() * 900),
+      );
     };
     finish = () => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      if (resumeTimer !== undefined) clearTimeout(resumeTimer);
       signal.removeEventListener('abort', finish);
       browserDocument()?.removeEventListener('visibilitychange', onWake);
       const scope = browserWindow();
