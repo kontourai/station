@@ -467,8 +467,8 @@ its own process identity and remains unexplained. Both screenshot attempts
 timed out. This is not a fresh running-to-ready journey, packaged desktop or
 second-device acceptance, and made no provider calls.
 
-This establishes only the exercised CLI paths. Live elicitation, second-device
-lifecycle, the remaining lineage/context/recovery obligations, final combined
+This establishes only the exercised CLI paths. Live-at-question event streaming,
+second-device lifecycle, the remaining lineage/context/recovery obligations, final combined
 review and full epic acceptance remain outstanding.
 
 Reuse the authenticated delegation route for caller resolution, permission
