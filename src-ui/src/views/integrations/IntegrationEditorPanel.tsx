@@ -3,6 +3,7 @@ import { DetailHeader } from '../../components/DetailHeader';
 import { LockGlyph } from '../../components/icons/Glyph';
 import { IntegrationGlyph } from '../../components/icons/IntegrationGlyph';
 import { LazyBoundary } from '../../components/LazyBoundary';
+import { IntegrationAccountSection } from './IntegrationAccountSection';
 
 const loadSecretBindingPicker = () =>
   import('./SecretBindingPicker').then((module) => ({
@@ -230,6 +231,17 @@ export function IntegrationEditorPanel({
           </div>
         )}
       </div>
+      {!isNew && editForm.credentialOwnership?.owner === 'principal' && (
+        <IntegrationAccountSection
+          key={JSON.stringify([
+            editForm.id,
+            editForm.endpoint,
+            editForm.transport,
+          ])}
+          integrationId={editForm.id}
+          requireSave={secretBindingRequireSave}
+        />
+      )}
       {!isNew && !isRuntimeManaged && (
         <LazyBoundary
           load={loadSecretBindingPicker}

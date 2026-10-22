@@ -133,6 +133,7 @@ export {
   type RegistryCatalogTab,
   useApplyIntegrationToolsMutation,
   useDeleteIntegrationMutation,
+  useDisconnectIntegrationAccountMutation,
   useFinishIntegrationOAuthMutation,
   useInstalledRegistryItemsQuery,
   useIntegrationAccountQuery,

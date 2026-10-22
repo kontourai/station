@@ -1140,6 +1140,17 @@ Connections has one clear home for each relationship:
 - **Tools** manages MCP tool-server integrations and their prerequisites.
   Installing a CLI or saving an integration does not by itself prove its login
   or tool availability.
+  For a saved integration configured to use personal accounts, **Your account**
+  shows whether tools use your account, a Project-specific account, an explicitly
+  allowed shared account, or no account. Choose **Connect your account**, then
+  **Open sign-in page**. Complete consent and paste the full redirected localhost
+  URL into **Redirected URL**, even if that localhost page does not load. Choose
+  **Finish sign-in** to submit it through Station's authenticated callback route.
+  The field clears on submission. **Disconnect your account** removes your
+  account for this integration without deleting the integration or another
+  person's account. Save definition changes before managing the account.
+  These controls expose the existing remote manual OAuth flow; they do not add
+  hosted, unattended or membership-revocation support to personal credentials.
 - **Knowledge** manages Knowledge sources; see the [Knowledge guide](knowledge.md).
 - When an agent tool depends on a disconnected tool server, **Repair
   connection** opens that exact server. Station does not label the tool

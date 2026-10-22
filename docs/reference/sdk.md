@@ -51,12 +51,18 @@ identifies installation provenance, not a trust or approval verdict. Local
 registry origin is bound to the saved execution definition; changed definitions
 withhold stale provenance.
 
-`useIntegrationAccountQuery(id, projectSlug?)` reads the account summary.
+`useIntegrationAccountQuery(id, projectSlug?, requestScope?)` reads the account
+summary. Pass the captured `ApiRequestScope` to partition account state by
+Station and principal authority and refuse a request after that authority changes.
 `useStartIntegrationOAuthMutation()` accepts `{id, projectSlug?}` and returns an
 `authorizationUrl`. `useFinishIntegrationOAuthMutation()` accepts
 `{id, projectSlug?, callbackUrl}` for remote sign-in completion, evicts settled
 mutation variables and refreshes account/integration queries. Existing endpoint
 ownership checks still apply; a successful catalog install does not sign in.
+Both mutations also accept `requestScope` in their input.
+`useDisconnectIntegrationAccountMutation()` accepts `{id, projectSlug?, requestScope?}`,
+disconnects the authenticated caller's selected account and refreshes account and
+integration queries. It does not delete the integration or disconnect other people.
 
 ## Project tool library
 

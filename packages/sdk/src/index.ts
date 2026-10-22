@@ -935,6 +935,7 @@ export {
   useDeleteWorkflowMutation,
   useDevicePresentation,
   useDiffCommentsQuery,
+  useDisconnectIntegrationAccountMutation,
   useDisconnectSshEnvironmentMutation,
   useDismissNotificationMutation,
   useDismissPluginLifecycleProposalMutation,
