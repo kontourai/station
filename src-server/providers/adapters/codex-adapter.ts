@@ -917,7 +917,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         : await runCliCommand(
             before.binary,
             ['login', 'status'],
-            undefined,
+            input.signal,
             before.env,
             {
               cwd: input.cwd,

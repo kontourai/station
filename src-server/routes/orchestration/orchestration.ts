@@ -2127,6 +2127,13 @@ export function createOrchestrationRoutes(
     isRequestPrincipalCurrent?: (request: Request) => boolean;
     /** Personal runtime composition; absent means session-group routes refuse. */
     cliSessionGroupHome?: string;
+    authenticateEnsembleSessionGroup?: (
+      input: import('../../services/orchestration/ensemble-session-group-authentication.js').EnsembleSessionGroupAuthenticationInput,
+      principal: PrincipalRef,
+      assertCurrent: () => void,
+    ) => Promise<
+      import('../../services/orchestration/cli-session-group.js').CliSessionGroupRunAdmission
+    >;
     prepareEnsembleSessionGroup?: (
       input: EnsembleCliSessionGroupInput,
       request: Request,
@@ -3683,6 +3690,62 @@ export function createOrchestrationRoutes(
     },
   );
 
+  function authorizeDelegationTarget(
+    c: Context,
+    sent: z.infer<typeof delegateTaskSchema>,
+  ):
+    | {
+        body: z.infer<typeof delegateTaskSchema>;
+        scoped: {
+          readonly canonicalCwd?: string;
+          readonly spawn?: DispatchCwdAdmission;
+        };
+      }
+    | { refused: Response } {
+    // A station-control caller's new task with no workspace starts in its
+    // own Project (owner decision 2026-10-13): decided before every check
+    // below, so each one reads the target that is dispatched.
+    const body = {
+      ...sent,
+      target: withCallerProjectWorkspace(
+        c,
+        deps.stationControlDispatchScope,
+        sent.target,
+        true,
+      ),
+    };
+    // #2377 slice C3b: an agent delegates without an approval posture.
+    const postureRefused = refuseCarriedPosture(c, [
+      {
+        path: 'target.model.options',
+        value: (body as { target?: { model?: { options?: unknown } } }).target
+          ?.model?.options,
+        kind: 'options',
+      },
+    ]);
+    if (postureRefused) return { refused: postureRefused };
+    const fullAccessRefused = refuseUngrantedFullAccess(c, [
+      requestedApprovalMode(
+        (body as { target?: { model?: { options?: unknown } } }).target?.model
+          ?.options,
+      ),
+    ]);
+    if (fullAccessRefused) return { refused: fullAccessRefused };
+    const directoryRefused = refuseUngrantedDirectoryWorkspace(c, body.target);
+    if (directoryRefused) return { refused: directoryRefused };
+    // #2377 slice C2a: a new task starts in the Project the body names.
+    const scoped = scopeDispatch(
+      c,
+      deps.stationControlDispatchScope,
+      (ownerId) =>
+        ownerId
+          ? { kind: 'new', ownerId, ...newSessionFacts(body.target) }
+          : undefined,
+    );
+    if ('refused' in scoped) return { refused: scoped.refused };
+    return { body, scoped };
+  }
+
   async function dispatchAuthorizedDelegation(
     c: Context,
     sent: z.infer<typeof delegateTaskSchema>,
@@ -3701,50 +3764,9 @@ export function createOrchestrationRoutes(
       );
     }
     try {
-      // A station-control caller's new task with no workspace starts in its
-      // own Project (owner decision 2026-10-13): decided before every check
-      // below, so each one reads the target that is dispatched.
-      const body = {
-        ...sent,
-        target: withCallerProjectWorkspace(
-          c,
-          deps.stationControlDispatchScope,
-          sent.target,
-          true,
-        ),
-      };
-      // #2377 slice C3b: an agent delegates without an approval posture.
-      const postureRefused = refuseCarriedPosture(c, [
-        {
-          path: 'target.model.options',
-          value: (body as { target?: { model?: { options?: unknown } } }).target
-            ?.model?.options,
-          kind: 'options',
-        },
-      ]);
-      if (postureRefused) return postureRefused;
-      const fullAccessRefused = refuseUngrantedFullAccess(c, [
-        requestedApprovalMode(
-          (body as { target?: { model?: { options?: unknown } } }).target?.model
-            ?.options,
-        ),
-      ]);
-      if (fullAccessRefused) return fullAccessRefused;
-      const directoryRefused = refuseUngrantedDirectoryWorkspace(
-        c,
-        body.target,
-      );
-      if (directoryRefused) return directoryRefused;
-      // #2377 slice C2a: a new task starts in the Project the body names.
-      const scoped = scopeDispatch(
-        c,
-        deps.stationControlDispatchScope,
-        (ownerId) =>
-          ownerId
-            ? { kind: 'new', ownerId, ...newSessionFacts(body.target) }
-            : undefined,
-      );
-      if ('refused' in scoped) return scoped.refused;
+      const authorized = authorizeDelegationTarget(c, sent);
+      if ('refused' in authorized) return authorized.refused;
+      const { body, scoped } = authorized;
       const { principal, userId, ownerAttribution, fullAccessGrant } =
         resolveDispatchActor(deps, c);
       const references = body.attachmentRefs;
@@ -4297,6 +4319,47 @@ export function createOrchestrationRoutes(
     assertCurrent: () => void,
   ): CliSessionGroupHost<z.infer<typeof delegateTaskSchema>> => ({
     assertCurrent,
+    prepareRun: async (input) => {
+      assertCurrent();
+      if (!deps.authenticateEnsembleSessionGroup)
+        throw new CliSessionGroupUnavailable('ensemble_auth_unsupported');
+      const principal = resolveActorPrincipal(deps, c).principal;
+      if (!principal)
+        throw new CliSessionGroupUnavailable('group_authority_required');
+      const resolveMembers = () =>
+        input.members.map(({ seatId, input: member }) => {
+          const authorized = authorizeDelegationTarget(c, member);
+          if ('refused' in authorized)
+            throw new CliSessionGroupUnavailable('group_authority_required');
+          return {
+            seatId,
+            target: normalizeExecutionTarget(
+              withCanonicalCwd(
+                authorized.body.target,
+                authorized.scoped.canonicalCwd,
+              ),
+            ),
+          };
+        });
+      const members = resolveMembers();
+      const binding = JSON.stringify(members);
+      const assertProbeAuthority = () => {
+        assertCurrent();
+        if (JSON.stringify(resolveMembers()) !== binding)
+          throw new CliSessionGroupUnavailable('ensemble_binding_changed');
+        assertCurrent();
+      };
+      return deps.authenticateEnsembleSessionGroup(
+        {
+          groupId: input.groupId,
+          intentDigest: input.intentDigest,
+          members,
+          signal: input.signal,
+        },
+        principal,
+        assertProbeAuthority,
+      );
+    },
     dispatch: async (input, admission) => {
       assertCurrent();
       let dispatched = false;

@@ -1,10 +1,13 @@
 import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CliSessionGroupPresetIdentity } from '@kontourai/station-contracts/delegation-group';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { z } from 'zod/v3';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-import { CliSessionGroups } from '../cli-session-group.js';
+import {
+  CliSessionGroups,
+  CliSessionGroupUnavailable,
+} from '../cli-session-group.js';
 
 const temporary = trackTempDirs();
 function fixture() {
@@ -113,5 +116,42 @@ test('a stored roster cannot substitute a case-duplicate codename', async () => 
   }
   expect((await f.groups.view(group.groupId, 'owner')).preset?.members).toEqual(
     f.members,
+  );
+});
+
+test('a per-seat authentication refusal stays visible without reserving or starting the seat', async () => {
+  const f = fixture();
+  const group = await f.create();
+  const dispatch = vi.fn(async () => {
+    throw new Error('Unexpected member dispatch');
+  });
+  const view = await f.groups.run(
+    group.groupId,
+    'owner',
+    {
+      assertCurrent() {},
+      prepareRun: async () => ({
+        prepareDispatch: async () => {
+          throw new CliSessionGroupUnavailable('ensemble_auth_unverified');
+        },
+      }),
+      dispatch,
+      observe: async () => {
+        throw new Error('Unexpected member observation');
+      },
+      interrupt: async () => {
+        throw new Error('Unexpected member interruption');
+      },
+    },
+    AbortSignal.timeout(10_000),
+  );
+  expect(dispatch).not.toHaveBeenCalled();
+  expect(view.dispatchCount).toBe(0);
+  expect(view.members.every((member) => member.state === 'pending')).toBe(true);
+  expect(
+    view.members.find((member) => member.seatId === 'lead')?.dispatchFailure,
+  ).toEqual({ status: 409, code: 'ensemble_auth_unverified' });
+  expect((await f.groups.view(group.groupId, 'owner')).members).toEqual(
+    view.members,
   );
 });

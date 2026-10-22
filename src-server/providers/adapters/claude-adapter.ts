@@ -3322,7 +3322,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             runCliCommand(
               command,
               script ? [script, ...args] : args,
-              undefined,
+              input.signal,
               overlay,
               {
                 cwd: input.cwd,
@@ -3395,7 +3395,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
             before.script
               ? [before.script, ...CLAUDE_AUTH_STATUS_ARGS]
               : CLAUDE_AUTH_STATUS_ARGS,
-            undefined,
+            input.signal,
             before.env,
             {
               cwd: input.cwd,

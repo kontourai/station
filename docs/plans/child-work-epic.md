@@ -376,6 +376,28 @@ invocation. Qualification checks recorded errors and current owned-path process
 absence separately from the harness pass flag. HTTP routing, production plugin
 composition, other engines, real-provider sync and fiscal authority remain open.
 
+Preset-derived run supervision now has an all-member actual-context login
+barrier before Flow claims, seat reservations or member sessions. Unsupported
+observers are identified for the whole roster before any login command; current
+Codex/Claude observers receive cancellation/deadline signals. Private run
+observations bind the persisted group intent and selected context, refresh stale
+pending-member login observations, and contribute synchronous currency fences
+to the existing initial session/turn effects. The route reuses ordinary target
+permission checks before each probe. This is login only, not model entitlement,
+portable authority or fiscal enforcement. ACP/OpenCode preset runs now refuse
+before any member starts; manual groups retain their current path.
+
+The previous run owner fails the mounted final-member unauthenticated regression
+with 200 and three starts. The new three-file group/auth selection passes 84
+cases; the expanded real-route preset case also covers unsupported observation,
+configuration drift, cancellation during a held probe, effect-time drift and
+completed replay without fresh authentication. Both native-adapter refresh controls also pass: stale concurrent dispatch
+requests share one login refresh, old fences refuse, and abort reaches the native
+status command without a model invocation. A later per-seat login refusal stays
+visible on its pending seat without consuming a reservation; its owner regression
+fails before the publication repair and passes afterward. Final combined
+validation, mutation/restore and independent delta review remain pending. No new live provider claim follows from these fixtures.
+
 ## Production adoption sequence
 
 The personal `/api/orchestration/session-groups` path now composes the shared

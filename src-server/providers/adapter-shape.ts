@@ -415,6 +415,7 @@ export function isProviderInterruptTurnResult(
 
 /** Server-only fresh-session login observation; it grants no execution authority. */
 export interface ProviderExecutionAuthInput {
+  readonly signal?: AbortSignal;
   readonly principalId: string;
   readonly bindingHash: string;
   readonly connectionId: string;

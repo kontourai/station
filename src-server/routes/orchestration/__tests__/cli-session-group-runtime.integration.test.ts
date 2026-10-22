@@ -39,6 +39,10 @@ import {
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import type {
+  ProviderExecutionAuthInput,
+  ProviderExecutionAuthObservation,
+} from '../../../providers/adapter-shape.js';
 import { createOrchestrationRequestPrincipalResolver } from '../../../runtime/bootstrap/orchestration-request-principal.js';
 import {
   bindRuntimeLocalOperator,
@@ -50,6 +54,7 @@ import { createRuntimeResourcePostureController } from '../../../services/infra/
 import { EnsembleCliSessionGroupPreparation } from '../../../services/orchestration/ensemble-cli-session-group.js';
 import { createLocalEnsembleInventory } from '../../../services/orchestration/ensemble-execution-context.js';
 import { EnsembleInspectionService } from '../../../services/orchestration/ensemble-inspection.js';
+import { authenticateEnsembleSessionGroup } from '../../../services/orchestration/ensemble-session-group-authentication.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -75,6 +80,24 @@ afterEach(async () => {
 });
 
 class MemberAdapter extends GateTestAdapter {
+  readonly authentications: ProviderExecutionAuthInput[] = [];
+  onAuthentication?: (input: ProviderExecutionAuthInput) => Promise<void>;
+  authenticationStates: ProviderExecutionAuthObservation['state'][] = [];
+  async observeExecutionAuthentication(
+    input: ProviderExecutionAuthInput,
+  ): Promise<ProviderExecutionAuthObservation> {
+    this.authentications.push(input);
+    await this.onAuthentication?.(input);
+    (await input.assertCurrent())();
+    input.signal?.throwIfAborted();
+    return {
+      state: this.authenticationStates.shift() ?? 'authenticated',
+      contextHash: `sha256:${input.bindingHash}`,
+      checkedAt: Date.now(),
+      modelEntitlement: 'not-checked',
+      outputTokenLimitFidelity: 'unavailable',
+    };
+  }
   async assertContextSyncRuntime() {}
   syncOutputs: string[] = [];
   nativeSessionIdentity(cursor: unknown) {
@@ -301,11 +324,12 @@ async function fixture(operatorInspection = false) {
       overridePerTurn: true,
     },
   });
+  let inventoryRevision = 1;
   const inventory = createLocalEnsembleInventory({
     environmentId: () => 'group-host',
     captureAgentConfigurationFence: () => () => {},
     getProjectRevision: () => ({ value: null, assertCurrent() {} }),
-    getProviderRevision: () => 1,
+    getProviderRevision: () => inventoryRevision,
     getAgent: async () => ({
       name: 'Reviewer',
       prompt: 'Review the supplied brief.',
@@ -426,6 +450,17 @@ async function fixture(operatorInspection = false) {
         ? {
             prepareEnsembleSessionGroup:
               ensembleGroups.compose.bind(ensembleGroups),
+            authenticateEnsembleSessionGroup: (
+              input,
+              principal,
+              assertCurrent,
+            ) =>
+              authenticateEnsembleSessionGroup(
+                input,
+                inventory,
+                principal.id,
+                assertCurrent,
+              ),
           }
         : {}),
       eventBus: bus,
@@ -474,6 +509,9 @@ async function fixture(operatorInspection = false) {
     adapter,
     store,
     pendingDispatches,
+    changeInventory: () => {
+      inventoryRevision++;
+    },
     setPreparation: (work: typeof prepare) => {
       prepare = work;
     },
@@ -1024,7 +1062,7 @@ test('registered CLI preserves a zero reserved-start allowance through run witho
   expect(f.adapter.turns).toHaveLength(0);
 }, 30_000);
 
-test('a locally authorized preset produces actual member turns with authored models, additions and the same complete roster', async () => {
+test('a preset authenticates all members before starts, fences canceled or changed contexts, and retains its roster', async () => {
   const f = await fixture(true);
   const security = f.security!;
   const offer = security.devicePairing.createOffer({ endpoint: f.apiBase });
@@ -1203,6 +1241,65 @@ test('a locally authorized preset produces actual member turns with authored mod
     'check',
     'join',
   ]);
+  Object.defineProperty(f.adapter, 'observeExecutionAuthentication', {
+    value: undefined,
+    configurable: true,
+  });
+  const unsupported = await f.app.request(
+    `/api/orchestration/session-groups/${group.groupId}/run`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${local.credential}` },
+    },
+  );
+  expect(unsupported.status).toBe(409);
+  expect(await unsupported.text()).toContain('ensemble_auth_unsupported');
+  expect(f.adapter.authentications).toHaveLength(0);
+  expect(f.adapter.starts).toHaveLength(0);
+  Reflect.deleteProperty(f.adapter, 'observeExecutionAuthentication');
+  f.adapter.authenticationStates = [
+    'authenticated',
+    'authenticated',
+    'unauthenticated',
+  ];
+  const refusedRun = await f.app.request(
+    `/api/orchestration/session-groups/${group.groupId}/run`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${local.credential}` },
+    },
+  );
+  expect(refusedRun.status, await refusedRun.clone().text()).toBe(409);
+  expect(await refusedRun.text()).toContain('ensemble_auth_unverified');
+  expect(f.adapter.starts).toHaveLength(0);
+  expect(f.adapter.turns).toHaveLength(0);
+  expect(f.adapter.authentications).toHaveLength(3);
+  const refusedView = await f.app.request(
+    `/api/orchestration/session-groups/${group.groupId}`,
+    { headers: { Authorization: `Bearer ${local.credential}` } },
+  );
+  const unchanged = (
+    (await refusedView.json()) as { data: CliSessionGroupView }
+  ).data;
+  expect(unchanged.dispatchCount).toBe(0);
+  expect(unchanged.revision).toBe(group.revision);
+  expect(unchanged.members.every((member) => member.state === 'pending')).toBe(
+    true,
+  );
+  f.adapter.onAuthentication = async () => {
+    if (f.adapter.authentications.length === 5) f.changeInventory();
+  };
+  const drifted = await f.app.request(
+    `/api/orchestration/session-groups/${group.groupId}/run`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${local.credential}` },
+    },
+  );
+  expect(drifted.status).toBe(409);
+  expect(f.adapter.starts).toHaveLength(0);
+  expect(f.adapter.authentications).toHaveLength(5);
+  f.adapter.onAuthentication = undefined;
   const ran = await f.app.request(
     `/api/orchestration/session-groups/${group.groupId}/run`,
     {
@@ -1224,6 +1321,15 @@ test('a locally authorized preset produces actual member turns with authored mod
   expect(final.preset).toEqual(uploadedView.preset);
   expect(JSON.stringify(final)).not.toContain('Private addition');
   expect(f.adapter.turns).toHaveLength(3);
+  expect(f.adapter.authentications).toHaveLength(8);
+  expect(
+    f.adapter.authentications.every(
+      (observation) =>
+        observation.cwd === f.root &&
+        observation.model === 'fixture-model' &&
+        observation.signal instanceof AbortSignal,
+    ),
+  ).toBe(true);
   for (const member of preset.members) {
     const handle = final.members.find((entry) => entry.seatId === member.id)!
       .handle!;
@@ -1239,6 +1345,77 @@ test('a locally authorized preset produces actual member turns with authored mod
         ?.modelId,
     ).toBe('fixture-model');
   }
+  const replayed = await f.app.request(
+    `/api/orchestration/session-groups/${group.groupId}/run`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${local.credential}` },
+    },
+  );
+  expect(replayed.status).toBe(200);
+  expect(f.adapter.authentications).toHaveLength(8);
+  expect(f.adapter.turns).toHaveLength(3);
+  const cancelledGroup = await createEnsembleCliSessionGroup(f.apiBase, {
+    ...input,
+    operationId: 'cancel-during-auth',
+  });
+  let signalObserved: (() => void) | undefined;
+  const authEntered = new Promise<void>((resolve) => {
+    signalObserved = resolve;
+  });
+  f.adapter.onAuthentication = async (probe) => {
+    signalObserved?.();
+    await new Promise<void>((resolve) => {
+      if (probe.signal?.aborted) resolve();
+      else
+        probe.signal?.addEventListener('abort', () => resolve(), {
+          once: true,
+        });
+    });
+  };
+  const cancellingRun = f.app.request(
+    `/api/orchestration/session-groups/${cancelledGroup.groupId}/run`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${local.credential}` },
+    },
+  );
+  await authEntered;
+  const cancelled = await f.app.request(
+    `/api/orchestration/session-groups/${cancelledGroup.groupId}/cancel`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${local.credential}` },
+    },
+  );
+  expect(cancelled.status).toBe(200);
+  expect((await cancellingRun).status).toBe(409);
+  expect(f.adapter.authentications).toHaveLength(9);
+  expect(f.adapter.starts).toHaveLength(3);
+  expect(f.adapter.turns).toHaveLength(3);
+  f.adapter.onAuthentication = undefined;
+  const changedBeforeStart = await createEnsembleCliSessionGroup(f.apiBase, {
+    ...input,
+    operationId: 'config-during-start',
+  });
+  f.setPreparation(async () => f.changeInventory());
+  const changedRun = await f.app.request(
+    `/api/orchestration/session-groups/${changedBeforeStart.groupId}/run`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${local.credential}` },
+    },
+  );
+  expect(changedRun.status).toBe(200);
+  const changedView = (
+    (await changedRun.json()) as { data: CliSessionGroupView }
+  ).data;
+  expect(
+    changedView.members.every((member) => member.handle === undefined),
+  ).toBe(true);
+  expect(f.adapter.starts).toHaveLength(3);
+  expect(f.adapter.turns).toHaveLength(3);
+  f.setPreparation(async () => {});
   writeFileSync(path, `${bytes} `);
   await expect(
     createEnsembleCliSessionGroup(f.apiBase, {

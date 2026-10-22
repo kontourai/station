@@ -125,6 +125,7 @@ import {
   EnsembleExecutionContext,
 } from '../../services/orchestration/ensemble-execution-context.js';
 import { EnsembleInspectionService } from '../../services/orchestration/ensemble-inspection.js';
+import { authenticateEnsembleSessionGroup } from '../../services/orchestration/ensemble-session-group-authentication.js';
 import { sessionOwnerStampFor } from '../../services/orchestration/session-owner-attribution.js';
 import type {
   ProjectMembershipAuthority,
@@ -5027,6 +5028,17 @@ export function configureRuntimeRoutes(
       ...(isPersonalHost
         ? {
             cliSessionGroupHome: context.configLoader.getProjectHomeDir(),
+            authenticateEnsembleSessionGroup: (
+              input,
+              principal,
+              assertCurrent,
+            ) =>
+              authenticateEnsembleSessionGroup(
+                input,
+                ensembleInventory,
+                principal.id,
+                assertCurrent,
+              ),
             prepareEnsembleSessionGroup: (
               input,
               request,

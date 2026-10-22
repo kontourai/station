@@ -246,7 +246,17 @@ export class CliSessionGroupDispatchRefusal extends Error {
   }
 }
 
+export interface CliSessionGroupRunAdmission {
+  prepareDispatch(seatId: string): Promise<() => void>;
+}
+
 export interface CliSessionGroupHost<T> {
+  prepareRun?(input: {
+    groupId: string;
+    intentDigest: string;
+    members: Array<{ seatId: string; input: T }>;
+    signal: AbortSignal;
+  }): Promise<CliSessionGroupRunAdmission>;
   assertCurrent(): void;
   dispatch(
     input: T,
@@ -1046,7 +1056,32 @@ export class CliSessionGroups<T> {
       Math.max(0, Math.min(2_147_483_647, record.deadlineAt - Date.now())),
     );
     const lifetime = AbortSignal.any([signal, controller.signal, deadline]);
+    let admission: CliSessionGroupRunAdmission | undefined;
+    let scheduling = false;
     try {
+      if (
+        record.preset &&
+        !record.cancelled &&
+        !record.admissionClosed &&
+        record.dispatchCount < (record.maxDispatches ?? record.seats.length) &&
+        record.seats.some((seat) => seat.state === 'pending')
+      ) {
+        lifetime.throwIfAborted();
+        if (!host.prepareRun)
+          throw new CliSessionGroupUnavailable('ensemble_auth_unsupported');
+        admission = await host.prepareRun({
+          groupId,
+          intentDigest: record.intentDigest,
+          members: record.seats.map((seat) => ({
+            seatId: seat.seatId,
+            input: this.parseInput(seat.input),
+          })),
+          signal: lifetime,
+        });
+        host.assertCurrent();
+        lifetime.throwIfAborted();
+      }
+      scheduling = true;
       await orchestrateFlowMultiCursor({
         runId: groupId,
         cwd: join(this.root, groupId),
@@ -1055,9 +1090,11 @@ export class CliSessionGroups<T> {
         maxRounds: record.seats.length,
         signal: lifetime,
         onEvent: (event) => this.recordEvent(groupId, owner, event),
-        execute: (execution) => this.execute(groupId, owner, host, execution),
+        execute: (execution) =>
+          this.execute(groupId, owner, host, execution, admission),
       });
     } catch (error) {
+      if (!scheduling) throw error;
       this.logger.warn?.('CLI session group scheduling stopped', {
         groupId,
         error,
@@ -1158,10 +1195,36 @@ export class CliSessionGroups<T> {
     owner: string,
     host: CliSessionGroupHost<T>,
     execution: FlowMultiCursorExecution,
+    runAdmission?: CliSessionGroupRunAdmission,
   ): Promise<void> {
     const seatId = execution.claim.step_id;
+    const pending =
+      this.read(groupId, owner).seats.find((seat) => seat.seatId === seatId)
+        ?.state === 'pending';
+    let assertPrepared: (() => void) | undefined;
+    try {
+      assertPrepared = pending
+        ? await runAdmission?.prepareDispatch(seatId)
+        : undefined;
+      assertPrepared?.();
+    } catch (error) {
+      if (
+        error instanceof CliSessionGroupUnavailable &&
+        /^ensemble_[a-z_]{1,110}$/.test(error.code)
+      ) {
+        await this.mutate(groupId, owner, (record) => {
+          host.assertCurrent();
+          execution.signal.throwIfAborted();
+          const seat = record.seats.find((member) => member.seatId === seatId);
+          if (seat?.state === 'pending')
+            seat.dispatchFailure = { status: 409, code: error.code };
+        });
+      }
+      throw error;
+    }
     const launch = await this.mutate(groupId, owner, (record) => {
       host.assertCurrent();
+      assertPrepared?.();
       execution.signal.throwIfAborted();
       if (record.cancelled || Date.now() >= record.deadlineAt)
         throw new CliSessionGroupUnavailable('group_closed');
@@ -1192,6 +1255,7 @@ export class CliSessionGroups<T> {
       seat.reservedSessionId = `task:${randomUUID()}`;
       seat.initialClientTurnId = randomUUID();
       seat.state = 'launch-intent';
+      delete seat.dispatchFailure;
       seat.claimId = execution.claim.claim_id;
       record.dispatchCount += 1;
       if (
@@ -1217,6 +1281,7 @@ export class CliSessionGroups<T> {
             .parse(launch.seat.initialClientTurnId),
           assertCurrent: () => {
             host.assertCurrent();
+            assertPrepared?.();
             execution.signal.throwIfAborted();
             const current = this.read(groupId, owner);
             const seat = current.seats.find((s) => s.seatId === seatId);

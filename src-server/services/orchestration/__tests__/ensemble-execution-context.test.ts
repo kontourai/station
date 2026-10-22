@@ -39,6 +39,7 @@ import {
   createLocalEnsembleInventory,
   EnsembleExecutionContext,
 } from '../ensemble-execution-context.js';
+import { authenticateEnsembleSessionGroup } from '../ensemble-session-group-authentication.js';
 import { EventBus } from '../event-bus.js';
 
 const { execFile } = vi.hoisted(() => ({ execFile: vi.fn() }));
@@ -411,6 +412,64 @@ async function fixture(
 }
 
 describe('production Ensemble preparation authentication', () => {
+  test.each(['codex', 'claude'] as const)(
+    '%s run admission refreshes stale login once and rejects expired or aborted effect fences',
+    async (engine) => {
+      const f = await fixture(engine);
+      const controller = new AbortController();
+      const realNow = Date.now.bind(Date);
+      let advance = 0;
+      vi.spyOn(Date, 'now').mockImplementation(() => realNow() + advance);
+      const admission = await authenticateEnsembleSessionGroup(
+        {
+          groupId: 'run-auth',
+          intentDigest: 'intent-auth',
+          signal: controller.signal,
+          members: [
+            {
+              seatId: 'lead',
+              target: {
+                agent: agentId('coordinator'),
+                environment: { kind: 'current' },
+                expectedEngine: {
+                  kind: 'connection',
+                  connectionId: engineConnectionId(engine),
+                },
+                workspace: { kind: 'project', projectSlug: 'project' },
+                model: { override: f.preset.members[0].model, options: {} },
+              },
+            },
+          ],
+        },
+        f.inventory,
+        'fixture-principal',
+        () => {},
+      );
+      const statusCount = () =>
+        execFile.mock.calls.filter((call) => call[1].includes('status')).length;
+      expect(statusCount()).toBe(1);
+      const initial = await admission.prepareDispatch('lead');
+      initial();
+      advance = 30_001;
+      expect(initial).toThrow('ensemble_auth_stale');
+      const refreshed = await Promise.all([
+        admission.prepareDispatch('lead'),
+        admission.prepareDispatch('lead'),
+      ]);
+      expect(statusCount()).toBe(2);
+      refreshed.forEach((assertCurrent) => assertCurrent());
+      const statusCall = execFile.mock.calls.find((call) =>
+        call[1].includes('status'),
+      );
+      expect(statusCall?.[2].signal).toBe(controller.signal);
+      controller.abort();
+      expect(refreshed[0]).toThrow();
+      await expect(admission.prepareDispatch('lead')).rejects.toThrow();
+      expect(statusCount()).toBe(2);
+      f.assertNoInvocations();
+    },
+  );
+
   test.each(['codex', 'claude'] as const)(
     'probes %s in its selected profile and workspace, then refuses unsupported guarantees',
     async (engine) => {

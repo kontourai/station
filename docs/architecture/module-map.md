@@ -1813,6 +1813,15 @@ read current preset files. Revision, retained preset hash and exact member
 handles remain inspectable. Both presentations disappear on authority loss or a
 refused refresh.
 
+For preset-derived groups, `ensemble-session-group-authentication.ts` runs
+under exclusive group supervision before Flow claims. It resolves support for
+all saved targets before native login commands, binds observations to group
+intent, refreshes stale pending-member login observations and supplies the
+existing dispatch admission with synchronous currency checks. The route reuses
+ordinary target/posture/directory/scope authorization before probing. This
+host prerequisite issues no portable envelope or execution grant. ACP/OpenCode
+preset runs refuse until an actual-context login observer exists.
+
 A durable launch intent precedes dispatch. Ambiguous starts retain occupied
 capacity and cannot be resent automatically. Cancellation closes admission and
 requests interruption through the existing session owner; only terminal evidence

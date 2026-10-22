@@ -1664,6 +1664,26 @@ form aborts its pending supervision request. An unconfirmed creation or run is
 never automatically repeated; inspect the saved inventory before another action.
 The form reports scheduling completion separately from work acceptance.
 
+Before a preset-derived group reserves or starts any member, run supervision
+resolves the entire saved roster and observes each member's login in its actual
+Agent/profile, connection and canonical workspace context. All observations must
+succeed before Flow claims work. Codex and Claude support this non-model login
+check; ACP/OpenCode and non-shared Project workspaces currently refuse with
+`ensemble_auth_unsupported` before any member starts. Unauthenticated/unknown
+login returns `ensemble_auth_unverified`. Creating or inspecting a preset still
+starts no engine and performs no login probe.
+
+Observations are private to that supervision run and bound to the persisted
+intent. Configuration/permission currency is rechecked at dispatch and the
+session/initial-turn effect boundaries. A pending member whose observation is
+30 seconds old requires another login command before its reservation; a changed
+binding refuses rather than rebinds. Cancel/deadline abort the bounded login
+commands. Completed replay and zero-allowance groups need no new login probes.
+A later per-seat login refusal remains a bounded `dispatchFailure` on the pending
+seat without consuming a start reservation. Manual groups retain their ordinary
+dispatch path. Login proves neither selected
+model entitlement nor output, token, dollar or portable-envelope enforcement.
+
 Local-operator inventory inspection fails the whole page with 404 when any
 accepted member on that page fails the session-read check. It does not return a
 partial page or disclose which group was unreadable.

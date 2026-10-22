@@ -5190,6 +5190,15 @@ current locally granted operator; caller-supplied JSON uses ordinary group
 request authority. Creation starts no engines. Use the returned group ID with
 `runCliSessionGroup` to start work.
 
+Running a saved preset-derived group performs an all-member login barrier
+before Flow claims and seat reservations. Unsupported observers or a failed
+member refuse the run without starting a member. Current Codex/Claude login
+observations are private to the exact saved intent and supervision lifetime;
+ACP/OpenCode presets currently refuse. Signals reach bounded login commands,
+and effect fences recheck configuration and permission currency. Login is not
+selected-model entitlement, portable authority or fiscal enforcement. Creation,
+completed replay and zero-allowance execution do not probe login.
+
 Preset-derived views may include the retained `preset` identity: preset ID,
 name, exact source hash and Stationmaster member ID. Its optional `members`
 array retains each seat's codename, color and role, without prompt additions.
