@@ -62,6 +62,27 @@ does not establish crash recovery, native reattachment, full server boot,
 every background/order/error case, independent network isolation, real-provider
 behavior or full #1879 acceptance.
 
+At `2e7b5a4fffe`, an owned-loopback installed-Claude background child emitted
+partial text and stayed running until the exact task-scoped Stop request. Saved
+native events settled that child as `cancelled`, retaining its description only
+as `provider-summary`, without a `tool-return`. The exact parent initial turn
+still completed normally. The runtime harness itself failed: its predicate used
+`canceled` rather than the contract's `cancelled` spelling and timed out after
+the correct settlement. That failed receipt remains; no native invocation was
+repeated to correct the assertion.
+
+A fresh Node service with zero adapters read a SQLite backup of the saved run.
+Nine checks passed, including stopped/provider-summary labels, reachable
+owner-scoped child transcript and foreign-owner refusal. The transcript retained
+the authored child prompt, not the uncommitted partial narrative. Independent
+source/artifact review corroborated the exact child and parent events, while
+preserving the failed runtime-run status and the mounted-UI, HTTP-authority,
+crash, reattachment, provider and fiscal limits. The read-only qualifier now
+requires a nonempty settlement set; its first self-matching process scan is
+retained separately from the corrected exact-marker/ancestry-excluding scan.
+These saved facts support the bounded no-return control, not a successful
+original harness or full #1879 acceptance.
+
 At `3669442358f`, the existing audited Agents-pane browser journey passes both
 desktop and 390px phone-width cases against a built isolated Station. It checks
 CLI provenance, engine identity and live child activity, single Stop controls,
