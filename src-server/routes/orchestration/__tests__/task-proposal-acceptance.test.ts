@@ -380,7 +380,7 @@ test('a proposal brief the Task document cannot hold is refused before any Task 
     proposalBrief: longBrief,
   });
   expect(response.status).toBe(413);
-  expect((await response.json()).error).toBe(
+  expect(((await response.json()) as { error?: string }).error).toBe(
     'This brief is too long for a Task document, which holds about 5,400 characters of plain text. Shorten it and try again.',
   );
   expect(service.listTasks()).toEqual([]);
