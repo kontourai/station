@@ -44,6 +44,7 @@ category.
 - [cloud-move.md](cloud-move.md) — Move a Station setup to the cloud
 - [conduit-runtime-integration.md](conduit-runtime-integration.md) — Conduit runtime integration
 - [connection-broker.md](connection-broker.md) — Optional Station connection broker
+- [connection-list-recovery.md](connection-list-recovery.md) — Connection-list recovery without a backup
 - [connections-onboarding.md](connections-onboarding.md) — Design: Connections onboarding & capability passthrough
 - [conversation-state.md](conversation-state.md) — Design: conversation state — channel-home logs, signed proposals, per-noun consistency
 - [developer-surface.md](developer-surface.md) — Developer surface
