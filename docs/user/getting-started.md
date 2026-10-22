@@ -136,10 +136,11 @@ it from a physical phone. Use the reachable address shown in the pairing flow;
 see [Connections](https://github.com/kontourai/station/blob/main/docs/guides/connections.md)
 for remote access. A pairing code grants access; it does not create a network route.
 
-If you have no Station yet, choose **I haven’t set up a Station yet** on your
-phone for the computer setup handoff. **Other ways to connect** contains host
-addresses and broker invitations. You can start with an ordinary chat; custom
-Agents, remote tasks, and layouts are optional.
+If you have no Station yet, install and open it on your computer using the
+options below. The phone's connection manager offers QR scanning, pairing-code
+entry and **Connect a Station** for a host address. Broker route setup is a
+separate advanced option. You can start with an ordinary chat; custom Agents,
+remote tasks, and layouts are optional.
 
 ## Preferences across devices
 

@@ -51,8 +51,7 @@ export function MobileWelcomeBoundary({ children }: { children: ReactNode }) {
           </p>
         </details>
         <p className="mobile-welcome__footnote">
-          No Station yet? The connection screen includes computer setup
-          instructions.
+          No Station yet? Install Station on your computer to get started.
         </p>
       </div>
     </main>
