@@ -156,6 +156,7 @@ async function expectAgentPresence(
   await expect(
     page.locator(`.task-room-rail [data-actor-id="${agent.actor.actorId}"]`),
   ).toContainText(agent.actor.label);
+  return live;
 }
 
 test.describe
@@ -720,12 +721,14 @@ test.describe
           throw new Error(
             `restarted room endpoint ${restartedRoomProbe.status}: ${restartedRoomProbe.body}`,
           );
-        await expectAgentPresence(
+        const restartedPresence = await expectAgentPresence(
           owner,
           taskId,
           agentEdit.sessionId,
           agentEdit.runId,
         );
+        expect(restartedPresence.cursors).toEqual([]);
+        expect(restartedPresence.panes).toEqual([]);
         await owner.getByRole('tab', { name: 'Brief', exact: true }).click();
         await owner
           .getByRole('button', { name: 'Edit brief', exact: true })
@@ -735,7 +738,7 @@ test.describe
         ).toHaveValue(agentText);
         await expect(
           owner.getByRole('complementary', { name: 'Remote selections' }),
-        ).toContainText('Remote selections appear here.');
+        ).toHaveCount(0);
         await expect(
           owner.getByRole('button', { name: 'Stop watching' }),
         ).toHaveCount(0);
