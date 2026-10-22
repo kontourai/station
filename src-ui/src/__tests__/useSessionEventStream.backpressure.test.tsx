@@ -76,16 +76,16 @@ import {
   useSessionEventStream,
 } from '../hooks/orchestration/useSessionEventStream';
 
-function event(index: number): OrchestrationEvent {
+function event(index: number, threadId = 'task:1'): OrchestrationEvent {
   return {
     eventId: `evt-${String(index).padStart(4, '0')}`,
     provider: 'codex',
-    threadId: 'task:1',
+    threadId,
     createdAt: `2026-07-18T00:00:${String((index * 7) % 60).padStart(2, '0')}.${String(
       index % 1000,
     ).padStart(3, '0')}Z`,
     method: 'session.started',
-    sessionId: 'task:1',
+    sessionId: threadId,
   } as OrchestrationEvent;
 }
 
@@ -250,7 +250,7 @@ describe('useSessionEventStream buffer backpressure', () => {
     await waitFor(() => expect(view.result.current.events).toHaveLength(2));
 
     await switchThread(view, 'task:2');
-    await deliver([{ ...event(21), threadId: 'task:2', sessionId: 'task:2' }]);
+    await deliver([event(21, 'task:2')]);
     await frames.runAll();
 
     await waitFor(() => expect(view.result.current.events).toHaveLength(1));
@@ -271,7 +271,7 @@ describe('useSessionEventStream buffer backpressure', () => {
     expect(frames.scheduled.size).toBe(1);
 
     await switchThread(view, 'task:2');
-    await deliver([{ ...event(21), threadId: 'task:2', sessionId: 'task:2' }]);
+    await deliver([event(21, 'task:2')]);
     await frames.runAll();
 
     await waitFor(() => expect(view.result.current.events).toHaveLength(1));

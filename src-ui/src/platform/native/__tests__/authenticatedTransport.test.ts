@@ -12,6 +12,7 @@ import {
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { completeVerifiedPairing } from '../../../../../packages/connect/src/react/pairingCompletion.js';
+import { classifyUndeliverableSend } from '../../../lib/outboundQueue';
 import { nativePairingExchangeTransport } from '../pairingTransport';
 
 type BrokerMessage =
@@ -1013,6 +1014,29 @@ describe('Station envelope marker through the native broker (#3166)', () => {
 
   afterEach(() => {
     setClientCredentialResolver();
+  });
+
+  test('SDK network-change failures retain uncertain delivery for queue recovery without replay', async () => {
+    const origin = 'https://network-change.station.test';
+    useNativeTransport(origin);
+    bridge.invoke.mockImplementation(async (command: string) => {
+      if (command === 'station_native_http_request') {
+        queueMicrotask(() => emit({ type: 'error', code: 'network_changed' }));
+      }
+    });
+    const error = await sendExecutionMessage(origin, {
+      agentId: 'writer',
+      message: 'hello',
+      idempotencyKey: 'network-change-k1',
+    } as never).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(TypeError);
+    expect(error).toMatchObject({ code: 'network_changed' });
+    expect(classifyUndeliverableSend(error)).toBe('send-unconfirmed');
+    expect(
+      bridge.invoke.mock.calls.filter(
+        ([command]) => command === 'station_native_http_request',
+      ),
+    ).toHaveLength(1);
   });
 
   test('a marked Station refusal is recognised as Station’s own answer', async () => {

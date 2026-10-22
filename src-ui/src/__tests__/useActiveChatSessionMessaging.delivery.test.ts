@@ -63,13 +63,17 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   };
 });
 
-import { ChatHttpError } from '@kontourai/station-sdk/client';
+import {
+  ChatHttpError,
+  StationRequestTimeoutError,
+} from '@kontourai/station-sdk/client';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { handleTurnStartedEvent } from '../hooks/orchestration/turnHandlers';
 import { useSendMessage } from '../hooks/useActiveChatSessionMessaging';
 import {
   _resetOutboundQueueStorage,
   _setOutboundQueueStorage,
+  type OutboundDispatchTurn,
   outboundDispatch,
 } from '../lib/outboundQueue';
 import { messageDeliveryStateFor } from '../utils/messageDeliveryState';
@@ -236,6 +240,135 @@ describe('useSendMessage: durable before the request', () => {
       }),
     ]);
   });
+
+  it.each([
+    ['attachment', 'network_changed'],
+    ['storage-failure', 'network_changed'],
+    ['attachment', 'fetch'],
+    ['attachment', 'proxy'],
+    ['attachment', 'transport_reset'],
+    ['attachment', 'transport_timeout'],
+    ['attachment', 'transport_tls'],
+    ['attachment', 'sdk-timeout'],
+    ['attachment', 'abort'],
+  ])(
+    'looks up a received %s send after %s without a live row before any flush',
+    async (mode, failure) => {
+      const attachments =
+        mode === 'attachment'
+          ? [
+              {
+                id: 'image-1',
+                name: 'screen.png',
+                type: 'image/png',
+                size: 3,
+                data: 'data:image/png;base64,YWJj',
+              },
+            ]
+          : undefined;
+      if (attachments)
+        activeChatsStore.updateChat(chat, {
+          attachmentStages: attachments.map((attachment) => ({
+            clientAttachmentId: attachment.id,
+            name: attachment.name,
+            mimeType: attachment.type,
+            size: attachment.size,
+            state: 'complete',
+            progress: 1,
+            delivery: 'legacy-inline',
+          })),
+        });
+      if (mode === 'storage-failure') {
+        const values = new Map<string, unknown>();
+        let writes = 0;
+        _setOutboundQueueStorage({
+          getItem: async (key) => values.get(key),
+          setItem: async (key, value) => {
+            values.set(key, value);
+          },
+          updateItem: async (key, updater) => {
+            if (++writes === 1)
+              throw new Error('storage unavailable before send');
+            values.set(key, updater(values.get(key)));
+          },
+        });
+      }
+      // This fixture records the server effect before losing its response.
+      const turns: string[] = [];
+      sendExecutionMessageMock.mockImplementation(async (_apiBase, body) => {
+        expect(await outboundDispatch.snapshot()).toEqual([]);
+        turns.push(body.clientTurnId);
+        if (failure === 'proxy')
+          throw new ChatHttpError(
+            { status: 502, message: 'Bad gateway' } as never,
+            false,
+          );
+        if (failure === 'fetch') throw new TypeError('Failed to fetch');
+        if (failure === 'sdk-timeout')
+          throw new StationRequestTimeoutError('http://api.test', 60000, {
+            method: 'POST',
+          });
+        if (failure === 'abort')
+          throw new DOMException('Aborted after send', 'AbortError');
+        throw Object.assign(
+          failure === 'network_changed'
+            ? new TypeError('Network changed')
+            : new Error('Lost response'),
+          { code: failure },
+        );
+      });
+      const { result } = renderHook(() => useSendMessage('http://api.test'));
+      await act(async () => {
+        await result.current(
+          chat,
+          'codex',
+          undefined,
+          'received once',
+          attachments,
+        );
+      });
+      expect(sendExecutionMessageMock).toHaveBeenCalledTimes(1);
+      const key = turns[0]!;
+      expect(await outboundDispatch.snapshot()).toEqual([
+        expect.objectContaining({
+          clientTurnId: key,
+          conversationId: chat,
+          status: 'invoking',
+          awaitingLookup: true,
+          station: { apiBase: 'http://api.test' },
+        }),
+      ]);
+      await expect(outboundDispatch.edit(key, 'changed')).rejects.toThrow();
+      await expect(outboundDispatch.discard(key)).rejects.toThrow();
+      const replay = vi.fn(async (turn: Readonly<OutboundDispatchTurn>) => {
+        turns.push(turn.clientTurnId);
+        return { kind: 'accepted' as const, providerTurnId: 'duplicate-turn' };
+      });
+      await outboundDispatch.flush(replay, {
+        station: { apiBase: 'http://api.test' },
+      });
+      expect(replay).not.toHaveBeenCalled();
+      const lookup = vi.fn(async (turn: Readonly<OutboundDispatchTurn>) => ({
+        clientTurnId: turn.clientTurnId,
+        conversationId: turn.conversationId!,
+        outcome: 'started' as const,
+        sessionId: chat,
+        turnId: 'provider-turn-original',
+      }));
+      await outboundDispatch.reconcile(lookup, {
+        station: { apiBase: 'http://api.test' },
+      });
+      expect(lookup).toHaveBeenCalledWith(
+        expect.objectContaining({ clientTurnId: key }),
+      );
+      await outboundDispatch.flush(replay, {
+        station: { apiBase: 'http://api.test' },
+      });
+      expect(replay).not.toHaveBeenCalled();
+      expect(turns).toEqual([key]);
+      expect(await outboundDispatch.snapshot()).toEqual([]);
+    },
+  );
 
   it('a proxy 502 is not Station refusing: the row is kept for the lookup and the composer is not handed a second copy', async () => {
     sendExecutionMessageMock.mockRejectedValueOnce(

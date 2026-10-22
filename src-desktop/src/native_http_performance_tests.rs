@@ -379,36 +379,39 @@ fn native_http_profile_cache_refreshes_external_edits_and_rejects_unsafe_cached_
     let path = root.path().join("profiles.json");
     write_empty_station_profile_store(&path).unwrap();
     let mut cache = StationProfileSnapshotCache::default();
-    let first = cache.read(&path).unwrap();
+    // A fixed observation before the file timestamp deterministically treats
+    // this file as ambiguous, even if the test thread is descheduled.
+    let observed_at = std::time::UNIX_EPOCH;
+    let first = cache.read(&path, observed_at).unwrap();
     assert!(
-        Arc::ptr_eq(&first, &cache.read(&path).unwrap()),
+        Arc::ptr_eq(&first, &cache.read(&path, observed_at).unwrap()),
         "unchanged chunks reuse the parsed store"
     );
     let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
     let edited = EMPTY_STATION_PROFILE_STORE.replace("\"revision\":0", "\"revision\":1");
     std::fs::write(&path, &edited).unwrap();
-    // A same-size edit with restored mtime must still invalidate via ctime.
+    // A same-size edit with restored mtime must refresh even if ctime collides.
     std::fs::OpenOptions::new()
         .write(true)
         .open(&path)
         .unwrap()
         .set_modified(modified)
         .unwrap();
-    assert_eq!(cache.read(&path).unwrap().revision, 1);
+    assert_eq!(cache.read(&path, observed_at).unwrap().revision, 1);
     let staged = root.path().join("replacement.json");
     std::fs::write(&staged, EMPTY_STATION_PROFILE_STORE).unwrap();
     std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o600)).unwrap();
     replace_station_profile_store(&staged, &path).unwrap();
-    assert_eq!(cache.read(&path).unwrap().revision, 0);
+    assert_eq!(cache.read(&path, observed_at).unwrap().revision, 0);
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
-    assert!(cache.read(&path).is_err());
+    assert!(cache.read(&path, observed_at).is_err());
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
     std::fs::write(&path, "malformed").unwrap();
-    assert!(cache.read(&path).is_err());
+    assert!(cache.read(&path, observed_at).is_err());
     std::fs::remove_file(&path).unwrap();
-    assert!(cache.read(&path).is_err());
+    assert!(cache.read(&path, observed_at).is_err());
     symlink(&staged, &path).unwrap();
-    assert!(cache.read(&path).is_err());
+    assert!(cache.read(&path, observed_at).is_err());
 }
 
 #[test]
@@ -444,7 +447,11 @@ fn native_http_profile_replacement_recovers_a_poisoned_snapshot_cache() {
     let path = secure_mobile_station_profiles_path(root.path()).unwrap();
     write_empty_station_profile_store(&path).unwrap();
     let cache = NATIVE_HTTP_PROFILE_SNAPSHOTS.get_or_init(Default::default);
-    cache.lock().unwrap().read(&path).unwrap();
+    cache
+        .lock()
+        .unwrap()
+        .read(&path, std::time::SystemTime::now())
+        .unwrap();
     let _ = std::panic::catch_unwind(|| {
         let _held = cache.lock().unwrap();
         panic!("injected snapshot panic");
@@ -459,7 +466,15 @@ fn native_http_profile_replacement_recovers_a_poisoned_snapshot_cache() {
     let next = root.path().join("next.json");
     std::fs::copy(&path, &next).unwrap();
     replace_station_profile_store(&next, &path).unwrap();
-    assert_eq!(cache.lock().unwrap().read(&path).unwrap().revision, 0);
+    assert_eq!(
+        cache
+            .lock()
+            .unwrap()
+            .read(&path, std::time::SystemTime::now())
+            .unwrap()
+            .revision,
+        0
+    );
 }
 
 #[test]
@@ -617,7 +632,7 @@ fn native_http_network_change_during_upload_does_not_interrupt_or_replay_post() 
         return;
     }
     use ureq::unversioned::transport::{
-        Buffers, ConnectionDetails, Connector, DefaultConnector, NextTimeout, Transport,
+        Buffers, ConnectionDetails, Connector, NextTimeout, Transport,
     };
     #[derive(Debug)]
     struct ChangeDuringUpload;
@@ -663,7 +678,7 @@ fn native_http_network_change_during_upload_does_not_interrupt_or_replay_post() 
         }
     }
     let station = KeepAliveStation::start();
-    let connector = DefaultConnector::default()
+    let connector = native_http_transport::SocketConnector
         .chain(ChangeDuringUpload)
         .chain(native_http_transport::ObserveConnector);
     let agent = ureq::Agent::with_parts(
@@ -812,18 +827,243 @@ fn native_http_recent_metadata_collision_compares_bytes() {
     let path = secure_mobile_station_profiles_path(root.path()).unwrap();
     write_empty_station_profile_store(&path).unwrap();
     let mut cache = StationProfileSnapshotCache::default();
-    assert_eq!(cache.read(&path).unwrap().revision, 0);
+    // Freeze the first observation in an ambiguous timestamp window. A later
+    // observation moves past it without relying on the wall clock advancing.
+    assert_eq!(
+        cache.read(&path, std::time::UNIX_EPOCH).unwrap().revision,
+        0
+    );
+    let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
+    for revision in 1..=64 {
+        let edited = EMPTY_STATION_PROFILE_STORE
+            .replace("\"revision\":0", &format!("\"revision\":{}", revision % 10));
+        std::fs::write(&path, edited).unwrap();
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(modified)
+            .unwrap();
+        // The reader sees a colliding version despite different bytes. Keep
+        // the real cached trust decision; do not manufacture a trusted receipt.
+        let version = StationProfileFileVersion::of(&std::fs::metadata(&path).unwrap());
+        let settled = std::time::UNIX_EPOCH + Duration::from_secs(version.changed.0 as u64 + 3);
+        cache.snapshot.as_mut().unwrap().1 = version;
+        let mut late = cache.clone();
+        assert_eq!(late.read(&path, settled).unwrap().revision, revision % 10);
+        assert_eq!(
+            cache.read(&path, std::time::UNIX_EPOCH).unwrap().revision,
+            revision % 10
+        );
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn native_http_snapshot_late_old_inode_cannot_replace_a_newer_publication() {
+    const WORKER: &str = "STATION_SNAPSHOT_PUBLICATION_WORKER";
+    if std::env::var_os(WORKER).is_none() {
+        assert!(std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "native_http_performance_tests::native_http_snapshot_late_old_inode_cannot_replace_a_newer_publication", "--nocapture"])
+            .env(WORKER, "1").status().unwrap().success());
+        return;
+    }
+    let root = tempfile::tempdir().unwrap();
+    let path = secure_mobile_station_profiles_path(root.path()).unwrap();
+    write_empty_station_profile_store(&path).unwrap();
+    let staged = root.path().join("replacement.json");
+    std::fs::copy(&path, &staged).unwrap();
     std::fs::write(
-        &path,
+        &staged,
         EMPTY_STATION_PROFILE_STORE.replace("\"revision\":0", "\"revision\":1"),
     )
     .unwrap();
-    // Model a filesystem timestamp collision: metadata matches the cached
-    // version even though the bytes changed in the same timestamp window.
-    cache.snapshot.as_mut().unwrap().1 =
-        StationProfileFileVersion::of(&std::fs::metadata(&path).unwrap());
-    // Waiting out the collision window must not turn the old byte snapshot
-    // into trusted metadata without another read.
-    std::thread::sleep(Duration::from_millis(2100));
-    assert_eq!(cache.read(&path).unwrap().revision, 1);
+
+    // Pause the writer after invalidation, before its atomic rename. Reader A
+    // captures that generation and finishes reading the old inode.
+    invalidate_native_http_profile_snapshot().unwrap();
+    let generation = NATIVE_HTTP_PROFILE_GENERATION.load(Ordering::Acquire);
+    let shared = NATIVE_HTTP_PROFILE_SNAPSHOTS.get_or_init(Default::default);
+    let mut older = shared.lock().unwrap().clone();
+    let previous = older.file_version();
+    assert_eq!(
+        older
+            .read(&path, std::time::SystemTime::now())
+            .unwrap()
+            .revision,
+        0
+    );
+    std::fs::rename(&staged, &path).unwrap();
+    // Reader B publishes the replacement before A resumes publication.
+    let newer = read_native_http_profile_snapshot(&path, || Ok(())).unwrap();
+    assert_eq!(newer.revision, 1);
+    assert_eq!(
+        NATIVE_HTTP_PROFILE_GENERATION.load(Ordering::Acquire),
+        generation
+    );
+    let mut shared = shared.lock().unwrap();
+    shared.publish_if_unchanged(older, previous);
+    let installed = &shared.snapshot.as_ref().unwrap().3;
+    assert_eq!(installed.revision, 1);
+    assert!(Arc::ptr_eq(installed, &newer));
+}
+
+#[test]
+fn native_http_silent_reused_connection_fails_on_epoch_change_without_replay() {
+    const WORKER: &str = "STATION_SILENT_EPOCH_WORKER";
+    if std::env::var_os(WORKER).is_none() {
+        assert!(std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "native_http_performance_tests::native_http_silent_reused_connection_fails_on_epoch_change_without_replay", "--nocapture"])
+            .env(WORKER, "1").status().unwrap().success());
+        return;
+    }
+    use ureq::unversioned::transport::{
+        Buffers, ConnectionDetails, Connector, NextTimeout, Transport,
+    };
+    #[derive(Debug)]
+    struct SignalWait {
+        reads: Arc<AtomicUsize>,
+        armed: Arc<AtomicBool>,
+        waiting: std::sync::mpsc::Sender<()>,
+    }
+    #[derive(Debug)]
+    struct WaitingTransport {
+        inner: Box<dyn Transport>,
+        signal: SignalWait,
+    }
+    impl Connector<Box<dyn Transport>> for SignalWait {
+        type Out = WaitingTransport;
+        fn connect(
+            &self,
+            _: &ConnectionDetails,
+            inner: Option<Box<dyn Transport>>,
+        ) -> Result<Option<Self::Out>, ureq::Error> {
+            Ok(inner.map(|inner| WaitingTransport {
+                inner,
+                signal: SignalWait {
+                    reads: Arc::clone(&self.reads),
+                    armed: Arc::clone(&self.armed),
+                    waiting: self.waiting.clone(),
+                },
+            }))
+        }
+    }
+    impl Transport for WaitingTransport {
+        fn buffers(&mut self) -> &mut dyn Buffers {
+            self.inner.buffers()
+        }
+        fn transmit_output(
+            &mut self,
+            amount: usize,
+            timeout: NextTimeout,
+        ) -> Result<(), ureq::Error> {
+            self.inner.transmit_output(amount, timeout)
+        }
+        fn await_input(&mut self, timeout: NextTimeout) -> Result<bool, ureq::Error> {
+            self.signal.reads.fetch_add(1, Ordering::AcqRel);
+            if self.signal.armed.swap(false, Ordering::AcqRel) {
+                self.signal.waiting.send(()).unwrap();
+            }
+            self.inner.await_input(timeout)
+        }
+        fn is_open(&mut self) -> bool {
+            self.inner.is_open()
+        }
+        fn is_tls(&self) -> bool {
+            self.inner.is_tls()
+        }
+    }
+    for method in ["GET", "POST"] {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let (waiting, wait) = std::sync::mpsc::channel();
+        let (done, finish) = std::sync::mpsc::channel();
+        let reads = Arc::new(AtomicUsize::new(0));
+        let armed = Arc::new(AtomicBool::new(false));
+        let connector = native_http_transport::SocketConnector
+            .chain(SignalWait {
+                reads: Arc::clone(&reads),
+                armed: Arc::clone(&armed),
+                waiting,
+            })
+            .chain(native_http_transport::ObserveConnector);
+        let agent = ureq::Agent::with_parts(
+            native_http_agent_config()
+                .timeout_recv_response(Some(Duration::from_secs(4)))
+                .build(),
+            connector,
+            ureq::unversioned::resolver::DefaultResolver::default(),
+        );
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(6)))
+                .unwrap();
+            let mut reader = BufReader::new(stream);
+            for request in 0..3 {
+                loop {
+                    let mut line = String::new();
+                    assert!(reader.read_line(&mut line).unwrap() > 0);
+                    if line == "\r\n" {
+                        break;
+                    }
+                }
+                if request < 2 {
+                    if request == 1 {
+                        std::thread::sleep(Duration::from_millis(650));
+                    }
+                    reader
+                        .get_mut()
+                        .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+                        .unwrap();
+                }
+            }
+            // The observer has already checked the epoch and entered its real
+            // blocking read. Keep the peer silent until the client settles.
+            wait.recv_timeout(Duration::from_secs(3)).unwrap();
+            native_http_transport::network_changed();
+            finish.recv_timeout(Duration::from_secs(6)).unwrap();
+            listener.set_nonblocking(true).unwrap();
+            assert!(
+                matches!(listener.accept(), Err(e) if e.kind() == std::io::ErrorKind::WouldBlock)
+            );
+        });
+        agent
+            .get(&origin)
+            .call()
+            .unwrap()
+            .body_mut()
+            .read_to_string()
+            .unwrap();
+        reads.store(0, Ordering::Release);
+        agent
+            .get(&origin)
+            .call()
+            .unwrap()
+            .body_mut()
+            .read_to_string()
+            .unwrap();
+        assert_eq!(
+            reads.load(Ordering::Acquire),
+            1,
+            "a healthy 650 ms response wait must block once, without periodic timeout wakeups"
+        );
+        armed.store(true, Ordering::Release);
+        let request = ureq::http::Request::builder()
+            .method(method)
+            .uri(&origin)
+            .body(Vec::new())
+            .unwrap();
+        let started = Instant::now();
+        let result =
+            native_http_transport::run(&agent, request, &AtomicBool::new(false), None, || {
+                panic!("a written request must never replay")
+            });
+        let elapsed = started.elapsed();
+        done.send(()).unwrap();
+        server.join().unwrap();
+        let error = result.unwrap_err();
+        assert_eq!(error.code, "network_changed", "{method}: {error:?}");
+        assert!(elapsed < Duration::from_secs(2), "{method}: {elapsed:?}");
+    }
 }

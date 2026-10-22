@@ -158,6 +158,22 @@ an agent. Android retains its system resolver. Redirects remain disabled, and
 ureq negotiates and decodes gzip without treating its compressed length as the
 length of the decoded response.
 
+A network epoch change retires pooled connections at checkout. After the last
+successful request write, a silent response wait registers its socket under the
+network epoch lock and blocks until data or its real receive deadline. A network
+change shuts down registered sockets and returns `network_changed`, without
+periodic read-timeout wakeups. Registration and epoch publication share the same
+lock so a change just before the read cannot be missed.
+Transmission is not interrupted by epoch changes, and a written request is never
+replayed by this transport. Once response bytes arrive, the existing receive
+behavior applies. The WebView adapter preserves `network_changed` as a coded
+`TypeError` through the SDK. The outbound queue records unanswered sends as
+awaiting a delivery lookup under the same key, including attachments and sends
+whose pre-request durable write failed. Fetch/proxy failures and native resets,
+receive timeouts and ambiguous transport failures use the same fence. Only
+Station's `not-received` lookup answer permits a resend; uncertainty does not
+prove the request was unsent.
+
 Each request still reads the OS credential store. There is no portable keyring
 change notification covering external replacement, deletion and locked storage,
 so a cached bearer could hide a refusal. The two request-path keyring reads are
@@ -169,6 +185,9 @@ device/inode, size, mtime and ctime, including nanoseconds. Settled high-resolut
 metadata avoids opening the file. Recent, coarse or future timestamps require a
 byte comparison to cover timestamp collisions. File I/O runs outside the global
 cache mutex; a write generation prevents publishing a snapshot across invalidation.
+Publication also compares the installed path and file version with the reader's
+starting snapshot, so a late reader of an old inode cannot overwrite a newer
+reader's publication within the same write generation.
 Poisoned cache locks recover on reads as well as writes. Atomic
 replacement and in-place edits invalidate the snapshot, including a same-size
 edit that restores mtime. Errors never fall back to cached authority. Windows
@@ -528,6 +547,35 @@ navigation containment. The default sweep runs this lane and `device-pane`;
 the key-approval and grant-lifecycle lanes are explicit opt-ins. Harness
 availability is source evidence, not an executed platform result. Record the
 exact binary, revision, host and completed lane result when running it.
+
+The desktop sidecar starts Node with a home-scoped compile cache. The first
+[server bootstrap import](../../src-server/runtime/bootstrap/server-compile-cache.ts)
+loads `.env`, then removes `NODE_COMPILE_CACHE` from the server environment
+after Node has consumed its startup setting, so dotenv cannot restore it for
+generic child launchers.
+Targeted child environment scrubs remain in place. The process supervisor keeps
+the setting when launching replacement Station server generations; each enters
+through the same server bootstrap. The
+[process regression](../../src-server/runtime/bootstrap/__tests__/server-compile-cache.process.test.ts)
+checks Node's active cache across two starts and executes real stdio MCP,
+Strands, Flow Agents, Veritas and login-shell child paths. Its first-import
+ordering assertion is a source-only wiring guard, separate from packaged-shell
+startup evidence. A second regression builds the real server entry and runs it
+from a working directory whose `.env` contains the cache setting. It verifies
+that dotenv loaded, reaches a deliberate invalid-port refusal, and observes a
+real child without that variable, both with and without a startup cache.
+External ESM dependencies evaluate before the bundled bootstrap. The regression
+observes no Node child-process launches during evaluation of the installed
+dependency graph; this evidence is specific to those dependency versions.
+
+Ownership refresh reserves a generation before the registry bridge runs and
+publishes only while that generation remains current. Explicit invalidation
+also advances the generation, so an older idle poll cannot replace a newer
+service-convergence observation. Channel-controlled Rust tests exercise that
+overlap; cover admission and service convergence have executable decision and
+ordering tests. Labeled source-only guards retain the AppHandle/native wiring
+checks. These checks do not establish a visible cover or installed service
+behavior.
 
 Run the changed selector first, then the exact focused checks it selects:
 

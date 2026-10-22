@@ -166,7 +166,9 @@
 
     "src-ui/src/__tests__/useConversationInbox.test.tsx",
 
-    "src-desktop/src/mobile_recovery_ios.rs"
+    "src-desktop/src/mobile_recovery_ios.rs",
+
+    "src-desktop/src/native_http_transport.rs"
   ],
 
   "checks": [

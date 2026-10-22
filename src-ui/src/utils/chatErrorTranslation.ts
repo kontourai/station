@@ -585,6 +585,7 @@ export function translateChatError(
         body: text || 'The secure connection failed.',
         hint: 'Check its address, certificate, and device clock, then Retry.',
       };
+    case 'network_changed':
     case 'transport_reset':
       return {
         title: 'Connection to this Station was interrupted',

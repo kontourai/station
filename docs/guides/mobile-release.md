@@ -200,7 +200,7 @@ local blocker and is not a claim that TestFlight or App Store Connect is ready.
 `ready: true` is local preflight evidence, not a complete archive recipe.
 Channel delivery also needs the matching identity overlay, regenerated icon
 catalog, native build provenance, privacy resources, signing configuration,
-and (for Beta/Nightly) the Live Activity and Notification Service extensions
+and (when push is enabled) the Live Activity and Notification Service extensions
 and their separate profiles. The owning
 sequence is [testflight-delivery.yml](../../.github/workflows/testflight-delivery.yml);
 a bare `tauri ios init` plus `ios build` does not reproduce it.
@@ -345,8 +345,8 @@ Google's keyless upload and Secret Manager path is separate, as described below.
 | --- | --- | --- | --- |
 | `APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64`, `APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`, `APPLE_DEVELOPMENT_TEAM`, `APPLE_IOS_SIGNING_IDENTITY`, `APPLE_PROVISIONING_PROFILE_BASE64` | iOS | Code-signs the release IPA | Required by the iOS build/sign job — see native-releases.md |
 | `APPLE_API_KEY_ID`, `APPLE_API_ISSUER_ID`, `APPLE_API_PRIVATE_KEY` | iOS | Authenticates App Store Connect preflight, TestFlight upload, and processed-build receipt | Required; absence fails the Stable iOS release job before signing work |
-| `APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64` (`ios-beta` and `ios-nightly` only) | iOS | Signs the Live Activity widget extension | Required by Beta and Nightly TestFlight builds; see [Live Activity in Beta and Nightly](#live-activity-in-beta-and-nightly) |
-| `APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64` (`ios-beta` and `ios-nightly` only) | iOS | Signs the Notification Service extension | Required separately from the app and Live Activity profiles |
+| `APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64` (push-enabled channel environments) | iOS | Signs the Live Activity widget extension | Required by push-enabled TestFlight builds; see [Live Activity in Beta and Nightly](#live-activity-in-beta-and-nightly) |
+| `APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64` (push-enabled channel environments) | iOS | Signs the Notification Service extension | Required separately from the app and Live Activity profiles |
 
 Google Play authentication deliberately has no secret row. GitHub's OIDC token
 is exchanged through Google Workload Identity Federation for a short-lived
@@ -405,11 +405,30 @@ not replace the App Store export with it.
 ### Live Activity in Beta and Nightly
 
 Beta and Nightly TestFlight builds declare both the Live Activity widget and
-Notification Service extension. Stable declares neither. The source of this
-selection is the `agentActivityBundleId` and `notificationServiceBundleId` in
+Notification Service extension. Stable can build the same pair, but defaults
+to neither: the owner must set the **environment** variable
+`STATION_IOS_STABLE_PUSH_ENABLED=true` in `native-release`. Empty or `false`
+keeps Stable off; any other value fails Stable configuration. Beta and Nightly
+ignore this switch. The reviewed identities and enablement resolver are in
 [`ios-testflight-channel.mjs`](../../scripts/ios-testflight-channel.mjs).
-This is build configuration; it does not prove provider delivery or a device
-notification in the current release.
+Both extensions, the native plugin, signing and IPA audits follow that single
+resolved answer. Missing profiles fail an enabled build; they never silently
+disable push. This is build configuration, not provider or device-delivery proof.
+
+This uses the existing iOS 18+ registration path, which currently requires
+Live Activities to be supported and enabled before registering even for alerts
+(`src-ui/src/platform/native/agentActivity.ts`). Enabling Stable does not add
+push to iOS 16/17 or an alert-only opt-in with Live Activities disabled.
+
+The exclusion originated in [#2664](https://github.com/kontourai/station/pull/2664)
+(commit `923c4a4d7f0`, #2513): its delivery scope was Beta/Nightly, with
+negative Stable package checks. Its owner report says Push/Broadcast had been
+enabled for all three app IDs, but only Beta/Nightly profiles were prepared.
+[#2740](https://github.com/kontourai/station/pull/2740) added the Notification
+Service extension on those same channels. That history supports staged release
+and signing preparation, not a separate Stable runtime incompatibility. Those
+historical owner reports do not establish current Apple configuration.
+Physical delivery remains tracked by [#2808](https://github.com/kontourai/station/issues/2808).
 
 The [TestFlight workflow](../../.github/workflows/testflight-delivery.yml):
 
@@ -448,8 +467,8 @@ For these channels the app's generated `Info.plist` receives
 The workflow preserves and restores the committed plist before applying these
 channel-only additions. It leaves `NSSupportsLiveActivitiesFrequentUpdates`
 unset: routine Live Activity updates use priority 5, while start/end/alerting
-updates use priority 10. Stable must not contain either extension, the Live
-Activity plugin class, or the Live Activity plist declaration. The ordinary
+updates use priority 10. When the Stable switch is off, its package must not
+contain either extension, the plugin class, or the Live Activity plist declaration. The ordinary
 committed development project does not include these generated extensions.
 
 The widget has no separate privacy manifest; its current shared sources use
@@ -463,13 +482,15 @@ name the app and both extensions. The exported IPA audit checks each embedded
 profile UUID against the imported profile, so preparing export options alone
 cannot count as successful signing.
 
-Each of `ios-beta` and `ios-nightly` requires three provisioning-profile secrets:
+Each push-enabled environment (`ios-beta`, `ios-nightly`, and opted-in
+`native-release`) requires three provisioning-profile secrets. `<app id>` is
+`io.kontourai.station` for Stable and `io.kontourai.station.<channel>` for Beta/Nightly:
 
 | Secret | Profile |
 | --- | --- |
-| `APPLE_PROVISIONING_PROFILE_BASE64` | App Store profile for `io.kontourai.station.<channel>`, with production push enabled |
-| `APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64` | App Store profile for `io.kontourai.station.<channel>.AgentActivity` |
-| `APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64` | App Store profile for `io.kontourai.station.<channel>.NotificationService` |
+| `APPLE_PROVISIONING_PROFILE_BASE64` | App Store profile for `<app id>`, with production push enabled |
+| `APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64` | App Store profile for `<app id>.AgentActivity` |
+| `APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64` | App Store profile for `<app id>.NotificationService` |
 
 When the distribution certificate changes, renew all three profiles for each
 channel. Also renew an expired profile or one whose App ID changed. Inspect
@@ -486,6 +507,54 @@ Use the UUID and certificate from the actual profile and signing identity;
 do not infer them from a filename. The next build rechecks these inputs and
 the exported bytes. Current secret provisioning and provider acceptance must
 still be established by the operator.
+
+### Stable push owner checklist
+
+Stable enablement is premature until the owner completes these steps. The
+repository change does not modify Apple accounts, profiles, secrets or published
+builds.
+
+1. Inspect the existing `io.kontourai.station` App ID. Confirm Push Notifications
+   and Broadcast are enabled and the APNs key can send production alerts and
+   Live Activity traffic for it. Preserve the existing app ID and app record.
+2. Register or confirm extension IDs `io.kontourai.station.AgentActivity` and
+   `io.kontourai.station.NotificationService`. Prepare the app's default
+   keychain group plus `<team>.io.kontourai.station.agentactivity`; each
+   extension shares only the latter. The app alone carries production push.
+3. Prepare three App Store distribution profiles bound to the same team and
+   imported distribution certificate. Validate each with the profile command
+   above and its exact bundle ID; require production APS on the app profile.
+   In protected `native-release`, provision `APPLE_PROVISIONING_PROFILE_BASE64`,
+   `APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64`, and
+   `APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64`. Retain the existing
+   certificate and App Store Connect authorization requirements.
+4. Confirm the deployed gateway matches the source allowlist, holds usable APNs
+   credentials and channel-auth material, and accepts Stable production requests.
+   The server contract (`packages/contracts/src/native-push.ts`) and gateway
+   (`deploy/push-gateway/wrangler.jsonc`) already allow `io.kontourai.station`.
+   Server alert integration tests traverse the delivery router and real gateway
+   to a fake Apple endpoint on the Stable app topic; Live Activity publisher
+   tests also use Stable. These establish source behavior, not a live APNs receipt.
+5. Set `STATION_IOS_STABLE_PUSH_ENABLED=true` as an environment variable in
+   `native-release` only when signing/provider preparation is complete. For a
+   separately authorized Stable build, inspect the signed IPA audits: exact two
+   extensions and versions, all three imported/embedded profile UUIDs, production
+   APS and ordered keychain groups, Live Activity plist and compiled plugin class.
+   Store processing and any upload require their own authorization.
+6. On a physical device running that exact Stable build, pair at runtime, opt in
+   through Settings and verify token registration. Exercise closed-app completion
+   and input-needed alerts, decrypted title/body, fixed-text fallback with a
+   missing key, Live Activity start/update/end, and token rotation. Keep provider
+   acceptance, device behavior and battery/data/latency measurements separate.
+   Clear the switch or set it to `false` to exclude push from a future build;
+   this does not alter an already installed binary.
+
+For unsigned compile evidence without signing or publishing, dispatch
+`build-ios.yml` on the exact branch with `push_extensions=true`. This diagnostic
+input adds both Stable extensions and the native plugin, checks their packaged
+presence, then runs the existing simulator startup smoke. The default build
+retains its ordinary extension-free path. A green simulator run cannot qualify
+production signing, App Store processing or physical push delivery.
 
 ## Getting each new credential
 

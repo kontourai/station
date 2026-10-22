@@ -3191,6 +3191,7 @@ describe('iOS verification proves packaged runtime readiness', () => {
 
 describe('the iOS Rust cache is written by main and only restored by PRs', () => {
   type Step = {
+    name?: string;
     id?: string;
     if?: string;
     uses?: string;
@@ -3301,7 +3302,11 @@ describe('the iOS Rust cache is written by main and only restored by PRs', () =>
       'node scripts/write-ios-build-manifest.mjs',
       'npx tauri ios build',
     ]) {
-      const iosRuns = runOf(iosSteps, needle);
+      // The opt-in push build uses a different Cargo configuration; the
+      // default restore path must still match the trusted cache warmer.
+      const iosRuns = runOf(iosSteps, needle).filter(
+        (step) => step.name !== 'Compile unsigned Stable push package',
+      );
       const warmRuns = runOf(warmSteps, needle);
       expect(iosRuns, needle).toHaveLength(1);
       expect(warmRuns, needle).toHaveLength(1);

@@ -146,6 +146,74 @@ It no longer starts independently on each `main` push. Its separate Windows job
 exercises unsigned diagnostic NSIS packaging. Neither job's definition
 establishes that the current revision passed.
 
+## Startup cost and Linux graphics
+
+Desktop caches a successful login-shell PATH lookup for the app process.
+A failed lookup uses the current inherited PATH and retries on the next call
+after a 30-second floor, so a slow shell cannot run on every request. An explicit
+built-in server restart clears both the cache and retry floor before the next launch; quitting
+and reopening the app also picks up shell configuration changes. Schema
+preparation returns the supervisor identity in the same helper call;
+service ownership is checked inside the legacy-preparation helper. The macOS
+native waiting cover is requested before those bridge calls for foreground
+launches; `--tray-only` launches leave the window hidden. A failed supervisor
+identity lookup has its own error, separate from home-folder validation. Main-window
+admission still requires the existing identity and renderer readiness proof.
+
+Non-sidecar ownership status is refreshed at most once per minute. That
+reduces idle helper processes but means an external service change can take
+up to a minute, plus the next status poll, to appear. Tray Start/Stop invalidates
+the cache before each of its four convergence polls; a failed attached-service
+probe also invalidates it for the next status read. Launch and restart
+claims still use the registry's current atomic ownership check. The running
+sidecar supervisor checks child exit every two seconds; restart and shutdown
+messages wake it immediately, and startup retains its 150 ms exit check.
+
+The desktop sidecar enables Node 24's compile cache before loading the server,
+under `<STATION_HOME>/cache/node-compile`. Home schema preparation precedes
+that launch. Child-process environments scrub `NODE_COMPILE_CACHE`, including
+terminal PTYs and engine children, so user Node programs do not write into this
+server cache. The server does not enable a cache after loading its bundle:
+that is too late to cache compilation of the entry point. Node's
+`NODE_DISABLE_COMPILE_CACHE=1` opt-out remains supported; cache failure must
+not prevent startup.
+
+Server bundles are minified with function/class names retained. The esbuild
+`linked` source-map setting is equivalent to the previous `true`: both emit an
+external map and a `sourceMappingURL` comment. Normal server launches do not
+enable Node's automatic source-map stack rewriting. For a diagnostic launch,
+`node --enable-source-maps dist-server/command-station.js` rewrites stack frames
+when the exact matching map is beside the bundle; mapping repeated error
+stacks can add cost, so this is opt-in.
+
+For offline diagnosis, preserve the exact bundle and map from the same build.
+Do not use a fresh checkout's map for a different released bundle. To map one
+raw stack frame, pass its 1-based line and column to Node's built-in mapper:
+
+```sh
+node --input-type=module - dist-server/command-station.js.map <line> <column> <<'JS'
+import { readFileSync } from 'node:fs';
+import { SourceMap } from 'node:module';
+const [mapPath, line, column] = process.argv.slice(2);
+const entry = new SourceMap(JSON.parse(readFileSync(mapPath, 'utf8')))
+  .findEntry(Number(line) - 1, Number(column) - 1);
+if (entry.originalSource === undefined) throw new Error('No mapping for this frame');
+console.log(`${entry.originalSource}:${entry.originalLine + 1}:${entry.originalColumn + 1}`);
+JS
+```
+
+Map inclusion in an installed release is a separate packaging concern. If the
+map is absent, obtain the matching build output before attempting symbolication.
+
+On Linux, before WebKitGTK starts, Station sets
+`WEBKIT_DISABLE_DMABUF_RENDERER=1` only when a Wayland session and the loaded
+proprietary NVIDIA kernel module (`/sys/module/nvidia`) are both detected.
+This conservative fallback avoids known blank-window/compositing failures on
+that combination. Any existing value, including `0` or an empty value, wins;
+set the variable explicitly before launching to override the fallback.
+X11, other drivers, and systems without that module retain WebKit's default.
+Source policy and unit checks do not establish Linux hardware behavior.
+
 ## Startup readiness boundary
 
 Packaged desktop startup has an explicit readiness and recovery boundary. Read

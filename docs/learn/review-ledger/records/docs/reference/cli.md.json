@@ -240,7 +240,11 @@
 
     "packages/sdk/src/client/plugin-telemetry.ts",
 
-    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts"
+    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts",
+
+    "packages/cli/src/passive-cli.ts",
+
+    "packages/cli/src/distribution-info.ts"
   ],
 
   "checks": [

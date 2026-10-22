@@ -131,6 +131,9 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Two cache-enabled server bootstrap processes drive real MCP, Strands, CLI and shell children.
+  'src-server/runtime/bootstrap/__tests__/server-compile-cache.process.test.ts',
+  'packages/cli/src/__tests__/passive-cli.test.ts',
   'scripts/__tests__/server-scenario.test.ts',
   'packages/agent-runtime/src/__tests__/body-process.test.ts',
   // Disposable Chromium previews, including renderer limits and process cleanup.
@@ -1266,6 +1269,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-ui/src/components/notifications/__tests__/NotificationContainer.touch-target.test.tsx',
   // Runs real canvas/React startup handoffs with Chromium's controlled clock.
   'src-ui/src/__tests__/startup-presentation.browser.test.tsx',
+  // Owns Chromium and a local HTTP fixture for SW offline reload and real IndexedDB.
+  'src-ui/src/__tests__/offline-reading.browser.test.ts',
   // station#4470a: same shape again — launches a real Chromium via
   // `@playwright/test` to measure real cascade-resolved geometry (the
   // disclosure toggle vs. the message text's own line rects) at a phone

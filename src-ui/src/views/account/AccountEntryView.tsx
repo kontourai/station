@@ -16,6 +16,7 @@ import { Button } from '../../components/Button';
 import { LazyBoundary } from '../../components/LazyBoundary';
 import { PageFrame } from '../../components/page-frame';
 import { ErrorState, SkeletonList } from '../../components/state';
+import { clearOfflineReading } from '../../lib/offlineReading';
 import { errorText, userFacingErrorMessage } from '../../utils/errorText';
 import {
   clearAccountEntryContinuation,
@@ -265,6 +266,7 @@ export function AccountEntryView({
     if (!path) return;
     setError(undefined);
     try {
+      await clearOfflineReading();
       await mutation.mutateAsync({ path, body: {} });
       // Signed out: a definite "no person", so this device's own appearance
       // replaces the account's cached one (lib/appearance-cache.ts).

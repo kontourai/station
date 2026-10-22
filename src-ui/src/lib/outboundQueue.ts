@@ -203,6 +203,11 @@ export interface OutboundDispatchModule {
     intent: OutboundDispatchIntent,
     error?: unknown,
   ): Promise<OutboundDispatchTurn>;
+  /** A request already attempted without a receipt; only a lookup may release it. */
+  recordUnanswered(
+    intent: OutboundDispatchIntent,
+    error?: unknown,
+  ): Promise<OutboundDispatchTurn>;
   open(): Promise<OutboundDispatchTurn[]>;
   snapshot(): Promise<OutboundDispatchTurn[]>;
   subscribe(listener: () => void): () => void;
@@ -658,7 +663,24 @@ export function classifyUndeliverableSend(
   // reached it, exactly like a request that threw.
   if (hasNonStationResponse(error)) return 'send-unconfirmed';
   if (hasResponseEvidence(error)) return null;
-  if (error instanceof TypeError) {
+  const code = (error as { code?: unknown } | null)?.code;
+  const name = (error as { name?: unknown } | null)?.name;
+  if (
+    error instanceof TypeError ||
+    ['AbortError', 'TimeoutError', 'StationRequestTimeoutError'].includes(
+      typeof name === 'string' ? name : '',
+    ) ||
+    [
+      'network_changed',
+      'transport',
+      'transport_tls',
+      'transport_reset',
+      'transport_timeout',
+      'transport_unreachable',
+      'response_timeout',
+      'response_too_large',
+    ].includes(typeof code === 'string' ? code : '')
+  ) {
     // Both are true at once when the browser reports offline AND the fetch
     // threw; the offline report is the more specific thing to tell the user,
     // and it is still only a report.
@@ -1573,6 +1595,7 @@ async function claimNext(
 async function enqueue(
   intent: OutboundDispatchIntent,
   error?: unknown,
+  unanswered = false,
 ): Promise<OutboundDispatchTurn> {
   // Runtime callers can still be untyped JavaScript. Provider terminal
   // evidence is produced only by an accepted transport result, never trusted
@@ -1622,7 +1645,8 @@ async function enqueue(
         ...safeIntent,
         createdAt: now,
         attempts: 1,
-        status: 'pending',
+        status: unanswered ? 'invoking' : 'pending',
+        ...(unanswered ? { origin: 'live' as const } : {}),
         lastError,
         lastAttemptAt: now,
       };
@@ -1634,6 +1658,27 @@ async function enqueue(
     }
     const existing = entries[index]!;
     if (protectedEvidence(existing)) {
+      // A timed-out beginLive write may land as this request ends. Invalidate
+      // that claim before its late `refused` cleanup can erase the evidence.
+      if (
+        unanswered &&
+        existing.status === 'invoking' &&
+        existing.dispatchBootId === knownBootId
+      ) {
+        const released = {
+          ...existing,
+          dispatchBootId: undefined,
+          claimedAt: undefined,
+        };
+        liveOwned.delete(existing.clientTurnId);
+        const replacement = [...entries];
+        replacement[index] = released;
+        return {
+          state: { ...state, turns: replacement },
+          result: released,
+          changed: true,
+        };
+      }
       return { state, result: existing, changed: false };
     }
     const attempts = existing.attempts + 1;
@@ -1642,7 +1687,12 @@ async function enqueue(
       ...safeIntent,
       createdAt: existing.createdAt,
       attempts,
-      status: attempts >= OUTBOUND_QUEUE_MAX_ATTEMPTS ? 'failed' : 'pending',
+      status: unanswered
+        ? 'invoking'
+        : attempts >= OUTBOUND_QUEUE_MAX_ATTEMPTS
+          ? 'failed'
+          : 'pending',
+      ...(unanswered ? { origin: 'live' as const, heldBy: undefined } : {}),
       lastError,
       lastAttemptAt: now,
       dispatchBootId: undefined,
@@ -2583,6 +2633,7 @@ async function check(
 
 export const outboundDispatch: OutboundDispatchModule = {
   enqueue,
+  recordUnanswered: (intent, error) => enqueue(intent, error, true),
   open: async () => {
     await reconcileAcceptedTerminals();
     // Known before projecting: which held copies are this renderer's own.

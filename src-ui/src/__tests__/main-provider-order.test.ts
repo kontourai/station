@@ -20,9 +20,8 @@ describe('application provider order', () => {
     const recoveryOpen = source.indexOf('<RecoveryQueryBoundary>');
     const onboardingBoundary = source.indexOf('id="connection-recovery"');
     const recoveryClose = source.indexOf('</RecoveryQueryBoundary>');
-    // Trailing space: the bare prefix also matches a prose comment
-    // mentioning the provider; the JSX open tag is the one with props.
-    const authorityOpen = source.indexOf('<AuthorityQueryProvider ');
+    // Match a JSX tag with props on this line or the next, not prose naming it.
+    const authorityOpen = source.search(/<AuthorityQueryProvider\s/u);
     const authorityClose = source.indexOf('</AuthorityQueryProvider>');
     const app = source.indexOf('<App />');
     const toastClose = source.indexOf('</ToastProvider>');
