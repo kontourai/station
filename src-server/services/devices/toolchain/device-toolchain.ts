@@ -42,6 +42,7 @@ import {
   DEVICE_TOOL_PINS,
   type DeviceToolPin,
 } from './device-tool-pins.js';
+import { resolveDeviceToolRuntime } from './device-tool-runtime.js';
 import { verifyInstalledTree } from './device-tool-verify.js';
 
 const DEVICE_TOOL_IDS: readonly DeviceToolId[] = [
@@ -97,42 +98,6 @@ function tail(chunks: Buffer[]): string {
   return text.length > DETAIL_BYTES ? text.slice(-DETAIL_BYTES) : text;
 }
 
-/**
- * The npm Station can run without a shell: the `npm-cli.js` that ships beside
- * this Node runtime, else `npm` on PATH (POSIX only — Windows' `npm.cmd`
- * needs a shell, which this never uses). Undefined when neither exists.
- */
-export function resolveNpmCommand(
-  execPath: string = process.execPath,
-  platform: NodeJS.Platform = process.platform,
-  exists: (path: string) => boolean = existsSync,
-  pathEnv: string | undefined = process.env.PATH,
-): { command: string; prefixArgs: string[] } | undefined {
-  const binDir = dirname(execPath);
-  const candidates =
-    platform === 'win32'
-      ? [join(binDir, 'node_modules', 'npm', 'bin', 'npm-cli.js')]
-      : [
-          join(
-            dirname(binDir),
-            'lib',
-            'node_modules',
-            'npm',
-            'bin',
-            'npm-cli.js',
-          ),
-        ];
-  const cli = candidates.find(exists);
-  if (cli) return { command: execPath, prefixArgs: [cli] };
-  if (platform === 'win32') return undefined;
-  const onPath = (pathEnv ?? '')
-    .split(':')
-    .filter((dir) => dir.startsWith('/'))
-    .map((dir) => join(dir, 'npm'))
-    .find(exists);
-  return onPath ? { command: onPath, prefixArgs: [] } : undefined;
-}
-
 /** Production installer: `npm ci` against the pinned lockfile. */
 /** Environment variables npm may see; Station credentials never reach it. */
 const NPM_ENV_ALLOWLIST = [
@@ -183,24 +148,40 @@ type SpawnInstaller = (
 
 export function createNpmCiInstaller(
   options: {
-    resolveNpm?: () => { command: string; prefixArgs: string[] } | undefined;
+    resolveNpm?: () =>
+      | { command: string; prefixArgs: string[] }
+      | undefined
+      | Promise<{ command: string; prefixArgs: string[] } | undefined>;
     timeoutMs?: number;
     spawn?: SpawnInstaller;
     env?: NodeJS.ProcessEnv;
   } = {},
 ): DeviceToolInstaller {
-  const resolveNpm = options.resolveNpm ?? (() => resolveNpmCommand());
+  const resolveNpm =
+    options.resolveNpm ??
+    (async () =>
+      (await resolveDeviceToolRuntime(options.env ?? process.env)).npm);
   const timeoutMs = options.timeoutMs ?? INSTALL_TIMEOUT_MS;
   const spawnChild: SpawnInstaller = options.spawn ?? spawn;
   return {
-    run: ({ dir, signal }) =>
-      new Promise<void>((resolvePromise, reject) => {
-        const npm = resolveNpm();
+    run: async ({ dir, signal }) => {
+      let npm: { command: string; prefixArgs: string[] } | undefined;
+      try {
+        npm = await resolveNpm();
+      } catch (error) {
+        throw new DeviceToolInstallError(
+          'package-manager-unavailable',
+          error instanceof Error ? error.message : String(error),
+          false,
+        );
+      }
+      signal.throwIfAborted();
+      return new Promise<void>((resolvePromise, reject) => {
         if (!npm) {
           reject(
             new DeviceToolInstallError(
               'package-manager-unavailable',
-              'Station could not find npm beside its Node runtime or on PATH.',
+              'Install Node.js 24 or later with npm and make node available on your PATH to use device tools.',
               false,
             ),
           );
@@ -258,7 +239,8 @@ export function createNpmCiInstaller(
               ),
             );
         });
-      }),
+      });
+    },
   };
 }
 

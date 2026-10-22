@@ -84,7 +84,10 @@ Development/debug shells continue to use the developer's Node.
 The native registry bridge and desktop-owned backend use that absolute private
 executable. Built-in tool servers and server restart children use
 `process.execPath`. The user's PATH stays unchanged, including in terminals and
-agent commands. On macOS, the release signer seals `station-node` with Kontour's
+agent commands. Optional device tools use an explicitly resolved user-installed
+Node.js 24 or later and npm from that same installation, because their external
+native add-ons are outside the app's signed bundle. Missing prerequisites block
+only device setup with guidance; see [device setup](mobile-device-workspace.md#configure-a-device-host). On macOS, the release signer seals `station-node` with Kontour's
 Developer ID and only the JIT entitlement; the outer app stays entitlement-free.
 
 The frontend remains a production Vite build embedded in Tauri. The backend

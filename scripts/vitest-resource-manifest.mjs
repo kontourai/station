@@ -643,6 +643,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // starts that REAL hub under the guard and stops it. Installs nothing and
   // never downloads; hub cases report an explicit skip without an install.
   'src-server/services/devices/toolchain/__tests__/device-hub.real.test.ts',
+  // Runs copied user Node executables and shell-free npm/hub entry fixtures.
+  'src-server/services/devices/toolchain/__tests__/device-tool-runtime.process.test.ts',
   // station#1649: runs the glyph-coverage ratchet as a real child process
   // against a throwaway git repository, because the thing under test is the
   // gate's EXIT STATUS on a rejection — a guardrail whose failure branch has

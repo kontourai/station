@@ -22,13 +22,13 @@ import {
   DEVICE_TOOL_PINS,
   type DeviceToolPin,
 } from '../device-tool-pins.js';
+import { resolveNpmCommand } from '../device-tool-runtime.js';
 import {
   createNpmCiInstaller,
   DeviceToolConsentRequiredError,
   DeviceToolchain,
   DeviceToolInstallError,
   type DeviceToolInstaller,
-  resolveNpmCommand,
 } from '../device-toolchain.js';
 import {
   type InstallTamper,
@@ -548,26 +548,25 @@ describe('resolveNpmCommand', () => {
   test('prefers the npm-cli.js beside the Node runtime, run with that Node', () => {
     const exists = (path: string) =>
       path === '/opt/node/lib/node_modules/npm/bin/npm-cli.js';
-    expect(
-      resolveNpmCommand('/opt/node/bin/node', 'darwin', exists, '/usr/bin'),
-    ).toEqual({
+    expect(resolveNpmCommand('/opt/node/bin/node', 'darwin', exists)).toEqual({
       command: '/opt/node/bin/node',
       prefixArgs: ['/opt/node/lib/node_modules/npm/bin/npm-cli.js'],
     });
   });
 
-  test('falls back to npm on PATH, and to nothing on Windows without npm-cli.js', () => {
-    const exists = (path: string) => path === '/usr/local/bin/npm';
+  test('never borrows an unrelated npm and handles native Windows paths with spaces without a shell', () => {
     expect(
-      resolveNpmCommand(
-        '/opt/node/bin/node',
-        'linux',
-        exists,
-        'relative:/usr/local/bin',
-      ),
-    ).toEqual({ command: '/usr/local/bin/npm', prefixArgs: [] });
+      resolveNpmCommand('/opt/node/bin/node', 'linux', () => false),
+    ).toBeUndefined();
+    const node = 'C:\\Program Files\\Node JS\\node.exe';
+    const cli =
+      'C:\\Program Files\\Node JS\\node_modules\\npm\\bin\\npm-cli.js';
+    expect(resolveNpmCommand(node, 'win32', (path) => path === cli)).toEqual({
+      command: node,
+      prefixArgs: [cli],
+    });
     expect(
-      resolveNpmCommand('C:\\node\\node.exe', 'win32', () => false, ''),
+      resolveNpmCommand('C:\\Station\\station-node.exe', 'win32', () => true),
     ).toBeUndefined();
   });
 });

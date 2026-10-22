@@ -123,7 +123,10 @@ credentials keeps recovery at **Exit** only. This includes Station credentials
 elsewhere in the current OS account's credential store, even if they belong to
 another Station folder. Restore a known backup of the connection list before
 relaunching; if no backup is available, keep the folder intact and collect the
-diagnostics below for operator recovery. An existing list is never replaced.
+diagnostics below for operator recovery. A separate
+[recovery flow for users without a backup](https://github.com/kontourai/station/issues/4023)
+is being designed; it is not available in the current app. An existing list is
+never replaced.
 Windows checks the raw Credential Manager target names, macOS checks service
 metadata, and Linux requests only Station's items by service attribute. Unlocking
 a requested item may unlock its whole collection in the desktop keyring. An inspection error never counts as an empty store.
