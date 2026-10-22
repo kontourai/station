@@ -722,12 +722,7 @@ export async function respondToDelegatedTaskRequest(
   const response = await mutateJson(
     `${apiBase}/api/orchestration/delegations/${encodeURIComponent(taskId)}/respond`,
     'POST',
-    {
-      ...opts,
-      ...(input.decision === 'cancel' || input.decision === 'decline'
-        ? { offlinePolicy: 'always-attempt' as const }
-        : {}),
-    },
+    opts,
     input,
   );
   return normalizeDelegationIdentity(
@@ -777,7 +772,7 @@ export async function stopProviderTask(
   const response = await mutateJson(
     `${apiBase}/api/orchestration/sessions/${encodeURIComponent(threadId)}/provider-tasks/${encodeURIComponent(taskId)}/stop`,
     'POST',
-    { ...opts, offlinePolicy: 'always-attempt' },
+    opts,
     {},
   );
   return unwrapDelegationResponse<ProviderTaskStopResult>(response);
@@ -792,7 +787,7 @@ export async function interruptDelegatedTask(
   const response = await mutateJson(
     `${apiBase}/api/orchestration/delegations/${encodeURIComponent(taskId)}/interrupt`,
     'POST',
-    { ...opts, offlinePolicy: 'always-attempt' },
+    opts,
     input ?? {},
   );
   return normalizeDelegationIdentity(

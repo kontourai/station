@@ -288,9 +288,6 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
     credentialAuthorityGeneration,
   } = useConnections();
   const profile = usePlatformProfile();
-  const mountedAt = useRef(Date.now());
-  const currentConnection = useRef(activeConnection);
-  currentConnection.current = activeConnection;
 
   useEffect(() => {
     if (!profile.isTauri) return;
@@ -423,24 +420,6 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
         : undefined;
       return {
         credential,
-        mutationAllowed: () => {
-          const connection = currentConnection.current;
-          const failure = connection?.lastError;
-          if (
-            !profile.isTauri &&
-            connection?.id === evidence?.connectionId &&
-            failure &&
-            failure.at >= mountedAt.current &&
-            ['offline', 'unreachable', 'timeout', 'host-unavailable'].includes(
-              failure.reason,
-            )
-          )
-            // Keep transport unavailability on the chat outbox's network-failure path.
-            throw new TypeError(
-              'Station is unreachable. Reconnect before making changes.',
-            );
-          return true;
-        },
         origin: evidence?.origin ?? apiBase,
         // The host-supplied `managed-loopback` connection and every saved
         // desktop connection use native authenticated transport so bearer
@@ -457,6 +436,7 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
                   : lazyNativeAuthenticatedTransport,
               ...(evidence?.nativeBrokerRoute
                 ? {
+                    mutationAllowed: () => false,
                     onAccountUnauthorized:
                       relayCredential?.onAccountUnauthorized,
                   }
@@ -504,9 +484,8 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
                   evidence.generation,
                 )
             : undefined,
-        // Stored failures and credential refusals do not reject a recovery
-        // attempt. The browser guard above uses only this page's observed
-        // network failures; reads remain available to recover. An accepted
+        // A previous request's failure is evidence, not a local authority to
+        // reject a new write. Let the Station answer the attempt; an accepted
         // authenticated response then retires that stale evidence — BOTH
         // halves of it: `lastError`, and the `credentialState: 'required'`
         // that `onUnauthorized` above set and that actually renders the

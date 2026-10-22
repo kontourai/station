@@ -363,12 +363,7 @@ export function useEngineAccountLoginMutation(
       const response = await mutateJson(
         `${scope.apiBase}${path(id, 'account-login', ref)}`,
         action.kind === 'cancel' ? 'DELETE' : 'POST',
-        {
-          requestScope: scope,
-          ...(action.kind === 'cancel'
-            ? { offlinePolicy: 'always-attempt' as const }
-            : {}),
-        },
+        { requestScope: scope },
         action.kind === 'code' ? { code: action.code } : {},
       );
       const body: unknown = await response.json();

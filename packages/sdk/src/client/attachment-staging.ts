@@ -254,7 +254,7 @@ export async function cancelAttachmentStage(
   const response = await mutateJson(
     `${apiBase}${ROOT}/${encodeURIComponent(stageId)}`,
     'DELETE',
-    { ...opts, offlinePolicy: 'always-attempt' },
+    opts,
   );
   if (!response.ok && response.status !== 404) {
     await read(response, 'Attachment staging could not be cancelled.');

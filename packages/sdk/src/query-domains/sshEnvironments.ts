@@ -2,10 +2,7 @@ import { withNormalizedAnswerability } from '@kontourai/station-contracts/orches
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { _getApiBase } from '../api';
 import { apiErrorMessage } from '../api-core';
-import {
-  type AuthenticatedFetchInit,
-  authenticatedFetch,
-} from '../client/http';
+import { authenticatedFetch } from '../client/http';
 import type { QueryConfig } from '../query-core';
 import type { OrchestrationSessionSummary } from './chatRuntimeTypes';
 export interface ResolvedOpenSshHost {
@@ -197,10 +194,7 @@ interface ApiEnvelope<T> {
   error?: string;
 }
 
-async function request<T>(
-  path: string,
-  init?: AuthenticatedFetchInit,
-): Promise<T> {
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const apiBase = await _getApiBase();
   // The collection itself is `/api/environments/ssh`, with no trailing slash:
   // the server registers that exact path and 404s on `.../ssh/`. Callers
@@ -340,9 +334,6 @@ function useSshEnvironmentAction(action: 'connect' | 'disconnect') {
     mutationFn: (id: string) =>
       request<SshEnvironmentView>(`/${encodeURIComponent(id)}/${action}`, {
         method: 'POST',
-        ...(action === 'disconnect'
-          ? { offlinePolicy: 'always-attempt' as const }
-          : {}),
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({

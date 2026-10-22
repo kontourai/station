@@ -156,7 +156,6 @@ export function useCancelDeviceCodeLoginMutation() {
       readLogin(
         await mutateJson(loginUrl(target), 'DELETE', {
           requestScope: target.requestScope,
-          offlinePolicy: 'always-attempt',
         }),
       ),
     retry: false,

@@ -4,13 +4,11 @@ import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import {
   assertClientRawEgressAllowed,
   authenticatedFetch,
-  setClientCredentialResolver,
 } from '@kontourai/station-sdk';
 import {
   getProjectView,
   listProjectViews,
 } from '@kontourai/station-sdk/client';
-import { approveRelayDevice } from '@kontourai/station-sdk/relay-management';
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { NativeAccountPublicScope } from '../../platform/native/nativeAccountSessionBridge';
@@ -108,10 +106,6 @@ vi.mock('../../platform/native/nativeAccountSessionBridge', () => ({
         for (const listener of listeners) listener();
         return current;
       },
-      managementHeaders: async () => ({
-        'X-Station-Native-Account-Continuation': 'account-receipt',
-        'X-Station-Native-Account-Proof': 'host-proof',
-      }),
       requestHeaders: async () => ({
         'X-Station-Native-Account-Continuation': 'account-receipt',
         'X-Station-Native-Account-Proof': 'host-proof',
@@ -395,86 +389,4 @@ it('retires an expired account owner so the same approved Device can sign in aga
       origin,
     )?.bindingId,
   ).toBe(bindingId);
-});
-
-it('dispatches an approved native management write with account proof while refusing ordinary writes', async () => {
-  const { result } = mounted();
-  await act(async () => {
-    await result.current.account.login({
-      username: 'alice',
-      password: 'test-password',
-    });
-  });
-  boundary.fetch.mockResolvedValueOnce(
-    Response.json({ data: { state: 'approved' } }),
-  );
-  const device: Parameters<typeof approveRelayDevice>[1] = {
-    enrollmentId: 'e'.repeat(43),
-    requestId: '33333333-3333-4333-8333-333333333333',
-    account: { issuer: 'test', subject: 'alice', displayName: 'Alice' },
-    requestedScope: 'orchestration:read',
-    expiresAt: Date.now() + 60_000,
-    candidate: {
-      version: 'station-native-device-binding-candidate/v1',
-      stationId: profileStore.profiles[0].environmentId!,
-      deviceId: '11111111-1111-4111-8111-111111111111',
-      bindingId,
-      surface: {
-        kind: 'station-native',
-        appIdentifier: 'com.kontourai.station.dev',
-        channel: 'dev',
-        clientInstanceId: '22222222-2222-4222-8222-222222222222',
-        keyThumbprint: 'x'.repeat(43),
-      },
-      deviceProofJwk: {
-        kty: 'EC',
-        crv: 'P-256',
-        x: 'x'.repeat(43),
-        y: 'y'.repeat(43),
-      },
-      deviceProofKeyThumbprint: 'z'.repeat(43),
-    },
-  };
-  await approveRelayDevice(origin, device, {
-    requestScope: result.current.scope,
-  });
-  expect(boundary.fetch).toHaveBeenCalledTimes(1);
-  const [, init] = boundary.fetch.mock.calls[0]!;
-  const headers = new Headers(init?.headers);
-  expect(headers.get('X-Station-Native-Account-Proof')).toBe('host-proof');
-  expect(JSON.parse(String(init?.body))).toEqual({
-    candidate: device.candidate,
-  });
-  await expect(
-    authenticatedFetch(`${origin}/api/settings`, {
-      method: 'POST',
-      offlinePolicy: 'always-attempt',
-    }),
-  ).rejects.toThrow('native_relay_resource_not_supported');
-  expect(boundary.fetch).toHaveBeenCalledTimes(1);
-});
-
-it('direct owner credentials allow management through shared dispatch', async () => {
-  const { result } = mounted();
-  await act(async () => {
-    await result.current.account.login({
-      username: 'alice',
-      password: 'test-password',
-    });
-  });
-  const owner = captureNativeRelayConnectionOwner(ownerKey)!;
-  setClientCredentialResolver(() => owner.credential());
-  boundary.fetch.mockResolvedValueOnce(
-    Response.json({ data: { state: 'revoked' } }),
-  );
-  await authenticatedFetch(`${origin}/api/relay-management/approvals/revoke`, {
-    method: 'POST',
-    body: '{}',
-  });
-  expect(boundary.fetch).toHaveBeenCalledTimes(1);
-  expect(
-    new Headers(boundary.fetch.mock.calls[0]![1]?.headers).get(
-      'X-Station-Native-Account-Proof',
-    ),
-  ).toBe('host-proof');
 });

@@ -71,8 +71,6 @@ export interface ClientRequestOptions {
    * by the operation rather than inferred from the verb.
    */
   readOnly?: boolean;
-  /** Bypass only the host reachability veto for cancellation or revocation. */
-  offlinePolicy?: 'require-reachable' | 'always-attempt';
   /** Credential used only for explicit protected Station requests. */
   credential?: string;
   /** Origin the credential belongs to. Credentials are never sent elsewhere. */
@@ -561,7 +559,7 @@ export type ClientCredential = {
    * "THIS ADDRESS accepted us" are different facts.
    */
   onAuthenticated?: (url: string) => void | Promise<void>;
-  /** Host reachability veto for ordinary mutations; transport owns write permissions. */
+  /** Fail closed for mutations while a remote environment is stale. */
   mutationAllowed?: () => boolean;
 };
 
@@ -1050,7 +1048,6 @@ export type AuthenticatedFetchInit = RequestInit & {
   /** See `ClientRequestOptions['readOnly']` — the same declaration, for the
    * call sites that reach Station through `authenticatedFetch` directly. */
   readOnly?: boolean;
-  offlinePolicy?: ClientRequestOptions['offlinePolicy'];
 };
 
 /** Fetch a protected Station resource through the configured auth boundary. */
@@ -1074,7 +1071,6 @@ async function dispatchAuthenticatedFetch(
     timeoutMs: initTimeoutMs,
     progressTimeoutMs,
     readOnly,
-    offlinePolicy,
     ...rest
   } = args[0] ?? {};
   const progressTimeout = normalizeTimeout(progressTimeoutMs);
@@ -1122,10 +1118,12 @@ async function dispatchAuthenticatedFetch(
   const method = (
     init?.method ?? (input instanceof Request ? input.method : 'GET')
   ).toUpperCase();
-  // A safety operation may bypass reachability, never transport authority.
+  // Deliberately method-only, and deliberately NOT widened by `readOnly`: this
+  // is a fail-closed guard on a stale remote environment, and a declaration
+  // that exists to make an error message honest is not a reason to let a
+  // request through a gate it is currently held by.
   if (
     !SAFE_HTTP_METHODS.has(method) &&
-    offlinePolicy !== 'always-attempt' &&
     configured.mutationAllowed?.() === false
   ) {
     throw new StationReadOnlyError();
@@ -1398,15 +1396,6 @@ export async function mutateJson(
     configured,
     assertAuthority,
   );
-  if (
-    configured &&
-    sameOrigin(url, configured.origin) &&
-    !SAFE_HTTP_METHODS.has(method.toUpperCase()) &&
-    requestOptions?.offlinePolicy !== 'always-attempt' &&
-    configured.mutationAllowed?.() === false
-  ) {
-    throw new StationReadOnlyError();
-  }
   const response =
     timeoutMs === undefined
       ? await request(url, dispatchInit)

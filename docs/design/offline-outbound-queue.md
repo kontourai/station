@@ -106,17 +106,13 @@ resulting revision. Ambiguous response loss preserves the same operation for
 replay. Conflict retry is an explicit rebase
 with a new operation id. It does not reuse the chat-turn queue.
 
-For other mutation families, both authenticated fetches and SDK mutations fail
-before dispatch on a current connection-layer reachability failure, with a
-reconnect message. The browser's link-layer offline flag alone does not refuse
-writes. A network failure recorded in this browser session refuses writes until
-a successful read recovers reachability. Older stored health failures do not
-block a new attempt: an accepted request must still be able to
-retire stale failure evidence. Native transport does not infer unreachability
-from `navigator.onLine`, which can be false while a VPN route works. Existing
-request deadlines bound a new attempt when no current reachability failure exists.
-This is failure reporting, not mutation durability. Any additional queued family
-must independently add an idempotency key and revision/conflict receipt.
+Offline reading adds no reachability veto to mutation dispatch and no foreground
+send deadline. Browser mutations retain their existing transport, authority and
+request timing behavior. The native broker credential owner retains its existing
+non-safe-method guard for the bounded read transport. Successful authenticated
+reads and health probes can still retire stale connection failure evidence.
+Additional queued mutation families must independently add an idempotency key and
+revision/conflict receipt.
 
 The broad `PUT /api/config/app` refuses any payload containing `logLevel`
 before mutating any sibling field. The web settings surface and live CLI both
@@ -188,7 +184,7 @@ A page loaded from the anonymous fallback reloads on reconnect to obtain the
 current runtime bootstrap. Ordinary navigations always request fresh HTML.
 
 Executed tests cover a real Chromium offline reload and IndexedDB bounds, a
-mounted history-reader capture, the safe query projection and fail-before-send
-mutation behavior. They do not establish native offline reading, revoked access
+mounted history-reader capture, the safe query projection and survival of a real
+ConnectionStore reachability failure. They do not establish native offline reading, revoked access
 while disconnected, or a guarantee that local plaintext is safe on a shared
 browser profile.

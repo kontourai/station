@@ -633,17 +633,6 @@ export async function fetchOrchestrationProviders(
   return result.data ?? [];
 }
 
-function commandOfflinePolicy(
-  command: OrchestrationCommandInput,
-): ClientRequestOptions['offlinePolicy'] {
-  return command.type === 'interruptTurn' ||
-    command.type === 'stopSession' ||
-    (command.type === 'respondToRequest' &&
-      (command.decision === 'cancel' || command.decision === 'decline'))
-    ? 'always-attempt'
-    : 'require-reachable';
-}
-
 export async function dispatchOrchestrationCommand<T = unknown>(
   command: OrchestrationCommandInput,
   apiBase?: string,
@@ -660,7 +649,6 @@ export async function dispatchOrchestrationCommand<T = unknown>(
     `${resolvedApiBase}/api/orchestration/commands`,
     {
       method: 'POST',
-      offlinePolicy: commandOfflinePolicy(command),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(command),
       ...(timeoutMs !== undefined ? { timeoutMs } : {}),
@@ -844,7 +832,6 @@ export async function dispatchOrchestrationCommandWithReceipt<T = unknown>(
     `${resolvedApiBase}/api/orchestration/commands`,
     {
       method: 'POST',
-      offlinePolicy: commandOfflinePolicy(command),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(command),
       ...(timeoutMs !== undefined ? { timeoutMs } : {}),

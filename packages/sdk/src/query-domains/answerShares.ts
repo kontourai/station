@@ -187,7 +187,7 @@ export function useRevokeAnswerShareMutation() {
       const apiBase = await _getApiBase();
       const response = await authenticatedFetch(
         `${apiBase}/api/shares/${encodeURIComponent(shareId)}`,
-        { method: 'DELETE', offlinePolicy: 'always-attempt' },
+        { method: 'DELETE' },
       );
       return unwrap<AnswerShareSummary>(
         response,

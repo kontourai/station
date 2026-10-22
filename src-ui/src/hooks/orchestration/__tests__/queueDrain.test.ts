@@ -638,7 +638,7 @@ describe('drainQueuedMessageOnTurnCompleted (#613)', () => {
         conversationId: threadId,
         message: 'first',
       }),
-      expect.objectContaining({ signal: undefined }),
+      { signal: undefined },
     );
     expect(sendExecutionMessageMock.mock.calls[0][1].target).not.toHaveProperty(
       'environment',

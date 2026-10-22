@@ -4,7 +4,6 @@ import type {
 } from '@kontourai/station-contracts/secret-binding';
 import { envelopeError } from './api-error-message';
 import {
-  type AuthenticatedFetchInit,
   authenticatedFetch,
   type ClientRequestOptions,
   getJson,
@@ -55,7 +54,7 @@ type Envelope<T> = {
 async function request<T>(
   apiBase: string,
   path: string,
-  init?: AuthenticatedFetchInit,
+  init?: RequestInit,
 ): Promise<T> {
   const response = await authenticatedFetch(
     `${apiBase}/api/secret-bindings${path}`,
@@ -172,13 +171,7 @@ export async function updateTelemetrySecretBindingGrant(
   const response = await mutateJson(
     `${base}/api/secret-bindings/${encodeURIComponent(id)}/${operation}`,
     'POST',
-    {
-      ...options,
-      maxResponseBytes: 32_768,
-      ...(operation === 'unbind'
-        ? { offlinePolicy: 'always-attempt' as const }
-        : {}),
-    },
+    { ...options, maxResponseBytes: 32_768 },
     input,
   );
   const binding = await bindingResponse<SecretBindingView>(response);
@@ -241,7 +234,6 @@ export const revokeSecretBinding = (
 ) =>
   request<SecretBindingView>(apiBase, `/${encodeURIComponent(id)}/revoke`, {
     method: 'POST',
-    offlinePolicy: 'always-attempt',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ expectedRevision }),
   });
@@ -269,7 +261,6 @@ export const unbindSecretBinding = (
     `/${encodeURIComponent(id)}/unbind`,
     {
       method: 'POST',
-      offlinePolicy: 'always-attempt',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     },

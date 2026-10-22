@@ -140,12 +140,7 @@ export async function respondToRequest(
   const response = await mutateJson(
     `${apiBase}/api/orchestration/commands`,
     'POST',
-    {
-      ...opts,
-      ...(input.decision === 'cancel' || input.decision === 'decline'
-        ? { offlinePolicy: 'always-attempt' as const }
-        : {}),
-    },
+    opts,
     { type: 'respondToRequest', ...input },
   );
   const fallback = `Orchestration API error: ${response.status}`;
@@ -510,7 +505,7 @@ export async function interruptTurn(
   const response = await mutateJson(
     `${apiBase}/api/orchestration/commands`,
     'POST',
-    { ...opts, offlinePolicy: 'always-attempt' },
+    opts,
     {
       type: 'interruptTurn',
       threadId: input.threadId,

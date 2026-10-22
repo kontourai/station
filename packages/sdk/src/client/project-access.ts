@@ -180,14 +180,7 @@ export async function changeProjectAccess(
     await mutateJson(
       `${apiBase}/api/projects/${encodeURIComponent(slug)}/access${suffix}`,
       'POST',
-      {
-        ...options,
-        readOnly: false,
-        ...(kind === 'revoke-invitation' ||
-        (command.kind === 'change-member' && command.status === 'revoked')
-          ? { offlinePolicy: 'always-attempt' as const }
-          : {}),
-      },
+      { ...options, readOnly: false },
       body,
     ),
   );

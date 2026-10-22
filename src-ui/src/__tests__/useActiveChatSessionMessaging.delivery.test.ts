@@ -63,8 +63,6 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
 });
 
 import { ChatHttpError } from '@kontourai/station-sdk/client';
-import { setClientCredentialResolver } from '../../../packages/sdk/src/client/http';
-import { sendExecutionMessage as realSendExecutionMessage } from '../../../packages/sdk/src/client/send-execution-message';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { handleTurnStartedEvent } from '../hooks/orchestration/turnHandlers';
 import { useSendMessage } from '../hooks/useActiveChatSessionMessaging';
@@ -113,9 +111,6 @@ describe('useSendMessage: durable before the request', () => {
   });
   afterEach(() => {
     vi.useRealTimers();
-    vi.restoreAllMocks();
-    vi.unstubAllGlobals();
-    setClientCredentialResolver();
     _resetOutboundQueueStorage();
     activeChatsStore.removeChat(chat);
   });
@@ -1089,126 +1084,4 @@ describe('useSendMessage: durable before the request', () => {
       messageDeliveryStateFor(activeChatsStore.getSnapshot()[chat], bubble()),
     ).toBe('delivered');
   });
-});
-
-describe('foreground admission deadline through the send caller', () => {
-  it.each(['headers', 'body'] as const)(
-    'settles stalled %s and retains the delivery key until lookup, without a second send',
-    async (stall) => {
-      memoryStorage();
-      activeChatsStore.initChat(chat, {
-        agentSlug: 'codex',
-        agentName: 'Codex',
-        title: 'New chat',
-      });
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
-      // Native AbortSignal.timeout uses the host clock; adapt that clock to Vitest.
-      vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => {
-        const controller = new AbortController();
-        setTimeout(
-          () => controller.abort(new DOMException('Timed out', 'TimeoutError')),
-          ms,
-        );
-        return controller.signal;
-      });
-      const wire = vi.fn<typeof fetch>(async (_url, init) => {
-        if (stall === 'body')
-          return new Response(
-            new ReadableStream({
-              start(controller) {
-                init!.signal!.addEventListener(
-                  'abort',
-                  () => controller.error(init!.signal!.reason),
-                  { once: true },
-                );
-              },
-            }),
-          );
-        return new Promise<Response>((_resolve, reject) => {
-          init!.signal!.addEventListener(
-            'abort',
-            () => reject(init!.signal!.reason),
-            { once: true },
-          );
-        });
-      });
-      setClientCredentialResolver(() => ({
-        origin: 'http://api.test',
-        transport: wire,
-      }));
-      sendExecutionMessageMock
-        .mockReset()
-        .mockImplementation(realSendExecutionMessage);
-      getTurnDeliveryMock
-        .mockReset()
-        .mockImplementation(async (_base, conversationId, clientTurnId) => ({
-          outcome: 'received',
-          conversationId,
-          clientTurnId,
-        }));
-      const { result, unmount } = renderHook(() =>
-        useSendMessage('http://api.test'),
-      );
-      let pending: Promise<unknown> | undefined;
-      let settled = false;
-      try {
-        await act(async () => {
-          pending = result
-            .current(chat, 'codex', undefined, 'bounded send')
-            .then((value) => {
-              settled = true;
-              return value;
-            });
-          await vi.advanceTimersByTimeAsync(0);
-        });
-        expect(wire).toHaveBeenCalledTimes(1);
-        const body = JSON.parse(String(wire.mock.calls[0]![1]!.body));
-        await act(async () => {
-          await vi.advanceTimersByTimeAsync(30_000);
-        });
-        // Assert before awaiting, so removing the deadline fails instead of hanging.
-        expect(settled).toBe(true);
-        await pending;
-        expect(
-          activeChatsStore.getSnapshot()[chat]?.abortController,
-        ).toBeUndefined();
-        expect(await outboundDispatch.snapshot()).toEqual([
-          expect.objectContaining({
-            clientTurnId: body.clientTurnId,
-            status: 'invoking',
-            awaitingLookup: true,
-          }),
-        ]);
-        const resend = vi.fn();
-        await outboundDispatch.flush(resend);
-        expect(resend).not.toHaveBeenCalled();
-        await outboundDispatch.reconcile(
-          async (turn) => ({
-            outcome: 'started',
-            conversationId: turn.conversationId!,
-            clientTurnId: turn.clientTurnId,
-            sessionId: chat,
-            turnId: 'provider-after-timeout',
-          }),
-          { station: { apiBase: 'http://api.test' } },
-        );
-        expect(await outboundDispatch.snapshot()).toEqual([]);
-        expect((await outboundDispatch.retiredKeys()).accepted).toContain(
-          body.clientTurnId,
-        );
-        await outboundDispatch.flush(resend);
-        expect(resend).not.toHaveBeenCalled();
-        expect(wire).toHaveBeenCalledTimes(1);
-      } finally {
-        activeChatsStore.getSnapshot()[chat]?.abortController?.abort();
-        await pending;
-        unmount();
-        activeChatsStore.removeChat(chat);
-        setClientCredentialResolver();
-        _resetOutboundQueueStorage();
-        vi.restoreAllMocks();
-        vi.useRealTimers();
-      }
-    },
-  );
 });

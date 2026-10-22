@@ -143,7 +143,6 @@ export async function runAccountOperation(
   endpoint: string,
   body: Record<string, unknown>,
   invitation?: string,
-  options?: Pick<ClientRequestOptions, 'offlinePolicy'>,
 ): Promise<unknown> {
   if (!path.safeParse(endpoint).success)
     throw new Error('Invalid account operation.');
@@ -152,7 +151,6 @@ export async function runAccountOperation(
       `${apiBase}${DEPLOYMENT_AUTHENTICATION_BASE_PATH}${endpoint}`,
       'POST',
       {
-        ...options,
         authentication: 'omit',
         readOnly: false,
         timeoutMs: 15_000,

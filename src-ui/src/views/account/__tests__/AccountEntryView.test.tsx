@@ -758,14 +758,7 @@ describe('account sign-out and appearance', () => {
       expect(deviceSettingsStore.getAppearanceSource()).toBe('cache');
       signedIn = true;
       mount();
-      const signOut = await screen.findByRole('button', { name: 'Sign out' });
-      setClientCredentialResolver(() => ({
-        origin: apiBase,
-        mutationAllowed: () => {
-          throw new TypeError('Station unreachable');
-        },
-      }));
-      fireEvent.click(signOut);
+      fireEvent.click(await screen.findByRole('button', { name: 'Sign out' }));
       await waitFor(() =>
         expect(calls.some((call) => call.path.endsWith('/sign-out'))).toBe(
           true,

@@ -248,7 +248,6 @@ export class ApplicationSessionClient {
     path: string,
     body: unknown,
     headers?: Record<string, string>,
-    offlinePolicy?: ClientRequestOptions['offlinePolicy'],
   ) {
     return read(
       await mutateJson(
@@ -256,7 +255,6 @@ export class ApplicationSessionClient {
         'POST',
         {
           ...this.options,
-          ...(offlinePolicy ? { offlinePolicy } : {}),
           headers: {
             ...this.options.headers,
             Origin: this.clientOrigin,
@@ -457,7 +455,7 @@ export class ApplicationSessionClient {
     });
     z.object({ revoked: z.literal(true) })
       .strict()
-      .parse(await this.post('/revoke', {}, headers, 'always-attempt'));
+      .parse(await this.post('/revoke', {}, headers));
   }
   private continuation(value: unknown): ApplicationSessionContinuation {
     const result = continuationSchema.parse(value);

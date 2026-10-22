@@ -451,7 +451,7 @@ export async function cancelConversationInboxEntry(
   const response = await mutateJson(
     `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/inbox/${encodeURIComponent(clientTurnId)}`,
     'DELETE',
-    { ...opts, offlinePolicy: 'always-attempt' },
+    opts,
   );
   const result = (await readExecutionBody(response)) as {
     success?: boolean;
@@ -653,7 +653,7 @@ export async function cancelConversationContextBoundary(
   const response = await mutateJson(
     `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/context-boundary/${encodeURIComponent(idempotencyKey)}`,
     'DELETE',
-    { ...opts, offlinePolicy: 'always-attempt' },
+    opts,
   );
   const result = (await readExecutionBody(response)) as {
     success?: boolean;

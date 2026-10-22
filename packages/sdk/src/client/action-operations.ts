@@ -151,7 +151,7 @@ export async function cancelActionOperation(
 ): Promise<ActionOperation> {
   const response = await authenticatedFetch(
     `${apiBase}/api/action-operations/${encodeURIComponent(id)}/cancel`,
-    { method: 'POST', offlinePolicy: 'always-attempt' },
+    { method: 'POST' },
   );
   let body: unknown;
   try {

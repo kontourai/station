@@ -105,7 +105,6 @@ import {
   authenticatedFetch,
   fetchEventStreamResumeCapability,
 } from '@kontourai/station-sdk';
-import { deleteProject } from '@kontourai/station-sdk/client';
 import { BannerHost } from '../../components/notifications/BannerHost';
 import { OnboardingGate } from '../../components/OnboardingGate';
 import { ApiBaseProvider } from '../ApiBaseContext';
@@ -166,86 +165,6 @@ function fetchByPath(routes: Record<string, () => Promise<Response>> = {}) {
     }),
   );
 }
-
-it('allows SDK writes with a false browser offline signal after a successful read or probe', async () => {
-  await renderShell();
-  const endpoint = `${connections!.apiBase}/api/reachability-fixture`;
-  const wire = vi.fn(
-    async () =>
-      new Response('{"success":true}', {
-        headers: { 'Content-Type': 'application/json' },
-      }),
-  );
-  vi.stubGlobal('fetch', wire);
-  const id = connections!.activeConnection!.id;
-  try {
-    await act(async () =>
-      connections!.recordEndpointFailure(id, 'unreachable'),
-    );
-    await expect(
-      deleteProject(connections!.apiBase, 'blocked'),
-    ).rejects.toBeInstanceOf(TypeError);
-    expect(wire).not.toHaveBeenCalled();
-    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
-    await act(async () => {
-      await authenticatedFetch(endpoint);
-    });
-    expect(connections!.activeConnection!.lastError).toBeUndefined();
-    await expect(
-      deleteProject(connections!.apiBase, 'after-read'),
-    ).resolves.toBeUndefined();
-    await act(async () => connections!.recordEndpointFailure(id, 'timeout'));
-    await expect(
-      deleteProject(connections!.apiBase, 'blocked-again'),
-    ).rejects.toThrow('Station is unreachable');
-    await act(async () =>
-      connections!.recordEndpointSuccess(id, connections!.apiBase),
-    );
-    await expect(
-      deleteProject(connections!.apiBase, 'after-probe'),
-    ).resolves.toBeUndefined();
-    await expect(
-      authenticatedFetch(endpoint, { method: 'PUT', body: '{}' }),
-    ).resolves.toHaveProperty('status', 200);
-    expect(wire).toHaveBeenCalledTimes(4);
-  } finally {
-    vi.restoreAllMocks();
-    vi.unstubAllGlobals();
-  }
-});
-
-it('fails writes on current unreachable evidence, permits reads to recover, and ignores older failure records', async () => {
-  await renderShell();
-  const id = connections!.activeConnection!.id;
-  const endpoint = `${connections!.apiBase}/api/reachability-fixture`;
-  const wire = vi.fn(
-    async () =>
-      new Response('{"success":true}', {
-        headers: { 'Content-Type': 'application/json' },
-      }),
-  );
-  vi.stubGlobal('fetch', wire);
-  await act(async () =>
-    connections!.recordEndpointFailure(id, 'unreachable', 0),
-  );
-  await expect(
-    authenticatedFetch(endpoint, { method: 'PUT', body: '{}' }),
-  ).resolves.toHaveProperty('status', 200);
-  wire.mockClear();
-  await act(async () =>
-    connections!.recordEndpointFailure(id, 'unreachable', Date.now()),
-  );
-  await expect(
-    authenticatedFetch(endpoint, { method: 'PUT', body: '{}' }),
-  ).rejects.toThrow('Station is unreachable');
-  expect(wire).not.toHaveBeenCalled();
-  await expect(authenticatedFetch(endpoint)).resolves.toHaveProperty(
-    'status',
-    200,
-  );
-  expect(wire).toHaveBeenCalledOnce();
-  vi.unstubAllGlobals();
-});
 
 describe('the reconnect banner is retired by an authenticated 2xx — and only by a current one', () => {
   beforeEach(() => {

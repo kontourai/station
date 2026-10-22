@@ -160,6 +160,7 @@ export async function prepareNativeRelayConnectionOwner(
           bridge?.current() === captured;
         return {
           origin: input.origin,
+          mutationAllowed: () => false,
           transportBindingIsCurrent: () =>
             application.isCurrent() && (!captured || accountCurrent()),
           ...(captured

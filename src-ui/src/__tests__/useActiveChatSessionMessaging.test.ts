@@ -2200,51 +2200,6 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     ).toBeUndefined();
   });
 
-  it('keeps a real SDK send in the outbound queue when reachability denies dispatch', async () => {
-    const { sendExecutionMessage, setClientCredentialResolver } =
-      await vi.importActual<typeof import('@kontourai/station-sdk/client')>(
-        '@kontourai/station-sdk/client',
-      );
-    const wire = vi.fn();
-    vi.stubGlobal('fetch', wire);
-    setClientCredentialResolver(() => ({
-      origin: 'http://api.test',
-      mutationAllowed: () => {
-        throw new TypeError(
-          'Station is unreachable. Reconnect before making changes.',
-        );
-      },
-    }));
-    sendExecutionMessageMock.mockImplementationOnce(sendExecutionMessage);
-    const { result } = renderHook(() => useSendMessage('http://api.test'));
-    try {
-      await act(async () => {
-        await result.current(
-          sessionId,
-          'codex',
-          undefined,
-          'keep this offline',
-        );
-      });
-      expect(wire).not.toHaveBeenCalled();
-      expect(enqueueOutboundTurnMock).toHaveBeenCalledWith(
-        expect.objectContaining({
-          sessionId,
-          content: 'keep this offline',
-          clientTurnId: expect.any(String),
-        }),
-        expect.any(TypeError),
-      );
-      expect(activeChatsStore.getSnapshot()[sessionId]).toMatchObject({
-        status: 'queued',
-        messages: [expect.objectContaining({ content: 'keep this offline' })],
-      });
-    } finally {
-      setClientCredentialResolver(undefined);
-      vi.unstubAllGlobals();
-    }
-  });
-
   it('queues a network-level failure without rolling back the optimistic turn', async () => {
     sendExecutionMessageMock.mockRejectedValueOnce(new TypeError('offline'));
     const { result } = renderHook(() => useSendMessage('http://api.test'));

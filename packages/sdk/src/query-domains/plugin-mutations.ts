@@ -356,7 +356,6 @@ export async function revokePluginPermissions(input: {
     `${apiBase}/api/plugins/${encodeURIComponent(input.name)}/grant`,
     {
       method: 'DELETE',
-      offlinePolicy: 'always-attempt',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ permissions: input.permissions }),
     },

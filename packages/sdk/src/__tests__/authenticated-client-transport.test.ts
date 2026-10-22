@@ -11,7 +11,6 @@ import {
   StationReadOnlyError,
   setClientCredentialResolver,
 } from '../client/http';
-import { deleteProject, reorderProjects } from '../client/projects';
 
 const CREDENTIAL = 'sdk-test-credential-not-for-production';
 
@@ -384,12 +383,7 @@ describe('authenticated client transport', () => {
       origin: 'https://station.example.test',
       mutationAllowed: () => mutationAllowed,
     }));
-    const fetchMock = vi.fn(
-      async () =>
-        new Response('{"success":true}', {
-          headers: { 'Content-Type': 'application/json' },
-        }),
-    );
+    const fetchMock = vi.fn(async () => new Response('{}'));
     vi.stubGlobal('fetch', fetchMock);
 
     await authenticatedFetch('https://station.example.test/api/sessions');
@@ -397,12 +391,6 @@ describe('authenticated client transport', () => {
       authenticatedFetch('https://station.example.test/api/sessions', {
         method: 'POST',
       }),
-    ).rejects.toBeInstanceOf(StationReadOnlyError);
-    await expect(
-      deleteProject('https://station.example.test', 'protected'),
-    ).rejects.toBeInstanceOf(StationReadOnlyError);
-    await expect(
-      reorderProjects('https://station.example.test', ['a']),
     ).rejects.toBeInstanceOf(StationReadOnlyError);
     expect(fetchMock).toHaveBeenCalledOnce();
 
@@ -412,10 +400,7 @@ describe('authenticated client transport', () => {
     await authenticatedFetch('https://station.example.test/api/sessions', {
       method: 'POST',
     });
-    await expect(
-      deleteProject('https://station.example.test', 'allowed'),
-    ).resolves.toBeUndefined();
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
 
