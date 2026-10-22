@@ -142,6 +142,15 @@ The first snapshot uses cached server status as its baseline when available;
 an absent or evicted baseline conservatively refreshes those queries. Invalid payloads and expired
 authority have no effect. All status fields are compared.
 
+`useOrchestrationSessionsQuery(config?, requestScope?)` shares one list cache
+per API base and authority. SSE invalidates it promptly, while a 60-second
+safety poll remains active even after the stream catches up. Peer delegation
+reconciliation is still started by the list GET without blocking its response;
+a quiet peer change can take a second polling tick to appear. Passing `null`
+for `requestScope` refuses ambient host authority and uses an unavailable cache
+partition. `useBoardRecentWorkQuery(undefined)` uses this refusal: it shows no
+host rows, and manual `refetch()` returns `StationRequestAuthorityError`.
+
 The session collections observed by `useOrchestrationSessionsQuery` and personal
 boards retain row identity by thread ID when only `answerability.observedAt` and
 `childWork.children.observedAt` change. A reused row keeps an earlier genuine

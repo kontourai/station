@@ -217,7 +217,6 @@ const SESSION_READ_MODEL_FACT_METHODS: ReadonlySet<string> = new Set([
   'session.started',
   'session.configured',
   'session.state-changed',
-  'session.deleted',
   'child-work.updated',
   'turn.started',
   'runtime.error',
@@ -640,7 +639,8 @@ export function ensureOrchestrationEventStream(
           workObservation(client).streamObserved(payload.conversation.activity);
         refreshSessionReadModelOnFact(apiBase, payload.event);
       } else if (
-        raw.event === SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED
+        raw.event === SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED ||
+        raw.event === SERVER_EVENTS.ORCHESTRATION_SESSIONS_CHANGED
       ) {
         // archive#4054: this frame carries no claim beyond "re-read the
         // server projection". In particular, the client must not turn

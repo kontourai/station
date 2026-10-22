@@ -6656,6 +6656,10 @@ export function createOrchestrationRoutes(
             stream.abort();
             return;
           }
+          if (evt.event === SERVER_EVENTS.ORCHESTRATION_SESSIONS_CHANGED) {
+            forward({ event: evt.event, data: '{}' });
+            return;
+          }
           if (
             evt.event === SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED
           ) {

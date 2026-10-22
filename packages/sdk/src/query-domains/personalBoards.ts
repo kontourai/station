@@ -82,6 +82,6 @@ export function useBoardAttentionQuery(scope?: ApiRequestScope) {
 export function useBoardRecentWorkQuery(scope?: ApiRequestScope) {
   return useOrchestrationSessionsQuery(
     { enabled: !!scope, retry: false },
-    scope,
+    scope ?? null,
   );
 }

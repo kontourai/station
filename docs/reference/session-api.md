@@ -870,7 +870,13 @@ The remaining controls are defined by
   engine whose approval rules Station sets at launch (OpenCode) has one
   ([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)).
 - `discardDraft`: `{ type: 'discardDraft', threadId }` asks the server to verify
-  and discard a Draft; it is not a general Session deletion.
+  and discard a Draft; it is not a general Session deletion. After committed
+  thread deletion, the server emits `orchestration:sessions-changed` with an
+  empty payload on the orchestration SSE stream. This invalidates connected
+  clients' authorized lists without retaining the deleted thread's identity or
+  ownership. The same post-commit notification covers attached-alias and other
+  thread cleanup paths. It is a live invalidation, not a durable replay event;
+  reconnect/list reads and the client's safety poll recover a missed notice.
 
 The other lifecycle controls are `adoptSession`
 (`{ type: 'adoptSession', sourceThreadId, idempotencyKey?, target? }`, create an independent continuation of a

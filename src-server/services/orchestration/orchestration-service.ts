@@ -2234,7 +2234,15 @@ export class OrchestrationService {
     return { promise, settle };
   })();
 
+  private readonly stopSessionDeletionNotifications?: () => void;
+
   constructor(private readonly options: OrchestrationServiceOptions) {
+    // All delete paths converge here, including Draft discard and attached alias cleanup.
+    // No identity survives in the notification: ownership records have been removed.
+    this.stopSessionDeletionNotifications = options.eventStore?.observeCommits({
+      threadDeleted: () =>
+        options.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_SESSIONS_CHANGED),
+    });
     this.resolveProjectSessionDirectory =
       options.resolveProjectSessionDirectory;
     this.resolveStationDefaultWorkspaceIsolation =
@@ -3803,6 +3811,7 @@ export class OrchestrationService {
   }
 
   async shutdown(): Promise<void> {
+    this.stopSessionDeletionNotifications?.();
     // #3562: boot recovery retries on a backoff; none of it may publish once
     // the publish path below starts coming down. Its rows stay for next boot.
     this.interruptedTurns.stop();

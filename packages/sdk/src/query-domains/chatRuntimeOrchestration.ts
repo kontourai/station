@@ -43,6 +43,7 @@ import {
   DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
   getJson,
   isApiRequestScope,
+  StationRequestAuthorityError,
 } from '../client/http';
 import {
   getChildWorkTranscript,
@@ -1308,21 +1309,26 @@ export function useOrchestrationProvidersQuery(
 
 export function useOrchestrationSessionsQuery(
   config?: QueryConfig<OrchestrationSessionSummary[]>,
-  requestScope?: ApiRequestScope,
+  requestScope?: ApiRequestScope | null,
 ) {
   const host = useContext(OrchestrationSessionsContext);
-  const scope = requestScope ?? host?.scope;
+  const scope =
+    requestScope === null ? undefined : (requestScope ?? host?.scope);
   const streamLive =
     host?.streamLive === true &&
     host.scope?.apiBase === scope?.apiBase &&
     host.scope?.authorityKey === scope?.authorityKey;
   return useApiQueryWithSharing(
-    orchestrationQueries.sessions(scope).queryKey,
-    (signal) =>
-      fetchOrchestrationSessions(scope?.apiBase, {
+    requestScope === null
+      ? ['orchestration-sessions-unavailable']
+      : orchestrationQueries.sessions(scope).queryKey,
+    (signal) => {
+      if (requestScope === null) throw new StationRequestAuthorityError();
+      return fetchOrchestrationSessions(scope?.apiBase, {
         signal,
         ...(scope ? { requestScope: scope } : {}),
-      }),
+      });
+    },
     shareSessionReadModel,
     {
       staleTime: streamLive ? Infinity : (config?.staleTime ?? 60_000),
@@ -1332,10 +1338,8 @@ export function useOrchestrationSessionsQuery(
       refetchOnWindowFocus: config?.refetchOnWindowFocus,
       enabled: config?.enabled,
       refetchOnMount: config?.refetchOnMount ?? true,
-      // A live stream owns invalidation; disconnected/standalone hosts keep a slow fallback.
-      refetchInterval: streamLive
-        ? undefined
-        : (config?.refetchInterval ?? 60_000),
+      // Peer reconciliation is still read-driven; SSE cannot replace this safety poll.
+      refetchInterval: config?.refetchInterval ?? 60_000,
     },
   );
 }

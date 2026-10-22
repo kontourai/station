@@ -76,6 +76,8 @@ export const SERVER_EVENTS = {
   NOTIFICATION_CLEARED: 'notification:cleared',
   OPERATIONAL_EVENT: 'operational:event',
   ORCHESTRATION_EVENT: 'orchestration:event',
+  /** Identity-free invalidation after a committed session deletion; re-read under current authority. */
+  ORCHESTRATION_SESSIONS_CHANGED: 'orchestration:sessions-changed',
   /** A live session projection changed without creating a runtime event. */
   ORCHESTRATION_SESSION_PROJECTION_UPDATED:
     'orchestration:session-projection-updated',
@@ -199,6 +201,7 @@ export const SERVER_EVENT_BROADCAST_SAFETY: {
   // Wraps a `CanonicalRuntimeEvent` — threadId/turnId/prompt/output content.
   // Gated elsewhere (`canUserReadSession`); never this route.
   [SERVER_EVENTS.ORCHESTRATION_EVENT]: 'scoped',
+  [SERVER_EVENTS.ORCHESTRATION_SESSIONS_CHANGED]: 'broadcast',
   // `{threadId}` names one session, so this follows the same ownership gate
   // as canonical orchestration events on the dedicated stream.
   [SERVER_EVENTS.ORCHESTRATION_SESSION_PROJECTION_UPDATED]: 'scoped',

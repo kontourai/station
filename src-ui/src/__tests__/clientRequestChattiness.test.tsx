@@ -258,7 +258,7 @@ test('mounted details share one host stream, hydrate before it opens, isolate th
   ).not.toContain('retired-source');
 });
 
-test('board and shell share scoped list requests, pause idle polling live, and retain a disconnected fallback', async () => {
+test('board and shell share the live safety poll and discover peer changes without a stream frame', async () => {
   vi.useFakeTimers({
     toFake: [
       'setTimeout',
@@ -271,12 +271,17 @@ test('board and shell share scoped list requests, pause idle polling live, and r
   const origin = 'https://shared-list.example.test';
   _setApiBase(origin);
   let failNext = false;
+  let rows: {
+    threadId: string;
+    lifecycleState: string;
+    answerability: { answerable: true };
+  }[] = [];
   const fetcher = vi.fn(async () => {
     if (failNext) {
       failNext = false;
       throw new Error('temporary list failure');
     }
-    return Response.json({ success: true, data: [] });
+    return Response.json({ success: true, data: rows });
   });
   vi.stubGlobal('fetch', fetcher);
   const client = new QueryClient({
@@ -296,8 +301,8 @@ test('board and shell share scoped list requests, pause idle polling live, and r
   });
   const view = renderHook(
     () => ({
-      shell: useOrchestrationSessionsQuery(),
-      board: useBoardRecentWorkQuery(host.scope),
+      shell: { ...useOrchestrationSessionsQuery() },
+      board: { ...useBoardRecentWorkQuery(host.scope) },
     }),
     {
       wrapper: ({ children }: { children: ReactNode }) => (
@@ -315,14 +320,46 @@ test('board and shell share scoped list requests, pause idle polling live, and r
   expect(view.result.current.shell.isSuccess).toBe(true);
   expect(view.result.current.board.isSuccess).toBe(true);
   expect(fetcher).toHaveBeenCalledTimes(1);
+  rows = [
+    {
+      threadId: 'peer-task',
+      lifecycleState: 'awaiting-input',
+      answerability: { answerable: true },
+    },
+  ];
   await act(async () => {
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(59_000);
   });
   expect(fetcher).toHaveBeenCalledTimes(1);
   await act(async () => {
-    await client.invalidateQueries({ queryKey: ['orchestration-sessions'] });
+    await vi.advanceTimersByTimeAsync(1_001);
   });
   expect(fetcher).toHaveBeenCalledTimes(2);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1);
+  });
+  expect(view.result.current.shell.data).toEqual(rows);
+  expect(view.result.current.board.data).toEqual(rows);
+  rows = [
+    {
+      threadId: 'peer-task',
+      lifecycleState: 'completed',
+      answerability: { answerable: true },
+    },
+  ];
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(60_001);
+  });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1);
+  });
+  expect(view.result.current.shell.data).toEqual(rows);
+  expect(view.result.current.board.data).toEqual(rows);
+  expect(fetcher).toHaveBeenCalledTimes(3);
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: ['orchestration-sessions'] });
+  });
+  expect(fetcher).toHaveBeenCalledTimes(4);
   failNext = true;
   await act(async () => {
     await client.invalidateQueries({ queryKey: ['orchestration-sessions'] });
@@ -335,19 +372,19 @@ test('board and shell share scoped list requests, pause idle polling live, and r
     await vi.advanceTimersByTimeAsync(60_000);
   });
   expect(view.result.current.shell.isSuccess).toBe(true);
-  expect(fetcher).toHaveBeenCalledTimes(4);
+  expect(fetcher).toHaveBeenCalledTimes(6);
   host = { ...host, streamLive: false };
   view.rerender();
   await act(async () => {
     await vi.advanceTimersByTimeAsync(60_000);
   });
-  expect(fetcher).toHaveBeenCalledTimes(5);
+  expect(fetcher).toHaveBeenCalledTimes(7);
   host = { scope: { apiBase: origin, authorityKey: 'bob' }, streamLive: true };
   view.rerender();
   await act(async () => {
     await vi.advanceTimersByTimeAsync(1);
   });
-  expect(fetcher).toHaveBeenCalledTimes(6);
+  expect(fetcher).toHaveBeenCalledTimes(8);
   expect(
     client.getQueryCache().findAll({ queryKey: ['orchestration-sessions'] }),
   ).toHaveLength(2);
@@ -556,5 +593,77 @@ test('the mounted provider refreshes lists from detail-only lifecycle frames wit
   await act(async () => {
     await vi.advanceTimersByTimeAsync(60_000);
   });
-  expect(reads).toBe(4);
+  expect(reads).toBe(5);
+  rows = [];
+  await act(async () => {
+    stream.options.onMessage({
+      event: 'orchestration:sessions-changed',
+      data: '{}',
+    });
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+  expect(reads).toBe(6);
+  expect(view.result.current.data).toEqual([]);
+});
+
+test('a Board without scope cannot observe or refetch the host cache', async () => {
+  const scope = {
+    apiBase: 'https://board-authority.example.test',
+    authorityKey: 'alice',
+    isCurrent: () => true,
+  };
+  const fetcher = vi.fn(async () =>
+    Response.json({
+      success: true,
+      data: [
+        { threadId: 'private-host-row', answerability: { answerable: true } },
+      ],
+    }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  setClientCredentialResolver(() => ({
+    origin: scope.apiBase,
+    requestAuthority: scope,
+  }));
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  clients.push(client);
+  const view = renderHook(
+    () => ({
+      host: useOrchestrationSessionsQuery(),
+      board: useBoardRecentWorkQuery(),
+    }),
+    {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>
+          <OrchestrationSessionsContext.Provider
+            value={{ scope, streamLive: true }}
+          >
+            {children}
+          </OrchestrationSessionsContext.Provider>
+        </QueryClientProvider>
+      ),
+    },
+  );
+  await waitFor(() =>
+    expect(view.result.current.host.data).toEqual([
+      { threadId: 'private-host-row', answerability: { answerable: true } },
+    ]),
+  );
+  expect(view.result.current.board.data).toBeUndefined();
+  expect(fetcher).toHaveBeenCalledOnce();
+  await act(async () => {
+    expect((await view.result.current.board.refetch()).error).toBeInstanceOf(
+      StationRequestAuthorityError,
+    );
+  });
+  expect(view.result.current.board.data).toBeUndefined();
+  expect(
+    client.getQueryData(['orchestration-sessions-unavailable']),
+  ).toBeUndefined();
+  expect(view.result.current.host.data).toEqual([
+    { threadId: 'private-host-row', answerability: { answerable: true } },
+  ]);
+  expect(fetcher).toHaveBeenCalledOnce();
 });
