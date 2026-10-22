@@ -141,7 +141,7 @@ operator authority is required for every read and write. Agent-originated
 internal requests and delegated or paired-device credentials are refused, even
 when the device can run commands.
 
-The response is `{success:true,data}` where `data.phase` is `acquiring`, `ready`
+The response is `{success:true,data}` where `data.phase` is `acquiring`, `ready`,
 `failed` or `cancelled`. A ready receipt includes `checkoutPath`, `canonicalRemote` and
 `resolvedCommit`. Failed acquisition is a recorded domain result, returned with
 HTTP 200 and a fixed safe explanation. Invalid input is 400, reuse of an ID for
