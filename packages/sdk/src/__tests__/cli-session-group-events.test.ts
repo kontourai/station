@@ -123,3 +123,84 @@ test('normal stream rotation resumes at the accepted revision and ignores duplic
   }
   expect(cancelled).toHaveBeenCalledOnce();
 });
+
+test.each([262_144, 262_145])(
+  'stream enforces the page budget separately from framing at %i bytes',
+  async (bytes) => {
+    const value = {
+      ...page(0, 16),
+      events: Array.from({ length: 16 }, (_, index) => ({
+        revision: index + 1,
+        members: [],
+        schedule: Array.from({ length: 32 }, () => ({
+          kind: 'claimed',
+          stepId: 'seat',
+          claimId: '',
+        })),
+      })),
+    };
+    let remaining =
+      bytes - new TextEncoder().encode(JSON.stringify(value)).byteLength;
+    for (const event of value.events) {
+      for (const entry of event.schedule) {
+        const length = Math.min(512, remaining);
+        entry.claimId = 'x'.repeat(length);
+        remaining -= length;
+      }
+    }
+    expect(remaining).toBe(0);
+    const data = JSON.stringify(value);
+    expect(new TextEncoder().encode(data).byteLength).toBe(bytes);
+    const frame = `event: cli-group-events\nid: cli-group:cli-test:16\ndata: ${data}\n\n`;
+    expect(new TextEncoder().encode(frame).byteLength).toBeGreaterThan(262_144);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode(frame));
+              },
+            }),
+            { headers: { 'Content-Type': 'text/event-stream' } },
+          ),
+      ),
+    );
+    const onPage = vi.fn();
+    const onTerminal = vi.fn();
+    let observed!: () => void;
+    const outcome = new Promise<void>((resolve) => {
+      observed = resolve;
+    });
+    const stream = subscribeCliSessionGroupEvents(
+      'https://station.test',
+      'cli-test',
+      0,
+      {
+        onPage(value) {
+          onPage(value);
+          observed();
+        },
+        onTerminal(error) {
+          onTerminal(error);
+          observed();
+        },
+      },
+    );
+    try {
+      await outcome;
+      if (bytes === 262_144) {
+        expect(onPage).toHaveBeenCalledOnce();
+        expect(onPage.mock.calls[0][0]).toEqual(value);
+        expect(onTerminal).not.toHaveBeenCalled();
+      } else {
+        expect(onPage).not.toHaveBeenCalled();
+        expect(onTerminal).toHaveBeenCalledOnce();
+      }
+    } finally {
+      stream.close();
+      await stream.completed;
+    }
+  },
+);

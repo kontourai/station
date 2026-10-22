@@ -9,6 +9,13 @@ export const DELEGATION_GROUP_LIMITS = {
   memberPageSize: 64,
 } as const;
 
+// A 128-character group ID can expand threefold in the cursor; revision is
+// a safe integer (at most 16 digits). 1 KiB covers the fixed SSE field lines.
+export const CLI_SESSION_GROUP_EVENT_LIMITS = {
+  pageBytes: 262_144,
+  frameBytes: 262_144 + 1_024,
+} as const;
+
 export type DelegationGroupCreateInput = {
   preparationId: string;
   operationId: string;

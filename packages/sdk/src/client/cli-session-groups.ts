@@ -8,7 +8,10 @@ import type {
   CliSessionGroupListPage,
   CliSessionGroupView,
 } from '@kontourai/station-contracts/delegation-group';
-import { cliSessionGroupStreamCursor } from '@kontourai/station-contracts/delegation-group';
+import {
+  CLI_SESSION_GROUP_EVENT_LIMITS,
+  cliSessionGroupStreamCursor,
+} from '@kontourai/station-contracts/delegation-group';
 import type { EnsembleCliSessionGroupInput } from '@kontourai/station-contracts/ensemble';
 import { z } from 'zod/v3';
 import {
@@ -357,7 +360,7 @@ export function subscribeCliSessionGroupEvents(
     `${groupPath(apiBase, groupId)}/events/stream?afterRevision=${cursor}`,
     {
       ...options,
-      maxFrameBytes: 262_144,
+      maxFrameBytes: CLI_SESSION_GROUP_EVENT_LIMITS.frameBytes,
       onOpen: callbacks.onOpen,
       onError: callbacks.onError,
       onTerminal: callbacks.onTerminal,
@@ -386,6 +389,13 @@ export function subscribeCliSessionGroupEvents(
             'Session group stream unavailable.',
           );
         if (message.event !== 'cli-group-events') return false;
+        if (
+          new TextEncoder().encode(message.data).byteLength >
+          CLI_SESSION_GROUP_EVENT_LIMITS.pageBytes
+        )
+          throw new CliSessionGroupProtocolError(
+            'Session group event page too large.',
+          );
         let value: unknown;
         try {
           value = JSON.parse(message.data);
