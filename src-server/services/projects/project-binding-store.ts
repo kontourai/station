@@ -58,6 +58,7 @@
 
 import { mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { normalizeGitOrigin } from '@kontourai/station-contracts/git-remote-identity';
 import {
   PROJECT_BINDING_STORE_SCHEMA_VERSION,
@@ -68,6 +69,7 @@ import {
   acquireFileMutationLockAsync,
   type FileMutationLock,
 } from '@kontourai/station-shared/lifecycle-events';
+import { FileStorageConflictError } from '../../domain/project-file-transactions.js';
 import { isRecord } from '../../utils/is-record.js';
 import { JsonFileStore } from '../infra/json-store.js';
 
@@ -343,7 +345,14 @@ export class ProjectBindingsStore {
    */
   async upsertProjectBinding(
     input: UpsertProjectBindingInput,
+    admission?: {
+      expectedBinding: ProjectBinding | null;
+      assertCurrent: () => void;
+    },
   ): Promise<ProjectBinding> {
+    const expectedBinding = admission
+      ? structuredClone(admission.expectedBinding)
+      : undefined;
     if (typeof input.path !== 'string' || input.path.length === 0) {
       throw new Error('A project binding requires a non-empty path');
     }
@@ -368,12 +377,23 @@ export class ProjectBindingsStore {
           existing.projectId === binding.projectId &&
           existing.resourceId === binding.resourceId,
       );
+      if (
+        admission &&
+        !isDeepStrictEqual(
+          index === -1 ? null : current.bindings[index],
+          expectedBinding,
+        )
+      )
+        throw new FileStorageConflictError(
+          'Repository binding changed before it could be recorded. Inspect the current Project before retrying.',
+        );
       const bindings =
         index === -1
           ? [...current.bindings, binding]
           : current.bindings.map((existing, at) =>
               at === index ? binding : existing,
             );
+      admission?.assertCurrent();
       this.store.write({ ...current, bindings });
       return binding;
     } finally {

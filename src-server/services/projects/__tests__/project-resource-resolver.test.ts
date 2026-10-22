@@ -1978,3 +1978,46 @@ describe('resolveProjectResource — multi-repo (station#1503, §10 slice 5)', (
     expect(states).toEqual(['bound', 'bound', 'unbound']);
   });
 });
+
+test('binding verification cannot overwrite a newer resource choice published while remotes are being read', async () => {
+  const harness = createHome();
+  await saveProject(harness.adapter, { slug: 'acme' });
+  writeManifestRecord(harness.home, 'acme', {
+    id: 'prj_acme',
+    repos: [gitResource('github.com/acme/repo')],
+  });
+  const requested = tempDir('station-bind-requested-');
+  const newer = tempDir('station-bind-newer-');
+  let published = false;
+  await expect(
+    bindProjectResource('acme', requested, {
+      manifests: new ProjectManifestStore(harness.home, harness.adapter),
+      bindings: harness.bindings,
+      readRemotes: async () => {
+        await harness.bindings.upsertProjectBinding({
+          projectId: 'prj_acme',
+          resourceId: 'github.com/acme/repo',
+          kind: 'git-checkout',
+          path: newer,
+          remotes: ['https://github.com/acme/repo.git'],
+          verifiedAt: 2,
+          state: 'bound',
+        });
+        published = true;
+        return {
+          ok: true,
+          remotes: [
+            { name: 'origin', url: 'https://github.com/acme/repo.git' },
+          ],
+        };
+      },
+    }),
+  ).rejects.toThrow('binding changed');
+  expect(published).toBe(true);
+  expect(
+    new ProjectBindingsStore(harness.home).findBinding(
+      'prj_acme',
+      'github.com/acme/repo',
+    )?.path,
+  ).toBe(newer);
+});
