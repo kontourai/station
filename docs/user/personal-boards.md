@@ -23,8 +23,9 @@ HTTPS addresses.
 with unsaved edits asks whether to discard them. Narrow panes and phone screens
 stack the sections vertically.
 
-Task and recent-work sections refresh about every ten seconds; the attention
-section uses the same interval. Project sections refresh about every fifteen
+Task and attention sections refresh about every ten seconds. Recent work
+shares the session list: live stream updates invalidate it, with a 60-second
+fallback while the stream is disconnected. Project sections refresh about every fifteen
 seconds. Failed reads show Retry rather than an empty success. Attention can
 report that an underlying source is unavailable. Links open the owning feature;
 review and approve requests there. A Board never approves work on your behalf.

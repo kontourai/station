@@ -18,11 +18,18 @@ import {
 } from './replay/capture-tap';
 import { createStreamCursorTracker, parseStreamSequence } from './resumeCursor';
 import { clearSequencedLiveEvents } from './sequencedLiveEvents';
+import {
+  sharedOrchestrationStreamFailed,
+  sharedOrchestrationStreamMessage,
+  sharedOrchestrationStreamOpened,
+  sharedOrchestrationStreamRetrying,
+} from './sharedStreamListeners';
 import { applyOrchestrationSnapshot } from './snapshotHandlers';
 import { setStreamConnectionState } from './streamConnectionState';
 import type { OrchestrationEvent, OrchestrationSnapshotPayload } from './types';
 
 interface OwnedStream {
+  authorityKey?: string;
   connection: FetchSseConnection;
   /** Waiting out a terminal (401/403) stop — see `onTerminal` below. */
   parked: boolean;
@@ -409,13 +416,28 @@ export function resetSessionReadModelRefreshForTests(): void {
 export function ensureOrchestrationEventStream(
   apiBase: string,
   queryClient?: QueryClient,
+  authorityKey?: string,
 ): () => void {
   const release = queryClient
     ? registerStreamQueryClient(apiBase, queryClient)
     : () => {};
   requestedBases.add(apiBase);
   installRecoveryListeners();
-  const existing = activeSources.get(apiBase);
+  let existing = activeSources.get(apiBase);
+  if (
+    existing &&
+    authorityKey !== undefined &&
+    existing.authorityKey !== authorityKey
+  ) {
+    existing.connection.close();
+    activeSources.delete(apiBase);
+    setStreamConnectionState(apiBase, 'interrupted');
+    appliedCursors.delete(apiBase);
+    streamEpochs.delete(apiBase);
+    basesWithSnapshot.delete(apiBase);
+    clearSequencedLiveEvents(apiBase);
+    existing = undefined;
+  }
   if (existing && !existing.ended && !existing.connection.signal.aborted) {
     // A parked stream is alive but waiting for a credential change that may
     // have arrived by a path that never announced it. Ask again at most once
@@ -462,6 +484,7 @@ export function ensureOrchestrationEventStream(
   // the catch-up a reconnect fallback triggers.
   let hasReceivedSnapshot = basesWithSnapshot.has(apiBase);
   let receiving = false;
+  sharedOrchestrationStreamRetrying(apiBase);
   const authenticatedStream = fetchSSE(`${apiBase}/api/orchestration/events`, {
     authentication: 'required',
     initialLastEventId,
@@ -484,7 +507,21 @@ export function ensureOrchestrationEventStream(
     retryDelayMs: 2000,
     maxRetryDelayMs: 30_000,
     stallTimeoutMs: ORCHESTRATION_STREAM_STALL_TIMEOUT_MS,
+    onOpen: (response) => {
+      if (
+        activeSources.get(apiBase) !== owned ||
+        owned.connection.signal.aborted
+      )
+        return;
+      sharedOrchestrationStreamOpened(apiBase, response);
+    },
     onMessage: (raw) => {
+      if (
+        activeSources.get(apiBase) !== owned ||
+        owned.connection.signal.aborted
+      )
+        return;
+      sharedOrchestrationStreamMessage(apiBase, raw);
       if (!receiving) {
         recordReplayConnection(apiBase, 'receiving');
         setStreamConnectionState(apiBase, 'receiving');
@@ -526,6 +563,7 @@ export function ensureOrchestrationEventStream(
           cursor.adopt(raw.id);
           appliedCursors.set(apiBase, raw.id!);
         }
+        requestSessionReadModelRefresh(apiBase);
         setStreamConnectionState(apiBase, 'caught-up');
         recordReplayConnection(apiBase, 'caught-up');
       } else if (raw.event === 'orchestration:snapshot') {
@@ -612,7 +650,13 @@ export function ensureOrchestrationEventStream(
     // backoff window create a second stream while this one is still live and
     // scheduled to reconnect. Both streams then replay and apply the same
     // orchestration events.
-    onError: () => {
+    onError: (error) => {
+      if (
+        activeSources.get(apiBase) !== owned ||
+        owned.connection.signal.aborted
+      )
+        return;
+      sharedOrchestrationStreamFailed(apiBase, error);
       // Do not leave the last partial answer invisible during retry/backoff.
       settleSemanticDeliveryBuffer(apiBase, false);
       receiving = false;
@@ -637,7 +681,13 @@ export function ensureOrchestrationEventStream(
     // Resuming in place keeps this stream's cursor. That assumes the new
     // credential is the same principal's; if it is not, the server still
     // gates every replayed event by the NEW request's authority.
-    onTerminal: () => {
+    onTerminal: (error) => {
+      if (
+        activeSources.get(apiBase) !== owned ||
+        owned.connection.signal.aborted
+      )
+        return;
+      sharedOrchestrationStreamFailed(apiBase, error, true);
       // fetchSSE invokes onError first. Cancel its deferred transient flush:
       // a terminal 401/403 means authority was lost, so hidden content is
       // discarded rather than projected into a later replacement owner.
@@ -650,12 +700,14 @@ export function ensureOrchestrationEventStream(
       owned.lastParkedRetryAt = monotonicNow();
     },
     onRetry: () => {
+      sharedOrchestrationStreamRetrying(apiBase);
       // A deferred retry still pending re-checks `parked` before it fires.
       owned.parked = false;
     },
   });
 
   const owned: OwnedStream = {
+    authorityKey,
     connection: authenticatedStream,
     parked: false,
     lastParkedRetryAt: 0,
@@ -669,10 +721,18 @@ export function ensureOrchestrationEventStream(
   void authenticatedStream.completed.then(
     () => {
       owned.ended = true;
+      if (activeSources.get(apiBase) === owned)
+        sharedOrchestrationStreamFailed(
+          apiBase,
+          new Error('Orchestration stream ended'),
+        );
+
       clearDeferredParkedRetry(owned);
     },
     (error: unknown) => {
       owned.ended = true;
+      if (activeSources.get(apiBase) === owned)
+        sharedOrchestrationStreamFailed(apiBase, error);
       clearDeferredParkedRetry(owned);
       // Not silent: the dock must stop claiming a live feed, and whatever
       // threw is a defect worth seeing. The next recovery signal replaces it.

@@ -130,6 +130,7 @@ import {
   notifyPluginCommandEffectCookieAuthEligibility,
 } from '../components/plugin-command-effect-switch-signal';
 import { StartupScreen } from '../components/StartupScreen';
+import { SessionReadModelProvider } from '../hooks/orchestration/SessionReadModelProvider';
 import {
   useConnectionSwitchScope,
   useInvalidateCachesOnConnectionSwitch,
@@ -603,7 +604,7 @@ export function AuthorityQueryProvider({
           persistOptions={persistOptions}
         >
           <AuthoritySwitchInvalidator />
-          {children}
+          <SessionReadModelProvider>{children}</SessionReadModelProvider>
         </PersistQueryClientProvider>
       </AuthorityPersistenceContext.Provider>
     );
@@ -681,5 +682,9 @@ function AuthoritySwitchInvalidator(): ReactNode {
  */
 function EphemeralTree({ children }: { children: ReactNode }): ReactNode {
   const [client] = useState(() => createAuthorityClient());
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  return (
+    <QueryClientProvider client={client}>
+      <SessionReadModelProvider>{children}</SessionReadModelProvider>
+    </QueryClientProvider>
+  );
 }

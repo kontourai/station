@@ -1499,6 +1499,15 @@ the same connection, so CLI observers do not see a false completion. A snapshot
 reconciles compacted activity/projection notifications; per-session read access
 is checked again before queued content is written.
 
+Station's SessionDetail subscribes to the tab's shared orchestration feed and
+filters canonical events by Session id. Closing a detail releases its local
+subscription. The shared transport retains the server cursor and epoch across
+retries; a snapshot fallback reloads each mounted detail's bounded history.
+History starts after capability discovery and does not wait for SSE to open.
+The same-tab subscription needs no BroadcastChannel or SharedWorker. Tabs still
+own separate shared feeds; scheduler, monitoring and Task-room feeds remain
+separate connections.
+
 Snapshot and caught-up session summaries use the same scope as the stream:
 `?threadId=X` includes only X; the global stream includes all readable sessions.
 

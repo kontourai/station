@@ -4830,6 +4830,22 @@ framing ends and the application's authority checks begin.
 
 ## Session read-model deadline
 
+`useOrchestrationSessionsQuery(config?, requestScope?)` and
+`useBoardRecentWorkQuery(requestScope?)` share the session-list cache when bound
+to the same API base and authority key. Station supplies that binding through
+`OrchestrationSessionsContext`. A caught-up orchestration stream invalidates the
+list on projection updates and turn boundaries, so its observers do not poll.
+Without a live stream, observers use a 60-second fallback (standalone SDK
+callers may supply `refetchInterval`). Different authority keys use separate
+cache entries, and request scopes still guard dispatch and response reads.
+
+The window and resume capability helpers share one anonymous public-handshake
+request per API base. Failed or malformed discovery remains unknown for window
+reads and false for resume; it can retry after 30 seconds. A responding host
+without window support is rechecked after 60 seconds. Manual window-capability
+invalidation refreshes the shared descriptor for that host without resetting
+another Session's recovery budget.
+
 `fetchOrchestrationSessions(apiBase?)` reads the session read-model with an
 explicit 30-second timeout for receiving headers, then a 30-second inactivity
 timeout while consuming the JSON body. Each nonempty chunk resets the inactivity

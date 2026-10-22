@@ -15,6 +15,7 @@ import {
 } from '@kontourai/station-contracts/orchestration';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
+import { useContext } from 'react';
 import { apiErrorMessage } from '../api-core';
 import { StationHttpError } from '../client/api-error-message';
 import { ChatHttpError } from '../client/chatHttpError';
@@ -56,6 +57,7 @@ import {
 } from '../client/orchestration';
 import { StationRequestTimeoutError } from '../client/request-deadline';
 import { isStationAnswer } from '../client/station-envelope';
+import { OrchestrationSessionsContext } from '../orchestrationSessionsContext';
 import {
   type MutationOptions,
   type QueryConfig,
@@ -1305,16 +1307,36 @@ export function useOrchestrationProvidersQuery(
 
 export function useOrchestrationSessionsQuery(
   config?: QueryConfig<OrchestrationSessionSummary[]>,
+  requestScope?: ApiRequestScope,
 ) {
+  const host = useContext(OrchestrationSessionsContext);
+  const scope = requestScope ?? host?.scope;
+  const streamLive =
+    host?.streamLive === true &&
+    host.scope?.apiBase === scope?.apiBase &&
+    host.scope?.authorityKey === scope?.authorityKey;
   return useApiQueryWithSharing(
-    orchestrationQueries.sessions().queryKey,
-    () => fetchOrchestrationSessions(),
+    [
+      ...orchestrationQueries.sessions().queryKey,
+      ...(scope ? [scope.apiBase, scope.authorityKey] : []),
+    ],
+    (signal) =>
+      fetchOrchestrationSessions(scope?.apiBase, {
+        signal,
+        ...(scope ? { requestScope: scope } : {}),
+      }),
     shareSessionReadModel,
     {
-      staleTime: config?.staleTime ?? orchestrationQueries.sessions().staleTime,
+      staleTime: streamLive ? Infinity : (config?.staleTime ?? 60_000),
       gcTime: config?.gcTime,
+      retry: config?.retry,
+      refetchOnWindowFocus: config?.refetchOnWindowFocus,
       enabled: config?.enabled,
-      refetchInterval: config?.refetchInterval,
+      refetchOnMount: config?.refetchOnMount ?? true,
+      // A live stream owns invalidation; disconnected/standalone hosts keep a slow fallback.
+      refetchInterval: streamLive
+        ? undefined
+        : (config?.refetchInterval ?? 60_000),
     },
   );
 }
