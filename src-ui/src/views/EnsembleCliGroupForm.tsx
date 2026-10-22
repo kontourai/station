@@ -14,12 +14,14 @@ import { Button } from '../components/Button';
 export function EnsembleCliGroupForm({
   scope,
   path,
+  presetJson,
   hash,
   memberIds,
   onDirtyChange,
 }: {
   scope: ApiRequestScope & { isCurrent(): boolean };
-  path: string;
+  path?: string;
+  presetJson?: string;
   hash: string;
   memberIds: string[];
   onDirtyChange(dirty: boolean): void;
@@ -73,6 +75,7 @@ export function EnsembleCliGroupForm({
               onDirtyChange(false);
               create.mutate({
                 path,
+                presetJson,
                 expectedPresetHash: hash,
                 brief,
                 operationId,

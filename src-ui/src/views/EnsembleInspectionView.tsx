@@ -8,6 +8,7 @@ import { useNavigationActions } from '../contexts/NavigationContext';
 import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { CliSessionGroupsPanel } from './CliSessionGroupsPanel';
 import { EnsembleCliGroupForm } from './EnsembleCliGroupForm';
+import { EnsemblePresetUpload } from './EnsemblePresetUpload';
 import { layoutEnsembleInspection } from './ensemble-inspection-layout';
 import './EnsembleInspectionView.css';
 
@@ -27,6 +28,12 @@ export function EnsembleInspectionView() {
         Read configuration from a preset on This Station. Inspection does not
         authenticate, discover models or launch members.
       </p>
+      {scope && (
+        <EnsemblePresetUpload
+          key={`upload:${scope.apiBase}:${scope.authorityKey}`}
+          scope={scope}
+        />
+      )}
       {scope ? (
         <InspectionForm
           key={`${scope.apiBase}:${scope.authorityKey}`}

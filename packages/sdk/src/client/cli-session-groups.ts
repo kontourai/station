@@ -160,7 +160,8 @@ const viewSchema: z.ZodType<CliSessionGroupView> = z
 const ensembleInputSchema = inputSchema
   .omit({ members: true })
   .extend({
-    path: z.string().min(1).max(4096),
+    path: z.string().min(1).max(4096).optional(),
+    presetJson: z.string().min(1).max(131_072).optional(),
     expectedPresetHash: z
       .string()
       .max(71)
@@ -190,7 +191,10 @@ const ensembleInputSchema = inputSchema
 export function parseEnsembleCliSessionGroupInput(
   value: unknown,
 ): EnsembleCliSessionGroupInput {
-  return ensembleInputSchema.parse(value);
+  const input = ensembleInputSchema.parse(value);
+  if ((input.path === undefined) === (input.presetJson === undefined))
+    throw new Error('Select exactly one Ensemble source.');
+  return input;
 }
 
 /** Local named Agents, with an expected engine and explicit operation identity. */

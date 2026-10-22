@@ -1649,7 +1649,9 @@ session** navigates to the ordinary Activity session view. Inspection neither
 starts a group nor inherits mutation authority. The view withholds observations
 when current authority is lost or a refresh is refused.
 
-After inspecting a preset, **Create a CLI session group** opens an explicit
+**Use a preset from this device** reads a user-selected UTF-8 JSON file of at
+most 128 KiB in the browser. It shows the roster and digest without a host-file
+read. After loading that file or inspecting a host preset, **Create a CLI session group** opens an explicit
 brief and receiver-binding form. **Save session group** persists the group without
 starting engines. **Run session group** starts supervision using the same current
 Station authority; **Cancel session group** requests interruption. Leaving the
@@ -1684,8 +1686,11 @@ seats. The target must include its expected engine connection. Station waits for
 accepted member turns can still overlap. Station reuses the
 ordinary delegation route's actor, posture, full-access, workspace, receiver and
 lineage decisions; a group does not authorize anything those decisions refuse.
-The preset entry point requires the current locally granted operator. Supply
-`path` (canonical JSON path on this Station), `expectedPresetHash`, `brief`,
+The preset entry point accepts exactly one source: `path` (a canonical JSON path
+on this Station, requiring the current locally granted operator), or `presetJson`
+(caller-supplied JSON bytes, under ordinary session-group request authority).
+The browser's `ui-bootstrap` credential can submit its selected file's JSON but
+cannot use this endpoint to read a host path. Supply `expectedPresetHash`, `brief`,
 `operationId`, `maxConcurrent`, `deadlineAt`, and `bindings` keyed by every preset
 member ID. Each binding supplies a local `target` with an Agent, expected engine
 connection and explicit Project or directory workspace, plus `needs` (an array,

@@ -18,7 +18,9 @@ export interface EnsembleInspectionInput {
 
 /** Preset content supplies briefs and models; receiver bindings supply no new authority. */
 export interface EnsembleCliSessionGroupInput {
-  path: string;
+  /** Exactly one source: host path (native local grant) or caller-supplied JSON. */
+  path?: string;
+  presetJson?: string;
   expectedPresetHash: string;
   brief: string;
   operationId: string;

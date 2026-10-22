@@ -4421,7 +4421,8 @@ export function createOrchestrationRoutes(
       const schema = groupCreateSchema
         .omit({ members: true })
         .extend({
-          path: z.string().min(1).max(4096),
+          path: z.string().min(1).max(4096).optional(),
+          presetJson: z.string().min(1).max(131_072).optional(),
           expectedPresetHash: z
             .string()
             .max(71)

@@ -657,6 +657,59 @@ test('a locally authorized preset produces actual member turns with authored mod
     },
   );
   expect(denied.status).toBe(403);
+  const browserOffer = security.devicePairing.createOffer({
+    endpoint: f.apiBase,
+  });
+  const browserRequest = security.devicePairing.requestPairing({
+    requesterPosition: 'off-box',
+    offerId: browserOffer.offerId,
+    proof: browserOffer.challenge,
+    deviceName: 'Browser preset upload',
+  });
+  security.devicePairing.confirmRequest(browserRequest.requestId, {
+    kind: 'ui-bootstrap',
+  });
+  const browser = security.devicePairing.exchange({
+    offerId: browserOffer.offerId,
+    proof: browserOffer.challenge,
+    requestId: browserRequest.requestId,
+    locality: 'home-possession',
+    mintKind: 'ui-bootstrap',
+  });
+  const { path: _path, ...inline } = input;
+  const upload = {
+    ...inline,
+    presetJson: bytes,
+    operationId: 'uploaded-preset',
+  };
+  const submitUpload = (value: unknown) =>
+    f.app.request('/api/orchestration/session-groups/from-ensemble', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${browser.credential}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(value),
+    });
+  const uploaded = await submitUpload(upload);
+  expect(uploaded.status, await uploaded.clone().text()).toBe(200);
+  expect(
+    ((await uploaded.json()) as { data: CliSessionGroupView }).data.members.map(
+      (member) => member.seatId,
+    ),
+  ).toEqual(['lead', 'check', 'join']);
+  expect(f.adapter.starts).toHaveLength(0);
+  const substituted = await submitUpload({
+    ...upload,
+    operationId: 'substituted-preset',
+    presetJson: `${bytes} `,
+  });
+  expect(substituted.status).toBe(409);
+  expect(await substituted.text()).toContain('ensemble_preset_stale');
+  const bothSources = await submitUpload({ ...upload, path });
+  expect(bothSources.status).toBe(409);
+  const browserHostRead = await submitUpload(input);
+  expect(browserHostRead.status).toBe(403);
   setClientCredentialResolver(() => ({
     origin: f.apiBase,
     credential: local.credential,

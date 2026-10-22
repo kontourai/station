@@ -1,7 +1,9 @@
+import { createHash } from 'node:crypto';
 import type { CliSessionGroupCreateInput } from '@kontourai/station-contracts/delegation-group';
 import {
   composeEnsembleBrief,
   type EnsembleCliSessionGroupInput,
+  parseEnsemblePreset,
 } from '@kontourai/station-contracts/ensemble';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import {
@@ -29,17 +31,28 @@ export class EnsembleCliSessionGroupPreparation {
     assertCurrent: () => void,
   ): Promise<CliSessionGroupCreateInput> {
     input = structuredClone(input);
+    if ((input.path === undefined) === (input.presetJson === undefined))
+      throw new CliSessionGroupUnavailable('group_invalid');
     const current = () => {
       request.signal.throwIfAborted();
       assertCurrent();
-      try {
-        this.authority.assertAuthority(request, principal);
-      } catch {
-        throw new CliSessionGroupUnavailable('group_authority_required');
-      }
+      if (input.path !== undefined)
+        try {
+          this.authority.assertAuthority(request, principal);
+        } catch {
+          throw new CliSessionGroupUnavailable('group_authority_required');
+        }
     };
     current();
-    const source = await loadEnsemblePreset(input.path);
+    const source =
+      input.path !== undefined
+        ? await loadEnsemblePreset(input.path)
+        : {
+            sha256: `sha256:${createHash('sha256')
+              .update(input.presetJson ?? '')
+              .digest('hex')}`,
+            preset: parseEnsemblePreset(input.presetJson ?? ''),
+          };
     current();
     if (source.sha256 !== input.expectedPresetHash)
       throw new CliSessionGroupUnavailable('ensemble_preset_stale');
@@ -89,7 +102,10 @@ export class EnsembleCliSessionGroupPreparation {
         target,
       });
     }
-    if ((await loadEnsemblePreset(source.path)).sha256 !== source.sha256)
+    if (
+      input.path !== undefined &&
+      (await loadEnsemblePreset(input.path)).sha256 !== source.sha256
+    )
       throw new CliSessionGroupUnavailable('ensemble_preset_stale');
     fence();
     current();

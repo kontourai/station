@@ -498,3 +498,50 @@ test('leaving the group form aborts pending run supervision and settles the wait
   expect(mutation?.state.data).toBeUndefined();
   expect(fetch).toHaveBeenCalledTimes(3);
 });
+
+test('a selected local preset submits its exact bytes without a host-file inspection request', async () => {
+  const { File } = await import('node:buffer');
+  const { createHash, webcrypto } = await import('node:crypto');
+  vi.stubGlobal('crypto', webcrypto);
+  navigationStore.navigate('/agents?tab=ensembles');
+  const json = `${JSON.stringify({ version: 'station.ensemble/v1', id: 'team', name: 'Uploaded team', stationmaster: 'lead', members: [{ id: 'lead', codename: 'Lead', color: '#123ABC', role: 'Review', engine: 'opencode', model: 'chosen-model', reasoning: null, options: {}, promptAppends: ['Preserve this.'] }] })}\n`;
+  const fetch = vi.fn(
+    async (_url: unknown, _init?: RequestInit) =>
+      new Response(JSON.stringify({ success: true, data: savedGroup })),
+  );
+  vi.stubGlobal('fetch', fetch);
+  mount();
+  fireEvent.change(
+    await screen.findByLabelText('Preset file from this device'),
+    {
+      target: {
+        files: [new File([json], 'team.json', { type: 'application/json' })],
+      },
+    },
+  );
+  await screen.findByRole('heading', { name: 'Uploaded team' });
+  expect(fetch).not.toHaveBeenCalled();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Create a CLI session group' }),
+  );
+  for (const [label, value] of [
+    ['Shared brief', 'Review'],
+    ['Agent ID for lead', 'reviewer'],
+    ['Engine connection ID for lead', 'opencode'],
+    ['Working directory on This Station for lead', '/work'],
+  ])
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save session group' }));
+  await screen.findByText(/Saved session group/);
+  expect(fetch).toHaveBeenCalledOnce();
+  const [url, init] = fetch.mock.calls[0];
+  expect(String(url)).toBe(
+    'https://station.test/api/orchestration/session-groups/from-ensemble',
+  );
+  const input = JSON.parse(String(init?.body));
+  expect(input.presetJson).toBe(json);
+  expect(input.path).toBeUndefined();
+  expect(input.expectedPresetHash).toBe(
+    `sha256:${createHash('sha256').update(json).digest('hex')}`,
+  );
+});

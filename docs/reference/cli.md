@@ -1197,8 +1197,9 @@ members. Run supervises the server's Flow frontier and can wait up to its deadli
 
 `session-from-ensemble` instead reads the preset-group request described in that
 API reference. Its `path` names the preset on the receiving Station; `--file`
-names the request file on the CLI host. It requires a locally granted operator
-and an exact preset hash. The saved briefs include each member's prompt additions
+names the request file on the CLI host. Host-path reads require a locally granted
+operator. The request may instead supply `presetJson`, which uses ordinary group
+request authority. Both source forms require an exact preset hash. The saved briefs include each member's prompt additions
 and the full roster. It does not call an engine until `session-run`.
 Ctrl-C disconnects that supervision and requests interruption; it is not proof of
 physical termination. Inspect the same group after an uncertain response; never
