@@ -230,7 +230,9 @@ structured completed report bound to the tracked tool call and child identity;
 it excludes the model-facing agentId/usage trailer. It replaces an earlier
 summary while preserving the authorized recovery handle. Later summaries do
 not overwrite it. Other sources identify reports, not returned results.
-Older reports omit provenance; readers must preserve that uncertainty.
+`source` describes summary text only. A handle without text has no report
+provenance and does not replace an earlier report or recovery handle. Older
+reports omit provenance; readers must preserve that uncertainty.
 Claude task notifications and Muse workflow summaries are provider summaries;
 Codex child-turn messages are child messages, including its last-message
 fallback. A completed child without a structured return discloses that no

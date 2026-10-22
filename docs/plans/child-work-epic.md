@@ -164,9 +164,27 @@ The later member-attention delta passed independent review without P1/P2
 findings. Its three load-fragile one-second test waits now use the file's
 existing ten-second helper; the repaired route file passes 14 focused cases.
 
-This establishes only the selected CLI path. Multiple engine families, complete
-preset/inspector adoption, the remaining lineage/context/recovery obligations,
-final combined review and full epic acceptance remain outstanding.
+At `ca15aa85c11`, another isolated live group completed with two OpenCode
+`zai-coding-plan/glm-5.3-flash` members and one Codex `gpt-6-luna` member at low
+effort. Each returned its exact challenge text. The first two turns overlapped
+for 3.234 seconds; the third started after both initial completions. The CLI
+journal follow read exited cleanly on SIGINT. A real browser read of that group
+showed its completed Flow projection, three member/session rows and exact
+dependencies, and retained the not-assessed acceptance disclosure after reload.
+The 390px layout had no document overflow. No routes or runtime responses were
+mocked for that check. Collaborative preview snapshots timed out; the evidence
+uses isolated local Playwright instead and is not a second physical device.
+The server identified its revision as checkout-derived, not a packaged build.
+
+An earlier Claude/Flash group failed at Claude's weekly usage limit. Its failed
+seat remained failed, its dependent stayed pending, and the group was explicitly
+canceled rather than retried. Inventory readiness was not live entitlement.
+No shared proxy configuration or credentials were changed. Dollar/token/physical
+attempt guarantees and real subscription charges remain unavailable.
+
+This establishes only the exercised CLI paths. Live elicitation, second-device
+lifecycle, the remaining lineage/context/recovery obligations, final combined
+review and full epic acceptance remain outstanding.
 
 Reuse the authenticated delegation route for caller resolution, permission
 posture, execution-target placement, attachments, receiver admission, session

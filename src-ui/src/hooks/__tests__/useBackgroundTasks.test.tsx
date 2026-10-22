@@ -11,9 +11,14 @@ const eventBase = {
   createdAt: '2026-10-20T00:00:00.000Z',
 };
 
-function startTool(chatThreadId: string, toolCallId: string) {
+function startTool(
+  chatThreadId: string,
+  toolCallId: string,
+  createdAt = eventBase.createdAt,
+) {
   backgroundTasksStore.ingest({
     ...eventBase,
+    createdAt,
     threadId: chatThreadId,
     method: 'tool.started',
     itemId: toolCallId,
@@ -208,13 +213,18 @@ test('repeated real chat closures bound retained live and uncertain history with
         agentName: 'Agent',
         title: parent,
       });
-      startTool(parent, `tool-${i}`);
+      const createdAt = new Date(
+        Date.parse(eventBase.createdAt) + i * 1000,
+      ).toISOString();
+      startTool(parent, `tool-${i}`, createdAt);
       if (i < 60)
-        for (let j = 0; j < 100; j++) startTool(parent, `overflow-${i}-${j}`);
+        for (let j = 0; j < 100; j++)
+          startTool(parent, `overflow-${i}-${j}`, createdAt);
       backgroundTasksStore.ingest({
         ...eventBase,
         threadId: child,
         method: 'session.started',
+        createdAt,
         sessionId: child,
         metadata: { taskId: child, parentTaskId: parent },
       });
@@ -254,6 +264,7 @@ test('repeated real chat closures bound retained live and uncertain history with
   expect(Object.keys(activeChatsStore.getSnapshot())).not.toContain(
     'closed-239',
   );
+  expect(state.entries['child-239']).toBeDefined();
   expect(state.entries['child-0']).toBeUndefined();
   expect(state.delegateParents['child-0']).toBeUndefined();
   act(() => {

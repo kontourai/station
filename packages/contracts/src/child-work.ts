@@ -297,7 +297,7 @@ export type ChildWorkSummarySource =
 export interface ChildWorkResult {
   /** Reported text, never evidence that a returned artifact was verified. */
   summary?: string;
-  /** Absent on older reports; do not infer an origin from the text. */
+  /** Provenance of summary text only; discarded without text. A handle is not a returned report. */
   source?: ChildWorkSummarySource;
   /** Present only when `summary` was cut to `CHILD_WORK_SUMMARY_MAX_CHARS`. */
   summaryTruncated?: true;
