@@ -2027,6 +2027,9 @@ export class EventStore {
       if (this.readStatements.size >= 32)
         this.readStatements.delete(this.readStatements.keys().next().value!);
       this.readStatements.set(sql, statement);
+    } else {
+      this.readStatements.delete(sql);
+      this.readStatements.set(sql, statement);
     }
     return statement;
   }

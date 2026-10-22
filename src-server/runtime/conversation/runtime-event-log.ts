@@ -17,6 +17,16 @@ const MAX_QUERY_BYTES = 8 * MIB;
 const MAX_QUERY_SCAN_BYTES = 32 * MIB;
 const MAX_EVENT_LINE_BYTES = MIB;
 
+export interface RuntimeEventQueryOptions {
+  limit?: number;
+  matches?: (event: any) => boolean;
+}
+
+export interface RuntimeEventPage {
+  events: any[];
+  truncated: boolean;
+}
+
 export class EventHistoryLimitError extends Error {
   readonly code = 'event_history_limit_exceeded';
   constructor() {
@@ -127,19 +137,70 @@ export class RuntimeEventLog {
     return this.eventLogPath;
   }
 
+  queryEvents(start: number, end: number, userId: string): Promise<any[]>;
+  queryEvents(
+    start: number,
+    end: number,
+    userId: string,
+    options: RuntimeEventQueryOptions,
+  ): Promise<RuntimeEventPage>;
   async queryEvents(
     start: number,
     end: number,
     userId: string,
-  ): Promise<any[]> {
+    options?: RuntimeEventQueryOptions,
+  ): Promise<any[] | RuntimeEventPage> {
     const events: any[] = [];
+    type Row = {
+      event: any;
+      bytes: number;
+      time: number;
+      file: number;
+      line: number;
+    };
+    // A min-heap retains the newest rows without retaining the scanned window.
+    // Backfill can arrive out of timestamp order, so reaching N matches cannot
+    // establish the latest N. Scan work and retained payloads have separate caps.
+    const heap: Row[] = [];
+    const compare = (a: Row, b: Row) =>
+      a.time - b.time || a.file - b.file || a.line - b.line;
+    const limit = Math.min(
+      MAX_QUERY_EVENTS,
+      Math.max(1, Math.floor(options?.limit ?? MAX_QUERY_EVENTS)),
+    );
+    let truncated = false;
     let resultBytes = 0;
+    const result = () =>
+      options
+        ? { events: heap.sort(compare).map((row) => row.event), truncated }
+        : events;
+    const popOldest = () => {
+      const first = heap[0]!;
+      const last = heap.pop()!;
+      if (heap.length) {
+        heap[0] = last;
+        let index = 0;
+        while (index * 2 + 1 < heap.length) {
+          let child = index * 2 + 1;
+          if (
+            child + 1 < heap.length &&
+            compare(heap[child + 1]!, heap[child]!) < 0
+          )
+            child++;
+          if (compare(heap[index]!, heap[child]!) <= 0) break;
+          [heap[index], heap[child]] = [heap[child]!, heap[index]!];
+          index = child;
+        }
+      }
+      resultBytes -= first.bytes;
+      truncated = true;
+    };
     const budget = { scanned: 0 };
     let names: string[];
     try {
       names = await readdir(this.eventLogPath);
     } catch (error) {
-      if (isMissingFileError(error)) return [];
+      if (isMissingFileError(error)) return result();
       throw error;
     }
     const files = names.filter((name) => EVENT_FILE_PATTERN.test(name)).sort();
@@ -147,7 +208,12 @@ export class RuntimeEventLog {
     for (const name of this.timeBounds.keys()) {
       if (!present.has(name)) this.timeBounds.delete(name);
     }
-    for (const name of files) {
+    // Prefer recent files if the scan budget is exhausted. Truncation means
+    // latest among scanned rows, not a completeness guarantee over unread bytes.
+    const indexedFiles = files.map((name, file) => ({ name, file }));
+    for (const { name, file } of options
+      ? indexedFiles.reverse()
+      : indexedFiles) {
       const path = join(this.eventLogPath, name);
       try {
         const before = await eventFileSignature(path);
@@ -155,56 +221,88 @@ export class RuntimeEventLog {
         if (
           known?.signature === before &&
           (known.max < start || known.min > end)
-        ) {
+        )
           continue;
-        }
         let min = Number.POSITIVE_INFINITY;
         let max = Number.NEGATIVE_INFINITY;
+        let lineNumber = 0;
         for await (const line of boundedEventLines(path, budget)) {
+          lineNumber++;
           if (!line.trim()) continue;
           let event: any;
           try {
             event = JSON.parse(line);
-            const time = new Date(event.timestamp).getTime();
-            if (!Number.isFinite(time)) continue;
-            min = Math.min(min, time);
-            max = Math.max(max, time);
-            if (
-              time >= start &&
-              time <= end &&
-              (event.userId === userId || event['station.user.id'] === userId)
-            ) {
-              resultBytes += Buffer.byteLength(line);
-              if (
-                events.length >= MAX_QUERY_EVENTS ||
-                resultBytes > MAX_QUERY_BYTES
-              ) {
-                throw new EventHistoryLimitError();
-              }
-              events.push(event);
-            }
           } catch (error) {
-            if (error instanceof EventHistoryLimitError) throw error;
             this.logger.warn('Failed to parse event line', {
               file: name,
               error,
             });
+            continue;
           }
+          const time =
+            typeof event?.['timestamp.ms'] === 'number' &&
+            Number.isFinite(event['timestamp.ms'])
+              ? event['timestamp.ms']
+              : new Date(event?.timestamp).getTime();
+          if (!Number.isFinite(time)) continue;
+          min = Math.min(min, time);
+          max = Math.max(max, time);
+          if (
+            time < start ||
+            time > end ||
+            (event.userId !== userId && event['station.user.id'] !== userId)
+          )
+            continue;
+          if (options?.matches && !options.matches(event)) continue;
+          const bytes = Buffer.byteLength(line);
+          if (!options) {
+            resultBytes += bytes;
+            if (
+              events.length >= MAX_QUERY_EVENTS ||
+              resultBytes > MAX_QUERY_BYTES
+            )
+              throw new EventHistoryLimitError();
+            events.push(event);
+            continue;
+          }
+          const row = {
+            event,
+            bytes,
+            time,
+            file,
+            line: lineNumber,
+          };
+          if (heap.length >= limit && compare(row, heap[0]!) <= 0) {
+            truncated = true;
+            continue;
+          }
+          heap.push(row);
+          resultBytes += bytes;
+          let index = heap.length - 1;
+          while (index > 0) {
+            const parent = Math.floor((index - 1) / 2);
+            if (compare(heap[parent]!, heap[index]!) <= 0) break;
+            [heap[parent], heap[index]] = [heap[index]!, heap[parent]!];
+            index = parent;
+          }
+          while (heap.length > limit || resultBytes > MAX_QUERY_BYTES)
+            popOldest();
         }
-        // Do not memoize a partial observation during an append or replacement.
-        if (before === (await eventFileSignature(path))) {
+        // Never memoize partial observations or a file changed during the read.
+        if (before === (await eventFileSignature(path)))
           this.timeBounds.set(name, { signature: before, min, max });
-        } else {
-          this.timeBounds.delete(name);
-        }
+        else this.timeBounds.delete(name);
       } catch (error) {
         this.timeBounds.delete(name);
-        // Concurrent retention can remove a file. Other I/O failures must reach
-        // the route's error response, never become an authoritative empty read.
+        if (options && error instanceof EventHistoryLimitError) {
+          truncated = true;
+          return result();
+        }
+        // Concurrent retention may remove a file; other I/O errors propagate.
         if (!isMissingFileError(error)) throw error;
       }
     }
-    return events;
+    return result();
   }
 
   async loadRecentEvents(): Promise<void> {

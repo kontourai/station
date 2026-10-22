@@ -411,3 +411,88 @@ describe('RuntimeEventLog query cost and freshness', () => {
     });
   });
 });
+
+describe('bounded history pages', () => {
+  it.each(['count', 'result-bytes', 'line-bytes', 'scan-bytes'])(
+    'discloses %s truncation and remains bounded on a later read',
+    async (kind) => {
+      const root = makeTempDir('station-event-page-');
+      const file = join(root, 'events-2026-09-06.ndjson');
+      const row = (index: number, bytes = 0, userId = 'one') =>
+        JSON.stringify({
+          timestamp: new Date(1788696000000 + index).toISOString(),
+          userId,
+          index,
+          text: 'x'.repeat(bytes),
+        }) + '\n';
+      const content =
+        kind === 'count'
+          ? Array.from({ length: 10_001 }, (_, n) => row(n))
+              .reverse()
+              .join('')
+          : kind === 'result-bytes'
+            ? Array.from({ length: 10 }, (_, n) => row(n, 900_000)).join('')
+            : kind === 'line-bytes'
+              ? row(0) + 'x'.repeat(1024 * 1024 + 1)
+              : row(0) + row(1, 900_000, 'other').repeat(40);
+      await writeFile(file, content);
+      const log = new RuntimeEventLog(root, {
+        debug() {},
+        info() {},
+        warn() {},
+        error() {},
+      });
+      const page = await log.queryEvents(0, Date.now() + 1e12, 'one', {
+        limit: kind === 'count' ? 500 : undefined,
+      });
+      expect(page.truncated).toBe(true);
+      expect(page.events.length).toBeLessThanOrEqual(
+        kind === 'count' ? 500 : 10_000,
+      );
+      expect(
+        Buffer.byteLength(
+          page.events.map((event) => JSON.stringify(event)).join('\n'),
+        ),
+      ).toBeLessThanOrEqual(8 * 1024 * 1024);
+      if (kind === 'count') {
+        expect(page.events[0]?.index).toBe(9501);
+        expect(page.events.at(-1)?.index).toBe(10_000);
+      }
+      await writeFile(file, row(42));
+      expect(
+        await log.queryEvents(0, Date.now() + 1e12, 'one', {}),
+      ).toMatchObject({ truncated: false, events: [{ index: 42 }] });
+    },
+  );
+
+  it('applies visibility and dimensions before selecting the latest timestamps across files and backfill', async () => {
+    const root = makeTempDir('station-event-tail-');
+    const row = (index: number, visible: boolean) =>
+      JSON.stringify({
+        timestamp: new Date(1788696000000 + index).toISOString(),
+        userId: 'one',
+        index,
+        visible,
+      }) + '\n';
+    await writeFile(
+      join(root, 'events-2026-09-05.ndjson'),
+      row(100, true) + row(1, true),
+    );
+    await writeFile(
+      join(root, 'events-2026-09-06.ndjson'),
+      row(90, true) + row(200, false) + row(2, true),
+    );
+    const log = new RuntimeEventLog(root, {
+      debug() {},
+      info() {},
+      warn() {},
+      error() {},
+    });
+    const page = await log.queryEvents(0, Date.now() + 1e12, 'one', {
+      limit: 2,
+      matches: (event) => event.visible,
+    });
+    expect(page.events.map((event) => event.index)).toEqual([90, 100]);
+    expect(page.truncated).toBe(true);
+  });
+});
