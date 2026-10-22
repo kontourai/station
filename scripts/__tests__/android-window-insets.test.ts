@@ -30,7 +30,10 @@ test.each([
       mkdirSync(dirname(activity), { recursive: true });
       writeFileSync(
         join(app, 'build.gradle.kts'),
-        `android { namespace = "${namespace}" }`,
+        `android {
+  namespace = "${namespace}"
+  buildTypes { getByName("release") { isMinifyEnabled = true } }
+}`,
       );
       // The shared bootstrap also restores permissions after Android init.
       // Keep this fixture shaped like a generated project so inset coverage

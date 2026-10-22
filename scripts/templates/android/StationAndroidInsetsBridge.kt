@@ -35,6 +35,7 @@ class StationAndroidInsetsBridge(private val webView: WebView, private val activ
     }
     val callback = object : ConnectivityManager.NetworkCallback() {
       private fun changed() {
+        io.kontourai.station.agentactivity.NativeHttpNetwork.changed()
         refreshCost()
         webView.post {
           webView.evaluateJavascript("window.dispatchEvent(new Event('station-network-cost-change'))", null)

@@ -18,11 +18,16 @@ mod ios_background_task;
 mod local_access_watch;
 #[cfg(all(not(mobile), unix))]
 mod login_shell;
+#[cfg(any(target_os = "ios", test))]
+mod mobile_recovery;
+#[cfg(target_os = "ios")]
+mod mobile_recovery_ios;
 mod native_enrollment;
 mod native_enrollment_host;
 mod native_enrollment_peer;
 #[cfg(test)]
 mod native_http_performance_tests;
+mod native_http_transport;
 mod native_relay_ice;
 #[cfg(not(mobile))]
 mod notification_feed;
@@ -1923,9 +1928,11 @@ fn prepare_mobile_station_profile_read(
         Ok(metadata) if metadata.file_type().is_file() => {
             validate_station_profile_store(path)?;
             // A disappeared initialized store is a refusal, never first-install recovery.
-            std::fs::symlink_metadata(path)
-                .map_err(|error| format!("read saved Stations on this device: {error}"))?;
-            Ok(())
+            match std::fs::symlink_metadata(path) {
+                Ok(_) => Ok(()),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => initialize(),
+                Err(error) => Err(format!("read saved Stations on this device: {error}")),
+            }
         }
         Ok(_) => Err("mobile profile initialization marker must be a regular file".into()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => initialize(),
@@ -2242,23 +2249,30 @@ fn write_empty_station_profile_store(path: &std::path::Path) -> Result<(), Strin
     options.write(true).create_new(true);
     #[cfg(unix)]
     options.mode(0o600);
-    match options.open(path) {
-        Ok(mut file) => {
-            #[cfg(windows)]
-            crate::windows_path_trust::ensure(&[(
-                crate::windows_path_trust::TrustKind::File,
-                path,
-            )])?;
-            file.write_all(EMPTY_STATION_PROFILE_STORE.as_bytes())
-                .map_err(|error| format!("write initial saved Station metadata: {error}"))?;
-            file.sync_all()
-                .map_err(|error| format!("sync initial saved Station metadata: {error}"))?;
-            sync_profile_store_directory(parent)?;
-            Ok(())
+    let temporary = parent.join(format!(".profiles-genesis-{}.tmp", uuid::Uuid::new_v4()));
+    let result = (|| {
+        let mut file = options
+            .open(&temporary)
+            .map_err(|error| format!("create initial saved Station metadata: {error}"))?;
+        #[cfg(windows)]
+        crate::windows_path_trust::ensure(&[(
+            crate::windows_path_trust::TrustKind::File,
+            &temporary,
+        )])?;
+        file.write_all(EMPTY_STATION_PROFILE_STORE.as_bytes())
+            .map_err(|error| format!("write initial saved Station metadata: {error}"))?;
+        file.sync_all()
+            .map_err(|error| format!("sync initial saved Station metadata: {error}"))?;
+        drop(file);
+        // A completed inode is published without replacing an existing store.
+        match std::fs::hard_link(&temporary, path) {
+            Ok(()) => sync_profile_store_directory(parent),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
+            Err(error) => Err(format!("publish initial saved Station metadata: {error}")),
         }
-        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
-        Err(error) => Err(format!("create initial saved Station metadata: {error}")),
-    }
+    })();
+    let _ = std::fs::remove_file(&temporary);
+    result
 }
 
 /// Mobile owns a private profile store, independent of desktop channel roots.
@@ -2551,10 +2565,9 @@ static NATIVE_HTTP_PROFILE_SNAPSHOTS: std::sync::OnceLock<
 
 fn invalidate_native_http_profile_snapshot() -> Result<(), String> {
     if let Some(cache) = NATIVE_HTTP_PROFILE_SNAPSHOTS.get() {
-        *cache
-            .lock()
-            .map_err(|_| "saved Station snapshot is unavailable".to_string())? =
+        *cache.lock().unwrap_or_else(|error| error.into_inner()) =
             StationProfileSnapshotCache::default();
+        cache.clear_poison();
     }
     Ok(())
 }
@@ -3934,6 +3947,11 @@ const NATIVE_HTTP_FOREGROUND_RECV_RESPONSE_TIMEOUT: Duration = Duration::from_se
 
 fn native_http_agent_config() -> ureq::config::ConfigBuilder<ureq::typestate::AgentScope> {
     ureq::Agent::config_builder()
+        .max_idle_age(if cfg!(mobile) {
+            Duration::from_secs(2)
+        } else {
+            Duration::from_secs(15)
+        })
         .max_redirects(0)
         // SSE bodies are intentionally open-ended, so the body phase must have
         // NO budget. ureq's `timeout_recv_body` is a TOTAL budget for the whole
@@ -3965,14 +3983,13 @@ pub(crate) fn native_http_agent() -> ureq::Agent {
 }
 
 fn native_http_agent_with(config: ureq::config::Config) -> ureq::Agent {
+    use ureq::unversioned::transport::{Connector, DefaultConnector};
+    let connector = DefaultConnector::default().chain(native_http_transport::ObserveConnector);
     #[cfg(target_os = "android")]
-    return ureq::Agent::with_parts(
-        config,
-        ureq::unversioned::transport::DefaultConnector::default(),
-        android_dns::AndroidSystemResolver,
-    );
+    let resolver = android_dns::AndroidSystemResolver;
     #[cfg(not(target_os = "android"))]
-    return config.into();
+    let resolver = ureq::unversioned::resolver::DefaultResolver::default();
+    ureq::Agent::with_parts(config, connector, resolver)
 }
 
 #[derive(PartialEq, Eq)]
@@ -3987,10 +4004,16 @@ struct NativeHttpPoolKey {
 #[derive(Default)]
 struct NativeHttpAgentPool {
     current: Option<(NativeHttpPoolKey, ureq::Agent)>,
+    network_epoch: u64,
 }
 
 impl NativeHttpAgentPool {
     fn agent(&mut self, key: NativeHttpPoolKey) -> ureq::Agent {
+        let epoch = native_http_transport::network_epoch();
+        if self.network_epoch != epoch {
+            self.current = None;
+            self.network_epoch = epoch;
+        }
         if let Some((current, agent)) = &self.current {
             if *current == key {
                 return agent.clone();
@@ -4404,14 +4427,29 @@ fn station_native_http_request_to_sink_blocking(
             response_body_budget,
             response_body_budget,
         );
+        let retry_app = app.clone();
+        let retry_authority = authority.clone();
+        let retry_binding = expected_binding_id.map(str::to_owned);
+        let retry_origin = origin.clone();
+        let retry_reference = reference.clone();
+        let retry_cancel = Arc::clone(&cancel);
         run_admitted_native_http_exchange(
             slot,
             &cancel,
-            move || agent.run(request),
+            move || {
+                native_http_transport::run(&agent, request, &retry_cancel, || {
+                    revalidate_native_http_profile(
+                        &retry_app,
+                        &retry_authority,
+                        retry_binding.as_deref(),
+                        &retry_origin,
+                        &retry_reference,
+                    )
+                    .map_err(|error| NativeHttpBrokerFailure::coded(error.code))
+                })
+            },
             |result| {
-                let mut response = result.map_err(|error| {
-                    NativeHttpBrokerFailure::transport(native_request_transport_detail(&error))
-                })?;
+                let mut response = result?;
                 revalidate_native_http_profile(
                     &app,
                     &authority,
@@ -13376,10 +13414,7 @@ If a stable instance is running, this launch will focus its window and exit.",
     let builder = tauri::Builder::default();
     #[cfg(target_os = "ios")]
     let builder = builder.on_web_content_process_terminate(|webview| {
-        log::warn!("iOS web content process terminated; reloading persisted application state");
-        if let Err(error) = webview.reload() {
-            log::error!("iOS web content process recovery failed: {error}");
-        }
+        mobile_recovery_ios::terminated(webview);
     });
 
     // FIRST plugin, deliberately. In a secondary instance this plugin exits
@@ -13892,6 +13927,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         .expect("error while building tauri application");
     #[cfg(target_os = "ios")]
     {
+        mobile_recovery_ios::install(app.handle().clone());
         let state = app.state::<native_relay_link_intake::NativeRelayLinkState>();
         state.start_expiry_worker();
         if let Err(stage) = native_relay_ios_launch::install(app.handle().clone()) {
@@ -13956,6 +13992,10 @@ If a stable instance is running, this launch will focus its window and exit.",
                         );
                     }
                 }
+            }
+            #[cfg(mobile)]
+            if let tauri::RunEvent::WindowEvent { event: tauri::WindowEvent::Resumed, .. } = &event {
+                native_http_transport::network_changed();
             }
             #[cfg(not(mobile))]
             if let tauri::RunEvent::Exit = event { teardown_sidecar(app); }

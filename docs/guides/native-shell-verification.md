@@ -269,6 +269,33 @@ Approval delivery has a separate bounded send and inspection path; see
 Adapter and browser tests are diagnostic evidence, separate from a real shell,
 physical phone, notification lifecycle or release-provider journey.
 
+## Mobile connection and renderer recovery
+
+Native authenticated HTTP agents keep mobile connections idle for at most two
+seconds. Android's network callback, iOS's Network.framework path monitor and
+mobile foreground lifecycle events invalidate idle connections. Existing agent
+clones also reject connections from an earlier network epoch. This prevents
+iOS's sleep-paused monotonic clock from keeping a pre-sleep socket eligible.
+
+A failed pooled exchange retries once with a new agent only before an HTTP
+write was attempted, or for GET/HEAD before any response bytes arrived.
+Partial response headers prevent retry. A failed write is treated as possibly
+sent because ureq does not report partial-write counts. Cancellation and the
+captured profile authority are checked before retry. No response body failure
+or possibly sent mutation authorizes replay.
+
+An unscoped request whose profile changes during dispatch reports the existing
+`credential_binding_changed` recovery code to the renderer. Scoped requests
+retain `request_binding_stale`; neither case silently adopts another profile.
+
+Both mobile shells allow at most three automatic renderer recoveries within
+60 seconds. Android stores the budget outside the recreated WebView client and
+shows native error/Reload controls on exhaustion. iOS defers background
+termination recovery until `UIApplicationDidBecomeActiveNotification`, then
+uses a native Reload/Close dialog if the budget is exhausted. Explicit Reload
+starts a new budget. These are source contracts; physical sleep/wake, network
+handoff, repeated renderer death and background recovery require device proof.
+
 ## Native foreground dispatch deadlines
 
 The native HTTP broker waits up to 60 seconds for response headers on
