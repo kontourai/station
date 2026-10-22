@@ -587,9 +587,11 @@ npm run test:e2e:product -- --spec=tests/<owned-product-spec>.spec.ts
 
 Every Playwright spec must be assigned to exactly one bucket in `tests/e2e-manifest.mjs`.
 
-Dependency updates must also pass the workspace advisory floor. See
-[Dependency security](dependency-security.md) for the root, SDK, and shared lock
-workflow, production-reachability interpretation, and exception contract.
+Dependency updates retain lock and compatibility checks. Feature PRs, merge
+queues and Nightly builds do not run advisory audits; the central scheduled
+scan tracks disclosures, and Preview/Stable publication enforces a fresh
+exact-source floor. See [Dependency security](dependency-security.md) for graph
+views, accountable ownership, trusted release policy and exception contracts.
 
 Pushes that touch orchestration transfer inputs run the transfer gate from
 `.githooks/pre-push`. It reads its baseline from

@@ -135,6 +135,15 @@ jobs:
             echo "policy_sha=$policy_sha"
           } >> "$GITHUB_OUTPUT"
 
+  advisory:
+    needs: [resolve, qualification]
+    if: ${{ always() && !cancelled() && needs.resolve.result == 'success' && (needs.qualification.result == 'success' || needs.resolve.outputs.pointer_repair_only == 'true') }}
+    uses: ./.github/workflows/release-advisory.yml
+    with:
+      audit_id: publication
+      source_sha: ${{ needs.resolve.outputs.sha }}
+      policy_sha: ${{ needs.resolve.outputs.policy_sha }}
+
   qualification:
     needs: resolve
     if: needs.resolve.outputs.pointer_repair_only != 'true'
@@ -144,8 +153,8 @@ jobs:
       source_sha: ${{ needs.resolve.outputs.sha }}
 
   publish:
-    needs: [resolve, qualification]
-    if: ${{ always() && !cancelled() && needs.resolve.result == 'success' && (needs.qualification.result == 'success' || needs.resolve.outputs.pointer_repair_only == 'true') }}
+    needs: [resolve, qualification, advisory]
+    if: ${{ always() && !cancelled() && needs.resolve.result == 'success' && needs.advisory.result == 'success' && (needs.qualification.result == 'success' || needs.resolve.outputs.pointer_repair_only == 'true') }}
     runs-on: ubuntu-latest
     environment: native-release-publish
     # Set once the release is public and its desktop pointer verified, so the

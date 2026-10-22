@@ -192,6 +192,12 @@ The mutation suite is deliberately focused and opt-in. Its runner safety and pol
 
 ## Actions workflow inventory
 
+Dependency advisory scans are not part of PR, merge-queue or Nightly feature
+verification. The central scheduled scan retains one assigned actionable tracker;
+Preview/Stable publication runs a fresh exact-source audit using trusted policy.
+This does not remove secret scanning, dependency review, signatures, integrity or
+functional checks. See [dependency security](dependency-security.md#where-the-scan-runs).
+
 Routine documentation readiness runs repository-validation suites, including
 actual ledger/capture freshness, links, generated artifacts and public-content
 checks. The impact, freshness-policy and review-note framework suites use
@@ -224,9 +230,25 @@ same-repository main-target PR closes merged. The merged-close path retires
 qualified optional delivery as described below. On a new CI request, it reads the
 current same-repository PR head and cancels queued, pending or running checks for older
 heads in CI, iOS, Windows, security, Gallery and Docs kit workflows. Each
-cancellation rechecks the PR head and run attempt. It never cancels merge-group,
-main-push, manual diagnostic or publication runs. Missing PR attribution leaves
-a run alone; API failures stop the sweep. GitHub has no atomic head-conditional
+cancellation rechecks the PR head and run attempt. The PR-head path never cancels
+merge-group, main-push, manual diagnostic or publication runs.
+
+A new merge-group Source request also retires older Source candidates for the
+same leading PR, only when a live GitHub queue ref proves the replacement and
+its commit contains the current PR head. The old queue ref must be absent or
+point elsewhere. Complete job inventories and fresh owner/run/attempt/ref reads
+fence each normal cancellation; an active old ref, changed owner or attempt,
+unknown runner metadata or API failure prevents it. This path can normally
+cancel an assigned runner doing obsolete work, but never force-cancels. A 202
+is a request, not terminal settlement. It does not cancel unrelated workflow
+families or replace any regression result with success.
+
+For the one-candidate throughput trial and its before/after measurements, use
+[the throughput epic](https://github.com/kontourai/station/issues/3101). The live
+ruleset is the configuration authority; fewer speculative builds do not prove
+higher delivery throughput.
+
+Missing PR attribution leaves ordinary PR runs alone; API failures stop the sweep. GitHub has no atomic head-conditional
 cancellation API, so the final head read bounds rather than eliminates the race
 with a concurrent force-push. Existing per-SHA concurrency groups remain in
 place to prevent delayed events from cancelling newer-head checks (#1445).
@@ -296,6 +318,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`qualification-after-repair.yml`](../../.github/workflows/qualification-after-repair.yml) | Qualify landed repair | **Main: Qualify landed repair** | after `PR: CI`. |
 | [`qualification-repair.yml`](../../.github/workflows/qualification-repair.yml) | Qualification repair | **Main: Qualification repair** | after `Main: Qualification`; manual dispatch. |
 | [`recover-terminal-capacity-owner.yml`](../../.github/workflows/recover-terminal-capacity-owner.yml) | Recover terminal physical-host capacity owner | **Tool: Recover terminal capacity owner** | manual dispatch. |
+| [`release-advisory.yml`](../../.github/workflows/release-advisory.yml) | Release dependency advisory gate | **Release: Dependency advisory gate** | reused by tagged staging, protected release publication, manual npm publication and Beta/Stable TestFlight. |
 | [`release.yml`](../../.github/workflows/release.yml) | Stage Station release | **Release: Stage** | `v*` tag pushes. |
 | [`secret-scan.yml`](../../.github/workflows/secret-scan.yml) | Secret Scan | **PR: Secret scan** | PR events; main pushes; manual dispatch. |
 | [`security-analysis.yml`](../../.github/workflows/security-analysis.yml) | Security analysis | **PR: Security analysis** | PR events; merge queue; main pushes; manual dispatch. |
