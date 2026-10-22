@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { S3Client } from '@aws-sdk/client-s3';
@@ -173,6 +173,43 @@ test('registrations survive restart, bind exact intent, withhold profile, and ca
   await expect(
     restarted.attach(request, 'human:local:operator', authority),
   ).rejects.toMatchObject({ status: 409 });
+});
+
+test('Unicode byte-capacity rejection preserves existing list/read/disconnect access', async () => {
+  const selected = await service.attach(
+    input(),
+    'human:local:operator',
+    authority,
+  );
+  const path = join(home, 'project-s3-sources.json');
+  const [base] = JSON.parse(readFileSync(path, 'utf8'));
+  const expanded = { ...base, prefix: `${'文'.repeat(1023)}/` };
+  const max = 2 * 1024 * 1024;
+  const cost = Buffer.byteLength(JSON.stringify([expanded], null, 2)) - 2;
+  const count = Math.floor(
+    (max - Buffer.byteLength(JSON.stringify([base], null, 2))) / cost,
+  );
+  const entries = [
+    base,
+    ...Array.from({ length: count }, () => ({ ...expanded, id: randomUUID() })),
+  ];
+  const before = JSON.stringify(entries, null, 2);
+  expect(Buffer.byteLength(before)).toBeLessThanOrEqual(max);
+  expect(entries.length).toBeLessThan(1000);
+  writeFileSync(path, before);
+  await expect(
+    service.attach(
+      { ...input(), prefix: expanded.prefix },
+      'human:local:operator',
+      authority,
+    ),
+  ).rejects.toMatchObject({ status: 503 });
+  expect(readFileSync(path, 'utf8')).toBe(before);
+  expect(service.get(selected.id)).toEqual(selected);
+  expect(service.list(selected.projectId)).toHaveLength(entries.length);
+  await service.disconnect(selected, authority);
+  expect(service.get(selected.id)).toBeUndefined();
+  expect(service.list(selected.projectId)).toHaveLength(entries.length - 1);
 });
 
 test.each([

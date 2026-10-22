@@ -20,6 +20,7 @@ import { JsonFileStore } from '../infra/json-store.js';
 
 const MAX_OBJECT_BYTES = 256 * 1024;
 const MAX_PAGE_OBJECTS = 50;
+const MAX_REGISTRY_BYTES = 2 * 1024 * 1024;
 const sourceSchema = z
   .object({
     id: z.string().uuid(),
@@ -149,7 +150,7 @@ export class ProjectS3Sources {
     this.file = new JsonFileStore(this.path, [], {
       onCorruption: 'throw',
       durableAtomicWrite: true,
-      maxReadBytes: 2 * 1024 * 1024,
+      maxReadBytes: MAX_REGISTRY_BYTES,
     });
   }
   private requireEnabled() {
@@ -158,6 +159,16 @@ export class ProjectS3Sources {
         'S3 sources are disabled pending verification.',
         404,
       );
+  }
+  private save(entries: Entry[]) {
+    if (
+      Buffer.byteLength(JSON.stringify(entries, null, 2)) > MAX_REGISTRY_BYTES
+    )
+      throw new ProjectS3SourceError(
+        'S3 source registration byte capacity reached. Existing sources are unchanged.',
+        503,
+      );
+    this.file.write(entries);
   }
   private entries(): Entry[] {
     this.requireEnabled();
@@ -242,7 +253,7 @@ export class ProjectS3Sources {
       };
       entries.push(entry);
       authority.assertCurrent();
-      this.file.write(entries);
+      this.save(entries);
       return publicSource(entry);
     } finally {
       await release();
@@ -260,7 +271,7 @@ export class ProjectS3Sources {
       const entry = entries.find((candidate) => candidate.id === expected.id)!;
       entry.disconnected = true;
       authority.assertCurrent();
-      this.file.write(entries);
+      this.save(entries);
     } finally {
       await release();
     }
