@@ -904,9 +904,7 @@ export function useSendMessage(
             ),
           ]);
           if (!live && timedOut)
-            void durable
-              .then((late) => late.unanswered())
-              .catch(() => undefined);
+            void durable.then((late) => late.refused()).catch(() => undefined);
         } catch (error) {
           const refusal = (error as { name?: unknown })?.name;
           if (
