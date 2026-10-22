@@ -27,6 +27,7 @@ import type {
   UpdateEvidence,
   UpdateFields,
 } from '@kontourai/station-contracts/knowledge-store';
+import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge-root-identity';
 import { FileStorageConflictError } from '../domain/project-file-transactions.js';
 import { isSafePathSegment } from '../knowledge-index/path-safety.js';
 import {
@@ -98,7 +99,10 @@ type RecordsChangedListener = (event: {
 
 export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
   private readonly registry = new KnowledgeAdapterRegistry();
-  private readonly adapterInstances = new Map<string, KnowledgeStoreAdapter>();
+  private readonly adapterInstances = new Map<
+    string,
+    { rootKey: string; adapter: KnowledgeStoreAdapter }
+  >();
   private readonly listeners = new Set<RecordsChangedListener>();
   private readonly observationPolicy?: {
     stationHome: string;
@@ -377,11 +381,11 @@ export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
   }
 
   async adapterFor(rootId: string): Promise<KnowledgeStoreAdapter> {
-    const cached = this.adapterInstances.get(rootId);
-    if (cached) return cached;
-
     const root = await this.getRoot(rootId);
     if (!root) throw new Error(`Knowledge store root '${rootId}' not found`);
+    const rootKey = knowledgeRootIncarnationKey(root);
+    const cached = this.adapterInstances.get(rootId);
+    if (cached?.rootKey === rootKey) return cached.adapter;
 
     const descriptor = this.registry.get(root.adapterId);
     if (!descriptor) {
@@ -396,7 +400,7 @@ export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
       rootId,
       root.adapterId,
     );
-    this.adapterInstances.set(rootId, wrapped);
+    this.adapterInstances.set(rootId, { rootKey, adapter: wrapped });
     return wrapped;
   }
 

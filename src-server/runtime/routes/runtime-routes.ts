@@ -3,6 +3,7 @@ import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-c
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
 import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-room-work';
+import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge-root-identity';
 import { zodSchema } from 'ai';
 import packageJson from '../../../package.json' with { type: 'json' };
 import { createBrowserRoutes } from '../../routes/browser.js';
@@ -6894,6 +6895,28 @@ export function configureRuntimeRoutes(
       return false;
     }
   };
+  const guardKnowledgeReadResponse = (
+    request: Request,
+    roots: readonly NonNullable<
+      Awaited<ReturnType<KnowledgeStoreProvider['getRoot']>>
+    >[],
+    response: Response,
+  ) =>
+    guardProjectResponse(response, async () => {
+      for (const expected of roots) {
+        const current = await context.knowledgeStoreProvider.getRoot(
+          expected.id,
+        );
+        if (
+          !current ||
+          knowledgeRootIncarnationKey(current) !==
+            knowledgeRootIncarnationKey(expected) ||
+          !(await mayUseKnowledgeRoot(request, current, 'view'))
+        )
+          return false;
+      }
+      return true;
+    });
   // The knowledge index and the Neo4j projection are shared, Station-wide
   // artifacts, built by the Station indexer from ALL sessions (the named
   // internal scope); every read path re-reads each session-backed record as
@@ -6948,6 +6971,7 @@ export function configureRuntimeRoutes(
       dataDir: context.configLoader.getProjectHomeDir(),
       mayReadRoot: (request, root) =>
         mayUseKnowledgeRoot(request, root, 'view'),
+      guardReadResponse: guardKnowledgeReadResponse,
       mayManageRoot: (request, root) =>
         mayUseKnowledgeRoot(request, root, 'edit'),
       mayValidateRoot: isOperatorInPersonNotAgent,
@@ -6965,6 +6989,7 @@ export function configureRuntimeRoutes(
     '/api/knowledge',
     createKnowledgeRecordRoutes({
       store: context.knowledgeStoreProvider,
+      guardReadResponse: guardKnowledgeReadResponse,
       mayUseRoot: async (request, rootId, action) =>
         mayUseKnowledgeRoot(
           request,

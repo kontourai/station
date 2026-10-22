@@ -2101,5 +2101,43 @@ describe('project guest administration over the production composition', () => {
     );
     expect(deniedDisconnect.status).toBe(403);
     expect(await h.knowledgeStoreProvider.getRoot(allowed.id)).toEqual(allowed);
+    let entered!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const listRecords = adapter.listByType.bind(adapter);
+    vi.spyOn(adapter, 'listByType').mockImplementationOnce(async (...args) => {
+      entered();
+      await held;
+      return listRecords(...args);
+    });
+    const pendingGraph = h.request(
+      `/api/knowledge/roots/${encodeURIComponent(allowed.id)}/graph`,
+      guest(),
+    );
+    await started;
+    const revoked = await h.request(
+      '/api/projects/knowledge/access/members',
+      h.ownerHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope,
+          principalId: guestId,
+          revision: member.revision + 1,
+          role: 'viewer',
+          status: 'revoked',
+        }),
+      }),
+    );
+    release();
+    expect(revoked.status, await revoked.clone().text()).toBe(200);
+    const afterRevocation = await pendingGraph;
+    expect(afterRevocation.status).toBe(404);
+    expect(await afterRevocation.text()).not.toContain('Selected source');
   });
 });

@@ -381,7 +381,11 @@ operator. Account-bound people can list and read stores for Projects they may
 view, including graph and canonical-record reads. Personal file stores remain
 operator-only. HTTP member writes stay denied until the registry can bind
 current authority to publication. Project recall captures the active account's
-request scope and withholds retained data when a fresh read fails.
+request scope and withholds retained data when a fresh read fails. Root listings
+and canonical record/graph reads recheck registration metadata and current access
+before response delivery. The provider also replaces its cached adapter when a
+root's registered target changes. Registration metadata is a precondition, not
+an immutable generation or an execution grant.
 
 The existing Project knowledge controls below remain available for document
 upload and migration.

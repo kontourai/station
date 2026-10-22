@@ -71,6 +71,11 @@ interface KnowledgeStoreRouteDeps {
     input: { scope: KnowledgeRootScope; storeRoot?: string; adapterId: string },
   ) => boolean | Promise<boolean>;
   mayValidateRoot?: (request: Request) => boolean;
+  guardReadResponse?: (
+    request: Request,
+    roots: readonly KnowledgeStoreRoot[],
+    response: Response,
+  ) => Promise<Response>;
   /** Station home dir — same accessor `knowledge-index-routes.ts` already uses
    * (`context.configLoader.getProjectHomeDir()`). */
   dataDir: string;
@@ -118,7 +123,10 @@ export function createKnowledgeStoreRoutes(deps: KnowledgeStoreRouteDeps) {
       const visibleRoots = visible
         ? roots.filter((_, index) => visible[index])
         : roots;
-      return c.json({ success: true, data: visibleRoots });
+      const response = c.json({ success: true, data: visibleRoots });
+      return deps.guardReadResponse
+        ? deps.guardReadResponse(c.req.raw, visibleRoots, response)
+        : response;
     } catch (e: unknown) {
       return c.json({ success: false, error: errorMessage(e) }, 500);
     }

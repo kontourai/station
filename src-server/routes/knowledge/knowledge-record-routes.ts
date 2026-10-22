@@ -58,6 +58,7 @@ import type {
   KitLink,
   KitRecordType,
   KnowledgeStoreProvider,
+  KnowledgeStoreRoot,
 } from '@kontourai/station-contracts/knowledge-store';
 import type { Context } from 'hono';
 import { Hono } from 'hono';
@@ -74,6 +75,11 @@ import { projectKnowledgePersistenceError } from './knowledge-persistence-errors
 
 interface KnowledgeRecordRouteDeps {
   store: KnowledgeStoreProvider;
+  guardReadResponse?: (
+    request: Request,
+    roots: readonly KnowledgeStoreRoot[],
+    response: Response,
+  ) => Promise<Response>;
   mayUseRoot?: (
     request: Request,
     rootId: string,
@@ -186,6 +192,10 @@ interface LinkRecordBody {
 export function createKnowledgeRecordRoutes(deps: KnowledgeRecordRouteDeps) {
   const app = new Hono();
   app.use('/roots/:rootId/*', async (c, next) => {
+    const expectedRoot =
+      c.req.method === 'GET' && deps.guardReadResponse
+        ? await deps.store.getRoot(c.req.param('rootId'))
+        : undefined;
     if (
       deps.mayUseRoot &&
       !(await deps.mayUseRoot(
@@ -199,7 +209,9 @@ export function createKnowledgeRecordRoutes(deps: KnowledgeRecordRouteDeps) {
         403,
       );
     }
-    return next();
+    await next();
+    if (expectedRoot && deps.guardReadResponse && c.res.ok)
+      c.res = await deps.guardReadResponse(c.req.raw, [expectedRoot], c.res);
   });
 
   // POST /roots/:rootId/records — body: CreateInput (store-contract.md §6.1).

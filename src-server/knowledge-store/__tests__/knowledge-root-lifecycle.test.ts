@@ -98,4 +98,36 @@ describe('knowledge source registry lifecycle on real storage', () => {
     ).toBe(404);
     expect(await store.getRoot(root.id)).toEqual(root);
   });
+  test('replacing registered metadata never reuses the former store adapter', async () => {
+    const original = await store.createRoot({
+      scope: { kind: 'personal' },
+      adapterId: 'kit-default-store',
+      storeRoot: join(home, 'original'),
+      displayName: 'Original',
+    });
+    const oldAdapter = await store.adapterFor(original.id);
+    const oldId = await oldAdapter.create({
+      type: 'raw',
+      title: 'Old private record',
+      body: 'Old private bytes',
+      category: 'test',
+      provenance: { agent: 'fixture' },
+    });
+    await persistence.saveKnowledgeStoreRoot({
+      ...original,
+      storeRoot: join(home, 'replacement'),
+      displayName: 'Replacement',
+    });
+    const replacement = await store.adapterFor(original.id);
+    expect(await replacement.get(oldId)).toBeNull();
+    const newId = await replacement.create({
+      type: 'raw',
+      title: 'New record',
+      body: 'New bytes',
+      category: 'test',
+      provenance: { agent: 'fixture' },
+    });
+    expect(await oldAdapter.get(newId)).toBeNull();
+    expect((await oldAdapter.get(oldId))?.body).toBe('Old private bytes');
+  });
 });
