@@ -746,7 +746,7 @@ test.skipIf(process.platform === 'win32')(
       join(bin, 'codesign'),
       `#!/bin/sh
 case "$1" in
-  -dvv) echo 'TeamIdentifier=U7KHF2QAC4'; echo 'CodeDirectory flags=0x10000(runtime)' ;;
+  -dvv) echo 'TeamIdentifier=U7KHF2QAC4'; echo 'Timestamp=now'; echo 'CodeDirectory flags=0x10000(runtime)' ;;
   -d) echo '<plist><dict><key>com.apple.security.cs.allow-jit</key><true/></dict></plist>' ;;
 esac
 `,
@@ -775,7 +775,7 @@ test('seals the named Node runtime with only JIT permission and rejects excess e
     calls.push([program, args]);
     if (args[0] === '-dvv')
       return result(
-        'TeamIdentifier=U7KHF2QAC4\nCodeDirectory flags=0x10000(runtime)',
+        'TeamIdentifier=U7KHF2QAC4\nTimestamp=now\nCodeDirectory flags=0x10000(runtime)',
       );
     if (args.includes('--entitlements') && !args.includes('--force'))
       return result(

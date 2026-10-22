@@ -238,6 +238,12 @@ export async function sealBundledMacosNode(
     '--verbose=2',
     file,
   ]);
+  await boundedMustSucceed(
+    run,
+    'bundled Node: verify Developer ID',
+    'codesign',
+    ['--verify', '--strict', '-R', DEVELOPER_ID_REQUIREMENT, file],
+  );
   const metadata = await boundedMustSucceed(
     run,
     'bundled Node: inspect signature',
@@ -245,6 +251,7 @@ export async function sealBundledMacosNode(
     ['-dvv', file],
   );
   if (
+    !metadataField(metadata, 'Timestamp') ||
     !/TeamIdentifier=U7KHF2QAC4(?:\r?\n|$)/.test(
       `${metadata.stdout}\n${metadata.stderr}`,
     ) ||

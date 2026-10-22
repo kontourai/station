@@ -118,8 +118,8 @@ credentials keeps recovery at **Exit** only. An existing list is never replaced.
 Regular OS metadata files such as `.DS_Store`, `Thumbs.db`, and `desktop.ini` do
 not prevent first initialization; symlinks and directories with those names do.
 
-Installed desktop releases carry their own Node runtime. A message that this
-runtime could not start calls for reinstalling the desktop app, rather than
+Installed desktop releases include Node. A message that this built-in
+component could not start calls for reinstalling the desktop app, rather than
 resetting its data folder or installing a different system Node.
 
 ## Check the local diagnosis

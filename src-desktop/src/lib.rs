@@ -2062,6 +2062,32 @@ fn profile_store_root_entry_names(root: &Path) -> Result<String, String> {
         std::fs::read_dir(root).map_err(|error| format!("inspect Station root: {error}"))?
     {
         let entry = entry.map_err(|error| format!("inspect Station root entry: {error}"))?;
+        let metadata = std::fs::symlink_metadata(entry.path())
+            .map_err(|error| format!("inspect Station root entry: {error}"))?;
+        let raw_name = entry.file_name();
+        if metadata.is_file()
+            && [".DS_Store", "Thumbs.db", "desktop.ini"]
+                .iter()
+                .any(|allowed| raw_name == *allowed)
+        {
+            continue;
+        }
+        if metadata.is_dir()
+            && ["installs", "state"]
+                .iter()
+                .any(|allowed| raw_name == *allowed)
+        {
+            continue;
+        }
+        if metadata.is_dir()
+            && raw_name == "config"
+            && std::fs::read_dir(entry.path())
+                .map_err(|error| format!("inspect Station config entries: {error}"))?
+                .next()
+                .is_none()
+        {
+            continue;
+        }
         let name = entry
             .file_name()
             .to_string_lossy()
@@ -5776,7 +5802,7 @@ fn native_profile_lock_birth(app: &AppHandle, pid: u32) -> Result<Option<String>
         match profile_lock_birth_bridge(&resource_dir, pid) {
             Ok(birth) => Ok(Some(birth)),
             // Missing identity still fences reclamation and fresh lock writes.
-            Err(RegistryBridgeFailure::Invocation) => Err("Station’s packaged Node runtime could not start. Reinstall the desktop app; changing the data folder will not repair the runtime.".into()),
+            Err(RegistryBridgeFailure::Invocation) => Err("Station’s built-in Node component could not start. Reinstall the desktop app; changing the data folder will not repair the runtime.".into()),
             Err(RegistryBridgeFailure::Protocol) => Err("Station’s process identity helper returned an invalid response. Check the desktop log before changing the data folder.".into()),
             Err(RegistryBridgeFailure::Untrusted | RegistryBridgeFailure::HomeSchema) => Ok(None),
         }
@@ -13709,7 +13735,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                             .map(|_| ())
                             .map_err(|error| match error {
                                 RegistryBridgeFailure::HomeSchema => "This folder contains data without a compatible Station schema. Keep it intact and select a new empty folder or restore a compatible Station home.".to_string(),
-                                RegistryBridgeFailure::Invocation => "Station’s packaged Node runtime could not start. Reinstall the desktop app; no system Node installation is required.".to_string(),
+                                RegistryBridgeFailure::Invocation => "Station’s built-in Node component could not start. Reinstall the desktop app; no system Node installation is required.".to_string(),
                                 _ => "The local storage helper did not return a valid result. Check the desktop logs before changing this folder.".to_string(),
                             })
                     },
