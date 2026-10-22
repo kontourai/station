@@ -6025,6 +6025,9 @@ export function configureRuntimeRoutes(
       context.storageAdapter,
       context.configLoader.getProjectHomeDir(),
       {
+        repositoryDiscoveryCurrent: (request) =>
+          isOperatorInPersonNotAgent(request) &&
+          isRequestPrincipalCurrent(request),
         layoutCatalog,
         kitObservabilityRegistry,
         terminalService: context.terminalService,

@@ -12,6 +12,7 @@ import { useEffect, useId, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { Button } from '../Button';
+import { RepositoryProviderPicker } from './RepositoryProviderPicker';
 
 interface Props {
   onUseCheckout: (path: string, name: string, acquisitionId: string) => void;
@@ -153,6 +154,13 @@ function RepositorySourceControls({
       </p>
       {!requestId ? (
         <>
+          <RepositoryProviderPicker
+            scope={scope}
+            onChoose={(url, branch) => {
+              setSourceUrl(url);
+              setSourceRef(branch ?? '');
+            }}
+          />
           <label className="editor-label" htmlFor={sourceId}>
             Repository URL
           </label>

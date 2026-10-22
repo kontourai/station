@@ -18,6 +18,25 @@ export type ProjectStartIntent =
   | 'connections'
   | 'blank';
 
+export type RepositoryProvider = 'github' | 'gitlab';
+export interface RepositoryProviderSelection {
+  id: string;
+  fullName: string;
+  webUrl: string;
+  httpsCloneUrl: string;
+  sshCloneUrl: string;
+  defaultBranch?: string;
+  visibility: 'public' | 'private' | 'internal';
+}
+export interface RepositoryProviderPage {
+  provider: RepositoryProvider;
+  account: { id: string; login: string };
+  repositories: RepositoryProviderSelection[];
+  page: number;
+  hasMore: boolean;
+  observedAt: string;
+}
+
 /** An immutable, explicitly shared read-only source registration. AWS credentials stay on the host. */
 export interface ProjectS3Source {
   id: string;

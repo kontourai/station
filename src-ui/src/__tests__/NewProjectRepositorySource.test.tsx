@@ -82,6 +82,88 @@ function enterSource() {
   });
   fireEvent.click(screen.getByRole('button', { name: 'Acquire repository' }));
 }
+
+test.each(['github', 'gitlab'] as const)(
+  '%s account selection keeps the chosen provider transport and branch through actual acquisition dispatch',
+  async (provider) => {
+    const host = provider === 'github' ? 'github.com' : 'gitlab.com';
+    let acquired: RepositoryAcquisitionRequest | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url.includes(`/repository-providers/${provider}?page=1`))
+          return new Response(
+            JSON.stringify({
+              success: true,
+              data: {
+                provider,
+                account: { id: '42', login: 'operator' },
+                page: 1,
+                hasMore: false,
+                observedAt: '2026-10-22T00:00:00Z',
+                repositories: [
+                  {
+                    id: '7',
+                    fullName: 'org/research',
+                    webUrl: `https://${host}/org/research`,
+                    httpsCloneUrl: `https://${host}/org/research.git`,
+                    sshCloneUrl: `git@${host}:org/research.git`,
+                    defaultBranch: 'release',
+                    visibility: 'private',
+                  },
+                ],
+              },
+            }),
+          );
+        if (
+          url.endsWith('/repository-acquisitions') &&
+          init?.method === 'POST'
+        ) {
+          acquired = JSON.parse(String(init.body));
+          return new Response(
+            JSON.stringify({ success: true, data: ready(acquired!) }),
+          );
+        }
+        if (
+          acquired &&
+          url.endsWith(`/repository-acquisitions/${acquired.requestId}`)
+        )
+          return new Response(
+            JSON.stringify({ success: true, data: ready(acquired) }),
+          );
+        throw new Error(`Unexpected fixture request: ${url}`);
+      }),
+    );
+    mount();
+    fireEvent.click(
+      screen.getByRole('button', {
+        name:
+          provider === 'github' ? 'Choose from GitHub' : 'Choose from GitLab',
+      }),
+    );
+    await screen.findByText(/Signed in as operator/);
+    expect(acquired).toBeUndefined();
+    fireEvent.change(screen.getByLabelText('Clone protocol'), {
+      target: { value: 'ssh' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Use org/research' }));
+    expect(screen.getByLabelText('Repository URL')).toHaveProperty(
+      'value',
+      `git@${host}:org/research.git`,
+    );
+    expect(screen.getByLabelText('Branch or tag (optional)')).toHaveProperty(
+      'value',
+      'release',
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Acquire repository' }));
+    await waitFor(() =>
+      expect(acquired).toMatchObject({
+        sourceUrl: `git@${host}:org/research.git`,
+        sourceRef: 'release',
+      }),
+    );
+  },
+);
 function ready(request: RepositoryAcquisitionRequest): RepositoryAcquisition {
   return {
     schemaVersion: 1,

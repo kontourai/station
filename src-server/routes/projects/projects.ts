@@ -248,6 +248,7 @@ async function registerPluginNamespaces(
 }
 
 interface ProjectRouteDeps {
+  repositoryDiscoveryCurrent?: (request: Request) => boolean;
   /**
    * #2476: the directory a session of this project runs in, for a caller
    * allowed to read it — so a file preview of that conversation reads its
@@ -527,7 +528,13 @@ export function createProjectRoutes(
     projectHomeDir,
     storageAdapter,
   );
-  app.route('/', createRepositoryAcquisitionRoutes(projectHomeDir));
+  app.route(
+    '/',
+    createRepositoryAcquisitionRoutes(
+      projectHomeDir,
+      deps.repositoryDiscoveryCurrent,
+    ),
+  );
   const resolution = deps.resolution;
   const listProjectCatalogue = createProjectCatalogueReader(
     projectService,
