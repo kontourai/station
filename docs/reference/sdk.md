@@ -4831,6 +4831,20 @@ The [channel adapter](../../packages/connect/src/core/applicationChannel.ts)
 and [credential resolver](../../packages/sdk/src/client/http.ts) show where
 framing ends and the application's authority checks begin.
 
+## Host mutation availability
+
+The host credential resolver's `mutationAllowed` guard applies to write-shaped
+requests through both `authenticatedFetch` and `mutateJson`, including SDK
+Project mutations. Returning false throws `StationReadOnlyError` before dispatch;
+a thrown error is preserved. The `readOnly` deadline annotation does not bypass
+this guard. Reads remain available to recheck the connection.
+
+Station's browser host blocks ordinary writes on current connection-layer
+reachability failures. A newer successful authenticated read or health probe
+clears that failure; `navigator.onLine` alone cannot block a reachable Station.
+Transport unavailability keeps chat sends on the existing outbound queue path.
+Native stale-authority guards retain their separate refusal behavior.
+
 ## Session read-model deadline
 
 `fetchOrchestrationSessions(apiBase?)` reads the session read-model with an

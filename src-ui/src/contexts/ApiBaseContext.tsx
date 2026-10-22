@@ -424,14 +424,6 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
       return {
         credential,
         mutationAllowed: () => {
-          if (
-            !profile.isTauri &&
-            typeof navigator !== 'undefined' &&
-            navigator.onLine === false
-          )
-            throw new Error(
-              'Station is offline. Reconnect before making changes.',
-            );
           const connection = currentConnection.current;
           const failure = connection?.lastError;
           if (
@@ -443,7 +435,8 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
               failure.reason,
             )
           )
-            throw new Error(
+            // Keep transport unavailability on the chat outbox's network-failure path.
+            throw new TypeError(
               'Station is unreachable. Reconnect before making changes.',
             );
           return true;

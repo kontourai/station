@@ -11,6 +11,7 @@ import {
   StationReadOnlyError,
   setClientCredentialResolver,
 } from '../client/http';
+import { deleteProject, reorderProjects } from '../client/projects';
 
 const CREDENTIAL = 'sdk-test-credential-not-for-production';
 
@@ -391,6 +392,12 @@ describe('authenticated client transport', () => {
       authenticatedFetch('https://station.example.test/api/sessions', {
         method: 'POST',
       }),
+    ).rejects.toBeInstanceOf(StationReadOnlyError);
+    await expect(
+      deleteProject('https://station.example.test', 'protected'),
+    ).rejects.toBeInstanceOf(StationReadOnlyError);
+    await expect(
+      reorderProjects('https://station.example.test', ['a']),
     ).rejects.toBeInstanceOf(StationReadOnlyError);
     expect(fetchMock).toHaveBeenCalledOnce();
 

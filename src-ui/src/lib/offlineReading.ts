@@ -1,6 +1,21 @@
+import type { RequestCredentialEvidence } from '@kontourai/station-connect';
 import type { OrchestrationSequencedEvent } from '@kontourai/station-contracts/orchestration';
 import { createStore, get, update } from 'idb-keyval';
 import { buildInfo } from '../build-info';
+
+/** Durable authority identity: request ordering and mount epochs change offline. */
+export function offlineReadingBinding(
+  evidence: RequestCredentialEvidence | null,
+) {
+  return evidence
+    ? JSON.stringify([
+        evidence.connectionId,
+        evidence.origin,
+        evidence.authorityGeneration,
+        evidence.credentialState,
+      ])
+    : null;
+}
 
 const MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const buster = () => `${buildInfo.version}+${buildInfo.commit}`;

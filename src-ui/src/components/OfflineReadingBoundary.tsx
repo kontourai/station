@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useRef, useState } from 'react';
 import {
   clearOfflineReading,
   type OfflineCopy,
+  offlineReadingBinding,
   readDeviceOfflineCopies,
   subscribeOfflineReading,
 } from '../lib/offlineReading';
@@ -14,13 +15,7 @@ import './OfflineReadingBoundary.css';
 export function OfflineReadingBoundary({ children }: { children: ReactNode }) {
   const { captureCredentialEvidence } = useConnections();
   const evidence = captureCredentialEvidence();
-  const binding = evidence
-    ? JSON.stringify([
-        evidence.connectionId,
-        evidence.origin,
-        evidence.generation,
-      ])
-    : null;
+  const binding = offlineReadingBinding(evidence);
   const profile = usePlatformProfile();
   const initiallyOffline = () =>
     navigator.onLine === false ||

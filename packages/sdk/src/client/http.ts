@@ -1396,6 +1396,14 @@ export async function mutateJson(
     configured,
     assertAuthority,
   );
+  if (
+    configured &&
+    sameOrigin(url, configured.origin) &&
+    !SAFE_HTTP_METHODS.has(method.toUpperCase()) &&
+    configured.mutationAllowed?.() === false
+  ) {
+    throw new StationReadOnlyError();
+  }
   const response =
     timeoutMs === undefined
       ? await request(url, dispatchInit)

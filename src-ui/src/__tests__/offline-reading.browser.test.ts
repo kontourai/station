@@ -7,6 +7,15 @@ import { afterAll, beforeAll, expect, test } from 'vitest';
 import { offlineShell } from '../../../scripts/vite-offline-shell';
 import { trackTempDirs } from '../../../src-server/__test-utils__/temp-dirs';
 
+declare global {
+  interface Window {
+    connections: ReturnType<
+      typeof import('@kontourai/station-connect').useConnections
+    >;
+    reading: typeof import('../lib/offlineReading');
+  }
+}
+
 const ROOT = path.resolve(import.meta.dirname, '../../..');
 const temp = trackTempDirs({ base: path.join(ROOT, 'node_modules/.cache') });
 let browser: Awaited<ReturnType<typeof chromium.launch>>;
@@ -32,21 +41,20 @@ beforeAll(async () => {
     import {OfflineReadingSection} from '${ROOT}/src-ui/src/views/settings/OfflineReadingSection';
     import * as reading from '${ROOT}/src-ui/src/lib/offlineReading';
     window.reading=reading;
-    window.binding='device-a';
-    window.changed=()=>window.dispatchEvent(new Event('fixture-connection'));
+    import {ConnectionsProvider,useConnections} from '@kontourai/station-connect';
+    function Probe(){window.connections=useConnections(); return null;}
     function App(){return <><WebOfflineShell/><OfflineReadingBoundary><QueryClientProvider client={new QueryClient()}><h1>Live app</h1><OfflineReadingSection/></QueryClientProvider></OfflineReadingBoundary></>}
-    createRoot(document.getElementById('root')).render(<App/>);
+    createRoot(document.getElementById('root')).render(<ConnectionsProvider defaultUrl={location.origin}><Probe/><App/></ConnectionsProvider>);
 
   `,
   );
   const fixture = `
-    import {useSyncExternalStore} from 'react';
-    const subscribe=f=>{window.addEventListener('fixture-connection',f); return ()=>window.removeEventListener('fixture-connection',f)};
-    export function useConnections(){const id=useSyncExternalStore(subscribe,()=>window.binding);return {captureCredentialEvidence:()=>({connectionId:id,origin:location.origin,generation:1})}}
+    import {useConnections} from '${ROOT}/packages/connect/src/react/ConnectionsContext';
+    export {ConnectionsProvider,useConnections} from '${ROOT}/packages/connect/src/react/ConnectionsContext';
     export const useConnectionStatus=()=>({status:'connected'});
     export const usePlatformProfile=()=>({isTauri:false});
     export const useAuthorityPersistence=()=>({namespace:'authority-a'});
-    export function useHostRequestAuthorityScope(){const {captureCredentialEvidence}=useConnections(); const id=captureCredentialEvidence().connectionId; return {isCurrent:()=>id===window.binding}}
+    export function useHostRequestAuthorityScope(){const {captureCredentialEvidence}=useConnections(); const id=captureCredentialEvidence().connectionId; return {isCurrent:()=>id===window.connections.activeConnection.id}}
   `;
   const fixturePath = path.join(root, 'connection-fixture.ts');
   writeFileSync(
@@ -220,7 +228,33 @@ test('opt-in text survives an offline reload under CSP, stays read-only, and cle
     expect(
       await page.evaluate(() => fetch('/api/private').then((r) => r.json())),
     ).toEqual({ secret: 'api-secret' });
+    const before = await page.evaluate(
+      () => window.connections.captureCredentialEvidence().generation,
+    );
+    await page.evaluate(() => {
+      const c = window.connections;
+      c.recordEndpointFailure(c.activeConnection.id, 'unreachable');
+    });
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => window.connections.captureCredentialEvidence().generation,
+        ),
+      )
+      .toBeGreaterThan(before);
+    expect(
+      await page.evaluate(async () =>
+        window.reading.readOfflineReading('authority-a'),
+      ),
+    ).toMatchObject({
+      enabled: true,
+      copies: [{ conversationId: 'conversation-a' }],
+    });
     await context.setOffline(true);
+    await page.getByRole('button', { name: 'Read offline copies' }).click();
+    await page
+      .getByText('Conversation conversation-a', { exact: true })
+      .waitFor();
     await page.reload();
     await page.getByRole('heading', { name: 'Station is offline' }).waitFor();
     await page
@@ -275,7 +309,9 @@ test('storage bounds, authority fencing, expiry and clearing prevent stale copie
     await page.getByRole('switch').waitFor();
     const result = await page.evaluate(async () => {
       const r = (window as any).reading;
-      const binding = JSON.stringify(['device-a', location.origin, 1]);
+      const binding = r.offlineReadingBinding(
+        window.connections.captureCredentialEvidence(),
+      );
       const events = (text: string) => [
         {
           sequence: 1,
@@ -395,13 +431,13 @@ test('changing the selected authority clears local text instead of revealing it 
       .getByText('Conversation private-conversation', { exact: true })
       .waitFor();
     await page.evaluate(() => {
-      (window as any).binding = 'device-b';
-      (window as any).changed();
+      const c = window.connections;
+      c.setCredential(c.activeConnection.id, 'replacement-credential');
     });
     await page.getByText(/No offline copies available/).waitFor();
     await page.evaluate(() => {
-      (window as any).binding = 'device-a';
-      (window as any).changed();
+      const c = window.connections;
+      c.removeCredential(c.activeConnection.id);
     });
     await page.getByText(/No offline copies available/).waitFor();
     expect(

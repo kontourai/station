@@ -179,7 +179,8 @@ Message text can contain pasted secrets. These local IndexedDB copies have no
 additional encryption, and anyone using this browser profile can read them
 while offline. Enable this only on a device where that trade-off is acceptable.
 **Clear offline copies** deletes the saved text and turns saving off. Signing out,
-changing credential generation, or switching authority also clears the copies.
+changing credential authority or account, or switching Station also clears the
+copies. Reachability failures leave saved copies and the saving preference intact.
 
 A browser reload while the Station route is unavailable shows a separate, read-only reader with an **offline
 copy from** timestamp. If you lose connectivity in an already open workspace,

@@ -10,6 +10,7 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import {
   configureOfflineReading,
+  offlineReadingBinding,
   readOfflineReading,
   subscribeOfflineReading,
 } from '../../lib/offlineReading';
@@ -29,13 +30,7 @@ function VerifiedOfflineReadingSection({ namespace }: { namespace: string }) {
   const scope = useHostRequestAuthorityScope();
   const { captureCredentialEvidence } = useConnections();
   const evidence = captureCredentialEvidence();
-  const binding = evidence
-    ? JSON.stringify([
-        evidence.connectionId,
-        evidence.origin,
-        evidence.generation,
-      ])
-    : null;
+  const binding = offlineReadingBinding(evidence);
   const { status } = useConnectionStatus({
     checkHealth: checkServerHealth,
     probeEndpoint: probeServerConnection,
