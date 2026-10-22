@@ -686,20 +686,14 @@ test.describe
           .fill('Revocation check.');
         await owner.getByRole('button', { name: 'Send to task room' }).click();
         await expect(
-          peer.getByText(
-            'Task room authorization ended. The last readable document remains read-only.',
-          ),
+          peer.getByRole('button', { name: 'Request access', exact: true }),
         ).toBeVisible();
         await expect(
           peer.getByRole('textbox', { name: 'Task brief' }),
-        ).toHaveValue(agentText);
-        await expect(
-          peer.getByRole('textbox', { name: 'Task brief' }),
-        ).toHaveAttribute('readonly', '');
-        await peer.getByRole('tab', { name: 'Chat', exact: true }).click();
+        ).toHaveCount(0);
         await expect(
           peer.getByRole('textbox', { name: 'Message the Task' }),
-        ).toBeDisabled();
+        ).toHaveCount(0);
 
         await owner.screenshot({
           path: testInfo.outputPath('project-task-room-owner.png'),
