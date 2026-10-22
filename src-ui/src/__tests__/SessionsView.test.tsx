@@ -149,6 +149,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   // per-invocation envelope through them.
   const real = await importOriginal<typeof import('@kontourai/station-sdk')>();
   return {
+    OrchestrationSessionsContext: real.OrchestrationSessionsContext,
     isApiRequestScope: real.isApiRequestScope,
     projectIdentityReadFailure: real.projectIdentityReadFailure,
     // The chat's per-message rating, inert here.
@@ -4887,26 +4888,13 @@ describe('SessionsView', () => {
       expect(onFocusConsumed).toHaveBeenCalledTimes(2);
     });
 
-    /**
-     * The list is kept fresh by polling because the SSE feed is per-session.
-     * That poll belongs to the query: the interval this replaced called
-     * `refetch()` on the same cache entry from a second scheduler, so it kept
-     * firing in every state React Query pauses a `refetchInterval` for.
-     */
-    test('polls the sessions list through the query, not an interval beside it', () => {
+    test('leaves list refresh scheduling with the query owner', () => {
       orchestrationSessionsQueryConfig.length = 0;
       const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
       try {
         renderView();
 
         expect(orchestrationSessionsQueryConfig.length).toBeGreaterThan(0);
-        expect(orchestrationSessionsQueryConfig[0]).toMatchObject({
-          refetchInterval: 5000,
-        });
-        // Some five-second timers in this tree belong to React Query's own
-        // `refetchInterval` machinery, so their presence proves nothing. What
-        // the removed interval did was call the list query's `refetch()`, so
-        // fire every five-second timer and assert none of them does.
         refetchSessions.mockClear();
         for (const [handler] of setIntervalSpy.mock.calls.filter(
           ([, delay]) => delay === 5000,

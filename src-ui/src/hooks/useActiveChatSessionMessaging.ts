@@ -17,11 +17,13 @@ import {
   conversationQueries,
   interruptOrchestrationTurn,
   isProvablyNotSent,
+  orchestrationQueries,
   steerOrchestrationTurn,
   useEngineConnectionsQuery,
   useInvalidateQuery,
   useQueryClient,
 } from '@kontourai/station-sdk';
+import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   skillExperienceAttachmentInputs,
@@ -231,12 +233,13 @@ async function removeRefusedAttachments(
 function cachedSummaryAwaitsFirstTurn(
   queryClient: ReturnType<typeof useQueryClient>,
   ids: ReadonlyArray<string | undefined>,
+  scope?: ApiRequestScope,
 ): boolean {
   const wanted = new Set(ids.filter((id): id is string => Boolean(id)));
   const cached =
-    queryClient.getQueryData<OrchestrationSessionSummary[]>([
-      'orchestration-sessions',
-    ]) ?? [];
+    queryClient.getQueryData<OrchestrationSessionSummary[]>(
+      orchestrationQueries.sessions(scope).queryKey,
+    ) ?? [];
   return cached.some(
     (session) =>
       (wanted.has(session.threadId) ||
@@ -1140,11 +1143,15 @@ export function useSendMessage(
         if (
           !currentState?.orchestrationSessionStarted ||
           currentState.currentSessionId !== receipt.sessionId ||
-          cachedSummaryAwaitsFirstTurn(queryClient, [
-            receipt.sessionId,
-            receipt.conversationId,
-            currentState?.conversationId,
-          ])
+          cachedSummaryAwaitsFirstTurn(
+            queryClient,
+            [
+              receipt.sessionId,
+              receipt.conversationId,
+              currentState?.conversationId,
+            ],
+            accountPreferences.requestScope,
+          )
         ) {
           invalidate(['orchestration-sessions']);
           invalidate(conversationQueries.inventory().queryKey);

@@ -1,7 +1,11 @@
 // @vitest-environment jsdom
 import type { ConversationInboxEntry } from '@kontourai/station-contracts/orchestration';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  focusManager,
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query';
 import {
   act,
   cleanup,
@@ -397,6 +401,73 @@ test('a late iOS initial snapshot cannot overwrite a newer path event or survive
     expect(fetchMock).toHaveBeenCalledTimes(2);
   } finally {
     unmount();
+    vi.useRealTimers();
+  }
+});
+
+test.each([401, 403, 404])(
+  'HTTP %s stops inbox interval reads',
+  async (status) => {
+    vi.useFakeTimers();
+    const fetcher = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ success: false, error: 'unavailable' }), {
+          status,
+        }),
+    );
+    vi.stubGlobal('fetch', fetcher);
+    const { unmount } = mount();
+    try {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(60_000);
+      });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(
+        screen.getByText('Messages held by Station are unavailable.'),
+      ).toBeTruthy();
+    } finally {
+      unmount();
+      vi.useRealTimers();
+    }
+  },
+);
+
+test('uncertain inbox entries poll promptly, terminal entries slow down, and background intervals pause', async () => {
+  vi.useFakeTimers();
+  let state: ConversationInboxEntry['state'] = 'unconfirmed';
+  const fetcher = vi.fn(async () => response([entry(state, 'own')]));
+  vi.stubGlobal('fetch', fetcher);
+  const { unmount } = mount();
+  try {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1);
+    });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    state = 'refused';
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2_000);
+    });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(29_000);
+    });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1_000);
+    });
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    focusManager.setFocused(false);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(60_000);
+    });
+    expect(fetcher).toHaveBeenCalledTimes(3);
+  } finally {
+    unmount();
+    focusManager.setFocused(undefined);
     vi.useRealTimers();
   }
 });

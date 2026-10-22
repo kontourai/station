@@ -45,6 +45,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   const actual =
     await importOriginal<typeof import('@kontourai/station-sdk')>();
   return {
+    orchestrationQueries: actual.orchestrationQueries,
     conversationQueries: {
       inventory: () => ({ queryKey: ['conversation-inventory'] }),
     },

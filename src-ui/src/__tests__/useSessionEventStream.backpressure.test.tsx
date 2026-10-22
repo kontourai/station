@@ -250,7 +250,7 @@ describe('useSessionEventStream buffer backpressure', () => {
     await waitFor(() => expect(view.result.current.events).toHaveLength(2));
 
     await switchThread(view, 'task:2');
-    await deliver([event(21)]);
+    await deliver([{ ...event(21), threadId: 'task:2', sessionId: 'task:2' }]);
     await frames.runAll();
 
     await waitFor(() => expect(view.result.current.events).toHaveLength(1));
@@ -271,7 +271,7 @@ describe('useSessionEventStream buffer backpressure', () => {
     expect(frames.scheduled.size).toBe(1);
 
     await switchThread(view, 'task:2');
-    await deliver([event(21)]);
+    await deliver([{ ...event(21), threadId: 'task:2', sessionId: 'task:2' }]);
     await frames.runAll();
 
     await waitFor(() => expect(view.result.current.events).toHaveLength(1));
