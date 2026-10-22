@@ -765,6 +765,9 @@ describe('NewProjectModal starter layout picker', () => {
 
   test('reopening saved setup restores its immutable form and visible starter before continuing', async () => {
     savedCreationFixture.enabled = true;
+    projectsQueryState.data = [
+      { slug: 'saved-project', name: 'Saved project' },
+    ];
     localStorage.setItem(
       JSON.stringify([
         'project-creation',
@@ -795,6 +798,7 @@ describe('NewProjectModal starter layout picker', () => {
       (screen.getByLabelText(/Project folder/) as HTMLInputElement).value,
     ).toBe('/saved/repository');
     expect(screen.getByText('Starter: Review')).toBeTruthy();
+    expect(screen.queryByText(/may already exist/)).toBeNull();
     await screen.findByText(
       'Project created. Retry the selected starter layout to finish setup.',
     );
@@ -916,10 +920,13 @@ describe('NewProjectModal starter layout picker', () => {
     authorityState.key = 'other-account-epoch';
     authorityState.recoveryKey = 'other-account';
     view.rerender(<NewProjectModal isOpen onClose={onCloseMock} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Retry layout' }));
-    await screen.findByText(
-      'Station access changed. Return to the Station account that created this Project to finish its starter.',
-    );
+    expect(screen.queryByRole('button', { name: 'Retry layout' })).toBeNull();
+    expect(
+      (screen.getByPlaceholderText('My Project') as HTMLInputElement).value,
+    ).toBe('');
+    expect(
+      screen.getByRole('button', { name: 'Create' }).matches(':disabled'),
+    ).toBe(true);
     expect(applyProjectLayoutMock).toHaveBeenCalledTimes(1);
     expect(createProjectMock).toHaveBeenCalledTimes(1);
     authorityState.key = 'creating-account-new-epoch';

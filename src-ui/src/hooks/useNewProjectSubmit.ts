@@ -4,10 +4,11 @@ import {
   useCreateProjectMutation,
   useFileSystemBrowseQuery,
 } from '@kontourai/station-sdk';
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useEffect } from 'react';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { userFacingErrorMessage } from '../utils/errorText';
 import { useProjectCreationRecovery } from './useProjectCreationRecovery';
+import { useProjectDraftState } from './useProjectDraftState';
 import { trackRecentLayout } from './useRecentLayouts';
 
 interface ProjectDraft {
@@ -102,21 +103,35 @@ export function useNewProjectSubmit({
       authority.apiBase,
       authority.draftRecoveryKey ?? authority.authorityKey,
     ]);
+  const livePartition =
+    authority && JSON.stringify([authority.apiBase, authority.authorityKey]);
   const createProjectMutation = useCreateProjectMutation(authority);
   const { refetch: validateDirectory } = useFileSystemBrowseQuery(
     normalizedDirectory || undefined,
     { enabled: false },
   );
-  const [createdProject, setCreatedProject] = useState<CreatedProject | null>(
-    null,
+  const [createdProject, setCreatedProject] =
+    useProjectDraftState<CreatedProject | null>(null, recoveryKey);
+  const [applyingStarter, setApplyingStarter] = useProjectDraftState(
+    false,
+    livePartition,
   );
-  const [applyingStarter, setApplyingStarter] = useState(false);
-  const [checkingDirectory, setCheckingDirectory] = useState(false);
-  const [checkingSlug, setCheckingSlug] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [checkingDirectory, setCheckingDirectory] = useProjectDraftState(
+    false,
+    livePartition,
+  );
+  const [checkingSlug, setCheckingSlug] = useProjectDraftState(
+    false,
+    livePartition,
+  );
+  const [error, setError] = useProjectDraftState<string | null>(
+    null,
+    livePartition,
+  );
   const [rejectedDirectory, setRejectedDirectory] =
-    useState<RejectedDirectory | null>(null);
-  const [rejectedSlug, setRejectedSlug] = useState<RejectedSlug | null>(null);
+    useProjectDraftState<RejectedDirectory | null>(null, livePartition);
+  const [rejectedSlug, setRejectedSlug] =
+    useProjectDraftState<RejectedSlug | null>(null, livePartition);
   const recovery = useProjectCreationRecovery(
     isOpen,
     createProjectMutation.isPending || applyingStarter,
@@ -146,7 +161,16 @@ export function useNewProjectSubmit({
       setRejectedDirectory(null);
       setRejectedSlug(null);
     }
-  }, [isOpen]);
+  }, [
+    isOpen,
+    setCreatedProject,
+    setApplyingStarter,
+    setCheckingDirectory,
+    setCheckingSlug,
+    setError,
+    setRejectedDirectory,
+    setRejectedSlug,
+  ]);
 
   /**
    * 4-HOME-008. Returns the message to show against the Working Directory

@@ -146,7 +146,11 @@ function NewProjectIdentityInput({ state }: { state: NewProjectModalState }) {
       name={draft.name}
       derivedName={draft.derivedName}
       nameConflict={submission.slugError}
-      nameAdvisory={nameAdvisory}
+      nameAdvisory={
+        submission.hasCreatedProject || submission.hasRecoveryIntent
+          ? undefined
+          : nameAdvisory
+      }
       showIconChoices={draft.showIconChoices}
       iconCandidatesFetching={iconCandidates.isFetching}
       onIconChange={draft.setIcon}
