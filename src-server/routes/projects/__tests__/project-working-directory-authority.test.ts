@@ -386,6 +386,36 @@ test('repository acquisition uses operator Git authority and returns one durable
   );
   expect(inspected.status).toBe(200);
   expect(inspected.body.data).toEqual(acquired.body.data);
+  const listed = await f.send(
+    f.operator.credential,
+    'GET',
+    `/repository-acquisitions?sourceUrl=${encodeURIComponent(f.folderA)}&sourceRef=main`,
+    {},
+  );
+  expect(listed.status).toBe(200);
+  expect(
+    listed.body.data.map(
+      (record: { request: { requestId: string } }) => record.request.requestId,
+    ),
+  ).toContain(request.requestId);
+  const reused = await f.send(
+    f.operator.credential,
+    'POST',
+    `/repository-acquisitions/${request.requestId}/reuse`,
+    {},
+  );
+  expect(reused.status).toBe(200);
+  expect(reused.body.data.checkoutPath).toBe(acquired.body.data.checkoutPath);
+  expect(
+    (
+      await f.send(
+        f.pair('delegation'),
+        'GET',
+        `/repository-acquisitions?sourceUrl=${encodeURIComponent(f.folderA)}`,
+        {},
+      )
+    ).status,
+  ).toBe(403);
   const refusedCancel = await f.send(
     f.pair('delegation'),
     'POST',

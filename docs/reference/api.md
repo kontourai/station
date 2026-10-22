@@ -158,6 +158,17 @@ exists without a symlink redirect and returns `workingDirectory` separately from
 the owned `checkoutPath`; Project creation rechecks the directory and retains the
 subdirectory in source provenance. Raw subprocess output and credentials are not response data.
 
+Operator-only `GET /api/projects/repository-acquisitions?sourceUrl=...&sourceRef=...&subdirectory=...`
+searches at most 1000 retained operation directories and returns up to 20 ready
+receipts matching canonical repository identity, requested ref and subdirectory.
+This is discovery of historical receipts, not a fresh checkout verification.
+`POST /api/projects/repository-acquisitions/:id/reuse` revalidates current origin,
+pinned commit, cleanliness and selected directory, returning the same operation
+without cloning or fetching. Drift returns 409 and preserves files. Both routes
+recheck current operator authority after asynchronous work and guard response
+release. Reusing a default-branch receipt retains its pinned commit even if the
+remote default has since moved.
+
 `POST /api/projects/repository-acquisitions/:id/cancel` records durable
 cancellation for an acquiring or failed operation (404 if absent; 409 if already
 ready). Cancellation is idempotent, preserves files and prevents later success

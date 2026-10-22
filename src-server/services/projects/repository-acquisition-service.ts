@@ -1,5 +1,5 @@
-import { mkdirSync } from 'node:fs';
-import { lstat, mkdtemp, realpath, rm } from 'node:fs/promises';
+import { type Dir, mkdirSync } from 'node:fs';
+import { lstat, mkdtemp, opendir, realpath, rm } from 'node:fs/promises';
 import { devNull, tmpdir } from 'node:os';
 import { isAbsolute, join, resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
@@ -47,7 +47,12 @@ const recordSchema = z
 export class RepositoryAcquisitionConflict extends Error {}
 export class RepositoryAcquisitionInputError extends Error {}
 
-function validateSource(request: RepositoryAcquisitionRequest): void {
+function validateSource(
+  request: Pick<
+    RepositoryAcquisitionRequest,
+    'sourceUrl' | 'sourceRef' | 'subdirectory'
+  >,
+): void {
   const source = request.sourceUrl;
   if (
     request.subdirectory &&
@@ -159,6 +164,71 @@ export class RepositoryAcquisitionService {
       null,
       { onCorruption: 'throw', durableAtomicWrite: true, maxReadBytes: 16384 },
     );
+  }
+
+  async findReusable(
+    raw: unknown,
+    assertCurrent: () => void,
+  ): Promise<RepositoryAcquisition[]> {
+    const source = repositoryAcquisitionRequestSchema
+      .omit({ requestId: true })
+      .parse(raw);
+    validateSource(source);
+    assertCurrent();
+    let directory: Dir;
+    try {
+      directory = await opendir(this.root);
+    } catch (error) {
+      if (
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        error.code === 'ENOENT'
+      )
+        return [];
+      throw error;
+    }
+    const candidates: RepositoryAcquisition[] = [];
+    let inspected = 0;
+    for await (const entry of directory) {
+      assertCurrent();
+      if (++inspected > 1000)
+        throw new RepositoryAcquisitionConflict(
+          'Too many retained acquisitions to search. Use a retained operation ID or choose an existing folder.',
+        );
+      if (
+        !entry.isDirectory() ||
+        !z.string().uuid().safeParse(entry.name).success
+      )
+        continue;
+      const record = this.get(entry.name);
+      if (
+        record?.phase === 'ready' &&
+        record.canonicalRemote === normalizeGitOrigin(source.sourceUrl) &&
+        record.request.sourceRef === source.sourceRef &&
+        record.request.subdirectory === source.subdirectory
+      ) {
+        candidates.push(record);
+        if (candidates.length === 20) break;
+      }
+    }
+    assertCurrent();
+    return candidates;
+  }
+
+  async reuse(
+    id: string,
+    assertCurrent: () => void,
+  ): Promise<RepositoryAcquisition> {
+    assertCurrent();
+    const source = await this.projectSource(id);
+    assertCurrent();
+    const record = this.get(id);
+    if (record?.phase !== 'ready')
+      throw new RepositoryAcquisitionConflict(
+        'The retained checkout is no longer available.',
+      );
+    return { ...record, workingDirectory: source.workingDirectory };
   }
 
   private cancellation(id: string) {

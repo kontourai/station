@@ -387,3 +387,58 @@ test('cancellation during acquisition retains the operation and never offers its
     new Response(JSON.stringify({ success: true, data: record })),
   );
 });
+
+test('existing checkout selection verifies deliberately and hands off the retained directory without dispatching a clone', async () => {
+  const retained = {
+    ...ready({
+      requestId: crypto.randomUUID(),
+      sourceUrl: 'git@github.com:org/research.git',
+      sourceRef: 'release',
+      subdirectory: 'apps/web',
+    }),
+    workingDirectory: '/host/owned/checkout-1/apps/web',
+  };
+  const calls: string[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push(`${init?.method ?? 'GET'} ${url}`);
+      if (url.includes('/repository-acquisitions?'))
+        return new Response(
+          JSON.stringify({ success: true, data: [retained] }),
+        );
+      return new Response(JSON.stringify({ success: true, data: retained }));
+    }),
+  );
+  const view = mount();
+  fireEvent.change(screen.getByLabelText('Repository URL'), {
+    target: { value: retained.request.sourceUrl },
+  });
+  fireEvent.change(screen.getByLabelText('Branch or tag (optional)'), {
+    target: { value: 'release' },
+  });
+  fireEvent.change(
+    screen.getByLabelText('Repository subdirectory (optional)'),
+    { target: { value: 'apps/web' } },
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Find existing checkouts' }),
+  );
+  const reuse = await screen.findByRole('button', {
+    name: 'Check and reuse aaaaaaaaaaaa',
+  });
+  expect(calls.some((x) => x.includes('/reuse'))).toBe(false);
+  fireEvent.click(reuse);
+  await screen.findByRole('button', { name: 'Use this checkout' });
+  fireEvent.click(screen.getByRole('button', { name: 'Use this checkout' }));
+  expect(view.onUseCheckout).toHaveBeenCalledWith(
+    retained.workingDirectory,
+    'research',
+    retained.request.requestId,
+  );
+  expect(
+    calls
+      .filter((x) => x.startsWith('POST'))
+      .every((x) => x.endsWith('/reuse')),
+  ).toBe(true);
+});

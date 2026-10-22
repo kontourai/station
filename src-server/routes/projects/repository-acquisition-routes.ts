@@ -67,6 +67,48 @@ export function createRepositoryAcquisitionRoutes(
     if (!isOperatorInPersonNotAgent(c.req.raw)) return denied(c);
     return next();
   });
+  app.get('/repository-acquisitions', async (c) => {
+    const current = () => mayDiscover(c.req.raw) && !c.req.raw.signal.aborted;
+    try {
+      const data = await service.findReusable(
+        {
+          sourceUrl: c.req.query('sourceUrl'),
+          ...(c.req.query('sourceRef')
+            ? { sourceRef: c.req.query('sourceRef') }
+            : {}),
+          ...(c.req.query('subdirectory')
+            ? { subdirectory: c.req.query('subdirectory') }
+            : {}),
+        },
+        () => {
+          if (!current())
+            throw new Error('Repository discovery authority ended.');
+        },
+      );
+      if (!current()) return denied(c);
+      return guardProjectResponse(c.json({ success: true, data }), async () =>
+        current(),
+      );
+    } catch (error) {
+      if (!current()) return denied(c);
+      return failure(c, error);
+    }
+  });
+  app.post('/repository-acquisitions/:id/reuse', async (c) => {
+    const current = () => mayDiscover(c.req.raw) && !c.req.raw.signal.aborted;
+    try {
+      const data = await service.reuse(param(c, 'id'), () => {
+        if (!current()) throw new Error('Repository reuse authority ended.');
+      });
+      if (!current()) return denied(c);
+      return guardProjectResponse(c.json({ success: true, data }), async () =>
+        current(),
+      );
+    } catch (error) {
+      if (!current()) return denied(c);
+      return failure(c, error);
+    }
+  });
   app.post(
     '/repository-acquisitions',
     validate(repositoryAcquisitionRequestSchema),

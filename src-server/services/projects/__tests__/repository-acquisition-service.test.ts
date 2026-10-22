@@ -393,3 +393,45 @@ test('cancellation rechecks authority after waiting for publication and leaves t
   await expect(cancellation).rejects.toThrow('Authority ended');
   expect(f.service.get(request.requestId)).toEqual(failed);
 });
+
+test('matching retained checkouts are explicitly reverified without cloning and drift refuses without overwriting edits', async () => {
+  const f = fixture();
+  const acquired = await f.service.acquire({
+    requestId: randomUUID(),
+    sourceUrl: f.source,
+    sourceRef: 'main',
+  });
+  const observed = vi.spyOn(gitExec, 'execGit');
+  const candidates = await f.service.findReusable(
+    { sourceUrl: f.source, sourceRef: 'main' },
+    () => {},
+  );
+  expect(candidates.map((x) => x.request.requestId)).toEqual([
+    acquired.request.requestId,
+  ]);
+  expect(
+    await f.service.findReusable(
+      { sourceUrl: f.source, sourceRef: 'other' },
+      () => {},
+    ),
+  ).toEqual([]);
+  expect(
+    await f.service.findReusable(
+      { sourceUrl: f.source, sourceRef: 'main', subdirectory: 'apps' },
+      () => {},
+    ),
+  ).toEqual([]);
+  const reused = await f.service.reuse(acquired.request.requestId, () => {});
+  expect(reused.checkoutPath).toBe(acquired.checkoutPath);
+  expect(reused.resolvedCommit).toBe(f.commit);
+  expect(observed.mock.calls.some(([args]) => args.includes('clone'))).toBe(
+    false,
+  );
+  writeFileSync(join(acquired.checkoutPath, 'README.md'), 'operator edits');
+  await expect(
+    f.service.reuse(acquired.request.requestId, () => {}),
+  ).rejects.toThrow('changed or could not be verified');
+  expect(readFileSync(join(acquired.checkoutPath, 'README.md'), 'utf8')).toBe(
+    'operator edits',
+  );
+});

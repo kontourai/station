@@ -1170,6 +1170,14 @@ If the CLI or sign-in is unavailable, sign in on the host with `gh auth login`
 or `glab auth login`, retry, or paste a Git URL. Self-hosted forges remain an
 explicit-URL flow; the account pickers target `github.com` and `gitlab.com`.
 
+**Find existing checkouts** lists up to 20 retained acquisitions matching the
+entered repository identity, requested ref and subdirectory. These are historical
+observations until **Check and reuse** rechecks the checkout's current origin,
+pinned commit and unchanged files. Reuse selects the retained operation without
+cloning, fetching a moved branch or overwriting edits. Drift is refused; acquire
+a fresh copy or deliberately choose an existing folder instead. The displayed
+commit is the version being reused, not a new remote-branch observation.
+
 The browser retains the operation ID in session storage, partitioned by Station
 and account. Reopening the form checks that operation; a lost response does not
 automatically clone again. **Check operation** reads the recorded result.

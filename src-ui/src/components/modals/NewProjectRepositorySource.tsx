@@ -109,6 +109,62 @@ function RepositorySourceControls({
     },
     onSuccess: (data) => client.setQueryData(key, data),
   });
+  const [reuseSearch, setReuseSearch] = useState<URLSearchParams | null>(null);
+  const search = new URLSearchParams({ sourceUrl: sourceUrl.trim() });
+  if (sourceRef.trim()) search.set('sourceRef', sourceRef.trim());
+  if (subdirectory.trim()) search.set('subdirectory', subdirectory.trim());
+  const reusable = useQuery({
+    queryKey: [
+      'repository-reuse',
+      scope.apiBase,
+      scope.authorityKey,
+      reuseSearch?.toString(),
+    ],
+    enabled: Boolean(reuseSearch) && !requestId,
+    retry: false,
+    staleTime: 0,
+    queryFn: async () => {
+      const response = await getJson(
+        `${scope.apiBase}/api/projects/repository-acquisitions?${reuseSearch}`,
+        { requestScope: scope },
+      );
+      return (
+        (await readEnvelopeOrThrow<RepositoryAcquisition[]>(response)) ?? []
+      );
+    },
+  });
+  const reuse = useMutation({
+    retry: false,
+    mutationFn: async (id: string) => {
+      const response = await mutateJson(
+        `${scope.apiBase}/api/projects/repository-acquisitions/${encodeURIComponent(id)}/reuse`,
+        'POST',
+        { requestScope: scope },
+        {},
+      );
+      const data = await readEnvelopeOrThrow<RepositoryAcquisition>(response);
+      if (!data) throw new Error('Verified checkout was not returned.');
+      return data;
+    },
+    onSuccess: (data) => {
+      if (!scope.isCurrent()) return;
+      try {
+        sessionStorage.setItem(storageKey, data.request.requestId);
+      } catch {
+        setStorageError(true);
+      }
+      client.setQueryData(
+        [
+          'repository-acquisition',
+          scope.apiBase,
+          scope.authorityKey,
+          data.request.requestId,
+        ],
+        data,
+      );
+      setRequestId(data.request.requestId);
+    },
+  });
   const operation = useQuery({
     queryKey: key,
     enabled: Boolean(requestId) && !acquire.isPending,
@@ -127,9 +183,12 @@ function RepositorySourceControls({
     },
   });
   useEffect(() => {
-    onBusyChange(acquire.isPending && cancel.data?.phase !== 'cancelled');
+    onBusyChange(
+      reuse.isPending ||
+        (acquire.isPending && cancel.data?.phase !== 'cancelled'),
+    );
     return () => onBusyChange(false);
-  }, [acquire.isPending, cancel.data?.phase, onBusyChange]);
+  }, [acquire.isPending, cancel.data?.phase, reuse.isPending, onBusyChange]);
 
   function begin() {
     cancel.reset();
@@ -161,6 +220,8 @@ function RepositorySourceControls({
     setRequestId('');
     acquire.reset();
     cancel.reset();
+    reuse.reset();
+    setReuseSearch(null);
   }
   const record = operation.data;
   return (
@@ -217,7 +278,63 @@ function RepositorySourceControls({
           </p>
           <Button
             type="button"
-            disabled={!sourceUrl.trim() || acquire.isPending}
+            variant="secondary"
+            disabled={
+              !sourceUrl.trim() || reuse.isPending || reusable.isFetching
+            }
+            onClick={() => {
+              reuse.reset();
+              setReuseSearch(search);
+              if (reuseSearch?.toString() === search.toString())
+                void reusable.refetch();
+            }}
+          >
+            Find existing checkouts
+          </Button>
+          {reuseSearch?.toString() === search.toString() &&
+            !reusable.isFetching &&
+            !reusable.isError &&
+            reusable.data && (
+              <section aria-label="Existing checkout choices">
+                <p className="editor-hint">
+                  Previously acquired copies. Reuse checks the pinned commit,
+                  origin and unchanged files; it does not update from the remote
+                  or overwrite edits.
+                </p>
+                {!reusable.data.length && (
+                  <p>
+                    No matching retained checkout. Acquire a new copy or choose
+                    an existing folder.
+                  </p>
+                )}
+                {reusable.data.map((candidate) => (
+                  <div key={candidate.request.requestId}>
+                    <p>
+                      Commit {candidate.resolvedCommit?.slice(0, 12)} ·{' '}
+                      {candidate.request.sourceRef ??
+                        'remote default when acquired'}{' '}
+                      · {candidate.request.subdirectory ?? 'repository root'}
+                    </p>
+                    <Button
+                      type="button"
+                      disabled={reuse.isPending}
+                      onClick={() => reuse.mutate(candidate.request.requestId)}
+                    >
+                      Check and reuse {candidate.resolvedCommit?.slice(0, 12)}
+                    </Button>
+                  </div>
+                ))}
+              </section>
+            )}
+          {(reusable.isError || reuse.isError) && (
+            <p role="alert">
+              {userFacingErrorMessage(reuse.error ?? reusable.error)} Existing
+              files are preserved.
+            </p>
+          )}
+          <Button
+            type="button"
+            disabled={!sourceUrl.trim() || acquire.isPending || reuse.isPending}
             onClick={begin}
           >
             Acquire repository
