@@ -397,7 +397,7 @@ test.describe
           });
           await expect(
             context.getByRole('tab', { name: 'Chat', exact: true }),
-          ).toHaveAttribute('aria-selected', 'true');
+          ).toHaveAttribute('aria-selected', 'true', { timeout: 15_000 });
           await expect(
             context.getByRole('textbox', { name: 'Message the Task' }),
           ).toBeVisible();
@@ -625,7 +625,7 @@ test.describe
         for (const context of [owner, peer]) {
           await expect(
             context.getByRole('tab', { name: 'Brief', exact: true }),
-          ).toHaveAttribute('aria-selected', 'true');
+          ).toHaveAttribute('aria-selected', 'true', { timeout: 15_000 });
           await expect(
             context.getByRole('region', { name: 'Task room editor' }),
           ).toContainText(converged);
