@@ -193,7 +193,7 @@ export async function revokeStationPersonToken(
   const base = await resolveApiBase(apiBase);
   const response = await authenticatedFetch(
     `${base}${personPath(principalId)}/tokens/${encodeURIComponent(tokenId)}`,
-    { method: 'DELETE' },
+    { method: 'DELETE', offlinePolicy: 'always-attempt' },
   );
   if (!response.ok) throw await accessError(response);
 }
@@ -232,7 +232,7 @@ export async function revokeOwnAccessToken(
   const base = await resolveApiBase(apiBase);
   const response = await authenticatedFetch(
     `${base}/api/access/tokens/${encodeURIComponent(tokenId)}`,
-    { method: 'DELETE' },
+    { method: 'DELETE', offlinePolicy: 'always-attempt' },
   );
   if (!response.ok) throw await accessError(response);
 }

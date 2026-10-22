@@ -373,7 +373,7 @@ export async function revokeWorkspaceHomeRoleGrant(): Promise<void> {
   const apiBase = await _getApiBase();
   const response = await authenticatedFetch(
     `${apiBase}/api/plugins/home-role`,
-    { method: 'DELETE' },
+    { method: 'DELETE', offlinePolicy: 'always-attempt' },
   );
   if (!response.ok) {
     const result = (await response

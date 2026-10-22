@@ -1200,8 +1200,10 @@ composes an opaque host Device binding with the
 [application runtime](../../src-ui/src/platform/native/nativeRelayApplicationRuntime.ts).
 Each request obtains fresh short-lived ICE and a verified Station peer; there
 is no direct HTTP fallback. Exact supported health, authority and member Project
-reads are admitted before allocation. Operator Workspace resources and writes
-remain unsupported. The CLI does not select these routes as defaults.
+reads are admitted before allocation. Explicitly supported relay-management
+and Project-access POSTs require current account proof; the transport refuses
+other writes and operator Workspace resources. The SDK reachability guard does
+not replace this transport policy. The CLI does not select these routes as defaults.
 
 The [account bridge](../../src-ui/src/platform/native/nativeAccountSessionBridge.ts)
 uses the SDK native continuation client and fixed host proof operations. The
@@ -3518,7 +3520,7 @@ application.
 
 ## OutboundDispatchModule
 
-An offline message is a draft until transport may have started it. After that, the [durable browser queue](../../src-ui/src/lib/outboundQueue.ts) retains evidence instead of silently resending. The [flush hook](../../src-ui/src/hooks/useOutboundQueueFlush.ts) supplies the live conversation and send adapter.
+Foreground admission has a 30-second deadline composed with caller cancellation; a timeout preserves the send's delivery key for lookup. An offline message is a draft until transport may have started it. After that, the [durable browser queue](../../src-ui/src/lib/outboundQueue.ts) retains evidence instead of silently resending. The [flush hook](../../src-ui/src/hooks/useOutboundQueueFlush.ts) supplies the live conversation and send adapter.
 
 **Interface.** `outboundDispatch.enqueue(intent)`, `flush(transport)`, `open()`, projection subscription, and the safe pre-effect `edit`, `retry`, `discard`, reorder, merge, and unmerge operations, plus the user's explicit `dismissUnconfirmed` and the read-only `rowStatus` and `retiredKeys` (which the projection uses to drop a discarded message's bubble, and record a started one, in every window), form the UI's durable outbound Interface. `beginLive(intent)` records a composer or queue-drain send `invoking` (`origin: 'live'`) before its request and returns the send's hold on that row (`accepted`, `refused`, `undeliverable`, `unanswered`, `indeterminate`, `hold`, `notSent`, `observed`); `reconcile(lookup, { station })` and `check(clientTurnId, lookup)` settle rows by Station's delivery lookup; `syncHeld(intents)` keeps the durable copies of a renderer's held follow-ups (`heldBy`). `flush` supplies a state-bound `OutboundDispatchClaim` to its transport Adapter. The adapter returns `accepted(providerTurnId)`, `not-invoked`, or `deferred`. The last two are pre-provider outcomes: `not-invoked` consumes an attempt, while a temporary `deferred` gate does not. After invocation it throws or records `indeterminate`. It receives neither IndexedDB storage nor a claim token, and callers cannot place a provider turn id on an intent.
 

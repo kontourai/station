@@ -457,7 +457,6 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
                   : lazyNativeAuthenticatedTransport,
               ...(evidence?.nativeBrokerRoute
                 ? {
-                    mutationAllowed: () => false,
                     onAccountUnauthorized:
                       relayCredential?.onAccountUnauthorized,
                   }

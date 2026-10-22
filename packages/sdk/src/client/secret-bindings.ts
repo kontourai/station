@@ -4,6 +4,7 @@ import type {
 } from '@kontourai/station-contracts/secret-binding';
 import { envelopeError } from './api-error-message';
 import {
+  type AuthenticatedFetchInit,
   authenticatedFetch,
   type ClientRequestOptions,
   getJson,
@@ -54,7 +55,7 @@ type Envelope<T> = {
 async function request<T>(
   apiBase: string,
   path: string,
-  init?: RequestInit,
+  init?: AuthenticatedFetchInit,
 ): Promise<T> {
   const response = await authenticatedFetch(
     `${apiBase}/api/secret-bindings${path}`,
@@ -234,6 +235,7 @@ export const revokeSecretBinding = (
 ) =>
   request<SecretBindingView>(apiBase, `/${encodeURIComponent(id)}/revoke`, {
     method: 'POST',
+    offlinePolicy: 'always-attempt',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ expectedRevision }),
   });

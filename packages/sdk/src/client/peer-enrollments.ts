@@ -67,6 +67,9 @@ export async function cancelPeerEnrollment(
   options?: ClientRequestOptions,
 ): Promise<PeerEnrollment> {
   return enrollmentResponse(
-    await mutateJson(enrollmentUrl(apiBase, id), 'DELETE', options),
+    await mutateJson(enrollmentUrl(apiBase, id), 'DELETE', {
+      ...options,
+      offlinePolicy: 'always-attempt',
+    }),
   );
 }

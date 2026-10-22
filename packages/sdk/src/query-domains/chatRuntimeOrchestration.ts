@@ -649,6 +649,11 @@ export async function dispatchOrchestrationCommand<T = unknown>(
     `${resolvedApiBase}/api/orchestration/commands`,
     {
       method: 'POST',
+      ...(command.type === 'interruptTurn' ||
+      (command.type === 'respondToRequest' &&
+        (command.decision === 'cancel' || command.decision === 'decline'))
+        ? { offlinePolicy: 'always-attempt' as const }
+        : {}),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(command),
       ...(timeoutMs !== undefined ? { timeoutMs } : {}),

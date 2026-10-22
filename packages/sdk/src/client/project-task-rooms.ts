@@ -450,6 +450,9 @@ export async function commandProjectTaskRoomLive(
     await envelope(
       await authenticatedFetch(`${apiBase}${roomPath(taskId, '/live')}`, {
         ...opts,
+        ...(command.command === 'stop' || command.command === 'depart'
+          ? { offlinePolicy: 'always-attempt' as const }
+          : {}),
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...opts?.headers },
         body: JSON.stringify(command),

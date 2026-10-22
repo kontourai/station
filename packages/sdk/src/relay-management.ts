@@ -285,7 +285,7 @@ export async function revokeRelaySetup(
         await mutateJson(
           url(base, '/approvals/revoke'),
           'POST',
-          options(input),
+          { ...options(input), offlinePolicy: 'always-attempt' },
           {
             approvalId: approval.approvalId,
             expectedRevision: approval.revision,
@@ -325,7 +325,7 @@ export async function denyRelayDevice(
         await mutateJson(
           url(base, `/devices/${encodeURIComponent(device.enrollmentId)}/deny`),
           'POST',
-          options(input),
+          { ...options(input), offlinePolicy: 'always-attempt' },
           { candidate: device.candidate },
         ),
       ),

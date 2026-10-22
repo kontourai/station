@@ -220,6 +220,9 @@ export async function dispatchForeground(input: {
     },
     {
       signal: input.signal,
+      // Bound admission even when the composer supplies its cancellation signal.
+      // A timeout is an uncertain write; the outbox must consult its delivery key.
+      timeoutMs: 30_000,
       ...(input.requestScope ? { requestScope: input.requestScope } : {}),
     },
   );

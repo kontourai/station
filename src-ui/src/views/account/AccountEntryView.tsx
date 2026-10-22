@@ -118,8 +118,11 @@ export function AccountEntryView({
       path: string;
       body: Record<string, unknown>;
       invitation?: string;
+      offlinePolicy?: 'always-attempt';
     }) =>
-      runAccountOperation(apiBase, input.path, input.body, input.invitation),
+      runAccountOperation(apiBase, input.path, input.body, input.invitation, {
+        offlinePolicy: input.offlinePolicy,
+      }),
   });
   const busy = mutation.isPending;
   const login = descriptor.data?.login;
@@ -267,7 +270,11 @@ export function AccountEntryView({
     setError(undefined);
     try {
       await clearOfflineReading();
-      await mutation.mutateAsync({ path, body: {} });
+      await mutation.mutateAsync({
+        path,
+        body: {},
+        offlinePolicy: 'always-attempt',
+      });
       // Signed out: a definite "no person", so this device's own appearance
       // replaces the account's cached one (lib/appearance-cache.ts).
       deviceSettingsStore.releaseBootAppearance();

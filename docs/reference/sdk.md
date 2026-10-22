@@ -4836,14 +4836,32 @@ framing ends and the application's authority checks begin.
 The host credential resolver's `mutationAllowed` guard applies to write-shaped
 requests through both `authenticatedFetch` and `mutateJson`, including SDK
 Project mutations. Returning false throws `StationReadOnlyError` before dispatch;
-a thrown error is preserved. The `readOnly` deadline annotation does not bypass
-this guard. Reads remain available to recheck the connection.
+a thrown error is preserved. This guard describes reachability only; transport
+permissions and current authority remain separately enforced. The `readOnly`
+deadline annotation does not bypass this guard. Reads remain available to
+recheck the connection.
+
+`ClientRequestOptions` and `AuthenticatedFetchInit` accept
+`offlinePolicy: 'always-attempt'` to bypass only this reachability veto.
+Cancellation, Stop, interrupt, sign-out and access-revocation operation owners
+set it explicitly, including cancel/decline decisions. Ordinary writes use
+`'require-reachable'` by default. `runAccountOperation` accepts this policy as
+its fifth argument; the account UI supplies it for the descriptor's logout
+operation, independently of its URL. A bypass never grants transport or account
+authority. Native relay management POSTs use the transport's explicit supported
+operation policy and account proofs, without a blanket mutation veto.
 
 Station's browser host blocks ordinary writes on current connection-layer
 reachability failures. A newer successful authenticated read or health probe
 clears that failure; `navigator.onLine` alone cannot block a reachable Station.
 Transport unavailability keeps chat sends on the existing outbound queue path.
 Native stale-authority guards retain their separate refusal behavior.
+
+Foreground composer and queue-drain admission requests have a 30-second
+per-call deadline, composed with caller cancellation by the SDK. It bounds
+headers and body consumption. A deadline miss remains an uncertain write:
+the outbox retains the same `clientTurnId` for delivery lookup and never
+resends blindly. A confirmed start outranks a late timeout.
 
 ## Session read-model deadline
 
