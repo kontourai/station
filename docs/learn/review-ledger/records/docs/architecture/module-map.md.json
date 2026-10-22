@@ -1170,7 +1170,11 @@
 
     "src-ui/src/views/task-workspace/TaskRoomPage.tsx",
 
-    "packages/contracts/src/project-task-room-browser.ts"
+    "packages/contracts/src/project-task-room-browser.ts",
+
+    "packages/connect/src/core/pendingPairingExchangeJournal.ts",
+
+    "src-server/services/connections/lan-discovery.ts"
   ],
 
   "checks": [

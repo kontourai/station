@@ -138,7 +138,11 @@
 
     "src-server/services/plugins/tool-library-service.ts",
 
-    "src-server/services/telemetry-producers/telemetry-producer-store.ts"
+    "src-server/services/telemetry-producers/telemetry-producer-store.ts",
+
+    "packages/connect/src/core/pendingPairingExchangeJournal.ts",
+
+    "src-server/services/connections/lan-discovery.ts"
   ],
 
   "checks": [
