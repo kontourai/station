@@ -296,21 +296,15 @@ async function openAgentList(page: import('@playwright/test').Page) {
   return agents;
 }
 
-/**
- * Open New Chat through whichever affordance the viewport offers: desktop keeps
- * the dock's tab-bar button, a phone moves New/Open/history into the one-row
- * header's overflow sheet.
- */
 async function openNewChatForViewport(page: Page) {
-  // ChatDock registers this public UI event regardless of whether its desktop
-  // tab button, phone overflow action, or collapsed affordance is visible.
-  // Drive that stable boundary so the helper also works immediately after a
-  // selection creates a chat and changes the dock layout.
-  await expect(page.locator('#chat-dock')).toBeAttached({ timeout: 15_000 });
-  await page.evaluate(() =>
-    window.dispatchEvent(new Event('station:open-new-chat')),
-  );
-  await expect(page.locator('.new-chat-modal')).toBeVisible({
+  await page
+    .locator('#chat-dock')
+    .getByRole('button', { name: 'New chat', exact: true })
+    .first()
+    .click();
+  await expect(
+    page.getByRole('dialog', { name: 'New chat', exact: true }),
+  ).toBeVisible({
     timeout: 15_000,
   });
 }

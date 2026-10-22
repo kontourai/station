@@ -18,39 +18,66 @@ const STATUS_READY = JSON.stringify({
   },
 });
 
-async function seedConnection(page: Page) {
+async function seedConnection(page: Page, withRecovered = false) {
   const credential = process.env.STATION_E2E_HOST_CREDENTIAL;
   if (!credential) {
     throw new Error('Reconnect coverage requires the runner host credential');
   }
-  await page.addInitScript((hostCredential) => {
-    const now = Date.now();
-    window.localStorage.setItem(
-      'station-connect-connections',
-      JSON.stringify([
-        {
-          profileVersion: 4,
-          id: 'c1',
-          name: 'Dev Server',
-          url: window.location.origin,
-          credentialRef: {
-            credentialVersion: 1,
-            kind: 'connection',
+  await page.addInitScript(
+    ({ hostCredential, recoveredUrl }) => {
+      const now = Date.now();
+      window.localStorage.setItem(
+        'station-connect-connections',
+        JSON.stringify([
+          {
+            profileVersion: 4,
             id: 'c1',
+            name: 'Dev Server',
+            url: window.location.origin,
+            credentialRef: {
+              credentialVersion: 1,
+              kind: 'connection',
+              id: 'c1',
+            },
+            credentialState: 'saved',
+            lastConnected: now,
+            lastSuccessAt: now,
           },
-          credentialState: 'saved',
-          lastConnected: now,
-          lastSuccessAt: now,
-        },
-      ]),
-    );
-    window.localStorage.setItem('station-connect-connections-active', 'c1');
-    window.localStorage.setItem(
-      'station-connect-connections-credentials',
-      JSON.stringify({ 'connection:c1': hostCredential }),
-    );
-    window.localStorage.setItem('station:onboarding-setup-dismissed', '1');
-  }, credential);
+          ...(recoveredUrl
+            ? [
+                {
+                  profileVersion: 4,
+                  id: 'c2',
+                  name: 'Recovered Station',
+                  url: recoveredUrl,
+                  credentialRef: {
+                    credentialVersion: 1,
+                    kind: 'connection',
+                    id: 'c2',
+                  },
+                  credentialState: 'saved',
+                  lastConnected: now,
+                  lastSuccessAt: now,
+                },
+              ]
+            : []),
+        ]),
+      );
+      window.localStorage.setItem('station-connect-connections-active', 'c1');
+      window.localStorage.setItem(
+        'station-connect-connections-credentials',
+        JSON.stringify({
+          'connection:c1': hostCredential,
+          ...(recoveredUrl ? { 'connection:c2': hostCredential } : {}),
+        }),
+      );
+      window.localStorage.setItem('station:onboarding-setup-dismissed', '1');
+    },
+    {
+      hostCredential: credential,
+      recoveredUrl: withRecovered ? RECOVERED_URL : undefined,
+    },
+  );
 }
 
 async function installTransport(
@@ -126,13 +153,14 @@ async function openStationDetails(page: Page) {
 }
 
 test.describe('compatibility-aware reconnect', () => {
-  test.beforeEach(async ({ page }) => {
-    await seedConnection(page);
+  test.afterEach(async ({ page }) => {
+    await page.unrouteAll({ behavior: 'wait' });
   });
 
   test('deduplicates probes and recovers without reloading', async ({
     page,
   }) => {
+    await seedConnection(page);
     const state = {
       healthy: true,
       bootId: 'boot-1',
@@ -141,9 +169,7 @@ test.describe('compatibility-aware reconnect', () => {
     };
     await installTransport(page, state);
     await page.goto('/');
-    await expect(
-      page.getByRole('heading', { name: "What's next?" }),
-    ).toBeVisible();
+    await expect(page.getByRole('form', { name: 'Start work' })).toBeVisible();
 
     await page.evaluate(() => {
       (
@@ -187,6 +213,7 @@ test.describe('compatibility-aware reconnect', () => {
   test('keeps toolbar recheck and Station details reachable on a phone viewport', async ({
     page,
   }) => {
+    await seedConnection(page);
     await page.setViewportSize({ width: 390, height: 844 });
     const state = {
       healthy: true,
@@ -196,9 +223,7 @@ test.describe('compatibility-aware reconnect', () => {
     };
     await installTransport(page, state);
     await page.goto('/');
-    await expect(
-      page.getByRole('heading', { name: "What's next?" }),
-    ).toBeVisible();
+    await expect(page.getByRole('form', { name: 'Start work' })).toBeVisible();
     state.healthy = false;
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
     const connection = page.getByTestId('app-toolbar-connection');
@@ -222,10 +247,11 @@ test.describe('compatibility-aware reconnect', () => {
     );
   });
 
-  test('selects a new healthy Station after connection failure on mobile', async ({
+  test('selects another saved healthy Station after connection failure on mobile', async ({
     page,
     baseURL,
   }) => {
+    await seedConnection(page, true);
     await page.setViewportSize({ width: 390, height: 844 });
     let recoveredStatusRequests = 0;
     let primaryHealthy = true;
@@ -241,8 +267,27 @@ test.describe('compatibility-aware reconnect', () => {
     // probes below are modeled; inventory reads retain their real contracts.
     await page.route(`${RECOVERED_URL}/**`, async (route) => {
       const requested = new URL(route.request().url());
-      if (requested.pathname === '/api/events') {
+      if (route.request().headers().accept?.includes('text/event-stream')) {
         await route.abort('connectionrefused');
+        return;
+      }
+      // Provider catalogs and release discovery can wait on external hosts;
+      // this connection-selection fixture explicitly leaves them unavailable.
+      if (
+        [
+          '/api/models',
+          '/api/agents',
+          '/api/models/capabilities',
+          '/api/system/core-update',
+        ].includes(requested.pathname)
+      ) {
+        await route.fulfill({
+          status: 503,
+          json: {
+            success: false,
+            error: 'Catalog and release discovery unavailable in this fixture',
+          },
+        });
         return;
       }
       const response = await route.fetch({
@@ -295,9 +340,7 @@ test.describe('compatibility-aware reconnect', () => {
     });
 
     await page.goto('/');
-    await expect(
-      page.getByRole('heading', { name: "What's next?" }),
-    ).toBeVisible();
+    await expect(page.getByRole('form', { name: 'Start work' })).toBeVisible();
     primaryHealthy = false;
     await page.evaluate(() => window.dispatchEvent(new Event('online')));
     await expect(page.getByTestId('app-toolbar-connection')).toHaveAttribute(
@@ -310,13 +353,11 @@ test.describe('compatibility-aware reconnect', () => {
       .click();
     await page
       .getByRole('dialog')
-      .getByRole('button', { name: 'Add a Station address' })
+      .getByRole('button', { name: 'View details for Recovered Station' })
       .click();
-    await page.getByPlaceholder('Name (optional)').fill('Recovered Station');
     await page
-      .getByPlaceholder('https://station.example.ts.net')
-      .fill(RECOVERED_URL);
-    await page.getByRole('button', { name: 'Add', exact: true }).click();
+      .getByRole('button', { name: 'Switch to Recovered Station', exact: true })
+      .click();
     await expect.poll(() => recoveredStatusRequests).toBeGreaterThanOrEqual(1);
     await page.getByRole('button', { name: 'Close Station manager' }).click();
 
@@ -332,11 +373,13 @@ test.describe('compatibility-aware reconnect', () => {
       'aria-label',
       /Choose Station — Connected/,
     );
+    await expect(page.getByRole('form', { name: 'Start work' })).toBeVisible();
     expect(recoveredStatusRequests).toBeGreaterThanOrEqual(2);
   });
   test('identity repair in Station details opens the access-request flow', async ({
     page,
   }) => {
+    await seedConnection(page);
     const state = {
       healthy: true,
       bootId: 'repair-boot',

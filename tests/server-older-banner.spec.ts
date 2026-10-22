@@ -3,6 +3,7 @@
  * at phone/desktop widths. SDK responses and connection/platform identity are
  * controlled inputs; the panel, confirmation and service-progress UI are real.
  */
+import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, type Page } from '@playwright/test';
@@ -10,9 +11,12 @@ import { build, type Plugin } from 'esbuild';
 import { test } from './helpers/fixture-audit';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const SDK_ENTRY = createRequire(import.meta.url).resolve(
+  '@kontourai/station-sdk',
+);
 
 const STUB_SDK = `
-export * from '${REPO_ROOT}/packages/sdk/src/index.ts';
+export * from ${JSON.stringify(SDK_ENTRY)};
 const checkedAt = Date.now();
 const scenario = () => window.__scenario;
 const status = () => ({
@@ -91,12 +95,14 @@ const stubSeams: Plugin = {
     builder.onLoad({ filter: /.*/, namespace: 'stub' }, (args) => ({
       contents: args.path === 'sdk' ? STUB_SDK : STUB_CONTEXT,
       loader: 'js',
+      resolveDir: REPO_ROOT,
     }));
   },
 };
 
 const HARNESS_SOURCE = `
 import './src-ui/src/index.css';
+import './src-ui/src/components/updates/Updates.css';
 import { createRoot } from 'react-dom/client';
 import { useState } from 'react';
 import { UpdatesPanel } from './src-ui/src/components/updates/UpdatesPanel';
@@ -123,7 +129,10 @@ test.beforeAll(async () => {
     bundle: true,
     format: 'iife',
     jsx: 'automatic',
-    define: { 'process.env.NODE_ENV': '"production"' },
+    define: {
+      'process.env.NODE_ENV': '"production"',
+      'import.meta.env': '{}',
+    },
     external: ['/fonts/*', '/favicon-*'],
     loader: { '.woff2': 'empty', '.woff': 'empty' },
     plugins: [stubSeams],
