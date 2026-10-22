@@ -1,0 +1,7 @@
+{
+  "revision": "bc0d14957eb2c6b0caaf42423cf3d69091543ea9",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Added the actual provenance-label, retained-background-activity, sync-receipt and child-work contract owners to this guide review record so later changes invalidate the new explanations. Claims reviewed in the current child-work audit; independent source review of the concepts delta found no confirmed P1/P2. Does not turn old record hashes into broader provider/runtime acceptance.","inputs":["docs/user/concepts.md","src-ui/src/utils/child-work-display.ts","src-ui/src/components/chat-dock/BackgroundTasksSheet.tsx","src-server/services/orchestration/cli-session-group.ts","packages/contracts/src/child-work.ts"]}
+  ]
+}

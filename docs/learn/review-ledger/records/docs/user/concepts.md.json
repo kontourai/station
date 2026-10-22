@@ -56,7 +56,15 @@
 
     "src-ui/src/hooks/useConversationInbox.ts",
 
-    "src-ui/src/components/chat/ConversationInboxMessages.tsx"
+    "src-ui/src/components/chat/ConversationInboxMessages.tsx",
+
+    "src-ui/src/utils/child-work-display.ts",
+
+    "src-ui/src/components/chat-dock/BackgroundTasksSheet.tsx",
+
+    "src-server/services/orchestration/cli-session-group.ts",
+
+    "packages/contracts/src/child-work.ts"
   ],
 
   "checks": [
