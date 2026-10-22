@@ -110,11 +110,27 @@ describe('Surface Basis SDK boundary', () => {
     await expect(
       keepAnswerInTask('task-a', input, scope),
     ).rejects.toBeInstanceOf(TaskBasisRequestError);
+    fetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Protected route detail',
+          code: 'task_reference_not_ready',
+        }),
+        { status: 429, headers: { 'Retry-After': '2' } },
+      ),
+    );
+    await expect(keepAnswerInTask('task-a', input, scope)).rejects.toMatchObject({
+      message: 'Task basis unavailable',
+      status: 429,
+      code: 'task_reference_not_ready',
+      retryAfterMs: 2000,
+    });
     currentScope = { ...scope, authorityKey: 'epoch-b' };
     await expect(
       keepAnswerInTask('task-a', input, scope),
     ).rejects.toBeInstanceOf(TaskBasisRequestError);
-    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledTimes(3);
   });
 
   test('uses Surface parser for exact answers', async () => {

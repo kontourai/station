@@ -179,7 +179,7 @@ export async function keepAnswerInTask(
       !('targetId' in data) ||
       data.targetId !== encodeTaskTurnReference(input.sessionId, input.turnId)
     )
-      throw new TaskBasisRequestError(response.status);
+      throw new TaskBasisRequestError(answered(response, body));
     return { referenceId: data.id };
   } catch (error) {
     if (error instanceof TaskBasisRequestError) throw error;
