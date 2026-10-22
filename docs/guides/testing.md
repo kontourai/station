@@ -192,6 +192,13 @@ The mutation suite is deliberately focused and opt-in. Its runner safety and pol
 
 ## Actions workflow inventory
 
+Dependency advisory scans are not part of PR, merge-queue or Nightly feature
+verification. The central scheduled scan retains one assigned actionable tracker;
+Preview/Stable publication runs a fresh exact-source audit using trusted policy.
+This does not remove secret scanning, dependency review, signatures, integrity or
+functional checks. See [dependency security](dependency-security.md#where-the-scan-runs).
+
+
 Routine documentation readiness runs repository-validation suites, including
 actual ledger/capture freshness, links, generated artifacts and public-content
 checks. The impact, freshness-policy and review-note framework suites use
