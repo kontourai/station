@@ -485,15 +485,15 @@ describe('Task question lead wake (#4003)', () => {
     await settle(world);
     // The wake was accepted: the inbox queued it.
     expect(world.wakes).toMatchObject([{ kind: 'queued' }]);
-    const key = 'tq-4f83646871a29ef54302a79e0dde6f9c0f1f6ed4';
+    const wakeTurnId = 'tq-4f83646871a29ef54302a79e0dde6f9c0f1f6ed4';
     expect(world.inbox.list(LEAD)).toMatchObject([
-      { clientTurnId: key, state: 'refused' },
+      { clientTurnId: wakeTurnId, state: 'refused' },
     ]);
     expect(world.inboxWarn).toHaveBeenCalledWith(
       'thread inbox entry not delivered',
       expect.objectContaining({
         conversationId: LEAD,
-        clientTurnId: key,
+        clientTurnId: wakeTurnId,
         state: 'refused',
       }),
     );
