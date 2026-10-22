@@ -26,7 +26,7 @@ const COMMANDS: &[&str] = &[
 /// shell's environment through, so an iOS build sets it as cargo config:
 /// `tauri ios build ... -- --config <file>` where the file holds
 /// `[env] STATION_IOS_LIVE_ACTIVITY = { value = "1", force = true }` (the
-/// same route STATION_MOBILE_DEFAULT_ENDPOINT takes in testflight-delivery).
+/// Cargo config route used by testflight-delivery).
 const IOS_FEATURE_ENV: &str = "STATION_IOS_LIVE_ACTIVITY";
 
 fn main() {

@@ -54,11 +54,6 @@ export interface NativeCapabilityReport {
    * value as a release build rather than tinting a real install by accident.
    */
   devBuild?: boolean;
-  /**
-   * Secret-free HTTPS origin baked into a native-mobile build by its trusted
-   * release environment. Saved/default profiles remain authoritative.
-   */
-  mobileDefaultEndpoint?: string;
   /** Immutable provenance baked into this installed native client artifact. */
   clientBuild?: NativeClientBuildProvenance;
 }

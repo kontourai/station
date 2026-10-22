@@ -168,18 +168,6 @@ describe('iOS App Store signing config', () => {
       bundleId: 'io.kontourai.station',
     });
   });
-  test('writes only a caller-supplied HTTPS endpoint into Cargo config', () => {
-    expect(mobileCargoConfig()).toBe('');
-    expect(mobileCargoConfig('https://station.example.test:8441')).toContain(
-      'STATION_MOBILE_DEFAULT_ENDPOINT',
-    );
-    expect(() => mobileCargoConfig('http://station.example.test')).toThrow(
-      /HTTPS/,
-    );
-    expect(() =>
-      mobileCargoConfig('https://user:pass@station.example.test'),
-    ).toThrow(/HTTPS origin/);
-  });
   test('writes exclusive profile-bound template and overlay without mutating inputs', () => {
     const root = mkdtempSync(join(tmpdir(), 'ios-signing-config-'));
     const input = join(root, 'project.yml');
@@ -731,20 +719,11 @@ describe('iOS App Store signing for the Live Activity extension (#2513)', () => 
     ).toThrow(/exactly once/);
   });
 
-  test('carries the plugin half of the switch as cargo config', () => {
-    expect(mobileCargoConfig(undefined, { liveActivity: true })).toBe(
+  test('carries only the Live Activity switch in device Cargo config', () => {
+    expect(mobileCargoConfig()).toBe('');
+    expect(mobileCargoConfig({ liveActivity: false })).toBe('');
+    expect(mobileCargoConfig({ liveActivity: true })).toBe(
       '[env]\nSTATION_IOS_LIVE_ACTIVITY = { value = "1", force = true }\n',
-    );
-    const both = mobileCargoConfig('https://station.example.test', {
-      liveActivity: true,
-    });
-    expect(both).toContain('STATION_MOBILE_DEFAULT_ENDPOINT');
-    expect(both).toContain(
-      'STATION_IOS_LIVE_ACTIVITY = { value = "1", force = true }',
-    );
-    expect(both.match(/\[env\]/g)).toHaveLength(1);
-    expect(mobileCargoConfig('https://station.example.test')).not.toContain(
-      'STATION_IOS_LIVE_ACTIVITY',
     );
   });
 });
