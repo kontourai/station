@@ -2057,6 +2057,41 @@ describe('project guest administration over the production composition', () => {
     expect(list.status, await list.clone().text()).toBe(200);
     const body = await readJson<{ data: { id: string }[] }>(list);
     expect(body.data.map((root) => root.id)).toEqual([allowed.id]);
+    const importId = crypto.randomUUID();
+    const originalText = '\ufeff\nExact shared original\r\n';
+    const imported = await h.request(
+      '/api/knowledge/document-imports',
+      h.operatorHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestId: importId,
+          expectedRoot: allowed,
+          documents: [
+            {
+              filename: 'shared.md',
+              contentBase64: Buffer.from(originalText).toString('base64'),
+            },
+          ],
+        }),
+      }),
+    );
+    expect(imported.status, await imported.clone().text()).toBe(200);
+    const importPath = `/api/knowledge/roots/${encodeURIComponent(allowed.id)}/document-imports/${importId}`;
+    expect((await h.request(importPath, guest())).status).toBe(403);
+    const original = await h.request(`${importPath}/originals/0`, guest());
+    expect(original.status, await original.clone().text()).toBe(200);
+    expect(Buffer.from(await original.arrayBuffer())).toEqual(
+      Buffer.from(originalText),
+    );
+    expect(
+      (
+        await h.request(
+          `/api/knowledge/roots/${encodeURIComponent(unrelated.id)}/document-imports/${importId}/originals/0`,
+          guest(),
+        )
+      ).status,
+    ).toBe(404);
     const read = await h.request(
       `/api/knowledge/roots/${encodeURIComponent(allowed.id)}/records/${recordId}`,
       guest(),

@@ -347,6 +347,9 @@ export function installAccountBoundDeviceGate(
           (path === '/api/knowledge/capabilities' ||
             path === '/api/knowledge/roots' ||
             path === '/api/knowledge/adapters' ||
+            /^\/api\/knowledge\/roots\/[^/]+\/document-imports\/[^/]+\/originals\/\d+$/.test(
+              path,
+            ) ||
             /^\/api\/knowledge\/roots\/[^/]+\/(?:graph|records(?:\/[^/]+)?)$/.test(
               path,
             ))) ||
