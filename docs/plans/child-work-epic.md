@@ -621,11 +621,13 @@ All seven recovery checks pass. An earlier recovery assertion incorrectly
 expected the local operator's cross-credential inspection to fail; its failed
 receipt remains retained, and the corrected check targets owner-only mutation.
 
-Two intervening fresh-start attempts refused during configuration reconciliation
-before any model request. The successful retry does not establish reliable
-immediate post-listening admission. The retained refusal and login-observer
-diagnostics require further investigation; no fence was weakened to obtain the
-successful run. Restarted completed replay is not native conversation resumption.
+Two intervening fresh-start attempts refused before any model request. Creation
+failed during configuration reconciliation in one; the other failed inside its
+first login probe without a captured exception identifying the cause. The
+successful retry does not establish reliable immediate post-listening admission.
+These failures require further investigation; no fence was weakened to obtain
+the successful run. Restarted completed replay is not native conversation
+resumption.
 
 ## Production adoption sequence
 
