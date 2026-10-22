@@ -1,0 +1,7 @@
+{
+  "revision": "11c7acac13ad24eb73af7740c0ec969739ec0653",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Added that form requests carry no decision actions in notification history or Attention, matching approval-inbox.ts; Open session leads to the form.","inputs":["docs/design/notification-delivery.md","src-server/services/approvals/approval-inbox.ts"]}
+  ]
+}

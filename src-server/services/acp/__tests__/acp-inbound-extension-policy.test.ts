@@ -7,6 +7,7 @@ import {
   createAcpInboundExtensionRequestHandler,
   extensionMethodWords,
   isCredentialShapedExtensionMethod,
+  REVIEWED_INBOUND_EXTENSION_REQUESTS,
 } from '../acp-inbound-extension-policy.js';
 
 /**
@@ -128,8 +129,9 @@ describe('AcpInboundExtensionRegistry', () => {
 
 describe('registry scoping — the property the guarantee rests on', () => {
   test('two handlers built without an explicit registry do not share one', async () => {
-    // The honest ranking in the module header puts "the allowlist is empty
-    // and both call sites own a private registry" ABOVE the name predicate.
+    // The honest ranking in the module header puts "the allowlist is a
+    // reviewed table and both call sites own a private registry" ABOVE the
+    // name predicate.
     // That is only true while each factory call builds its own registry, so
     // assert it rather than assume it: registering on one handler's registry
     // must not make the method answerable on another's.
@@ -251,11 +253,28 @@ describe('createAcpInboundExtensionRequestHandler', () => {
     // Exercises the FACTORY's default, not a hand-built registry: the
     // previous version asserted `new AcpInboundExtensionRegistry().size === 0`
     // and never called `createAcpInboundExtensionRequestHandler()` at all,
-    // so it proved nothing about the default the adapter actually gets.
+    // so it proved nothing about the default the probe actually gets.
     const onExtMethod = createAcpInboundExtensionRequestHandler();
     await expect(onExtMethod('_vendor/anything', {})).rejects.toMatchObject({
       code: -32601,
     });
+    // The reviewed table is registered by the chat adapter only; it never
+    // leaks into the default, which has no person to ask.
+    await expect(
+      onExtMethod('cursor/ask_question', { questions: [] }),
+    ).rejects.toMatchObject({ code: -32601 });
+  });
+
+  test('pins the reviewed inbound requests, each registrable and exact', () => {
+    expect(REVIEWED_INBOUND_EXTENSION_REQUESTS).toEqual([
+      { method: 'cursor/ask_question', handler: 'cursor.ask-question' },
+      { method: 'cursor/create_plan', handler: 'cursor.create-plan' },
+    ]);
+    const registry = new AcpInboundExtensionRegistry();
+    for (const entry of REVIEWED_INBOUND_EXTENSION_REQUESTS)
+      registry.register(entry.method, () => ({}));
+    expect(registry.size).toBe(2);
+    expect(registry.resolve('_cursor/ask_question')).toBeUndefined();
   });
 
   test('logs a refused method ONCE per handler, not once per request', async () => {

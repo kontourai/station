@@ -1155,6 +1155,17 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // Re-detecting engines re-runs the host user's login shell (bounded and
+  // rate-limited), so it is an operate-tier POST, never part of the read-tier
+  // catalogue GET beside it.
+  {
+    id: '/acp/registry/recheck:operate',
+    method: 'POST',
+    prefix: '/acp/registry/recheck',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
   // archive#1097 review round 2 (HIGH), owner decision "tighten now, loosen
   // later if wanted": GET /api/environments/ssh/sessions aggregates OTHER
   // connected stations' orchestration session titles/projectSlugs/agents/
