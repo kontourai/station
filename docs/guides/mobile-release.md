@@ -34,8 +34,10 @@ the receipt boundary at the end of this guide.
 
 On iOS, Tauri's web-content termination callback requests a page reload after
 WebKit loses its process. Background termination waits until the app becomes
-active. At most three automatic recoveries run within 60 seconds; exhaustion
-shows a native Reload/Close dialog. Recovery uses the state the application already
+active. At most three automatic recoveries run within a monotonic 60-second
+window; exhaustion shows one native Reload/Close dialog until explicit Reload.
+Android also defers renderer recovery until the Activity resumes; background
+kills do not consume automatic reload attempts. Recovery uses the state the application already
 persists; it does not promise recovery of unsaved text or resend an uncertain
 write. [Finite native HTTP requests](../../src-desktop/src/lib.rs) hold a
 [UIKit background assertion](../../src-desktop/src/ios_background_task.rs) until

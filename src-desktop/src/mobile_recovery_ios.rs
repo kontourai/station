@@ -4,7 +4,7 @@ use objc2::msg_send;
 use objc2::runtime::{AnyClass, AnyObject};
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 use tauri::{AppHandle, Manager, Webview};
 
 static RECOVERY: OnceLock<Mutex<HashMap<String, RendererRecovery>>> = OnceLock::new();
@@ -62,12 +62,7 @@ pub(crate) fn terminated(webview: &Webview) {
         .unwrap_or_else(|e| e.into_inner())
         .entry(webview.label().to_owned())
         .or_default()
-        .terminated(
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap_or_default(),
-            !backgrounded(),
-        );
+        .terminated(Instant::now(), !backgrounded());
     act(webview, action);
 }
 pub(crate) fn foreground(app: &AppHandle) {
@@ -78,16 +73,7 @@ pub(crate) fn foreground(app: &AppHandle) {
         .lock()
         .unwrap_or_else(|e| e.into_inner())
         .iter_mut()
-        .map(|(label, state)| {
-            (
-                label.clone(),
-                state.foreground(
-                    SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap_or_default(),
-                ),
-            )
-        })
+        .map(|(label, state)| (label.clone(), state.foreground(Instant::now())))
         .collect();
     for (label, action) in actions {
         if let Some(webview) = app.get_webview(&label) {
@@ -100,7 +86,6 @@ pub(crate) fn install(app: AppHandle) {
     use block2::RcBlock;
     use objc2_foundation::{NSNotification, NSNotificationCenter, NSString};
     let callback = RcBlock::new(move |_: std::ptr::NonNull<NSNotification>| {
-        super::native_http_transport::network_changed();
         foreground(&app);
     });
     // NotificationCenter retains the process-lifetime observer and callback.

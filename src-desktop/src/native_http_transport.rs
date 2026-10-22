@@ -26,8 +26,6 @@ pub extern "system" fn Java_io_kontourai_station_agentactivity_NativeHttpNetwork
 struct Progress {
     reused: bool,
     send_attempted: bool,
-    response_seen: bool,
-    read_only: bool,
 }
 thread_local! {
     static PROGRESS: Cell<Progress> = Cell::new(Progress::default());
@@ -65,37 +63,17 @@ pub(crate) struct ObservedTransport<T> {
 }
 impl<T: Transport> Transport for ObservedTransport<T> {
     fn buffers(&mut self) -> &mut dyn Buffers {
-        if !self.inner.buffers().input().is_empty() {
-            observe(|p| p.response_seen = true);
-        }
         self.inner.buffers()
     }
     fn transmit_output(&mut self, amount: usize, timeout: NextTimeout) -> Result<(), ureq::Error> {
-        if self.epoch != network_epoch() {
-            return Err(ureq::Error::Io(std::io::ErrorKind::NotConnected.into()));
-        }
         // Mark BEFORE calling: Err can mean a partial write, even over TLS.
         if amount > 0 {
             observe(|p| p.send_attempted = true);
         }
         self.inner.transmit_output(amount, timeout)
     }
-    fn await_input(&mut self, mut timeout: NextTimeout) -> Result<bool, ureq::Error> {
-        let progress = PROGRESS.with(Cell::get);
-        if progress.reused && progress.read_only && !progress.response_seen {
-            // A silent NAT drop has no FIN for is_open() to observe. Bound
-            // only the replay-safe attempt; a fresh connection keeps normal budgets.
-            let probe = Duration::from_secs(3);
-            if *timeout.after > probe {
-                timeout.after = ureq::unversioned::transport::time::Duration::Exact(probe);
-                timeout.reason = ureq::Timeout::RecvResponse;
-            }
-        }
-        let result = self.inner.await_input(timeout);
-        if !self.inner.buffers().input().is_empty() {
-            observe(|p| p.response_seen = true);
-        }
-        result
+    fn await_input(&mut self, timeout: NextTimeout) -> Result<bool, ureq::Error> {
+        self.inner.await_input(timeout)
     }
     fn is_open(&mut self) -> bool {
         // ureq probes on return AND checkout. The request-local cell is reset
@@ -118,16 +96,7 @@ pub(crate) fn run(
     deadline: Option<Instant>,
     revalidate: impl FnOnce() -> Result<(), NativeHttpBrokerFailure>,
 ) -> Result<ureq::http::Response<ureq::Body>, NativeHttpBrokerFailure> {
-    let read_only = matches!(
-        *request.method(),
-        ureq::http::Method::GET | ureq::http::Method::HEAD
-    );
-    PROGRESS.with(|cell| {
-        cell.set(Progress {
-            read_only,
-            ..Progress::default()
-        })
-    });
+    PROGRESS.with(|cell| cell.set(Progress::default()));
     match agent.run(request.clone()) {
         Ok(response) => Ok(response),
         Err(error) => {
@@ -136,7 +105,7 @@ pub(crate) fn run(
                 error,
                 ureq::Error::Io(_) | ureq::Error::Timeout(_) | ureq::Error::ConnectionFailed
             );
-            let safe = !progress.send_attempted || (read_only && !progress.response_seen);
+            let safe = !progress.send_attempted;
             if !progress.reused || !transport_failure || !safe {
                 return Err(NativeHttpBrokerFailure::transport(
                     native_request_transport_detail(&error),

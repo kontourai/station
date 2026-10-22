@@ -2477,7 +2477,7 @@ fn read_station_profile_contents(app: &AppHandle) -> Result<String, String> {
 }
 
 #[cfg(unix)]
-#[derive(PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 struct StationProfileFileVersion {
     device: u64,
     inode: u64,
@@ -2498,15 +2498,24 @@ impl StationProfileFileVersion {
             changed: (metadata.ctime(), metadata.ctime_nsec()),
         }
     }
+
+    fn unambiguous(&self) -> bool {
+        // Recent/coarse timestamps can hide same-size in-place edits. Never
+        // trust metadata alone within its collision window or after clock rollback.
+        let Ok(now) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) else {
+            return false;
+        };
+        self.changed.0 >= 0 && self.changed.1 > 0 && now.as_secs() > self.changed.0 as u64 + 1
+    }
 }
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct StationProfileSnapshotCache {
     #[cfg(unix)]
     snapshot: Option<(
         std::path::PathBuf,
         StationProfileFileVersion,
-        String,
+        std::sync::Arc<str>,
         std::sync::Arc<CredentialProfileStore>,
     )>,
 }
@@ -2520,6 +2529,13 @@ impl StationProfileSnapshotCache {
         {
             use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
             validate_station_profile_store(path)?;
+            let metadata = std::fs::symlink_metadata(path).map_err(|error| error.to_string())?;
+            let version = StationProfileFileVersion::of(&metadata);
+            if let Some((cached_path, cached_version, _, store)) = &self.snapshot {
+                if cached_path == path && cached_version == &version && version.unambiguous() {
+                    return Ok(std::sync::Arc::clone(store));
+                }
+            }
             let mut file = std::fs::OpenOptions::new()
                 .read(true)
                 .custom_flags(libc::O_NOFOLLOW)
@@ -2535,8 +2551,6 @@ impl StationProfileSnapshotCache {
                 );
             }
             let version = StationProfileFileVersion::of(&metadata);
-            // Timestamp resolution can hide an in-place edit with restored
-            // mtime. Reuse parsing only after comparing this open file's bytes.
             let cached = self.snapshot.take();
             let mut contents = String::new();
             file.read_to_string(&mut contents)
@@ -2550,7 +2564,7 @@ impl StationProfileSnapshotCache {
                 Some((cached_path, cached_version, cached_contents, store))
                     if cached_path == path
                         && cached_version == version
-                        && cached_contents == contents =>
+                        && cached_contents.as_ref() == contents =>
                 {
                     store
                 }
@@ -2559,7 +2573,7 @@ impl StationProfileSnapshotCache {
             self.snapshot = Some((
                 path.to_owned(),
                 version,
-                contents,
+                contents.into(),
                 std::sync::Arc::clone(&store),
             ));
             Ok(store)
@@ -2577,7 +2591,11 @@ static NATIVE_HTTP_PROFILE_SNAPSHOTS: std::sync::OnceLock<
     std::sync::Mutex<StationProfileSnapshotCache>,
 > = std::sync::OnceLock::new();
 
+static NATIVE_HTTP_PROFILE_GENERATION: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
 fn invalidate_native_http_profile_snapshot() -> Result<(), String> {
+    NATIVE_HTTP_PROFILE_GENERATION.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
     if let Some(cache) = NATIVE_HTTP_PROFILE_SNAPSHOTS.get() {
         *cache.lock().unwrap_or_else(|error| error.into_inner()) =
             StationProfileSnapshotCache::default();
@@ -2589,12 +2607,47 @@ fn invalidate_native_http_profile_snapshot() -> Result<(), String> {
 fn native_http_profile_snapshot(
     app: &AppHandle,
 ) -> Result<std::sync::Arc<CredentialProfileStore>, String> {
+    #[cfg(not(mobile))]
     let path = station_profiles_path(app)?;
-    NATIVE_HTTP_PROFILE_SNAPSHOTS
-        .get_or_init(Default::default)
+    #[cfg(mobile)]
+    let path = app
+        .path()
+        .app_config_dir()
+        .map_err(|error| error.to_string())?
+        .join("profiles.json");
+    read_native_http_profile_snapshot(&path, || station_profiles_path(app).map(|_| ()))
+}
+
+fn read_native_http_profile_snapshot(
+    path: &std::path::Path,
+    initialize: impl FnOnce() -> Result<(), String>,
+) -> Result<std::sync::Arc<CredentialProfileStore>, String> {
+    use std::sync::atomic::Ordering;
+    let cache = NATIVE_HTTP_PROFILE_SNAPSHOTS.get_or_init(Default::default);
+    let generation = NATIVE_HTTP_PROFILE_GENERATION.load(Ordering::Acquire);
+    let mut local = cache
         .lock()
-        .map_err(|_| "saved Station snapshot is unavailable".to_string())?
-        .read(&path)
+        .unwrap_or_else(|error| error.into_inner())
+        .clone();
+    cache.clear_poison();
+    #[cfg(unix)]
+    if local
+        .snapshot
+        .as_ref()
+        .is_none_or(|(cached_path, _, _, _)| cached_path != path)
+    {
+        initialize()?;
+    }
+    #[cfg(not(unix))]
+    initialize()?;
+    // No file I/O holds the global cache mutex. A concurrent writer invalidates
+    // publication; every caller still validates the live file's trust boundary.
+    let store = local.read(path)?;
+    let mut shared = cache.lock().unwrap_or_else(|error| error.into_inner());
+    if generation == NATIVE_HTTP_PROFILE_GENERATION.load(Ordering::Acquire) {
+        *shared = local;
+    }
+    Ok(store)
 }
 
 /// Publish a fully-synced profile replacement. POSIX rename replaces the

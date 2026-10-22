@@ -163,9 +163,13 @@ change notification covering external replacement, deletion and locked storage,
 so a cached bearer could hide a refusal. The two request-path keyring reads are
 mutually exclusive, one for ambient requests and one for scoped requests.
 
-On Unix, profile reads validate the directory and opened file's owner/mode and
+On Unix, profile reads validate the directory and file's owner/mode and
 reject symlinks on every lookup. Parsed snapshots reuse only the same path,
-opened device/inode, size, mtime and ctime, including nanoseconds. Atomic
+device/inode, size, mtime and ctime, including nanoseconds. Settled high-resolution
+metadata avoids opening the file. Recent, coarse or future timestamps require a
+byte comparison to cover timestamp collisions. File I/O runs outside the global
+cache mutex; a write generation prevents publishing a snapshot across invalidation.
+Poisoned cache locks recover on reads as well as writes. Atomic
 replacement and in-place edits invalidate the snapshot, including a same-size
 edit that restores mtime. Errors never fall back to cached authority. Windows
 retains the full trusted read/parse until an equivalent file-change identity is
@@ -272,18 +276,18 @@ physical phone, notification lifecycle or release-provider journey.
 ## Mobile connection and renderer recovery
 
 Native authenticated HTTP agents keep mobile connections idle for at most two
-seconds. Android's network callback, iOS's Network.framework path monitor and
-mobile foreground lifecycle events invalidate idle connections. Existing agent
-clones also reject connections from an earlier network epoch. This prevents
-iOS's sleep-paused monotonic clock from keeping a pre-sleep socket eligible.
+seconds. Android default-network availability/loss and iOS's Network.framework
+path monitor invalidate pooled connections. Capability-only Android callbacks
+still update metering without advancing the epoch; iOS activation alone does
+not advance it. Existing agent clones reject an earlier network epoch at pool
+checkout. An epoch change never interrupts an upload already underway.
 
-A failed pooled exchange retries once with a new agent only before an HTTP
-write was attempted, or for GET/HEAD before any response bytes arrived.
-The pooled GET/HEAD attempt waits at most three seconds for its first response
-bytes before trying the fresh connection. Partial response headers prevent retry. A failed write is treated as possibly
-sent because ureq does not report partial-write counts. Cancellation and the
-captured profile authority are checked before retry. No response body failure
-or possibly sent mutation authorizes replay.
+A failed pooled exchange can retry once with a new agent only before any HTTP
+write was attempted. There is no shortened stale-connection response probe;
+slow GETs, long-polls and streams keep their configured budgets and are never
+replayed after a write attempt. A failed write is treated as possibly sent
+because ureq does not report partial-write counts. Cancellation and captured
+profile authority are checked before any pre-send retry.
 
 An unscoped request whose profile changes during dispatch reports the existing
 `credential_binding_changed` recovery code to the renderer. Scoped requests

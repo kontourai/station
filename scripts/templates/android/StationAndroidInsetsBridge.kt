@@ -35,14 +35,19 @@ class StationAndroidInsetsBridge(private val webView: WebView, private val activ
     }
     val callback = object : ConnectivityManager.NetworkCallback() {
       private fun changed() {
-        io.kontourai.station.agentactivity.NativeHttpNetwork.changed()
         refreshCost()
         webView.post {
           webView.evaluateJavascript("window.dispatchEvent(new Event('station-network-cost-change'))", null)
         }
       }
-      override fun onAvailable(network: Network) = changed()
-      override fun onLost(network: Network) = changed()
+      override fun onAvailable(network: Network) {
+        io.kontourai.station.agentactivity.NativeHttpNetwork.changed()
+        changed()
+      }
+      override fun onLost(network: Network) {
+        io.kontourai.station.agentactivity.NativeHttpNetwork.changed()
+        changed()
+      }
       override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) = changed()
     }
     var registered = false
