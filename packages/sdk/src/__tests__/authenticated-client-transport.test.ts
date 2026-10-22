@@ -384,7 +384,12 @@ describe('authenticated client transport', () => {
       origin: 'https://station.example.test',
       mutationAllowed: () => mutationAllowed,
     }));
-    const fetchMock = vi.fn(async () => new Response('{}'));
+    const fetchMock = vi.fn(
+      async () =>
+        new Response('{"success":true}', {
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    );
     vi.stubGlobal('fetch', fetchMock);
 
     await authenticatedFetch('https://station.example.test/api/sessions');
@@ -407,7 +412,10 @@ describe('authenticated client transport', () => {
     await authenticatedFetch('https://station.example.test/api/sessions', {
       method: 'POST',
     });
-    expect(fetchMock).toHaveBeenCalledTimes(2);
+    await expect(
+      deleteProject('https://station.example.test', 'allowed'),
+    ).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 });
 

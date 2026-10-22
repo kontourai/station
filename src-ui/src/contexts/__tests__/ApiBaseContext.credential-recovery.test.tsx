@@ -172,7 +172,7 @@ it('allows SDK writes with a false browser offline signal after a successful rea
   const endpoint = `${connections!.apiBase}/api/reachability-fixture`;
   const wire = vi.fn(
     async () =>
-      new Response('{"success":true,"data":{}}', {
+      new Response('{"success":true}', {
         headers: { 'Content-Type': 'application/json' },
       }),
   );
@@ -193,7 +193,7 @@ it('allows SDK writes with a false browser offline signal after a successful rea
     expect(connections!.activeConnection!.lastError).toBeUndefined();
     await expect(
       deleteProject(connections!.apiBase, 'after-read'),
-    ).resolves.toEqual({});
+    ).resolves.toBeUndefined();
     await act(async () => connections!.recordEndpointFailure(id, 'timeout'));
     await expect(
       deleteProject(connections!.apiBase, 'blocked-again'),
@@ -203,7 +203,7 @@ it('allows SDK writes with a false browser offline signal after a successful rea
     );
     await expect(
       deleteProject(connections!.apiBase, 'after-probe'),
-    ).resolves.toEqual({});
+    ).resolves.toBeUndefined();
     await expect(
       authenticatedFetch(endpoint, { method: 'PUT', body: '{}' }),
     ).resolves.toHaveProperty('status', 200);
