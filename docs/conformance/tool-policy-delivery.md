@@ -224,6 +224,32 @@ refuses startup when required profile delivery is unsupported or undelivered;
 it cannot reduce the selected Agent profile to fit the engine. See
 [execution overrides](../reference/session-api.md#preserve-an-agent-profile-with-an-execution-override).
 
+## Retained-session context sync
+
+Session-group context sync is separate from ordinary Agent grants and the
+matrix's general pre-tool policy cells. The current path accepts retained
+Claude Code 2.1.308 conversations only; other engines refuse before a sync
+attempt is reserved. The group performs that preflight for every member.
+
+The [session owner](../../src-server/services/orchestration/orchestration-service.ts)
+holds an exclusive activation generation through confirmed teardown, exact
+native resume and canonical turn dispatch. Its
+[process-local capability](../../src-server/services/orchestration/session-tool-restriction.ts)
+reaches the Claude adapter, which sets `tools: []` and command-line
+`disallowedTools: ['*']`. Ordinary turns and prepared replay cannot join the
+restricted activation. The native conversation and configuration binding must
+remain the ones the member retained.
+
+This restricts model-tool execution. It does not promise an empty advertised
+tool list, an OS sandbox, suppression of startup hooks, or complete coverage of
+plugin, delegation and autonomous internal effects. An exact ACK records receipt
+of folded context, not verified understanding or work acceptance. Logical
+attempt reservations do not establish physical-attempt, token or dollar caps.
+See the [session-group API](../reference/api.md#cli-session-groups) for bounds,
+retry conditions, unknown holds and qualified runtime limits. Controlled native
+loopback evidence does not establish real-provider sync or universal no-tools
+authority.
+
 ## Opt-in delivery evidence (#3824)
 
 The [engine delivery probes](../reference/agent-smoke-confidence.md#opt-in-engine-delivery-probes-3824)
