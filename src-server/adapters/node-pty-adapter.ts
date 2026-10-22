@@ -2,6 +2,11 @@ import { execFile } from 'node:child_process';
 import { chmodSync, existsSync, readlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
+  closeChildWorkload,
+  prepareChildWorkload,
+  trackChildWorkload,
+} from '@kontourai/station-shared/child-workload';
+import {
   describeTerminalPtyLoadFailure,
   type TerminalCapability,
   terminalPtyUnavailableReason,
@@ -111,6 +116,9 @@ class NodePtyProcess implements IPtyProcess {
 
   kill(signal?: string): void {
     this.pty.kill(signal);
+    void closeChildWorkload(this.pty.pid).catch((error) =>
+      logger.warn('Terminal workload cleanup failed', { error }),
+    );
   }
 
   onData(cb: (data: string) => void): () => void {
@@ -182,12 +190,33 @@ export class NodePtyAdapter implements IPtyAdapter {
     const nodePty = await this.requireNodePty();
     const name =
       process.platform === 'win32' ? 'xterm-color' : 'xterm-256color';
-    const pty = nodePty.spawn(input.shell, input.args ?? [], {
-      name,
-      cwd: input.cwd,
-      cols: input.cols,
-      rows: input.rows,
-      env: input.env as Record<string, string>,
+    const launch = prepareChildWorkload(
+      input.shell,
+      input.args ?? [],
+      input.env,
+    );
+    let pty: import('node-pty').IPty;
+    try {
+      pty = nodePty.spawn(
+        launch?.command ?? input.shell,
+        launch?.args ?? input.args ?? [],
+        {
+          name,
+          cwd: input.cwd,
+          cols: input.cols,
+          rows: input.rows,
+          env: (launch?.env ?? input.env) as Record<string, string>,
+        },
+      );
+    } catch (error) {
+      await launch?.close();
+      throw error;
+    }
+    trackChildWorkload(launch, pty.pid);
+    pty.onExit(() => {
+      void closeChildWorkload(pty.pid).catch((error) =>
+        logger.warn('Terminal workload cleanup failed', { error }),
+      );
     });
     return new NodePtyProcess(pty);
   }

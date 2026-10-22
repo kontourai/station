@@ -21,6 +21,12 @@ Status: Proposal â€” unscheduled; no tracking issue as of 2026-10-20 (phases 2â€
 
 ## Why
 
+Current Linux user-service [workload budgets](../guides/development.md#linux-service-workload-budgets)
+separate owned child scopes from the control server's resource failure domain.
+They retain generation-owned cleanup: a replacement server reaps dead owners.
+They do not implement the workload hosts, journals or reattachment proposed
+below, and do not make running turns survive a core restart.
+
 Every way Station restarts interrupts running work.
 
 - The server owns its listeners, agent engines, and terminals, so stopping it

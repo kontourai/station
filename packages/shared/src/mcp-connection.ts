@@ -19,6 +19,10 @@ import {
 } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import {
+  ownWorkloadTransport,
+  prepareChildWorkload,
+} from './child-workload.js';
+import {
   type ClaudeDesktopConfig,
   normalizeMcpToolDef,
 } from './portability.js';
@@ -714,6 +718,29 @@ function originBoundLiteralHeaderFetch(
   };
 }
 
+function createStdioTransport(
+  parameters: ConstructorParameters<typeof StdioClientTransport>[0],
+): StdioClientTransport {
+  const launch = prepareChildWorkload(
+    parameters.command,
+    parameters.args ?? [],
+    parameters.env,
+  );
+  return ownWorkloadTransport(
+    new StdioClientTransport({
+      ...parameters,
+      ...(launch
+        ? {
+            command: launch.command,
+            args: launch.args,
+            env: launch.env as Record<string, string>,
+          }
+        : {}),
+    }),
+    launch,
+  );
+}
+
 export function createMCPTransport(
   def: ToolDef,
   authProvider?: OAuthClientProvider,
@@ -724,7 +751,7 @@ export function createMCPTransport(
     case 'stdio':
       if (!def.command)
         throw new Error(`Tool '${def.id}': stdio transport requires 'command'`);
-      return new StdioClientTransport({
+      return createStdioTransport({
         command: def.command,
         args: def.args,
         env: { ...process.env, ...(def.env || {}) } as Record<string, string>,
@@ -751,7 +778,7 @@ export function createMCPTransport(
 
     default:
       if (def.command) {
-        return new StdioClientTransport({
+        return createStdioTransport({
           command: def.command,
           args: def.args,
           env: { ...process.env, ...(def.env || {}) } as Record<string, string>,
