@@ -168,13 +168,17 @@ ${command}
       ] as const) {
         const script = join(root, `${name}.ps1`);
         writeFileSync(
+          join(root, 'cargo.cmd'),
+          `@echo off
+if not "%*"=="test --manifest-path src-desktop/Cargo.toml tests::profile_store_windows_real_dotted_credential_targets_refuse_creation -- --exact --nocapture" exit /b 99
+echo ${result}
+exit /b ${exit}
+`,
+        );
+        writeFileSync(
           script,
           `$ErrorActionPreference = 'Stop'
-function cargo {
-  if (($args -join ' ') -ne 'test --manifest-path src-desktop/Cargo.toml tests::profile_store_windows_real_dotted_credential_targets_refuse_creation -- --exact --nocapture') { throw 'Incorrect native test selection' }
-  $global:LASTEXITCODE = ${exit}
-  Write-Output '${result}'
-}
+$env:PATH = '${root.replaceAll("'", "''")};' + $env:PATH
 ${step.run}
 `,
         );
