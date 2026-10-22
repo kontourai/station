@@ -225,10 +225,12 @@ export function createSessionInventoryModule(input: {
       });
       let decisions = gap('decisions');
       const execution: SessionInventoryRow[] = [];
-      let partialDelegations = answer.results.some(
-        ({ toolCallId, result }) =>
-          !toolCallId || result.terminalStatus === 'unknown',
-      );
+      let partialDelegations =
+        !!answer.partialResults ||
+        answer.results.some(
+          ({ toolCallId, result }) =>
+            !toolCallId || result.terminalStatus === 'unknown',
+        );
       let lineageGap: 'not-captured' | 'corrupt' | 'unavailable' =
         'not-captured';
       if (clientProtocol >= 3 && input.readAnswerLineage) {

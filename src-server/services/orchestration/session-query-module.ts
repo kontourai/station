@@ -67,6 +67,8 @@ export type SessionAnswerBasisQueryOutcome =
         prompt: string;
         attachments: readonly UserInputAttachmentProjection[];
       }[];
+      /** A terminal descriptor was withheld by the bounded result projector. */
+      partialResults?: boolean;
       /** The event id stays separate so reused toolCallId results never fold. */
       results: readonly {
         eventId: string;
@@ -754,21 +756,24 @@ export function createSessionQueryModule<Session>(
             ? [{ eventId: event.eventId, ...event.input }]
             : [];
         });
+        let partialResults = false;
         const results = events.flatMap((event) => {
           if (
             event.threadId !== query.threadId ||
             event.turnId !== query.turnId ||
-            event.method !== 'tool.completed' ||
-            !event.tool
+            event.method !== 'tool.completed'
           ) {
             return [];
           }
-          const projected = projectToolCompletedDescriptor(event.tool);
+          const projected = event.tool
+            ? projectToolCompletedDescriptor(event.tool)
+            : null;
+          if (projected?.state !== 'available') partialResults = true;
           return projected?.state === 'available'
             ? [
                 {
                   eventId: event.eventId,
-                  toolCallId: event.tool.toolCallId,
+                  toolCallId: event.tool?.toolCallId,
                   result: projected.result,
                 },
               ]
@@ -792,6 +797,7 @@ export function createSessionQueryModule<Session>(
           ...(projectSlug ? { projectSlug } : {}),
           inputs,
           results,
+          ...(partialResults ? { partialResults: true } : {}),
         };
       } catch (error) {
         try {

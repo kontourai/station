@@ -214,11 +214,12 @@ describe('SessionInventoryModule', () => {
     },
   );
 
-  test.each(['tool-result', 'output'] as const)(
+  test.each(['tool-result', 'output', 'withheld-tool-descriptor'] as const)(
     'does not report an exact empty when %s descriptors were withheld',
     async (withheld) => {
       const answer = {
         ...currentAnswer(),
+        partialResults: withheld === 'withheld-tool-descriptor',
         inputs: [],
         results:
           withheld === 'tool-result'
