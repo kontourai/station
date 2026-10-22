@@ -440,6 +440,28 @@ omits the key, while retaining and comparing an explicitly observed value. A
 changed child value still refuses; this variable is not a blanket env exemption.
 Native successful qualification remains pending the repaired run.
 
+At `d64e3156fc5`, the corrected owned-loopback probe passes through actual preset
+composition, group preflight, published Flow scheduling, OrchestrationService,
+SDK 0.3.302 and installed Claude Code 2.1.308. Both native login observations
+complete before either member starts. Two distinct native conversations receive
+roster-bearing briefs and return the authored per-member outputs; saved exact
+initial-turn events finish with `stop`, and Flow reports the group completed.
+Creation starts nothing. Shutdown closes the owned listener/store/service and
+leaves zero adapter sessions; a current check finds no process matching the owned
+home, Station handles or persisted native cursor strings.
+
+Independent source/artifact review accepts that bounded run. Dispatch was
+hand-composed, so this does not qualify canonical HTTP resolution or caller
+security. Roster names were checked for presence, not byte-exact prompt fidelity;
+two native cursors do not prove resume continuity. The synthetic loopback token
+is not a real-provider account, entitlement or billing observation. Complete
+native configuration/OS/remote-store and post-spawn continuity remain unverified.
+All five earlier setup/compatibility attempts remain retained as failures. The
+two SDK repairs each have prefix/mutation failures with 60 controls and a restored
+62-case owner pass. Current main integrates normally at `11b999a993c`, including
+Vitest 4.1.12 and the macOS installer work; managed installation and real PTY
+handshake pass. Native evidence stays bound to the earlier `d64e3156fc5` source.
+
 ## Production adoption sequence
 
 The personal `/api/orchestration/session-groups` path now composes the shared
