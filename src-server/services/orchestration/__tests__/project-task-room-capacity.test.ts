@@ -25,7 +25,7 @@ const makeTempDir = trackTempDirs();
 /**
  * Measured (#4007): the longest plain-ASCII text one person edit can seed in
  * an empty room of this test's Project/Task, which is the room's capacity in
- * characters ever typed. Before #4007 it was 3,662.
+ * characters ever typed. Before #4007 it was 3,627 (UUID edit ids, about 140 bytes per character).
  */
 const SEED_CAPACITY = 5_479;
 
@@ -248,19 +248,30 @@ describe('#4007 a Task document refuses what it cannot hold, explicitly and up f
       kind: 'committed',
       revisionEvidence: { kind: 'linked' },
     });
-    // Nothing more fits, and the refusal is deterministic, not a wedge.
-    for (let attempt = 0; attempt < 2; attempt += 1)
-      expect(await room.edit(`${full}c`)).toEqual({
-        kind: 'rejected',
-        reason: 'document-full',
-      });
-    expect(await room.text()).toBe(full);
-    // A pure deletion adds no atoms and is admitted, with its evidence.
-    const trimmed = full.slice(0, 100) + full.slice(110);
-    expect(await room.edit(trimmed)).toMatchObject({
-      kind: 'committed',
-      revisionEvidence: { kind: 'linked' },
+    // Fill whatever insert headroom remains with halving chunks, until one
+    // character is refused. Refusals are deterministic and write nothing.
+    let filled = full;
+    for (let chunk = 256; chunk >= 1; chunk = Math.floor(chunk / 2)) {
+      const result = await room.edit(filled + 'c'.repeat(chunk));
+      if (result.kind === 'committed') filled += 'c'.repeat(chunk);
+      else
+        expect(result).toEqual({ kind: 'rejected', reason: 'document-full' });
+    }
+    expect(await room.edit(`${filled}c`)).toEqual({
+      kind: 'rejected',
+      reason: 'document-full',
     });
+    expect(await room.text()).toBe(filled);
+    // Pure deletions add no atoms; each costs one known-operation entry. Two
+    // of them exceed any slack the fill left, so only the reserve admits them.
+    let trimmed = filled;
+    for (const at of [100, 200]) {
+      trimmed = trimmed.slice(0, at) + trimmed.slice(at + 10);
+      expect(await room.edit(trimmed)).toMatchObject({
+        kind: 'committed',
+        revisionEvidence: { kind: 'linked' },
+      });
+    }
     expect(await room.text()).toBe(trimmed);
     expect(await room.edit(`${trimmed}c`)).toEqual({
       kind: 'rejected',
