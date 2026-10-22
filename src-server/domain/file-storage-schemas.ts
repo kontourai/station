@@ -226,6 +226,7 @@ const knowledgeRootSchema = z
         .strict(),
     ]),
     projectId: z.string().uuid().optional(),
+    registrationId: z.string().uuid().optional(),
     adapterId: nonEmptyString,
     storeRoot: nonEmptyString,
     displayName: nonEmptyString,

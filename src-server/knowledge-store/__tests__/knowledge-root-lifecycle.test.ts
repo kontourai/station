@@ -7,7 +7,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { createKnowledgeStoreRoutes } from '../../routes/knowledge/knowledge-store-routes.js';
 import { KnowledgeStoreProvider } from '../knowledge-store-provider.js';
@@ -21,7 +21,10 @@ describe('knowledge source registry lifecycle on real storage', () => {
     persistence = new FileStorageAdapter(home);
     store = new KnowledgeStoreProvider(persistence);
   });
-  afterEach(() => rmSync(home, { recursive: true, force: true }));
+  afterEach(() => {
+    vi.useRealTimers();
+    rmSync(home, { recursive: true, force: true });
+  });
 
   test('concurrent providers preserve both source registrations', async () => {
     const other = new KnowledgeStoreProvider(new FileStorageAdapter(home));
@@ -169,10 +172,11 @@ describe('knowledge source registry lifecycle on real storage', () => {
     await persistence.saveKnowledgeStoreRoot(replaced);
     expect((await attach(original)).status).toBe(409);
     expect((await attach(replaced)).status).toBe(200);
-    expect(await store.getRoot(original.id)).toEqual({
+    expect(await store.getRoot(original.id)).toMatchObject({
       ...replaced,
       scope: { kind: 'project', projectSlug: 'current' },
       projectId,
+      registrationId: expect.any(String),
     });
     expect(
       (await (await store.adapterFor(original.id)).get(recordId))?.body,
@@ -228,5 +232,31 @@ describe('knowledge source registry lifecycle on real storage', () => {
     expect((await store.listRoots())[1]?.storeRoot).toBe(
       join(home, 'knowledge', 'projects', nextId, 'store'),
     );
+  });
+  test('a same-clock reconnect cannot be disconnected by its predecessor reference', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-22T00:00:00Z'));
+    const input = {
+      scope: { kind: 'personal' as const },
+      adapterId: 'kit-default-store',
+      storeRoot: join(home, 'reconnected'),
+      displayName: 'Documents',
+    };
+    const prior = await store.createRoot(input);
+    await store.removeRoot(prior.id, prior);
+    const current = await store.createRoot(input);
+    expect(current.id).toBe(prior.id);
+    expect(current.createdAt).toBe(prior.createdAt);
+    const app = createKnowledgeStoreRoutes({ store, dataDir: home });
+    const stale = await app.request(
+      `/roots/${encodeURIComponent(prior.id)}/disconnect`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expectedRoot: prior }),
+      },
+    );
+    expect(stale.status).toBe(409);
+    expect(await store.getRoot(current.id)).toEqual(current);
   });
 });

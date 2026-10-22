@@ -24,6 +24,8 @@ export interface KnowledgeStoreRoot {
   scope: KnowledgeRootScope;
   /** Durable Project identity; absent on legacy registrations, never inferred from slug for member access. */
   projectId?: string;
+  /** Server-issued generation for a registration created or explicitly attached by the provider. */
+  registrationId?: string;
   adapterId: string; // which registered adapter serves this root
   storeRoot: string; // absolute path handed to the adapter constructor — the Kit's
   // real published axis (store-contract.md §8: `{ storeRoot: string }`)
@@ -289,7 +291,7 @@ export interface KnowledgeStoreProvider {
   listRoots(): Promise<KnowledgeStoreRoot[]>;
   getRoot(rootId: string): Promise<KnowledgeStoreRoot | null>;
   createRoot(
-    input: Omit<KnowledgeStoreRoot, 'id' | 'createdAt'>,
+    input: Omit<KnowledgeStoreRoot, 'id' | 'createdAt' | 'registrationId'>,
   ): Promise<KnowledgeStoreRoot>;
   attachRootToProject?(
     expected: KnowledgeStoreRoot,

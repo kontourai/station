@@ -394,8 +394,11 @@ current authority to publication. Project recall captures the active account's
 request scope and withholds retained data when a fresh read fails. Root listings
 and canonical record/graph reads recheck registration metadata and current access
 before response delivery. The provider also replaces its cached adapter when a
-root's registered target changes. Registration metadata is a precondition, not
-an immutable generation or an execution grant.
+root's registered target changes. Newly created and explicitly attached registrations
+receive a server-issued `registrationId`, so reconnecting is a distinct generation
+even under the same clock and path. Legacy registrations can omit it. This is not
+a record-content version or an execution grant; restoring metadata can retain
+its identifier.
 
 The existing Project knowledge controls below remain available for document
 upload and migration.

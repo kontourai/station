@@ -4430,8 +4430,9 @@ ID and exact record ID (at most 200 characters each); aliases are unsupported.
 Use the public root-key serializer, also available from
 `@kontourai/station-shared/knowledge-root-identity`. It serializes compact JSON in
 this order: root ID, scope kind, project slug or null, adapter ID, store root,
-display name, creation timestamp, then the Project ID when present. Unbound
-legacy roots keep the original seven-field encoding. Send its URI-encoded UTF-8 representation in
+display name, creation timestamp, then the Project ID (or null) and issued
+registration ID when present. Legacy roots without either field keep the original
+seven-field encoding; a legacy Project-bound root has eight fields. Send its URI-encoded UTF-8 representation in
 `x-station-knowledge-root-identity` (at most 8,192 characters after encoding). This
 metadata comparison does not detect an identically restored registration or
 provide a revision/CAS contract.

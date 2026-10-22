@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 /**
  * `KnowledgeStoreProvider` — the K2 seam Station's services/routes consume
  * (docs/design/knowledge-foundation.md K2 section). Holds the root registry
@@ -141,13 +142,14 @@ export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
   }
 
   async createRoot(
-    input: Omit<KnowledgeStoreRoot, 'id' | 'createdAt'>,
+    input: Omit<KnowledgeStoreRoot, 'id' | 'createdAt' | 'registrationId'>,
   ): Promise<KnowledgeStoreRoot> {
     const captured = { ...input, scope: { ...input.scope } };
     for (let attempt = 0; attempt < 16; attempt += 1) {
       const root: KnowledgeStoreRoot = {
         ...captured,
         id: this.generateRootId(captured),
+        registrationId: randomUUID(),
         createdAt: new Date().toISOString(),
       };
       try {
@@ -179,6 +181,7 @@ export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
       ...expected,
       scope: { kind: 'project', projectSlug },
       projectId,
+      registrationId: randomUUID(),
     };
     await this.persistence.saveKnowledgeStoreRoot(root, {
       expectedRoot: { ...expected, scope: { ...expected.scope } },
@@ -204,7 +207,7 @@ export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
   }
 
   private generateRootId(
-    input: Omit<KnowledgeStoreRoot, 'id' | 'createdAt'>,
+    input: Omit<KnowledgeStoreRoot, 'id' | 'createdAt' | 'registrationId'>,
   ): string {
     const base =
       input.scope.kind === 'personal'
