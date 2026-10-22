@@ -1362,7 +1362,10 @@ describe('handleTextDeltaEvent — per-token plan derivation (station#3351)', ()
     let scanned = 0;
     const matcher = vi
       .spyOn(String.prototype, 'match')
-      .mockImplementation(function (this: string, pattern: string | RegExp) {
+      .mockImplementation(function (
+        this: string,
+        pattern: Parameters<typeof String.prototype.match>[0],
+      ) {
         scanned += this.length;
         return original.call(this, pattern);
       });

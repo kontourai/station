@@ -727,7 +727,11 @@ describe('useDerivedSessions — end to end: no duplicate user bubble across a b
 // Mounted consumer profile: each delta is a separate external-store delivery.
 test('profiles derived-session consumer commits during token delivery', () => {
   clearChats();
-  activeChatsStore.initChat(SESSION_A, { agentSlug: 'agent-one' });
+  activeChatsStore.initChat(SESSION_A, {
+    agentSlug: 'agent-one',
+    agentName: 'Agent One',
+    title: 'Profile',
+  });
   activeChatsStore.updateChat(SESSION_A, {
     orchestrationTurnOpen: true,
     planArtifact: null,
@@ -746,6 +750,7 @@ test('profiles derived-session consumer commits during token delivery', () => {
     act(() =>
       handleTextDeltaEvent({
         eventId: 'profile',
+        itemId: 'profile-text',
         provider: 'station-agent',
         method: 'content.text-delta',
         threadId: SESSION_A,
@@ -766,6 +771,7 @@ test('profiles derived-session consumer commits during token delivery', () => {
     act(() =>
       handleTextDeltaEvent({
         eventId: 'profile-line',
+        itemId: 'profile-text',
         provider: 'station-agent',
         method: 'content.text-delta',
         threadId: SESSION_A,

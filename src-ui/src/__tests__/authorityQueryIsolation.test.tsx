@@ -1084,10 +1084,7 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     const bootPayload = {
       version: 1,
       sections: {
-        projects: {
-          data: [{ id: 'p1', home: 'boot-A-marker' }],
-          success: true,
-        },
+        branding: { data: { success: true, data: { name: 'boot-A-marker' } } },
       },
     };
     stubFetch(async (url) => {
@@ -1109,6 +1106,7 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     await waitFor(() =>
       expect(probe().getAttribute('data-namespace')).toBe(NS_A),
     );
+    const heldClient = harness.activeClient!;
     // A's seed holds its boot fetch (at A's captured origin) open…
     await waitFor(() => {
       const calls = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>)
@@ -1129,6 +1127,8 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
       bootGate.resolve(null);
     });
     await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(heldClient.getQueryData(['branding'])).toBeUndefined();
+    expect(harness.activeClient?.getQueryData(['branding'])).toBeUndefined();
     expect(probe().getAttribute('data-projects')).toContain(idB);
     expect(probe().getAttribute('data-projects')).not.toContain(
       'boot-A-marker',

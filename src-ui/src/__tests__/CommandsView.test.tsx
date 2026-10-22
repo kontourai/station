@@ -84,6 +84,7 @@ describe('CommandsView', () => {
     activeChatsStore.initChat('session-1', {
       agentSlug: 'station',
       agentName: 'Station',
+      title: 'Commands',
     });
   });
 
