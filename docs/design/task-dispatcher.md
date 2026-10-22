@@ -47,5 +47,8 @@ native transcript. A dispatch naming no Agent, an unknown or unavailable Agent,
 an engine that is not ready, a model that cannot launch, a provider other than
 the Agent's engine, or a directory other than the Project's is refused as
 `failed` with the reservation restored; none of these can leave the Task
+`indeterminate`. So is a start the session service rejected before any
+provider effect (its receipt is `rejected`, for example a model that cannot
+launch or engine start capacity); any other start failure stays
 `indeterminate`. A dispatch with no provider still seeds a `task-dispatch`
 Session and starts no engine.
