@@ -352,6 +352,8 @@ describe('useSendMessage: durable before the request', () => {
         clientTurnId: turn.clientTurnId,
         conversationId: turn.conversationId!,
         outcome: 'started' as const,
+        sessionId: chat,
+        turnId: 'provider-turn-original',
       }));
       await outboundDispatch.reconcile(lookup, {
         station: { apiBase: 'http://api.test' },
