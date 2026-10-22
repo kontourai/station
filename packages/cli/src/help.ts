@@ -77,8 +77,10 @@ const VERBS: Record<string, VerbSpec> = {
     summary: 'Read and supervise a server-owned delegation group',
     usage: [
       'station group session-create --file=<local-group.json> [--json]',
+      'station group session-from-ensemble --file=<ensemble-group.json> [--json]',
       'station group session-list [--after-group=<id>] [--json]',
       'station group session-get|session-run|session-cancel <group> [--json]',
+      'station group session-events <group> [--after-revision=<n>] [--follow] [--json]',
       'station group session-sync <group> --file=<sync.json> [--json]',
       'station group create --preparation=<id> --operation=<id> [--json]',
       'station group get <group> [--json]',
@@ -90,8 +92,10 @@ const VERBS: Record<string, VerbSpec> = {
     ],
     actions: [
       'session-create',
+      'session-from-ensemble',
       'session-list',
       'session-get',
+      'session-events',
       'session-run',
       'session-cancel',
       'session-sync',
@@ -107,8 +111,8 @@ const VERBS: Record<string, VerbSpec> = {
     detail: [
       'Session groups use existing Station authority; portable Flow lineage and hard dollar/token/attempt limits remain unavailable.',
       'session-run follows the server deadline. Ctrl-C requests interruption, not proven provider termination.',
-      'Other group commands require server-issued preparation; capability refusals remain errors.',
-      'Commands carry explicit operation IDs and revisions. A lost response never authorizes resend.',
+      'Legacy hard-cap creates require server-issued preparation; capability refusals remain errors.',
+      'Legacy run/cancel require operation IDs and revisions. A lost response never authorizes resend.',
       'Follow streams stop locally on Ctrl-C; this does not cancel the group.',
       'Output is terminal-safe JSON. Group completion is separate from Flow acceptance.',
     ],

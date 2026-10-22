@@ -189,20 +189,29 @@ SDK-backed requests give up after 30 seconds. Override with
 `STATION_REQUEST_TIMEOUT_MS=<ms>`, or `0` to disable the deadline. Streams —
 orchestration and approval events and live monitoring — have no overall
 deadline. Chat sends a bounded JSON acceptance request, then observes the turn
-on a separate event stream. Knowledge reindexing and migration also opt out of
-the request deadline. The current checkpoint-restore and Operate event-stream
-paths bypass the shared credential client and cannot authenticate to a protected
-Station; see the reference.
+on a separate event stream. Knowledge reindexing, migration and session-group
+run/sync also opt out of the client request deadline; group supervision retains
+its server deadline and caller cancellation. The current checkpoint-restore and
+Operate event-stream paths bypass the shared credential client and cannot
+authenticate to a protected Station; see the reference.
+
+## Session groups
+
+The source CLI's `station group session-*` commands create, inspect, run, cancel
+and sync retained member Sessions through the personal Station's mounted
+session-group routes. Create starts no engines. Run follows Flow's ready
+frontier; Ctrl-C requests interruption without proving physical termination.
+`session-events --follow` only observes and closes locally on Ctrl-C.
+
+This path uses existing Station permissions and confinement. Portable Flow
+lineage is unbound; dollar, token and physical-attempt caps remain unavailable.
+The separate `station group create|get|list|run|cancel|events|member-events|member-output`
+transport requires server-issued preparation for creation; its hard-cap API
+routes remain unmounted. See [group commands](../../docs/reference/cli.md#group) for inputs,
+qualified runtime limits and revision-bound evidence. Source command presence
+does not establish publication or compatibility with an older Station.
 
 ## What this CLI does not do
-
-The local source CLI includes `station group` transport commands for metadata,
-events, raw output, create, run and cancel. They require corresponding server
-support and server-issued preparation. Those routes are not mounted and paid
-group execution is unavailable in this increment. Follow mode stops local
-observation on Ctrl-C without cancelling the group. See
-[group commands](../../docs/reference/cli.md#group); local command presence is
-not evidence of publication or supported execution.
 
 **It does not build or install a backend.** Source-oriented commands such as
 `build`, `dev`, `fresh`, `home`, `link`, `shortcut`, `start`, `stop`, and

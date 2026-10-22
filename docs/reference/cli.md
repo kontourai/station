@@ -1230,8 +1230,12 @@ for raw output and elicitation details.
 
 Output explicitly reports unbound portable Flow lineage and unavailable dollar,
 token and physical-attempt caps. Unknown cost is not free. These commands have
-controlled-adapter integration evidence; live CLI and release acceptance remain
-unverified. The following legacy group transport commands remain separate.
+controlled-adapter integration evidence. Historical source-runtime receipts
+include a three-seat OpenCode/GLM Flash group at `fe998248b601` and a mixed
+OpenCode/GLM Flash and Codex group at `ca15aa85c11`, with overlapping independent
+turns and an exact-initial-turn dependency join. Those checks do not qualify the
+current source, answered live elicitation, billing or a published client. The
+following legacy group transport commands remain separate.
 
 The local CLI has group transport commands. They require a serving Station with
 the corresponding group routes; this checkout has not mounted the hard-cap API group routes or
@@ -1262,7 +1266,7 @@ rotation and transient transport failures reconnect; terminal authority or proto
 failures end follow mode with an error. With `--json`, HTTP failures retain their
 status and received refusal code in structured output. Server refusal, unknown
 usage, completion, and Flow acceptance must remain distinct. Package publication
-and real group execution are unverified.
+and real execution through this separate hard-cap transport remain unverified.
 
 A member follow subscription stops explicitly at 4,096 identities or 1 MiB of
 retained identity UTF-8 bytes, rather than forgetting earlier identities. Treat that as an observation
