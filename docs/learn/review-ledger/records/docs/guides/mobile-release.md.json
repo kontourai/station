@@ -124,7 +124,9 @@
 
     "src-ui/src/platform/networkCost.ts",
 
-    "src-ui/src/hooks/useNotificationOsAlerts.ts"
+    "src-ui/src/hooks/useNotificationOsAlerts.ts",
+
+    "scripts/__tests__/testflight-live-activity-workflow.test.ts"
   ],
 
   "checks": [
