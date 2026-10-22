@@ -12,6 +12,9 @@ export function EnsembleInspectionResult({
   const { navigate } = useNavigationActions();
   const identity = useId();
   const geometry = layoutEnsembleInspection(result.facts);
+  const prerequisiteEdges = geometry.edges.filter(
+    (edge) => edge.kind === 'prerequisite',
+  );
   return (
     <>
       <h2>{result.source.name}</h2>
@@ -100,39 +103,90 @@ export function EnsembleInspectionResult({
       {geometry && (
         <figure>
           <figcaption>
-            Configuration diagram. Lines connect members to inspected settings;
-            they are not routing or runtime edges. The table contains every
-            value and owner link.
+            Configuration diagram. Plain lines connect members to inspected
+            settings. Arrows show declared prerequisites, not live routing,
+            readiness or work acceptance. The table contains every value and
+            owner link.
           </figcaption>
           <div className="ensemble-inspection__diagram">
+            {/* biome-ignore lint/a11y/useSemanticElements: Interactive SVG has no HTML group equivalent. */}
             <svg
               width={geometry.width}
               height={geometry.height}
-              role="img"
+              role="group"
               aria-label="Member configuration relationships; full details in the configuration table"
             >
-              {geometry.edges.map((edge) => (
+              <defs>
+                <marker
+                  id={`${identity}-prerequisite-arrow`}
+                  viewBox="0 0 10 10"
+                  refX="9"
+                  refY="5"
+                  markerWidth="7"
+                  markerHeight="7"
+                  orient="auto-start-reverse"
+                >
+                  <path d="M 0 0 L 10 5 L 0 10 z" />
+                </marker>
+              </defs>
+              {geometry.edges.map((edge, index) => (
                 <path
-                  key={`${edge.from.fact.id}:${edge.to.fact.id}`}
-                  d={`M${edge.from.x + 110},${edge.from.y + 40} L${edge.to.x + 110},${edge.to.y + 40}`}
-                />
+                  key={`${edge.kind}:${edge.factId}:${edge.from.fact.id}:${index}`}
+                  className={`ensemble-inspection__edge--${edge.kind}`}
+                  markerEnd={
+                    edge.kind === 'prerequisite'
+                      ? `url(#${identity}-prerequisite-arrow)`
+                      : undefined
+                  }
+                  d={
+                    edge.kind === 'prerequisite'
+                      ? `M ${edge.from.x + 220} ${edge.from.y + 40} H ${edge.from.x + 230} V ${edge.from.y + 90} H ${edge.to.x - 5} V ${edge.to.y + 40} H ${edge.to.x}`
+                      : `M${edge.from.x + 110},${edge.from.y + 40} L${edge.to.x + 110},${edge.to.y + 40}`
+                  }
+                >
+                  <title>
+                    {edge.kind === 'prerequisite'
+                      ? `Declared prerequisite ${edge.from.fact.memberId} → ${edge.to.fact.memberId}`
+                      : `${edge.from.fact.label}: ${edge.to.fact.label}`}
+                  </title>
+                </path>
               ))}
               {geometry.nodes.map(({ fact, x, y }) => (
                 <g key={fact.id} transform={`translate(${x},${y})`}>
-                  <rect width="220" height="80" rx="4" />
-                  <text x="8" y="20">
-                    {fact.label.slice(0, 26)}
-                  </text>
-                  <text x="8" y="40">
-                    {fact.state} · {fact.origin}
-                  </text>
-                  <text x="8" y="60">
-                    {fact.memberId ?? fact.category}
-                  </text>
+                  <a
+                    href={`#${identity}-fact-${fact.id}`}
+                    aria-label={`Inspect ${fact.label}`}
+                  >
+                    <rect width="220" height="80" rx="4" />
+                    <text x="8" y="20">
+                      {fact.label.slice(0, 26)}
+                    </text>
+                    <text x="8" y="40">
+                      {fact.state} · {fact.origin}
+                    </text>
+                    <text x="8" y="60">
+                      {fact.memberId ?? fact.category}
+                    </text>
+                  </a>
                 </g>
               ))}
             </svg>
           </div>
+          {prerequisiteEdges.length > 0 && (
+            <ul
+              aria-label="Declared prerequisite references"
+              className="ensemble-inspection__edge-links"
+            >
+              {prerequisiteEdges.map((edge, index) => (
+                <li key={`${edge.factId}:${edge.from.fact.id}:${index}`}>
+                  <a href={`#${identity}-fact-${edge.factId}`}>
+                    Inspect declared prerequisite {edge.from.fact.memberId} →{' '}
+                    {edge.to.fact.memberId}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
         </figure>
       )}
     </>

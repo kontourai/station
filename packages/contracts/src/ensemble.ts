@@ -59,6 +59,8 @@ export type EnsembleInspectionCategory =
 export interface EnsembleInspectionFact {
   id: string;
   memberId?: string;
+  /** Declared prerequisite member IDs for this member; never a ready frontier. */
+  needs?: readonly string[];
   category: EnsembleInspectionCategory;
   label: string;
   value: string;

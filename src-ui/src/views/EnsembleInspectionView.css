@@ -88,6 +88,19 @@
   fill: none;
   stroke: var(--k-text-muted);
 }
+.ensemble-inspection svg .ensemble-inspection__edge--prerequisite {
+  stroke: var(--k-action);
+  stroke-width: 2;
+}
+.ensemble-inspection svg marker path {
+  fill: var(--k-action);
+  stroke: none;
+}
 .ensemble-inspection svg text {
   fill: var(--k-text);
+}
+.ensemble-inspection__edge-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
 }

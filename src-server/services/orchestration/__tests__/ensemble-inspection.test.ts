@@ -478,6 +478,51 @@ test('a missing exact receiver never silently substitutes another engine', async
   for (const spy of f.tripwires) expect(spy).not.toHaveBeenCalled();
 });
 
+test('inspection projects declared prerequisite identities from the exact group draft without computing readiness', async () => {
+  const f = await fixture();
+  const presetJson = JSON.stringify({
+    ...f.preset,
+    members: [
+      ...f.preset.members,
+      { ...f.preset.members[0], id: 'peer', codename: 'Peer' },
+    ],
+  });
+  const target = {
+    agent: 'reviewer',
+    expectedEngine: { kind: 'connection', connectionId: 'codex' },
+    workspace: { kind: 'directory', cwd: f.root },
+  };
+  const response = await f.request(
+    {
+      presetJson,
+      expectedPresetHash: `sha256:${createHash('sha256').update(presetJson).digest('hex')}`,
+      bindings: {},
+      groupBindings: {
+        lead: { target, needs: [] },
+        peer: { target, needs: ['lead'] },
+      },
+    },
+    f.browser,
+  );
+  expect(response.status).toBe(200);
+  const { data } = (await response.json()) as { data: EnsembleInspection };
+  expect(data.facts).toContainEqual(
+    expect.objectContaining({
+      id: 'needs:peer',
+      memberId: 'peer',
+      needs: ['lead'],
+      value: 'lead → peer',
+      origin: 'authored',
+      state: 'configured',
+      owner: { label: 'Group dependency draft' },
+    }),
+  );
+  expect(data.facts).toContainEqual(
+    expect.objectContaining({ id: 'needs:lead', needs: [] }),
+  );
+  for (const spy of f.tripwires) expect(spy).not.toHaveBeenCalled();
+});
+
 test('a host browser inspects exact uploaded group bindings without gaining host-path access or execution', async () => {
   const f = await fixture();
   const load = vi.spyOn(presets, 'loadEnsemblePreset');

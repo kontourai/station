@@ -554,6 +554,7 @@ export class EnsembleInspectionService {
         add({
           id: `needs:${member.id}`,
           memberId: member.id,
+          needs: groupBinding.needs,
           category: 'routing/triggers',
           label: 'Declared prerequisites',
           value: groupBinding.needs.length

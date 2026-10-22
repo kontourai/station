@@ -197,6 +197,14 @@ At `c5caf44956f`, the group form can inspect its actual receiver draft before
 saving or starting. The existing inspector accepts exact uploaded preset bytes
 and Agent/expected-engine/workspace bindings, projects declared prerequisites,
 and labels missing or disabled MCP definitions without claiming effective grants.
+The prelaunch inspector now retains each declared prerequisite list on its own
+configuration fact. The diagram derives prerequisite arrows and fact references
+from those same records, alongside member-to-setting relationships; it creates
+no second execution graph or ready frontier. Node cards and labelled prerequisite
+links reach the corresponding table rows. Prerequisite links have 44px minimum
+targets; arrows themselves are not narrow interactive targets. Legacy inspection
+records without the optional list keep their configuration-only diagram.
+
 At `0801039607e`, the real HTTP inspector test also binds refusal of a
 prerequisite ID absent from the preset: `422 ensemble_inspection_invalid`, before
 additional capability reads. The existing valid uploaded draft remains the

@@ -1630,7 +1630,11 @@ The response envelope is `{success:true,data}` with version
 allowlisted resolution receipts and bounded facts. Declared prerequisites remain
 authored draft facts, separate from runtime observations. A prerequisite ID absent
 from the preset is refused with `422 ensemble_inspection_invalid` before receiver
-resolution or capability inspection. Missing and disabled
+resolution or capability inspection. Each prerequisite fact's optional `needs`
+list retains those exact member references for the diagram. Directed arrows and
+the accessible table use the same facts; neither computes Flow readiness or
+execution order. Diagram nodes and prerequisite references link to their fact
+rows. Missing and disabled
 MCP definitions are labeled; effective delivery and grants remain unknown. No
 prompt appends, credentials or raw definitions are returned.
 

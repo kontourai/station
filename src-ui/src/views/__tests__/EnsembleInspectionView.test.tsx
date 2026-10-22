@@ -20,6 +20,7 @@ import {
   navigationStore,
   useNavigation,
 } from '../../contexts/NavigationContext';
+import { EnsembleInspectionResult } from '../EnsembleInspectionResult';
 
 const owner = vi.hoisted(() => ({
   current: true,
@@ -161,6 +162,62 @@ afterEach(() => {
   owner.editorReads = 0;
 });
 
+test('declared prerequisite arrows link to their own configuration facts across inspector instances', () => {
+  const inspected: EnsembleInspection = {
+    ...result,
+    facts: [
+      ...result.facts,
+      {
+        id: 'member:peer',
+        memberId: 'peer',
+        category: 'members/models',
+        label: 'Peer',
+        value: 'codex / selected-model',
+        origin: 'authored',
+        state: 'configured',
+        owner: { label: 'Peer settings', href: '/agents/peer' },
+      },
+      {
+        id: 'needs:peer',
+        memberId: 'peer',
+        needs: ['lead'],
+        category: 'routing/triggers',
+        label: 'Declared prerequisites',
+        value: 'lead → peer',
+        origin: 'authored',
+        state: 'configured',
+        owner: { label: 'Group dependency draft' },
+      },
+    ],
+  };
+  render(
+    <NavigationProvider>
+      <EnsembleInspectionResult result={inspected} />
+      <EnsembleInspectionResult result={inspected} />
+    </NavigationProvider>,
+  );
+  const links = screen.getAllByRole('link', {
+    name: 'Inspect declared prerequisite lead → peer',
+  });
+  expect(links).toHaveLength(2);
+  const targets = links.map((link) => link.getAttribute('href')?.slice(1));
+  expect(new Set(targets).size).toBe(2);
+  for (const factId of targets)
+    expect(document.getElementById(factId ?? '')?.textContent).toContain(
+      'lead → peer',
+    );
+  const diagrams = screen.getAllByRole('group', {
+    name: /Member configuration relationships/,
+  });
+  for (const diagram of diagrams) {
+    const arrows = diagram.querySelectorAll('path[marker-end]');
+    expect(arrows).toHaveLength(1);
+    expect(arrows[0].textContent?.trim()).toBe(
+      'Declared prerequisite lead → peer',
+    );
+  }
+});
+
 test('the visible Agents action reaches the real SDK inspector without editor queries or URL path disclosure', async () => {
   navigationStore.navigate('/agents');
   const fetch = vi.fn(
@@ -204,9 +261,9 @@ test('the visible Agents action reaches the real SDK inspector without editor qu
     'output destinations',
   ])
     expect(screen.getAllByText(category).length).toBeGreaterThan(0);
-  expect(screen.getByRole('img').getAttribute('aria-label')).toContain(
-    'configuration relationships',
-  );
+  expect(
+    screen.getByRole('group', { name: /Member configuration relationships/ }),
+  ).toBeDefined();
   const agent = screen.getByLabelText('Agent ID');
   fireEvent.change(agent, { target: { value: 'reviewer' } });
   fireEvent.change(screen.getByLabelText('Project ID'), {

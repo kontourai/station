@@ -16,11 +16,32 @@ test('large and cyclic display relations have finite stable geometry independent
       owner: { label: 'Preset source' },
     }),
   );
+  facts.push(
+    ...['0', '1'].map((memberId) => ({
+      id: `needs:${memberId}`,
+      memberId,
+      needs: [memberId === '0' ? '1' : '0'],
+      category: 'routing/triggers' as const,
+      label: 'Declared prerequisites',
+      value: 'Cyclic draft',
+      state: 'configured' as const,
+      origin: 'authored' as const,
+      owner: { label: 'Group dependency draft' },
+    })),
+  );
   const layout = layoutEnsembleInspection(facts);
   expect(layoutEnsembleInspection([...facts].reverse())).toEqual(layout);
-  expect(layout.nodes).toHaveLength(256);
-  expect(layout.edges).toHaveLength(256);
-  expect(new Set(layout.nodes.map(({ x, y }) => `${x}:${y}`)).size).toBe(256);
+  expect(layout.nodes).toHaveLength(258);
+  expect(layout.edges).toHaveLength(260);
+  expect(new Set(layout.nodes.map(({ x, y }) => `${x}:${y}`)).size).toBe(258);
+  expect(
+    layout.edges
+      .filter((edge) => edge.kind === 'prerequisite')
+      .map((edge) => [edge.from.fact.id, edge.to.fact.id, edge.factId]),
+  ).toEqual([
+    ['member:1', 'member:0', 'needs:0'],
+    ['member:0', 'member:1', 'needs:1'],
+  ]);
   expect(Number.isFinite(layout.height)).toBe(true);
   expect(
     layout.nodes.every(

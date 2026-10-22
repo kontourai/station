@@ -1,6 +1,6 @@
 import type { EnsembleInspectionFact } from '@kontourai/station-contracts/ensemble';
 
-/** Display geometry only. Member ownership lines do not represent execution routes. */
+/** Display geometry only; declarations never establish a ready frontier. */
 export function layoutEnsembleInspection(
   facts: readonly EnsembleInspectionFact[],
 ) {
@@ -15,7 +15,31 @@ export function layoutEnsembleInspection(
   const edges = nodes.flatMap((node) => {
     const parent =
       node.fact.memberId && byId.get(`member:${node.fact.memberId}`);
-    return parent && parent !== node ? [{ from: parent, to: node }] : [];
+    const settings =
+      parent && parent !== node
+        ? [
+            {
+              kind: 'configuration' as const,
+              factId: node.fact.id,
+              from: parent,
+              to: node,
+            },
+          ]
+        : [];
+    const prerequisites = (node.fact.needs ?? []).flatMap((memberId) => {
+      const from = byId.get(`member:${memberId}`);
+      return from && parent
+        ? [
+            {
+              kind: 'prerequisite' as const,
+              factId: node.fact.id,
+              from,
+              to: parent,
+            },
+          ]
+        : [];
+    });
+    return [...settings, ...prerequisites];
   });
   return {
     nodes,
