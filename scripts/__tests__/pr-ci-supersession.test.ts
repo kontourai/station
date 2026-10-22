@@ -620,3 +620,165 @@ describe('merged optional-tail retirement through the real GitHub HTTP boundary'
     ).toHaveLength(2);
   });
 });
+
+async function replacedGroup(
+  options: {
+    oldRef?: boolean;
+    replacementMissing?: boolean;
+    badRun?: boolean;
+    movedOwner?: boolean;
+    badJobs?: boolean;
+    refError?: boolean;
+    attemptMoved?: boolean;
+    contains?: boolean;
+  } = {},
+) {
+  const branch = (base: string) => `gh-readonly-queue/main/pr-7-${base}`;
+  const candidate = (id: number, sha: string) =>
+    run(id, {
+      event: 'merge_group',
+      workflow_id: 50,
+      head_sha: sha,
+      head_branch: branch(sha),
+      created_at: id === 1 ? '2026-10-22T00:00:00Z' : '2026-10-22T00:01:00Z',
+    });
+  const obsolete = candidate(1, old);
+  const replacement = candidate(2, head);
+  const cancelled: number[] = [];
+  let ownerReads = 0;
+  let runReads = 0;
+  const server = createServer((req, res) => {
+    res.setHeader('content-type', 'application/json');
+    const url = new URL(req.url ?? '', 'http://localhost');
+    const path = url.pathname.replace('/repos/kontourai/station/', '');
+    let data: unknown;
+    if (path === 'actions/workflows/ci.yml')
+      data = { id: 50, path: '.github/workflows/ci.yml', name: 'PR: CI' };
+    else if (path === 'pulls/7') {
+      ownerReads++;
+      data = {
+        state: 'open',
+        base: { ref: 'main' },
+        head: {
+          sha: options.movedOwner && ownerReads > 1 ? old : head,
+          repo: { full_name: repository },
+        },
+      };
+    } else if (path === `compare/${head}...${head}`)
+      data = {
+        status: 'identical',
+        merge_base_commit: { sha: options.contains === false ? old : head },
+      };
+    else if (path === 'actions/workflows/50/runs')
+      data = {
+        total_count: url.searchParams.get('status') === 'in_progress' ? 2 : 0,
+        workflow_runs:
+          url.searchParams.get('status') === 'in_progress'
+            ? [obsolete, replacement]
+            : [],
+      };
+    else if (path === 'actions/runs/2') data = replacement;
+    else if (path === 'actions/runs/1') {
+      runReads++;
+      data = {
+        ...obsolete,
+        ...(options.badRun ? { event: 'workflow_dispatch' } : {}),
+        ...(options.attemptMoved && runReads > 1 ? { run_attempt: 2 } : {}),
+        ...(cancelled.length
+          ? { status: 'completed', conclusion: 'cancelled' }
+          : {}),
+      };
+    } else if (path === 'actions/runs/1/attempts/1/jobs')
+      data = {
+        total_count: 1,
+        jobs: [
+          {
+            id: 10,
+            run_id: 1,
+            run_attempt: options.badJobs ? 2 : 1,
+            head_sha: old,
+            status: 'in_progress',
+            runner_id: 123,
+          },
+        ],
+      };
+    else if (path === `git/ref/heads/${branch(head)}`) {
+      if (options.replacementMissing) {
+        res.writeHead(404);
+        res.end('{}');
+        return;
+      }
+      data = { ref: `refs/heads/${branch(head)}`, object: { sha: head } };
+    } else if (path === `git/ref/heads/${branch(old)}`) {
+      if (options.refError) {
+        res.writeHead(503);
+        res.end('{}');
+        return;
+      }
+      if (!options.oldRef) {
+        res.writeHead(404);
+        res.end('{}');
+        return;
+      }
+      data = { ref: `refs/heads/${branch(old)}`, object: { sha: old } };
+    } else if (path === 'actions/runs/1/cancel') {
+      expect(req.method).toBe('POST');
+      cancelled.push(1);
+      res.writeHead(202);
+      res.end();
+      return;
+    } else {
+      res.writeHead(404);
+      res.end('{}');
+      return;
+    }
+    res.end(JSON.stringify(data));
+  });
+  await new Promise<void>((ok) => server.listen(0, '127.0.0.1', ok));
+  const event = join(makeTempDir('merge-group-supersession-'), 'event.json');
+  writeFileSync(event, JSON.stringify({ workflow_run: replacement }));
+  let code = 0;
+  try {
+    await exec(process.execPath, [script], {
+      windowsHide: true,
+      env: {
+        PATH: process.env.PATH ?? '',
+        GITHUB_EVENT_PATH: event,
+        GITHUB_REPOSITORY: repository,
+        GITHUB_API_URL: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+      },
+    });
+  } catch (error) {
+    code = (error as { code: number }).code;
+  } finally {
+    await new Promise<void>((ok, reject) =>
+      server.close((error) => (error ? reject(error) : ok())),
+    );
+  }
+  return { code, cancelled };
+}
+
+describe('replaced merge candidate retirement through the GitHub API', () => {
+  it('normally cancels destroyed obsolete candidate work, including an assigned runner, while preserving the replacement', async () => {
+    expect(await replacedGroup()).toEqual({ code: 0, cancelled: [1] });
+  });
+  it.each([
+    { oldRef: true },
+    { replacementMissing: true },
+    { badRun: true },
+    { movedOwner: true },
+    { attemptMoved: true },
+    { contains: false },
+  ])(
+    'preserves work when replacement or obsolete identity is not proven: %j',
+    async (options) => {
+      expect(await replacedGroup(options)).toEqual({ code: 0, cancelled: [] });
+    },
+  );
+  it.each([{ badJobs: true }, { refError: true }])(
+    'fails closed on ambiguous evidence: %j',
+    async (options) => {
+      expect(await replacedGroup(options)).toEqual({ code: 1, cancelled: [] });
+    },
+  );
+});

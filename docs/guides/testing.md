@@ -224,8 +224,23 @@ same-repository main-target PR closes merged. The merged-close path retires
 qualified optional delivery as described below. On a new CI request, it reads the
 current same-repository PR head and cancels queued, pending or running checks for older
 heads in CI, iOS, Windows, security, Gallery and Docs kit workflows. Each
-cancellation rechecks the PR head and run attempt. It never cancels merge-group,
-main-push, manual diagnostic or publication runs. Missing PR attribution leaves
+cancellation rechecks the PR head and run attempt. The PR-head path never cancels
+merge-group, main-push, manual diagnostic or publication runs.
+
+A new merge-group Source request also retires older Source candidates for the
+same leading PR, only when a live GitHub queue ref proves the replacement and
+its commit contains the current PR head. The old queue ref must be absent or
+point elsewhere. Complete job inventories and fresh owner/run/attempt/ref reads
+fence each normal cancellation; an active old ref, changed owner or attempt,
+unknown runner metadata or API failure prevents it. This path can normally
+cancel an assigned runner doing obsolete work, but never force-cancels. A 202
+is a request, not terminal settlement. It does not cancel unrelated workflow
+families or replace any regression result with success.
+
+For the one-candidate throughput trial and its before/after measurements, use
+[the throughput epic](https://github.com/kontourai/station/issues/3101). The live
+ruleset is the configuration authority; fewer speculative builds do not prove
+higher delivery throughput. Missing PR attribution leaves
 a run alone; API failures stop the sweep. GitHub has no atomic head-conditional
 cancellation API, so the final head read bounds rather than eliminates the race
 with a concurrent force-push. Existing per-SHA concurrency groups remain in
