@@ -844,6 +844,10 @@ pulls in (listed as `desktop-rust` in `scripts/classify-ci-change.mjs`). The
 classifier is taken from the base commit, and every failure to classify
 compiles. The job, and so the required check, runs either way. TypeScript is
 not re-checked on Windows; `ci:fast`'s typecheck aggregate owns that verdict.
+After a relevant compile, the same job runs the real Credential Manager
+recovery test. It creates uniquely named Station entries, verifies their raw
+`account.service` targets are included in the history search, checks that
+history refuses connection-list creation, and deletes only its own entries.
 
 The floor also runs the [Windows resource-staging keeper](../../scripts/__tests__/windows-resource-staging.test.ts) before Cargo. It
 executes the workflow's PowerShell staging body in a temporary directory and
