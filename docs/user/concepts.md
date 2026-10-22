@@ -121,9 +121,9 @@ discarded history.
 
 A session group retains named member Sessions and their dependencies. Flow owns
 readiness and joins; Station observes the members' execution outcomes. A context
-sync receipt records which members acknowledged the folded context. A missing or
-unknown ACK remains incomplete and is not automatically resent. Group completion
-and ACKs do not accept the work. See the [session-group contract](../reference/api.md#cli-session-groups)
+sync receipt records which members acknowledged the folded context. Uncertain
+attempts are not automatically resent, and the final receipt discloses incomplete
+synchronization. Group completion and ACKs do not accept the work. See the [session-group contract](../reference/api.md#cli-session-groups)
 for supported engines and the limits of its logical start allowance.
 
 ## Gates, Evidence, And Receipts
