@@ -222,9 +222,7 @@ function composeTaskQuestionWakeText(record: TaskMemoryRecord): string {
  * The wake's client origin: Station's own server code, and, when a Session
  * wrote the record, that Session as the sender.
  */
-function taskQuestionWakeClientOrigin(
-  record: TaskMemoryRecord,
-): ClientOrigin {
+function taskQuestionWakeClientOrigin(record: TaskMemoryRecord): ClientOrigin {
   return record.author.kind === 'session'
     ? {
         ...TASK_QUESTION_WAKE_CLIENT_ORIGIN,
