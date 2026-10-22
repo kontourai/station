@@ -214,6 +214,7 @@
     "test": "npm run test:prepush",
     "test:changed": "node scripts/run-changed-verification.mjs",
     "test:focused": "node scripts/run-focused-tests.mjs",
+    "perf:server-scenario": "node scripts/bench/server-scenario.mjs",
     "test:repo-scans": "npm run build:cli && node scripts/run-repo-scan-suites.mjs",
     "connection:key": "tsx scripts/connection-key.ts",
     "lab:collaboration": "tsx scripts/local-collaboration-lab.ts",
