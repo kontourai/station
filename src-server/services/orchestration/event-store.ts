@@ -296,7 +296,7 @@ import {
   SESSION_START_INDETERMINATE_CODE,
   type SessionTurnBoundaryAuthority,
   type SessionTurnBoundaryRecord,
-  SHUTDOWN_RETAINED_BOUNDARY_PREFIXES,
+  SHUTDOWN_RETAINED_BOUNDARIES,
 } from './session-turn-boundary.js';
 import {
   createSessionWorkItemAdmissionRegistry,
@@ -383,15 +383,19 @@ const SESSION_TURN_TERMINAL_RETIREMENT_PREDICATE = `state NOT IN ('lifecycle', '
                  AND (
                    (
                      ((event.method = 'session.exited'
-                       -- Station's own shutdown leaves an in-flight turn's
-                       -- row for the next boot's recovery (see the constant);
-                       -- every other row, a session start among them, retires.
+                       -- Station's own shutdown leaves a turn that may have
+                       -- reached its engine for the next boot's recovery (see
+                       -- the constant); every other row, a session start or a
+                       -- turn that never invoked among them, retires.
                        AND (COALESCE(json_extract(event.payload, '$.reason'), '')
                               != '${ORCHESTRATION_SHUTDOWN_EXIT_REASON}'
-                            OR NOT (${SHUTDOWN_RETAINED_BOUNDARY_PREFIXES.map(
+                            OR NOT ((${SHUTDOWN_RETAINED_BOUNDARIES.boundaryIdPrefixes.map(
                               (prefix) =>
                                 `substr(orchestration_turn_boundaries.boundary_id, 1, ${prefix.length}) = '${prefix}'`,
-                            ).join(' OR ')})))
+                            ).join(' OR ')})
+                              AND orchestration_turn_boundaries.state IN (${SHUTDOWN_RETAINED_BOUNDARIES.states.map(
+                                (state) => `'${state}'`,
+                              ).join(', ')}))))
                       OR (event.method = 'runtime.error' AND event.turn_id IS NULL
                           AND json_extract(event.payload, '$.invocationId') IS NULL
                           AND COALESCE(json_extract(event.payload, '$.code'), '') != ?))

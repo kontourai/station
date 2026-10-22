@@ -270,11 +270,15 @@ export interface TurnBoundaryObserveTerminalCommand {
    */
   readonly retire?: boolean;
   /**
-   * Rows whose id starts with one of these prefixes are kept, the rest retire
-   * as usual: a session terminal that ends some kinds of row but not others
-   * (Station's own shutdown keeps an in-flight turn for its next boot).
+   * Rows whose id starts with one of `boundaryIdPrefixes` AND whose state is
+   * one of `states` are kept; the rest retire as usual. A session terminal
+   * that ends some rows but not others: Station's own shutdown keeps a turn
+   * that may have reached its engine for the next boot's recovery.
    */
-  readonly retainBoundaryIdPrefixes?: readonly string[];
+  readonly retain?: {
+    readonly boundaryIdPrefixes: readonly string[];
+    readonly states: readonly TurnBoundaryState[];
+  };
 }
 export type TurnBoundaryAppliedResult = { readonly kind: 'applied' };
 

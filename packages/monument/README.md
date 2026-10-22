@@ -231,8 +231,9 @@ when `terminalSequence(thread, eventId)` returns a persisted sequence strictly
 above the fence. A missing terminal retains fenced rows. Session rows with no fence
 and inputless legacy turn terminals retain the timestamp generation check; lifecycle
 and task-dispatch rows retain their separate settlement owners. A terminal's
-optional `retainBoundaryIdPrefixes` keeps the rows whose id starts with one of
-them and retires the rest as usual.
+optional `retain` keeps the rows whose id starts with one of its
+`boundaryIdPrefixes` and whose state is one of its `states`, and retires the
+rest as usual.
 
 A host can also supply optional `retiredBoundaryIds(threadId)` facts, fixed at
 open (the SQLite binding receives `database` first), for session and legacy

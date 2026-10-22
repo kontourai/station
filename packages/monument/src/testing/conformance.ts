@@ -1097,22 +1097,31 @@ const turnBoundary: KernelConformanceCase[] = [
             .map((row) => row.boundaryId),
           ['d1', 'l1', 'u2'],
         );
-        // A retained prefix keeps its rows; the rest of the thread retires.
+        // A retained prefix in a retained state keeps its rows; the rest of
+        // the thread retires.
         await session.run(recordAccepted('keep:w1', 'w', 's1', a, at(1)));
         await session.run(recordAccepted('drop:w2', 'w', 's2', a, at(1)));
+        const wRows = async () =>
+          (await boundaries(session))
+            .filter((row) => row.threadId === 'w')
+            .map((row) => row.boundaryId);
         await session.run({
           type: 'turnBoundary.observeTerminal',
           threadId: 'w',
           sessionTerminal: true,
           terminalCreatedAt: at(5),
-          retainBoundaryIdPrefixes: ['keep:'],
+          retain: { boundaryIdPrefixes: ['keep:'], states: ['accepted'] },
         });
-        assert.deepEqual(
-          (await boundaries(session))
-            .filter((row) => row.threadId === 'w')
-            .map((row) => row.boundaryId),
-          ['keep:w1'],
-        );
+        assert.deepEqual(await wRows(), ['keep:w1']);
+        // The same prefix in a state not retained retires.
+        await session.run({
+          type: 'turnBoundary.observeTerminal',
+          threadId: 'w',
+          sessionTerminal: true,
+          terminalCreatedAt: at(5),
+          retain: { boundaryIdPrefixes: ['keep:'], states: ['invoking'] },
+        });
+        assert.deepEqual(await wRows(), []);
         // `retire: false` records the fact and retires nothing.
         await session.run({
           type: 'turnBoundary.observeTerminal',

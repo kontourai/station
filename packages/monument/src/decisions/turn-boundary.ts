@@ -282,9 +282,10 @@ export function decideTurnBoundaryObserveTerminal(
       row.state === 'settled' ||
       row.settlement !== undefined ||
       row.purpose === 'task-dispatch' ||
-      command.retainBoundaryIdPrefixes?.some((prefix) =>
-        row.boundaryId.startsWith(prefix),
-      )
+      (command.retain?.states.includes(row.state) &&
+        command.retain.boundaryIdPrefixes.some((prefix) =>
+          row.boundaryId.startsWith(prefix),
+        ))
     )
       continue;
     if (command.sessionTerminal) {
