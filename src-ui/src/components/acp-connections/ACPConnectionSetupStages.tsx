@@ -1,8 +1,6 @@
 import { Fragment, type RefObject } from 'react';
 import type { ACPConnectionRegistryEntry } from '../../hooks/useACPConnections';
 import { resolveProviderChoicePresentation } from '../../views/provider-settings/providerCatalog';
-import { RegistryEntryInstallHint } from '../engine-install/RegistryEntryInstallHint';
-import { registryEntryDiscovery } from '../engine-install/registryEntryDiscovery';
 import {
   PublicRegistryFacts,
   publicRegistryCommandLine,
