@@ -27,6 +27,11 @@ on:
     branches: [main]
     types: [checks_requested]
   workflow_dispatch:
+    inputs:
+      push_extensions:
+        description: Compile Stable's push plugin and both extensions (unsigned simulator only)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -143,14 +148,41 @@ jobs:
       - working-directory: src-desktop
         run: npx tauri ios init --ci --skip-targets-install --config tauri.conf.json
       - run: node scripts/write-ios-build-manifest.mjs
+      - name: Prepare unsigned Stable push extensions
+        if: github.event_name == 'workflow_dispatch' && inputs.push_extensions
+        run: |
+          node scripts/ensure-ios-agent-activity-extension.mjs src-desktop/gen/apple/project.yml --app-bundle-id io.kontourai.station --aps-environment production --info-plist src-desktop/gen/apple/station_iOS/Info.plist --notification-service
+          xcodegen generate --spec src-desktop/gen/apple/project.yml --project src-desktop/gen/apple
       - working-directory: src-desktop
+        if: github.event_name != 'workflow_dispatch' || !inputs.push_extensions
         run: rm -rf gen/apple/build && STATION_CLIENT_BUILD_REUSE=1 npx tauri ios build --target aarch64-sim --no-sign --ci --config tauri.conf.json
+      - name: Compile unsigned Stable push package
+        if: github.event_name == 'workflow_dispatch' && inputs.push_extensions
+        working-directory: src-desktop
+        env:
+          PUSH_EXTENSIONS: ${{ github.event_name == 'workflow_dispatch' && inputs.push_extensions }}
+        run: |
+          node --input-type=module -e 'import { writeFileSync } from "node:fs"; import { mobileCargoConfig } from "../scripts/ios-store-signing-config.mjs"; writeFileSync(process.argv[1], mobileCargoConfig({ liveActivity: process.env.PUSH_EXTENSIONS === "true" }), { mode: 0o600 });' "$RUNNER_TEMP/station-ios-mobile-env.toml"
+          rm -rf gen/apple/build
+          STATION_CLIENT_BUILD_REUSE=1 npx tauri ios build --target aarch64-sim --no-sign --ci --config tauri.conf.json -- --config "$RUNNER_TEMP/station-ios-mobile-env.toml"
       - id: simulator_artifact
         name: Verify and package simulator artifact
         run: |
           simulator_app=$(find src-desktop/gen/apple -type d -name '*.app' -print -quit)
           test -n "$simulator_app"
           simulator_app=$(cd "$simulator_app" && pwd -P)
+          if [ '${{ github.event_name == 'workflow_dispatch' && inputs.push_extensions }}' = true ]; then
+            for extension in StationAgentActivity StationNotificationService; do
+              appex="$simulator_app/PlugIns/$extension.appex"
+              test -s "$appex/$extension"
+              suffix="${extension#Station}"
+              test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$appex/Info.plist")" = "io.kontourai.station.$suffix"
+            done
+            test "$(/usr/libexec/PlistBuddy -c 'Print :NSSupportsLiveActivities' "$simulator_app/Info.plist")" = true
+            app_executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$simulator_app/Info.plist")
+            xcrun otool -oV "$simulator_app/$app_executable" > "$RUNNER_TEMP/ios-push-plugin-classes.txt"
+            grep -Fq '19AgentActivityPlugin' "$RUNNER_TEMP/ios-push-plugin-classes.txt"
+          fi
           node scripts/ios-channel-icons.mjs verify stable --app "$simulator_app" --receipt "$RUNNER_TEMP/ios-simulator-icon-receipt.json"
           packaged_manifest=$(find "$simulator_app" -type f -name station-build.json -print)
           test "$(printf '%s\n' "$packaged_manifest" | sed '/^$/d' | wc -l | tr -d ' ')" = 1
