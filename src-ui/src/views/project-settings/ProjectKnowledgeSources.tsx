@@ -26,7 +26,7 @@ export function ProjectKnowledgeSources({
 }: {
   slug: string;
   projectId?: string;
-  authority: ApiRequestScope;
+  authority: ApiRequestScope & { draftRecoveryKey?: string };
 }) {
   const roots = useKnowledgeRootsQuery({
     requestScope: authority,

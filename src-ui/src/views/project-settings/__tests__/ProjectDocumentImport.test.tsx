@@ -211,3 +211,23 @@ test('stale tabs retain separate import pointers and setting aside cannot delete
   expect(localStorage.getItem(`${key}:${ids[0]}`)).toBeNull();
   expect(localStorage.getItem(`${key}:${ids[1]}`)).toContain(ids[1]);
 });
+
+test('recovery survives a new live activation without resending the import', () => {
+  const stable = { ...authority, draftRecoveryKey: 'stable-account-route' };
+  const stableKey = `station.document-import:${JSON.stringify([stable.apiBase, stable.draftRecoveryKey, root.projectId])}`;
+  saved();
+  localStorage.setItem(stableKey, localStorage.getItem(key)!);
+  localStorage.removeItem(key);
+  const first = render(<ProjectDocumentImport {...props} authority={stable} />);
+  expect(screen.getByText(/Saved import:/)).toBeTruthy();
+  first.unmount();
+  render(
+    <ProjectDocumentImport
+      {...props}
+      authority={{ ...stable, authorityKey: 'new-live-activation' }}
+    />,
+  );
+  expect(screen.getByText(/Saved import:/)).toBeTruthy();
+  expect(state.upload).not.toHaveBeenCalled();
+  expect(state.resume).not.toHaveBeenCalled();
+});

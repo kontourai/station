@@ -65,10 +65,10 @@ export function ProjectDocumentImport({
 }: {
   projectId: string;
   roots: KnowledgeStoreRoot[];
-  authority: ApiRequestScope;
+  authority: ApiRequestScope & { draftRecoveryKey?: string };
   canManage: boolean;
 }) {
-  const storageKey = `station.document-import:${JSON.stringify([authority.apiBase, authority.authorityKey, projectId])}`;
+  const storageKey = `station.document-import:${JSON.stringify([authority.apiBase, authority.draftRecoveryKey ?? authority.authorityKey, projectId])}`;
   const [saved, setSaved] = useState<Pointer | undefined>(() => {
     try {
       return retainedPointers(storageKey)[0];
