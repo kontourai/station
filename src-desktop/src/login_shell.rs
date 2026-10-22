@@ -5,6 +5,34 @@ use std::os::unix::process::CommandExt;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
+struct LoginPath(std::sync::Mutex<Option<String>>);
+
+impl LoginPath {
+    fn resolve(&self, shell: &str) -> String {
+        let mut cached = self.0.lock().unwrap_or_else(|error| error.into_inner());
+        cached
+            .get_or_insert_with(|| {
+                resolve_path(shell).unwrap_or_else(|| std::env::var("PATH").unwrap_or_default())
+            })
+            .clone()
+    }
+
+    fn invalidate(&self) {
+        *self.0.lock().unwrap_or_else(|error| error.into_inner()) = None;
+    }
+}
+
+static LOGIN_PATH: LoginPath = LoginPath(std::sync::Mutex::new(None));
+
+pub(super) fn cached_path() -> String {
+    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
+    LOGIN_PATH.resolve(&shell)
+}
+
+pub(super) fn invalidate_path() {
+    LOGIN_PATH.invalidate();
+}
+
 struct OwnedShell(Child);
 impl Drop for OwnedShell {
     fn drop(&mut self) {
@@ -91,6 +119,33 @@ mod tests {
         let mut command = Command::new("/bin/sh");
         command.args(["-c", script]);
         command
+    }
+    #[test]
+    fn resolves_once_until_explicit_refresh() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = tempfile::tempdir().unwrap();
+        let shell = directory.path().join("shell");
+        let calls = directory.path().join("calls");
+        let write_shell = |path: &str| {
+            std::fs::write(
+                &shell,
+                format!(
+                    "#!/bin/sh\necho call >> '{}'\nprintf '\\036%s\\037' '{path}'\n",
+                    calls.display()
+                ),
+            )
+            .unwrap();
+            std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o700)).unwrap();
+        };
+        let cache = LoginPath(std::sync::Mutex::new(None));
+        write_shell("/first:/usr/bin");
+        assert_eq!(cache.resolve(shell.to_str().unwrap()), "/first:/usr/bin");
+        write_shell("/updated:/usr/bin");
+        assert_eq!(cache.resolve(shell.to_str().unwrap()), "/first:/usr/bin");
+        assert_eq!(std::fs::read_to_string(&calls).unwrap(), "call\n");
+        cache.invalidate();
+        assert_eq!(cache.resolve(shell.to_str().unwrap()), "/updated:/usr/bin");
+        assert_eq!(std::fs::read_to_string(&calls).unwrap(), "call\ncall\n");
     }
     #[test]
     fn keeps_exact_path_and_ignores_login_banners() {

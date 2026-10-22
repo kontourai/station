@@ -146,6 +146,40 @@ It no longer starts independently on each `main` push. Its separate Windows job
 exercises unsigned diagnostic NSIS packaging. Neither job's definition
 establishes that the current revision passed.
 
+## Startup cost and Linux graphics
+
+Desktop resolves the login-shell PATH once per app process. An explicit
+built-in server restart clears that cache before the next launch; quitting
+and reopening the app also picks up shell configuration changes. Schema preparation returns the supervisor identity in the same helper call;
+service ownership is checked inside the legacy-preparation helper. The macOS
+native waiting cover is requested before those bridge calls. Main-window
+admission still requires the existing identity and renderer readiness proof.
+
+Non-sidecar ownership status is refreshed at most once per minute. That
+reduces idle helper processes but means an external service change can take
+up to a minute, plus the next status poll, to appear. Launch and restart
+claims still use the registry's current atomic ownership check. The running
+sidecar supervisor checks child exit every two seconds; restart and shutdown
+messages wake it immediately, and startup retains its 150 ms exit check.
+
+The desktop sidecar enables Node 24's compile cache before loading the server,
+under `<STATION_HOME>/cache/node-compile`. Home schema preparation precedes
+that launch. The server also enables this directory after its schema gate for
+subsequently loaded modules when started without Desktop. Node's
+`NODE_DISABLE_COMPILE_CACHE=1` opt-out remains supported; cache failure must
+not prevent startup. Server bundles are minified with function/class names
+retained and linked external source maps for diagnosis. Map packaging is a
+separate release concern.
+
+On Linux, before WebKitGTK starts, Station sets
+`WEBKIT_DISABLE_DMABUF_RENDERER=1` only when a Wayland session and the loaded
+proprietary NVIDIA kernel module (`/sys/module/nvidia`) are both detected.
+This conservative fallback avoids known blank-window/compositing failures on
+that combination. Any existing value, including `0` or an empty value, wins;
+set the variable explicitly before launching to override the fallback.
+X11, other drivers, and systems without that module retain WebKit's default.
+Source policy and unit checks do not establish Linux hardware behavior.
+
 ## Startup readiness boundary
 
 Packaged desktop startup has an explicit readiness and recovery boundary. Read

@@ -200,6 +200,7 @@ function bridgeChild(operation: string, input: unknown) {
     {
       cwd: process.cwd(),
       encoding: 'utf8',
+      windowsHide: true,
       input: JSON.stringify(input),
     },
   );
@@ -211,6 +212,77 @@ afterEach(() => {
 });
 
 describe('instance registry bridge legacy manifest transaction (archive#4457)', () => {
+  test('desktop preparation preserves a live service without running legacy migration', () => {
+    const stationRoot = root();
+    const fixture = legacyFixture(stationRoot);
+    upsertInstance(
+      'service-owner',
+      { type: 'service', port: 38141, pid: process.pid },
+      fixture.home,
+    );
+    const manifestBefore = readFileSync(fixture.manifest, 'utf8');
+    const result = bridgeChild('prepareDesktopRuntime', {
+      home: fixture.home,
+      root: stationRoot,
+    });
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({
+      ok: true,
+      kind: 'service-owned',
+    });
+    expect(readFileSync(fixture.manifest, 'utf8')).toBe(manifestBefore);
+    expect(readdirSync(join(fixture.home, 'service'))).toEqual([
+      'default.json',
+    ]);
+  });
+
+  test('desktop preparation migrates an unowned home and refuses ambiguous live services', () => {
+    const stationRoot = root();
+    const fixture = legacyFixture(stationRoot);
+    const prepared = bridgeChild('prepareDesktopRuntime', {
+      home: fixture.home,
+      root: stationRoot,
+    });
+    expect(prepared.status).toBe(0);
+    expect(JSON.parse(prepared.stdout)).toEqual({ ok: true, kind: 'new' });
+    expect(existsSync(fixture.manifest)).toBe(false);
+
+    const ambiguousRoot = root();
+    const ambiguous = legacyFixture(ambiguousRoot);
+    for (const id of ['a', 'b'])
+      upsertInstance(
+        id,
+        { type: 'service', port: 38141, pid: process.pid },
+        ambiguous.home,
+      );
+    const refused = bridgeChild('prepareDesktopRuntime', {
+      home: ambiguous.home,
+      root: ambiguousRoot,
+    });
+    expect(refused.status).toBe(1);
+    expect(JSON.parse(refused.stdout)).toEqual({
+      ok: false,
+      error: { code: 'REGISTRY_UNTRUSTED' },
+    });
+    expect(existsSync(ambiguous.manifest)).toBe(true);
+  });
+
+  test('desktop schema preparation returns its real parent birth in the same invocation', () => {
+    const stationHome = join(root(), 'fresh');
+    const result = bridgeChild('ensureHomeSchemaAndIdentity', {
+      home: stationHome,
+    });
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({
+      ok: true,
+      pid: process.pid,
+      birth: lookupProcessBirthFingerprint(process.pid),
+    });
+    expect(existsSync(join(stationHome, '.station-home-schema.json'))).toBe(
+      true,
+    );
+  });
+
   test('child bridge exposes exact prepare success/refusal output and redacts unexpected errors', () => {
     const stationRoot = root();
     const fixture = legacyFixture(stationRoot);

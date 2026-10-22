@@ -14,6 +14,8 @@ mod desktop_installation;
 #[cfg(not(mobile))]
 mod desktop_update;
 mod ios_background_task;
+#[cfg(target_os = "linux")]
+mod linux_webkit;
 #[cfg(not(mobile))]
 mod local_access_watch;
 #[cfg(all(not(mobile), unix))]
@@ -9087,7 +9089,7 @@ struct RegistryBridgeErrorPayload {
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 enum PrepareRuntimeKind {
-    #[serde(skip)]
+    #[serde(rename = "service-owned")]
     ServiceOwned,
     Absent,
     New,
@@ -9239,20 +9241,11 @@ fn prepare_runtime_registry_bridge(
             return Ok(PrepareRuntimeKind::Absent);
         }
     }
-    // Attaching to a live service is read-only. Its home lease must remain
-    // held; legacy migration cannot acquire maintenance while it is serving.
-    match decide_home_ownership_from_runtime(resource_dir, station_home) {
-        HomeOwnershipDecision::ServiceOwnsHome { .. } => {
-            return Ok(PrepareRuntimeKind::ServiceOwned)
-        }
-        HomeOwnershipDecision::AmbiguousOwnership | HomeOwnershipDecision::FailClosedRegistry => {
-            return Err(RegistryBridgeFailure::Untrusted)
-        }
-        HomeOwnershipDecision::SpawnSidecar => {}
-    }
+    // The bridge performs the same live-service guard before preparation, in
+    // one process. The later atomic host claim still owns spawn authority.
     let output = invoke_registry_bridge(
         resource_dir,
-        "prepareRuntime",
+        "prepareDesktopRuntime",
         serde_json::json!({ "home": station_home, "root": station_root }),
     )?;
     parse_prepare_runtime_bridge_output(&output)
@@ -9393,13 +9386,13 @@ fn invoke_registry_bridge(
 
 #[cfg(not(mobile))]
 #[cfg(not(mobile))]
-fn supervisor_birth_bridge(
+fn ensure_home_schema_and_supervisor_birth(
     resource_dir: &Path,
     station_home: &Path,
 ) -> Result<String, RegistryBridgeFailure> {
     let output = invoke_registry_bridge(
         resource_dir,
-        "supervisorIdentity",
+        "ensureHomeSchemaAndIdentity",
         serde_json::json!({ "home": station_home }),
     )?;
     let value: serde_json::Value =
@@ -9578,8 +9571,7 @@ fn resolve_login_shell_path() -> String {
 
 #[cfg(all(not(mobile), unix))]
 fn resolve_login_shell_path() -> String {
-    let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/zsh".into());
-    login_shell::resolve_path(&shell).unwrap_or_else(|| std::env::var("PATH").unwrap_or_default())
+    login_shell::cached_path()
 }
 
 /// A base port reserves the server, terminal, voice, and consent four-port
@@ -9643,6 +9635,8 @@ fn build_sidecar_command(
         .arg(command_station_script_path(&context.resource_dir))
         .current_dir(&context.resource_dir)
         .env("STATION_HOME", &context.station_home)
+        // Node must enable this before it parses the bundled entry point.
+        .env("NODE_COMPILE_CACHE", context.station_home.join("cache").join("node-compile"))
         .env("STATION_HOST", "127.0.0.1")
         .env("STATION_STDOUT_HANDSHAKE", "1")
         // Only the handshake line is read from stdout; every other line is
@@ -12423,12 +12417,12 @@ fn unavailable_status(app: &AppHandle, message: String, detail: String) -> Bundl
 /// How long a re-derived ownership decision is treated as current.
 ///
 /// `decide_home_ownership_from_runtime` reads the home-scoped registry through
-/// `invoke_registry_bridge`, which spawns a Node child process with a 3s
+/// `invoke_registry_bridge`, which spawns a Node child process with a 10s
 /// timeout. `unified_server_status` runs on every status request and on the
 /// tray's poll cadence, so re-deriving unconditionally would spawn a process
 /// per emit. This bounds it to one bridge invocation per interval.
 #[cfg(not(mobile))]
-const OWNERSHIP_REFRESH_INTERVAL: Duration = Duration::from_secs(5);
+const OWNERSHIP_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 
 /// May this owner be re-derived at all, and has its interval elapsed?
 ///
@@ -12672,8 +12666,10 @@ fn spawn_sidecar_child(context: &SidecarRuntimeContext) -> Result<(Child, String
     // The ambient read lives at the edge so the builder stays a pure function
     // of its inputs -- otherwise its tests would pass or fail depending on the
     // developer's own STATION_ROOT.
+    let mut launch = context.launch.clone();
+    launch.shell_path = resolve_login_shell_path();
     let mut child =
-        build_sidecar_command(&context.launch, &boot_id, std::env::var_os("STATION_ROOT"))
+        build_sidecar_command(&launch, &boot_id, std::env::var_os("STATION_ROOT"))
             .spawn()
             .map_err(|error| format!("launch Station sidecar: {error}"))?;
     // Record the child before waiting for Listening: after desktop death its
@@ -12922,7 +12918,15 @@ fn run_sidecar_supervisor(
             continue;
         }
         loop {
-            match rx.recv_timeout(Duration::from_millis(150)) {
+            let running = supervisor.status.lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()).phase
+                == bundled_server_state::ServerPhase::Running;
+            let interval = if running {
+                Duration::from_secs(2)
+            } else {
+                Duration::from_millis(150)
+            };
+            match rx.recv_timeout(interval) {
                 Ok(SupervisorMessage::Shutdown) => {
                     reap_sidecar(&supervisor);
                     let _ = release_sidecar_registry_bridge(
@@ -12933,6 +12937,8 @@ fn run_sidecar_supervisor(
                     return;
                 }
                 Ok(SupervisorMessage::Restart) => {
+                    #[cfg(unix)]
+                    login_shell::invalidate_path();
                     let effects =
                         apply_supervisor_input(&supervisor, SupervisorInput::ManualRestart);
                     crate::tray::kick(&app);
@@ -13090,7 +13096,12 @@ fn drive_supervisor_effects(
                     Ok(SupervisorMessage::Shutdown) | Err(RecvTimeoutError::Disconnected) => {
                         return false
                     }
-                    Ok(SupervisorMessage::Restart) | Err(RecvTimeoutError::Timeout) => return true,
+                    Ok(SupervisorMessage::Restart) => {
+                        #[cfg(unix)]
+                        login_shell::invalidate_path();
+                        return true;
+                    }
+                    Err(RecvTimeoutError::Timeout) => return true,
                     Ok(SupervisorMessage::Listening { .. }) => return true,
                 }
             }
@@ -13109,7 +13120,11 @@ fn drive_supervisor_effects(
                 ) {
                     loop {
                         match rx.recv() {
-                            Ok(SupervisorMessage::Restart) => return true,
+                            Ok(SupervisorMessage::Restart) => {
+                                #[cfg(unix)]
+                                login_shell::invalidate_path();
+                                return true;
+                            }
                             Ok(SupervisorMessage::Shutdown) | Err(_) => return false,
                             Ok(SupervisorMessage::Listening { .. }) => crate::tray::kick(app),
                         }
@@ -13308,6 +13323,8 @@ fn log_dir_is_writable(dir: &std::path::Path) -> bool {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(target_os = "linux")]
+    linux_webkit::configure();
     let (log_level, invalid_log_level) =
         resolve_desktop_log_level(std::env::var("STATION_DESKTOP_LOG_LEVEL").ok());
     let context = tauri::generate_context!();
@@ -13748,6 +13765,16 @@ If a stable instance is running, this launch will focus its window and exit.",
                         &pending_activation_for_deep_link,
                     );
                 });
+                #[cfg(target_os = "macos")]
+                {
+                    if let Some(window) = app.get_webview_window("main") {
+                        if !cfg!(debug_assertions) {
+                            if let Err(error) = with_native_startup_cover(&window, app.handle(), Some(startup_readiness::StartupCoverContent::Waiting)) {
+                                log::warn!("early startup cover unavailable: {error}");
+                            }
+                        }
+                    }
+                }
                 let resource_dir = simplified_sidecar_resource_dir(&app.path().resource_dir()?);
                 let packaged_channel = if cfg!(debug_assertions) {
                     None
@@ -13766,12 +13793,13 @@ If a stable instance is running, this launch will focus its window and exit.",
                     station_root.display(),
                     station_home.display()
                 );
+                let mut supervisor_birth = None;
                 let prepared_home = prepare_desktop_station_storage(
                     station_home.clone(),
                     &station_root,
                     |home| {
-                        invoke_registry_bridge(&resource_dir, "ensureHomeSchema", serde_json::json!({ "home": home }))
-                            .map(|_| ())
+                        ensure_home_schema_and_supervisor_birth(&resource_dir, home)
+                            .map(|birth| { supervisor_birth = Some(birth); })
                             .map_err(|error| match error {
                                 RegistryBridgeFailure::HomeSchema => "This folder contains data without a compatible Station schema. Keep it intact and select a new empty folder or restore a compatible Station home.".to_string(),
                                 RegistryBridgeFailure::Invocation => "The local Node helper could not run. Check that Node 24 is installed and available to the app.".to_string(),
@@ -13824,11 +13852,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                     packaged_channel,
                 )
                 .map_err(|error| format!("invalid desktop sidecar port: {error}"))?;
-                let supervisor_birth = supervisor_birth_bridge(&resource_dir, &station_home)
-                    .map_err(|error| {
-                        log::error!("desktop registry bridge could not establish supervisor identity: {error:?}");
-                        "Desktop could not establish supervisor identity."
-                    })?;
+                let supervisor_birth = supervisor_birth.ok_or("Desktop could not establish supervisor identity.")?;
                 let supervisor = Arc::new(ServerSupervisor {
                     child: Mutex::new(None), status: Arc::new(Mutex::new(status)), stderr_reader: Mutex::new(None), shutting_down: AtomicBool::new(false), tx, thread: Mutex::new(None),
                     context: SidecarRuntimeContext {
@@ -15219,20 +15243,6 @@ mod tests {
             ),
             DesktopOwner::Sidecar
         );
-        let source = include_str!("lib.rs");
-        let preparation = source
-            .split("fn prepare_runtime_registry_bridge(")
-            .nth(1)
-            .unwrap()
-            .split("fn capture_bounded_registry_bridge_stdout")
-            .next()
-            .unwrap();
-        assert!(
-            preparation
-                .find("HomeOwnershipDecision::ServiceOwnsHome")
-                .unwrap()
-                < preparation.find("\"prepareRuntime\"").unwrap()
-        );
     }
 
     #[test]
@@ -15710,11 +15720,12 @@ mod tests {
     #[test]
     #[cfg(not(mobile))]
     fn runtime_preparation_protocol_accepts_only_the_bounded_success_vocabulary() {
-        for kind in ["absent", "new", "already", "recovered"] {
+        for kind in ["service-owned", "absent", "new", "already", "recovered"] {
             let output = format!(r#"{{"ok":true,"kind":"{kind}"}}"#);
             assert_eq!(
                 parse_prepare_runtime_bridge_output(output.as_bytes()),
                 Ok(match kind {
+                    "service-owned" => PrepareRuntimeKind::ServiceOwned,
                     "absent" => PrepareRuntimeKind::Absent,
                     "new" => PrepareRuntimeKind::New,
                     "already" => PrepareRuntimeKind::Already,
@@ -17633,6 +17644,11 @@ mod tests {
             now.checked_sub(OWNERSHIP_REFRESH_INTERVAL / 2),
             now,
         ));
+        assert!(!should_rederive_home_ownership(
+            &DesktopOwner::Unowned,
+            now.checked_sub(Duration::from_secs(10)),
+            now,
+        ), "an unchanged home must not spawn a helper on every tray poll");
         // Never re-derived before: the bridge spawns a Node child, so the very
         // first read is allowed to pay for it rather than reporting boot state.
         assert!(should_rederive_home_ownership(
@@ -17855,6 +17871,7 @@ mod tests {
         for (name, value) in [
             ("STATION_ROOT", "/home/example/.station"),
             ("STATION_HOME", "/home/example/.station-nightly"),
+            ("NODE_COMPILE_CACHE", "/home/example/.station-nightly/cache/node-compile"),
             ("STATION_HOST", "127.0.0.1"),
             ("STATION_STDOUT_HANDSHAKE", "1"),
             ("STATION_STDOUT_LOGS", "0"),

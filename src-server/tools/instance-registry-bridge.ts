@@ -26,6 +26,8 @@ type Operation =
   | 'publishSidecar'
   | 'releaseSidecar'
   | 'claimSidecar'
+  | 'ensureHomeSchemaAndIdentity'
+  | 'prepareDesktopRuntime'
   | 'ensureHomeSchema'
   | 'prepareRuntime'
   | 'supervisorIdentity'
@@ -35,6 +37,8 @@ const OPERATIONS = new Set<Operation>([
   'publishSidecar',
   'releaseSidecar',
   'claimSidecar',
+  'ensureHomeSchemaAndIdentity',
+  'prepareDesktopRuntime',
   'ensureHomeSchema',
   'prepareRuntime',
   'supervisorIdentity',
@@ -162,11 +166,13 @@ function input(operation: Operation): Record<string, unknown> {
   const parsed = object(value);
   const allowed =
     operation === 'read' ||
+    operation === 'ensureHomeSchemaAndIdentity' ||
+    operation === 'prepareDesktopRuntime' ||
     operation === 'ensureHomeSchema' ||
     operation === 'prepareRuntime' ||
     operation === 'supervisorIdentity' ||
     operation === 'profileLockIdentity'
-      ? operation === 'prepareRuntime'
+      ? operation === 'prepareRuntime' || operation === 'prepareDesktopRuntime'
         ? ['home', 'root']
         : operation === 'profileLockIdentity'
           ? ['pid']
@@ -265,12 +271,38 @@ export async function runInstanceRegistryBridge(): Promise<void> {
   const inputValue = input(operation as Operation);
   const stationHome =
     operation === 'profileLockIdentity' ? undefined : home(inputValue.home);
-  if (operation === 'ensureHomeSchema') {
+  if (
+    operation === 'ensureHomeSchema' ||
+    operation === 'ensureHomeSchemaAndIdentity'
+  ) {
     ensureStationHomeSchemaSync(stationHome!);
-    process.stdout.write('{"ok":true}\n');
+    if (operation === 'ensureHomeSchemaAndIdentity') {
+      const birth = lookupProcessBirthFingerprint(process.ppid);
+      if (!birth) fail('supervisor identity unavailable');
+      process.stdout.write(
+        `${JSON.stringify({ ok: true, pid: process.ppid, birth })}\n`,
+      );
+    } else {
+      process.stdout.write('{"ok":true}\n');
+    }
     return;
   }
-  if (operation === 'prepareRuntime') {
+  if (operation === 'prepareDesktopRuntime') {
+    const services = readRegistryInstances(stationHome!).filter(
+      (instance) =>
+        instance.type === 'service' &&
+        typeof instance.port === 'number' &&
+        typeof instance.pid === 'number' &&
+        instance.pidAlive === true,
+    );
+    if (services.length > 1)
+      fail('instance registry has ambiguous service owners');
+    if (services.length === 1) {
+      process.stdout.write('{"ok":true,"kind":"service-owned"}\n');
+      return;
+    }
+  }
+  if (operation === 'prepareRuntime' || operation === 'prepareDesktopRuntime') {
     const result = await prepareRuntime(stationHome!, home(inputValue.root));
     if (result.kind === 'refused') {
       // Keep refusal structured and path-free while preserving the native
