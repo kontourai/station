@@ -12,6 +12,7 @@
  */
 
 import { act, cleanup, renderHook } from '@testing-library/react';
+import { Profiler } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 // A stable array/object reference across renders, matching real
@@ -28,6 +29,7 @@ vi.mock('../contexts/AgentsContext', () => ({
 import { isTurnInFlight } from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { conversationsStore } from '../contexts/ConversationsContext';
+import { handleTextDeltaEvent } from '../hooks/orchestration/streamHandlers';
 import { useDerivedSessions } from '../hooks/useDerivedSessions';
 import { isTurnStreamLive } from '../utils/execution';
 
@@ -720,4 +722,75 @@ describe('useDerivedSessions — end to end: no duplicate user bubble across a b
     expect(contents.filter((c) => c === 'first turn')).toHaveLength(1);
     expect(after.messages).toHaveLength(3);
   });
+});
+
+// Mounted consumer profile: each delta is a separate external-store delivery.
+test('profiles derived-session consumer commits during token delivery', () => {
+  clearChats();
+  activeChatsStore.initChat(SESSION_A, {
+    agentSlug: 'agent-one',
+    agentName: 'Agent One',
+    title: 'Profile',
+  });
+  activeChatsStore.updateChat(SESSION_A, {
+    orchestrationTurnOpen: true,
+    planArtifact: null,
+  });
+  let commits = 0;
+  const mounted = renderHook(() => useDerivedSessions('', null), {
+    wrapper: ({ children }) => (
+      <Profiler id="derived" onRender={() => commits++}>
+        {children}
+      </Profiler>
+    ),
+  });
+  const initial = commits;
+  const started = performance.now();
+  for (let index = 0; index < 100; index++) {
+    act(() =>
+      handleTextDeltaEvent({
+        eventId: 'profile',
+        itemId: 'profile-text',
+        provider: 'station-agent',
+        method: 'content.text-delta',
+        threadId: SESSION_A,
+        delta: 'word ',
+        createdAt: '2026-10-22T00:00:00.000Z',
+      }),
+    );
+  }
+  process.stdout.write(
+    `DERIVED_PROFILE ${JSON.stringify({ updates: commits - initial, cpuMs: performance.now() - started })}\n`,
+  );
+  expect(commits - initial).toBe(0);
+  expect(
+    activeChatsStore.getSnapshot()[SESSION_A].streamingMessage?.content,
+  ).toBe('word '.repeat(100));
+  const planStarted = performance.now();
+  for (let index = 0; index < 200; index++) {
+    act(() =>
+      handleTextDeltaEvent({
+        eventId: 'profile-line',
+        itemId: 'profile-text',
+        provider: 'station-agent',
+        method: 'content.text-delta',
+        threadId: SESSION_A,
+        delta: `Result ${index}: ordinary prose without a plan step.\n`,
+        createdAt: '2026-10-22T00:00:00.000Z',
+      }),
+    );
+  }
+  process.stdout.write(
+    `PLAN_MOUNT_PROFILE ${JSON.stringify({ updates: commits - initial, cpuMs: performance.now() - planStarted })}\n`,
+  );
+  expect(commits - initial).toBe(0);
+  act(() =>
+    activeChatsStore.updateChat(SESSION_A, {
+      title: 'Updated after streaming',
+    }),
+  );
+  expect(mounted.result.current[0].title).toBe('Updated after streaming');
+  expect(commits - initial).toBe(1);
+  mounted.unmount();
+  clearChats();
 });

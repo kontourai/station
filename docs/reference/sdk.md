@@ -1378,10 +1378,16 @@ host. `/boot` is not in the package export map; external consumers must not
 infer an importable subpath from this source file. The host captures the
 origin and request authority before fetching; its guard verifies both that
 captured authority and the destination client. Seeding checks it before every
-cache write and preserves newer individual reads. Native boot passes the captured
-`requestScope` and enrolled-credential requirement through the SDK's guarded
-`getJson` boundary to its host transport. Browser seeding retains same-origin
-local-session admission; an aggregate refusal leaves individual reads available.
+cache write and preserves newer individual reads. For the browser's own Station,
+the host imports this module and resolves the local UI session while the live
+authority observation is pending. An authenticated local session permits the
+captured-origin payload read; its result stays outside the query cache until
+the observation verifies. Persisted restoration also remains observation-gated.
+A switch or credential rotation discards the old activation's result.
+Native boot follows the same overlap through its captured host transport: it
+passes the captured `requestScope` and enrolled-credential requirement through
+the SDK's guarded `getJson` boundary instead of local-session admission. An
+aggregate refusal leaves individual reads available.
 
 The [SDK Project queries](../../packages/sdk/src/query-domains/workspaceProjects.ts),
 [host Project context](../../src-ui/src/contexts/ProjectsContext.tsx),
