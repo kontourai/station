@@ -120,7 +120,9 @@ describe('Surface Basis SDK boundary', () => {
         { status: 429, headers: { 'Retry-After': '2' } },
       ),
     );
-    await expect(keepAnswerInTask('task-a', input, scope)).rejects.toMatchObject({
+    await expect(
+      keepAnswerInTask('task-a', input, scope),
+    ).rejects.toMatchObject({
       message: 'Task basis unavailable',
       status: 429,
       code: 'task_reference_not_ready',

@@ -137,6 +137,7 @@ import { ContextPercentage } from '../conversation-stats/ConversationStats';
 import { LazyBoundary } from '../LazyBoundary';
 import { GLOBAL_CONTEXT } from '../modals/new-chat-modal-utils';
 import { SkillShortcutRegistrar } from '../SkillShortcutRegistrar';
+import { SplitPaneCompanion } from '../SplitPaneLayout';
 import { SkeletonBlock } from '../state';
 import {
   ActiveWorkContextFrame,
@@ -3101,14 +3102,17 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       }
                     />
                   )}
-                <div
+                <SplitPaneCompanion
                   className="chat-dock__conversation-surface"
-                  ref={conversationSurfaceRef}
+                  inspection={{
+                    rootRef: conversationSurfaceRef,
+                    supportRef: sessionInventoryMountRef,
+                    containerFit:
+                      !isFullscreenPlacement &&
+                      (effectiveDockSlotPlacement === 'left' ||
+                        effectiveDockSlotPlacement === 'right'),
+                  }}
                 >
-                  <div
-                    ref={sessionInventoryMountRef}
-                    className="chat-dock__inventory-mount"
-                  />
                   {conversationOpenRecovery && !importedSessionId ? (
                     <LazyBoundary
                       load={loadConversationOpenRecoveryNotice}
@@ -3279,7 +3283,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       onOpenBackgroundTasks={showBackgroundTasks}
                     />
                   ) : null}
-                </div>
+                </SplitPaneCompanion>
                 {sessionContextCardVisible && sessionContextCardProps ? (
                   <LazyBoundary
                     load={loadSessionContextCard}

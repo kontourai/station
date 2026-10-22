@@ -462,7 +462,8 @@ beforeEach(() => {
     const surface = fixture.surfaceWidth - (card() ? 280 : 0);
     const width = this.classList.contains('chat-dock__conversation-surface')
       ? surface
-      : this.classList.contains('chat-dock__content-area')
+      : this.classList.contains('chat-dock__content-area') ||
+          this.classList.contains('split-pane-companion__main')
         ? surface - fixture.besideTranscript
         : null;
     if (width === null) return rect;

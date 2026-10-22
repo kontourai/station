@@ -125,8 +125,13 @@ beside the transcript in it, such as an open Chat inventory aside) with a
 beside it, so opening the inventory folds the card behind its chip (#3882);
 while the inventory is open the aside gives way first, down to its 16rem
 minimum, so the transcript keeps 640px wherever the surface has room for
-both. In a narrow side dock, inventory instead covers the conversation surface
-and hides the transcript until Close; it does not squeeze the transcript into
+both. ChatDock uses `SplitPaneCompanion`'s opt-in `inspection` slots for the
+transcript and its lazy inspection portal. `containerFit` lets the shared
+primitive cover the local surface below their combined 895px fit threshold;
+content in the support slot marks its root with `data-companion-content`.
+The main slot remains mounted but hidden and noninteractive during takeover.
+Existing rail/sheet callers keep their viewport behavior. In a narrow side dock,
+inventory therefore covers the conversation surface until Close; it does not squeeze the transcript into
 a second narrow column. The same answer hides
 the header items it repeats, which live outside the dock body, so a CSS
 container query on the body could not reach them. A phone never shows it

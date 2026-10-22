@@ -120,6 +120,7 @@ export function SessionInventoryCompact({
     return (
       <aside
         ref={asideRef}
+        data-companion-content=""
         className={asideClass}
         aria-label="Chat inventory"
         tabIndex={-1}
@@ -132,6 +133,7 @@ export function SessionInventoryCompact({
     return (
       <aside
         ref={asideRef}
+        data-companion-content=""
         className={asideClass}
         aria-label="Chat inventory"
         tabIndex={-1}
@@ -144,6 +146,7 @@ export function SessionInventoryCompact({
     return (
       <aside
         ref={asideRef}
+        data-companion-content=""
         className={asideClass}
         aria-label="Chat inventory"
         tabIndex={-1}
@@ -198,6 +201,7 @@ export function SessionInventoryCompact({
   return (
     <aside
       ref={asideRef}
+      data-companion-content=""
       className={asideClass}
       aria-label="Chat inventory"
       tabIndex={-1}
