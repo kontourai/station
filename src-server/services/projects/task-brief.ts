@@ -630,17 +630,14 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
   const DOCUMENT_CUT_NOTE = '(cut; the Task document has the rest)';
   const DOCUMENT_LEFT_OUT_NOTE =
     '(left out to fit this brief; the Task document has it)';
-  const documentQuoted = quotedLines(documentText);
   const renderDocument = (max: number) => {
     if (!documentText) return [];
     const heading = [
       '## Task document',
       task.workItemRef ? BY_TASK_AND_TRACKER : BY_TASK,
     ];
-    // Whole when it fits; cut with a note when the cut leaves something;
-    // otherwise left out, saying so (review round 4, P3-3).
-    if (documentQuoted.join('\n').length <= max)
-      return [...heading, ...documentQuoted];
+    // Whole when it fits, or cut with a note (`quotedWithin`) when the cut
+    // leaves something; otherwise left out, saying so (round 4, P3-3).
     if (max > DOCUMENT_CUT_NOTE.length + 3)
       return [
         ...heading,
