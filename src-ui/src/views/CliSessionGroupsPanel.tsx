@@ -5,7 +5,7 @@ import type {
 import { surfaceDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import { useCliSessionGroupsQuery } from '@kontourai/station-sdk';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Button } from '../components/Button';
 import { useNavigationActions } from '../contexts/NavigationContext';
 import './CliSessionGroupsPanel.css';
@@ -62,6 +62,88 @@ function MemberLabel({
         {identity.role} · Seat {seatId} · Color {identity.color}
       </small>
     </>
+  );
+}
+
+function GroupTopology({ group }: { group: CliSessionGroupView }) {
+  const arrowId = useId();
+  const columns = 3;
+  const rows = Math.ceil(group.members.length / columns);
+  return (
+    <figure className="cli-session-groups__topology">
+      <figcaption>
+        Dependency graph · Revision {group.revision}
+        <p>
+          Arrows show declared prerequisites → dependent seats. Positions do not
+          imply execution order. States are last observed; work acceptance is
+          not assessed. Exact session and turn identities are in the table
+          below.
+        </p>
+      </figcaption>
+      <section
+        className="cli-session-groups__graph-scroll"
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users scroll the dependency graph.
+        tabIndex={0}
+        aria-label={`Dependency graph for ${group.groupId}`}
+      >
+        <svg
+          className="cli-session-groups__graph"
+          viewBox={`0 0 900 ${rows * 220}`}
+          role="img"
+          aria-label={`Declared dependencies at revision ${group.revision}`}
+        >
+          <defs>
+            <marker
+              id={arrowId}
+              viewBox="0 0 10 10"
+              refX="9"
+              refY="5"
+              markerWidth="7"
+              markerHeight="7"
+              orient="auto-start-reverse"
+            >
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor" />
+            </marker>
+          </defs>
+          {group.members.flatMap((member, index) =>
+            member.needs.map((need) => {
+              const source = group.members.findIndex(
+                (seat) => seat.seatId === need,
+              );
+              return (
+                <line
+                  key={`${need}:${member.seatId}`}
+                  x1={(source % columns) * 300 + 150}
+                  y1={Math.floor(source / columns) * 220 + 180}
+                  x2={(index % columns) * 300 + 150}
+                  y2={Math.floor(index / columns) * 220 + 20}
+                  markerEnd={`url(#${arrowId})`}
+                >
+                  <title>
+                    {need} → {member.seatId}
+                  </title>
+                </line>
+              );
+            }),
+          )}
+          {group.members.map((member, index) => (
+            <foreignObject
+              key={member.seatId}
+              x={(index % columns) * 300 + 20}
+              y={Math.floor(index / columns) * 220 + 20}
+              width="260"
+              height="160"
+            >
+              <div className="cli-session-groups__graph-node">
+                <strong>{member.seatId}</strong>
+                <p>{memberStatus(member)}</p>
+                <small>Needs: {member.needs.join(', ') || 'None'}</small>
+              </div>
+            </foreignObject>
+          ))}
+        </svg>
+      </section>
+    </figure>
   );
 }
 
@@ -166,6 +248,7 @@ export function CliSessionGroupsPanel({
                   </p>
                 </div>
               )}
+              <GroupTopology group={group} />
               <section
                 className="cli-session-groups__table"
                 // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users scroll this wide member table.

@@ -51,3 +51,35 @@
   outline: 2px solid var(--k-focus);
   outline-offset: 2px;
 }
+
+.cli-session-groups__topology {
+  margin: var(--k-space-4) 0;
+}
+.cli-session-groups__graph-scroll {
+  overflow-x: auto;
+}
+.cli-session-groups__graph {
+  display: block;
+  width: 100%;
+  min-width: 48rem;
+  color: var(--k-text-muted);
+}
+.cli-session-groups__graph line {
+  stroke: currentColor;
+  stroke-width: 2;
+}
+.cli-session-groups__graph-node {
+  box-sizing: border-box;
+  height: 100%;
+  padding: var(--k-space-3);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+  overflow-wrap: anywhere;
+  overflow-y: auto;
+}
+.cli-session-groups__graph-scroll:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}

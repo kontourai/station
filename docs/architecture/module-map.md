@@ -1806,6 +1806,13 @@ Ordinary dispatch and prepared replay cannot join or reuse that activation.
 Receipts are Station observations in the group record and journal, not portable
 Flow authority or semantic acceptance. The inspector discloses incomplete sync.
 
+`CliSessionGroupsPanel` derives its read-only dependency graph and member table
+from one authorized `CliSessionGroupView` snapshot. Seat IDs key nodes and
+retained `needs` supply edges; the graph does not compute a ready frontier or
+read current preset files. Revision, retained preset hash and exact member
+handles remain inspectable. Both presentations disappear on authority loss or a
+refused refresh.
+
 A durable launch intent precedes dispatch. Ambiguous starts retain occupied
 capacity and cannot be resent automatically. Cancellation closes admission and
 requests interruption through the existing session owner; only terminal evidence

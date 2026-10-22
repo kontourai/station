@@ -1644,7 +1644,12 @@ The personal runtime exposes an initial Station-authorized session-group path:
 
 The Agents inspector (`/agents?tab=ensembles`) has an explicit **Show session
 groups** action. Its bounded inventory displays the persisted members, their
-Flow dependencies, observed turn outcomes and unresolved starts. **Open member
+Flow dependencies, observed turn outcomes and unresolved starts. A read-only
+dependency graph and the member table use the same returned group revision.
+Arrows run from declared prerequisite seats to their dependents; fixed grid
+positions do not imply execution order. The retained preset hash identifies the
+source, without joining to a newer preset by name. Last-observed states do not
+prove work acceptance. **Open member
 session** navigates to the ordinary Activity session view. Inspection neither
 starts a group nor inherits mutation authority. The view withholds observations
 when current authority is lost or a refresh is refused.

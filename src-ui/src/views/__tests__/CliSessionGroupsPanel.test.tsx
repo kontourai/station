@@ -191,6 +191,18 @@ test('explicit inspection uses real SDK inventory, shows actual dependencies and
     name: 'Scrollable member table for cli-observed',
   });
   expect(tableRegion.tabIndex).toBe(0);
+  const graph = screen.getByRole('region', {
+    name: 'Dependency graph for cli-observed',
+  });
+  expect(graph.tabIndex).toBe(0);
+  graph.focus();
+  expect(document.activeElement).toBe(graph);
+  expect(within(graph).getByText('first → join')).toBeDefined();
+  expect(within(graph).getByText('second → join')).toBeDefined();
+  expect(within(graph).queryByText('waiting → join')).toBeNull();
+  expect(within(graph).getByText('Start outcome unresolved')).toBeDefined();
+  expect(within(graph).getByText('Needs input · last observed')).toBeDefined();
+  expect(screen.getByText('Dependency graph · Revision 4')).toBeDefined();
   tableRegion.focus();
   expect(document.activeElement).toBe(tableRegion);
 
@@ -206,8 +218,12 @@ test('explicit inspection uses real SDK inventory, shows actual dependencies and
   expect(screen.getByText('first, second')).toBeTruthy();
   expect(screen.getByText(/5 of 5 starts reserved/)).toBeDefined();
   expect(screen.getByText(/Dispatch allowance exhausted/)).toBeDefined();
-  expect(screen.getByText('Start outcome unresolved')).toBeTruthy();
-  expect(screen.getByText('Needs input · last observed')).toBeDefined();
+  expect(
+    within(tableRegion).getByText('Start outcome unresolved'),
+  ).toBeTruthy();
+  expect(
+    within(tableRegion).getByText('Needs input · last observed'),
+  ).toBeDefined();
   expect(
     screen.getByText(/This observation grants no response permission/),
   ).toBeDefined();
@@ -329,6 +345,9 @@ test('lost authority withholds both a late response and its query cache entry', 
   );
   expect(screen.queryByRole('table')).toBeNull();
   expect(
+    screen.queryByRole('img', { name: /Declared dependencies/ }),
+  ).toBeNull();
+  expect(
     view.client.getQueryData([
       'cli-session-groups',
       'https://station.test',
@@ -355,4 +374,7 @@ test('an authority refusal on refresh hides an earlier successful group observat
   fireEvent.click(screen.getByRole('button', { name: 'Refresh groups' }));
   await screen.findByRole('alert');
   expect(screen.queryByRole('table')).toBeNull();
+  expect(
+    screen.queryByRole('img', { name: /Declared dependencies/ }),
+  ).toBeNull();
 });

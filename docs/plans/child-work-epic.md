@@ -155,6 +155,16 @@ review passed bounded caller probes. Source-launcher and local bundled-command i
 on exact bytes/hash and roster at `a9acb0625863aa83674fafc023e3e39c5b6ca843`. Published CLI/contracts
 availability remains open; this does not complete #600.
 
+The live-group inspector now derives a read-only dependency graph and its
+accessible member table from the same authorized group revision. Nodes retain
+seat identity, edges show declared prerequisites, and states remain explicitly
+last observed. Fixed grid placement adds no scheduler or inferred execution
+order. Retained preset hash and exact session/turn handles remain available;
+current preset files are not joined by name. Mounted coverage and the UI type
+lane pass; rendered browser qualification and independent delta review remain
+pending. This increment does not supply richer runtime tool/memory/routing
+facts or complete #453/#600.
+
 Published Flow Agents 9.3.0 exports v2 authority/grants, ancestor allocations and
 invocation holds, a durable group controller, Flow-owned scheduling, mailbox
 admission and bounded no-tools context acknowledgement. Station now composes the
