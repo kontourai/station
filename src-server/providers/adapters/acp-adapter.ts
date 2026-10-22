@@ -3488,7 +3488,10 @@ export class AcpAdapter implements ProviderAdapterShape {
     record: AcpSessionRecord,
     event: CanonicalRuntimeEvent,
   ): void {
-    if (event.invocationId !== undefined) return this.publish(event);
+    if (event.invocationId !== undefined) {
+      this.publish(event);
+      return;
+    }
     const origin = record.activeTurnOrigin;
     const current =
       origin && record.activeTurnId === origin.turnId ? origin : undefined;
@@ -3506,7 +3509,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         calls.set(event.toolCallId, current);
       const call = calls.get(event.toolCallId);
       if (event.method === 'tool.completed') calls.delete(event.toolCallId);
-      return this.publish(
+      this.publish(
         call
           ? {
               ...event,
@@ -3515,6 +3518,7 @@ export class AcpAdapter implements ProviderAdapterShape {
             }
           : event,
       );
+      return;
     }
     this.publish(
       current && event.turnId === current.turnId
