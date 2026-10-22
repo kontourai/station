@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, expect, test, vi } from 'vitest';
@@ -118,7 +119,7 @@ test('authorized existence, binding and conversation reads keep image bytes lazy
     await followUpTargetMatchesBinding(
       service,
       'thread',
-      { agent: 'helper' },
+      { environment: { kind: 'current' }, agent: agentId('helper') },
       authority(),
     ),
   ).toBe(true);
