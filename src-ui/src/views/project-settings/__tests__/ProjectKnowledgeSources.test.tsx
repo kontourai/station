@@ -1,9 +1,11 @@
 // @vitest-environment jsdom
+import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { ProjectKnowledgeSources } from '../ProjectKnowledgeSources';
 
 const state = vi.hoisted(() => ({
+  roots: [] as KnowledgeStoreRoot[],
   create: vi.fn(),
   validate: vi.fn(),
   disconnect: vi.fn(),
@@ -17,11 +19,14 @@ const root = {
   createdAt: '2026-10-22T00:00:00Z',
 };
 vi.mock('@kontourai/station-sdk', () => ({
-  useKnowledgeRootsQuery: () => ({ data: [root], refetch: vi.fn() }),
+  useKnowledgeRootsQuery: () => ({ data: state.roots, refetch: vi.fn() }),
   useKnowledgeAdaptersQuery: () => ({
     data: [{ id: 'kit-default-store', displayName: 'Default store' }],
   }),
-  useCreateKnowledgeRootMutation: () => ({ mutateAsync: state.create }),
+  useCreateKnowledgeRootMutation: () => ({
+    mutateAsync: state.create,
+    data: root,
+  }),
   useValidateKnowledgeRootMutation: () => ({ mutateAsync: state.validate }),
   useDeleteKnowledgeRootMutation: () => ({
     mutateAsync: state.disconnect,
@@ -30,6 +35,7 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 beforeEach(() => {
   vi.clearAllMocks();
+  state.roots = [root];
   state.validate.mockResolvedValue({ ok: true });
   state.create.mockResolvedValue(root);
   state.disconnect.mockResolvedValue({ id: root.id });
@@ -81,4 +87,21 @@ test('a connected default-format store prevents another managed alias', () => {
   expect(
     screen.getByText(/A default-format store is already connected/),
   ).toBeTruthy();
+});
+
+test('a removed store restores managed creation despite a retained creation result', () => {
+  const view = render(
+    <ProjectKnowledgeSources slug="acme" authority={authority} />,
+  );
+  expect(
+    screen.queryByRole('button', { name: 'Create managed store' }),
+  ).toBeNull();
+  state.roots = [];
+  view.rerender(<ProjectKnowledgeSources slug="acme" authority={authority} />);
+  expect(
+    screen.getByRole('button', { name: 'Create managed store' }),
+  ).toBeTruthy();
+  expect(
+    screen.queryByText(/A default-format store is already connected/),
+  ).toBeNull();
 });

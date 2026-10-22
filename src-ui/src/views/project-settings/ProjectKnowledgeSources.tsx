@@ -129,7 +129,7 @@ export function ProjectKnowledgeSources({
             </label>
             {projectRoots.some(
               (root) => root.adapterId === 'kit-default-store',
-            ) || create.data?.adapterId === 'kit-default-store' ? (
+            ) ? (
               <p>
                 A default-format store is already connected. Use it from Project
                 knowledge, or connect another store path below.
