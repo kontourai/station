@@ -271,6 +271,13 @@ export function EnsembleCliGroupForm({
                   acceptance: not assessed.
                 </p>
               )}
+              {run.data?.admissionClosed === 'dispatch-limit-exhausted' &&
+                current && (
+                  <p role="status">
+                    Dispatch allowance exhausted. No additional starts can be
+                    reserved.
+                  </p>
+                )}
               {cancel.isSuccess && current && (
                 <p role="status">
                   Cancellation requested. Engine termination is not proven.

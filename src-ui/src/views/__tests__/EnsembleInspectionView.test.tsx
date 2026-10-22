@@ -422,11 +422,21 @@ test('preset creation saves exact scoped bindings without starting engines; expl
     new Response(
       JSON.stringify({
         success: true,
-        data: { ...savedGroup, cancelled: true },
+        data: {
+          ...savedGroup,
+          cancelled: true,
+          maxDispatches: 0,
+          admissionClosed: 'dispatch-limit-exhausted',
+        },
       }),
     ),
   );
   await screen.findByText('Flow: active. Work acceptance: not assessed.');
+  expect(
+    screen.getByText(
+      'Dispatch allowance exhausted. No additional starts can be reserved.',
+    ),
+  ).toBeDefined();
   expect(
     screen
       .getByRole('button', { name: 'Run session group' })
