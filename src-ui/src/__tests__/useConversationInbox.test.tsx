@@ -347,6 +347,18 @@ test.each(['constrained', 'expensive'] as const)(
       });
       await vi.advanceTimersByTimeAsync(2_000);
       expect(fetchMock).toHaveBeenCalledTimes(4);
+      // The native callback may have happened while the WebView was suspended.
+      iosPath.read.mockResolvedValue({
+        revision: 4,
+        constrained: true,
+        expensive: false,
+      });
+      act(() => document.dispatchEvent(new Event('visibilitychange')));
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(9_999);
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetchMock).toHaveBeenCalledTimes(5);
     } finally {
       unmount();
       expect(iosPath.unlisten).toHaveBeenCalledTimes(1);

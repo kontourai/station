@@ -37,22 +37,34 @@ function observe(changed: () => void): () => void {
     };
     changed();
   };
+  const refresh = async () => {
+    try {
+      accept(await invokeTauri<unknown>('station_native_network_path'));
+    } catch {
+      // Observation failure preserves the last known cost.
+    }
+  };
+  const visible = () => {
+    if (document.visibilityState === 'visible') void refresh();
+  };
+  document.addEventListener('visibilitychange', visible);
   // Listen before reading: a delayed command reply cannot overwrite a newer
   // event. The host retains the first observation before the WebView subscribes.
   void listenTauri<unknown>('station://network-path', accept)
-    .then(async (registered) => {
+    .then((registered) => {
       if (disposed) {
         registered();
         return;
       }
       unlisten = registered;
-      accept(await invokeTauri<unknown>('station_native_network_path'));
+      void refresh();
     })
     .catch(() => {
       // Missing observation leaves the existing optional-polling policy intact.
     });
   return () => {
     disposed = true;
+    document.removeEventListener('visibilitychange', visible);
     unlisten?.();
   };
 }
