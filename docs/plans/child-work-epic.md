@@ -218,7 +218,8 @@ repair `407c9f58139` also shows it directly in the form's returned run result.
 That UI repair has controlled regression/mutation evidence, not a new live run.
 Both test groups were canceled and the isolated runtime was stopped.
 
-The no-tools continuation gap remains open. A non-model OpenCode probe on this
+The no-tools continuation gap remains open for OpenCode/Codex and general effect
+suppression. A non-model OpenCode probe on this
 host found CLI 2.0.32 rejects the existing `debug agent` command and advertises
 `debug agents`; the latter returned an empty list under the process-local deny
 overlay. This is no resolved-policy or tool-enforcement proof. Shared engine
@@ -228,7 +229,9 @@ built-in tools only, while `setMcpServers({})` retains plugin-owned servers.
 Neither control alone establishes an all-tools-disabled continuation of the
 same delegate session. The generated installed Codex `turn/start` protocol has
 no direct all-tools-disable field; that is not proof that no alternative native
-mechanism exists. No context-sync action is exposed on these observations.
+mechanism exists. Those observations alone did not support exposing a sync
+action; the later source increment below uses a separately qualified native
+restriction.
 
 At source `6206ff52961`, owned native probes used Claude Code 2.1.308 and
 Agent SDK 0.3.302 with deterministic model responses served only on loopback.
@@ -262,13 +265,14 @@ both effects afterward. These probes remove the catalog dependency for the
 candidate; they do not establish plugin, delegation or direct internal-call
 coverage. The stronger empty-wire assertion still failed and is retained.
 
-Independent source review supports this as a candidate model-tool restriction
-for the checked CLI/SDK pair, not universal no-tools authority. Production work
-must bind the group caller to an exclusive per-thread activation generation,
+At that stage, independent source review supported a candidate model-tool
+restriction for the checked CLI/SDK pair, not universal no-tools authority. It
+required production work to bind the group caller to an exclusive per-thread activation generation,
 coalesce only matching policy/identity starts, confirm the old engine exited,
-and recheck the generation before send. It must persist logical attempts before
+and recheck the generation before send, persist logical attempts before
 effects and exact per-member ACK receipts afterward, retaining ambiguous holds.
-Ordinary mode must return through another exact native resume. Codex/ACP sync
+Ordinary mode had to return through another exact native resume. The following
+increment implements these local controls. Codex/ACP sync
 enforcement remains unqualified; context sync and full #432/#205 acceptance
 remain open. No physical/token/dollar guarantee follows from these probes.
 
