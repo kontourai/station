@@ -3798,7 +3798,10 @@ Narrow the time interval to inspect older activity. For older peers that omit
 the flag, a full limited window is conservatively marked truncated.
 
 `fetchMonitoringEvents(start, end, signal, filters)` retains its array return
-shape and no default limit for existing export callers. Both functions reject
+shape and no explicit default limit for existing export callers, while the server
+retains its row, byte and scan budgets. Array-only callers do not receive the
+truncation disclosure; exports needing completeness must use the window helper
+and check its flag. Both functions reject
 failed or malformed reads instead of reporting an empty history.
 Their filters, like `fetchInsights`' `InsightsFilters`, take `producer` to
 select one external telemetry producer; without it the other filters never

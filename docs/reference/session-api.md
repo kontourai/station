@@ -1507,8 +1507,10 @@ Live `orchestration:event` frames carry `{ event: CanonicalRuntimeEvent }`;
 activity may also arrive as `orchestration:activity`, without a durable cursor.
 The separate bare `/events` feed carries ephemeral notifications and cache
 invalidation hints. It bounds its queue to 1,024 frames or 8 MiB and compacts an
-overflow into a `data:changed` cache-resync hint while keeping the connection.
-Transient effects such as toasts and navigation are best effort. The initial
+overflow into `data:changed` with `{ "resync": true }` while keeping the connection.
+The UI invalidates its whole query cache so future query keys also recover.
+Transient effects such as toasts, navigation and approval prompts may be dropped
+on overflow and are not replayed. The initial
 `acp:status` frame repairs status changes missed while disconnected.
 The SDK consumer compares the full last-applied status for that server authority,
 including changes missed while disconnected, before invalidating status queries. It has no SSE

@@ -4051,11 +4051,14 @@ on this map, and it is not a persistent payload cache or a multi-file snapshot.
 Missing files/history can yield no events; other filesystem failures propagate.
 Malformed JSON or invalid timestamps are skipped, so a successful read does not
 prove every stored line was included. The current query returns no skipped-line
-completeness receipt. Reads refuse more than 10,000 owner-matching rows, 8 MiB
-of matching NDJSON, 32 MiB scanned bytes, or a 1 MiB line. A bounded chunk reader
-checks line bytes before JSON parsing; the HTTP history branch maps refusal to
-413 `event_history_limit_exceeded`, including when a presentation limit was
-supplied. No partial result is reported as success.
+completeness receipt. HTTP history pushes visibility, dimension filters and the
+requested limit into the reader. A bounded heap retains the newest matching
+rows by timestamp, up to 10,000 rows and 8 MiB, while a chunk reader caps work
+at 32 MiB scanned and 1 MiB per line before parsing. Dropped rows or an exhausted
+scan/line budget return `truncated: true`. A truncated scan identifies the latest
+rows among scanned bytes; it cannot certify the newest rows in unread bytes.
+Out-of-order backfill prevents stopping at the first N matches. Legacy direct
+array reads retain their hard-budget exception.
 
 The [Monitoring context](../../src-ui/src/contexts/MonitoringContext.tsx) owns
 chronological reconciliation and the newest retained window. View filtering
@@ -4076,7 +4079,8 @@ exists on disk. Runtime availability still has its own current-state owner.
 [Integration registry listings](../../src-server/providers/registries/integration-registry-provider.ts)
 read definitions afresh with asynchronous filesystem calls. Binary-presence
 lookups use asynchronous `which`/`where`, coalesce concurrent observations, and
-cache positive and negative results for 30 seconds (at most 256 commands).
+cache definitive positive and negative results for 30 seconds (at most 256 commands).
+Timeouts, signals and lookup errors are retried on the next listing.
 PATH, PATHEXT or cwd changes invalidate that cache. This status is presentation,
 never execution authority; changes within the same PATH may take the TTL to appear.
 

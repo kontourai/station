@@ -188,11 +188,11 @@ suppresses feedback; feedback failure does not block lowering. This metadata is
 not persisted as a setting. See [Usage telemetry](usage-telemetry.md#local-ledger-and-feedback).
 
 Application config changes normally arrive through the native file watcher.
-An empty watch registration or watcher error enables a five-second fallback
-signature poll. On filesystems that silently lose notifications (network mounts
-or some virtualized mounts), set `STATION_CONFIG_WATCH_POLL=1` to enable that
-fallback explicitly. Fallback observations can lag by five seconds plus event-loop
-delays; foreground config reads still check the current file signature.
+A five-second safety poll always checks the full `app.json` signature, including
+ctime, to recover silent armed watchers and mtime-preserving rewrites. Setting
+`STATION_CONFIG_WATCH_POLL=1` starts it before watcher readiness; watcher errors
+also start it immediately. Poll observations can lag by five seconds plus
+event-loop delays; foreground config reads still check the current signature.
 
 ## Logging
 
@@ -201,7 +201,9 @@ Station's server logger (`src-server/utils/logger.ts`) writes structured trace/d
 The local store batches pending lines for 10 ms, draining earlier at 64 KiB.
 The actual batch write is synchronous; this removes the syscall per line but
 can still block briefly on slow storage. Day rollover, sink replacement, close,
-server-log queries and the fatal handler's `flushSync()` drain pending lines. An abrupt kill can
+server-log queries, the fatal handler's `flushSync()`, and process exit drain pending lines.
+Failed writes/reopens retain unwritten buffered bytes for a later drain; new
+lines are best effort while storage remains unavailable. An abrupt kill can
 lose the pending batch; event-loop delays can extend its age beyond 10 ms.
 Completed writes reach the OS page cache, with no power-loss/fsync guarantee.
 Stdout and the local store serialize separate redacted and unredacted records;
