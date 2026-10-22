@@ -546,3 +546,35 @@ test('POST /api/tasks refuses a work-item ref past 512 characters (review round 
   );
   expect(service.listTasks()).toHaveLength(1);
 });
+
+test('cross-Project uniqueness needs a board check on both sides (review round 3, F2)', async () => {
+  const { service, create, start } = await fixture();
+  // An unchecked github Task in alpha does not hold the item for beta's
+  // board-checked Start Task: beta gets its own Task.
+  const typed = await service.createTask({
+    projectId: 'alpha',
+    title: 'Typed in alpha',
+    workItemRef: REF,
+  });
+  const started = await start(REF, 'beta');
+  expect(started.status, await started.clone().text()).toBe(201);
+  const betaTask = (await json(started)).data.task;
+  expect(betaTask).toMatchObject({
+    projectId: 'beta',
+    workItemProvenance: 'project-board',
+  });
+  expect(betaTask.id).not.toBe(typed.id);
+  // A board-checked Task in alpha does not stop an unchecked service create
+  // in another Project.
+  await service.updateTaskStatus(typed.id, 'canceled');
+  await service.updateTaskStatus(betaTask.id, 'canceled');
+  const checked = await create({ workItemRef: REF });
+  expect(checked.status, await checked.clone().text()).toBe(201);
+  expect(
+    await service.createTask({
+      projectId: 'id-gamma',
+      title: 'Typed in gamma',
+      workItemRef: REF,
+    }),
+  ).toMatchObject({ projectId: 'id-gamma' });
+});
