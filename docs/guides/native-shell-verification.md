@@ -254,6 +254,42 @@ WebView IPC, packaged-shell, mobile, or physical-device behavior.
 
 ## Resolver recovery and approval uncertainty
 
+### iOS network path observation
+
+The [iOS observer](../../src-desktop/src/ios_network_path.rs) starts one
+Network.framework path monitor for the app process and cancels it at exit.
+Every callback advances the broker's network epoch, including path changes
+whose cost flags are unchanged. Existing in-flight requests retain the broker's
+send/revalidation rules; observation does not authorize a retry or replacement
+credential. The monitor sends only revision, constrained and expensive flags,
+with a retained snapshot for a WebView that subscribes after the first callback.
+The [UI adapter](../../src-ui/src/platform/native/iosNetworkCost.ts) validates
+these fields and ignores older snapshots. Either cost flag lengthens optional
+polling through the existing browser/Android policy; absent observation keeps
+the normal cadence. Essential sends remain available on expensive networks.
+
+This is passive observation. Native HTTP still uses ureq/rustls and BSD sockets.
+There is no radio-activation probe, `waitsForConnectivity`, or on-demand VPN
+activation guarantee. A URLSession migration would additionally provide
+OS-managed connection establishment, bounded connectivity waiting and per-request
+constrained/expensive-network policy. It would require separate review of
+ephemeral cookie/credential storage, redirects, streaming/cancellation, dispatch
+uncertainty and authority revalidation before replacing the broker transport.
+
+Rust tests cover callback-to-epoch publication and retained cost; mounted inbox
+tests cover actual polling cadence, validation and late-reply ordering. Neither
+proves delivery from Network.framework through real iOS IPC. Physical-device
+behavior is `NOT_VERIFIED`: install the exact candidate, toggle Low Data Mode
+on Wi-Fi and cellular, verify optional polling slows and restores, then switch
+Wi-Fi/cellular and VPN paths (including unchanged cost), background/resume, and
+confirm requests reconnect without replaying sent writes. With all paths
+unavailable, verify bounded request failure/cancellation; separately test a cold
+cellular and on-demand VPN connection. Retain app identity, source/artifact SHA,
+OS/device version and observations. Compilation and simulator startup do not
+establish those outcomes.
+
+### DNS recovery
+
 Both native authenticated requests and the credential-free public handshake
 retry a host-issued `transport_dns` failure twice, after 250 and 500 ms. The
 native client disables redirects, so this resolver failure precedes HTTP

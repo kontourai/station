@@ -14,6 +14,7 @@ mod desktop_installation;
 #[cfg(not(mobile))]
 mod desktop_update;
 mod ios_background_task;
+mod ios_network_path;
 #[cfg(not(mobile))]
 mod local_access_watch;
 #[cfg(all(not(mobile), unix))]
@@ -13510,6 +13511,7 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(not(mobile))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         native_capability_report,
+        ios_network_path::station_native_network_path,
         native_relay_redemption::station_native_device_binding_candidate,
         native_relay_redemption::station_native_device_binding_self_receipt,
         native_application_peer::station_native_application_peer_prepare,
@@ -13614,6 +13616,7 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(mobile)]
     let builder = builder.invoke_handler(tauri::generate_handler![
         native_capability_report,
+        ios_network_path::station_native_network_path,
         native_relay_redemption::station_native_device_binding_candidate,
         native_relay_redemption::station_native_device_binding_self_receipt,
         native_application_peer::station_native_application_peer_prepare,
@@ -13892,6 +13895,7 @@ If a stable instance is running, this launch will focus its window and exit.",
         .expect("error while building tauri application");
     #[cfg(target_os = "ios")]
     {
+        ios_network_path::start(app.handle());
         let state = app.state::<native_relay_link_intake::NativeRelayLinkState>();
         state.start_expiry_worker();
         if let Err(stage) = native_relay_ios_launch::install(app.handle().clone()) {
@@ -13905,6 +13909,8 @@ If a stable instance is running, this launch will focus its window and exit.",
                 native_relay_link_intake::receive_opened(app, urls);
             }
             if let tauri::RunEvent::Exit = &event {
+                #[cfg(target_os = "ios")]
+                ios_network_path::stop(app);
                 app.state::<native_relay_link_intake::NativeRelayLinkState>().stop();
             }
             #[cfg(not(mobile))]
