@@ -97,7 +97,17 @@ function refusal(c: Context, refused: TaskLearningRefusal) {
           success: false,
           code: 'task_learning_promoted',
           error:
-            'That version was already promoted, so it cannot be dismissed. Nothing was written.',
+            "A promotion of that version is already recorded, so it can't be dismissed. Nothing was written.",
+        },
+        409,
+      );
+    case 'promotion-store-gone':
+      return c.json(
+        {
+          success: false,
+          code: 'task_learning_store_gone',
+          error:
+            "That version's promotion is recorded for a store this Project no longer has. Nothing was written.",
         },
         409,
       );
@@ -202,10 +212,9 @@ export function createTaskLearningRoutes(deps: TaskLearningRouteDeps) {
     async (c) => {
       const access = await deps.access(param(c, 'taskId'), c.req.raw);
       if (access.kind !== 'granted') return accessRefused(c, access.kind);
-      let result: Awaited<ReturnType<typeof dismissTaskLearning>>;
+      let result: ReturnType<typeof dismissTaskLearning>;
       try {
-        result = await dismissTaskLearning(
-          deps.store,
+        result = dismissTaskLearning(
           access,
           getBody(c) as z.infer<typeof taskLearningDismissSchema>,
         );

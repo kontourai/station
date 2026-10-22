@@ -128,7 +128,11 @@ export type TaskLearningDismissResult =
 
 /** Which Project store a record version was promoted into (migration 022). */
 export interface TaskLearningPromotionRecord extends TaskLearningDismissal {
+  /** The store's root id when the promotion was recorded; it can be reused. */
   readonly rootId: string;
+  /** The store's identity: its adapter and the directory it keeps records in. */
+  readonly adapterId: string;
+  readonly storeRoot: string;
   readonly principalId: string;
   readonly promotedAt: string;
 }
@@ -204,12 +208,6 @@ export interface TaskMemoryStore {
         readonly projectId: string;
         readonly principalId: string;
         readonly beforeCommit?: () => boolean;
-        /**
-         * Whether a promotion row's store is no longer one of the
-         * Project's. Such a promotion can never finish, so it does not stop
-         * the dismissal (review round 4). Absent: every row stops it.
-         */
-        readonly promotionStoreGone?: (rootId: string) => boolean;
       },
   ): TaskLearningDismissResult;
   /**
@@ -222,6 +220,8 @@ export interface TaskMemoryStore {
       TaskLearningDismissal & {
         readonly projectId: string;
         readonly rootId: string;
+        readonly adapterId: string;
+        readonly storeRoot: string;
         readonly principalId: string;
         readonly beforeCommit?: () => boolean;
       },
@@ -283,12 +283,14 @@ interface PromotionRow {
   record_key: string;
   version: number;
   root_id: string;
+  adapter_id: string;
+  store_root: string;
   principal_id: string;
   promoted_at: string;
 }
 
 const PROMOTION_COLUMNS =
-  'kind, record_key, version, root_id, principal_id, promoted_at';
+  'kind, record_key, version, root_id, adapter_id, store_root, principal_id, promoted_at';
 
 function promotionFromRow(row: PromotionRow): TaskLearningPromotionRecord {
   return {
@@ -296,6 +298,8 @@ function promotionFromRow(row: PromotionRow): TaskLearningPromotionRecord {
     key: row.record_key,
     version: row.version,
     rootId: row.root_id,
+    adapterId: row.adapter_id,
+    storeRoot: row.store_root,
     principalId: row.principal_id,
     promotedAt: row.promoted_at,
   };
@@ -713,8 +717,10 @@ export function createSqliteTaskMemoryStore(
               commit: false,
               value: { kind: 'already-dismissed', dismissal: existing },
             };
-          const promotion = readPromotion(input);
-          if (promotion && !input.promotionStoreGone?.(promotion.root_id))
+          // Any promotion row stops a dismissal (round 3 F1, kept in round
+          // 5): a version whose store left the Project is a closed review,
+          // not an open candidate, so nothing needs to dismiss it.
+          if (readPromotion(input))
             return { commit: false, value: { kind: 'promoted' } };
           const current = currentRecord(input, input.kind, input.key);
           if (
@@ -767,14 +773,16 @@ export function createSqliteTaskMemoryStore(
           key: input.key,
           version: input.version,
           rootId: input.rootId,
+          adapterId: input.adapterId,
+          storeRoot: input.storeRoot,
           principalId: input.principalId,
           promotedAt: now().toISOString(),
         };
         db.prepare(
           `INSERT INTO task_learning_promotions (project_id, task_id,
              task_created_at, kind, record_key, version, root_id,
-             principal_id, promoted_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             adapter_id, store_root, principal_id, promoted_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         ).run(
           input.projectId,
           input.taskId,
@@ -783,6 +791,8 @@ export function createSqliteTaskMemoryStore(
           promotion.key,
           promotion.version,
           promotion.rootId,
+          promotion.adapterId,
+          promotion.storeRoot,
           promotion.principalId,
           promotion.promotedAt,
         );

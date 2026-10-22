@@ -108,7 +108,9 @@ export function TaskLearningPanel({ taskId }: { taskId: string }) {
                       <span>
                         {candidate.review.state === 'promoted'
                           ? `Promoted to ${storeName(view.stores, candidate.review.rootId)}`
-                          : 'Dismissed'}
+                          : candidate.review.state === 'promotion-store-gone'
+                            ? 'Promotion recorded; its store is no longer one of this Project’s'
+                            : 'Dismissed'}
                       </span>
                     </p>
                   </li>
@@ -151,9 +153,8 @@ function CandidateItem({
   stores: readonly TaskLearningStore[];
 }) {
   const { record, review } = candidate;
-  // A promotion that recorded its store but did not finish (round 4): it can
-  // only be finished in that store, or, once the store has left the Project,
-  // dismissed.
+  // A promotion is recorded and its store is here, but the record is not in
+  // it: it can only be finished, in that store (review round 5).
   const pending = review.state === 'pending' ? review : undefined;
   const pinnedStores = pending
     ? stores.filter((store) => store.rootId === pending.rootId)
@@ -190,9 +191,7 @@ function CandidateItem({
       </p>
       {pending ? (
         <p className="task-memory__note" role="status">
-          {pending.storeAvailable
-            ? `Promotion into ${storeName(stores, pending.rootId)} did not finish. Promote it again to finish it there.`
-            : 'Promotion did not finish, and the store it was going into is no longer one of this Project’s. Dismiss it to stop offering it.'}
+          {`A promotion into ${storeName(stores, pending.rootId)} is recorded, but its record is not in that store yet. Finish the promotion to write it there.`}
         </p>
       ) : null}
       {draft ? (
@@ -255,9 +254,9 @@ function CandidateItem({
               variant="primary"
               disabled={!draft.text.trim() || !draft.title.trim()}
               pending={promote.isPending}
-              pendingLabel="Promoting…"
+              pendingLabel={pending ? 'Finishing…' : 'Promoting…'}
             >
-              Promote
+              {pending ? 'Finish promotion' : 'Promote'}
             </Button>
             <Button
               type="button"
@@ -276,7 +275,7 @@ function CandidateItem({
         </form>
       ) : (
         <div className="task-memory__actions">
-          {pending && !pending.storeAvailable ? null : (
+          {
             <Button
               size="sm"
               disabled={pinnedStores.length === 0 || busy}
@@ -290,8 +289,8 @@ function CandidateItem({
             >
               {pending ? 'Finish promotion…' : 'Promote…'}
             </Button>
-          )}
-          {pending?.storeAvailable ? null : (
+          }
+          {pending ? null : (
             <Button
               size="sm"
               variant="ghost"

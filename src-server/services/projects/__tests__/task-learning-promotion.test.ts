@@ -56,9 +56,15 @@ function root(name: string): KnowledgeStoreRoot {
 
 function knowledge(initialRoots: KnowledgeStoreRoot[]) {
   let roots = initialRoots;
-  const records = new Map<string, Map<string, KitRecord>>(
-    roots.map((r) => [r.id, new Map()]),
-  );
+  // Records live in a store's directory, as the Kit's stores keep them, so
+  // a root id names them only while it names that directory.
+  const records = new Map<string, Map<string, KitRecord>>();
+  const held = (rootId: string) => {
+    const dir = roots.find((r) => r.id === rootId)?.storeRoot ?? `?${rootId}`;
+    const map = records.get(dir) ?? new Map<string, KitRecord>();
+    records.set(dir, map);
+    return map;
+  };
   let open: () => void = () => undefined;
   const gate = new Promise<void>((resolve) => {
     open = resolve;
@@ -66,13 +72,13 @@ function knowledge(initialRoots: KnowledgeStoreRoot[]) {
   const provider = {
     listRoots: async () => roots,
     adapterFor: async (rootId: string) => ({
-      get: async (id: string) => records.get(rootId)?.get(id) ?? null,
+      get: async (id: string) => held(rootId).get(id) ?? null,
       create: async (record: KitRecord) => {
         await gate;
-        const held = records.get(rootId)!;
-        if (held.has(record.id))
+        const into = held(rootId);
+        if (into.has(record.id))
           throw new Error(`record ${record.id} already exists`);
-        held.set(record.id, record);
+        into.set(record.id, record);
       },
     }),
   } as unknown as KnowledgeStoreProvider;
@@ -80,7 +86,10 @@ function knowledge(initialRoots: KnowledgeStoreRoot[]) {
   const setRoots = (next: KnowledgeStoreRoot[]) => {
     roots = next;
   };
-  return { provider, records, open, setRoots };
+  /** The records in a store's directory. */
+  const recordsIn = (root: KnowledgeStoreRoot) =>
+    records.get(root.storeRoot) ?? new Map<string, KitRecord>();
+  return { provider, records, recordsIn, open, setRoots };
 }
 
 function memoryWithDecision() {
@@ -130,10 +139,10 @@ test('two people promoting one version into two stores at once write one record,
   await new Promise((resolve) => setTimeout(resolve, 50));
   open();
   const results = await both;
-  const written = [...records.entries()].flatMap(([rootId, held]) =>
-    [...held.values()].map((record) => [rootId, record.body]),
+  const written = [...records.entries()].flatMap(([dir, held]) =>
+    [...held.values()].map((record) => [dir, record.body]),
   );
-  expect(written).toEqual([[stores[0]!.id, 'Use SQLite (person-a).']]);
+  expect(written).toEqual([[stores[0]!.storeRoot, 'Use SQLite (person-a).']]);
   expect(results.map((result) => result.kind).sort()).toEqual([
     'already-promoted',
     'promoted',
@@ -144,7 +153,7 @@ test('two people promoting one version into two stores at once write one record,
 
 test('a promotion whose write failed is finished in its recorded store, never another', async () => {
   const stores = [root('a'), root('b')];
-  const { provider, records, open } = knowledge(stores);
+  const { provider, recordsIn, open } = knowledge(stores);
   open();
   const memory = memoryWithDecision();
   const access: TaskLearningAccess = {
@@ -187,13 +196,13 @@ test('a promotion whose write failed is finished in its recorded store, never an
     rootId: stores[1]!.id,
   });
   expect(retried).toMatchObject({ kind: 'promoted', rootId: stores[0]!.id });
-  expect(records.get(stores[0]!.id)!.size).toBe(1);
-  expect(records.get(stores[1]!.id)!.size).toBe(0);
+  expect(recordsIn(stores[0]!).size).toBe(1);
+  expect(recordsIn(stores[1]!).size).toBe(0);
 });
 
 test('a dismissal that lands after the pre-check still stops the promotion, inside its transaction (review round 2, P3-6)', async () => {
   const stores = [root('a')];
-  const { provider, records, open } = knowledge(stores);
+  const { provider, recordsIn, open } = knowledge(stores);
   open();
   const memory = memoryWithDecision();
   expect(
@@ -234,12 +243,12 @@ test('a dismissal that lands after the pre-check still stops the promotion, insi
     },
   );
   expect(result).toEqual({ kind: 'was-dismissed' });
-  expect(records.get(stores[0]!.id)!.size).toBe(0);
+  expect(recordsIn(stores[0]!).size).toBe(0);
 });
 
 test('once a promotion claims a version it cannot be dismissed, and a failed write still finishes (review round 3, F1)', async () => {
   const stores = [root('a')];
-  const { provider, records, open } = knowledge(stores);
+  const { provider, recordsIn, open } = knowledge(stores);
   open();
   const memory = memoryWithDecision();
   const access: TaskLearningAccess = {
@@ -273,7 +282,7 @@ test('once a promotion claims a version it cannot be dismissed, and a failed wri
   );
   // A dismissal now is refused, not recorded.
   expect(
-    await dismissTaskLearning(provider, access, {
+    dismissTaskLearning(access, {
       kind: 'decision',
       key: 'storage',
       version: 1,
@@ -290,23 +299,29 @@ test('once a promotion claims a version it cannot be dismissed, and a failed wri
     kind: 'promoted',
     rootId: stores[0]!.id,
   });
-  expect(records.get(stores[0]!.id)!.size).toBe(1);
+  expect(recordsIn(stores[0]!).size).toBe(1);
 });
 
-test('an unfinished promotion reads as pending; once its store leaves the Project it can be dismissed (review round 4, P3-1)', async () => {
-  const stores = [root('a'), root('b')];
-  const { provider, records, open, setRoots } = knowledge(stores);
-  open();
-  const memory = memoryWithDecision();
-  const access: TaskLearningAccess = {
-    memory,
-    task: TASK,
-    projectId: TASK.projectId,
-    projectSlug: 'alpha',
-    principalId: 'person-a',
-    isCurrent: () => true,
-  };
-  const failing = {
+const accessFor = (
+  memory: ReturnType<typeof memoryWithDecision>,
+): TaskLearningAccess => ({
+  memory,
+  task: TASK,
+  projectId: TASK.projectId,
+  projectSlug: 'alpha',
+  principalId: 'person-a',
+  isCurrent: () => true,
+});
+const IDENTITY = { kind: 'decision' as const, key: 'storage', version: 1 };
+const promotionInto = (rootId: string) => ({
+  ...IDENTITY,
+  rootId,
+  title: 'Storage',
+  text: 'Use SQLite.',
+});
+/** A provider over the same stores whose every knowledge write fails. */
+const failingWrites = (provider: KnowledgeStoreProvider) =>
+  ({
     listRoots: provider.listRoots,
     adapterFor: async (rootId: string) => ({
       ...(await provider.adapterFor(rootId)),
@@ -314,46 +329,79 @@ test('an unfinished promotion reads as pending; once its store leaves the Projec
         throw new Error('disk full');
       },
     }),
-  } as unknown as KnowledgeStoreProvider;
-  const identity = { kind: 'decision' as const, key: 'storage', version: 1 };
+  }) as unknown as KnowledgeStoreProvider;
+
+test('a finished promotion whose store is then removed is a closed review, and dismissing it is refused (review round 5)', async () => {
+  const stores = [root('a')];
+  const { provider, open, setRoots } = knowledge(stores);
+  open();
+  const access = accessFor(memoryWithDecision());
   expect(
-    (
-      await promoteTaskLearning(failing, access, {
-        ...identity,
-        rootId: stores[0]!.id,
-        title: 'Storage',
-        text: 'Use SQLite.',
-      })
-    ).kind,
-  ).toBe('store-failed');
-  // Pending, not open, while its store is still the Project's.
+    (await promoteTaskLearning(provider, access, promotionInto(stores[0]!.id)))
+      .kind,
+  ).toBe('promoted');
+  setRoots([]);
   expect((await readTaskLearning(provider, access)).candidates).toMatchObject([
-    {
-      record: { key: 'storage' },
-      review: { state: 'pending', rootId: stores[0]!.id, storeAvailable: true },
-    },
+    { review: { state: 'promotion-store-gone', rootId: stores[0]!.id } },
   ]);
-  expect(await dismissTaskLearning(provider, access, identity)).toEqual({
+  expect(dismissTaskLearning(access, IDENTITY)).toEqual({
     kind: 'was-promoted',
   });
-  // The store leaves the Project: the promotion can never finish there.
-  setRoots([stores[1]!]);
+});
+
+test("a removed store's root id reused by an unrelated store reads as closed, not pending (review round 5)", async () => {
+  const original = root('a');
+  const { provider, open, setRoots } = knowledge([original]);
+  open();
+  const access = accessFor(memoryWithDecision());
+  await promoteTaskLearning(provider, access, promotionInto(original.id));
+  // The store is removed and a new one, in another directory, takes the id.
+  const replacement = { ...root('other'), id: original.id };
+  setRoots([replacement]);
   expect((await readTaskLearning(provider, access)).candidates).toMatchObject([
-    { review: { state: 'pending', storeAvailable: false } },
+    { review: { state: 'promotion-store-gone', rootId: original.id } },
   ]);
   expect(
-    await promoteTaskLearning(provider, access, {
-      ...identity,
-      rootId: stores[1]!.id,
-      title: 'Storage',
-      text: 'Use SQLite.',
-    }),
-  ).toEqual({ kind: 'no-store' });
-  expect(await dismissTaskLearning(provider, access, identity)).toMatchObject({
-    kind: 'dismissed',
-  });
+    await promoteTaskLearning(provider, access, promotionInto(original.id)),
+  ).toEqual({ kind: 'promotion-store-gone' });
+});
+
+test('the same directory registered again is the same store: its record reads as promoted (review round 5)', async () => {
+  const original = root('a');
+  const { provider, open, setRoots } = knowledge([original]);
+  open();
+  const access = accessFor(memoryWithDecision());
+  await promoteTaskLearning(provider, access, promotionInto(original.id));
+  setRoots([{ ...original, id: 'root:project-alpha:a-again' }]);
   expect((await readTaskLearning(provider, access)).candidates).toMatchObject([
-    { review: { state: 'dismissed' } },
+    { review: { state: 'promoted', rootId: 'root:project-alpha:a-again' } },
   ]);
-  expect(records.get(stores[1]!.id)!.size).toBe(0);
+});
+
+test('a pending promotion with its store present reads as pending and can be finished there (review round 5)', async () => {
+  const stores = [root('a'), root('b')];
+  const { provider, recordsIn, open } = knowledge(stores);
+  open();
+  const access = accessFor(memoryWithDecision());
+  expect(
+    (
+      await promoteTaskLearning(
+        failingWrites(provider),
+        access,
+        promotionInto(stores[0]!.id),
+      )
+    ).kind,
+  ).toBe('store-failed');
+  expect((await readTaskLearning(provider, access)).candidates).toMatchObject([
+    { review: { state: 'pending', rootId: stores[0]!.id } },
+  ]);
+  // Finishing it, even naming the other store, writes only into its own.
+  expect(
+    await promoteTaskLearning(provider, access, promotionInto(stores[1]!.id)),
+  ).toMatchObject({ kind: 'promoted', rootId: stores[0]!.id });
+  expect(recordsIn(stores[0]!).size).toBe(1);
+  expect(recordsIn(stores[1]!).size).toBe(0);
+  expect((await readTaskLearning(provider, access)).candidates).toMatchObject([
+    { review: { state: 'promoted', rootId: stores[0]!.id } },
+  ]);
 });

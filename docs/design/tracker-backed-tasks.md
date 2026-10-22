@@ -396,16 +396,19 @@ step.
   that store: two people choosing two stores at once still get one record
   (the second answer is `already-promoted`). When the first write failed, the
   next promotion finishes it in the recorded store, with that request's
-  edited title and text. Promotion and dismissal each check the other
-  inside their own transaction, so the first to commit wins: a dismissed
-  version is not promoted, and while a promotion row's store is still one
-  of the Project's the version cannot be dismissed (`409
-  task_learning_promoted`), so a promotion whose write failed can still be
-  finished. The candidate list shows such a version as **promotion
-  pending**, offering only to finish it in that store. If the recorded
-  store has since left the Project, promoting answers `no-store` and is
-  never written elsewhere; the version then reads as pending with its store
-  gone, and can only be dismissed. "Promoted" in the candidate list is read back from
+  edited title and text. The row pins the store's identity, its adapter
+  and the directory it keeps records in, because a removed store's root id
+  is reused by the next store created. Promotion and dismissal each check
+  the other inside their own transaction, so the first to commit wins: a
+  dismissed version is not promoted, and a version with a promotion row
+  cannot be dismissed (`409 task_learning_promoted`). A version with a row
+  reads as one of three states: **promoted** when its pinned store holds
+  the record; **pending** when the pinned store is one of the Project's but
+  the record is not in it, offering only to finish the promotion there; and
+  a closed review when the pinned store is no longer one of the Project's,
+  which is never offered again and says nothing about whether the record
+  was written. Promoting such a version answers `409
+  task_learning_store_gone`, and nothing is written elsewhere. "Promoted" in the candidate list is read back from
   the stores. A later version of the same key is a new candidate.
 - **Dismissals** are kept as an append-only row per dismissed record version
   (`task_learning_dismissals`, migration 021).

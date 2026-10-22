@@ -216,11 +216,14 @@ routes, so an agent's request is refused (`403`,
   `task_learning_dismissed`, `task_learning_no_store`.
 - `POST /api/tasks/:taskId/room/memory/learning/dismiss` takes `{kind, key,
   version}` and records the dismissal; a second one answers
-  `status: "already-dismissed"`. A version a promotion has already claimed,
-  in a store that is still one of the Project's, is `409`
-  `task_learning_promoted`, and nothing is written. The candidate list
-  reads such a version as `review.state: "pending"`, with `storeAvailable`
-  saying whether its store is still the Project's.
+  `status: "already-dismissed"`. A version with a recorded promotion is
+  `409` `task_learning_promoted`, and nothing is written. Such a version
+  reads as `review.state` `promoted` (its store holds the record),
+  `pending` (its store is the Project's but lacks the record; promoting
+  finishes it there) or `promotion-store-gone` (its store, matched by
+  adapter and directory, is no longer the Project's; a closed review).
+  Promoting a `promotion-store-gone` version is `409`
+  `task_learning_store_gone`.
 
 A promoted record is searchable once its store is reindexed
 (`POST /api/knowledge/index/rebuild`); promotion does not index it.

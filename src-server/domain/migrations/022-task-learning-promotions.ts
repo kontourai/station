@@ -11,6 +11,12 @@
  * concurrent promotion of that version reads it and writes (or reads back)
  * only in that store.
  *
+ * The row pins the store's IDENTITY, not only its root id: a root id is
+ * reused once its store is removed (`root:project-<slug>`), so the store is
+ * the adapter and the directory it keeps records in (`adapter_id`,
+ * `store_root`). A current root with the same identity is the same store;
+ * a root id whose identity differs is another store (review round 5).
+ *
  * One row per record version of a Task incarnation `(task_id,
  * task_created_at)`. Append-only at the database, like the dismissals
  * (migration 021).
@@ -24,6 +30,8 @@ CREATE TABLE IF NOT EXISTS task_learning_promotions (
   record_key TEXT NOT NULL CHECK (length(record_key) BETWEEN 1 AND 64),
   version INTEGER NOT NULL CHECK (version >= 1),
   root_id TEXT NOT NULL CHECK (length(root_id) BETWEEN 1 AND 300),
+  adapter_id TEXT NOT NULL CHECK (length(adapter_id) BETWEEN 1 AND 300),
+  store_root TEXT NOT NULL CHECK (length(store_root) BETWEEN 1 AND 4096),
   principal_id TEXT NOT NULL CHECK (length(principal_id) BETWEEN 1 AND 256),
   promoted_at TEXT NOT NULL,
   PRIMARY KEY (task_id, task_created_at, kind, record_key, version)
