@@ -127,14 +127,23 @@ export function ProjectKnowledgeSources({
                 onChange={(event) => setName(event.target.value)}
               />
             </label>
-            <Button
-              disabled={busy}
-              pending={create.isPending}
-              onClick={() => void add(false)}
-            >
-              Create managed store
-            </Button>
-            <h3>Connect an existing store</h3>
+            {projectRoots.some(
+              (root) => root.adapterId === 'kit-default-store',
+            ) || create.data?.adapterId === 'kit-default-store' ? (
+              <p>
+                A default-format store is already connected. Use it from Project
+                knowledge, or connect another store path below.
+              </p>
+            ) : (
+              <Button
+                disabled={busy || roots.isFetching}
+                pending={create.isPending}
+                onClick={() => void add(false)}
+              >
+                Create managed store
+              </Button>
+            )}
+            <h3>Connect a store path</h3>
             {adapters.isError ? (
               <div role="alert">
                 <p>{userFacingErrorMessage(adapters.error)}</p>
@@ -184,7 +193,7 @@ export function ProjectKnowledgeSources({
                 pending={validate.isPending}
                 onClick={() => void check()}
               >
-                Validate store
+                Check source
               </Button>
               <Button
                 disabled={
@@ -199,8 +208,8 @@ export function ProjectKnowledgeSources({
             </div>
             {checked?.path === path && checked?.adapterId === adapterId && (
               <p role="status">
-                Store format validated. Connect to register it with this
-                project.
+                Source accepted for registration. This does not confirm that the
+                path exists or that records can be read.
               </p>
             )}
           </div>

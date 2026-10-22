@@ -42,11 +42,11 @@ test('editing an existing source invalidates validation before connection', asyn
   const connect = screen.getByRole('button', { name: 'Connect store' });
   expect(connect.hasAttribute('disabled')).toBe(true);
   fireEvent.change(path, { target: { value: '/host/first' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Validate store' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Check source' }));
   await waitFor(() => expect(connect.hasAttribute('disabled')).toBe(false));
   fireEvent.change(path, { target: { value: '/host/second' } });
   expect(connect.hasAttribute('disabled')).toBe(true);
-  fireEvent.click(screen.getByRole('button', { name: 'Validate store' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Check source' }));
   await waitFor(() => expect(connect.hasAttribute('disabled')).toBe(false));
   fireEvent.click(connect);
   await waitFor(() =>
@@ -71,4 +71,14 @@ test('disconnect confirmation submits the observed root and explains retained fi
     }),
   );
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+});
+
+test('a connected default-format store prevents another managed alias', () => {
+  render(<ProjectKnowledgeSources slug="acme" authority={authority} />);
+  expect(
+    screen.queryByRole('button', { name: 'Create managed store' }),
+  ).toBeNull();
+  expect(
+    screen.getByText(/A default-format store is already connected/),
+  ).toBeTruthy();
 });

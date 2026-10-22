@@ -363,9 +363,13 @@ Obsidian-specific folder structure you're pointing it at.
 
 **Settings → Sources** brings repository resolution and knowledge registrations
 into one section. Create a managed store without selecting a folder, or choose a
-supported store format, enter its path on the Station host, validate it, and
-connect it. Changing the path or format requires another validation. The server
-also validates when registering the store.
+supported store format, enter its path on the Station host, check it, and
+connect it. Changing the path or format requires another check. The server
+also applies the adapter's check when registering the store. An adapter without
+a validation hook, including the default adapter, accepts a path without
+confirming that it exists or contains readable records. A connected default-format
+store replaces the managed-create action so repeated clicks do not add aliases
+of the same managed directory.
 
 Refresh rereads the registry. Registration does not prove successful indexing,
 live reads, or Agent access. **Disconnect** confirms the exact observed source
