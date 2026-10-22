@@ -2512,6 +2512,8 @@ impl StationProfileFileVersion {
 #[derive(Clone, Default)]
 struct StationProfileSnapshotCache {
     #[cfg(unix)]
+    metadata_verified: bool,
+    #[cfg(unix)]
     snapshot: Option<(
         std::path::PathBuf,
         StationProfileFileVersion,
@@ -2532,7 +2534,11 @@ impl StationProfileSnapshotCache {
             let metadata = std::fs::symlink_metadata(path).map_err(|error| error.to_string())?;
             let version = StationProfileFileVersion::of(&metadata);
             if let Some((cached_path, cached_version, _, store)) = &self.snapshot {
-                if cached_path == path && cached_version == &version && version.unambiguous() {
+                if cached_path == path
+                    && cached_version == &version
+                    && self.metadata_verified
+                    && version.unambiguous()
+                {
                     return Ok(std::sync::Arc::clone(store));
                 }
             }
@@ -2551,6 +2557,7 @@ impl StationProfileSnapshotCache {
                 );
             }
             let version = StationProfileFileVersion::of(&metadata);
+            let metadata_verified = version.unambiguous();
             let cached = self.snapshot.take();
             let mut contents = String::new();
             file.read_to_string(&mut contents)
@@ -2570,6 +2577,7 @@ impl StationProfileSnapshotCache {
                 }
                 _ => std::sync::Arc::new(parse_station_profile_store(&contents)?),
             };
+            self.metadata_verified = metadata_verified;
             self.snapshot = Some((
                 path.to_owned(),
                 version,

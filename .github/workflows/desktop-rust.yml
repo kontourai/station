@@ -124,7 +124,6 @@ jobs:
           JAVA_HOME: ${{ env.JAVA_HOME_17_X64 }}
         run: |
           python3 - <<'PYTHON'
-          import os
           from pathlib import Path
           import subprocess
           import xml.etree.ElementTree as ET
@@ -152,7 +151,7 @@ jobs:
           try:
               change(transport, "        // Mark BEFORE calling:", "        if self.epoch != network_epoch() { return Err(ureq::Error::Io(std::io::ErrorKind::NotConnected.into())); }\n        // Mark BEFORE calling:")
               change(transport, "        self.inner.await_input(timeout)", "        let mut timeout = timeout;\n        if PROGRESS.with(Cell::get).reused && *timeout.after > Duration::from_secs(3) {\n            timeout.after = ureq::unversioned::transport::time::Duration::Exact(Duration::from_secs(3));\n            timeout.reason = ureq::Timeout::RecvResponse;\n        }\n        self.inner.await_input(timeout)")
-              change(lib, "cached_version == &version && version.unambiguous()", "cached_version == &version && false && version.unambiguous()")
+              change(lib, "&& self.metadata_verified", "&& false && self.metadata_verified")
               change(lib, "    let mut local = cache\n        .lock()\n        .unwrap_or_else(|error| error.into_inner())\n        .clone();", "    let mut local = cache.lock().unwrap().clone();")
               change(recovery, "if self.error_shown {", "if false && self.error_shown {")
               change(android, "if (foreground) foreground(now, restart, exhausted)", "foreground(now, restart, exhausted)")

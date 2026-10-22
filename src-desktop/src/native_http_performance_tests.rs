@@ -765,6 +765,9 @@ fn native_http_snapshot_hot_reads_do_not_read_profile_bytes_or_repeat_genesis() 
     std::fs::write(&path, &contents).unwrap();
     let first = read_native_http_profile_snapshot(&path, || Ok(())).unwrap();
     std::thread::sleep(Duration::from_millis(2100));
+    let settled =
+        read_native_http_profile_snapshot(&path, || Err("repeated genesis".into())).unwrap();
+    assert!(Arc::ptr_eq(&first, &settled));
     let read_bytes = || -> u64 {
         let io = std::fs::read_to_string("/proc/thread-self/io").unwrap();
         io.lines()
@@ -819,5 +822,8 @@ fn native_http_recent_metadata_collision_compares_bytes() {
     // version even though the bytes changed in the same timestamp window.
     cache.snapshot.as_mut().unwrap().1 =
         StationProfileFileVersion::of(&std::fs::metadata(&path).unwrap());
+    // Waiting out the collision window must not turn the old byte snapshot
+    // into trusted metadata without another read.
+    std::thread::sleep(Duration::from_millis(2100));
     assert_eq!(cache.read(&path).unwrap().revision, 1);
 }
