@@ -7,7 +7,8 @@
  * setting or clearing a key are `engine:login`, the token device-code login
  * already uses (a device needs it granted, the operator in person never
  * does). A terminal sign-in runs a command on the host, so a paired device
- * additionally needs `coding:exec`, and `terminal:operate` to attach to it.
+ * additionally needs both `coding:exec` and `terminal:operate` to start it,
+ * and `terminal:operate` to attach to it.
  * A request that may be an agent's can do none of these.
  */
 
