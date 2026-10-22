@@ -52,9 +52,12 @@ prompt, path, digest, transcript, or provider output. SDK:
 A `project-portable-prepared` create (version-matched execution, see
 [remote execution preparation](../design/remote-execution-preparation.md))
 must carry an `attemptId`: its version check is a phase of the attempt, the
-matched facts are bound with the admitted facts, and every preparation
-refusal the receiver raises after claiming is recorded as the tombstone's
-`refusalCode` (the bound preparation receipt is dropped on refusal).
+matched facts are bound with the admitted facts, and a preparation refusal
+after claiming is recorded as the tombstone's `refusalCode` when that state
+transition succeeds (the bound preparation receipt is dropped on refusal).
+If recording a refusal or unresolved outcome fails, the claim remains at its
+earlier durable state; that state still suppresses another invocation and never
+authorizes resend.
 
 Duplicates: same attempt + same validated intent joins (`pending` /
 `exists` 409, never a second effect); changed intent under the same key
