@@ -62,7 +62,7 @@ const PROFILES = fileURLToPath(
     import.meta.url,
   ),
 );
-const SECRET = 'fk-ROUTE-SECRET-7f3a9c';
+const SECRET = 'fixture-value';
 const posix = process.platform !== 'win32';
 const makeTempDir = trackTempDirs();
 
