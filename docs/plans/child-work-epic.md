@@ -11,6 +11,9 @@ normally before publication. Open one PR when the combined work is ready.
   disclosed by a flag and retained-row count, not an exact omitted count;
   snapshot absence remains unresolved; active/terminal evidence can
   correct uncertainty; open chat aliases own presentation-history retention.
+  Closed chats share a bounded client recovery cache: 150 rows, 50 bindings
+  without rows, and 50 omitted-history flags. Eviction is not a task outcome;
+  reopening can recover current delegate facts from the server snapshot.
 - **#1879:** Claude's structured Agent/Task return is bound to the tracked
   call and child, retained as `tool-return`, and replaces a provider summary.
   Other reports retain provider-summary, child-message, or provider-error

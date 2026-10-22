@@ -194,3 +194,98 @@ test('snapshot clearing only the omitted-history flag refreshes the mounted view
   expect(result.current.toolHistoryLimited).toBeUndefined();
   expect(result.current.finished).toEqual(before.finished);
 });
+
+test('repeated real chat closures bound retained live and uncertain history without changing an open chat', () => {
+  startTool('chat-a', 'open-tool');
+  const { result } = renderHook(() => useChatBackgroundTasks('chat-a'));
+  const selected = result.current;
+  act(() => {
+    for (let i = 0; i < 240; i++) {
+      const parent = `closed-${i}`;
+      const child = `child-${i}`;
+      activeChatsStore.initChat(parent, {
+        agentSlug: 'agent',
+        agentName: 'Agent',
+        title: parent,
+      });
+      startTool(parent, `tool-${i}`);
+      if (i < 60)
+        for (let j = 0; j < 100; j++) startTool(parent, `overflow-${i}-${j}`);
+      backgroundTasksStore.ingest({
+        ...eventBase,
+        threadId: child,
+        method: 'session.started',
+        sessionId: child,
+        metadata: { taskId: child, parentTaskId: parent },
+      });
+      activeChatsStore.removeChat(parent);
+    }
+    expect(result.current).toBe(selected);
+    // Missing sessions are uncertainty, never a fabricated stop or success.
+    backgroundTasksStore.reconcileSnapshot({ sessions: [] });
+  });
+  const state = backgroundTasksStore.getSnapshot();
+  const closed = Object.values(state.entries).filter((entry) =>
+    entry.chatThreadId.startsWith('closed-'),
+  );
+  expect(closed.length).toBeGreaterThan(0);
+  expect(closed.length).toBeLessThanOrEqual(150);
+  expect(
+    Object.values(state.delegateParents).filter((parent) =>
+      parent.startsWith('closed-'),
+    ).length,
+  ).toBeLessThanOrEqual(200);
+  expect(closed.every((entry) => entry.state === 'unresolved')).toBe(true);
+  expect(Object.keys(state.limitedToolChats ?? {}).length).toBeLessThanOrEqual(
+    50,
+  );
+  // The open chat was demoted by the same real snapshot, rather than retired.
+  expect(result.current.finished).toMatchObject([
+    { id: 'open-tool', state: 'unresolved' },
+  ]);
+  expect(selected.running).toMatchObject([
+    { id: 'open-tool', state: 'running' },
+  ]);
+  expect(state.entries['open-tool']).toBeDefined();
+  expect(Object.keys(activeChatsStore.getSnapshot())).not.toContain(
+    'closed-239',
+  );
+  expect(state.entries['child-0']).toBeUndefined();
+  expect(state.delegateParents['child-0']).toBeUndefined();
+  act(() => {
+    activeChatsStore.initChat('closed-0', {
+      agentSlug: 'agent',
+      agentName: 'Agent',
+      title: 'Reopened',
+    });
+    backgroundTasksStore.reconcileSnapshot({
+      sessions: [
+        {
+          provider: 'claude',
+          threadId: 'child-0',
+          status: 'running',
+          hasActiveTurn: true,
+          delegation: { taskId: 'child-0', parentTaskId: 'closed-0' },
+        },
+      ],
+    });
+  });
+  const reopened = renderHook(() => useChatBackgroundTasks('closed-0'));
+  expect(reopened.result.current.running).toMatchObject([
+    { id: 'child-0', state: 'running' },
+  ]);
+  act(() =>
+    backgroundTasksStore.ingest({
+      ...eventBase,
+      threadId: 'child-0',
+      method: 'turn.completed',
+      turnId: 'recovered-turn',
+    }),
+  );
+  expect(reopened.result.current.running).toEqual([]);
+  expect(reopened.result.current.finished).toMatchObject([
+    { id: 'child-0', state: 'completed' },
+  ]);
+  reopened.unmount();
+  activeChatsStore.removeChat('closed-0');
+});

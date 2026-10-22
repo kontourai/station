@@ -98,6 +98,8 @@ export interface BackgroundTasksState {
 /** Finished list is bounded per chat, drop-oldest (by end time), per the plan §3. */
 export const FINISHED_LIMIT_PER_CHAT = 50;
 const RUNNING_TOOL_LIMIT_PER_CHAT = 100;
+const CLOSED_CHAT_ROW_LIMIT = 150;
+const CLOSED_CHAT_RECOVERY_LIMIT = 50;
 
 export function createEmptyBackgroundTasksState(): BackgroundTasksState {
   return { entries: {}, delegateParents: {} };
@@ -887,6 +889,44 @@ export function selectChatBackgroundTasks(
   };
 }
 
+/** Closed chats retain a bounded recovery cache, not an unbounded second inventory. */
+function pruneClosedChatHistory(
+  state: BackgroundTasksState,
+): BackgroundTasksState {
+  if (state.openChatThreads === undefined) return state;
+  const closed = (chat: string) => !state.openChatThreads?.[chat];
+  const expiredRows = Object.values(state.entries)
+    .filter((entry) => closed(entry.chatThreadId))
+    .sort((left, right) => settledAt(left) - settledAt(right))
+    .slice(0, -CLOSED_CHAT_ROW_LIMIT);
+  let entries = state.entries;
+  if (expiredRows.length) {
+    entries = { ...entries };
+    for (const row of expiredRows) delete entries[row.id];
+  }
+  const expiredBindings = Object.entries(state.delegateParents)
+    .filter(([id, parent]) => closed(parent) && !entries[id])
+    .slice(0, -CLOSED_CHAT_RECOVERY_LIMIT);
+  let delegateParents = state.delegateParents;
+  if (expiredBindings.length) {
+    delegateParents = { ...delegateParents };
+    for (const [id] of expiredBindings) delete delegateParents[id];
+  }
+  const expiredLimits = Object.keys(state.limitedToolChats ?? {})
+    .filter(closed)
+    .slice(0, -CLOSED_CHAT_RECOVERY_LIMIT);
+  let limitedToolChats = state.limitedToolChats;
+  if (expiredLimits.length) {
+    limitedToolChats = { ...limitedToolChats };
+    for (const chat of expiredLimits) delete limitedToolChats[chat];
+  }
+  return entries === state.entries &&
+    delegateParents === state.delegateParents &&
+    limitedToolChats === state.limitedToolChats
+    ? state
+    : { ...state, entries, delegateParents, limitedToolChats };
+}
+
 // Constructed in unit tests via dynamic import; the app uses the singleton below.
 export class BackgroundTasksStore {
   private state: BackgroundTasksState = createEmptyBackgroundTasksState();
@@ -901,7 +941,7 @@ export class BackgroundTasksStore {
 
   private commit(next: BackgroundTasksState) {
     if (next === this.state) return;
-    this.state = next;
+    this.state = pruneClosedChatHistory(next);
     this.listeners.forEach((listener) => listener());
   }
 
