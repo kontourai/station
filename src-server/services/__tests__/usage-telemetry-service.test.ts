@@ -1708,7 +1708,7 @@ describe('UsageTelemetryService', () => {
   test('ACKNOWLEDGEMENT DEFECT: overflow during a slow batch retains newer unsent events', async () => {
     let release: (() => void) | undefined;
     const fetch = vi.fn(acceptProductBatch).mockImplementationOnce(
-      (_url, init: RequestInit) =>
+      (_url, init?: RequestInit) =>
         new Promise((resolve) => {
           release = () => {
             void acceptProductBatch(_url, init).then(resolve);
