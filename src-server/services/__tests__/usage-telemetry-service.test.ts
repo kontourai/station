@@ -1707,7 +1707,7 @@ describe('UsageTelemetryService', () => {
   });
   test('ACKNOWLEDGEMENT DEFECT: overflow during a slow batch retains newer unsent events', async () => {
     let release: (() => void) | undefined;
-    const fetch = vi.fn().mockImplementationOnce(
+    const fetch = vi.fn(acceptProductBatch).mockImplementationOnce(
       (_url, init: RequestInit) =>
         new Promise((resolve) => {
           release = () => {
@@ -1720,19 +1720,24 @@ describe('UsageTelemetryService', () => {
       fetch,
       setInterval: vi.fn() as any,
     });
-    for (let index = 0; index < 110; index++)
-      await subject.track('station_started', {
-        version: `1.0.${index}`,
-        platform: 'linux',
-        arch: 'x64',
-      });
-    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
-    release!();
-    await (subject as any).flushing;
-    expect(
-      subject.bufferedCount,
-      'successful acknowledgement dropped newer unsent telemetry events',
-    ).toBe(90);
+    try {
+      for (let index = 0; index < 110; index++)
+        await subject.track('station_started', {
+          version: `1.0.${index}`,
+          platform: 'linux',
+          arch: 'x64',
+        });
+      await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+      release!();
+      await (subject as any).flushing;
+      expect(
+        subject.bufferedCount,
+        'successful acknowledgement dropped newer unsent telemetry events',
+      ).toBe(90);
+    } finally {
+      release?.();
+      await subject.shutdown();
+    }
   });
   test('IDENTITY RACE DEFECT: concurrent creation converges on one UUID', async () => {
     const root = await home();
