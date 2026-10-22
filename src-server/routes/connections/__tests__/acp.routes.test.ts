@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { loadOrCreateAgentRegistry } from '../../../domain/agent-registry.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
@@ -58,6 +59,7 @@ const { getACPManagerStatus } = await import(
   '../../../services/acp/acp-manager-view.js'
 );
 const homes: string[] = [];
+const makeTempDir = trackTempDirs();
 
 /**
  * Choosing what a connection runs takes the operator in person (or a device
@@ -1382,8 +1384,7 @@ describe('ACP Routes', () => {
   });
 
   test('deleting a connection removes its stored keys and forgets its sign-in', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-acp-delete-keys-'));
-    homes.push(home);
+    const home = makeTempDir('station-acp-delete-keys-');
     const keys = new EngineCredentials(home);
     registerEngineCredentials(keys);
     const signIn = new EngineSignInService({ terminal: null });
