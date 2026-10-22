@@ -73,6 +73,7 @@ import { useSendMessage } from '../hooks/useActiveChatSessionMessaging';
 import {
   _resetOutboundQueueStorage,
   _setOutboundQueueStorage,
+  type OutboundDispatchTurn,
   outboundDispatch,
 } from '../lib/outboundQueue';
 import { messageDeliveryStateFor } from '../utils/messageDeliveryState';
@@ -339,7 +340,7 @@ describe('useSendMessage: durable before the request', () => {
       ]);
       await expect(outboundDispatch.edit(key, 'changed')).rejects.toThrow();
       await expect(outboundDispatch.discard(key)).rejects.toThrow();
-      const replay = vi.fn(async (turn) => {
+      const replay = vi.fn(async (turn: Readonly<OutboundDispatchTurn>) => {
         turns.push(turn.clientTurnId);
         return { kind: 'accepted' as const, providerTurnId: 'duplicate-turn' };
       });
@@ -347,7 +348,7 @@ describe('useSendMessage: durable before the request', () => {
         station: { apiBase: 'http://api.test' },
       });
       expect(replay).not.toHaveBeenCalled();
-      const lookup = vi.fn(async (turn) => ({
+      const lookup = vi.fn(async (turn: Readonly<OutboundDispatchTurn>) => ({
         clientTurnId: turn.clientTurnId,
         conversationId: turn.conversationId!,
         outcome: 'started' as const,
