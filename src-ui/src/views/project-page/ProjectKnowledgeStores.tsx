@@ -43,7 +43,7 @@ function StoreRecords({
   const authorityKey = knowledgeRootIncarnationKey(root);
   const graph = useKnowledgeRecallGraph(root.id, authorityKey, useScopedGraph);
   if (graph.isAuthorityLoading) return <Skeleton variant="block" />;
-  if (graph.isError && !graph.data)
+  if (graph.isError)
     return (
       <ErrorState
         title="Could not load records"
@@ -143,7 +143,7 @@ function ScopedProjectKnowledgeStores({
       />
       {roots.isLoading ? (
         <Skeleton variant="line" />
-      ) : roots.isError && !roots.data ? (
+      ) : roots.isError ? (
         <ErrorState
           title="Could not load stores"
           description={errorText(roots.error)}

@@ -7,6 +7,7 @@ import { ProjectKnowledgeStores } from '../ProjectKnowledgeStores';
 const state = vi.hoisted(() => ({
   roots: [] as KnowledgeStoreRoot[],
   error: false,
+  graphError: false,
   create: vi.fn(),
   recall: vi.fn(),
 }));
@@ -19,7 +20,7 @@ vi.mock('../../../contexts/ApiBaseContext', () => ({
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
   useKnowledgeRootsQuery: () => ({
-    data: state.error ? undefined : state.roots,
+    data: state.roots,
     isLoading: false,
     isError: state.error,
     error: new Error('Store read failed'),
@@ -35,7 +36,8 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
     return {
       data: { nodes: [], edges: [] },
       isAuthorityLoading: false,
-      isError: false,
+      isError: state.graphError,
+      error: new Error('Graph access denied'),
     };
   },
   KnowledgeRecallBrowser: ({ rootId }: { rootId: string }) => (
@@ -45,6 +47,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
 beforeEach(() => {
   state.roots = [];
   state.error = false;
+  state.graphError = false;
   state.create.mockClear();
   state.recall.mockClear();
 });
@@ -94,4 +97,34 @@ test('detects only current Project stores and loads canonical records on expansi
     expect(screen.getByText('Records for demo-store')).toBeTruthy(),
   );
   expect(state.recall).toHaveBeenCalledWith('demo-store', expect.any(String));
+});
+
+test('a failed fresh graph read withholds its retained record navigation', async () => {
+  state.roots = [
+    {
+      id: 'demo-store',
+      adapterId: 'kit-default-store',
+      createdAt: '2026-10-03T00:00:00Z',
+      storeRoot: '/tmp/demo',
+      displayName: 'Demo records',
+      scope: { kind: 'project', projectSlug: 'demo' },
+    },
+  ];
+  const view = render(<ProjectKnowledgeStores slug="demo" />);
+  const details = screen.getByText('Demo records').closest('details')!;
+  details.open = true;
+  fireEvent(details, new Event('toggle'));
+  await screen.findByText('Records for demo-store');
+  state.graphError = true;
+  view.rerender(<ProjectKnowledgeStores slug="demo" />);
+  expect(screen.queryByText('Records for demo-store')).toBeNull();
+  expect(screen.getByRole('alert').textContent).toContain(
+    'Could not load records',
+  );
+  state.error = true;
+  view.rerender(<ProjectKnowledgeStores slug="demo" />);
+  expect(screen.queryByText('Demo records')).toBeNull();
+  expect(screen.getByRole('alert').textContent).toContain(
+    'Could not load stores',
+  );
 });
