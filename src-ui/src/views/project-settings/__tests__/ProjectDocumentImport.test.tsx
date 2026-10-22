@@ -10,6 +10,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { ProjectDocumentImport } from '../ProjectDocumentImport';
@@ -101,7 +102,7 @@ function saved() {
 
 test('preview precedes upload and lost acknowledgement retains only a recovery pointer without automatic resend', async () => {
   state.upload.mockImplementation(async () => {
-    expect(localStorage.getItem(key)).toContain('requestId');
+    expect(Object.values(localStorage).join('')).toContain('requestId');
     throw new Error('Connection lost');
   });
   const view = render(<ProjectDocumentImport {...props} />);
@@ -126,7 +127,7 @@ test('preview precedes upload and lost acknowledgement retains only a recovery p
       },
     ],
   });
-  const retained = localStorage.getItem(key)!;
+  const retained = Object.values(localStorage).join('');
   expect(retained).not.toContain('Original confidential');
   expect(retained).not.toContain('contentBase64');
   view.unmount();
@@ -182,4 +183,31 @@ test('replacement registration cannot resume and setting aside preserves server 
   expect(localStorage.getItem(key)).toBeNull();
   expect(state.upload).not.toHaveBeenCalled();
   expect(state.resume).not.toHaveBeenCalled();
+});
+
+test('stale tabs retain separate import pointers and setting aside cannot delete another import', async () => {
+  state.upload.mockRejectedValue(new Error('Lost response'));
+  const a = render(<ProjectDocumentImport {...props} />);
+  const b = render(<ProjectDocumentImport {...props} />);
+  for (const view of [a, b]) {
+    const tab = within(view.container);
+    fireEvent.change(tab.getByLabelText('Destination store'), {
+      target: { value: root.id },
+    });
+    fireEvent.change(tab.getByLabelText('Documents'), {
+      target: { files: [file('Tab source')] },
+    });
+    await tab.findByText(/SHA-256:/);
+    fireEvent.click(tab.getByRole('button', { name: 'Import 1 documents' }));
+    await tab.findByText('Lost response');
+  }
+  const ids = state.upload.mock.calls.map(([input]) => input.requestId);
+  expect(new Set(ids).size).toBe(2);
+  for (const id of ids)
+    expect(localStorage.getItem(`${key}:${id}`)).toContain(id);
+  fireEvent.click(
+    within(a.container).getByRole('button', { name: 'Set aside' }),
+  );
+  expect(localStorage.getItem(`${key}:${ids[0]}`)).toBeNull();
+  expect(localStorage.getItem(`${key}:${ids[1]}`)).toContain(ids[1]);
 });

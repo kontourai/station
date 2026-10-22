@@ -10,7 +10,7 @@ import {
   useResumeKnowledgeDocumentImportMutation,
 } from '@kontourai/station-sdk';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { z } from 'zod/v3';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
@@ -31,6 +31,24 @@ const pointerSchema = z.object({
     .max(8),
 });
 type Pointer = z.infer<typeof pointerSchema>;
+function retainedPointers(prefix: string): Pointer[] {
+  const pointers: Pointer[] = [];
+  try {
+    for (let index = 0; index < localStorage.length; index += 1) {
+      const key = localStorage.key(index);
+      if (key !== prefix && !key?.startsWith(`${prefix}:`)) continue;
+      try {
+        const value = localStorage.getItem(key);
+        if (value) pointers.push(pointerSchema.parse(JSON.parse(value)));
+      } catch {
+        /* Preserve unreadable entries for manual recovery. */
+      }
+    }
+  } catch {
+    return pointers;
+  }
+  return pointers;
+}
 interface Preview {
   filename: string;
   sha256: string;
@@ -53,12 +71,25 @@ export function ProjectDocumentImport({
   const storageKey = `station.document-import:${JSON.stringify([authority.apiBase, authority.authorityKey, projectId])}`;
   const [saved, setSaved] = useState<Pointer | undefined>(() => {
     try {
-      const value = localStorage.getItem(storageKey);
-      return value ? pointerSchema.parse(JSON.parse(value)) : undefined;
+      return retainedPointers(storageKey)[0];
     } catch {
       return undefined;
     }
   });
+  const [pointers, setPointers] = useState(() => retainedPointers(storageKey));
+  useEffect(() => {
+    const refresh = () => {
+      const retained = retainedPointers(storageKey);
+      setPointers(retained);
+      setSaved(
+        (current) =>
+          retained.find((item) => item.requestId === current?.requestId) ??
+          retained[0],
+      );
+    };
+    window.addEventListener('storage', refresh);
+    return () => window.removeEventListener('storage', refresh);
+  }, [storageKey]);
   const [rootId, setRootId] = useState('');
   const [preview, setPreview] = useState<Preview[]>([]);
   const [preparing, setPreparing] = useState(false);
@@ -162,7 +193,11 @@ export function ProjectDocumentImport({
         files: preview.map(({ filename, sha256 }) => ({ filename, sha256 })),
       };
       // Persist identity before sending; a lost acknowledgement must not create a new request.
-      localStorage.setItem(storageKey, JSON.stringify(pointer));
+      localStorage.setItem(
+        `${storageKey}:${pointer.requestId}`,
+        JSON.stringify(pointer),
+      );
+      setPointers(retainedPointers(storageKey));
       setSaved(pointer);
       const documents = preview.map(({ filename, contentBase64 }) => ({
         filename,
@@ -203,8 +238,18 @@ export function ProjectDocumentImport({
   }
   function setAside() {
     try {
-      localStorage.removeItem(storageKey);
-      setSaved(undefined);
+      if (!saved) return;
+      localStorage.removeItem(`${storageKey}:${saved.requestId}`);
+      // Older versions used one shared slot; remove it only when it still names this import.
+      const legacy = localStorage.getItem(storageKey);
+      if (
+        legacy &&
+        pointerSchema.parse(JSON.parse(legacy)).requestId === saved.requestId
+      )
+        localStorage.removeItem(storageKey);
+      const remaining = retainedPointers(storageKey);
+      setPointers(remaining);
+      setSaved(remaining[0]);
       setError(undefined);
     } catch (cause) {
       setError(userFacingErrorMessage(cause));
@@ -219,6 +264,30 @@ export function ProjectDocumentImport({
       </p>
       {saved ? (
         <>
+          <label>
+            Saved imports
+            <select
+              value={saved.requestId}
+              disabled={busy}
+              onChange={(event) => {
+                const pointer = retainedPointers(storageKey).find(
+                  (item) => item.requestId === event.target.value,
+                );
+                if (pointer) setSaved(pointer);
+              }}
+            >
+              {Array.from(
+                new Map(
+                  pointers.map((item) => [item.requestId, item]),
+                ).values(),
+              ).map((pointer) => (
+                <option key={pointer.requestId} value={pointer.requestId}>
+                  {pointer.files[0]?.filename ?? 'Documents'} ·{' '}
+                  {pointer.requestId}
+                </option>
+              ))}
+            </select>
+          </label>
           <p>
             Saved import: <code>{saved.requestId}</code>
           </p>
