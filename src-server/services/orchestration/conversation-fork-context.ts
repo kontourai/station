@@ -23,7 +23,7 @@ import type { EventStore } from './event-store.js';
 import type { SessionReadScope } from './orchestration-service.js';
 import type { TurnDeduplicator } from './turn-deduplicator.js';
 
-export const FORK_CONTEXT_MAX_BYTES = 2 * 1024 * 1024;
+const FORK_CONTEXT_MAX_BYTES = 2 * 1024 * 1024;
 
 export class ConversationForkContextError extends Error {
   readonly code = CONVERSATION_CONTEXT_UNAVAILABLE_CODE;
@@ -174,7 +174,7 @@ export function createConversationForkContext(
 }
 
 /** Stored bodies came from the unified serve-sanitized reader, not a request payload. */
-export function copiedForkMessages(
+function copiedForkMessages(
   snapshot: ConversationForkContextSnapshot,
 ): ConversationMessage[] {
   const messages = JSON.parse(
