@@ -56,6 +56,19 @@ afterEach(() => {
 });
 
 describe('shared saved Station store', () => {
+  test('initializes and writes profiles when a fresh folder contains only regular OS metadata', () => {
+    for (const name of ['.DS_Store', 'Thumbs.db', 'desktop.ini'])
+      writeFileSync(join(home, name), 'OS metadata');
+    ensureProfileStoreGenesis(home);
+    upsertProfile(
+      { name: 'local', endpoint: 'http://127.0.0.1:46411', now: 1 },
+      home,
+    );
+    expect(
+      readProfileStore(home).profiles.map((profile) => profile.name),
+    ).toEqual(['local']);
+    expect(readFileSync(join(home, '.DS_Store'), 'utf8')).toBe('OS metadata');
+  });
   test('is secret-free and versioned', () => {
     upsertProfile({
       name: 'kontour',

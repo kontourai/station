@@ -70,7 +70,9 @@
     "scripts/lib/portable-server-archive.mjs",
     "scripts/lib/portable-smoke-diagnostics.mjs",
     "scripts/lib/server-build-config.mjs",
-    "scripts/lib/station-stop-hint.mjs"
+    "scripts/lib/station-stop-hint.mjs",
+    "scripts/lib/desktop-node-runtime.mjs",
+    "scripts/prepare-desktop-rust-resources.mjs"
   ],
   "native": [
     ".github/workflows/desktop-rust.yml",
@@ -101,7 +103,9 @@
     "scripts/lib/windows-nightly.mjs",
     "scripts/lib/nightly-build-identity.mjs",
     "scripts/lib/native-release-config.mjs",
-    "esbuild.config.mjs"
+    "esbuild.config.mjs",
+    "scripts/lib/desktop-node-runtime.mjs",
+    "scripts/prepare-desktop-rust-resources.mjs"
   ],
   "ecosystem": [
     "install.sh",

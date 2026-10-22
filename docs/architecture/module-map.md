@@ -986,6 +986,15 @@ main WebView has committed its React mount. The ticket binds generation,
 instance ID, child boot ID and API base. A native page-start callback permits
 identity proof but is not proof that the renderer mounted.
 
+**Packaged runtime.** Desktop's registry helper and owned backend use the private
+`station-node` executable beside the app, without changing the user's PATH.
+Before claiming a home, Desktop validates the shared saved-connection list.
+An unmarked legacy runtime root can offer explicit empty-list creation only
+when filesystem and credential inspection find no saved-connection history;
+confirmation revalidates under shared locks. Missing metadata after prior
+initialization stays a restore-backup refusal. See [desktop build](../guides/desktop-build.md#packaged-runtime)
+and [missing saved connections](../user/native-recovery.md#missing-saved-connections).
+
 **Identity and reveal.** [Tauri composition](../../src-desktop/src/lib.rs) owns
 the current ticket, credential-bearing profile selected for the exact channel
 home, OS-held credential and authenticated `/api/system/identity` check.

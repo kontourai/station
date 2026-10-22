@@ -21,13 +21,13 @@ export const DESKTOP_SERVER_RUNTIME_PACKAGES = STATION_SERVER_EXTERNALS;
  * grew to 68,828 files and Windows packaging became impossible.
  */
 export const DESKTOP_SERVER_RUNTIME_BUDGET = Object.freeze({
-  maxBytes: 800 * 1024 * 1024,
+  maxBytes: 512 * 1024 * 1024,
   // Below the 65,535 ceiling with room for the files this budget does not
   // count — the app binary, dist-server, schemas/ and icons all land in the
   // same CAB. Note this binds macOS/Linux staging to a Windows constraint;
   // one staged tree serves every platform, so a future non-Windows bundle
   // that legitimately exceeds it would fail for a Windows reason.
-  maxFiles: 60_000,
+  maxFiles: 30_000,
 });
 const OPTIONAL_DESKTOP_SERVER_RUNTIME_PACKAGES = new Set(['fsevents']);
 export const WINDOWS_DESKTOP_RUNTIME_RESOURCE_DIR =
@@ -179,7 +179,8 @@ function planRuntimePackages(packageNames, projectRoot, outputRoot) {
  * unpruned node_modules, stayed correct. `LICENSE.md` is also `.md`, and MIT
  * text must accompany redistribution.
  */
-export const NON_RUNTIME_ARTIFACT = /(?:\.d\.[cm]?ts|\.map|\.pdb)$/i;
+export const NON_RUNTIME_ARTIFACT =
+  /(?:\.d\.[cm]?ts|\.map|\.pdb|\.(?:test|spec)\.[cm]?[jt]sx?)$/i;
 // `.pdb` is Windows debug-symbol data read only by a debugger, never by the
 // loader: node-pty ships one beside every Windows binary (~27 MB per arch).
 
@@ -212,6 +213,24 @@ export const NON_RUNTIME_ARTIFACT = /(?:\.d\.[cm]?ts|\.map|\.pdb)$/i;
  *   project checkout, not the package). ~102 MB.
  */
 export const RUNTIME_PACKAGE_PRUNE_RULES = Object.freeze([
+  Object.freeze({
+    id: 'compiled-sdk-development-sources',
+    package: '*',
+    excludes: (segments, _target, packageName) =>
+      (packageName === 'zod' ||
+        packageName === 'ai' ||
+        packageName === 'openai' ||
+        packageName === '@anthropic-ai/sdk' ||
+        packageName.startsWith('@ai-sdk/')) &&
+      (segments[0] === 'src' ||
+        segments[0] === 'docs' ||
+        /\.(?:test|spec)\.[cm]?[jt]sx?$/.test(segments.at(-1))),
+  }),
+  Object.freeze({
+    id: 'cedar-node-runtime-only',
+    package: '@cedar-policy/cedar-wasm',
+    excludes: (segments) => ['esm', 'web'].includes(segments[0]),
+  }),
   Object.freeze({
     id: 'node-pty-foreign-prebuilds',
     package: 'node-pty',
@@ -247,7 +266,7 @@ export const RUNTIME_DEPENDENCY_EXCLUSIONS = Object.freeze([
 function packageCopyOptions(sourceRoot, target) {
   const packageName = readPackage(sourceRoot).name;
   const rules = RUNTIME_PACKAGE_PRUNE_RULES.filter(
-    (rule) => rule.package === packageName,
+    (rule) => rule.package === packageName || rule.package === '*',
   );
   return {
     recursive: true,
@@ -256,7 +275,8 @@ function packageCopyOptions(sourceRoot, target) {
       const segments = relative(sourceRoot, source).split(sep);
       if (segments.length === 1 && segments[0] === '') return true;
       if (segments.includes('node_modules')) return false;
-      if (rules.some((rule) => rule.excludes(segments, target))) return false;
+      if (rules.some((rule) => rule.excludes(segments, target, packageName)))
+        return false;
       // Match files only: a directory whose name ends in one of these
       // extensions would otherwise drop everything beneath it.
       return (
@@ -264,6 +284,15 @@ function packageCopyOptions(sourceRoot, target) {
       );
     },
   };
+}
+
+/** Keep full source maps in the build output, outside the installed payload. */
+export function stageDesktopServerBundle(projectRoot, outputRoot) {
+  cpSync(join(projectRoot, 'dist-server'), join(outputRoot, 'dist-server'), {
+    recursive: true,
+    filter: (source) =>
+      !NON_RUNTIME_ARTIFACT.test(source) || lstatSync(source).isDirectory(),
+  });
 }
 
 function stageWindowsWixPackage(

@@ -2013,6 +2013,13 @@ fn station_profile_store_genesis_admissible_with_schema(
                 let name = entry.file_name();
                 let metadata = std::fs::symlink_metadata(entry.path())
                     .map_err(|error| format!("inspect Station install root: {error}"))?;
+                if metadata.file_type().is_file()
+                    && [".DS_Store", "Thumbs.db", "desktop.ini"]
+                        .iter()
+                        .any(|allowed| name == *allowed)
+                {
+                    continue;
+                }
                 if fresh_schema
                     && name == ".station-home-schema.json"
                     && metadata.file_type().is_file()
@@ -2046,6 +2053,187 @@ fn station_profile_store_genesis_admissible_with_schema(
             "inspect Station root for profile bootstrap: {error}"
         )),
     }
+}
+
+#[cfg(not(mobile))]
+fn profile_store_root_entry_names(root: &Path) -> Result<String, String> {
+    let mut names = std::collections::BTreeSet::new();
+    for entry in
+        std::fs::read_dir(root).map_err(|error| format!("inspect Station root: {error}"))?
+    {
+        let entry = entry.map_err(|error| format!("inspect Station root entry: {error}"))?;
+        let name = entry
+            .file_name()
+            .to_string_lossy()
+            .chars()
+            .take(80)
+            .map(|character| {
+                if character.is_control() {
+                    '\u{fffd}'
+                } else {
+                    character
+                }
+            })
+            .collect::<String>();
+        names.insert(name);
+        if names.len() > 12 {
+            names.pop_last();
+        }
+    }
+    Ok(names.into_iter().collect::<Vec<_>>().join(", "))
+}
+
+/// Only runtime bookkeeping may be adopted; profile, backup, and cutover
+/// evidence always requires restoration instead of an empty replacement.
+#[cfg(not(mobile))]
+fn profile_store_recovery_files_are_absent(
+    root: &Path,
+    owned_lock: Option<&StationProfileLock>,
+) -> Result<bool, String> {
+    validate_station_profile_store_root(root)?;
+    let mut pending = vec![(root.to_path_buf(), 0)];
+    let mut inspected = 0;
+    while let Some((directory, depth)) = pending.pop() {
+        for entry in std::fs::read_dir(&directory)
+            .map_err(|error| format!("inspect recovery evidence: {error}"))?
+        {
+            inspected += 1;
+            if inspected > 4096 {
+                return Ok(false);
+            }
+            let entry = entry.map_err(|error| format!("inspect recovery entry: {error}"))?;
+            let info = std::fs::symlink_metadata(entry.path())
+                .map_err(|error| format!("inspect recovery entry: {error}"))?;
+            let name = entry.file_name().to_string_lossy().to_lowercase();
+            if info.file_type().is_symlink() {
+                return Ok(false);
+            }
+            #[cfg(windows)]
+            {
+                use std::os::windows::fs::MetadataExt;
+                if info.file_attributes() & 0x400 != 0 {
+                    return Ok(false);
+                }
+            }
+            if owned_lock.is_some_and(|lock| entry.path() == lock.path) {
+                continue;
+            }
+            if name.contains("profile")
+                || name.contains("backup")
+                || name.contains("cutover")
+                || name.contains("credential")
+                || name.contains("vault")
+            {
+                return Ok(false);
+            }
+            if depth == 0
+                && !(info.is_dir()
+                    && ["instances", "installs", "state", "config"].contains(&name.as_str()))
+                && !(info.is_file()
+                    && [".ds_store", "thumbs.db", "desktop.ini"].contains(&name.as_str()))
+            {
+                return Ok(false);
+            }
+            if info.is_dir() {
+                if depth >= 6 {
+                    return Ok(false);
+                }
+                pending.push((entry.path(), depth + 1));
+            }
+        }
+    }
+    Ok(true)
+}
+
+#[cfg(not(mobile))]
+fn profile_store_recovery_credentials_are_absent() -> Result<bool, String> {
+    initialize_credential_store()?;
+    #[cfg(windows)]
+    let queries = vec![std::collections::HashMap::from([(
+        "pattern",
+        "io\\.kontourai\\.station",
+    )])];
+    #[cfg(not(windows))]
+    let queries = [
+        STATION_CREDENTIAL_SERVICE,
+        native_device_custody::METADATA_SERVICE,
+        "io.kontourai.station.connection-trust",
+        "io.kontourai.station.native-enrollment-journal",
+        "io.kontourai.station.device-binding-candidate",
+        "io.kontourai.station.account-proof",
+        "io.kontourai.station.device-proof",
+        "io.kontourai.station.relay-proof",
+    ]
+    .into_iter()
+    .map(|service| std::collections::HashMap::from([("service", service)]))
+    .collect::<Vec<_>>();
+    for query in queries {
+        if !keyring_core::Entry::search(&query).map_err(|_| "Station could not inspect saved credential history. Unlock the credential store and retry.".to_string())?.is_empty() { return Ok(false); }
+    }
+    Ok(true)
+}
+
+#[cfg(not(mobile))]
+fn create_confirmed_profile_store(root: &Path, lock: &StationProfileLock) -> Result<(), String> {
+    if !profile_store_recovery_files_are_absent(root, Some(lock))? {
+        return Err(
+            "Saved Station history appeared during recovery; restore the profile backup instead."
+                .into(),
+        );
+    }
+    write_profile_store_genesis_marker(root)?;
+    write_empty_station_profile_store(&root.join("config/profiles.json"))
+}
+
+#[cfg(not(mobile))]
+fn offer_legacy_profile_store_recovery(app: &AppHandle, root: PathBuf) {
+    use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
+    let app = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let eligible = profile_store_recovery_files_are_absent(&root, None).and_then(|absent| {
+            if absent {
+                profile_store_recovery_credentials_are_absent()
+            } else {
+                Ok(false)
+            }
+        });
+        let names = profile_store_root_entry_names(&root)
+            .unwrap_or_else(|_| "entries could not be inspected".into());
+        let can_create = matches!(eligible, Ok(true));
+        let message = format!("Station found an existing folder without a saved connection list.\n\nFolder: {}\nExisting entries: {names}\n\n{}", root.display(), if can_create {
+            "If this folder has only been used by a local service, you can create an empty connection list. Existing service data stays in place. If you previously saved connections, exit and restore config/profiles.json from backup instead."
+        } else { "Saved-connection history exists or could not be ruled out. Restore config/profiles.json from backup before launching Station. No service or data was changed." });
+        let buttons = if can_create {
+            MessageDialogButtons::OkCancelCustom(
+                "Create connection list and restart".into(),
+                "Exit".into(),
+            )
+        } else {
+            MessageDialogButtons::OkCustom("Exit".into())
+        };
+        let handle = app.clone();
+        app.dialog().message(message).title("Station connection list is missing").kind(MessageDialogKind::Warning).buttons(buttons).show(move |approved| {
+            if !can_create || !approved { handle.exit(1); return; }
+            tauri::async_runtime::spawn_blocking(move || {
+                let result = (|| {
+                    let _genesis = lock_station_profile_store_genesis_for_app(&handle, &root)?;
+                    // Recheck after the dialog and lock acquisition; confirmation
+                    // grants no authority over files another client published.
+                    if !profile_store_recovery_credentials_are_absent()? { return Err("Saved credentials appeared during recovery; restore the profile backup instead.".into()); }
+                    if !profile_store_recovery_files_are_absent(&root, None)? { return Err("Saved profile history appeared during recovery.".into()); }
+                    let config = root.join("config");
+                    std::fs::create_dir_all(&config).map_err(|error| format!("create connection directory: {error}"))?;
+                    crate::windows_path_trust::ensure(&[(crate::windows_path_trust::TrustKind::Directory, &config)])?;
+                    let lock = lock_station_profiles_for_app(&handle, &config.join("profiles.json"))?;
+                    create_confirmed_profile_store(&root, &lock)
+                })();
+                match result {
+                    Ok(()) => handle.restart(),
+                    Err(error) => { log::error!("saved Station recovery refused: {error}"); let exit = handle.clone(); handle.dialog().message(error).title("Station recovery could not complete").buttons(MessageDialogButtons::OkCustom("Exit".into())).show(move |_| exit.exit(1)); }
+                }
+            });
+        });
+    });
 }
 
 #[cfg(not(mobile))]
@@ -5588,7 +5776,8 @@ fn native_profile_lock_birth(app: &AppHandle, pid: u32) -> Result<Option<String>
         match profile_lock_birth_bridge(&resource_dir, pid) {
             Ok(birth) => Ok(Some(birth)),
             // Missing identity still fences reclamation and fresh lock writes.
-            Err(RegistryBridgeFailure::Invocation | RegistryBridgeFailure::Protocol) => Ok(None),
+            Err(RegistryBridgeFailure::Invocation) => Err("Station’s packaged Node runtime could not start. Reinstall the desktop app; changing the data folder will not repair the runtime.".into()),
+            Err(RegistryBridgeFailure::Protocol) => Err("Station’s process identity helper returned an invalid response. Check the desktop log before changing the data folder.".into()),
             Err(RegistryBridgeFailure::Untrusted | RegistryBridgeFailure::HomeSchema) => Ok(None),
         }
     })
@@ -9074,7 +9263,8 @@ fn invoke_registry_bridge(
     input: serde_json::Value,
 ) -> Result<Vec<u8>, RegistryBridgeFailure> {
     let shell_path = resolve_login_shell_path();
-    let mut command = build_registry_bridge_command(resource_dir, operation, &shell_path);
+    let mut command = build_registry_bridge_command(resource_dir, operation, &shell_path)
+        .map_err(|_| RegistryBridgeFailure::Invocation)?;
     let mut child = command
         .spawn()
         .map_err(|_| RegistryBridgeFailure::Invocation)?;
@@ -9284,26 +9474,43 @@ fn command_station_script_path(resource_dir: &Path) -> PathBuf {
     resource_dir.join("dist-server").join("command-station.js")
 }
 
-/// Builds the registry bridge command with the same login-shell executable
-/// policy as the sidecar. Packaged desktop launches do not inherit an
-/// interactive terminal PATH, so invoking `node` before recovering it breaks
-/// nvm/mise/Volta installations even though the sidecar itself can start.
+#[cfg(not(mobile))]
+fn desktop_node_executable(app_executable: &Path, development: bool) -> PathBuf {
+    if development {
+        return PathBuf::from("node");
+    }
+    app_executable.with_file_name(if cfg!(windows) {
+        "station-node.exe"
+    } else {
+        "station-node"
+    })
+}
+
+#[cfg(not(mobile))]
+fn desktop_node_command(shell_path: &str) -> std::io::Result<Command> {
+    let executable = desktop_node_executable(&std::env::current_exe()?, cfg!(debug_assertions));
+    let mut command = Command::new(&executable);
+    command.env("PATH", shell_path);
+    Ok(command)
+}
+
+/// Registry and backend children share the private release executable. The
+/// recovered user PATH is retained for user commands, not Node selection.
 #[cfg(not(mobile))]
 fn build_registry_bridge_command(
     resource_dir: &Path,
     operation: &str,
     shell_path: &str,
-) -> Command {
-    let mut command = Command::new("node");
+) -> std::io::Result<Command> {
+    let mut command = desktop_node_command(shell_path)?;
     command
         .arg(registry_bridge_script_path(resource_dir))
         .arg(operation)
-        .env("PATH", shell_path)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
     apply_no_window(&mut command);
-    command
+    Ok(command)
 }
 
 #[cfg(all(not(mobile), windows))]
@@ -9372,8 +9579,8 @@ fn build_sidecar_command(
     context: &SidecarLaunchContext,
     boot_id: &str,
     explicit_station_root: Option<std::ffi::OsString>,
-) -> Command {
-    let mut command = Command::new("node");
+) -> std::io::Result<Command> {
+    let mut command = desktop_node_command(&context.shell_path)?;
     command
         .arg(command_station_script_path(&context.resource_dir))
         .current_dir(&context.resource_dir)
@@ -9396,7 +9603,6 @@ fn build_sidecar_command(
         // watchdog's bounded next poll rather than surviving as an orphan.
         .env("STATION_SUPERVISOR_PID", std::process::id().to_string())
         .env("STATION_SUPERVISOR_BIRTH", &context.supervisor_birth)
-        .env("PATH", &context.shell_path)
         .env("HOME", &context.home)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -9432,7 +9638,7 @@ fn build_sidecar_command(
         }
     }
     apply_no_window(&mut command);
-    command
+    Ok(command)
 }
 
 #[cfg(not(mobile))]
@@ -12409,6 +12615,7 @@ fn spawn_sidecar_child(context: &SidecarRuntimeContext) -> Result<(Child, String
     // developer's own STATION_ROOT.
     let mut child =
         build_sidecar_command(&context.launch, &boot_id, std::env::var_os("STATION_ROOT"))
+            .map_err(|error| format!("locate packaged Node runtime: {error}"))?
             .spawn()
             .map_err(|error| format!("launch Station sidecar: {error}"))?;
     // Record the child before waiting for Listening: after desktop death its
@@ -13502,7 +13709,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                             .map(|_| ())
                             .map_err(|error| match error {
                                 RegistryBridgeFailure::HomeSchema => "This folder contains data without a compatible Station schema. Keep it intact and select a new empty folder or restore a compatible Station home.".to_string(),
-                                RegistryBridgeFailure::Invocation => "The local Node helper could not run. Check that Node 24 is installed and available to the app.".to_string(),
+                                RegistryBridgeFailure::Invocation => "Station’s packaged Node runtime could not start. Reinstall the desktop app; no system Node installation is required.".to_string(),
                                 _ => "The local storage helper did not return a valid result. Check the desktop logs before changing this folder.".to_string(),
                             })
                     },
@@ -13511,6 +13718,10 @@ If a stable instance is running, this launch will focus its window and exit.",
                 let station_home = match prepared_home {
                     Ok(home) => home,
                     Err(error) => {
+                        if error.starts_with("saved Station metadata is missing from an initialized or in-progress shared root") {
+                            offer_legacy_profile_store_recovery(app.handle(), station_root.clone());
+                            return Ok(());
+                        }
                         exit_desktop_home_preparation_failure(
                             app,
                             "Station could not validate its home folder",
@@ -17573,7 +17784,8 @@ mod tests {
     #[test]
     fn sidecar_launch_targets_command_station_with_loopback_handshake() {
         let context = sample_sidecar_context(None);
-        let command = build_sidecar_command(&context, "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a111", None);
+        let command =
+            build_sidecar_command(&context, "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a111", None).unwrap();
         assert_eq!(command.get_program(), "node");
         assert_eq!(
             command.get_args().collect::<Vec<_>>(),
@@ -17655,8 +17867,8 @@ mod tests {
         assert!(uuid::Uuid::parse_str(&second).is_ok());
 
         let context = sample_sidecar_context(None);
-        let first_env = command_env(&build_sidecar_command(&context, &first, None));
-        let second_env = command_env(&build_sidecar_command(&context, &second, None));
+        let first_env = command_env(&build_sidecar_command(&context, &first, None).unwrap());
+        let second_env = command_env(&build_sidecar_command(&context, &second, None).unwrap());
         assert!(first_env.contains(&(
             "STATION_INSTANCE_ID".to_string(),
             Some(context.instance_id.clone())
@@ -17713,11 +17925,9 @@ mod tests {
         let mut context = sample_sidecar_context(None);
         context.station_root = PathBuf::from("/data/station");
         context.station_home = PathBuf::from("/data/station");
-        let env = command_env(&build_sidecar_command(
-            &context,
-            "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a333",
-            None,
-        ));
+        let env = command_env(
+            &build_sidecar_command(&context, "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a333", None).unwrap(),
+        );
         assert!(
             !env.iter()
                 .any(|(name, value)| name == "STATION_ROOT" && value.is_some()),
@@ -17759,11 +17969,14 @@ mod tests {
         let mut context = sample_sidecar_context(None);
         context.station_root = PathBuf::from("/data/station");
         context.station_home = PathBuf::from("/data/station");
-        let env = command_env(&build_sidecar_command(
-            &context,
-            "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a444",
-            Some(std::ffi::OsString::from("/data/station")),
-        ));
+        let env = command_env(
+            &build_sidecar_command(
+                &context,
+                "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a444",
+                Some(std::ffi::OsString::from("/data/station")),
+            )
+            .unwrap(),
+        );
         assert!(env.contains(&(
             "STATION_ROOT".to_string(),
             Some("/data/station".to_string())
@@ -17777,7 +17990,8 @@ mod tests {
             &sample_sidecar_context(Some(38141)),
             "018f8f10-1df4-7d5b-b1f1-3a5c5dc7a222",
             None,
-        );
+        )
+        .unwrap();
         let env = command_env(&command);
         assert!(env.contains(&("PORT".to_string(), Some("38141".to_string()))));
         assert!(env.contains(&("STATION_PORT_MODE".to_string(), None)));
@@ -17791,7 +18005,8 @@ mod tests {
             Path::new("/bundle/resources"),
             "read",
             "/custom/node/bin:/usr/bin",
-        );
+        )
+        .unwrap();
         assert_eq!(command.get_program(), "node");
         assert_eq!(
             command.get_args().collect::<Vec<_>>(),
@@ -21369,6 +21584,106 @@ mod tests {
             !station_profile_store_genesis_admissible(&root).unwrap(),
             "any config residue is a transient/cutover fence"
         );
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_store_recovery_preserves_runtime_and_accepts_cli_read_write() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path().join("station");
+        let runtime = root.join("instances/dev/legacy/data.json");
+        std::fs::create_dir_all(runtime.parent().unwrap()).unwrap();
+        std::fs::write(&runtime, b"preserved runtime data").unwrap();
+        ensure_station_profile_store_root(&root).unwrap();
+        assert!(profile_store_recovery_files_are_absent(&root, None).unwrap());
+        let config = root.join("config");
+        std::fs::create_dir(&config).unwrap();
+        crate::windows_path_trust::ensure(&[(
+            crate::windows_path_trust::TrustKind::Directory,
+            &config,
+        )])
+        .unwrap();
+        let lock = lock_station_profiles(&config.join("profiles.json")).unwrap();
+        create_confirmed_profile_store(&root, &lock).unwrap();
+        drop(lock);
+        assert_eq!(std::fs::read(&runtime).unwrap(), b"preserved runtime data");
+        let mut command = Command::new("node");
+        command.current_dir(Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap())
+            .args(["--import", "tsx", "--input-type=module", "--eval",
+                "import {readProfileStore,upsertProfile} from './packages/cli/src/commands/profile-store.ts'; const root=process.env.STATION_ROOT; if(readProfileStore(root).revision!==0) throw Error('initial store'); upsertProfile({name:'recovered',endpoint:'http://127.0.0.1:46411',now:1},root); const store=readProfileStore(root); if(store.revision!==1||store.profiles[0]?.name!=='recovered') throw Error('CLI write was not retained');"])
+            .env("STATION_ROOT", &root).env_remove("STATION_HOME");
+        apply_no_window(&mut command);
+        let output = command.output().unwrap();
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let previous = std::fs::read(config.join("profiles.json")).unwrap();
+        let lock = lock_station_profiles(&config.join("profiles.json")).unwrap();
+        assert!(create_confirmed_profile_store(&root, &lock).is_err());
+        assert_eq!(
+            std::fs::read(config.join("profiles.json")).unwrap(),
+            previous
+        );
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_store_recovery_refuses_history_and_unknown_locks() {
+        for evidence in [
+            ".station-profile-store-v1",
+            "backups/profile.json",
+            "config/profiles.json.lock",
+            "config/cutover-receipt.json",
+            "state/credential-vault.json",
+        ] {
+            let temporary = tempfile::tempdir().unwrap();
+            let root = temporary.path().join("station");
+            let file = root.join(evidence);
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(file, b"held").unwrap();
+            ensure_station_profile_store_root(&root).unwrap();
+            assert!(
+                !profile_store_recovery_files_are_absent(&root, None).unwrap(),
+                "{evidence}"
+            );
+        }
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn desktop_node_release_path_is_private_and_never_uses_path() {
+        let executable = Path::new("/application/station");
+        let expected = executable.with_file_name(if cfg!(windows) {
+            "station-node.exe"
+        } else {
+            "station-node"
+        });
+        assert_eq!(desktop_node_executable(executable, false), expected);
+        assert_eq!(
+            desktop_node_executable(executable, true),
+            PathBuf::from("node")
+        );
+        assert!(
+            !expected.exists(),
+            "missing sidecar must still resolve to the private path"
+        );
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn shared_profile_genesis_ignores_only_regular_os_metadata() {
+        let temporary = tempfile::tempdir().unwrap();
+        let root = temporary.path().join("station");
+        std::fs::create_dir(&root).unwrap();
+        for name in [".DS_Store", "Thumbs.db", "desktop.ini"] {
+            std::fs::write(root.join(name), b"OS metadata").unwrap();
+        }
+        assert!(station_profile_store_genesis_admissible(&root).unwrap());
+        std::fs::remove_file(root.join(".DS_Store")).unwrap();
+        std::fs::create_dir(root.join(".DS_Store")).unwrap();
+        assert!(!station_profile_store_genesis_admissible(&root).unwrap());
     }
 
     #[cfg(all(not(mobile), unix))]

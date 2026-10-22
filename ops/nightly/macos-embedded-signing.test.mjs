@@ -14,6 +14,7 @@ import {
   EMBEDDED_MACHO_FIND_MAX_BUFFER,
   EMBEDDED_MACHO_SEALING_DEADLINE_MS,
   embeddedMacosMachOPaths,
+  sealBundledMacosNode,
   sealEmbeddedMacosMachO,
   sealEmbeddedMacosMachOBounded,
 } from './macos-embedded-signing.mjs';
@@ -730,15 +731,86 @@ test('refuses real dependency symlink trees before codesign', () => {
   expect(calls).toEqual([]);
 });
 
-test('CLI main guard works through a /tmp symlink and app path containing spaces', () => {
-  const root = mkdtempSync(join(tmpdir(), 'station 4413 app '));
-  mkdirSync(join(root, 'Contents/Resources/node_modules'), { recursive: true });
-  const source = new URL('./macos-embedded-signing.mjs', import.meta.url);
-  const link = join(root, 'macos-embedded-signing-link.mjs');
-  symlinkSync(source, link);
-  const output = execFileSync(process.execPath, [link, root, 'Developer ID'], {
-    encoding: 'utf8',
-    windowsHide: true,
-  });
-  expect(output.trim()).toBe('[]');
+test.skipIf(process.platform === 'win32')(
+  'CLI main guard works through a /tmp symlink and app path containing spaces',
+  () => {
+    const root = mkdtempSync(join(tmpdir(), 'station 4413 app '));
+    mkdirSync(join(root, 'Contents/Resources/node_modules'), {
+      recursive: true,
+    });
+    mkdirSync(join(root, 'Contents/MacOS'), { recursive: true });
+    writeFileSync(join(root, 'Contents/MacOS/station-node'), 'fixture binary');
+    const bin = join(root, 'bin');
+    mkdirSync(bin);
+    writeFileSync(
+      join(bin, 'codesign'),
+      `#!/bin/sh
+case "$1" in
+  -dvv) echo 'TeamIdentifier=U7KHF2QAC4'; echo 'CodeDirectory flags=0x10000(runtime)' ;;
+  -d) echo '<plist><dict><key>com.apple.security.cs.allow-jit</key><true/></dict></plist>' ;;
+esac
+`,
+      { mode: 0o755 },
+    );
+    const source = new URL('./macos-embedded-signing.mjs', import.meta.url);
+    const link = join(root, 'macos-embedded-signing-link.mjs');
+    symlinkSync(source, link);
+    const output = execFileSync(
+      process.execPath,
+      [link, root, 'Developer ID'],
+      {
+        encoding: 'utf8',
+        windowsHide: true,
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+      },
+    );
+    expect(output.trim()).toBe('[]');
+  },
+);
+
+test('seals the named Node runtime with only JIT permission and rejects excess entitlements', async () => {
+  const calls = [];
+  let extra = false;
+  const command = async (_phase, program, args) => {
+    calls.push([program, args]);
+    if (args[0] === '-dvv')
+      return result(
+        'TeamIdentifier=U7KHF2QAC4\nCodeDirectory flags=0x10000(runtime)',
+      );
+    if (args.includes('--entitlements') && !args.includes('--force'))
+      return result(
+        `<plist><dict><key>com.apple.security.cs.allow-jit</key><true/>${extra ? '<key>get-task-allow</key><true/>' : ''}</dict></plist>`,
+      );
+    return ok;
+  };
+  const environment = {
+    command,
+    realpath: (path) => path,
+    lstat: () => ({ isFile: () => true, isSymbolicLink: () => false }),
+  };
+  await sealBundledMacosNode('/app', 'Developer ID', environment);
+  expect(calls).toContainEqual([
+    'codesign',
+    [
+      '--force',
+      '--sign',
+      'Developer ID',
+      '--options',
+      'runtime',
+      '--timestamp',
+      '--entitlements',
+      expect.stringContaining('Node.entitlements.plist'),
+      '/app/Contents/MacOS/station-node',
+    ],
+  ]);
+  extra = true;
+  await expect(
+    sealBundledMacosNode('/app', 'Developer ID', environment),
+  ).rejects.toThrow(/only the allow-jit/);
+  await expect(
+    sealBundledMacosNode('/app', 'Developer ID', {
+      ...environment,
+      lstat: () => ({ isFile: () => true, isSymbolicLink: () => true }),
+    }),
+  ).rejects.toThrow(/regular file/);
 });

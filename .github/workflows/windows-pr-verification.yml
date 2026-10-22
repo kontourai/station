@@ -107,9 +107,8 @@ jobs:
         if: ${{ steps.rust_relevance.outputs.relevant != 'false' }}
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force dist-server | Out-Null
-          New-Item -ItemType Directory -Force dist-desktop-runtime/node_modules | Out-Null
-          New-Item -ItemType Directory -Force dist-desktop-runtime/examples | Out-Null
+          node scripts/prepare-desktop-rust-resources.mjs
+          if ($LASTEXITCODE -ne 0) { throw "Desktop runtime staging failed" }
           cargo test --manifest-path src-desktop/Cargo.toml --no-run
 
       # No `npm run typecheck` here. tsc's verdict does not depend on the host

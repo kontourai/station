@@ -14,6 +14,7 @@ import { invokedDirectly } from '../../scripts/lib/module-entry.mjs';
 import { redactVerificationOutput } from '../../scripts/lib/verification-redaction.mjs';
 import {
   EMBEDDED_MACHO_SEALING_DEADLINE_MS,
+  sealBundledMacosNode,
   sealEmbeddedMacosMachOBounded,
 } from '../nightly/macos-embedded-signing.mjs';
 
@@ -847,6 +848,12 @@ export async function createMacosNotarizedArtifacts(options, injected = {}) {
     if (!dmgOnly) {
       const retryEmbeddedSign = (phase, args, operation) =>
         retryRetryableTransportFailure(phase, args, operation, logger);
+      await sealBundledMacosNode(app, identity, {
+        ...injected.embeddedMacos,
+        command: embeddedCommand,
+        sign: embeddedSign,
+        retrySign: retryEmbeddedSign,
+      });
       await sealEmbeddedMacosMachOBounded(app, identity, {
         ...injected.embeddedMacos,
         command: embeddedCommand,

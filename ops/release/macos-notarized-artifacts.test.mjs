@@ -81,6 +81,17 @@ function fixture({
         return { status: 0, stdout: `${appVersion}\n`, stderr: '' };
       return { status: 0, stdout: 'io.kontourai.station', stderr: '' };
     }
+    if (
+      program === 'codesign' &&
+      args.includes('--entitlements') &&
+      args.at(-1).endsWith('/station-node')
+    )
+      return {
+        status: 0,
+        stdout:
+          '<plist><dict><key>com.apple.security.cs.allow-jit</key><true/></dict></plist>',
+        stderr: '',
+      };
     if (program === 'codesign' && args[0] === '-dvv') {
       return {
         status: 0,
@@ -103,7 +114,7 @@ function fixture({
   return {
     calls,
     embeddedMacos: {
-      lstat: () => ({ isSymbolicLink: () => false }),
+      lstat: () => ({ isSymbolicLink: () => false, isFile: () => true }),
       magic: () => false,
       realpath: (file) => file,
     },
@@ -1136,7 +1147,7 @@ test('retries a bounded embedded timestamp signing failure once without rewrappi
   const baseRun = release.run;
   let embeddedSignAttempts = 0;
   release.embeddedMacos = {
-    lstat: () => ({ isSymbolicLink: () => false }),
+    lstat: () => ({ isSymbolicLink: () => false, isFile: () => true }),
     magic: (candidate) => candidate === file,
     realpath: (candidate) => candidate,
   };

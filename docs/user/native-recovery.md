@@ -102,6 +102,26 @@ Some home or schema refusals occur before the supervisor starts. They show a
 separate **Exit**-only dialog and start no backend. Repeatedly launching the app
 does not repair the refused home.
 
+## Missing saved connections
+
+If Station finds an existing shared folder without its saved `profiles.json` connection list, it
+shows the folder and a bounded list of existing entry names. Restore the file
+from backup if you previously saved connections. Station does not infer that
+connections were never saved merely because the file is absent.
+
+For a folder containing only inspected runtime bookkeeping, with no profile,
+backup, cutover, or credential history, Desktop can offer **Create connection
+list and restart**. This creates an empty list and preserves runtime data. The
+checks run again after confirmation and under the shared locks. A marker from
+an earlier initialization, an unknown lock, unreadable evidence, or saved
+credentials keeps recovery at **Exit** only. An existing list is never replaced.
+Regular OS metadata files such as `.DS_Store`, `Thumbs.db`, and `desktop.ini` do
+not prevent first initialization; symlinks and directories with those names do.
+
+Installed desktop releases carry their own Node runtime. A message that this
+runtime could not start calls for reinstalling the desktop app, rather than
+resetting its data folder or installing a different system Node.
+
 ## Check the local diagnosis
 
 From the Station checkout or installed command, run:

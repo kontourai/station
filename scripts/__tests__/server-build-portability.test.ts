@@ -33,6 +33,7 @@ import {
   NON_RUNTIME_ARTIFACT,
   RUNTIME_DEPENDENCY_EXCLUSIONS,
   RUNTIME_PACKAGE_PRUNE_RULES,
+  stageDesktopServerBundle,
   stageDesktopServerRuntime,
   WINDOWS_DESKTOP_RUNTIME_TAURI_CONFIG,
 } from '../lib/desktop-server-runtime.mjs';
@@ -940,12 +941,106 @@ describe('server build package portability', () => {
     // Every id here has its own behavioural test below. A new rule must add
     // one; a dropped rule fails its test rather than only this list.
     expect(RUNTIME_PACKAGE_PRUNE_RULES.map((rule) => rule.id)).toEqual([
+      'compiled-sdk-development-sources',
+      'cedar-node-runtime-only',
       'node-pty-foreign-prebuilds',
       'flow-agents-harness-bundles',
     ]);
     expect(RUNTIME_DEPENDENCY_EXCLUSIONS.map((rule) => rule.id)).toEqual([
       'flow-agents-bundle-builder-esbuild',
     ]);
+  });
+
+  it('ships compiled SDK entrypoints without their development sources and keeps Node Cedar assets', async () => {
+    const root = makeTempDir('station-runtime-production-');
+    const project = join(root, 'project');
+    const output = join(root, 'release');
+    const zod = join(project, 'node_modules/zod');
+    writeFixturePackage(zod, {
+      name: 'zod',
+      version: '4.0.0',
+      main: 'index.js',
+    });
+    writeFileSync(join(zod, 'index.js'), 'exports.parse = (value) => value;');
+    mkdirSync(join(zod, 'src/tests'), { recursive: true });
+    writeFileSync(
+      join(zod, 'src/index.ts'),
+      'export const parse = (v: unknown) => v;',
+    );
+    writeFileSync(
+      join(zod, 'src/tests/parse.test.ts'),
+      'throw new Error("test only");',
+    );
+    writeFileSync(join(zod, 'index.test.js'), 'throw new Error("test only");');
+    writeFileSync(join(zod, 'LICENSE'), 'fixture license');
+    const cedar = join(project, 'node_modules/@cedar-policy/cedar-wasm');
+    writeFixturePackage(cedar, {
+      name: '@cedar-policy/cedar-wasm',
+      version: '4.0.0',
+      exports: { './nodejs': './nodejs/index.cjs' },
+    });
+    for (const variant of ['nodejs', 'esm', 'web']) {
+      mkdirSync(join(cedar, variant), { recursive: true });
+      writeFileSync(join(cedar, variant, 'cedar.wasm'), 'fixture wasm');
+    }
+    writeFileSync(
+      join(cedar, 'nodejs/index.cjs'),
+      'exports.asset = require("node:fs").readFileSync(require("node:path").join(__dirname, "cedar.wasm"), "utf8");',
+    );
+    stageDesktopServerRuntime({
+      projectRoot: project,
+      outputRoot: output,
+      packages: ['zod', '@cedar-policy/cedar-wasm'],
+    });
+    const probe = await execFileAsync(
+      process.execPath,
+      [
+        '-e',
+        'const z = require("zod"); const c = require("@cedar-policy/cedar-wasm/nodejs"); console.log(JSON.stringify([z.parse("value"), c.asset]));',
+      ],
+      { cwd: output, windowsHide: true },
+    );
+    expect(JSON.parse(probe.stdout)).toEqual(['value', 'fixture wasm']);
+    expect(existsSync(join(output, 'node_modules/zod/src'))).toBe(false);
+    expect(existsSync(join(output, 'node_modules/zod/index.test.js'))).toBe(
+      false,
+    );
+    expect(readFileSync(join(output, 'node_modules/zod/LICENSE'), 'utf8')).toBe(
+      'fixture license',
+    );
+    for (const variant of ['esm', 'web'])
+      expect(
+        existsSync(
+          join(output, 'node_modules/@cedar-policy/cedar-wasm', variant),
+        ),
+      ).toBe(false);
+  });
+
+  it('omits server source maps from the installed tree while retaining the debug build output', async () => {
+    const project = makeTempDir('station-desktop-server-maps-');
+    mkdirSync(join(project, 'dist-server'));
+    writeFileSync(
+      join(project, 'dist-server/command-station.js'),
+      'console.log("packaged server");',
+    );
+    writeFileSync(
+      join(project, 'dist-server/command-station.js.map'),
+      '{"sourcesContent":["debug only"]}',
+    );
+    const output = join(project, 'release');
+    stageDesktopServerBundle(project, output);
+    const probe = await execFileAsync(
+      process.execPath,
+      [join(output, 'dist-server/command-station.js')],
+      { cwd: output, windowsHide: true },
+    );
+    expect(probe.stdout.trim()).toBe('packaged server');
+    expect(existsSync(join(output, 'dist-server/command-station.js.map'))).toBe(
+      false,
+    );
+    expect(
+      existsSync(join(project, 'dist-server/command-station.js.map')),
+    ).toBe(true);
   });
 
   it('stages every arch of the target OS node-pty prebuilds and no other OS (node-pty-foreign-prebuilds)', () => {

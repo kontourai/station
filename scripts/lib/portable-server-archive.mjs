@@ -220,7 +220,7 @@ function runTar(args, options = {}) {
   });
 }
 
-function stageNodeRuntime(target, distributionBytes, runtimeDir) {
+export function stageNodeRuntime(target, distributionBytes, runtimeDir) {
   // Extract from a private copy written from the verified bytes, never by
   // reopening the path that was hashed.
   const scratch = mkdtempSync(join(tmpdir(), 'station-node-extract-'));
