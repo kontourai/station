@@ -4,15 +4,13 @@ import type {
   RevisionEvidencePersistence,
   RevisionEvidencePersistenceBounds,
 } from '../../domain/revision-bound-evidence.js';
-import { MAX_REVISION_EVIDENCE_IDENTIFIER_BYTES } from '../../domain/revision-bound-evidence.js';
+import {
+  MAX_REVISION_EVIDENCE_IDENTIFIER_BYTES,
+  revisionEvidencePortableBytes,
+} from '../../domain/revision-bound-evidence.js';
 import type { SqliteDatabase } from './sqlite-database.js';
 
 const RESTORE_PAGE_SIZE = 32;
-const PORTABLE_PREFIX_BYTES = Buffer.byteLength(
-  '{"schemaVersion":1,"revisions":[',
-  'utf8',
-);
-const PORTABLE_SUFFIX_BYTES = Buffer.byteLength(']}', 'utf8');
 const REVISION_ID_BYTES =
   Buffer.byteLength('revision-evidence-v1:', 'utf8') + 64;
 const DIGEST_BYTES = 64;
@@ -21,13 +19,31 @@ function digest(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
-function portableBytes(recordBytes: number, count: number): number {
-  return (
-    PORTABLE_PREFIX_BYTES +
-    recordBytes +
-    Math.max(0, count - 1) +
-    PORTABLE_SUFFIX_BYTES
-  );
+const portableBytes = revisionEvidencePortableBytes;
+
+/**
+ * Stored receipt count and record bytes, for room admission (#4007). A
+ * database without the receipt table holds no receipts.
+ */
+export function readRevisionEvidenceLedgerUsage(database: {
+  prepare(sql: string): { get(): unknown };
+}): { readonly count: number; readonly recordBytes: number } {
+  const exists = database
+    .prepare(
+      "SELECT 1 AS present FROM sqlite_master WHERE type='table' AND name='revision_evidence_receipts'",
+    )
+    .get();
+  if (!exists) return { count: 0, recordBytes: 0 };
+  const row = database
+    .prepare(
+      'SELECT COUNT(*) AS record_count, COALESCE(SUM(record_bytes), 0) AS record_bytes FROM revision_evidence_receipts',
+    )
+    .get() as { record_count?: unknown; record_bytes?: unknown } | undefined;
+  const count = Number(row?.record_count);
+  const recordBytes = Number(row?.record_bytes);
+  if (!Number.isSafeInteger(count) || !Number.isSafeInteger(recordBytes))
+    throw new Error('revision evidence ledger usage is unreadable');
+  return { count, recordBytes };
 }
 
 function storedRecord(

@@ -55,6 +55,11 @@ import {
 } from '@kontourai/station-contracts/work-item-provider';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
+import type { RevisionEvidenceAdmissionRefusal } from '../../domain/revision-bound-evidence.js';
+import {
+  TASK_ROOM_DOCUMENT_PLAIN_TEXT_CAPACITY,
+  taskRoomDocumentSeedFits,
+} from '../../domain/task-room-document-capacity.js';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
 import {
   AnswerNarrativeBindingModule,
@@ -433,7 +438,11 @@ export function createTaskRoutes(
       taskId: string;
       request: Request;
       text: string;
-    }) => Promise<boolean>;
+    }) => Promise<boolean | RevisionEvidenceAdmissionRefusal>;
+    /** Why a proposal brief cannot be seeded, checked before the Task exists. */
+    proposalBriefRefusal?: (
+      text: string,
+    ) => Promise<RevisionEvidenceAdmissionRefusal | null>;
     /** Exact-identity tracker reads (#4003). Personal mode only. */
     workItemObserver?: WorkItemObserver;
     /**
@@ -538,7 +547,11 @@ export function createTaskRoutes(
       taskId: string;
       request: Request;
       text: string;
-    }) => Promise<boolean>;
+    }) => Promise<boolean | RevisionEvidenceAdmissionRefusal>;
+    /** Why a proposal brief cannot be seeded, checked before the Task exists. */
+    proposalBriefRefusal?: (
+      text: string,
+    ) => Promise<RevisionEvidenceAdmissionRefusal | null>;
     canReadSession?: (
       sessionId: string,
       authority: SessionReadAuthority,
@@ -812,6 +825,28 @@ export function createTaskRoutes(
             409,
           );
         }
+        // A brief the room cannot seed is refused before the Task exists,
+        // instead of creating it and failing every retry (#4007, #4055).
+        // Re-accepting the same source reuses its Task (createTask below),
+        // so that retry is never refused here: its brief is already seeded
+        // or is seeded below, where a refusal names the existing Task.
+        const alreadyAccepted = service
+          .readSessionRelations(sessionId)
+          .links.some(
+            (link) =>
+              link.sourceType === 'task' &&
+              link.targetType === 'session' &&
+              link.targetId === sessionId &&
+              link.relationType === 'spawned_session' &&
+              link.metadata?.shapingTurnId === turnId,
+          );
+        const refusal = alreadyAccepted
+          ? null
+          : taskRoomDocumentSeedFits(input.proposalBrief)
+            ? ((await options.proposalBriefRefusal?.(input.proposalBrief)) ??
+              null)
+            : 'document-full';
+        if (refusal) return proposalBriefRefusalResponse(c, refusal);
       }
       // Review F4: a `github:` ref is read with the Station host's tracker
       // login, so it is accepted only when it parses and the Project's
@@ -864,7 +899,7 @@ export function createTaskRoutes(
         workItemProvenance ? { workItemProvenance } : {},
       );
       if (input.shapingSource) {
-        let seeded = false;
+        let seeded: boolean | RevisionEvidenceAdmissionRefusal = false;
         try {
           seeded = await options.seedProposalBrief!({
             taskId: data.id,
@@ -874,6 +909,8 @@ export function createTaskRoutes(
         } catch {
           /* Retry retains the exact source identity. */
         }
+        if (typeof seeded === 'string')
+          return proposalBriefRefusalResponse(c, seeded, data.id);
         if (!seeded)
           return c.json(
             {
@@ -1004,12 +1041,13 @@ export function createTaskRoutes(
       });
     let briefSaved = false;
     try {
+      // A capacity refusal (#4007) is reported as an unsaved brief.
       briefSaved =
         (await options.seedProposalBrief?.({
           taskId: created.task.id,
           request: c.req.raw,
           text: workItemTaskBrief(observation),
-        })) ?? false;
+        })) === true;
     } catch {
       briefSaved = false;
     }
@@ -2554,4 +2592,39 @@ function publishedBasisSessionIds(
   return projection && projection.answer.state === 'available'
     ? [projection.answer.value.ref.threadId]
     : null;
+}
+
+/**
+ * A proposal brief the room cannot seed (#4007). Neither refusal can succeed
+ * on retry, so neither promises one. `createdTaskId` names the Task when it
+ * already exists (the ledger filled between the check and the seed), so the
+ * client can open it; it is sent as `details.taskId`.
+ */
+function proposalBriefRefusalResponse(
+  c: { json(value: unknown, status?: number): Response },
+  refusal: RevisionEvidenceAdmissionRefusal,
+  createdTaskId?: string,
+) {
+  const created = createdTaskId !== undefined;
+  const details = created ? { details: { taskId: createdTaskId } } : {};
+  const prefix = created ? 'Task created, but its brief was not saved. ' : '';
+  return refusal === 'document-full'
+    ? c.json(
+        {
+          success: false,
+          code: 'task-document-full',
+          ...details,
+          error: `${prefix}This brief is too long for a Task document, which holds about ${TASK_ROOM_DOCUMENT_PLAIN_TEXT_CAPACITY.toLocaleString('en-US')} characters of plain text. Ask the agent for a shorter proposal.`,
+        },
+        413,
+      )
+    : c.json(
+        {
+          success: false,
+          code: 'revision-history-full',
+          ...details,
+          error: `${prefix}Station's revision history is full, so it cannot save a Task brief${created ? '' : ', and the Task was not created'}. Retrying will not help until the history has room.`,
+        },
+        507,
+      );
 }

@@ -2775,6 +2775,16 @@ batch to 384 operations. Text has separate 256 Ki code-unit and 256 KiB UTF-8
 limits; atom IDs and selections are checked too. These are admission ceilings,
 not a promise that every maximum-sized edit has acceptable interactive latency.
 
+**Identities.** RGA siblings render in ascending atom-ID order, so a
+mid-document insert lands in place only when its atoms sort below the
+predecessor's existing children. The planner passes the planning state's lowest
+atom ID to `nextIntentId`, and both server callers mint `lowSortingIntentId`:
+`!`, a fixed-width base-36 counter one below that ID's, and a random suffix.
+Derived from document state alone, it holds across restarts and writers;
+UUID-era IDs sort above `!`. Any other identity stays correct, but the planner
+may then delete and reinsert the retained suffix
+([#4008](https://github.com/kontourai/station/issues/4008)).
+
 **Callers.** `ProjectTaskRoomRuntime.editPlan()` and `publishAgentDocumentEdit()`
 use this capability on the server. Browser edits receive an opaque intent ID
 and digest plus text/selection preview, never atoms, operations or a writer
@@ -2822,7 +2832,18 @@ and attestation sizes have separate limits. Import checks entry count before a
 cycle-safe escaped-JSON byte traversal, then validates identity, restored state,
 parent closure, scope and every authority binding as one batch. Arrays/objects
 and nested byte budgets are bounded, including sparse arrays and surrogate
-escaping. Missing compatible attribution is `attribution_unverified`; a portable
+escaping; element and member counts are bounded by the byte budget itself, not
+a fixed count (a 4,096-element cap refused Task documents of more than 4,096
+atoms, [#4007](https://github.com/kontourai/station/issues/4007)). The room
+working-state worker applies the same bounds before it commits a write
+(`revisionEvidenceAdmission`), counting stored receipts plus every publication
+admitted but not yet frozen, so a room write is refused as `document-full` or
+`evidence-ledger-full` instead of being admitted and then never frozen.
+A Task document's capacity is therefore per document (about 5,400 plain
+characters ever typed, deleted ones included) and also bounded by this
+Station-wide ledger: 256 receipts / 4 MiB, each holding a full snapshot of the
+document it records. A few hundred small saves, or a few saves of a large
+document, fill it for every Task; retiring receipts is [#4055](https://github.com/kontourai/station/issues/4055). Missing compatible attribution is `attribution_unverified`; a portable
 file alone grants no trust. Returned records, exports and projections are cloned.
 
 [EventStore](../../src-server/services/orchestration/event-store.ts) composes the

@@ -124,8 +124,11 @@ document, with agents appending entries. Two findings replaced it.
 
 - **Capacity.** The room document's stored state grows with every character
   ever typed, not with its current length
-  ([#4007](https://github.com/kontourai/station/issues/4007)). An agent
-  appending at every step would exhaust it, and nothing in an append-only
+  ([#4007](https://github.com/kontourai/station/issues/4007)), and every
+  save also stores a full snapshot in a Station-wide revision ledger of 256
+  receipts / 4 MiB
+  ([#4055](https://github.com/kontourai/station/issues/4055)). An agent
+  appending at every step would exhaust both, and nothing in an append-only
   document ever gets shorter. A rewritten summary with its own cap stays the
   same size however long the Task runs.
 - **Derivation over self-report.** Most of what an "In progress" or "Done"

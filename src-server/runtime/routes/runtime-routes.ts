@@ -4264,6 +4264,9 @@ export function configureRuntimeRoutes(
       seedProposalBrief: (input) =>
         projectTaskRoomRuntime?.seedProposalBrief(input) ??
         Promise.resolve(false),
+      proposalBriefRefusal: (text) =>
+        projectTaskRoomRuntime?.proposalBriefRefusal(text) ??
+        Promise.resolve(null),
       readAuthorityForRequest: conversationReadAuthorityForRequest,
       dispatchOwnerForRequest: (request) =>
         sessionOwnerForRequest(
