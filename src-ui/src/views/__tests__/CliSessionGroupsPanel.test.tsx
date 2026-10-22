@@ -24,7 +24,7 @@ const group: CliSessionGroupView = {
   cancelled: false,
   deadlineAt: 1792629000000,
   maxConcurrent: 2,
-  dispatchCount: 2,
+  dispatchCount: 3,
   preset: {
     presetId: 'team',
     name: 'Retained team',
@@ -66,6 +66,22 @@ const group: CliSessionGroupView = {
       dispatchFailure: { status: 400, code: 'delegation_refused' },
     },
     { seatId: 'join', needs: ['first', 'second'], state: 'pending' },
+    {
+      seatId: 'waiting',
+      needs: [],
+      state: 'started',
+      attention: {
+        kind: 'needs-input',
+        observedAt: '2026-10-22T00:00:00.000Z',
+        request: { id: 'question', eventId: 'question-event' },
+      },
+      handle: {
+        taskId: 'task:waiting',
+        conversationId: 'task:waiting',
+        sessionId: 'task:waiting',
+        initialTurnId: 'turn:waiting',
+      },
+    },
   ],
 };
 function mount() {
@@ -129,6 +145,10 @@ test('explicit inspection uses real SDK inventory, shows actual dependencies and
   );
   expect(screen.getByText('first, second')).toBeTruthy();
   expect(screen.getByText('Start outcome unresolved')).toBeTruthy();
+  expect(screen.getByText('Needs input · last observed')).toBeDefined();
+  expect(
+    screen.getByText(/This observation grants no response permission/),
+  ).toBeDefined();
   expect(screen.getAllByText('No accepted session handle')).toHaveLength(2);
   expect(screen.queryByText('Work accepted')).toBeNull();
   expect(

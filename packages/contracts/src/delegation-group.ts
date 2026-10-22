@@ -135,6 +135,12 @@ export type CliSessionGroupPresetIdentity = {
   stationmaster: string;
 };
 
+export type CliSessionGroupAttention = {
+  kind: 'needs-input' | 'review-pending' | 'blocked';
+  observedAt: string;
+  request?: { id: string; eventId?: string };
+};
+
 export type CliSessionGroupView = {
   version: 'station.cli-session-group/v1';
   groupId: string;
@@ -173,6 +179,7 @@ export type CliSessionGroupView = {
       initialTurnId?: string;
     };
     outcome?: 'completed' | 'failed' | 'canceled';
+    attention?: CliSessionGroupAttention;
     terminalEvent?: { eventId: string; turnId: string };
     dispatchFailure?: { status: number; code: string };
   }[];

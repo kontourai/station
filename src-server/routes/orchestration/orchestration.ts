@@ -4234,6 +4234,12 @@ export function createOrchestrationRoutes(
   const groupSnapshotSchema = z.object({
     status: z.string(),
     sessionId: z.string(),
+    pendingRequest: z
+      .object({
+        id: z.string().min(1).max(512),
+        eventId: z.string().min(1).max(512).optional(),
+      })
+      .optional(),
   });
   const groupAuthority = (c: Context) => {
     const binding = deps.callerBindingForRequest?.(c.req.raw);
@@ -4325,7 +4331,6 @@ export function createOrchestrationRoutes(
       const snapshot = groupSnapshotSchema.parse(
         groupResponseSchema.parse(await response.json()).data,
       );
-      if (snapshot.status !== 'completed') return snapshot;
       if (!handle.initialTurnId) return { ...snapshot, status: 'unknown' };
       const window = await orchestrationService.readSessionEventWindow(
         handle.sessionId,
@@ -4338,22 +4343,39 @@ export function createOrchestrationRoutes(
           event.turnId === handle.initialTurnId &&
           event.method === 'turn.completed',
       );
+      if (
+        terminal?.event.method === 'turn.completed' &&
+        terminal.event.finishReason === 'cancelled'
+      )
+        return {
+          sessionId: snapshot.sessionId,
+          status: 'canceled',
+          terminalEvent: {
+            eventId: terminal.event.eventId,
+            turnId: handle.initialTurnId,
+          },
+        };
       return terminal
         ? {
-            ...snapshot,
+            sessionId: snapshot.sessionId,
+            status: 'completed',
             completedEvent: {
               eventId: terminal.event.eventId,
               turnId: handle.initialTurnId,
             },
           }
-        : { ...snapshot, status: 'unknown' };
+        : snapshot.status === 'completed'
+          ? { ...snapshot, status: 'unknown' }
+          : snapshot;
     },
     interrupt: async (handle) => {
       assertCurrent();
+      if (!handle.initialTurnId)
+        throw new CliSessionGroupUnavailable('group_turn_unconfirmed');
       const response = await interruptAuthorizedDelegatedTask(
         c,
         handle.taskId,
-        {},
+        { turnId: handle.initialTurnId },
       );
       groupResponseSchema.parse(await response.json());
     },

@@ -18,6 +18,12 @@ function memberStatus(member: CliSessionGroupView['members'][number]): string {
     return member.dispatchFailure
       ? 'Start outcome unresolved'
       : 'Start reserved; not yet confirmed';
+  if (member.attention)
+    return member.attention.kind === 'needs-input'
+      ? 'Needs input · last observed'
+      : member.attention.kind === 'review-pending'
+        ? 'Review pending · last observed'
+        : 'Blocked · last observed';
   if (member.state === 'started')
     return member.handle?.initialTurnId
       ? 'Turn accepted; completion unconfirmed'
@@ -121,6 +127,13 @@ export function CliSessionGroupsPanel({
                         </td>
                         <td>
                           {memberStatus(member)}
+                          {member.attention && (
+                            <p>
+                              Open the member session to inspect its current
+                              request. This observation grants no response
+                              permission.
+                            </p>
+                          )}
                           {member.dispatchFailure && (
                             <span className="cli-session-groups__refusal">
                               Dispatch refused: {member.dispatchFailure.code} (

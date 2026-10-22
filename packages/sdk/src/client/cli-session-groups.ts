@@ -157,6 +157,17 @@ const viewSchema = z
               .strict()
               .optional(),
             outcome: z.enum(['completed', 'failed', 'canceled']).optional(),
+            attention: z
+              .object({
+                kind: z.enum(['needs-input', 'review-pending', 'blocked']),
+                observedAt: z.string().datetime(),
+                request: z
+                  .object({ id: text, eventId: text.optional() })
+                  .strict()
+                  .optional(),
+              })
+              .strict()
+              .optional(),
             dispatchFailure: z
               .object({
                 status: z.number().int().min(400).max(599),

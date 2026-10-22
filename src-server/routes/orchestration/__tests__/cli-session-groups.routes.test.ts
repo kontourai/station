@@ -24,6 +24,8 @@ function fixture(home = temporary('station-cli-group-')) {
   const failures: unknown[] = [];
   const statuses = new Map<string, string>();
   const terminalTurns = new Map<string, string>();
+  const completedInitialTurns = new Set<string>();
+  const cancelledInitialTurns = new Set<string>();
   const windowReads: string[] = [];
   let beforeDispatch: (input: DispatchInput) => Promise<void> = async () => {};
   let current = true;
@@ -46,16 +48,20 @@ function fixture(home = temporary('station-cli-group-')) {
       status: statuses.get(taskId) ?? 'completed',
     }),
   );
-  const interruptDelegatedTask = vi.fn(async () => ({
-    interruptOutcome: 'requested',
-  }));
+  const interruptDelegatedTask = vi.fn(
+    async (_input: { taskId: string; turnId?: string }) => ({
+      interruptOutcome: 'requested',
+    }),
+  );
   const app = createOrchestrationRoutes(
     {
       readSessionEventWindow: async (threadId: string) => {
         windowReads.push(threadId);
         return {
           events:
-            statuses.get(threadId) && statuses.get(threadId) !== 'completed'
+            statuses.get(threadId) &&
+            statuses.get(threadId) !== 'completed' &&
+            !completedInitialTurns.has(threadId)
               ? []
               : [
                   {
@@ -64,6 +70,9 @@ function fixture(home = temporary('station-cli-group-')) {
                       threadId,
                       turnId: terminalTurns.get(threadId) ?? `turn:${threadId}`,
                       method: 'turn.completed',
+                      finishReason: cancelledInitialTurns.has(threadId)
+                        ? 'cancelled'
+                        : 'stop',
                     },
                   },
                 ],
@@ -125,6 +134,8 @@ function fixture(home = temporary('station-cli-group-')) {
     calls,
     statuses,
     terminalTurns,
+    completedInitialTurns,
+    cancelledInitialTurns,
     windowReads,
     delegateTask,
     observeDelegatedTask,
@@ -405,6 +416,7 @@ test('an ambiguous start stays occupied across reopen and never authorizes anoth
   const { group } = await f.create([member('first'), member('second')], 1);
   await f.request(`/session-groups/${group.groupId}/run`, {});
   expect(f.calls).toHaveLength(1);
+  expect(f.interruptDelegatedTask).not.toHaveBeenCalled();
   const reopened = fixture(f.home);
   const response = await reopened.request(
     `/session-groups/${group.groupId}/run`,
@@ -462,16 +474,82 @@ test('running and needs-input members occupy a seat until observed terminal; dis
     { signal: abort.signal },
   );
   await waitFor(() => f.observeDelegatedTask.mock.calls.length > 0);
+  await waitFor(() => f.calls.length === 1);
+  const firstSessionId = f.calls[0].sessionId!;
+  await vi.waitFor(async () =>
+    expect((await view(f, group.groupId)).members[0].attention?.kind).toBe(
+      'needs-input',
+    ),
+  );
+  const blockedRevision = (await view(f, group.groupId)).revision;
   await delay(300);
+  expect((await view(f, group.groupId)).revision).toBe(blockedRevision);
   expect(f.calls).toHaveLength(1);
+  f.statuses.set(firstSessionId, 'running');
+  await vi.waitFor(async () =>
+    expect((await view(f, group.groupId)).members[0].attention).toBeUndefined(),
+  );
   abort.abort();
   await running;
   expect(f.interruptDelegatedTask).toHaveBeenCalled();
+  expect(f.interruptDelegatedTask.mock.calls.at(-1)?.[0]).toMatchObject({
+    taskId: firstSessionId,
+    turnId: `turn:${firstSessionId}`,
+  });
   expect((await view(f, group.groupId)).members.map((m) => m.state)).toEqual([
     'started',
     'pending',
   ]);
 }, 30_000);
+
+test('the accepted initial completion closes its Flow step while a later conversation turn is still running', async () => {
+  const f = fixture();
+  f.setBeforeDispatch(async (input) => {
+    f.statuses.set(input.sessionId!, 'running');
+    f.completedInitialTurns.add(input.sessionId!);
+  });
+  const { group } = await f.create(
+    [member('first'), member('second', ['first'])],
+    1,
+  );
+  const abort = new AbortController();
+  const run = f.request(
+    `/session-groups/${group.groupId}/run`,
+    {},
+    { signal: abort.signal },
+  );
+  try {
+    await vi.waitFor(async () =>
+      expect((await view(f, group.groupId)).flow?.status).toBe('completed'),
+    );
+    await run;
+    expect(f.calls).toHaveLength(2);
+    expect(f.interruptDelegatedTask).not.toHaveBeenCalled();
+  } finally {
+    abort.abort();
+    await run;
+  }
+}, 10_000);
+
+test('a canceled initial completion is retained as canceled and cannot satisfy the required successor', async () => {
+  const f = fixture();
+  f.setBeforeDispatch(async (input) => {
+    f.cancelledInitialTurns.add(input.sessionId!);
+  });
+  const { group } = await f.create(
+    [member('first'), member('second', ['first'])],
+    1,
+  );
+  await f.request(`/session-groups/${group.groupId}/run`, {});
+  const observed = await view(f, group.groupId);
+  expect(f.calls).toHaveLength(1);
+  expect(observed.members[0].outcome).toBe('canceled');
+  expect(observed.members[0].terminalEvent?.turnId).toBe(
+    observed.members[0].handle?.initialTurnId,
+  );
+  expect(observed.members[1].state).toBe('pending');
+  expect(observed.flow?.status).not.toBe('completed');
+});
 
 test('failed prerequisites do not release downstream seats', async () => {
   const f = fixture();

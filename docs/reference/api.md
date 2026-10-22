@@ -1718,6 +1718,23 @@ view as the membership baseline and ordinary member session/delegation endpoints
 for raw output, input requests and responses. The journal observes writes; it does
 not evaluate readiness, joins or work acceptance.
 
+While supervised, a member may carry an `attention` observation: `needs-input`,
+`review-pending` or `blocked`, its observation time and, when reported, the
+existing request/event IDs. Question text and answer permissions remain with the
+ordinary session/delegation readers. Repeated identical observations add no
+journal entries; a resumed or terminal member clears the observation. A waiting
+member continues to occupy its seat. The inventory labels this as the last
+observation and directs the operator to the member session; it does not grant
+permission to answer.
+
+Completion follows the accepted initial provider turn, even if the conversation
+has already started a later turn. A canceled initial completion does not release
+a required successor. Group interruption names that accepted turn when known,
+rather than interrupting a later turn in the same conversation. An unconfirmed
+turn cannot be targeted for interruption: admission closes, its capacity stays
+occupied and no stop is claimed. Missing initial completion evidence remains
+unconfirmed.
+
 Each page has `afterRevision`, `nextRevision`, `events`, `hasMore` and explicit
 `unavailable` entries for oversized rows. Pages hold at most 64 revisions and
 256 KiB; the private group record retains at most 4096 journal revisions within

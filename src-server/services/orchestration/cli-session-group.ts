@@ -46,6 +46,19 @@ const terminalEventSchema = z
     turnId: z.string().min(1).max(512),
   })
   .strict();
+const attentionSchema = z
+  .object({
+    kind: z.enum(['needs-input', 'review-pending', 'blocked']),
+    observedAt: z.string().datetime(),
+    request: z
+      .object({
+        id: z.string().min(1).max(512),
+        eventId: z.string().min(1).max(512).optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
 const memberViewSchema = z.object({
   seatId: id,
   needs: z.array(id).max(32),
@@ -55,6 +68,7 @@ const memberViewSchema = z.object({
   initialClientTurnId: z.string().max(512).optional(),
   handle: handleSchema.optional(),
   outcome: z.enum(['completed', 'failed', 'canceled']).optional(),
+  attention: attentionSchema.optional(),
   terminalEvent: terminalEventSchema.optional(),
   dispatchFailure: z
     .object({
@@ -118,6 +132,7 @@ const recordSchema = z
             initialClientTurnId: z.string().max(512).optional(),
             handle: handleSchema.optional(),
             outcome: z.enum(['completed', 'failed', 'canceled']).optional(),
+            attention: attentionSchema.optional(),
             terminalObservedAt: z.string().datetime().optional(),
             terminalEvent: terminalEventSchema.optional(),
             dispatchFailure: z
@@ -173,6 +188,8 @@ export interface CliSessionGroupHost<T> {
     status: string;
     sessionId: string;
     completedEvent?: { eventId: string; turnId: string };
+    terminalEvent?: { eventId: string; turnId: string };
+    pendingRequest?: { id: string; eventId?: string };
   }>;
   interrupt(handle: MemberHandle): Promise<void>;
 }
@@ -609,6 +626,7 @@ export class CliSessionGroups<T> {
           initialClientTurnId,
           handle,
           outcome,
+          attention,
           terminalEvent,
           dispatchFailure,
         }) => ({
@@ -620,6 +638,7 @@ export class CliSessionGroups<T> {
           initialClientTurnId,
           handle,
           outcome,
+          attention,
           terminalEvent,
           dispatchFailure,
         }),
@@ -870,6 +889,7 @@ export class CliSessionGroups<T> {
       await this.recordCompletion(groupId, owner, seatId);
       return;
     }
+    let lastAttention = launch.seat.attention;
     try {
       while (true) {
         host.assertCurrent();
@@ -896,17 +916,64 @@ export class CliSessionGroups<T> {
           await this.mutate(groupId, owner, (record) => {
             const seat = record.seats.find((s) => s.seatId === seatId)!;
             seat.state = 'terminal';
+            delete seat.attention;
             seat.outcome = outcome;
             seat.terminalObservedAt = new Date().toISOString();
-            if (snapshot.completedEvent)
+            if (snapshot.completedEvent || snapshot.terminalEvent)
               seat.terminalEvent = terminalEventSchema.parse(
-                snapshot.completedEvent,
+                snapshot.completedEvent ?? snapshot.terminalEvent,
               );
           });
           if (outcome !== 'completed')
             throw new CliSessionGroupUnavailable('group_member_failed');
           await this.recordCompletion(groupId, owner, seatId);
           return;
+        }
+        const kind =
+          snapshot.status === 'needs_input'
+            ? 'needs-input'
+            : snapshot.status === 'review_pending'
+              ? 'review-pending'
+              : snapshot.status === 'blocked'
+                ? 'blocked'
+                : undefined;
+        const nextAttention = kind
+          ? {
+              kind,
+              ...(snapshot.pendingRequest
+                ? { request: snapshot.pendingRequest }
+                : {}),
+            }
+          : undefined;
+        const previous = lastAttention
+          ? {
+              kind: lastAttention.kind,
+              ...(lastAttention.request
+                ? { request: lastAttention.request }
+                : {}),
+            }
+          : undefined;
+        if (
+          canonicalJson(nextAttention ?? null) !==
+          canonicalJson(previous ?? null)
+        ) {
+          const attention = nextAttention
+            ? attentionSchema.parse({
+                ...nextAttention,
+                observedAt: new Date().toISOString(),
+              })
+            : undefined;
+          await this.mutate(groupId, owner, (record) => {
+            const seat = record.seats.find((entry) => entry.seatId === seatId)!;
+            if (
+              seat.state !== 'started' ||
+              seat.handle?.initialTurnId !== handle?.initialTurnId
+            )
+              throw new CliSessionGroupUnavailable('group_session_changed');
+            if (attention) seat.attention = attention;
+            else delete seat.attention;
+          });
+          lastAttention = attention;
         }
         await delay(250, undefined, { signal: execution.signal });
       }
