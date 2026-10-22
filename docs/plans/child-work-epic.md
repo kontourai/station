@@ -353,7 +353,11 @@ fail; the original harness passes again. The first strict-MCP fixture loaded no
 plugin server and is retained as failed prerequisite evidence, not denial proof.
 This is direct installed-runtime evidence, not production sync with plugins,
 real-provider sync, arbitrary plugin startup/hooks, delegation/internal effects
-or portable/fiscal authority. Independent artifact review remains pending.
+or portable/fiscal authority. Independent source/artifact review found the
+control nonvacuous, while noting that the harness pass flag alone omits several
+failure and cleanup predicates. The qualification separately checks those
+recorded failures and a current exact-owned-path process scan; historical
+listener identities were not retained.
 
 ## Production adoption sequence
 
