@@ -1170,7 +1170,21 @@
 
     "src-ui/src/views/task-workspace/TaskRoomPage.tsx",
 
-    "packages/contracts/src/project-task-room-browser.ts"
+    "packages/contracts/src/project-task-room-browser.ts",
+
+    "src-server/services/infra/workload-resources.ts",
+
+    "packages/shared/src/child-workload.ts",
+
+    "src-server/index.ts",
+
+    "src-server/routes/system/resource-posture-routes.ts",
+
+    "src-server/services/infra/__tests__/workload-resources.process.test.ts",
+
+    "docs/guides/development.md",
+
+    "patches/modelcontextprotocol-client-2.3.1.patch"
   ],
 
   "checks": [
