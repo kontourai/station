@@ -14,6 +14,7 @@ import type {
 } from '@kontourai/station-contracts/ui-block';
 import { act, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
+import { SyntaxHighlighterProvider } from '../../../contexts/SyntaxHighlighterContext';
 
 const { highlightCode } = vi.hoisted(() => ({ highlightCode: vi.fn() }));
 vi.mock('../../../highlight/highlight-client', () => ({ highlightCode }));
@@ -116,6 +117,7 @@ test('code blocks use the async highlight client and discard stale results and f
   );
   const mounted = render(
     <UIBlockRenderer block={{ type: 'code', code: '<old>', language: 'ts' }} />,
+    { wrapper: SyntaxHighlighterProvider },
   );
   expect(screen.getByText('<old>')).toBeTruthy();
   await waitFor(() =>
