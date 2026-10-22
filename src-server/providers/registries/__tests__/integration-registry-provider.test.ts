@@ -27,6 +27,10 @@ vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
   return {
     ...actual,
+    execFileSync: (...args: Parameters<typeof actual.execFileSync>) => {
+      lookups.count++;
+      return actual.execFileSync(...args);
+    },
     execFile: (...args: Parameters<typeof actual.execFile>) => {
       lookups.count++;
       return actual.execFile(...args);

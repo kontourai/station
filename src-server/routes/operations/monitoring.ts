@@ -408,7 +408,7 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
       } catch (error) {
         if (error instanceof EventHistoryLimitError) {
           return c.json(
-            { success: false, code: error.code, error: error.message },
+            { success: false, code: error.code, error: errorMessage(error) },
             413,
           );
         }

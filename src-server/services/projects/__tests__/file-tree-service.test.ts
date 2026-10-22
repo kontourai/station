@@ -76,20 +76,28 @@ describe('FileTreeService', () => {
     });
   });
 
-  test('readFileWithin refuses oversized files and yields while reading a bounded file', async () => {
+  test('readFileWithin refuses oversized files', async () => {
     const path = join(dir, 'large.txt');
     writeFileSync(path, 'x'.repeat(2 * 1024 * 1024 + 1));
     await expect(svc.readFileWithin(dir, 'large.txt')).rejects.toMatchObject({
       code: 'file-too-large',
     });
-    writeFileSync(path, 'x'.repeat(2 * 1024 * 1024));
+  });
+
+  test('readFileWithin yields to the event loop during a contained file read', async () => {
+    writeFileSync(join(dir, 'large.txt'), 'x'.repeat(2 * 1024 * 1024));
     let yielded = false;
-    const pending = svc.readFileWithin(dir, 'large.txt');
-    queueMicrotask(() => {
+    const heartbeat = setImmediate(() => {
       yielded = true;
     });
-    expect(await pending).toHaveLength(2 * 1024 * 1024);
-    expect(yielded).toBe(true);
+    try {
+      expect(await svc.readFileWithin(dir, 'large.txt')).toHaveLength(
+        2 * 1024 * 1024,
+      );
+      expect(yielded).toBe(true);
+    } finally {
+      clearImmediate(heartbeat);
+    }
   });
 
   test('searchFiles finds matching files', async () => {

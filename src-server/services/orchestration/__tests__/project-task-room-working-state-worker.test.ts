@@ -33,8 +33,15 @@ test('watched worker backs off idle database probes, still notices another conne
     sql: string,
   ) {
     databases.add(this);
-    if (sql === 'PRAGMA data_version') probes++;
-    return prepare.call(this, sql);
+    const statement = prepare.call(this, sql);
+    if (sql === 'PRAGMA data_version') {
+      const get = statement.get;
+      statement.get = function (...args: Parameters<typeof get>) {
+        probes++;
+        return get.apply(this, args);
+      };
+    }
+    return statement;
   });
   vi.useFakeTimers();
   try {
