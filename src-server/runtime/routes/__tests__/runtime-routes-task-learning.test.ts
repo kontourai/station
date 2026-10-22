@@ -18,15 +18,8 @@
  * store method a provider start uses.
  */
 
-import {
-  mkdirSync,
-  mkdtempSync,
-  realpathSync,
-  renameSync,
-  rmSync,
-} from 'node:fs';
+import { mkdirSync, realpathSync, renameSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { serve } from '@hono/node-server';
 import type { IEmbeddingProvider } from '@kontourai/station-contracts/knowledge-index';
@@ -96,21 +89,17 @@ const makeTempDir = trackTempDirs();
  * decided by trying, not by OS. A case-insensitive volume is not enough
  * (Linux casefold mounts answer with the case given), so ask realpath itself.
  */
-const caseInsensitiveTemp = (() => {
-  const probe = mkdtempSync(join(tmpdir(), 'station-case-probe-'));
+function realpathFoldsCase(): boolean {
+  const probe = makeTempDir('station-case-probe-');
+  mkdirSync(join(probe, 'CaseProbe'));
   try {
-    mkdirSync(join(probe, 'CaseProbe'));
-    try {
-      return realpathSync
-        .native(join(probe, 'caseprobe'))
-        .endsWith(`${sep}CaseProbe`);
-    } catch {
-      return false;
-    }
-  } finally {
-    rmSync(probe, { recursive: true, force: true });
+    return realpathSync
+      .native(join(probe, 'caseprobe'))
+      .endsWith(`${sep}CaseProbe`);
+  } catch {
+    return false;
   }
-})();
+}
 
 /** The root registry's persistence, kept in memory (the shape the file
  * storage adapter implements). */
@@ -859,37 +848,38 @@ describe("a done Task's lessons are promoted by a person, never by an agent", ()
     expect(await adapter.listByType('raw')).toEqual([]);
   });
 
-  test.skipIf(!caseInsensitiveTemp)(
-    'a pending promotion whose store is registered in another letter case is the same store when the native realpath folds case (review round 7; skipped where it does not, since the two spellings then name two directories, or two identities)',
-    async () => {
-      const e = await setup();
-      const { taskId } = await e.closedTaskWithLessons();
-      const task = e.taskGraph.readTask(taskId)!;
-      const directory = join(makeTempDir('task-learning-case-'), 'Store');
-      mkdirSync(directory);
-      e.store.taskMemoryStore().claimLearningPromotion({
-        taskId,
-        taskCreatedAt: task.createdAt,
-        ...(DECISION as { kind: 'decision'; key: string; version: number }),
-        projectId: task.projectId,
-        rootId: 'root:project-alpha',
-        adapterId: 'kit-default-store',
-        storeRoot: directory,
-        principalId: LOCAL_OPERATOR_PRINCIPAL_ID,
-      });
-      const store = await e.createProjectStore(join(directory, '..', 'store'));
-      expect(await reviewOf(e, taskId)).toEqual({
-        state: 'pending',
-        rootId: store.id,
-      });
-      const finished = await e.asOperator(
-        'POST',
-        `/api/tasks/${taskId}/room/memory/learning/promote`,
-        promotionBody(store.id),
+  test('a pending promotion whose store is registered in another letter case is the same store when the native realpath folds case (review round 7)', async (context) => {
+    if (!realpathFoldsCase())
+      context.skip(
+        'the native realpath keeps the case it is given here, so the two spellings are two directories or two identities',
       );
-      expect(finished.status, JSON.stringify(finished.json)).toBe(201);
-    },
-  );
+    const e = await setup();
+    const { taskId } = await e.closedTaskWithLessons();
+    const task = e.taskGraph.readTask(taskId)!;
+    const directory = join(makeTempDir('task-learning-case-'), 'Store');
+    mkdirSync(directory);
+    e.store.taskMemoryStore().claimLearningPromotion({
+      taskId,
+      taskCreatedAt: task.createdAt,
+      ...(DECISION as { kind: 'decision'; key: string; version: number }),
+      projectId: task.projectId,
+      rootId: 'root:project-alpha',
+      adapterId: 'kit-default-store',
+      storeRoot: directory,
+      principalId: LOCAL_OPERATOR_PRINCIPAL_ID,
+    });
+    const store = await e.createProjectStore(join(directory, '..', 'store'));
+    expect(await reviewOf(e, taskId)).toEqual({
+      state: 'pending',
+      rootId: store.id,
+    });
+    const finished = await e.asOperator(
+      'POST',
+      `/api/tasks/${taskId}/room/memory/learning/promote`,
+      promotionBody(store.id),
+    );
+    expect(finished.status, JSON.stringify(finished.json)).toBe(201);
+  });
 
   test('a store whose directory moved, registered at its new path, still reads promoted, as promote answers (review round 7)', async () => {
     const e = await setup();

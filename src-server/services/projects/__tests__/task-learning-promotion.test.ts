@@ -412,16 +412,18 @@ test('one store directory is one identity however it is spelled, through a symli
   const directory = join(temp('station-store-identity-'), 'store');
   mkdirSync(directory);
   const link = join(temp('station-store-link-'), 'link');
-  symlinkSync(directory, link);
+  // A junction on Windows (no admin right needed); a symlink elsewhere.
+  symlinkSync(directory, link, 'junction');
   const identity = storeIdentity(directory);
-  expect(identity).toBe(realpathSync(directory));
+  // The native form: on Windows the JS form keeps 8.3 short names.
+  expect(identity).toBe(realpathSync.native(directory));
   for (const spelling of [
     `${directory}/`,
     join(directory, '.'),
     `${directory}/./`,
     link,
     `${link}/`,
-    realpathSync(directory),
+    realpathSync.native(directory),
   ])
     expect(storeIdentity(spelling)).toBe(identity);
   // A directory that does not exist keeps its resolved path.
