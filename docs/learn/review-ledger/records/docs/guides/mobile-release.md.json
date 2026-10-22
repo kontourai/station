@@ -124,7 +124,13 @@
 
     "src-ui/src/platform/networkCost.ts",
 
-    "src-ui/src/hooks/useNotificationOsAlerts.ts"
+    "src-ui/src/hooks/useNotificationOsAlerts.ts",
+
+    "src-desktop/src/ios_network_path.rs",
+
+    "src-ui/src/platform/native/iosNetworkCost.ts",
+
+    "src-ui/src/__tests__/useConversationInbox.test.tsx"
   ],
 
   "checks": [
