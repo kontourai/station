@@ -1269,6 +1269,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-ui/src/components/notifications/__tests__/NotificationContainer.touch-target.test.tsx',
   // Runs real canvas/React startup handoffs with Chromium's controlled clock.
   'src-ui/src/__tests__/startup-presentation.browser.test.tsx',
+  // Owns Chromium and a local HTTP fixture for SW offline reload and real IndexedDB.
+  'src-ui/src/__tests__/offline-reading.browser.test.ts',
   // station#4470a: same shape again — launches a real Chromium via
   // `@playwright/test` to measure real cascade-resolved geometry (the
   // disclosure toggle vs. the message text's own line rects) at a phone
