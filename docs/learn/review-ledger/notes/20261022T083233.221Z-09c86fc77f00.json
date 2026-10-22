@@ -1,0 +1,7 @@
+{
+  "revision": "9975352aad20c9ff41e99adfd85c2bfffc7ed604",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed owned installed-native Claude2.1.308/SDK0.3.302 execution receipts at source6206ff5: local loopback model only, no real-provider turns/shared config writes. Hook throw executes Write under bypass; existing Station translator already catches evaluator failures. Flag wildcard works in unmanaged fixture but native managedOnly state marks it notInEffect. Commandline deny remains effective. Three activations retain one nativeID/history; restriction blocks Write/SDKMCP including late addition; ordinary restore executes again; missing resume refuses before local model. Stronger empty-wire assertion FAIL preserved (MCP still advertised). Independent source review supports candidate only; production lifecycle generation/coalescing/confirmedexit/groupcaller/durableattempts/exactACKs still required; plugin/delegation/Codex/ACP/physical/fiscal/epic acceptance remain unverified.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}
