@@ -1,5 +1,17 @@
 //! Host-only entries for desktop keyrings and device-bound mobile storage.
 
+pub(crate) const STATION_KEYRING_SERVICES: &[&str] = &[
+    crate::STATION_CREDENTIAL_SERVICE,
+    "io.kontourai.station.credential-metadata",
+    "io.kontourai.station.account-proof",
+    "io.kontourai.station.device-proof",
+    "io.kontourai.station.relay-proof",
+    "io.kontourai.station.connection-trust",
+    "io.kontourai.station.device-binding-candidate",
+    "io.kontourai.station.native-enrollment-recipient",
+    "io.kontourai.station.native-enrollment-journal",
+];
+
 pub(crate) struct NativeSecureEntry {
     #[cfg(not(mobile))]
     entry: keyring_core::Entry,
@@ -11,6 +23,12 @@ pub(crate) struct NativeSecureEntry {
 
 impl NativeSecureEntry {
     pub(crate) fn new(service: &'static str, account: &str) -> keyring_core::Result<Self> {
+        if !STATION_KEYRING_SERVICES.contains(&service) {
+            return Err(keyring_core::Error::Invalid(
+                "service".into(),
+                "Unregistered Station credential service".into(),
+            ));
+        }
         #[cfg(not(mobile))]
         {
             Ok(Self {
@@ -80,5 +98,22 @@ fn mobile_error(error: tauri_plugin_keyring_store::Error) -> keyring_core::Error
             keyring_core::Error::NoStorageAccess(Box::new(error))
         }
         _ => keyring_core::Error::PlatformFailure(Box::new(error)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn unlisted_credential_writers_are_refused_before_os_storage() {
+        assert_eq!(STATION_KEYRING_SERVICES.len(), 9);
+        for service in [
+            "com.example.injected-service",
+            "io.kontourai.station.unregistered",
+        ] {
+            assert!(
+                matches!(NativeSecureEntry::new(service, "isolated-test-account"), Err(keyring_core::Error::Invalid(attribute, _)) if attribute == "service")
+            );
+        }
     }
 }

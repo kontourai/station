@@ -115,7 +115,7 @@ jobs:
         if: ${{ steps.rust_relevance.outputs.relevant != 'false' }}
         shell: pwsh
         run: |
-          $output = cargo test --manifest-path src-desktop/Cargo.toml tests::profile_store_windows_real_dotted_credential_targets_refuse_creation -- --exact --nocapture 2>&1
+          $output = cargo test --manifest-path src-desktop/Cargo.toml tests::profile_store_windows_finds_real_dotted_credential_history -- --exact --nocapture 2>&1
           $testExit = $LASTEXITCODE
           $output | Write-Output
           if ($testExit -ne 0) { throw "Credential Manager recovery test failed ($testExit)" }

@@ -170,7 +170,7 @@ ${command}
         writeFileSync(
           join(root, 'cargo.cmd'),
           `@echo off
-if not "%*"=="test --manifest-path src-desktop/Cargo.toml tests::profile_store_windows_real_dotted_credential_targets_refuse_creation -- --exact --nocapture" exit /b 99
+if not "%*"=="test --manifest-path src-desktop/Cargo.toml tests::profile_store_windows_finds_real_dotted_credential_history -- --exact --nocapture" exit /b 99
 echo ${result}
 exit /b ${exit}
 `,

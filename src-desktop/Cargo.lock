@@ -4399,7 +4399,6 @@ dependencies = [
  "serde",
  "serde_jcs",
  "serde_json",
- "syn 2.0.119",
  "tauri",
  "tauri-build",
  "tauri-plugin",

@@ -125,8 +125,8 @@ another Station folder. Restore a known backup of the connection list before
 relaunching; if no backup is available, keep the folder intact and collect the
 diagnostics below for operator recovery. An existing list is never replaced.
 Windows checks the raw Credential Manager target names, macOS checks service
-metadata, and Linux queries Station's service attributes, so it does not unlock
-unrelated items while searching collections. An inspection error never counts as an empty store.
+metadata, and Linux requests only Station's items by service attribute. Unlocking
+a requested item may unlock its whole collection in the desktop keyring. An inspection error never counts as an empty store.
 Regular OS metadata files such as `.DS_Store`, `Thumbs.db`, and `desktop.ini` do
 not prevent first initialization; symlinks and directories with those names do.
 

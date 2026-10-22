@@ -2176,17 +2176,7 @@ fn profile_store_recovery_files_are_absent(
 }
 
 #[cfg(all(not(mobile), any(target_os = "linux", test)))]
-const STATION_KEYRING_SERVICES: &[&str] = &[
-    STATION_CREDENTIAL_SERVICE,
-    "io.kontourai.station.credential-metadata",
-    "io.kontourai.station.account-proof",
-    "io.kontourai.station.device-proof",
-    "io.kontourai.station.relay-proof",
-    "io.kontourai.station.connection-trust",
-    "io.kontourai.station.device-binding-candidate",
-    "io.kontourai.station.native-enrollment-recipient",
-    "io.kontourai.station.native-enrollment-journal",
-];
+use native_secure_entry::STATION_KEYRING_SERVICES;
 
 #[cfg(all(not(mobile), any(target_os = "linux", test)))]
 fn profile_store_linux_credentials_are_absent(
@@ -2222,8 +2212,8 @@ fn profile_store_recovery_credentials_are_absent() -> Result<bool, String> {
     }
     #[cfg(target_os = "linux")]
     {
-        // Secret Service searches collections but unlocks only matched items.
-        // Limit the filter so unrelated secrets are never unlocked.
+        // Request only Station items. Unlocking a matched item may unlock
+        // its entire collection in the desktop Secret Service provider.
         return profile_store_linux_credentials_are_absent(|service| {
             keyring_core::Entry::search(&std::collections::HashMap::from([("service", service)]))
                 .map(|entries| entries.is_empty())
@@ -9592,25 +9582,41 @@ fn desktop_node_executable(app_executable: &Path, development: bool) -> std::io:
             "desktop executable must be absolute",
         ));
     }
-    let executable = match dunce::canonicalize(app_executable) {
+    packaged_node_from_executable_observation(app_executable, dunce::canonicalize(app_executable))
+}
+
+#[cfg(not(mobile))]
+fn packaged_node_from_executable_observation(
+    app_executable: &Path,
+    canonical: std::io::Result<PathBuf>,
+) -> std::io::Result<PathBuf> {
+    let executable = match canonical {
         Ok(path) => path,
-        Err(error) => {
-            if std::fs::symlink_metadata(app_executable)
-                .is_ok_and(|metadata| metadata.file_type().is_symlink())
+        Err(error) => match std::fs::symlink_metadata(app_executable) {
+            Ok(metadata)
+                if metadata.is_file()
+                    && !metadata.file_type().is_symlink()
+                    && error.kind() != std::io::ErrorKind::NotFound =>
             {
-                return Err(error);
+                dunce::simplified(app_executable).to_path_buf()
             }
-            // An upgraded Linux executable can be unlinked while running.
-            // Resolve its existing parent, never a relative or dangling launcher.
-            dunce::canonicalize(app_executable.parent().ok_or(error)?)?.join(
-                app_executable.file_name().ok_or_else(|| {
-                    std::io::Error::new(
-                        std::io::ErrorKind::InvalidInput,
-                        "desktop executable has no filename",
-                    )
-                })?,
-            )
-        }
+            Err(metadata_error)
+                if metadata_error.kind() == std::io::ErrorKind::NotFound
+                    && error.kind() == std::io::ErrorKind::NotFound =>
+            {
+                // Linux upgrades can unlink the running executable; require
+                // its existing absolute parent before using the sibling.
+                dunce::canonicalize(app_executable.parent().ok_or(error)?)?.join(
+                    app_executable.file_name().ok_or_else(|| {
+                        std::io::Error::new(
+                            std::io::ErrorKind::InvalidInput,
+                            "desktop executable has no filename",
+                        )
+                    })?,
+                )
+            }
+            _ => return Err(error),
+        },
     };
     Ok(executable.with_file_name(if cfg!(windows) {
         "station-node.exe"
@@ -12778,30 +12784,66 @@ fn apply_supervisor_input(
 }
 
 #[cfg(not(mobile))]
-fn sidecar_spawn_failure_detail(error: std::io::Error) -> String {
-    let unavailable = !(cfg!(windows) && matches!(error.raw_os_error(), Some(32 | 33)))
-        && (matches!(
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SidecarSpawnFailureAction {
+    Fatal,
+    Retry,
+}
+
+#[cfg(not(mobile))]
+#[derive(Debug)]
+struct SidecarSpawnFailure {
+    action: SidecarSpawnFailureAction,
+    detail: String,
+}
+
+#[cfg(not(mobile))]
+fn sidecar_spawn_failure_action(
+    generation: u64,
+    error: &std::io::Error,
+) -> SidecarSpawnFailureAction {
+    let unavailable = match error.raw_os_error() {
+        Some(code) if cfg!(windows) => matches!(code, 2 | 3 | 5 | 193),
+        Some(code) => matches!(code, 2 | 13 | 8),
+        None => matches!(
             error.kind(),
             std::io::ErrorKind::NotFound | std::io::ErrorKind::PermissionDenied
-        ) || error.raw_os_error() == Some(if cfg!(windows) { 193 } else { 8 }));
-    if unavailable {
-        format!("{NODE_RUNTIME_FAILURE} Details: {error}")
+        ),
+    };
+    if generation == 1 && unavailable {
+        SidecarSpawnFailureAction::Fatal
     } else {
-        format!("launch Station sidecar: {error}")
+        SidecarSpawnFailureAction::Retry
     }
 }
 
 #[cfg(not(mobile))]
-fn spawn_sidecar_child(context: &SidecarRuntimeContext) -> Result<(Child, String), String> {
+fn sidecar_spawn_failure(generation: u64, error: std::io::Error) -> SidecarSpawnFailure {
+    let detail = if sidecar_spawn_failure_action(1, &error) == SidecarSpawnFailureAction::Fatal {
+        format!("{NODE_RUNTIME_FAILURE} Details: {error}")
+    } else {
+        format!("launch Station sidecar: {error}")
+    };
+    SidecarSpawnFailure {
+        action: sidecar_spawn_failure_action(generation, &error),
+        detail,
+    }
+}
+
+#[cfg(not(mobile))]
+fn spawn_sidecar_child(
+    context: &SidecarRuntimeContext,
+    generation: u64,
+) -> Result<(Child, String), SidecarSpawnFailure> {
     let boot_id = fresh_sidecar_boot_id();
     // The ambient read lives at the edge so the builder stays a pure function
     // of its inputs -- otherwise its tests would pass or fail depending on the
     // developer's own STATION_ROOT.
     let mut child =
         build_sidecar_command(&context.launch, &boot_id, std::env::var_os("STATION_ROOT"))
-            .map_err(sidecar_spawn_failure_detail)?
+            .map_err(|error| sidecar_spawn_failure(generation, error))?
             .spawn()
-            .map_err(sidecar_spawn_failure_detail)?;
+            .map_err(|error| sidecar_spawn_failure(generation, error))?;
     // Record the child before waiting for Listening: after desktop death its
     // watchdog may still be shutting down, so the child must retain the fence.
     if !registry_claim_allows_running(publish_sidecar_registry_bridge(
@@ -12811,7 +12853,10 @@ fn spawn_sidecar_child(context: &SidecarRuntimeContext) -> Result<(Child, String
         serde_json::json!({"type":"sidecar","status":"starting","port":context.launch.pinned_port.unwrap_or(0),"pid":child.id()}),
     )) {
         terminate_desktop_child(&mut child);
-        return Err("Station could not fence its spawned sidecar; the child was stopped.".into());
+        return Err(SidecarSpawnFailure {
+            action: SidecarSpawnFailureAction::Retry,
+            detail: "Station could not fence its spawned sidecar; the child was stopped.".into(),
+        });
     }
     Ok((child, boot_id))
 }
@@ -12984,7 +13029,7 @@ fn run_sidecar_supervisor(
             crate::tray::kick(&app);
             return;
         }
-        let child = match spawn_sidecar_child(&supervisor.context) {
+        let child = match spawn_sidecar_child(&supervisor.context, generation) {
             Ok((mut child, boot_id)) => {
                 if let Some(stdout) = child.stdout.take() {
                     spawn_sidecar_stdout_reader(stdout, generation, supervisor.tx.clone());
@@ -13014,21 +13059,21 @@ fn run_sidecar_supervisor(
                 true
             }
             Err(error) => {
-                if generation == 1 && error.contains(NODE_RUNTIME_FAILURE) {
+                if error.action == SidecarSpawnFailureAction::Fatal {
                     let _ = release_sidecar_registry_bridge(
                         &supervisor.context.launch.resource_dir,
                         &supervisor.context.launch.station_home,
                         &supervisor.context.registry_id,
                     );
-                    let (title, message) = desktop_home_preparation_failure_copy(&error);
-                    exit_desktop_home_preparation_failure(&app, title, message, &error);
+                    let (title, message) = desktop_home_preparation_failure_copy(&error.detail);
+                    exit_desktop_home_preparation_failure(&app, title, message, &error.detail);
                     return;
                 }
                 let mut status = supervisor
                     .status
                     .lock()
                     .unwrap_or_else(|poisoned| poisoned.into_inner());
-                status.detail = Some(error);
+                status.detail = Some(error.detail);
                 drop(status);
                 false
             }
@@ -18037,7 +18082,7 @@ mod tests {
             launch,
             registry_id: "reserved-desktop".into(),
         };
-        let (mut child, _) = spawn_sidecar_child(&context).unwrap();
+        let (mut child, _) = spawn_sidecar_child(&context, 1).unwrap();
         let publication = std::fs::read_to_string(temp.path().join("publication.json"));
         terminate_desktop_child(&mut child);
         let publication: serde_json::Value = serde_json::from_str(
@@ -21892,107 +21937,9 @@ mod tests {
         );
     }
 
-    #[cfg(not(mobile))]
-    #[test]
-    fn profile_store_linux_service_queries_cover_native_secret_writers() {
-        use syn::visit::Visit;
-        fn test_only(attributes: &[syn::Attribute]) -> bool {
-            attributes.iter().any(|attribute| {
-                attribute.path().is_ident("test")
-                    || (attribute.path().is_ident("cfg")
-                        && attribute
-                            .parse_args::<syn::Path>()
-                            .is_ok_and(|path| path.is_ident("test")))
-            })
-        }
-        #[derive(Default)]
-        struct Writers(std::collections::BTreeSet<String>);
-        impl<'ast> Visit<'ast> for Writers {
-            fn visit_item_mod(&mut self, item: &'ast syn::ItemMod) {
-                if !test_only(&item.attrs) {
-                    syn::visit::visit_item_mod(self, item);
-                }
-            }
-            fn visit_item_fn(&mut self, item: &'ast syn::ItemFn) {
-                if !test_only(&item.attrs) {
-                    syn::visit::visit_item_fn(self, item);
-                }
-            }
-            fn visit_item_impl(&mut self, item: &'ast syn::ItemImpl) {
-                if !test_only(&item.attrs) {
-                    syn::visit::visit_item_impl(self, item);
-                }
-            }
-            fn visit_item_const(&mut self, item: &'ast syn::ItemConst) {
-                if test_only(&item.attrs) {
-                    return;
-                }
-                let name = item.ident.to_string();
-                if name == "SERVICE" || name.ends_with("_SERVICE") {
-                    if let syn::Expr::Lit(syn::ExprLit {
-                        lit: syn::Lit::Str(value),
-                        ..
-                    }) = item.expr.as_ref()
-                    {
-                        self.0.insert(value.value());
-                    }
-                }
-                syn::visit::visit_item_const(self, item);
-            }
-            fn visit_expr_call(&mut self, call: &'ast syn::ExprCall) {
-                if let syn::Expr::Path(path) = call.func.as_ref() {
-                    let mut parts = path.path.segments.iter().rev();
-                    if parts.next().is_some_and(|part| part.ident == "new")
-                        && parts
-                            .next()
-                            .is_some_and(|part| part.ident == "NativeSecureEntry")
-                    {
-                        if let Some(syn::Expr::Lit(syn::ExprLit {
-                            lit: syn::Lit::Str(value),
-                            ..
-                        })) = call.args.first()
-                        {
-                            self.0.insert(value.value());
-                        }
-                    }
-                }
-                syn::visit::visit_expr_call(self, call);
-            }
-        }
-        let mut writers = Writers::default();
-        let mut pending = vec![Path::new(env!("CARGO_MANIFEST_DIR")).join("src")];
-        while let Some(directory) = pending.pop() {
-            for entry in std::fs::read_dir(directory).unwrap() {
-                let path = entry.unwrap().path();
-                if path.is_dir() {
-                    pending.push(path);
-                    continue;
-                }
-                if path.extension().is_none_or(|ext| ext != "rs") {
-                    continue;
-                }
-                writers.visit_file(
-                    &syn::parse_file(&std::fs::read_to_string(&path).unwrap()).unwrap(),
-                );
-            }
-        }
-        assert_eq!(
-            writers.0.len(),
-            9,
-            "native credential writer inventory changed"
-        );
-        assert_eq!(
-            writers.0,
-            STATION_KEYRING_SERVICES
-                .iter()
-                .map(|service| (*service).to_owned())
-                .collect()
-        );
-    }
-
     #[cfg(all(not(mobile), windows))]
     #[test]
-    fn profile_store_windows_real_dotted_credential_targets_refuse_creation() {
+    fn profile_store_windows_finds_real_dotted_credential_history() {
         initialize_credential_store().unwrap();
         let account = format!("station-runtime-recovery-test:{}", uuid::Uuid::new_v4());
         for service in [
@@ -22065,22 +22012,37 @@ mod tests {
             std::io::ErrorKind::OutOfMemory,
             std::io::ErrorKind::Other,
         ] {
-            let detail = sidecar_spawn_failure_detail(std::io::Error::from(kind));
-            assert!(!detail.contains(NODE_RUNTIME_FAILURE));
+            assert_eq!(
+                sidecar_spawn_failure_action(1, &std::io::Error::from(kind)),
+                SidecarSpawnFailureAction::Retry
+            );
+        }
+        let fatal_codes: &[i32] = if cfg!(windows) {
+            &[2, 3, 5, 193]
+        } else {
+            &[2, 13, 8]
+        };
+        for code in fatal_codes {
+            let error = std::io::Error::from_raw_os_error(*code);
+            assert_eq!(
+                sidecar_spawn_failure_action(1, &error),
+                SidecarSpawnFailureAction::Fatal,
+                "{code}"
+            );
+            for generation in [2, 5] {
+                assert_eq!(
+                    sidecar_spawn_failure_action(generation, &error),
+                    SidecarSpawnFailureAction::Retry,
+                    "generation {generation}, error {code}"
+                );
+            }
         }
         #[cfg(windows)]
         for code in [32, 33] {
-            assert!(
-                !sidecar_spawn_failure_detail(std::io::Error::from_raw_os_error(code))
-                    .contains(NODE_RUNTIME_FAILURE)
+            assert_eq!(
+                sidecar_spawn_failure_action(1, &std::io::Error::from_raw_os_error(code)),
+                SidecarSpawnFailureAction::Retry
             );
-        }
-        for kind in [
-            std::io::ErrorKind::NotFound,
-            std::io::ErrorKind::PermissionDenied,
-        ] {
-            assert!(sidecar_spawn_failure_detail(std::io::Error::from(kind))
-                .contains(NODE_RUNTIME_FAILURE));
         }
         let (title, message) =
             desktop_recovery_failure_copy("Saved credentials appeared during recovery");
@@ -22095,8 +22057,9 @@ mod tests {
     #[cfg(not(mobile))]
     #[test]
     fn profile_bridge_silent_failure_reaches_node_repair_copy() {
+        // The real transport runs pinned Node directly; command resolution and
+        // native dialog interaction have separate packaged-shell evidence.
         let resources = tempfile::tempdir().unwrap();
-        let home = tempfile::tempdir().unwrap();
         std::fs::create_dir(resources.path().join("dist-server")).unwrap();
         std::fs::write(
             registry_bridge_script_path(resources.path()),
@@ -22176,6 +22139,18 @@ mod tests {
             .unwrap()
             .join("station");
         std::fs::write(&removed, "app").unwrap();
+        assert_eq!(
+            packaged_node_from_executable_observation(
+                &removed,
+                Err(std::io::Error::from_raw_os_error(1))
+            )
+            .unwrap(),
+            removed.with_file_name(if cfg!(windows) {
+                "station-node.exe"
+            } else {
+                "station-node"
+            })
+        );
         std::fs::remove_file(&removed).unwrap();
         assert_eq!(
             desktop_node_executable(&removed, false).unwrap(),
