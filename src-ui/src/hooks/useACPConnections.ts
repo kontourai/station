@@ -1,6 +1,7 @@
 import {
   type ACPConnectionInfo,
   type ACPConnectionRegistryEntry,
+  recheckACPConnectionRegistry,
   useACPConnectionProbeStatusesQuery,
   useACPConnectionRegistryQuery,
   useACPConnectionsQuery,
@@ -8,6 +9,7 @@ import {
 } from '@kontourai/station-sdk';
 
 export type { ACPConnectionInfo, ACPConnectionRegistryEntry };
+export { recheckACPConnectionRegistry };
 
 export function useACPConnections() {
   return useACPConnectionsQuery();

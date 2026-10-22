@@ -56,8 +56,6 @@ export interface PlatformProfile {
   channel?: 'stable' | 'dev' | 'beta' | 'nightly';
   /** Native scheme selected by this installed client, never a backend URL. */
   pairingDeepLinkScheme?: string;
-  /** Trusted, secret-free mobile bootstrap; explicit saved selection wins. */
-  mobileDefaultEndpoint?: string;
   /** Build evidence for this native app, never the connected Station host. */
   clientBuild?: NativeClientBuildProvenance;
 }
@@ -159,9 +157,6 @@ async function resolvePlatformProfile(): Promise<PlatformProfile> {
       report.value.channel ??
       (report.value.devBuild === true ? 'dev' : 'stable'),
     pairingDeepLinkScheme: report.value.pairingDeepLinkScheme,
-    ...(isMobile && report.value.mobileDefaultEndpoint
-      ? { mobileDefaultEndpoint: report.value.mobileDefaultEndpoint }
-      : {}),
     ...(report.value.clientBuild
       ? { clientBuild: report.value.clientBuild }
       : {}),

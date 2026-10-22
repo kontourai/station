@@ -1,0 +1,7 @@
+{
+  "revision": "018f43508b6f36403c8f5a436e92ea3d09dcecb4",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Round 4: Plan Rendering now states that prose which reads as a plan replaces a typed plan while streaming or at its turn's completion, and a planless later turn keeps it; checked against assistantTurn.ts and planArtifacts.ts.","inputs":["docs/guides/acp.md"]}
+  ]
+}

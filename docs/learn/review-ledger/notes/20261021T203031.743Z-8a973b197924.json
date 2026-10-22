@@ -1,0 +1,7 @@
+{
+  "revision": "9b29f07e3845d9ae4c0a6e6f2ec4aedd68ac3f83",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Re-verified against the merged tree (origin/main 1dd83e0f305 plus this branch): its claims cover Agent fields, tool sources, approvals, guardrails, lifecycle and the Agent editor's engine picker. This branch changes the ACP spawn's descriptor launchEnv (adapter, merged beside #3957's client-capability override), not-installed rows in /api/system/status, and install hints and the Not installed label in the Add engine catalogue and add dialog. None of these is the Agent editor's engine picker or any field, tool, approval or lifecycle claim here, so the document stays accurate.","inputs":["docs/guides/agent-configuration.md","packages/cli/src/commands/profile-store.ts","scripts/examples-conformance.mjs","src-server/domain/config-loader-agents.ts","src-server/routes/system/system-status-routes.ts","src-server/runtime/agents/runtime-default-agent.ts","src-server/runtime/bootstrap/native-engine-adoption.ts","src-server/runtime/mcp/mcp-manager.ts","src-server/services/agents/skill-service.ts","src-server/services/approvals/approval-guardian.ts","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx","src-ui/src/views/agent-editor/AgentEditorApprovalDefault.tsx","src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx","src-ui/src/views/connections-hub/connection-sections.ts","src-ui/src/views/provider-settings/providerCatalog.tsx","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

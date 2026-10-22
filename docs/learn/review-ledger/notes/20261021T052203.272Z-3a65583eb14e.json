@@ -1,0 +1,7 @@
+{
+  "revision": "77b123c4cd100f79305b3332d5331aed12fd09a4",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"SDK scope routing still correctly directs public behavior to canonical SDK reference and requires affected consumers plus cache/caller evidence for races. Task mutation cache follow-through respects those boundaries; no instruction change or broader SDK approval.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

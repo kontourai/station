@@ -1,0 +1,7 @@
+{
+  "revision": "03404698711cd911f509870a8516737e0319b618",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Transitive re-review after notification-delivery noted that an open form request still counts as waiting; automations make no claim about inbox liveness; no prose change.","inputs":["docs/design/automations.md","docs/design/notification-delivery.md"]}
+  ]
+}

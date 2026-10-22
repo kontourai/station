@@ -1,0 +1,7 @@
+{
+  "revision": "11c7acac13ad24eb73af7740c0ec969739ec0653",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Fix round: re-reviewed Cursor blocking-request section against the adapter and Cursor module; documented connection-name labels, plan-review form contents (phases included), plan surface only on approval, 8000-character form bound, inbox without decisions, engine-exit cancel and the send-a-message continue copy.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

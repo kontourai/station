@@ -1,6 +1,8 @@
-import type { RefObject } from 'react';
+import { Fragment, type RefObject } from 'react';
 import type { ACPConnectionRegistryEntry } from '../../hooks/useACPConnections';
 import { resolveProviderChoicePresentation } from '../../views/provider-settings/providerCatalog';
+import { RegistryEntryInstallHint } from '../engine-install/RegistryEntryInstallHint';
+import { registryEntryDiscovery } from '../engine-install/registryEntryDiscovery';
 import {
   ResponsiveDialogCloseButton,
   ResponsiveSurfaceActions,
@@ -295,22 +297,24 @@ export function ACPConnectionCatalogStage({
           enabled: true,
           status: 'unknown',
           setup: null,
-          discovery: entry.detected ? 'detected-unconfigured' : undefined,
+          discovery: registryEntryDiscovery(entry),
           description: entry.description,
           href: '',
         });
         return (
-          <button
-            key={entry.id}
-            type="button"
-            className="acp-add-dialog__choice"
-            onClick={() => onSelect(entry)}
-          >
-            <span className="acp-add-dialog__choice-name">{entry.name}</span>
-            <span className="acp-add-dialog__choice-detail">
-              {presentation.detail}
-            </span>
-          </button>
+          <Fragment key={entry.id}>
+            <button
+              type="button"
+              className="acp-add-dialog__choice"
+              onClick={() => onSelect(entry)}
+            >
+              <span className="acp-add-dialog__choice-name">{entry.name}</span>
+              <span className="acp-add-dialog__choice-detail">
+                {presentation.detail}
+              </span>
+            </button>
+            <RegistryEntryInstallHint entry={entry} />
+          </Fragment>
         );
       })}
       {entries.length > 0 && <div className="acp-add-dialog__divider" />}
@@ -359,6 +363,7 @@ export function ACPConnectionConfirmStage({
       <p className="acp-add-dialog__confirm-note">
         You can remove the connection and its agent at any time.
       </p>
+      <RegistryEntryInstallHint entry={entry} />
     </div>
   );
 }

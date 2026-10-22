@@ -245,3 +245,55 @@ describe('useUnsavedGuard', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 });
+
+test('Cancel retains persisted input, and Discard retires it before the admitted continuation', () => {
+  const order: string[] = [];
+  function PersistedDraft() {
+    const { guard, DiscardModal } = useUnsavedGuard(true, () => {
+      order.push('discard');
+      return true;
+    });
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => guard(() => order.push('continue'))}
+        >
+          Leave persisted draft
+        </button>
+        <DiscardModal />
+      </>
+    );
+  }
+  render(<PersistedDraft />);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Leave persisted draft' }),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(order).toEqual([]);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Leave persisted draft' }),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+  expect(order).toEqual(['discard', 'continue']);
+});
+
+test('a failed persisted discard refuses navigation and retains the confirmation', () => {
+  const continued = vi.fn();
+  function PersistedDraft() {
+    const { guard, DiscardModal } = useUnsavedGuard(true, () => false);
+    return (
+      <>
+        <button type="button" onClick={() => guard(continued)}>
+          Leave blocked draft
+        </button>
+        <DiscardModal />
+      </>
+    );
+  }
+  render(<PersistedDraft />);
+  fireEvent.click(screen.getByRole('button', { name: 'Leave blocked draft' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+  expect(continued).not.toHaveBeenCalled();
+  expect(screen.getByRole('dialog')).toBeTruthy();
+});

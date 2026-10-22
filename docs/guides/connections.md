@@ -695,16 +695,44 @@ on this computer's `PATH`; detection does not mean it is signed in or ready.
 | GitHub Copilot | `copilot --acp` | Agent Client Protocol |
 | Grok Build | `grok agent stdio` | Agent Client Protocol |
 | Mistral Vibe | `vibe-acp` | Agent Client Protocol |
+| Google Antigravity | `agy_acp_server.par` | Agent Client Protocol, macOS only; Google ships the server as a download, so put it on `PATH` yourself |
+| Factory Droid | `droid exec --output-format acp-daemon` | Agent Client Protocol |
+| Hermes Agent | `hermes acp` | Agent Client Protocol |
+| pi | `pi-acp` | Agent Client Protocol through the community `pi-acp` bridge, which does not pass Station tool servers and has no model switching |
+| Cline | `cline --acp` | Agent Client Protocol |
+| Devin | `devin acp` | Agent Client Protocol |
+| Kimi Code | `kimi acp` | Agent Client Protocol |
+| Kilo | `kilo acp` | Agent Client Protocol |
+| Junie | `junie --acp=true` | Agent Client Protocol |
 
 The native engines come from
 [startup adoption](../../src-server/runtime/bootstrap/native-engine-adoption.ts)
-and the Agent Client Protocol entries from the built-in list in
-[defaults.ts](../../src-server/providers/llm/defaults.ts). Any other command
+and the Agent Client Protocol entries from the built-in catalogue in
+[builtin-acp-engines.ts](../../src-server/providers/llm/builtin-acp-engines.ts). Cursor
+is looked up only as `cursor-agent`: its installer also links a bare `agent`,
+which other CLIs install too. Any other command
 that speaks the Agent Client Protocol can be added with the custom option. What
 each engine can receive from Station (system prompt, tools, skills, images) is
 recorded per engine in the
 [engine capability matrix](../../packages/contracts/src/engine-capability-matrix.ts);
 the [ACP guide](acp.md) covers protocol details.
+
+An engine Station did not find reads **Not installed**. Its card shows the
+vendor's install command for the operating system Station runs on, with a copy
+button and a link to the install guide, and **Check again** repeats the lookup
+after you install it, re-reading your login shell's `PATH` so a directory the
+installer added there is searched too. A paired device needs permission to
+operate Station for that re-read; without it, the card says so and shows what
+Station last found. Station shows the command and never runs it. On a paired
+device the card says the install belongs on the computer Station runs on.
+
+Some built-in engines carry launch settings that Station sets when it starts
+them, such as `GOOSE_DISABLE_KEYRING=1` for Goose (its keychain lookup can hang
+without a terminal) and the auto-update switches for Factory Droid. A value
+already set in the environment Station launches with wins. Only Station's own
+catalogue sets them, and only engine-scoped names; they never carry
+credentials. A custom connection running the same program, even by full path,
+gets the same settings.
 
 1. Select a detected or supported engine, or choose the custom option.
 2. For custom setup, enter a name and command. Command arguments, working directory, and other
@@ -743,6 +771,8 @@ OpenCode or Kiro, rather than exposing its transport as a user category.
 The first-run Engines chapter shows the detected, not-yet-connected local Engine subset. Selecting
 one there explicitly connects the Engine and creates its default Agent binding.
 That discovery action is separate from the automatic startup adoption above.
+Catalogue engines Station did not find are listed under **Station also works
+with**, each with its install command, and cannot be selected there.
 
 For the built-in Claude Code Engine, Station chooses between the `claude` executable it finds
 installed on your machine and the Claude Code bundled with the Claude Agent SDK:

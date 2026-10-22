@@ -15,16 +15,16 @@ import {
  * parser matches itself.
  */
 const STATUS_JSON = JSON.stringify({
-  Self: { DNSName: 'kontour.python-smelt.ts.net.', Online: true },
+  Self: { DNSName: 'station.example.ts.net.', Online: true },
 });
 
 const SERVE_JSON = JSON.stringify({
   TCP: { '443': { HTTPS: true }, '8090': { HTTPS: true } },
   Web: {
-    'kontour.python-smelt.ts.net:443': {
+    'station.example.ts.net:443': {
       Handlers: { '/': { Proxy: 'http://127.0.0.1:3000' } },
     },
-    'kontour.python-smelt.ts.net:8090': {
+    'station.example.ts.net:8090': {
       Handlers: { '/': { Proxy: 'http://127.0.0.1:8080' } },
     },
   },
@@ -32,7 +32,7 @@ const SERVE_JSON = JSON.stringify({
 
 describe('parseMagicDnsHost', () => {
   test('reads the node name and drops the trailing dot', () => {
-    expect(parseMagicDnsHost(STATUS_JSON)).toBe('kontour.python-smelt.ts.net');
+    expect(parseMagicDnsHost(STATUS_JSON)).toBe('station.example.ts.net');
   });
 
   test('refuses a node that is offline, unnamed, or not a ts.net host', () => {
@@ -41,7 +41,7 @@ describe('parseMagicDnsHost', () => {
     expect(
       parseMagicDnsHost(
         JSON.stringify({
-          Self: { DNSName: 'kontour.python-smelt.ts.net.', Online: false },
+          Self: { DNSName: 'station.example.ts.net.', Online: false },
         }),
       ),
     ).toBeUndefined();
@@ -57,13 +57,13 @@ describe('parseMagicDnsHost', () => {
 });
 
 describe('parseServePublicOrigins', () => {
-  const host = 'kontour.python-smelt.ts.net';
+  const host = 'station.example.ts.net';
 
   test('finds the origin serving the UI proxy port', () => {
     // The topology that actually ships: serve fronts the UI proxy, which
     // forwards the pairing paths to the API.
     expect(parseServePublicOrigins(SERVE_JSON, host, [3141, 3000])).toEqual([
-      'https://kontour.python-smelt.ts.net',
+      'https://station.example.ts.net',
     ]);
   });
 
@@ -76,7 +76,7 @@ describe('parseServePublicOrigins', () => {
       },
     });
     expect(parseServePublicOrigins(serve, host, [3141, 3000])).toEqual([
-      'https://kontour.python-smelt.ts.net',
+      'https://station.example.ts.net',
     ]);
   });
 
@@ -89,7 +89,7 @@ describe('parseServePublicOrigins', () => {
       },
     });
     expect(parseServePublicOrigins(serve, host, [3000])).toEqual([
-      'https://kontour.python-smelt.ts.net:8443',
+      'https://station.example.ts.net:8443',
     ]);
   });
 
@@ -102,7 +102,7 @@ describe('parseServePublicOrigins', () => {
   test('ignores a mapping published for a different host', () => {
     const serve = JSON.stringify({
       Web: {
-        'other-node.python-smelt.ts.net:443': {
+        'other-node.example.ts.net:443': {
           Handlers: { '/': { Proxy: 'http://127.0.0.1:3000' } },
         },
       },
@@ -146,8 +146,8 @@ describe('parseServePublicOrigins', () => {
       },
     });
     expect(parseServePublicOrigins(serve, host, [3000])).toEqual([
-      'https://kontour.python-smelt.ts.net',
-      'https://kontour.python-smelt.ts.net:8443',
+      'https://station.example.ts.net',
+      'https://station.example.ts.net:8443',
     ]);
   });
 
@@ -167,8 +167,8 @@ describe('parseServePublicOrigins', () => {
     });
 
     expect(parseServePublicOrigins(serve, host, [38141])).toEqual([
-      'https://kontour.python-smelt.ts.net:3773',
-      'https://kontour.python-smelt.ts.net:8444',
+      'https://station.example.ts.net:3773',
+      'https://station.example.ts.net:8444',
     ]);
   });
 
@@ -206,7 +206,7 @@ describe('createPublicIngressOriginResolver', () => {
       cli,
     });
     await expect(resolver.resolve()).resolves.toEqual([
-      'https://kontour.python-smelt.ts.net',
+      'https://station.example.ts.net',
     ]);
   });
 
@@ -269,7 +269,7 @@ describe('createPublicIngressOriginResolver', () => {
       resolver.resolve(),
       resolver.resolve(),
     ]);
-    expect(first).toEqual(['https://kontour.python-smelt.ts.net']);
+    expect(first).toEqual(['https://station.example.ts.net']);
     expect(second).toBe(first);
     expect(calls).toHaveLength(2);
   });
@@ -375,7 +375,7 @@ describe('Tailscale CLI executable discovery', () => {
     });
 
     await expect(resolver.resolve()).resolves.toEqual([
-      'https://kontour.python-smelt.ts.net',
+      'https://station.example.ts.net',
     ]);
     expect(calls).toEqual([
       `${TAILSCALE_MACOS_APP_CLI} status --json`,

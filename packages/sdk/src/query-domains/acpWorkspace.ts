@@ -70,6 +70,23 @@ export interface ACPConnectionInfo {
     options?: Array<string | { value: string; name?: string }>;
   }>;
   /**
+   * The model catalog Station offers for this connection: its model config
+   * option when it has one, else `sessionModels` (#352).
+   */
+  advertisedModels?: Array<{ id: string; name: string }>;
+  /**
+   * #352: the session's `models` list, for an engine that offers no model
+   * config option and switches with `session/set_model`.
+   */
+  sessionModels?: {
+    currentModelId?: string;
+    availableModels: Array<{
+      modelId: string;
+      name?: string;
+      description?: string;
+    }>;
+  };
+  /**
    * Explicit opt-in (docs/design/connections-onboarding.md §5): ids of
    * Station tool servers passed through to this connection's ACP sessions
    * as MCP servers. Absent/empty ⇒ passthrough is off (the default).
@@ -375,6 +392,47 @@ export async function reconnectACPConnection(id: string): Promise<boolean> {
     throw new Error(result.detail ? `${base} ${result.detail}` : base);
   }
   return true;
+}
+
+export type ACPConnectionRegistryRecheck =
+  | { status: 'rechecked'; entries: ACPConnectionRegistryEntry[] }
+  /** This credential lacks the operate scope the host's re-check requires. */
+  | { status: 'not-permitted' };
+
+/**
+ * Asks the host to re-read its login-shell PATH and detect engines again, so
+ * one installed since it started can be found. The host rate-limits the
+ * re-read and requires the operate scope; a refusal for scope is returned as
+ * `not-permitted`, any other failure throws.
+ */
+export async function recheckACPConnectionRegistry(): Promise<ACPConnectionRegistryRecheck> {
+  const apiBase = await _getApiBase();
+  const response = await authenticatedFetch(`${apiBase}/acp/registry/recheck`, {
+    method: 'POST',
+  });
+  const result = (await response.json().catch(unlessDeadline(() => ({})))) as {
+    success?: boolean;
+    data?: ACPConnectionRegistryEntry[];
+    error?: string | { code?: string };
+  };
+  const code =
+    typeof result.error === 'object' ? result.error?.code : undefined;
+  // Only the runtime's scope gate answers "this credential may not"; an
+  // origin refusal or any other 403 is a failure the caller should see.
+  if (response.status === 403 && code === 'insufficient_scope') {
+    return { status: 'not-permitted' };
+  }
+  if (!result.success) {
+    throw new Error(
+      code
+        ? `Failed to re-check engines (${code})`
+        : apiErrorMessage(
+            result as { error?: string },
+            'Failed to re-check engines',
+          ),
+    );
+  }
+  return { status: 'rechecked', entries: result.data ?? [] };
 }
 
 export async function installACPConnectionRegistryEntry(
@@ -716,3 +774,4 @@ export function useReconnectACPConnectionMutation(
 
 import { apiErrorMessage } from '../api-core';
 import { authenticatedFetch } from '../client/http';
+import { unlessDeadline } from '../client/request-deadline';

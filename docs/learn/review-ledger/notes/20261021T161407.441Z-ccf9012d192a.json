@@ -1,0 +1,7 @@
+{
+  "revision": "76766fd0391094e0d6a144b32ce50e02028e7822",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Added Cursor questions (no Other answer) and Cursor plan review to the person-addressed prompt descriptions; checked against harness-questions and the adapter.","inputs":["docs/guides/agents.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

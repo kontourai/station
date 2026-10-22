@@ -425,10 +425,11 @@ function invalidateTaskReferenceScope(
   client: ReturnType<typeof useQueryClient>,
   taskId: string,
 ): void {
+  client.invalidateQueries({ queryKey: ['tasks'] });
   for (const queryKey of [
-    taskQueries.list().queryKey,
     taskQueries.task(taskId).queryKey,
     taskQueries.graph(taskId).queryKey,
+    taskQueries.claim(taskId).queryKey,
     taskQueries.turnReferences(taskId).queryKey,
     taskQueries.userInputReferences(taskId).queryKey,
   ]) {
@@ -490,14 +491,32 @@ export function useCreateTaskReferenceMutation(
 }
 
 export function useUpdateTaskStatusMutation() {
+  const client = useQueryClient();
   return useApiMutation(updateTaskStatus, {
     invalidateKeys: [['tasks']],
+    onSuccess: (_data, { taskId }) => {
+      for (const queryKey of [
+        taskQueries.task(taskId).queryKey,
+        taskQueries.graph(taskId).queryKey,
+        taskQueries.claim(taskId).queryKey,
+      ])
+        client.invalidateQueries({ queryKey, exact: true });
+    },
   });
 }
 
 export function useDispatchTaskMutation() {
+  const client = useQueryClient();
   return useApiMutation(dispatchTask, {
     invalidateKeys: [['tasks']],
+    onSuccess: (_data, { taskId }) => {
+      for (const queryKey of [
+        taskQueries.task(taskId).queryKey,
+        taskQueries.graph(taskId).queryKey,
+        taskQueries.claim(taskId).queryKey,
+      ])
+        client.invalidateQueries({ queryKey, exact: true });
+    },
   });
 }
 

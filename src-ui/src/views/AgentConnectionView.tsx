@@ -37,6 +37,8 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { Checkbox } from '../components/Checkbox';
 import { ConnectionReadinessNotice } from '../components/connections/ConnectionReadinessNotice';
 import { DetailHeader } from '../components/DetailHeader';
+import { RegistryEntryInstallHint } from '../components/engine-install/RegistryEntryInstallHint';
+import { registryEntryDiscovery } from '../components/engine-install/registryEntryDiscovery';
 import { BrandIcon } from '../components/icons/BrandIcon';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
@@ -1121,7 +1123,7 @@ function EngineAddCatalog({
             enabled: true,
             status: 'unknown',
             setup: null,
-            discovery: entry.detected ? 'detected-unconfigured' : undefined,
+            discovery: registryEntryDiscovery(entry),
             description: entry.description,
             href: '',
           });
@@ -1143,6 +1145,7 @@ function EngineAddCatalog({
                 <div className="plugins__registry-desc">
                   {presentation.detail}
                 </div>
+                <RegistryEntryInstallHint entry={entry} />
               </div>
               <button
                 type="button"

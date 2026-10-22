@@ -11,6 +11,12 @@ import { acpProbeCleanupRetention } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
 import { expandTilde } from '../../utils/paths.js';
+import { registryLaunchEnvFor } from './acp-engine-descriptors.js';
+import {
+  type AcpDeclaredHandshake,
+  parseAcpSessionModelState,
+  projectAcpDeclaredHandshake,
+} from './acp-handshake-facts.js';
 import {
   type AcpInboundExtensionHandler,
   createAcpInboundExtensionRequestHandler,
@@ -22,6 +28,7 @@ import {
 import {
   ACPCommandNotFoundError,
   ACPProcess,
+  type AcpSessionModelState,
   assertACPProviderRouteSupported,
   type InitializeResult,
 } from './acp-process.js';
@@ -513,6 +520,10 @@ export class ACPProbe {
   cachedAgentCapabilities: InitializeResult['agentCapabilities'] | null = null;
   /** `null` means providers/list was not observed; an empty array is observed negative data. */
   cachedProviderRouting: ProviderInfo[] | null = null;
+  /** ADR 0013 Layer 2: the last successful handshake's declared facts. */
+  cachedDeclaredHandshake: AcpDeclaredHandshake | null = null;
+  /** #352: the probe session's `models` list; `null` when it sent none. */
+  cachedSessionModels: AcpSessionModelState | null = null;
   /**
    * archive#1549: the instant of the last SUCCESSFUL `initialize` handshake,
    * NOT `lastProbeAt`. The two differ exactly where it matters: a failed
@@ -862,6 +873,7 @@ export class ACPProbe {
         command: this.config.command,
         args: this.config.args,
         cwd,
+        launchEnv: registryLaunchEnvFor(this.config),
         createClient: () => createProbeClient(this.inboundExtensionPolicy),
         clientCapabilities: {},
         logger: this.logger,
@@ -957,6 +969,24 @@ export class ACPProbe {
         initResult.agentCapabilities?.promptCapabilities ?? null;
       this.cachedAgentCapabilities = initResult.agentCapabilities ?? null;
       this.cachedProviderRouting = initResult.providerRouting ?? null;
+      const declaredHandshake = projectAcpDeclaredHandshake(initResult);
+      const sessionModels = parseAcpSessionModelState(sessionResult.models);
+      this.cachedSessionModels =
+        sessionModels.kind === 'listed' ? sessionModels.state : null;
+      const refused = [
+        ...(declaredHandshake.refused ?? []),
+        ...(sessionModels.kind === 'refused' ? (['models'] as const) : []),
+      ];
+      this.cachedDeclaredHandshake = {
+        ...declaredHandshake,
+        ...(refused.length > 0 ? { refused } : {}),
+      };
+      if (refused.length > 0) {
+        this.logger.warn(
+          'ACPProbe refused engine-declared facts beyond Station bounds',
+          { id: this.config.id, refused },
+        );
+      }
       this.providerRoutingObservationGeneration = providerObservationGeneration;
       this.lastHandshakeObservedAt = Date.now();
       this.lastSuccess = true;
@@ -1025,6 +1055,8 @@ export class ACPProbe {
         this.cachedCapabilities = null;
         this.cachedAgentCapabilities = null;
         this.cachedProviderRouting = null;
+        this.cachedDeclaredHandshake = null;
+        this.cachedSessionModels = null;
       }
       this.lastSuccess = false;
     } finally {
@@ -1176,6 +1208,14 @@ export class ACPProbe {
   getAgentCapabilities(): InitializeResult['agentCapabilities'] | null {
     return this.cachedAgentCapabilities;
   }
+  getDeclaredHandshake(): AcpDeclaredHandshake | null {
+    return this.cachedDeclaredHandshake;
+  }
+
+  getSessionModels(): AcpSessionModelState | null {
+    return this.cachedSessionModels;
+  }
+
   getProviderRouting(): ProviderInfo[] | null {
     return this.cachedProviderRouting;
   }
@@ -1217,6 +1257,7 @@ export class ACPProbe {
       command: this.config.command,
       args: this.config.args,
       cwd,
+      launchEnv: registryLaunchEnvFor(this.config),
       createClient: () => createProbeClient(this.inboundExtensionPolicy),
       clientCapabilities: {},
       logger: this.logger,
