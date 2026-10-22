@@ -8,6 +8,7 @@ import {
 import { mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
+import type { SQLOutputValue } from 'node:sqlite';
 import { isSupportedAgentIconToken } from '@kontourai/station-contracts/agent';
 import { ATTENTION_REQUEST_MAX_BYTES } from '@kontourai/station-contracts/attention';
 import {
@@ -1195,8 +1196,8 @@ const { DatabaseSync } = require('node:sqlite') as {
     exec(sql: string): void;
     prepare(sql: string): {
       run: (...args: unknown[]) => unknown;
-      get: (...args: unknown[]) => unknown;
-      all: (...args: unknown[]) => unknown[];
+      get: (...args: unknown[]) => Record<string, SQLOutputValue> | undefined;
+      all: (...args: unknown[]) => Record<string, SQLOutputValue>[];
     };
     close(): void;
   };

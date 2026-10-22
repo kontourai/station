@@ -1,7 +1,8 @@
 import { once } from 'node:events';
+import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { serve } from '@hono/node-server';
+import { getRequestListener } from '@hono/node-server';
 import {
   type CanonicalRuntimeEvent,
   SERVER_EVENTS,
@@ -25,11 +26,8 @@ afterEach(async () => {
 });
 
 async function listen(app: { fetch: (request: Request) => unknown }) {
-  const server = serve({
-    fetch: app.fetch as never,
-    hostname: '127.0.0.1',
-    port: 0,
-  });
+  const server = createServer(getRequestListener(app.fetch));
+  server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const address = server.address();
   if (!address || typeof address === 'string')
@@ -83,9 +81,10 @@ function fixture() {
     provider: 'claude',
     threadId: 'thread',
     method: 'session.configured',
+    sessionId: 'thread',
     createdAt: '2026-10-22T00:00:00Z',
     metadata: { userId: 'owner' },
-  } as CanonicalRuntimeEvent);
+  });
   const app = createOrchestrationRoutes(service, {
     eventBus: bus,
     getUserId: () => 'owner',
@@ -243,9 +242,10 @@ describe('SSE backpressure over real loopback sockets (#3817)', () => {
       provider: 'claude',
       threadId: 'thread',
       method: 'session.configured',
+      sessionId: 'thread',
       createdAt: '2026-10-22T00:00:02Z',
       metadata: { userId: 'owner' },
-    } as CanonicalRuntimeEvent);
+    });
     expect((await published).globalSequence).toBe(f.store.headGlobalSequence());
     await Promise.all([
       a.until('"eventId":"from-adapter"'),
@@ -349,10 +349,7 @@ describe('SSE backpressure over real loopback sockets (#3817)', () => {
     release();
     const text = await client.until('still-live');
     expect(text.includes('event: data:changed')).toBe(true);
-    expect(text).toContain('"notifications"');
-    expect(text).toContain('"scheduler-jobs"');
-    expect(text).toContain('"answer-basis"');
-    expect(text).toContain('"server-update-state"');
+    expect(text).toContain('data: {"resync":true}');
     expect(text).not.toContain('"index":1499');
   });
 });
