@@ -40,7 +40,7 @@ const gitlabSchema = z
   )
   .max(PAGE_SIZE);
 
-export class RepositoryProviderUnavailable extends Error {
+class RepositoryProviderUnavailable extends Error {
   constructor(readonly provider: RepositoryProvider) {
     super('Repository provider is unavailable or needs host sign-in.');
   }

@@ -37,7 +37,7 @@ const sourceSchema = z
     createdAt: z.string().datetime(),
   })
   .strict();
-export const projectS3AttachmentSchema = sourceSchema
+const projectS3AttachmentSchema = sourceSchema
   .omit({ createdAt: true })
   .extend({
     profile: z
@@ -56,7 +56,6 @@ const entrySchema = sourceSchema
   .strict();
 const registrySchema = z.array(entrySchema).max(1000);
 type Entry = z.infer<typeof entrySchema>;
-export type ProjectS3Attachment = z.infer<typeof projectS3AttachmentSchema>;
 export interface ProjectS3Authority {
   assertCurrent: () => void;
   signal?: AbortSignal;
