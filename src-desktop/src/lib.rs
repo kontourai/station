@@ -2499,10 +2499,10 @@ impl StationProfileFileVersion {
         }
     }
 
-    fn unambiguous(&self) -> bool {
+    fn unambiguous(&self, observed_at: std::time::SystemTime) -> bool {
         // Recent/coarse timestamps can hide same-size in-place edits. Never
         // trust metadata alone within its collision window or after clock rollback.
-        let Ok(now) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) else {
+        let Ok(now) = observed_at.duration_since(std::time::UNIX_EPOCH) else {
             return false;
         };
         self.changed.0 >= 0 && self.changed.1 > 0 && now.as_secs() > self.changed.0 as u64 + 1
@@ -2546,6 +2546,7 @@ impl StationProfileSnapshotCache {
     fn read(
         &mut self,
         path: &std::path::Path,
+        _observed_at: std::time::SystemTime,
     ) -> Result<std::sync::Arc<CredentialProfileStore>, String> {
         #[cfg(unix)]
         {
@@ -2557,7 +2558,7 @@ impl StationProfileSnapshotCache {
                 if cached_path == path
                     && cached_version == &version
                     && self.metadata_verified
-                    && version.unambiguous()
+                    && version.unambiguous(_observed_at)
                 {
                     return Ok(std::sync::Arc::clone(store));
                 }
@@ -2577,7 +2578,7 @@ impl StationProfileSnapshotCache {
                 );
             }
             let version = StationProfileFileVersion::of(&metadata);
-            let metadata_verified = version.unambiguous();
+            let metadata_verified = version.unambiguous(_observed_at);
             let cached = self.snapshot.take();
             let mut contents = String::new();
             file.read_to_string(&mut contents)
@@ -2672,7 +2673,7 @@ fn read_native_http_profile_snapshot(
     initialize()?;
     // No file I/O holds the global cache mutex. A concurrent writer invalidates
     // publication; every caller still validates the live file's trust boundary.
-    let store = local.read(path)?;
+    let store = local.read(path, std::time::SystemTime::now())?;
     let mut shared = cache.lock().unwrap_or_else(|error| error.into_inner());
     if generation == NATIVE_HTTP_PROFILE_GENERATION.load(Ordering::Acquire) {
         #[cfg(unix)]

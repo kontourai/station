@@ -379,36 +379,39 @@ fn native_http_profile_cache_refreshes_external_edits_and_rejects_unsafe_cached_
     let path = root.path().join("profiles.json");
     write_empty_station_profile_store(&path).unwrap();
     let mut cache = StationProfileSnapshotCache::default();
-    let first = cache.read(&path).unwrap();
+    // A fixed observation before the file timestamp deterministically treats
+    // this file as ambiguous, even if the test thread is descheduled.
+    let observed_at = std::time::UNIX_EPOCH;
+    let first = cache.read(&path, observed_at).unwrap();
     assert!(
-        Arc::ptr_eq(&first, &cache.read(&path).unwrap()),
+        Arc::ptr_eq(&first, &cache.read(&path, observed_at).unwrap()),
         "unchanged chunks reuse the parsed store"
     );
     let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
     let edited = EMPTY_STATION_PROFILE_STORE.replace("\"revision\":0", "\"revision\":1");
     std::fs::write(&path, &edited).unwrap();
-    // A same-size edit with restored mtime must still invalidate via ctime.
+    // A same-size edit with restored mtime must refresh even if ctime collides.
     std::fs::OpenOptions::new()
         .write(true)
         .open(&path)
         .unwrap()
         .set_modified(modified)
         .unwrap();
-    assert_eq!(cache.read(&path).unwrap().revision, 1);
+    assert_eq!(cache.read(&path, observed_at).unwrap().revision, 1);
     let staged = root.path().join("replacement.json");
     std::fs::write(&staged, EMPTY_STATION_PROFILE_STORE).unwrap();
     std::fs::set_permissions(&staged, std::fs::Permissions::from_mode(0o600)).unwrap();
     replace_station_profile_store(&staged, &path).unwrap();
-    assert_eq!(cache.read(&path).unwrap().revision, 0);
+    assert_eq!(cache.read(&path, observed_at).unwrap().revision, 0);
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
-    assert!(cache.read(&path).is_err());
+    assert!(cache.read(&path, observed_at).is_err());
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
     std::fs::write(&path, "malformed").unwrap();
-    assert!(cache.read(&path).is_err());
+    assert!(cache.read(&path, observed_at).is_err());
     std::fs::remove_file(&path).unwrap();
-    assert!(cache.read(&path).is_err());
+    assert!(cache.read(&path, observed_at).is_err());
     symlink(&staged, &path).unwrap();
-    assert!(cache.read(&path).is_err());
+    assert!(cache.read(&path, observed_at).is_err());
 }
 
 #[test]
@@ -444,7 +447,11 @@ fn native_http_profile_replacement_recovers_a_poisoned_snapshot_cache() {
     let path = secure_mobile_station_profiles_path(root.path()).unwrap();
     write_empty_station_profile_store(&path).unwrap();
     let cache = NATIVE_HTTP_PROFILE_SNAPSHOTS.get_or_init(Default::default);
-    cache.lock().unwrap().read(&path).unwrap();
+    cache
+        .lock()
+        .unwrap()
+        .read(&path, std::time::SystemTime::now())
+        .unwrap();
     let _ = std::panic::catch_unwind(|| {
         let _held = cache.lock().unwrap();
         panic!("injected snapshot panic");
@@ -459,7 +466,15 @@ fn native_http_profile_replacement_recovers_a_poisoned_snapshot_cache() {
     let next = root.path().join("next.json");
     std::fs::copy(&path, &next).unwrap();
     replace_station_profile_store(&next, &path).unwrap();
-    assert_eq!(cache.lock().unwrap().read(&path).unwrap().revision, 0);
+    assert_eq!(
+        cache
+            .lock()
+            .unwrap()
+            .read(&path, std::time::SystemTime::now())
+            .unwrap()
+            .revision,
+        0
+    );
 }
 
 #[test]
@@ -812,20 +827,35 @@ fn native_http_recent_metadata_collision_compares_bytes() {
     let path = secure_mobile_station_profiles_path(root.path()).unwrap();
     write_empty_station_profile_store(&path).unwrap();
     let mut cache = StationProfileSnapshotCache::default();
-    assert_eq!(cache.read(&path).unwrap().revision, 0);
-    std::fs::write(
-        &path,
-        EMPTY_STATION_PROFILE_STORE.replace("\"revision\":0", "\"revision\":1"),
-    )
-    .unwrap();
-    // Model a filesystem timestamp collision: metadata matches the cached
-    // version even though the bytes changed in the same timestamp window.
-    cache.snapshot.as_mut().unwrap().1 =
-        StationProfileFileVersion::of(&std::fs::metadata(&path).unwrap());
-    // Waiting out the collision window must not turn the old byte snapshot
-    // into trusted metadata without another read.
-    std::thread::sleep(Duration::from_millis(2100));
-    assert_eq!(cache.read(&path).unwrap().revision, 1);
+    // Freeze the first observation in an ambiguous timestamp window. A later
+    // observation moves past it without relying on the wall clock advancing.
+    assert_eq!(
+        cache.read(&path, std::time::UNIX_EPOCH).unwrap().revision,
+        0
+    );
+    let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
+    for revision in 1..=64 {
+        let edited = EMPTY_STATION_PROFILE_STORE
+            .replace("\"revision\":0", &format!("\"revision\":{}", revision % 10));
+        std::fs::write(&path, edited).unwrap();
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(modified)
+            .unwrap();
+        // The reader sees a colliding version despite different bytes. Keep
+        // the real cached trust decision; do not manufacture a trusted receipt.
+        let version = StationProfileFileVersion::of(&std::fs::metadata(&path).unwrap());
+        let settled = std::time::UNIX_EPOCH + Duration::from_secs(version.changed.0 as u64 + 3);
+        cache.snapshot.as_mut().unwrap().1 = version;
+        let mut late = cache.clone();
+        assert_eq!(late.read(&path, settled).unwrap().revision, revision % 10);
+        assert_eq!(
+            cache.read(&path, std::time::UNIX_EPOCH).unwrap().revision,
+            revision % 10
+        );
+    }
 }
 
 #[cfg(unix)]
@@ -856,7 +886,13 @@ fn native_http_snapshot_late_old_inode_cannot_replace_a_newer_publication() {
     let shared = NATIVE_HTTP_PROFILE_SNAPSHOTS.get_or_init(Default::default);
     let mut older = shared.lock().unwrap().clone();
     let previous = older.file_version();
-    assert_eq!(older.read(&path).unwrap().revision, 0);
+    assert_eq!(
+        older
+            .read(&path, std::time::SystemTime::now())
+            .unwrap()
+            .revision,
+        0
+    );
     std::fs::rename(&staged, &path).unwrap();
     // Reader B publishes the replacement before A resumes publication.
     let newer = read_native_http_profile_snapshot(&path, || Ok(())).unwrap();
