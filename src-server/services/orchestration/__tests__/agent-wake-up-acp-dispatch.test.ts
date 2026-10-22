@@ -21,6 +21,7 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { FakeAcpProcess } from '../../../providers/__tests__/fake-acp-process.js';
+import type { ProviderSessionStartInput } from '../../../providers/adapter-shape.js';
 import { AcpAdapter } from '../../../providers/adapters/acp-adapter.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import type { ACPProcess } from '../../acp/acp-process.js';
@@ -100,7 +101,7 @@ describe('an approved check-back on an ACP chat reaches the engine', () => {
       } as IProviderAdapterRegistry,
       eventBus: bus,
       eventStore: store,
-      resolveSessionAgent: async (input) => ({
+      resolveSessionAgent: async (input: ProviderSessionStartInput) => ({
         ...input,
         agent: { slug: 'ops-bot' },
       }),
@@ -201,15 +202,18 @@ describe('an approved check-back on an ACP chat reaches the engine', () => {
     );
 
   test('the turn that scheduled it ends, the check-back fires, and the engine is prompted with it', async () => {
-    await service.dispatch({
-      type: 'startSession',
-      input: {
-        threadId: THREAD,
-        provider: 'acp',
-        cwd: tmp,
-        metadata: { connectionId: CONNECTION_ID, userId: OWNER },
+    await service.dispatch(
+      {
+        type: 'startSession',
+        input: {
+          threadId: THREAD,
+          provider: 'acp',
+          cwd: tmp,
+          metadata: { connectionId: CONNECTION_ID, userId: OWNER },
+        },
       },
-    }, { userId: OWNER });
+      { userId: OWNER },
+    );
     await waitFor(
       methods,
       (seen) => seen.includes('session.started'),

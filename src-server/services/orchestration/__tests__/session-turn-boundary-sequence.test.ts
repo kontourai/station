@@ -560,9 +560,10 @@ describe('session-terminal boundary ordering', () => {
     store: EventStore,
     upTo: 'prepared' | 'invoking' | 'indeterminate',
   ) {
-    const reserved = store
-      .sessionTurnBoundaryAuthority()
-      .reserve!('thread', new Date().toISOString());
+    const reserved = store.sessionTurnBoundaryAuthority().reserve!(
+      'thread',
+      new Date().toISOString(),
+    );
     if (reserved.kind !== 'owner') throw new Error('Expected boundary owner');
     const capture = captureTurnIntent(
       { threadId: 'thread', input: 'check the build' },

@@ -389,13 +389,15 @@ const SESSION_TURN_TERMINAL_RETIREMENT_PREDICATE = `state NOT IN ('lifecycle', '
                        -- turn that never invoked among them, retires.
                        AND (COALESCE(json_extract(event.payload, '$.reason'), '')
                               != '${ORCHESTRATION_SHUTDOWN_EXIT_REASON}'
-                            OR NOT ((${SHUTDOWN_RETAINED_BOUNDARIES.boundaryIdPrefixes.map(
-                              (prefix) =>
-                                `substr(orchestration_turn_boundaries.boundary_id, 1, ${prefix.length}) = '${prefix}'`,
-                            ).join(' OR ')})
-                              AND orchestration_turn_boundaries.state IN (${SHUTDOWN_RETAINED_BOUNDARIES.states.map(
-                                (state) => `'${state}'`,
-                              ).join(', ')}))))
+                            OR NOT ((${SHUTDOWN_RETAINED_BOUNDARIES.boundaryIdPrefixes
+                              .map(
+                                (prefix) =>
+                                  `substr(orchestration_turn_boundaries.boundary_id, 1, ${prefix.length}) = '${prefix}'`,
+                              )
+                              .join(' OR ')})
+                              AND orchestration_turn_boundaries.state IN (${SHUTDOWN_RETAINED_BOUNDARIES.states
+                                .map((state) => `'${state}'`)
+                                .join(', ')}))))
                       OR (event.method = 'runtime.error' AND event.turn_id IS NULL
                           AND json_extract(event.payload, '$.invocationId') IS NULL
                           AND COALESCE(json_extract(event.payload, '$.code'), '') != ?))
