@@ -376,6 +376,13 @@ live reads, or Agent access. **Disconnect** confirms the exact observed source
 and removes its registry entry while retaining files. If the source changed,
 refresh and review it before disconnecting again.
 
+Source registration, host-path checking and HTTP mutations require the Station
+operator. Account-bound people can list and read stores for Projects they may
+view, including graph and canonical-record reads. Personal file stores remain
+operator-only. HTTP member writes stay denied until the registry can bind
+current authority to publication. Project recall captures the active account's
+request scope and withholds retained data when a fresh read fails.
+
 The existing Project knowledge controls below remain available for document
 upload and migration.
 

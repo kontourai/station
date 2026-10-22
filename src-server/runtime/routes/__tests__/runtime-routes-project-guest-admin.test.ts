@@ -2061,7 +2061,7 @@ describe('project guest administration over the production composition', () => {
         }),
       );
     const managed = await createManaged();
-    expect(managed.status, await managed.clone().text()).toBe(201);
+    expect(managed.status, await managed.clone().text()).toBe(403);
     const guestId = deploymentAccountPrincipal(
       PROVIDER_ISSUER,
       GUEST_SUBJECT,
@@ -2099,7 +2099,7 @@ describe('project guest administration over the production composition', () => {
         body: JSON.stringify({ expectedRoot: allowed }),
       }),
     );
-    expect(deniedDisconnect.status).toBe(404);
+    expect(deniedDisconnect.status).toBe(403);
     expect(await h.knowledgeStoreProvider.getRoot(allowed.id)).toEqual(allowed);
   });
 });

@@ -6850,7 +6850,12 @@ export function configureRuntimeRoutes(
     try {
       const member = await memberCallerForRequest(request);
       if (!member) return agentOwnerIdForRequest(request) !== null;
-      if (member.kind === 'none' || !context.projectMembership) return false;
+      if (
+        member.kind === 'none' ||
+        action === 'edit' ||
+        !context.projectMembership
+      )
+        return false;
       await context.projectMembership.requireProjectRead(
         projectSlug,
         projectMembershipAuthority(request),
@@ -6946,16 +6951,7 @@ export function configureRuntimeRoutes(
       mayManageRoot: (request, root) =>
         mayUseKnowledgeRoot(request, root, 'edit'),
       mayValidateRoot: isOperatorInPersonNotAgent,
-      mayRegisterRoot: async (request, input) => {
-        if (isOperatorInPersonNotAgent(request)) return true;
-        if (
-          input.storeRoot !== undefined ||
-          input.scope.kind !== 'project' ||
-          input.adapterId !== 'kit-default-store'
-        )
-          return false;
-        return mayUseProjectKnowledge(request, input.scope.projectSlug, 'edit');
-      },
+      mayRegisterRoot: (request) => isOperatorInPersonNotAgent(request),
     }),
   );
   // K5 record-CRUD routes (`s203-knowledge-meeting-notes` Wave 1 Task 2) — same

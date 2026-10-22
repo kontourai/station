@@ -175,8 +175,14 @@ and a changed registry entry returns 409. The built-in conversation root cannot
 be disconnected. Successful disconnect removes only the registry entry and keeps
 source files. Refresh and review a changed source before retrying.
 
-`DELETE /api/knowledge/roots/:id` retains the older unguarded deregistration
-protocol for existing callers. Sources uses the exact POST protocol.
+`DELETE /api/knowledge/roots/:id` retains the older deregistration protocol
+without an expected-root comparison. It now uses the same root management
+policy. Sources uses the exact POST protocol.
+
+Account-bound people may GET the root and adapter listings and the record/graph
+read leaves for accessible Projects. Source registration, host-path validation
+and member HTTP mutations remain refused. Pairing transport grants alone do not
+supply Project membership or permission to name a host directory.
 
 ## Choosing a working folder
 
