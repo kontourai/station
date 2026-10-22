@@ -140,6 +140,13 @@ export type CliSessionGroupPresetIdentity = {
   name: string;
   sha256: string;
   stationmaster: string;
+  /** Authored presentation retained with the exact preset; absent on older records. */
+  members?: {
+    seatId: string;
+    codename: string;
+    color: string;
+    role: string;
+  }[];
 };
 
 export type CliSessionGroupAttention = {

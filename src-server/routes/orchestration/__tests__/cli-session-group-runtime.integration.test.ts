@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { realpathSync, writeFileSync } from 'node:fs';
+import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { serve } from '@hono/node-server';
@@ -935,7 +935,7 @@ test('a locally authorized preset produces actual member turns with authored mod
     stationmaster: 'lead',
     members: ['lead', 'check', 'join'].map((id) => ({
       id,
-      codename: id,
+      codename: `Name_${id}`,
       color: '#123ABC',
       role: `Role for ${id}`,
       engine: 'claude',
@@ -1028,6 +1028,26 @@ test('a locally authorized preset produces actual member turns with authored mod
     name: 'Delivery team',
     sha256: input.expectedPresetHash,
     stationmaster: 'lead',
+    members: [
+      {
+        seatId: 'lead',
+        codename: 'Name_lead',
+        color: '#123ABC',
+        role: 'Role for lead',
+      },
+      {
+        seatId: 'check',
+        codename: 'Name_check',
+        color: '#123ABC',
+        role: 'Role for check',
+      },
+      {
+        seatId: 'join',
+        codename: 'Name_join',
+        color: '#123ABC',
+        role: 'Role for join',
+      },
+    ],
   });
   const spaced = `${bytes} `;
   const changedSourceReplay = await submitUpload({
@@ -1083,6 +1103,8 @@ test('a locally authorized preset produces actual member turns with authored mod
     ((await retained.json()) as { data: CliSessionGroupView }).data.preset,
   ).toEqual(group.preset);
   expect(group.preset?.sha256).toBe(input.expectedPresetHash);
+  expect(final.preset).toEqual(uploadedView.preset);
+  expect(JSON.stringify(final)).not.toContain('Private addition');
   expect(f.adapter.turns).toHaveLength(3);
   for (const member of preset.members) {
     const handle = final.members.find((entry) => entry.seatId === member.id)!
@@ -1107,4 +1129,28 @@ test('a locally authorized preset produces actual member turns with authored mod
     }),
   ).rejects.toThrow();
   expect(f.adapter.turns).toHaveLength(3);
+  const recordPath = join(
+    f.root,
+    'runtime',
+    'cli-session-groups',
+    `${group.groupId}.json`,
+  );
+  const originalRecord = readFileSync(recordPath);
+  const stored: { preset: { members: { seatId: string }[] } } = JSON.parse(
+    originalRecord.toString(),
+  );
+  stored.preset.members[0]!.seatId = 'foreign-seat';
+  try {
+    writeFileSync(recordPath, JSON.stringify(stored));
+    const mismatched = await f.app.request(
+      `/api/orchestration/session-groups/${group.groupId}`,
+      {
+        headers: { Authorization: `Bearer ${local.credential}` },
+      },
+    );
+    expect(mismatched.status).toBe(409);
+    expect(await mismatched.text()).toContain('group_storage_unavailable');
+  } finally {
+    writeFileSync(recordPath, originalRecord);
+  }
 }, 30_000);

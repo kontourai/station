@@ -31,6 +31,29 @@ const group: CliSessionGroupView = {
     name: 'Retained team',
     sha256: `sha256:${'b'.repeat(64)}`,
     stationmaster: 'first',
+    members: [
+      { seatId: 'first', codename: 'Rune', color: '#123ABC', role: 'Reviewer' },
+      { seatId: 'second', codename: 'Flux', color: '#123ABC', role: 'Checker' },
+      {
+        seatId: 'not-started',
+        codename: 'Nova',
+        color: '#123ABC',
+        role: 'Writer',
+      },
+      {
+        seatId: 'failed-turn',
+        codename: 'Mist',
+        color: '#123ABC',
+        role: 'Writer',
+      },
+      { seatId: 'join', codename: 'Join', color: '#123ABC', role: 'Merger' },
+      {
+        seatId: 'waiting',
+        codename: 'Query',
+        color: '#123ABC',
+        role: 'Researcher',
+      },
+    ],
   },
   guarantees: {
     authority: 'station-session',
@@ -163,6 +186,11 @@ test('explicit inspection uses real SDK inventory, shows actual dependencies and
   });
   expect(screen.getByRole('heading', { name: 'Retained team' })).toBeDefined();
   expect(screen.getByText(group.preset!.sha256)).toBeDefined();
+  const named = within(screen.getByRole('row', { name: /Rune/ }));
+  expect(
+    named.getByText('Reviewer · Seat first · Color #123ABC'),
+  ).toBeDefined();
+
   expect(String(fetch.mock.calls[0]?.[0])).toBe(
     'https://station.test/api/orchestration/session-groups',
   );

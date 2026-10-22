@@ -116,6 +116,28 @@ const recordSchema = z
           .max(71)
           .regex(/^sha256:[0-9a-f]{64}$/),
         stationmaster: id,
+        members: z
+          .array(
+            z
+              .object({
+                seatId: id,
+                codename: z
+                  .string()
+                  .min(1)
+                  .max(64)
+                  .regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/),
+                color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+                role: z
+                  .string()
+                  .min(1)
+                  .max(512)
+                  .refine((value) => value.trim().length > 0),
+              })
+              .strict(),
+          )
+          .min(1)
+          .max(16)
+          .optional(),
       })
       .strict()
       .optional(),
@@ -153,6 +175,21 @@ const recordSchema = z
   .strict();
 type GroupRecord = z.infer<typeof recordSchema>;
 type MemberHandle = z.infer<typeof handleSchema>;
+function presetRosterMatchesSeats(
+  record: Pick<GroupRecord, 'preset' | 'seats'>,
+): boolean {
+  const members = record.preset?.members;
+  return (
+    members === undefined ||
+    (members.length === record.seats.length &&
+      new Set(members.map((member) => member.seatId)).size === members.length &&
+      new Set(members.map((member) => member.codename.toLowerCase())).size ===
+        members.length &&
+      record.seats.every((seat) =>
+        members.some((member) => member.seatId === seat.seatId),
+      ))
+  );
+}
 const digest = (value: unknown) =>
   createHash('sha256').update(canonicalJson(value)).digest('hex');
 const MAX_BYTES = 1024 * 1024;
@@ -259,6 +296,7 @@ export class CliSessionGroups<T> {
             s.dispatchFailure
           ),
       ) ||
+      !presetRosterMatchesSeats(record) ||
       (record.preset !== undefined &&
         !record.seats.some(
           (seat) => seat.seatId === record.preset?.stationmaster,
@@ -407,10 +445,11 @@ export class CliSessionGroups<T> {
       )
         throw new CliSessionGroupUnavailable('group_invalid');
       if (
-        record.preset &&
-        !record.seats.some(
-          (seat) => seat.seatId === record.preset?.stationmaster,
-        )
+        !presetRosterMatchesSeats(record) ||
+        (record.preset &&
+          !record.seats.some(
+            (seat) => seat.seatId === record.preset?.stationmaster,
+          ))
       )
         throw new CliSessionGroupUnavailable('group_invalid');
       for (const seat of record.seats) this.parseInput(seat.input);

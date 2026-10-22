@@ -1,4 +1,7 @@
-import type { CliSessionGroupView } from '@kontourai/station-contracts/delegation-group';
+import type {
+  CliSessionGroupPresetIdentity,
+  CliSessionGroupView,
+} from '@kontourai/station-contracts/delegation-group';
 import { surfaceDeepLink } from '@kontourai/station-contracts/surface-deep-link';
 import { useCliSessionGroupsQuery } from '@kontourai/station-sdk';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
@@ -36,6 +39,30 @@ function memberStatus(member: CliSessionGroupView['members'][number]): string {
       ? 'Turn accepted; completion unconfirmed'
       : 'Session returned; turn unconfirmed';
   return 'Not dispatched';
+}
+
+function MemberLabel({
+  seatId,
+  preset,
+}: {
+  seatId: string;
+  preset?: CliSessionGroupPresetIdentity;
+}) {
+  const identity = preset?.members?.find((member) => member.seatId === seatId);
+  if (!identity) return seatId;
+  return (
+    <>
+      <span
+        className="cli-session-groups__member-name"
+        style={{ borderInlineStartColor: identity.color }}
+      >
+        {identity.codename}
+      </span>
+      <small className="cli-session-groups__member-details">
+        {identity.role} · Seat {seatId} · Color {identity.color}
+      </small>
+    </>
+  );
 }
 
 export function CliSessionGroupsPanel({
@@ -126,7 +153,12 @@ export function CliSessionGroupsPanel({
                   <tbody>
                     {group.members.map((member) => (
                       <tr key={member.seatId}>
-                        <th scope="row">{member.seatId}</th>
+                        <th scope="row">
+                          <MemberLabel
+                            seatId={member.seatId}
+                            preset={group.preset}
+                          />
+                        </th>
                         <td>
                           {member.needs.length
                             ? member.needs.join(', ')

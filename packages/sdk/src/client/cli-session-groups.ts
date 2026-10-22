@@ -116,6 +116,28 @@ const viewSchema = z
           .max(71)
           .regex(/^sha256:[0-9a-f]{64}$/),
         stationmaster: seatId,
+        members: z
+          .array(
+            z
+              .object({
+                seatId,
+                codename: z
+                  .string()
+                  .min(1)
+                  .max(64)
+                  .regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/),
+                color: z.string().regex(/^#[0-9a-fA-F]{6}$/),
+                role: z
+                  .string()
+                  .min(1)
+                  .max(512)
+                  .refine((value) => value.trim().length > 0),
+              })
+              .strict(),
+          )
+          .min(1)
+          .max(16)
+          .optional(),
       })
       .strict()
       .optional(),

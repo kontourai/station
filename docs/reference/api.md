@@ -1706,11 +1706,15 @@ after creation does not change those briefs. Run performs the normal current
 delegation and engine-start checks. Hard fiscal guarantees remain unavailable.
 
 New preset-derived records also retain `preset` identity (`presetId`, `name`,
-`sha256`, `stationmaster`). The inventory shows that name and source digest;
-neither the host path nor raw preset JSON is included in the view. Exact source
+`sha256`, `stationmaster`) and a bounded `members` roster of seat ID, codename,
+color and role. The inspector uses these retained labels across later reads;
+roles grant no permissions. The host path, raw preset JSON and prompt additions
+are omitted from this identity view. Exact source
 identity participates in operation replay, so changed bytes conflict even when
 they parse to the same roster. Older groups have no recorded preset identity;
-the server does not reconstruct it from prompt text.
+the server does not reconstruct it from prompt text. Records predating the
+retained member roster display seat IDs. Server reads refuse a retained roster
+whose unique seats do not match the group membership.
 
 Group event pages carry changed public member records and the scheduler events
 reported by published Flow. They contain no briefs or model output. Use the group

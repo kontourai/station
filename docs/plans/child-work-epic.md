@@ -133,6 +133,13 @@ not complete peer/SSH lineage, context synchronization or the remaining folded
 requirements. Hold upstream publication and generalized authority migration
 until an actual consumer requires them.
 
+Preset-derived groups now retain each member's codename, color and role beside
+its stable seat identity. The inspector reads that saved roster after execution;
+older groups retain the seat-ID fallback. The server rejects roster/seat
+substitution on read. Focused real-service and SDK/UI checks cover this identity
+path without exposing prompt additions. Browser/theme/native and full-run
+identity qualification remain separate.
+
 ## Production adoption sequence
 
 The personal `/api/orchestration/session-groups` path now composes the shared

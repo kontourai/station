@@ -126,6 +126,12 @@ export class EnsembleCliSessionGroupPreparation {
         name: source.preset.name,
         sha256: source.sha256,
         stationmaster: source.preset.stationmaster,
+        members: source.preset.members.map(({ id, codename, color, role }) => ({
+          seatId: id,
+          codename,
+          color,
+          role,
+        })),
       },
     };
   }

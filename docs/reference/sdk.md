@@ -5176,9 +5176,12 @@ request authority. Creation starts no engines. Use the returned group ID with
 `runCliSessionGroup` to start work.
 
 Preset-derived views may include the retained `preset` identity: preset ID,
-name, exact source hash and Stationmaster member ID. Older records omit it.
-The value describes the source saved with the group, not a fresh file read or
-an execution-authority receipt.
+name, exact source hash and Stationmaster member ID. Its optional `members`
+array retains each seat's codename, color and role, without prompt additions.
+Older records can omit the roster or the entire preset identity. The value
+describes the source saved with the group, not a fresh file read or an
+execution-authority receipt. The strict SDK response schema must ship with the
+server that adds this field; an older strict SDK can reject a newer response.
 
 `readCliSessionGroupEvents(apiBase, groupId, afterRevision?, options?)` reads one
 bounded journal page. `subscribeCliSessionGroupEvents(apiBase, groupId,

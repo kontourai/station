@@ -36,3 +36,13 @@
 .cli-session-groups button {
   min-height: 44px;
 }
+
+.cli-session-groups__member-name {
+  border-inline-start: 3px solid;
+  padding-inline-start: var(--k-space-2);
+}
+.cli-session-groups__member-details {
+  display: block;
+  margin-top: var(--k-space-2);
+  overflow-wrap: anywhere;
+}
