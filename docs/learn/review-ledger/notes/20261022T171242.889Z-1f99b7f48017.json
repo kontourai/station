@@ -1,0 +1,11 @@
+{
+  "revision": "6b55ae9766207caba6cb62942df359eba94923d2",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the only change after the native-identity qualification: FORK_CONTEXT_MAX_BYTES and copiedForkMessages now stay module-local. Repository caller tracing finds no external consumer or supported package export; all internal snapshot bounds/copy validation calls are unchanged. This removes accidental exports without changing fork behavior, history authority or the documented interface. No new runtime/provider/account proof.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/conversation-fork-context.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the only change after the native-identity qualification: FORK_CONTEXT_MAX_BYTES and copiedForkMessages now stay module-local. Repository caller tracing finds no external consumer or supported package export; all internal snapshot bounds/copy validation calls are unchanged. This removes accidental exports without changing fork behavior, history authority or the documented interface. No new runtime/provider/account proof.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/conversation-fork-context.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Reviewed the only change after the native-identity qualification: FORK_CONTEXT_MAX_BYTES and copiedForkMessages now stay module-local. Repository caller tracing finds no external consumer or supported package export; all internal snapshot bounds/copy validation calls are unchanged. This removes accidental exports without changing fork behavior, history authority or the documented interface. No new runtime/provider/account proof.","inputs":["docs/contexts/agent-runtime/CONTEXT.md","src-server/services/orchestration/conversation-fork-context.ts"]}
+  ]
+}
