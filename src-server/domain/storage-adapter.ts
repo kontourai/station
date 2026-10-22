@@ -141,6 +141,12 @@ export interface IStorageAdapter {
 
   // Knowledge store roots (K2) — metadata only; never the store's own record files.
   listKnowledgeStoreRoots(): KnowledgeStoreRoot[];
-  saveKnowledgeStoreRoot(root: KnowledgeStoreRoot): Promise<void>;
-  removeKnowledgeStoreRoot(id: string): Promise<void>;
+  saveKnowledgeStoreRoot(
+    root: KnowledgeStoreRoot,
+    options?: { createOnly?: boolean },
+  ): Promise<void>;
+  removeKnowledgeStoreRoot(
+    id: string,
+    expected?: KnowledgeStoreRoot,
+  ): Promise<void>;
 }

@@ -3177,6 +3177,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/knowledge/roots' },
     { method: 'POST', path: '/api/knowledge/roots' },
     { method: 'DELETE', path: '/api/knowledge/roots/:id' },
+    { method: 'POST', path: '/api/knowledge/roots/:id/disconnect' },
     {
       method: 'GET',
       path: '/api/knowledge/roots/:rootId/records/:id/source-observation',
@@ -3686,6 +3687,13 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/projects/:slug/work-items/claim' },
     { method: 'GET', path: '/api/projects/:slug/workflow/tasks' },
     { method: 'GET', path: '/api/projects/:slug/workflow/tasks/:taskSlug' },
+    // Creation receipts and host Git acquisition remain operator-only at their
+    // owning routes; the paired transport uses the ordinary Project tier.
+    { method: 'GET', path: '/api/projects/creation-requests' },
+    { method: 'GET', path: '/api/projects/creation-requests/:id' },
+    { method: 'POST', path: '/api/projects/repository-acquisitions' },
+    { method: 'GET', path: '/api/projects/repository-acquisitions/:id' },
+    { method: 'POST', path: '/api/projects/repository-acquisitions/:id/retry' },
     { method: 'GET', path: '/api/projects/icon-candidates' },
     { method: 'GET', path: '/api/projects/layouts/available' },
     { method: 'GET', path: '/api/proposed-changes' },

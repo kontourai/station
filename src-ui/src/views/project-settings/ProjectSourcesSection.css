@@ -1,0 +1,35 @@
+.project-sources,
+.project-sources__form {
+  display: grid;
+  gap: var(--k-space-4);
+}
+.project-sources__list {
+  padding: 0;
+  list-style: none;
+}
+.project-sources__list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--k-space-3);
+  padding-block: var(--k-space-3);
+  border-bottom: 1px solid var(--k-line);
+}
+.project-sources__list code {
+  overflow-wrap: anywhere;
+}
+.project-sources__form label {
+  display: grid;
+  gap: var(--k-space-2);
+}
+.project-sources__form input,
+.project-sources__form select {
+  min-height: 44px;
+  width: 100%;
+}
+.project-sources__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-3);
+}

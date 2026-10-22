@@ -6902,6 +6902,8 @@ export function configureRuntimeRoutes(
       dataDir: context.configLoader.getProjectHomeDir(),
       mayReadRoot: (request, root) =>
         mayUseKnowledgeRoot(request, root, 'view'),
+      mayManageRoot: (request, root) =>
+        mayUseKnowledgeRoot(request, root, 'edit'),
     }),
   );
   // K5 record-CRUD routes (`s203-knowledge-meeting-notes` Wave 1 Task 2) — same

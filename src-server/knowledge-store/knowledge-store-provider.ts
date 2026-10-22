@@ -27,6 +27,7 @@ import type {
   UpdateEvidence,
   UpdateFields,
 } from '@kontourai/station-contracts/knowledge-store';
+import { FileStorageConflictError } from '../domain/project-file-transactions.js';
 import { isSafePathSegment } from '../knowledge-index/path-safety.js';
 import {
   knowledgeStoreRecordOps,
@@ -77,8 +78,15 @@ function observeRootOperation(attributes: Record<string, string>): void {
  * dependency so this module doesn't have to import the full storage-adapter surface. */
 export interface KnowledgeStoreRootPersistence {
   listKnowledgeStoreRoots(): KnowledgeStoreRoot[];
-  saveKnowledgeStoreRoot(root: KnowledgeStoreRoot): Promise<void> | void;
-  removeKnowledgeStoreRoot(id: string): Promise<void> | void;
+  /** createOnly must refuse an existing ID atomically rather than replacing it. */
+  saveKnowledgeStoreRoot(
+    root: KnowledgeStoreRoot,
+    options?: { createOnly?: boolean },
+  ): Promise<void> | void;
+  removeKnowledgeStoreRoot(
+    id: string,
+    expected?: KnowledgeStoreRoot,
+  ): Promise<void> | void;
   /** Explicit opt-in; ordinary list/get is NOT a zero-write observation fallback. */
   observeKnowledgeStoreRoots?(): KnowledgeRootObservation;
 }
@@ -131,23 +139,38 @@ export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
   async createRoot(
     input: Omit<KnowledgeStoreRoot, 'id' | 'createdAt'>,
   ): Promise<KnowledgeStoreRoot> {
-    const id = this.generateRootId(input);
-    const root: KnowledgeStoreRoot = {
-      ...input,
-      id,
-      createdAt: new Date().toISOString(),
-    };
-    await this.persistence.saveKnowledgeStoreRoot(root);
-    observeRootOperation({
-      op: 'create',
-      scope: root.scope.kind,
-    });
-    return root;
+    const captured = { ...input, scope: { ...input.scope } };
+    for (let attempt = 0; attempt < 16; attempt += 1) {
+      const root: KnowledgeStoreRoot = {
+        ...captured,
+        id: this.generateRootId(captured),
+        createdAt: new Date().toISOString(),
+      };
+      try {
+        await this.persistence.saveKnowledgeStoreRoot(root, {
+          createOnly: true,
+        });
+      } catch (error) {
+        if (error instanceof FileStorageConflictError) continue;
+        throw error;
+      }
+      observeRootOperation({ op: 'create', scope: root.scope.kind });
+      return root;
+    }
+    throw new FileStorageConflictError(
+      'Knowledge source registry changed repeatedly. Refresh before trying again.',
+    );
   }
 
-  async removeRoot(rootId: string): Promise<void> {
+  async removeRoot(
+    rootId: string,
+    expected?: KnowledgeStoreRoot,
+  ): Promise<void> {
+    const pinned = expected
+      ? { ...expected, scope: { ...expected.scope } }
+      : undefined;
     const root = await this.getRoot(rootId);
-    await this.persistence.removeKnowledgeStoreRoot(rootId);
+    await this.persistence.removeKnowledgeStoreRoot(rootId, pinned);
     this.adapterInstances.delete(rootId);
     observeRootOperation({
       op: 'remove',

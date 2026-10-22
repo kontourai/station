@@ -359,6 +359,22 @@ not be implied by a registry switch.
 Note the noun: the thing Station manages is a **knowledge store**; "vault" is reserved for the
 Obsidian-specific folder structure you're pointing it at.
 
+### Project settings → Sources
+
+**Settings → Sources** brings repository resolution and knowledge registrations
+into one section. Create a managed store without selecting a folder, or choose a
+supported store format, enter its path on the Station host, validate it, and
+connect it. Changing the path or format requires another validation. The server
+also validates when registering the store.
+
+Refresh rereads the registry. Registration does not prove successful indexing,
+live reads, or Agent access. **Disconnect** confirms the exact observed source
+and removes its registry entry while retaining files. If the source changed,
+refresh and review it before disconnecting again.
+
+The existing Project knowledge controls below remain available for document
+upload and migration.
+
 ### Project settings → Knowledge store
 
 Each project's Settings has its own "Knowledge store" subsection (alongside the earlier per-project

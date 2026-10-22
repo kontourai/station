@@ -44,7 +44,9 @@ import type {
   KnowledgeStoreProvider,
   KnowledgeStoreRoot,
 } from '@kontourai/station-contracts/knowledge-store';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
+import { parseKnowledgeStoreRoots } from '../../domain/file-storage-schemas.js';
+import { FileStorageConflictError } from '../../domain/project-file-transactions.js';
 import { isSafePathSegment } from '../../knowledge-index/path-safety.js';
 import { CONVERSATION_STORE_ADAPTER_ID } from '../../knowledge-store/adapters/conversation-store.js';
 import {
@@ -57,6 +59,7 @@ import { errorMessage } from '../schemas/schemas.js';
 interface KnowledgeStoreRouteDeps {
   store: KnowledgeStoreProvider;
   mayReadRoot?: (request: Request, root: KnowledgeStoreRoot) => boolean;
+  mayManageRoot?: (request: Request, root: KnowledgeStoreRoot) => boolean;
   /** Station home dir — same accessor `knowledge-index-routes.ts` already uses
    * (`context.configLoader.getProjectHomeDir()`). */
   dataDir: string;
@@ -241,9 +244,39 @@ export function createKnowledgeStoreRoutes(deps: KnowledgeStoreRouteDeps) {
 
   // DELETE /roots/:id — deregister only (K2's `removeRoot` never deletes store
   // files; see its own doc comment).
-  app.delete('/roots/:id', async (c) => {
+  const disconnect = async (c: Context) => {
     try {
       const id = c.req.param('id');
+      let expected: KnowledgeStoreRoot | undefined;
+      const raw = await c.req.text();
+      if (c.req.method === 'POST' && !raw)
+        return c.json(
+          { success: false, error: 'An exact source reference is required.' },
+          400,
+        );
+      if (raw) {
+        if (Buffer.byteLength(raw) > 16384)
+          return c.json(
+            {
+              success: false,
+              error: 'Knowledge source reference is too large.',
+            },
+            400,
+          );
+        try {
+          const body = JSON.parse(raw);
+          if (!body || Object.keys(body).length !== 1 || !body.expectedRoot)
+            throw new Error('Invalid reference');
+          [expected] = parseKnowledgeStoreRoots([body.expectedRoot]);
+          if (expected?.id !== id) throw new Error('Different source');
+        } catch {
+          return c.json(
+            { success: false, error: 'Knowledge source reference is invalid.' },
+            400,
+          );
+        }
+      }
+
       const root = await deps.store.getRoot(id);
       if (!root) {
         return c.json(
@@ -251,6 +284,15 @@ export function createKnowledgeStoreRoutes(deps: KnowledgeStoreRouteDeps) {
           404,
         );
       }
+      if (
+        c.req.method === 'POST' &&
+        ((deps.mayReadRoot && !deps.mayReadRoot(c.req.raw, root)) ||
+          (deps.mayManageRoot && !deps.mayManageRoot(c.req.raw, root)))
+      )
+        return c.json(
+          { success: false, error: KNOWLEDGE_ROOT_NOT_FOUND_ERROR },
+          404,
+        );
       // The built-in conversation root is registered by Station at boot;
       // removing it would orphan its per-caller projections (Refs #2656).
       if (root.adapterId === CONVERSATION_STORE_ADAPTER_ID) {
@@ -259,12 +301,23 @@ export function createKnowledgeStoreRoutes(deps: KnowledgeStoreRouteDeps) {
           403,
         );
       }
-      await deps.store.removeRoot(id);
+      await deps.store.removeRoot(id, expected);
       return c.json({ success: true, data: { id } });
     } catch (e: unknown) {
+      if (e instanceof FileStorageConflictError)
+        return c.json(
+          {
+            success: false,
+            error:
+              'This source changed before disconnect. Refresh and review it again.',
+          },
+          409,
+        );
       return c.json({ success: false, error: errorMessage(e) }, 500);
     }
-  });
+  };
+  app.delete('/roots/:id', disconnect);
+  app.post('/roots/:id/disconnect', disconnect);
 
   return app;
 }

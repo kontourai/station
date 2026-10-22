@@ -479,15 +479,49 @@ export function useProjectWorkspacePanesQuery(
  */
 export function useProjectResolutionQuery(
   projectSlug: string,
-  config?: QueryConfig<ProjectResolutionView>,
+  config?: QueryConfig<ProjectResolutionView> & {
+    requestScope?: ApiRequestScope;
+    requireRequestScope?: boolean;
+  },
 ) {
+  const scope = captureProjectScope(config?.requestScope);
+  const required = Boolean(
+    config?.requireRequestScope || config?.requestScope !== undefined,
+  );
   return useApiQuery<ProjectResolutionView>(
-    ['projects', projectSlug, 'resolution'],
+    [
+      'projects',
+      projectSlug,
+      'resolution',
+      ...(scope
+        ? [scope.apiBase, scope.authorityKey]
+        : required
+          ? ['missing-authority']
+          : []),
+    ],
     async () => {
-      const apiBase = await _getApiBase();
-      return getProjectResolution(apiBase, projectSlug);
+      if (required && !scope) throw new StationRequestAuthorityError();
+      const apiBase = scope?.apiBase ?? (await _getApiBase());
+      return getProjectResolution(
+        apiBase,
+        projectSlug,
+        scope ? { requestScope: scope } : undefined,
+      );
     },
-    { ...config, enabled: !!projectSlug && (config?.enabled ?? true) },
+    {
+      ...config,
+      enabled:
+        !!projectSlug &&
+        (!required || Boolean(scope)) &&
+        (config?.enabled ?? true),
+      ...(scope
+        ? {
+            staleTime: 0,
+            refetchOnMount: 'always' as const,
+            keepPreviousData: false,
+          }
+        : {}),
+    },
   );
 }
 
@@ -587,12 +621,21 @@ export function useBindProjectResourceMutation(
     ProjectResourceBindOutcome,
     BindProjectResourceVariables
   >,
+  requestScope?: ApiRequestScope,
 ) {
+  const scope = captureProjectScope(requestScope);
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (variables: BindProjectResourceVariables) => {
-      const apiBase = await _getApiBase();
-      return bindProjectResource(apiBase, projectSlug, variables);
+      if (requestScope !== undefined && !scope)
+        throw new StationRequestAuthorityError();
+      const apiBase = scope?.apiBase ?? (await _getApiBase());
+      return bindProjectResource(
+        apiBase,
+        projectSlug,
+        variables,
+        scope ? { requestScope: scope } : undefined,
+      );
     },
     onSuccess: (data, variables) => {
       queryClient.invalidateQueries({

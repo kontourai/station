@@ -17,6 +17,10 @@ import type {
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { _getApiBase } from '../api';
 import {
+  isApiRequestScope,
+  StationRequestAuthorityError,
+} from '../client/http';
+import {
   type CreateKnowledgeRecordInput,
   type CreateKnowledgeRootInput,
   createKnowledgeRecord,
@@ -54,44 +58,118 @@ import { type QueryConfig, useApiQuery } from '../query-core';
 const KNOWLEDGE_ROOTS_QUERY_KEY = ['knowledge', 'roots'] as const;
 const KNOWLEDGE_ADAPTERS_QUERY_KEY = ['knowledge', 'adapters'] as const;
 
+interface KnowledgeStoreQueryConfig<T> extends QueryConfig<T> {
+  requestScope?: ApiRequestScope;
+  requireRequestScope?: boolean;
+}
+function capturedScope(scope?: ApiRequestScope): ApiRequestScope | undefined {
+  return isApiRequestScope(scope)
+    ? { apiBase: scope.apiBase, authorityKey: scope.authorityKey }
+    : undefined;
+}
+function requireValidScope(
+  candidate: ApiRequestScope | undefined,
+  scope: ApiRequestScope | undefined,
+) {
+  if (candidate !== undefined && !scope)
+    throw new StationRequestAuthorityError();
+}
+
 /** `GET /api/knowledge/roots` — every registered knowledge-store root. */
 export function useKnowledgeRootsQuery(
-  config?: QueryConfig<KnowledgeStoreRoot[]>,
+  config?: KnowledgeStoreQueryConfig<KnowledgeStoreRoot[]>,
 ) {
+  const scope = capturedScope(config?.requestScope);
+  const required = Boolean(
+    config?.requireRequestScope || config?.requestScope !== undefined,
+  );
   return useApiQuery<KnowledgeStoreRoot[]>(
-    [...KNOWLEDGE_ROOTS_QUERY_KEY],
+    [
+      ...KNOWLEDGE_ROOTS_QUERY_KEY,
+      ...(scope
+        ? [scope.apiBase, scope.authorityKey]
+        : required
+          ? ['missing-authority']
+          : []),
+    ],
     async () => {
-      const apiBase = await _getApiBase();
-      return listKnowledgeRoots(apiBase);
+      if (required && !scope) throw new StationRequestAuthorityError();
+      const apiBase = scope?.apiBase ?? (await _getApiBase());
+      return listKnowledgeRoots(
+        apiBase,
+        scope ? { requestScope: scope } : undefined,
+      );
     },
-    config,
+    {
+      ...config,
+      enabled: (!required || Boolean(scope)) && (config?.enabled ?? true),
+      ...(scope
+        ? {
+            staleTime: 0,
+            refetchOnMount: 'always' as const,
+            keepPreviousData: false,
+          }
+        : {}),
+    },
   );
 }
 
 /** `GET /api/knowledge/adapters` — every registered adapter descriptor
  * (id/displayName only). */
 export function useKnowledgeAdaptersQuery(
-  config?: QueryConfig<
+  config?: KnowledgeStoreQueryConfig<
     Pick<KnowledgeAdapterDescriptor, 'id' | 'displayName'>[]
   >,
 ) {
+  const scope = capturedScope(config?.requestScope);
+  const required = Boolean(
+    config?.requireRequestScope || config?.requestScope !== undefined,
+  );
   return useApiQuery<Pick<KnowledgeAdapterDescriptor, 'id' | 'displayName'>[]>(
-    [...KNOWLEDGE_ADAPTERS_QUERY_KEY],
+    [
+      ...KNOWLEDGE_ADAPTERS_QUERY_KEY,
+      ...(scope
+        ? [scope.apiBase, scope.authorityKey]
+        : required
+          ? ['missing-authority']
+          : []),
+    ],
     async () => {
-      const apiBase = await _getApiBase();
-      return listKnowledgeAdapters(apiBase);
+      if (required && !scope) throw new StationRequestAuthorityError();
+      const apiBase = scope?.apiBase ?? (await _getApiBase());
+      return listKnowledgeAdapters(
+        apiBase,
+        scope ? { requestScope: scope } : undefined,
+      );
     },
-    { staleTime: 5 * 60 * 1000, ...config },
+    {
+      staleTime: 5 * 60 * 1000,
+      ...config,
+      enabled: (!required || Boolean(scope)) && (config?.enabled ?? true),
+      ...(scope
+        ? {
+            staleTime: 0,
+            refetchOnMount: 'always' as const,
+            keepPreviousData: false,
+          }
+        : {}),
+    },
   );
 }
 
 /** `POST /api/knowledge/roots` — register a new root, then refresh the root list. */
-export function useCreateKnowledgeRootMutation() {
+export function useCreateKnowledgeRootMutation(requestScope?: ApiRequestScope) {
+  const scope = capturedScope(requestScope);
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (input: CreateKnowledgeRootInput) => {
-      const apiBase = await _getApiBase();
-      return createKnowledgeRoot(apiBase, input);
+      requireValidScope(requestScope, scope);
+      const apiBase = scope?.apiBase ?? (await _getApiBase());
+      return createKnowledgeRoot(
+        apiBase,
+        input,
+        scope ? { requestScope: scope } : undefined,
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -107,23 +185,41 @@ export function useCreateKnowledgeRootMutation() {
  * `result.reason` verbatim on `ok:false` — see `../client/knowledge.ts`'s
  * `validateKnowledgeRoot` docblock for the honesty contract this preserves.
  */
-export function useValidateKnowledgeRootMutation() {
+export function useValidateKnowledgeRootMutation(
+  requestScope?: ApiRequestScope,
+) {
+  const scope = capturedScope(requestScope);
   return useMutation({
     mutationFn: async (input: ValidateKnowledgeRootInput) => {
-      const apiBase = await _getApiBase();
-      return validateKnowledgeRoot(apiBase, input);
+      requireValidScope(requestScope, scope);
+      const apiBase = scope?.apiBase ?? (await _getApiBase());
+      return validateKnowledgeRoot(
+        apiBase,
+        input,
+        scope ? { requestScope: scope } : undefined,
+      );
     },
   });
 }
 
 /** `DELETE /api/knowledge/roots/:id` — deregister a root (never deletes
  * store files), then refresh the root list. */
-export function useDeleteKnowledgeRootMutation() {
+export function useDeleteKnowledgeRootMutation(requestScope?: ApiRequestScope) {
+  const scope = capturedScope(requestScope);
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (rootId: string) => {
-      const apiBase = await _getApiBase();
-      return deleteKnowledgeRoot(apiBase, rootId);
+    mutationFn: async (
+      input: string | { rootId: string; expectedRoot: KnowledgeStoreRoot },
+    ) => {
+      const rootId = typeof input === 'string' ? input : input.rootId;
+      requireValidScope(requestScope, scope);
+      const apiBase = scope?.apiBase ?? (await _getApiBase());
+      return deleteKnowledgeRoot(apiBase, rootId, {
+        ...(scope ? { requestScope: scope } : {}),
+        ...(typeof input === 'string'
+          ? {}
+          : { expectedRoot: input.expectedRoot }),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({

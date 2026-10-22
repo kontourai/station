@@ -1,5 +1,6 @@
 import { readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
 import {
   type LayoutConfig,
@@ -769,22 +770,43 @@ export class FileStorageAdapter implements IStorageAdapter {
     return { roots, digest: file.digest };
   }
 
-  async saveKnowledgeStoreRoot(root: KnowledgeStoreRoot): Promise<void> {
+  async saveKnowledgeStoreRoot(
+    root: KnowledgeStoreRoot,
+    options?: { createOnly?: boolean },
+  ): Promise<void> {
     parseKnowledgeStoreRoots([root]);
     await mutateJsonFile<unknown>(this.knowledgeStoreRootsPath, [], (value) => {
       const roots = parseKnowledgeStoreRoots(value);
       const index = roots.findIndex((candidate) => candidate.id === root.id);
+      if (options?.createOnly && index >= 0)
+        throw new FileStorageConflictError(
+          'Knowledge source ID is already registered.',
+        );
       if (index >= 0) roots[index] = root;
       else roots.push(root);
       return roots;
     });
   }
 
-  async removeKnowledgeStoreRoot(id: string): Promise<void> {
+  async removeKnowledgeStoreRoot(
+    id: string,
+    expected?: KnowledgeStoreRoot,
+  ): Promise<void> {
+    const pinned = expected
+      ? parseKnowledgeStoreRoots([expected])[0]
+      : undefined;
     await mutateJsonFile<unknown>(this.knowledgeStoreRootsPath, [], (value) => {
       const roots = parseKnowledgeStoreRoots(value);
       const index = roots.findIndex((root) => root.id === id);
+      if (pinned && index < 0)
+        throw new FileStorageConflictError(
+          'Knowledge source changed before disconnect.',
+        );
       if (index < 0) throw new Error(`Knowledge store root '${id}' not found`);
+      if (pinned && !isDeepStrictEqual(roots[index], pinned))
+        throw new FileStorageConflictError(
+          'Knowledge source changed before disconnect.',
+        );
       roots.splice(index, 1);
       return roots;
     });

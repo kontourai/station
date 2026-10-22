@@ -726,6 +726,24 @@ engine connection. Both hooks share the core query cache.
 
 ### Knowledge Hooks
 
+### Scoped knowledge source management
+
+`useKnowledgeRootsQuery` and `useKnowledgeAdaptersQuery` accept `requestScope`
+and `requireRequestScope` in their query configuration. Scoped reads partition
+caches by endpoint and authority and refuse missing required authority, including
+manual refetch. `useProjectResolutionQuery` supports the same options.
+
+`useCreateKnowledgeRootMutation`, `useValidateKnowledgeRootMutation`, and
+`useDeleteKnowledgeRootMutation` accept an optional captured `ApiRequestScope`.
+`useBindProjectResourceMutation` accepts it as its third argument. A captured
+mutation refuses dispatch after the active authority changes.
+
+For an exact disconnect, call the delete mutation with
+`{ rootId, expectedRoot }`, using the observed `KnowledgeStoreRoot`. The client
+posts `{ expectedRoot }` to `/api/knowledge/roots/:id/disconnect`; a changed root
+returns 409. The old string argument retains the original DELETE protocol.
+Both protocols deregister the store without deleting its files.
+
 #### `useKnowledgeDocs(projectSlug: string, namespace?: string)`
 
 Returns a query whose `data` is the project's `KnowledgeDocumentMeta[]`,

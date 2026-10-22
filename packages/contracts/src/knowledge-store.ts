@@ -277,7 +277,7 @@ export interface KnowledgeStoreProvider {
   createRoot(
     input: Omit<KnowledgeStoreRoot, 'id' | 'createdAt'>,
   ): Promise<KnowledgeStoreRoot>;
-  removeRoot(rootId: string): Promise<void>; // deregisters only — NEVER deletes store files
+  removeRoot(rootId: string, expected?: KnowledgeStoreRoot): Promise<void>; // deregisters only — NEVER deletes store files
 
   // Adapter registry (additive provider pattern; plugins may contribute)
   registerAdapter(descriptor: KnowledgeAdapterDescriptor): void;

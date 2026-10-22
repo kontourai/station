@@ -8,7 +8,8 @@ import {
   useBindProjectResourceMutation,
   useProjectResolutionQuery,
 } from '@kontourai/station-sdk';
-import { useState } from 'react';
+import type { ApiRequestScope } from '@kontourai/station-sdk/client';
+import { createContext, useContext, useState } from 'react';
 import { PageSection } from '../../components/PageSection';
 import { Empty, ErrorState, SkeletonList } from '../../components/state';
 import { userFacingErrorMessage } from '../../utils/errorText';
@@ -61,6 +62,10 @@ const RECORD_COPY: Record<'binding' | 'working-directory', string> = {
   'working-directory': "the project's working directory",
 };
 
+const ResourceRequestScope = createContext<ApiRequestScope | undefined>(
+  undefined,
+);
+
 function PathSlot({ slot, value }: { slot: ResourceSlotKind; value: string }) {
   return (
     <div className={`resources-section__slot resources-section__slot--${slot}`}>
@@ -104,16 +109,21 @@ function PointAtCheckoutForm({
   // recorded" would be a false negative about durable state (the route's
   // phase boundary exists for the same reason).
   const [gap, setGap] = useState<string | null>(null);
-  const bind = useBindProjectResourceMutation(slug, {
-    onSuccess: (outcome) => {
-      setRefusal(null);
-      setGap('gap' in outcome ? outcome.gap : null);
+  const requestScope = useContext(ResourceRequestScope);
+  const bind = useBindProjectResourceMutation(
+    slug,
+    {
+      onSuccess: (outcome) => {
+        setRefusal(null);
+        setGap('gap' in outcome ? outcome.gap : null);
+      },
+      onError: (error: Error) => {
+        setGap(null);
+        setRefusal(userFacingErrorMessage(error));
+      },
     },
-    onError: (error: Error) => {
-      setGap(null);
-      setRefusal(userFacingErrorMessage(error));
-    },
-  });
+    requestScope,
+  );
   // Unique per resource: a multi-repo project renders several of these at once,
   // and a duplicated id would point every `<label>` at the first input.
   const inputId = `project-resource-bind-${slug}-${resourceId}`;
@@ -593,44 +603,57 @@ function PrimarySelection({
   );
 }
 
-export function ResourcesSection({ slug }: { slug: string }) {
+export function ResourcesSection({
+  slug,
+  requestScope,
+  embedded = false,
+}: {
+  slug: string;
+  requestScope?: ApiRequestScope;
+  embedded?: boolean;
+}) {
   const { data, isLoading, isError, error, isFetching, refetch } =
-    useProjectResolutionQuery(slug);
+    useProjectResolutionQuery(slug, {
+      requestScope,
+      requireRequestScope: embedded,
+    });
 
   return (
-    <PageSection
-      id="section-resources"
-      className="project-settings__section resources-section"
-      eyebrow="Project code"
-      title="Resources"
-      description="Where this Station finds the code this project points at, and what it can do about it when that changes."
-    >
-      {isLoading ? (
-        <SkeletonList count={2} />
-      ) : isError ? (
-        <ErrorState
-          title="Could not read this project's resources"
-          description={userFacingErrorMessage(error)}
-          action={
-            <button
-              type="button"
-              className="editor-btn"
-              onClick={() => refetch()}
-            >
-              Retry
-            </button>
-          }
-        />
-      ) : data ? (
-        <ResolutionBody
-          slug={slug}
-          view={data}
-          onReverify={() => refetch()}
-          reverifying={Boolean(isFetching)}
-        />
-      ) : (
-        <SkeletonList count={2} />
-      )}
-    </PageSection>
+    <ResourceRequestScope.Provider value={requestScope}>
+      <PageSection
+        id={embedded ? undefined : 'section-resources'}
+        className="project-settings__section resources-section"
+        eyebrow="Project code"
+        title={embedded ? 'Repositories' : 'Resources'}
+        description="Where this Station finds the code this project points at, and what it can do about it when that changes."
+      >
+        {isLoading ? (
+          <SkeletonList count={2} />
+        ) : isError ? (
+          <ErrorState
+            title="Could not read this project's resources"
+            description={userFacingErrorMessage(error)}
+            action={
+              <button
+                type="button"
+                className="editor-btn"
+                onClick={() => refetch()}
+              >
+                Retry
+              </button>
+            }
+          />
+        ) : data ? (
+          <ResolutionBody
+            slug={slug}
+            view={data}
+            onReverify={() => refetch()}
+            reverifying={Boolean(isFetching)}
+          />
+        ) : (
+          <SkeletonList count={2} />
+        )}
+      </PageSection>
+    </ResourceRequestScope.Provider>
   );
 }

@@ -251,12 +251,14 @@ export async function listKnowledgeAdapters(
 export async function deleteKnowledgeRoot(
   apiBase: string,
   rootId: string,
-  opts?: ClientRequestOptions,
+  opts?: ClientRequestOptions & { expectedRoot?: KnowledgeStoreRoot },
 ): Promise<void> {
+  const { expectedRoot, ...transportOptions } = opts ?? {};
   const response = await mutateJson(
-    `${apiBase}/api/knowledge/roots/${encodeURIComponent(rootId)}`,
-    'DELETE',
-    opts,
+    `${apiBase}/api/knowledge/roots/${encodeURIComponent(rootId)}${expectedRoot ? '/disconnect' : ''}`,
+    expectedRoot ? 'POST' : 'DELETE',
+    opts ? transportOptions : undefined,
+    expectedRoot ? { expectedRoot } : undefined,
   );
   await unwrapKnowledgeResponse<void>(response);
 }
