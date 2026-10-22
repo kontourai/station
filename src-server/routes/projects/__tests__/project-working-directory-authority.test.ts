@@ -12,18 +12,20 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import {
   PAIRING_SCOPE_CODING_EXEC,
   PAIRING_SCOPE_PRESETS,
   pairingScopePresetString,
 } from '@kontourai/station-contracts/environment-security';
+import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
+import { RepositoryAcquisitionService } from '../../../services/projects/repository-acquisition-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import {
   STATION_CONTROL_ORIGIN_AGENT_TOOL,
@@ -74,7 +76,9 @@ function internalRequestInit(agent: boolean, init: RequestInit) {
   ] as const;
 }
 
-async function fixture() {
+async function fixture(
+  repositoryDiscoveryCurrent?: (request: Request) => boolean,
+) {
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
   const root = mkdtempSync(join(tmpdir(), 'station-project-wd-authority-'));
   roots.push(root);
@@ -150,6 +154,7 @@ async function fixture() {
     '/api/projects',
     createProjectRoutes(projects as never, storage as never, projectHome, {
       listAgents: async () => [],
+      repositoryDiscoveryCurrent,
     }),
   );
 
@@ -698,4 +703,53 @@ test('operator cancellation crosses real secured ingress, persists and cannot be
     {},
   );
   expect(denied.status).toBe(403);
+});
+
+test('secured cancellation withholds publication when current operator authority ends during its lock wait', async () => {
+  let allowed = true;
+  const f = await fixture(() => allowed);
+  const request = { requestId: randomUUID(), sourceUrl: f.folderA };
+  const failed = await f.send(
+    f.operator.credential,
+    'POST',
+    '/repository-acquisitions',
+    request,
+  );
+  expect(failed.body.data.phase).toBe('failed');
+  const release = await acquireFileMutationLockAsync(
+    join(dirname(failed.body.data.checkoutPath), 'publication.mutation'),
+  );
+  let entered!: () => void;
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const original = RepositoryAcquisitionService.prototype.cancel;
+  const observed = vi
+    .spyOn(RepositoryAcquisitionService.prototype, 'cancel')
+    .mockImplementation(function (id, assertCurrent) {
+      entered();
+      return original.call(this, id, assertCurrent);
+    });
+  const pending = f.send(
+    f.operator.credential,
+    'POST',
+    `/repository-acquisitions/${request.requestId}/cancel`,
+    {},
+  );
+  try {
+    await started;
+    allowed = false;
+  } finally {
+    await release();
+  }
+  const refused = await pending;
+  observed.mockRestore();
+  expect(refused.status).toBe(403);
+  const inspected = await f.send(
+    f.operator.credential,
+    'GET',
+    `/repository-acquisitions/${request.requestId}`,
+    {},
+  );
+  expect(inspected.body.data).toEqual(failed.body.data);
 });
