@@ -27,10 +27,7 @@ import {
   mayRunCommandsOnHost,
   requestMayBeAnAgent,
 } from '../../security/coding-authority.js';
-import {
-  grantedPairingScope,
-  type PairingScopeContextStore,
-} from '../../security/pairing-route-scopes.js';
+import { grantedPairingScope } from '../../security/pairing-route-scopes.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import { registryAuthFor } from '../../services/acp/acp-engine-descriptors.js';
 import {
@@ -48,7 +45,7 @@ import {
 import { findACPConnection } from './acp.js';
 
 function granted(c: Context): string | undefined {
-  return grantedPairingScope(c as unknown as PairingScopeContextStore);
+  return grantedPairingScope(c);
 }
 
 /** May start a sign-in or change a key: the operator in person, or a device granted `engine:login`. */
