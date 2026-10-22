@@ -96,13 +96,24 @@ export function ProjectRepositoryAttachment({
             />{' '}
             Use this repository for code work in this Project
           </label>
+          {!selection.expected.identity.repos.length && (
+            <p>
+              This Project has no existing resource. Choose code work explicitly
+              to attach its first repository.
+            </p>
+          )}
           <p>
             The optional code selection changes the execution root explicitly.
             It does not remove or replace the primary resource.
           </p>
           <Button
             type="button"
-            disabled={busy || attach.isPending || identity.isFetching}
+            disabled={
+              busy ||
+              attach.isPending ||
+              identity.isFetching ||
+              (!selection.expected.identity.repos.length && !useForCode)
+            }
             onClick={() =>
               attach.mutate(
                 attach.isError && attach.variables

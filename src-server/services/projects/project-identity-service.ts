@@ -142,7 +142,7 @@ export class ProjectIdentityService {
       acquisitions: Pick<RepositoryAcquisitionService, 'get' | 'projectSource'>;
       bindings: Pick<
         ProjectBindingsStore,
-        'findBinding' | 'upsertProjectBinding'
+        'findBinding' | 'upsertProjectBinding' | 'confirmProjectBinding'
       >;
       assertCurrent: () => void;
     },
@@ -180,6 +180,10 @@ export class ProjectIdentityService {
       throw new FileStorageConflictError(
         'A different checkout is already bound. Use repair explicitly.',
       );
+    if (!expected.repos.length && !input.useForCode)
+      throw new FileStorageConflictError(
+        'This Project has no existing resource to preserve. Explicitly choose whether to use the repository for code work before attaching it.',
+      );
     const primary = selectPrimaryResource(expected.repos);
     if (expected.repos.length && !primary.ok)
       throw new FileStorageConflictError(
@@ -208,6 +212,12 @@ export class ProjectIdentityService {
           throw new FileStorageConflictError(
             'Project identity changed during recovery.',
           );
+        await deps.bindings.confirmProjectBinding(
+          current.id,
+          resourceId,
+          previousBinding,
+          deps.assertCurrent,
+        );
         return identityView(revision.value, current);
       });
     }

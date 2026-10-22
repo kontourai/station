@@ -846,6 +846,58 @@ test.each([false, true])(
       ).identity,
     ).toEqual(attached.identity);
     expect(verification).toHaveBeenCalledTimes(3);
+    const empty = await h.service.attach({
+      name: 'Empty',
+      slug: 'empty',
+      identity: { ...identity(), id: 'prj_empty', repos: [] },
+    });
+    await expect(
+      h.service.attachRepository(
+        'empty',
+        {
+          ...input,
+          expectedIdentity: empty.identity,
+          expectedLocalProjectId: empty.association.localProjectId,
+          useForCode: false,
+        },
+        deps,
+      ),
+    ).rejects.toThrow('no existing resource to preserve');
+    expect((await h.service.read('empty')).identity.repos).toEqual([]);
+
+    const beforeRecovery = bindings.findBinding(
+      prepared.identity.id,
+      acquisition.canonicalRemote!,
+    )!;
+    verification.mockImplementationOnce(async () => {
+      await bindings.upsertProjectBinding({
+        ...beforeRecovery,
+        path: directory(),
+      });
+      return {
+        workingDirectory: acquisition.workingDirectory!,
+        repositorySource: {
+          acquisitionId: acquisition.request.requestId,
+          attempt: 1,
+          sourceUrl: acquisition.request.sourceUrl,
+          canonicalRemote: acquisition.canonicalRemote!,
+          resolvedCommit: acquisition.resolvedCommit!,
+          acquiredAt: acquisition.updatedAt,
+        },
+      };
+    });
+    await expect(
+      h.service.attachRepository(
+        'knowledge',
+        { ...input, expectedIdentity: attached.identity },
+        deps,
+      ),
+    ).rejects.toThrow('binding changed during recovery');
+    expect(
+      bindings.findBinding(prepared.identity.id, acquisition.canonicalRemote!)
+        ?.path,
+    ).not.toBe(checkout);
+
     await expect(
       h.service.attachRepository(
         'knowledge',

@@ -166,7 +166,9 @@ precondition, then updates the existing portable manifest under the exact local
 Project revision and expected identity. Existing resources and primary selection
 are preserved; `useForCode: true` explicitly selects the acquired subdirectory
 as the execution root. It does not edit `ProjectConfig.workingDirectory` or
-knowledge settings. Changed identity/binding yields409. Authority is checked at
+knowledge settings. An empty resource list requires `useForCode: true`; otherwise
+the operation refuses to introduce an implicit code-work fallback. Changed
+identity/binding yields409. Authority is checked at
 binding write, immediately before manifest rename and at response release.
 Binding publication precedes manifest publication: an uncertain result may have
 recorded a private binding without declaring the resource yet. Retrying the

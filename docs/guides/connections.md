@@ -1222,7 +1222,9 @@ or reuse a copy, choose **Use this checkout**, then confirm **Attach repository*
 The existing primary resource, working directory and knowledge configuration are
 preserved. The optional **Use this repository for code work in this Project**
 checkbox explicitly selects its verified repository-relative execution root;
-it is unchecked initially and does not promote or remove a primary resource.
+it is unchecked initially and does not promote or remove an existing primary resource.
+An identity with no existing resources requires an explicit code-work choice,
+because its first repository would otherwise become the execution fallback.
 Attachment checks the expected portable identity and immutable local Project ID.
 A changed Project or binding is refused instead of overwriting it. If the
 response is lost, **Retry saved attachment** repeats the same selection. A

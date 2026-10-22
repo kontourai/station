@@ -336,6 +336,31 @@ export class ProjectBindingsStore {
     );
   }
 
+  async confirmProjectBinding(
+    projectId: string,
+    resourceId: string,
+    expected: ProjectBinding | null,
+    assertCurrent: () => void,
+  ): Promise<void> {
+    const ownedExpected = structuredClone(expected);
+    mkdirSync(dirname(this.filePath), { recursive: true });
+    const release = await this.acquireMutationLock(`${this.filePath}.mutation`);
+    try {
+      if (
+        !isDeepStrictEqual(
+          this.findBinding(projectId, resourceId) ?? null,
+          ownedExpected,
+        )
+      )
+        throw new FileStorageConflictError(
+          'Repository binding changed during recovery. Inspect Sources before retrying.',
+        );
+      assertCurrent();
+    } finally {
+      await release();
+    }
+  }
+
   /**
    * Records (or replaces) the binding for one `(projectId, resourceId)` pair.
    * `path` is stored verbatim; `remotes` are canonicalized here because they
