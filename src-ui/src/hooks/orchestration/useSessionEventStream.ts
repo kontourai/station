@@ -19,7 +19,9 @@ import {
   NO_ELIDED_HISTORY,
   summarizeElidedReasons,
 } from '../../utils/elidedHistory';
+import { ensureOrchestrationEventStream } from './ensureOrchestrationEventStream';
 import { createStreamCursorTracker } from './resumeCursor';
+import { subscribeSharedOrchestrationStream } from './sharedStreamListeners';
 import type { OrchestrationEvent } from './types';
 
 /** Keep the live feed bounded so a long-running session never grows unbounded. */
@@ -279,6 +281,9 @@ function schedulePublishFrame(callback: () => void): () => void {
 export function useSessionEventStream(
   apiBase: string,
   threadId: string | null,
+  shared = false,
+  isAuthorityCurrent?: () => boolean,
+  authorityKey?: string,
 ): SessionEventStream {
   const [events, setEvents] = useState<OrchestrationEvent[]>([]);
   const [connected, setConnected] = useState(false);
@@ -458,6 +463,7 @@ export function useSessionEventStream(
     if (!threadId) return;
 
     let active = true;
+    const isCurrent = () => active && (isAuthorityCurrent?.() ?? true);
     const capabilityKey = `${apiBase}\u0000${threadId}`;
     const capabilityWasRecovered =
       recoveredCapabilityKey.current === capabilityKey;
@@ -500,7 +506,7 @@ export function useSessionEventStream(
     let liveInterruptionTimerKind: 'connect' | 'grace' | undefined;
     let historyInterruptionTimer: ReturnType<typeof setTimeout> | undefined;
     const publishInterruption = () => {
-      if (active)
+      if (isCurrent())
         setConnectionInterrupted(liveInterrupted || historyInterrupted);
     };
     const cancelLiveInterruptionTimer = () => {
@@ -577,7 +583,7 @@ export function useSessionEventStream(
         recoveryTimers.delete(retryTimer);
         historyRetryScheduled = false;
         historyRetryTimer = undefined;
-        if (!active) return;
+        if (!isCurrent()) return;
         void recoverPersistedEvents();
       }, delay);
       historyRetryTimer = retryTimer;
@@ -631,9 +637,9 @@ export function useSessionEventStream(
         // only that one test; removing this checkpoint alone reds nothing.
         // Keep both: this one is a cheap early-out for the common case, the
         // queued one is what actually closes the queue-drain window.
-        if (!active || requestEpoch !== epoch.current) return;
+        if (!isCurrent() || requestEpoch !== epoch.current) return;
         queue.current = queue.current.then(() => {
-          if (!active || requestEpoch !== epoch.current) return;
+          if (!isCurrent() || requestEpoch !== epoch.current) return;
           epoch.current += 1;
           appliedWatermark.current = page.watermark;
           pendingOlder.current = undefined;
@@ -687,7 +693,7 @@ export function useSessionEventStream(
         });
         await queue.current;
       } catch (cause) {
-        if (!active) return;
+        if (!isCurrent()) return;
         // archive#3518: this call may itself be stale — started
         // before a DIFFERENT, independent call already established a
         // terminal outcome (or completed a success) that bumped
@@ -793,7 +799,7 @@ export function useSessionEventStream(
       capabilityProbeInFlight = true;
       void fetchSessionEventWindowCapability(apiBase)
         .then((capability) => {
-          if (!active) return;
+          if (!isCurrent()) return;
           windowCapable = capability === true;
           if (capability === true) {
             // A successful capability probe is itself a Response from this
@@ -850,7 +856,7 @@ export function useSessionEventStream(
         });
     };
     retryCapabilityRecoveryRef.current = () => {
-      if (!active) return;
+      if (!isCurrent()) return;
       // archive#3437: a probe already in flight (whether
       // from this same manual retry re-entered, or an automatic re-probe
       // timer) owns the current recovery attempt — do not start a second,
@@ -881,7 +887,7 @@ export function useSessionEventStream(
     // refetch below.
     let resumeCapable = false;
     void fetchEventStreamResumeCapability(apiBase).then((capable) => {
-      if (active) resumeCapable = capable;
+      if (isCurrent()) resumeCapable = capable;
     });
 
     // archive#1092: drop a duplicate/overlapping frame the replay path
@@ -892,11 +898,25 @@ export function useSessionEventStream(
     const cursor = createStreamCursorTracker();
 
     armLiveInterruption('connect');
-    authenticatedStream = fetchSSE(
+    const openStream: (
+      url: string,
+      options: Parameters<typeof fetchSSE>[1],
+    ) => { close(): void } = shared
+      ? (_url, options) => {
+          const subscription = subscribeSharedOrchestrationStream(
+            apiBase,
+            options,
+          );
+          ensureOrchestrationEventStream(apiBase, undefined, authorityKey);
+          return subscription;
+        }
+      : fetchSSE;
+    authenticatedStream = openStream(
       `${apiBase}/api/orchestration/events?threadId=${encodeURIComponent(threadId)}`,
       {
         authentication: 'required',
         onOpen: () => {
+          if (!isCurrent()) return;
           setConnected(true);
           setLiveStreamStoppedTerminal(false);
           setLiveInterrupted(false);
@@ -905,7 +925,7 @@ export function useSessionEventStream(
             startInitialHydration();
             return;
           }
-          if (resumeCapable) {
+          if (shared || resumeCapable) {
             // The server replays exactly what was missed via the retained
             // `Last-Event-ID` cursor — a REST refetch here would be the
             // redundant merge path archive#1092 removes.
@@ -918,6 +938,9 @@ export function useSessionEventStream(
           if (windowCapable) void recoverPersistedEvents();
         },
         onError: (cause) => {
+          if (!isCurrent()) return;
+          // Frames during renegotiation must survive the replacement history window.
+          hydrated = false;
           resumeCapable = false;
           // A rejected response (401/403, or any non-2xx — archive#3458 made
           // `onOpen` stop firing for these) still means the host answered:
@@ -940,6 +963,7 @@ export function useSessionEventStream(
         // alone cannot give (archive#3426): that is equally true while the
         // ladder is mid-backoff and about to retry on its own.
         onTerminal: () => {
+          if (!isCurrent()) return;
           setLiveStreamStoppedTerminal(true);
           setLiveInterrupted(true);
         },
@@ -958,6 +982,7 @@ export function useSessionEventStream(
         // stays so until a resumed attempt opens.
         onRetry: () => setLiveStreamStoppedTerminal(false),
         onMessage: (raw) => {
+          if (!isCurrent()) return;
           if (raw.event === 'orchestration:snapshot') {
             // archive#1092 fix (defense in depth): a snapshot
             // frame on THIS thread-scoped stream means the server could not
@@ -973,7 +998,8 @@ export function useSessionEventStream(
             // not happen" as the explicit trigger to refetch persisted
             // history instead.
             cursor.adopt(raw.id);
-            void recoverPersistedEvents();
+            if (!shared || initialHydrationStarted)
+              void recoverPersistedEvents();
             return;
           }
           if (raw.event !== SERVER_EVENTS.ORCHESTRATION_EVENT) return;
@@ -982,7 +1008,7 @@ export function useSessionEventStream(
             const payload = JSON.parse(raw.data) as {
               event: OrchestrationEvent;
             };
-            if (!payload?.event) return;
+            if (!payload?.event || payload.event.threadId !== threadId) return;
             if (!hydrated) {
               bufferedLive.push({ id: raw.id ?? '0', event: payload.event });
               // archive#3378: a retried hydration can stay unhydrated for as
@@ -1021,7 +1047,7 @@ export function useSessionEventStream(
               // A frame admitted just before teardown resolves its queue turn
               // after it. Without this it would buffer into — and schedule a
               // publish for — whatever thread the hook moved on to.
-              if (!active) return;
+              if (!isCurrent()) return;
               appliedWatermark.current = Math.max(
                 appliedWatermark.current,
                 Number(raw.id) || 0,
@@ -1077,6 +1103,9 @@ export function useSessionEventStream(
   }, [
     apiBase,
     threadId,
+    shared,
+    isAuthorityCurrent,
+    authorityKey,
     apply,
     discardPendingLiveEvents,
     foldPendingLiveEvents,
