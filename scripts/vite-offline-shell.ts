@@ -35,11 +35,16 @@ export function offlineShell(): Plugin {
             for (const dependency of output.imports) visit(dependency);
           }
         };
-        // boot dynamically imports main; all remaining lazy features are cached on use.
+        // boot imports main; main starts voice registration without a mounted consumer.
+        // Other lazy features are cached when opened online.
         for (const output of Object.values(bundle)) {
           if (
             output.type === 'chunk' &&
-            (output.isEntry || output.name === 'main')
+            (output.isEntry ||
+              output.name === 'main' ||
+              output.moduleIds.some((id) =>
+                id.endsWith('/src-ui/src/providers/voice/index.ts'),
+              ))
           )
             visit(output.fileName);
         }
