@@ -788,7 +788,7 @@ describe('native release workflow topology', () => {
     expect(workflowJob(publish, 'qualification').uses).toBe(
       './.github/workflows/full-regression.yml',
     );
-    expect(promotion.needs).toEqual(['resolve', 'qualification']);
+    expect(promotion.needs).toEqual(['resolve', 'qualification', 'advisory']);
     expect(parsed.permissions).toEqual({ contents: 'read', actions: 'read' });
     expect(source.run).toContain('gh release view "$desktop_updater_tag"');
     expect(source.run).not.toContain('2>/dev/null || true');
@@ -821,7 +821,7 @@ describe('native release workflow topology', () => {
         'Publish and verify the rolling desktop updater channel',
       ).if,
     ).toBeUndefined();
-    expect(promotion.needs).toEqual(['resolve', 'qualification']);
+    expect(promotion.needs).toEqual(['resolve', 'qualification', 'advisory']);
     expect(parsed.concurrency).toEqual({
       group: 'station-release-publish',
       'cancel-in-progress': false,
@@ -859,6 +859,7 @@ describe('native release workflow topology', () => {
     expect(policyEntries).toEqual({
       resolve: ['scripts/lib/native-release-config.mjs'],
       qualification: [],
+      advisory: [],
       publish: [
         'scripts/deploy-ledger.mjs',
         // #2959: the host-stream manifest signer and its publication checks.
@@ -878,6 +879,16 @@ describe('native release workflow topology', () => {
     const parsed = workflow(publish);
     expect(parsed.defaults).toBeUndefined();
     for (const [jobName, job] of Object.entries(parsed.jobs ?? {})) {
+      if (jobName === 'advisory') {
+        expect(job.uses).toBe('./.github/workflows/release-advisory.yml');
+        expect(job.with?.source_sha).toBe(
+          githubExpression('needs.resolve.outputs.sha'),
+        );
+        expect(job.with?.policy_sha).toBe(
+          githubExpression('needs.resolve.outputs.policy_sha'),
+        );
+        continue;
+      }
       if (jobName === 'qualification') {
         expect(job.uses).toBe('./.github/workflows/full-regression.yml');
         expect(job.with?.source_sha).toBe(

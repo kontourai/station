@@ -72,10 +72,16 @@ jobs:
             const runUrl = process.env.RUN_URL;
             const headSha = process.env.HEAD_SHA;
             const title = `Main pipeline red: ${workflowName}`;
+            const advisoryOwner = workflowName === 'Repo: Dependency advisory' ? 'briananderson1222' : null;
             const details = [
               `Workflow: ${workflowName}`,
               `Run: ${runUrl}`,
               `Head SHA: ${headSha}`,
+              ...(advisoryOwner ? [
+                `Owner: @${advisoryOwner} (dependency-policy CODEOWNER).`,
+                'Action: inspect the advisory report in the linked run, separate disclosed findings from scan/registry errors, and coordinate one compatible dependency repair. Do not renew exceptions or retry feature PRs to hide this result.',
+                'Preview/Stable publication remains blocked by its own fresh exact-source scan; feature and Nightly builds do not run advisory scans.',
+              ] : []),
             ].join('\n');
             const issues = await github.paginate(github.rest.issues.listForRepo, {
               owner: context.repo.owner,
@@ -91,8 +97,17 @@ jobs:
                 title,
                 body: `A required workflow failed on main.\n\n${details}`,
                 labels: ['bug', 'P1'],
+                ...(advisoryOwner ? { assignees: [advisoryOwner] } : {}),
               });
               return;
+            }
+            if (advisoryOwner) {
+              await github.rest.issues.addAssignees({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                assignees: [advisoryOwner],
+              });
             }
             const reopened = existing.state !== 'open';
             if (reopened) {

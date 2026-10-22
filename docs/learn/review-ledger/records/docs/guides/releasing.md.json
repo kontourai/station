@@ -72,7 +72,15 @@
 
     "scripts/release-pipeline.mjs",
 
-    ".github/workflows/hosted-capacity-probe.yml"
+    ".github/workflows/hosted-capacity-probe.yml",
+
+    "scripts/release-advisory-gate.mjs",
+
+    "scripts/lib/release-advisory-collection.mjs",
+
+    ".github/workflows/release-advisory.yml",
+
+    "scripts/__tests__/release-advisory-gate.test.ts"
   ],
 
   "checks": [

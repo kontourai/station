@@ -146,7 +146,13 @@ describe('TestFlight delivery builds the Live Activity where the channel names o
     // Every consumer reads the resolved answer; no step condition or step
     // environment re-derives it from the channel name, in any spelling.
     expect(source).not.toContain("inputs.channel != 'stable'");
-    for (const job of Object.values(workflow.jobs)) {
+    for (const [name, job] of Object.entries(workflow.jobs)) {
+      if (name === 'advisory') {
+        expect(job).toMatchObject({
+          uses: './.github/workflows/release-advisory.yml',
+        });
+        continue;
+      }
       for (const step of job.steps) {
         if (step.name === RESOLVE) continue;
         expect(step.if ?? '', step.name).not.toContain('inputs.channel');

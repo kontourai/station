@@ -104,9 +104,16 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  advisory:
+    needs: preflight
+    uses: ./.github/workflows/release-advisory.yml
+    with:
+      audit_id: tagged-stage
+      source_sha: ${{ needs.preflight.outputs.sha }}
+
   full-regression:
     name: Tagged release exact-SHA full regression
-    needs: [preflight]
+    needs: [preflight, advisory]
     uses: ./.github/workflows/full-regression.yml
     with:
       capacity_class: release

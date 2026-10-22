@@ -64,6 +64,14 @@ permissions:
   attestations: write
 
 jobs:
+  advisory:
+    needs: deliver
+    if: ${{ always() && !cancelled() && inputs.channel != 'nightly' && inputs.delivery != 'build' && (needs.deliver.result == 'success' || (inputs.delivery == 'upload' && needs.deliver.result == 'skipped')) }}
+    uses: ./.github/workflows/release-advisory.yml
+    with:
+      audit_id: ${{ format('testflight-{0}', inputs.channel) }}
+      source_sha: ${{ inputs.source_sha }}
+
   deliver:
     name: Build, sign and audit IPA
     if: ${{ inputs.delivery != 'upload' }}
@@ -600,8 +608,8 @@ jobs:
     # Runs after `deliver` in build-and-upload mode, or alone in upload mode
     # against the staged artifact an earlier call in this run retained. Never
     # rebuilds or re-signs: the bytes uploaded are the bytes that were audited.
-    needs: deliver
-    if: ${{ always() && !cancelled() && inputs.delivery != 'build' && (needs.deliver.result == 'success' || (inputs.delivery == 'upload' && needs.deliver.result == 'skipped')) }}
+    needs: [deliver, advisory]
+    if: ${{ always() && !cancelled() && inputs.delivery != 'build' && (needs.advisory.result == 'success' || (inputs.channel == 'nightly' && needs.advisory.result == 'skipped')) && (needs.deliver.result == 'success' || (inputs.delivery == 'upload' && needs.deliver.result == 'skipped')) }}
     runs-on: macos-26
     timeout-minutes: 60
     environment: ${{ inputs.channel == 'stable' && 'native-release' || format('ios-{0}', inputs.channel) }}

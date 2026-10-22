@@ -120,7 +120,15 @@
 
     ".github/workflows/source-verification-policy.yml",
 
-    "scripts/source-verification-policy.mjs"
+    "scripts/source-verification-policy.mjs",
+
+    "scripts/release-advisory-gate.mjs",
+
+    "scripts/lib/release-advisory-collection.mjs",
+
+    ".github/workflows/release-advisory.yml",
+
+    "scripts/__tests__/release-advisory-gate.test.ts"
   ],
 
   "checks": [

@@ -17,7 +17,7 @@ jobs:
   cancel-obsolete:
     if: >-
       ${{ (github.event_name == 'workflow_run' &&
-           github.event.workflow_run.event == 'pull_request_target' &&
+           (github.event.workflow_run.event == 'pull_request_target' || github.event.workflow_run.event == 'merge_group') &&
            github.event.workflow_run.head_repository.full_name == github.repository) ||
           (github.event_name == 'pull_request_target' && github.event.action == 'closed' &&
            github.event.pull_request.merged == true &&
@@ -33,7 +33,7 @@ jobs:
         with:
           node-version-file: .nvmrc
           package-manager-cache: false
-      - name: Retire superseded checks or merged optional delivery
+      - name: Retire replaced candidates, superseded checks or merged optional delivery
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/pr-ci-supersession.mjs
