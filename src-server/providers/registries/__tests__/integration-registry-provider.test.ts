@@ -22,7 +22,10 @@ vi.mock('node:fs', async (importOriginal) => {
   };
 });
 
-const lookups = vi.hoisted(() => ({ count: 0 }));
+const lookups = vi.hoisted(() => ({
+  count: 0,
+  failure: undefined as undefined | Record<string, unknown>,
+}));
 vi.mock('node:child_process', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:child_process')>();
   return {
@@ -33,6 +36,19 @@ vi.mock('node:child_process', async (importOriginal) => {
     },
     execFile: (...args: Parameters<typeof actual.execFile>) => {
       lookups.count++;
+      if (lookups.failure) {
+        const failure = lookups.failure;
+        lookups.failure = undefined;
+        const callback = args.at(-1) as (
+          error: Error,
+          stdout: string,
+          stderr: string,
+        ) => void;
+        queueMicrotask(() =>
+          callback(Object.assign(new Error('probe failed'), failure), '', ''),
+        );
+        return {};
+      }
       return actual.execFile(...args);
     },
   };
@@ -368,3 +384,35 @@ describe('integration-registry-provider helpers', () => {
     expect(other.install).not.toHaveBeenCalled();
   });
 });
+
+test.each([
+  { code: 'ETIMEDOUT', killed: true },
+  { code: 'EACCES' },
+  { code: 2 },
+  { code: 1, signal: 'SIGTERM' },
+])(
+  'retries an inconclusive command lookup %j on the next registry read',
+  async (failure) => {
+    const homeDir = createHomeDir();
+    const dir = join(homeDir, 'integrations', 'retry');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      join(dir, 'integration.json'),
+      JSON.stringify({ id: 'retry', command: 'node' }),
+    );
+    const oldPath = process.env.PATH;
+    process.env.PATH = `${oldPath}${process.platform === 'win32' ? ';' : ':'}${homeDir}`;
+    try {
+      lookups.failure = failure;
+      expect((await readDiskIntegrations(homeDir))[0]?.status).toBe(
+        'missing binary',
+      );
+      expect((await readDiskIntegrations(homeDir))[0]?.status).toBe(
+        'connected',
+      );
+    } finally {
+      process.env.PATH = oldPath;
+      lookups.failure = undefined;
+    }
+  },
+);
