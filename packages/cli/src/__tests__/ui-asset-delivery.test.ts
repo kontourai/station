@@ -1,14 +1,7 @@
 import { once } from 'node:events';
-import {
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  symlinkSync,
-  writeFileSync,
-} from 'node:fs';
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import * as http from 'node:http';
 import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
 import {
@@ -18,10 +11,12 @@ import {
   gzipSync,
 } from 'node:zlib';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs';
 import { buildUiServerScript } from '../commands/lifecycle';
 
 // Execute the serialized production listener, including its standalone imports.
 describe('built UI asset delivery', () => {
+  const makeTempDir = trackTempDirs();
   let dir: string;
   let server: http.Server;
   let port: number;
@@ -30,7 +25,7 @@ describe('built UI asset delivery', () => {
   );
   const asset = '/assets/main-AbCd1234.js';
   beforeEach(async () => {
-    dir = mkdtempSync(join(tmpdir(), 'station-ui-delivery-'));
+    dir = makeTempDir('station-ui-delivery-');
     mkdirSync(join(dir, 'assets'));
     writeFileSync(join(dir, 'index.html'), '<head></head><body>Station</body>');
     writeFileSync(join(dir, asset), content);
@@ -73,7 +68,6 @@ describe('built UI asset delivery', () => {
         server.close((error) => (error ? reject(error) : resolve())),
       );
     }
-    rmSync(dir, { recursive: true, force: true });
   });
   const request = (
     url: string,
