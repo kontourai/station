@@ -107,8 +107,9 @@ replay. Conflict retry is an explicit rebase
 with a new operation id. It does not reuse the chat-turn queue.
 
 For other mutation families, the browser's authenticated transport fails before
-dispatch when the browser reports offline, with a reconnect message. Past health
-failures do not block a new attempt: an accepted request must still be able to
+dispatch when the browser reports offline, with a reconnect message. A network failure recorded in this browser session also refuses writes until
+a successful read recovers reachability. Older stored health failures do not
+block a new attempt: an accepted request must still be able to
 retire stale failure evidence. Native transport does not infer unreachability
 from `navigator.onLine`, which can be false while a VPN route works. Existing
 request deadlines bound a new attempt when no current offline signal exists.

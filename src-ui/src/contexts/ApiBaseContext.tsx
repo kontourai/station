@@ -288,6 +288,9 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
     credentialAuthorityGeneration,
   } = useConnections();
   const profile = usePlatformProfile();
+  const mountedAt = useRef(Date.now());
+  const currentConnection = useRef(activeConnection);
+  currentConnection.current = activeConnection;
 
   useEffect(() => {
     if (!profile.isTauri) return;
@@ -429,6 +432,20 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
             throw new Error(
               'Station is offline. Reconnect before making changes.',
             );
+          const connection = currentConnection.current;
+          const failure = connection?.lastError;
+          if (
+            !profile.isTauri &&
+            connection?.id === evidence?.connectionId &&
+            failure &&
+            failure.at >= mountedAt.current &&
+            ['offline', 'unreachable', 'timeout', 'host-unavailable'].includes(
+              failure.reason,
+            )
+          )
+            throw new Error(
+              'Station is unreachable. Reconnect before making changes.',
+            );
           return true;
         },
         origin: evidence?.origin ?? apiBase,
@@ -495,8 +512,9 @@ function StationCredentialBridge({ children }: { children: ReactNode }) {
                   evidence.generation,
                 )
             : undefined,
-        // A previous request's failure is evidence, not a local authority to
-        // reject a new write. Let the Station answer the attempt; an accepted
+        // Stored failures and credential refusals do not reject a recovery
+        // attempt. The browser guard above uses only this page's observed
+        // network failures; reads remain available to recover. An accepted
         // authenticated response then retires that stale evidence — BOTH
         // halves of it: `lastError`, and the `credentialState: 'required'`
         // that `onUnauthorized` above set and that actually renders the

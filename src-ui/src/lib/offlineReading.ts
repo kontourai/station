@@ -12,7 +12,7 @@ const KEY = 'reading';
 let storage: ReturnType<typeof createStore> | undefined;
 const store = () =>
   (storage ??= createStore('station-offline-reading', 'copies'));
-export interface OfflineTurn {
+interface OfflineTurn {
   role: 'user' | 'assistant';
   text: string;
 }
@@ -75,6 +75,7 @@ async function retainedShelf() {
         if (!current || current.revision !== shelf.revision) return current;
         return {
           ...current,
+          buster: buster(),
           copies: outdated ? [] : freshCopies(current.copies),
           enabled: !outdated && current.enabled,
           revision: current.revision + 1,
@@ -145,6 +146,7 @@ export async function saveOfflineReading(
   events: readonly OrchestrationSequencedEvent[],
   isCurrent: () => boolean,
 ) {
+  if (new TextEncoder().encode(conversationId).length > 1024) return;
   const before = await get<Shelf>(KEY, store());
   if (!valid(before, namespace) || !before.enabled || !isCurrent()) return;
   // Persist a closed text projection: no tool arguments/results, reasoning,
