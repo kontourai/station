@@ -157,7 +157,7 @@ export class SessionEventReads {
       // convergence sweep expires its notification.
       return requestIdsSettledByTurnAbort(
         eventStore
-          .listSessionProjectionEvents(threadId)
+          .listSessionProjectionEvents(threadId, { hydrateAttachments: false })
           .map((event) => event.payload),
       ).has(requestId)
         ? { state: 'resolved', status: TURN_ABORT_SETTLED_REQUEST_STATUS }
@@ -197,7 +197,9 @@ export class SessionEventReads {
 
     if (!this.deps.canReadSession(threadId, options.authority)) return null;
     const projectionEvents =
-      this.deps.eventStore?.listSessionProjectionEvents(threadId) ?? [];
+      this.deps.eventStore?.listSessionProjectionEvents(threadId, {
+        hydrateAttachments: false,
+      }) ?? [];
     const page = this.deps.eventStore?.listEventPage(threadId, options) ?? {
       events: [],
       hasMore: false,
@@ -265,7 +267,9 @@ export class SessionEventReads {
     // stand in for the authoritative session summary: bindings and policy
     // facts may be older than the requested turn window.
     const projectionEvents =
-      this.deps.eventStore?.listSessionProjectionEvents(threadId) ?? [];
+      this.deps.eventStore?.listSessionProjectionEvents(threadId, {
+        hydrateAttachments: false,
+      }) ?? [];
     options.signal?.throwIfAborted();
     const fullSession = buildOrchestrationSessionSummary({
       persisted,

@@ -53,9 +53,8 @@ interface SessionTranscriptReadsDeps {
    * conversation of its own.
    */
   conversationIdForThread?: (threadId: string) => string;
-  listUsageEventRecords: (
-    threadId: string,
-  ) => ReturnType<EventStore['listEvents']>;
+  readUsageRevision: (threadId: string) => string;
+  listUsageEventPayloads: (threadId: string) => CanonicalRuntimeEvent[];
   listUsageReceiptEvents: EventStore['listUsageReceiptEvents'];
   listUsageCoverageEvents: EventStore['listUsageCoverageEvents'];
   // Derived from the store's own method type — no re-declared row shape.
@@ -90,6 +89,15 @@ interface SessionTranscriptReadsDeps {
  * none of the surface.
  */
 export class SessionTranscriptReads {
+  private readonly usageProjections = new Map<
+    string,
+    {
+      revision: string;
+      projection: ReturnType<typeof foldUsageObservationProjection>;
+      relayAgentId?: string;
+    }
+  >();
+
   constructor(private readonly deps: SessionTranscriptReadsDeps) {}
 
   /** Additive async owner seam; synchronous consumers keep their existing API. */
@@ -166,8 +174,9 @@ export class SessionTranscriptReads {
     // before its producer's guard existed. Dropping it keeps the read
     // answerable; reporting it keeps the producer defect visible rather
     // than absorbed (packages/shared/src/usage-fold.ts's drop contract).
-    return foldUsageEvents(this.deps.listEventPayloads(threadId), (dropped) =>
-      this.deps.reportDroppedUsageFigure(dropped),
+    return foldUsageEvents(
+      this.deps.listUsageEventPayloads(threadId),
+      (dropped) => this.deps.reportDroppedUsageFigure(dropped),
     );
   }
 
@@ -185,7 +194,7 @@ export class SessionTranscriptReads {
     return foldUsageEvents(
       threadIds
         .filter((threadId) => this.deps.canReadSession(threadId, authority))
-        .flatMap((threadId) => this.deps.listEventPayloads(threadId)),
+        .flatMap((threadId) => this.deps.listUsageEventPayloads(threadId)),
       (dropped) => this.deps.reportDroppedUsageFigure(dropped),
     );
   }
@@ -203,31 +212,52 @@ export class SessionTranscriptReads {
       if (this.deps.isEphemeralSession(threadId)) continue;
       if (!this.deps.canReadSession(threadId, authority)) continue;
       const attribution = this.deps.sessionAttributionFor(threadId);
-      const events = this.deps.listEventPayloads(threadId);
-      const projection = foldUsageObservationProjection(events, (dropped) =>
-        this.deps.reportDroppedUsageFigure(dropped),
-      );
+      const revision = this.deps.readUsageRevision(threadId);
+      let cached = this.usageProjections.get(threadId);
+      if (cached?.revision !== revision) {
+        const events = this.deps.listUsageEventPayloads(threadId);
+        const projection = foldUsageObservationProjection(events, (dropped) =>
+          this.deps.reportDroppedUsageFigure(dropped),
+        );
+        const relayAgentIds = new Set(
+          events.flatMap((event) =>
+            event.method === 'session.configured' &&
+            event.provider === 'station-agent' &&
+            typeof event.metadata?.agentId === 'string' &&
+            event.metadata.agentId
+              ? [event.metadata.agentId]
+              : [],
+          ),
+        );
+        const relayAgentId =
+          relayAgentIds.size === 1 &&
+          events.every((event) => event.provider === 'station-agent')
+            ? [...relayAgentIds][0]
+            : undefined;
+        cached = {
+          revision,
+          projection,
+          ...(relayAgentId ? { relayAgentId } : {}),
+        };
+        // Bound retained read state independently of the lifetime event log.
+        if (
+          projection.observations.length <= 2_000 &&
+          Buffer.byteLength(JSON.stringify(projection)) <= 262_144
+        ) {
+          if (this.usageProjections.size >= 128)
+            this.usageProjections.delete(
+              this.usageProjections.keys().next().value!,
+            );
+          this.usageProjections.set(threadId, cached);
+        } else this.usageProjections.delete(threadId);
+      }
+      const { projection, relayAgentId } = cached;
       if (
         !attribution &&
         projection.observations.length === 0 &&
         projection.usage.contextTokens === undefined
       )
         continue;
-      const relayAgentIds = new Set(
-        events.flatMap((event) =>
-          event.method === 'session.configured' &&
-          event.provider === 'station-agent' &&
-          typeof event.metadata?.agentId === 'string' &&
-          event.metadata.agentId
-            ? [event.metadata.agentId]
-            : [],
-        ),
-      );
-      const relayAgentId =
-        relayAgentIds.size === 1 &&
-        events.every((event) => event.provider === 'station-agent')
-          ? [...relayAgentIds][0]
-          : undefined;
       sessions.push({
         threadId,
         conversationId: attribution?.conversationId ?? threadId,
@@ -240,9 +270,12 @@ export class SessionTranscriptReads {
               },
             }
           : {}),
-        ...projection,
+        ...structuredClone(projection),
       });
     }
+    const retained = new Set(sessions.map((session) => session.threadId));
+    for (const threadId of this.usageProjections.keys())
+      if (!retained.has(threadId)) this.usageProjections.delete(threadId);
     return sessions;
   }
 

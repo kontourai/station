@@ -93,7 +93,7 @@ This source addition requires a published version that exports `/agent`.
 | Foreground execution | `sendExecutionMessage`, `continueExecutionMessage`, `handoffExecutionMessage`, `getConversationHandoffStatus` |
 | Durable delegation | `discoverDelegationOptions`, `delegateTask`, `observeDelegatedTask`, `observeDelegatedTaskEvents`, `continueDelegatedTask`, `listDelegatedTasks`, `lookupDelegationAttempt` |
 | Decisions and interruption | `respondToDelegatedTaskRequest`, `interruptDelegatedTask`, `respondToRequest`, `interruptTurn` |
-| Session observation | `getOrchestrationSession`, `getOrchestrationSessionEventPage`, `getOrchestrationSessionEventWindow`, `getOrchestrationConversationEventWindow`, `getConversationUsageTree` |
+| Session observation | `getOrchestrationSession`, `getOrchestrationSessionDetailWindow`, `getOrchestrationSessionEventPage`, `getOrchestrationSessionEventWindow`, `getOrchestrationConversationEventWindow`, `getConversationUsageTree` |
 | Outputs | `listSessionOutputs`, `inspectSessionOutput` and their contract types |
 | Failure handling | Canonical HTTP/authority errors, `ChatHttpError`, `ForegroundMessageIndeterminateError`, `DelegationApiError`, `SessionOutputsRequestError` |
 
@@ -3669,6 +3669,16 @@ knowledgeQueries.namespaces(projectSlug)             // GET /api/projects/:slug/
 ---
 
 ## Conversation history windows
+
+Headless callers can import `getOrchestrationSessionDetailWindow` from
+`@kontourai/station-sdk/agent`. It reads
+`/api/orchestration/sessions/:threadId?view=window-v1` with optional
+`{ cursor, turnLimit }` and normal request options, returning
+`OrchestrationSessionEventWindow`. It uses the existing newest-turn cursor,
+response limits and explicit `elided` markers; follow `nextCursor` for older
+history and preserve partial state. Legacy `getOrchestrationSession` still
+returns full detail. A window must not be folded as lifetime usage.
+
 
 `fetchOrchestrationConversationEventWindow(conversationId, apiBase,
 { direction: 'newest', turnLimit: 10 })` prioritizes the latest events of the

@@ -2350,11 +2350,11 @@ export class OrchestrationService {
         this.options.eventStore?.conversationForSession(threadId)
           ?.conversationId ?? threadId,
       listEventPayloads: (threadId) =>
-        (this.options.eventStore?.listEvents(threadId) ?? []).map(
-          (event) => event.payload,
-        ),
-      listUsageEventRecords: (threadId) =>
-        this.options.eventStore?.listEvents(threadId) ?? [],
+        this.options.eventStore?.listEventPayloads(threadId) ?? [],
+      readUsageRevision: (threadId) =>
+        this.options.eventStore?.readUsageRevision(threadId) ?? 'empty',
+      listUsageEventPayloads: (threadId) =>
+        this.options.eventStore?.listUsageEventPayloads(threadId) ?? [],
       listUsageReceiptEvents: (input) =>
         this.options.eventStore?.listUsageReceiptEvents(input) ?? [],
       listUsageCoverageEvents: (input) =>
@@ -2408,7 +2408,7 @@ export class OrchestrationService {
       observeAnswerability: (threadId, provider, observedAt) =>
         this.observeAnswerability(threadId, provider, observedAt),
       readSession: (threadId, authority) =>
-        this.readSession(threadId, authority),
+        this.readSession(threadId, authority, { eventMethods: [] }),
     });
     this.internalStops = new InternalStopSuppression({
       listActiveTurnFoldEventPayloads: (threadId) =>
@@ -2639,9 +2639,7 @@ export class OrchestrationService {
       canReadSession: (threadId, authority) =>
         this.sessionAuthz.canReadSession(threadId, authority),
       listEvents: (threadId) =>
-        (this.options.eventStore?.listEvents(threadId) ?? []).map(
-          (event) => event.payload,
-        ),
+        this.options.eventStore?.listEventPayloads(threadId) ?? [],
       // Task user-input pinning is event-id exact. Do not substitute a
       // transcript projection or a turn replay: one turn can hold steers.
       userInputEventById: (eventId) => {
@@ -4654,11 +4652,14 @@ export class OrchestrationService {
     // supersedes a stale verdict, so a recreated thread id can never
     // inherit a dead session's positive. The store stays the authority.
     let consent: PortableExecutionConsentIdentity | undefined;
-    for (const event of this.options.eventStore?.listEvents(threadId) ?? []) {
-      const method = (event.payload as { method?: unknown })?.method;
+    for (const event of this.options.eventStore?.listEventPayloads(threadId, [
+      'session.started',
+      'session.configured',
+    ]) ?? []) {
+      const method = event.method;
       if (method !== 'session.started' && method !== 'session.configured')
         continue;
-      const metadata = (event.payload as { metadata?: unknown })?.metadata;
+      const metadata = (event as { metadata?: unknown }).metadata;
       consent =
         portableConsentOfStartedMetadata(
           metadata && typeof metadata === 'object'
@@ -4787,19 +4788,32 @@ export class OrchestrationService {
     return undefined;
   }
 
+  hasReadableSession(threadId: string, authority: SessionReadScope): boolean {
+    this.initialize();
+    const persisted = this.options.eventStore?.readSessionByThread(threadId);
+    if (persisted)
+      this.sessionAuthz.hydratePersistedTenantContexts([persisted]);
+    return (
+      Boolean(persisted || this.sessionReadModel.get(threadId)) &&
+      this.sessionAuthz.canReadSession(threadId, authority)
+    );
+  }
+
   async readSession(
     threadId: string,
     authority: SessionReadScope,
+    options?: { eventMethods: readonly string[]; includeLatestEvent?: boolean },
   ): Promise<OrchestrationSessionDetail | null> {
     this.initialize();
-    await this.listSessions(INTERNAL_SESSION_READ_SCOPE);
-
-    const persistedSessions = this.options.eventStore?.readSessions() ?? [];
-    this.sessionAuthz.hydratePersistedTenantContexts(persistedSessions);
-    const persisted = persistedSessions.find(
-      (session) => session.threadId === threadId,
-    );
-    const loaded = this.sessionReadModel.get(threadId);
+    let persisted = this.options.eventStore?.readSessionByThread(threadId);
+    let loaded = this.sessionReadModel.get(threadId);
+    if (!options || (!persisted && !loaded)) {
+      await this.listSessions(INTERNAL_SESSION_READ_SCOPE);
+      persisted = this.options.eventStore?.readSessionByThread(threadId);
+      loaded = this.sessionReadModel.get(threadId);
+    }
+    if (persisted)
+      this.sessionAuthz.hydratePersistedTenantContexts([persisted]);
     if (!persisted && !loaded) {
       return null;
     }
@@ -4807,12 +4821,24 @@ export class OrchestrationService {
       return null;
     }
 
-    // Conversation history remains the full-record contract of this detail
-    // reader. It is deliberately outside archive#1867's summary/query slice; the
-    // cursor migration for that payload belongs to archive#2004.
-    const events = (this.options.eventStore?.listEvents(threadId) ?? []).map(
-      (event) => event.payload,
-    );
+    // Legacy detail callers keep full replay; fact readers name their methods.
+    const events = options
+      ? (this.options.eventStore?.listEventPayloads(
+          threadId,
+          options.eventMethods,
+          options.includeLatestEvent,
+          true,
+        ) ?? [])
+      : (this.options.eventStore?.listEvents(threadId) ?? []).map(
+          (event) => event.payload,
+        );
+    const summaryEvents = options
+      ? (
+          this.options.eventStore?.listSessionProjectionEvents(threadId, {
+            hydrateAttachments: false,
+          }) ?? []
+        ).map((event) => event.payload)
+      : events;
 
     const latestRecovery = this.recoveryCoordinator?.latestProjection(threadId);
     // #3157: a waiting usage-limit resume says whether the setting would let
@@ -4825,6 +4851,7 @@ export class OrchestrationService {
     const conversationFirstPromptedTurn =
       this.options.eventStore?.conversationRootFirstPromptedTurn(
         threadId,
+        options === undefined,
       )?.payload;
     const conversationActivity =
       this.conversationActivity?.readForThread(threadId);
@@ -4834,7 +4861,8 @@ export class OrchestrationService {
       session: buildOrchestrationSessionSummary({
         persisted,
         loaded,
-        events,
+        events: summaryEvents,
+        eventCount: this.options.eventStore?.countEventsByThread(threadId) ?? 0,
         ...(conversationDraftFacts ? { conversationDraftFacts } : {}),
         turnProgress: this.turnProgress.read(threadId),
         readChildWork: this.readChildWork,
@@ -10285,13 +10313,10 @@ export class OrchestrationService {
     userId?: string;
     model?: string;
   } | null {
-    const events =
-      this.options.eventStore
-        ?.listSessionProjectionEvents(threadId)
-        .map((stored) => stored.payload) ?? [];
-    const configured = [...events]
-      .reverse()
-      .find((event) => event.method === 'session.configured');
+    const configured = this.options.eventStore?.latestEventByMethod(
+      threadId,
+      'session.configured',
+    )?.payload;
     if (configured?.method !== 'session.configured') return null;
     const metadata = configured.metadata ?? {};
     // No 'unknown' literal (archive#3082): an unreported slug is an absence,

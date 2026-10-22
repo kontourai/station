@@ -98,6 +98,7 @@ export {
   type ApprovalDecision,
   getOrchestrationConversationEventWindow,
   getOrchestrationSession,
+  getOrchestrationSessionDetailWindow,
   getOrchestrationSessionEventPage,
   getOrchestrationSessionEventWindow,
   interruptTurn,
