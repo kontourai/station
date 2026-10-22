@@ -1183,6 +1183,7 @@ confinement. It has separate commands from the hard-cap API transport below:
 
 ```bash
 station group session-create --file=local-group.json --json
+station group session-list --json
 station group session-get <group-id> --json
 station group session-run <group-id> --json
 station group session-cancel <group-id> --json

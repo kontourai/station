@@ -8,6 +8,7 @@ import {
   getCliSessionGroup,
   getDelegationGroup,
   launchDelegationGroup,
+  listCliSessionGroups,
   listDelegationGroups,
   parseCliSessionGroupInput,
   readDelegationGroupEvents,
@@ -169,15 +170,17 @@ async function runSessionGroupCommand(
 ): Promise<void> {
   const [action, groupId, ...extra] = parsed.positionals;
   const create = action === 'session-create';
+  const list = action === 'session-list';
   if (
     ![
       'session-create',
+      'session-list',
       'session-get',
       'session-run',
       'session-cancel',
     ].includes(action ?? '') ||
     extra.length ||
-    (create ? groupId !== undefined : !groupId)
+    (create || list ? groupId !== undefined : !groupId)
   )
     throw new Error(
       'Expected group session-create --file=<path> or session-get|session-run|session-cancel <group>.',
@@ -190,6 +193,7 @@ async function runSessionGroupCommand(
         'station',
         'credential',
         ...(create ? ['file'] : []),
+        ...(list ? ['after-group'] : []),
       ].includes(flag) ||
       (parsed.repeatedFlags[flag]?.length ?? 0) > 1
     )
@@ -231,7 +235,11 @@ async function runSessionGroupCommand(
       JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
     );
     result = await createCliSessionGroup(apiBase, input);
-  } else if (action === 'session-get')
+  } else if (list)
+    result = await listCliSessionGroups(apiBase, {
+      afterGroupId: optionalValueFlag(parsed, 'after-group'),
+    });
+  else if (action === 'session-get')
     result = await getCliSessionGroup(apiBase, groupId!);
   else if (action === 'session-cancel')
     result = await cancelCliSessionGroup(apiBase, groupId!);

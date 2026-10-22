@@ -3291,6 +3291,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'DELETE',
       path: '/api/orchestration/conversations/:conversationId/context-boundary/:idempotencyKey',
     },
+    { method: 'GET', path: '/api/orchestration/session-groups' },
     { method: 'POST', path: '/api/orchestration/session-groups' },
     { method: 'GET', path: '/api/orchestration/session-groups/:groupId' },
     { method: 'POST', path: '/api/orchestration/session-groups/:groupId/run' },

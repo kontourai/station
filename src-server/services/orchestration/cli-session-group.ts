@@ -317,6 +317,65 @@ export class CliSessionGroups<T> {
     return this.view(groupId, owner);
   }
 
+  async list(
+    owner: string,
+    afterGroupId?: string,
+  ): Promise<{
+    groups: CliSessionGroupView[];
+    nextGroupId: string | null;
+    hasMore: boolean;
+  }> {
+    if (afterGroupId !== undefined) id.parse(afterGroupId);
+    const names = readdirSync(this.root)
+      .filter((name) => name.endsWith('.json'))
+      .sort();
+    if (names.length > 128)
+      throw new CliSessionGroupUnavailable('group_storage_unavailable');
+    const groups: CliSessionGroupView[] = [];
+    let hasMore = false;
+    for (const name of names) {
+      const groupId = id.parse(name.slice(0, -5));
+      if (afterGroupId !== undefined && groupId <= afterGroupId) continue;
+      const record = recordSchema.parse(
+        readJsonFile(this.path(groupId), null, {
+          maxBytes: MAX_BYTES,
+          label: 'CLI session group',
+        }),
+      );
+      if (record.groupId !== groupId)
+        throw new CliSessionGroupUnavailable('group_storage_unavailable');
+      if (record.ownerKey !== digest(owner)) continue;
+      if (groups.length === 16) {
+        hasMore = true;
+        break;
+      }
+      const group = await this.view(groupId, owner);
+      if (
+        Buffer.byteLength(
+          JSON.stringify({
+            success: true,
+            data: {
+              groups: [...groups, group],
+              nextGroupId: groupId,
+              hasMore: true,
+            },
+          }),
+        ) > 262_144
+      ) {
+        if (!groups.length)
+          throw new CliSessionGroupUnavailable('group_response_too_large');
+        hasMore = true;
+        break;
+      }
+      groups.push(group);
+    }
+    return {
+      groups,
+      nextGroupId: hasMore ? (groups.at(-1)?.groupId ?? null) : null,
+      hasMore,
+    };
+  }
+
   async view(groupId: string, owner: string): Promise<CliSessionGroupView> {
     const record = this.read(groupId, owner);
     const flow = record.flowReady

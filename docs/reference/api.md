@@ -1643,6 +1643,7 @@ filesystem custody. The Agents inspector is reached at `/agents?tab=ensembles`.
 The personal runtime exposes an initial Station-authorized session-group path:
 
 - `POST /api/orchestration/session-groups`: create or replay an operation.
+- `GET /api/orchestration/session-groups?afterGroupId=<cursor>`: list credential-owned groups in bounded pages.
 - `GET /api/orchestration/session-groups/:groupId`: inspect its durable members.
 - `POST /api/orchestration/session-groups/:groupId/run`: supervise the ready Flow frontier until return, cancellation or deadline.
 - `POST /api/orchestration/session-groups/:groupId/cancel`: close admission and request member interruption.

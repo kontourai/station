@@ -5119,7 +5119,7 @@ checkout exports do not establish registry availability.
 ## CLI session groups
 
 `@kontourai/station-sdk/client` exports `parseCliSessionGroupInput`,
-`createCliSessionGroup`, `getCliSessionGroup`, `runCliSessionGroup` and
+`createCliSessionGroup`, `listCliSessionGroups`, `getCliSessionGroup`, `runCliSessionGroup` and
 `cancelCliSessionGroup`, with `CliSessionGroupCreateInput` and
 `CliSessionGroupView`. They target the personal Station's
 [CLI session-group API](api.md#cli-session-groups), using the same credential and

@@ -254,6 +254,19 @@ test('registered CLI and SDK create three real orchestration sessions and initia
     '--json',
   ]);
   const group: CliSessionGroupView = JSON.parse(output.splice(0).join('\n'));
+  await runCli([
+    'group',
+    'session-list',
+    `--api-base=${f.apiBase}`,
+    '--credential=group-test',
+    '--json',
+  ]);
+  const inventory: { groups: CliSessionGroupView[] } = JSON.parse(
+    output.splice(0).join('\n'),
+  );
+  expect(inventory.groups.map((value) => value.groupId)).toEqual([
+    group.groupId,
+  ]);
   const running = runCli([
     'group',
     'session-run',

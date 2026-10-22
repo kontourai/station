@@ -4,6 +4,7 @@ import {
 } from '@kontourai/station-contracts/agent-identity';
 import type {
   CliSessionGroupCreateInput,
+  CliSessionGroupListPage,
   CliSessionGroupView,
 } from '@kontourai/station-contracts/delegation-group';
 import { z } from 'zod/v3';
@@ -16,6 +17,7 @@ import {
 
 export type {
   CliSessionGroupCreateInput,
+  CliSessionGroupListPage,
   CliSessionGroupView,
 } from '@kontourai/station-contracts/delegation-group';
 
@@ -217,4 +219,27 @@ export function cancelCliSessionGroup(
   options?: ClientRequestOptions,
 ): Promise<CliSessionGroupView> {
   return command(`${groupPath(apiBase, groupId)}/cancel`, {}, options);
+}
+
+export async function listCliSessionGroups(
+  apiBase: string,
+  input: { afterGroupId?: string } = {},
+  options?: ClientRequestOptions,
+): Promise<CliSessionGroupListPage> {
+  const suffix =
+    input.afterGroupId === undefined
+      ? ''
+      : `?afterGroupId=${encodeURIComponent(seatId.parse(input.afterGroupId))}`;
+  const response = await getJson(`${root(apiBase)}${suffix}`, {
+    ...options,
+    maxResponseBytes: 262_144,
+  });
+  return z
+    .object({
+      groups: z.array(viewSchema).max(16),
+      nextGroupId: seatId.nullable(),
+      hasMore: z.boolean(),
+    })
+    .strict()
+    .parse(await readEnvelopeOrThrow<unknown>(response));
 }

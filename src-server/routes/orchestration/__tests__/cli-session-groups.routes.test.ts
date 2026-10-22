@@ -351,6 +351,19 @@ test('operation replay is inert, conflicting intent refuses, and another credent
       })
     ).status,
   ).toBe(404);
+  const listed = await f.request('/session-groups');
+  expect(
+    (
+      (await listed.json()) as { data: { groups: CliSessionGroupView[] } }
+    ).data.groups.map((value) => value.groupId),
+  ).toEqual([group.groupId]);
+  const foreign = await f.request('/session-groups', undefined, {
+    headers: { 'fixture-binding': 'other-credential' },
+  });
+  expect(
+    ((await foreign.json()) as { data: { groups: CliSessionGroupView[] } }).data
+      .groups,
+  ).toEqual([]);
   f.revoke();
   expect(
     (await f.request(`/session-groups/${group.groupId}/run`, {})).status,
@@ -416,4 +429,56 @@ test('a completed snapshot from a different provider turn cannot release a depen
     abort.abort();
     await running;
   }
+}, 30_000);
+
+test('group inventory pages do not lose credential-owned records or expose private briefs', async () => {
+  const f = fixture();
+  const { body } = await f.create([member('one')], 1);
+  const expected = new Set<string>();
+  const first = await f.request('/session-groups');
+  for (const group of (
+    (await first.json()) as { data: { groups: CliSessionGroupView[] } }
+  ).data.groups)
+    expected.add(group.groupId);
+  for (let i = 1; i <= 16; i += 1) {
+    const created = await f.request('/session-groups', {
+      ...body,
+      operationId: `page-${i}`,
+    });
+    expect(created.status).toBe(200);
+    expected.add(
+      ((await created.json()) as { data: CliSessionGroupView }).data.groupId,
+    );
+  }
+  const page = await f.request('/session-groups');
+  const pageText = await page.text();
+  const one = JSON.parse(pageText) as {
+    data: {
+      groups: CliSessionGroupView[];
+      hasMore: boolean;
+      nextGroupId: string;
+    };
+  };
+  expect(one.data.groups).toHaveLength(16);
+  expect(one.data.hasMore).toBe(true);
+  expect(pageText).not.toContain('private brief');
+  const next = await f.request(
+    `/session-groups?afterGroupId=${encodeURIComponent(one.data.nextGroupId)}`,
+  );
+  const two = (await next.json()) as {
+    data: {
+      groups: CliSessionGroupView[];
+      hasMore: boolean;
+      nextGroupId: string | null;
+    };
+  };
+  expect(two.data.groups).toHaveLength(1);
+  expect(two.data.hasMore).toBe(false);
+  expect(two.data.nextGroupId).toBeNull();
+  expect(
+    new Set(
+      [...one.data.groups, ...two.data.groups].map((group) => group.groupId),
+    ),
+  ).toEqual(expected);
+  expect(f.calls).toHaveLength(0);
 }, 30_000);

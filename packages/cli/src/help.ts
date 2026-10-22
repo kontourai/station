@@ -77,6 +77,7 @@ const VERBS: Record<string, VerbSpec> = {
     summary: 'Read and supervise a server-owned delegation group',
     usage: [
       'station group session-create --file=<local-group.json> [--json]',
+      'station group session-list [--after-group=<id>] [--json]',
       'station group session-get|session-run|session-cancel <group> [--json]',
       'station group create --preparation=<id> --operation=<id> [--json]',
       'station group get <group> [--json]',
@@ -88,6 +89,7 @@ const VERBS: Record<string, VerbSpec> = {
     ],
     actions: [
       'session-create',
+      'session-list',
       'session-get',
       'session-run',
       'session-cancel',

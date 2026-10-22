@@ -4365,6 +4365,11 @@ export function createOrchestrationRoutes(
       );
     }),
   );
+  app.get('/session-groups', (c) =>
+    respondSessionGroup(c, (groups, authority) =>
+      groups.list(authority.owner, c.req.query('afterGroupId')),
+    ),
+  );
   app.get('/session-groups/:groupId', (c) =>
     respondSessionGroup(c, (groups, authority) =>
       groups.view(param(c, 'groupId'), authority.owner),
