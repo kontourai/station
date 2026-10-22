@@ -3158,6 +3158,7 @@ const DELEGATION_STATUS_EVENTS = {
     'turn.completed',
     'turn.aborted',
     'runtime.error',
+    'runtime_error',
     'request.opened',
     'request.resolved',
     'request.delivery',

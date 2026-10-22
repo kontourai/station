@@ -1897,13 +1897,14 @@ send ISO 8601 for clarity. Unparseable supplied bounds return 400.
 
 Historical filters are `agent`, `tool`, `engine`, `conversation`, and
 `tools=true`. `limit` is optional and capped at 5,000; without it there is no
-presentation count cap. The disk reader still enforces 10,000 owner-matching
-rows, 8 MiB of matching NDJSON, 32 MiB scanned bytes and 1 MiB per line, before
-Session/tenant and dimension filtering. Exceeding any budget returns 413 with
-`{success: false, code: "event_history_limit_exceeded", error}`. Narrow the time
-range or archive oversized/cold files; no partial result is returned. An explicit
-presentation limit does not bypass these budgets. Results are ordered by event timestamp, and a
-limit selects the most recent matching rows. `truncated` reports actual drops.
+presentation count cap. Visibility and dimension filters run before the reader
+retains the latest matching timestamps, up to 10,000 rows and 8 MiB of NDJSON.
+The scan stops after 32 MiB or at a line larger than 1 MiB, before parsing it.
+Dropped rows or an exhausted scan/line budget return `truncated: true` with the
+bounded result. When scanning stops early, unread bytes may contain newer rows;
+narrow the range or archive oversized files to inspect omitted history.
+Results are ordered by event timestamp and a limit selects the most recent
+matching rows among scanned bytes.
 These dimension/limit options are implemented in the historical branch, not
 as live SSE subscription filters.
 
