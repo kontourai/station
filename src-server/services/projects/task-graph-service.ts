@@ -4207,75 +4207,87 @@ export class TaskGraphService {
     try {
       if (!this.assignmentClaimService) return { releasedSubjects: released };
       const data = this.readStore();
+      // One group per work item, however its ref is spelled (review round
+      // 2, P3-7): an open Task on `github:A/b#1` keeps the claim a done Task
+      // made on `github:a/b#1`. Each spelling is still released as the
+      // subject its dispatch claimed.
       const tasksBySubject = new Map<string, TaskRecord[]>();
       for (const task of data.tasks) {
         const subjectId = task.workItemRef;
         if (!subjectId || !isNamespacedWorkItemRef(subjectId)) continue;
-        const list = tasksBySubject.get(subjectId) ?? [];
+        const key = workItemRefKey(subjectId);
+        const list = tasksBySubject.get(key) ?? [];
         list.push(task);
-        tasksBySubject.set(subjectId, list);
+        tasksBySubject.set(key, list);
       }
 
-      for (const [subjectId, tasksForSubject] of tasksBySubject) {
+      for (const [subjectKey, tasksForSubject] of tasksBySubject) {
         const isTerminal = (task: TaskRecord) =>
           task.status === 'done' || task.status === 'canceled';
         if (tasksForSubject.some((task) => !isTerminal(task))) continue;
-
-        let artifactRoot: string | undefined;
-        for (const task of tasksForSubject) {
-          const workspace = await this.resolveProjectWorkspace?.(
-            task.projectId,
-          );
-          if (workspace) {
-            artifactRoot = this.assignmentArtifactRoot(workspace);
-            break;
+        for (const subjectId of new Set(
+          tasksForSubject.map((task) => task.workItemRef!),
+        )) {
+          let artifactRoot: string | undefined;
+          for (const task of tasksForSubject) {
+            const workspace = await this.resolveProjectWorkspace?.(
+              task.projectId,
+            );
+            if (workspace) {
+              artifactRoot = this.assignmentArtifactRoot(workspace);
+              break;
+            }
           }
-        }
-        if (!artifactRoot) continue;
+          if (!artifactRoot) continue;
 
-        const status = await this.assignmentClaimService.status({
-          artifactRoot,
-          subjectId,
-        });
-        if (status.outcome !== 'claimed') continue;
-        if (status.actor.runtime !== 'station') continue;
+          const status = await this.assignmentClaimService.status({
+            artifactRoot,
+            subjectId,
+          });
+          if (status.outcome !== 'claimed') continue;
+          if (status.actor.runtime !== 'station') continue;
 
-        // Ownership proof: a dispatch record THIS instance persisted for a
-        // task sharing this subject, whose session_id matches the CLI's
-        // reported holder EXACTLY. `runtime === 'station'` alone proves
-        // nothing about WHICH Station instance/task made the claim.
-        const provingDispatch = data.dispatches.find(
-          (dispatch) =>
-            dispatch.claim?.outcome === 'claimed' &&
-            dispatch.claim.subjectId === subjectId &&
-            dispatch.sessionId === status.actor.session_id &&
-            tasksForSubject.some((task) => task.id === dispatch.taskId),
-        );
-        if (!provingDispatch) continue; // ambiguous — never guess
-
-        // Narrow the race against a new task being created and dispatched
-        // onto this subject while the sweep is still running.
-        const stillAllTerminal = this.readStore()
-          .tasks.filter((task) => task.workItemRef === subjectId)
-          .every(isTerminal);
-        if (!stillAllTerminal) continue;
-
-        const result = await this.releaseDispatchClaim(
-          provingDispatch,
-          provingDispatch.taskId,
-          'startup reconciliation: task reached a terminal status without a claim release',
-        );
-        taskAssignmentClaimTotal.add(1, {
-          operation: 'reconcile',
-          outcome: result,
-        });
-        if (result === 'released' || result === 'skipped') {
-          released.push(subjectId);
-        } else if (result === 'failed' || result === 'unavailable') {
-          this.logger?.warn(
-            'Startup reconciliation failed to release a stale assignment claim',
-            { taskId: provingDispatch.taskId, subjectId, outcome: result },
+          // Ownership proof: a dispatch record THIS instance persisted for a
+          // task sharing this subject, whose session_id matches the CLI's
+          // reported holder EXACTLY. `runtime === 'station'` alone proves
+          // nothing about WHICH Station instance/task made the claim.
+          const provingDispatch = data.dispatches.find(
+            (dispatch) =>
+              dispatch.claim?.outcome === 'claimed' &&
+              dispatch.claim.subjectId === subjectId &&
+              dispatch.sessionId === status.actor.session_id &&
+              tasksForSubject.some((task) => task.id === dispatch.taskId),
           );
+          if (!provingDispatch) continue; // ambiguous — never guess
+
+          // Narrow the race against a new task being created and dispatched
+          // onto this subject while the sweep is still running.
+          const stillAllTerminal = this.readStore()
+            .tasks.filter(
+              (task) =>
+                task.workItemRef !== undefined &&
+                workItemRefKey(task.workItemRef) === subjectKey,
+            )
+            .every(isTerminal);
+          if (!stillAllTerminal) continue;
+
+          const result = await this.releaseDispatchClaim(
+            provingDispatch,
+            provingDispatch.taskId,
+            'startup reconciliation: task reached a terminal status without a claim release',
+          );
+          taskAssignmentClaimTotal.add(1, {
+            operation: 'reconcile',
+            outcome: result,
+          });
+          if (result === 'released' || result === 'skipped') {
+            released.push(subjectId);
+          } else if (result === 'failed' || result === 'unavailable') {
+            this.logger?.warn(
+              'Startup reconciliation failed to release a stale assignment claim',
+              { taskId: provingDispatch.taskId, subjectId, outcome: result },
+            );
+          }
         }
       }
     } catch (error) {

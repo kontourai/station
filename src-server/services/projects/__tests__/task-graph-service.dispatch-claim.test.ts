@@ -931,6 +931,45 @@ describe('TaskGraphService dispatch-as-claim (#584)', () => {
     // Confirmation-pass finding: per-task evaluation of a SHARED subject let
     // one task's own terminal status release ANOTHER task's genuinely live
     // claim, since `runtime === 'station'` alone is not ownership proof.
+    test("keeps a done Task's claim while an open Task names the same item in another spelling (review round 2, P3-7)", async () => {
+      const workspace = makeTempDir('station-workspace-');
+      const assignmentClaimService = new AssignmentClaimService();
+      const { service, taskGraphPath } = createService({
+        workspace,
+        assignmentClaimService,
+      });
+      const subjectId = 'github:kontourai/station#598';
+      // Task B claimed the item, then reached done without a release.
+      const taskB = await service.createTask({
+        projectId: 'project-alpha',
+        title: 'Done task B',
+        workItemRef: subjectId,
+      });
+      const dispatchB = await dispatchTaskForTest(service, taskB.id, {});
+      expect(dispatchB.dispatch.claim?.outcome).toBe('claimed');
+      const persisted = JSON.parse(readFileSync(taskGraphPath, 'utf-8'));
+      persisted.tasks = persisted.tasks.map(
+        (t: { id: string; status: string }) =>
+          t.id === taskB.id ? { ...t, status: 'done' } : t,
+      );
+      require('node:fs').writeFileSync(
+        taskGraphPath,
+        JSON.stringify(persisted, null, 2),
+      );
+      // Task A is open on the same item, spelled with capitals.
+      await service.createTask({
+        projectId: 'project-alpha',
+        title: 'Open task A',
+        workItemRef: 'github:Kontourai/Station#598',
+      });
+      const artifactRoot = join(workspace, '.kontourai', 'flow-agents');
+      expect(readAssignmentStatus(artifactRoot, subjectId).claimed).toBe(true);
+
+      const sweep = await service.reconcileStaleAssignmentClaims();
+      expect(sweep.releasedSubjects).toEqual([]);
+      expect(readAssignmentStatus(artifactRoot, subjectId).claimed).toBe(true);
+    });
+
     test("does not release an active task's claim just because a SIBLING task sharing the same workItemRef is terminal", async () => {
       const workspace = makeTempDir('station-workspace-');
       const assignmentClaimService = new AssignmentClaimService();
