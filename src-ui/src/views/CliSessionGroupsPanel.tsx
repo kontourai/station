@@ -138,7 +138,12 @@ export function CliSessionGroupsPanel({
                 {group.dispatchCount} of {group.members.length} seats dispatched
                 · At most {group.maxConcurrent} occupied seats
               </p>
-              <div className="cli-session-groups__table">
+              <section
+                className="cli-session-groups__table"
+                // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users scroll this wide member table.
+                tabIndex={0}
+                aria-label={`Scrollable member table for ${group.groupId}`}
+              >
                 <table
                   aria-label={`Members and dependencies for ${group.groupId}`}
                 >
@@ -224,7 +229,7 @@ export function CliSessionGroupsPanel({
                     ))}
                   </tbody>
                 </table>
-              </div>
+              </section>
             </article>
           ))}
           <div className="cli-session-groups__actions">

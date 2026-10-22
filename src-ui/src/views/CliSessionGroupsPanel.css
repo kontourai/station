@@ -46,3 +46,8 @@
   margin-top: var(--k-space-2);
   overflow-wrap: anywhere;
 }
+
+.cli-session-groups__table:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}

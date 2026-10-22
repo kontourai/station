@@ -185,6 +185,13 @@ test('explicit inspection uses real SDK inventory, shows actual dependencies and
     name: 'Members and dependencies for cli-observed',
   });
   expect(screen.getByRole('heading', { name: 'Retained team' })).toBeDefined();
+  const tableRegion = screen.getByRole('region', {
+    name: 'Scrollable member table for cli-observed',
+  });
+  expect(tableRegion.tabIndex).toBe(0);
+  tableRegion.focus();
+  expect(document.activeElement).toBe(tableRegion);
+
   expect(screen.getByText(group.preset!.sha256)).toBeDefined();
   const named = within(screen.getByRole('row', { name: /Rune/ }));
   expect(
