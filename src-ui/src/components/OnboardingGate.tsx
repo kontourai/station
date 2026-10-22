@@ -137,10 +137,6 @@ const loadPendingPairingReconciler = () =>
   import('./PendingPairingReconciler').then((module) => ({
     default: module.PendingPairingReconciler,
   }));
-const loadMobileConnectionBanner = () =>
-  import('./MobileConnectionBanner').then((module) => ({
-    default: module.MobileConnectionBanner,
-  }));
 const loadBundledServiceBanner = () =>
   import('./BundledServiceBanner').then((module) => ({
     default: module.BundledServiceBanner,
@@ -219,7 +215,9 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const firstRunChapterOpen = useFirstRunChapterOpen();
   // Identity-scoped recovery read (not the shared bare-key `useConfig`):
   // under the stable boundary a bare entry would survive its connection.
-  const { data: config } = useRecoveryConfig();
+  const unconfiguredPhone =
+    profile.isMobile && !hasRealSavedConnection(connections);
+  const { data: config } = useRecoveryConfig({ enabled: !unconfiguredPhone });
   const wasInConnections = useRef(pathname.startsWith('/connections'));
   const credentialRequired = activeConnection?.credentialState === 'required';
   const connectionEvidence = `${activeConnection?.id ?? ''}:${activeConnection?.lastSuccessAt ?? ''}:${activeConnection?.credentialState ?? ''}`;
@@ -738,37 +736,38 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       pathname,
       conversationOpen: Boolean(activeChat),
     }) && setupBannerContent;
-  const connectedNotice: ReactNode = setupLauncherVisible ? (
-    <SetupLauncher
-      content={setupBannerContent}
-      firstRun={
-        config?.firstRun?.status === 'pending' ||
-        config?.firstRun?.status === 'skipped'
-      }
-      onOpenTarget={() => {
-        // Going to Connections to *do* the setup is not evidence the setup
-        // worked — defer for this page lifetime instead of recording a
-        // permanent dismissal (archive#794).
-        deferSetupBanner();
-        navigate(
-          setupBannerContent.actionTarget === 'providers'
-            ? getPathForView({ type: 'connections-models' })!
-            : setupBannerContent.actionTarget === 'engine' &&
-                setupBannerContent.engineConnectionId
-              ? getPathForView({
-                  type: 'connections-engine-edit',
-                  id: setupBannerContent.engineConnectionId,
-                })!
-              : getPathForView({ type: 'connections' })!,
-        );
-      }}
-      onOpenHub={() => {
-        deferSetupBanner();
-        navigate(getPathForView({ type: 'connections' })!);
-      }}
-      onDismiss={dismiss}
-    />
-  ) : null;
+  const connectedNotice: ReactNode =
+    !unconfiguredPhone && setupLauncherVisible ? (
+      <SetupLauncher
+        content={setupBannerContent}
+        firstRun={
+          config?.firstRun?.status === 'pending' ||
+          config?.firstRun?.status === 'skipped'
+        }
+        onOpenTarget={() => {
+          // Going to Connections to *do* the setup is not evidence the setup
+          // worked — defer for this page lifetime instead of recording a
+          // permanent dismissal (archive#794).
+          deferSetupBanner();
+          navigate(
+            setupBannerContent.actionTarget === 'providers'
+              ? getPathForView({ type: 'connections-models' })!
+              : setupBannerContent.actionTarget === 'engine' &&
+                  setupBannerContent.engineConnectionId
+                ? getPathForView({
+                    type: 'connections-engine-edit',
+                    id: setupBannerContent.engineConnectionId,
+                  })!
+                : getPathForView({ type: 'connections' })!,
+          );
+        }}
+        onOpenHub={() => {
+          deferSetupBanner();
+          navigate(getPathForView({ type: 'connections' })!);
+        }}
+        onDismiss={dismiss}
+      />
+    ) : null;
 
   // THE THIRD OVERLAY, under the same one-at-a-time rule as the other two.
   // It is mounted after `{children}`, so wherever it renders it renders on
@@ -795,15 +794,6 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
             status: bundledStatus,
             onRestart: handleRestartBundledServer,
             onOpenConnections: openConnectionList,
-          }}
-        />
-      )}
-      {profile.isMobile && !hasRealSavedConnection(connections) && (
-        <LazyBoundary
-          load={loadMobileConnectionBanner}
-          pending={null}
-          componentProps={{
-            onOpen: openConnectionList,
           }}
         />
       )}
@@ -862,7 +852,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       )}
       {connectedNotice}
       {children}
-      {usageTelemetryDisclosureMounted ? (
+      {!unconfiguredPhone && usageTelemetryDisclosureMounted ? (
         <UsageTelemetryDisclosure firstRun />
       ) : null}
       {stationSetup ? (

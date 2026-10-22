@@ -15,7 +15,9 @@ without adding a model API key:
 2. Open **Customize** (the sparkle icon at the bottom of the sidebar) →
    **Connections** → **Engines** → **Codex**. Confirm the account is signed in.
    **Check connection** sends a short message using your model allowance.
-3. On Home, choose **Codex** in the Agent picker, write a request, and choose
+3. An empty Home guides you through choosing an agent and optionally adding
+   files. **View available agents** opens the agent list; **Set up an agent
+   engine** opens Connections when no agent is runnable. On Home, choose **Codex** in the Agent picker, write a request, and choose
    **Start**. You can start without a Project. The detected Codex Agent is
    enough; creating a custom Agent is optional.
 4. When you want to work with files, choose **Open local project** on Home and
@@ -92,8 +94,14 @@ replies, continue chats, and review work. Start on your computer:
 2. Open the Station name at the top of the computer’s window and choose
    **Pair phone**. Check the address before creating the invitation.
    **Settings → Pairing → Pair device** opens the same screen.
-3. On your phone, open Station, choose **Pair with a code**, and use the
+3. On a new phone, open Station and choose **Connect to a Station**, then
+   **Pair with a code**. Use the
    invitation from the computer. Keep the computer running.
+
+A new phone shows the connection welcome until you save a real Station.
+A saved Station that is offline or needs access keeps its connection recovery
+controls instead. The welcome does not run workspace queries against an
+unconfigured endpoint.
 
 Station's phone apps are not in public app stores yet. Android builds reach
 testers in a Google Play internal testing group and iOS builds reach invited

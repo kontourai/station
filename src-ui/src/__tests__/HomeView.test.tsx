@@ -1303,6 +1303,39 @@ describe('HomeView', () => {
     ).toBeNull();
   });
 
+  test('guides a confirmed empty Station to its first chat and keeps Project optional', () => {
+    fixtures.projects = [];
+    const onNavigate = vi.fn();
+    renderHomeView({ continuation: null, onNavigate });
+    expect(
+      screen.getByRole('heading', { name: 'Start your first conversation' }),
+    ).toBeTruthy();
+    expect(screen.queryByText('Nothing here yet')).toBeNull();
+    expect(
+      screen.getAllByRole('textbox', { name: 'What would you like done?' }),
+    ).toHaveLength(1);
+    fireEvent.click(
+      screen.getByRole('button', { name: /View available agents/ }),
+    );
+    expect(onNavigate).toHaveBeenLastCalledWith({ type: 'agents' });
+    fireEvent.click(screen.getByRole('button', { name: /Open local project/ }));
+    expect(onNavigate).toHaveBeenLastCalledWith({ type: 'project-new' });
+    expect(
+      screen.getByText(/ordinary chats can start without a Project/),
+    ).toBeTruthy();
+  });
+
+  test('routes a confirmed empty Station without agents to engine setup', () => {
+    fixtures.projects = [];
+    fixtures.agents = [];
+    const onNavigate = vi.fn();
+    renderHomeView({ continuation: null, onNavigate });
+    fireEvent.click(
+      screen.getByRole('button', { name: /Set up an agent engine/ }),
+    );
+    expect(onNavigate).toHaveBeenCalledWith({ type: 'connections-engines' });
+  });
+
   test('uses the canonical actionable empty state for first work', () => {
     const { container } = renderHomeView({
       continuation: null,
