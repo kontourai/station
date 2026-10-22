@@ -44,12 +44,14 @@ impl PathState {
         emit: impl FnOnce(NetworkPathSnapshot),
     ) {
         let mut current = self.0.lock().unwrap_or_else(|error| error.into_inner());
-        match current.as_ref() {
-            None => crate::native_http_transport::retire_idle_connections(),
-            Some(path) if path.identity != identity => {
-                crate::native_http_transport::network_changed();
-            }
-            Some(_) => {}
+        if current.is_none() {
+            crate::native_http_transport::retire_idle_connections();
+        }
+        if current
+            .as_ref()
+            .is_some_and(|path| path.identity != identity)
+        {
+            crate::native_http_transport::network_changed();
         }
         if current.as_ref().is_some_and(|path| {
             path.identity == identity
