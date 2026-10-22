@@ -2838,7 +2838,12 @@ atoms, [#4007](https://github.com/kontourai/station/issues/4007)). The room
 working-state worker applies the same bounds before it commits a write
 (`revisionEvidenceAdmission`), counting stored receipts plus every publication
 admitted but not yet frozen, so a room write is refused as `document-full` or
-`evidence-ledger-full` instead of being admitted and then never frozen. Missing compatible attribution is `attribution_unverified`; a portable
+`evidence-ledger-full` instead of being admitted and then never frozen.
+A Task document's capacity is therefore per document (about 5,400 plain
+characters ever typed, deleted ones included) and also bounded by this
+Station-wide ledger: 256 receipts / 4 MiB, each holding a full snapshot of the
+document it records. A few hundred small saves, or a few saves of a large
+document, fill it for every Task; retiring receipts is [#4055](https://github.com/kontourai/station/issues/4055). Missing compatible attribution is `attribution_unverified`; a portable
 file alone grants no trust. Returned records, exports and projections are cloned.
 
 [EventStore](../../src-server/services/orchestration/event-store.ts) composes the

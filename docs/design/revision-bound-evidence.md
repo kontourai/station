@@ -119,8 +119,9 @@ few edits of a large document, fill it. Room admission applies the same bounds
 inside its settle transaction and refuses such a write as
 `evidence-ledger-full` before writing it
 ([#4007](https://github.com/kontourai/station/issues/4007)); room editing then
-stops Station-wide until receipts can be retired, which this slice does not
-provide. A lost post-commit response and a peer witness race each
+stops Station-wide, deletions included, until receipts can be retired, which
+this slice does not provide ([#4055](https://github.com/kontourai/station/issues/4055)). A Task document's capacity is per
+document and also bounded by this ledger. A lost post-commit response and a peer witness race each
 receive one bounded restore/retry; the retry's exact inserted count determines
 `duplicate` versus `imported`. A live peer miss refreshes from SQLite before
 returning.
