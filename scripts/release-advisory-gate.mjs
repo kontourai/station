@@ -9,8 +9,8 @@ import {
 } from './dependency-advisory-policy.mjs';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
-import { collectPnpmAudits } from './lib/pnpm-advisory.mjs';
 import { readPnpmLockfile, readPnpmWorkspace } from './lib/pnpm-lockfile.mjs';
+import { collectReleaseAudits } from './lib/release-advisory-collection.mjs';
 
 const POLICY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SHA = /^[a-f0-9]{40}$/;
@@ -80,7 +80,7 @@ export async function auditReleaseSource({
   sourceSha,
   policySha,
   policyRoot = POLICY_ROOT,
-  collect = collectPnpmAudits,
+  collect = collectReleaseAudits,
 }) {
   const source = realpathSync(sourceRoot);
   const policy = realpathSync(policyRoot);
@@ -137,6 +137,8 @@ export async function auditReleaseSource({
 }
 
 if (invokedDirectly(import.meta.url)) {
+  let output;
+  const identity = {};
   try {
     const args = process.argv.slice(2);
     const options = {};
@@ -156,6 +158,12 @@ if (invokedDirectly(import.meta.url)) {
     }
     if (!options['--source-root'] || !options['--output'])
       throw new Error('Missing release advisory roots/output');
+    output = options['--output'];
+    for (const [name, argument] of [
+      ['sourceSha', '--source-sha'],
+      ['policySha', '--policy-sha'],
+    ])
+      if (SHA.test(options[argument] ?? '')) identity[name] = options[argument];
     const receipt = await auditReleaseSource({
       sourceRoot: options['--source-root'],
       sourceSha: options['--source-sha'],
@@ -168,6 +176,18 @@ if (invokedDirectly(import.meta.url)) {
     );
     process.exitCode = receipt.passed ? 0 : 1;
   } catch (error) {
+    if (output) {
+      try {
+        writeFileSync(
+          output,
+          `${JSON.stringify({ schemaVersion: 1, kind: 'station.release-advisory', ...identity, scanCompleted: false, passed: false, status: 'NOT_VERIFIED', reason: 'Collection or identity verification did not complete; inspect the job log' }, null, 2)}\n`,
+        );
+      } catch {
+        console.error(
+          'Release advisory NOT_VERIFIED receipt could not be retained',
+        );
+      }
+    }
     console.error(`Release advisory scan NOT_VERIFIED: ${error.message}`);
     process.exitCode = 2;
   }

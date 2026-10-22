@@ -23,9 +23,14 @@ tracker. The schedule is nominal, not a detection deadline.
 Preview (Beta) and Stable publication require a fresh blocking scan of the
 exact candidate graph. [The release gate](../../scripts/release-advisory-gate.mjs)
 runs from a trusted default-branch policy checkout, not a tag's evaluator or
-exception file. Tooling dependencies are installed in that separate policy
+exception file. A supplied policy snapshot must be an ancestor of the freshly
+selected default branch. Tooling dependencies are installed in that separate policy
 checkout; they are not the graph being audited. The gate checks all six views
-with one registry response, with no receipt reuse or added retry. Candidate
+with one request to the fixed public npm bulk endpoint, pinned TLS roots and
+hostname verification. The collector derives all dependency classes from the
+candidate lock itself; candidate npmrc registry, production/dev/optional,
+ignore or lock-directory options and proxy/CA environment are not collection
+authority. No receipt reuse or retry is added. Candidate
 inputs must match their committed source before and after the scan. The receipt
 binds source SHA, policy SHA, lockfile digest, dependency inputs and scan times.
 A finding is a failed decision; malformed evidence, registry failures, missing
@@ -37,7 +42,19 @@ gates tagged staging before GHCR/Play/store effects, protected native/portable
 publication (including pointer repair), manual npm publication and Beta/Stable
 TestFlight upload, including the internal cohort entrypoint. Nightly TestFlight
 skips the advisory job and retains its existing source, artifact and provider
-gates. These are source contracts, not a completed hosted release claim. See
+gates. Operational failures retain a separate `NOT_VERIFIED` receipt with
+`scanCompleted: false`; it cannot stand in for a completed clean scan.
+
+This workflow coverage starts with tags whose `release.yml` contains the new
+gate. Old tag-push definitions and reruns retain their old YAML and are not
+retroactively protected at direct GHCR/Play/store staging effects. Protected
+publication and provider environments must admit the reviewed workflow source;
+do not rerun pre-policy staging as a substitute for current admission. Current
+main-dispatched publication rechecks old source with trusted policy, but
+pre-migration sources without the pnpm-11/lock-v9 workspace and `.npmrc` contract
+fail closed and are not verified compatible.
+
+These are source contracts, not a completed hosted release claim. See
 [the release process](releasing.md).
 
 ## RSA signature verification backport (2026-10)

@@ -1,7 +1,11 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createServer, request as httpRequest } from 'node:http';
+import https from 'node:https';
+import { syncBuiltinESMExports } from 'node:module';
 import { join, resolve } from 'node:path';
+import { rootCertificates } from 'node:tls';
 import vm from 'node:vm';
 import { load } from 'js-yaml';
 import { describe, expect, it, vi } from 'vitest';
@@ -117,6 +121,174 @@ const collect =
     collectPnpmAudits(scopes, { ...options, run: async () => raw });
 
 describe('trusted release advisory boundary', () => {
+  it('the actual CLI retains an operational NOT_VERIFIED receipt and exits 2 without a registry call', () => {
+    const inputs = fixture();
+    const output = join(temp('release-advisory-operation-'), 'receipt.json');
+    const result = spawnSync(
+      process.execPath,
+      [
+        join(root, 'scripts/release-advisory-gate.mjs'),
+        '--source-root',
+        inputs.sourceRoot,
+        '--source-sha',
+        inputs.sourceSha,
+        '--policy-sha',
+        'a'.repeat(40),
+        '--output',
+        output,
+      ],
+      { encoding: 'utf8', windowsHide: true, timeout: 10_000 },
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('NOT_VERIFIED');
+    expect(JSON.parse(readFileSync(output, 'utf8'))).toMatchObject({
+      scanCompleted: false,
+      passed: false,
+      status: 'NOT_VERIFIED',
+    });
+  });
+
+  it('uses the real collector boundary: candidate production/registry/lock-directory settings cannot hide dev advisories', async () => {
+    const inputs = fixture();
+    const lockPath = join(inputs.sourceRoot, 'pnpm-lock.yaml');
+    const oldLock = readFileSync(lockPath, 'utf8');
+    const changedLock = `${oldLock
+      .replace(
+        '  packages/sdk: {}',
+        '    devDependencies:\n      dev-vulnerable: {specifier: 1.0.0, version: 1.0.0}\n  packages/sdk: {}',
+      )
+      .replace(
+        'snapshots:',
+        '  dev-vulnerable@1.0.0: {resolution: {integrity: fixture}}\nsnapshots:',
+      )}  dev-vulnerable@1.0.0: {}\n`;
+    writeFileSync(lockPath, changedLock);
+    writeFileSync(
+      join(inputs.sourceRoot, '.npmrc'),
+      'production=true\nregistry=https://untrusted.example.test\nstrict-ssl=false\nlockfile-dir=elsewhere\n',
+    );
+    git(inputs.sourceRoot, 'add', '.');
+    git(
+      inputs.sourceRoot,
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.test',
+      '-c',
+      'commit.gpgsign=false',
+      'commit',
+      '-qm',
+      'candidate config attempts suppression',
+    );
+    inputs.sourceSha = git(inputs.sourceRoot, 'rev-parse', 'HEAD');
+    let payload: unknown;
+    let responseMode = 'advisory';
+    const calls: unknown[][] = [];
+    const server = createServer((req, res) => {
+      const chunks: Buffer[] = [];
+      req.on('data', (chunk: Buffer) => chunks.push(chunk));
+      req.on('end', () => {
+        payload = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+        res.setHeader('content-type', 'application/json');
+        if (responseMode === 'unavailable') {
+          res.statusCode = 503;
+          res.end('{}');
+          return;
+        }
+        if (responseMode === 'malformed') {
+          res.end('{');
+          return;
+        }
+        if (
+          responseMode === 'clean' ||
+          !Object.hasOwn(payload as object, 'dev-vulnerable')
+        ) {
+          res.end('{}');
+          return;
+        }
+        res.end(
+          JSON.stringify({
+            'dev-vulnerable': [
+              {
+                url: 'https://github.com/advisories/GHSA-dddd-eeee-ffff',
+                severity: 'high',
+                title: 'dev advisory',
+                vulnerable_versions: '<2.0.0',
+              },
+            ],
+          }),
+        );
+      });
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, '127.0.0.1', resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === 'string')
+      throw new Error('Expected loopback listener');
+    const spy = vi
+      .spyOn(https, 'request')
+      .mockImplementation((...args: unknown[]) => {
+        calls.push(args);
+        const callback = args.at(-1);
+        if (typeof callback !== 'function')
+          throw new Error('Missing real collector response callback');
+        return httpRequest(
+          {
+            hostname: '127.0.0.1',
+            port: address.port,
+            path: '/',
+            method: 'POST',
+          },
+          (response) => callback(response),
+        );
+      });
+    // Redirect only the actual HTTPS transport to a loopback fixture; do not inject raw audit JSON.
+    syncBuiltinESMExports();
+    try {
+      const receipt = await auditReleaseSource(inputs);
+      expect(calls).toHaveLength(1);
+      expect(calls[0][0]).toBe(
+        'https://registry.npmjs.org/-/npm/v1/security/advisories/bulk',
+      );
+      expect(calls[0][1]).toMatchObject({
+        rejectUnauthorized: true,
+        ca: rootCertificates,
+      });
+      expect(payload).toEqual({
+        'dev-vulnerable': ['1.0.0'],
+        vulnerable: ['1.0.0'],
+      });
+      expect(receipt.passed).toBe(false);
+      expect(receipt.result.blockingFindings).toEqual([
+        expect.objectContaining({
+          scope: 'root',
+          reachability: 'full',
+          package: 'dev-vulnerable',
+          advisory: 'GHSA-dddd-eeee-ffff',
+        }),
+      ]);
+      expect(receipt.result.scopes['root/production'].high).toBe(0);
+      responseMode = 'clean';
+      expect((await auditReleaseSource(inputs)).passed).toBe(true);
+      responseMode = 'malformed';
+      await expect(auditReleaseSource(inputs)).rejects.toThrow(
+        'not valid JSON',
+      );
+      responseMode = 'unavailable';
+      await expect(auditReleaseSource(inputs)).rejects.toThrow(
+        'registry HTTP 503',
+      );
+    } finally {
+      spy.mockRestore();
+      syncBuiltinESMExports();
+      server.closeAllConnections();
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
+  });
+
   it('scans the candidate graph, not the clean policy graph, and refuses its tag-supplied waiver', async () => {
     const inputs = fixture();
     const receipt = await auditReleaseSource({
@@ -268,6 +440,45 @@ function condition(expression: string, context: Record<string, unknown>) {
   });
 }
 describe('publication graph cannot borrow feature/advisory silence as a pass', () => {
+  it('executes the policy-binding shell against real Git history: ancestor allowed, foreign revision refused', () => {
+    const job = workflow('release-advisory.yml').jobs.audit;
+    const script = job.steps?.find(
+      (step) => step.name === 'Bind the trusted default-branch policy snapshot',
+    )?.run;
+    if (!script) throw new Error('Expected actual policy binding script');
+    const inputs = fixture();
+    const output = join(temp('release-policy-output-'), 'output');
+    const run = (sha: string) =>
+      execFileSync('bash', ['-c', script], {
+        cwd: inputs.policyRoot,
+        env: { ...process.env, POLICY_SHA: sha, GITHUB_OUTPUT: output },
+        windowsHide: true,
+        timeout: 10_000,
+      });
+    expect(() => run(inputs.sourceSha)).toThrow();
+    expect(() => readFileSync(output)).toThrow();
+    writeFileSync(
+      join(inputs.policyRoot, 'later'),
+      'later trusted main commit',
+    );
+    git(inputs.policyRoot, 'add', '.');
+    git(
+      inputs.policyRoot,
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.test',
+      '-c',
+      'commit.gpgsign=false',
+      'commit',
+      '-qm',
+      'advance trusted main',
+    );
+    run(inputs.policySha);
+    expect(git(inputs.policyRoot, 'rev-parse', 'HEAD')).toBe(inputs.policySha);
+    expect(readFileSync(output, 'utf8')).toBe(`sha=${inputs.policySha}\n`);
+  });
+
   it('runs the central tracker create branch with an accountable owner and actionable run receipt', async () => {
     const document = load(
       readFileSync(join(root, '.github/workflows/main-health.yml'), 'utf8'),
@@ -325,7 +536,7 @@ describe('publication graph cannot borrow feature/advisory silence as a pass', (
     expect(source?.with?.['persist-credentials']).toBe(false);
     const policy = steps.find((step) => step.with?.path === 'release-policy');
     expect(policy?.with?.ref).toBe(
-      `\${{ inputs.policy_sha || github.event.repository.default_branch }}`,
+      `refs/heads/\${{ github.event.repository.default_branch }}`,
     );
     const gate = steps.find((step) =>
       step.run?.includes(
@@ -333,7 +544,7 @@ describe('publication graph cannot borrow feature/advisory silence as a pass', (
       ),
     );
     expect(gate?.run).toContain(
-      '--source-root "$GITHUB_WORKSPACE" --source-sha "$RELEASE_SHA" --policy-sha "$policy_sha"',
+      '--source-root "$GITHUB_WORKSPACE" --source-sha "$RELEASE_SHA" --policy-sha "$POLICY_SHA"',
     );
     expect(
       steps.findIndex(
