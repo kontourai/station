@@ -22006,6 +22006,50 @@ mod tests {
 
     #[cfg(not(mobile))]
     #[test]
+    fn keyring_service_is_registered() {
+        native_secure_entry::assert_registered_service(STATION_CREDENTIAL_SERVICE);
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_writers_cannot_bypass_the_native_secure_entry_boundary() {
+        let mut pending = vec![Path::new(env!("CARGO_MANIFEST_DIR")).join("src")];
+        while let Some(directory) = pending.pop() {
+            for entry in std::fs::read_dir(directory).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    pending.push(path);
+                    continue;
+                }
+                if path.extension().is_none_or(|ext| ext != "rs")
+                    || path.file_name().unwrap() == "native_secure_entry.rs"
+                {
+                    continue;
+                }
+                let text = std::fs::read_to_string(&path)
+                    .unwrap()
+                    .chars()
+                    .filter(|character| !character.is_whitespace())
+                    .collect::<String>();
+                let production = text.split("#[cfg(test)]modtests{").next().unwrap();
+                for bypass in [
+                    "keyring_core::Entry::new",
+                    "usekeyring_core::Entry",
+                    "usekeyring_core::{",
+                    "usekeyring_coreas",
+                ] {
+                    assert!(
+                        !production.contains(bypass),
+                        "{} bypasses NativeSecureEntry: {bypass}",
+                        path.display()
+                    );
+                }
+            }
+        }
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
     fn profile_recovery_runtime_copy_keeps_transient_spawn_failures_retryable() {
         for kind in [
             std::io::ErrorKind::WouldBlock,
@@ -22043,6 +22087,17 @@ mod tests {
                 sidecar_spawn_failure_action(1, &std::io::Error::from_raw_os_error(code)),
                 SidecarSpawnFailureAction::Retry
             );
+        }
+        for kind in [
+            std::io::ErrorKind::NotFound,
+            std::io::ErrorKind::PermissionDenied,
+        ] {
+            let failure = sidecar_spawn_failure(1, std::io::Error::from(kind));
+            assert_eq!(failure.action, SidecarSpawnFailureAction::Fatal);
+            let (title, message) = desktop_home_preparation_failure_copy(&failure.detail);
+            assert_eq!(title, "Station’s built-in Node component could not start");
+            assert!(message.contains("Reinstall Station"));
+            assert!(!message.contains("folder problem"));
         }
         let (title, message) =
             desktop_recovery_failure_copy("Saved credentials appeared during recovery");

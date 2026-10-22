@@ -104,6 +104,20 @@ fn mobile_error(error: tauri_plugin_keyring_store::Error) -> keyring_core::Error
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(not(mobile))]
+    #[test]
+    #[ignore = "isolated process fixture for each production writer service"]
+    fn registered_service_fixture_child() {
+        let service = std::env::var("STATION_TEST_KEYRING_SERVICE")
+            .expect("service fixture requires its parent");
+        let service = Box::leak(service.into_boxed_str());
+        keyring_core::set_default_store(keyring_core::mock::Store::new().unwrap());
+        let entry = NativeSecureEntry::new(service, "isolated-fixture-account").unwrap();
+        entry.set_password("fixture-value").unwrap();
+        assert_eq!(entry.get_password().unwrap(), "fixture-value");
+        entry.delete_credential().unwrap();
+    }
+
     #[test]
     fn unlisted_credential_writers_are_refused_before_os_storage() {
         assert_eq!(STATION_KEYRING_SERVICES.len(), 9);
@@ -116,4 +130,31 @@ mod tests {
             );
         }
     }
+}
+
+#[cfg(all(test, not(mobile)))]
+pub(crate) fn assert_registered_service(service: &'static str) {
+    let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+    command
+        .args([
+            "--exact",
+            "native_secure_entry::tests::registered_service_fixture_child",
+            "--ignored",
+            "--nocapture",
+        ])
+        .env("STATION_TEST_KEYRING_SERVICE", service);
+    crate::apply_no_window(&mut command);
+    let output = command.output().unwrap();
+    assert!(
+        String::from_utf8_lossy(&output.stdout)
+            .contains("test result: ok. 1 passed; 0 failed; 0 ignored;"),
+        "writer fixture did not execute exactly once: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(
+        output.status.success(),
+        "{service}: {}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
