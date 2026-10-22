@@ -43,7 +43,9 @@ function fixture() {
   const commit = execGitSync(['rev-parse', 'HEAD'], {
     cwd: source,
     encoding: 'utf8',
-  }).trim();
+  })
+    .toString()
+    .trim();
   return {
     home,
     source,
@@ -89,7 +91,9 @@ test('a real clone pins content and duplicate requests retain it after the sourc
     execGitSync(['rev-parse', 'HEAD'], {
       cwd: first.checkoutPath,
       encoding: 'utf8',
-    }).trim(),
+    })
+      .toString()
+      .trim(),
   ).toBe(f.commit);
   await expect(
     restarted.acquire({ ...request, sourceRef: 'other' }),

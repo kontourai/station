@@ -362,7 +362,9 @@ test('repository acquisition uses operator Git authority and returns one durable
     execGitSync(['rev-parse', 'HEAD'], {
       cwd: f.folderA,
       encoding: 'utf8',
-    }).trim(),
+    })
+      .toString()
+      .trim(),
   );
   const repeated = await f.send(
     f.operator.credential,

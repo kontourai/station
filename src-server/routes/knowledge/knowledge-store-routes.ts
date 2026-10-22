@@ -54,7 +54,7 @@ import {
   RUNTIME_ROOT_DELETE_FORBIDDEN_ERROR,
 } from '../../knowledge-store/session-backed-roots.js';
 import { expandTilde } from '../../utils/paths.js';
-import { errorMessage } from '../schemas/schemas.js';
+import { errorMessage, param } from '../schemas/schemas.js';
 
 interface KnowledgeStoreRouteDeps {
   store: KnowledgeStoreProvider;
@@ -292,7 +292,7 @@ export function createKnowledgeStoreRoutes(deps: KnowledgeStoreRouteDeps) {
   // files; see its own doc comment).
   const disconnect = async (c: Context) => {
     try {
-      const id = c.req.param('id');
+      const id = param(c, 'id');
       let expected: KnowledgeStoreRoot | undefined;
       const raw = await c.req.text();
       if (c.req.method === 'POST' && !raw)
