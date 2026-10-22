@@ -55,12 +55,14 @@ async function gone(pid: number): Promise<boolean> {
   }
 }
 
+// File cleanup also runs when the service suite's teardown fails.
+// Scopes do not share the fixture service's PrivateTmp mount.
+const makeTempDir = trackTempDirs({
+  base: join(root, 'node_modules'),
+  lifetime: 'file',
+});
+
 describe.skipIf(!manager)('running server workload containment', () => {
-  // Scopes do not share the fixture service's PrivateTmp mount.
-  const makeTempDir = trackTempDirs({
-    base: join(root, 'node_modules'),
-    lifetime: 'file',
-  });
   const unit = `station-resource-proof-${randomUUID()}.service`;
   const slice = `stationworkload${createHash('sha256').update(unit).digest('hex').slice(0, 16)}.slice`;
   let base: string;
