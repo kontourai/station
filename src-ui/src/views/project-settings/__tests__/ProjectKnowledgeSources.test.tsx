@@ -7,11 +7,13 @@ import { ProjectKnowledgeSources } from '../ProjectKnowledgeSources';
 const state = vi.hoisted(() => ({
   roots: [] as KnowledgeStoreRoot[],
   create: vi.fn(),
+  attach: vi.fn(),
   validate: vi.fn(),
   disconnect: vi.fn(),
 }));
 const root = {
   id: 'root:acme',
+  projectId: 'project-acme',
   scope: { kind: 'project' as const, projectSlug: 'acme' },
   adapterId: 'kit-default-store',
   displayName: 'Notes',
@@ -19,6 +21,10 @@ const root = {
   createdAt: '2026-10-22T00:00:00Z',
 };
 vi.mock('@kontourai/station-sdk', () => ({
+  useAttachKnowledgeRootProjectMutation: () => ({
+    mutateAsync: state.attach,
+    reset: vi.fn(),
+  }),
   useKnowledgeRootsQuery: () => ({ data: state.roots, refetch: vi.fn() }),
   useKnowledgeAdaptersQuery: () => ({
     data: [{ id: 'kit-default-store', displayName: 'Default store' }],
@@ -43,7 +49,13 @@ beforeEach(() => {
 const authority = { apiBase: 'http://station.test', authorityKey: 'a' };
 
 test('editing an existing source invalidates validation before connection', async () => {
-  render(<ProjectKnowledgeSources slug="acme" authority={authority} />);
+  render(
+    <ProjectKnowledgeSources
+      slug="acme"
+      projectId="project-acme"
+      authority={authority}
+    />,
+  );
   const path = screen.getByLabelText('Path on the Station host');
   const connect = screen.getByRole('button', { name: 'Connect store' });
   expect(connect.hasAttribute('disabled')).toBe(true);
@@ -65,7 +77,13 @@ test('editing an existing source invalidates validation before connection', asyn
 });
 
 test('disconnect confirmation submits the observed root and explains retained files', async () => {
-  render(<ProjectKnowledgeSources slug="acme" authority={authority} />);
+  render(
+    <ProjectKnowledgeSources
+      slug="acme"
+      projectId="project-acme"
+      authority={authority}
+    />,
+  );
   fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
   expect(screen.getByText(/Its files remain on the host/)).toBeTruthy();
   const buttons = screen.getAllByRole('button', { name: 'Disconnect' });
@@ -80,7 +98,13 @@ test('disconnect confirmation submits the observed root and explains retained fi
 });
 
 test('a connected default-format store prevents another managed alias', () => {
-  render(<ProjectKnowledgeSources slug="acme" authority={authority} />);
+  render(
+    <ProjectKnowledgeSources
+      slug="acme"
+      projectId="project-acme"
+      authority={authority}
+    />,
+  );
   expect(
     screen.queryByRole('button', { name: 'Create managed store' }),
   ).toBeNull();
@@ -91,17 +115,52 @@ test('a connected default-format store prevents another managed alias', () => {
 
 test('a removed store restores managed creation despite a retained creation result', () => {
   const view = render(
-    <ProjectKnowledgeSources slug="acme" authority={authority} />,
+    <ProjectKnowledgeSources
+      slug="acme"
+      projectId="project-acme"
+      authority={authority}
+    />,
   );
   expect(
     screen.queryByRole('button', { name: 'Create managed store' }),
   ).toBeNull();
   state.roots = [];
-  view.rerender(<ProjectKnowledgeSources slug="acme" authority={authority} />);
+  view.rerender(
+    <ProjectKnowledgeSources
+      slug="acme"
+      projectId="project-acme"
+      authority={authority}
+    />,
+  );
   expect(
     screen.getByRole('button', { name: 'Create managed store' }),
   ).toBeTruthy();
   expect(
     screen.queryByText(/A default-format store is already connected/),
   ).toBeNull();
+});
+
+test('legacy attachment confirms member visibility and pins the exact registration and current Project', async () => {
+  const legacy = { ...root, projectId: undefined };
+  state.roots = [legacy];
+  state.attach.mockResolvedValue(root);
+  render(
+    <ProjectKnowledgeSources
+      slug="acme"
+      projectId="project-acme"
+      authority={authority}
+    />,
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Attach to this Project' }),
+  );
+  expect(screen.getByText(/Project members with view access/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Attach store' }));
+  await waitFor(() =>
+    expect(state.attach).toHaveBeenCalledWith({
+      expectedRoot: legacy,
+      projectSlug: 'acme',
+      projectId: 'project-acme',
+    }),
+  );
 });

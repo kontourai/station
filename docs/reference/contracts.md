@@ -1235,3 +1235,14 @@ canonical inventory fingerprints and the independent plugin data revision.
 `parsePluginDailyPing(payload, declaration, namespacedPublisher)` requires exact declared event/property
 histograms and rejects identifying/undeclared fields. Broker acceptance is deferred.
 See [Publisher analytics](../guides/plugins.md#publisher-analytics).
+
+## Project knowledge registration ownership
+
+`KnowledgeStoreRoot.projectId` is an optional durable Project binding. Older
+registrations omit it; member access never infers it from `scope.projectSlug`.
+The pure `isProjectKnowledgeRoot(root, projectId)` helper owns matching for
+Project recall and tool delivery. `knowledgeRootIncarnationKey` includes the
+binding, while remaining a metadata precondition rather than a generation proof.
+The provider's optional `attachRootToProject` capability binds only an exact,
+unbound legacy registration after explicit operator selection; older providers
+remain source-compatible and report the missing capability.

@@ -66,10 +66,7 @@ interface KnowledgeStoreRouteDeps {
     request: Request,
     root: KnowledgeStoreRoot,
   ) => boolean | Promise<boolean>;
-  mayRegisterRoot?: (
-    request: Request,
-    input: { scope: KnowledgeRootScope; storeRoot?: string; adapterId: string },
-  ) => boolean | Promise<boolean>;
+  mayRegisterRoot?: (request: Request) => boolean | Promise<boolean>;
   mayValidateRoot?: (request: Request) => boolean;
   guardReadResponse?: (
     request: Request,
@@ -79,6 +76,7 @@ interface KnowledgeStoreRouteDeps {
   /** Station home dir — same accessor `knowledge-index-routes.ts` already uses
    * (`context.configLoader.getProjectHomeDir()`). */
   dataDir: string;
+  projectIdForSlug?: (slug: string) => string | undefined;
 }
 
 interface CreateRootBody {
@@ -203,24 +201,25 @@ export function createKnowledgeStoreRoutes(deps: KnowledgeStoreRouteDeps) {
         return c.json({ success: false, error: 'Invalid displayName' }, 400);
       }
 
+      const projectId =
+        scope.kind === 'project'
+          ? deps.projectIdForSlug?.(scope.projectSlug)
+          : undefined;
+      if (scope.kind === 'project' && deps.projectIdForSlug && !projectId)
+        return c.json({ success: false, error: 'Project not found.' }, 404);
       const storeRoot =
         typeof body.storeRoot === 'string' && body.storeRoot.length > 0
           ? expandTilde(body.storeRoot)
-          : defaultStoreRoot(deps.dataDir, scope);
+          : projectId
+            ? join(deps.dataDir, 'knowledge', 'projects', projectId, 'store')
+            : defaultStoreRoot(deps.dataDir, scope);
 
       const displayName =
         typeof body.displayName === 'string' && body.displayName.length > 0
           ? body.displayName
           : defaultDisplayName(scope);
 
-      if (
-        deps.mayRegisterRoot &&
-        !(await deps.mayRegisterRoot(c.req.raw, {
-          scope,
-          adapterId,
-          ...(body.storeRoot === undefined ? {} : { storeRoot }),
-        }))
-      )
+      if (deps.mayRegisterRoot && !(await deps.mayRegisterRoot(c.req.raw)))
         return c.json(
           {
             success: false,
@@ -246,6 +245,7 @@ export function createKnowledgeStoreRoutes(deps: KnowledgeStoreRouteDeps) {
 
       const root = await deps.store.createRoot({
         scope,
+        ...(projectId ? { projectId } : {}),
         adapterId,
         storeRoot,
         displayName,
@@ -363,6 +363,88 @@ export function createKnowledgeStoreRoutes(deps: KnowledgeStoreRouteDeps) {
   };
   app.delete('/roots/:id', disconnect);
   app.post('/roots/:id/disconnect', disconnect);
+  app.post('/roots/:id/attach-project', async (c) => {
+    if (!deps.store.attachRootToProject)
+      return c.json(
+        {
+          success: false,
+          error: 'Legacy source attachment is unavailable on this Station.',
+        },
+        503,
+      );
+    if (!deps.mayRegisterRoot || !(await deps.mayRegisterRoot(c.req.raw)))
+      return c.json(
+        {
+          success: false,
+          error: 'Attaching legacy stores requires the Station operator.',
+        },
+        403,
+      );
+    let expected: KnowledgeStoreRoot;
+    let projectSlug: string;
+    let projectId: string;
+    try {
+      const raw = await c.req.text();
+      if (Buffer.byteLength(raw) > 16384)
+        throw new Error('Oversize source reference');
+      const body = JSON.parse(raw);
+      if (
+        !body ||
+        Object.keys(body).sort().join(',') !==
+          'expectedRoot,projectId,projectSlug'
+      )
+        throw new Error('Invalid fields');
+      const parsed = parseKnowledgeStoreRoots([body.expectedRoot])[0];
+      if (
+        !parsed ||
+        parsed.id !== c.req.param('id') ||
+        typeof body.projectSlug !== 'string' ||
+        !isSafePathSegment(body.projectSlug) ||
+        typeof body.projectId !== 'string'
+      )
+        throw new Error('Invalid reference');
+      expected = parsed;
+      projectSlug = body.projectSlug;
+      projectId = body.projectId;
+    } catch {
+      return c.json(
+        { success: false, error: 'Invalid source attachment reference.' },
+        400,
+      );
+    }
+    try {
+      const currentProjectId = deps.projectIdForSlug?.(projectSlug);
+      if (!currentProjectId || currentProjectId !== projectId)
+        return c.json(
+          {
+            success: false,
+            error:
+              'Project changed before attachment. Refresh and review it again.',
+          },
+          409,
+        );
+      const root = await deps.store.attachRootToProject(
+        expected,
+        projectSlug,
+        currentProjectId,
+      );
+      return c.json({ success: true, data: root });
+    } catch (error) {
+      if (error instanceof FileStorageConflictError)
+        return c.json(
+          {
+            success: false,
+            error:
+              'Source changed before attachment. Refresh and review it again.',
+          },
+          409,
+        );
+      return c.json(
+        { success: false, error: 'Source attachment could not be completed.' },
+        503,
+      );
+    }
+  });
 
   return app;
 }

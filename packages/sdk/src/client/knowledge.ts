@@ -535,3 +535,23 @@ export async function syncKnowledgeGraphNeo4j(
   );
   return unwrapKnowledgeResponse<KnowledgeGraphNeo4jSyncStats>(response);
 }
+
+export interface AttachKnowledgeRootProjectInput {
+  expectedRoot: KnowledgeStoreRoot;
+  projectSlug: string;
+  projectId: string;
+}
+/** Explicitly bind one legacy registration; retained store files are unchanged. */
+export async function attachKnowledgeRootProject(
+  apiBase: string,
+  input: AttachKnowledgeRootProjectInput,
+  opts?: ClientRequestOptions,
+): Promise<KnowledgeStoreRoot> {
+  const response = await mutateJson(
+    `${apiBase}/api/knowledge/roots/${encodeURIComponent(input.expectedRoot.id)}/attach-project`,
+    'POST',
+    opts,
+    input,
+  );
+  return unwrapKnowledgeResponse<KnowledgeStoreRoot>(response);
+}

@@ -1,22 +1,16 @@
 import {
-  useCreateKnowledgeRootMutation,
   useKnowledgeBulkDeleteMutation,
   useKnowledgeDeleteMutation,
   useKnowledgeDocsQuery,
-  useKnowledgeRootsQuery,
   useKnowledgeSaveMutation,
   useKnowledgeScanMutation,
   useKnowledgeStatusQuery,
   useMigratePreIndexKnowledgeMutation,
 } from '@kontourai/station-sdk';
 import { useRef, useState } from 'react';
-import {
-  CheckGlyph,
-  DatabaseGlyph,
-  FolderGlyph,
-} from '../../components/icons/Glyph';
+import { CheckGlyph, FolderGlyph } from '../../components/icons/Glyph';
 import { PageSection } from '../../components/PageSection';
-import { Empty, ErrorState, Skeleton } from '../../components/state';
+import { Empty, ErrorState } from '../../components/state';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useScopedProjectQuery } from '../../contexts/ProjectsContext';
 import { errorText } from '../../utils/errorText';
@@ -30,28 +24,13 @@ const MIGRATE_GUARANTEE_TEXT =
   'Reading the source can first recover an interrupted earlier write.';
 
 function KnowledgeStoreSubsection({ slug }: { slug: string }) {
-  const {
-    data: roots,
-    isLoading: rootsLoading,
-    error: rootsError,
-  } = useKnowledgeRootsQuery();
+  const { navigate } = useNavigation();
   const { data: docs = [] } = useKnowledgeDocsQuery(slug) as {
     data?: DocMeta[];
   };
-  const createRootMutation = useCreateKnowledgeRootMutation();
   const migrateMutation = useMigratePreIndexKnowledgeMutation();
 
-  const projectRoot = roots?.find(
-    (root) => root.scope.kind === 'project' && root.scope.projectSlug === slug,
-  );
   const hasPreIndexKnowledge = docs.length > 0;
-
-  function handleCreateRoot() {
-    createRootMutation.mutate({
-      scope: { kind: 'project', projectSlug: slug },
-      adapterId: 'kit-default-store',
-    });
-  }
 
   function handleMigrate() {
     migrateMutation.mutate({ projectSlug: slug });
@@ -65,58 +44,16 @@ function KnowledgeStoreSubsection({ slug }: { slug: string }) {
         <span className="knowledge-section__card-label">Knowledge store</span>
       </div>
 
-      {rootsLoading ? (
-        <Skeleton variant="line" />
-      ) : rootsError ? (
-        <ErrorState
-          title="Could not load the project knowledge store"
-          description={errorText(rootsError)}
-        />
-      ) : projectRoot ? (
-        <div className="knowledge-section__source-list">
-          <div className="knowledge-section__source">
-            <span className="knowledge-section__source-icon">
-              <DatabaseGlyph />
-            </span>
-            <div className="knowledge-section__source-info">
-              <span className="knowledge-section__source-name">
-                {projectRoot.displayName}
-              </span>
-              <span className="knowledge-section__source-path">
-                {projectRoot.storeRoot}
-              </span>
-            </div>
-            <span className="knowledge-section__badge">
-              {projectRoot.adapterId}
-            </span>
-          </div>
-        </div>
-      ) : (
-        <Empty
-          variant="compact"
-          label="This project doesn't have its own knowledge store yet"
-          description="Create a dedicated project knowledge store to hold this project's knowledge records."
-          action={
-            <button
-              type="button"
-              className="knowledge-section__action-btn"
-              onClick={handleCreateRoot}
-              disabled={createRootMutation.isPending}
-            >
-              {createRootMutation.isPending
-                ? 'Creating…'
-                : 'Create project knowledge store'}
-            </button>
-          }
-        />
-      )}
-
-      {createRootMutation.isError && (
-        <ErrorState
-          title="Could not create the project knowledge store"
-          description={errorText(createRootMutation.error)}
-        />
-      )}
+      <p>Manage registered repositories and knowledge stores in Sources.</p>
+      <button
+        type="button"
+        className="knowledge-section__action-btn"
+        onClick={() =>
+          navigate(`/projects/${slug}/edit`, { section: 'resources' })
+        }
+      >
+        Manage sources
+      </button>
 
       {hasPreIndexKnowledge && (
         <div className="knowledge-section__migrate">

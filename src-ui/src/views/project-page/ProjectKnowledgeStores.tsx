@@ -1,4 +1,7 @@
-import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
+import {
+  isProjectKnowledgeRoot,
+  type KnowledgeStoreRoot,
+} from '@kontourai/station-contracts/knowledge-store';
 import {
   KnowledgeRecallBrowser,
   knowledgeRootIncarnationKey,
@@ -81,12 +84,19 @@ function Store({
   );
 }
 
-export function ProjectKnowledgeStores({ slug }: { slug: string }) {
+export function ProjectKnowledgeStores({
+  slug,
+  projectId,
+}: {
+  slug: string;
+  projectId?: string;
+}) {
   const authority = useHostRequestAuthorityScope();
   return authority ? (
     <ScopedProjectKnowledgeStores
-      key={`${slug}:${authority.apiBase}:${authority.authorityKey}`}
+      key={`${projectId}:${slug}:${authority.apiBase}:${authority.authorityKey}`}
       slug={slug}
+      projectId={projectId}
       authority={authority}
     />
   ) : (
@@ -96,9 +106,11 @@ export function ProjectKnowledgeStores({ slug }: { slug: string }) {
 
 function ScopedProjectKnowledgeStores({
   slug,
+  projectId,
   authority,
 }: {
   slug: string;
+  projectId?: string;
   authority: ApiRequestScope;
 }) {
   const roots = useKnowledgeRootsQuery({
@@ -107,10 +119,14 @@ function ScopedProjectKnowledgeStores({
   });
   const create = useCreateKnowledgeRootMutation(authority);
   const stores =
-    roots.data?.filter(
-      (root) =>
-        root.scope.kind === 'project' && root.scope.projectSlug === slug,
-    ) ?? [];
+    roots.data?.filter((root) => isProjectKnowledgeRoot(root, projectId)) ?? [];
+  if (!projectId)
+    return (
+      <p>
+        Project identity is unavailable. Reload the Project before reading its
+        stores.
+      </p>
+    );
   return (
     <div className="project-knowledge-stores">
       <PageRow

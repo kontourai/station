@@ -22,11 +22,25 @@ export type KnowledgeRootScope =
 export interface KnowledgeStoreRoot {
   id: string; // stable id, e.g. 'root:personal', 'root:project-<slug>[:<name>]'
   scope: KnowledgeRootScope;
+  /** Durable Project identity; absent on legacy registrations, never inferred from slug for member access. */
+  projectId?: string;
   adapterId: string; // which registered adapter serves this root
   storeRoot: string; // absolute path handed to the adapter constructor — the Kit's
   // real published axis (store-contract.md §8: `{ storeRoot: string }`)
   displayName: string;
   createdAt: string; // ISO-8601
+}
+
+/** A name match never establishes ownership after Project rename or replacement. */
+export function isProjectKnowledgeRoot(
+  root: KnowledgeStoreRoot,
+  projectId: string | undefined,
+): boolean {
+  return (
+    root.scope.kind === 'project' &&
+    Boolean(projectId) &&
+    root.projectId === projectId
+  );
 }
 
 // ── Record envelope (store-contract.md §1, §4, Addendum A.2/A.3, B.1) ──────
@@ -276,6 +290,11 @@ export interface KnowledgeStoreProvider {
   getRoot(rootId: string): Promise<KnowledgeStoreRoot | null>;
   createRoot(
     input: Omit<KnowledgeStoreRoot, 'id' | 'createdAt'>,
+  ): Promise<KnowledgeStoreRoot>;
+  attachRootToProject?(
+    expected: KnowledgeStoreRoot,
+    projectSlug: string,
+    projectId: string,
   ): Promise<KnowledgeStoreRoot>;
   removeRoot(rootId: string, expected?: KnowledgeStoreRoot): Promise<void>; // deregisters only — NEVER deletes store files
 

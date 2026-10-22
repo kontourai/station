@@ -347,6 +347,7 @@ export {
   useSurveyFlowReviewsQuery,
 } from './query-domains/flowRuns';
 export {
+  useAttachKnowledgeRootProjectMutation,
   useCreateKnowledgeRecordMutation,
   useCreateKnowledgeRootMutation,
   useDeleteKnowledgeRootMutation,

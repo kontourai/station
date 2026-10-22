@@ -676,7 +676,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
           byte-unchanged so the first-run journey `tests/first-run-live.spec.ts`
           pins is provably untouched without an e2e run.
 */}
-        <ProjectSourcesSection slug={slug} />
+        <ProjectSourcesSection slug={slug} projectId={project?.id} />
         {project && <AccessSection slug={slug} projectId={project.id} />}
 
         {/* Knowledge */}

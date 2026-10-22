@@ -82,7 +82,7 @@ export interface KnowledgeStoreRootPersistence {
   /** createOnly must refuse an existing ID atomically rather than replacing it. */
   saveKnowledgeStoreRoot(
     root: KnowledgeStoreRoot,
-    options?: { createOnly?: boolean },
+    options?: { createOnly?: boolean; expectedRoot?: KnowledgeStoreRoot },
   ): Promise<void> | void;
   removeKnowledgeStoreRoot(
     id: string,
@@ -164,6 +164,27 @@ export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
     throw new FileStorageConflictError(
       'Knowledge source registry changed repeatedly. Refresh before trying again.',
     );
+  }
+
+  async attachRootToProject(
+    expected: KnowledgeStoreRoot,
+    projectSlug: string,
+    projectId: string,
+  ): Promise<KnowledgeStoreRoot> {
+    if (expected.scope.kind !== 'project' || expected.projectId !== undefined)
+      throw new FileStorageConflictError(
+        'Only an unbound legacy Project store can be attached.',
+      );
+    const root: KnowledgeStoreRoot = {
+      ...expected,
+      scope: { kind: 'project', projectSlug },
+      projectId,
+    };
+    await this.persistence.saveKnowledgeStoreRoot(root, {
+      expectedRoot: { ...expected, scope: { ...expected.scope } },
+    });
+    this.adapterInstances.delete(root.id);
+    return root;
   }
 
   async removeRoot(

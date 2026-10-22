@@ -376,6 +376,16 @@ live reads, or Agent access. **Disconnect** confirms the exact observed source
 and removes its registry entry while retaining files. If the source changed,
 refresh and review it before disconnecting again.
 
+New Project registrations carry the durable `projectId`. Member access, Project
+recall and automatic Knowledge-tool delivery match that identity, so a rename
+retains the store and a replacement Project with the same name does not inherit
+it. New managed stores live at
+`{dataDir}/knowledge/projects/<projectId>/store`; older paths remain unchanged.
+Legacy registrations without a Project ID stay unavailable to members. The
+operator can review their displayed path and **Attach to this Project**, which
+confirms member visibility and atomically binds the exact observed registration.
+Attachment keeps its files in place; it is not a copy or migration.
+
 Source registration, host-path checking and HTTP mutations require the Station
 operator. Account-bound people can list and read stores for Projects they may
 view, including graph and canonical-record reads. Personal file stores remain
@@ -390,19 +400,18 @@ an immutable generation or an execution grant.
 The existing Project knowledge controls below remain available for document
 upload and migration.
 
-### Project settings → Knowledge store
+### Project settings → Older documents and migration
 
-Each project's Settings has its own "Knowledge store" subsection (alongside the earlier per-project
-document-upload panel), for that project's **project-scoped** knowledge store:
+The Project knowledge section keeps the older document upload, indexing and
+migration controls. Store creation and attachment now have one owner:
+**Settings → Sources**. **Manage sources** navigates there through the ordinary
+unsaved-changes guard.
 
-- **Create a project knowledge store** — same one-click pattern as the personal store: no path to
-  type, the server defaults the location to `{dataDir}/projects/<slug>/knowledge-store` using the Kit
-  default-store adapter.
-- **Migrate this project's existing knowledge** — shown only when the project has knowledge from
-  before knowledge stores existed (the earlier per-project document upload panel has files in it).
-  This button runs the [migration described above](#the-non-destructive-guarantee).
-  It does not cut over or clean up the source corpus, but source reading can
-  recover an interrupted earlier transaction before records are copied.
+**Migrate this project's existing knowledge** appears when earlier document
+storage contains files. It runs the [migration described above](#the-non-destructive-guarantee),
+keeps the source corpus, and does not cut over or clean it up. An unbound
+migration registration still needs explicit operator attachment before members
+or automatic Project tool delivery can use it.
 
 ### Project tools and automatic store detection
 

@@ -225,6 +225,7 @@ const knowledgeRootSchema = z
         .object({ kind: z.literal('project'), projectSlug: nonEmptyString })
         .strict(),
     ]),
+    projectId: z.string().uuid().optional(),
     adapterId: nonEmptyString,
     storeRoot: nonEmptyString,
     displayName: nonEmptyString,

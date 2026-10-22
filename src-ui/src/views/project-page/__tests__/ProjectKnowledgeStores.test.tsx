@@ -53,14 +53,18 @@ beforeEach(() => {
 });
 
 test('creates a store for the current Project and reports failed detection without inventing absence', () => {
-  const view = render(<ProjectKnowledgeStores slug="demo" />);
+  const view = render(
+    <ProjectKnowledgeStores slug="demo" projectId="project-demo" />,
+  );
   fireEvent.click(screen.getByRole('button', { name: 'Create store' }));
   expect(state.create).toHaveBeenCalledWith({
     scope: { kind: 'project', projectSlug: 'demo' },
     adapterId: 'kit-default-store',
   });
   state.error = true;
-  view.rerender(<ProjectKnowledgeStores slug="demo" />);
+  view.rerender(
+    <ProjectKnowledgeStores slug="demo" projectId="project-demo" />,
+  );
   expect(screen.getByRole('alert').textContent).toContain(
     'Could not load stores',
   );
@@ -71,6 +75,7 @@ test('detects only current Project stores and loads canonical records on expansi
   state.roots = [
     {
       id: 'demo-store',
+      projectId: 'project-demo',
       adapterId: 'kit-default-store',
       createdAt: '2026-10-03T00:00:00.000Z',
       storeRoot: '/tmp/demo',
@@ -86,7 +91,7 @@ test('detects only current Project stores and loads canonical records on expansi
       scope: { kind: 'project', projectSlug: 'other' },
     },
   ];
-  render(<ProjectKnowledgeStores slug="demo" />);
+  render(<ProjectKnowledgeStores slug="demo" projectId="project-demo" />);
   expect(screen.queryByText('Other records')).toBeNull();
   expect(state.recall).not.toHaveBeenCalled();
   const summary = screen.getByText('Demo records');
@@ -103,6 +108,7 @@ test('a failed fresh graph read withholds its retained record navigation', async
   state.roots = [
     {
       id: 'demo-store',
+      projectId: 'project-demo',
       adapterId: 'kit-default-store',
       createdAt: '2026-10-03T00:00:00Z',
       storeRoot: '/tmp/demo',
@@ -110,21 +116,60 @@ test('a failed fresh graph read withholds its retained record navigation', async
       scope: { kind: 'project', projectSlug: 'demo' },
     },
   ];
-  const view = render(<ProjectKnowledgeStores slug="demo" />);
+  const view = render(
+    <ProjectKnowledgeStores slug="demo" projectId="project-demo" />,
+  );
   const details = screen.getByText('Demo records').closest('details')!;
   details.open = true;
   fireEvent(details, new Event('toggle'));
   await screen.findByText('Records for demo-store');
   state.graphError = true;
-  view.rerender(<ProjectKnowledgeStores slug="demo" />);
+  view.rerender(
+    <ProjectKnowledgeStores slug="demo" projectId="project-demo" />,
+  );
   expect(screen.queryByText('Records for demo-store')).toBeNull();
   expect(screen.getByRole('alert').textContent).toContain(
     'Could not load records',
   );
   state.error = true;
-  view.rerender(<ProjectKnowledgeStores slug="demo" />);
+  view.rerender(
+    <ProjectKnowledgeStores slug="demo" projectId="project-demo" />,
+  );
   expect(screen.queryByText('Demo records')).toBeNull();
   expect(screen.getByRole('alert').textContent).toContain(
     'Could not load stores',
   );
+});
+
+test('Project identity survives a rename and excludes former or unbound registrations with the same name', () => {
+  const root = {
+    id: 'current',
+    projectId: 'project-demo',
+    adapterId: 'kit-default-store',
+    createdAt: '2026-10-03T00:00:00Z',
+    storeRoot: '/tmp/current',
+    displayName: 'Current source',
+    scope: { kind: 'project' as const, projectSlug: 'old-name' },
+  };
+  state.roots = [
+    root,
+    {
+      ...root,
+      id: 'former',
+      projectId: 'former-project-id',
+      displayName: 'Former private source',
+      scope: { kind: 'project', projectSlug: 'demo' },
+    },
+    {
+      ...root,
+      id: 'legacy',
+      projectId: undefined,
+      displayName: 'Unbound source',
+      scope: { kind: 'project', projectSlug: 'demo' },
+    },
+  ];
+  render(<ProjectKnowledgeStores slug="demo" projectId="project-demo" />);
+  expect(screen.getByText('Current source')).toBeTruthy();
+  expect(screen.queryByText('Former private source')).toBeNull();
+  expect(screen.queryByText('Unbound source')).toBeNull();
 });

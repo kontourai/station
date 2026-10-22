@@ -14,5 +14,6 @@ export function knowledgeRootIncarnationKey(root: KnowledgeStoreRoot): string {
     root.storeRoot,
     root.displayName,
     root.createdAt,
+    root.projectId ?? null,
   ]);
 }

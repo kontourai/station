@@ -165,6 +165,21 @@ remote, commit and acquisition time. Clients cannot set or update this record.
 It describes acquisition at creation, rather than granting execution authority
 or asserting that future filesystem contents are unchanged.
 
+## Project knowledge source identity
+
+New Project root registrations resolve `projectId` from the server-owned Project,
+not from a caller-provided identity. Managed storage uses that ID in its path.
+Member reads require a registration bound to the admitted Project ID; a slug
+match alone is insufficient. Legacy roots remain visible to the operator.
+
+`POST /api/knowledge/roots/:id/attach-project` accepts
+`{ expectedRoot, projectSlug, projectId }`. The operator explicitly selects an
+unbound legacy Project registration and the current Project. A stale Project or
+root returns409; malformed references return400. The registry compares the exact
+observed root inside its file mutation before changing ownership. An already
+bound registration cannot be reassigned. No files are moved or deleted. The
+optional provider capability returns503 when unavailable on an older provider.
+
 ## Knowledge source disconnect
 
 `POST /api/knowledge/roots/:id/disconnect` accepts `{ expectedRoot }`, the exact

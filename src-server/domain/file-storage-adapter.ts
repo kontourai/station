@@ -772,18 +772,29 @@ export class FileStorageAdapter implements IStorageAdapter {
 
   async saveKnowledgeStoreRoot(
     root: KnowledgeStoreRoot,
-    options?: { createOnly?: boolean },
+    options?: { createOnly?: boolean; expectedRoot?: KnowledgeStoreRoot },
   ): Promise<void> {
-    parseKnowledgeStoreRoots([root]);
+    const captured = { ...root, scope: { ...root.scope } };
+    parseKnowledgeStoreRoots([captured]);
+    const expected = options?.expectedRoot
+      ? parseKnowledgeStoreRoots([options.expectedRoot])[0]
+      : undefined;
+    const createOnly = options?.createOnly;
     await mutateJsonFile<unknown>(this.knowledgeStoreRootsPath, [], (value) => {
       const roots = parseKnowledgeStoreRoots(value);
-      const index = roots.findIndex((candidate) => candidate.id === root.id);
-      if (options?.createOnly && index >= 0)
+      const index = roots.findIndex(
+        (candidate) => candidate.id === captured.id,
+      );
+      if (createOnly && index >= 0)
         throw new FileStorageConflictError(
           'Knowledge source ID is already registered.',
         );
-      if (index >= 0) roots[index] = root;
-      else roots.push(root);
+      if (expected && (index < 0 || !isDeepStrictEqual(roots[index], expected)))
+        throw new FileStorageConflictError(
+          'Knowledge source changed before attachment.',
+        );
+      if (index >= 0) roots[index] = captured;
+      else roots.push(captured);
       return roots;
     });
   }

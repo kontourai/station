@@ -143,7 +143,7 @@ export interface IStorageAdapter {
   listKnowledgeStoreRoots(): KnowledgeStoreRoot[];
   saveKnowledgeStoreRoot(
     root: KnowledgeStoreRoot,
-    options?: { createOnly?: boolean },
+    options?: { createOnly?: boolean; expectedRoot?: KnowledgeStoreRoot },
   ): Promise<void>;
   removeKnowledgeStoreRoot(
     id: string,

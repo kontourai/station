@@ -3178,6 +3178,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/api/knowledge/roots' },
     { method: 'DELETE', path: '/api/knowledge/roots/:id' },
     { method: 'POST', path: '/api/knowledge/roots/:id/disconnect' },
+    { method: 'POST', path: '/api/knowledge/roots/:id/attach-project' },
     {
       method: 'GET',
       path: '/api/knowledge/roots/:rootId/records/:id/source-observation',

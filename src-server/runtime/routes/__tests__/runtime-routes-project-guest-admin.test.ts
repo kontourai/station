@@ -44,6 +44,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
+import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 import { Hono } from 'hono';
@@ -434,8 +435,9 @@ describe('project guest administration over the production composition', () => {
         }),
       );
       expect(enabled.status, await enabled.clone().text()).toBe(200);
-      const scope = (await readJson<{ data: { scope: unknown } }>(enabled)).data
-        .scope;
+      const scope = (
+        await readJson<{ data: { scope: ProjectMembershipScope } }>(enabled)
+      ).data.scope;
       const invited = await request(
         `/api/projects/${slug}/access/invitations`,
         ownerHeaders({
@@ -1991,6 +1993,7 @@ describe('project guest administration over the production composition', () => {
       adapterId: 'kit-default-store',
       storeRoot: join(directories[directories.length - 1], 'shared-notes'),
       displayName: 'Shared notes',
+      projectId: scope.localProjectId,
     });
     const unrelated = await h.knowledgeStoreProvider.createRoot({
       scope: { kind: 'project', projectSlug: 'unrelated' },
@@ -2003,6 +2006,22 @@ describe('project guest administration over the production composition', () => {
       adapterId: 'kit-default-store',
       storeRoot: join(directories[directories.length - 1], 'personal-notes'),
       displayName: 'Personal notes',
+    });
+    const obsolete = await h.knowledgeStoreProvider.createRoot({
+      scope: { kind: 'project', projectSlug: 'knowledge' },
+      projectId: '11111111-1111-4111-8111-111111111111',
+      adapterId: 'kit-default-store',
+      storeRoot: join(
+        directories[directories.length - 1],
+        'former-project-notes',
+      ),
+      displayName: 'Former Project notes',
+    });
+    const unbound = await h.knowledgeStoreProvider.createRoot({
+      scope: { kind: 'project', projectSlug: 'knowledge' },
+      adapterId: 'kit-default-store',
+      storeRoot: join(directories[directories.length - 1], 'unbound-notes'),
+      displayName: 'Unbound notes',
     });
     const adapter = await h.knowledgeStoreProvider.adapterFor(allowed.id);
     const recordId = await adapter.create({
@@ -2024,7 +2043,7 @@ describe('project guest administration over the production composition', () => {
     expect((await readJson<{ data: { body: string } }>(read)).data.body).toBe(
       'Exact shared text',
     );
-    for (const root of [unrelated, personal]) {
+    for (const root of [unrelated, personal, obsolete, unbound]) {
       expect(
         (
           await h.request(
@@ -2048,6 +2067,29 @@ describe('project guest administration over the production composition', () => {
     );
     expect(arbitrary.status, await arbitrary.clone().text()).toBe(403);
 
+    const operatorManaged = await h.request(
+      '/api/knowledge/roots',
+      h.operatorHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: { kind: 'project', projectSlug: 'knowledge' },
+          adapterId: 'kit-default-store',
+        }),
+      }),
+    );
+    expect(operatorManaged.status, await operatorManaged.clone().text()).toBe(
+      201,
+    );
+    const bound = (
+      await readJson<{ data: { projectId: string; storeRoot: string } }>(
+        operatorManaged,
+      )
+    ).data;
+    expect(bound.projectId).toBe(scope.localProjectId);
+    expect(bound.storeRoot).toContain(
+      join('knowledge', 'projects', scope.localProjectId, 'store'),
+    );
     const createManaged = () =>
       h.request(
         '/api/knowledge/roots',

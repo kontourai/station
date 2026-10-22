@@ -1,4 +1,5 @@
 import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-contracts/deployment-authentication';
+import { isProjectKnowledgeRoot } from '@kontourai/station-contracts/knowledge-store';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { getBrandingProvider } from '../../providers/registries/registry.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
@@ -3845,11 +3846,7 @@ export class StationRuntime {
             const roots = await this.knowledgeStoreProvider.listRoots();
             return projectMcpServers(
               project,
-              roots.some(
-                (root) =>
-                  root.scope.kind === 'project' &&
-                  root.scope.projectSlug === slug,
-              ),
+              roots.some((root) => isProjectKnowledgeRoot(root, project.id)),
             );
           },
           skillService: this.skillService,

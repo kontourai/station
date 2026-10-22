@@ -240,6 +240,7 @@ import {
 } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
+import { FileStorageNotFoundError } from '../../domain/project-file-transactions.js';
 import { resolveEffectiveAppSetting } from '../../domain/settings-effective.js';
 import { KnowledgeIndexAdapterRegistry } from '../../knowledge-index/index-adapter-registry.js';
 import { CONVERSATION_STORE_ADAPTER_ID } from '../../knowledge-store/adapters/conversation-store.js';
@@ -6845,7 +6846,7 @@ export function configureRuntimeRoutes(
   context.app.use('/api/knowledge/*', bindRequestReadAuthority);
   const mayUseProjectKnowledge = async (
     request: Request,
-    projectSlug: string,
+    root: NonNullable<Awaited<ReturnType<KnowledgeStoreProvider['getRoot']>>>,
     action: 'view' | 'edit',
   ): Promise<boolean> => {
     try {
@@ -6857,15 +6858,26 @@ export function configureRuntimeRoutes(
         !context.projectMembership
       )
         return false;
-      await context.projectMembership.requireProjectRead(
-        projectSlug,
+      if (!root.projectId) return false;
+      const admission = context.projectMembership
+        .admissionsForResolvedPrincipal(member.principalId)
+        .find(
+          ({ scope, member }) =>
+            scope.localProjectId === root.projectId &&
+            member.status === 'active' &&
+            member.actions.includes(action),
+        );
+      if (!admission) return false;
+      await context.projectMembership.requireProjectScopeRead(
+        admission.scope,
         projectMembershipAuthority(request),
+        member.principalId,
       );
       return context.projectMembership
         .admissionsForResolvedPrincipal(member.principalId)
         .some(
           ({ scope, member }) =>
-            scope.localProjectSlug === projectSlug &&
+            scope.localProjectId === root.projectId &&
             member.status === 'active' &&
             member.actions.includes(action),
         );
@@ -6880,7 +6892,7 @@ export function configureRuntimeRoutes(
   ): Promise<boolean> => {
     if (!root) return false;
     if (root.scope.kind === 'project')
-      return mayUseProjectKnowledge(request, root.scope.projectSlug, action);
+      return mayUseProjectKnowledge(request, root, action);
     try {
       const member = await memberCallerForRequest(request);
       if (member?.kind === 'none') return false;
@@ -6969,6 +6981,14 @@ export function configureRuntimeRoutes(
     createKnowledgeStoreRoutes({
       store: context.knowledgeStoreProvider,
       dataDir: context.configLoader.getProjectHomeDir(),
+      projectIdForSlug: (slug) => {
+        try {
+          return context.storageAdapter.getProject(slug).id;
+        } catch (error) {
+          if (error instanceof FileStorageNotFoundError) return undefined;
+          throw error;
+        }
+      },
       mayReadRoot: (request, root) =>
         mayUseKnowledgeRoot(request, root, 'view'),
       guardReadResponse: guardKnowledgeReadResponse,

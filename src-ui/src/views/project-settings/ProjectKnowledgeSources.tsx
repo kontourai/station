@@ -1,5 +1,9 @@
-import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
 import {
+  isProjectKnowledgeRoot,
+  type KnowledgeStoreRoot,
+} from '@kontourai/station-contracts/knowledge-store';
+import {
+  useAttachKnowledgeRootProjectMutation,
   useCreateKnowledgeRootMutation,
   useDeleteKnowledgeRootMutation,
   useKnowledgeAdaptersQuery,
@@ -15,9 +19,11 @@ import { userFacingErrorMessage } from '../../utils/errorText';
 
 export function ProjectKnowledgeSources({
   slug,
+  projectId,
   authority,
 }: {
   slug: string;
+  projectId?: string;
   authority: ApiRequestScope;
 }) {
   const roots = useKnowledgeRootsQuery({
@@ -29,6 +35,7 @@ export function ProjectKnowledgeSources({
     requireRequestScope: true,
   });
   const create = useCreateKnowledgeRootMutation(authority);
+  const attach = useAttachKnowledgeRootProjectMutation(authority);
   const validate = useValidateKnowledgeRootMutation(authority);
   const disconnect = useDeleteKnowledgeRootMutation(authority);
   const [path, setPath] = useState('');
@@ -36,13 +43,22 @@ export function ProjectKnowledgeSources({
   const [name, setName] = useState('');
   const [checked, setChecked] = useState<{ path: string; adapterId: string }>();
   const [selected, setSelected] = useState<KnowledgeStoreRoot>();
+  const [legacy, setLegacy] = useState<KnowledgeStoreRoot>();
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
-  const busy = create.isPending || disconnect.isPending || validate.isPending;
+  const busy =
+    create.isPending ||
+    disconnect.isPending ||
+    validate.isPending ||
+    attach.isPending;
   const projectRoots =
+    roots.data?.filter((root) => isProjectKnowledgeRoot(root, projectId)) ?? [];
+  const legacyRoots =
     roots.data?.filter(
       (root) =>
-        root.scope.kind === 'project' && root.scope.projectSlug === slug,
+        root.scope.kind === 'project' &&
+        root.scope.projectSlug === slug &&
+        !root.projectId,
     ) ?? [];
   async function add(existing: boolean) {
     setError(undefined);
@@ -74,6 +90,13 @@ export function ProjectKnowledgeSources({
       setError(userFacingErrorMessage(cause));
     }
   }
+  if (!projectId)
+    return (
+      <p>
+        Project identity is unavailable. Reload the Project before managing
+        sources.
+      </p>
+    );
   return (
     <PageSection
       title="Knowledge stores"
@@ -111,6 +134,35 @@ export function ProjectKnowledgeSources({
             </ul>
           ) : (
             <p>No knowledge stores registered for this project.</p>
+          )}
+          {legacyRoots.length > 0 && (
+            <div>
+              <h3>Legacy stores awaiting attachment</h3>
+              <p>
+                These registrations name this Project but have no durable
+                Project identity. Attach a selected store to make it available
+                to this Project. Its files stay in place.
+              </p>
+              <ul className="project-sources__list">
+                {legacyRoots.map((root) => (
+                  <li key={root.id}>
+                    <div>
+                      <strong>{root.displayName}</strong>
+                      <code>{root.storeRoot}</code>
+                    </div>
+                    <Button
+                      disabled={busy}
+                      onClick={() => {
+                        setLegacy(root);
+                        attach.reset();
+                      }}
+                    >
+                      Attach to this Project
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
           <Button
             disabled={busy || roots.isFetching}
@@ -217,6 +269,24 @@ export function ProjectKnowledgeSources({
       )}
       {error && <p role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}
+      <ConfirmModal
+        isOpen={Boolean(legacy)}
+        title="Attach legacy store?"
+        message={`Attach ${legacy?.displayName ?? 'this store'} to this Project's current identity. Project members with view access will be able to read its records. Its files stay in place.`}
+        confirmLabel="Attach store"
+        pending={attach.isPending}
+        error={
+          attach.isError ? userFacingErrorMessage(attach.error) : undefined
+        }
+        onCancel={() => setLegacy(undefined)}
+        onConfirm={() => {
+          if (!legacy) return;
+          void attach
+            .mutateAsync({ expectedRoot: legacy, projectSlug: slug, projectId })
+            .then(() => setLegacy(undefined))
+            .catch(() => {});
+        }}
+      />
       <ConfirmModal
         isOpen={Boolean(selected)}
         title="Disconnect knowledge source?"

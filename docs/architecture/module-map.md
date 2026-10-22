@@ -2402,7 +2402,13 @@ with create-only conflict checks; concurrent providers cannot overwrite a regist
 root. Exact disconnect compares the observed root inside the registry mutation and
 refuses a changed incarnation. Neither removal form deletes source files. There is
 no atomic replacement operation exposed by this interface. Project Settings Sources
-composes repository repair and knowledge registration through scoped SDK requests.
+composes repository repair and knowledge registration through scoped SDK requests. New Project
+roots carry the server-resolved Project ID; member reads and automatic tool
+delivery match that ID. Legacy unbound roots require an explicit operator
+attachment, guarded by exact registry comparison, before joining that Project.
+New managed paths use Project IDs so a replacement slug cannot reuse its
+predecessor's default storage. Legacy upload/migration stays in Project knowledge;
+Sources owns registration and attachment.
 
 **Follow the code.** [The
 provider](../../src-server/knowledge-store/knowledge-store-provider.ts) is constructed

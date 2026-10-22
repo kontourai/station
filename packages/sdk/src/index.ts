@@ -868,6 +868,7 @@ export {
   useApplyIntegrationToolsMutation,
   useApplyProjectLayoutMutation,
   useApproveProposedChangeMutation,
+  useAttachKnowledgeRootProjectMutation,
   useAuthStatusQuery,
   useAvailableProjectLayoutsQuery,
   useAwsProfilesQuery,

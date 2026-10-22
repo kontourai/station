@@ -4,7 +4,13 @@ import { ProjectKnowledgeSources } from './ProjectKnowledgeSources';
 import { ResourcesSection } from './ResourcesSection';
 import './ProjectSourcesSection.css';
 
-export function ProjectSourcesSection({ slug }: { slug: string }) {
+export function ProjectSourcesSection({
+  slug,
+  projectId,
+}: {
+  slug: string;
+  projectId?: string;
+}) {
   const authority = useHostRequestAuthorityScope();
   return (
     <PageSection
@@ -14,11 +20,15 @@ export function ProjectSourcesSection({ slug }: { slug: string }) {
     >
       {authority ? (
         <div
-          key={`${slug}:${authority.apiBase}:${authority.authorityKey}`}
+          key={`${projectId}:${slug}:${authority.apiBase}:${authority.authorityKey}`}
           className="project-sources"
         >
           <ResourcesSection slug={slug} requestScope={authority} embedded />
-          <ProjectKnowledgeSources slug={slug} authority={authority} />
+          <ProjectKnowledgeSources
+            slug={slug}
+            projectId={projectId}
+            authority={authority}
+          />
         </div>
       ) : (
         <p>Connect to this Station to manage project sources.</p>

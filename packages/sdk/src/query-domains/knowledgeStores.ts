@@ -21,6 +21,8 @@ import {
   StationRequestAuthorityError,
 } from '../client/http';
 import {
+  type AttachKnowledgeRootProjectInput,
+  attachKnowledgeRootProject,
   type CreateKnowledgeRecordInput,
   type CreateKnowledgeRootInput,
   createKnowledgeRecord,
@@ -541,4 +543,28 @@ export function useLearningSourceObservationQuery(
     isLoading:
       !query.isFetchedAfterMount || query.isLoading || query.isFetching,
   };
+}
+
+/** Bind a legacy Project root only after explicit operator confirmation. */
+export function useAttachKnowledgeRootProjectMutation(
+  requestScope?: ApiRequestScope,
+) {
+  const scope = capturedScope(requestScope);
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: AttachKnowledgeRootProjectInput) => {
+      requireValidScope(requestScope, scope);
+      const apiBase = scope?.apiBase ?? (await _getApiBase());
+      return attachKnowledgeRootProject(
+        apiBase,
+        input,
+        scope ? { requestScope: scope } : undefined,
+      );
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: [...KNOWLEDGE_ROOTS_QUERY_KEY],
+      });
+    },
+  });
 }

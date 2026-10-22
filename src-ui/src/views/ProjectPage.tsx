@@ -459,6 +459,7 @@ function ProjectOperatorPage({
 
         <ProjectKnowledgeSection
           slug={slug}
+          projectId={project.id}
           projectWorkingDirectory={project.workingDirectory}
           docs={docs}
           docsError={docsError}

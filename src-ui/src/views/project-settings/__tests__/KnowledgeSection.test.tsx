@@ -83,15 +83,16 @@ describe('project-settings/KnowledgeSection (#242 shell port)', () => {
     ).not.toBeNull();
   });
 
-  it('leaves the pre-existing K5 KnowledgeStoreSubsection Empty usage untouched', () => {
+  it('routes store management to the persistent Sources section', () => {
+    navigationStore.navigate('/projects/demo-project/edit');
     render(<KnowledgeSection slug="demo-project" />);
-
+    fireEvent.click(screen.getByRole('button', { name: 'Manage sources' }));
+    expect(new URL(window.location.href).searchParams.get('section')).toBe(
+      'resources',
+    );
     expect(
-      screen.getByText("This project doesn't have its own knowledge store yet"),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole('button', { name: /Create project knowledge store/ }),
-    ).toBeTruthy();
+      screen.queryByRole('button', { name: /Create project knowledge store/ }),
+    ).toBeNull();
   });
 
   // archive#settings-revamp 1.

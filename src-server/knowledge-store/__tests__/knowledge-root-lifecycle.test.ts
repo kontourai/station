@@ -130,4 +130,53 @@ describe('knowledge source registry lifecycle on real storage', () => {
     expect(await oldAdapter.get(newId)).toBeNull();
     expect((await oldAdapter.get(oldId))?.body).toBe('Old private bytes');
   });
+  test('legacy attachment changes only observed registry ownership and refuses a stale source', async () => {
+    const projectId = '11111111-1111-4111-8111-111111111111';
+    const original = await store.createRoot({
+      scope: { kind: 'project', projectSlug: 'legacy' },
+      adapterId: 'kit-default-store',
+      storeRoot: join(home, 'legacy-store'),
+      displayName: 'Legacy documents',
+    });
+    const adapter = await store.adapterFor(original.id);
+    const recordId = await adapter.create({
+      type: 'raw',
+      title: 'Retained document',
+      body: 'Original document bytes',
+      category: 'test',
+      provenance: { agent: 'fixture' },
+    });
+    const app = createKnowledgeStoreRoutes({
+      store,
+      dataDir: home,
+      mayRegisterRoot: () => true,
+      projectIdForSlug: (slug) => (slug === 'current' ? projectId : undefined),
+    });
+    const attach = (expectedRoot: typeof original, targetId = projectId) =>
+      app.request(`/roots/${encodeURIComponent(original.id)}/attach-project`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          expectedRoot,
+          projectSlug: 'current',
+          projectId: targetId,
+        }),
+      });
+    expect(
+      (await attach(original, '22222222-2222-4222-8222-222222222222')).status,
+    ).toBe(409);
+    const replaced = { ...original, displayName: 'Updated selection' };
+    await persistence.saveKnowledgeStoreRoot(replaced);
+    expect((await attach(original)).status).toBe(409);
+    expect((await attach(replaced)).status).toBe(200);
+    expect(await store.getRoot(original.id)).toEqual({
+      ...replaced,
+      scope: { kind: 'project', projectSlug: 'current' },
+      projectId,
+    });
+    expect(
+      (await (await store.adapterFor(original.id)).get(recordId))?.body,
+    ).toBe('Original document bytes');
+    expect((await attach({ ...replaced, projectId })).status).toBe(409);
+  });
 });
