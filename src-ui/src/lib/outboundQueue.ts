@@ -664,11 +664,16 @@ export function classifyUndeliverableSend(
   if (hasNonStationResponse(error)) return 'send-unconfirmed';
   if (hasResponseEvidence(error)) return null;
   const code = (error as { code?: unknown } | null)?.code;
+  const name = (error as { name?: unknown } | null)?.name;
   if (
     error instanceof TypeError ||
+    ['AbortError', 'TimeoutError', 'StationRequestTimeoutError'].includes(
+      typeof name === 'string' ? name : '',
+    ) ||
     [
       'network_changed',
       'transport',
+      'transport_tls',
       'transport_reset',
       'transport_timeout',
       'transport_unreachable',

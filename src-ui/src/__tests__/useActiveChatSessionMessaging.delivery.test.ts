@@ -63,7 +63,10 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   };
 });
 
-import { ChatHttpError } from '@kontourai/station-sdk/client';
+import {
+  ChatHttpError,
+  StationRequestTimeoutError,
+} from '@kontourai/station-sdk/client';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { handleTurnStartedEvent } from '../hooks/orchestration/turnHandlers';
 import { useSendMessage } from '../hooks/useActiveChatSessionMessaging';
@@ -244,6 +247,9 @@ describe('useSendMessage: durable before the request', () => {
     ['attachment', 'proxy'],
     ['attachment', 'transport_reset'],
     ['attachment', 'transport_timeout'],
+    ['attachment', 'transport_tls'],
+    ['attachment', 'sdk-timeout'],
+    ['attachment', 'abort'],
   ])(
     'looks up a received %s send after %s without a live row before any flush',
     async (mode, failure) => {
@@ -297,6 +303,12 @@ describe('useSendMessage: durable before the request', () => {
             false,
           );
         if (failure === 'fetch') throw new TypeError('Failed to fetch');
+        if (failure === 'sdk-timeout')
+          throw new StationRequestTimeoutError('http://api.test', 60000, {
+            method: 'POST',
+          });
+        if (failure === 'abort')
+          throw new DOMException('Aborted after send', 'AbortError');
         throw Object.assign(
           failure === 'network_changed'
             ? new TypeError('Network changed')
