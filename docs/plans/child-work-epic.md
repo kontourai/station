@@ -251,6 +251,17 @@ installed-runtime execution probes, not an integrated Station sync path.
 MCP tools still appeared on the model wire, so the probes' stronger empty-wire
 assertion remains failed. Plugin and delegation-tool coverage remains unverified.
 
+The installed SDK explicitly warns that `BUILTIN_TOOL_NAMES` is incomplete;
+it cannot define an all-tools restriction. Follow-up native probes replaced
+that enumeration with command-line `disallowedTools: ['*']`. Write and
+late-added MCP effects were blocked under managed-only permissions, including
+a control that kept Write in the base tool set. Native permission-state reads
+reported the wildcard as an effective `cliArg` deny before and after flag
+settings replacement and clearing. The same retained-session sequence restored
+both effects afterward. These probes remove the catalog dependency for the
+candidate; they do not establish plugin, delegation or direct internal-call
+coverage. The stronger empty-wire assertion still failed and is retained.
+
 Independent source review supports this as a candidate model-tool restriction
 for the checked CLI/SDK pair, not universal no-tools authority. Production work
 must bind the group caller to an exclusive per-thread activation generation,
