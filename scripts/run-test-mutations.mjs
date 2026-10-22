@@ -56,6 +56,23 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'basis-chip-hidden-at-rest',
+    test: 'src-ui/src/__tests__/MessageBubble.basisChip.test.tsx',
+    failure:
+      'is visible and hittable while the hover-revealed row is hidden (delayed entry)',
+    files: [
+      {
+        path: 'src-ui/src/components/chat/chat.css',
+        change: (source) =>
+          exactReplace(
+            source,
+            '.answer-basis-chip {\n  display: inline-flex;',
+            '.answer-basis-chip {\n  opacity: 0;\n  pointer-events: none;\n  display: inline-flex;',
+          ),
+      },
+    ],
+  },
+  {
     id: 'testflight-required-mobile-endpoint',
     test: 'scripts/__tests__/testflight-live-activity-workflow.test.ts',
     failure:
