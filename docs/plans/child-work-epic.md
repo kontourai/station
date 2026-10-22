@@ -231,6 +231,22 @@ claimed. Registered metadata does not establish usable stores, retrieved/injecte
 content, shared conversation memory, engine tool delivery or write authority.
 External routes, full launch equivalence and portable authority remain unfinished.
 
+At `9ede735b5e4`, each member form offers an explicit Project binding while
+Directory remains the default. Only the selected workspace kind is sent; toggling
+retains both drafts locally without leaking the inactive directory into a Project
+request. Inspection and saving use the same parsed binding. The inspector accepts
+Project IDs up to the existing group contract's 256-character bound, rather than
+applying Agent identity syntax. The receiver still resolves and authorizes the
+actual Project workspace and defaults.
+
+Focused real HTTP and mounted UI evidence passed 32/32, with UI/server-test types
+and lint. Substituting the parent production form and route causes exactly two
+intended failures, leaving thirty controls green; byte-exact restoration returns
+32/32. Independent source-only review found no confirmed P1/P2. The UI fixture
+proves serialization and local draft behavior, not server persistence, launch or
+real-browser geometry. Native/provider/hosted and full epic acceptance remain
+unverified for this increment.
+
 Published Flow Agents 9.3.0 exports v2 authority/grants, ancestor allocations and
 invocation holds, a durable group controller, Flow-owned scheduling, mailbox
 admission and bounded no-tools context acknowledgement. Station now composes the

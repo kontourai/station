@@ -1,0 +1,7 @@
+{
+  "revision": "9ede735b5e4683de1cb45b5ad6ecf0795fbe7322",
+
+  "notes": [
+    {"path":"CONTEXT.md","note":"Read the complete root Context against the accumulated module-map delta already consumed during the Context Map review and the current canonical callers at 9ede735b5e4. Explicit eligible Flow binding remains with flow-policy-sidecar and bound completion gates; plugin publication remains grant/artifact-fenced; workspace rendering remains separate from trust, readiness, proposed-change decisions and execution authority. CLI groups, Task rooms, account/theme settings, personal boards and usage observations add concrete owners without changing these responsibility boundaries. Project tools and knowledge observations reuse Project/Knowledge owners and do not turn a directory into a Project or registration into delivery. No prose change is needed. This review covers root overview claims and the changed module-map input only, not every detailed claim in its source documents, independent runtime/provider/device evidence, release readiness or full epic acceptance.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]}
+  ]
+}
