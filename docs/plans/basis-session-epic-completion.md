@@ -12,10 +12,10 @@ Keep the remaining work on `feat/basis-epic-418` and open one PR after its accep
 - [x] Outputs in Basis: associate immutable Task Outputs only through recorded declaration provenance, never paths, titles or matching bytes. Unassociated kept Outputs remain separate.
 - [x] Inventory presentation: follow inputs, execution, outputs/claims, support/evidence and sources. Preserve explicit gaps, current versus kept scope, and item-local attention.
 - [x] #3990: hosted assessments are not captured; malformed or oversized stored indices are corrupt; transient reads stay unavailable. Exercise the real module and fault injection.
-- [ ] #3863: pin the invariant's Station-only scope, correct Task-creation wording, log exact identifiers, and repair peer credential isolation in room collaboration.
+- [x] #3863: pin the invariant's Station-only scope, correct Task-creation wording, log exact identifiers, and repair peer credential isolation in room collaboration.
 - [x] #3951: a narrow side dock presents inventory without squeezing the transcript into a split column. Verify 400px geometry and focus return.
 - [x] #3959: Escape closes the appropriate inventory layer without navigating to a parent view; fault injection must detect loss of the event claim.
-- [ ] #3975 and #3978: repair the mobile composer prerequisite and app-shell accessible names at their owners, preserving existing journeys.
+- [x] #3975 and #3978: repair the mobile composer prerequisite and app-shell accessible names at their owners, preserving existing journeys.
 - [x] #3867 and the complete journey: exercise the MCP reader with real Session identity/ownership, inspection before Keep, exact retention, restart, revocation, publishing entry points, keyboard focus and accessibility relationships.
 - [ ] Review documentation, regenerate derived content, run routed checks and Veritas readiness, and retain final combined evidence before the single PR.
 
@@ -87,9 +87,16 @@ Each repaired behavior needs its own baseline or injected failure and restored r
   cited local source revisions. The chromeless Task host deliberately has no
   portable-launcher button; its old simulated button test is retired, not
   counted as equivalent host integration proof.
-- Room recovery reaches reconnection, explicit editor re-entry, distinct peer
-  revocation/read-only state and recovered document/Agent attribution after
-  restart. Final full-run qualification remains open; latest attempt exhausted
-  the infrastructure startup bound during cold build, before product assertions.
-- Documentation delta review and final mobile qualification remain in progress.
+- Full room recovery passed at `8474675419d`: reconnect and explicit editor
+  re-entry, visible newly published Agent Session history, exact-device revocation
+  with access recovery and protected controls removed, then same-home restart
+  with durable document/Agent attribution and cleared ephemeral presence.
+  The history helper explicitly reopens the native disclosure and requires its
+  content visible; reading a closed disclosure no longer supplies false proof.
+- All six affected mobile journeys passed at `f00273bfe6c`: Home starts,
+  scoped references and quote reload, long transcript virtualization, attachment
+  review, and current-host attachment dispatch. The unchanged product paths ran
+  against a prepared isolated build; no native-device qualification is inferred.
+- Actual main `b94401f21ed` merged normally at `bf03e142e47`.
+- Final documentation/readiness and code-health checks remain in progress.
   Provider/native/live-account proof remains outside this epic's local claims.
