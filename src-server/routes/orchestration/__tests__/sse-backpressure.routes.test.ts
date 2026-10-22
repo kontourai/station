@@ -116,6 +116,7 @@ describe('SSE backpressure over real loopback sockets (#3817)', () => {
     [1000, 1024],
     [300, 16 * 1024],
     [3000, 4 * 1024],
+    [192, 48 * 1024],
   ])(
     'a healthy reader receives %i snapshot-time events of %i bytes without EOF',
     async (count, bytes) => {
@@ -139,6 +140,8 @@ describe('SSE backpressure over real loopback sockets (#3817)', () => {
       const page = vi.spyOn(f.service, 'readEventStreamReplayPage');
       const base = await listen(f.app);
       const connecting = connect(`${base}/events`);
+      // Teardown may abort this request if the snapshot fixture fails first.
+      void connecting.catch(() => {});
       await snapshotEntered;
       for (let i = 0; i < count; i++) f.emit(i, bytes);
       release();
@@ -153,6 +156,17 @@ describe('SSE backpressure over real loopback sockets (#3817)', () => {
       );
       if (count * bytes > 8 * 1024 * 1024) expect(page).toHaveBeenCalled();
       else expect(page).not.toHaveBeenCalled();
+      for (const result of page.mock.results) {
+        if (result.type !== 'return')
+          throw new Error('Replay page did not return');
+        expect(result.value.events.length).toBeLessThanOrEqual(64);
+        const serializedBytes = result.value.events.reduce(
+          (sum, event) =>
+            sum + Buffer.byteLength(JSON.stringify({ event: event.payload })),
+          0,
+        );
+        expect(serializedBytes).toBeLessThanOrEqual(1024 * 1024);
+      }
       f.emit(count, 10);
       await client.until(`"eventId":"event-${count}"`);
     },
@@ -336,6 +350,9 @@ describe('SSE backpressure over real loopback sockets (#3817)', () => {
     const text = await client.until('still-live');
     expect(text.includes('event: data:changed')).toBe(true);
     expect(text).toContain('"notifications"');
+    expect(text).toContain('"scheduler-jobs"');
+    expect(text).toContain('"answer-basis"');
+    expect(text).toContain('"server-update-state"');
     expect(text).not.toContain('"index":1499');
   });
 });
