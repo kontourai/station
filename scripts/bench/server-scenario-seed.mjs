@@ -64,7 +64,12 @@ try {
   // attachment projection as live writers. No adapter or model is invoked.
   for (let i = 0; i < options.turns; i += 1) {
     const turnId = `perf-turn-${i}`;
-    const event = { ...base, threadId, turnId };
+    const event = {
+      ...base,
+      createdAt: new Date(Date.parse(createdAt) + (i + 1) * 1000).toISOString(),
+      threadId,
+      turnId,
+    };
     const image = i >= options.turns - options.images;
     const bytes = image ? png(i) : undefined;
     store.appendEvent({

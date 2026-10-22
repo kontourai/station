@@ -218,7 +218,17 @@
 
     "scripts/source-verification-policy.mjs",
 
-    "scripts/__tests__/source-verification-policy.test.ts"
+    "scripts/__tests__/source-verification-policy.test.ts",
+
+    "scripts/bench/server-scenario.mjs",
+
+    "scripts/bench/server-scenario-probe.mjs",
+
+    "scripts/bench/server-scenario-seed.mjs",
+
+    "scripts/__tests__/server-scenario.test.ts",
+
+    ".github/workflows/server-scenario.yml"
   ],
 
   "checks": [
