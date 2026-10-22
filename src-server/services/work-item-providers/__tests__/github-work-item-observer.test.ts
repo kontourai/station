@@ -208,13 +208,16 @@ describe.skipIf(process.platform === 'win32')('GitHubWorkItemObserver', () => {
     expect(
       (await observer().observeWorkItem(REF, { signal: stop.signal })).status,
     ).toBe('unavailable');
-    await expect(
-      execGitContextCommand(gh, ['api', ISSUE], {
-        signal: stop.signal,
-        env: { FAKE_GH_DIR: dir },
-      }),
-    ).rejects.toMatchObject({ killed: true });
     expect(calls()).toEqual([]);
+    // The runner itself: a spawn attempt of a missing executable would
+    // surface as ENOENT, so a stopped-before-start rejection proves none ran.
+    const spawned = await execGitContextCommand(
+      join(dir, 'no-such-gh'),
+      ['api', ISSUE],
+      { signal: stop.signal },
+    ).catch((error: unknown) => error as { code?: unknown; killed?: unknown });
+    expect(spawned).toMatchObject({ killed: true });
+    expect((spawned as { code?: unknown }).code).not.toBe('ENOENT');
   });
 
   test('one item is one cache entry however its ref is spelled, answered with the spelling asked for (review round 2, P3-5)', async () => {
