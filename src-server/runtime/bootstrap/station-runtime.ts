@@ -43,6 +43,7 @@ import { ToolLibraryService } from '../../services/plugins/tool-library-service.
 import { deriveWorkspaceHomeRoleStatus } from '../../services/plugins/workspace-home-role-service.js';
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
 import { createProjectNativeToolLoader } from '../../services/projects/project-native-tools.js';
+import { hasProjectS3Sources } from '../../services/projects/project-s3-sources.js';
 import { projectMcpServers } from '../../services/projects/project-tools.js';
 import { NativeRelayEnrollmentJournal } from '../../services/relay/native-relay-enrollment-journal.js';
 import { ConnectionSigningKeyStore } from '../../services/ssh/connection-signing-key-store.js';
@@ -3846,7 +3847,11 @@ export class StationRuntime {
             const roots = await this.knowledgeStoreProvider.listRoots();
             return projectMcpServers(
               project,
-              roots.some((root) => isProjectKnowledgeRoot(root, project.id)),
+              roots.some((root) => isProjectKnowledgeRoot(root, project.id)) ||
+                hasProjectS3Sources(
+                  this.configLoader.getProjectHomeDir(),
+                  project.id,
+                ),
             );
           },
           skillService: this.skillService,
@@ -4570,6 +4575,8 @@ export class StationRuntime {
         agentSpecs: this.agentSpecs,
         getProject: (slug) => this.projectService.getProject(slug),
         listRoots: () => this.knowledgeStoreProvider.listRoots(),
+        hasAdditionalKnowledgeSources: (projectId) =>
+          hasProjectS3Sources(this.configLoader.getProjectHomeDir(), projectId),
         loadTools: (slug, spec) =>
           this.framework.loadTools(slug, spec, {
             configLoader: this.configLoader,

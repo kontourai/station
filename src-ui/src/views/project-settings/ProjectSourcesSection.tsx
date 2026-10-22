@@ -1,6 +1,7 @@
 import { PageSection } from '../../components/PageSection';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { ProjectKnowledgeSources } from './ProjectKnowledgeSources';
+import { ProjectS3Sources } from './ProjectS3Sources';
 import { ResourcesSection } from './ResourcesSection';
 import './ProjectSourcesSection.css';
 
@@ -29,6 +30,13 @@ export function ProjectSourcesSection({
             projectId={projectId}
             authority={authority}
           />
+          {projectId && (
+            <ProjectS3Sources
+              slug={slug}
+              projectId={projectId}
+              authority={authority}
+            />
+          )}
         </div>
       ) : (
         <p>Connect to this Station to manage project sources.</p>

@@ -345,6 +345,10 @@ export function installAccountBoundDeviceGate(
           ['GET', 'POST'].includes(method)) ||
         ((method === 'GET' || method === 'HEAD') &&
           (path === '/api/knowledge/capabilities' ||
+            path === '/api/knowledge/s3-sources/capabilities' ||
+            /^\/api\/knowledge\/s3-sources\/projects\/[^/]+(?:\/[^/]+\/(?:objects|object))?$/.test(
+              path,
+            ) ||
             path === '/api/knowledge/roots' ||
             path === '/api/knowledge/adapters' ||
             /^\/api\/knowledge\/roots\/[^/]+\/document-imports\/[^/]+\/originals\/\d+$/.test(

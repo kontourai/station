@@ -11,6 +11,42 @@ export interface ProjectToolDefaults {
   knowledge?: boolean;
 }
 
+/** An immutable, explicitly shared read-only source registration. AWS credentials stay on the host. */
+export interface ProjectS3Source {
+  id: string;
+  projectId: string;
+  displayName: string;
+  accountId: string;
+  region: string;
+  bucket: string;
+  prefix: string;
+  createdAt: string;
+}
+
+export interface ProjectS3ObjectReference {
+  key: string;
+  etag: string;
+  bytes: number;
+  modifiedAt?: string;
+}
+
+export interface ProjectS3ObjectPage {
+  source: ProjectS3Source;
+  objects: ProjectS3ObjectReference[];
+  continuationToken?: string;
+  observedAt: string;
+  /** One bounded page, never a completeness or indexing claim. */
+  truncated: boolean;
+}
+
+export interface ProjectS3ObjectRead {
+  source: ProjectS3Source;
+  object: ProjectS3ObjectReference & { versionId?: string; sha256: string };
+  text: string;
+  observedAt: string;
+  citation: string;
+}
+
 /** Historical verified acquisition used when this Project was created. */
 export interface ProjectRepositorySource {
   acquisitionId: string;

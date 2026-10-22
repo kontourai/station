@@ -21,6 +21,7 @@ export function createProjectNativeToolLoader(deps: {
   ) => void;
   getProject: (slug: string) => ProjectConfig;
   listRoots: () => Promise<KnowledgeStoreRoot[]>;
+  hasAdditionalKnowledgeSources?: (projectId: string) => boolean;
   loadTools: (slug: string, spec: AgentSpec) => Promise<ITool[]>;
 }) {
   return async (
@@ -43,7 +44,8 @@ export function createProjectNativeToolLoader(deps: {
     const roots = await deps.listRoots();
     const servers = projectMcpServers(
       project,
-      roots.some((root) => isProjectKnowledgeRoot(root, project.id)),
+      roots.some((root) => isProjectKnowledgeRoot(root, project.id)) ||
+        deps.hasAdditionalKnowledgeSources?.(project.id) === true,
     );
     if (original)
       deps.validateProjectTools?.(publicSlug, original, project, servers);

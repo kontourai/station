@@ -21,6 +21,7 @@ import {
   describe,
   expect,
   test,
+  vi,
 } from 'vitest';
 import type { StationControlCallerRecordResolver } from '../../runtime/mcp/station-control-caller.js';
 import {
@@ -51,6 +52,7 @@ const recorded: Recorded[] = [];
 let server: ReturnType<typeof serve>;
 
 beforeAll(async () => {
+  vi.stubEnv('STATION_EXPERIMENTAL_S3_SOURCES', '1');
   const app = new Hono();
   app.all('*', (c) => {
     recorded.push({
@@ -76,6 +78,7 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  vi.unstubAllEnvs();
   await new Promise<void>((resolve) => server.close(() => resolve()));
   delete process.env.STATION_API_BASE;
   delete process.env.STATION_SSH_CONNECT_POLL_TIMEOUT_MS;
@@ -234,6 +237,17 @@ const ARGS: Record<string, Record<string, unknown>> = {
   reindex_knowledge: {},
   search_knowledge: { query: 'q' },
   list_knowledge_roots: {},
+  list_project_s3_sources: { projectSlug: 'fixture' },
+  list_project_s3_objects: {
+    projectSlug: 'fixture',
+    sourceId: '11111111-1111-4111-8111-111111111111',
+  },
+  read_project_s3_object: {
+    projectSlug: 'fixture',
+    sourceId: '11111111-1111-4111-8111-111111111111',
+    key: 'selected/note.md',
+    etag: '"etag"',
+  },
   list_knowledge_records: { rootId: 'root-a', type: 'raw' },
   get_knowledge_record: { rootId: 'root-a', id: 'record-a' },
   add_knowledge_record: { rootId: 'root-a', title: 't', body: 'b' },
@@ -344,7 +358,7 @@ describe('the authority table routes are the routes the tools call', () => {
     );
   });
 
-  test('the Knowledge-only tools are the four #3196 moved off station-control, and both servers drive search_knowledge', () => {
+  test('Knowledge source tools stay off station-control, and both servers drive search_knowledge', () => {
     const only = (serverId: PolicyServerId) =>
       Object.keys(STATION_CONTROL_TOOL_POLICY)
         .filter((name) => policyServerIds(name).includes(serverId))
@@ -355,6 +369,9 @@ describe('the authority table routes are the routes the tools call', () => {
       'get_knowledge_record',
       'list_knowledge_records',
       'list_knowledge_roots',
+      'list_project_s3_objects',
+      'list_project_s3_sources',
+      'read_project_s3_object',
     ]);
     expect(policyServerIds('search_knowledge')).toEqual([
       'station-control',

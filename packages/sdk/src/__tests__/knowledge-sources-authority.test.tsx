@@ -14,6 +14,11 @@ import {
   useKnowledgeSourceCapabilitiesQuery,
   useResumeKnowledgeDocumentImportMutation,
 } from '../query-domains/knowledgeStores';
+import {
+  useAttachProjectS3SourceMutation,
+  useDisconnectProjectS3SourceMutation,
+  useProjectS3SourcesQuery,
+} from '../query-domains/projectS3Sources';
 
 const scopeA = { apiBase: 'http://station.test', authorityKey: 'account-a' };
 const scopeB = { ...scopeA, authorityKey: 'account-b' };
@@ -28,62 +33,77 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test('root queries isolate same-host accounts and discard a late old-authority response', async () => {
-  let active = scopeA;
-  setClientCredentialResolver(() => {
-    const captured = active;
-    return {
-      origin: captured.apiBase,
-      requestAuthority: { ...captured, isCurrent: () => active === captured },
-    };
-  });
-  let releaseA!: (response: Response) => void;
-  const fetch = vi
-    .fn<typeof globalThis.fetch>()
-    .mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          releaseA = resolve;
-        }),
-    )
-    .mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({ success: true, data: [{ id: 'source-b' }] }),
+test.each(['knowledge', 's3'] as const)(
+  '%s source queries isolate same-host accounts and discard a late old-authority response',
+  async (kind) => {
+    let active = scopeA;
+    setClientCredentialResolver(() => {
+      const captured = active;
+      return {
+        origin: captured.apiBase,
+        requestAuthority: { ...captured, isCurrent: () => active === captured },
+      };
+    });
+    let releaseA!: (response: Response) => void;
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            releaseA = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ success: true, data: [{ id: 'source-b' }] }),
+        ),
+      );
+    vi.stubGlobal('fetch', fetch);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const observer = renderHook(
+      ({ requestScope }) => {
+        const knowledge = useKnowledgeRootsQuery({
+          requestScope,
+          requireRequestScope: true,
+          enabled: kind === 'knowledge',
+        });
+        const s3 = useProjectS3SourcesQuery(
+          requestScope,
+          'research',
+          'project-a',
+          kind === 's3',
+        );
+        return kind === 'knowledge' ? knowledge : s3;
+      },
+      { wrapper: wrapper(client), initialProps: { requestScope: scopeA } },
+    );
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    active = scopeB;
+    observer.rerender({ requestScope: scopeB });
+    expect(observer.result.current.data).toBeUndefined();
+    await waitFor(() =>
+      expect(observer.result.current.data).toEqual([{ id: 'source-b' }]),
+    );
+    await act(async () =>
+      releaseA(
+        new Response(
+          JSON.stringify({ success: true, data: [{ id: 'private-a' }] }),
+        ),
       ),
     );
-  vi.stubGlobal('fetch', fetch);
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  });
-  const observer = renderHook(
-    ({ requestScope }) =>
-      useKnowledgeRootsQuery({ requestScope, requireRequestScope: true }),
-    { wrapper: wrapper(client), initialProps: { requestScope: scopeA } },
-  );
-  await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
-  active = scopeB;
-  observer.rerender({ requestScope: scopeB });
-  expect(observer.result.current.data).toBeUndefined();
-  await waitFor(() =>
-    expect(observer.result.current.data).toEqual([{ id: 'source-b' }]),
-  );
-  await act(async () =>
-    releaseA(
-      new Response(
-        JSON.stringify({ success: true, data: [{ id: 'private-a' }] }),
+    expect(observer.result.current.data).toEqual([{ id: 'source-b' }]);
+    expect(
+      JSON.stringify(
+        client
+          .getQueryCache()
+          .getAll()
+          .map((query) => query.state.data),
       ),
-    ),
-  );
-  expect(observer.result.current.data).toEqual([{ id: 'source-b' }]);
-  expect(
-    JSON.stringify(
-      client
-        .getQueryCache()
-        .getAll()
-        .map((query) => query.state.data),
-    ),
-  ).not.toContain('private-a');
-});
+    ).not.toContain('private-a');
+  },
+);
 
 test('captured source mutations cannot dispatch under a replacement account', async () => {
   let active = scopeA;
@@ -100,6 +120,8 @@ test('captured source mutations cannot dispatch under a replacement account', as
       disconnect: useDeleteKnowledgeRootMutation(scopeA),
       importDocuments: useImportKnowledgeDocumentsMutation(scopeA),
       resumeImport: useResumeKnowledgeDocumentImportMutation(scopeA),
+      attachS3: useAttachProjectS3SourceMutation(scopeA, 'research'),
+      disconnectS3: useDisconnectProjectS3SourceMutation(scopeA, 'research'),
     }),
     { wrapper: wrapper(client) },
   );
@@ -134,6 +156,31 @@ test('captured source mutations cannot dispatch under a replacement account', as
         requestId: '11111111-1111-4111-8111-111111111111',
         expectedRoot,
         retryUncertain: true,
+      }),
+    ).rejects.toThrow();
+    await expect(
+      mutation.result.current.attachS3.mutateAsync({
+        id: '11111111-1111-4111-8111-111111111111',
+        expectedProjectId: 'project-a',
+        displayName: 'Archive',
+        accountId: '123456789012',
+        region: 'us-west-2',
+        bucket: 'fixture-archive',
+        prefix: 'selected/',
+        profile: 'fixture-only',
+        shareWithProject: true,
+      }),
+    ).rejects.toThrow();
+    await expect(
+      mutation.result.current.disconnectS3.mutateAsync({
+        id: '11111111-1111-4111-8111-111111111111',
+        projectId: 'project-a',
+        displayName: 'Archive',
+        accountId: '123456789012',
+        region: 'us-west-2',
+        bucket: 'fixture-archive',
+        prefix: 'selected/',
+        createdAt: '2026-10-22T00:00:00Z',
       }),
     ).rejects.toThrow();
   });

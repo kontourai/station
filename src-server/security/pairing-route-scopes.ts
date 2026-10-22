@@ -3175,6 +3175,22 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/api/knowledge/index/search' },
     { method: 'POST', path: '/api/knowledge/migrate' },
     { method: 'GET', path: '/api/knowledge/capabilities' },
+    { method: 'GET', path: '/api/knowledge/s3-sources/capabilities' },
+    { method: 'GET', path: '/api/knowledge/s3-sources/profiles' },
+    { method: 'GET', path: '/api/knowledge/s3-sources/projects/:projectSlug' },
+    { method: 'POST', path: '/api/knowledge/s3-sources/projects/:projectSlug' },
+    {
+      method: 'POST',
+      path: '/api/knowledge/s3-sources/projects/:projectSlug/:sourceId/disconnect',
+    },
+    {
+      method: 'GET',
+      path: '/api/knowledge/s3-sources/projects/:projectSlug/:sourceId/objects',
+    },
+    {
+      method: 'GET',
+      path: '/api/knowledge/s3-sources/projects/:projectSlug/:sourceId/object',
+    },
     { method: 'POST', path: '/api/knowledge/document-imports' },
     {
       method: 'GET',

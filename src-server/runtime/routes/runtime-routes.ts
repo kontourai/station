@@ -1,4 +1,5 @@
 import { hostname } from 'node:os';
+import { isDeepStrictEqual } from 'node:util';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
@@ -382,6 +383,7 @@ import {
   createProjectContributionRoutes,
   delegationContributionQueryAuthorized,
 } from '../../routes/projects/project-contribution-routes.js';
+import { createProjectS3SourceRoutes } from '../../routes/projects/project-s3-source-routes.js';
 import {
   createProjectCatalogueReader,
   createProjectRoutes,
@@ -618,6 +620,11 @@ import { ProjectBindingsStore } from '../../services/projects/project-binding-st
 import { ProjectContributionService } from '../../services/projects/project-contribution-service.js';
 import { ProjectManifestStore } from '../../services/projects/project-manifest-store.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
+import {
+  ProjectS3SourceError,
+  ProjectS3Sources,
+  projectS3SourcesEnabled,
+} from '../../services/projects/project-s3-sources.js';
 import type { ProjectService } from '../../services/projects/project-service.js';
 import { resolveProjectWorkspacePath } from '../../services/projects/project-workspace-path.js';
 import type { ProposedChangeService } from '../../services/projects/proposed-change-service.js';
@@ -7034,6 +7041,135 @@ export function configureRuntimeRoutes(
       mayReadRoot: (request, root) =>
         mayUseKnowledgeRoot(request, root, 'view'),
       guardReadResponse: guardKnowledgeReadResponse,
+    }),
+  );
+  const projectS3Sources = new ProjectS3Sources(
+    context.configLoader.getProjectHomeDir(),
+  );
+  const s3Operator = (request: Request) =>
+    isOperatorInPersonNotAgent(request) &&
+    isRuntimeRequestPrincipalCurrent(
+      request,
+      context.environmentSecurityService,
+    );
+  const s3Admission = async (
+    request: Request,
+    slug: string,
+    manage: boolean,
+  ) => {
+    if (!projectS3SourcesEnabled())
+      throw new ProjectS3SourceError(
+        'S3 sources are disabled pending verification.',
+        404,
+      );
+    const project = (() => {
+      try {
+        return context.storageAdapter.getProject(slug);
+      } catch (error) {
+        if (error instanceof FileStorageNotFoundError)
+          throw new ProjectS3SourceError('Project not found.', 404);
+        throw error;
+      }
+    })();
+    const restricted = await requireAuthenticatedProjectRead(
+      request,
+      slug,
+    ).catch((error) => {
+      if (error instanceof ProjectMembershipRefusal)
+        throw new ProjectS3SourceError('Project not found.', 404);
+      throw error;
+    });
+    const principal = roomRequestPrincipals.get(request);
+    const internal =
+      getRuntimeAuthenticatedRequestPrincipal(request)?.kind === 'internal';
+    const caller = internal
+      ? resolveStationControlCallerForRequest(
+          request,
+          resolveStationControlCallerRecord,
+        )
+      : undefined;
+    const assertCurrent = () => {
+      if (
+        !principal ||
+        request.signal.aborted ||
+        !isRuntimeRequestPrincipalCurrent(
+          request,
+          context.environmentSecurityService,
+        ) ||
+        context.storageAdapter.getProject(slug).id !== project.id ||
+        roomRequestPrincipals.get(request)?.id !== principal.id ||
+        (manage && !s3Operator(request))
+      )
+        throw new ProjectS3SourceError(
+          'Current Project source authority is required.',
+          403,
+        );
+      if (internal) {
+        const current = resolveStationControlCallerForRequest(
+          request,
+          resolveStationControlCallerRecord,
+        );
+        if (
+          !caller?.principal ||
+          !current?.principal ||
+          current.sessionId !== caller.sessionId ||
+          current.principal.id !== caller.principal.id ||
+          !agentOwnerMayUseProject(request, project.id, 'view')
+        )
+          throw new ProjectS3SourceError('Agent source authority ended.', 403);
+      }
+      if (
+        restricted &&
+        !context.projectMembership
+          ?.admissionsForResolvedPrincipal(principal.id)
+          .some(
+            ({ scope, member }) =>
+              scope.localProjectId === project.id &&
+              member.status === 'active' &&
+              member.actions.includes('view'),
+          )
+      )
+        throw new ProjectS3SourceError('Project source access ended.', 403);
+      const account =
+        context.deploymentAuthentication?.service.current(request);
+      if (
+        account &&
+        account.kind !== 'absent' &&
+        account.kind !== 'authenticated'
+      )
+        throw new ProjectS3SourceError('Account source authority ended.', 403);
+    };
+    assertCurrent();
+    return {
+      projectId: project.id,
+      actorId: principal!.id,
+      signal: request.signal,
+      assertCurrent,
+    };
+  };
+  context.app.route(
+    '/api/knowledge',
+    createProjectS3SourceRoutes({
+      service: projectS3Sources,
+      canManage: s3Operator,
+      admit: s3Admission,
+      guard: (request, projectId, sources, response) =>
+        guardProjectResponse(response, async () => {
+          try {
+            if (!projectS3SourcesEnabled()) return false;
+            const project = context.projectService
+              .listProjects()
+              .find((candidate) => candidate.id === projectId);
+            if (!project) return false;
+            const authority = await s3Admission(request, project.slug, false);
+            authority.assertCurrent();
+            return sources.every((source) =>
+              isDeepStrictEqual(projectS3Sources.get(source.id), source),
+            );
+          } catch {
+            return false;
+          }
+        }),
     }),
   );
   // K5 record-CRUD routes (`s203-knowledge-meeting-notes` Wave 1 Task 2) — same

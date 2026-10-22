@@ -44,6 +44,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
+import { S3Client } from '@aws-sdk/client-s3';
 import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
@@ -1981,6 +1982,106 @@ describe('project guest administration over the production composition', () => {
       }),
     );
     expect(legacyInvite.status, await legacyInvite.clone().text()).toBe(200);
+  });
+  test('S3 source reads use Project membership while profile selection and attachment remain operator-only', async () => {
+    vi.stubEnv('STATION_EXPERIMENTAL_S3_SOURCES', '1');
+    try {
+      const h = await setup();
+      const { scope, guest } = await h.shareWithGuestAdmin(
+        'archive',
+        'Archive',
+      );
+      const privateProject = await h.projectService.createProject({
+        name: 'Private archive',
+        slug: 'private-archive',
+      });
+      const rootPath = '/api/knowledge/s3-sources/projects/archive';
+      const input = {
+        id: crypto.randomUUID(),
+        expectedProjectId: scope.localProjectId,
+        displayName: 'Archive fixture',
+        accountId: '123456789012',
+        region: 'us-west-2',
+        bucket: 'fixture-archive',
+        prefix: 'selected/',
+        profile: 'fixture-only',
+        shareWithProject: true,
+      };
+      const attach = (
+        path: string,
+        value: unknown,
+        headers: typeof h.operatorHeaders,
+      ) =>
+        h.request(
+          path,
+          headers({
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(value),
+          }),
+        );
+      const created = await attach(rootPath, input, h.operatorHeaders);
+      expect(created.status, await created.clone().text()).toBe(200);
+      const source = (
+        await readJson<{ data: { id: string; projectId: string } }>(created)
+      ).data;
+      const listing = await h.request(rootPath, guest());
+      expect(listing.status, await listing.clone().text()).toBe(200);
+      expect(await listing.text()).not.toContain('fixture-only');
+      expect(
+        (await h.request('/api/knowledge/s3-sources/profiles', guest())).status,
+      ).toBe(403);
+      expect(
+        (await attach(rootPath, { ...input, id: crypto.randomUUID() }, guest))
+          .status,
+      ).toBe(403);
+      expect(
+        (
+          await attach(
+            '/api/knowledge/s3-sources/projects/private-archive',
+            {
+              ...input,
+              id: crypto.randomUUID(),
+              expectedProjectId: privateProject.id,
+            },
+            h.operatorHeaders,
+          )
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await h.request(
+            '/api/knowledge/s3-sources/projects/private-archive',
+            guest(),
+          )
+        ).status,
+      ).toBe(404);
+      const send = vi
+        .spyOn(S3Client.prototype, 'send')
+        .mockImplementation(async () => ({
+          Contents: [{ Key: 'selected/note.md', ETag: '"etag"', Size: 5 }],
+          IsTruncated: false,
+        }));
+      const page = await h.request(`${rootPath}/${source.id}/objects`, guest());
+      expect(page.status, await page.clone().text()).toBe(200);
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(
+        (
+          await attach(
+            `${rootPath}/${source.id}/disconnect`,
+            { expectedSource: source },
+            guest,
+          )
+        ).status,
+      ).toBe(403);
+      vi.stubEnv('STATION_EXPERIMENTAL_S3_SOURCES', '');
+      expect(
+        (await h.request(`${rootPath}/${source.id}/objects`, guest())).status,
+      ).toBe(404);
+      expect(send).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
   test('knowledge roots and records enforce the account Project membership through real ingress', async () => {
     const h = await setup();

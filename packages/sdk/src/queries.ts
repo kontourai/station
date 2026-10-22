@@ -6,6 +6,15 @@ export {
   usePeerEnrollmentQuery,
   useStartPeerEnrollmentMutation,
 } from './query-domains/peerEnrollments';
+export {
+  useAttachProjectS3SourceMutation,
+  useDisconnectProjectS3SourceMutation,
+  useProjectS3CapabilitiesQuery,
+  useProjectS3ObjectQuery,
+  useProjectS3ObjectsQuery,
+  useProjectS3ProfilesQuery,
+  useProjectS3SourcesQuery,
+} from './query-domains/projectS3Sources';
 /**
  * SDK Query Hooks - Wraps React Query for API calls
  * Plugins use these instead of raw useQuery
