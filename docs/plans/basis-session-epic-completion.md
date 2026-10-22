@@ -10,11 +10,11 @@ Keep the remaining work on `feat/basis-epic-418` and open one PR after its accep
 
 - [x] Exact-answer inventory: tools, turn-scoped declared Outputs, decisions and explicit delegation Session references. Lineage never means support. Protocol 3 opts into the shape; older readers retain typed gaps. Continuations bind the dialect, authority and exact scope.
 - [x] Outputs in Basis: associate immutable Task Outputs only through recorded declaration provenance, never paths, titles or matching bytes. Unassociated kept Outputs remain separate.
-- [ ] Inventory presentation: follow inputs, execution, outputs/claims, support/evidence and sources. Preserve explicit gaps, current versus kept scope, and item-local attention.
+- [x] Inventory presentation: follow inputs, execution, outputs/claims, support/evidence and sources. Preserve explicit gaps, current versus kept scope, and item-local attention.
 - [x] #3990: hosted assessments are not captured; malformed or oversized stored indices are corrupt; transient reads stay unavailable. Exercise the real module and fault injection.
 - [ ] #3863: pin the invariant's Station-only scope, correct Task-creation wording, log exact identifiers, and repair peer credential isolation in room collaboration.
-- [ ] #3951: a narrow side dock presents inventory without squeezing the transcript into a split column. Verify 400px geometry and focus return.
-- [ ] #3959: Escape closes the appropriate inventory layer without navigating to a parent view; fault injection must detect loss of the event claim.
+- [x] #3951: a narrow side dock presents inventory without squeezing the transcript into a split column. Verify 400px geometry and focus return.
+- [x] #3959: Escape closes the appropriate inventory layer without navigating to a parent view; fault injection must detect loss of the event claim.
 - [ ] #3975 and #3978: repair the mobile composer prerequisite and app-shell accessible names at their owners, preserving existing journeys.
 - [x] #3867 and the complete journey: exercise the MCP reader with real Session identity/ownership, inspection before Keep, exact retention, restart, revocation, publishing entry points, keyboard focus and accessibility relationships.
 - [ ] Review documentation, regenerate derived content, run routed checks and Veritas readiness, and retain final combined evidence before the single PR.
@@ -64,3 +64,32 @@ Each repaired behavior needs its own baseline or injected failure and restored r
   The cookie-isolation repair has no complete browser acceptance yet.
 - Master-owned geometry, remaining mobile acceptance, final documentation
   readiness and final-main integration remain pending. No push or PR exists.
+
+## Current follow-through
+
+- Latest main `d5c4a9a78e1` merged normally at `f734cadd1d1`; no reset/rebase.
+- Task Basis geometry, Process refresh, whole-page axe, 390px dialog containment,
+  exact-tab keyboard close/focus and pinned-input revocation passed (3 browser
+  cases at `63c6d609c69`). Wide/narrow inventory including 400px side-dock overlay
+  passed at `8ac83e5fdd5`; the Project initials contrast repair preserves accents
+  on the tile while using readable text for its initials.
+- Escape: six baseline passes, removing preventDefault caused the named parent
+  navigation assertion to fail, and exact restoration passed all six.
+- Authority re-verification replaced the entire protected tree, beyond the old
+  catalog-loading boundary. One bounded tab choice now survives by verified
+  namespace/API/Task incarnation. The regression failed once against the old
+  owner (63 keepers passed), then all 64 passed repaired. Existing-owner
+  source review passed; no draft/data/authority retention is inferred.
+- Oversized terminal-tool descriptors withheld by the result projector now
+  preserve an internal partial-results flag and explicit inventory gap. Two
+  baseline and committed old-source-injection failures; 61 restored tests pass.
+- Whole Task MCP plus all three Session inventory interop cases passed on the
+  cited local source revisions. The chromeless Task host deliberately has no
+  portable-launcher button; its old simulated button test is retired, not
+  counted as equivalent host integration proof.
+- Room recovery reaches reconnection, explicit editor re-entry, distinct peer
+  revocation/read-only state and recovered document/Agent attribution after
+  restart. Final full-run qualification remains open; latest attempt exhausted
+  the infrastructure startup bound during cold build, before product assertions.
+- Documentation delta review and final mobile qualification remain in progress.
+  Provider/native/live-account proof remains outside this epic's local claims.
