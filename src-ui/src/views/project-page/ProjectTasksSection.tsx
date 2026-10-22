@@ -399,6 +399,14 @@ export function ProjectTasksSection({
       setStartFromWorkItemError(describeReadFailure(error));
       return;
     }
+    // The item's open Task is in another Project: say so here, and stay on
+    // this board rather than open a Task this Project does not hold.
+    if ('elsewhere' in result && result.elsewhere) {
+      setStartFromWorkItemError(
+        'This item already has an open Task in another Project.',
+      );
+      return;
+    }
     if (result.existing)
       toastStore.show('This item already has an open Task. Opening it.');
     else if (!result.briefSaved)

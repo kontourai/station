@@ -793,6 +793,23 @@ describe('ProjectTasksSection', () => {
       );
     });
 
+    test('an open Task in another Project is named as such, and the board stays put (review round 2, P3-2)', async () => {
+      startTaskFromWorkItem.mockResolvedValue({
+        task: { id: 'task-in-beta', projectId: 'project-beta' },
+        existing: true,
+        elsewhere: true,
+        briefSaved: false,
+      });
+      render(<ProjectTasksSection slug="project-alpha" />);
+      fireEvent.click(screen.getByText('Linked work item for the Tasks board'));
+      fireEvent.click(screen.getByRole('button', { name: 'Start Task' }));
+      expect((await screen.findByRole('alert')).textContent).toContain(
+        'This item already has an open Task in another Project.',
+      );
+      expect(navigate).not.toHaveBeenCalled();
+      expect(showToast).not.toHaveBeenCalled();
+    });
+
     test('shows why the Task could not start and stays on the board', async () => {
       startTaskFromWorkItem.mockRejectedValue(
         new Error(
