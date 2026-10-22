@@ -265,6 +265,7 @@ export interface CliSessionGroupHost<T> {
     pendingRequest?: { id: string; eventId?: string };
   }>;
   interrupt(handle: MemberHandle): Promise<void>;
+  prepareSync?(handle: MemberHandle): Promise<void>;
   sync?(
     handle: MemberHandle,
     input: {
@@ -838,7 +839,7 @@ export class CliSessionGroups<T> {
     )
       throw new CliSessionGroupUnavailable('group_invalid');
     host.assertCurrent();
-    if (!host.sync || this.active.has(groupId))
+    if (!host.sync || !host.prepareSync || this.active.has(groupId))
       throw new CliSessionGroupUnavailable('group_busy');
     const controller = new AbortController();
     const abort = () => controller.abort();
@@ -909,6 +910,13 @@ export class CliSessionGroups<T> {
       });
       if (!created) return await this.view(groupId, owner);
       const seats = this.read(groupId, owner).seats;
+      for (const seat of seats) {
+        assertCurrent();
+        if (!seat.handle)
+          throw new CliSessionGroupUnavailable('group_sync_unavailable');
+        await host.prepareSync(seat.handle);
+        assertCurrent();
+      }
       for (const seat of seats) {
         if (!seat.handle)
           throw new CliSessionGroupUnavailable('group_sync_unavailable');

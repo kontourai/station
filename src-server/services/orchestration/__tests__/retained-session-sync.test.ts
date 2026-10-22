@@ -23,6 +23,7 @@ afterEach(async () => {
 });
 
 class SyncAdapter extends GateTestAdapter {
+  async assertContextSyncRuntime() {}
   readonly starts: { input: ProviderSessionStartInput; generation?: string }[] =
     [];
   readonly sends: { input: ProviderSendTurnInput; generation?: string }[] = [];
@@ -32,6 +33,8 @@ class SyncAdapter extends GateTestAdapter {
   }
   startGate = Promise.resolve();
   stopFails = false;
+  finishReason: 'stop' | 'other' = 'stop';
+  reportRuntimeError = false;
   nativeSessionIdentity(cursor: unknown) {
     return typeof cursor === 'string' ? { sessionId: cursor } : undefined;
   }
@@ -86,6 +89,17 @@ class SyncAdapter extends GateTestAdapter {
       method: 'turn.started',
       invocationId: input.invocationId,
     });
+    if (this.reportRuntimeError)
+      this.events.push({
+        eventId: randomUUID(),
+        threadId: input.threadId,
+        turnId,
+        provider: 'claude',
+        createdAt: new Date().toISOString(),
+        method: 'runtime.error',
+        severity: 'error',
+        message: 'controlled failure',
+      });
     this.events.push({
       eventId: randomUUID(),
       threadId: input.threadId,
@@ -93,7 +107,7 @@ class SyncAdapter extends GateTestAdapter {
       provider: 'claude',
       createdAt: new Date().toISOString(),
       method: 'turn.completed',
-      finishReason: 'stop',
+      finishReason: this.finishReason,
       outputText: 'ACK SYNC run',
       invocationId: input.invocationId,
     });
@@ -214,6 +228,19 @@ test('an unconfirmed ordinary-process exit prevents restricted restart and provi
   expect(f.adapter.sends).toHaveLength(1);
   f.adapter.stopFails = false;
 });
+
+test.each(['other', 'runtime-error'] as const)(
+  'refuses %s terminal authority without yielding an ACK-eligible completion',
+  async (defect) => {
+    const f = await fixture();
+    if (defect === 'other') f.adapter.finishReason = 'other';
+    else f.adapter.reportRuntimeError = true;
+    await expect(f.service.syncRetainedSession(f.input)).rejects.toThrow(
+      'group_sync_turn_failed',
+    );
+    expect(f.adapter.sends).toHaveLength(2);
+  },
+);
 
 test('revocation during restricted materialization refuses the send and retains an exclusive unknown activation until stop', async () => {
   const f = await fixture();

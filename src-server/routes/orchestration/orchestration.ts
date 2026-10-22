@@ -4391,6 +4391,28 @@ export function createOrchestrationRoutes(
       );
       groupResponseSchema.parse(await response.json());
     },
+    prepareSync: async (handle) => {
+      assertCurrent();
+      const scopeRefused = refuseOutOfScopeDispatch(
+        c,
+        deps.stationControlDispatchScope,
+        () => ({ kind: 'task', taskId: handle.taskId, remote: false }),
+      );
+      if (scopeRefused)
+        throw new CliSessionGroupUnavailable('group_authority_required');
+      const response = await readAuthorizedDelegatedTask(c, handle.taskId, {});
+      const snapshot = groupSnapshotSchema.parse(
+        groupResponseSchema.parse(await response.json()).data,
+      );
+      assertCurrent();
+      if (!response.ok || snapshot.sessionId !== handle.sessionId)
+        throw new CliSessionGroupUnavailable('group_not_found');
+      await orchestrationService.assertRetainedSessionSyncAvailable(
+        handle.sessionId,
+        resolveDispatchActor(deps, c),
+      );
+      assertCurrent();
+    },
     sync: async (handle, input) => {
       assertCurrent();
       const scopeRefused = refuseOutOfScopeDispatch(

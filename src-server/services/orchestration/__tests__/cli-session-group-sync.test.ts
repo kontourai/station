@@ -19,6 +19,7 @@ async function fixture() {
   );
   const host: CliSessionGroupHost<string> = {
     assertCurrent() {},
+    async prepareSync() {},
     async dispatch(_input, admission) {
       return {
         taskId: admission.sessionId,
@@ -192,3 +193,26 @@ test.each(['ambiguous', 'tool-call'] as const)(
     expect(f.host.sync).toHaveBeenCalledOnce();
   },
 );
+
+test('unsupported retained members refuse before any reserved sync attempt or provider effect', async () => {
+  const f = await fixture();
+  f.host.prepareSync = async () => {
+    throw new Error('unsupported runtime');
+  };
+  f.host.sync = vi.fn();
+  await expect(
+    f.groups.sync(
+      f.group.groupId,
+      'owner',
+      f.input,
+      f.host,
+      new AbortController().signal,
+    ),
+  ).rejects.toThrow('unsupported runtime');
+  const result = await f.groups.view(f.group.groupId, 'owner');
+  expect(result.contextSync).toMatchObject({
+    status: 'incomplete',
+    members: [{ status: 'pending', attempts: 0 }],
+  });
+  expect(f.host.sync).not.toHaveBeenCalled();
+});

@@ -75,6 +75,7 @@ afterEach(async () => {
 });
 
 class MemberAdapter extends GateTestAdapter {
+  async assertContextSyncRuntime() {}
   syncOutputs: string[] = [];
   nativeSessionIdentity(cursor: unknown) {
     return typeof cursor === 'string' ? { sessionId: cursor } : undefined;
@@ -264,6 +265,7 @@ class MemberAdapter extends GateTestAdapter {
       turnId,
       method: 'turn.completed',
       createdAt: new Date().toISOString(),
+      finishReason: 'stop',
       outputText: input.clientTurnId?.startsWith('sync-')
         ? (this.syncOutputs.shift() ?? 'ACK SYNC run-one')
         : 'Returned member result',

@@ -697,6 +697,7 @@ function claudeModelCapabilities(
 type ClaudeSessionRecord = {
   session: ProviderSession;
   toolRestriction?: SessionToolRestriction;
+  toolRestrictionPending?: true;
   deliveryProbeServerId?: string;
   /** #2932: the redacted end of the engine's stderr (claude-code-spawn.ts). */
   engineStderrTail?: () => string;
@@ -1449,6 +1450,10 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
   private readonly events = new AsyncEventQueue();
   private readonly sessions = new Map<string, ClaudeSessionRecord>();
+  private readonly restrictedStartingProcesses = new Map<
+    string,
+    ClaudeEngineProcess
+  >();
   /** #1551: memoized `<claude> --version` probes, keyed by command + args. */
   private readonly versionProbes = new Map<
     string,
@@ -1472,6 +1477,15 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   constructor(private readonly options: ClaudeAdapterOptions = {}) {
     if (options.nativeSessionOwnership)
       this.continuity.nativeReturn = 'same-binding';
+  }
+
+  async assertContextSyncRuntime(): Promise<void> {
+    const executable = await this.resolveClaudeExecutable();
+    const version =
+      executable.launch === 'installed'
+        ? executable.installedVersion
+        : executable.bundledVersion;
+    if (version !== '2.1.308') throw new Error('group_sync_policy_unavailable');
   }
 
   async startSession(
@@ -2054,6 +2068,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const engineProcess = seatbeltSpawn
       ? createClaudeEngineProcess(undefined, seatbeltSpawn.wrap)
       : createClaudeEngineProcess();
+    if (sessionToolRestriction(input.threadId))
+      this.restrictedStartingProcesses.set(input.threadId, engineProcess);
     let sdkQuery: ReturnType<typeof query>;
     // After station-control, so the browser server reuses its credential.
     let builtinServers: Record<string, McpServerConfig> | undefined;
@@ -2085,6 +2101,11 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     } catch (error) {
       this.options.revokeStationControlCallerToken?.(input.threadId);
       seatbelt?.launch.cleanup();
+      if (this.restrictedStartingProcesses.has(input.threadId))
+        return engineProcess.terminate().then(() => {
+          this.restrictedStartingProcesses.delete(input.threadId);
+          throw error;
+        });
       throw error;
     }
 
@@ -2163,6 +2184,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     ): ProviderSession => {
       record.streamTask = this.consumeMessages(record);
       this.sessions.set(input.threadId, record);
+      this.restrictedStartingProcesses.delete(input.threadId);
 
       this.publish({
         eventId: crypto.randomUUID(),
@@ -2295,6 +2317,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       confinementRecord?: ReturnType<typeof observedConfinementRecord>,
     ): Promise<ProviderSession> => {
       if (record.toolRestriction) {
+        record.toolRestrictionPending = true;
+        this.sessions.set(input.threadId, record);
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {
           const init = await Promise.race([
@@ -2309,10 +2333,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           record.toolRestriction.assertCurrent();
           if (init.claude_code_version !== '2.1.308')
             throw new Error('group_sync_policy_unavailable');
+          delete record.toolRestrictionPending;
         } catch (error) {
           promptQueue.close();
           sdkQuery.close();
           await engineProcess.terminate();
+          this.restrictedStartingProcesses.delete(input.threadId);
           seatbelt?.launch.cleanup();
           this.sessions.delete(input.threadId);
           this.options.revokeStationControlCallerToken?.(input.threadId);
@@ -2375,6 +2401,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   ): Promise<ProviderTurnStartResult> {
     this.options.nativeSessionOwnership?.assertMutable(input.threadId);
     const record = this.requireSession(input.threadId);
+    if (record.toolRestrictionPending)
+      throw new Error('group_sync_policy_unavailable');
     if (
       record.toolRestriction !== sessionToolRestriction(input.threadId) ||
       (record.toolRestriction &&
@@ -3061,13 +3089,18 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // minting, or a second stop). Revocation is id-tolerant.
     this.options.revokeStationControlCallerToken?.(threadId);
     const record = this.sessions.get(threadId);
-    if (!record) return;
+    if (!record) {
+      await this.restrictedStartingProcesses.get(threadId)?.terminate();
+      this.restrictedStartingProcesses.delete(threadId);
+      return;
+    }
     // Settle outstanding canUseTool promises before teardown so the SDK
     // callback never hangs on a stopped session (mirrors acp-adapter, archive#148).
     this.cancelPendingRequests(record, threadId);
     record.promptQueue.close();
     record.query.close();
     await record.engineProcess?.terminate();
+    this.restrictedStartingProcesses.delete(threadId);
     record.confinementCleanup?.();
     this.options.nativeSessionOwnership?.retired(threadId);
     if (this.sessions.get(threadId) === record) this.sessions.delete(threadId);
@@ -3207,7 +3240,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   async stopAll(): Promise<void> {
     try {
       await Promise.all(
-        [...this.sessions.keys()].map((threadId) => this.stopSession(threadId)),
+        [
+          ...new Set([
+            ...this.sessions.keys(),
+            ...this.restrictedStartingProcesses.keys(),
+          ]),
+        ].map((threadId) => this.stopSession(threadId)),
       );
     } finally {
       this.events.close();

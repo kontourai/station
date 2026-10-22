@@ -439,6 +439,8 @@ export interface ProviderAdapterShape {
   readonly adoptionLifecycle?: 'reported';
   readonly provider: EngineId;
   readonly metadata: ProviderAdapterMetadata;
+  /** Read-only qualification; launch still verifies the actual native handshake. */
+  assertContextSyncRuntime?(): Promise<void>;
 
   /** Read-only projection used to suppress duplicate attached-session aliases. */
   nativeSessionIdentity?(

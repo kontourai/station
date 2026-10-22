@@ -1865,6 +1865,30 @@ export class OrchestrationService {
       throw new Error('group_sync_activation_changed');
   }
 
+  async assertRetainedSessionSyncAvailable(
+    threadId: string,
+    context: Parameters<OrchestrationService['dispatchWithReceipt']>[1],
+  ): Promise<void> {
+    this.initialize();
+    const session = this.sessionReadModel.get(threadId);
+    const adapter =
+      session && this.options.adapterRegistry.get(session.provider);
+    if (
+      session?.provider !== 'claude' ||
+      !adapter?.assertContextSyncRuntime ||
+      !adapter.nativeSessionIdentity?.(session.resumeCursor) ||
+      typeof this.preparedTurnBinding(threadId).nativeBindingKey !== 'string' ||
+      !this.canUserMutateSession(
+        threadId,
+        context?.userId,
+        context?.tenantExecutionContext,
+      ) ||
+      this.persistedPortableConsentOfThread(threadId)
+    )
+      throw new Error('group_sync_unavailable');
+    await adapter.assertContextSyncRuntime();
+  }
+
   /** One reserved attempt in the existing conversation; the caller owns its durable receipt. */
   async syncRetainedSession(input: {
     threadId: string;
@@ -1885,6 +1909,8 @@ export class OrchestrationService {
     this.initialize();
     input.assertCurrent();
     const threadId = input.threadId;
+    await this.assertRetainedSessionSyncAvailable(threadId, input.context);
+    input.assertCurrent();
     const session = this.sessionReadModel.get(threadId);
     const adapter =
       session && this.options.adapterRegistry.get(session.provider);
@@ -1954,10 +1980,13 @@ export class OrchestrationService {
         )
           throw new Error('group_sync_identity_changed');
         const startSequence =
-          this.options.eventStore?.latestEventByMethod(
-            threadId,
+          this.options.eventStore?.latestEventByMethods(threadId, [
+            'session.started',
+            'session.configured',
             'turn.completed',
-          )?.sequence ?? 0;
+            'session.exited',
+            'runtime.error',
+          ])?.sequence ?? 0;
         const sent = await this.dispatchWithReceipt(
           {
             type: 'sendTurn',
@@ -1997,14 +2026,21 @@ export class OrchestrationService {
           restriction.assertCurrent();
           if (!page) throw new Error('group_sync_turn_unknown');
           for (const entry of page.events) {
+            if (entry.sequence !== afterSequence + 1)
+              throw new Error('group_sync_evidence_gap');
             afterSequence = entry.sequence;
             const event = entry.event;
+            if (
+              event.method === 'runtime.error' ||
+              event.method === 'session.exited'
+            )
+              throw new Error('group_sync_turn_failed');
             if (event.turnId !== turnId) continue;
             if (event.method === 'tool.started') toolCalls++;
             if (event.method === 'turn.aborted')
               throw new Error('group_sync_turn_failed');
             if (event.method === 'turn.completed') {
-              if (event.finishReason === 'cancelled')
+              if (event.finishReason !== 'stop')
                 throw new Error('group_sync_turn_failed');
               const observedNative = adapter.nativeSessionIdentity?.(
                 this.sessionReadModel.get(threadId)?.resumeCursor,
@@ -10217,7 +10253,15 @@ export class OrchestrationService {
     // steps — persist the row as resumable, forget the live binding —
     // which is what this does.
     if (this.isDormantSessionThread(threadId)) {
-      this.cooperativeStop.stopDormantSessionImmediately(threadId);
+      if (this.toolRestrictions.has(threadId)) {
+        const provider = this.sessionReadModel.get(threadId)?.provider;
+        const adapter = provider && this.options.adapterRegistry.get(provider);
+        if (!adapter) throw new Error('group_sync_release_unknown');
+        await this.cooperativeStop.stopUserSessionImmediately(
+          adapter,
+          threadId,
+        );
+      } else this.cooperativeStop.stopDormantSessionImmediately(threadId);
       this.toolRestrictions.delete(threadId);
       return;
     }

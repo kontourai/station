@@ -1719,14 +1719,16 @@ folded result is bounded to 128 KiB of UTF-8 inside a 256 KiB request; the
 absolute sync deadline must be within 30 minutes. All seats must have returned
 successfully. The current implementation accepts retained Claude Code sessions
 only, with an exact native identity and configuration-home/credential binding;
-other engines refuse. The qualified native runtime is Claude Code 2.1.308.
+other engines refuse during group-wide preflight, before any sync attempt is
+reserved. The qualified native runtime is Claude Code 2.1.308.
 Station stops the ordinary activation, resumes the same conversation with an
 empty builtin tool set and command-line wildcard denial, and sends through the
 canonical turn boundary. This restricts model-tool execution; it does not claim
 an empty advertised tool list, an OS sandbox or suppression of startup hooks.
 
 Each member has at most two durably reserved sync attempts. Only a completed
-turn with no reported tool calls and a mismatching reply permits the second.
+turn with positive completion authority, contiguous observed events, no runtime
+error, no reported tool calls and a mismatching reply permits the second.
 The reply must equal `ACK SYNC <runId>` byte for byte; whitespace is not trimmed.
 A reported tool call fails the member even if the reply matches. An ambiguous
 start, missing terminal evidence, cancellation or lost authority retains an
@@ -1739,8 +1741,8 @@ The private group record retains up to eight sync operations. The latest
 `contextSync` view and revision deltas report the content hash, run ID, per-seat
 status, reserved attempt count, timestamps and exact terminal evidence; completed
 receipts also carry an opaque native-identity hash and reported tool-call count.
-They omit folded content and raw output. Raw context remains only in the
-Session's authorized transcript. `incomplete` and `unknown` remain visible; an
+They omit folded content and raw output. Context is sent to the member Session and remains subject to its transcript
+authorization. `incomplete` and `unknown` remain visible; an
 ACK confirms received context, not accepted work or verified understanding.
 Replaying the same sync operation reads its existing state; changed content or
 run identity conflicts. New operations cannot bypass retained unknown attempts.
