@@ -1805,7 +1805,8 @@ Starting a Session crosses two boundaries: an engine may start, and Station must
 (#3390); `@kontourai/station-shared/input-request` owns reading and the one
 content validator. Provider normalization
 (`src-server/providers/adapters/harness-questions.ts`) maps Claude
-AskUserQuestion and Codex requestUserInput into a form on the canonical
+AskUserQuestion, Codex requestUserInput and Cursor's `cursor/ask_question`
+ACP extension request into a form on the canonical
 request event, and the MCP edge maps a tool server's elicitation the same
 way. SessionCommandModule validates content against the current event's form
 before the adapter, which checks it again against its own copy, translates it
@@ -2106,13 +2107,15 @@ to `'other'`/absent reasons without a decision recorded here.
 **Purpose.** Vendor extension notifications remain opaque until Station has an
 exact handling rule for their `(namespace, type)` tuple. The immutable
 [shared table](../../src-shared/extension-notification-bindings.ts) records that
-rule, the adapter or protocol variant and an observation or pinned SDK contract tag.
+rule, the adapter or protocol variant and an observation, pinned SDK contract or
+published vendor contract tag.
 `extensionNotificationBinding()` returns an exact match or absence. A matching
 namespace prefix, version string or stored capability flag is not a match.
 
 **Current callers.** The [ACP mapper](../../src-server/providers/adapters/acp-adapter-events.ts)
 updates retained commands for `acp.commands.available` and retains bounded
-same-turn error context for `acp.turn-error-cause`. It still publishes the
+same-turn error context for `acp.turn-error-cause`, and folds Cursor's todo
+list into `plan.updated` for `acp.cursor.todos`. It still publishes the
 opaque event. The [UI handler](../../src-ui/src/hooks/orchestration/extensionHandlers.ts)
 handles Kiro authentication/compaction, Claude activity and retained task
 history, and engine MCP progress. `acp.host-chrome` entries are intentional

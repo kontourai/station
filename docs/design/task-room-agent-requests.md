@@ -250,8 +250,33 @@ writes use captured request authority and send the expected Task creation time;
 the history grant rereads that incarnation and scope after principal resolution,
 immediately before returning commit admission. A late response
 cannot clear the draft after its captured authority expires. Unsaved navigation and
-close guards protect local drafts. Draft/operation recovery across a tab reload
-is not implemented yet. The room shows one inline status for each published running agent, with Watch
+close guards protect local drafts. The composer saves bounded drafts and exact
+uncertain operations in this browser tab's session storage. A reload offers
+explicit restoration; it never sends, retries, or treats a missing receipt as
+proof of failure. Agent retries preserve the original operation ID, recipient,
+prompt and context digest. Room-message retries preserve proposal ID, text and
+occurrence time; a new server-default timestamp would conflict with the original
+proposal. Saved operations are written before dispatch, and storage refusal
+prevents a new attempt. A refused retry leaves the original unknown operation
+locked and saved; refusal of a new attempt does not establish that an earlier
+attempt failed. Concurrent views compare their last saved snapshot before a
+write or removal, so a stale composer cannot overwrite newer uncertain intent.
+Explicit Discard removes only the local copy, not work
+that may already be running. Cancel keeps the saved copy.
+
+Recovery partitions include the saved Station connection, API origin, current
+authorization generation, Project, Task ID and Task creation time, plus applicable
+native/relay binding identities. The runtime-local page activation epoch is
+excluded from that storage partition, but every send still uses current live
+request authority. A restored recipient must still be available. Changed owners
+cannot load or send another owner's draft. A late response from an unmounted or
+retired owner cannot clear restored intent. Records are validated before restore;
+malformed, unsupported or unavailable storage refuses recovery. The per-tab store
+is bounded to 20 entries and 512,000 characters without evicting uncertain work.
+Closing the tab ends that recovery lifetime. This is browser-local recovery;
+real-model, shared/public and native-shell acceptance remain separate.
+
+The room shows one inline status for each published running agent, with Watch
 and Stop through the existing dock and interruption commands. Completed answers
 and same-session thread replies remain in the room; no tool-step progress is
 inferred from narration.

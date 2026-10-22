@@ -503,3 +503,32 @@ test('an unanswered constructor field is the one marked, and its draft restores'
     screen.getByRole<HTMLInputElement>('radio', { name: 'PDF' }).checked,
   ).toBe(true);
 });
+
+test("an engine's form message renders as Markdown, never as raw HTML", async () => {
+  // An engine's plan review is its own Markdown, at the same trust as its
+  // chat answers; raw HTML in it is dropped, never rendered.
+  const plan: InputRequestForm = {
+    ...HARNESS,
+    message:
+      '# Migrate storage\n\nUse **WAL** mode.\n\n<img src="x" onerror="alert(1)">',
+  };
+  const { container } = render(
+    <InputRequestCard form={plan} onRespond={vi.fn()} />,
+  );
+  await waitFor(() =>
+    expect(
+      screen.getByRole('heading', { name: 'Migrate storage' }),
+    ).toBeTruthy(),
+  );
+  const message = container.querySelector('.input-request-card__message');
+  expect(message?.querySelector('strong')?.textContent).toBe('WAL');
+  expect(container.querySelector('img')).toBeNull();
+  expect(message?.textContent).not.toContain('# Migrate');
+});
+
+test("a tool server's form message stays plain text", () => {
+  const server: InputRequestForm = { ...MCP, message: '# Not a heading' };
+  render(<InputRequestCard form={server} onRespond={vi.fn()} />);
+  expect(screen.getByText('# Not a heading')).toBeTruthy();
+  expect(screen.queryByRole('heading', { name: 'Not a heading' })).toBeNull();
+});

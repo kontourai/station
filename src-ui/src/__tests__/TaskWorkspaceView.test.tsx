@@ -94,6 +94,7 @@ const appendOutputFeedback = vi.fn();
 const taskWorkspaceAuthorityScope = vi.hoisted(() => ({
   apiBase: 'http://station.test',
   authorityKey: 'task-workspace-fixture',
+  draftRecoveryKey: 'task-workspace-fixture-recovery',
   isCurrent: (): boolean => true,
 }));
 

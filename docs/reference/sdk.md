@@ -220,6 +220,14 @@ Query result, with values in `data` and separate loading/error state; they do
 not return the data array itself. A hook being exported also does not prove
 that the default Station host supplies its optional context.
 
+### Task mutations
+
+Successful Task creation refreshes all Task lists, including project and
+connection-scoped lists. Status and dispatch mutations also refresh the changed
+Task's record, graph and claim. Reference mutations refresh those surfaces and
+the Task's answer and user-input references. Other Tasks' detail caches and
+unrelated domains remain unchanged; a failed mutation does not invalidate them.
+
 ### Immutable output review
 
 `@kontourai/station-sdk/project-task-rooms` exports

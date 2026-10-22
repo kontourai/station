@@ -414,6 +414,7 @@ export {
 export {
   type ACPConnectionInfo,
   type ACPConnectionRegistryEntry,
+  type ACPConnectionRegistryRecheck,
   type ACPRegistryInstallAgentReceipt,
   type AcceptFlowExceptionInput,
   type AcpSlashCommandDescriptor,
@@ -724,6 +725,7 @@ export {
   type ReorderProjectsInput,
   type ReorderProjectsVariables,
   type ResolvedOpenSshHost,
+  recheckACPConnectionRegistry,
   reconnectACPConnection,
   recordFirstRunDecision,
   regenerateConversationTitle,

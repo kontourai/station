@@ -1,0 +1,7 @@
+{
+  "revision": "76766fd0391094e0d6a144b32ce50e02028e7822",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Checked the Cursor connection row and ACP claims; the change adds request handling, not launch or connection behavior; no prose change.","inputs":["docs/guides/connections.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}
