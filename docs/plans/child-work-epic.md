@@ -197,6 +197,17 @@ At `c5caf44956f`, the group form can inspect its actual receiver draft before
 saving or starting. The existing inspector accepts exact uploaded preset bytes
 and Agent/expected-engine/workspace bindings, projects declared prerequisites,
 and labels missing or disabled MCP definitions without claiming effective grants.
+At `0801039607e`, the real HTTP inspector test also binds refusal of a
+prerequisite ID absent from the preset: `422 ensemble_inspection_invalid`, before
+additional capability reads. The existing valid uploaded draft remains the
+positive control. All 21 cases pass. Removing only the unknown-prerequisite
+guard produces one intended failure (200 instead of 422), with 20 controls
+passing; byte-exact restoration returns 21/21. The initial diagnostic expected a
+missing-state projection and failed because the existing guard already refuses
+the request. That diagnosis was corrected rather than changing production to
+fit the test. This adds regression evidence for existing validation, not a new
+readiness, launch, provider or topology-acceptance guarantee.
+
 Host-browser inspection does not gain the local grant needed to read host preset
 paths. The shared table/diagram renderer keeps origin, state, owner and resolution
 receipts visible; editing the draft discards that observation. Saving and running
