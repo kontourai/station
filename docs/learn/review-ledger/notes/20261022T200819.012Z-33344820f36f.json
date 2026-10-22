@@ -1,0 +1,9 @@
+{
+  "revision": "7aa96852f916745b7d1613869d57a159d252a2f1",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"Bounded review of repair97d51740514 against the retained inspector capture. Visually inspected the PNG: controlled fixture_read request, Request identity, Deny/Approve once/Close controls and caption remain consistent. The sole OrchestrationService repair adds final handoff-context qualification for provider turns; request inspection/attention reads and RequestInspectionDialog are unchanged. Existing capture bytes and controlled-provider/no-decision provenance stay historical. No new screenshot, live provider, approval decision or UI runtime proof.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Source-only changed-claim review of the retained inspector recording. The final handoff-context qualifier in OrchestrationService does not change pending-request inspection, identity expansion or closing without a decision; the inspector/attention source paths are unchanged. Caption and original controlled-provider/navigation caveats are retained. Video was not replayed or recaptured in this review. No new motion, decision, installed-provider or native-shell acceptance is asserted.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}
