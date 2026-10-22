@@ -311,8 +311,9 @@ describe('buildTaskBrief', () => {
     expect(TASK_BRIEF_MAX_CHARS).toBe(16000);
     expect(brief.text).toContain(`\n> ${summaryText}\n`);
     expect(brief.text).toContain(TRACKER_GUIDANCE);
-    // At least the newest record survives even the worst case.
-    expect(brief.text).toContain('decision 39');
+    // At least the newest record survives even the worst case: the dead
+    // ends were written last, so the newest is `deadend 29`.
+    expect(brief.text).toContain('deadend 29');
     expect(brief.text).not.toContain('decision 00');
     const shown = (prefix: string) =>
       brief.text.split('\n').filter((line) => line.startsWith(`> ${prefix} `))
@@ -335,6 +336,51 @@ describe('buildTaskBrief', () => {
     expect(brief.text).toMatch(
       /- Standing records that did not fit: \d+ decisions, \d+ open questions, \d+ dead ends; call `get_task_brief` with `include: "all_records"`\./,
     );
+  });
+
+  test('the newest standing record still fits when every part is at its quoted worst (review round 2, P2-2)', () => {
+    // A single-line summary at its cap, the longest key, a record at its cap,
+    // and a person author near the 128 characters a line shows.
+    const person = { kind: 'person', principalId: 'P'.repeat(127) } as const;
+    const longKey = (prefix: string) => prefix.padEnd(64, 'k');
+    const brief = buildTaskBrief(
+      input({
+        task: {
+          ...LINKED_TASK,
+          title: 't'.repeat(600),
+          description: 'g'.repeat(1200),
+        },
+        observation: observed({
+          comments: 9,
+          labels: Array.from({ length: 30 }, (_, i) => `${i}${'l'.repeat(80)}`),
+          title: 'i'.repeat(600),
+        }),
+        text: 'doc line\n'.repeat(2000),
+        summary: summary('s'.repeat(4000), { author: person }),
+        records: [
+          record('decision', longKey('older'), `older ${'x'.repeat(994)}`, {
+            author: person,
+          }),
+          record('decision', longKey('newest'), `newest ${'y'.repeat(993)}`, {
+            author: person,
+          }),
+        ],
+        sessions: Array.from({ length: 8 }, (_, i) =>
+          sessionFacts({
+            sessionId: `${'s'.repeat(120)}${i}`,
+            status: 'Running',
+            lastTurn: turn({ request: 'r'.repeat(2000) }),
+            claims: Array.from({ length: 10 }, () => ({
+              paths: ['p'.repeat(512)],
+              expiresAt: '2026-10-21T10:00:00.000Z',
+            })),
+          }),
+        ),
+      }),
+    );
+    expect(brief.text.length).toBeLessThanOrEqual(TASK_BRIEF_MAX_CHARS);
+    expect(brief.text).toContain(`> newest ${'y'.repeat(993)}`);
+    expect(brief.omitted.standing.decision).toBeLessThanOrEqual(1);
   });
 
   test("a Session's active claims follow its line, on one bounded line", () => {

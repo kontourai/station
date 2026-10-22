@@ -207,10 +207,15 @@ above:
   labels line. The summary is shown whole; its cap is a refusal at write
   time. Quoting adds two characters a line, so a quoted summary may run to
   4,200 characters; one of very many short lines that runs longer is cut
-  with a note naming `include: "summary_history"`. With every fixed part at its worst, about 1,800 characters remain for
-  records and Sessions, so the newest record always fits. Records fill that
-  space newest first, taken in turn from each kind, then Session lines
-  (at most eight, newest activity first). Everything left out is counted.
+  with a note naming `include: "summary_history"`. Quoting makes every fixed
+  part longer, so the caps alone no longer leave room for a record when
+  every part is at its worst. The newest standing record's line is reserved
+  instead: when the fixed parts leave too little, the Task document's share
+  shrinks first and then the summary's, each by exactly the shortfall and
+  with a note saying it was cut, so the newest record always fits. Records
+  fill the space newest first, starting with the kind of the newest record
+  and then taking in turn from each kind, followed by Session lines (at
+  most eight, newest activity first). Everything left out is counted.
 - **Tracker guidance** goes in the brief whenever the Task has a
   `workItemRef`. It is the `tracker-hygiene` text, embedded as a server
   constant, because Station cannot ship a built-in skill and Codex has no

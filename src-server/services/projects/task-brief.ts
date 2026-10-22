@@ -63,12 +63,15 @@ export const TASK_BRIEF_VERSION = 'station.task-brief/v1' as const;
  */
 export const TASK_BRIEF_MAX_CHARS = 16000;
 
-// Per-part caps, so the fixed parts can never crowd the records out
-// entirely. The summary is shown whole (its own cap is a write-time
-// refusal), so two caps are new with it: the labels line, and a smaller
-// share for the Task document once a summary exists. Every fixed part at
-// its worst, with a full summary, leaves about 1.8k for records and
-// Sessions: the newest record always fits (task-brief.test.ts).
+// Per-part caps, so the fixed parts cannot crowd the records out. The
+// summary is shown whole (its own cap is a write-time refusal), so two caps
+// are new with it: the labels line, and a smaller share for the Task
+// document once a summary exists. Quoting adds characters to every part, so
+// the caps alone no longer leave room for a record at every part's worst.
+// The newest standing record's line is therefore reserved: when the fixed
+// parts leave less than it needs, the Task document's share shrinks first,
+// then the summary's, by exactly the shortfall (review round 2, P2-2;
+// task-brief.test.ts pins the worst case).
 const TITLE_MAX = 512;
 const GOAL_MAX = 1000;
 /** The Task document's text: the seeded brief, before any summary exists. */
@@ -313,7 +316,10 @@ function renderWorkItem(
   return lines;
 }
 
-function renderSummary(memory: TaskBriefInput['memory']): string[] {
+function renderSummary(
+  memory: TaskBriefInput['memory'],
+  quotedMax: number = SUMMARY_QUOTED_MAX,
+): string[] {
   if (memory.kind === 'unavailable')
     return [
       '## Task summary',
@@ -328,11 +334,12 @@ function renderSummary(memory: TaskBriefInput['memory']): string[] {
   return [
     `## Task summary (revision ${summary.revision}, by ${authorWords(summary.author)} at ${stamp(summary.createdAt)})`,
     BY_TASK,
-    // Whole: the summary's cap is a refusal at write time. Only quoting a
-    // summary of very many short lines can pass SUMMARY_QUOTED_MAX.
+    // Whole, normally: the summary's cap is a refusal at write time. It is
+    // cut only when quoting takes it past SUMMARY_QUOTED_MAX, or when the
+    // newest standing record needs its room (see the reservation below).
     ...quotedWithin(
       summary.text,
-      SUMMARY_QUOTED_MAX,
+      quotedMax,
       '(cut: quoted, this summary is longer than the brief allows; call `get_task_brief` with `include: "summary_history"` for the whole revision)',
     ),
   ];
@@ -365,6 +372,8 @@ const RECORD_SECTIONS = [
 function fitRecords(
   queues: Record<TaskRecordKind, string[]>,
   budget: number,
+  /** The kind whose newest record is newest overall: it is taken first. */
+  first?: TaskRecordKind,
 ): { kept: Record<TaskRecordKind, string[]>; remaining: number } {
   const kept: Record<TaskRecordKind, string[]> = {
     decision: [],
@@ -374,9 +383,13 @@ function fitRecords(
   const stopped = new Set<TaskRecordKind>();
   let remaining = budget;
   let progressed = true;
+  const order = [
+    ...RECORD_SECTIONS.filter(({ kind }) => kind === first),
+    ...RECORD_SECTIONS.filter(({ kind }) => kind !== first),
+  ];
   while (progressed) {
     progressed = false;
-    for (const { kind } of RECORD_SECTIONS) {
+    for (const { kind } of order) {
       if (stopped.has(kind)) continue;
       const next = queues[kind][kept[kind].length];
       const cost = next === undefined ? 0 : next.length + 1;
@@ -582,19 +595,23 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
   const workItem = renderWorkItem(task, observation);
   const documentText =
     input.document.kind === 'available' ? input.document.text.trim() : '';
-  const document = documentText
-    ? [
-        '## Task document',
-        task.workItemRef ? BY_TASK_AND_TRACKER : BY_TASK,
-        ...quotedWithin(
-          documentText,
-          memory?.summary ? DOCUMENT_WITH_SUMMARY_MAX : DOCUMENT_MAX,
-          '(cut; the Task document has the rest)',
-        ),
-      ]
-    : [];
-  // 2. The summary, whole.
-  const summary = renderSummary(input.memory);
+  const documentMax = memory?.summary
+    ? DOCUMENT_WITH_SUMMARY_MAX
+    : DOCUMENT_MAX;
+  const DOCUMENT_CUT_NOTE = '(cut; the Task document has the rest)';
+  const renderDocument = (max: number) =>
+    documentText
+      ? [
+          '## Task document',
+          task.workItemRef ? BY_TASK_AND_TRACKER : BY_TASK,
+          ...(max > DOCUMENT_CUT_NOTE.length + 3
+            ? quotedWithin(documentText, max, DOCUMENT_CUT_NOTE)
+            : [DOCUMENT_CUT_NOTE]),
+        ]
+      : [];
+  let document = renderDocument(documentMax);
+  // 2. The summary, whole unless the newest record needs its room.
+  let summary = renderSummary(input.memory);
   const rules = [
     '## Rules',
     ...[
@@ -636,6 +653,17 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
         .map(recordLine),
     ]),
   ) as Record<TaskRecordKind, string[]>;
+  // The newest standing record overall: its line is reserved below.
+  const newest = RECORD_SECTIONS.flatMap(({ kind }) => standing[kind]).reduce<
+    TaskMemoryRecord | undefined
+  >(
+    (best, record) =>
+      !best || record.createdAt.localeCompare(best.createdAt) > 0
+        ? record
+        : best,
+    undefined,
+  );
+  const newestCost = newest ? recordLine(newest).length + 1 : 0;
 
   // 6. Sessions: newest activity first, at most SESSIONS_MAX.
   const sessions = [...input.sessions].sort(bySessionActivity);
@@ -648,24 +676,38 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
         0,
       )
     : 0;
-  const fixed =
-    block(head) +
-    block(workItem) +
-    block(document) +
-    block(summary) +
-    block(rules) +
-    block(guidance) +
-    footer;
-  const budget = Math.max(
-    0,
+  const budgetFor = () =>
     TASK_BRIEF_MAX_CHARS -
-      fixed.length -
-      recordScaffolding -
-      (sessionsHeading.length + 'None.'.length + 3) -
-      OMISSION_RESERVE,
-  );
+    (
+      block(head) +
+      block(workItem) +
+      block(document) +
+      block(summary) +
+      block(rules) +
+      block(guidance) +
+      footer
+    ).length -
+    recordScaffolding -
+    (sessionsHeading.length + 'None.'.length + 3) -
+    OMISSION_RESERVE;
+  // Reserve the newest record: take the shortfall from the document's
+  // share, then from the summary's quoted share.
+  let shortfall = newestCost - budgetFor();
+  if (shortfall > 0 && documentText) {
+    document = renderDocument(Math.max(0, documentMax - shortfall));
+    shortfall = newestCost - budgetFor();
+  }
+  if (shortfall > 0 && memory?.summary) {
+    const shown = Math.min(
+      SUMMARY_QUOTED_MAX,
+      quotedLines(memory.summary.text).join('\n').length,
+    );
+    summary = renderSummary(input.memory, Math.max(0, shown - shortfall));
+    shortfall = newestCost - budgetFor();
+  }
+  const budget = Math.max(0, budgetFor());
 
-  const fitted = fitRecords(queues, budget);
+  const fitted = fitRecords(queues, budget, newest?.kind);
   for (const { kind } of RECORD_SECTIONS)
     omitted.standing[kind] = queues[kind].length - fitted.kept[kind].length;
   let sessionBudget = fitted.remaining;
