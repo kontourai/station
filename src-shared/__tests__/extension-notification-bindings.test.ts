@@ -191,6 +191,13 @@ describe('extension notification bindings', () => {
         observedAgainst: ['xai-acp'],
         evidence: 'station#1935-runtime-observation',
       },
+      {
+        namespace: 'cursor',
+        type: 'update_todos',
+        consumer: 'acp.cursor.todos',
+        observedAgainst: ['cursor-acp'],
+        evidence: 'cursor-acp-docs-contract',
+      },
       // station#3415: derived from the transcript projection's marker table.
       {
         namespace: 'codex-rollout',

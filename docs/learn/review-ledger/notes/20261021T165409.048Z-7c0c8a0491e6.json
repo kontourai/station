@@ -1,0 +1,7 @@
+{
+  "revision": "11c7acac13ad24eb73af7740c0ec969739ec0653",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Fix round: questions via cursor/ask_question named by protocol not vendor; plan review shown whole as a form, plan replaced only on approval, and after approval the engine stops so the person sends a message to continue.","inputs":["docs/guides/agents.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

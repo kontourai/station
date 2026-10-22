@@ -3,6 +3,7 @@ import {
   decisionOptionResponse,
   inputRequestFromRequestEvent,
   inputRequestOutcome,
+  inputRequestSummary,
 } from '@kontourai/station-shared/input-request';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import {
@@ -93,7 +94,7 @@ function openLiveInputRequestRecord(
       ...base,
       kind: 'form',
       requester: form.requester,
-      message: form.message,
+      message: inputRequestSummary(form.message),
     });
     return;
   }

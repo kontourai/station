@@ -1,0 +1,7 @@
+{
+  "revision": "4eba6af3cb5b45bcb3cf536d10ddcd9dc164d5db",
+
+  "notes": [
+    {"path":"docs/design/acp-chat-architecture.md","note":"Transitive re-review after the ACP guide's Plan Rendering wording changed; this dated design makes no claim about typed versus prose plans; no prose change.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "76766fd0391094e0d6a144b32ce50e02028e7822",
+
+  "notes": [
+    {"path":"docs/design/acp-chat-architecture.md","note":"Checked the dated design for inbound-extension or plan claims touched by the Cursor handlers; none; no prose change.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

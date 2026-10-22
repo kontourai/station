@@ -660,7 +660,9 @@ call or `ExitPlanMode`), which mints no Station session grant (#2933). On an
 OpenCode Session Station governs, `acceptForSession` on a file edit is sent to
 the engine as `accept`, and Station keeps the grant itself, because OpenCode's
 "always" for an edit covers every later edit. Station's grant never covers an
-edit of OpenCode configuration or outside the project (#3924).
+edit of OpenCode configuration or outside the project (#3924). A
+`cursor/create_plan` plan review is a form, so `acceptForSession` is refused
+for it like any form.
 The ACP response mapper prefers the agent's `allow_once` option. If the
 agent offers only `allow_always`, it falls back to that option; Station's
 one-call decision therefore does not guarantee one-call behavior in the

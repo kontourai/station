@@ -1,0 +1,7 @@
+{
+  "revision": "668ae6e9a96ec848a849993a75e1113a1529f7fd",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Transitive re-review after notification-delivery gained the form-request inbox note; automations make no claim about inbox decision actions; no prose change.","inputs":["docs/design/automations.md","docs/design/notification-delivery.md"]}
+  ]
+}

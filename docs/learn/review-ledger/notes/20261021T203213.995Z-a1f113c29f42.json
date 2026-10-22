@@ -1,0 +1,7 @@
+{
+  "revision": "b20f71c6f622a4f696c45c5aae8bfc07b2bd9f4f",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Merge of origin/main 1dd83e0 (#3991 renamed agents.md here): re-read the harness-question and autoApprove sections against the merged acp-adapter.ts (governed-edit downgrade plus form content in respondToRequest) and InputRequestCard; cursor/ask_question, cursor/create_plan and OpenCode claims hold; acp-approval-mode.process and cursor-extension tests pass on the merged tree.","inputs":["docs/guides/agent-configuration.md","packages/cli/src/commands/profile-store.ts","scripts/examples-conformance.mjs","src-server/domain/config-loader-agents.ts","src-server/routes/system/system-status-routes.ts","src-server/runtime/agents/runtime-default-agent.ts","src-server/runtime/bootstrap/native-engine-adoption.ts","src-server/runtime/mcp/mcp-manager.ts","src-server/services/agents/skill-service.ts","src-server/services/approvals/approval-guardian.ts","src-ui/src/components/chat/InputRequestCard.tsx","src-ui/src/views/agent-editor/AgentEditorApprovalDefault.tsx","src-ui/src/views/connections-hub/RelayRouteKeyApproval.tsx","src-ui/src/views/connections-hub/connection-sections.ts","src-ui/src/views/provider-settings/providerCatalog.tsx","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

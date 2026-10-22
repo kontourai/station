@@ -27,8 +27,10 @@ export function attentionKindLabel(kind: AttentionItem['kind']): string {
 
 /**
  * An `approval` item is genuinely still pending exactly when it carries
- * live actions — the agent is waiting on the decision, so dismissal must
- * be the visually-quiet secondary affordance. Whether a session deep link
+ * live actions, or a reference to its still-open request (a form is
+ * answered on its own card, so its notification carries no actions) — the
+ * agent is waiting on the decision, so dismissal must be the visually-quiet
+ * secondary affordance. Whether a session deep link
  * (`openHref`) resolves is orthogonal: ACP tool approvals, for instance,
  * never carry one but are absolutely live (archive#750 finding).
  * Only an action-less item is terminal, where a plain, equally-prominent
@@ -36,7 +38,7 @@ export function attentionKindLabel(kind: AttentionItem['kind']): string {
  * AttentionHistoryItem so the two surfaces can't drift.
  */
 export function isApprovalLivePending(item: ApprovalAttentionItem): boolean {
-  return item.actions.length > 0;
+  return item.actions.length > 0 || item.requestReference !== undefined;
 }
 
 /**

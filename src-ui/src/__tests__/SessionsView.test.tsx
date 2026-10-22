@@ -3541,6 +3541,39 @@ describe('SessionsView', () => {
     expect(screen.queryByLabelText('Send input to session')).toBeNull();
   });
 
+  test('a live form request (no notification actions) still hides the composer', () => {
+    // A Claude AskUserQuestion (or any form) is answered on its own card, so
+    // its inbox notification carries no actions; the open request it still
+    // references is what makes it live. Reading actions alone put the
+    // generic composer back beside a live question (archive#1249 hazard).
+    sessions[0].lifecycleState = 'running';
+    sessions[0].delegation = undefined;
+    attentionItems = [
+      {
+        id: 'approval:notif-question',
+        kind: 'approval',
+        title: 'The agent asked questions: Which color?',
+        createdAt: '2026-06-28T00:00:02.000Z',
+        updatedAt: '2026-06-28T00:00:02.000Z',
+        sessionId: 'thread-alpha',
+        source: {
+          notificationId: 'notif-question',
+          notificationSource: 'approval-inbox',
+        },
+        actions: [],
+        requestReference: {
+          threadId: 'thread-alpha',
+          requestId: 'req-question',
+          requestEventId: 'evt-question',
+        },
+      },
+    ];
+
+    renderView('thread-alpha');
+
+    expect(screen.queryByLabelText('Send input to session')).toBeNull();
+  });
+
   test('a session carrying only effectiveModel still shows its model (station#1249 review HIGH)', () => {
     // `model` is set only when a caller supplied an explicit modelId at start;
     // `effectiveModel` is resolved later from session.configured/turn.started.

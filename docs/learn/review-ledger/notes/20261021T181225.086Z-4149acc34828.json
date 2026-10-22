@@ -1,0 +1,7 @@
+{
+  "revision": "dc20199a5d95d98bc6cacc502a8732ffc0618562",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Round 3: Plan Rendering now states a turn completing does not clobber a typed plan; Cursor plan-review row documents Markdown rendering and fitting (todo count, then marked cut); removed the length refusal; Approve copy and engine-named notification wording.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

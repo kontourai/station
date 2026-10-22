@@ -1,0 +1,7 @@
+{
+  "revision": "dc20199a5d95d98bc6cacc502a8732ffc0618562",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Round-3 re-review: canonical plans survive turn completion, long plan reviews are fitted (todo count, then a marked cut) instead of refused, form requests stay live without inbox actions, notification wording names the engine, engine form messages render as Markdown without raw HTML; checked this document for claims about those paths; none affected; no prose change.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

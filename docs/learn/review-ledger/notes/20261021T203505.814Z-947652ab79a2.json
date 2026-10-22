@@ -1,0 +1,7 @@
+{
+  "revision": "b20f71c6f622a4f696c45c5aae8bfc07b2bd9f4f",
+
+  "notes": [
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Transitive re-review after merging origin/main 1dd83e0 into L5b: checked for harness-question, cursor/* request, plan-review and extension-binding claims from the changed module map; none; no prose change.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/guides/agent-configuration.md"]}
+  ]
+}

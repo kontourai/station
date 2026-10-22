@@ -1,0 +1,7 @@
+{
+  "revision": "76766fd0391094e0d6a144b32ce50e02028e7822",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked for ACP adapter claims affected by the Cursor request handlers; none; no prose change.","inputs":["docs/guides/self-configuring-agent.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

@@ -30,6 +30,7 @@ import {
   withField,
   withoutField,
 } from './inputRequestDrafts';
+import { LazyMarkdown } from './LazyMarkdown';
 import {
   RequestCard,
   type RequestCardState,
@@ -467,9 +468,16 @@ export function InputRequestCard({
   };
   const body = (
     <>
-      {form.message && (
-        <p className="input-request-card__message">{form.message}</p>
-      )}
+      {form.message &&
+        // An engine's own text renders as its chat answers do (Markdown, no
+        // raw HTML); a tool server's message stays plain text.
+        (form.source.startsWith('harness:') ? (
+          <div className="input-request-card__message input-request-card__message--markdown">
+            <LazyMarkdown skipHtml>{form.message}</LazyMarkdown>
+          </div>
+        ) : (
+          <p className="input-request-card__message">{form.message}</p>
+        ))}
       <p className="input-request-card__provenance">
         Your answer goes to {form.requester}. Share only what you would give it
         directly.

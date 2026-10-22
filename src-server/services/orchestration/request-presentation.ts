@@ -8,6 +8,7 @@ import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-re
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import {
   toolRequestFromPayload,
+  toolRequestIsPlanReview,
   toolRequestPreviewFromPayload,
 } from '@kontourai/station-shared/tool-request-preview';
 
@@ -31,6 +32,16 @@ export function presentOpenRequest(request: PresentableOpenRequest): {
 } {
   const rawTitle = request.title?.trim() || undefined;
   const inputRequest = inputRequestFromRequestEvent(request);
+  // A plan review is not a question: the adapter's title says whose plan.
+  if (
+    inputRequest?.source.startsWith('harness:') &&
+    toolRequestIsPlanReview(toolRequestFromPayload(request.payload).toolName)
+  )
+    return {
+      title: rawTitle
+        ? displayRequestText(rawTitle, MAX_RAW_TITLE_LENGTH)
+        : `${inputRequest.requester} wants you to review a plan`,
+    };
   if (inputRequest?.source.startsWith('harness:'))
     return presentAskRequest(
       'The agent asked questions',

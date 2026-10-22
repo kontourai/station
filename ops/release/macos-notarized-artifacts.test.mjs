@@ -1618,3 +1618,128 @@ test('bounds, collapses, and redacts the diagnostic excerpt on every terminal co
     'failed during excerpt fixture (exit status 3): first line second line',
   );
 });
+
+const cloudKitTicketTransport =
+  "NSErrorFailingURLKey=https://api.apple-cloudkit.com/database/1/com.apple.gk.ticket-delivery/production/public/records/lookup, _kCFStreamErrorDomainKey=4} CloudKit's response is inconsistent with expections: (null) The validate action failed! Error 68.";
+
+test.each([
+  'application stapling',
+  'application staple validation',
+  'DMG stapling',
+  'DMG staple validation',
+])(
+  'retries the Apple ticket transport once during %s before admission',
+  async (phase) => {
+    const release = fixture();
+    let attempts = 0;
+    const run = (program, args, options) => {
+      const result = release.run(program, args, options);
+      if (options.phase === phase && ++attempts === 1)
+        throw new ReleaseCommandError({
+          phase,
+          program,
+          status: 68,
+          stderr: cloudKitTicketTransport,
+        });
+      return result;
+    };
+    await expect(
+      createMacosNotarizedArtifacts(release.options, {
+        ...release,
+        run,
+        logger: logger(),
+      }),
+    ).resolves.toMatchObject({ dmg: dmgPath });
+    expect(attempts).toBe(2);
+    const phases = release.calls.map(([, , options]) => options.phase);
+    const gatekeeper = phase.startsWith('application')
+      ? 'application Gatekeeper assessment'
+      : 'DMG Gatekeeper assessment';
+    expect(phases.indexOf(gatekeeper)).toBeGreaterThan(
+      phases.lastIndexOf(phase),
+    );
+  },
+);
+
+test.each([
+  { stderr: 'The ticket is invalid. Error 68.' },
+  { stderr: `${cloudKitTicketTransport} No ticket found.` },
+  { stderr: `${cloudKitTicketTransport} Signature is invalid.` },
+  { stderr: cloudKitTicketTransport, status: 65 },
+  { stderr: cloudKitTicketTransport, outputTruncated: true },
+  { stderr: cloudKitTicketTransport, timedOut: true },
+  { stderr: cloudKitTicketTransport, signal: 'SIGTERM' },
+  {
+    stderr: cloudKitTicketTransport.replace(
+      'api.apple-cloudkit.com/',
+      'api.apple-cloudkit.com.example/',
+    ),
+  },
+])(
+  'keeps permanent or unclassified staple validation failures terminal: %j',
+  async (failureOptions) => {
+    const release = fixture();
+    let attempts = 0;
+    const failure = new ReleaseCommandError({
+      phase: 'DMG staple validation',
+      program: 'xcrun',
+      status: 68,
+      ...failureOptions,
+    });
+    const run = (program, args, options) => {
+      const result = release.run(program, args, options);
+      if (options.phase === 'DMG staple validation') {
+        attempts += 1;
+        throw failure;
+      }
+      return result;
+    };
+    await expect(
+      createMacosNotarizedArtifacts(release.options, {
+        ...release,
+        run,
+        logger: logger(),
+      }),
+    ).rejects.toBe(failure);
+    expect(attempts).toBe(1);
+    expect(
+      release.calls.some(
+        ([, , options]) => options.phase === 'DMG Gatekeeper assessment',
+      ),
+    ).toBe(false);
+    expect(release.removed).toContain('/scratch');
+  },
+);
+
+test('a second Apple ticket transport failure still refuses DMG admission', async () => {
+  const release = fixture();
+  let attempts = 0;
+  const failure = new ReleaseCommandError({
+    phase: 'DMG staple validation',
+    program: 'xcrun',
+    status: 68,
+    stderr: cloudKitTicketTransport,
+  });
+  const run = (program, args, options) => {
+    const result = release.run(program, args, options);
+    if (options.phase === 'DMG staple validation') {
+      attempts += 1;
+      throw failure;
+    }
+    return result;
+  };
+  await expect(
+    createMacosNotarizedArtifacts(release.options, {
+      ...release,
+      run,
+      logger: logger(),
+    }),
+  ).rejects.toBe(failure);
+  expect(attempts).toBe(2);
+  expect(
+    release.calls.some(
+      ([, , options]) => options.phase === 'DMG Gatekeeper assessment',
+    ),
+  ).toBe(false);
+  expect(release.removed).toContain('/scratch');
+});

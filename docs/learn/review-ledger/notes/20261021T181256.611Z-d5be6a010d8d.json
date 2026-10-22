@@ -1,0 +1,7 @@
+{
+  "revision": "dc20199a5d95d98bc6cacc502a8732ffc0618562",
+
+  "notes": [
+    {"path":"docs/guides/agents.md","note":"Round 3: Approve copy (Station doesn't resume the engine after approval) and long-plan fitting described; checked against acp-cursor-extensions.","inputs":["docs/guides/agents.md","src-server/providers/adapters/acp-adapter.ts","src-ui/src/components/chat/InputRequestCard.tsx"]}
+  ]
+}
