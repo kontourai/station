@@ -120,9 +120,8 @@ jobs:
 
       - name: Prove native performance regressions catch reverted behavior
         if: ${{ success() && inputs.native_review_faults }}
-        env:
-          JAVA_HOME: ${{ env.JAVA_HOME_17_X64 }}
         run: |
+          export JAVA_HOME="$JAVA_HOME_17_X64"
           python3 - <<'PYTHON'
           from pathlib import Path
           import subprocess
