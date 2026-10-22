@@ -12,6 +12,10 @@ on:
         description: "Exercise native performance regression fault controls"
         type: boolean
         default: false
+      native_broker_review_faults:
+        description: "Exercise silent-response, snapshot-publication and timestamp collision controls"
+        type: boolean
+        default: false
 permissions:
   contents: read
 
@@ -149,7 +153,7 @@ jobs:
           android = "src-desktop/plugins/agent-activity/android/src/main/java/io/kontourai/station/agentactivity/StationRendererRecovery.kt"
           try:
               change(transport, "        // Mark BEFORE calling:", "        if self.epoch != network_epoch() { return Err(ureq::Error::Io(std::io::ErrorKind::NotConnected.into())); }\n        // Mark BEFORE calling:")
-              change(transport, "        self.inner.await_input(timeout)", "        let mut timeout = timeout;\n        if PROGRESS.with(Cell::get).reused && *timeout.after > Duration::from_secs(3) {\n            timeout.after = ureq::unversioned::transport::time::Duration::Exact(Duration::from_secs(3));\n            timeout.reason = ureq::Timeout::RecvResponse;\n        }\n        self.inner.await_input(timeout)")
+              change(transport, "        let started = Instant::now();", "        let mut timeout = timeout;\n        if PROGRESS.with(Cell::get).reused && *timeout.after > Duration::from_secs(3) {\n            timeout.after = ureq::unversioned::transport::time::Duration::Exact(Duration::from_secs(3));\n            timeout.reason = ureq::Timeout::RecvResponse;\n        }\n        let started = Instant::now();")
               change(transport, "let safe = !progress.send_attempted;", "let safe = true;")
               change(lib, "&& self.metadata_verified", "&& false && self.metadata_verified")
               change(lib, "    let mut local = cache\n        .lock()\n        .unwrap_or_else(|error| error.into_inner())\n        .clone();", "    let mut local = cache.lock().unwrap().clone();")
@@ -173,7 +177,7 @@ jobs:
           originals.clear()
           mutated.clear()
           try:
-              change(lib, "&& self.metadata_verified\n                    && version.unambiguous()", "&& true")
+              change(lib, "&& self.metadata_verified\n                    && version.unambiguous(_observed_at)", "&& true")
               result = cargo("native_http_recent_metadata_collision_compares_bytes")
               assert result.returncode == 101 and "\n    native_http_performance_tests::native_http_recent_metadata_collision_compares_bytes\n" in result.stdout
           finally:
@@ -184,4 +188,44 @@ jobs:
           assert cargo("mobile_recovery::tests::").returncode == 0
           assert kotlin().returncode == 0
           print("Native performance fault controls: baseline green; eight named regressions caught; restored green.")
+          PYTHON
+
+      - name: Prove native broker round-three regressions and restore sources
+        if: ${{ success() && inputs.native_broker_review_faults }}
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import subprocess
+
+          assert not subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=no"]).strip(), "fault controls require committed, clean sources"
+          originals = {}
+          mutated = {}
+          def change(name, before, after):
+              path = Path(name)
+              source = path.read_text()
+              assert source.count(before) == 1, (name, "ambiguous mutation landmark")
+              originals.setdefault(path, source)
+              mutated[path] = source.replace(before, after)
+              path.write_text(mutated[path])
+          def cargo():
+              result = subprocess.run(["cargo", "test", "--manifest-path", "src-desktop/Cargo.toml", "--lib", "native_http_performance_tests::", "--", "--test-threads=1"], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+              print(result.stdout, flush=True)
+              return result
+          print("Native broker baseline: GREEN (full Rust suite passed).", flush=True)
+          try:
+              change("src-desktop/src/native_http_transport.rs", "if self.response_epoch != network_epoch()", "if false && self.response_epoch != network_epoch()")
+              change("src-desktop/src/lib.rs", "if self.file_version() == previous", "if true || self.file_version() == previous")
+              change("src-desktop/src/lib.rs", "&& self.metadata_verified\n                    && version.unambiguous(_observed_at)", "&& true")
+              result = cargo()
+              assert result.returncode == 101, "injected defects must fail test assertions, not compilation or setup"
+              for name in ["native_http_silent_reused_connection_fails_on_epoch_change_without_replay", "native_http_snapshot_late_old_inode_cannot_replace_a_newer_publication", "native_http_recent_metadata_collision_compares_bytes"]:
+                  assert f"\n    native_http_performance_tests::{name}\n" in result.stdout, (name, "did not catch its fault")
+                  print(f"Native broker injected: RED caught by {name}", flush=True)
+          finally:
+              for path, source in originals.items():
+                  assert path.read_text() == mutated[path], (str(path), "intervening edits; refusing restoration")
+                  path.write_text(source)
+          assert cargo().returncode == 0, "restored native broker suite must pass"
+          subprocess.run(["git", "diff", "--exit-code", "--", *map(str, originals)], check=True)
+          print("Native broker restored: GREEN; all three named faults caught; exact sources restored.", flush=True)
           PYTHON
