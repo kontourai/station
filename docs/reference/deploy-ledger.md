@@ -28,6 +28,8 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-22T00:24:08Z | nightly-npm | 0.11.0-nightly.2486.39698407325 | `8e86626` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/39698407325) |
+| 2026-10-21T21:05:58Z | nightly-npm | 0.11.0-nightly.2485.39674294567 | `1dd83e0` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/39674294567) |
 | 2026-10-21T07:31:53Z | nightly-desktop | 0.1.11-nightly.2485 | `71cb589` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39556258288) |
 | 2026-10-21T07:31:51Z | nightly-android | 0.1.11-nightly.2485 | `71cb589` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39556258288) |
 | 2026-10-21T06:47:45Z | nightly-npm | 0.10.0-nightly.2485.39556258288 | `71cb589` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/39556258288) |
@@ -319,6 +321,47 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-22T00:24:08Z · nightly-npm · 0.11.0-nightly.2486.39698407325
+
+- Ship SHA: `8e86626efc3a276cedf43f0243152f4686756e0f`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.2486.39698407325 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `1dd83e0` ([full sha](https://github.com/kontourai/station/commit/1dd83e0f305149b2d28e2eaff6645358cde5ad7f)):
+
+**Features**
+
+- [#4011](https://github.com/kontourai/station/pull/4011) feat(acp): answer Cursor's questions and plan reviews; keep mid-turn plans on the Plan pane
+- [#4006](https://github.com/kontourai/station/pull/4006) feat(acp): per-connection handshake facts, steer by declaration, session/set_model
+- [#4009](https://github.com/kontourai/station/pull/4009) feat(engines): engine descriptors, new built-in harnesses, and install hints
+- [#4014](https://github.com/kontourai/station/pull/4014) feat(tasks): recover drafts and uncertain requests across reloads
+
+**Fixes**
+
+- [#4015](https://github.com/kontourai/station/pull/4015) fix(release): retry transient Apple staple ticket lookups once
+
+## 2026-10-21T21:05:58Z · nightly-npm · 0.11.0-nightly.2485.39674294567
+
+- Ship SHA: `1dd83e0f305149b2d28e2eaff6645358cde5ad7f`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.2485.39674294567 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `71cb589` ([full sha](https://github.com/kontourai/station/commit/71cb589732f53b9372ce572fd701c873e5270129)):
+
+**Features**
+
+- [#3991](https://github.com/kontourai/station/pull/3991) feat(integration): consolidate required backlog into one delivery head
+
+**Other**
+
+- [#4010](https://github.com/kontourai/station/pull/4010) test(install): read the verified installer command from Getting started
 
 ## 2026-10-21T07:31:53Z · nightly-desktop · 0.1.11-nightly.2485
 

@@ -1046,10 +1046,16 @@ test('OpenCode chooses its model where the chat starts, and says it is fixed aft
             options: ['build', 'plan'],
           },
           {
+            id: 'model',
             category: 'model',
             currentValue: 'opencode/big-pickle',
             options: ['opencode/big-pickle', 'opencode/gpt-5.5'],
           },
+        ],
+        // What the server serves for that option (acpAdvertisedModelCatalog).
+        advertisedModels: [
+          { id: 'opencode/big-pickle', name: 'opencode/big-pickle' },
+          { id: 'opencode/gpt-5.5', name: 'opencode/gpt-5.5' },
         ],
       },
     ],

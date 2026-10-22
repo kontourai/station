@@ -190,4 +190,22 @@ describe('#3390 input request transcript record', () => {
     ]);
     expect(JSON.stringify(messages)).not.toContain('answer-canary');
   });
+
+  it('records a long form message as its first line, not the whole text', () => {
+    const plan = {
+      ...form,
+      source: 'harness:cursor',
+      requester: 'Lab Engine',
+      message: 'Session storage on SQLite\n\n# Migrate\n\nA long plan body.',
+    };
+    const open = opened('plan-1', {
+      toolName: 'cursor/create_plan',
+      inputRequest: plan,
+    });
+    const messages = projectRuntimeEventsToMessages([
+      ev({ method: 'turn.started', turnId: 'turn-1', prompt: 'Plan it' }),
+      open,
+    ]);
+    expect(records(messages)[0]?.message).toBe('Session storage on SQLite…');
+  });
 });

@@ -1,6 +1,21 @@
 # Plugin Development
 
-Plugins are the product — the core provides the foundation. A plugin can contribute layout UIs, agents, MCP tools, provider implementations, and knowledge namespaces. A single plugin can combine any of these.
+Plugins build on Station's core through its public SDK and extension contracts.
+A plugin can contribute layout UIs, agents, MCP tools, provider implementations,
+and knowledge namespaces. A single plugin can combine these into a workspace
+for coding, research, sales, or another workflow.
+
+The SDK connects plugin UI to the same core configuration, model catalog,
+conversation queries, chat state, navigation and host actions used by Station's
+own UI. See [default host bindings](../reference/sdk.md#default-host-bindings-and-custom-hosts)
+for the supported hooks and their limits. Plugins import these public contracts
+rather than internal app modules so the core can change its implementation.
+
+Station currently includes built-in layouts as well as plugin-contributed
+layouts. The [distribution profile](./distribution-profiles.md) controls their
+availability. Moving the remaining built-in experiences into plugin packages
+is an [accepted direction](../design/shell-plugins-distributions.md), not a
+completed migration.
 
 Plugin-contributed Knowledge Kit store roots are not currently supported. The proposed read-only
 root and reader boundary, including lifecycle and filesystem-safety requirements, is documented in
@@ -219,6 +234,10 @@ define host contracts such as `auth`, `branding`, `userIdentity`, `userDirectory
 `settings`, `scheduler`, `notification`, `acpConnectionRegistry`, `workItem`,
 `pullRequest`, and `providerAdapter`. The `acpConnections` key is consumed by
 runtime connection discovery; consult its caller's shape before contributing it.
+An `acpConnectionRegistry` provider returns engine catalogue entries, which may
+carry the install, launch-variable and sign-in descriptor described in the
+[ACP guide](acp.md#catalogue-descriptors); an entry whose descriptor fails
+validation is left out.
 The examples below cover selected contracts; registration alone does not make
 an arbitrary object usable by one of these callers.
 

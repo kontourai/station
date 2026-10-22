@@ -1780,6 +1780,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/task-room-reload-recovery.spec.ts',
+    bucket: 'smoke-live',
+    surface: 'Task room reload recovery',
+    tierTarget: 'full',
+    primary: false,
+    rationale:
+      'Isolated real Station and paired browser: explicit tab-local draft restoration, Cancel/Discard, and exact-proposal retry after a committed message loses its acknowledgement. Theme/width captures qualify rendering only; no live agent/native or master Basis geometry proof.',
+    exceptions: [],
+  },
+  {
     path: 'tests/project-task-room-collaboration.spec.ts',
     bucket: 'smoke-live',
     surface: 'Project/Task room collaboration',

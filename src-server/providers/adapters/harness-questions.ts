@@ -20,10 +20,13 @@ import {
  * | --- | --- | --- | --- | --- |
  * | Claude `AskUserQuestion` | ≤4 choice / multi-choice | `header` | always | no |
  * | Codex `request_user_input` | choice, or free text with no options | `header` | `isOther` | `isSecret` |
+ * | Cursor `cursor/ask_question` | choice / multi-choice | no | no | no |
  *
  * Field names are the engine's own question identity (Claude's question
- * index, Codex's question id) and option values are option indexes, so the
- * answer maps back without trusting any label to be unique.
+ * index, Codex's and Cursor's question id) and option values are option
+ * indexes, so the answer maps back without trusting any label to be unique.
+ * Cursor's request can come from any engine that speaks it, so its form
+ * names the sending connection as requester, never Cursor.
  *
  * Every engine record is snapshotted by its own keys at this ingress, at
  * every level (`ownRecord` / `ownArray`): an inherited `isSecret`, option or
@@ -44,9 +47,10 @@ interface HarnessQuestionInput {
 const HARNESS_QUESTION_MESSAGE = 'The agent has questions for you';
 
 function harnessForm(
-  engine: 'claude' | 'codex',
+  engine: 'claude' | 'codex' | 'cursor',
   requester: string,
   questions: HarnessQuestionInput[],
+  message: string = HARNESS_QUESTION_MESSAGE,
 ): InputRequestForm | null {
   if (questions.length < 1 || questions.length > 16) return null;
   const fields = [];
@@ -99,7 +103,7 @@ function harnessForm(
     schema: INPUT_REQUEST_SCHEMA,
     source: `harness:${engine}`,
     requester,
-    message: HARNESS_QUESTION_MESSAGE,
+    message,
     body: { kind: 'form', fields },
   });
 }
@@ -181,4 +185,80 @@ export function codexAnswers(
       { answers: inputRequestAnswerTexts(field, content[field.name]) },
     ]),
   );
+}
+
+/**
+ * Cursor `cursor/ask_question` params → form (cursor.com/docs/cli/acp). Its
+ * answer can only name option ids, so a question with no options, or with an
+ * option id that is blank or repeated, is refused: it could not be answered
+ * back unambiguously. `requester` is the sending connection's display name.
+ */
+export function cursorInputRequest(
+  params: unknown,
+  requester: string,
+): InputRequestForm | null {
+  const raw = ownRecord(params);
+  const list = ownArray(raw?.questions);
+  if (!raw || !list) return null;
+  if (raw.title !== undefined && typeof raw.title !== 'string') return null;
+  const questions: HarnessQuestionInput[] = [];
+  for (const entry of list) {
+    const question = ownRecord(entry);
+    const options = ownArray(question?.options);
+    if (
+      !question ||
+      !options ||
+      options.length === 0 ||
+      (question.allowMultiple !== undefined &&
+        typeof question.allowMultiple !== 'boolean')
+    )
+      return null;
+    const ids = new Set<string>();
+    for (const option of options) {
+      const id = ownRecord(option)?.id;
+      if (typeof id !== 'string' || !id.trim() || ids.has(id)) return null;
+      ids.add(id);
+    }
+    questions.push({
+      id: question.id,
+      header: undefined,
+      prompt: question.prompt,
+      options,
+      multiple: question.allowMultiple === true,
+      allowCustom: false,
+      secret: false,
+    });
+  }
+  const title = typeof raw.title === 'string' ? raw.title.trim() : '';
+  return harnessForm('cursor', requester, questions, title || undefined);
+}
+
+/**
+ * Cursor takes each answer back as the chosen options' own ids, keyed by
+ * question id. Field option values are option indexes (see `harnessForm`),
+ * mapped back through the engine's option list that `form` was built from.
+ */
+export function cursorAnswers(
+  form: InputRequestForm,
+  params: unknown,
+  content: InputRequestContent,
+): Array<{ questionId: string; selectedOptionIds: string[] }> {
+  const list = ownArray(ownRecord(params)?.questions) ?? [];
+  return form.body.fields.map((field) => {
+    const question = list
+      .map((entry) => ownRecord(entry))
+      .find((entry) => entry?.id === field.name);
+    const options = ownArray(question?.options) ?? [];
+    const value = content[field.name];
+    const chosen = Array.isArray(value) ? value : [value];
+    const selectedOptionIds = chosen.map((item) => {
+      const id =
+        typeof item === 'string' ? ownRecord(options[Number(item)])?.id : null;
+      // Unreachable for content validated against `form`; refused, not dropped.
+      if (typeof id !== 'string')
+        throw new Error('This answer does not match the question.');
+      return id;
+    });
+    return { questionId: field.name, selectedOptionIds };
+  });
 }

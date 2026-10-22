@@ -397,8 +397,8 @@ persisted. The result is cached between invalidations.
 #### `getActive(): SavedConnection | null`
 
 Returns the resolved usable active connection. Resolution considers explicit
-selection, host-injected selection, matching mobile/default and managed-loopback
-profiles, then a non-broker saved fallback. It can return `null`; an unprepared
+selection, host-injected selection, a matching managed-loopback profile,
+then a non-broker saved fallback. It can return `null`; an unprepared
 broker route is not automatically activated.
 
 #### `add(name: string, url: string): SavedConnection`

@@ -7,6 +7,7 @@ export type ExtensionNotificationConsumer =
   | 'acp.commands.available'
   | 'acp.turn-error-cause'
   | 'acp.host-chrome'
+  | 'acp.cursor.todos'
   | 'ui.kiro.oauth-request'
   | 'ui.kiro.compaction-status'
   | 'ui.kiro.clear-status'
@@ -23,11 +24,12 @@ export type ExtensionHandshakeVariant =
   | 'kiro-v3'
   | 'claude-adapter'
   | 'xai-acp'
+  | 'cursor-acp'
   | ExtensionTranscriptMarkerEmitter;
 
 /**
  * Evidence tags identify a runtime observation, a pinned SDK protocol
- * contract, or (`station-session-source-emitter`) a tuple a Station session
+ * contract, a vendor's published protocol contract, or (`station-session-source-emitter`) a tuple a Station session
  * source mints itself, pinned by that source's own tests.
  */
 export type ExtensionNotificationEvidence =
@@ -35,6 +37,7 @@ export type ExtensionNotificationEvidence =
   | 'station#4084-runtime-observation'
   | 'station#1935-runtime-observation'
   | 'claude-sdk-api-retry-contract'
+  | 'cursor-acp-docs-contract'
   | 'station-session-source-emitter';
 
 export interface ExtensionNotificationBinding {
@@ -228,6 +231,15 @@ const DECLARED_EXTENSION_NOTIFICATION_BINDINGS = [
     consumer: 'ui.engine.mcp-status',
     observedAgainst: ['xai-acp'],
     evidence: 'station#1935-runtime-observation',
+  },
+  {
+    // Cursor's published ACP contract (cursor.com/docs/cli/acp): a
+    // fire-and-forget todo-list update, folded into the typed plan surface.
+    namespace: 'cursor',
+    type: 'update_todos',
+    consumer: 'acp.cursor.todos',
+    observedAgainst: ['cursor-acp'],
+    evidence: 'cursor-acp-docs-contract',
   },
 ] as const satisfies readonly ExtensionNotificationBinding[];
 

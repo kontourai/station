@@ -1,0 +1,7 @@
+{
+  "revision": "77b123c4cd100f79305b3332d5331aed12fd09a4",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Bounded Task mutation follow-through (#3707): traced useApiMutation success-only dispatch and reference hooks through the real QueryClient. Documented all project/connection Task-list invalidation plus exact changed Task record/graph/claim and reference projections, preserving unrelated Task/domain caches. 25 focused tests and SDK typecheck passed; restoring both old production owners produced four intended failures, then restoring committed fix passed five cases. Other SDK and inherited master acceptance limits remain unchanged; no live/native/release claim.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/taskGraph.ts","packages/sdk/src/telemetry.ts","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/orchestration-service.ts","src-ui/src/contexts/openRelatedOccurrence.ts","src-ui/src/main.tsx","packages/sdk/src/task-user-input-references.ts","packages/sdk/src/__tests__/taskGraph-invalidation.test.tsx"]}
+  ]
+}
