@@ -348,7 +348,15 @@
 
     "src-server/services/acp/engine-sign-in.ts",
 
-    "src-ui/src/components/engine-sign-in/EngineSignInPanel.tsx"
+    "src-ui/src/components/engine-sign-in/EngineSignInPanel.tsx",
+
+    "src-ui/src/views/EngineAddFlow.tsx",
+
+    "src-ui/src/views/NotConnectedEngineDetail.tsx",
+
+    "src-ui/src/components/acp-connections/ACPConnectionSetupPanel.tsx",
+
+    "src-ui/src/components/acp-connections/useACPConnectionSetupOwner.ts"
   ],
 
   "checks": [
