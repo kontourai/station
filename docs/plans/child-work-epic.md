@@ -230,6 +230,37 @@ same delegate session. The generated installed Codex `turn/start` protocol has
 no direct all-tools-disable field; that is not proof that no alternative native
 mechanism exists. No context-sync action is exposed on these observations.
 
+At source `6206ff52961`, owned native probes used Claude Code 2.1.308 and
+Agent SDK 0.3.302 with deterministic model responses served only on loopback.
+They started no real-provider model turn and changed no shared configuration.
+An ordinary native hook denial blocked Write, but a thrown hook callback let
+it execute under bypass mode. This is not a failure of Station's staged policy
+translator, which already catches evaluator errors. A live flag-layer wildcard
+deny blocked Write and a late-added SDK MCP tool in the uncontrolled-policy
+fixture. Native permission-state reads then confirmed that managed-only policy
+marks that flag-layer rule `notInEffect`, while command-line deny rules remain
+effective. A control acknowledgement alone cannot admit a sync restriction.
+
+A separate restart probe retained one native Session ID and its prior history
+across ordinary, restricted and restored activations. The restricted activation
+used an empty builtin tool set, the SDK builtin deny catalog and `mcp__*`.
+Injected Write and SDK MCP calls, including an MCP tool added after activation,
+did not execute; restoring an ordinary activation restored their effects.
+A missing native resume ID refused before any local-model request. These are
+installed-runtime execution probes, not an integrated Station sync path.
+MCP tools still appeared on the model wire, so the probes' stronger empty-wire
+assertion remains failed. Plugin and delegation-tool coverage remains unverified.
+
+Independent source review supports this as a candidate model-tool restriction
+for the checked CLI/SDK pair, not universal no-tools authority. Production work
+must bind the group caller to an exclusive per-thread activation generation,
+coalesce only matching policy/identity starts, confirm the old engine exited,
+and recheck the generation before send. It must persist logical attempts before
+effects and exact per-member ACK receipts afterward, retaining ambiguous holds.
+Ordinary mode must return through another exact native resume. Codex/ACP sync
+enforcement remains unqualified; context sync and full #432/#205 acceptance
+remain open. No physical/token/dollar guarantee follows from these probes.
+
 ## Production adoption sequence
 
 The personal `/api/orchestration/session-groups` path now composes the shared
