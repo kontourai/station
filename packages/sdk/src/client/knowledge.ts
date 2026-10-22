@@ -1,4 +1,8 @@
-import type { KnowledgeSourceCapabilities } from '@kontourai/station-contracts/knowledge-store';
+import type {
+  KnowledgeDocumentImportInput,
+  KnowledgeDocumentImportReceipt,
+  KnowledgeSourceCapabilities,
+} from '@kontourai/station-contracts/knowledge-store';
 /**
  * K3 knowledge-index management fetchers: the client for the two explicit,
  * user/CLI-triggered index-management verbs
@@ -21,6 +25,57 @@ interface KnowledgeEnvelope<T> {
   code?: 'knowledge_migration_failed';
   /** `POST /api/knowledge/index/search` only. */
   index?: KnowledgeSearchIndexReport;
+}
+
+export async function importKnowledgeDocuments(
+  apiBase: string,
+  input: KnowledgeDocumentImportInput,
+  opts: ClientRequestOptions,
+): Promise<KnowledgeDocumentImportReceipt> {
+  return unwrapKnowledgeResponse(
+    await mutateJson(
+      `${apiBase}/api/knowledge/document-imports`,
+      'POST',
+      opts,
+      input,
+    ),
+  );
+}
+
+export async function getKnowledgeDocumentImport(
+  apiBase: string,
+  rootId: string,
+  requestId: string,
+  opts: ClientRequestOptions,
+): Promise<KnowledgeDocumentImportReceipt> {
+  return unwrapKnowledgeResponse(
+    await getJson(
+      `${apiBase}/api/knowledge/roots/${encodeURIComponent(rootId)}/document-imports/${encodeURIComponent(requestId)}`,
+      opts,
+    ),
+  );
+}
+
+export async function resumeKnowledgeDocumentImport(
+  apiBase: string,
+  input: {
+    expectedRoot: KnowledgeStoreRoot;
+    requestId: string;
+    retryUncertain: boolean;
+  },
+  opts: ClientRequestOptions,
+): Promise<KnowledgeDocumentImportReceipt> {
+  return unwrapKnowledgeResponse(
+    await mutateJson(
+      `${apiBase}/api/knowledge/roots/${encodeURIComponent(input.expectedRoot.id)}/document-imports/${encodeURIComponent(input.requestId)}/resume`,
+      'POST',
+      opts,
+      {
+        expectedRoot: input.expectedRoot,
+        retryUncertain: input.retryUncertain,
+      },
+    ),
+  );
 }
 
 /**

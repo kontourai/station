@@ -17,6 +17,7 @@ import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { PageSection } from '../../components/PageSection';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { ProjectDocumentImport } from './ProjectDocumentImport';
 
 export function ProjectKnowledgeSources({
   slug,
@@ -119,6 +120,12 @@ export function ProjectKnowledgeSources({
         </div>
       ) : (
         <>
+          <ProjectDocumentImport
+            projectId={projectId}
+            roots={projectRoots}
+            authority={authority}
+            canManage={canManage}
+          />
           {projectRoots.length ? (
             <ul className="project-sources__list">
               {projectRoots.map((root) => (

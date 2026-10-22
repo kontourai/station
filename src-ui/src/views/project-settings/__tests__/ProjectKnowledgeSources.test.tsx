@@ -30,6 +30,9 @@ const root = {
   createdAt: '2026-10-22T00:00:00Z',
 };
 vi.mock('@kontourai/station-sdk', () => ({
+  useImportKnowledgeDocumentsMutation: () => ({ mutateAsync: vi.fn() }),
+  useResumeKnowledgeDocumentImportMutation: () => ({ mutateAsync: vi.fn() }),
+  useKnowledgeDocumentImportQuery: () => ({ refetch: vi.fn() }),
   useAttachKnowledgeRootProjectMutation: () => ({
     mutateAsync: state.attach,
     reset: vi.fn(),

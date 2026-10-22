@@ -7,10 +7,12 @@ import { setClientCredentialResolver } from '../client/http';
 import {
   useCreateKnowledgeRootMutation,
   useDeleteKnowledgeRootMutation,
+  useImportKnowledgeDocumentsMutation,
   useKnowledgeGraphQuery,
   useKnowledgeRecordQuery,
   useKnowledgeRootsQuery,
   useKnowledgeSourceCapabilitiesQuery,
+  useResumeKnowledgeDocumentImportMutation,
 } from '../query-domains/knowledgeStores';
 
 const scopeA = { apiBase: 'http://station.test', authorityKey: 'account-a' };
@@ -96,6 +98,8 @@ test('captured source mutations cannot dispatch under a replacement account', as
     () => ({
       create: useCreateKnowledgeRootMutation(scopeA),
       disconnect: useDeleteKnowledgeRootMutation(scopeA),
+      importDocuments: useImportKnowledgeDocumentsMutation(scopeA),
+      resumeImport: useResumeKnowledgeDocumentImportMutation(scopeA),
     }),
     { wrapper: wrapper(client) },
   );
@@ -109,6 +113,28 @@ test('captured source mutations cannot dispatch under a replacement account', as
     ).rejects.toThrow();
     await expect(
       mutation.result.current.disconnect.mutateAsync('root:private-a'),
+    ).rejects.toThrow();
+    const expectedRoot = {
+      id: 'root:private-a',
+      scope: { kind: 'project' as const, projectSlug: 'acme' },
+      adapterId: 'kit-default-store',
+      storeRoot: '/test/store',
+      displayName: 'Test',
+      createdAt: '2026-10-22T00:00:00Z',
+    };
+    await expect(
+      mutation.result.current.importDocuments.mutateAsync({
+        requestId: '11111111-1111-4111-8111-111111111111',
+        expectedRoot,
+        documents: [{ filename: 'notes.md', contentBase64: 'bm90ZXM=' }],
+      }),
+    ).rejects.toThrow();
+    await expect(
+      mutation.result.current.resumeImport.mutateAsync({
+        requestId: '11111111-1111-4111-8111-111111111111',
+        expectedRoot,
+        retryUncertain: true,
+      }),
     ).rejects.toThrow();
   });
   expect(fetch).not.toHaveBeenCalled();

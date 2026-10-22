@@ -12,6 +12,8 @@ import type {
   KitRecord,
   KitRecordType,
   KnowledgeAdapterDescriptor,
+  KnowledgeDocumentImportInput,
+  KnowledgeDocumentImportReceipt,
   KnowledgeSourceCapabilities,
   KnowledgeStoreRoot,
 } from '@kontourai/station-contracts/knowledge-store';
@@ -29,10 +31,12 @@ import {
   createKnowledgeRecord,
   createKnowledgeRoot,
   deleteKnowledgeRoot,
+  getKnowledgeDocumentImport,
   getKnowledgeGraph,
   getKnowledgeGraphNeo4j,
   getKnowledgeRecord,
   getKnowledgeSourceCapabilities,
+  importKnowledgeDocuments,
   type KnowledgeGraph,
   type KnowledgeGraphNeo4jSyncStats,
   type KnowledgeSearchResult,
@@ -44,6 +48,7 @@ import {
   type MigratePreIndexKnowledgeOptions,
   type MigratePreIndexKnowledgeResult,
   migratePreIndexKnowledge,
+  resumeKnowledgeDocumentImport,
   type SearchKnowledgeIndexOptions,
   searchKnowledgeIndex,
   syncKnowledgeGraphNeo4j,
@@ -61,6 +66,71 @@ import { type QueryConfig, useApiQuery } from '../query-core';
  * what the read hooks key against. */
 const KNOWLEDGE_ROOTS_QUERY_KEY = ['knowledge', 'roots'] as const;
 const KNOWLEDGE_ADAPTERS_QUERY_KEY = ['knowledge', 'adapters'] as const;
+
+export function useKnowledgeDocumentImportQuery(
+  scope: ApiRequestScope,
+  rootId: string | undefined,
+  requestId: string | undefined,
+) {
+  return useApiQuery<KnowledgeDocumentImportReceipt>(
+    [
+      'knowledge',
+      'document-import',
+      scope.apiBase,
+      scope.authorityKey,
+      rootId ?? null,
+      requestId ?? null,
+    ],
+    () => {
+      if (!isApiRequestScope(scope) || !rootId || !requestId)
+        throw new StationRequestAuthorityError();
+      return getKnowledgeDocumentImport(scope.apiBase, rootId, requestId, {
+        requestScope: scope,
+      });
+    },
+    {
+      enabled: isApiRequestScope(scope) && Boolean(rootId && requestId),
+      staleTime: 0,
+      keepPreviousData: false,
+      refetchOnMount: 'always',
+      retry: false,
+    },
+  );
+}
+
+export function useImportKnowledgeDocumentsMutation(scope: ApiRequestScope) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: KnowledgeDocumentImportInput) => {
+      if (!isApiRequestScope(scope)) throw new StationRequestAuthorityError();
+      return importKnowledgeDocuments(scope.apiBase, input, {
+        requestScope: scope,
+      });
+    },
+    retry: false,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['knowledge'] }),
+  });
+}
+
+export function useResumeKnowledgeDocumentImportMutation(
+  scope: ApiRequestScope,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      expectedRoot: KnowledgeStoreRoot;
+      requestId: string;
+      retryUncertain: boolean;
+    }) => {
+      if (!isApiRequestScope(scope)) throw new StationRequestAuthorityError();
+      return resumeKnowledgeDocumentImport(scope.apiBase, input, {
+        requestScope: scope,
+      });
+    },
+    retry: false,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['knowledge'] }),
+  });
+}
 
 interface KnowledgeStoreQueryConfig<T> extends QueryConfig<T> {
   requestScope?: ApiRequestScope;
