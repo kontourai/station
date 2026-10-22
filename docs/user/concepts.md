@@ -99,6 +99,33 @@ stays visible without being counted as pending. This list is separate from
 browser-local queued drafts; the composer's ordinary Queue action still uses
 those local drafts.
 
+## Delegated work and session groups
+
+A delegated task can finish while its conversation stays open for follow-up.
+Running work and an idle conversation are different states. A working directory
+without a registered Project is shown as a directory; it does not imply Project
+membership. CLI initiation is recorded separately from any caller-provided name.
+
+Child-work reports say where their text came from: **Returned result**,
+**Provider summary**, **Child message**, or **Provider error**. An older summary
+may have no recorded source. **No result** means no outcome was confirmed; it
+does not mean the child completed or stopped. A returned result is still the
+child's report, not verified evidence or acceptance of its work. Open its
+authorized transcript when you need the underlying detail.
+
+Background tasks show bounded recent activity. Older tool rows and closed-chat
+history may be missing, and their running counts cover retained rows. An empty
+activity list is not proof that no work is running. Reopening a conversation can
+recover current facts from its Station snapshot without reconstructing all
+discarded history.
+
+A session group retains named member Sessions and their dependencies. Flow owns
+readiness and joins; Station observes the members' execution outcomes. A context
+sync receipt records which members acknowledged the folded context. A missing or
+unknown ACK remains incomplete and is not automatically resent. Group completion
+and ACKs do not accept the work. See the [session-group contract](../reference/api.md#cli-session-groups)
+for supported engines and the limits of its logical start allowance.
+
 ## Gates, Evidence, And Receipts
 
 - A **gate** decides whether work may advance.
