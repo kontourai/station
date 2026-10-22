@@ -103,7 +103,8 @@ test.each([
     const transport = vi
       .fn()
       .mockResolvedValueOnce({ stdout: '{"id":42,"login":"alice"}' })
-      .mockResolvedValueOnce({ stdout: JSON.stringify([repository]) });
+      .mockResolvedValueOnce({ stdout: JSON.stringify([repository]) })
+      .mockResolvedValueOnce({ stdout: '{"id":42,"login":"alice"}' });
     await expect(
       new RepositoryProviderCatalog(transport).list('github', 1, () => {}),
     ).rejects.toThrow('unavailable');
@@ -112,13 +113,14 @@ test.each([
 
 test('oversized provider pages and command diagnostics are not reflected to the browser', async () => {
   for (const output of [
-    'x'.repeat(512 * 1024 + 1),
+    JSON.stringify([{ ...github, additionalMetadata: 'x'.repeat(512 * 1024) }]),
     JSON.stringify(Array.from({ length: 31 }, () => github)),
   ]) {
     const transport = vi
       .fn()
       .mockResolvedValueOnce({ stdout: '{"id":42,"login":"alice"}' })
-      .mockResolvedValueOnce({ stdout: output });
+      .mockResolvedValueOnce({ stdout: output })
+      .mockResolvedValueOnce({ stdout: '{"id":42,"login":"alice"}' });
     await expect(
       new RepositoryProviderCatalog(transport).list('github', 1, () => {}),
     ).rejects.toThrow(
