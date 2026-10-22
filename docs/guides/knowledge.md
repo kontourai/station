@@ -401,8 +401,42 @@ even under the same clock and path. Legacy registrations can omit it. This is no
 a record-content version or an execution grant; restoring metadata can retain
 its identifier.
 
-The existing Project knowledge controls below remain available for document
-upload and migration.
+### Import documents from your computer
+
+In **Settings → Sources → Import documents**, choose a registered default-format
+Project store and select Markdown (`.md`, `.markdown`) or plain-text (`.txt`)
+files. Preview text, byte counts and SHA-256 hashes before importing. A selection
+admits up to eight nonempty UTF-8 files, 256 KiB per file and 1 MiB in total.
+It needs no repository, host folder or embedding connection.
+
+The operator imports files into canonical raw records. Station retains exact
+original bytes and provenance under its home, independently of the generated
+record body. Importing does not rebuild the retrieval index. Agents with
+authorized Knowledge tools can list and read the records without embeddings;
+registration and import alone do not establish a successful Agent answer.
+
+Before sending, the browser saves a recovery pointer scoped to the Station,
+account and durable Project. It contains request/source identities and file
+hashes, without document content. Separate imports retain separate pointers
+across tabs. A lost response or reload checks the saved receipt without resending
+documents. Pending work can be continued explicitly; uncertain publication needs
+a separate retry confirmation. A confirmed record that later disappears is
+unavailable and is never recreated by recovery. A replaced source registration
+cannot inherit a saved import.
+
+**Set aside** removes only the selected browser pointer. Retained originals and
+records remain on the Station; keep the displayed import ID for recovery.
+Receipt observation is operator-only and may repair existing store indexes or
+record a publication witness. These effects recheck current authority after
+lock waits. Original downloads require current root visibility and registration
+identity. No original download is a public URL.
+
+The [import service](../../src-server/services/knowledge/knowledge-document-import-service.ts),
+[HTTP routes](../../src-server/routes/knowledge/knowledge-document-import-routes.ts)
+and [Sources UI](../../src-ui/src/views/project-settings/ProjectDocumentImport.tsx)
+own this journey. Focused service and UI tests cover bounded input, restart,
+lost acknowledgement, revocation at real file locks and separate tab pointers;
+they do not establish browser rendering or a live model's cited answer.
 
 ### Project settings → Older documents and migration
 

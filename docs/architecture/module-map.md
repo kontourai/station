@@ -2384,6 +2384,17 @@ the store. See the [Knowledge guide](../guides/knowledge.md#agent-tools) and
 
 ## KnowledgeStoreProvider
 
+The [document import service](../../src-server/services/knowledge/knowledge-document-import-service.ts)
+uses the provider's optional registration lease for bounded canonical imports.
+It retains exact originals and intent before publication, observes stable record
+identities after lost acknowledgements, and requires explicit uncertain retry.
+The [routes](../../src-server/routes/knowledge/knowledge-document-import-routes.ts)
+bind current operator authority; shared file transactions recheck that scope
+after lock waits and before publication, including receipt-read repairs. The
+[Sources UI](../../src-ui/src/views/project-settings/ProjectDocumentImport.tsx)
+previews files and retains per-request browser recovery pointers scoped to the
+endpoint, account and Project. No import implicitly rebuilds the retrieval index.
+
 **Purpose and interface.** `KnowledgeStoreProvider` registers roots and their adapters,
 resolves a root by ID, and exposes the adapter that owns its records. It also publishes
 notifications after mutations through its wrapped adapters. There is currently no

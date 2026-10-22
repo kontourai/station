@@ -1246,3 +1246,18 @@ binding, while remaining a metadata precondition rather than a generation proof.
 The provider's optional `attachRootToProject` capability binds only an exact,
 unbound legacy registration after explicit operator selection; older providers
 remain source-compatible and report the missing capability.
+
+`KnowledgeDocumentImportInput` names a UUID, exact `expectedRoot` and up to
+eight filename/base64 document pairs. `KnowledgeDocumentImportReceipt` reports
+per-file SHA-256, byte count, stable canonical record identity, original
+availability and publication phase. Limits are exported as
+`KNOWLEDGE_DOCUMENT_MAX_BYTES` (256 KiB),
+`KNOWLEDGE_DOCUMENT_BATCH_MAX_BYTES` (1 MiB) and
+`KNOWLEDGE_DOCUMENT_BATCH_MAX_FILES` (8).
+
+The optional provider `withRootRevision(expectedRoot, operation)` runs bounded
+work while the persistence owner holds the exact registration revision. Older
+providers may omit it; document import refuses when registration locking is
+unavailable. This lease preserves source identity, while the server's scoped
+write authority separately checks the current request at physical file effects.
+It is not a grant to import or a file-content version.

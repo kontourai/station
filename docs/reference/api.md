@@ -189,6 +189,34 @@ observed root inside its file mutation before changing ownership. An already
 bound registration cannot be reassigned. No files are moved or deleted. The
 optional provider capability returns503 when unavailable on an older provider.
 
+## Project document imports
+
+`POST /api/knowledge/document-imports` accepts
+`{ requestId, expectedRoot, documents: [{ filename, contentBase64 }] }`.
+The UUID identifies one durable exact intent. Only current Project-bound,
+generation-bearing `kit-default-store` registrations are supported. Inputs
+must be canonical base64 of nonempty UTF-8 Markdown or text: up to eight files,
+256 KiB each and 1 MiB decoded total. The HTTP body is bounded to 2 MiB.
+The response contains per-file hash, byte count, record identity and observed
+phase, plus an aggregate `pending | imported | partial | uncertain | unavailable`
+phase. Reusing a UUID with changed files or registration returns 409.
+
+`GET /api/knowledge/roots/:rootId/document-imports/:requestId` observes the saved
+receipt. It may persist an observed publication witness or repair the store's
+existing indexes; it does not create missing imported records.
+`POST /api/knowledge/roots/:rootId/document-imports/:requestId/resume` accepts
+`{ expectedRoot, retryUncertain }` and uses retained originals. Uncertain missing
+publication is retried only with explicit `retryUncertain: true`. Previously
+confirmed records that disappear stay unavailable. Import and receipt recovery
+require current operator authority, including after asynchronous file locks.
+
+`GET /api/knowledge/roots/:rootId/document-imports/:requestId/originals/:index`
+downloads exact original bytes as a text attachment, with no-store and nosniff
+headers. It requires root read access and rechecks current registration/access
+before releasing the response. Original storage is retained after disconnect;
+the route refuses a replaced registration. None of these routes expose a host
+path or raw credential in errors. See [document import](../guides/knowledge.md#import-documents-from-your-computer).
+
 ## Knowledge source disconnect
 
 `POST /api/knowledge/roots/:id/disconnect` accepts `{ expectedRoot }`, the exact

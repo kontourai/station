@@ -751,6 +751,17 @@ posts `{ expectedRoot }` to `/api/knowledge/roots/:id/disconnect`; a changed roo
 returns 409. The old string argument retains the original DELETE protocol.
 Both protocols deregister the store without deleting its files.
 
+`useImportKnowledgeDocumentsMutation(scope)` sends one explicit document import
+intent. `useKnowledgeDocumentImportQuery(scope, rootId, requestId)` observes its
+saved receipt, with an endpoint/account-scoped cache; omitted identities disable
+automatic reads. `useResumeKnowledgeDocumentImportMutation(scope)` continues the
+same UUID from retained originals and requires an explicit `retryUncertain`
+choice. All three require a captured `ApiRequestScope`; mutation retries are
+disabled. Client fetchers are `importKnowledgeDocuments`,
+`getKnowledgeDocumentImport` and `resumeKnowledgeDocumentImport` from the client
+entry point. The caller retains recovery identity before dispatch and must not
+turn a lost response into a new import UUID. See [the import API](api.md#project-document-imports).
+
 #### `useKnowledgeDocs(projectSlug: string, namespace?: string)`
 
 Returns a query whose `data` is the project's `KnowledgeDocumentMeta[]`,
