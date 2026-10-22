@@ -467,7 +467,7 @@ export interface RepositoryAcquisitionRequest {
 export interface RepositoryAcquisition {
   schemaVersion: 1;
   request: RepositoryAcquisitionRequest;
-  phase: 'acquiring' | 'ready' | 'failed';
+  phase: 'acquiring' | 'ready' | 'failed' | 'cancelled';
   attempt: number;
   /** Owned directory, retained even after a failed or interrupted acquisition. */
   checkoutPath: string;

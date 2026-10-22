@@ -96,6 +96,19 @@ function RepositorySourceControls({
         data,
       ),
   });
+  const cancel = useMutation({
+    retry: false,
+    mutationFn: async () => {
+      const response = await mutateJson(
+        `${scope.apiBase}/api/projects/repository-acquisitions/${encodeURIComponent(requestId)}/cancel`,
+        'POST',
+        { requestScope: scope },
+        {},
+      );
+      return readEnvelopeOrThrow<RepositoryAcquisition>(response);
+    },
+    onSuccess: (data) => client.setQueryData(key, data),
+  });
   const operation = useQuery({
     queryKey: key,
     enabled: Boolean(requestId) && !acquire.isPending,
@@ -114,11 +127,12 @@ function RepositorySourceControls({
     },
   });
   useEffect(() => {
-    onBusyChange(acquire.isPending);
+    onBusyChange(acquire.isPending && cancel.data?.phase !== 'cancelled');
     return () => onBusyChange(false);
-  }, [acquire.isPending, onBusyChange]);
+  }, [acquire.isPending, cancel.data?.phase, onBusyChange]);
 
   function begin() {
+    cancel.reset();
     const id = crypto.randomUUID();
     // Retain identity before dispatch so a lost response can be inspected.
     try {
@@ -146,6 +160,7 @@ function RepositorySourceControls({
     }
     setRequestId('');
     acquire.reset();
+    cancel.reset();
   }
   const record = operation.data;
   return (
@@ -217,7 +232,7 @@ function RepositorySourceControls({
               {record.request.sourceRef ? ` · ${record.request.sourceRef}` : ''}
             </p>
           )}
-          {acquire.isPending && (
+          {acquire.isPending && record?.phase !== 'cancelled' && (
             <p role="status">Acquiring and verifying repository…</p>
           )}
           {record?.phase === 'ready' && (
@@ -247,6 +262,13 @@ function RepositorySourceControls({
             </>
           )}
           {record?.phase === 'failed' && <p role="alert">{record.error}</p>}
+          {record?.phase === 'cancelled' && (
+            <p role="status">
+              Acquisition cancelled. Existing files are preserved. An in-flight
+              Git command may finish, but this operation cannot be used to
+              create a Project.
+            </p>
+          )}
           {record?.phase === 'acquiring' && !acquire.isPending && (
             <p role="status">
               Acquisition was started. Check its result before retrying; an
@@ -261,21 +283,38 @@ function RepositorySourceControls({
           >
             Check operation
           </Button>
-          {record && record.phase !== 'ready' && (
+          {record &&
+            record.phase !== 'ready' &&
+            record.phase !== 'cancelled' && (
+              <Button
+                type="button"
+                disabled={acquire.isPending}
+                onClick={() =>
+                  acquire.mutate({ request: record.request, retry: true })
+                }
+              >
+                Retry acquisition
+              </Button>
+            )}
+          {(acquire.isPending ||
+            record?.phase === 'acquiring' ||
+            record?.phase === 'failed') && (
             <Button
               type="button"
-              disabled={acquire.isPending}
-              onClick={() =>
-                acquire.mutate({ request: record.request, retry: true })
-              }
+              variant="secondary"
+              disabled={cancel.isPending}
+              onClick={() => cancel.mutate()}
             >
-              Retry acquisition
+              Cancel acquisition
             </Button>
+          )}
+          {cancel.isError && (
+            <p role="alert">{userFacingErrorMessage(cancel.error)}</p>
           )}
           <Button
             type="button"
             variant="secondary"
-            disabled={acquire.isPending}
+            disabled={acquire.isPending && record?.phase !== 'cancelled'}
             onClick={clear}
           >
             Choose another source

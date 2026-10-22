@@ -30,7 +30,7 @@ const recordSchema = z
   .object({
     schemaVersion: z.literal(1),
     request: repositoryAcquisitionRequestSchema,
-    phase: z.enum(['acquiring', 'ready', 'failed']),
+    phase: z.enum(['acquiring', 'ready', 'failed', 'cancelled']),
     attempt: z.number().int().positive(),
     checkoutPath: z.string().min(1),
     workingDirectory: z.string().min(1).optional(),
@@ -161,6 +161,53 @@ export class RepositoryAcquisitionService {
     );
   }
 
+  private cancellation(id: string) {
+    z.string().uuid().parse(id);
+    return new JsonFileStore<{ cancelledAt: string } | null>(
+      join(this.root, id, 'cancellation.json'),
+      null,
+      { onCorruption: 'throw', durableAtomicWrite: true, maxReadBytes: 2048 },
+    );
+  }
+
+  async cancel(id: string): Promise<RepositoryAcquisition | null> {
+    z.string().uuid().parse(id);
+    if (!this.get(id)) return null;
+    const release = await acquireFileMutationLockAsync(
+      join(this.root, id, 'publication.mutation'),
+    );
+    try {
+      const current = this.get(id);
+      if (!current) return null;
+      if (current.phase === 'ready')
+        throw new RepositoryAcquisitionConflict(
+          'A verified checkout is already available. Choose another source to set it aside; existing files are preserved.',
+        );
+      if (current.phase !== 'cancelled')
+        this.cancellation(id).write({ cancelledAt: new Date().toISOString() });
+      return this.get(id);
+    } finally {
+      await release();
+    }
+  }
+
+  private async publish(
+    record: RepositoryAcquisition,
+  ): Promise<RepositoryAcquisition> {
+    const id = record.request.requestId;
+    const release = await acquireFileMutationLockAsync(
+      join(this.root, id, 'publication.mutation'),
+    );
+    try {
+      const current = this.get(id);
+      if (current?.phase === 'cancelled') return current;
+      this.store(id).write(record);
+      return record;
+    } finally {
+      await release();
+    }
+  }
+
   get(id: string): RepositoryAcquisition | null {
     const value = this.store(id).read();
     if (value === null) return null;
@@ -182,6 +229,14 @@ export class RepositoryAcquisitionService {
       (!record.resolvedCommit || !record.canonicalRemote)
     ) {
       throw new Error('Ready repository receipt is incomplete.');
+    }
+    const cancellation = this.cancellation(id).read();
+    if (cancellation) {
+      const { cancelledAt } = z
+        .object({ cancelledAt: z.string().datetime() })
+        .strict()
+        .parse(cancellation);
+      return { ...record, phase: 'cancelled', updatedAt: cancelledAt };
     }
     return record;
   }
@@ -318,10 +373,13 @@ export class RepositoryAcquisitionService {
           'This request ID already names a different repository or ref.',
         );
       }
-      if (previous && (previous.phase === 'ready' || !retry)) return previous;
+      if (
+        previous &&
+        (previous.phase === 'ready' || previous.phase === 'cancelled' || !retry)
+      )
+        return previous;
       const attempt = (previous?.attempt ?? 0) + 1;
       const checkoutPath = join(directory, `checkout-${attempt}`);
-      const store = this.store(request.requestId);
       const acquiring: RepositoryAcquisition = {
         schemaVersion: 1,
         request,
@@ -330,7 +388,8 @@ export class RepositoryAcquisitionService {
         checkoutPath,
         updatedAt: new Date().toISOString(),
       };
-      store.write(acquiring);
+      const admitted = await this.publish(acquiring);
+      if (admitted.phase === 'cancelled') return admitted;
       let ready: RepositoryAcquisition;
       try {
         const args = [
@@ -349,6 +408,8 @@ export class RepositoryAcquisitionService {
           timeout: 120000,
           hardening: { allowFileProtocol: isLocalGitSource(request.sourceUrl) },
         });
+        const afterClone = this.get(request.requestId);
+        if (afterClone?.phase === 'cancelled') return afterClone;
         const remotes = await readCheckoutRemotes(checkoutPath);
         const canonicalRemote = normalizeGitOrigin(request.sourceUrl);
         if (
@@ -394,12 +455,10 @@ export class RepositoryAcquisitionService {
             'Repository acquisition failed. Check source access and the requested branch or tag, then retry explicitly.',
           updatedAt: new Date().toISOString(),
         };
-        store.write(failed);
-        return failed;
+        return await this.publish(failed);
       }
       // A publication failure must preserve uncertainty about the completed clone.
-      store.write(ready);
-      return ready;
+      return await this.publish(ready);
     } finally {
       await release();
     }

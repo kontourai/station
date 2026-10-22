@@ -92,6 +92,19 @@ export function createRepositoryAcquisitionRoutes(
       return failure(c, error);
     }
   });
+  app.post('/repository-acquisitions/:id/cancel', async (c) => {
+    try {
+      const data = await service.cancel(param(c, 'id'));
+      return data
+        ? c.json({ success: true, data })
+        : c.json(
+            { success: false, error: 'Repository acquisition was not found.' },
+            404,
+          );
+    } catch (error) {
+      return failure(c, error);
+    }
+  });
   app.post('/repository-acquisitions/:id/retry', async (c) => {
     try {
       const current = service.get(param(c, 'id'));

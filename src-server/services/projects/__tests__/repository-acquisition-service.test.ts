@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
+import * as gitExec from '../../../utils/git-exec.js';
 import { execGitSync } from '../../../utils/git-exec.js';
 import {
   RepositoryAcquisitionInputError,
@@ -21,6 +22,7 @@ import {
 const roots: string[] = [];
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
   for (const root of roots.splice(0))
     rmSync(root, { recursive: true, force: true });
 });
@@ -307,4 +309,58 @@ test('missing repository subdirectory leaves a durable failed acquisition instea
   const record = await f.service.acquire(request);
   expect(record.phase).toBe('failed');
   expect(f.service.get(request.requestId)).toEqual(record);
+});
+
+test('durable cancellation wins against an in-flight clone and cannot be retried or bound after restart', async () => {
+  const f = fixture();
+  const request = { requestId: randomUUID(), sourceUrl: f.source };
+  const original = gitExec.execGit;
+  let cloned!: () => void;
+  let releaseClone!: () => void;
+  const cloneObserved = new Promise<void>((resolve) => {
+    cloned = resolve;
+  });
+  const holdClone = new Promise<void>((resolve) => {
+    releaseClone = resolve;
+  });
+  vi.spyOn(gitExec, 'execGit').mockImplementation(async (args, options) => {
+    const result = await original(args, options);
+    if (args.includes('clone')) {
+      cloned();
+      await holdClone;
+    }
+    return result;
+  });
+  const pending = f.service.acquire(request);
+  await cloneObserved;
+  try {
+    const otherProcess = new RepositoryAcquisitionService(f.home);
+    const cancelled = await otherProcess.cancel(request.requestId);
+    expect(cancelled?.phase).toBe('cancelled');
+    expect(existsSync(join(cancelled!.checkoutPath, '.git'))).toBe(true);
+  } finally {
+    releaseClone();
+  }
+  expect((await pending).phase).toBe('cancelled');
+  expect((await f.service.acquire(request, true)).phase).toBe('cancelled');
+  const restarted = new RepositoryAcquisitionService(f.home);
+  expect(restarted.get(request.requestId)?.phase).toBe('cancelled');
+  await expect(restarted.projectSource(request.requestId)).rejects.toThrow(
+    'Acquire and verify',
+  );
+  expect((await restarted.cancel(request.requestId))?.phase).toBe('cancelled');
+});
+
+test('cancelling a completed checkout refuses without revoking its verified receipt or deleting files', async () => {
+  const f = fixture();
+  const request = { requestId: randomUUID(), sourceUrl: f.source };
+  const ready = await f.service.acquire(request);
+  await expect(f.service.cancel(request.requestId)).rejects.toThrow(
+    'already available',
+  );
+  expect(f.service.get(request.requestId)).toEqual(ready);
+  expect(readFileSync(join(ready.checkoutPath, 'README.md'), 'utf8')).toBe(
+    'first revision',
+  );
+  expect(await f.service.cancel(randomUUID())).toBeNull();
 });

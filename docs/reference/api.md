@@ -142,7 +142,7 @@ internal requests and delegated or paired-device credentials are refused, even
 when the device can run commands.
 
 The response is `{success:true,data}` where `data.phase` is `acquiring`, `ready`
-or `failed`. A ready receipt includes `checkoutPath`, `canonicalRemote` and
+`failed` or `cancelled`. A ready receipt includes `checkoutPath`, `canonicalRemote` and
 `resolvedCommit`. Failed acquisition is a recorded domain result, returned with
 HTTP 200 and a fixed safe explanation. Invalid input is 400, reuse of an ID for
 a different source/ref is 409, and unavailable storage is 503.
@@ -157,6 +157,13 @@ directory without traversal or Git metadata segments. Acquisition verifies it
 exists without a symlink redirect and returns `workingDirectory` separately from
 the owned `checkoutPath`; Project creation rechecks the directory and retains the
 subdirectory in source provenance. Raw subprocess output and credentials are not response data.
+
+`POST /api/projects/repository-acquisitions/:id/cancel` records durable
+cancellation for an acquiring or failed operation (404 if absent; 409 if already
+ready). Cancellation is idempotent, preserves files and prevents later success
+publication or reuse of that request ID, including after restart. It does not
+terminate an in-flight Git subprocess; that command retains its existing bounded
+deadline. Cancellation and terminal publication share a cross-process lock.
 
 The request retains an explicit clone transport rather than deriving one from a
 canonical identity. Clone, remote read, commit resolution and detached checkout

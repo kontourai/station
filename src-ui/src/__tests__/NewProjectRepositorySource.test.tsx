@@ -335,3 +335,55 @@ test('failure exposes an explicit retry under the original request ID', async ()
   );
   expect(calls).toHaveLength(2);
 });
+
+test('cancellation during acquisition retains the operation and never offers its checkout or an implicit retry', async () => {
+  let record: RepositoryAcquisition | undefined;
+  let finishAcquisition!: (response: Response) => void;
+  let cancels = 0;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/repository-acquisitions') && init?.method === 'POST') {
+        record = {
+          ...ready(JSON.parse(String(init.body))),
+          phase: 'acquiring',
+        };
+        return new Promise<Response>((resolve) => {
+          finishAcquisition = resolve;
+        });
+      }
+      if (url.endsWith('/cancel') && init?.method === 'POST' && record) {
+        cancels++;
+        record = { ...record, phase: 'cancelled' };
+        const response = () =>
+          new Response(JSON.stringify({ success: true, data: record }));
+        return response();
+      }
+      return new Response(JSON.stringify({ success: true, data: record }));
+    }),
+  );
+  const view = mount();
+  enterSource();
+  await screen.findByText('Acquiring and verifying repository…');
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel acquisition' }));
+  await screen.findByText(
+    /Acquisition cancelled. Existing files are preserved/,
+  );
+  expect(cancels).toBe(1);
+  expect(
+    screen.queryByRole('button', { name: 'Use this checkout' }),
+  ).toBeNull();
+  expect(
+    screen.queryByRole('button', { name: 'Retry acquisition' }),
+  ).toBeNull();
+  expect(view.onUseCheckout).not.toHaveBeenCalled();
+  expect(
+    screen.getByRole('button', { name: 'Choose another source' }),
+  ).not.toHaveProperty('disabled', true);
+  await waitFor(() =>
+    expect(view.onBusyChange).toHaveBeenLastCalledWith(false),
+  );
+  finishAcquisition(
+    new Response(JSON.stringify({ success: true, data: record })),
+  );
+});

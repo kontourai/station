@@ -1175,8 +1175,13 @@ and account. Reopening the form checks that operation; a lost response does not
 automatically clone again. **Check operation** reads the recorded result.
 **Retry acquisition** explicitly starts a new attempt in a different owned
 directory, preserving earlier attempts and their edits. An interrupted operation
-can remain acquiring until inspected or explicitly retried. **Choose another
-source** clears the browser selection; it does not delete a working copy.
+can remain acquiring until inspected, cancelled or explicitly retried.
+**Cancel acquisition** durably prevents that operation from producing a usable
+checkout; retries of its ID remain cancelled. Files are preserved. An in-flight
+Git command may finish within its existing deadline; cancellation does not claim
+that the remote command was terminated. A completed verified checkout cannot be
+cancelled. **Choose another source** clears the browser selection; it does not
+delete a working copy.
 
 For the Station operator, **Create** also saves the immutable Project draft and
 selected starter before sending. Reopening New Project, including after a page
@@ -1195,8 +1200,10 @@ requires the operator. Unreadable browser storage prevents dispatch.
 The receipt records a completed acquisition, not continuing checkout integrity,
 build readiness or a successful Agent turn. Project creation separately rechecks
 the receipt and records historical provenance; later checkout changes still need
-the normal workspace checks. Principal-owned Git credential profiles and
-explicit in-flight clone cancellation remain part of the [onboarding epic](https://github.com/kontourai/station/issues/4027).
+the normal workspace checks. Operator-assisted import uses host Git credentials.
+Provider OAuth, Project-scoped forge grants and collaboration onboarding are
+tracked separately in [the authorization epic](https://github.com/kontourai/station/issues/4068);
+importing a repository does not grant an Agent remote credentials.
 Project Settings → Sources combines repository repair with knowledge-store
 registration, refresh and disconnect; see [knowledge sources](knowledge.md#project-settings--sources).
 See the [API contract](../reference/api.md#repository-acquisition).
