@@ -530,7 +530,10 @@ describe('npm ci installer', () => {
       '--no-fund',
       '--no-update-notifier',
       '--cache',
-      '/home/me/.station/devices/tools/expo-device-hub/.staging-x/.npm-cache',
+      join(
+        '/home/me/.station/devices/tools/expo-device-hub/.staging-x',
+        '.npm-cache',
+      ),
     ]);
     expect(call?.options.cwd).toBe(
       '/home/me/.station/devices/tools/expo-device-hub/.staging-x',

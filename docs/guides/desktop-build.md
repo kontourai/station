@@ -78,7 +78,7 @@ Desktop releases include a private `station-node` executable beside the app
 executable, declared through Tauri's `externalBin`. The builder reuses the
 portable server's pinned Node distribution and verifies its digest from
 `config/portable-server-node-runtime.json`; only Node and its license are
-extracted. Installed releases do not require a system Node installation.
+extracted. Core desktop startup does not require a system Node installation.
 Development/debug shells continue to use the developer's Node.
 
 The native registry bridge and desktop-owned backend use that absolute private
@@ -87,7 +87,9 @@ executable. Built-in tool servers and server restart children use
 agent commands. Optional device tools use an explicitly resolved user-installed
 Node.js 24 or later and npm from that same installation, because their external
 native add-ons are outside the app's signed bundle. Missing prerequisites block
-only device setup with guidance; see [device setup](mobile-device-workspace.md#configure-a-device-host). On macOS, the release signer seals `station-node` with Kontour's
+only device setup with guidance; see
+[device setup](mobile-device-workspace.md#configure-a-device-host). On macOS, the
+release signer seals `station-node` with Kontour's
 Developer ID and only the JIT entitlement; the outer app stays entitlement-free.
 
 The frontend remains a production Vite build embedded in Tauri. The backend
