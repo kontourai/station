@@ -201,7 +201,7 @@ Station's server logger (`src-server/utils/logger.ts`) writes structured trace/d
 The local store batches pending lines for 10 ms, draining earlier at 64 KiB.
 The actual batch write is synchronous; this removes the syscall per line but
 can still block briefly on slow storage. Day rollover, sink replacement, close,
-and the fatal handler's `flushSync()` drain pending lines. An abrupt kill can
+server-log queries and the fatal handler's `flushSync()` drain pending lines. An abrupt kill can
 lose the pending batch; event-loop delays can extend its age beyond 10 ms.
 Completed writes reach the OS page cache, with no power-loss/fsync guarantee.
 Stdout and the local store serialize separate redacted and unredacted records;
