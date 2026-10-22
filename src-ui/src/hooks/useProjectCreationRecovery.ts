@@ -37,16 +37,22 @@ type PendingCreation = z.infer<typeof pendingSchema>;
 function retained(key: string | undefined): {
   pending: PendingCreation | null;
   corrupt: boolean;
+  raw: string | null;
 } {
-  if (!key) return { pending: null, corrupt: false };
+  let raw: string | null = null;
+  if (!key) return { pending: null, corrupt: false, raw };
   try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return { pending: null, corrupt: false };
+    raw = localStorage.getItem(key);
+    if (!raw) return { pending: null, corrupt: false, raw };
     if (raw.length > 65536)
       throw new Error('Saved creation request exceeds its bound.');
-    return { pending: pendingSchema.parse(JSON.parse(raw)), corrupt: false };
+    return {
+      pending: pendingSchema.parse(JSON.parse(raw)),
+      corrupt: false,
+      raw,
+    };
   } catch {
-    return { pending: null, corrupt: true };
+    return { pending: null, corrupt: true, raw };
   }
 }
 
@@ -198,7 +204,7 @@ export function useProjectCreationRecovery(isOpen: boolean, sending: boolean) {
         return existing.pending;
       }
       localStorage.setItem(key, JSON.stringify(pending));
-      setState({ key, pending, corrupt: false });
+      setState({ key, pending, corrupt: false, raw: JSON.stringify(pending) });
       return pending;
     },
     clear(expectedRequestId = current.pending?.requestId) {
@@ -207,12 +213,19 @@ export function useProjectCreationRecovery(isOpen: boolean, sending: boolean) {
           'Station access changed. Return to the creating account.',
         );
       const existing = retained(key);
-      if (
-        key &&
-        (current.corrupt || existing.pending?.requestId === expectedRequestId)
-      )
-        localStorage.removeItem(key);
-      setState({ key, pending: null, corrupt: false });
+      const matches = current.corrupt
+        ? current.raw !== null &&
+          current.raw === existing.raw &&
+          existing.corrupt
+        : existing.pending?.requestId === expectedRequestId;
+      if (!matches && (existing.raw !== null || existing.corrupt)) {
+        setState({ key, ...existing });
+        throw new Error(
+          'Saved setup changed in another tab. Inspect the newer request before setting it aside.',
+        );
+      }
+      if (key && matches) localStorage.removeItem(key);
+      setState({ key, pending: null, corrupt: false, raw: null });
     },
   };
 }

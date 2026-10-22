@@ -1,26 +1,30 @@
 import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import {
   deriveProjectSlug,
   inferProjectNameFromPath,
   normalizeWorkingDirectory,
 } from '../components/modals/project-form-utils';
+import { useProjectDraftState } from './useProjectDraftState';
 
-function useProjectDraftValues() {
-  const [name, setName] = useState('');
-  const [icon, setIcon] = useState('');
-  const [description, setDescription] = useState('');
-  const [directory, setDirectory] = useState('');
-  const [repositoryAcquisition, setRepositoryAcquisition] = useState<{
-    id: string;
-    directory: string;
-    recoveryKey: string;
-  } | null>(null);
-  const [nameTouched, setNameTouched] = useState(false);
-  const [showIconChoices, setShowIconChoices] = useState(false);
-  const [defaultEnvironment, setDefaultEnvironment] = useState<EnvironmentRef>({
-    kind: 'current',
-  });
+function useProjectDraftValues(partition?: string) {
+  const [name, setName] = useProjectDraftState('', partition);
+  const [icon, setIcon] = useProjectDraftState('', partition);
+  const [description, setDescription] = useProjectDraftState('', partition);
+  const [directory, setDirectory] = useProjectDraftState('', partition);
+  const [repositoryAcquisition, setRepositoryAcquisition] =
+    useProjectDraftState<{
+      id: string;
+      directory: string;
+      recoveryKey: string;
+    } | null>(null, partition);
+  const [nameTouched, setNameTouched] = useProjectDraftState(false, partition);
+  const [showIconChoices, setShowIconChoices] = useProjectDraftState(
+    false,
+    partition,
+  );
+  const [defaultEnvironment, setDefaultEnvironment] =
+    useProjectDraftState<EnvironmentRef>({ kind: 'current' }, partition);
 
   return {
     description,
@@ -60,8 +64,8 @@ function useDerivedProjectName(
 }
 
 /** Form-only state. Starter selection and submission live in dedicated hooks. */
-export function useNewProjectDraft(isOpen: boolean) {
-  const draft = useProjectDraftValues();
+export function useNewProjectDraft(isOpen: boolean, partition?: string) {
+  const draft = useProjectDraftValues(partition);
   const normalizedDirectory = normalizeWorkingDirectory(draft.directory);
   const derivedName = inferProjectNameFromPath(normalizedDirectory);
   const reset = () => {

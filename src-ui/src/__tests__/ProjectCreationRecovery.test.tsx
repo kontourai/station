@@ -384,3 +384,25 @@ test('a Station predating the capability endpoint keeps the ordinary create prot
   expect(received).toEqual(draft);
   expect(localStorage.getItem(storageKey())).toBeNull();
 });
+
+test('a tab with stale corrupt state cannot clear a newer valid request saved by another tab', async () => {
+  localStorage.setItem(storageKey(), '{broken');
+  const id = 'd72324e6-6e5e-41ec-9d04-6196d988d4cc';
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      if (url === 'http://station.test/api/projects/creation-requests')
+        return response({ available: true });
+      if (url === `http://station.test/api/projects/creation-requests/${id}`)
+        return response(undefined, 404);
+      throw new Error(`Unexpected fixture request: ${url}`);
+    }),
+  );
+  mount();
+  await screen.findByText('Corrupt saved setup');
+  const newer = JSON.stringify({ requestId: id, draft, starterLayoutId: null });
+  localStorage.setItem(storageKey(), newer);
+  fireEvent.click(screen.getByRole('button', { name: 'Set aside' }));
+  expect(localStorage.getItem(storageKey())).toBe(newer);
+  await screen.findByText('Saved creation');
+});

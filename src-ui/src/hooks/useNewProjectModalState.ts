@@ -5,7 +5,10 @@ import {
 } from '@kontourai/station-contracts/project';
 import { useProjectIconCandidatesQuery } from '@kontourai/station-sdk';
 import { useEffect, useRef } from 'react';
-import { useApiBase } from '../contexts/ApiBaseContext';
+import {
+  useApiBase,
+  useHostRequestAuthorityScope,
+} from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import { useNewProjectDraft } from './useNewProjectDraft';
@@ -54,7 +57,14 @@ function useCachedSlugConflictNotice(
 export function useNewProjectModalState(isOpen: boolean, onClose: () => void) {
   const { apiBase } = useApiBase();
   const { setProject, setLayout } = useNavigation();
-  const draft = useNewProjectDraft(isOpen);
+  const authority = useHostRequestAuthorityScope();
+  const partition = authority
+    ? JSON.stringify([
+        authority.apiBase,
+        authority.draftRecoveryKey ?? authority.authorityKey,
+      ])
+    : undefined;
+  const draft = useNewProjectDraft(isOpen, partition);
   // Local artwork discovery reads the folder's own files, so it stays on the
   // deliberate "the user finished a folder path" signal. Repo discovery owns
   // its own, wider gate (`useNewProjectStarter`), because its answer is what
@@ -63,6 +73,7 @@ export function useNewProjectModalState(isOpen: boolean, onClose: () => void) {
   const starter = useNewProjectStarter({
     isOpen,
     normalizedDirectory: draft.normalizedDirectory,
+    partition,
   });
   const iconCandidates = useProjectIconCandidatesQuery(
     draft.normalizedDirectory || undefined,
@@ -130,8 +141,9 @@ export function useNewProjectModalState(isOpen: boolean, onClose: () => void) {
       restoredRequest.current = null;
       return;
     }
-    if (restoredRequest.current === pending.requestId) return;
-    restoredRequest.current = pending.requestId;
+    const marker = JSON.stringify([partition, pending.requestId]);
+    if (restoredRequest.current === marker) return;
+    restoredRequest.current = marker;
     draft.setName(pending.draft.name);
     draft.setNameTouched(true);
     draft.setIcon(pending.draft.icon ?? '');
@@ -141,7 +153,7 @@ export function useNewProjectModalState(isOpen: boolean, onClose: () => void) {
       pending.draft.defaultEnvironment ?? { kind: 'current' },
     );
     starter.selectLayout(pending.starterLayoutId);
-  }, [isOpen, pending, draft, starter]);
+  }, [isOpen, pending, partition, draft, starter]);
 
   return { apiBase, draft, iconCandidates, nameAdvisory, starter, submission };
 }

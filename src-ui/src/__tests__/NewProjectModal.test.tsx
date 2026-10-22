@@ -820,6 +820,59 @@ describe('NewProjectModal starter layout picker', () => {
     await waitFor(() => expect(onCloseMock).toHaveBeenCalled());
   });
 
+  test('restored private fields and starter remain confined when the live modal changes accounts', async () => {
+    savedCreationFixture.enabled = true;
+    localStorage.setItem(
+      JSON.stringify([
+        'project-creation',
+        'http://localhost:3000',
+        'creating-account',
+      ]),
+      JSON.stringify({
+        requestId: '1c1e8d6c-a5f4-4305-9c21-6d86a8cf94df',
+        draft: {
+          name: 'Private A project',
+          slug: 'saved-project',
+          description: 'Private A description',
+          workingDirectory: '/private/account-a',
+        },
+        starterLayoutId: 'plugin:review',
+      }),
+    );
+    const view = render(<NewProjectModal isOpen onClose={onCloseMock} />);
+    await waitFor(() =>
+      expect(
+        (screen.getByPlaceholderText('My Project') as HTMLInputElement).value,
+      ).toBe('Private A project'),
+    );
+    authorityState.key = 'account-b-epoch';
+    authorityState.recoveryKey = 'account-b';
+    view.rerender(<NewProjectModal isOpen onClose={onCloseMock} />);
+    expect(
+      (screen.getByPlaceholderText('My Project') as HTMLInputElement).value,
+    ).toBe('');
+    expect(
+      (screen.getByLabelText(/Project folder/) as HTMLInputElement).value,
+    ).toBe('');
+    expect(
+      (screen.getByLabelText(/Description/) as HTMLTextAreaElement).value,
+    ).toBe('');
+    expect(screen.queryByText('Starter: Review')).toBeNull();
+    expect(createProjectMock).not.toHaveBeenCalled();
+    authorityState.key = 'creating-account-new-epoch';
+    authorityState.recoveryKey = 'creating-account';
+    view.rerender(<NewProjectModal isOpen onClose={onCloseMock} />);
+    await waitFor(() =>
+      expect(
+        (screen.getByPlaceholderText('My Project') as HTMLInputElement).value,
+      ).toBe('Private A project'),
+    );
+    expect(
+      (screen.getByLabelText(/Project folder/) as HTMLInputElement).value,
+    ).toBe('/private/account-a');
+    expect(screen.getByText('Starter: Review')).toBeTruthy();
+  });
+
   test('retries a failed starter apply without creating the project again', async () => {
     applyProjectLayoutMock.mockRejectedValueOnce(
       new Error('Starter could not apply'),
