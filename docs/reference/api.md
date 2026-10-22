@@ -1663,9 +1663,13 @@ inspection 422; oversized requests return 413. Request validation errors use
 Final source/configuration/request checks are observations, not atomic external
 filesystem custody. The Agents inspector is reached at `/agents?tab=ensembles`.
 The group form's **Inspect group configuration** action uses its exact draft
-bindings and the same read-only projection. Editing the draft clears that
-observation. Inspection neither saves nor launches the group; saving and running
-resolve and authorize current configuration again.
+bindings and the same read-only projection. Each member defaults to Directory;
+**Use a Project binding** replaces the directory input with a Project ID. The
+server resolves that Project's workspace and defaults. Switching back restores
+the directory draft, but only the selected binding is inspected or saved; a
+matching path never selects a Project automatically. Editing the draft clears
+the observation. Inspection neither saves nor launches the group; saving and
+running resolve and authorize current configuration again.
 
 ## CLI session groups
 

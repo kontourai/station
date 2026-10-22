@@ -837,3 +837,46 @@ test('a full roster batches Project configuration and bounds every namespace, ro
   expect(observe).toHaveBeenCalledTimes(2);
   expect(JSON.stringify(data)).not.toMatch(/SECRET_/);
 });
+
+test('group inspection resolves an exact receiver Project ID without imposing Agent identity syntax', async () => {
+  const f = await fixture();
+  const projectSlug = `7-${'p'.repeat(70)}`;
+  await f.storage.createProject({
+    ...f.storage.getProject('project'),
+    id: 'selected-project',
+    slug: projectSlug,
+    name: 'Selected Project',
+  });
+  const response = await f.request(
+    {
+      presetJson: f.bytes,
+      expectedPresetHash: f.input.expectedPresetHash,
+      bindings: {},
+      groupBindings: {
+        lead: {
+          target: {
+            agent: 'reviewer',
+            expectedEngine: { kind: 'connection', connectionId: 'codex' },
+            workspace: { kind: 'project', projectSlug },
+          },
+          needs: [],
+        },
+      },
+    },
+    f.browser,
+  );
+  expect(response.status).toBe(200);
+  const { data } = (await response.json()) as { data: EnsembleInspection };
+  expect(data.resolutions[0].receipt.workspace).toMatchObject({
+    kind: 'project',
+    projectSlug,
+    cwd: f.root,
+  });
+  expect(f.readProject).toHaveBeenCalledWith(projectSlug);
+  expect(data.facts).toContainEqual(
+    expect.objectContaining({
+      id: 'knowledge-namespaces:lead',
+      state: 'configured',
+    }),
+  );
+});

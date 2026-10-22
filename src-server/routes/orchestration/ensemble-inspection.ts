@@ -49,7 +49,7 @@ const schema = z
                   z
                     .object({
                       kind: z.literal('project'),
-                      projectSlug: id,
+                      projectSlug: z.string().min(1).max(256),
                       cwd: z.string().min(1).max(4096).optional(),
                     })
                     .strict(),

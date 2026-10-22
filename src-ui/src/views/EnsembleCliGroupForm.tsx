@@ -44,7 +44,14 @@ export function EnsembleCliGroupForm({
   const [bindings, setBindings] = useState<
     Record<
       string,
-      { agent: string; engine: string; cwd: string; needs: string }
+      {
+        agent: string;
+        engine: string;
+        cwd: string;
+        projectSlug: string;
+        useProject: boolean;
+        needs: string;
+      }
     >
   >({});
   const [operationId] = useState(() => crypto.randomUUID());
@@ -57,7 +64,9 @@ export function EnsembleCliGroupForm({
     memberIds.every((id) => {
       const binding = bindings[id];
       return (
-        binding?.agent.trim() && binding.engine.trim() && binding.cwd.trim()
+        binding?.agent.trim() &&
+        binding.engine.trim() &&
+        (binding.useProject ? binding.projectSlug.trim() : binding.cwd.trim())
       );
     });
   return (
@@ -75,7 +84,9 @@ export function EnsembleCliGroupForm({
           <p>
             Save this roster and brief as a group. Engines start only when the
             group is run. Dollar, token and physical attempt caps are
-            unavailable. The deadline begins when the group is saved.
+            unavailable. The deadline begins when the group is saved. Directory
+            bindings name only a path. Project bindings use the selected Project
+            workspace and defaults; they grant no additional permissions.
           </p>
           <form
             onChange={() => inspection.reset()}
@@ -107,10 +118,15 @@ export function EnsembleCliGroupForm({
                                 value.engine.trim(),
                               ),
                             },
-                            workspace: {
-                              kind: 'directory' as const,
-                              cwd: value.cwd.trim(),
-                            },
+                            workspace: value.useProject
+                              ? {
+                                  kind: 'project' as const,
+                                  projectSlug: value.projectSlug.trim(),
+                                }
+                              : {
+                                  kind: 'directory' as const,
+                                  cwd: value.cwd.trim(),
+                                },
                           },
                           needs: value.needs
                             .split(',')
@@ -207,6 +223,8 @@ export function EnsembleCliGroupForm({
                 agent: '',
                 engine: '',
                 cwd: '',
+                projectSlug: '',
+                useProject: false,
                 needs: '',
               };
               return (
@@ -215,33 +233,57 @@ export function EnsembleCliGroupForm({
                   disabled={submitted || inspection.isPending || !current}
                 >
                   <legend>Member {id}</legend>
+                  <label>
+                    <input
+                      type="checkbox"
+                      aria-label={`Use a Project binding for ${id}`}
+                      checked={value.useProject}
+                      onChange={(event) => {
+                        onDirtyChange(true);
+                        setBindings({
+                          ...bindings,
+                          [id]: { ...value, useProject: event.target.checked },
+                        });
+                      }}
+                    />
+                    Use a Project binding
+                  </label>
                   {(
                     [
                       ['agent', 'Agent ID', 64],
                       ['engine', 'Engine connection ID', 256],
                       ['cwd', 'Working directory on This Station', 4096],
+                      ['projectSlug', 'Project ID on This Station', 256],
                       ['needs', 'Wait for members (comma-separated IDs)', 2048],
                     ] as const
-                  ).map(([key, label, maxLength]) => (
-                    <label key={key}>
-                      {label}
-                      <input
-                        aria-label={`${label} for ${id}`}
-                        required={key !== 'needs'}
-                        maxLength={maxLength}
-                        value={value[key]}
-                        autoComplete="off"
-                        spellCheck={false}
-                        onChange={(event) => {
-                          onDirtyChange(true);
-                          setBindings({
-                            ...bindings,
-                            [id]: { ...value, [key]: event.target.value },
-                          });
-                        }}
-                      />
-                    </label>
-                  ))}
+                  )
+                    .filter(([key]) =>
+                      key === 'cwd'
+                        ? !value.useProject
+                        : key === 'projectSlug'
+                          ? value.useProject
+                          : true,
+                    )
+                    .map(([key, label, maxLength]) => (
+                      <label key={key}>
+                        {label}
+                        <input
+                          aria-label={`${label} for ${id}`}
+                          required={key !== 'needs'}
+                          maxLength={maxLength}
+                          value={value[key]}
+                          autoComplete="off"
+                          spellCheck={false}
+                          onChange={(event) => {
+                            onDirtyChange(true);
+                            setBindings({
+                              ...bindings,
+                              [id]: { ...value, [key]: event.target.value },
+                            });
+                          }}
+                        />
+                      </label>
+                    ))}
                 </fieldset>
               );
             })}

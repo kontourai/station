@@ -618,8 +618,13 @@ test.each(['Agent ID for lead', 'Engine connection ID for lead'])(
 test('group inspection uses the launch draft and discards its facts when the draft changes without saving or running', async () => {
   navigationStore.navigate('/agents?tab=ensembles');
   const fetch = vi.fn(
-    async (_url: unknown, _init?: RequestInit) =>
-      new Response(JSON.stringify({ success: true, data: result })),
+    async (url: unknown, _init?: RequestInit) =>
+      new Response(
+        JSON.stringify({
+          success: true,
+          data: String(url).endsWith('/inspect') ? result : savedGroup,
+        }),
+      ),
   );
   vi.stubGlobal('fetch', fetch);
   mount();
@@ -673,4 +678,54 @@ test('group inspection uses the launch draft and discards its facts when the dra
   ).toHaveLength(1);
   expect(fetch).toHaveBeenCalledTimes(2);
   expect(screen.queryByText(/Saved session group/)).toBeNull();
+  fireEvent.click(
+    screen.getByRole('checkbox', { name: 'Use a Project binding for lead' }),
+  );
+  expect(
+    screen.queryByLabelText('Working directory on This Station for lead'),
+  ).toBeNull();
+  fireEvent.change(
+    screen.getByLabelText('Project ID on This Station for lead'),
+    { target: { value: '7-selected-project' } },
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Inspect group configuration' }),
+  );
+  await screen.findByText(
+    'Configuration observation only. Saving and running resolve the current configuration again.',
+  );
+  expect(fetch).toHaveBeenCalledTimes(3);
+  const inspected = JSON.parse(String(fetch.mock.calls[2][1]?.body));
+  expect(inspected.groupBindings.lead.target.workspace).toEqual({
+    kind: 'project',
+    projectSlug: '7-selected-project',
+  });
+  fireEvent.click(
+    screen.getByRole('checkbox', { name: 'Use a Project binding for lead' }),
+  );
+  expect(
+    (
+      screen.getByLabelText(
+        'Working directory on This Station for lead',
+      ) as HTMLInputElement
+    ).value,
+  ).toBe('/changed');
+  expect(
+    screen.queryByLabelText('Project ID on This Station for lead'),
+  ).toBeNull();
+  fireEvent.click(
+    screen.getByRole('checkbox', { name: 'Use a Project binding for lead' }),
+  );
+  expect(
+    (
+      screen.getByLabelText(
+        'Project ID on This Station for lead',
+      ) as HTMLInputElement
+    ).value,
+  ).toBe('7-selected-project');
+  fireEvent.click(screen.getByRole('button', { name: 'Save session group' }));
+  await screen.findByText(/Saved session group/);
+  expect(fetch).toHaveBeenCalledTimes(4);
+  const saved = JSON.parse(String(fetch.mock.calls[3][1]?.body));
+  expect(saved.bindings).toEqual(inspected.groupBindings);
 });
