@@ -49,6 +49,15 @@ function resetPlatformProfile() {
   };
 }
 
+const authorityState = vi.hoisted(() => ({
+  key: 'new-project-test-authority',
+  recoveryKey: 'creating-account',
+}));
+beforeEach(() => {
+  authorityState.key = 'new-project-test-authority';
+  authorityState.recoveryKey = 'creating-account';
+});
+
 const createProjectMock = vi.fn();
 const applyProjectLayoutMock = vi.fn();
 const validateDirectoryMock = vi.fn();
@@ -158,11 +167,15 @@ vi.mock('@kontourai/station-sdk', () => ({
 vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useApiBase: () => ({ apiBase: 'http://localhost:3000' }),
-  useHostRequestAuthorityScope: () => ({
-    apiBase: 'http://localhost:3000',
-    authorityKey: 'new-project-test-authority',
-    isCurrent: () => true,
-  }),
+  useHostRequestAuthorityScope: () => {
+    const key = authorityState.key;
+    return {
+      apiBase: 'http://localhost:3000',
+      authorityKey: key,
+      draftRecoveryKey: authorityState.recoveryKey,
+      isCurrent: () => authorityState.key === key,
+    };
+  },
 }));
 
 vi.mock('../contexts/NavigationContext', () => ({
@@ -718,7 +731,7 @@ describe('NewProjectModal starter layout picker', () => {
     applyProjectLayoutMock.mockRejectedValueOnce(
       new Error('Starter could not apply'),
     );
-    render(<NewProjectModal isOpen onClose={onCloseMock} />);
+    const view = render(<NewProjectModal isOpen onClose={onCloseMock} />);
     fireEvent.click(screen.getByRole('button', { name: 'Browse all' }));
     fireEvent.click(
       within(
@@ -754,6 +767,18 @@ describe('NewProjectModal starter layout picker', () => {
       screen.getByRole('button', { name: 'Retry layout' }).matches(':disabled'),
     ).toBe(false);
 
+    authorityState.key = 'other-account-epoch';
+    authorityState.recoveryKey = 'other-account';
+    view.rerender(<NewProjectModal isOpen onClose={onCloseMock} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry layout' }));
+    await screen.findByText(
+      'Station access changed. Return to the Station account that created this Project to finish its starter.',
+    );
+    expect(applyProjectLayoutMock).toHaveBeenCalledTimes(1);
+    expect(createProjectMock).toHaveBeenCalledTimes(1);
+    authorityState.key = 'creating-account-new-epoch';
+    authorityState.recoveryKey = 'creating-account';
+    view.rerender(<NewProjectModal isOpen onClose={onCloseMock} />);
     fireEvent.click(screen.getByRole('button', { name: 'Retry layout' }));
 
     await waitFor(() =>
@@ -761,6 +786,9 @@ describe('NewProjectModal starter layout picker', () => {
     );
     expect(createProjectMock).toHaveBeenCalledTimes(1);
     expect(applyProjectLayoutMock).toHaveBeenCalledTimes(2);
+    expect(applyProjectLayoutMock.mock.calls[1]?.[3]).toMatchObject({
+      requestScope: { authorityKey: 'creating-account-new-epoch' },
+    });
     expect(JSON.parse(localStorage.getItem('recentLayouts') ?? '[]')).toEqual([
       'plugin:review',
     ]);

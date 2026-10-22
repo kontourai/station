@@ -168,7 +168,10 @@ function NewProjectDetails({
           draft.setRepositoryAcquisition({
             id: acquisitionId,
             directory: path,
-            authorityKey: authority.authorityKey,
+            recoveryKey: JSON.stringify([
+              authority.apiBase,
+              authority.draftRecoveryKey ?? authority.authorityKey,
+            ]),
           });
           starter.resetForDirectory();
           draft.setDirectory(path);

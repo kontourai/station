@@ -47,7 +47,7 @@ interface RejectedSlug {
 }
 
 interface CreatedProject {
-  authorityKey?: string;
+  recoveryKey?: string;
   slug: string;
   layoutId: string | null;
   layoutSlug?: string;
@@ -94,6 +94,12 @@ export function useNewProjectSubmit({
   onComplete,
 }: UseNewProjectSubmitOptions) {
   const authority = useHostRequestAuthorityScope();
+  const recoveryKey =
+    authority &&
+    JSON.stringify([
+      authority.apiBase,
+      authority.draftRecoveryKey ?? authority.authorityKey,
+    ]);
   const createProjectMutation = useCreateProjectMutation(authority);
   const { refetch: validateDirectory } = useFileSystemBrowseQuery(
     normalizedDirectory || undefined,
@@ -203,13 +209,13 @@ export function useNewProjectSubmit({
         project = {
           slug: created.slug,
           layoutId: starterLayoutId,
-          authorityKey: authority?.authorityKey,
+          recoveryKey,
         };
         setCreatedProject(project);
       }
 
       if (
-        project.authorityKey !== authority?.authorityKey ||
+        project.recoveryKey !== recoveryKey ||
         (authority && !authority.isCurrent())
       ) {
         throw new Error(

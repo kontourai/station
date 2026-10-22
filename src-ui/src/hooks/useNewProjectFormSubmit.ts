@@ -9,11 +9,19 @@ type NewProjectModalState = ReturnType<typeof useNewProjectModalState>;
 export function useNewProjectFormSubmit(state: NewProjectModalState) {
   const { draft, submission } = state;
   const authority = useHostRequestAuthorityScope();
+  const recoveryKey =
+    authority &&
+    JSON.stringify([
+      authority.apiBase,
+      authority.draftRecoveryKey ?? authority.authorityKey,
+    ]);
   const { resolvedName } = draft;
   const sourceError =
     draft.repositoryAcquisition &&
-    draft.repositoryAcquisition.authorityKey !== authority?.authorityKey
-      ? 'Station access changed. Choose the repository again before creating the Project.'
+    draft.repositoryAcquisition.recoveryKey !== recoveryKey
+      ? submission.hasCreatedProject
+        ? 'Return to the Station account that created this Project to finish its starter.'
+        : 'Station access changed. Choose the repository again before creating the Project.'
       : undefined;
 
   function submit(event: FormEvent) {
@@ -29,7 +37,7 @@ export function useNewProjectFormSubmit(state: NewProjectModalState) {
       workingDirectory: draft.normalizedDirectory || undefined,
       ...(draft.repositoryAcquisition &&
       draft.repositoryAcquisition.directory === draft.normalizedDirectory &&
-      draft.repositoryAcquisition.authorityKey === authority?.authorityKey
+      draft.repositoryAcquisition.recoveryKey === recoveryKey
         ? { repositoryAcquisitionId: draft.repositoryAcquisition.id }
         : {}),
       ...(draft.defaultEnvironment.kind === 'saved'

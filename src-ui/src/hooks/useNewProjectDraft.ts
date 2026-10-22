@@ -14,7 +14,7 @@ function useProjectDraftValues() {
   const [repositoryAcquisition, setRepositoryAcquisition] = useState<{
     id: string;
     directory: string;
-    authorityKey: string;
+    recoveryKey: string;
   } | null>(null);
   const [nameTouched, setNameTouched] = useState(false);
   const [showIconChoices, setShowIconChoices] = useState(false);
