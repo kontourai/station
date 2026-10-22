@@ -139,8 +139,11 @@ malformed identity never produce verified provenance.
 | Terminal or voice `WS /__station/health` | Identity-only; no business session | Identity-only; no business session | Identity-only; no business session |
 | Other terminal or voice WebSocket paths | Existing local flow | Closed before session allocation | Requires the first-frame protocol below |
 
-Account-bound Knowledge access is limited to GET/HEAD root and adapter listings,
-record listings/details and graph reads. The runtime resolves the same current
+Account-bound Knowledge access is limited to GET/HEAD source capabilities,
+root and adapter listings, record listings/details, graph reads and exact
+import-original downloads. Originals require current durable Project membership
+and the original source registration; receipt observation remains operator-only.
+The runtime resolves the same current
 account and Project membership used by Project reads before admitting a root.
 Personal file roots are withheld; the conversation projection retains its
 per-caller session reader. Registry/path management and HTTP member writes
