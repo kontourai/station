@@ -56,6 +56,23 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'testflight-required-mobile-endpoint',
+    test: 'scripts/__tests__/testflight-live-activity-workflow.test.ts',
+    failure:
+      'admits nightly signing without a mobile endpoint and still rejects missing protected prerequisites',
+    files: [
+      {
+        path: '.github/workflows/testflight-delivery.yml',
+        change: (source) =>
+          exactReplace(
+            source,
+            'TESTFLIGHT_INTERNAL_GROUP_ID VITE_NATIVE_APP_UPDATE_CHANNEL',
+            'TESTFLIGHT_INTERNAL_GROUP_ID STATION_MOBILE_DEFAULT_ENDPOINT VITE_NATIVE_APP_UPDATE_CHANNEL',
+          ),
+      },
+    ],
+  },
+  {
     id: 'plugin-telemetry-undeclared-event',
     test: 'src-server/routes/operations/__tests__/telemetry-events.routes.test.ts',
     failure:
