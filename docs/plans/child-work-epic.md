@@ -14,6 +14,8 @@ normally before publication. Open one PR when the combined work is ready.
   Closed chats share a bounded client recovery cache: 150 rows, 50 bindings
   without rows, and 50 omitted-history flags. Eviction is not a task outcome;
   reopening can recover current delegate facts from the server snapshot.
+  The activity sheet labels retained activity and missing closed-chat history;
+  its empty state is not proof that no work is running.
 - **#1879:** Claude's structured Agent/Task return is bound to the tracked
   call and child, retained as `tool-return`, and replaces a provider summary.
   Other reports retain provider-summary, child-message, or provider-error
@@ -112,8 +114,8 @@ inspection need their own real producer and caller evidence.
 
 The independent scope audit found real published contract gaps and broadly
 appropriate product boundaries, but identified production adoption as the main
-unfinished work. Station's group runtime still refuses runtime resolution,
-invocation and request execution. More isolated framework tests cannot complete
+unfinished work. Station's separate hard-cap API group runtime still refuses
+runtime resolution, invocation and request execution. More isolated framework tests cannot complete
 that path. Preserve the existing candidates and fail-closed behavior; hold
 upstream publication and generalized authority migration until a concrete
 Station consumer demonstrates the necessary contract changes.
@@ -157,7 +159,10 @@ starts on the same bounded runtime lease and leaves ordinary callers' immediate
 refusal behavior intact. A compiling wait-bypass mutation reproduces the
 failure in the real CLI/session integration test; byte-identical restoration
 passes. Independent review of the original session-group owner found no P1/P2
-findings; the startup/client delta has a separate review in progress.
+findings; the startup/client delta also passed bounded independent review.
+The later member-attention delta passed independent review without P1/P2
+findings. Its three load-fragile one-second test waits now use the file's
+existing ten-second helper; the repaired route file passes 14 focused cases.
 
 This establishes only the selected CLI path. Multiple engine families, complete
 preset/inspector adoption, the remaining lineage/context/recovery obligations,
@@ -253,7 +258,8 @@ reproduced both failures on the original source, checked all five retention
 callbacks and real staged-file/release boundaries, caught two distinct mutations,
 and passed its restored 21-record probe run. The earlier interrupted R2 review
 remains incomplete and contributes no completed evidence. The reviewed runtime
-blob remains unchanged through `3004ad1efbe`. Routes remain unmounted.
+blob remains unchanged through `3004ad1efbe`. Those API-group routes remain
+unmounted; the CLI session-group routes described above are a separate path.
 
 Managed validation at `c5f062c606c` passes server-test typechecking. The seven-file
 persistence/runtime/observation selection has 76 passing cases across its first
@@ -310,7 +316,8 @@ worktree at `57f02040`; `36de11b1` joins their independent, paid Flow and
 session-bound context-sync paths to AccountingV1. The combined source builds,
 passes documentation checks and 20 focused cases. A compiling recipient-return
 mutation loses sync accounting as intended; exact restoration passes the three
-accounting cases. Independent review of the combined Flow source is running;
+accounting cases. At that checkpoint, independent review of the combined Flow
+source was still running;
 the Station response composition review passed within its stated fixture scope.
 The earlier rounds review failed without a completed verdict. The interrupted
 full-readiness process left no terminal receipt and is being requalified on the

@@ -111,7 +111,7 @@ export function BackgroundTasksSheet({
             Older tool rows are omitted. Running counts cover retained rows.
           </p>
         )}
-        {isEmpty && <Empty variant="compact" label="Nothing here yet" />}
+        {isEmpty && <Empty variant="compact" label="No retained activity" />}
         {running.length > 0 && (
           <section className="background-tasks-sheet__section">
             <h3 className="background-tasks-sheet__section-label">
@@ -162,7 +162,8 @@ export function BackgroundTasksSheet({
         )}
       </div>
       <footer className="background-tasks-sheet__footer">
-        Remote delegations appear on the Activity page.
+        Only retained recent activity is shown. Closed-chat history may be
+        missing. Remote delegations appear on the Activity page.
       </footer>
     </ResponsiveDialogSurface>
   );
