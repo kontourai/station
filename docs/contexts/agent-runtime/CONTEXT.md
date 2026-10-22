@@ -72,6 +72,25 @@ Workspace isolation chooses a shared directory or Git worktree; it is not a
 substitute for execution permissions. A Flow Agents sidecar records process
 state, not the Session transcript or an independent proof of completion.
 
+[Session groups](../../../src-server/services/orchestration/cli-session-group.ts)
+retain bounded member identities, logical start reservations and observations
+under the current Station credential. Published Flow owns readiness, claims and
+joins. A dependent requires provider-proven completion of the exact accepted
+initial turn; an absent or `other` finish reason cannot establish it. A later
+turn in the same conversation does not change that initial-turn identity.
+Dollar/token/physical-attempt guarantees remain unavailable and portable Flow
+lineage remains unbound on this path.
+
+Context sync reserves bounded logical attempts before resuming the retained
+conversation. Its server-owned activation capability reaches the qualified
+Claude launch and send boundaries; ordinary dispatch cannot join that restricted
+activation. Exact ACK receipts record received context, not accepted work.
+Unsupported engines refuse before a sync attempt, and uncertain effects retain
+their hold. This is model-tool restriction, not an OS sandbox or proof that
+startup hooks and autonomous effects are suppressed. The
+[API contract](../../reference/api.md#cli-session-groups) owns the current bounds
+and supported runtime.
+
 ## Review a change
 
 Follow the caller into the owning module and its tests. Check response loss,

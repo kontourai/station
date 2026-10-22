@@ -101,6 +101,11 @@ _Avoid_: compliance folder
 The [module map](../../architecture/module-map.md) links behavior tests. Read
 the actual receipt and its source revision before interpreting a summary badge.
 
+Session-group completion observations may satisfy Flow's dependency gate without
+accepting the member's work. The group reports semantic acceptance as
+`unassessed`; its context-sync ACK receipts likewise record receipt of context,
+not correctness, verified understanding or portable execution authority.
+
 ## Flagged Ambiguities
 
 **Approval / review / gate**:

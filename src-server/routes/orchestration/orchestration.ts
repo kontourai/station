@@ -90,6 +90,7 @@ import {
   ORCHESTRATION_STREAM_REPLAY_MAX_SERIALIZED_BYTES,
   ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD,
 } from '../../constants.js';
+import { PROVIDER_PROVEN_FINISH_REASONS } from '../../providers/finish-reason-authority.js';
 import { providerFailure } from '../../providers/provider-failure.js';
 import type {
   RequestDelegationResolver,
@@ -4367,7 +4368,10 @@ export function createOrchestrationRoutes(
             turnId: handle.initialTurnId,
           },
         };
-      return terminal
+      const completed =
+        terminal?.event.method === 'turn.completed' &&
+        PROVIDER_PROVEN_FINISH_REASONS.has(terminal.event.finishReason ?? '');
+      return completed
         ? {
             sessionId: snapshot.sessionId,
             status: 'completed',

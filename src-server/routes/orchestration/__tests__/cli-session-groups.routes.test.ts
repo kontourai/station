@@ -5,6 +5,7 @@ import type {
   CliSessionGroupEventPage,
   CliSessionGroupView,
 } from '@kontourai/station-contracts/delegation-group';
+import type { TurnCompletedEvent } from '@kontourai/station-contracts/runtime-events';
 import { expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
@@ -26,6 +27,10 @@ function fixture(home = temporary('station-cli-group-')) {
   const terminalTurns = new Map<string, string>();
   const completedInitialTurns = new Set<string>();
   const cancelledInitialTurns = new Set<string>();
+  const initialFinishReasons = new Map<
+    string,
+    TurnCompletedEvent['finishReason']
+  >();
   const windowReads: string[] = [];
   let beforeDispatch: (input: DispatchInput) => Promise<void> = async () => {};
   let current = true;
@@ -70,9 +75,11 @@ function fixture(home = temporary('station-cli-group-')) {
                       threadId,
                       turnId: terminalTurns.get(threadId) ?? `turn:${threadId}`,
                       method: 'turn.completed',
-                      finishReason: cancelledInitialTurns.has(threadId)
-                        ? 'cancelled'
-                        : 'stop',
+                      finishReason: initialFinishReasons.has(threadId)
+                        ? initialFinishReasons.get(threadId)
+                        : cancelledInitialTurns.has(threadId)
+                          ? 'cancelled'
+                          : 'stop',
                     },
                   },
                 ],
@@ -138,6 +145,7 @@ function fixture(home = temporary('station-cli-group-')) {
     terminalTurns,
     completedInitialTurns,
     cancelledInitialTurns,
+    initialFinishReasons,
     windowReads,
     delegateTask,
     observeDelegatedTask,
@@ -597,6 +605,57 @@ test('a canceled initial completion is retained as canceled and cannot satisfy t
   expect(observed.members[1].state).toBe('pending');
   expect(observed.flow?.status).not.toBe('completed');
 });
+
+test.each(['other', undefined] as const)(
+  'an initial completion with unproven finish reason %s cannot release a dependent seat',
+  async (reason) => {
+    const f = fixture();
+    f.setBeforeDispatch(async (input) => {
+      f.initialFinishReasons.set(input.sessionId!, reason);
+    });
+    const { group } = await f.create(
+      [member('first'), member('second', ['first'])],
+      1,
+    );
+    const abort = new AbortController();
+    const run = f.request(
+      `/session-groups/${group.groupId}/run`,
+      {},
+      { signal: abort.signal },
+    );
+    try {
+      await waitFor(() => f.windowReads.length > 1 || f.calls.length > 1);
+      const observed = await view(f, group.groupId);
+      expect(f.calls).toHaveLength(1);
+      expect(observed.members.map((member) => member.state)).toEqual([
+        'started',
+        'pending',
+      ]);
+      expect(observed.members[0].outcome).toBeUndefined();
+      expect(observed.flow?.status).not.toBe('completed');
+    } finally {
+      abort.abort();
+      await run;
+    }
+  },
+);
+
+test.each(['max-tokens', 'tool-calls'] as const)(
+  'a provider-proven %s initial completion still releases the Flow join',
+  async (reason) => {
+    const f = fixture();
+    f.setBeforeDispatch(async (input) => {
+      f.initialFinishReasons.set(input.sessionId!, reason);
+    });
+    const { group } = await f.create(
+      [member('first'), member('second', ['first'])],
+      1,
+    );
+    await f.request(`/session-groups/${group.groupId}/run`, {});
+    expect(f.calls).toHaveLength(2);
+    expect((await view(f, group.groupId)).flow?.status).toBe('completed');
+  },
+);
 
 test('failed prerequisites do not release downstream seats', async () => {
   const f = fixture();

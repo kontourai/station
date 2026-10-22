@@ -1779,8 +1779,11 @@ observation and directs the operator to the member session; it does not grant
 permission to answer.
 
 Completion follows the accepted initial provider turn, even if the conversation
-has already started a later turn. A canceled initial completion does not release
-a required successor. Group interruption names that accepted turn when known,
+has already started a later turn. Its completion must report a provider-proven
+finish reason (`stop`, `tool-calls` or `max-tokens`). An absent reason or `other`
+does not release a required successor; cancellation remains a canceled outcome.
+These reasons establish an execution outcome, not semantic acceptance or a
+complete, untruncated result. Group interruption names that accepted turn when known,
 rather than interrupting a later turn in the same conversation. An unconfirmed
 turn cannot be targeted for interruption: admission closes, its capacity stays
 occupied and no stop is claimed. Missing initial completion evidence remains
