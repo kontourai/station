@@ -5855,7 +5855,11 @@ fn native_profile_lock_birth(app: &AppHandle, pid: u32) -> Result<Option<String>
         match profile_lock_birth_bridge(&resource_dir, pid) {
             Ok(birth) => Ok(Some(birth)),
             // Missing identity still fences reclamation and fresh lock writes.
-            Err(RegistryBridgeFailure::Invocation | RegistryBridgeFailure::Protocol) => Ok(None),
+            Err(
+                RegistryBridgeFailure::Invocation
+                | RegistryBridgeFailure::Protocol
+                | RegistryBridgeFailure::SupervisorIdentity,
+            ) => Ok(None),
             Err(RegistryBridgeFailure::Untrusted | RegistryBridgeFailure::HomeSchema) => Ok(None),
         }
     })
