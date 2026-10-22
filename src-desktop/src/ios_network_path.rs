@@ -10,25 +10,61 @@ pub(crate) struct NetworkPathSnapshot {
 }
 
 #[cfg(any(target_os = "ios", test))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct PathIdentity {
+    satisfied: bool,
+    interfaces: u8,
+}
+
+#[cfg(any(target_os = "ios", test))]
+struct ObservedPath {
+    identity: PathIdentity,
+    snapshot: NetworkPathSnapshot,
+}
+
+#[cfg(any(target_os = "ios", test))]
 #[derive(Default)]
-struct PathState(std::sync::Mutex<Option<NetworkPathSnapshot>>);
+struct PathState(std::sync::Mutex<Option<ObservedPath>>);
 
 #[cfg(any(target_os = "ios", test))]
 impl PathState {
     fn snapshot(&self) -> Option<NetworkPathSnapshot> {
-        *self.0.lock().unwrap_or_else(|error| error.into_inner())
+        self.0
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .as_ref()
+            .map(|path| path.snapshot)
     }
 
-    fn update(&self, constrained: bool, expensive: bool, emit: impl FnOnce(NetworkPathSnapshot)) {
+    fn update(
+        &self,
+        identity: PathIdentity,
+        constrained: bool,
+        expensive: bool,
+        emit: impl FnOnce(NetworkPathSnapshot),
+    ) {
         let mut current = self.0.lock().unwrap_or_else(|error| error.into_inner());
-        // Every path callback matters, including same-cost Wi-Fi/VPN transitions.
-        crate::native_http_transport::network_changed();
+        if current
+            .as_ref()
+            .is_some_and(|path| path.identity != identity)
+        {
+            crate::native_http_transport::network_changed();
+        }
+        if current.as_ref().is_some_and(|path| {
+            path.identity == identity
+                && path.snapshot.constrained == constrained
+                && path.snapshot.expensive == expensive
+        }) {
+            return;
+        }
         let snapshot = NetworkPathSnapshot {
-            revision: current.map_or(1, |value| value.revision + 1),
+            revision: current
+                .as_ref()
+                .map_or(1, |path| path.snapshot.revision + 1),
             constrained,
             expensive,
         };
-        *current = Some(snapshot);
+        *current = Some(ObservedPath { identity, snapshot });
         emit(snapshot);
     }
 }
@@ -43,7 +79,7 @@ pub(crate) fn station_native_network_path() -> Option<NetworkPathSnapshot> {
 
 #[cfg(target_os = "ios")]
 mod platform {
-    use super::PathState;
+    use super::{PathIdentity, PathState};
     use block2::{Block, RcBlock};
     use dispatch2::DispatchQueue;
     use std::ffi::c_void;
@@ -63,6 +99,8 @@ mod platform {
         fn nw_path_monitor_set_queue(monitor: *mut c_void, queue: &DispatchQueue);
         fn nw_path_monitor_start(monitor: *mut c_void);
         fn nw_path_monitor_cancel(monitor: *mut c_void);
+        fn nw_path_get_status(path: *mut c_void) -> u32;
+        fn nw_path_uses_interface_type(path: *mut c_void, interface_type: u32) -> bool;
         fn nw_path_is_constrained(path: *mut c_void) -> bool;
         fn nw_path_is_expensive(path: *mut c_void) -> bool;
         fn nw_release(object: *mut c_void);
@@ -92,7 +130,19 @@ mod platform {
         let handler = RcBlock::new(move |path: *mut c_void| {
             let (constrained, expensive) =
                 unsafe { (nw_path_is_constrained(path), nw_path_is_expensive(path)) };
-            PATH.update(constrained, expensive, |snapshot| {
+            // Apple's interface enum: Wi-Fi=1, cellular=2, wired Ethernet=3.
+            // Cost changes and duplicate callbacks must not retire connections.
+            let identity = PathIdentity {
+                satisfied: unsafe { nw_path_get_status(path) == 1 },
+                interfaces: (1..=3).fold(0, |set, kind| {
+                    if unsafe { nw_path_uses_interface_type(path, kind) } {
+                        set | (1 << kind)
+                    } else {
+                        set
+                    }
+                }),
+            };
+            PATH.update(identity, constrained, expensive, |snapshot| {
                 let _ = events.emit("station://network-path", snapshot);
             });
         });
@@ -126,11 +176,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn path_callbacks_invalidate_transport_even_when_cost_is_unchanged_and_retain_latest_cost() {
+    fn only_connectivity_or_interface_changes_invalidate_transport_and_cost_is_retained() {
         const WORKER: &str = "STATION_IOS_PATH_TEST_WORKER";
         if std::env::var_os(WORKER).is_none() {
             assert!(std::process::Command::new(std::env::current_exe().unwrap())
-                .args(["--exact", "ios_network_path::tests::path_callbacks_invalidate_transport_even_when_cost_is_unchanged_and_retain_latest_cost", "--nocapture"])
+                .args(["--exact", "ios_network_path::tests::only_connectivity_or_interface_changes_invalidate_transport_and_cost_is_retained", "--nocapture"])
                 .env(WORKER, "1")
                 .status().unwrap().success());
             return;
@@ -138,24 +188,53 @@ mod tests {
         let state = PathState::default();
         assert!(state.snapshot().is_none());
         let mut events = Vec::new();
-        for (constrained, expensive) in
-            [(true, false), (true, false), (false, true), (false, false)]
-        {
+        let wifi = PathIdentity {
+            satisfied: true,
+            interfaces: 2,
+        };
+        let offline = PathIdentity {
+            satisfied: false,
+            interfaces: 0,
+        };
+        let cellular = PathIdentity {
+            satisfied: true,
+            interfaces: 4,
+        };
+        let wired = PathIdentity {
+            satisfied: true,
+            interfaces: 8,
+        };
+        for (identity, constrained, expensive, epoch_changes) in [
+            (wifi, false, false, false), // First callback establishes identity.
+            (wifi, false, false, false), // Duplicate, including app activation.
+            (wifi, true, false, false),  // Low Data Mode only.
+            (wifi, false, true, false),  // Cost only.
+            (offline, false, true, true),
+            (wifi, false, true, true),
+            (cellular, false, true, true), // Same cost, different interface.
+            (wired, false, false, true),
+        ] {
             let before = crate::native_http_transport::network_epoch();
-            state.update(constrained, expensive, |snapshot| {
-                assert!(crate::native_http_transport::network_epoch() > before);
+            state.update(identity, constrained, expensive, |snapshot| {
                 events.push(serde_json::to_value(snapshot).unwrap());
             });
+            assert_eq!(
+                crate::native_http_transport::network_epoch() != before,
+                epoch_changes
+            );
         }
+        assert_eq!(events.len(), 7, "duplicate callbacks do not emit");
         assert_eq!(
-            events,
-            [
-                serde_json::json!({"revision": 1, "constrained": true, "expensive": false}),
-                serde_json::json!({"revision": 2, "constrained": true, "expensive": false}),
-                serde_json::json!({"revision": 3, "constrained": false, "expensive": true}),
-                serde_json::json!({"revision": 4, "constrained": false, "expensive": false}),
-            ]
+            events[1],
+            serde_json::json!({"revision": 2, "constrained": true, "expensive": false})
         );
-        assert_eq!(serde_json::to_value(state.snapshot()).unwrap(), events[3]);
+        assert_eq!(
+            events[2],
+            serde_json::json!({"revision": 3, "constrained": false, "expensive": true})
+        );
+        assert_eq!(
+            serde_json::to_value(state.snapshot()).unwrap(),
+            serde_json::json!({"revision": 7, "constrained": false, "expensive": false})
+        );
     }
 }

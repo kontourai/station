@@ -118,6 +118,35 @@ jobs:
         if: ${{ !cancelled() && steps.prerequisites.outcome == 'success' }}
         run: npm run verify:desktop-rust
 
+      - name: Prove iOS path cost does not churn the network epoch
+        if: ${{ !cancelled() && steps.prerequisites.outcome == 'success' }}
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import subprocess
+
+          assert not subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=no"]).strip(), "path fault controls require clean committed sources"
+          path = Path("src-desktop/src/ios_network_path.rs")
+          original = path.read_text()
+          test = "ios_network_path::tests::only_connectivity_or_interface_changes_invalidate_transport_and_cost_is_retained"
+          command = ["cargo", "test", "--manifest-path", "src-desktop/Cargo.toml", "--lib", test, "--", "--nocapture"]
+          assert subprocess.run(command).returncode == 0, "path baseline failed"
+          landmark = "if current.as_ref().is_some_and(|path| path.identity != identity)"
+          assert original.count(landmark) == 1
+          for replacement in ["if true", "if false"]:
+              mutated = original.replace(landmark, replacement)
+              try:
+                  path.write_text(mutated)
+                  result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                  print(result.stdout, flush=True)
+                  assert result.returncode == 101 and "assertion `left == right` failed" in result.stdout and test in result.stdout, "path mutation did not reach the named assertion"
+              finally:
+                  assert path.read_text() == mutated, "intervening edits; refusing restoration"
+                  path.write_text(original)
+          assert subprocess.run(command).returncode == 0, "path restoration failed"
+          print("iOS path controls: baseline green; unconditional and missing invalidation caught; restored green.")
+          PYTHON
+
       - name: Prove native performance regressions catch reverted behavior
         if: ${{ success() && inputs.native_review_faults }}
         run: |

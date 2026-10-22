@@ -14005,7 +14005,6 @@ If a stable instance is running, this launch will focus its window and exit.",
         .expect("error while building tauri application");
     #[cfg(target_os = "ios")]
     {
-        ios_network_path::start(app.handle());
         mobile_recovery_ios::install(app.handle().clone());
         let state = app.state::<native_relay_link_intake::NativeRelayLinkState>();
         state.start_expiry_worker();
@@ -14074,7 +14073,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                     }
                 }
             }
-            #[cfg(mobile)]
+            #[cfg(target_os = "android")]
             if let tauri::RunEvent::WindowEvent { event: tauri::WindowEvent::Resumed, .. } = &event {
                 native_http_transport::network_changed();
             }

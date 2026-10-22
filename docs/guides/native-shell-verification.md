@@ -262,8 +262,10 @@ WebView IPC, packaged-shell, mobile, or physical-device behavior.
 
 The [iOS observer](../../src-desktop/src/ios_network_path.rs) starts one
 Network.framework path monitor for the app process and cancels it at exit.
-Every callback advances the broker's network epoch, including path changes
-whose cost flags are unchanged. Existing in-flight requests retain the broker's
+The first callback establishes a baseline. Later changes to path satisfaction or
+the interface type set advance the broker's network epoch. Duplicate callbacks
+and cost-only changes leave it unchanged. This type-level identity cannot distinguish Wi-Fi access points or VPN routes
+with the same satisfaction and interface types. Existing in-flight requests retain the broker's
 send/revalidation rules; observation does not authorize a retry or replacement
 credential. The monitor sends only revision, constrained and expensive flags,
 with a retained snapshot for a WebView that subscribes after the first callback.
@@ -280,7 +282,8 @@ constrained/expensive-network policy. It would require separate review of
 ephemeral cookie/credential storage, redirects, streaming/cancellation, dispatch
 uncertainty and authority revalidation before replacing the broker transport.
 
-Rust tests cover callback-to-epoch publication and retained cost; mounted inbox
+Rust tests cover material-change epoch publication, duplicate/cost-only
+non-invalidation and retained cost; mounted inbox
 tests cover actual polling cadence, validation and late-reply ordering. Neither
 proves delivery from Network.framework through real iOS IPC. Physical-device
 behavior is `NOT_VERIFIED`: install the exact candidate, toggle Low Data Mode
@@ -314,8 +317,8 @@ physical phone, notification lifecycle or release-provider journey.
 Native authenticated HTTP agents keep mobile connections idle for at most two
 seconds. Android default-network availability/loss and iOS's Network.framework
 path monitor invalidate pooled connections. Capability-only Android callbacks
-still update metering without advancing the epoch; iOS activation alone does
-not advance it. Existing agent clones reject an earlier network epoch at pool
+still update metering without advancing the epoch. Android retains its resume
+invalidation; iOS activation alone does not advance it. Existing agent clones reject an earlier network epoch at pool
 checkout. An epoch change never interrupts an upload already underway.
 
 A failed pooled exchange can retry once with a new agent only before any HTTP
