@@ -146,8 +146,10 @@ about what is offered.
 
 ## Receiver flow
 
-The order below is the slice 1 path in `delegateTask`. Every refusal happens
-before a session exists or a provider is invoked.
+The order below is the slice 1 path in `delegateTask`. Preparation checks
+refuse before starting a new session or dispatching its initial turn. A
+reattached session can already exist; later launch or turn failures may leave
+the attempt unresolved rather than prove that nothing ran.
 
 1. **Route seam.** A prepared intent without an `attemptId` refuses
    (`execution_preparation_attempt_required`): preparation is a phase of an
@@ -197,9 +199,11 @@ before a session exists or a provider is invoked.
 10. **Execute** through the existing session start and initial turn. The
     handle receipt's `checkedAt` is the step 9 check.
 
-A refused claim records its refusal code and drops any bound preparation
-receipt, because a refused attempt never ran. The attempt lookup reports the
-code, so a caller that lost the reply learns why the attempt refused. Two
+A successful refused-state transition records its refusal code and drops any
+bound preparation receipt. The attempt lookup then reports that code. If the
+transition cannot be recorded, the earlier durable claim remains held and
+does not authorize resend; see [claim state meanings](../guides/delegation-attempt-claims.md#state-meanings).
+Two
 refusals are never on a claim: `execution_preparation_attempt_required`
 (there is no attempt) and a sender's `execution_preparation_unsupported`
 (nothing was sent). Continuation turns on an already-running prepared task
