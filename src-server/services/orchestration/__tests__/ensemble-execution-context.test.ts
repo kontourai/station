@@ -94,8 +94,10 @@ beforeEach(() => {
   nativeSpawn.mockImplementation(() => {
     throw new Error('native_spawn_control');
   });
-  nativeQuery.mockImplementation(({ options }) =>
-    options.spawnClaudeCodeProcess({
+  vi.stubEnv('CLAUDE_AGENT_SDK_VERSION', undefined);
+  nativeQuery.mockImplementation(({ options }) => {
+    vi.stubEnv('CLAUDE_AGENT_SDK_VERSION', '0.3.302');
+    return options.spawnClaudeCodeProcess({
       command: options.pathToClaudeCodeExecutable?.endsWith('.js')
         ? 'node'
         : options.pathToClaudeCodeExecutable,
@@ -112,8 +114,8 @@ beforeEach(() => {
         CLAUDE_CODE_ENTRYPOINT: 'sdk-ts',
         CLAUDE_AGENT_SDK_VERSION: '0.3.302',
       },
-    }),
-  );
+    });
+  });
   vi.stubEnv('STATION_DISABLE_LOGIN_PATH_RESOLVE', '1');
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
   execFile.mockImplementation((_command, args, _options, callback) => {
@@ -553,6 +555,20 @@ describe('production Ensemble preparation authentication', () => {
       expect(nativeSpawn).toHaveBeenCalledTimes(1);
       expect(nativeSpawn.mock.calls[0][2].cwd).toBe(f.cwd);
       nativeSpawn.mockClear();
+      const sdkSpawn = nativeQuery.getMockImplementation();
+      if (!sdkSpawn) throw new Error('missing SDK spawn fixture');
+      if (engine === 'claude') {
+        const previousApiKey = process.env.ANTHROPIC_API_KEY;
+        nativeQuery.mockImplementationOnce(({ options }) => {
+          vi.stubEnv('ANTHROPIC_API_KEY', 'changed-ambient-credential');
+          return sdkSpawn({ options });
+        });
+        await expect(start()).rejects.toThrow(
+          'Preparation runtime configuration changed',
+        );
+        expect(nativeSpawn).not.toHaveBeenCalled();
+        vi.stubEnv('ANTHROPIC_API_KEY', previousApiKey);
+      }
       if (engine === 'codex') {
         f.setConnectionArgs(['-c', 'cli_auth_credentials_store="keyring"']);
       } else {
@@ -604,8 +620,6 @@ describe('production Ensemble preparation authentication', () => {
       );
       expect(nativeSpawn).not.toHaveBeenCalled();
       f.setProfileOverride('selected');
-      const sdkSpawn = nativeQuery.getMockImplementation();
-      if (!sdkSpawn) throw new Error('missing SDK spawn fixture');
       if (engine === 'claude') {
         for (const cache of [
           join(

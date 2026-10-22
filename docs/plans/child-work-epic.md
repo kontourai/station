@@ -420,6 +420,16 @@ mocked spawn. The final executable-drift case now changes Claude's executable
 inside that same lazy callback, after profile resolution, to bind the final guard
 uniquely. Repair qualification and independent disposition remain pending.
 
+An installed-native loopback qualification at `84bdb2c8f00` exposed a separate
+first-query compatibility defect: Claude's SDK stamps `CLAUDE_AGENT_SDK_VERSION`
+into the parent process environment after login, invalidating the inventory's
+ambient fence. Both real login observations passed before the first member was
+refused; no model request occurred. The failed receipt is retained. Reproducing
+the installed SDK transition in the owner fixture fails both Claude launch
+variants with 60 controls passing. The repair excludes only that SDK telemetry
+stamp from the ambient comparison; authentication-variable changes still refuse.
+This is not yet native success evidence; qualification continues on repaired source.
+
 ## Production adoption sequence
 
 The personal `/api/orchestration/session-groups` path now composes the shared

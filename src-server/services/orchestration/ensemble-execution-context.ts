@@ -79,14 +79,21 @@ export function createLocalEnsembleInventory(owners: {
         metadata: JSON.stringify(owners.getProviderAdapter(id)?.metadata),
       }));
       const environment = owners.environmentId();
-      const ambient = JSON.stringify(Object.entries(process.env).sort());
+      // query() stamps this telemetry version after the native login observation.
+      const ambient = () =>
+        JSON.stringify(
+          Object.entries(process.env)
+            .filter(([key]) => key !== 'CLAUDE_AGENT_SDK_VERSION')
+            .sort(),
+        );
+      const capturedAmbient = ambient();
       return () => {
         agents();
         for (const project of projects) project.assertCurrent?.();
         if (
           owners.getProviderRevision() !== providers ||
           owners.environmentId() !== environment ||
-          JSON.stringify(Object.entries(process.env).sort()) !== ambient ||
+          ambient() !== capturedAmbient ||
           adapters.some(
             (entry) =>
               owners.getProviderAdapter(entry.id) !== entry.adapter ||
