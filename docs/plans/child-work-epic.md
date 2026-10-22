@@ -193,6 +193,25 @@ for same-row, skipped-column, upward, self and cyclic edges across 1–16 member
 overlapping trunks remain possible and the table preserves exact dependencies. This increment does not supply richer runtime tool/memory/routing
 facts or complete #453/#600.
 
+At `c5caf44956f`, the group form can inspect its actual receiver draft before
+saving or starting. The existing inspector accepts exact uploaded preset bytes
+and Agent/expected-engine/workspace bindings, projects declared prerequisites,
+and labels missing or disabled MCP definitions without claiming effective grants.
+Host-browser inspection does not gain the local grant needed to read host preset
+paths. The shared table/diagram renderer keeps origin, state, owner and resolution
+receipts visible; editing the draft discards that observation. Saving and running
+still resolve and authorize the current configuration independently.
+
+Focused HTTP/UI/SDK evidence passed 30/30, with server-test/UI types and lint.
+Running the new regressions against the preceding route/service produced four
+intended failures; removing the host-path local-grant guard produced two intended
+failures. Byte-exact restoration returned 30/30. Independent source-only review
+found no confirmed P1/P2, without independently executing the tests or browser.
+This is configuration observation, not full launch-equivalence validation:
+filesystem admission, authentication and caller-scoped dispatch remain separate;
+memory, external routes and portable authority remain unfinished. No live-provider,
+hosted, browser-layout or full #453 acceptance follows from this increment.
+
 Published Flow Agents 9.3.0 exports v2 authority/grants, ancestor allocations and
 invocation holds, a durable group controller, Flow-owned scheduling, mailbox
 admission and bounded no-tools context acknowledgement. Station now composes the
