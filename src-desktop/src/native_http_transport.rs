@@ -407,21 +407,20 @@ mod tests {
         peer.set_write_timeout(Some(Duration::from_secs(3)))
             .unwrap();
         let deadline = Instant::now() + Duration::from_secs(3);
-        loop {
-            if !RESPONSE_WAITS.lock().unwrap().is_empty() {
-                break;
+        let waits = loop {
+            let waits = RESPONSE_WAITS.lock().unwrap().clone();
+            if !waits.is_empty() {
+                break waits;
             }
             assert!(
                 Instant::now() < deadline,
                 "POST must reach the registered socket response wait"
             );
             std::thread::sleep(Duration::from_millis(1));
-        }
+        };
         crate::ios_network_path::window_event(&tauri::WindowEvent::Resumed);
         assert!(
-            RESPONSE_WAITS
-                .lock()
-                .unwrap()
+            waits
                 .iter()
                 .all(|wait| !wait.interrupted.load(Ordering::Acquire)),
             "resume must leave registered response waits uninterrupted"
