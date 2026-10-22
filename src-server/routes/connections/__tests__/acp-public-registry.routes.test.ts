@@ -229,6 +229,7 @@ describe('public agent registry in the engine catalogue', () => {
     const app = asOperator(
       createACPRoutes(
         {
+          acpBridge: {},
           configLoader: {
             loadACPConfig: async () => ({ connections: [] }),
           },
@@ -278,6 +279,7 @@ describe('public agent registry in the engine catalogue', () => {
   test('a station that does not read the registry reports it disabled', async () => {
     const app = asOperator(
       createACPRoutes({
+        acpBridge: {},
         configLoader: { loadACPConfig: async () => ({ connections: [] }) },
       } as never),
     );
