@@ -3701,8 +3701,63 @@ describe('AcpAdapter', () => {
 
   // The activity fold and the execution coordinator credit a tool or a delta
   // to the open turn only when it names that turn's invocation.
-  test('every event of a send’s turn names its invocation, a steer keeps it, and a call keeps the turn it started in', async () => {
+  test('a cancel + re-prompt steer keeps the send’s invocation through the re-prompt’s terminal', async () => {
+    // No declared or known steer method: the steer cancels and re-prompts.
     const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-origin-reprompt',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    const nextOf = async (method: string) => {
+      for (;;) {
+        const event = await nextEvent(iterator, method);
+        if (event.method === method) return event;
+      }
+    };
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-origin-reprompt',
+      input: 'one',
+      invocationId: 'invocation-reprompt',
+    });
+    const own = { turnId: turn.turnId, invocationId: 'invocation-reprompt' };
+    await nextOf('turn.started');
+
+    await adapter.steerTurn('thread-origin-reprompt', 'go left', turn.turnId);
+    expect(processes[0]!.cancelCalls).toBe(1);
+    expect(processes[0]!.promptContents).toHaveLength(2);
+    expect(await nextOf('turn.started')).toMatchObject({
+      turnId: turn.turnId,
+      inputKind: 'steer',
+      steerInterruptedRun: true,
+    });
+    // The cancelled prompt's settlement does not end the steered turn.
+    processes[0]!.resolvePrompt('cancelled');
+    await processes[0]!.client.sessionUpdate({
+      sessionId: 'native-kiro-cli',
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'going left' },
+      },
+    } as any);
+    expect(await nextOf('content.text-delta')).toMatchObject(own);
+    processes[0]!.resolvePrompt('end_turn');
+    expect(await nextOf('turn.completed')).toMatchObject(own);
+    await adapter.stopAll();
+  });
+
+  test('every event of a send’s turn names its invocation, a steer keeps it, and a call keeps the turn it started in', async () => {
+    // Kiro's handshake selects the native `_session/steer` channel, which
+    // keeps the in-flight prompt (#4006 selects steer by declaration).
+    const { adapter, processes } = createAdapter({
+      onProcess: (proc) => {
+        proc.initResult!.agentInfo = KIRO_AGENT_INFO;
+      },
+    });
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
     await adapter.startSession({
       provider: 'acp',

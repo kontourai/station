@@ -739,6 +739,35 @@ describe('cursor/create_plan is a plan review', () => {
   });
 });
 
+describe('a mid-turn Cursor plan belongs to the send that opened the turn', () => {
+  test('an approved plan and a todo update name the turn and its invocation', async () => {
+    const session = await startCursorSession();
+    const turn = await session.adapter.sendTurn({
+      threadId: session.threadId,
+      input: 'Plan it',
+      invocationId: 'invocation-plan',
+    });
+    const own = { turnId: turn.turnId, invocationId: 'invocation-plan' };
+    const response = session.agent.extMethod('cursor/create_plan', CREATE_PLAN);
+    const opened = await session.waitFor(isRequestOpened, 'request.opened');
+    await answerForm(session, opened, { review: 'approve' });
+    await within(response);
+    expect(await session.waitFor(isPlanUpdated, 'plan.updated')).toMatchObject(
+      own,
+    );
+
+    await session.agent.extNotification('cursor/update_todos', UPDATE_TODOS);
+    const deadline = Date.now() + 1000;
+    while (
+      session.events.filter(isPlanUpdated).length < 2 &&
+      Date.now() < deadline
+    )
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(session.events.filter(isPlanUpdated)[1]).toMatchObject(own);
+    await session.stop();
+  });
+});
+
 describe('cursor/update_todos reaches the plan surface', () => {
   test('a merge folds into the plan by todo id', async () => {
     const session = await startCursorSession();
