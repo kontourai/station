@@ -394,7 +394,7 @@ async function registerFirstHandshakeACPConnection(
   ctx: RuntimeContext,
   probed: ACPConnectionConfig,
 ): Promise<'registered' | 'already-registered' | 'config-changed' | 'skipped'> {
-  if (typeof (ctx.configLoader as any).getProjectHomeDir !== 'function') {
+  if (typeof ctx.configLoader.getProjectHomeDir !== 'function') {
     return 'skipped';
   }
   if (
