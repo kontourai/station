@@ -17,8 +17,8 @@ export const IOS_TESTFLIGHT_CHANNELS = Object.freeze({
     iosIconSet: 'icons/stable/ios',
     environment: 'native-release',
     internalGroup: 'Internal Testers',
-    agentActivityBundleId: null,
-    notificationServiceBundleId: null,
+    agentActivityBundleId: 'io.kontourai.station.AgentActivity',
+    notificationServiceBundleId: 'io.kontourai.station.NotificationService',
   }),
   beta: Object.freeze({
     bundleId: 'io.kontourai.station.beta',
@@ -62,6 +62,21 @@ export function iosTestFlightChannel(channel) {
   )
     fail(`unknown channel ${JSON.stringify(channel)}`);
   return IOS_TESTFLIGHT_CHANNELS[channel];
+}
+
+/** Stable stays off until its owner provisions and qualifies all three profiles. */
+export function iosTestFlightPushExtensions(channel, stablePushEnabled = '') {
+  const identity = iosTestFlightChannel(channel);
+  if (channel === 'stable') {
+    if (!['', 'false', 'true'].includes(stablePushEnabled))
+      fail('STATION_IOS_STABLE_PUSH_ENABLED must be empty, false or true');
+    if (stablePushEnabled !== 'true')
+      return { agentActivityBundleId: null, notificationServiceBundleId: null };
+  }
+  return {
+    agentActivityBundleId: identity.agentActivityBundleId,
+    notificationServiceBundleId: identity.notificationServiceBundleId,
+  };
 }
 
 export function createIosTestFlightConfig({

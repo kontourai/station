@@ -69,7 +69,8 @@ accepted preview commit can be promoted to Stable without a source edit.
 
 1. Register each of the three channel app bundle IDs above. Beta and Nightly
    also need their `.AgentActivity` and `.NotificationService` extension App
-   IDs; see [the extension signing contract](mobile-release.md#live-activity-in-beta-and-nightly).
+   IDs; Stable needs the same pair before opting in to push. Follow the
+   [Stable owner checklist](mobile-release.md#stable-push-owner-checklist) and see [the extension signing contract](mobile-release.md#live-activity-in-beta-and-nightly).
 2. Create one matching app record and one explicit internal TestFlight group
    per channel. Station requires these existing records; Apple exposes a
    [beta-group creation API](https://developer.apple.com/documentation/appstoreconnectapi/post-v1-betagroups),
@@ -127,8 +128,8 @@ for env in native-release ios-beta ios-nightly; do
   gh secret set APPLE_PROVISIONING_PROFILE_BASE64 --repo kontourai/station --env "$env"
 done
 
-# Separate App Store profiles for both extensions (Beta and Nightly only;
-# see mobile-release.md "Live Activity in Beta and Nightly")
+# Separate App Store profiles for both extensions (Beta and Nightly;
+# opted-in Stable uses native-release after the Stable owner checklist).
 for env in ios-beta ios-nightly; do
   gh secret set APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64 --repo kontourai/station --env "$env"
   gh secret set APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64 --repo kontourai/station --env "$env"
