@@ -89,6 +89,8 @@ on `station.console.emissions` and logged once per outage.
 
 ## Feature-specific settings
 
+- [Desktop startup and Linux graphics](../guides/desktop-build.md#startup-cost-and-linux-graphics): `WEBKIT_DISABLE_DMABUF_RENDERER` overrides the NVIDIA/Wayland fallback; `NODE_DISABLE_COMPILE_CACHE=1` opts out of Node's compile cache.
+
 - [Server logs and attachment retention](config.md#logging): `STATION_LOG_LEVEL`, `STATION_SERVER_LOG_RETENTION_DAYS`, `STATION_SERVER_LOG_MAX_BYTES`, `STATION_ATTACHMENT_RETENTION_DAYS`, and `STATION_ATTACHMENT_MAX_BYTES`.
 - [Monitoring history](../guides/monitoring.md#environment-variables): `STATION_EVENT_LOG_RETENTION_DAYS` and `STATION_EVENT_LOG_MAX_BYTES`.
 - [Native recovery](../user/native-recovery.md#check-the-local-diagnosis): `STATION_DESKTOP_LOG_LEVEL` and the shell's separate logs.

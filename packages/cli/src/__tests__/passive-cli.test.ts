@@ -1,10 +1,10 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { spawnSyncBounded } from '../../../../scripts/lib/bounded-capture.mjs';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 
-const scratch = mkdtempSync(join(tmpdir(), 'station-passive-cli-'));
+const makeTempDir = trackTempDirs({ lifetime: 'file' });
+const scratch = makeTempDir('station-passive-cli-');
 const rejectCommands = `data:text/javascript,${encodeURIComponent(`
   import { registerHooks } from 'node:module';
   registerHooks({ load(url, context, next) {
@@ -15,10 +15,10 @@ const rejectCommands = `data:text/javascript,${encodeURIComponent(`
   } });
 `)}`;
 
-function run(entry: string, args: string[]) {
+function run(entry: string, args: string[], hook = rejectCommands) {
   return spawnSyncBounded(
     process.execPath,
-    ['--import', 'tsx/esm', '--import', rejectCommands, entry, ...args],
+    ['--import', 'tsx/esm', '--import', hook, entry, ...args],
     {
       windowsHide: true,
       encoding: 'utf8',
@@ -34,8 +34,6 @@ function run(entry: string, args: string[]) {
     },
   );
 }
-
-afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
 describe.each(['packages/cli/src/bin.ts', 'scripts/station-cli.ts'])(
   '%s passive startup',
@@ -61,6 +59,21 @@ describe.each(['packages/cli/src/bin.ts', 'scripts/station-cli.ts'])(
         'Unknown command: unknown-command-sentinel',
       );
       expect(result.stderr).not.toContain('PASSIVE_COMMAND_GRAPH_LOADED');
+    });
+
+    it('lists Stations without initializing the pairing QR encoder', () => {
+      const rejectQr = `data:text/javascript,${encodeURIComponent(`
+        import { registerHooks } from 'node:module';
+        registerHooks({ load(url, context, next) {
+          if (url.includes('/qrcode/')) throw Error('QR_ENCODER_LOADED');
+          return next(url, context);
+        } });
+      `)}`;
+      const result = run(entry, ['stations', 'list'], rejectQr);
+      expect(result.error).toBeUndefined();
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout).toContain('No Stations saved.');
+      expect(result.stderr).not.toContain('QR_ENCODER_LOADED');
     });
 
     it('actually reaches the command graph for a non-passive invocation', () => {

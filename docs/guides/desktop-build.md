@@ -150,7 +150,8 @@ establishes that the current revision passed.
 
 Desktop resolves the login-shell PATH once per app process. An explicit
 built-in server restart clears that cache before the next launch; quitting
-and reopening the app also picks up shell configuration changes. Schema preparation returns the supervisor identity in the same helper call;
+and reopening the app also picks up shell configuration changes. Schema
+preparation returns the supervisor identity in the same helper call;
 service ownership is checked inside the legacy-preparation helper. The macOS
 native waiting cover is requested before those bridge calls. Main-window
 admission still requires the existing identity and renderer readiness proof.

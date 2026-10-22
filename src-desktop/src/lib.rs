@@ -17868,10 +17868,12 @@ mod tests {
             vec![command_station_script_path(&context.resource_dir).as_os_str()]
         );
         let env = command_env(&command);
+        assert!(env.contains(&("NODE_COMPILE_CACHE".into(), Some(
+            context.station_home.join("cache").join("node-compile").to_string_lossy().into_owned()
+        ))));
         for (name, value) in [
             ("STATION_ROOT", "/home/example/.station"),
             ("STATION_HOME", "/home/example/.station-nightly"),
-            ("NODE_COMPILE_CACHE", "/home/example/.station-nightly/cache/node-compile"),
             ("STATION_HOST", "127.0.0.1"),
             ("STATION_STDOUT_HANDSHAKE", "1"),
             ("STATION_STDOUT_LOGS", "0"),

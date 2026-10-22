@@ -19,7 +19,6 @@ import {
 } from './distribution-info.js';
 
 export {
-  bundledAvailabilityNote,
   bundleInfo,
   CONTRIBUTOR_COMMANDS,
   isBundledDistribution,

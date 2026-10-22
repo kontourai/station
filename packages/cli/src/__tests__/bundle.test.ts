@@ -333,33 +333,6 @@ describe('published CLI bundle', () => {
     ).toEqual([]);
   });
 
-  it.each(['--help', '--version'])(
-    'answers %s without loading the pairing QR encoder',
-    (flag) => {
-      const loader = `data:text/javascript,${encodeURIComponent(`
-      import { registerHooks } from 'node:module';
-      registerHooks({ resolve(specifier, context, next) {
-        if (specifier === 'qrcode') throw Error('PASSIVE_QR_ENCODER_LOADED');
-        return next(specifier, context);
-      } });
-    `)}`;
-      const result = spawnSync(
-        process.execPath,
-        ['--import', loader, packedBin, flag],
-        {
-          cwd: tmpdir(),
-          encoding: 'utf8',
-          windowsHide: true,
-          timeout: 30_000,
-        },
-      );
-      expect(result.error).toBeUndefined();
-      expect(result.status, result.stderr).toBe(0);
-      expect(result.stdout).toContain('station');
-      expect(result.stderr).not.toContain('PASSIVE_QR_ENCODER_LOADED');
-    },
-  );
-
   it('reports its version without reading a package.json', () => {
     const result = runBundle(['--version']);
     expect(result.status).toBe(0);
