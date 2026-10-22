@@ -237,30 +237,6 @@ function enumerableError(error: Error): Record<string, unknown> {
   };
 }
 
-function jsonSafe(
-  value: unknown,
-  seen: WeakSet<object> = new WeakSet(),
-): unknown {
-  if (value instanceof Error) return enumerableError(value);
-  if (Array.isArray(value)) {
-    if (seen.has(value)) return '[Circular]';
-    seen.add(value);
-    return value.map((item) => jsonSafe(item, seen));
-  }
-  if (value !== null && typeof value === 'object') {
-    if (seen.has(value)) return '[Circular]';
-    seen.add(value);
-    const out: Record<string, unknown> = {};
-    for (const [key, child] of Object.entries(
-      value as Record<string, unknown>,
-    )) {
-      out[key] = jsonSafe(child, seen);
-    }
-    return out;
-  }
-  return value;
-}
-
 function normalizeContext(context: unknown): Record<string, unknown> {
   if (context === undefined) return {};
   if (context instanceof Error) return { err: sanitizedLoggerError(context) };
@@ -274,7 +250,7 @@ function normalizeContextForStore(context: unknown): Record<string, unknown> {
   if (context === undefined) return {};
   if (context instanceof Error) return { err: enumerableError(context) };
   if (typeof context === 'object' && context !== null) {
-    return jsonSafe(context) as Record<string, unknown>;
+    return context as Record<string, unknown>;
   }
   return { value: context };
 }
@@ -305,7 +281,18 @@ function writeUnredactedStoreLine(
       timestamp: new Date().toISOString(),
       msg: rawMessage(msg),
     };
-    sink.writeLine(JSON.stringify(record));
+    const seen = new WeakSet<object>();
+    seen.add(context);
+    sink.writeLine(
+      JSON.stringify(record, (_key, value: unknown) => {
+        if (value instanceof Error) return enumerableError(value);
+        if (value !== null && typeof value === 'object') {
+          if (seen.has(value)) return '[Circular]';
+          seen.add(value);
+        }
+        return value;
+      }),
+    );
   } catch {
     // A logging call must never throw; a broken sink degrades to stdout.
   }
@@ -358,15 +345,17 @@ function wrapPinoInstance(
     (msg: string, context?: unknown): void => {
       if (!pinoInstance.isLevelEnabled(level)) return;
       try {
-        const storeContext = hasBindings
-          ? {
-              ...(jsonSafe(bindings) as Record<string, unknown>),
-              ...normalizeContextForStore(context),
-            }
-          : normalizeContextForStore(context);
-        writeUnredactedStoreLine(pinoInstance, level, msg, storeContext);
+        if (installedLineSink) {
+          const storeContext = hasBindings
+            ? {
+                ...bindings,
+                ...normalizeContextForStore(context),
+              }
+            : normalizeContextForStore(context);
+          writeUnredactedStoreLine(pinoInstance, level, msg, storeContext);
+        }
       } catch {
-        // jsonSafe / store write must never throw out of a log call.
+        // Serialization and store writes must never throw out of a log call.
       }
 
       const normalized = normalizeContext(context);

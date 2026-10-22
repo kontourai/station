@@ -16,6 +16,7 @@ import {
 } from '../../__test-utils__/logger-capture.js';
 import {
   createServerLogStore,
+  getInstalledServerLogSink,
   installServerLogSink,
   resetServerLogSinkForTests,
 } from '../../services/infra/server-log-store.js';
@@ -43,6 +44,7 @@ function createTempDir(): string {
 /** Reads the single today-dated NDJSON file the store just wrote and parses
  * every line, in write order. */
 function readTodayLines(directory: string): any[] {
+  getInstalledServerLogSink()?.flushSync();
   const files = readdirSync(directory).filter((name) =>
     /^server-\d{4}-\d{2}-\d{2}\.ndjson$/.test(name),
   );
@@ -75,6 +77,18 @@ afterEach(() => {
 });
 
 describe('createLogger — level filtering and the store tee', () => {
+  it('does not traverse an uninstalled store context before writing stdout', () => {
+    let observations = 0;
+    const logger = createLogger({ name: 'stdout-only', level: 'info' });
+    logger.info('one traversal', {
+      get value() {
+        observations++;
+        return 'visible';
+      },
+    });
+    expect(observations).toBe(1);
+  });
+
   it('suppresses debug lines below the configured info level, but keeps info+', async () => {
     const directory = createTempDir();
     installServerLogSink({ directory });

@@ -43,9 +43,11 @@ vi.mock('node:fs', async () => {
   };
 });
 
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { RuntimeEventLog } from '../runtime-event-log.js';
 
 const roots: string[] = [];
+const makeTempDir = trackTempDirs();
 
 afterEach(async () => {
   await Promise.all(
@@ -327,6 +329,36 @@ describe('RuntimeEventLog query cost and freshness', () => {
     `${JSON.stringify({ timestamp, userId })}\n`;
   const start = Date.parse('2026-09-06T00:00:00Z');
   const end = Date.parse('2026-09-07T00:00:00Z');
+
+  it.each(['count', 'result-bytes', 'line-bytes', 'scan-bytes'])(
+    'refuses an over-budget %s query and permits a later bounded query',
+    async (kind) => {
+      const root = makeTempDir('station-event-budget-');
+      const file = join(root, 'events-2026-09-06.ndjson');
+      const small = row('2026-09-06T12:00:00Z');
+      const large =
+        JSON.stringify({
+          timestamp: '2026-09-06T12:00:00Z',
+          userId: 'one',
+          text: 'x'.repeat(900_000),
+        }) + '\n';
+      const content =
+        kind === 'count'
+          ? small.repeat(10_001)
+          : kind === 'result-bytes'
+            ? large.repeat(10)
+            : kind === 'line-bytes'
+              ? 'x'.repeat(1024 * 1024 + 1)
+              : row('2026-09-06T12:00:00Z', 'other').repeat(700_000);
+      await writeFile(file, content);
+      const log = new RuntimeEventLog(root, logger);
+      await expect(log.queryEvents(start, end, 'one')).rejects.toMatchObject({
+        code: 'event_history_limit_exceeded',
+      });
+      await writeFile(file, small);
+      expect(await log.queryEvents(start, end, 'one')).toHaveLength(1);
+    },
+  );
 
   it('skips unchanged disjoint files, but re-reads appended backfill and replaced files for each principal', async () => {
     const root = await mkdtemp(join(tmpdir(), 'station-log-index-'));

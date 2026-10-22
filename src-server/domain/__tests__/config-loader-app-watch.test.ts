@@ -6,7 +6,7 @@
  *
  * `ConfigLoader` has two independent ways to notice that `config/app.json`
  * changed underneath it: the chokidar watcher's `change`/`add`/`unlink` events,
- * and a 250ms poller that compares the file's `stat` signature. Both end in
+ * and a five-second poller that compares the file's `stat` signature. Both end in
  * `LaunchabilityRevision.commit()`, and the whole difficulty is that they must
  * agree — one change is one revision no matter which path saw it first, and an
  * internal write must not be re-counted when the watcher reports it back.
@@ -55,8 +55,9 @@ class ScriptedWatcher extends EventEmitter {
     return this;
   }
 
+  reliable = false;
   getWatched(): Record<string, string[]> {
-    return {};
+    return this.reliable ? { config: ['app.json'] } : {};
   }
 
   async close(): Promise<void> {
@@ -76,11 +77,23 @@ vi.mock('chokidar', () => ({
   },
 }));
 
+const appStats = vi.hoisted(() => ({ count: 0 }));
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return {
+    ...actual,
+    statSync: (...args: Parameters<typeof actual.statSync>) => {
+      if (String(args[0]).endsWith('app.json')) appStats.count++;
+      return actual.statSync(...args);
+    },
+  };
+});
+
 const { ConfigLoader } = await import('../config-loader.js');
 
-/** Generous against a loaded machine; every case here needs one 250ms tick. */
+/** Generous against a loaded machine; every case here needs one five-second tick. */
 const REVISION_TIMEOUT_MS = 10_000;
-/** Three poller ticks. Used to prove a *negative* — that nothing more fired. */
+/** Let queued watcher echoes settle before asserting deduplication. */
 const SETTLE_MS = 800;
 
 let tempDir: string;
@@ -115,6 +128,7 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+  vi.useRealTimers();
   await loader?.dispose();
   await loader?.whenWatcherClosed();
   loader = undefined;
@@ -122,6 +136,26 @@ afterEach(async () => {
 });
 
 describe('app config launchability', () => {
+  it('uses watcher events without idle app stats, then enables a slow fallback after a watch error', async () => {
+    writeFileSync(appPath, '{"defaultModel":"before"}');
+    vi.useFakeTimers();
+    const { revisions, watcher } = startLoader();
+    watcher.reliable = true;
+    await vi.advanceTimersByTimeAsync(0);
+    appStats.count = 0;
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(appStats.count).toBe(0);
+    writeFileSync(appPath, '{"defaultModel":"after"}');
+    watcher.emit('change', appPath);
+    await vi.waitFor(() => expect(revisions).toEqual([1]));
+    watcher.emit('error', new Error('watch unavailable'));
+    appStats.count = 0;
+    await vi.advanceTimersByTimeAsync(4_999);
+    expect(appStats.count).toBe(0);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(appStats.count).toBe(1);
+  });
+
   it('publishes revisions for external add, change and remove with no watcher event at all', async () => {
     // The archive#970 host, exactly: the watcher is armed and stays silent forever.
     // `config/app.json` is the one watched file with a second line of defence,
@@ -149,7 +183,7 @@ describe('app config launchability', () => {
     // The case above has two rescuers, because appearing and disappearing are
     // both visible to the archive#952 reconciliation, which diffs *path existence*.
     // Seeding the file before the loader starts puts it in `knownConfigPaths`,
-    // so reconciliation is permanently silent about it and the 250ms
+    // so reconciliation is permanently silent about it and the five-second
     // fingerprint poller is the only mechanism left. This is the assertion that
     // says content changes to `config/app.json` survive a dead watch layer —
     // and, by contrast, why agent and integration files do not.
