@@ -466,7 +466,7 @@
     "react-dom": "^19.3.1",
     "ssh2": "^1.17.0",
     "tailwindcss": "^4.3.1",
-    "tsc-ts": "0.0.2",
+    "tsc-ts": "0.0.3",
     "tsx": "^4.23.15",
     "typescript": "7.0.2",
     "typescript-api": "npm:typescript@5.9.3",

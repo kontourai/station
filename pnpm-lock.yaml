@@ -502,8 +502,8 @@ importers:
         specifier: ^4.3.1
         version: 4.3.3
       tsc-ts:
-        specifier: 0.0.2
-        version: 0.0.2
+        specifier: 0.0.3
+        version: 0.0.3
       tsx:
         specifier: ^4.23.15
         version: 4.23.15
@@ -4196,42 +4196,42 @@ packages:
       '@types/react-dom':
         optional: true
 
-  '@tsc-ts/darwin-arm64@0.0.2':
-    resolution: {integrity: sha512-RkGySmyRvij4adIw2DeN0hFtqVZd6D+wbiGAsphD7f4AAWezQDD0pDa39K72XI4yuWf6hi3xk7WMYTzwSd3oLw==}
+  '@tsc-ts/darwin-arm64@0.0.3':
+    resolution: {integrity: sha512-NSP4IhLx658tY21ub3ruraZwUwAC3GCbIf1eM0eOKUHfOBBXqq7LU/Loj3zvlvn/tJUyv2VdIDmzrWI/mxp5sA==}
     cpu: [arm64]
     os: [darwin]
 
-  '@tsc-ts/darwin-x64@0.0.2':
-    resolution: {integrity: sha512-9Rvn2ysWS8nodbATIAztOCENJJ52J00TtEP3yzjq3kYuCdHKsprm/H0G98OlYpRDxltFgiWW1W1SnDUjHEAX0g==}
+  '@tsc-ts/darwin-x64@0.0.3':
+    resolution: {integrity: sha512-+BNvqyygkMx0/oHkjK8AmsPrE2+OcE/hGzT0wa2dndiH8lCSDBs+77C7Kmy/FSTWi9ItJShp1+AuWKgQPEOztg==}
     cpu: [x64]
     os: [darwin]
 
-  '@tsc-ts/linux-arm64-gnu@0.0.2':
-    resolution: {integrity: sha512-WlSK+cRpvWqgKdwuBFOwbiBQ2v1ztmq0hlO71PBLWEitPcNpgwq8dYWQFp+0H6+MJ8I5OMl1D0DmyzQArUOuww==}
+  '@tsc-ts/linux-arm64-gnu@0.0.3':
+    resolution: {integrity: sha512-I3v0J0L387TEkau0BTGiVx2GdstYfOrwVYwb0pJ/LbFURhrcGcsUODP5bdSOIYCtsp3aAX6e2afdqSIlpsxtbw==}
     cpu: [arm64]
     os: [linux]
     libc: [glibc]
 
-  '@tsc-ts/linux-arm64-musl@0.0.2':
-    resolution: {integrity: sha512-orV1lOLL4q41kXH6gQClllGmsAFZddx9KlgijfpmhPqjZlg4Ha7YT+WjDPi2Hs9VO6/nQKMaxqXOZdE6JxP/eA==}
+  '@tsc-ts/linux-arm64-musl@0.0.3':
+    resolution: {integrity: sha512-f7wD9D6fC1xL7+ifvMAbJ0TqxOuZP04R2/7c8lb7Gor5SFKe85udJoxf0gocK7mbzWzmEiOJ53J1PujJLBVIxA==}
     cpu: [arm64]
     os: [linux]
     libc: [musl]
 
-  '@tsc-ts/linux-x64-gnu@0.0.2':
-    resolution: {integrity: sha512-/+IrlTylDCCTqMtmEvV3pH+jWNnsI7I5+pSFFQj5tMFTYA7ArwROsaygtP6voPZtY6o+jFg6G7gPfxpCLPyYRg==}
+  '@tsc-ts/linux-x64-gnu@0.0.3':
+    resolution: {integrity: sha512-BL9zownW4tHv/qqQkF8OlurHNDXi7xtGtJ6PV4qMeRYPMKsivTIGFRoZLW023KcLOr1Zptaof6X3zpv1nJEIpA==}
     cpu: [x64]
     os: [linux]
     libc: [glibc]
 
-  '@tsc-ts/linux-x64-musl@0.0.2':
-    resolution: {integrity: sha512-mkKacIeCPv0lPUTRyhbZV1ZfzDhXZhrsYVsR5q6ZOfTp49L7VKpDcGWLXqCmvhNXFUQy/Gq4+XFwEgF8+NfRNg==}
+  '@tsc-ts/linux-x64-musl@0.0.3':
+    resolution: {integrity: sha512-g4/lE5sULNGUVLM0Px/jrsjLsQQAYSiL+Rl+JZ+l5JE2k1dXroCejT2+IRB/NucVcz6N8EOUiCRZ13zl+Wtpcg==}
     cpu: [x64]
     os: [linux]
     libc: [musl]
 
-  '@tsc-ts/win32-x64-msvc@0.0.2':
-    resolution: {integrity: sha512-Qs/QuhzU9HaVWsuWZo2J964NtGDA9bBQj2m5PagtL1Vn1Lhtpl9xEl55A+/Laop/pTK4KkUvo7DEotT0gy7pcQ==}
+  '@tsc-ts/win32-x64-msvc@0.0.3':
+    resolution: {integrity: sha512-oGtboSHgpuQP1dHAHqWyGjAWCpvHDpciYCi/2ywcp6MT+oOHxC99X48H/PZr29fzYVxCVeaEqWZ/VFU9qLZaKg==}
     cpu: [x64]
     os: [win32]
 
@@ -8185,8 +8185,8 @@ packages:
   ts-pattern@5.9.0:
     resolution: {integrity: sha512-6s5V71mX8qBUmlgbrfL33xDUwO0fq48rxAu2LBE11WBeGdpCPOsXksQbZJHvHwhrd3QjUusd3mAOM5Gg0mFBLg==}
 
-  tsc-ts@0.0.2:
-    resolution: {integrity: sha512-2wk85TpOB6sy4KSV+TA/C4EzI7O9X4RPTipMeqeDEG0+v6h6ubyi0uHeDXcxplKzW9BBy8mLZXiYCevv+KxRbg==}
+  tsc-ts@0.0.3:
+    resolution: {integrity: sha512-Qr0i/BxP3ULIPDfr38vRb02x7sj6Q0r70Gubgu4ty2J4CEDCUKzT8RT2KMNqLXI3ZAhl7cncJq7a4LjKYZ1+0g==}
     engines: {node: '>=20'}
     hasBin: true
 
@@ -12205,25 +12205,25 @@ snapshots:
       '@types/react': 19.3.0
       '@types/react-dom': 19.3.0(@types/react@19.3.0)
 
-  '@tsc-ts/darwin-arm64@0.0.2':
+  '@tsc-ts/darwin-arm64@0.0.3':
     optional: true
 
-  '@tsc-ts/darwin-x64@0.0.2':
+  '@tsc-ts/darwin-x64@0.0.3':
     optional: true
 
-  '@tsc-ts/linux-arm64-gnu@0.0.2':
+  '@tsc-ts/linux-arm64-gnu@0.0.3':
     optional: true
 
-  '@tsc-ts/linux-arm64-musl@0.0.2':
+  '@tsc-ts/linux-arm64-musl@0.0.3':
     optional: true
 
-  '@tsc-ts/linux-x64-gnu@0.0.2':
+  '@tsc-ts/linux-x64-gnu@0.0.3':
     optional: true
 
-  '@tsc-ts/linux-x64-musl@0.0.2':
+  '@tsc-ts/linux-x64-musl@0.0.3':
     optional: true
 
-  '@tsc-ts/win32-x64-msvc@0.0.2':
+  '@tsc-ts/win32-x64-msvc@0.0.3':
     optional: true
 
   '@types/aria-query@5.0.4': {}
@@ -17062,15 +17062,15 @@ snapshots:
 
   ts-pattern@5.9.0: {}
 
-  tsc-ts@0.0.2:
+  tsc-ts@0.0.3:
     optionalDependencies:
-      '@tsc-ts/darwin-arm64': 0.0.2
-      '@tsc-ts/darwin-x64': 0.0.2
-      '@tsc-ts/linux-arm64-gnu': 0.0.2
-      '@tsc-ts/linux-arm64-musl': 0.0.2
-      '@tsc-ts/linux-x64-gnu': 0.0.2
-      '@tsc-ts/linux-x64-musl': 0.0.2
-      '@tsc-ts/win32-x64-msvc': 0.0.2
+      '@tsc-ts/darwin-arm64': 0.0.3
+      '@tsc-ts/darwin-x64': 0.0.3
+      '@tsc-ts/linux-arm64-gnu': 0.0.3
+      '@tsc-ts/linux-arm64-musl': 0.0.3
+      '@tsc-ts/linux-x64-gnu': 0.0.3
+      '@tsc-ts/linux-x64-musl': 0.0.3
+      '@tsc-ts/win32-x64-msvc': 0.0.3
 
   tslib@1.14.1: {}
 
