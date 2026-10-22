@@ -21,7 +21,7 @@ type BrokerMessage =
       headers: Record<string, string>;
       bodyLength?: number | null;
     }
-  | { type: 'chunk'; bytes: number[] }
+  | ArrayBuffer
   | { type: 'end' }
   | { type: 'error'; code: string; detail?: string };
 
@@ -197,10 +197,7 @@ describe('native authenticated transport', () => {
             status: 401,
             headers: { 'content-type': 'application/json' },
           });
-          emit({
-            type: 'chunk',
-            bytes: [...new TextEncoder().encode('{"error":"denied"}')],
-          });
+          emit(new TextEncoder().encode('{"error":"denied"}').buffer);
           emit({ type: 'end' });
         });
       }
@@ -219,6 +216,55 @@ describe('native authenticated transport', () => {
     expect(requestCall).toBeTruthy();
     expect(JSON.stringify(requestCall)).not.toContain(secretCanary);
     expect(JSON.stringify(requestCall)).not.toMatch(/authorization|cookie/i);
+  });
+
+  test('uploads every byte as base64, preserving a sliced typed-array body', async () => {
+    const source = new Uint8Array(65540);
+    for (let index = 0; index < source.length; index++)
+      source[index] = index % 256;
+    const body = source.subarray(1, 65538);
+    bridge.invoke.mockImplementation(async (command: string, args) => {
+      if (command !== 'station_native_http_request') return;
+      expect(typeof args.request.body).toBe('string');
+      const decoded = Uint8Array.from(atob(args.request.body), (character) =>
+        character.charCodeAt(0),
+      );
+      expect(decoded).toEqual(body);
+      queueMicrotask(() => {
+        emit({ type: 'response', status: 204, headers: {}, bodyLength: 0 });
+        emit({ type: 'end' });
+      });
+    });
+    expect(
+      (
+        await nativeAuthenticatedTransport(
+          'https://station.example.test/api/upload',
+          {
+            method: 'POST',
+            body,
+          },
+        )
+      ).status,
+    ).toBe(204);
+  });
+
+  test('rejects malformed control messages instead of treating them as response data', async () => {
+    bridge.invoke.mockImplementation(async (command: string) => {
+      if (command === 'station_native_http_request')
+        queueMicrotask(() => {
+          bridge.channels.at(-1)?.({
+            type: 'response',
+            status: 200,
+            headers: { malformed: 42 },
+          } as never);
+        });
+    });
+    await expect(
+      nativeAuthenticatedTransport('https://station.example.test/api/agents'),
+    ).rejects.toMatchObject({
+      code: 'transport',
+      message: 'Native Station request failed: invalid native response message',
+    });
   });
 
   test('rechecks captured authority before native dispatch and after body serialization', async () => {
@@ -336,10 +382,7 @@ describe('native authenticated transport', () => {
             headers: { 'content-type': 'application/json' },
             bodyLength: new TextEncoder().encode(partialJson).length + 1,
           });
-          emit({
-            type: 'chunk',
-            bytes: [...new TextEncoder().encode(partialJson)],
-          });
+          emit(new TextEncoder().encode(partialJson).buffer);
           emit({ type: 'end' });
         });
       }
@@ -479,7 +522,7 @@ describe('native authenticated transport', () => {
     expect(bridge.invoke).toHaveBeenCalledTimes(2);
     bridge.invoke.mockImplementation(async () => {
       emit({ type: 'response', status: 200, headers: {} });
-      emit({ type: 'chunk', bytes: [...new TextEncoder().encode('accepted')] });
+      emit(new TextEncoder().encode('accepted').buffer);
       emit({ type: 'end' });
     });
     await vi.advanceTimersByTimeAsync(500);
@@ -489,7 +532,7 @@ describe('native authenticated transport', () => {
     const attempts = bridge.invoke.mock.calls.map(([, args]) => args.request);
     expect(attempts[0]).toMatchObject({
       method: 'POST',
-      body: [...new TextEncoder().encode('send once')],
+      body: btoa('send once'),
       expectedBindingId: 'captured-binding',
     });
     expect(attempts[1]).toEqual(attempts[0]);
@@ -818,7 +861,7 @@ describe('native authenticated transport', () => {
               status: response.status,
               headers: Object.fromEntries(response.headers.entries()),
             });
-            if (bytes.length > 0) emit({ type: 'chunk', bytes });
+            if (bytes.length > 0) emit(new Uint8Array(bytes).buffer);
             emit({ type: 'end' });
           });
         }
@@ -939,10 +982,7 @@ describe('Station envelope marker through the native broker (#3166)', () => {
           status: reply.status,
           headers: reply.headers,
         });
-        emit({
-          type: 'chunk',
-          bytes: [...new TextEncoder().encode(JSON.stringify(reply.body))],
-        });
+        emit(new TextEncoder().encode(JSON.stringify(reply.body)).buffer);
         emit({ type: 'end' });
       });
     });

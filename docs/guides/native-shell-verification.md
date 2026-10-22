@@ -121,6 +121,66 @@ removed. Qualify the single-old-grant turnover, preview, explicit confirmation,
 pending status, restart recovery and replacement preservation in the installed
 shell before claiming this journey.
 
+## Native HTTP connection and IPC costs
+
+The authenticated [HTTP owner](../../src-desktop/src/lib.rs) keeps one bounded
+ureq connection pool per native authority instance. Reuse requires the exact
+origin, authorization epoch, credential reference, saved-profile revision and
+bearer digest. A changed key replaces the pool; a retired epoch cannot obtain
+an agent. Android retains its system resolver. Redirects remain disabled, and
+ureq negotiates and decodes gzip without treating its compressed length as the
+length of the decoded response.
+
+Each request still reads the OS credential store. There is no portable keyring
+change notification covering external replacement, deletion and locked storage,
+so a cached bearer could hide a refusal. The two request-path keyring reads are
+mutually exclusive, one for ambient requests and one for scoped requests.
+
+On Unix, profile reads validate the directory and opened file's owner/mode and
+reject symlinks on every lookup. Parsed snapshots reuse only the same path,
+opened device/inode, size, mtime and ctime, including nanoseconds. Atomic
+replacement and in-place edits invalidate the snapshot, including a same-size
+edit that restores mtime. Errors never fall back to cached authority. Windows
+retains the full trusted read/parse until an equivalent file-change identity is
+available. Scoped responses still revalidate before headers, each chunk and end;
+cache hits avoid reading and parsing the whole document for every chunk.
+Initialized mobile reads skip the writer lock and its durable flush. First
+initialization still takes the lock, and missing initialized metadata refuses
+access instead of recreating the store.
+
+The [WebView adapter](../../src-ui/src/platform/native/authenticatedTransport.ts)
+receives response chunks as raw `ArrayBuffer` payloads on Tauri 2.12.1's channel,
+with JSON control messages and reads of up to 64 KiB. Structured request bodies
+use base64 because the command also carries request metadata; bytes no longer
+cross that command as JSON number arrays. The host retains the 24 MiB decoded
+upload bound, response size bound, cancellation, header allowlist and credential
+custody. Small raw Tauri messages can still use its inline delivery path; large
+ones use its binary channel fetch path. This is not zero-copy IPC.
+
+Native boot uses the verified captured request scope to request `/api/boot`
+through the host transport, then checks authority and destination-client liveness
+before each cache seed. It does not require the browser page's local session.
+A refused aggregate falls back to ordinary query reads; native broker routes
+keep their own route and account admission. Browser boot keeps its same-origin
+local-session requirement.
+
+Run the mechanism harness with:
+
+```sh
+npm run verify:desktop-rust -- --lib native_http -- --nocapture
+npm run test:focused -- src-ui/src/platform/native/__tests__/authenticatedTransport.test.ts src-ui/src/__tests__/nativeBootBatch.test.tsx
+```
+
+The [Rust harness](../../src-desktop/src/native_http_performance_tests.rs) counts
+accepted loopback connections for eight fresh-agent versus pooled requests and
+compares serialized number-array bytes with the raw channel payload. It also
+checks authority turnover, unsafe/changed files, mobile writer contention, gzip
+and binary upload decoding. Mounted tests exercise scoped boot seeding and late
+same-origin turnover through the SDK and native adapter. These checks do not
+measure installed WebView latency, TLS handshake timing, physical mobile flash
+writes or end-to-end startup speed. Retain exact-SHA receipts and qualify real
+shell/device behavior separately.
+
 ## Native request queue pressure
 
 The authenticated native HTTP bridge admits up to 8 ordinary requests and 12

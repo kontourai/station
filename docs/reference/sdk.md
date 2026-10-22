@@ -1353,13 +1353,16 @@ This does not make connection evidence a substitute for account authentication o
 qualify every legacy query, mutation, draft or queue path.
 
 The internal [boot module](../../packages/sdk/src/boot.ts) implements
-`fetchBootPayloadAt(apiBase)` and
+`fetchBootPayloadAt(apiBase, options?)` and
 `seedBootPayloadGuarded(queryClient, payload, startedAt, isCurrent)` for Station's
 host. `/boot` is not in the package export map; external consumers must not
 infer an importable subpath from this source file. The host captures the
 origin and request authority before fetching; its guard verifies both that
 captured authority and the destination client. Seeding checks it before every
-cache write and preserves newer individual reads.
+cache write and preserves newer individual reads. Native boot passes the captured
+`requestScope` and enrolled-credential requirement through the SDK's guarded
+`getJson` boundary to its host transport. Browser seeding retains same-origin
+local-session admission; an aggregate refusal leaves individual reads available.
 
 The [SDK Project queries](../../packages/sdk/src/query-domains/workspaceProjects.ts),
 [host Project context](../../src-ui/src/contexts/ProjectsContext.tsx),
