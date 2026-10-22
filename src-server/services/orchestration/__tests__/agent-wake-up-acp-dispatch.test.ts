@@ -14,12 +14,12 @@
  * ends, so the inbox reads the chat as busy for good: a person's own send
  * still goes through, a queued check-back never does.
  */
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FakeAcpProcess } from '../../../providers/__tests__/fake-acp-process.js';
 import type { ProviderSessionStartInput } from '../../../providers/adapter-shape.js';
 import { AcpAdapter } from '../../../providers/adapters/acp-adapter.js';
@@ -36,6 +36,9 @@ import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../session-lifecycle-service.js';
 import { ThreadInboxDelivery } from '../thread-inbox.js';
+
+// Created at file scope so its removal runs after the suite closes the store.
+const makeTempDir = trackTempDirs();
 
 const CONNECTION_ID = 'fake-acp-connection';
 const THREAD = 'opsbot:wake-up-acp';
@@ -72,7 +75,7 @@ describe('an approved check-back on an ACP chat reaches the engine', () => {
   const clock = { now: Date.now() };
 
   beforeEach(() => {
-    tmp = mkdtempSync(join(tmpdir(), 'wake-up-acp-'));
+    tmp = makeTempDir('wake-up-acp-');
     previousStationHome = process.env.STATION_HOME;
     process.env.STATION_HOME = join(tmp, 'home');
     mkdirSync(process.env.STATION_HOME, { recursive: true });
@@ -195,7 +198,6 @@ describe('an approved check-back on an ACP chat reaches the engine', () => {
     await inbox.idle();
     await service.shutdown();
     store.close();
-    rmSync(tmp, { recursive: true, force: true });
     if (previousStationHome === undefined) delete process.env.STATION_HOME;
     else process.env.STATION_HOME = previousStationHome;
   });
