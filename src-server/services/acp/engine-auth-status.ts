@@ -51,10 +51,10 @@ export function isAcpAuthRequired(error: unknown): boolean {
   );
 }
 
-export const ENGINE_STATUS_COMMAND_TIMEOUT_MS = 8_000;
-export const ENGINE_STATUS_COMMAND_MAX_OUTPUT = 64 * 1024;
+const ENGINE_STATUS_COMMAND_TIMEOUT_MS = 8_000;
+const ENGINE_STATUS_COMMAND_MAX_OUTPUT = 64 * 1024;
 /** How long a status command's answer is reused before it runs again. */
-export const ENGINE_STATUS_TTL_MS = 60_000;
+const ENGINE_STATUS_TTL_MS = 60_000;
 
 interface ConnectionLike {
   id: string;
