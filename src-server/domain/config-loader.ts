@@ -1139,14 +1139,29 @@ export class ConfigLoader {
     this.watcher.on('change', forward('change'));
     this.watcher.on('add', forward('add'));
     this.watcher.on('unlink', forward('remove'));
-    this.watcher.on('ready', () => this.scheduleWatcherReconciliation(0));
+    this.watcher.on('ready', () => {
+      this.scheduleWatcherReconciliation(0);
+      if (Object.keys(this.watcher?.getWatched() ?? {}).length === 0) {
+        this.startAppConfigFallbackPoll(appConfigPath);
+      }
+    });
+    this.watcher.on('error', () =>
+      this.startAppConfigFallbackPoll(appConfigPath),
+    );
+    if (process.env.STATION_CONFIG_WATCH_POLL === '1') {
+      this.startAppConfigFallbackPoll(appConfigPath);
+    }
+  }
+
+  private startAppConfigFallbackPoll(appConfigPath: string): void {
+    if (this.disposed || this.launchabilityPoller) return;
     this.launchabilityPoller = setInterval(() => {
       try {
         this.synchronizeAppConfigFingerprintAfterMetadataChange(appConfigPath);
       } catch {
         logger.error('Failed to poll application configuration fingerprint.');
       }
-    }, 250);
+    }, 5_000);
     this.launchabilityPoller.unref();
   }
 

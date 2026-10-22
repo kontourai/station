@@ -1,7 +1,6 @@
 import { createReadStream, existsSync } from 'node:fs';
 import { appendFile, mkdir, readdir, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
-import { createInterface } from 'node:readline';
 
 interface RuntimeLogger {
   debug: (message: string, meta?: Record<string, unknown>) => void;
@@ -12,6 +11,57 @@ interface RuntimeLogger {
 
 const EVENT_FILE_PATTERN = /^events-(\d{4}-\d{2}-\d{2})\.ndjson$/;
 const MIB = 1024 * 1024;
+
+const MAX_QUERY_EVENTS = 10_000;
+const MAX_QUERY_BYTES = 8 * MIB;
+const MAX_QUERY_SCAN_BYTES = 32 * MIB;
+const MAX_EVENT_LINE_BYTES = MIB;
+
+export class EventHistoryLimitError extends Error {
+  readonly code = 'event_history_limit_exceeded';
+  constructor() {
+    super(
+      'Event history exceeds the read budget. Narrow the time range or archive oversized log files.',
+    );
+    this.name = 'EventHistoryLimitError';
+  }
+}
+
+async function* boundedEventLines(
+  path: string,
+  budget: { scanned: number },
+): AsyncGenerator<string> {
+  const stream = createReadStream(path, { highWaterMark: 64 * 1024 });
+  let pending = Buffer.alloc(0);
+  try {
+    for await (const chunk of stream) {
+      const bytes = chunk as Buffer;
+      budget.scanned += bytes.length;
+      if (budget.scanned > MAX_QUERY_SCAN_BYTES)
+        throw new EventHistoryLimitError();
+      let start = 0;
+      for (
+        let index = bytes.indexOf(10);
+        index !== -1;
+        index = bytes.indexOf(10, start)
+      ) {
+        if (pending.length + index - start > MAX_EVENT_LINE_BYTES)
+          throw new EventHistoryLimitError();
+        yield Buffer.concat([pending, bytes.subarray(start, index)]).toString(
+          'utf8',
+        );
+        pending = Buffer.alloc(0);
+        start = index + 1;
+      }
+      if (pending.length + bytes.length - start > MAX_EVENT_LINE_BYTES)
+        throw new EventHistoryLimitError();
+      pending = Buffer.concat([pending, bytes.subarray(start)]);
+    }
+    if (pending.length) yield pending.toString('utf8');
+  } finally {
+    stream.destroy();
+  }
+}
 
 const DEFAULT_EVENT_LOG_RETENTION = {
   maxAgeDays: 30,
@@ -83,6 +133,8 @@ export class RuntimeEventLog {
     userId: string,
   ): Promise<any[]> {
     const events: any[] = [];
+    let resultBytes = 0;
+    const budget = { scanned: 0 };
     let names: string[];
     try {
       names = await readdir(this.eventLogPath);
@@ -108,35 +160,36 @@ export class RuntimeEventLog {
         }
         let min = Number.POSITIVE_INFINITY;
         let max = Number.NEGATIVE_INFINITY;
-        const stream = createReadStream(path);
-        const lines = createInterface({ input: stream, crlfDelay: Infinity });
-        try {
-          for await (const line of lines) {
-            if (!line.trim()) continue;
-            let event: any;
-            try {
-              event = JSON.parse(line);
-              const time = new Date(event.timestamp).getTime();
-              if (!Number.isFinite(time)) continue;
-              min = Math.min(min, time);
-              max = Math.max(max, time);
+        for await (const line of boundedEventLines(path, budget)) {
+          if (!line.trim()) continue;
+          let event: any;
+          try {
+            event = JSON.parse(line);
+            const time = new Date(event.timestamp).getTime();
+            if (!Number.isFinite(time)) continue;
+            min = Math.min(min, time);
+            max = Math.max(max, time);
+            if (
+              time >= start &&
+              time <= end &&
+              (event.userId === userId || event['station.user.id'] === userId)
+            ) {
+              resultBytes += Buffer.byteLength(line);
               if (
-                time >= start &&
-                time <= end &&
-                (event.userId === userId || event['station.user.id'] === userId)
+                events.length >= MAX_QUERY_EVENTS ||
+                resultBytes > MAX_QUERY_BYTES
               ) {
-                events.push(event);
+                throw new EventHistoryLimitError();
               }
-            } catch (error) {
-              this.logger.warn('Failed to parse event line', {
-                file: name,
-                error,
-              });
+              events.push(event);
             }
+          } catch (error) {
+            if (error instanceof EventHistoryLimitError) throw error;
+            this.logger.warn('Failed to parse event line', {
+              file: name,
+              error,
+            });
           }
-        } finally {
-          lines.close();
-          stream.destroy();
         }
         // Do not memoize a partial observation during an append or replacement.
         if (before === (await eventFileSignature(path))) {

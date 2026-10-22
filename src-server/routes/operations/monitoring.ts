@@ -34,6 +34,7 @@ import {
   monitoringSessionIdentity,
 } from '../../monitoring/monitoring-session-identity.js';
 import { readFleetRoutingReceipts } from '../../runtime/conversation/fleet-routing-receipt-log.js';
+import { EventHistoryLimitError } from '../../runtime/conversation/runtime-event-log.js';
 import { readFleetServeReceipts } from '../../services/inference/fleet-serve-receipt-log.js';
 import { isTelemetryProducerName } from '../../services/telemetry-producers/telemetry-producer-store.js';
 import {
@@ -401,7 +402,18 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
         );
       }
 
-      const filteredEvents = await deps.queryEventsFromDisk(start, end, userId);
+      let filteredEvents: any[];
+      try {
+        filteredEvents = await deps.queryEventsFromDisk(start, end, userId);
+      } catch (error) {
+        if (error instanceof EventHistoryLimitError) {
+          return c.json(
+            { success: false, code: error.code, error: errorMessage(error) },
+            413,
+          );
+        }
+        throw error;
+      }
 
       // Slicing lives HERE, not in a second reader (archive#3076). The rows
       // behind the insights rollup are these rows, and this handler already
@@ -430,8 +442,7 @@ export function createMonitoringRoutes(deps: MonitoringDeps) {
           400,
         );
       }
-      // Limits are opt-in. The UI requests a bounded window and discloses
-      // truncation; CLI/SDK export callers may still request all matching rows.
+      // Presentation limits apply after the reader enforces its hard budget.
       // Apply the cap only after both authorization layers and content filters.
       const rawLimit = c.req.query('limit');
       const requestedLimit = Number.parseInt(rawLimit ?? '', 10);

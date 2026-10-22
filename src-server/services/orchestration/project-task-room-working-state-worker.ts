@@ -53,7 +53,8 @@ let watchCount = 0;
 let dataVersion = Number(
   db.prepare('PRAGMA data_version').get()?.data_version ?? 0,
 );
-let watchTimer: ReturnType<typeof setInterval> | undefined;
+let watchTimer: ReturnType<typeof setTimeout> | undefined;
+let watchDelay = 250;
 const beforeCommit = new Map<number, (allowed: boolean) => void>();
 function requestBeforeCommit(id: number): Promise<boolean> {
   return new Promise((resolve) => {
@@ -63,22 +64,31 @@ function requestBeforeCommit(id: number): Promise<boolean> {
 }
 function updateWatch() {
   if (watchCount > 0 && !watchTimer) {
-    watchTimer = setInterval(() => {
+    watchTimer = setTimeout(() => {
+      watchTimer = undefined;
       try {
         const next = Number(
           db.prepare('PRAGMA data_version').get()?.data_version ?? 0,
         );
         if (next !== dataVersion) {
           dataVersion = next;
+          watchDelay = 250;
           parentPort?.postMessage({ type: 'changed' });
+        } else {
+          watchDelay = Math.min(watchDelay * 2, 2_000);
         }
-      } catch {}
-    }, 250);
-  } else if (watchCount === 0 && watchTimer) {
-    clearInterval(watchTimer);
+      } catch {
+        watchDelay = Math.min(watchDelay * 2, 2_000);
+      }
+      updateWatch();
+    }, watchDelay);
+  } else if (watchCount === 0) {
+    clearTimeout(watchTimer);
     watchTimer = undefined;
+    watchDelay = 250;
   }
 }
+
 const key = (scope: any) => [scope.projectId, scope.taskId, scope.documentId];
 const boundedText = (
   value: unknown,

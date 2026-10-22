@@ -4288,7 +4288,7 @@ export class StationRuntime {
         const path = 'plain-text-100k-lines-v1.txt';
         let rebuilt = input.phase === 'cold';
         try {
-          const current = this.fileTreeService.readFileWithin(
+          const current = await this.fileTreeService.readFileWithin(
             workingDirectory,
             path,
           );

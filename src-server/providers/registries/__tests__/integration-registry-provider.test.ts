@@ -10,6 +10,34 @@ import {
   readDiskIntegrations,
 } from '../integration-registry-provider.js';
 
+const synchronousReads = vi.hoisted(() => [] as string[]);
+vi.mock('node:fs', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return {
+    ...actual,
+    existsSync: (path: Parameters<typeof actual.existsSync>[0]) => {
+      synchronousReads.push(String(path));
+      return actual.existsSync(path);
+    },
+  };
+});
+
+const lookups = vi.hoisted(() => ({ count: 0 }));
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return {
+    ...actual,
+    execFileSync: (...args: Parameters<typeof actual.execFileSync>) => {
+      lookups.count++;
+      return actual.execFileSync(...args);
+    },
+    execFile: (...args: Parameters<typeof actual.execFile>) => {
+      lookups.count++;
+      return actual.execFile(...args);
+    },
+  };
+});
+
 const cleanupDirs: string[] = [];
 
 afterEach(async () => {
@@ -65,6 +93,55 @@ describe('integration-registry-provider helpers', () => {
         status: 'missing binary',
       },
     ]);
+  });
+
+  test('catalog listings coalesce lookups and refresh on PATH changes and TTL while definitions stay fresh', async () => {
+    const homeDir = createHomeDir();
+    const dir = join(homeDir, 'integrations', 'cached-command');
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, 'integration.json');
+    writeFileSync(
+      path,
+      JSON.stringify({
+        id: 'cached-command',
+        command: 'node',
+        displayName: 'Before',
+      }),
+    );
+    const originalPath = process.env.PATH;
+    const clock = vi.spyOn(Date, 'now');
+    try {
+      process.env.PATH = `${originalPath}${process.platform === 'win32' ? ';' : ':'}${homeDir}`;
+      const registry = createIntegrationRegistryProvider([], homeDir);
+      const before = lookups.count;
+      const pages = await Promise.all([
+        registry.listAvailable(),
+        registry.listInstalled(),
+      ]);
+      expect(synchronousReads.filter((path) => path === dir)).toEqual([]);
+      expect(pages[0][0].status).toBe('connected');
+      expect(lookups.count - before).toBe(1);
+      writeFileSync(
+        path,
+        JSON.stringify({
+          id: 'cached-command',
+          command: 'node',
+          displayName: 'After',
+        }),
+      );
+      expect((await registry.listAvailable())[0].displayName).toBe('After');
+      expect(lookups.count - before).toBe(1);
+      clock.mockReturnValue(Date.now() + 30_001);
+      await registry.listAvailable();
+      expect(lookups.count - before).toBe(2);
+      process.env.PATH = '';
+      expect((await registry.listAvailable())[0].status).toBe('missing binary');
+      expect(lookups.count - before).toBe(3);
+    } finally {
+      clock.mockRestore();
+      if (originalPath === undefined) delete process.env.PATH;
+      else process.env.PATH = originalPath;
+    }
   });
 
   test('station#3063: built-in integrations list as connected from their stripped, command-less files', async () => {

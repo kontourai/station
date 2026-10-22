@@ -1008,8 +1008,13 @@ or epoch milliseconds; an absent start defaults to zero and an absent end to
 now. Invalid bounds fail rather than widening the window. User ownership and
 Session/tenant policy are applied before dimension filters and a requested
 limit. Results are timestamp-ordered oldest first; a limit keeps the newest
-matching rows. `limit` is optional and capped at 5,000 when supplied, so an
-uncapped export is not a bounded page. The returned `truncated` flag says
+matching rows. `limit` is optional and capped at 5,000 when supplied.
+Before route visibility/dimension filtering, the disk reader refuses queries
+exceeding 10,000 owner-matching rows, 8 MiB of matching NDJSON, 32 MiB of scanned
+bytes, or a 1 MiB line. The route returns 413 `event_history_limit_exceeded`,
+never a partial success. Narrow the time range; oversized/cold files may need
+archiving because scanning also has a budget. A presentation `limit=1` does not
+bypass these limits. The returned `truncated` flag says
 whether the limit dropped matching rows; `data.length` is the returned row
 count. The response does not report the total number of matches.
 

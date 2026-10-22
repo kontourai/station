@@ -1,4 +1,6 @@
 import { EventEmitter } from 'node:events';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
@@ -10,6 +12,8 @@ import {
   collectSSE,
   readStreamUntil,
 } from '../../../__test-utils__/sse-helpers.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { RuntimeEventLog } from '../../../runtime/conversation/runtime-event-log.js';
 
 // Built at runtime so no literal credential assignment appears in source:
 // a redaction test needs secret-SHAPED input, and the repo's pre-commit
@@ -398,6 +402,8 @@ describe('Monitoring Routes', () => {
   });
 });
 
+const makeHistoryTempDir = trackTempDirs();
+
 describe('historical event slicing (station#3076)', () => {
   const K_OP = 'gen_ai.operation.name';
   const K_TOOL = 'gen_ai.tool.name';
@@ -505,6 +511,35 @@ describe('historical event slicing (station#3076)', () => {
     );
     expect(body.data).toHaveLength(1);
     expect(body.data[0][K_TOOL]).toBe(expected);
+  });
+
+  test('returns an explicit 413 from the real history reader when the collection budget is exceeded', async () => {
+    const directory = makeHistoryTempDir('station-history-route-');
+    await writeFile(
+      join(directory, 'events-2026-09-06.ndjson'),
+      (
+        JSON.stringify({ timestamp: '2026-09-06T12:00:00Z', userId: 'alice' }) +
+        '\n'
+      ).repeat(10_001),
+    );
+    const log = new RuntimeEventLog(directory, {
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+    });
+    const app = appWith([], {
+      queryEventsFromDisk: (start: number, end: number, userId: string) =>
+        log.queryEvents(start, end, userId),
+    });
+    const response = await app.request(
+      '/events?start=0&end=9999999999999&userId=alice&limit=1',
+    );
+    expect(response.status).toBe(413);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: 'event_history_limit_exceeded',
+    });
   });
 
   test('epoch-millisecond bounds are honoured, not parsed to NaN', async () => {

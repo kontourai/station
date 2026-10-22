@@ -2703,6 +2703,13 @@ is the two-browser acceptance route; a unit-test run is not that acceptance run.
 
 The pure `CollaborativeEditorPaneController` that [the archive#2890 design](https://github.com/kontourai/station-archive/issues/2890) describes was deleted, and its design record with it: no pane host, catalog entry, or route ever composed it, and its own tests were its only callers. **Do not reintroduce:** editor-local CRDT/OT/LWW logic, client-owned authority, exported pending payload, opaque-epoch freshness guesses, JSON metadata equivocation, per-cursor document copies, caller-asserted revision verification, local paths, capability conflation, durable chat/history ownership, host placement policy, or renderer-specific transport.
 
+The working-state worker samples another connection's SQLite `data_version`
+only while subscribed. Unchanged samples back off from 250 ms to a two-second
+ceiling; an observed external commit restores 250 ms sampling. Unsubscribing the
+last watcher cancels sampling. Idle external edits can therefore take up to two
+seconds plus scheduling delays to notify readers; this polling runs in the
+worker, separately from the server event loop.
+
 ## SharedWorkingStateEditingCapability
 
 **Purpose and interface.** [The editing capability](../../src-server/domain/shared-working-state-editing.ts)
@@ -4044,7 +4051,11 @@ on this map, and it is not a persistent payload cache or a multi-file snapshot.
 Missing files/history can yield no events; other filesystem failures propagate.
 Malformed JSON or invalid timestamps are skipped, so a successful read does not
 prove every stored line was included. The current query returns no skipped-line
-completeness receipt.
+completeness receipt. Reads refuse more than 10,000 owner-matching rows, 8 MiB
+of matching NDJSON, 32 MiB scanned bytes, or a 1 MiB line. A bounded chunk reader
+checks line bytes before JSON parsing; the HTTP history branch maps refusal to
+413 `event_history_limit_exceeded`, including when a presentation limit was
+supplied. No partial result is reported as success.
 
 The [Monitoring context](../../src-ui/src/contexts/MonitoringContext.tsx) owns
 chronological reconciliation and the newest retained window. View filtering
@@ -4061,6 +4072,18 @@ projection. Later requests read afresh; this catalog is not a process-wide
 permission or availability cache. Invalid/unreadable per-Agent definitions are
 logged and omitted, so absence from the returned list is not proof no definition
 exists on disk. Runtime availability still has its own current-state owner.
+
+[Integration registry listings](../../src-server/providers/registries/integration-registry-provider.ts)
+read definitions afresh with asynchronous filesystem calls. Binary-presence
+lookups use asynchronous `which`/`where`, coalesce concurrent observations, and
+cache positive and negative results for 30 seconds (at most 256 commands).
+PATH, PATHEXT or cwd changes invalidate that cache. This status is presentation,
+never execution authority; changes within the same PATH may take the TTL to appear.
+
+The [file tree service](../../src-server/services/projects/file-tree-service.ts)
+uses the same asynchronous, workspace-contained 2 MiB preview reader for direct
+file reads and the performance-corpus caller. Its EOF/overflow probe reads at
+most the cap plus one byte and refuses oversized/binary/nonregular files.
 
 Relevant history, catalog and Monitoring tests live beside these owners. Preserve
 mtime/inode invalidation and per-request reads when optimizing; do not replace
