@@ -48,6 +48,28 @@ func render(scale: CGFloat, to url: URL) throws {
   context.addPath(CGPath(roundedRect: lift, cornerWidth: 18, cornerHeight: 18, transform: nil))
   context.fillPath()
 
+  // Observed in a mounted image on macOS 26 with the system in Dark Mode:
+  // Finder still painted the icon names near-black on this custom background,
+  // and 13pt ink under these 128pt icons sat at content y 288.5–299.5. Light
+  // Mode uses dark names as well, so a light plate under each name is the
+  // contrast surface for both. The floor width covers the widest name seen
+  // with filename extensions shown (Station MacProof.app, 130.6pt), plus padding.
+  let labelFont = NSFont.systemFont(ofSize: 13)
+  let labelWidth = ["Station Nightly.app", "Station Beta.app", "Station.app", "Applications"]
+    .map { ($0 as NSString).size(withAttributes: [.font: labelFont]).width }.max()!
+  let plateWidth = max(ceil(labelWidth) + 24, 156)
+  let plateHeight: CGFloat = 28
+  let plateTop: CGFloat = 280
+  context.setShadow(offset: CGSize(width: 0, height: 1), blur: 4, color: color(0x000000, alpha: 0.55))
+  context.setFillColor(color(0xf4f6f8))
+  for center in [appCenter, applicationsCenter] {
+    let plate = CGRect(
+      x: center.x - plateWidth / 2, y: plateTop, width: plateWidth, height: plateHeight)
+    context.addPath(CGPath(roundedRect: plate, cornerWidth: 8, cornerHeight: 8, transform: nil))
+    context.fillPath()
+  }
+  context.setShadow(offset: .zero, blur: 0, color: nil)
+
   // Arrow from the app toward Applications, clear of both 128pt icons.
   let teal = color(0x7ad9c4)
   let shaftStart = CGPoint(x: appCenter.x + 92, y: appCenter.y)

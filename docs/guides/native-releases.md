@@ -318,7 +318,11 @@ release before the mounted signature, bundle identity and Gatekeeper checks
 run. `dmgbuild` ignores the exit status of its internal `ditto` copy, so those
 later mounted checks remain the guard against an incomplete application copy.
 This check proves the image's structure, not how Finder draws it: window
-geometry and label legibility over the dark art are outside its scope.
+geometry stays outside its scope. In a mounted image on macOS 26 with the system in
+Dark Mode, Finder still painted the application and Applications names
+near-black on this background, and Light Mode uses dark names too, so the art
+paints a light plate behind each name. Recheck a real Finder window after
+changing the art or icon geometry.
 
 To change the art, edit
 [`render-background.swift`](../../ops/release/dmg/render-background.swift)
