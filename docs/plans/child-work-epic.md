@@ -164,6 +164,20 @@ posture. Delegation does not imply read-only execution or sandbox guarantees.
 Independent source review and mounted checks passed; final exact-head browser
 and native acceptance remain open.
 
+The mobile streaming branch still hid that annotation. Repair `04ca8a88748`
+renders the existing badge from the recorded posture prop without adding an
+engine or authority inference. The new mounted case fails on the previous row
+with two controls passing; removing the mobile badge also produces that intended
+failure. Byte-identical restoration passes 36 caller/row checks and UI types.
+Browser qualification then found the existing light-theme posture color at
+2.62:1 contrast. `2900e69eda6` uses the shipped caution text token: the controlled
+streaming-row harness measures 5.73:1 in light and 6.20:1 in dark. At 390px,
+worker/task/absent transitions render without horizontal overflow; a 1280px dark
+control also passes. The final four-file selection passes 48 checks. Independent
+source and CSS delta reviews found no actionable issue. This is a synthetic
+browser component check, not a native-phone or live delegated-session receipt;
+the separate caller tests cover recorded-session identity selection.
+
 #600 has a reviewed local preset/preparation increment: the public Ensemble contract parses
 versioned named members and renders roster-aware briefs; the server loads exact file bytes/hash
 and prepares frozen member options through existing resolution plus mandatory authentication
