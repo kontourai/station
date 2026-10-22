@@ -643,7 +643,9 @@ async function replacedGroup(
     oldRefDisplaced?: boolean;
   } = {},
 ) {
-  const branch = (base: string) => `gh-readonly-queue/main/pr-7-${base}`;
+  const candidateBase = 'e'.repeat(40);
+  const branch = (sha: string) =>
+    `gh-readonly-queue/main/pr-7-${sha === head ? candidateBase : old}`;
   const candidate = (id: number, sha: string) =>
     run(id, {
       event: 'merge_group',
@@ -659,6 +661,7 @@ async function replacedGroup(
   let ownerReads = 0;
   let runReads = 0;
   let queueReads = 0;
+  let displacedResponses = 0;
   const server = createServer((req, res) => {
     res.setHeader('content-type', 'application/json');
     const url = new URL(req.url ?? '', 'http://localhost');
@@ -705,7 +708,9 @@ async function replacedGroup(
                                 oid: options.queueHeadMismatch ? old : head,
                               },
                               baseCommit: {
-                                oid: options.queueBaseMismatch ? old : head,
+                                oid: options.queueBaseMismatch
+                                  ? head
+                                  : candidateBase,
                               },
                               pullRequest: {
                                 number: options.queueNumberMismatch ? 8 : 7,
@@ -798,6 +803,7 @@ async function replacedGroup(
         res.end('{}');
         return;
       }
+      if (options.oldRefDisplaced) displacedResponses++;
       data = {
         ref: `refs/heads/${branch(old)}`,
         object: { sha: options.oldRefDisplaced ? head : old },
@@ -836,11 +842,13 @@ async function replacedGroup(
       server.close((error) => (error ? reject(error) : ok())),
     );
   }
+  if (options.oldRefDisplaced && cancelled.length)
+    expect(displacedResponses).toBeGreaterThan(0);
   return { code, cancelled };
 }
 
 describe('replaced merge candidate retirement through the GitHub API', () => {
-  it.each([{}, { oldRefDisplaced: true }])(
+  it.each([{}, { oldRef: true, oldRefDisplaced: true }])(
     'normally cancels obsolete queue-bound squash work with destroyed/displaced ref: %j',
     async (options) => {
       expect(await replacedGroup(options)).toEqual({ code: 0, cancelled: [1] });
