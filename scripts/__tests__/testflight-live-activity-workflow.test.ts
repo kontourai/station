@@ -703,6 +703,7 @@ describe('Live Activity delivery review round (#2513 slice D)', () => {
       'StationAgentActivity',
       'StationNotificationService',
     ]) {
+      expect(project.targets).toHaveProperty(target);
       expect(
         project.targets[target].settings.base.STATION_APP_BUNDLE_IDENTIFIER,
       ).toBe('io.kontourai.station');
