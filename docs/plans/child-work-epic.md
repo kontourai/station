@@ -276,10 +276,23 @@ A production sync increment now connects the session-group HTTP/SDK/CLI caller
 to durable logical-attempt reservations and an exclusive retained-session
 activation. It uses command-line wildcard denial, exact native identity and
 configuration binding, exact ACK comparison and one completed tool-free mismatch
-retry. The latest receipts are visible in the group inspector. Focused controlled
-adapter and native boundary checks are still being qualified; this source work
-does not close the remaining plugin/delegation native coverage, real-provider
-sync, #205 restrictions, fiscal guarantees or full epic acceptance.
+retry. The latest receipts are visible in the group inspector. At source
+`38357c0fb20`, the implementer reports 453 focused baseline cases and 408 repair
+cases, TypeScript 7 server checks, and two mutation catches with byte-identical
+restoration. Independent source review found unsupported-engine reservation and
+terminal-authority gaps; delta review accepted the repairs without new confirmed
+P1/P2 findings. It did not independently execute tests or mutations.
+
+An owned loopback model then exercised the actual group/service/Claude adapter
+with installed Claude Code 2.1.308: one native conversation retained prior history
+and folded context, exact ACK persisted, an injected Write was denied and recorded
+as failed without retry, and an ordinary resumed turn restored advertised tools.
+The initial harness omitted the canonical session refresh and refused preflight;
+that receipt is retained alongside the corrected probe. No real-provider model
+request or shared configuration write occurred. Independent native execution
+qualification is pending. This does not close plugin/delegation/internal-effect
+coverage, real-provider sync, #205 restrictions, fiscal guarantees or full epic
+acceptance.
 
 ## Production adoption sequence
 
