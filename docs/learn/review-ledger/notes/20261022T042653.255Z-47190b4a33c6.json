@@ -1,0 +1,7 @@
+{
+  "revision": "f0cf5edea392581a326bca3bce233fa05f53b241",
+
+  "notes": [
+    {"path":"docs/design/agent-engine-unification.md","note":"Reviewed the thread-bound authored MCP inventory guard and exact-event form reply against codex-adapter.ts, codex-adapter-events.ts, codex-approval-delivery.ts and shared mcp-elicitation.ts. Inventory is one-shot with a shared response deadline and closed diagnostics; supported forms use canonical content validation without granting session authority. 183 focused cases and scoped server-test types passed at b66daf94ba4. Controlled real-service form reply is separate from unsuccessful live elicitation attempts; no live acceptance claimed.","inputs":["docs/design/agent-engine-unification.md"]}
+  ]
+}
