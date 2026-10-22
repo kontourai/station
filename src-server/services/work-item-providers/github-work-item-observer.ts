@@ -27,7 +27,8 @@
  *   the ref's `workItemRefKey` and `commentsSince`, so a Session calling
  *   `get_task_brief` in a loop does not spend the host's GitHub quota. A
  *   failure is never kept: a person who signs gh in sees it at once. An
- *   aborted signal starts no gh process. Concurrent reads of one key are not
+ *   aborted signal starts no gh process (the process-group runner refuses
+ *   to spawn for it). Concurrent reads of one key are not
  *   shared: each runs its own gh calls, since one caller's abort must not
  *   stop another's read.
  */
@@ -149,8 +150,6 @@ export class GitHubWorkItemObserver implements WorkItemObserver {
             observation: { ...kept.result.observation, workItemRef },
           }
         : kept.result;
-    if (options.signal?.aborted)
-      return failure('unavailable', 'The read was stopped before it started.');
     this.cache.delete(key);
     const result = await this.read(workItemRef, options);
     if (result.status === 'observed' && this.cacheTtlMs > 0) {
