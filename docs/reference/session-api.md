@@ -401,6 +401,15 @@ conversation you may not read, or a Station without an inbox, answers `404`.
 one person's possibly-sent message cannot hold everyone's). Anyone else gets
 `404`. A message being sent right now answers `409` with
 `code: "inbox_entry_sending"`, and one already sent `inbox_entry_sent`.
+
+Committed inbox transitions emit `orchestration:inbox-changed` with
+`{ conversationId }` on `/api/orchestration/events`, only to readers of that
+Conversation. The general `/api/events` route does not relay it. The UI
+invalidates that exact inbox query, with a 30-second foreground safety poll
+when no entries are pending or uncertain. Queued, sending and unconfirmed
+entries use 2 seconds (10 seconds on an explicitly constrained network).
+Background polling pauses; HTTP 401/403/404 stops interval retries.
+
 Deleting the conversation deletes its held messages. `@kontourai/station-sdk/client`
 exposes these as `queueExecutionMessage`, `listConversationInbox` and
 `cancelConversationInboxEntry`.
@@ -873,8 +882,12 @@ The remaining controls are defined by
   and discard a Draft; it is not a general Session deletion. After committed
   thread deletion, the server emits `orchestration:sessions-changed` with an
   empty payload on the orchestration SSE stream. This invalidates connected
-  clients' authorized lists without retaining the deleted thread's identity or
-  ownership. The same post-commit notification covers attached-alias and other
+  clients' lists only if they could read the Session before deletion. The server
+  captures that audience before removing ownership records, keeps it internal
+  through commit, and rechecks request authority at delivery. A thread-filtered
+  stream receives only its own deletion; the general `/api/events` route never
+  relays this notice. Deleting a nonexistent thread emits nothing. The same
+  post-commit notification covers attached-alias and other
   thread cleanup paths. It is a live invalidation, not a durable replay event;
   reconnect/list reads and the client's safety poll recover a missed notice.
 

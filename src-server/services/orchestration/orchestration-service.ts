@@ -2235,13 +2235,35 @@ export class OrchestrationService {
   })();
 
   private readonly stopSessionDeletionNotifications?: () => void;
+  private readonly sessionDeletionReaders = new Set<SessionReadScope>();
+
+  retainSessionDeletionReader(authority: SessionReadScope): () => void {
+    this.sessionDeletionReaders.add(authority);
+    return () => {
+      this.sessionDeletionReaders.delete(authority);
+    };
+  }
 
   constructor(private readonly options: OrchestrationServiceOptions) {
     // All delete paths converge here, including Draft discard and attached alias cleanup.
-    // No identity survives in the notification: ownership records have been removed.
     this.stopSessionDeletionNotifications = options.eventStore?.observeCommits({
-      threadDeleted: () =>
-        options.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_SESSIONS_CHANGED),
+      threadDeleting: (threadId) => {
+        const audience = new Set(
+          [...this.sessionDeletionReaders].filter((scope) =>
+            this.canUserReadSession(threadId, scope),
+          ),
+        );
+        const canRead = (scope: SessionReadScope) => audience.has(scope);
+        return () =>
+          options.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_SESSIONS_CHANGED, {
+            threadId,
+            canRead,
+          });
+      },
+      inboxChanged: (conversationId) =>
+        options.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_INBOX_CHANGED, {
+          conversationId,
+        }),
     });
     this.resolveProjectSessionDirectory =
       options.resolveProjectSessionDirectory;

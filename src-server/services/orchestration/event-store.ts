@@ -1980,6 +1980,9 @@ export interface EventStoreCommitObserver {
     globalSequence: number;
     deferred: boolean;
   }): void;
+  /** Capture private read audience before deletion; callback runs only after commit. */
+  threadDeleting?(threadId: string): (() => void) | undefined;
+  inboxChanged?(conversationId: string): void;
   /** `deleteThread` removed every durable fact of `threadId`. */
   threadDeleted?(threadId: string): void;
   /**
@@ -12644,7 +12647,13 @@ export class EventStore {
   }
 
   threadInboxStore(): ThreadInboxStore {
-    this.threadInbox ??= createSqliteThreadInboxStore(this.db);
+    this.threadInbox ??= createSqliteThreadInboxStore(
+      this.db,
+      (conversationId) =>
+        this.notifyCommitObservers((observer) =>
+          observer.inboxChanged?.(conversationId),
+        ),
+    );
     return this.threadInbox;
   }
 
@@ -13358,6 +13367,15 @@ export class EventStore {
 
   /** Remove a deliberately ephemeral diagnostic session and all of its receipts. */
   deleteThread(threadId: string): void {
+    const exists =
+      this.readSessionByThread(threadId) !== undefined ||
+      (this.countEventsByThreads([threadId]).get(threadId) ?? 0) > 0;
+    const committed: (() => void)[] = [];
+    if (exists)
+      this.notifyCommitObservers((observer) => {
+        const notify = observer.threadDeleting?.(threadId);
+        if (notify) committed.push(notify);
+      });
     // Captured before the deletes, resolved after the commit: deleting a file
     // is not transactional, so unlinking before COMMIT would destroy bytes a
     // rollback then restores reachability to. Dying between the two leaves
@@ -13494,7 +13512,14 @@ export class EventStore {
       this.db.exec('ROLLBACK');
       throw error;
     }
-    if (this.commitObservers.size > 0)
+    for (const notify of committed) {
+      try {
+        notify();
+      } catch {
+        /* Observation cannot fail a committed delete. */
+      }
+    }
+    if (exists && this.commitObservers.size > 0)
       this.notifyCommitObservers((observer) =>
         observer.threadDeleted?.(threadId),
       );

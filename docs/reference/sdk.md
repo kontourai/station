@@ -146,7 +146,10 @@ authority have no effect. All status fields are compared.
 per API base and authority. SSE invalidates it promptly, while a 60-second
 safety poll remains active even after the stream catches up. Peer delegation
 reconciliation is still started by the list GET without blocking its response;
-a quiet peer change can take a second polling tick to appear. Passing `null`
+a quiet peer change can take two ticks (about 120 seconds, plus request and
+reconciliation time) to appear while foreground polling runs. The first GET
+starts reconciliation and may return the old snapshot; the next reads its result.
+Passing `null`
 for `requestScope` refuses ambient host authority and uses an unavailable cache
 partition. `useBoardRecentWorkQuery(undefined)` uses this refusal: it shows no
 host rows, and manual `refetch()` returns `StationRequestAuthorityError`.
@@ -4846,10 +4849,11 @@ framing ends and the application's authority checks begin.
 `useBoardRecentWorkQuery(requestScope?)` share the session-list cache when bound
 to the same API base and authority key. Station supplies that binding through
 `OrchestrationSessionsContext`. A caught-up orchestration stream invalidates the
-list on projection updates and turn boundaries, so its observers do not poll.
-Failed list reads keep a 60-second recovery interval even while the stream
-is healthy. Without a live stream, observers use a 60-second fallback (standalone SDK
-callers may supply `refetchInterval`). Different authority keys use separate
+list on projection updates and turn boundaries. A 60-second safety poll remains
+active even with a healthy stream; GET-triggered peer reconciliation is not
+awaited, so a quiet peer change can take two ticks (about 120 seconds, plus
+request and reconciliation time) to appear. Standalone SDK callers may supply
+`refetchInterval`. Different authority keys use separate
 cache entries, and request scopes still guard dispatch and response reads.
 
 The window and resume capability helpers share one anonymous public-handshake

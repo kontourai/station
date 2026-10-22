@@ -24,6 +24,7 @@ import { useBoardRecentWorkQuery } from '../../../packages/sdk/src/query-domains
 const providerScope = vi.hoisted(() => ({
   apiBase: 'https://provider-lifecycle.example.test',
   authorityKey: 'provider-person',
+  requiresEnrolledCredential: false,
   isCurrent: () => true,
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
@@ -83,6 +84,7 @@ import { SessionDetail } from '../components/session-detail/SessionDetail';
 import { ensureOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
 import { SessionReadModelProvider } from '../hooks/orchestration/SessionReadModelProvider';
 import { useSessionEventStream } from '../hooks/orchestration/useSessionEventStream';
+import { useConversationInbox } from '../hooks/useConversationInbox';
 
 const clients: QueryClient[] = [];
 afterEach(() => {
@@ -666,4 +668,93 @@ test('a Board without scope cannot observe or refetch the host cache', async () 
     { threadId: 'private-host-row', answerability: { answerable: true } },
   ]);
   expect(fetcher).toHaveBeenCalledOnce();
+});
+
+test('an open empty inbox makes only two safety reads per minute and stream changes refresh only its exact authority and conversation', async () => {
+  vi.useFakeTimers();
+  const apiBase = providerScope.apiBase;
+  const scope = providerScope;
+  setClientCredentialResolver(() => ({
+    origin: apiBase,
+    requestAuthority: scope,
+  }));
+  let entries: {
+    conversationId: string;
+    clientTurnId: string;
+    kind: string;
+    state: string;
+    message: string;
+    createdAt: string;
+    updatedAt: string;
+  }[] = [];
+  const fetcher = vi.fn(async (_url: RequestInfo | URL) =>
+    Response.json({ success: true, data: { entries } }),
+  );
+  vi.stubGlobal('fetch', fetcher);
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  clients.push(client);
+  const otherConversation = [
+    'conversation-inbox',
+    apiBase,
+    scope.authorityKey,
+    'other',
+  ];
+  const otherAuthority = [
+    'conversation-inbox',
+    apiBase,
+    'someone-else',
+    'conversation',
+  ];
+  client.setQueryData(otherConversation, []);
+  client.setQueryData(otherAuthority, []);
+  const view = renderHook(() => useConversationInbox('conversation'), {
+    wrapper: ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>
+        <SessionReadModelProvider>{children}</SessionReadModelProvider>
+      </QueryClientProvider>
+    ),
+  });
+  ensureOrchestrationEventStream(apiBase);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1);
+  });
+  expect(view.result.current.entries).toEqual([]);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(fetcher.mock.calls[0]?.[0]).toBe(
+    `${apiBase}/api/orchestration/conversations/conversation/inbox`,
+  );
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(60_000);
+  });
+  expect(fetcher).toHaveBeenCalledTimes(3);
+  entries = [
+    {
+      conversationId: 'conversation',
+      clientTurnId: 'queued',
+      kind: 'follow-up',
+      state: 'queued',
+      message: 'held',
+      createdAt: '2026-10-22T00:00:00Z',
+      updatedAt: '2026-10-22T00:00:00Z',
+    },
+  ];
+  const stream = streams.get(`${apiBase}/api/orchestration/events`)!;
+  await act(async () => {
+    stream.options.onMessage({
+      event: 'orchestration:inbox-changed',
+      data: JSON.stringify({ conversationId: 'conversation' }),
+    });
+    await vi.advanceTimersByTimeAsync(1);
+  });
+  expect(fetcher).toHaveBeenCalledTimes(4);
+  expect(view.result.current.entries?.[0]?.state).toBe('queued');
+  expect(client.getQueryState(otherConversation)?.isInvalidated).toBe(false);
+  expect(client.getQueryState(otherAuthority)?.isInvalidated).toBe(false);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(2_000);
+  });
+  expect(fetcher).toHaveBeenCalledTimes(5);
+  view.unmount();
 });
