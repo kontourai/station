@@ -1,0 +1,7 @@
+{
+  "revision": "26828a394d70e80eb74f2100bbb9097a4d461b92",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Re-reviewed the changed plan paragraphs against current independent return/retention/attention reports and live ca15aa85c11 receipts: mixed Flash/Codex group configured models, exact member turns and outputs, 3.234s overlap, Flow join, read-only journal follow, actual browser aggregate/reload and 390px width. The failed Claude run recorded a weekly limit and was canceled, not replayed. These receipts do not prove second-device/native behavior, elicitation, billing, portable lineage or full acceptance. Closed-cache recency and omission assertions are tightened; retention limits and uncertainty semantics remain unchanged.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}
