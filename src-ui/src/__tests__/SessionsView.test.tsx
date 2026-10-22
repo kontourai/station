@@ -149,6 +149,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   // per-invocation envelope through them.
   const real = await importOriginal<typeof import('@kontourai/station-sdk')>();
   return {
+    OrchestrationSessionsContext: real.OrchestrationSessionsContext,
     isApiRequestScope: real.isApiRequestScope,
     projectIdentityReadFailure: real.projectIdentityReadFailure,
     // The chat's per-message rating, inert here.
