@@ -94,7 +94,12 @@ export function createRepositoryAcquisitionRoutes(
   });
   app.post('/repository-acquisitions/:id/cancel', async (c) => {
     try {
-      const data = await service.cancel(param(c, 'id'));
+      const current = () => mayDiscover(c.req.raw) && !c.req.raw.signal.aborted;
+      const data = await service.cancel(param(c, 'id'), () => {
+        if (!current())
+          throw new Error('Repository cancellation authority ended.');
+      });
+      if (!current()) return denied(c);
       return data
         ? c.json({ success: true, data })
         : c.json(
@@ -102,6 +107,7 @@ export function createRepositoryAcquisitionRoutes(
             404,
           );
     } catch (error) {
+      if (!mayDiscover(c.req.raw) || c.req.raw.signal.aborted) return denied(c);
       return failure(c, error);
     }
   });

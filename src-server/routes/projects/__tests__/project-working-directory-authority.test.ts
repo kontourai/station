@@ -381,6 +381,20 @@ test('repository acquisition uses operator Git authority and returns one durable
   );
   expect(inspected.status).toBe(200);
   expect(inspected.body.data).toEqual(acquired.body.data);
+  const refusedCancel = await f.send(
+    f.pair('delegation'),
+    'POST',
+    `/repository-acquisitions/${request.requestId}/cancel`,
+    {},
+  );
+  expect(refusedCancel.status).toBe(403);
+  const completedCancel = await f.send(
+    f.operator.credential,
+    'POST',
+    `/repository-acquisitions/${request.requestId}/cancel`,
+    {},
+  );
+  expect(completedCancel.status).toBe(409);
   const refusedRead = await f.send(
     f.pair('delegation'),
     'GET',
@@ -648,4 +662,40 @@ test('the canonical layout apply route joins a retained starter rather than crea
       })
     ).status,
   ).toBe(409);
+});
+
+test('operator cancellation crosses real secured ingress, persists and cannot be implicitly retried', async () => {
+  const f = await fixture();
+  const request = { requestId: randomUUID(), sourceUrl: f.folderA };
+  const failed = await f.send(
+    f.operator.credential,
+    'POST',
+    '/repository-acquisitions',
+    request,
+  );
+  expect(failed.status).toBe(200);
+  expect(failed.body.data.phase).toBe('failed');
+  const path = `/repository-acquisitions/${request.requestId}`;
+  const cancelled = await f.send(
+    f.operator.credential,
+    'POST',
+    `${path}/cancel`,
+    {},
+  );
+  expect(cancelled.status).toBe(200);
+  expect(cancelled.body.data.phase).toBe('cancelled');
+  expect(
+    (await f.send(f.operator.credential, 'GET', path, {})).body.data.phase,
+  ).toBe('cancelled');
+  expect(
+    (await f.send(f.operator.credential, 'POST', `${path}/retry`, {})).body.data
+      .phase,
+  ).toBe('cancelled');
+  const denied = await f.send(
+    f.pair('delegation'),
+    'POST',
+    `${path}/cancel`,
+    {},
+  );
+  expect(denied.status).toBe(403);
 });

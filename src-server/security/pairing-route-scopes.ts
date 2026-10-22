@@ -3726,6 +3726,10 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/projects/repository-providers/:provider' },
     { method: 'GET', path: '/api/projects/repository-acquisitions/:id' },
     { method: 'POST', path: '/api/projects/repository-acquisitions/:id/retry' },
+    {
+      method: 'POST',
+      path: '/api/projects/repository-acquisitions/:id/cancel',
+    },
     { method: 'GET', path: '/api/projects/icon-candidates' },
     { method: 'GET', path: '/api/projects/layouts/available' },
     { method: 'GET', path: '/api/proposed-changes' },

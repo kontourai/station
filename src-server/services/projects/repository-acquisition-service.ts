@@ -170,7 +170,10 @@ export class RepositoryAcquisitionService {
     );
   }
 
-  async cancel(id: string): Promise<RepositoryAcquisition | null> {
+  async cancel(
+    id: string,
+    assertCurrent: () => void = () => {},
+  ): Promise<RepositoryAcquisition | null> {
     z.string().uuid().parse(id);
     if (!this.get(id)) return null;
     const release = await acquireFileMutationLockAsync(
@@ -183,6 +186,7 @@ export class RepositoryAcquisitionService {
         throw new RepositoryAcquisitionConflict(
           'A verified checkout is already available. Choose another source to set it aside; existing files are preserved.',
         );
+      assertCurrent();
       if (current.phase !== 'cancelled')
         this.cancellation(id).write({ cancelledAt: new Date().toISOString() });
       return this.get(id);

@@ -10,6 +10,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { afterEach, expect, test, vi } from 'vitest';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import * as gitExec from '../../../utils/git-exec.js';
@@ -340,6 +341,7 @@ test('durable cancellation wins against an in-flight clone and cannot be retried
     expect(existsSync(join(cancelled!.checkoutPath, '.git'))).toBe(true);
   } finally {
     releaseClone();
+    await pending;
   }
   expect((await pending).phase).toBe('cancelled');
   expect((await f.service.acquire(request, true)).phase).toBe('cancelled');
@@ -363,4 +365,31 @@ test('cancelling a completed checkout refuses without revoking its verified rece
     'first revision',
   );
   expect(await f.service.cancel(randomUUID())).toBeNull();
+});
+
+test('cancellation rechecks authority after waiting for publication and leaves the receipt untouched on revocation', async () => {
+  const f = fixture();
+  const request = {
+    requestId: randomUUID(),
+    sourceUrl: f.source,
+    sourceRef: 'missing',
+  };
+  const failed = await f.service.acquire(request);
+  expect(failed.phase).toBe('failed');
+  const release = await acquireFileMutationLockAsync(
+    join(
+      f.home,
+      'repository-acquisitions',
+      request.requestId,
+      'publication.mutation',
+    ),
+  );
+  let allowed = true;
+  const cancellation = f.service.cancel(request.requestId, () => {
+    if (!allowed) throw new Error('Authority ended');
+  });
+  allowed = false;
+  await release();
+  await expect(cancellation).rejects.toThrow('Authority ended');
+  expect(f.service.get(request.requestId)).toEqual(failed);
 });
