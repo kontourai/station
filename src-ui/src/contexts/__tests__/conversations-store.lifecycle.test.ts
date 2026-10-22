@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, renderHook } from '@testing-library/react';
+import { renderHook } from '@testing-library/react';
 import { createElement, type ReactNode } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 import type { MessageData } from '../conversation-types';
@@ -389,6 +389,8 @@ test('bounds inactive transcripts by recency while retaining open chats and moun
       ),
     ).toHaveLength(21);
   } finally {
+    reader.unmount();
+    queryClient.clear();
     for (const id of ids)
       conversationsStore.forgetConversation('assistant', id);
   }

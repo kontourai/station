@@ -758,6 +758,23 @@ test('profiles derived-session consumer commits during token delivery', () => {
   expect(
     activeChatsStore.getSnapshot()[SESSION_A].streamingMessage?.content,
   ).toBe('word '.repeat(100));
+  const planStarted = performance.now();
+  for (let index = 0; index < 200; index++) {
+    act(() =>
+      handleTextDeltaEvent({
+        eventId: 'profile-line',
+        provider: 'station-agent',
+        method: 'content.text-delta',
+        threadId: SESSION_A,
+        delta: `Result ${index}: ordinary prose without a plan step.\n`,
+        createdAt: '2026-10-22T00:00:00.000Z',
+      }),
+    );
+  }
+  process.stdout.write(
+    `PLAN_MOUNT_PROFILE ${JSON.stringify({ updates: commits - initial, cpuMs: performance.now() - planStarted })}\n`,
+  );
+  expect(commits - initial).toBe(0);
   act(() =>
     activeChatsStore.updateChat(SESSION_A, {
       title: 'Updated after streaming',

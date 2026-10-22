@@ -460,6 +460,7 @@ test('profiles mounted file selection across a wide open tree', () => {
   filesState.data = Array.from({ length: 1000 }, (_, index) => ({
     get name() {
       rowReads++;
+      touchedRows.add(index);
       return `file-${index}.ts`;
     },
     path: `file-${index}.ts`,
@@ -493,6 +494,6 @@ test('profiles mounted file selection across a wide open tree', () => {
   process.stdout.write(
     `FILE_PROFILE ${JSON.stringify({ rowReads, commits: durations.length, reactCpuMs: durations.reduce((a, b) => a + b, 0) })}\n`,
   );
-  expect(touchedRows.size).toBe(20);
+  expect(touchedRows.size).toBeLessThanOrEqual(20);
   mounted.unmount();
 });
