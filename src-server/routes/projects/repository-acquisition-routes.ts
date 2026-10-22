@@ -76,7 +76,14 @@ function denied(c: Context) {
 
 function failure(c: Context, error: unknown) {
   if (error instanceof RepositoryAcquisitionConflict) {
-    return c.json({ success: false, error: error.message }, 409);
+    return c.json(
+      {
+        success: false,
+        error:
+          'This operation already names a different repository or ref. Inspect it before starting a new operation.',
+      },
+      409,
+    );
   }
   if (
     error instanceof z.ZodError ||

@@ -25,7 +25,7 @@ without adding a model API key:
    that working copy and retains its source and exact commit. Acquisition currently
    requires the Station operator and uses that host's Git credentials.
    Station recommends **Coding** for a Git repository. Choose **Create** to open
-   the Project. See [repository setup and recovery](../guides/connections.md#start-a-project-from-a-repository).
+   the Project. See [repository setup and recovery](https://github.com/kontourai/station/blob/main/docs/guides/connections.md#start-a-project-from-a-repository).
 5. To talk to the built-in **Station** assistant using the same Codex account,
    open **Settings → General → Built-in agent engine → Change…**, choose
    **Codex**, choose **Use this engine**, then **Save**. Select **Station** in

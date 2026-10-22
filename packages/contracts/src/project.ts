@@ -55,6 +55,14 @@ export interface ProjectConfig {
   updatedAt: string;
 }
 
+/** Observed result of one durable host-local Project creation intent. */
+export interface ProjectCreationRequest {
+  requestId: string;
+  projectId: string;
+  phase: 'created' | 'uncertain' | 'unavailable';
+  project?: ProjectConfig;
+}
+
 export interface ProjectMetadata {
   id: string;
   slug: string;

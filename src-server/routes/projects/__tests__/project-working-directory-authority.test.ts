@@ -545,3 +545,47 @@ test('Project creation revalidates the acquisition and persists server-owned pro
   expect(() => f.stored('remote-changed')).toThrow();
   expect(() => f.stored('commit-changed')).toThrow();
 });
+
+test('durable creation requests recover exactly one Project through real authenticated routes', async () => {
+  const f = await fixture();
+  const requestId = randomUUID();
+  const draft = {
+    name: 'Durable',
+    slug: 'durable',
+    workingDirectory: f.folderA,
+    creationRequestId: requestId,
+  };
+  const first = await f.send(f.operator.credential, 'POST', '', draft);
+  expect(first.status).toBe(201);
+  expect(first.body.data).not.toHaveProperty('creationRequestId');
+  const repeated = await f.send(f.operator.credential, 'POST', '', draft);
+  expect(repeated.status).toBe(201);
+  expect(repeated.body.data.id).toBe(first.body.data.id);
+  const inspected = await f.send(
+    f.operator.credential,
+    'GET',
+    `/creation-requests/${requestId}`,
+    {},
+  );
+  expect(inspected.status).toBe(200);
+  expect(inspected.body.data.phase).toBe('created');
+  expect(inspected.body.data.project.id).toBe(first.body.data.id);
+  const changed = await f.send(f.operator.credential, 'POST', '', {
+    ...draft,
+    name: 'Different intent',
+  });
+  expect(changed.status).toBe(409);
+  const device = f.pair('standard', [PAIRING_SCOPE_CODING_EXEC]);
+  expect(
+    (
+      await f.send(device, 'POST', '', {
+        ...draft,
+        slug: 'device-project',
+        creationRequestId: randomUUID(),
+      })
+    ).status,
+  ).toBe(403);
+  expect(
+    (await f.send(device, 'GET', `/creation-requests/${requestId}`, {})).status,
+  ).toBe(403);
+});

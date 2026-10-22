@@ -70,6 +70,32 @@ See [account preference contracts](contracts.md#account-preferences) and
 - Readiness, health, catalog discovery, and a completed model turn are distinct
   observations. Response fields and receipts state which one was observed.
 
+## Durable Project creation
+
+`POST /api/projects` optionally accepts a UUID `creationRequestId` alongside an
+explicit `slug` and the ordinary Project fields. This first recovery path
+requires the Station operator. Requests without that field retain their existing
+caller permissions and behavior. The normalized creation input is limited to
+32 KiB when retaining an intent.
+
+Station persists the exact intent and a reserved Project ID before creating the
+Project. Concurrent duplicate requests join the same outcome; changed inputs
+under the same UUID return 409. A lost response can be inspected with
+`GET /api/projects/creation-requests/:id` (operator only, 404 when absent).
+The result includes `requestId`, `projectId`, `phase` and, when observed,
+`project`. The observation is `created`, `uncertain` (no committed result can be
+proven), or `unavailable` (a previously confirmed Project is absent). A matching
+reserved Project identity can be recovered even if publication completed before
+the final receipt write. A replacement at the same slug is never that result.
+
+The first POST returns the ordinary Project response on success. Repeating the
+same request returns that Project while it still exists; held or unavailable
+outcomes return 409 with the operation in `data`. Station does not replay an
+uncertain effect or resurrect a deleted Project. Receipts are corruption-checked;
+unreadable storage fails rather than becoming an empty intent. These endpoints
+currently cover Project creation, not durable starter-layout application or
+browser draft recovery across reloads.
+
 ## Repository acquisition
 
 `POST /api/projects/repository-acquisitions` accepts

@@ -48,6 +48,7 @@ import {
   WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR_ID,
 } from '@kontourai/station-contracts/workspace-coding-panels';
 import { type Context, Hono } from 'hono';
+import { z } from 'zod/v3';
 import {
   FileStorageAlreadyExistsError,
   FileStorageConflictError,
@@ -77,6 +78,10 @@ import {
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
 import type { CheckoutRemoteReader } from '../../services/projects/checkout-remote-reader.js';
 import { findGitEntryOnPath } from '../../services/projects/checkout-remote-reader.js';
+import {
+  ProjectCreationConflict,
+  ProjectCreationService,
+} from '../../services/projects/project-creation-service.js';
 import { discoverProjectIconCandidates } from '../../services/projects/project-icon-discovery.js';
 import { ProjectIdentityService } from '../../services/projects/project-identity-service.js';
 import {
@@ -513,6 +518,10 @@ export function createProjectRoutes(
 ) {
   const app = new Hono();
   const acquisitions = new RepositoryAcquisitionService(projectHomeDir);
+  const creationRequests = new ProjectCreationService(
+    projectHomeDir,
+    storageAdapter,
+  );
   app.route('/', createRepositoryAcquisitionRoutes(projectHomeDir));
   const resolution = deps.resolution;
   const listProjectCatalogue = createProjectCatalogueReader(
@@ -893,6 +902,37 @@ export function createProjectRoutes(
     }
   });
 
+  app.get('/creation-requests/:id', async (c) => {
+    if (!isOperatorInPersonNotAgent(c.req.raw))
+      return c.json(
+        {
+          success: false,
+          error: 'Project creation recovery requires the Station operator.',
+        },
+        403,
+      );
+    const id = c.req.param('id');
+    if (!z.string().uuid().safeParse(id).success)
+      return c.json(
+        { success: false, error: 'Invalid creation request ID.' },
+        400,
+      );
+    try {
+      const data = creationRequests.get(id);
+      return data
+        ? c.json({ success: true, data })
+        : c.json(
+            { success: false, error: 'Creation request was not found.' },
+            404,
+          );
+    } catch {
+      return c.json(
+        { success: false, error: 'Project creation could not be inspected.' },
+        503,
+      );
+    }
+  });
+
   // Create project
   app.post('/', validate(projectCreateSchema), async (c) => {
     const body = normalizeProjectBody(getBody(c));
@@ -907,14 +947,14 @@ export function createProjectRoutes(
         );
       }
       if (
-        body.repositoryAcquisitionId &&
+        (body.repositoryAcquisitionId || body.creationRequestId) &&
         !isOperatorInPersonNotAgent(c.req.raw)
       ) {
         return c.json(
           {
             success: false,
             error:
-              'Using an acquired repository requires its Station operator.',
+              'Repository acquisition or creation recovery requires its Station operator.',
           },
           403,
         );
@@ -956,22 +996,65 @@ export function createProjectRoutes(
         undefined,
       );
       if (folderRefusal) return folderRefusal;
-      const { repositoryAcquisitionId, ...input } = body;
-      const acquired = repositoryAcquisitionId
-        ? await acquisitions.projectSource(
-            repositoryAcquisitionId,
-            input.workingDirectory,
-          )
-        : {};
-      const project = await projectService.createProject({
-        ...input,
-        ...acquired,
-      });
+      const { creationRequestId, ...request } = body;
+      const publish = async (reservedId?: string, admitted = request) => {
+        const { repositoryAcquisitionId, ...input } = admitted;
+        const acquired = repositoryAcquisitionId
+          ? await acquisitions.projectSource(
+              repositoryAcquisitionId,
+              input.workingDirectory,
+            )
+          : {};
+        const config = { ...input, ...acquired };
+        return reservedId
+          ? projectService.createProject(config, reservedId)
+          : projectService.createProject(config);
+      };
+      let project: ProjectConfig;
+      if (creationRequestId) {
+        if (typeof request.slug !== 'string' || !request.slug.trim())
+          return c.json(
+            {
+              success: false,
+              error: 'Durable creation requires an explicit Project slug.',
+            },
+            400,
+          );
+        const outcome = await creationRequests.create(
+          creationRequestId,
+          request,
+          publish,
+        );
+        if (outcome.phase !== 'created' || !outcome.project) {
+          return c.json(
+            {
+              success: false,
+              error:
+                'Creation outcome is unresolved or the original Project is unavailable. Inspect the retained request before starting again.',
+              data: outcome,
+            },
+            409,
+          );
+        }
+        project = outcome.project;
+      } else {
+        project = await publish();
+      }
       projectOps.add(1, { op: 'create' });
       return c.json({ success: true, data: project }, 201);
     } catch (error: unknown) {
-      if (error instanceof RepositoryAcquisitionConflict) {
-        return c.json({ success: false, error: error.message }, 409);
+      if (
+        error instanceof RepositoryAcquisitionConflict ||
+        error instanceof ProjectCreationConflict
+      ) {
+        return c.json(
+          {
+            success: false,
+            error:
+              'Project creation conflicts with the retained operation or its checkout could not be verified. Inspect the operation before retrying. Existing files were preserved.',
+          },
+          409,
+        );
       }
       // 4-HOME-007: a name collision and a lost CAS race are both 409s from
       // the storage layer, and reporting both as "Project storage changed
@@ -1091,7 +1174,8 @@ export function createProjectRoutes(
       const body = normalizeProjectBody(getBody(c));
       if (
         Object.hasOwn(body, 'repositorySource') ||
-        Object.hasOwn(body, 'repositoryAcquisitionId')
+        Object.hasOwn(body, 'repositoryAcquisitionId') ||
+        Object.hasOwn(body, 'creationRequestId')
       ) {
         return c.json(
           {

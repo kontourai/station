@@ -757,6 +757,8 @@ export function useCreateProjectMutation(requestScope?: ApiRequestScope) {
       workingDirectory?: string;
       /** Retained acquisition reverified by Station before Project creation. */
       repositoryAcquisitionId?: string;
+      /** Operator-only durable creation identity; reuse after uncertain responses. */
+      creationRequestId?: string;
       /** Per-Project override of the Station's workspace isolation. */
       defaultWorkspaceIsolation?: 'shared' | 'worktree';
     }) => {
