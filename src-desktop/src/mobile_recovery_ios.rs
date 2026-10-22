@@ -76,8 +76,8 @@ pub(crate) fn foreground(app: &AppHandle) {
         .map(|(label, state)| (label.clone(), state.foreground(Instant::now())))
         .collect();
     for (label, action) in actions {
-        if let Some(webview) = app.get_webview(&label) {
-            act(&webview, action);
+        if let Some(webview) = app.get_webview_window(&label) {
+            act(webview.as_ref(), action);
         }
     }
 }
