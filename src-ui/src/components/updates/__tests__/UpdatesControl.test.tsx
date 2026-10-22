@@ -365,7 +365,7 @@ test.each(
   async ({ target, close }) => {
     const desktop = target === 'desktop';
     profile.isDesktop = desktop;
-    status.stagedUpdates = target !== 'direct-server';
+    status.stagedUpdates = target === 'direct-server' ? undefined : true;
     if (target === 'staged-server') {
       serverState.progress = {
         state: 'staged',
