@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { spawnSyncBounded } from '../../../../scripts/lib/bounded-capture.mjs';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 
@@ -18,7 +18,13 @@ const rejectCommands = `data:text/javascript,${encodeURIComponent(`
 function run(entry: string, args: string[], hook = rejectCommands) {
   return spawnSyncBounded(
     process.execPath,
-    ['--import', 'tsx/esm', '--import', hook, entry, ...args],
+    [
+      ...(entry.endsWith('.ts') ? ['--import', 'tsx/esm'] : []),
+      '--import',
+      hook,
+      entry,
+      ...args,
+    ],
     {
       windowsHide: true,
       encoding: 'utf8',
@@ -84,3 +90,67 @@ describe.each(['packages/cli/src/bin.ts', 'scripts/station-cli.ts'])(
     });
   },
 );
+
+// Use the published build owner, not a second esbuild configuration.
+describe('built CLI passive startup', () => {
+  const entry = 'packages/cli/dist/station.mjs';
+  beforeAll(() => {
+    const built = spawnSyncBounded(
+      process.execPath,
+      ['packages/cli/esbuild.config.mjs'],
+      {
+        windowsHide: true,
+        encoding: 'utf8',
+        timeout: 120_000,
+      },
+    );
+    expect(built.error).toBeUndefined();
+    expect(built.status, built.stderr).toBe(0);
+  }, 120_000);
+
+  it.each([
+    ['--version'],
+    ['--help'],
+    ['environment', 'access', '--help'],
+    ['help', 'stations'],
+  ])('answers %j as a Node bundle without tsx', (...args) => {
+    const result = run(entry, args);
+    expect(result.error).toBeUndefined();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain('station');
+  });
+  it('preserves unknown-help failure in the built CLI', () => {
+    const result = run(entry, ['help', 'unknown-command-sentinel']);
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      'Unknown command: unknown-command-sentinel',
+    );
+  });
+});
+
+describe('published entry error reporting', () => {
+  it.each(['versionText', 'usageText'])(
+    'reports a thrown %s error through reportCliError',
+    (name) => {
+      const hook = `data:text/javascript,${encodeURIComponent(`
+      import { registerHooks } from 'node:module';
+      registerHooks({ load(url, context, next) {
+        const result = next(url, context);
+        if (url.endsWith('/commands/version.ts') || url.endsWith('/help.ts')) {
+          return { ...result, source: String(result.source).replace(/(function ${name}\\([^)]*\\)[^{]*\\{)/, '$1 throw new Error("PASSIVE_FAILURE_SENTINEL");') };
+        }
+        return result;
+      } });
+    `)}`;
+      const result = run(
+        'packages/cli/src/bin.ts',
+        [name === 'versionText' ? '--version' : '--help'],
+        hook,
+      );
+      expect(result.error).toBeUndefined();
+      expect(result.status).toBe(1);
+      expect(result.stderr.trim()).toBe('Error: PASSIVE_FAILURE_SENTINEL');
+    },
+  );
+});

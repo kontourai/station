@@ -188,12 +188,13 @@ function ownedTemporaryPath(
   );
 }
 
-function bridgeChild(operation: string, input: unknown) {
+function bridgeChild(operation: string, input: unknown, hook?: string) {
   return spawnSync(
     process.execPath,
     [
       '--import',
       'tsx/esm',
+      ...(hook ? ['--import', hook] : []),
       'src-server/tools/instance-registry-bridge.ts',
       operation,
     ],
@@ -265,6 +266,28 @@ describe('instance registry bridge legacy manifest transaction (archive#4457)', 
       error: { code: 'REGISTRY_UNTRUSTED' },
     });
     expect(existsSync(ambiguous.manifest)).toBe(true);
+  });
+
+  test('combined preparation distinguishes unavailable supervisor identity from a bad home schema', () => {
+    const home = join(root(), 'fresh');
+    const hook = `data:text/javascript,${encodeURIComponent(`
+      import { registerHooks } from 'node:module';
+      registerHooks({ load(url, context, next) {
+        const result = next(url, context);
+        if (url.endsWith('/process-identity.mjs')) {
+          return { ...result, source: String(result.source).replace(/(function lookupProcessBirthFingerprint\\([^)]*\\)[^{]*\\{)/, '$1 if (pid === process.ppid) return undefined;') };
+        }
+        return result;
+      } });
+    `)}`;
+    const refused = bridgeChild('ensureHomeSchemaAndIdentity', { home }, hook);
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toBe('');
+    expect(JSON.parse(refused.stdout)).toEqual({
+      ok: false,
+      error: { code: 'SUPERVISOR_IDENTITY_UNAVAILABLE' },
+    });
+    expect(existsSync(join(home, '.station-home-schema.json'))).toBe(true);
   });
 
   test('desktop schema preparation returns its real parent birth in the same invocation', () => {

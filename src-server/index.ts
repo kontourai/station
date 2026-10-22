@@ -9,7 +9,6 @@ import './telemetry.js';
  */
 
 import { randomUUID } from 'node:crypto';
-import { enableCompileCache } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { LifecycleShutdownReason } from '@kontourai/station-shared/lifecycle-events';
@@ -180,7 +179,6 @@ async function main() {
   // an otherwise fresh home and makes that home look like incompatible
   // marker-less application data.
   ensureStationHomeSchemaSync(projectHomeDir);
-  enableCompileCache(join(projectHomeDir, 'cache', 'node-compile'));
 
   // Root logger + durable NDJSON sink, wired as early as possible — before
   // the runtime (and every module-scope logger it transitively imports)

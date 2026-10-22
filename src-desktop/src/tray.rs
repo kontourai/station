@@ -1042,6 +1042,11 @@ fn tray_context(app: &AppHandle) -> TrayContext {
             crate::prove_bundled_startup_identity(&state.supervisor.context.launch, &ticket).is_ok()
         })
     });
+    if matches!(owner, DesktopOwnerSnapshot::Service { .. })
+        && endpoint_health != Some(ServiceHealth::Running)
+    {
+        crate::invalidate_home_ownership(app);
+    }
     let snapshot = tray_backend_snapshot(&status, &owner, trusted_manifest, endpoint_health);
     TrayContext {
         snapshot,
@@ -1841,6 +1846,7 @@ fn run_service_action(app: &AppHandle, action: ServiceAction, service: ResolvedL
         // Actions immediately refresh, then use three short convergence polls
         // before returning to the normal state-specific cadence.
         for attempt in 0..4 {
+            crate::invalidate_home_ownership(&app);
             let _ = update_once(&app);
             if attempt < 3 {
                 thread::sleep(Duration::from_secs(2));

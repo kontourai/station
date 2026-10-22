@@ -16,24 +16,27 @@
 
 import { runPassiveCli } from './passive-cli.js';
 
-if (!runPassiveCli(process.argv.slice(2))) {
-  const [{ reportCliError, runCli }, { promptYN }] = await Promise.all([
-    import('./cli.js'),
-    import('./commands/platform.js'),
-  ]);
-  await runCli(process.argv.slice(2), {
-    configureProfileCredentialStore: async () => {
-      const [{ setProfileCredentialStore }, { createProfileKeyringStore }] =
-        await Promise.all([
-          import('./commands/profile-credentials.js'),
-          import('./commands/profile-keyring.js'),
-        ]);
-      setProfileCredentialStore(createProfileKeyringStore());
-    },
-    confirm: promptYN,
-    isInteractive: Boolean(process.stdin.isTTY),
-  }).catch((error: unknown) => {
-    reportCliError(error);
-    process.exit(1);
-  });
+try {
+  if (!runPassiveCli(process.argv.slice(2))) {
+    const [{ runCli }, { promptYN }] = await Promise.all([
+      import('./cli.js'),
+      import('./commands/platform.js'),
+    ]);
+    await runCli(process.argv.slice(2), {
+      configureProfileCredentialStore: async () => {
+        const [{ setProfileCredentialStore }, { createProfileKeyringStore }] =
+          await Promise.all([
+            import('./commands/profile-credentials.js'),
+            import('./commands/profile-keyring.js'),
+          ]);
+        setProfileCredentialStore(createProfileKeyringStore());
+      },
+      confirm: promptYN,
+      isInteractive: Boolean(process.stdin.isTTY),
+    });
+  }
+} catch (error: unknown) {
+  const { reportCliError } = await import('./cli.js');
+  reportCliError(error);
+  process.exit(1);
 }

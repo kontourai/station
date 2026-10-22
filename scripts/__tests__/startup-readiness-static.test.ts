@@ -143,6 +143,60 @@ function deadlineRestartRoutes(readiness: string) {
 }
 
 describe('desktop startup readiness static boundary', () => {
+  // These are native composition guards. They do not establish a visible
+  // tray/window result; the packaged-shell checklist remains mandatory.
+  it('bypasses the early native cover for tray-only launches', () => {
+    const lib = read('src-desktop/src/lib.rs');
+    const setup = rustBlock(lib, '.setup(move |app|');
+    const coverGate = rustBlock(setup, 'if !cfg!(debug_assertions)');
+    expect(coverGate).toContain('!desktop_companion::background(app.handle())');
+    expect(coverGate).toContain('with_native_startup_cover(');
+  });
+
+  it('invalidates ownership before each service convergence read and after a failed attached probe', () => {
+    const tray = read('src-desktop/src/tray.rs');
+    const action = rustBlock(tray, 'fn run_service_action(');
+    expect(shape(rustBlock(action, 'for attempt in 0..4'))).toContain(
+      shape(`
+      crate::invalidate_home_ownership(&app);
+      let _ = update_once(&app);
+    `),
+    );
+    const context = rustBlock(tray, 'fn tray_context(');
+    const failedProbe = rustBlock(
+      context,
+      'if matches!(owner, DesktopOwnerSnapshot::Service { .. })',
+    );
+    expect(failedProbe).toContain(
+      'endpoint_health != Some(ServiceHealth::Running)',
+    );
+    expect(failedProbe).toContain('crate::invalidate_home_ownership(app);');
+  });
+
+  it('refreshes login PATH on restart while running, backing off, or waiting after failure', () => {
+    const lib = read('src-desktop/src/lib.rs');
+    const running = rustBlock(lib, 'fn run_sidecar_supervisor(');
+    const effects = rustBlock(lib, 'fn drive_supervisor_effects(');
+    const restart = shape(`Ok(SupervisorMessage::Restart) => {
+      #[cfg(unix)]
+      login_shell::invalidate_path();`);
+    expect(shape(running).split(restart)).toHaveLength(2);
+    expect(shape(effects).split(restart)).toHaveLength(3);
+  });
+
+  it('keeps supervisor identity refusal distinct in native preparation', () => {
+    const lib = read('src-desktop/src/lib.rs');
+    expect(rustBlock(lib, 'fn registry_bridge_error(')).toContain(
+      'Some("SUPERVISOR_IDENTITY_UNAVAILABLE") => RegistryBridgeFailure::SupervisorIdentity',
+    );
+    const setup = rustBlock(lib, '.setup(move |app|');
+    expect(setup).toContain('RegistryBridgeFailure::SupervisorIdentity =>');
+    expect(setup).toContain('supervisor_identity_failed = true;');
+    expect(setup).toContain(
+      'if supervisor_identity_failed { "Station could not establish supervisor identity" }',
+    );
+  });
+
   it('keeps release main windows hidden in every desktop channel config', () => {
     for (const path of [
       'src-desktop/tauri.conf.json',

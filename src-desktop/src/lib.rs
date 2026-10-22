@@ -9123,6 +9123,7 @@ struct PrepareRuntimeBridgeResponse {
 enum RegistryBridgeFailure {
     Untrusted,
     HomeSchema,
+    SupervisorIdentity,
     Protocol,
     Invocation,
 }
@@ -9200,6 +9201,7 @@ fn registry_bridge_error(response: &RegistryBridgeReadResponse) -> RegistryBridg
     match response.error.as_ref().map(|error| error.code.as_str()) {
         Some("REGISTRY_UNTRUSTED") => RegistryBridgeFailure::Untrusted,
         Some("HOME_SCHEMA_INCOMPATIBLE") => RegistryBridgeFailure::HomeSchema,
+        Some("SUPERVISOR_IDENTITY_UNAVAILABLE") => RegistryBridgeFailure::SupervisorIdentity,
         _ => RegistryBridgeFailure::Protocol,
     }
 }
@@ -9402,7 +9404,7 @@ fn ensure_home_schema_and_supervisor_birth(
         .and_then(serde_json::Value::as_str)
         .filter(|value| !value.is_empty())
         .map(str::to_owned)
-        .ok_or(RegistryBridgeFailure::Protocol)
+        .ok_or(RegistryBridgeFailure::SupervisorIdentity)
 }
 
 /// The packaged Node bridge owns the cross-platform process-birth authority.
@@ -9636,7 +9638,10 @@ fn build_sidecar_command(
         .current_dir(&context.resource_dir)
         .env("STATION_HOME", &context.station_home)
         // Node must enable this before it parses the bundled entry point.
-        .env("NODE_COMPILE_CACHE", context.station_home.join("cache").join("node-compile"))
+        .env(
+            "NODE_COMPILE_CACHE",
+            context.station_home.join("cache").join("node-compile"),
+        )
         .env("STATION_HOST", "127.0.0.1")
         .env("STATION_STDOUT_HANDSHAKE", "1")
         // Only the handshake line is read from stdout; every other line is
@@ -11759,7 +11764,7 @@ where
     // location but normalize its spelling before crossing the Node bridge.
     let station_home = dunce::simplified(&station_home).to_path_buf();
     ensure_schema(&station_home)
-        .map_err(|error| format!("Desktop could not establish its Station home schema: {error}"))?;
+        .map_err(|error| format!("Desktop startup preparation failed: {error}"))?;
     Ok(station_home)
 }
 
@@ -12475,9 +12480,18 @@ fn adoptable_refreshed_owner(derived: DesktopOwner) -> DesktopOwner {
     }
 }
 
-/// Re-derive the home owner when the cached decision may have gone stale, so
-/// the UI can learn that a durable service appeared, was replaced, or went
-/// away — without touching the launch path.
+/// Explicit service actions and failed endpoint probes bypass the idle cache.
+#[cfg(not(mobile))]
+pub(crate) fn invalidate_home_ownership<R: tauri::Runtime>(app: &AppHandle<R>) {
+    if let Some(state) = app.try_state::<DesktopServerState>() {
+        *state
+            .ownership_checked_at
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = None;
+    }
+}
+
+/// Re-derive status without claiming a free home or changing the launch path.
 #[cfg(not(mobile))]
 fn refresh_home_ownership_if_stale(state: &DesktopServerState) {
     let now = Instant::now();
@@ -12668,10 +12682,9 @@ fn spawn_sidecar_child(context: &SidecarRuntimeContext) -> Result<(Child, String
     // developer's own STATION_ROOT.
     let mut launch = context.launch.clone();
     launch.shell_path = resolve_login_shell_path();
-    let mut child =
-        build_sidecar_command(&launch, &boot_id, std::env::var_os("STATION_ROOT"))
-            .spawn()
-            .map_err(|error| format!("launch Station sidecar: {error}"))?;
+    let mut child = build_sidecar_command(&launch, &boot_id, std::env::var_os("STATION_ROOT"))
+        .spawn()
+        .map_err(|error| format!("launch Station sidecar: {error}"))?;
     // Record the child before waiting for Listening: after desktop death its
     // watchdog may still be shutting down, so the child must retain the fence.
     if !registry_claim_allows_running(publish_sidecar_registry_bridge(
@@ -12918,8 +12931,11 @@ fn run_sidecar_supervisor(
             continue;
         }
         loop {
-            let running = supervisor.status.lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner()).phase
+            let running = supervisor
+                .status
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .phase
                 == bundled_server_state::ServerPhase::Running;
             let interval = if running {
                 Duration::from_secs(2)
@@ -13768,7 +13784,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                 #[cfg(target_os = "macos")]
                 {
                     if let Some(window) = app.get_webview_window("main") {
-                        if !cfg!(debug_assertions) {
+                        if !cfg!(debug_assertions) && !desktop_companion::background(app.handle()) {
                             if let Err(error) = with_native_startup_cover(&window, app.handle(), Some(startup_readiness::StartupCoverContent::Waiting)) {
                                 log::warn!("early startup cover unavailable: {error}");
                             }
@@ -13794,6 +13810,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                     station_home.display()
                 );
                 let mut supervisor_birth = None;
+                let mut supervisor_identity_failed = false;
                 let prepared_home = prepare_desktop_station_storage(
                     station_home.clone(),
                     &station_root,
@@ -13801,6 +13818,10 @@ If a stable instance is running, this launch will focus its window and exit.",
                         ensure_home_schema_and_supervisor_birth(&resource_dir, home)
                             .map(|birth| { supervisor_birth = Some(birth); })
                             .map_err(|error| match error {
+                                RegistryBridgeFailure::SupervisorIdentity => {
+                                    supervisor_identity_failed = true;
+                                    "The local process helper could not establish this desktop process's birth identity. Check the desktop logs and relaunch Station.".to_string()
+                                },
                                 RegistryBridgeFailure::HomeSchema => "This folder contains data without a compatible Station schema. Keep it intact and select a new empty folder or restore a compatible Station home.".to_string(),
                                 RegistryBridgeFailure::Invocation => "The local Node helper could not run. Check that Node 24 is installed and available to the app.".to_string(),
                                 _ => "The local storage helper did not return a valid result. Check the desktop logs before changing this folder.".to_string(),
@@ -13813,8 +13834,8 @@ If a stable instance is running, this launch will focus its window and exit.",
                     Err(error) => {
                         exit_desktop_home_preparation_failure(
                             app,
-                            "Station could not validate its home folder",
-                            "Station could not validate its data folder. Review the detail below, correct the folder problem without deleting data, then launch Station again.",
+                            if supervisor_identity_failed { "Station could not establish supervisor identity" } else { "Station could not validate its home folder" },
+                            if supervisor_identity_failed { "Station could not verify its desktop process identity. Review the desktop logs, then relaunch Station." } else { "Station could not validate its data folder. Review the detail below, correct the folder problem without deleting data, then launch Station again." },
                             &error,
                         );
                         return Ok(());
@@ -17519,6 +17540,36 @@ mod tests {
     }
 
     #[cfg(all(not(mobile), unix))]
+    #[test]
+    fn explicit_ownership_invalidation_bypasses_the_idle_interval() {
+        let (state, _, _home) = teardown_fixture(DesktopOwner::Unowned);
+        // No fixture process is needed after constructing its managed state.
+        let _ = state.supervisor.tx.send(SupervisorMessage::Shutdown);
+        if let Some(worker) = state.supervisor.thread.lock().unwrap().take() {
+            worker.join().unwrap();
+        }
+        let app = tauri::test::mock_app();
+        app.manage(state);
+        let state = app.state::<DesktopServerState>();
+        assert!(!should_rederive_home_ownership(
+            &DesktopOwner::Unowned,
+            *state.ownership_checked_at.lock().unwrap(),
+            Instant::now()
+        ));
+        invalidate_home_ownership(app.handle());
+        assert!(should_rederive_home_ownership(
+            &DesktopOwner::Unowned,
+            *state.ownership_checked_at.lock().unwrap(),
+            Instant::now()
+        ));
+        assert!(!should_rederive_home_ownership(
+            &DesktopOwner::Sidecar,
+            *state.ownership_checked_at.lock().unwrap(),
+            Instant::now()
+        ));
+    }
+
+    #[cfg(all(not(mobile), unix))]
     fn process_exists(pid: u32) -> bool {
         Command::new("/bin/kill")
             .args(["-0", &pid.to_string()])
@@ -17644,11 +17695,14 @@ mod tests {
             now.checked_sub(OWNERSHIP_REFRESH_INTERVAL / 2),
             now,
         ));
-        assert!(!should_rederive_home_ownership(
-            &DesktopOwner::Unowned,
-            now.checked_sub(Duration::from_secs(10)),
-            now,
-        ), "an unchanged home must not spawn a helper on every tray poll");
+        assert!(
+            !should_rederive_home_ownership(
+                &DesktopOwner::Unowned,
+                now.checked_sub(Duration::from_secs(10)),
+                now,
+            ),
+            "an unchanged home must not spawn a helper on every tray poll"
+        );
         // Never re-derived before: the bridge spawns a Node child, so the very
         // first read is allowed to pay for it rather than reporting boot state.
         assert!(should_rederive_home_ownership(
@@ -17868,9 +17922,17 @@ mod tests {
             vec![command_station_script_path(&context.resource_dir).as_os_str()]
         );
         let env = command_env(&command);
-        assert!(env.contains(&("NODE_COMPILE_CACHE".into(), Some(
-            context.station_home.join("cache").join("node-compile").to_string_lossy().into_owned()
-        ))));
+        assert!(env.contains(&(
+            "NODE_COMPILE_CACHE".into(),
+            Some(
+                context
+                    .station_home
+                    .join("cache")
+                    .join("node-compile")
+                    .to_string_lossy()
+                    .into_owned()
+            )
+        )));
         for (name, value) in [
             ("STATION_ROOT", "/home/example/.station"),
             ("STATION_HOME", "/home/example/.station-nightly"),

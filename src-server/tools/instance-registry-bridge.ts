@@ -190,7 +190,15 @@ function redactedCode(
   | 'REGISTRY_UNTRUSTED'
   | 'INVALID_INPUT'
   | 'HOME_SCHEMA_INCOMPATIBLE'
+  | 'SUPERVISOR_IDENTITY_UNAVAILABLE'
   | 'OPERATION_FAILED' {
+  if (
+    error &&
+    typeof error === 'object' &&
+    'code' in error &&
+    error.code === 'SUPERVISOR_IDENTITY_UNAVAILABLE'
+  )
+    return 'SUPERVISOR_IDENTITY_UNAVAILABLE';
   if (
     error &&
     typeof error === 'object' &&
@@ -278,7 +286,10 @@ export async function runInstanceRegistryBridge(): Promise<void> {
     ensureStationHomeSchemaSync(stationHome!);
     if (operation === 'ensureHomeSchemaAndIdentity') {
       const birth = lookupProcessBirthFingerprint(process.ppid);
-      if (!birth) fail('supervisor identity unavailable');
+      if (!birth)
+        throw Object.assign(new Error('supervisor identity unavailable'), {
+          code: 'SUPERVISOR_IDENTITY_UNAVAILABLE',
+        });
       process.stdout.write(
         `${JSON.stringify({ ok: true, pid: process.ppid, birth })}\n`,
       );
@@ -318,7 +329,10 @@ export async function runInstanceRegistryBridge(): Promise<void> {
   }
   if (operation === 'supervisorIdentity') {
     const birth = lookupProcessBirthFingerprint(process.ppid);
-    if (!birth) fail('supervisor identity unavailable');
+    if (!birth)
+      throw Object.assign(new Error('supervisor identity unavailable'), {
+        code: 'SUPERVISOR_IDENTITY_UNAVAILABLE',
+      });
     process.stdout.write(
       `${JSON.stringify({ ok: true, pid: process.ppid, birth })}\n`,
     );
