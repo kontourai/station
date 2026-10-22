@@ -138,11 +138,15 @@ provenance verification and image promotion.
 
 ### Which verbs answer from which entry point
 
-Current command availability, with background in the [CLI product design](../design/cli-product.md):
+This checkout's command admission rules, with background in the
+[CLI product design](../design/cli-product.md). A released client's command set
+depends on its source revision; this table does not establish publication of
+the group or Ensemble additions.
 
 | Tier | Verbs | Bundled `station` | `./station` |
 |------|-------|-------------------|-------------|
-| Client | `chat`, `agents`, `sessions`, `approvals`, `operate`, `projects`, `tasks`, `skills`, every surface verb, `registry`, `stations`, `target`, `triage`, `setup existing`/`hosted`, `config`, `checkpoints`, `export`/`import`, `plugin`, `environment access request`, `environment access devices`/`scope`/`revoke`/`remove` (explicit administration grant) | yes | yes |
+| Client | `chat`, `agents`, `sessions`, `approvals`, `operate`, `delegate`, `group`, `projects`, `tasks`, `skills`, every surface verb, `registry`, `stations`, `target`, `triage`, `setup existing`/`hosted`, `config`, `checkpoints`, `export`/`import`, `plugin`, `environment access request`, `environment access devices`/`scope`/`revoke`/`remove` (explicit administration grant) | yes | yes |
+| Local file inspection | `ensemble inspect` | yes, preset file required | yes, preset file required |
 | Host-local | `open`, `doctor`, `environment show`, `environment credential show`, `environment offer`, `environment access list`/`approve`/`deny`, `environment operator passkeys`, `service status`/`start`/`stop` | yes, existing local installation required for local authority | yes |
 | Host mutation | `environment credential rotate`, `environment reset`, `environment peers`, service install/uninstall | repository launcher required | yes |
 | Contributor | `build`, `dev`, `fresh`, `home`, `link`, `shortcut`, `start`, `stop`, `upgrade` | fails, naming `./station <command>` | yes |
