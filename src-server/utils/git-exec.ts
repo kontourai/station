@@ -272,6 +272,18 @@ function runInProcessGroup(
   options: GroupRunOptions,
 ): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
+    // Already aborted: start nothing (review round 2, P3-5). The error has
+    // the shape a stopped process's does, so callers classify it the same.
+    if (options.signal?.aborted) {
+      const error: GroupRunError = new Error(
+        `Command aborted before it started: ${[file, ...args].join(' ')}`,
+      );
+      error.killed = true;
+      error.signal = 'SIGTERM';
+      error.cmd = [file, ...args].join(' ');
+      reject(error);
+      return;
+    }
     const child = trackGroup(
       spawn(file, [...args], {
         cwd: options.cwd,

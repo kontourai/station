@@ -24,9 +24,12 @@
  *   prove what the requester may see on GitHub.
  * - Bounded cost (review F8): a caller's `signal` stops the gh process, and
  *   an observed answer is kept in process for `cacheTtlMs` (30 s), keyed by
- *   the exact ref and `commentsSince`, so a Session calling
+ *   the ref's `workItemRefKey` and `commentsSince`, so a Session calling
  *   `get_task_brief` in a loop does not spend the host's GitHub quota. A
- *   failure is never kept: a person who signs gh in sees it at once.
+ *   failure is never kept: a person who signs gh in sees it at once. An
+ *   aborted signal starts no gh process. Concurrent reads of one key are not
+ *   shared: each runs its own gh calls, since one caller's abort must not
+ *   stop another's read.
  */
 import {
   formatGitHubWorkItemRef,
@@ -37,6 +40,7 @@ import {
   type WorkItemObservationResult,
   type WorkItemObservedComment,
   workItemRefFromGitHubIssueUrl,
+  workItemRefKey,
 } from '@kontourai/station-contracts/work-item-provider';
 import { execGitContextCommand } from '../../utils/git-exec.js';
 
@@ -133,11 +137,20 @@ export class GitHubWorkItemObserver implements WorkItemObserver {
     workItemRef: string,
     options: WorkItemObserveOptions = {},
   ): Promise<WorkItemObservationResult> {
-    const key = `${workItemRef}\u0000${options.commentsSince ?? ''}`;
+    // One item, one entry, however its ref is spelled (review round 2,
+    // P3-5); a kept answer names the ref this caller asked for.
+    const key = `${workItemRefKey(workItemRef)}\u0000${options.commentsSince ?? ''}`;
     const at = this.now().getTime();
     const kept = this.cache.get(key);
     if (kept && at - kept.at < this.cacheTtlMs && at >= kept.at)
-      return kept.result;
+      return kept.result.status === 'observed'
+        ? {
+            ...kept.result,
+            observation: { ...kept.result.observation, workItemRef },
+          }
+        : kept.result;
+    if (options.signal?.aborted)
+      return failure('unavailable', 'The read was stopped before it started.');
     this.cache.delete(key);
     const result = await this.read(workItemRef, options);
     if (result.status === 'observed' && this.cacheTtlMs > 0) {

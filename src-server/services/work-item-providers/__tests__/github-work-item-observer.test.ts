@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { WORK_ITEM_OBSERVATION_LIMITS } from '@kontourai/station-contracts/work-item-provider';
 import { beforeEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { execGitContextCommand } from '../../../utils/git-exec.js';
 import { GitHubWorkItemObserver } from '../github-work-item-observer.js';
 import * as fakeGh from './fixtures/fake-gh.js';
 import { comment, issue } from './fixtures/fake-gh.js';
@@ -198,6 +199,38 @@ describe.skipIf(process.platform === 'win32')('GitHubWorkItemObserver', () => {
     expect((await reader.observeWorkItem(REF)).status).toBe('not-found');
     expect((await reader.observeWorkItem(REF)).status).toBe('not-found');
     expect(calls()).toHaveLength(5);
+  });
+
+  test('an already-aborted read starts no gh process, in the observer or the process runner (review round 2, P3-5)', async () => {
+    answer(ISSUE, issue({ comments: 0 }));
+    const stop = new AbortController();
+    stop.abort();
+    expect(
+      (await observer().observeWorkItem(REF, { signal: stop.signal })).status,
+    ).toBe('unavailable');
+    await expect(
+      execGitContextCommand(gh, ['api', ISSUE], {
+        signal: stop.signal,
+        env: { FAKE_GH_DIR: dir },
+      }),
+    ).rejects.toMatchObject({ killed: true });
+    expect(calls()).toEqual([]);
+  });
+
+  test('one item is one cache entry however its ref is spelled, answered with the spelling asked for (review round 2, P3-5)', async () => {
+    answer(ISSUE, issue({ comments: 0 }));
+    const reader = observer();
+    expect(await reader.observeWorkItem(REF)).toMatchObject({
+      status: 'observed',
+      observation: { workItemRef: REF },
+    });
+    expect(
+      await reader.observeWorkItem('github:ACME/Widgets#42'),
+    ).toMatchObject({
+      status: 'observed',
+      observation: { workItemRef: 'github:ACME/Widgets#42' },
+    });
+    expect(calls()).toHaveLength(1);
   });
 
   test('an answer over the output bound is refused, not cut', async () => {
