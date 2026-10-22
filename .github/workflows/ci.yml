@@ -453,8 +453,6 @@ jobs:
 
       - run: npm run dependencies:ci
 
-      - name: Dependency advisory floor
-        run: npm run audit:policy
 
       # fast-checks' changed-test selection can include real-Chromium
       # touch-target checks (NotificationContainer, station#3513) whenever

@@ -286,6 +286,77 @@ edit cannot silently demote a required platform, not properties the cohort deriv
 run time. This is only an available configured subset, and fleet/CLI
 completion remains `NOT_VERIFIED`.
 
+## macOS installer disk image
+
+Preview, Stable, and Nightly disk images open as an installer window: fixed
+660×400 icon view, toolbar, sidebar, path bar and status bar hidden, 128-point
+icons, the application on the left at (170, 210), and an `Applications` link on
+the right at (490, 210) over background art with a drag arrow. The
+[packager](../../ops/release/macos-notarized-artifacts.mjs) creates the image
+with one `dmgbuild` command (phase `DMG creation`). That command copies the
+sealed application with `ditto`, adds the link and background, writes the
+window layout into `.DS_Store`, and compresses to UDZO. Finder is never
+scripted, because Finder automation is unreliable on hosted runners.
+[`dmgbuild-settings.py`](../../ops/release/dmg/dmgbuild-settings.py) owns the
+layout. The packager passes `--no-hidpi` so the shipped background stays the
+committed two-resolution TIFF byte for byte.
+
+A nonzero `dmgbuild` exit gets the same bounded creation retry `hdiutil` had
+(three attempts, 5 s and 15 s backoff). `dmgbuild` drives `hdiutil` internally,
+so runner contention still surfaces as that exit. Timeouts, output overflow,
+and failures from any other program are never retried. One ten-minute
+large-artifact budget covers the copy and the compression. The older
+`ditto`-then-`hdiutil` path gave each step its own ten minutes.
+
+After notarization and stapling, the packager mounts the image read-only and
+admits the root only if it contains exactly four entries. `.DS_Store` must be a
+regular file. `.background.tiff` must be a regular file with the same SHA-256
+as the committed `ops/release/dmg/background.tiff`. `Applications` must be a
+symbolic link whose target is exactly `/Applications`. The application must be
+a real directory. Any extra, missing or differently typed entry fails the
+release before the mounted signature, bundle identity and Gatekeeper checks
+run. `dmgbuild` ignores the exit status of its internal `ditto` copy, so those
+later mounted checks remain the guard against an incomplete application copy.
+This check proves the image's structure, not how Finder draws it: window
+geometry stays outside its scope. In a mounted image on macOS 26 with the system in
+Dark Mode, Finder still painted the application and Applications names
+near-black on this background, and Light Mode uses dark names too, so the art
+paints a light plate behind each name. Recheck a real Finder window after
+changing the art or icon geometry.
+
+To change the art, edit
+[`render-background.swift`](../../ops/release/dmg/render-background.swift)
+(its geometry must match the settings file), then regenerate and commit the
+TIFF:
+
+```sh
+out="$(mktemp -d)"
+swift ops/release/dmg/render-background.swift "$out"
+tiffutil -cathidpicheck "$out/background.png" "$out/background@2x.png" \
+  -out ops/release/dmg/background.tiff
+```
+
+The mounted check reads the committed TIFF's digest at run time, so a
+regenerated background needs no separate pin.
+
+### DMG layout tool supply chain
+
+`dmgbuild` is the repository's only pip-installed tool. It is used only by the
+macOS jobs in `release.yml` and `nightly-native-stage.yml`, and is never
+shipped or imported by Station. Station has no Python dependency policy or
+Dependabot ecosystem for it. The boundary is instead fixed in
+[`requirements.txt`](../../ops/release/dmg/requirements.txt): `dmgbuild` and
+its two runtime dependencies, `ds-store` and `mac-alias`, at exact versions
+with each wheel's SHA-256. A secret-free step before signing creates a venv in
+`$RUNNER_TEMP` with the runner's `python3`, refuses Python older than 3.10, and
+runs `pip install --require-hashes --only-binary :all: --no-deps`. pip
+therefore installs only those three reviewed wheels, never builds an sdist
+and never resolves another package. A hash mismatch fails the job. `dmgbuild`
+itself then runs inside the signing step, with that step's environment and
+unlocked keychain, so the pinned wheel digests are the integrity control.
+Upgrading means reviewing the new wheels and replacing the versions and hashes
+together. Nothing re-pins automatically.
+
 ## Prebuilt portable server qualification
 
 [`portable-server-archives.yml`](../../.github/workflows/portable-server-archives.yml)
