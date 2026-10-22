@@ -82,8 +82,8 @@ jobs:
       APPLE_DEVELOPMENT_TEAM: ${{ secrets.APPLE_DEVELOPMENT_TEAM }}
       APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_IOS_SIGNING_IDENTITY }}
       APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
-      # The Live Activity widget extension's App Store profile (#2513). Only
-      # the Beta and Nightly environments hold one; Stable builds no extension.
+      # Stable extension profiles are used only after owner enablement in
+      # native-release; Beta and Nightly retain their existing configuration.
       APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64 }}
       APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64 }}
       TESTFLIGHT_INTERNAL_GROUP_ID: ${{ vars.TESTFLIGHT_INTERNAL_GROUP_ID }}
@@ -162,17 +162,19 @@ jobs:
       - run: brew install xcodegen libimobiledevice cocoapods
       - name: Resolve whether this channel builds the Live Activity
         id: live_activity
+        env:
+          STATION_IOS_STABLE_PUSH_ENABLED: ${{ vars.STATION_IOS_STABLE_PUSH_ENABLED }}
         run: |
           set -euo pipefail
           # The channel table is the one place a channel names its Live
-          # Activity widget extension (#2513): Beta and Nightly embed one,
-          # Stable does not. Both halves follow this answer: the plugin's
+          # Activity widget extension (#2513). Stable also requires its
+          # environment's owner switch. Both halves follow this answer: the plugin's
           # STATION_IOS_LIVE_ACTIVITY and the extension target in the spec.
           # A TestFlight build always talks to production APNs.
-          extension_bundle_id=$(node --input-type=module -e 'import { iosTestFlightChannel } from "./scripts/ios-testflight-channel.mjs"; process.stdout.write(iosTestFlightChannel(process.argv[1]).agentActivityBundleId ?? "");' '${{ inputs.channel }}')
+          extension_bundle_id=$(node --input-type=module -e 'import { iosTestFlightPushExtensions } from "./scripts/ios-testflight-channel.mjs"; process.stdout.write(iosTestFlightPushExtensions(process.argv[1], process.env.STATION_IOS_STABLE_PUSH_ENABLED).agentActivityBundleId ?? "");' '${{ inputs.channel }}')
           if [ -n "$extension_bundle_id" ]; then enabled=true; else enabled=false; fi
           { echo "enabled=$enabled"; echo "extension_bundle_id=$extension_bundle_id"; echo "aps_environment=production"; } >> "$GITHUB_OUTPUT"
-          notification_bundle_id=$(node --input-type=module -e 'import { iosTestFlightChannel } from "./scripts/ios-testflight-channel.mjs"; process.stdout.write(iosTestFlightChannel(process.argv[1]).notificationServiceBundleId ?? "");' '${{ inputs.channel }}')
+          notification_bundle_id=$(node --input-type=module -e 'import { iosTestFlightPushExtensions } from "./scripts/ios-testflight-channel.mjs"; process.stdout.write(iosTestFlightPushExtensions(process.argv[1], process.env.STATION_IOS_STABLE_PUSH_ENABLED).notificationServiceBundleId ?? "");' '${{ inputs.channel }}')
           if [ -n "$notification_bundle_id" ]; then notification_enabled=true; else notification_enabled=false; fi
           test "$notification_enabled" = "$enabled"
           { echo "notification_enabled=$notification_enabled"; echo "notification_bundle_id=$notification_bundle_id"; } >> "$GITHUB_OUTPUT"
