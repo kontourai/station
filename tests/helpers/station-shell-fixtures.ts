@@ -19,6 +19,8 @@ const READS: Readonly<Record<string, unknown>> = {
   '/api/projects': { success: true, data: [] },
   '/api/projects/run-locations': { success: true, data: {} },
   '/api/orchestration/sessions/read-model': { success: true, data: [] },
+  // These shell fixtures create no Session work claims.
+  '/api/orchestration/work-claims': { success: true, data: { claims: [] } },
   '/api/attention': { success: true, data: { items: [], pendingCount: 0 } },
   '/api/connections/models': { success: true, data: [] },
   '/api/models/capabilities': { success: true, data: [] },
