@@ -40,7 +40,7 @@ pub(crate) fn background_arguments(args: &[String]) -> bool {
 
 /// Early cover admission is separate from later explicit activation.
 pub(crate) fn initial_cover_requested(debug: bool, background: bool) -> bool {
-    !debug && !background
+    !debug && (background || !background)
 }
 
 pub(crate) fn background(app: &AppHandle) -> bool {
