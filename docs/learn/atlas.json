@@ -43,6 +43,7 @@
         "SessionQueryModule",
         "ConversationSessionLineage",
         "SessionCommandModule",
+        "CliSessionGroups",
         "SkillExperienceRuntime",
         "SessionLifecycleModule",
         "SessionTurnBoundaryAuthority",
