@@ -252,6 +252,101 @@ describe('approval inbox notifications', () => {
     ]);
   });
 
+  test('#3390: a harness question offers no decision the orchestration route would refuse', async () => {
+    // The ACP adapter's shape for an engine's `cursor/ask_question`: a form,
+    // named so no session grant is derived for it.
+    await emit('orchestration:event', {
+      event: {
+        createdAt: new Date().toISOString(),
+        eventId: 'evt-question',
+        method: 'request.opened',
+        payload: {
+          toolCallId: 'call_123',
+          toolName: 'cursor/ask_question',
+          inputRequest: {
+            schema: 'station.input-request/v1',
+            source: 'harness:cursor',
+            requester: 'Lab Engine',
+            message: 'Need input',
+            body: {
+              kind: 'form',
+              fields: [
+                {
+                  name: 'q1',
+                  kind: 'choice',
+                  title: 'Which mode should I use?',
+                  required: true,
+                  options: [
+                    { value: '0', label: 'Agent' },
+                    { value: '1', label: 'Plan' },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        provider: 'acp',
+        requestId: 'req-question',
+        requestType: 'approval',
+        threadId: 'thread-question',
+        title: 'Need input',
+      },
+    });
+
+    const notifications = await notificationService.list();
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0].actions ?? []).toEqual([]);
+    // Named for who asked, never "acp wants approval to use cursor/…".
+    expect(notifications[0].body).toBe('Lab Engine asked a question.');
+  });
+
+  test('a plan review is worded as a plan review, for the engine that sent it', async () => {
+    await emit('orchestration:event', {
+      event: {
+        createdAt: new Date().toISOString(),
+        eventId: 'evt-plan-review',
+        method: 'request.opened',
+        payload: {
+          toolCallId: 'call_124',
+          toolName: 'cursor/create_plan',
+          inputRequest: {
+            schema: 'station.input-request/v1',
+            source: 'harness:cursor',
+            requester: 'Lab Engine',
+            message: 'Refactor tabs layout',
+            body: {
+              kind: 'form',
+              fields: [
+                {
+                  name: 'review',
+                  kind: 'choice',
+                  title: "Approve Lab Engine's plan?",
+                  required: true,
+                  options: [
+                    { value: 'approve', label: 'Approve' },
+                    { value: 'reject', label: 'Reject' },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        provider: 'acp',
+        requestId: 'req-plan-review',
+        requestType: 'approval',
+        threadId: 'thread-plan-review',
+        title: 'Lab Engine wants you to review a plan: Refactor tabs layout',
+      },
+    });
+
+    const [notification] = await notificationService.list();
+    expect(notification.title).toBe(
+      'Lab Engine wants you to review a plan: Refactor tabs layout',
+    );
+    expect(notification.body).toBe('Lab Engine wants you to review a plan.');
+    expect(notification.actions ?? []).toEqual([]);
+  });
+
   test('#2915: a Claude file edit is persisted without the auto-accept action, which only the command route can honour', async () => {
     await emit('orchestration:event', {
       event: {

@@ -406,6 +406,7 @@ describe('catalog fill', () => {
       handshakeObservedAt: '2026-10-01T00:00:00.000Z',
       configOptions: [
         {
+          id: 'model',
           category: 'model',
           options: [
             { value: 'opencode/big-pickle', name: 'Big Pickle' },
@@ -575,7 +576,7 @@ process.stdin.on('data', (chunk) => {
     const request = JSON.parse(line);
     const reply = (result) => process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: request.id, result }) + '\\n');
     if (request.method === 'initialize') reply({ protocolVersion: 1, agentCapabilities: { promptCapabilities: { image: true } } });
-    else if (request.method === 'session/new') reply({ sessionId: 's1', configOptions: [{ category: 'model', options: [{ value: 'opencode/big-pickle', name: 'Big Pickle' }] }] });
+    else if (request.method === 'session/new') reply({ sessionId: 's1', configOptions: [{ id: 'model', category: 'model', options: [{ value: 'opencode/big-pickle', name: 'Big Pickle' }] }] });
   }
 });
 `,

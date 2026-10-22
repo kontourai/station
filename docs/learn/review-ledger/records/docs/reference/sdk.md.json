@@ -710,7 +710,11 @@
 
     "tests/helpers/related-pane-upgrade.ts",
 
-    "src-ui/src/contexts/conversation-open-policy.ts"
+    "src-ui/src/contexts/conversation-open-policy.ts",
+
+    "packages/sdk/src/task-user-input-references.ts",
+
+    "packages/sdk/src/__tests__/taskGraph-invalidation.test.tsx"
   ],
 
   "checks": [

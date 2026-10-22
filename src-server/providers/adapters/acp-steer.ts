@@ -1,3 +1,5 @@
+import { declaredAcpExtensionMethods } from '../../services/acp/acp-handshake-facts.js';
+import type { InitializeResult } from '../../services/acp/acp-process.js';
 import { errorMessage } from '../../utils/error-message.js';
 
 /**
@@ -10,32 +12,129 @@ import { errorMessage } from '../../utils/error-message.js';
  */
 export type AcpSteerChannel = 'session-steer' | 'interject' | 'cancel-reprompt';
 
-export const ACP_SESSION_STEER_METHOD = '_session/steer';
-export const ACP_INTERJECT_METHODS = [
-  '_x.ai/interject',
-  'x.ai/interject',
-] as const;
+const NATIVE_STEER_METHODS: ReadonlyArray<{
+  channel: Exclude<AcpSteerChannel, 'cancel-reprompt'>;
+  method: string;
+}> = [
+  { channel: 'session-steer', method: '_session/steer' },
+  { channel: 'interject', method: '_x.ai/interject' },
+];
 
-export function resolveAcpSteerChannel(input: {
-  command?: string;
-  args?: readonly string[];
-  agentName?: string;
-}): AcpSteerChannel {
-  const haystack = [input.command, ...(input.args ?? []), input.agentName]
-    .filter((part): part is string => Boolean(part))
-    .join(' ')
-    .toLowerCase();
-  if (
-    haystack.includes('grok') ||
-    haystack.includes('xai') ||
-    haystack.includes('x.ai')
-  ) {
-    return 'interject';
+/** One declared handshake fact, matched exactly. */
+type AcpHandshakeIdentity =
+  | { agentInfoName: string }
+  | { capabilityMetaNamespace: string }
+  | { initializeMetaFlag: string };
+
+/**
+ * Engines that answer a native steer method without declaring it (ADR 0013
+ * expects declaration; these do not). Keyed on what the live handshake says
+ * about itself, never on the launch command. Each entry names the run it was
+ * observed against: `initialize`, then the method with an unknown session id,
+ * answered `-32602`/`-32603` naming the session rather than `-32601`
+ * (2026-10-21).
+ */
+const ACP_UNDECLARED_STEER_ENGINES: ReadonlyArray<{
+  identity: AcpHandshakeIdentity;
+  channel: Exclude<AcpSteerChannel, 'cancel-reprompt'>;
+  methods: readonly string[];
+  observed: string;
+}> = [
+  {
+    identity: { agentInfoName: 'Kiro CLI Agent' },
+    channel: 'session-steer',
+    methods: ['_session/steer'],
+    observed: 'kiro-cli 2.33.0 `acp`',
+  },
+  {
+    // `--v3` sends no agentInfo; it declares its own methods under
+    // `_meta.kiro`, a list that omits `_session/steer`.
+    identity: { capabilityMetaNamespace: 'kiro' },
+    channel: 'session-steer',
+    methods: ['_session/steer'],
+    observed: 'kiro-cli 2.33.0 `--v3 acp`',
+  },
+  {
+    // Grok sends no agentInfo. `x.ai/interject`, tried second as before this
+    // table, answered -32601 on 1.0.50; a miss degrades to cancel + re-prompt.
+    identity: { initializeMetaFlag: 'grokShell' },
+    channel: 'interject',
+    methods: ['_x.ai/interject', 'x.ai/interject'],
+    observed: 'grok 1.0.50 `agent stdio`',
+  },
+];
+
+export interface AcpSteerSelection {
+  channel: AcpSteerChannel;
+  /** Extension methods to try in order; empty for cancel + re-prompt. */
+  methods: readonly string[];
+  basis: 'declared' | 'undeclared-engine' | 'none';
+}
+
+type SteerHandshake = Pick<
+  InitializeResult,
+  'agentInfo' | 'agentCapabilities' | '_meta'
+>;
+
+function hasRecordKey(value: unknown, key: string): boolean {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    Object.hasOwn(value as object, key)
+  );
+}
+
+function matchesIdentity(
+  handshake: SteerHandshake,
+  identity: AcpHandshakeIdentity,
+): boolean {
+  if ('agentInfoName' in identity) {
+    return handshake.agentInfo?.name === identity.agentInfoName;
   }
-  if (haystack.includes('kiro')) {
-    return 'session-steer';
+  if ('capabilityMetaNamespace' in identity) {
+    return hasRecordKey(
+      handshake.agentCapabilities?._meta,
+      identity.capabilityMetaNamespace,
+    );
   }
-  return 'cancel-reprompt';
+  return handshake._meta?.[identity.initializeMetaFlag] === true;
+}
+
+/**
+ * Select the steer channel from the live session's own `initialize` answer:
+ * a declared native method first, then an engine known to answer one
+ * undeclared, else cancel + re-prompt.
+ */
+export function resolveAcpSteerChannel(
+  handshake: SteerHandshake | null | undefined,
+): AcpSteerSelection {
+  if (!handshake) {
+    return { channel: 'cancel-reprompt', methods: [], basis: 'none' };
+  }
+  const declared = new Set(
+    declaredAcpExtensionMethods(handshake.agentCapabilities),
+  );
+  const native = NATIVE_STEER_METHODS.find(({ method }) =>
+    declared.has(method),
+  );
+  if (native) {
+    return {
+      channel: native.channel,
+      methods: [native.method],
+      basis: 'declared',
+    };
+  }
+  const engine = ACP_UNDECLARED_STEER_ENGINES.find(({ identity }) =>
+    matchesIdentity(handshake, identity),
+  );
+  if (engine) {
+    return {
+      channel: engine.channel,
+      methods: engine.methods,
+      basis: 'undeclared-engine',
+    };
+  }
+  return { channel: 'cancel-reprompt', methods: [], basis: 'none' };
 }
 
 export function isAcpMethodNotFound(error: unknown): boolean {
@@ -57,7 +156,17 @@ export function isAcpMethodNotFound(error: unknown): boolean {
   );
 }
 
-export function acpSessionSteerParams(
+export function acpSteerParams(
+  channel: Exclude<AcpSteerChannel, 'cancel-reprompt'>,
+  sessionId: string,
+  input: string,
+): Record<string, unknown> {
+  return channel === 'session-steer'
+    ? acpSessionSteerParams(sessionId, input)
+    : acpInterjectParams(sessionId, input);
+}
+
+function acpSessionSteerParams(
   sessionId: string,
   input: string,
 ): Record<string, unknown> {
@@ -67,7 +176,7 @@ export function acpSessionSteerParams(
   };
 }
 
-export function acpInterjectParams(
+function acpInterjectParams(
   sessionId: string,
   input: string,
 ): Record<string, unknown> {

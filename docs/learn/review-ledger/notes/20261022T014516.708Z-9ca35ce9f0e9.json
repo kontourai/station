@@ -1,0 +1,7 @@
+{
+  "revision": "827998ec2e570d8685162338ae21c1de3e63c18b",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Scoped review of the added testflight-required-mobile-endpoint mutation case. The existing mutation lifecycle, clean baseline requirement, owned process cleanup, exact restoration and false-failure distinctions remain unchanged. The new case executes the real reusable TestFlight credential-admission shell with independently supplied signing/channel/version prerequisites and no endpoint. Baseline passed; reinstating only the old guard produced the exact missing protected endpoint diagnostic on Stable, Beta and Nightly; byte-restored pass was confirmed by the canonical mutation runner. No prose change is needed for this registry addition; mocked API preflight and local pairing coverage do not establish a hosted Nightly, signed IPA or provider delivery.","inputs":["docs/architecture/module-map.md","scripts/run-test-mutations.mjs"]}
+  ]
+}
