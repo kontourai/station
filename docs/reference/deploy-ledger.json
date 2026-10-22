@@ -1,5 +1,35 @@
 [
   {
+    "timestampUtc": "2026-10-22T05:32:57Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2486.39727706028",
+    "sha": "a6e8f37663391132bae4e8e35772c2e9e8a53099",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39727706028",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2486.39727706028 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "8e86626efc3a276cedf43f0243152f4686756e0f",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#4016](https://github.com/kontourai/station/pull/4016) fix(mobile): remove personal backend defaults from builds",
+          "[#3992](https://github.com/kontourai/station/pull/3992) fix(sdk): connect plugin hooks to core application services"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
     "timestampUtc": "2026-10-22T00:24:08Z",
     "channel": "nightly-npm",
     "version": "0.11.0-nightly.2486.39698407325",
