@@ -409,8 +409,24 @@ export class CliSessionGroups<T> {
       });
       if (existing !== null) {
         const record = this.read(groupId, owner);
-        if (record.intentDigest !== intentDigest)
-          throw new CliSessionGroupUnavailable('group_conflict');
+        let sameIntent = record.intentDigest === intentDigest;
+        // Before retained rosters, preset identity had these four fields only.
+        if (
+          !sameIntent &&
+          record.preset &&
+          record.preset.members === undefined &&
+          input.preset?.members !== undefined
+        ) {
+          const legacyPreset = {
+            presetId: input.preset.presetId,
+            name: input.preset.name,
+            sha256: input.preset.sha256,
+            stationmaster: input.preset.stationmaster,
+          };
+          sameIntent =
+            record.intentDigest === digest({ ...input, preset: legacyPreset });
+        }
+        if (!sameIntent) throw new CliSessionGroupUnavailable('group_conflict');
         return await this.view(groupId, owner);
       }
       if (

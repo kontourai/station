@@ -166,11 +166,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
   setClientCredentialResolver(undefined);
 });
-function response() {
+function response(value: CliSessionGroupView = group) {
   return new Response(
     JSON.stringify({
       success: true,
-      data: { groups: [group], hasMore: false, nextGroupId: null },
+      data: { groups: [value], hasMore: false, nextGroupId: null },
     }),
   );
 }
@@ -228,6 +228,26 @@ test('explicit inspection uses real SDK inventory, shows actual dependencies and
   expect(new URLSearchParams(window.location.search).get('session')).toBe(
     'task:one',
   );
+});
+
+test('legacy preset records render seat IDs without inventing retained names', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      response({
+        ...group,
+        preset: { ...group.preset!, members: undefined },
+      }),
+    ),
+  );
+  mount();
+  fireEvent.click(screen.getByRole('button', { name: 'Show session groups' }));
+  await screen.findByRole('table');
+  expect(screen.getByRole('rowheader', { name: /^first$/ })).toBeDefined();
+  expect(screen.queryByText('Rune')).toBeNull();
+  expect(
+    screen.queryByText('Reviewer · Seat first · Color #123ABC'),
+  ).toBeNull();
 });
 
 test('lost authority withholds both a late response and its query cache entry', async () => {

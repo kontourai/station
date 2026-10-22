@@ -152,6 +152,13 @@ mutation failed the panel regression and byte-identical restoration passed.
 This is read-only presentation evidence, not native, second-device, a new live
 member run or full-run identity acceptance. The isolated runtime was stopped.
 
+The independent member-identity review found an upgrade replay gap: adding the
+derived roster changed the create digest for an existing operation. Replay now
+accepts the legacy preset projection only for a stored roster-less record with
+unchanged source and launch inputs. It returns the old record without inferred
+names; new records still bind their full identity. Focused owner checks cover
+changed-hash/brief refusal, case-duplicate corruption and the UI seat-ID fallback.
+
 ## Production adoption sequence
 
 The personal `/api/orchestration/session-groups` path now composes the shared

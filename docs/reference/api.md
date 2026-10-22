@@ -1714,7 +1714,11 @@ identity participates in operation replay, so changed bytes conflict even when
 they parse to the same roster. Older groups have no recorded preset identity;
 the server does not reconstruct it from prompt text. Records predating the
 retained member roster display seat IDs. Server reads refuse a retained roster
-whose unique seats do not match the group membership.
+whose unique seats do not match the group membership. A retry of a group
+created before roster retention can match its original four-field preset
+identity when all source and launch inputs are unchanged. It returns the legacy
+record without backfilling names. New records continue to bind the complete
+retained identity; changed source bytes or briefs still conflict.
 
 Group event pages carry changed public member records and the scheduler events
 reported by published Flow. They contain no briefs or model output. Use the group
