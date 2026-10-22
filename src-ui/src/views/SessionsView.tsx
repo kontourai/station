@@ -333,7 +333,7 @@ export function SessionsView({
   // second scheduler over the same cache entry, and it kept running through
   // every state React Query already pauses a `refetchInterval` for.
   const {
-    data: inventory = [],
+    data: inventory,
     isLoading,
     error: sessionsError,
     refetch,
@@ -347,7 +347,7 @@ export function SessionsView({
     sessionId &&
       !isLoading &&
       dismissedRoute !== routeKey &&
-      !inventory.some((session) => session.threadId === sessionId),
+      !inventory?.some((session) => session.threadId === sessionId),
   );
   const routedSession = useQuery({
     queryKey: ['activity', 'routed-session', apiBase, sessionId],
@@ -362,7 +362,8 @@ export function SessionsView({
       ? routedSummary
       : undefined;
   const sessions = useMemo(
-    () => (exactSession ? [...inventory, exactSession] : inventory),
+    () =>
+      exactSession ? [...(inventory ?? []), exactSession] : (inventory ?? []),
     [inventory, exactSession],
   );
   const agents = useAgents();

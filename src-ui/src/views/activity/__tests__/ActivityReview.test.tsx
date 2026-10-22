@@ -1,7 +1,11 @@
 /** @vitest-environment jsdom */
 
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import {
+  IsRestoringProvider,
+  QueryClient,
+  QueryClientProvider,
+} from '@tanstack/react-query';
 import {
   act,
   cleanup,
@@ -12,6 +16,7 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { ActivityRegionShell } from '../../../app-shell/ActivityRegionShell';
 import {
   AuthorityHarness,
   authoritySwitch,
@@ -41,22 +46,37 @@ import { SessionsView } from '../../SessionsView';
 const network = vi.hoisted(() => ({ read: vi.fn() }));
 let sessions: OrchestrationSessionSummary[] = [];
 let responseStatus = 200;
+let useActualSessionsQuery = false;
 
-vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
-  useAgentsQuery: () => ({ data: [], isLoading: false }),
-  useProjectsQuery: () => ({ data: [], isSuccess: true }),
-  useProjectIdentityQuery: () => ({ isSuccess: false, isError: false }),
-  useOrchestrationSessionsQuery: () => ({
-    data: sessions,
-    isLoading: false,
-    refetch: vi.fn(),
-  }),
-  usePullRequestContextQuery: () => ({ data: { available: false } }),
-  usePullRequestsQuery: () => ({ data: undefined }),
-  usePullRequestMergeabilityQuery: () => ({ data: undefined }),
-  authenticatedFetch: (url: string) => network.read(url),
-}));
+vi.mock('@kontourai/station-sdk', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@kontourai/station-sdk')>();
+  return {
+    ...actual,
+    useAgentsQuery: () => ({ data: [], isLoading: false }),
+    useProjectsQuery: () => ({ data: [], isSuccess: true }),
+    useProjectIdentityQuery: () => ({ isSuccess: false, isError: false }),
+    useOrchestrationSessionsQuery: (
+      config: Parameters<typeof actual.useOrchestrationSessionsQuery>[0],
+    ) => {
+      const query = actual.useOrchestrationSessionsQuery({
+        ...config,
+        enabled: useActualSessionsQuery && config?.enabled !== false,
+      });
+      return useActualSessionsQuery
+        ? query
+        : {
+            data: sessions,
+            isLoading: false,
+            refetch: vi.fn(),
+          };
+    },
+    usePullRequestContextQuery: () => ({ data: { available: false } }),
+    usePullRequestsQuery: () => ({ data: undefined }),
+    usePullRequestMergeabilityQuery: () => ({ data: undefined }),
+    authenticatedFetch: (url: string) => network.read(url),
+  };
+});
 vi.mock('@kontourai/station-sdk/action-operations', () => ({
   useActionOperationsQuery: () => ({ data: { items: [] } }),
   useCancelActionOperationMutation: () => ({ mutate: vi.fn() }),
@@ -111,7 +131,7 @@ function session(
   };
 }
 
-function App() {
+function App({ shell = false }: { shell?: boolean }) {
   return (
     <KeyboardShortcutsProvider>
       <NavigationProvider>
@@ -119,7 +139,11 @@ function App() {
           <RegionModelProvider>
             <PaneRelationsProvider>
               <ActivityReviewProvider>
-                <SessionsView apiBase="http://station.test" quickReview />
+                {shell ? (
+                  <ActivityRegionShell regionId="main" />
+                ) : (
+                  <SessionsView apiBase="http://station.test" quickReview />
+                )}
                 <RelatedRegion />
               </ActivityReviewProvider>
             </PaneRelationsProvider>
@@ -130,27 +154,29 @@ function App() {
   );
 }
 
-async function mount() {
+async function mount({ shell = false, restoring = false } = {}) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
-  const view = render(
+  const tree = () => (
     <QueryClientProvider client={client}>
-      <App />
-    </QueryClientProvider>,
+      <IsRestoringProvider value={restoring}>
+        <App shell={shell} />
+      </IsRestoringProvider>
+    </QueryClientProvider>
   );
+  const view = render(tree());
   await act(async () => {
     model.openSurfaceInRegion('activity', { region: 'main' });
   });
   return {
     ...view,
     client,
-    refresh: () =>
-      view.rerender(
-        <QueryClientProvider client={client}>
-          <App />
-        </QueryClientProvider>,
-      ),
+    refresh: () => view.rerender(tree()),
+    finishRestore: () => {
+      restoring = false;
+      view.rerender(tree());
+    },
   };
 }
 
@@ -198,6 +224,7 @@ beforeEach(() => {
     session('c', 'Review gamma', 'one', 4),
   ];
   responseStatus = 200;
+  useActualSessionsQuery = false;
   network.read.mockReset();
   network.read.mockImplementation(async (url: string) => {
     const id = decodeURIComponent(
@@ -215,6 +242,47 @@ beforeEach(() => {
     );
   });
 });
+
+test.each([false, true])(
+  'main Activity survives undefined inventory (restoring=%s), then renders the real query response',
+  async (restoring) => {
+    useActualSessionsQuery = true;
+    const { _setApiBase } = await import('@kontourai/station-sdk');
+    _setApiBase('http://station.test');
+    let release!: (response: Response) => void;
+    const pending = new Promise<Response>((resolve) => {
+      release = resolve;
+    });
+    const fetch = vi.fn(() => pending);
+    vi.stubGlobal('fetch', fetch);
+    try {
+      const view = await mount({ shell: true, restoring });
+      expect(
+        screen.queryByText('Unable to load this part of Station.'),
+      ).toBeNull();
+      if (restoring) {
+        expect(fetch).not.toHaveBeenCalled();
+        view.finishRestore();
+      }
+      await waitFor(() => expect(fetch).toHaveBeenCalled());
+      expect(
+        screen.queryByText('Unable to load this part of Station.'),
+      ).toBeNull();
+      await act(async () => {
+        release(
+          new Response(JSON.stringify({ success: true, data: sessions })),
+        );
+      });
+      await screen.findByRole('button', { name: 'Review alpha' });
+      expect(
+        screen.queryByText('Unable to load this part of Station.'),
+      ).toBeNull();
+    } finally {
+      release(new Response(JSON.stringify({ success: true, data: [] })));
+      _setApiBase('');
+    }
+  },
+);
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
