@@ -350,3 +350,39 @@ test('rejects an assigned agent on proposal acceptance without creating a Task',
   expect(service.listTasks()).toEqual([]);
   expect(service.readSessionRelations('shaping-session').links).toEqual([]);
 });
+
+test('a proposal brief the Task document cannot hold is refused before any Task exists (#4007)', async () => {
+  // Proposals allow 12,000 characters; a Task document holds about 5,400.
+  const goal = 'Show progress. '.repeat(400).trim();
+  const long = { ...proposal, goal };
+  const { read, accept, service, working } = await fixture();
+  read.mockResolvedValue({
+    status: 'found',
+    sessionId: 'shaping-session',
+    turnId: 'shaping-turn',
+    projectSlug: 'alpha',
+    message: {
+      id: 'answer',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'text',
+          text: `\`\`\`station-task-proposal\n${JSON.stringify(long)}\n\`\`\``,
+        },
+      ],
+    },
+  });
+  const longBrief = `## Goal\n\n${goal}\n\n## Done when\n\n- [ ] Steps have counts.\n\n## Suggested first step\n\nFind the installer.`;
+  expect(longBrief.length).toBeGreaterThan(5_479);
+  expect(longBrief.length).toBeLessThanOrEqual(12_000);
+  const response = await accept({
+    description: goal,
+    proposalBrief: longBrief,
+  });
+  expect(response.status).toBe(413);
+  expect((await response.json()).error).toBe(
+    'This brief is too long for a Task document, which holds about 5,400 characters of plain text. Shorten it and try again.',
+  );
+  expect(service.listTasks()).toEqual([]);
+  expect(working.settle).not.toHaveBeenCalled();
+});

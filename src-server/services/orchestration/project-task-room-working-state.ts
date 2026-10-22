@@ -119,7 +119,16 @@ export interface WorkingSettlement {
     | 'unavailable';
   readonly revision?: string;
   readonly text?: string;
-  readonly reason?: 'revision-publication-pending';
+  /**
+   * With `rejected`. `document-full`: this document's revision evidence would
+   * exceed its record bounds. `evidence-ledger-full`: the Station-wide
+   * revision evidence ledger has no room for it. Both are refused before
+   * anything is written, so they never leave a publication pending (#4007).
+   */
+  readonly reason?:
+    | 'revision-publication-pending'
+    | 'document-full'
+    | 'evidence-ledger-full';
 }
 
 export interface RevisionPublication {

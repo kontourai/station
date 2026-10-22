@@ -55,6 +55,10 @@ import {
 } from '@kontourai/station-contracts/work-item-provider';
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
+import {
+  TASK_ROOM_DOCUMENT_PLAIN_TEXT_CAPACITY,
+  taskRoomDocumentSeedFits,
+} from '../../domain/task-room-document-capacity.js';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
 import {
   AnswerNarrativeBindingModule,
@@ -812,6 +816,16 @@ export function createTaskRoutes(
             409,
           );
         }
+        // A brief the Task document can never hold is refused before the
+        // Task exists, instead of creating it and failing every retry (#4007).
+        if (!taskRoomDocumentSeedFits(input.proposalBrief))
+          return c.json(
+            {
+              success: false,
+              error: `This brief is too long for a Task document, which holds about ${TASK_ROOM_DOCUMENT_PLAIN_TEXT_CAPACITY.toLocaleString('en-US')} characters of plain text. Shorten it and try again.`,
+            },
+            413,
+          );
       }
       // Review F4: a `github:` ref is read with the Station host's tracker
       // login, so it is accepted only when it parses and the Project's

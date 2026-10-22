@@ -617,7 +617,7 @@ export function TaskRoomEditorPane({
       } else if (settled.kind === 'rejected') {
         if (!isCurrentOperation(generation)) return;
         setPossibleEffect(undefined);
-        setRejection(settled.reason ?? 'Station refused this exact edit.');
+        setRejection(roomEditRejectionMessage(settled.reason));
       }
     } catch {
       if (!isCurrentOperation(generation)) return;
@@ -648,7 +648,7 @@ export function TaskRoomEditorPane({
       } else if (settled.kind === 'rejected') {
         if (!isCurrentOperation(generation)) return;
         setPossibleEffect(undefined);
-        setRejection(settled.reason ?? 'Station refused this exact edit.');
+        setRejection(roomEditRejectionMessage(settled.reason));
       }
     } catch {
       /* Keep the identical receipt visible; its effect remains unknown. */
@@ -887,4 +887,16 @@ export function TaskRoomEditorPane({
       ) : null}
     </section>
   );
+}
+
+/**
+ * Plain words for the room's capacity refusals (#4007). Both are refused
+ * before anything is written, so the draft stays and nothing is pending.
+ */
+function roomEditRejectionMessage(reason: string | undefined): string {
+  if (reason === 'document-full')
+    return 'This Task document is full, so Station cannot add more text to it. Deleting text still works.';
+  if (reason === 'evidence-ledger-full')
+    return "Station's revision history is full, so it cannot save Task document edits right now.";
+  return reason ?? 'Station refused this exact edit.';
 }

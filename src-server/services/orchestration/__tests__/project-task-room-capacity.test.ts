@@ -225,3 +225,81 @@ describe('#4008 a mid-document edit never rewrites the rest of the document', ()
     expect(room.deletedSince(from)).toBe(0);
   });
 });
+
+describe('#4007 a Task document refuses what it cannot hold, explicitly and up front', () => {
+  test(`an empty room seeds ${SEED_CAPACITY} characters with linked evidence and refuses one more`, async () => {
+    const over = await setup();
+    expect(await over.edit('a'.repeat(SEED_CAPACITY + 1))).toEqual({
+      kind: 'rejected',
+      reason: 'document-full',
+    });
+    expect(await over.text()).toBe('');
+    const room = await setup();
+    expect(await room.edit('a'.repeat(SEED_CAPACITY))).toMatchObject({
+      kind: 'committed',
+      revisionEvidence: { kind: 'linked' },
+    });
+  }, 120_000);
+
+  test("a full room refuses more text, still accepts a person's deletion, and never waits on a pending publication", async () => {
+    const room = await setup();
+    const full = 'b'.repeat(SEED_CAPACITY);
+    expect(await room.edit(full)).toMatchObject({
+      kind: 'committed',
+      revisionEvidence: { kind: 'linked' },
+    });
+    // Nothing more fits, and the refusal is deterministic, not a wedge.
+    for (let attempt = 0; attempt < 2; attempt += 1)
+      expect(await room.edit(`${full}c`)).toEqual({
+        kind: 'rejected',
+        reason: 'document-full',
+      });
+    expect(await room.text()).toBe(full);
+    // A pure deletion adds no atoms and is admitted, with its evidence.
+    const trimmed = full.slice(0, 100) + full.slice(110);
+    expect(await room.edit(trimmed)).toMatchObject({
+      kind: 'committed',
+      revisionEvidence: { kind: 'linked' },
+    });
+    expect(await room.text()).toBe(trimmed);
+    expect(await room.edit(`${trimmed}c`)).toEqual({
+      kind: 'rejected',
+      reason: 'document-full',
+    });
+  }, 120_000);
+
+  test('when the Station-wide evidence ledger is full every write is refused as evidence-ledger-full, never left pending', async () => {
+    const room = await setup();
+    // About 370 KB per revision record: the 4 MiB ledger holds about eleven.
+    let current = 'd'.repeat(4_000);
+    let refused: unknown;
+    let committed = 0;
+    for (let index = 0; index < 20; index += 1) {
+      const result = await room.edit(current);
+      if (result.kind !== 'committed') {
+        refused = result;
+        break;
+      }
+      committed += 1;
+      expect(result).toMatchObject({ revisionEvidence: { kind: 'linked' } });
+      current = `${current}e`;
+    }
+    expect(committed).toBeGreaterThan(1);
+    expect(refused).toEqual({
+      kind: 'rejected',
+      reason: 'evidence-ledger-full',
+    });
+    const stored = await room.text();
+    expect(current).toBe(`${stored}e`);
+    // Still explicit on the next writes, a deletion included: nothing pends.
+    expect(await room.edit(current)).toEqual({
+      kind: 'rejected',
+      reason: 'evidence-ledger-full',
+    });
+    expect(await room.edit(stored.slice(1))).toEqual({
+      kind: 'rejected',
+      reason: 'evidence-ledger-full',
+    });
+    expect(await room.text()).toBe(stored);
+  }, 300_000);
+});
