@@ -30,6 +30,7 @@ import { providerFailure } from '../provider-failure.js';
 import {
   type ClaudeChildWorkContext,
   type ClaudeChildWorkState,
+  observeClaudeAgentReturn,
   observeClaudeSubagentReply,
   observeClaudeTaskNotification,
   observeClaudeTaskProgress,
@@ -1289,6 +1290,22 @@ export function mapClaudeSdkMessage({
           supersedes: entry.terminalPublished ? 'task-terminal' : 'unresolved',
         });
       }
+      if (
+        (toolName === 'Agent' || toolName === 'Task') &&
+        toolResult.is_error !== true &&
+        content.filter(
+          (candidate) =>
+            candidate &&
+            typeof candidate === 'object' &&
+            'type' in candidate &&
+            candidate.type === 'tool_result',
+        ).length === 1
+      )
+        observeClaudeAgentReturn(
+          childWorkContext,
+          toolCallId,
+          message.tool_use_result,
+        );
       const images = collectClaudeToolResultImages(toolResult.content);
       publish({
         eventId: crypto.randomUUID(),

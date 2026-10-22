@@ -289,6 +289,7 @@ export type ChildWorkResultHandle =
   | { kind: 'session'; threadId: string; conversationId?: string };
 
 export type ChildWorkSummarySource =
+  | 'tool-return'
   | 'provider-summary'
   | 'child-message'
   | 'provider-error';
@@ -521,7 +522,8 @@ function normalizeResult(
       ? { summaryTruncated: true as const }
       : {}),
     ...(summary !== undefined &&
-    (result.source === 'provider-summary' ||
+    (result.source === 'tool-return' ||
+      result.source === 'provider-summary' ||
       result.source === 'child-message' ||
       result.source === 'provider-error')
       ? { source: result.source }
@@ -530,12 +532,25 @@ function normalizeResult(
   };
 }
 
-/** A sticky summary can only acquire provenance from the same reported text. */
+/** A tool return supersedes a summary; other reports only fill missing facts. */
 function enrichResult(
   existing: ChildWorkResult | undefined,
   incoming: ChildWorkResult | undefined,
 ): ChildWorkResult | undefined {
   if (!existing || !incoming) return existing ?? incoming;
+  if (incoming.source === 'tool-return' && existing.source !== 'tool-return') {
+    const {
+      summary: _summary,
+      source: _source,
+      summaryTruncated: _truncated,
+      ...retained
+    } = existing;
+    return {
+      ...retained,
+      ...incoming,
+      handle: incoming.handle ?? existing.handle,
+    };
+  }
   if (
     existing.summary !== undefined &&
     (existing.summary !== incoming.summary ||

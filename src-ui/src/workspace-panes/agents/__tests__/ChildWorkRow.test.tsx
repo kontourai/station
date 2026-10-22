@@ -775,4 +775,24 @@ test('a provider summary is labeled as a report rather than a verified returned 
   fireEvent.click(screen.getByRole('button', { expanded: false }));
   expect(screen.getByText('Provider summary')).toBeTruthy();
   expect(screen.getByText('I will investigate next.')).toBeTruthy();
+  expect(screen.getByText('No returned result was reported.')).toBeTruthy();
+});
+
+test('returned report text is labeled separately from completion and provider summaries', () => {
+  mount(
+    row({
+      status: 'completed',
+      result: { summary: 'Found the cause.', source: 'tool-return' },
+    }),
+  );
+  fireEvent.click(screen.getByRole('button', { expanded: false }));
+  expect(screen.getByText('Returned result')).toBeTruthy();
+  expect(screen.getByText('Found the cause.')).toBeTruthy();
+  expect(screen.queryByText('No returned result was reported.')).toBeNull();
+});
+
+test('a completed child without report or usage still exposes the missing-result disclosure', () => {
+  mount(row({ status: 'completed', result: undefined, usage: undefined }));
+  fireEvent.click(screen.getByRole('button', { expanded: false }));
+  expect(screen.getByText('No returned result was reported.')).toBeTruthy();
 });

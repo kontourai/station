@@ -11,11 +11,14 @@ normally before publication. Open one PR when the combined work is ready.
   disclosed by a flag and retained-row count, not an exact omitted count;
   snapshot absence remains unresolved; active/terminal evidence can
   correct uncertainty; open chat aliases own presentation-history retention.
-- **#1879:** result reports retain provider-summary, child-message, or
-  provider-error provenance. Older reports remain unknown. Truncated prefixes
-  cannot establish report identity. Completion and text provenance do not
-  establish a verified returned artifact. Existing authorized child transcript
-  access remains the recovery route.
+- **#1879:** Claude's structured Agent/Task return is bound to the tracked
+  call and child, retained as `tool-return`, and replaces a provider summary.
+  Other reports retain provider-summary, child-message, or provider-error
+  provenance. Missing returns are disclosed; older reports remain unknown.
+  Truncated prefixes cannot establish report identity. A returned report does
+  not establish a verified artifact or semantic acceptance. Existing authorized
+  child transcript access remains the recovery route. Live return/recovery
+  qualification remains open.
 - **#2868:** projectless rows show labeled directory context. Delegation
   initiation uses the first turn's recorded origin; authenticated actor kind
   stays separate from the self-reported client surface. No external

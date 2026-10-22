@@ -5,6 +5,7 @@
  */
 import {
   applyChildWorkDelta,
+  CHILD_WORK_SUMMARY_MAX_CHARS,
   type ChildWorkDelta,
   type ChildWorkItem,
   type ChildWorkRegistryState,
@@ -320,7 +321,7 @@ describe('#2457 Claude child work, replayed from real captures', () => {
     'progress-summary',
     'subagent-permission',
   ] as const)(
-    '#1892 %s: both terminals settle, the child settles once, and the result survives',
+    '#1892 %s: terminal reports settle once and retain result provenance',
     (name) => {
       const { events } = replayClaudeTaskCapture(name);
       const deltas = deltasOf(events);
@@ -328,8 +329,12 @@ describe('#2457 Claude child work, replayed from real captures', () => {
         const settles = deltas.filter(
           (delta) => delta.kind === 'settle' && delta.childId === childId,
         );
-        // task_updated then task_notification: two settles on the wire…
-        expect(settles.length).toBe(2);
+        // task_updated and task_notification; a foreground return adds a report.
+        expect(settles.length).toBe(
+          name === 'task-subagents' && childId === agentTaskIds(name)[0]
+            ? 3
+            : 2,
+        );
         // …one terminal transition in the fold…
         expect(statusHistory(deltas, childId)).toEqual([
           'running',
@@ -340,7 +345,11 @@ describe('#2457 Claude child work, replayed from real captures', () => {
           (candidate) => candidate.childId === childId,
         );
         expect(item?.result?.summary).toBeTruthy();
-        expect(item?.result?.source).toBe('provider-summary');
+        expect(item?.result?.source).toBe(
+          name === 'task-subagents' && childId === agentTaskIds(name)[0]
+            ? 'tool-return'
+            : 'provider-summary',
+        );
         expect(item?.result?.handle).toMatchObject({ kind: 'transcript-file' });
         expect(item?.usage?.totalTokens).toBeGreaterThan(0);
       }
@@ -1368,5 +1377,189 @@ describe('#3163 Claude subagent model and transcript identity', () => {
         transcript: { kind: 'claude-subagent', agentId: outer },
       },
     });
+  });
+});
+
+test('#1879 the structured Agent return replaces a notification summary, not the last utterance', () => {
+  const { events } = replayClaudeTaskCapture('task-subagents', {
+    rewrite: (lines) =>
+      lines.map((line) => {
+        if (
+          line.message?.type === 'system' &&
+          line.message.subtype === 'task_notification'
+        )
+          return {
+            message: {
+              ...line.message,
+              summary: 'Now I will inspect the logs.',
+            },
+          };
+        return line;
+      }),
+  });
+  const [foreground, background] = agentTaskIds('task-subagents');
+  expect(
+    itemsOf(events).find((item) => item.childId === foreground)?.result,
+  ).toMatchObject({
+    summary: 'FOREGROUND DONE',
+    source: 'tool-return',
+    handle: { kind: 'transcript-file' },
+  });
+  expect(
+    itemsOf(events).find((item) => item.childId === background)?.result,
+  ).toMatchObject({
+    summary: 'Now I will inspect the logs.',
+    source: 'provider-summary',
+  });
+});
+
+test.each([
+  'foreign-agent',
+  'async-launch',
+  'missing-content',
+  'multiple-results',
+  'tool-error',
+  'missing-raw',
+] as const)('#1879 %s cannot establish a returned child result', (defect) => {
+  const { events } = replayClaudeTaskCapture('task-subagents', {
+    rewrite: (lines) =>
+      lines.map((line) => {
+        const message = line.message;
+        if (message?.type !== 'user' || message.parent_tool_use_id !== null)
+          return line;
+        const raw = message.tool_use_result;
+        if (
+          !raw ||
+          typeof raw !== 'object' ||
+          !('agentId' in raw) ||
+          !('status' in raw) ||
+          raw.status !== 'completed'
+        )
+          return line;
+        const content = message.message.content;
+        return {
+          message: {
+            ...message,
+            ...((defect === 'multiple-results' || defect === 'tool-error') &&
+            Array.isArray(content)
+              ? {
+                  message: {
+                    ...message.message,
+                    content:
+                      defect === 'multiple-results'
+                        ? [...content, ...content]
+                        : content.map((block) => ({
+                            ...block,
+                            is_error: true,
+                          })),
+                  },
+                }
+              : {}),
+            tool_use_result:
+              defect === 'missing-raw'
+                ? undefined
+                : {
+                    ...raw,
+                    ...(defect === 'foreign-agent'
+                      ? { agentId: 'foreign-child' }
+                      : {}),
+                    ...(defect === 'async-launch'
+                      ? { status: 'async_launched' }
+                      : {}),
+                    ...(defect === 'missing-content' ? { content: [] } : {}),
+                  },
+          },
+        };
+      }),
+  });
+  const [foreground] = agentTaskIds('task-subagents');
+  expect(
+    itemsOf(events).find((item) => item.childId === foreground)?.result,
+  ).toMatchObject({
+    summary: 'FOREGROUND DONE',
+    source: 'provider-summary',
+  });
+});
+
+test('#1879 long structured text is bounded and flagged without copying the Agent trailer', () => {
+  const { events } = replayClaudeTaskCapture('task-subagents', {
+    rewrite: (lines) =>
+      lines.map((line) => {
+        const message = line.message;
+        if (message?.type !== 'user') return line;
+        const raw = message.tool_use_result;
+        if (
+          !raw ||
+          typeof raw !== 'object' ||
+          !('status' in raw) ||
+          raw.status !== 'completed'
+        )
+          return line;
+        return {
+          message: {
+            ...message,
+            tool_use_result: {
+              ...raw,
+              content: [
+                {
+                  type: 'text',
+                  text: 'x'.repeat(CHILD_WORK_SUMMARY_MAX_CHARS),
+                },
+                { type: 'text', text: 'tail' },
+              ],
+            },
+          },
+        };
+      }),
+  });
+  const [foreground] = agentTaskIds('task-subagents');
+  expect(
+    itemsOf(events).find((item) => item.childId === foreground)?.result,
+  ).toMatchObject({
+    summary: 'x'.repeat(CHILD_WORK_SUMMARY_MAX_CHARS),
+    source: 'tool-return',
+    summaryTruncated: true,
+  });
+});
+
+test('#1879 a late return cannot attach to a different known child', () => {
+  const [foreground, background] = agentTaskIds('task-subagents');
+  const { events } = replayClaudeTaskCapture('task-subagents', {
+    rewrite: (lines) => {
+      const late = lines.find(
+        (line) =>
+          line.message?.type === 'user' &&
+          typeof line.message.tool_use_result === 'object' &&
+          line.message.tool_use_result !== null &&
+          'agentId' in line.message.tool_use_result &&
+          line.message.tool_use_result.agentId === foreground &&
+          'status' in line.message.tool_use_result &&
+          line.message.tool_use_result.status === 'completed',
+      );
+      if (late?.message?.type !== 'user')
+        throw new Error('missing captured return');
+      const raw = late.message.tool_use_result;
+      if (!raw || typeof raw !== 'object')
+        throw new Error('missing structured output');
+      return [
+        ...lines.filter((line) => line !== late),
+        {
+          message: {
+            ...late.message,
+            tool_use_result: { ...raw, agentId: background },
+          },
+        },
+      ];
+    },
+  });
+  const children = itemsOf(events);
+  expect(
+    children.find((item) => item.childId === foreground)?.result?.source,
+  ).toBe('provider-summary');
+  expect(
+    children.find((item) => item.childId === background)?.result,
+  ).toMatchObject({
+    summary: 'background-ok',
+    source: 'provider-summary',
   });
 });

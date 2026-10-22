@@ -83,6 +83,50 @@ describe('child-work client path (legacy Claude tuples → contract reducer)', (
     });
   });
 
+  test('a late structured return corrects the existing notice once, retaining its identity and position', () => {
+    const report = {
+      producer: 'engine-subagent' as const,
+      reporterThreadId: threadId,
+      childId: 'late-return',
+      status: 'completed' as const,
+      title: 'Investigate',
+      backgrounded: true,
+      result: {
+        summary: 'I will inspect logs.',
+        source: 'provider-summary' as const,
+      },
+    };
+    handlers.applySnapshotChildWork(threadId, {
+      observability: 'reported',
+      running: [],
+      observedAt: '2026-09-24T00:00:00.000Z',
+      settled: [report],
+    });
+    const first = chat()?.ephemeralMessages?.[0];
+    const result = {
+      ...report,
+      result: { summary: 'Found the cause.', source: 'tool-return' as const },
+    };
+    for (let i = 0; i < 2; i++)
+      handlers.applySnapshotChildWork(threadId, {
+        observability: 'reported',
+        running: [],
+        observedAt: '2026-09-24T00:00:01.000Z',
+        settled: [result],
+      });
+    expect(announcements()).toEqual([
+      'Background task finished — Investigate\n\nReturned result: Found the cause.',
+    ]);
+    expect(chat()?.ephemeralMessages?.[0]).toMatchObject({
+      id: first?.id,
+      timestamp: first?.timestamp,
+    });
+    expect(notices()[0]).toMatchObject({
+      summary: 'Found the cause.',
+      summarySource: 'tool-return',
+    });
+  });
+
   test('a reported snapshot restores a child that settled during the gap once', () => {
     const view = {
       observability: 'reported' as const,

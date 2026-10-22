@@ -173,7 +173,8 @@ export function ChildWorkRow({
   const handle = item.result?.handle;
   const sessionHandle = handle?.kind === 'session' ? handle : undefined;
   const usage = childWorkUsageClauses(item.usage);
-  const expandable = Boolean(summary) || isDelegate || usage.length > 0;
+  const expandable =
+    !running || Boolean(summary) || isDelegate || usage.length > 0;
 
   const stop = () => {
     if (row.stop === 'delegate-interrupt')
@@ -257,6 +258,11 @@ export function ChildWorkRow({
               <strong>{childWorkSummaryLabel(item.result?.source)}</strong>
               {' · '}
               <span>{summary}</span>
+            </p>
+          )}
+          {!running && !isDelegate && item.result?.source !== 'tool-return' && (
+            <p className="child-work-row__note">
+              No returned result was reported.
             </p>
           )}
           {summary && item.result?.summaryTruncated && (

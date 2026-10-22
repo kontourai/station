@@ -8,6 +8,7 @@ import type {
 } from '@anthropic-ai/claude-agent-sdk';
 import {
   applyChildWorkDelta,
+  CHILD_WORK_SUMMARY_MAX_CHARS,
   type ChildWorkDelta,
   type ChildWorkItem,
   type ChildWorkModel,
@@ -511,6 +512,50 @@ export function observeClaudeSubagentReply(
     return;
   }
   emit(context, { kind: 'upsert', item: { ...existing, ...reply } });
+}
+
+/** The Agent/Task tool's structured completed output, without its model-facing trailer. */
+export function observeClaudeAgentReturn(
+  context: ClaudeChildWorkContext,
+  toolCallId: string,
+  output: unknown,
+): void {
+  if (
+    !output ||
+    typeof output !== 'object' ||
+    !('status' in output) ||
+    output.status !== 'completed' ||
+    !('agentId' in output) ||
+    typeof output.agentId !== 'string' ||
+    !('content' in output) ||
+    !Array.isArray(output.content)
+  )
+    return;
+  const childId = childIdFor(context.record, output.agentId);
+  const existing = itemFor(context.record, childId);
+  if (!existing || existing.parent?.toolCallId !== toolCallId) return;
+  let summary = '';
+  for (const block of output.content) {
+    if (
+      !block ||
+      typeof block !== 'object' ||
+      !('type' in block) ||
+      block.type !== 'text' ||
+      !('text' in block) ||
+      typeof block.text !== 'string'
+    )
+      continue;
+    if (summary) summary += '\n';
+    summary += block.text.slice(
+      0,
+      CHILD_WORK_SUMMARY_MAX_CHARS + 1 - summary.length,
+    );
+    if (summary.length > CHILD_WORK_SUMMARY_MAX_CHARS) break;
+  }
+  if (!summary.trim()) return;
+  settle(context, childId, 'completed', {
+    result: { summary, source: 'tool-return' },
+  });
 }
 
 /** `task_progress`: the latest status line and running usage. */

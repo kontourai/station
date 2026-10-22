@@ -461,6 +461,38 @@ describe('applyChildWorkDelta', () => {
     });
   });
 
+  test('a returned result replaces a truncated report, preserves recovery, and cannot be overwritten by later summaries', () => {
+    const report = fold(
+      settle('reported', 'completed', {
+        result: {
+          summary: 'x'.repeat(CHILD_WORK_SUMMARY_MAX_CHARS + 1),
+          source: 'provider-summary',
+          handle: { kind: 'session', threadId: 'child-session' },
+        },
+      }),
+    );
+    const returned = applyChildWorkDelta(
+      report,
+      settle('reported', 'completed', {
+        result: { summary: 'Actual report', source: 'tool-return' },
+      }),
+    );
+    expect(get(returned, 'reported')?.result).toEqual({
+      summary: 'Actual report',
+      source: 'tool-return',
+      handle: { kind: 'session', threadId: 'child-session' },
+    });
+    const later = applyChildWorkDelta(
+      returned,
+      settle('reported', 'completed', {
+        result: { summary: 'Last utterance', source: 'child-message' },
+      }),
+    );
+    expect(get(later, 'reported')?.result).toEqual(
+      get(returned, 'reported')?.result,
+    );
+  });
+
   test('late result origin cannot relabel a different retained summary', () => {
     const first = fold(
       settle('reported', 'completed', { result: { summary: 'first report' } }),

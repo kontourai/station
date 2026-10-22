@@ -224,15 +224,20 @@ evicted from that bounded history are no longer recognized as replays.
 
 ### Child-work result reports
 
-Child-work result text may carry `source`: `provider-summary`, `child-message`,
-or `provider-error`. This identifies the observed report, not verification of
-a returned artifact or successful task acceptance. Older reports omit it;
-readers must preserve that uncertainty. Claude task notifications and Muse
-workflow summaries are provider summaries; Codex child-turn messages are child
-messages, including its last-message fallback. Completion status remains an
-independent provider observation. Child transcript access is read-only and
-uses the persisted, authorized child identity; a transcript handle is not a
-produced artifact or permission to read an arbitrary path.
+Child-work result text may carry `source`: `tool-return`, `provider-summary`,
+`child-message`, or `provider-error`. A Claude Agent/Task `tool-return` is the
+structured completed report bound to the tracked tool call and child identity;
+it excludes the model-facing agentId/usage trailer. It replaces an earlier
+summary while preserving the authorized recovery handle. Later summaries do
+not overwrite it. Other sources identify reports, not returned results.
+Older reports omit provenance; readers must preserve that uncertainty.
+Claude task notifications and Muse workflow summaries are provider summaries;
+Codex child-turn messages are child messages, including its last-message
+fallback. A completed child without a structured return discloses that no
+returned result was reported. Completion status and a returned report do not
+establish successful task acceptance or a verified artifact. Child transcript
+access is read-only and uses the persisted, authorized child identity; a
+transcript handle is not permission to read an arbitrary path.
 
 ## Engine-neutral failures
 

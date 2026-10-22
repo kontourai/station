@@ -101,6 +101,8 @@ export function childWorkSummaryLabel(
   source: ChildWorkSummarySource | undefined,
 ): string {
   switch (source) {
+    case 'tool-return':
+      return 'Returned result';
     case 'provider-summary':
       return 'Provider summary';
     case 'child-message':
