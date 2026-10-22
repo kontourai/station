@@ -1,0 +1,7 @@
+{
+  "revision": "78879bd43527528cee3831940479a77894fdf87d",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Checked against the windows-pr-verification.yml change that stages the desktop sidecar only when the candidate provides scripts/prepare-desktop-rust-resources.mjs: workflow triggers (pull_request_target and merge_group), required check name, merge-queue composition and Windows portable floor contents are unchanged; no stated claim depends on the compile step's resource-staging internals.","inputs":["docs/guides/code-quality.md",".github/workflows/windows-pr-verification.yml"]}
+  ]
+}
