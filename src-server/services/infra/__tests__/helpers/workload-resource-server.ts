@@ -73,7 +73,7 @@ const server = createServer(async (request, response) => {
       if (!transport) throw new Error('MCP transport unavailable');
       const client = new Client(
         { name: 'resource-proof', version: '1' },
-        { versionNegotiation: 'auto' },
+        { versionNegotiation: { mode: 'auto' } },
       );
       try {
         await client.connect(transport);
@@ -223,6 +223,8 @@ const server = createServer(async (request, response) => {
           'stty size; cat /proc/self/cgroup; cd /; /bin/sh -c \'printf "__PROOF_%s__\\n" READY; exec sleep 30\'\r',
         );
         await ready;
+        if (!terminal.getCwd)
+          throw new Error('Terminal cwd inspection unavailable');
         const cwd = await terminal.getCwd();
         const interrupted = waitFor('station-proof> ');
         terminal.write('\x03');

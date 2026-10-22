@@ -424,14 +424,14 @@ export function openCodeAgentReader(input: {
         child.kill('SIGKILL');
         finish(new Error(`debug agent ${agent} timed out`));
       }, input.timeoutMs ?? OPENCODE_AGENT_READ_TIMEOUT_MS);
-      child.stdout.on('data', (chunk: Buffer) => {
+      child.stdout!.on('data', (chunk: Buffer) => {
         stdout += chunk.toString();
         if (stdout.length > MAX_OUTPUT_BYTES) {
           child.kill('SIGKILL');
           finish(new Error(`debug agent ${agent} printed too much`));
         }
       });
-      child.stderr.on('data', (chunk: Buffer) => {
+      child.stderr!.on('data', (chunk: Buffer) => {
         if (stderr.length < 4096) stderr += chunk.toString();
       });
       child.on('error', (error) => finish(error));
