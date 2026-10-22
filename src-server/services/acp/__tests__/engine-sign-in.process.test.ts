@@ -230,6 +230,37 @@ describe.runIf(posix)('engine sign-in through a live handshake', () => {
     },
   );
 
+  test.each([
+    ['cancel', (s: EngineSignInService) => s.cancel('pi')],
+    ['forget', (s: EngineSignInService) => s.forget('pi')],
+    ['dispose', (s: EngineSignInService) => s.dispose()],
+  ] as const)(
+    '%s prevents a pending handshake from starting a login or restoring methods',
+    async (_how, end) => {
+      const pi = engineProgram('pi-acp', 'pi-acp.json', [
+        '--initialize-delay-ms',
+        '300',
+      ]);
+      const terminal = recordingTerminal();
+      const service = new EngineSignInService({ terminal: terminal.host });
+      const config = connection('pi', pi.command);
+      const started = service.startTerminal(config, 'pi_terminal_login');
+      // Attach the rejection handler before ending the request.
+      const rejected = expect(started).rejects.toThrow(
+        'cancelled or its connection changed',
+      );
+      await expect
+        .poll(() => pi.record().some((entry) => entry.method === 'initialize'))
+        .toBe(true);
+      end(service);
+      await rejected;
+      expect(terminal.opened).toEqual([]);
+      expect(service.methodsView(config)).toEqual({});
+      expect(service.attempt('pi')).toBeNull();
+      expect((await engineSignInStatus(config)).state).toBe('unknown');
+    },
+  );
+
   test('a terminal sign-in that exits non-zero fails and claims nothing', async () => {
     const pi = engineProgram('pi-acp', 'pi-acp.json');
     const terminal = recordingTerminal();

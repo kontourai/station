@@ -174,6 +174,8 @@ function termsNoticeFor(
 }
 
 export class EngineSignInService {
+  readonly #generations = new Map<string, { key: string }>();
+  #disposed = false;
   readonly #methods = new Map<string, MethodsObservation>();
   readonly #attempts = new Map<string, LiveAttempt>();
   readonly #terminal: SignInTerminalHost | null;
@@ -257,8 +259,32 @@ export class EngineSignInService {
     }
   }
 
+  #generation(config: ACPConnectionConfig): { key: string } {
+    if (this.#disposed)
+      throw new EngineSignInError('Sign-in has stopped.', 409);
+    const key = connectionKey(config);
+    let generation = this.#generations.get(config.id);
+    if (generation?.key !== key) {
+      generation = { key };
+      this.#generations.set(config.id, generation);
+    }
+    return generation;
+  }
+
+  #requireCurrent(
+    config: ACPConnectionConfig,
+    generation: { key: string },
+  ): void {
+    if (this.#disposed || this.#generations.get(config.id) !== generation)
+      throw new EngineSignInError(
+        'This sign-in was cancelled or its connection changed.',
+        409,
+      );
+  }
+
   /** Runs a fresh sign-in handshake and keeps what it advertised. */
   async refreshMethods(config: ACPConnectionConfig): Promise<void> {
+    const generation = this.#generation(config);
     const process = this.#spawn(config);
     const key = connectionKey(config);
     try {
@@ -267,12 +293,14 @@ export class EngineSignInService {
         this.#timeouts.handshake,
         'answer',
       );
+      this.#requireCurrent(config, generation);
       this.#methods.set(config.id, {
         key,
         at: this.#now(),
         methods: Array.isArray(init.authMethods) ? init.authMethods : [],
       });
     } catch (error) {
+      this.#requireCurrent(config, generation);
       this.#methods.set(config.id, {
         key,
         at: this.#now(),
@@ -367,6 +395,7 @@ export class EngineSignInService {
   }
 
   cancel(connectionId: string): void {
+    this.#generations.delete(connectionId);
     const live = this.#attempts.get(connectionId);
     if (live?.view.state === 'running') live.cancel();
   }
@@ -421,8 +450,10 @@ export class EngineSignInService {
         'Terminals are not available on this Station.',
         503,
       );
+    const generation = this.#generation(config);
     this.#claim(config.id);
     const method = await this.#liveMethod(config, methodId);
+    this.#requireCurrent(config, generation);
     if (!isTerminalMethod(method))
       throw new EngineSignInError('That sign-in does not run in a terminal.');
     const extra = Array.isArray(method.args) ? method.args : [];
@@ -446,6 +477,7 @@ export class EngineSignInService {
         404,
       );
     const path = await resolveAugmentedPath();
+    this.#requireCurrent(config, generation);
     // Recheck: the steps above awaited, and another request may have
     // started a sign-in meanwhile.
     this.#claim(config.id);
@@ -530,8 +562,10 @@ export class EngineSignInService {
     config: ACPConnectionConfig,
     methodId: string,
   ): Promise<EngineSignInAttempt> {
+    const generation = this.#generation(config);
     this.#claim(config.id);
     const method = await this.#liveMethod(config, methodId);
+    this.#requireCurrent(config, generation);
     if (isTerminalMethod(method))
       throw new EngineSignInError('That sign-in runs in a terminal.');
     this.#claim(config.id);
@@ -595,6 +629,8 @@ export class EngineSignInService {
   }
 
   dispose(): void {
+    this.#disposed = true;
+    this.#generations.clear();
     for (const live of this.#attempts.values())
       if (live.view.state === 'running') live.cancel();
   }
