@@ -2170,6 +2170,7 @@ export function createOrchestrationRoutes(
     data: string;
     id?: string;
     threadId?: string;
+    isAuthorized?: () => boolean;
   };
   // EventBus hands the same envelope to every subscriber synchronously.
   const liveFrames = new WeakMap<
@@ -6409,6 +6410,8 @@ export function createOrchestrationRoutes(
       // never misses a client that is in fact connecting.
       const presenceSubject =
         orchestrationStreamPresenceSubjectFromAuthority(authority);
+      const releaseDeletionReader =
+        orchestrationService.retainSessionDeletionReader(authority);
       const releasePresence = presenceSubject
         ? presence.connect(presenceSubject, principal)
         : () => {};
@@ -6451,6 +6454,7 @@ export function createOrchestrationRoutes(
             clearPending?.();
             unsub?.();
             releasePresence();
+            releaseDeletionReader();
             resolve();
           };
           if (stream.aborted) onGone();
@@ -6477,10 +6481,19 @@ export function createOrchestrationRoutes(
           }
           // Queued frames cannot carry yesterday's authorization into a later write.
           if (
-            !frame.threadId ||
-            orchestrationService.canUserReadSession(frame.threadId, authority)
+            frame.isAuthorized
+              ? frame.isAuthorized()
+              : !frame.threadId ||
+                orchestrationService.canUserReadSession(
+                  frame.threadId,
+                  authority,
+                )
           ) {
-            const { threadId: _threadId, ...wire } = frame;
+            const {
+              threadId: _threadId,
+              isAuthorized: _isAuthorized,
+              ...wire
+            } = frame;
             await stream.writeSSE(wire);
             framesWritten++;
           }
@@ -6654,6 +6667,43 @@ export function createOrchestrationRoutes(
           if (deps.isRequestPrincipalCurrent?.(c.req.raw) === false) {
             closeReason ??= 'authorization-expired';
             stream.abort();
+            return;
+          }
+          if (evt.event === SERVER_EVENTS.ORCHESTRATION_SESSIONS_CHANGED) {
+            const deletedThreadId = evt.data?.threadId;
+            const canRead = evt.data?.canRead;
+            if (
+              typeof deletedThreadId !== 'string' ||
+              typeof canRead !== 'function' ||
+              (threadId !== undefined && threadId !== deletedThreadId)
+            )
+              return;
+            const isAuthorized = () => canRead(authority) === true;
+            if (isAuthorized())
+              forward({ event: evt.event, data: '{}', isAuthorized });
+            return;
+          }
+          if (evt.event === SERVER_EVENTS.ORCHESTRATION_INBOX_CHANGED) {
+            const conversationId = evt.data?.conversationId;
+            if (typeof conversationId !== 'string') return;
+            const isAuthorized = () =>
+              orchestrationService.canUserReadConversation(
+                conversationId,
+                authority,
+              ) &&
+              (threadId === undefined ||
+                threadId === conversationId ||
+                orchestrationService.conversationStreamBinding({
+                  threadId,
+                  method: 'content.text-delta',
+                  force: true,
+                })?.conversationId === conversationId);
+            if (isAuthorized())
+              forward({
+                event: evt.event,
+                data: JSON.stringify({ conversationId }),
+                isAuthorized,
+              });
             return;
           }
           if (
@@ -6902,6 +6952,7 @@ export function createOrchestrationRoutes(
         clearPending?.();
         unsub?.();
         releasePresence();
+        releaseDeletionReader();
         orchestrationStreamPresenceOps.add(1, { op: 'disconnect' });
         orchestrationStreamDuration.record(Date.now() - connectedAt, {
           scope: threadId ? 'thread' : 'all',

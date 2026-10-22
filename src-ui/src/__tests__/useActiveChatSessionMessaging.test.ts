@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { URL as NodeURL } from 'node:url';
 import type { SkillExperienceDefinitionV1 } from '@kontourai/station-contracts/skill-experience';
+import { QueryClient } from '@tanstack/react-query';
 import {
   act,
   fireEvent,
@@ -113,17 +114,17 @@ const steerOrchestrationTurnMock = vi.fn();
 const invalidateMock = vi.fn();
 // #2310 review H1: the session-list cache the send path consults. Tests set
 // what the cache holds; the default is an empty list.
-let cachedSessionList: unknown[] = [];
+const sessionCache = new QueryClient({
+  defaultOptions: { queries: { retry: false } },
+});
 // What the agent catalog query holds, which a first send judges its
 // expectedEngine precondition against.
 let cachedAgentCatalog: unknown;
 const queryClientMock = {
   getQueryData: (key: unknown[]) =>
-    JSON.stringify(key) === JSON.stringify(['orchestration-sessions'])
-      ? cachedSessionList
-      : JSON.stringify(key) === JSON.stringify(['agents'])
-        ? cachedAgentCatalog
-        : undefined,
+    JSON.stringify(key) === JSON.stringify(['agents'])
+      ? cachedAgentCatalog
+      : sessionCache.getQueryData(key),
 };
 // `isProvablyNotSent` is deliberately the REAL implementation, not a stub:
 // it is the one derivation that decides whether a failed Stop reads "Stop
@@ -137,6 +138,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     conversationQueries: {
       inventory: () => ({ queryKey: ['conversation-inventory'] }),
     },
+    orchestrationQueries: actual.orchestrationQueries,
     useEngineConnectionsQuery: () => agentConnectionsMock(),
     useConfigQuery: () => configQueryMock(),
     // The Agent-record link of the engine-connection chain; this fixture's
@@ -243,6 +245,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     vi.clearAllMocks();
     outboundQueueMode.useActual = false;
     cachedAgentCatalog = undefined;
+    sessionCache.clear();
     sendExecutionMessageMock.mockResolvedValue(successReceipt());
     steerOrchestrationTurnMock.mockReset();
     activeChatsStore.initChat(sessionId, {
@@ -1586,6 +1589,7 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       cachedAgentCatalog = catalog([{ slug: 'someone-else' }]);
       expect(await sendFirst()).not.toHaveProperty('expectedEngine');
       cachedAgentCatalog = undefined;
+      sessionCache.clear();
       expect(await sendFirst()).not.toHaveProperty('expectedEngine');
     });
 
@@ -2944,14 +2948,22 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       orchestrationSessionStarted: true,
       currentSessionId: sessionId,
     });
-    cachedSessionList = [{ threadId: sessionId, draft: true }];
+    accountPreferenceFixture.requestScope = {
+      apiBase: 'http://api.test',
+      authorityKey: 'first-send',
+      isCurrent: () => true,
+    };
+    sessionCache.setQueryData(
+      ['orchestration-sessions', 'http://api.test', 'first-send'],
+      [{ threadId: sessionId, draft: true }],
+    );
     try {
       const { result } = renderHook(() => useSendMessage('http://api.test'));
       await act(async () => {
         await result.current(sessionId, 'codex', sessionId, 'first message');
       });
     } finally {
-      cachedSessionList = [];
+      sessionCache.clear();
     }
 
     expect(invalidateMock).toHaveBeenCalledWith(['orchestration-sessions']);
@@ -2964,24 +2976,32 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       orchestrationSessionStarted: true,
       currentSessionId: sessionId,
     });
-    cachedSessionList = [
-      {
-        threadId: sessionId,
-        draft: false,
-        lifecycleState: 'queued',
-        terminalAttribution: {
-          kind: 'send_refused',
-          detail: 'Station refused the send before it started.',
+    accountPreferenceFixture.requestScope = {
+      apiBase: 'http://api.test',
+      authorityKey: 'first-send',
+      isCurrent: () => true,
+    };
+    sessionCache.setQueryData(
+      ['orchestration-sessions', 'http://api.test', 'first-send'],
+      [
+        {
+          threadId: sessionId,
+          draft: false,
+          lifecycleState: 'queued',
+          terminalAttribution: {
+            kind: 'send_refused',
+            detail: 'Station refused the send before it started.',
+          },
         },
-      },
-    ];
+      ],
+    );
     try {
       const { result } = renderHook(() => useSendMessage('http://api.test'));
       await act(async () => {
         await result.current(sessionId, 'codex', sessionId, 'retry');
       });
     } finally {
-      cachedSessionList = [];
+      sessionCache.clear();
     }
 
     expect(invalidateMock).toHaveBeenCalledWith(['orchestration-sessions']);
@@ -2992,14 +3012,26 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
       orchestrationSessionStarted: true,
       currentSessionId: sessionId,
     });
-    cachedSessionList = [{ threadId: sessionId, draft: false }];
+    accountPreferenceFixture.requestScope = {
+      apiBase: 'http://api.test',
+      authorityKey: 'first-send',
+      isCurrent: () => true,
+    };
+    sessionCache.setQueryData(
+      ['orchestration-sessions', 'http://api.test', 'first-send'],
+      [{ threadId: sessionId, draft: false }],
+    );
+    sessionCache.setQueryData(
+      ['orchestration-sessions', 'http://api.test', 'other-person'],
+      [{ threadId: sessionId, draft: true }],
+    );
     try {
       const { result } = renderHook(() => useSendMessage('http://api.test'));
       await act(async () => {
         await result.current(sessionId, 'codex', sessionId, 'next message');
       });
     } finally {
-      cachedSessionList = [];
+      sessionCache.clear();
     }
 
     expect(invalidateMock).not.toHaveBeenCalledWith(['orchestration-sessions']);
