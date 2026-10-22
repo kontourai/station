@@ -240,8 +240,9 @@ families or replace any regression result with success.
 For the one-candidate throughput trial and its before/after measurements, use
 [the throughput epic](https://github.com/kontourai/station/issues/3101). The live
 ruleset is the configuration authority; fewer speculative builds do not prove
-higher delivery throughput. Missing PR attribution leaves
-a run alone; API failures stop the sweep. GitHub has no atomic head-conditional
+higher delivery throughput.
+
+Missing PR attribution leaves ordinary PR runs alone; API failures stop the sweep. GitHub has no atomic head-conditional
 cancellation API, so the final head read bounds rather than eliminates the race
 with a concurrent force-push. Existing per-SHA concurrency groups remain in
 place to prevent delayed events from cancelling newer-head checks (#1445).

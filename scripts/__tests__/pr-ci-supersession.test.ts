@@ -644,6 +644,7 @@ async function replacedGroup(
     });
   const obsolete = candidate(1, old);
   const replacement = candidate(2, head);
+  const ownerHead = 'c'.repeat(40);
   const cancelled: number[] = [];
   let ownerReads = 0;
   let runReads = 0;
@@ -660,14 +661,16 @@ async function replacedGroup(
         state: 'open',
         base: { ref: 'main' },
         head: {
-          sha: options.movedOwner && ownerReads > 1 ? old : head,
+          sha: options.movedOwner && ownerReads > 1 ? old : ownerHead,
           repo: { full_name: repository },
         },
       };
-    } else if (path === `compare/${head}...${head}`)
+    } else if (path === `compare/${ownerHead}...${head}`)
       data = {
-        status: 'identical',
-        merge_base_commit: { sha: options.contains === false ? old : head },
+        status: 'ahead',
+        merge_base_commit: {
+          sha: options.contains === false ? old : ownerHead,
+        },
       };
     else if (path === 'actions/workflows/50/runs')
       data = {
