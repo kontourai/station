@@ -18,15 +18,21 @@ without adding a model API key:
 3. On Home, choose **Codex** in the Agent picker, write a request, and choose
    **Start**. You can start without a Project. The detected Codex Agent is
    enough; creating a custom Agent is optional.
-4. Choose **New Project** on Home to start from a repository, an existing folder
-   on this Station, or a blank workspace. For a repository, open **Start from a
-   Git repository**, enter its HTTPS or SSH URL, choose
+4. Choose **New Project** on Home, enter a name, and choose **Repository or
+   folder**, **Documents and knowledge**, **Connected tools**, or **Blank
+   Project**. Documents opens Sources after creation; connected tools opens
+   the Project's Tools section. Neither asks for a folder or repository.
+   Blank also permits an optional installed layout. For a repository, open
+   **Start from a Git repository**, paste its HTTPS/SSH URL or use **Choose from
+   GitHub/GitLab** with an account signed in on the Station host, choose
    **Acquire repository**, then **Use this checkout**. Creating the Project rechecks
    that working copy and retains its source and exact commit. Acquisition currently
    requires the Station operator and uses that host's Git credentials.
-   Station recommends **Coding** for a Git repository. Choose **Create** to open
+   Station recommends **Coding** for a Git repository; you can choose another
+   layout or none. Choose **Create** to open
    the Project. Operator setup is saved across reloads; reopen **New Project** to
-   check and continue the same Project and starter. See [repository setup and recovery](https://github.com/kontourai/station/blob/main/docs/guides/connections.md#start-a-project-from-a-repository).
+   check and continue the same Project, intent and starter. See [repository setup and recovery](https://github.com/kontourai/station/blob/main/docs/guides/connections.md#start-a-project-from-a-repository)
+   and [document import](https://github.com/kontourai/station/blob/main/docs/guides/knowledge.md#import-documents-from-your-computer).
 5. To talk to the built-in **Station** assistant using the same Codex account,
    open **Settings → General → Built-in agent engine → Change…**, choose
    **Codex**, choose **Use this engine**, then **Save**. Select **Station** in

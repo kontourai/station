@@ -12,6 +12,13 @@ The [route](../../src-server/routes/starter-work.ts) validates the request;
 keeps the durable correlation. Runtime composition mounts this personal-home
 feature only where those owners are available. Hosted tenant execution has no
 personal-home Starter route.
+
+New Project's start intent is a separate setup choice. **Documents and
+knowledge** and **Connected tools** create a Project without a folder/starter
+prompt, then open Sources or Tools. **Repository or folder** keeps the existing
+starter recommendation; **Blank Project** may select a layout explicitly. The
+creation recovery pointer retains this intent alongside its selected starter.
+Neither an intent nor an installed layout is a dispatched Task or readiness proof.
 All Starter launch routes require the home’s first-run status to be completed.
 
 The technical behavior below accompanies the shorter

@@ -23,6 +23,13 @@
 > [#106](https://github.com/kontourai/station/issues/106) and
 > [#483](https://github.com/kontourai/station/issues/483).
 
+> Current onboarding uses a separate host-CLI repository catalog to select an
+> explicit HTTPS or SSH transport, then the durable acquisition service verifies
+> a working copy. A catalog identity does not choose an execution binding or
+> grant credentials. New Project also permits knowledge, connected-tool and
+> blank starts; source attachment does not promote a source to a primary
+> execution resource. See [repository onboarding](../guides/connections.md#start-a-project-from-a-repository).
+
 
 > Status: **draft for owner review (2026-08-01, revision 2); tracking issue
 > [#106](https://github.com/kontourai/station/issues/106).** Twelve open

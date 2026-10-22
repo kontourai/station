@@ -1154,6 +1154,18 @@ fragments are refused. An absolute local mirror path is also supported.
 Station verifies the clone's origin, resolves its commit and checks it out in
 detached state. It does not install dependencies or execute repository setup.
 
+**Choose from GitHub** and **Choose from GitLab** list accessible public/private
+repositories through this host's signed-in `gh` or `glab` account. A page holds
+at most 30 entries and shows the observed account, visibility and default branch.
+Choose HTTPS or SSH explicitly; selection fills editable URL/ref fields using
+the provider's returned clone transport. It does not clone automatically or
+establish that the host's separate Git credentials can access that repository.
+Discovery checks the account before and after listing, withholds late results
+after Station authority changes, and never reads or returns provider tokens.
+If the CLI or sign-in is unavailable, sign in on the host with `gh auth login`
+or `glab auth login`, retry, or paste a Git URL. Self-hosted forges remain an
+explicit-URL flow; the account pickers target `github.com` and `gitlab.com`.
+
 The browser retains the operation ID in session storage, partitioned by Station
 and account. Reopening the form checks that operation; a lost response does not
 automatically clone again. **Check operation** reads the recorded result.
@@ -1169,7 +1181,9 @@ unrecorded request; **Retry layout** retains the saved starter and checks for an
 already-applied layout before an explicit retry. **Check setup** only inspects.
 An unknown creation outcome stays held. An unavailable/deleted result is not
 silently replaced. **Set aside this setup** clears only the browser selection;
-it keeps Projects, checkouts and server receipts. Recovery is partitioned by
+it keeps Projects, checkouts and server receipts. The chosen start intent is
+retained with this browser setup, so a knowledge start still opens Sources after
+reload rather than switching to repository setup. Recovery is partitioned by
 Station/account and requires current request authority at every action.
 Other callers keep the existing creation path; this durable flow currently
 requires the operator. Unreadable browser storage prevents dispatch.
@@ -1177,8 +1191,8 @@ requires the operator. Unreadable browser storage prevents dispatch.
 The receipt records a completed acquisition, not continuing checkout integrity,
 build readiness or a successful Agent turn. Project creation separately rechecks
 the receipt and records historical provenance; later checkout changes still need
-the normal workspace checks. Provider repository
-pickers, account-specific Git credentials and cancellation remain part of the [onboarding epic](https://github.com/kontourai/station/issues/4027).
+the normal workspace checks. Principal-owned Git credential profiles and
+explicit in-flight clone cancellation remain part of the [onboarding epic](https://github.com/kontourai/station/issues/4027).
 Project Settings → Sources combines repository repair with knowledge-store
 registration, refresh and disconnect; see [knowledge sources](knowledge.md#project-settings--sources).
 See the [API contract](../reference/api.md#repository-acquisition).

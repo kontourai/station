@@ -123,6 +123,17 @@ errors block dispatch until checked again.
 
 ## Repository acquisition
 
+Operator-only `GET /api/projects/repository-providers/:provider?page=1`
+accepts `github` or `gitlab`, returning `RepositoryProviderPage`: observed host
+CLI account, one page of at most30 accessible repositories, explicit HTTPS/SSH
+clone URLs, visibility/default branch and a possible-next-page indicator. Page
+must be1–1000. Each provider command runs from a neutral directory with a7-second
+deadline and512KiB output limit. A changed account or malformed/mismatched
+transport withholds the page. Unavailable `gh`/`glab` authentication returns503
+with a fixed sign-in recovery action. Discovery exposes no tokens and does not
+authorize or perform a clone. Current operator admission is rechecked after
+provider calls and at response-body release.
+
 `POST /api/projects/repository-acquisitions` accepts
 `{requestId, sourceUrl, sourceRef?}`. Retain the UUID `requestId` across uncertain
 responses. This host-local operation uses the operator's Git configuration;

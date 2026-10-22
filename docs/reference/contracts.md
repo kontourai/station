@@ -1238,6 +1238,14 @@ See [Publisher analytics](../guides/plugins.md#publisher-analytics).
 
 ## Project knowledge registration ownership
 
+`ProjectStartIntent` names initial `workspace | knowledge | connections | blank`
+setup guidance. It grants no source or execution authority. The browser's
+optional creation-recovery intent is separate from the server Project draft and
+is retained across reload; older pointers default to workspace behavior.
+`RepositoryProviderPage` and `RepositoryProviderSelection` describe a bounded
+observed forge account page, including explicit clone transports. They are
+discovery metadata, not acquisition or credential availability receipts.
+
 The `project` subpath also owns `ProjectS3Source`,
 `ProjectS3ObjectReference`, `ProjectS3ObjectPage` and `ProjectS3ObjectRead`.
 A source has an immutable UUID and durable Project ID plus bucket-owner account,
