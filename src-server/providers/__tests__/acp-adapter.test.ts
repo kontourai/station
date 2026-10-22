@@ -3699,6 +3699,141 @@ describe('AcpAdapter', () => {
     expect(bareEnd).not.toHaveProperty('invocationId');
   });
 
+  // The activity fold and the execution coordinator credit a tool or a delta
+  // to the open turn only when it names that turn's invocation.
+  test('every event of a send’s turn names its invocation, a steer keeps it, and a call keeps the turn it started in', async () => {
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-origin',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    // Skips what the engine's updates publish beside the event asked for.
+    const nextOf = async (method: string) => {
+      for (;;) {
+        const event = await nextEvent(iterator, method);
+        if (event.method === method) return event;
+      }
+    };
+    const update = (body: Record<string, unknown>) =>
+      processes[0]!.client.sessionUpdate({
+        sessionId: 'native-kiro-cli',
+        update: body,
+      } as any);
+    const origin = { invocationId: 'invocation-origin' };
+
+    const turn = await adapter.sendTurn({
+      threadId: 'thread-origin',
+      input: 'one',
+      invocationId: origin.invocationId,
+    });
+    const own = { turnId: turn.turnId, ...origin };
+    await nextOf('turn.started');
+
+    await update({
+      sessionUpdate: 'tool_call',
+      toolCallId: 'call-done',
+      title: 'Run the build',
+      name: 'shell',
+      status: 'in_progress',
+    });
+    expect(await nextOf('tool.started')).toMatchObject({
+      toolCallId: 'call-done',
+      ...own,
+    });
+    await update({
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'call-done',
+      status: 'completed',
+      content: [{ type: 'content', content: { type: 'text', text: 'ok' } }],
+    });
+    expect(await nextOf('tool.completed')).toMatchObject({
+      toolCallId: 'call-done',
+      status: 'success',
+      ...own,
+    });
+    await update({
+      sessionUpdate: 'agent_message_chunk',
+      content: { type: 'text', text: 'built' },
+    });
+    expect(await nextOf('content.text-delta')).toMatchObject(own);
+
+    // A steer continues the turn: what it streams is still this send's.
+    await adapter.steerTurn('thread-origin', 'go left', turn.turnId);
+    expect(await nextOf('turn.started')).toMatchObject({
+      turnId: turn.turnId,
+      inputKind: 'steer',
+    });
+    await update({
+      sessionUpdate: 'agent_message_chunk',
+      content: { type: 'text', text: 'going left' },
+    });
+    expect(await nextOf('content.text-delta')).toMatchObject(own);
+    await update({
+      sessionUpdate: 'tool_call',
+      toolCallId: 'call-late',
+      title: 'Slow',
+      name: 'shell',
+      status: 'in_progress',
+    });
+    await nextOf('tool.started');
+    processes[0]!.resolvePrompt('end_turn');
+    expect(await nextOf('turn.completed')).toMatchObject(own);
+
+    // A call that outlives its turn is never credited to the next send.
+    const next = await adapter.sendTurn({
+      threadId: 'thread-origin',
+      input: 'two',
+      invocationId: 'invocation-next',
+    });
+    await nextOf('turn.started');
+    await update({
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'call-late',
+      status: 'completed',
+    });
+    expect(await nextOf('tool.completed')).toMatchObject({
+      toolCallId: 'call-late',
+      ...own,
+    });
+    await update({
+      sessionUpdate: 'agent_message_chunk',
+      content: { type: 'text', text: 'second' },
+    });
+    expect(await nextOf('content.text-delta')).toMatchObject({
+      turnId: next.turnId,
+      invocationId: 'invocation-next',
+    });
+    processes[0]!.resolvePrompt('end_turn');
+    await nextOf('turn.completed');
+
+    // Between turns, and on a send with no invocation, nothing is named.
+    await update({
+      sessionUpdate: 'tool_call',
+      toolCallId: 'call-idle',
+      title: 'Idle',
+      name: 'shell',
+      status: 'in_progress',
+    });
+    const idle = await nextOf('tool.started');
+    expect(idle).not.toHaveProperty('invocationId');
+    expect(idle).not.toHaveProperty('turnId');
+    await adapter.sendTurn({ threadId: 'thread-origin', input: 'three' });
+    await nextOf('turn.started');
+    await update({
+      sessionUpdate: 'agent_message_chunk',
+      content: { type: 'text', text: 'bare' },
+    });
+    expect(await nextOf('content.text-delta')).not.toHaveProperty(
+      'invocationId',
+    );
+    await adapter.stopAll();
+  });
+
   // archive#4084: reproduces the live archive#1860 kiro-cli evidence — a
   // notification bound to the `acp.turn-error-cause` consumer
   // (`_kiro.dev/error/rate_limit`, carrying the engine's own human-readable
@@ -5308,6 +5443,7 @@ describe('station#1684: station-control over ACP HTTP MCP', () => {
     const turn = await adapter.sendTurn({
       threadId: 'thread-recovery-open-tool',
       input: 'Continue safely',
+      invocationId: 'invocation-recovery',
     });
     await nextEvent(iterator, 'turn.started');
 
@@ -5328,13 +5464,18 @@ describe('station#1684: station-control over ACP HTTP MCP', () => {
     ).rejects.toMatchObject({ code: -32601 });
     await vi.waitFor(() => expect(processes).toHaveLength(2));
 
+    // Both name the send's invocation: the turn's boundary row retires only
+    // on a terminal that does.
     await expect(nextEvent(iterator, 'turn.aborted')).resolves.toMatchObject({
       turnId: turn.turnId,
+      invocationId: 'invocation-recovery',
     });
     // The honest terminal, and it precedes the exit that would otherwise
     // close the card as "Stopped".
     await expect(nextEvent(iterator, 'tool.completed')).resolves.toMatchObject({
       method: 'tool.completed',
+      turnId: turn.turnId,
+      invocationId: 'invocation-recovery',
       toolCallId: 'acp-recovery-call',
       toolName: 'shell',
       status: 'unresolved',

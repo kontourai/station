@@ -30,6 +30,7 @@ import {
   wakeUpClientTurnId,
   wakeUpMessage,
 } from '../agent-schedule.js';
+import { ConversationTurnActivityProjection } from '../conversation-turn-activity.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -64,6 +65,8 @@ describe('an approved check-back on an ACP chat reaches the engine', () => {
   let bus: EventBus;
   let service: OrchestrationService;
   let processes: FakeAcpProcess[];
+  // Lets an engine re-establish its session (a credential-refusal restart).
+  let loadSessionCapable = false;
   let inbox: ThreadInboxDelivery;
   let wakeUps: AgentWakeUpDelivery;
   const clock = { now: Date.now() };
@@ -76,6 +79,7 @@ describe('an approved check-back on an ACP chat reaches the engine', () => {
     store = new EventStore(join(tmp, 'orchestration.sqlite'));
     bus = new EventBus();
     processes = [];
+    loadSessionCapable = false;
     const adapter = new AcpAdapter({
       getConnections: async () => [
         {
@@ -89,6 +93,8 @@ describe('an approved check-back on an ACP chat reaches the engine', () => {
       logger: { debug: () => {}, warn: () => {}, error: () => {} },
       processFactory: (opts) => {
         const child = new FakeAcpProcess(opts);
+        if (loadSessionCapable)
+          child.initResult!.agentCapabilities.loadSession = true;
         processes.push(child);
         return child as unknown as ACPProcess;
       },
@@ -280,5 +286,161 @@ describe('an approved check-back on an ACP chat reaches the engine', () => {
     expect(started[1]).toMatchObject({
       clientOrigin: { actor: { kind: 'internal' } },
     });
+  });
+
+  const startChat = async () => {
+    await service.dispatch(
+      {
+        type: 'startSession',
+        input: {
+          threadId: THREAD,
+          provider: 'acp',
+          cwd: tmp,
+          metadata: { connectionId: CONNECTION_ID, userId: OWNER },
+        },
+      },
+      { userId: OWNER },
+    );
+    await waitFor(
+      methods,
+      (seen) => seen.includes('session.started'),
+      'session.started',
+    );
+  };
+  const stored = (method: string) =>
+    store
+      .listEvents(THREAD)
+      .map((row) => row.payload)
+      .filter((event) => event.method === method);
+  const summary = async () =>
+    (
+      await service.listSessionReadModel(INTERNAL_SESSION_READ_SCOPE, {
+        threadIds: [THREAD],
+      })
+    ).find((session) => session.threadId === THREAD);
+  const coldActivity = () => {
+    const cold = new ConversationTurnActivityProjection({
+      eventStore: store,
+      readTurnProgress: () => undefined,
+      readRunningChildWork: () => [],
+      logger: { warn: vi.fn() },
+    });
+    try {
+      return cold.readForThread(THREAD);
+    } finally {
+      cold.dispose();
+    }
+  };
+
+  // The open turn's activity counts a tool only when the tool names the
+  // turn's invocation; an ACP chat whose tools did not showed no work.
+  test('a tool an ACP turn is running shows as running, live and freshly seeded, then as its last tool', async () => {
+    await startChat();
+    await service.dispatchWithReceipt(
+      { type: 'sendTurn', input: { threadId: THREAD, input: 'build it' } },
+      { userId: OWNER },
+    );
+    await waitFor(prompts, (seen) => seen.length === 1, 'the prompt');
+    const update = (body: Record<string, unknown>) =>
+      processes[0]!.client.sessionUpdate({
+        sessionId: processes[0]!.sessionId ?? 'native-kiro-cli',
+        update: body,
+      } as never);
+    await update({
+      sessionUpdate: 'tool_call',
+      toolCallId: 'call-build',
+      title: 'Run the build',
+      name: 'shell',
+      status: 'in_progress',
+    });
+    const [toolStarted] = await waitFor(
+      () => stored('tool.started'),
+      (seen) => seen.length === 1,
+      'tool.started',
+    );
+    const [turnStarted] = stored('turn.started');
+    expect(toolStarted).toMatchObject({
+      turnId: turnStarted!.turnId,
+      invocationId: turnStarted!.invocationId,
+    });
+    const running = [
+      {
+        name: 'shell',
+        callId: 'call-build',
+        startedAt: toolStarted!.createdAt,
+      },
+    ];
+    const live = await summary();
+    expect(live?.conversationActivity?.runningTools).toEqual(running);
+    // The tool is the turn's progress, so the stall watch saw it.
+    expect(live?.turnProgress?.lastProgressEventAt).toBe(
+      toolStarted!.createdAt,
+    );
+    expect(coldActivity()?.runningTools).toEqual(running);
+
+    await update({
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'call-build',
+      status: 'completed',
+      content: [{ type: 'content', content: { type: 'text', text: 'ok' } }],
+    });
+    const [toolCompleted] = await waitFor(
+      () => stored('tool.completed'),
+      (seen) => seen.length === 1,
+      'tool.completed',
+    );
+    const done = await summary();
+    expect(done?.conversationActivity?.runningTools).toBeUndefined();
+    expect(done?.conversationActivity?.lastTool).toMatchObject({
+      name: 'shell',
+      callId: 'call-build',
+      completedAt: toolCompleted!.createdAt,
+    });
+    processes[0]!.resolvePrompt('end_turn');
+    await waitFor(
+      methods,
+      (seen) => seen.includes('turn.completed'),
+      'the turn to end',
+    );
+  });
+
+  // The restart's abort must name the send's invocation, or its row never
+  // retires and the chat reads busy for good.
+  test('a credential-refusal restart ends the turn, and the chat is not busy after', async () => {
+    loadSessionCapable = true;
+    await startChat();
+    await service.dispatchWithReceipt(
+      { type: 'sendTurn', input: { threadId: THREAD, input: 'go on' } },
+      { userId: OWNER },
+    );
+    await waitFor(prompts, (seen) => seen.length === 1, 'the prompt');
+    expect(service.hasActiveTurn(THREAD)).toBe(true);
+
+    await expect(
+      processes[0]!.client.extMethod!('_kiro/auth/getAccessToken', {}),
+    ).rejects.toMatchObject({ code: -32601 });
+    const [aborted] = await waitFor(
+      () => stored('turn.aborted'),
+      (seen) => seen.length === 1,
+      'turn.aborted',
+    );
+    const [turnStarted] = stored('turn.started');
+    expect(aborted).toMatchObject({
+      turnId: turnStarted!.turnId,
+      invocationId: turnStarted!.invocationId,
+      reason: 'engine-restarted',
+    });
+    await waitFor(
+      () => processes.length,
+      (count) => count === 2,
+      'restart',
+    );
+    await waitFor(
+      () => store.sessionTurnBoundaryAuthority().hasPossibleEffect(THREAD),
+      (effect) =>
+        effect.kind === 'available' && !(effect as { active: boolean }).active,
+      'the turn row to retire',
+    );
+    expect(service.hasActiveTurn(THREAD)).toBe(false);
   });
 });

@@ -516,6 +516,11 @@ interface AcpPendingRequest {
   governedEdit?: true;
 }
 
+type AcpTurnOrigin = {
+  readonly turnId: string;
+  readonly invocationId: string;
+};
+
 export interface AcpSessionRecord {
   session: ProviderSession;
   process: ACPProcess;
@@ -562,12 +567,18 @@ export interface AcpSessionRecord {
   delegation?: InvocationContext['delegation'];
   activeTurnId?: string;
   /**
-   * The invocation Station assigned the send that opened `turnId`. Its
-   * `turn.started` and terminal carry it: the turn's boundary row retires
-   * only on a terminal naming that invocation, and a row left behind reads
-   * as a turn still running to everything that waits for the chat to idle.
+   * The invocation Station assigned the send that opened `turnId`. Every
+   * event of that turn carries it: the turn's boundary row retires only on
+   * a terminal naming that invocation, and a row left behind reads as a
+   * turn still running to everything that waits for the chat to idle. A
+   * steer continues the turn, so it keeps the original send's invocation.
    */
-  activeTurnOrigin?: { readonly turnId: string; readonly invocationId: string };
+  activeTurnOrigin?: AcpTurnOrigin;
+  /**
+   * The turn each open tool call started in, so its progress and terminal
+   * name that turn even when they arrive after it ended.
+   */
+  toolCallOrigins?: Map<string, AcpTurnOrigin>;
   stopping?: boolean;
   /** At most one engine re-establishment is attempted for this session. */
   credentialRecoveryAttempted?: boolean;
@@ -1186,7 +1197,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     };
     record.toolUpdateSupervisor = new AcpToolUpdateSupervisor(
       session,
-      (event) => this.publish(event),
+      (event) => this.publishForTurn(record, event),
       this.toolUpdateBudget,
     );
 
@@ -3130,7 +3141,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       provider: this.provider,
       session: record.session,
       activeTurnId: record.activeTurnId,
-      publish: (event) => this.publish(event),
+      publish: (event) => this.publishForTurn(record, event),
       state: record,
       toolUpdateSupervisor: record.toolUpdateSupervisor,
     };
@@ -3454,7 +3465,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       provider: this.provider,
       session: record.session,
       activeTurnId: record.activeTurnId,
-      publish: (event) => this.publish(event),
+      publish: (event) => this.publishForTurn(record, event),
       state: record,
       toolUpdateSupervisor: record.toolUpdateSupervisor,
     };
@@ -3463,6 +3474,53 @@ export class AcpAdapter implements ProviderAdapterShape {
 
   private publish(event: CanonicalRuntimeEvent): void {
     this.events.push(event);
+  }
+
+  /**
+   * Publishes an engine-reported event with the invocation of the turn it
+   * belongs to, as the other adapters' shared origin spread does: the
+   * activity fold and the execution coordinator credit a delta, a tool or a
+   * stop to a turn only when the event names that turn's invocation. A tool
+   * call keeps the turn it started in, so a call that outlives its turn is
+   * never credited to the next one.
+   */
+  private publishForTurn(
+    record: AcpSessionRecord,
+    event: CanonicalRuntimeEvent,
+  ): void {
+    if (event.invocationId !== undefined) return this.publish(event);
+    const origin = record.activeTurnOrigin;
+    const current =
+      origin && record.activeTurnId === origin.turnId ? origin : undefined;
+    if (
+      event.method === 'tool.started' ||
+      event.method === 'tool.progress' ||
+      event.method === 'tool.completed'
+    ) {
+      const calls = (record.toolCallOrigins ??= new Map());
+      if (
+        event.method === 'tool.started' &&
+        current &&
+        !calls.has(event.toolCallId)
+      )
+        calls.set(event.toolCallId, current);
+      const call = calls.get(event.toolCallId);
+      if (event.method === 'tool.completed') calls.delete(event.toolCallId);
+      return this.publish(
+        call
+          ? {
+              ...event,
+              turnId: event.turnId ?? call.turnId,
+              invocationId: call.invocationId,
+            }
+          : event,
+      );
+    }
+    this.publish(
+      current && event.turnId === current.turnId
+        ? { ...event, invocationId: current.invocationId }
+        : event,
+    );
   }
 
   private requireSession(threadId: string): AcpSessionRecord {
