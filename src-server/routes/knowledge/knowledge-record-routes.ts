@@ -192,16 +192,22 @@ interface LinkRecordBody {
 export function createKnowledgeRecordRoutes(deps: KnowledgeRecordRouteDeps) {
   const app = new Hono();
   app.use('/roots/:rootId/*', async (c, next) => {
+    const read = c.req.method === 'GET' || c.req.method === 'HEAD';
     const expectedRoot =
-      c.req.method === 'GET' && deps.guardReadResponse
+      read && deps.guardReadResponse
         ? await deps.store.getRoot(c.req.param('rootId'))
         : undefined;
+    if (read && deps.guardReadResponse && !expectedRoot)
+      return c.json(
+        { success: false, error: 'Knowledge store not found.' },
+        404,
+      );
     if (
       deps.mayUseRoot &&
       !(await deps.mayUseRoot(
         c.req.raw,
         c.req.param('rootId'),
-        c.req.method === 'GET' ? 'view' : 'edit',
+        read ? 'view' : 'edit',
       ))
     ) {
       return c.json(
