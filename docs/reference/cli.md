@@ -507,6 +507,7 @@ deadline would abandon healthy work:
 | `monitoring events` (live form) | Same — a live stream, ended by interrupting it. |
 | `knowledge reindex` / `knowledge migrate` | Duration scales with your corpus, not with Station's health. |
 | `flow attach-command` | Runs a gate command server-side; bounded by its own `--timeout-ms`. |
+| `group session-run` / `group session-sync` | Supervision uses the server's absolute deadline and caller cancellation; the SDK disables its ordinary client request timeout. |
 | `start`/`build` readiness probes | Already enforce their own startup deadlines. |
 
 This is the shared SDK client contract, not a guarantee for every raw network
