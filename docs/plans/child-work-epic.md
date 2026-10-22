@@ -62,13 +62,26 @@ Project membership, and Activity showed the completed work under Just finished
 with CLI origin. A separate browser client showed the same item and origin
 before and after reload, without mocked routes.
 
-Native relaunch did not pass: Activity showed its unavailable boundary on two
-cold launches. One manual Retry after startup recovered the real list; the
-cause remains unestablished. This is an open #2868 qualification defect, not a
-successful persistence receipt. The physical phone remained unreachable, and
-the simulator does not establish physical-device lifecycle behavior. Generated
-Apple project changes were archived and restored; the isolated runtime and
-owned simulator were stopped after evidence capture.
+Native relaunch initially failed: Activity showed its unavailable boundary on
+two cold launches, and one manual Retry after startup recovered the real list.
+An independent source review identified a publication loop while the inventory
+query has no data. The real Activity shell, SDK query and review provider
+reproduced React's maximum-update-depth exception with a deferred inventory
+response. Repair `8767c2dc482` creates the empty inventory inside the existing
+memo rather than on every render. The two-file selection passes 148 cases;
+restoring the old fallback fails both new cases with 12 controls passing, and
+byte-identical restoration passes all 14 owner cases. UI types and Biome pass.
+
+The exact repair build and same-revision server then loaded Activity on two
+cold simulator launches without Retry, retaining the real CLI conversation and
+origin. The installed binary matched the built artifact. Independent delta
+review found no production blockers; its test-observability finding was repaired
+at `d4d3610b35a` and accepted by source review. That test-only follow-up waits
+for mounted Activity content before releasing query restoration and passes all
+14 owner cases. Native evidence belongs to `8767c2dc482`, not a later build.
+The physical phone remained unreachable; simulator evidence does not complete
+physical-device or full #2868 acceptance. Generated Apple project changes were
+archived and restored; the isolated runtime and owned simulator were stopped.
 
 The compact roster, logos, animation, sender provenance, delegated result
 delivery, and phone transfer guards already contained in #3991 remain master
