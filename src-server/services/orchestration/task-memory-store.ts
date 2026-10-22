@@ -133,6 +133,12 @@ export type TaskLearningPromotionClaim =
       readonly kind: 'claimed';
       readonly promotion: TaskLearningPromotionRecord;
     }
+  /**
+   * The version was dismissed; nothing is recorded. Decided in the same
+   * transaction as the insert, so a dismissal and a promotion that race
+   * cannot both stand (review round 2, P3-6).
+   */
+  | { readonly kind: 'dismissed' }
   /** An earlier promotion's row stands; write or read back only there. */
   | {
       readonly kind: 'existing';
@@ -710,6 +716,8 @@ export function createSqliteTaskMemoryStore(
 
     claimLearningPromotion(input) {
       return transact<TaskLearningPromotionClaim>(input.beforeCommit, () => {
+        if (readDismissal(input))
+          return { commit: false, value: { kind: 'dismissed' } };
         const row = db
           .prepare(
             `SELECT ${PROMOTION_COLUMNS} FROM task_learning_promotions

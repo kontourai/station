@@ -18,8 +18,10 @@
  *   back, only in that store, so two people choosing two stores still get
  *   one record. When the row's write failed or was interrupted, the next
  *   promotion finishes it in the row's store, with that request's edited
- *   title and text. "Promoted" in the candidate list is still read back
- *   from the stores.
+ *   title and text. A version whose recorded store has since been removed
+ *   from the Project stays `no-store`: it is never written anywhere else.
+ *   The dismissal check runs inside the row's transaction too. "Promoted"
+ *   in the candidate list is still read back from the stores.
  * - A dismissal is kept in `task_learning_dismissals` (migration 021).
  *
  * Authority is the caller's: the routes pass a person's Task-room access.
@@ -295,6 +297,7 @@ export async function promoteTaskLearning(
       beforeCommit: access.isCurrent,
     });
     if (claim.kind === 'stale') return { kind: 'stale' };
+    if (claim.kind === 'dismissed') return { kind: 'was-dismissed' };
     const target = roots.find((r) => r.id === claim.promotion.rootId);
     // The store this version was first promoted into is no longer one of
     // the Project's: nothing is written anywhere else.

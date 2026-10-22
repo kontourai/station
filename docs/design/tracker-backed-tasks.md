@@ -393,7 +393,10 @@ step.
   that store: two people choosing two stores at once still get one record
   (the second answer is `already-promoted`). When the first write failed, the
   next promotion finishes it in the recorded store, with that request's
-  edited title and text. "Promoted" in the candidate list is read back from
+  edited title and text. A version whose recorded store has since been
+  removed from the Project answers `no-store` and is never written
+  elsewhere. Whether the version was dismissed is checked inside the same
+  transaction as the row's insert. "Promoted" in the candidate list is read back from
   the stores. A later version of the same key is a new candidate.
 - **Dismissals** are kept as an append-only row per dismissed record version
   (`task_learning_dismissals`, migration 021).

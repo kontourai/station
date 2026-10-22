@@ -183,3 +183,49 @@ test('a promotion whose write failed is finished in its recorded store, never an
   expect(records.get(stores[0]!.id)!.size).toBe(1);
   expect(records.get(stores[1]!.id)!.size).toBe(0);
 });
+
+test('a dismissal that lands after the pre-check still stops the promotion, inside its transaction (review round 2, P3-6)', async () => {
+  const stores = [root('a')];
+  const { provider, records, open } = knowledge(stores);
+  open();
+  const memory = memoryWithDecision();
+  expect(
+    memory.dismissLearningCandidate({
+      taskId: TASK.id,
+      taskCreatedAt: TASK.createdAt,
+      projectId: TASK.projectId,
+      kind: 'decision',
+      key: 'storage',
+      version: 1,
+      principalId: 'person-b',
+    }).kind,
+  ).toBe('dismissed');
+  // The promotion's own read ran before the dismissal committed.
+  const raced = new Proxy(memory, {
+    get: (target, property, receiver) =>
+      property === 'listLearningDismissals'
+        ? () => []
+        : Reflect.get(target, property, receiver),
+  });
+  const result = await promoteTaskLearning(
+    provider,
+    {
+      memory: raced,
+      task: TASK,
+      projectId: TASK.projectId,
+      projectSlug: 'alpha',
+      principalId: 'person-a',
+      isCurrent: () => true,
+    },
+    {
+      kind: 'decision',
+      key: 'storage',
+      version: 1,
+      rootId: stores[0]!.id,
+      title: 'Storage',
+      text: 'Use SQLite.',
+    },
+  );
+  expect(result).toEqual({ kind: 'was-dismissed' });
+  expect(records.get(stores[0]!.id)!.size).toBe(0);
+});
