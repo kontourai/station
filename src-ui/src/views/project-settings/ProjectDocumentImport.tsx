@@ -256,7 +256,7 @@ export function ProjectDocumentImport({
     }
   }
   return (
-    <section aria-label="Import documents">
+    <section aria-label="Import documents" className="project-sources__form">
       <h3>Import documents</h3>
       <p>
         Add Markdown or plain-text documents to Project knowledge. Preview up to
