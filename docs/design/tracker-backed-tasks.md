@@ -216,9 +216,10 @@ above:
   with a note naming `include: "summary_history"`. Quoting makes every fixed
   part longer, so the caps alone no longer leave room for a record when
   every part is at its worst. The newest standing record's line is reserved
-  instead: when the fixed parts leave too little, the Task document's share
-  shrinks first and then the summary's, each by exactly the shortfall and
-  with a note saying it was cut, so the newest record always fits. Records
+  instead: when the fixed parts leave too little, what the Task document
+  shows shrinks first and then what the summary shows, each by at least the
+  shortfall and with a note saying it was cut, so the newest record always
+  fits. Records
   fill the space newest first, starting with the kind of the newest record
   and then taking in turn from each kind, followed by Session lines (at
   most eight, newest activity first). Everything left out is counted.

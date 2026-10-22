@@ -72,9 +72,9 @@ export const TASK_BRIEF_MAX_CHARS = 16000;
 // document once a summary exists. Quoting adds characters to every part, so
 // the caps alone no longer leave room for a record at every part's worst.
 // The newest standing record's line is therefore reserved: when the fixed
-// parts leave less than it needs, the Task document's share shrinks first,
-// then the summary's, by exactly the shortfall (review round 2, P2-2;
-// task-brief.test.ts pins the worst case).
+// parts leave less than it needs, what the Task document shows shrinks
+// first, then what the summary shows, each by at least the shortfall
+// (review rounds 2 and 3; task-brief.test.ts pins both steps).
 const TITLE_MAX = 512;
 const GOAL_MAX = 1000;
 /** The Task document's text: the seeded brief, before any summary exists. */
@@ -215,6 +215,7 @@ export interface TaskBriefSnapshot {
 }
 
 const cut = cutText;
+const SHORT_CUT_NOTE = '(cut)';
 const oneLine = singleLine;
 
 /**
@@ -222,9 +223,17 @@ const oneLine = singleLine;
  * not fit, the last quoted line is cut and `note`, Station's own unquoted
  * line, says so.
  */
-function quotedWithin(text: string, max: number, note: string): string[] {
+export function quotedWithin(
+  text: string,
+  max: number,
+  note: string,
+): string[] {
   const lines = quotedLines(text);
   if (lines.join('\n').length <= max) return lines;
+  // A cap too small for the note gets a short one, or nothing: never a
+  // line longer than the cap (review round 3, F3).
+  if (note.length + 1 > max)
+    return max >= SHORT_CUT_NOTE.length ? [SHORT_CUT_NOTE] : [];
   const budget = max - note.length - 1;
   const kept: string[] = [];
   let used = -1;
@@ -711,7 +720,12 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
   // share, then from the summary's quoted share.
   let shortfall = newestCost - budgetFor();
   if (shortfall > 0 && documentText) {
-    document = renderDocument(Math.max(0, documentMax - shortfall));
+    // From what is shown, not from the cap (review round 3, F3).
+    const shown = Math.min(
+      documentMax,
+      quotedLines(documentText).join('\n').length,
+    );
+    document = renderDocument(Math.max(0, shown - shortfall));
     shortfall = newestCost - budgetFor();
   }
   if (shortfall > 0 && memory?.summary) {

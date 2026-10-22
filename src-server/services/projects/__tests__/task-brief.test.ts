@@ -8,6 +8,7 @@ import { chatSchema } from '../../../routes/schemas/schema-definitions/runtime.j
 import type { DigestTurn } from '../../orchestration/session-digest.js';
 import {
   buildTaskBrief,
+  quotedWithin,
   renderTaskRecordListing,
   renderTaskSummaryHistory,
   TASK_BRIEF_MAX_CHARS,
@@ -383,6 +384,77 @@ describe('buildTaskBrief', () => {
     expect(brief.omitted.standing.decision).toBeLessThanOrEqual(1);
   });
 
+  test('with every rendered part at its own cap, the summary gives up room too, and the newest record still fits (review round 3, F3)', () => {
+    // Each value is at the cut this builder applies to it: URL 512,
+    // comment author 64, author ids 128, labels 64, the ref's GitHub limits.
+    const person = { kind: 'person', principalId: 'P'.repeat(128) } as const;
+    const ref = `github:${'o'.repeat(39)}/${'r'.repeat(100)}#99999999`;
+    const brief = buildTaskBrief(
+      input({
+        task: {
+          ...TASK,
+          projectId: 'p'.repeat(200),
+          title: 'T'.repeat(5000),
+          description: 'D'.repeat(5000),
+          sourceProvider: 'github',
+          workItemRef: ref,
+          workItemProvenance: 'project-board',
+        },
+        observation: {
+          status: 'observed',
+          observation: {
+            workItemRef: ref,
+            url: `https://github.com/${'u'.repeat(494)}`,
+            title: 'X'.repeat(5000),
+            state: 'closed',
+            stateReason: 'not_planned',
+            labels: Array.from(
+              { length: 50 },
+              (_, i) => `${'L'.repeat(64)}${i}`,
+            ),
+            updatedAt: '2026-10-20T00:00:00.000Z',
+            observedAt: '2026-10-21T00:00:00.000Z',
+            comments: Array.from({ length: 30 }, () => ({
+              author: 'a'.repeat(64),
+              createdAt: '2026-10-20T00:00:00Z',
+              excerpt: 'c'.repeat(2000),
+            })),
+          },
+        },
+        text: 'doc line\n'.repeat(2000),
+        summary: summary('s'.repeat(4000), { author: person }),
+        records: [
+          record('decision', 'a'.padEnd(64, 'k'), 'r'.repeat(1000), {
+            author: person,
+          }),
+          record('decision', 'b'.padEnd(64, 'k'), `newest ${'r'.repeat(993)}`, {
+            author: person,
+          }),
+        ],
+        sessions: Array.from({ length: 8 }, (_, i) =>
+          sessionFacts({
+            sessionId: `${'s'.repeat(127)}${i}`,
+            provider: 'claude',
+            status: 'Running',
+            turnCount: 3,
+            lastTurn: turn({ request: 'q'.repeat(2000) }),
+            claims: Array.from({ length: 10 }, () => ({
+              paths: ['x'.repeat(512)],
+              expiresAt: '2026-10-22T00:00:00Z',
+            })),
+          }),
+        ),
+      }),
+    );
+    expect(brief.text.length).toBeLessThanOrEqual(TASK_BRIEF_MAX_CHARS);
+    expect(brief.text).toContain(`> newest ${'r'.repeat(993)}`);
+    // Both steps ran: the document is down to its note, the summary is cut.
+    expect(brief.text).toContain(
+      '(cut: quoted, this summary is longer than the brief allows;',
+    );
+    expect(brief.text).toContain('(cut; the Task document has the rest)');
+  });
+
   test("a Session's active claims follow its line, on one bounded line", () => {
     const brief = buildTaskBrief(
       input({
@@ -756,6 +828,18 @@ describe('buildTaskBrief', () => {
     expect(brief.text).toContain(
       'built from the Task as it stood when this brief was made (at dispatch, or by a `get_task_brief` call)',
     );
+  });
+});
+
+describe('quotedWithin', () => {
+  test('a cap smaller than the cut note never renders a line longer than the cap (review round 3, F3)', () => {
+    const note = '(cut: a long note that names where the rest is)';
+    for (const max of [0, 4, 5, 20, note.length, note.length + 1, 60]) {
+      const lines = quotedWithin('x'.repeat(500), max, note);
+      expect(lines.join('\n').length).toBeLessThanOrEqual(max);
+    }
+    expect(quotedWithin('x'.repeat(500), 20, note)).toEqual(['(cut)']);
+    expect(quotedWithin('x'.repeat(500), 4, note)).toEqual([]);
   });
 });
 
