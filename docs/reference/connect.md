@@ -239,7 +239,8 @@ outage. Health snapshots do not themselves make all consumers read-only. The
 SDK transport can reject non-safe HTTP methods before dispatch when a host's
 credential resolver supplies `mutationAllowed: () => false`. Station's native
 broker credential owner supplies that guard for its bounded read transport;
-other resolver paths retain their existing behavior. Individual
+the browser resolver also refuses writes while `navigator.onLine` reports false,
+with a reconnect message. Past health errors still permit a new recovery attempt. Individual
 features still own their availability checks. See the
 [SDK transport](../../packages/sdk/src/client/http.ts) and
 [Station resolver](../../src-ui/src/contexts/ApiBaseContext.tsx).
