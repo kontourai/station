@@ -741,7 +741,7 @@ test('profiles derived-session consumer commits during token delivery', () => {
       delta: 'word ', createdAt: '2026-10-22T00:00:00.000Z',
     }));
   }
-  console.info('DERIVED_PROFILE', JSON.stringify({ updates: commits - initial, cpuMs: performance.now() - started }));
+  process.stdout.write(`DERIVED_PROFILE ${JSON.stringify({ updates: commits - initial, cpuMs: performance.now() - started })}\n`);
   expect(activeChatsStore.getSnapshot()[SESSION_A].streamingMessage?.content).toBe('word '.repeat(100));
   mounted.unmount();
   clearChats();

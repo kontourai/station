@@ -470,6 +470,6 @@ test('profiles mounted file selection across a wide open tree', () => {
   const mounted = render(view(null));
   for (let index = 0; index < 20; index++) mounted.rerender(view(`file-${index}.ts`));
   expect(screen.getByText('file-19.ts').closest('button')?.className).toContain('selected');
-  console.info('FILE_PROFILE', JSON.stringify({ commits: durations.length, reactCpuMs: durations.reduce((a, b) => a + b, 0) }));
+  process.stdout.write(`FILE_PROFILE ${JSON.stringify({ commits: durations.length, reactCpuMs: durations.reduce((a, b) => a + b, 0) })}\n`);
   mounted.unmount();
 });
