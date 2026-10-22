@@ -36,9 +36,9 @@ test('watched worker backs off idle database probes, still notices another conne
     const statement = prepare.call(this, sql);
     if (sql === 'PRAGMA data_version') {
       const get = statement.get;
-      statement.get = function (...args: Parameters<typeof get>) {
+      statement.get = function (...args: unknown[]) {
         probes++;
-        return get.apply(this, args);
+        return Reflect.apply(get, this, args);
       };
     }
     return statement;
