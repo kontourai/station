@@ -140,7 +140,11 @@ does not relocate an existing conversation. Runtime and native-device execution
 of these routes require separate evidence from the source and controlled tests.
 
 Home keeps a screen-reader page title while the shared composer owns the
-visible start heading. An empty Home does not add a second welcome question.
+visible start heading. A confirmed empty Station shows a first-conversation
+heading and two next steps: review available agents (or open engine setup when
+none can run), and optionally open a Project. The same inline composer starts
+the conversation. Empty Recent work is omitted only for this confirmed first
+session; loading and failed reads retain their status and recovery.
 
 The **Run a task…** control opens the existing task launcher with the current message, Project, Agent and
 explicit Station/engine/model/options selection, and with its Station/worker/model routing controls expanded. The launcher

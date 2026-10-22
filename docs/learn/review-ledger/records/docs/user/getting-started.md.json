@@ -238,7 +238,15 @@
 
     "src-ui/src/views/activity/openActivityReview.ts",
 
-    "tests/activity-related-review.spec.ts"
+    "tests/activity-related-review.spec.ts",
+
+    "src-ui/src/components/MobileWelcomeBoundary.tsx",
+
+    "src-ui/src/views/home/HomeSurface.tsx",
+
+    "src-ui/src/views/home/useHomeViewModel.ts",
+
+    "src-ui/src/components/home/HomeActionSection.tsx"
   ],
 
   "checks": [

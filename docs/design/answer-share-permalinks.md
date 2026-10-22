@@ -242,9 +242,9 @@ unvalidated bytes to an unauthenticated viewer buys nothing.
 `/share` is mounted **above** the whole provider tree in `main.tsx`, not as a
 view inside the app shell. Two concrete reasons:
 
-- `OnboardingGate` refuses to render its children without a reachable,
-  credentialed connection — which a share holder does not have and must not
-  need.
+- The application tree verifies Station authority and mounts connection
+  recovery. A fresh native phone also waits at its connection welcome. A share
+  holder needs neither a configured Station nor application access.
 - `PersistQueryClientProvider` writes fetched data into the browser's
   IndexedDB. Mounting the share page inside it would leave a persisted slice of
   someone else's Station in a stranger's browser. The page fetches into React
