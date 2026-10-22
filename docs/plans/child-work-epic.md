@@ -205,6 +205,28 @@ links reach the corresponding table rows. Prerequisite links have 44px minimum
 targets; arrows themselves are not narrow interactive targets. Legacy inspection
 records without the optional list keep their configuration-only diagram.
 
+At `9a17c4f7e9e`, the HTTP/mounted UI/layout selection passes 35 cases.
+The pre-implementation controls fail in three intended places with 32 controls
+passing after correcting a shared-fixture mistake. Discarding only prerequisite
+edges produces two intended failures with 11 UI/layout controls passing;
+byte-exact restoration passes all 35 again. Independent source review found
+indistinguishable node link names across members. Repair `ebd04baaf54` includes
+member/category identity; its regression fails on the prior source with 11
+controls passing and passes all 12 UI cases after repair. Delta review closes
+that finding without claiming independent execution. A separate verifier passes
+nine pure-layout probes, catches an endpoint-reversal mutation with two intended
+failures and seven controls, and restores nine passing probes. That evidence
+covers the helper, not mounted UI or runtime integration.
+
+Synthetic Chromium checks at 1280px dark and 390px light show visible arrows,
+correct fact targets, large node links, 44px prerequisite references and keyboard
+navigation that scrolls an off-screen node into view without page overflow.
+The first arrow-only targets were too narrow and were replaced by labelled
+references. T3 snapshot automation timed out twice; installed Chromium supplied
+the browser check. UI/server-test types, lint and canonical MCP generation/check
+pass. These are controlled component and fixture results, not native/provider,
+hosted, complete topology or whole-epic acceptance.
+
 At `0801039607e`, the real HTTP inspector test also binds refusal of a
 prerequisite ID absent from the preset: `422 ensemble_inspection_invalid`, before
 additional capability reads. The existing valid uploaded draft remains the
