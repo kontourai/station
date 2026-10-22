@@ -14,7 +14,7 @@ import { dirname, join, posix, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 
-export const VERSION = '11.25.0';
+const VERSION = '11.25.0';
 const METADATA_URL = `https://registry.npmjs.org/pnpm/${VERSION}`;
 const ARCHIVE_URL = `https://registry.npmjs.org/pnpm/-/pnpm-${VERSION}.tgz`;
 const INTEGRITY =
