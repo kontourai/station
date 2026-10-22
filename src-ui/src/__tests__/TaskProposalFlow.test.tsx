@@ -280,3 +280,36 @@ test('a brief expanded past the limit by checklist formatting asks for a shorter
   );
   expect(host.create).not.toHaveBeenCalled();
 });
+
+test.each([
+  [
+    413,
+    'task-document-full',
+    'This brief is too long for a Task document, which holds about 5,400 characters of plain text. Ask the agent for a shorter proposal.',
+  ],
+  [
+    507,
+    'revision-history-full',
+    "Station's revision history is full, so it cannot save a Task brief, and the Task was not created. Retrying will not help until the history has room.",
+  ],
+])(
+  'a %s capacity refusal shows the server words and promises no retry (#4007)',
+  async (status, code, message) => {
+    host.create.mockRejectedValue(
+      new StationHttpError(status, message, { code }),
+    );
+    render(
+      <TaskProposalCard
+        proposal={proposal}
+        sessionId="shape-session"
+        turnId="shape-turn"
+        projectId="alpha"
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Create Task' }));
+    const alert = (await screen.findByRole('alert')).textContent;
+    expect(alert).toBe(message);
+    expect(alert).not.toMatch(/Retry Create Task/);
+    expect(host.navigate).not.toHaveBeenCalled();
+  },
+);

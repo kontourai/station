@@ -75,6 +75,11 @@ export function TaskRoomEditorPane({
   const [appliedDocument, setAppliedDocument] =
     useState<AuthoritativeRoomDocument>();
   const [rejection, setRejection] = useState<string>();
+  /**
+   * Set when the room refused the edit for capacity (#4007). Retrying the
+   * same text cannot succeed, so no retry is offered or attempted.
+   */
+  const [capacityRefusal, setCapacityRefusal] = useState<RoomCapacityRefusal>();
   const [possibleEffect, setPossibleEffect] = useState<{
     intentId: string;
     intentDigest: string;
@@ -617,7 +622,7 @@ export function TaskRoomEditorPane({
       } else if (settled.kind === 'rejected') {
         if (!isCurrentOperation(generation)) return;
         setPossibleEffect(undefined);
-        setRejection(roomEditRejectionMessage(settled.reason));
+        rejectSettlement(settled.reason);
       }
     } catch {
       if (!isCurrentOperation(generation)) return;
@@ -648,17 +653,27 @@ export function TaskRoomEditorPane({
       } else if (settled.kind === 'rejected') {
         if (!isCurrentOperation(generation)) return;
         setPossibleEffect(undefined);
-        setRejection(roomEditRejectionMessage(settled.reason));
+        rejectSettlement(settled.reason);
       }
     } catch {
       /* Keep the identical receipt visible; its effect remains unknown. */
     }
+  }
+  function rejectSettlement(reason: string | undefined) {
+    const capacity = roomCapacityRefusal(reason);
+    setCapacityRefusal(capacity);
+    setRejection(
+      capacity
+        ? ROOM_CAPACITY_REFUSAL_COPY[capacity]
+        : (reason ?? 'Station refused this exact edit.'),
+    );
   }
   const saveLatest = useRef(save);
   saveLatest.current = save;
   useEffect(() => {
     if (
       !rejection ||
+      capacityRefusal ||
       !dirty ||
       !writable ||
       possibleEffect ||
@@ -682,7 +697,15 @@ export function TaskRoomEditorPane({
       }
     }, 450);
     return () => window.clearTimeout(timer);
-  }, [rejection, dirty, writable, possibleEffect, queryClient, taskId]);
+  }, [
+    rejection,
+    capacityRefusal,
+    dirty,
+    writable,
+    possibleEffect,
+    queryClient,
+    taskId,
+  ]);
   useEffect(() => {
     void text;
     if (
@@ -730,11 +753,13 @@ export function TaskRoomEditorPane({
                           ? 'Saved'
                           : settlement === 'duplicate'
                             ? 'Saved'
-                            : rejection
-                              ? 'Save refused. Your draft is retained for retry.'
-                              : dirty
-                                ? 'Saving brief…'
-                                : '';
+                            : capacityRefusal
+                              ? 'Not saved.'
+                              : rejection
+                                ? 'Save refused. Your draft is retained for retry.'
+                                : dirty
+                                  ? 'Saving brief…'
+                                  : '';
   return (
     <section className="task-room-editor" aria-label="Task room editor">
       <div className="task-room-brief-heading">
@@ -764,7 +789,9 @@ export function TaskRoomEditorPane({
       </p>
       {rejection ? (
         <p className="task-room-inline-status" role="alert">
-          {rejection} Draft retained; the shared document was not changed.
+          {capacityRefusal
+            ? rejection
+            : `${rejection} Draft retained; the shared document was not changed.`}
         </p>
       ) : null}
       {document.isError ? (
@@ -800,6 +827,7 @@ export function TaskRoomEditorPane({
             retryCount.current = 0;
             setText(nextText);
             setRejection(undefined);
+            setCapacityRefusal(undefined);
             setSettlement(undefined);
             stopWatching();
             if (shared)
@@ -867,7 +895,7 @@ export function TaskRoomEditorPane({
           </button>
         )}
       </div>
-      {rejection ? (
+      {rejection && !capacityRefusal ? (
         <button
           type="button"
           onClick={() => void save()}
@@ -889,14 +917,25 @@ export function TaskRoomEditorPane({
   );
 }
 
+type RoomCapacityRefusal = 'document-full' | 'evidence-ledger-full';
+
+function roomCapacityRefusal(
+  reason: string | undefined,
+): RoomCapacityRefusal | undefined {
+  return reason === 'document-full' || reason === 'evidence-ledger-full'
+    ? reason
+    : undefined;
+}
+
 /**
  * Plain words for the room's capacity refusals (#4007). Both are refused
- * before anything is written, so the draft stays and nothing is pending.
+ * before anything is written. A Task document keeps every character ever
+ * typed in it, deleted ones included, so deleting never makes room; and the
+ * revision history is shared by every Task on this Station (#4055).
  */
-function roomEditRejectionMessage(reason: string | undefined): string {
-  if (reason === 'document-full')
-    return 'This Task document is full, so Station cannot add more text to it. Deleting text still works.';
-  if (reason === 'evidence-ledger-full')
-    return "Station's revision history is full, so it cannot save Task document edits right now.";
-  return reason ?? 'Station refused this exact edit.';
-}
+const ROOM_CAPACITY_REFUSAL_COPY: Record<RoomCapacityRefusal, string> = {
+  'document-full':
+    'Not saved: this Task document is full. It keeps every character ever typed in it, deleted ones included, so no text can be added and deleting text does not make room. Your unsaved text is only in this editor; the shared document was not changed.',
+  'evidence-ledger-full':
+    "Not saved: Station's revision history is full, so no Task document edits can be saved on this Station, deletions included. Your unsaved text is only in this editor; the shared document was not changed.",
+};

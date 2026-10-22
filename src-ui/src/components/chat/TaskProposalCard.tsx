@@ -96,9 +96,12 @@ export function TaskProposalCard({
       setFailure(
         error instanceof StationHttpError && error.status === 409
           ? "This proposal no longer matches the agent's answer. Ask the agent for a fresh proposal."
-          : error instanceof StationHttpError && error.status === 413
-            ? // Refused before any Task exists (#4007); retrying cannot help.
-              'This brief is too long for a Task document, which holds about 5,400 characters of plain text. Ask the agent for a shorter proposal.'
+          : error instanceof StationHttpError &&
+              (error.code === 'task-document-full' ||
+                error.code === 'revision-history-full')
+            ? // The server's own words carry its capacity figure (#4007);
+              // retrying cannot help, so no retry is promised.
+              error.message
             : 'Task creation or brief saving did not finish. Your proposal is kept. Retry Create Task to finish saving; an existing Task will be reused.',
       );
     }
