@@ -1,4 +1,5 @@
 import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
+import type { ProjectStartIntent } from '@kontourai/station-contracts/project';
 import { useEffect } from 'react';
 import {
   deriveProjectSlug,
@@ -12,6 +13,8 @@ function useProjectDraftValues(partition?: string) {
   const [icon, setIcon] = useProjectDraftState('', partition);
   const [description, setDescription] = useProjectDraftState('', partition);
   const [directory, setDirectory] = useProjectDraftState('', partition);
+  const [startIntent, setStartIntent] =
+    useProjectDraftState<ProjectStartIntent>('workspace', partition);
   const [repositoryAcquisition, setRepositoryAcquisition] =
     useProjectDraftState<{
       id: string;
@@ -30,6 +33,8 @@ function useProjectDraftValues(partition?: string) {
     description,
     defaultEnvironment,
     directory,
+    startIntent,
+    setStartIntent,
     repositoryAcquisition,
     setRepositoryAcquisition,
     icon,
@@ -74,6 +79,7 @@ export function useNewProjectDraft(isOpen: boolean, partition?: string) {
     draft.setDescription('');
     draft.setDefaultEnvironment({ kind: 'current' });
     draft.setDirectory('');
+    draft.setStartIntent('workspace');
     draft.setRepositoryAcquisition(null);
     draft.setNameTouched(false);
     draft.setShowIconChoices(false);

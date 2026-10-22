@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import type { ProjectStartIntent } from '@kontourai/station-contracts/project';
 import { _setApiBase } from '@kontourai/station-sdk';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -67,16 +68,24 @@ const draft = {
 function Harness({
   empty = false,
   complete,
+  startIntent = 'workspace',
 }: {
   empty?: boolean;
   complete: (slug: string, layout?: string) => void;
+  startIntent?: ProjectStartIntent;
 }) {
   const submission = useNewProjectSubmit({
     apiBase: host.scope.apiBase,
     isOpen: true,
     derivedSlug: empty ? '' : draft.slug,
     normalizedDirectory: empty ? '' : draft.workingDirectory,
-    starterLayoutId: empty ? 'builtin:review' : 'builtin:coding',
+    starterLayoutId:
+      startIntent === 'knowledge'
+        ? null
+        : empty
+          ? 'builtin:review'
+          : 'builtin:coding',
+    startIntent,
     onComplete: complete,
   });
   return (
@@ -109,14 +118,18 @@ function Harness({
     </form>
   );
 }
-function mount(complete = vi.fn(), empty = false) {
+function mount(
+  complete = vi.fn(),
+  empty = false,
+  startIntent?: ProjectStartIntent,
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   clients.push(client);
   const view = render(
     <QueryClientProvider client={client}>
-      <Harness complete={complete} empty={empty} />
+      <Harness complete={complete} empty={empty} startIntent={startIntent} />
     </QueryClientProvider>,
   );
   return { ...view, complete, client };
@@ -133,6 +146,63 @@ function storageKey() {
     host.scope.draftRecoveryKey,
   ]);
 }
+
+test('a knowledge start keeps its destination across lost creation response and a workspace-default remount', async () => {
+  let id = '';
+  let posts = 0;
+  const project = {
+    id: 'project-original',
+    slug: 'research',
+    name: 'Original research',
+  };
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/api/projects/creation-requests'))
+        return response({ available: true });
+      if (url.endsWith('/api/projects') && init?.method === 'POST') {
+        const body = JSON.parse(String(init.body));
+        id = body.creationRequestId;
+        posts++;
+        expect(body).not.toHaveProperty('startIntent');
+        expect(body.starterLayoutId).toBeNull();
+        throw new Error('Lost creation response');
+      }
+      if (id && url.endsWith(`/creation-requests/${id}`))
+        return response({
+          requestId: id,
+          projectId: project.id,
+          phase: 'created',
+          project,
+        });
+      throw new Error(`Unexpected fixture request: ${url}`);
+    }),
+  );
+  const first = mount(vi.fn(), false, 'knowledge');
+  fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+  await waitFor(() => expect(posts).toBe(1));
+  expect(localStorage.getItem(storageKey())).toContain(
+    '"startIntent":"knowledge"',
+  );
+  first.unmount();
+  first.client.clear();
+  const restored = mount(vi.fn(), true);
+  await screen.findByText('Project observed');
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Continue' }).matches(':disabled'),
+    ).toBe(false),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+  await waitFor(() =>
+    expect(restored.complete).toHaveBeenCalledWith(
+      'research',
+      undefined,
+      'knowledge',
+    ),
+  );
+  expect(posts).toBe(1);
+});
 
 test('lost creation and starter responses recover after remount without duplicating either effect or replacing the selected starter', async () => {
   let requestId = '';

@@ -1,3 +1,4 @@
+import type { ProjectStartIntent } from '@kontourai/station-contracts/project';
 import { type RefObject, useEffect, useId, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNewProjectFormSubmit } from '../../hooks/useNewProjectFormSubmit';
@@ -162,7 +163,7 @@ function NewProjectIdentityInput({ state }: { state: NewProjectModalState }) {
         draft.setShowIconChoices(!draft.showIconChoices)
       }
       identityHint={
-        hostOwnedWorkspace
+        hostOwnedWorkspace && draft.startIntent === 'workspace'
           ? 'Created on this Station. You pick the name; the host keeps the folder.'
           : undefined
       }
@@ -179,30 +180,105 @@ function NewProjectDetails({
 }) {
   const { draft, starter, submission } = state;
   const authority = useHostRequestAuthorityScope();
+  const intentId = useId();
+  const intents: {
+    value: ProjectStartIntent;
+    title: string;
+    description: string;
+  }[] = [
+    {
+      value: 'workspace',
+      title: 'Repository or folder',
+      description: 'Clone a Git link or use a folder on this Station.',
+    },
+    {
+      value: 'knowledge',
+      title: 'Documents and knowledge',
+      description: 'Add documents or knowledge sources. No repository needed.',
+    },
+    {
+      value: 'connections',
+      title: 'Connected tools',
+      description: 'Choose existing tool connections and accounts.',
+    },
+    {
+      value: 'blank',
+      title: 'Blank Project',
+      description: 'Start with a name and add sources when you need them.',
+    },
+  ];
   return (
     <>
-      <NewProjectRepositorySource
-        onBusyChange={onAcquisitionBusy}
-        onUseCheckout={(path, name, acquisitionId) => {
-          if (!authority?.isCurrent()) return;
-          draft.setRepositoryAcquisition({
-            id: acquisitionId,
-            directory: path,
-            recoveryKey: JSON.stringify([
-              authority.apiBase,
-              authority.draftRecoveryKey ?? authority.authorityKey,
-            ]),
-          });
-          starter.resetForDirectory();
-          draft.setDirectory(path);
-          if (!draft.nameTouched) {
-            draft.setName(name);
-            draft.setNameTouched(true);
-          }
-        }}
-      />
-      <NewProjectDirectoryInput state={state} />
       <NewProjectIdentityInput state={state} />
+      <fieldset className="new-project-modal__intents">
+        <legend>What would you like to start with?</legend>
+        <div className="new-project-modal__intent-grid">
+          {intents.map((intent) => (
+            <label key={intent.value} className="new-project-modal__intent">
+              <input
+                type="radio"
+                name={intentId}
+                value={intent.value}
+                checked={draft.startIntent === intent.value}
+                onChange={() => {
+                  draft.setStartIntent(intent.value);
+                  if (intent.value !== 'workspace') {
+                    if (draft.resolvedName) {
+                      draft.setName(draft.resolvedName);
+                      draft.setNameTouched(true);
+                    }
+                    draft.setDirectory('');
+                    draft.setRepositoryAcquisition(null);
+                    starter.resetForDirectory();
+                    starter.selectLayout(null);
+                  }
+                }}
+              />
+              <span>
+                <strong>{intent.title}</strong>
+                <small>{intent.description}</small>
+              </span>
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      {draft.startIntent === 'workspace' && (
+        <NewProjectRepositorySource
+          onBusyChange={onAcquisitionBusy}
+          onUseCheckout={(path, name, acquisitionId) => {
+            if (!authority?.isCurrent()) return;
+            draft.setRepositoryAcquisition({
+              id: acquisitionId,
+              directory: path,
+              recoveryKey: JSON.stringify([
+                authority.apiBase,
+                authority.draftRecoveryKey ?? authority.authorityKey,
+              ]),
+            });
+            starter.resetForDirectory();
+            draft.setDirectory(path);
+            if (!draft.nameTouched) {
+              draft.setName(name);
+              draft.setNameTouched(true);
+            }
+          }}
+        />
+      )}
+      {draft.startIntent === 'workspace' && (
+        <NewProjectDirectoryInput state={state} />
+      )}
+      {draft.startIntent === 'knowledge' && (
+        <p>
+          After creation, Sources lets you create a managed knowledge store and
+          preview documents before importing them.
+        </p>
+      )}
+      {draft.startIntent === 'connections' && (
+        <p>
+          After creation, choose the tools this Project's Agents may use. Each
+          person's account retains its own authorization.
+        </p>
+      )}
       <details className="new-project-modal__options">
         <summary>More options</summary>
         <NewProjectDescriptionField
@@ -215,14 +291,16 @@ function NewProjectDetails({
           onChange={draft.setDefaultEnvironment}
         />
       </details>
-      <NewProjectStarterPicker
-        codingStarter={starter.codingStarter}
-        gitWorkspaceDetected={starter.gitWorkspaceDetected}
-        recentLayouts={starter.recentLayouts}
-        selectedLayoutId={starter.selectedLayoutId}
-        onSelect={starter.selectLayout}
-        onBrowse={() => starter.setShowLayoutBrowser(true)}
-      />
+      {(draft.startIntent === 'workspace' || draft.startIntent === 'blank') && (
+        <NewProjectStarterPicker
+          codingStarter={starter.codingStarter}
+          gitWorkspaceDetected={starter.gitWorkspaceDetected}
+          recentLayouts={starter.recentLayouts}
+          selectedLayoutId={starter.selectedLayoutId}
+          onSelect={starter.selectLayout}
+          onBrowse={() => starter.setShowLayoutBrowser(true)}
+        />
+      )}
       {submission.error && (
         <div className="new-project-modal__error">{submission.error}</div>
       )}

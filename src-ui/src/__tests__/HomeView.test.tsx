@@ -583,7 +583,7 @@ describe('HomeView', () => {
     const onNavigate = vi.fn();
     renderHomeView({ continuation: null, onNavigate });
     const entry = screen.getByRole('button', {
-      name: /New Project.*Repository, folder or blank workspace/i,
+      name: /New Project.*Repository, folder, documents or tools/i,
     });
     fireEvent.click(entry);
     expect(onNavigate).toHaveBeenCalledWith({ type: 'project-new' });
@@ -594,7 +594,7 @@ describe('HomeView', () => {
     const onNavigate = vi.fn();
     renderHomeView({ continuation: null, onNavigate });
     const entry = screen.getByRole('button', {
-      name: /New Project.*Repository or blank workspace/i,
+      name: /New Project.*Repository, documents, tools or blank/i,
     });
     expect(entry.textContent).not.toContain('folder');
     fireEvent.click(entry);

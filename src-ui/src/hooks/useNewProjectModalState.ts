@@ -56,7 +56,7 @@ function useCachedSlugConflictNotice(
 
 export function useNewProjectModalState(isOpen: boolean, onClose: () => void) {
   const { apiBase } = useApiBase();
-  const { setProject, setLayout } = useNavigation();
+  const { setProject, setLayout, navigate } = useNavigation();
   const authority = useHostRequestAuthorityScope();
   const partition = authority
     ? JSON.stringify([
@@ -126,9 +126,15 @@ export function useNewProjectModalState(isOpen: boolean, onClose: () => void) {
     derivedSlug: draft.derivedSlug,
     normalizedDirectory: draft.normalizedDirectory,
     starterLayoutId: starter.selectedLayoutId,
+    startIntent: draft.startIntent,
     verifySlugAvailability,
-    onComplete: (slug, layoutSlug) => {
-      if (layoutSlug) setLayout(slug, layoutSlug);
+    onComplete: (slug, layoutSlug, intent) => {
+      if (intent === 'knowledge' || intent === 'connections') {
+        setProject(slug);
+        navigate(`/projects/${slug}/edit`, {
+          section: intent === 'knowledge' ? 'resources' : 'tools',
+        });
+      } else if (layoutSlug) setLayout(slug, layoutSlug);
       else setProject(slug);
       onClose();
     },
@@ -145,6 +151,7 @@ export function useNewProjectModalState(isOpen: boolean, onClose: () => void) {
     if (restoredRequest.current === marker) return;
     restoredRequest.current = marker;
     draft.setName(pending.draft.name);
+    draft.setStartIntent(pending.startIntent ?? 'workspace');
     draft.setNameTouched(true);
     draft.setIcon(pending.draft.icon ?? '');
     draft.setDescription(pending.draft.description ?? '');

@@ -124,8 +124,8 @@ export function HomeActionSection({
         title="New Project"
         detail={
           canChooseFolder
-            ? 'Repository, folder or blank workspace'
-            : 'Repository or blank workspace'
+            ? 'Repository, folder, documents or tools'
+            : 'Repository, documents, tools or blank'
         }
         onClick={() => onNavigate({ type: 'project-new' })}
       />

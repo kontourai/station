@@ -1,5 +1,8 @@
 import { environmentId } from '@kontourai/station-contracts/execution-target';
-import type { ProjectCreationRequest } from '@kontourai/station-contracts/project';
+import type {
+  ProjectCreationRequest,
+  ProjectStartIntent,
+} from '@kontourai/station-contracts/project';
 import { getJson, readEnvelopeOrThrow } from '@kontourai/station-sdk';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
@@ -29,6 +32,9 @@ const pendingSchema = z
       })
       .strict(),
     starterLayoutId: z.string().nullable(),
+    startIntent: z
+      .enum(['workspace', 'knowledge', 'connections', 'blank'])
+      .optional(),
   })
   .strict();
 type ProjectCreationDraft = z.infer<typeof pendingSchema>['draft'];
@@ -151,6 +157,7 @@ export function useProjectCreationRecovery(isOpen: boolean, sending: boolean) {
     async prepare(
       draft: ProjectCreationDraft,
       starterLayoutId: string | null,
+      startIntent: ProjectStartIntent = 'workspace',
     ): Promise<PendingCreation | null> {
       if (current.corrupt)
         throw new Error(
@@ -172,6 +179,7 @@ export function useProjectCreationRecovery(isOpen: boolean, sending: boolean) {
         requestId: crypto.randomUUID(),
         draft,
         starterLayoutId,
+        startIntent,
       });
       if (
         new TextEncoder().encode(
@@ -195,7 +203,8 @@ export function useProjectCreationRecovery(isOpen: boolean, sending: boolean) {
         if (
           JSON.stringify(existing.pending.draft) !==
             JSON.stringify(pending.draft) ||
-          existing.pending.starterLayoutId !== starterLayoutId
+          existing.pending.starterLayoutId !== starterLayoutId ||
+          (existing.pending.startIntent ?? 'workspace') !== startIntent
         )
           throw new Error(
             'Another Project setup is saved for this Station account. Reopen New Project to inspect it first.',

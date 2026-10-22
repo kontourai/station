@@ -11,6 +11,13 @@ export interface ProjectToolDefaults {
   knowledge?: boolean;
 }
 
+/** Initial user intent guides setup without granting execution or source access. */
+export type ProjectStartIntent =
+  | 'workspace'
+  | 'knowledge'
+  | 'connections'
+  | 'blank';
+
 /** An immutable, explicitly shared read-only source registration. AWS credentials stay on the host. */
 export interface ProjectS3Source {
   id: string;

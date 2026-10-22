@@ -17,7 +17,7 @@ export function ProjectSourcesSection({
     <PageSection
       id="section-resources"
       title="Sources"
-      description="Manage the repositories and knowledge stores attached to this project."
+      description="Manage the repositories and knowledge sources attached to this project."
     >
       {authority ? (
         <div

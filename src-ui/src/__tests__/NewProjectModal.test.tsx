@@ -68,6 +68,7 @@ const applyProjectLayoutMock = vi.fn();
 const validateDirectoryMock = vi.fn();
 const setProjectMock = vi.fn();
 const setLayoutMock = vi.fn();
+const navigateMock = vi.fn();
 const onCloseMock = vi.fn();
 const reposQueryState = vi.hoisted(() => ({
   data: undefined as
@@ -218,6 +219,7 @@ vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({
     setProject: setProjectMock,
     setLayout: setLayoutMock,
+    navigate: navigateMock,
   }),
 }));
 
@@ -247,6 +249,48 @@ vi.mock('../components/PathAutocomplete', () => ({
 import { NewProjectModal } from '../components/modals/NewProjectModal';
 
 describe('NewProjectModal starter layout picker', () => {
+  test('knowledge intent skips workspace setup and opens Sources after creation', async () => {
+    render(<NewProjectModal isOpen onClose={onCloseMock} />);
+    fireEvent.change(screen.getByPlaceholderText('My Project'), {
+      target: { value: 'Research' },
+    });
+    fireEvent.click(
+      screen.getByRole('radio', { name: /Documents and knowledge/ }),
+    );
+    expect(screen.queryByRole('button', { name: 'Browse all' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await waitFor(() =>
+      expect(navigateMock).toHaveBeenCalledWith('/projects/my-project/edit', {
+        section: 'resources',
+      }),
+    );
+    expect(
+      createProjectMock.mock.calls[0]![0].workingDirectory,
+    ).toBeUndefined();
+    expect(createProjectMock.mock.calls[0]![0]).not.toHaveProperty(
+      'repositoryAcquisitionId',
+    );
+    expect(applyProjectLayoutMock).not.toHaveBeenCalled();
+    expect(setProjectMock).toHaveBeenCalledWith('my-project');
+  });
+  test('connected-tools intent preserves the entered name and opens tool setup', async () => {
+    render(<NewProjectModal isOpen onClose={onCloseMock} />);
+    fireEvent.change(screen.getByPlaceholderText('My Project'), {
+      target: { value: 'Support' },
+    });
+    fireEvent.click(screen.getByRole('radio', { name: /Connected tools/ }));
+    expect(screen.getByPlaceholderText('My Project')).toHaveProperty(
+      'value',
+      'Support',
+    );
+    expect(screen.queryByRole('button', { name: 'Browse all' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await waitFor(() =>
+      expect(navigateMock).toHaveBeenCalledWith('/projects/my-project/edit', {
+        section: 'tools',
+      }),
+    );
+  });
   beforeEach(() => {
     localStorage.clear();
     sessionStorage.clear();
@@ -266,6 +310,7 @@ describe('NewProjectModal starter layout picker', () => {
     });
     setProjectMock.mockReset();
     setLayoutMock.mockReset();
+    navigateMock.mockReset();
     onCloseMock.mockReset();
     reposQueryState.data = undefined;
     reposQueryState.isFetching = false;

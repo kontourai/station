@@ -1,4 +1,5 @@
 import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
+import type { ProjectStartIntent } from '@kontourai/station-contracts/project';
 import {
   applyProjectLayout,
   useCreateProjectMutation,
@@ -49,6 +50,7 @@ interface RejectedSlug {
 }
 
 interface CreatedProject {
+  startIntent?: ProjectStartIntent;
   recoveryKey?: string;
   slug: string;
   layoutId: string | null;
@@ -57,6 +59,7 @@ interface CreatedProject {
 }
 
 interface UseNewProjectSubmitOptions {
+  startIntent?: ProjectStartIntent;
   apiBase: string;
   isOpen: boolean;
   /** The slug the draft currently derives; a refusal older than it is stale. */
@@ -80,7 +83,11 @@ interface UseNewProjectSubmitOptions {
     name: string;
     slug: string;
   }) => Promise<string | null>;
-  onComplete: (slug: string, layoutSlug?: string) => void;
+  onComplete: (
+    slug: string,
+    layoutSlug?: string,
+    startIntent?: ProjectStartIntent,
+  ) => void;
 }
 
 /**
@@ -93,6 +100,7 @@ export function useNewProjectSubmit({
   derivedSlug,
   normalizedDirectory,
   starterLayoutId,
+  startIntent = 'workspace',
   verifySlugAvailability,
   onComplete,
 }: UseNewProjectSubmitOptions) {
@@ -142,6 +150,7 @@ export function useNewProjectSubmit({
       ? {
           slug: outcome.project.slug,
           layoutId: recovery.pending.starterLayoutId,
+          startIntent: recovery.pending.startIntent ?? 'workspace',
           ...(outcome.starter?.phase === 'applied'
             ? { layoutSlug: outcome.starter.layoutSlug }
             : {}),
@@ -257,7 +266,11 @@ export function useNewProjectSubmit({
           throw new Error(
             'The saved Project creation is unresolved or unavailable. Inspect its result or set this setup aside before starting another.',
           );
-        const pending = await recovery.prepare(selectedDraft, starterLayoutId);
+        const pending = await recovery.prepare(
+          selectedDraft,
+          starterLayoutId,
+          startIntent,
+        );
         const created = await createProjectMutation.mutateAsync(
           pending
             ? {
@@ -272,6 +285,7 @@ export function useNewProjectSubmit({
         project = {
           slug: created.slug,
           layoutId: pending ? pending.starterLayoutId : starterLayoutId,
+          startIntent: pending?.startIntent ?? startIntent,
           recoveryKey,
           ...(pending ? { creationRequestId: pending.requestId } : {}),
         };
@@ -320,7 +334,9 @@ export function useNewProjectSubmit({
           'Station access changed after setup. Return to the Station account that created this Project.',
         );
       if (project.creationRequestId) recovery.clear(project.creationRequestId);
-      onComplete(project.slug, project.layoutSlug);
+      if (project.startIntent && project.startIntent !== 'workspace')
+        onComplete(project.slug, project.layoutSlug, project.startIntent);
+      else onComplete(project.slug, project.layoutSlug);
     } catch (err: unknown) {
       setError(
         err instanceof Error ? userFacingErrorMessage(err) : String(err),
