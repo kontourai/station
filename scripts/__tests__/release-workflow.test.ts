@@ -62,6 +62,26 @@ const mobileReleaseGuide = readFileSync(
 );
 
 describe('mobile release hardening contract', () => {
+  it('builds every mobile channel without a baked-in Station endpoint', () => {
+    const workflows = [
+      'build-android.yml',
+      'release.yml',
+      'testflight-delivery.yml',
+      'internal-testflight.yml',
+      'nightly-native-stage.yml',
+      'nightly-native-cohort.yml',
+    ];
+    for (const workflow of workflows) {
+      const text = readFileSync(
+        resolve(root, '.github/workflows', workflow),
+        'utf8',
+      );
+      expect(text, workflow).not.toMatch(
+        /STATION_MOBILE_DEFAULT_ENDPOINT|mobile_endpoint/,
+      );
+    }
+  });
+
   it('permits a provider retry only after the immutable source authority verifies', () => {
     expect(testFlightDelivery).toContain('verify-ios-testflight-authority.mjs');
     expect(testFlightDelivery).toContain('--authority-ref "$AUTHORITY_REF"');

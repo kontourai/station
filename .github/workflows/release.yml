@@ -535,10 +535,6 @@ jobs:
       ANDROID_PRODUCT_NAME: ${{ needs.preflight.outputs.android_product_name }}
       ANDROID_VERSION_CODE: ${{ needs.preflight.outputs.android_version_code }}
       BETA_DESKTOP_CONFIG: ${{ needs.preflight.outputs.beta_desktop_config }}
-      # Optional secret-free HTTPS origin compiled into native mobile only.
-      # Repository/environment variables keep host identity out of source;
-      # Rust rejects non-origin, credential-bearing, and non-HTTPS values.
-      STATION_MOBILE_DEFAULT_ENDPOINT: ${{ needs.preflight.outputs.channel == 'preview' && vars.STATION_MOBILE_DEFAULT_ENDPOINT_BETA || vars.STATION_MOBILE_DEFAULT_ENDPOINT_STABLE }}
       # Secret-free keyless identity. The Google provider independently
       # restricts this service account to this repository's Release workflow
       # on immutable version tags.
@@ -846,7 +842,6 @@ jobs:
       web_build_version: ${{ needs.preflight.outputs.version }}
       bundle_version: ${{ needs.preflight.outputs.ios_bundle_version }}
       release_label: ${{ needs.preflight.outputs.tag }}
-      mobile_endpoint: ${{ needs.preflight.outputs.channel == 'preview' && vars.STATION_MOBILE_DEFAULT_ENDPOINT_BETA || vars.STATION_MOBILE_DEFAULT_ENDPOINT_STABLE }}
       update_feed_url: ${{ vars.NATIVE_APP_UPDATE_FEED_URL }}
       update_provider_origin: ${{ vars.NATIVE_APP_UPDATE_PROVIDER_ORIGIN }}
       update_action_url: ${{ vars.NATIVE_APP_UPDATE_ACTION_URL }}

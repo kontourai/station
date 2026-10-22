@@ -588,7 +588,7 @@ test.describe('Orchestration Chat Flow', () => {
           contentType: 'application/json',
           body: JSON.stringify({
             error:
-              'Request to https://brian-media.python-smelt.ts.net/api/orchestration/commands timed out after 15000ms',
+              'Request to https://remote.example.ts.net/api/orchestration/commands timed out after 15000ms',
           }),
         });
         return;
