@@ -54,6 +54,11 @@ polls once on return. Its constrained-network interval is 60 seconds, inside
 the existing 90-second host lease; the native desktop consumer still owns
 background delivery.
 
+Stable and Beta release builds exclude WebView inspection by default; Nightly
+opts into the diagnostic feature. See [inspection by
+channel](native-shell-verification.md#webview-inspection-by-build-channel).
+Feature selection is separate from installed inspector verification.
+
 ## Connection setup
 
 Mobile artifacts contain no default Station backend address. Dev, Nightly,

@@ -67,6 +67,9 @@ describe('iOS TestFlight channel config', () => {
         bundleVersion: '243201',
       });
       const expected = IOS_TESTFLIGHT_CHANNELS[channel];
+      expect((config.build?.features ?? []).includes('native-devtools')).toBe(
+        channel === 'nightly',
+      );
       expect(config).toMatchObject({
         identifier: expected.bundleId,
         productName: expected.productName,

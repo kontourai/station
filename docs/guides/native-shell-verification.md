@@ -8,6 +8,33 @@ implementation seams and verification boundaries rather than providing an
 end-user recovery path. Use [Recover a desktop start](../user/native-recovery.md)
 for that public path.
 
+## WebView inspection by build channel
+
+Tauri 2.12.1 forwards its `devtools` Cargo feature to Wry 0.57. In a release
+build that makes the default WebView inspectable: Android enables WebView
+remote debugging, iOS enables Safari inspection, and desktop exposes its
+platform inspector. Station's default Cargo dependency no longer enables this
+feature. Stable and Beta release configurations therefore exclude release
+inspection; ordinary development/debug builds retain it through Tauri's debug
+configuration.
+
+Nightly configurations opt into the `native-devtools` feature explicitly,
+including generated Android, desktop and iOS channel overlays. This preserves
+Chrome/Safari inspection for the mobile debugging workflow. A local diagnostic release
+build can also request the feature explicitly while retaining the separate
+Android development identity:
+
+```sh
+npm run tauri -- android build --apk --target aarch64 --features native-devtools --config tauri.android.dev.conf.json
+```
+
+The boundary reduces unintended inspection of shipped Stable/Beta WebViews by
+someone with access to the OS/browser debugging connection. It does not defend
+against a hostile device owner, root access, or a separately modified build.
+Cargo/config checks establish feature selection; verify actual inspector
+absence on installed Stable/Beta release artifacts and availability on an
+installed Nightly or debug artifact before claiming packaged-platform proof.
+
 ## Build a development iOS simulator app
 
 On an Apple Silicon Mac with Xcode and an installed simulator runtime:
