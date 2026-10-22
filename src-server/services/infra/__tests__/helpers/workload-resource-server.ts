@@ -10,6 +10,7 @@ import {
   spawnChildWorkload,
 } from '@kontourai/station-shared/child-workload';
 import { createMCPTransport } from '@kontourai/station-shared/mcp';
+import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { NodePtyAdapter } from '../../../../adapters/node-pty-adapter.js';
 import { spawnOwnedChild, terminateProcessTree } from '../../process-utils.js';
@@ -46,6 +47,38 @@ const held = new Map<number, ReturnType<typeof spawnChildWorkload>>();
 const server = createServer(async (request, response) => {
   try {
     const url = new URL(request.url ?? '/', 'http://localhost');
+    if (url.pathname === '/mcp-handshake') {
+      const transport = createMCPTransport({
+        id: 'resource-negotiation',
+        kind: 'mcp',
+        transport: 'stdio',
+        command: process.execPath,
+        args: [
+          new URL('./workload-resource-mcp.mjs', import.meta.url).pathname,
+        ],
+      });
+      if (!transport) throw new Error('MCP transport unavailable');
+      const client = new Client(
+        { name: 'resource-proof', version: '1' },
+        { versionNegotiation: 'auto' },
+      );
+      try {
+        await client.connect(transport);
+        const result = await client.callTool({
+          name: 'identity',
+          arguments: {},
+        });
+        response.end(
+          JSON.stringify({
+            result,
+            workloads: await inspectWorkloadResources(),
+          }),
+        );
+      } finally {
+        await client.close();
+      }
+      return;
+    }
     if (url.pathname === '/mcp') {
       const script =
         'const {spawn}=require("node:child_process");process.stdin.once("data",()=>{const c=spawn(process.execPath,["-e","setInterval(()=>{},1000)"],{detached:true,stdio:["ignore",1,2],windowsHide:true});c.unref();console.log(JSON.stringify({jsonrpc:"2.0",id:1,result:{descendant:c.pid}}));setTimeout(()=>process.exit(0),50)})';
@@ -188,6 +221,39 @@ const server = createServer(async (request, response) => {
       } finally {
         terminal.kill();
       }
+      return;
+    }
+    if (url.pathname === '/terminal-grace') {
+      const adapter = new NodePtyAdapter();
+      const terminal = await adapter.spawn({
+        shell: process.execPath,
+        args: [
+          '-e',
+          'process.on("SIGHUP",()=>setTimeout(()=>{console.log("flushed");process.exit(0)},200));console.log("ready");setInterval(()=>{},1000)',
+        ],
+        cwd: '/tmp',
+        cols: 80,
+        rows: 24,
+        env: { PATH: process.env.PATH },
+      });
+      let output = '';
+      await new Promise<void>((resolve) => {
+        const dispose = terminal.onData((data) => {
+          if (data.includes('ready')) {
+            dispose();
+            resolve();
+          }
+        });
+      });
+      const exited = new Promise<void>((resolve) =>
+        terminal.onExit(() => resolve()),
+      );
+      terminal.onData((data) => {
+        output += data;
+      });
+      terminal.kill();
+      await exited;
+      response.end(JSON.stringify({ output }));
       return;
     }
     if (url.pathname === '/graceful') {

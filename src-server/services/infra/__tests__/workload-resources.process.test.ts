@@ -229,10 +229,42 @@ describe.skipIf(!manager)('running server workload containment', () => {
         `/mcp${query}`,
       );
       expect(message.result.descendant).toBeGreaterThan(1);
-      await expect.poll(() => gone(message.result.descendant)).toBe(true);
+      // Leader identity is sampled once per second; allow the next sweep
+      // and its bounded systemd cleanup, independent of the timer's phase.
+      await expect
+        .poll(() => gone(message.result.descendant), {
+          timeout: 5000,
+        })
+        .toBe(true);
       expect(await gone(sibling.pid)).toBe(false);
     },
   );
+
+  test('full MCP client negotiation owns probe and session scopes independently', async () => {
+    const response = await request<{
+      result: {
+        structuredContent: { pid: number; descendant: number; cgroup: string };
+      };
+      workloads: Snapshot;
+    }>('/mcp-handshake');
+    const identity = response.result.structuredContent;
+    expect(identity.cgroup).toContain(slice);
+    expect(identity.cgroup).not.toContain(unit);
+    await expect.poll(() => gone(identity.descendant)).toBe(true);
+    await expect
+      .poll(
+        async () =>
+          (await request<{ workloads: Snapshot }>('/status')).workloads.active,
+      )
+      .toHaveLength(1);
+    expect(await gone(sibling.pid)).toBe(false);
+  });
+
+  test('terminal close allows its SIGHUP handler to flush before scope cleanup', async () => {
+    expect(
+      (await request<{ output: string }>('/terminal-grace')).output,
+    ).toContain('flushed');
+  });
 
   test.skipIf(!ptyModule)(
     'the real terminal preserves input, size, cwd and foreground interrupt',

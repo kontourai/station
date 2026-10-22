@@ -116,9 +116,6 @@ class NodePtyProcess implements IPtyProcess {
 
   kill(signal?: string): void {
     this.pty.kill(signal);
-    void closeChildWorkload(this.pty.pid).catch((error) =>
-      logger.warn('Terminal workload cleanup failed', { error }),
-    );
   }
 
   onData(cb: (data: string) => void): () => void {

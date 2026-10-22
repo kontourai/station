@@ -159,7 +159,8 @@ When the server runs inside a `station-*.service` user unit on Linux,
 [`workload-resources.ts`](../../src-server/services/infra/workload-resources.ts)
 places owned child workloads in systemd scopes outside the server unit. Engine
 tools inherit their engine's scope; separately launched terminals, MCP servers,
-ACP commands, Flow commands, plugin builds and owned browser/device helpers
+ACP commands, Flow commands, plugin builds, project commands, Veritas readiness
+runs, Claude model discovery and owned browser/device helpers
 receive their own scopes. This separates their memory accounting and OOM failure
 domain from the control server. It does not isolate filesystem or network access.
 
@@ -193,6 +194,12 @@ their existing process behavior and do not gain these limits. The developer
 `/api/system/resource-posture` response includes workload state, budgets, active
 scopes, recent results/peaks and slice memory/pressure measurements. An unavailable
 measurement is reported separately from enforcement state.
+
+The pinned MCP client 2.3.1 patch adds a spawn callback at the physical process
+boundary. Its protocol-negotiation sibling inherits that callback, so probe and
+session processes each own a fresh scope. Retain the patch until the upstream
+client supports equivalent process ownership across negotiation and session
+launches; verify removal with the full-client handshake regression.
 
 Cancellation preserves the existing graceful shutdown before scope cleanup.
 Scope cleanup also reaps descendants that start new sessions. A stopped service

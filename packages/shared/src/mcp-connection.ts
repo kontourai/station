@@ -18,10 +18,7 @@ import {
   type Transport,
 } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
-import {
-  ownWorkloadTransport,
-  prepareChildWorkload,
-} from './child-workload.js';
+import { spawnChildWorkload } from './child-workload.js';
 import {
   type ClaudeDesktopConfig,
   normalizeMcpToolDef,
@@ -721,24 +718,11 @@ function originBoundLiteralHeaderFetch(
 function createStdioTransport(
   parameters: ConstructorParameters<typeof StdioClientTransport>[0],
 ): StdioClientTransport {
-  const launch = prepareChildWorkload(
-    parameters.command,
-    parameters.args ?? [],
-    parameters.env,
-  );
-  return ownWorkloadTransport(
-    new StdioClientTransport({
-      ...parameters,
-      ...(launch
-        ? {
-            command: launch.command,
-            args: launch.args,
-            env: launch.env as Record<string, string>,
-          }
-        : {}),
-    }),
-    launch,
-  );
+  // The pinned SDK patch retains this spawn boundary on negotiation siblings.
+  return new StdioClientTransport({
+    ...parameters,
+    spawnProcess: spawnChildWorkload,
+  });
 }
 
 export function createMCPTransport(

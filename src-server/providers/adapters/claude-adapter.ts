@@ -3333,36 +3333,36 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const abortProbe = () => abortController.abort(signal.reason);
     signal.addEventListener('abort', abortProbe, { once: true });
     const promptQueue = new AsyncUserMessageQueue();
-    const sdkQuery = query({
-      prompt: promptQueue,
-      options: {
-        abortController,
-        ...(claudeExecutable
-          ? { pathToClaudeCodeExecutable: claudeExecutable }
-          : {}),
-        // The Agent SDK owns this process spawn, so it cannot inherit
-        // Station's normal subprocess environment. Give discovery the same
-        // Station-owned tmp directory as an interactive session; otherwise a
-        // systemd PrivateTmp namespace makes Claude's extracted payloads
-        // invisible to Station's reaper.
-        env: childProcessEnvironment({
-          ...connectionEnv,
-          TMPDIR: ensureEngineSpawnTmpDir(),
-        }),
-        mcpServers: {},
-        persistSession: false,
-        plugins: [],
-        // Pinned, unlike a session (which loads the CLI's whole cascade —
-        // see the `settingSources` comment in `buildOptions`): this probe runs
-        // no tools, so it wants no ambient configuration at all.
-        settingSources: [],
-        skills: [],
-        strictMcpConfig: true,
-        tools: [],
-      },
-    });
-
+    const engineProcess = createClaudeEngineProcess();
+    let sdkQuery: ReturnType<typeof query> | undefined;
     try {
+      sdkQuery = query({
+        prompt: promptQueue,
+        options: {
+          abortController,
+          spawnClaudeCodeProcess: engineProcess.spawn,
+          ...(claudeExecutable
+            ? { pathToClaudeCodeExecutable: claudeExecutable }
+            : {}),
+          // Match the session's Station-owned temporary directory so Claude's
+          // extracted payloads remain visible to the reaper across namespaces.
+          env: childProcessEnvironment({
+            ...connectionEnv,
+            TMPDIR: ensureEngineSpawnTmpDir(),
+          }),
+          mcpServers: {},
+          persistSession: false,
+          plugins: [],
+          // Pinned, unlike a session (which loads the CLI's whole cascade —
+          // see the `settingSources` comment in `buildOptions`): this probe runs
+          // no tools, so it wants no ambient configuration at all.
+          settingSources: [],
+          skills: [],
+          strictMcpConfig: true,
+          tools: [],
+        },
+      });
+
       const reported = await sdkQuery.supportedModels();
       const seen = new Set<string>();
       const models: ModelOption[] = [];
@@ -3413,7 +3413,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     } finally {
       signal.removeEventListener('abort', abortProbe);
       promptQueue.close();
-      sdkQuery.close();
+      sdkQuery?.close();
+      await engineProcess.terminate();
     }
   }
 
