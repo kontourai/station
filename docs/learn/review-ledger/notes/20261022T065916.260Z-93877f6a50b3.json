@@ -1,0 +1,7 @@
+{
+  "revision": "6b2e933890b87c045850a48dfbd2945215dc0515",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Recorded3a5ca9 handle-only provenance regression:46green, compiling text-guard-removal mutant1 intended red45controls, byte-exact restore46green. Kept current source-text provenance policy from26828a rather than implementing reviewer legacy assumption. Reviewed installed native controls: Claude tools[] is builtin-only, setMcpServers{} retains plugin servers, Codex generated turn/start has no direct no-tools field. No sync exposure or provider proof inferred. Managed dependency recovery preserved failed guard and prior tree before fresh dependencies:ci; successful verified install finalized normally. Broad freshness and full epic qualification stay open.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}
