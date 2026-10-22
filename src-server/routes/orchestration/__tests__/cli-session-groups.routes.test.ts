@@ -171,8 +171,8 @@ function member(
     },
   };
 }
-async function waitFor(predicate: () => boolean) {
-  await vi.waitFor(() => expect(predicate()).toBe(true), {
+async function waitFor(predicate: () => boolean | Promise<boolean>) {
+  await vi.waitFor(async () => expect(await predicate()).toBe(true), {
     timeout: 10_000,
     interval: 20,
   });
@@ -476,18 +476,19 @@ test('running and needs-input members occupy a seat until observed terminal; dis
   await waitFor(() => f.observeDelegatedTask.mock.calls.length > 0);
   await waitFor(() => f.calls.length === 1);
   const firstSessionId = f.calls[0].sessionId!;
-  await vi.waitFor(async () =>
-    expect((await view(f, group.groupId)).members[0].attention?.kind).toBe(
+  await waitFor(
+    async () =>
+      (await view(f, group.groupId)).members[0].attention?.kind ===
       'needs-input',
-    ),
   );
   const blockedRevision = (await view(f, group.groupId)).revision;
   await delay(300);
   expect((await view(f, group.groupId)).revision).toBe(blockedRevision);
   expect(f.calls).toHaveLength(1);
   f.statuses.set(firstSessionId, 'running');
-  await vi.waitFor(async () =>
-    expect((await view(f, group.groupId)).members[0].attention).toBeUndefined(),
+  await waitFor(
+    async () =>
+      (await view(f, group.groupId)).members[0].attention === undefined,
   );
   abort.abort();
   await running;
@@ -519,8 +520,8 @@ test('the accepted initial completion closes its Flow step while a later convers
     { signal: abort.signal },
   );
   try {
-    await vi.waitFor(async () =>
-      expect((await view(f, group.groupId)).flow?.status).toBe('completed'),
+    await waitFor(
+      async () => (await view(f, group.groupId)).flow?.status === 'completed',
     );
     await run;
     expect(f.calls).toHaveLength(2);
