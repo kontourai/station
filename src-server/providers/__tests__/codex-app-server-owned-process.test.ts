@@ -20,9 +20,22 @@ function isAlive(pid: number | undefined): boolean {
   if (pid === undefined) return false;
   try {
     process.kill(pid, 0);
+    if (process.platform === 'linux') {
+      // SIGKILLed grandchildren can remain zombies until init reaps them.
+      // They cannot execute, but kill(pid, 0) still succeeds for their PIDs.
+      const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
+      const state = stat
+        .slice(stat.lastIndexOf(')') + 1)
+        .trim()
+        .split(/\s+/)[0];
+      return state !== 'Z';
+    }
     return true;
   } catch (error) {
-    return (error as NodeJS.ErrnoException).code === 'EPERM';
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'ESRCH' || code === 'ENOENT') return false;
+    if (code === 'EPERM') return true;
+    throw error;
   }
 }
 
