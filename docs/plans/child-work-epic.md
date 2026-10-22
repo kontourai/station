@@ -247,6 +247,19 @@ proves serialization and local draft behavior, not server persistence, launch or
 real-browser geometry. Native/provider/hosted and full epic acceptance remain
 unverified for this increment.
 
+A subsequent isolated Chromium run mounted the current form and shared inspector
+with synthetic SDK responses. At 1280px dark and 390px light, Project/Directory
+toggling preserved both drafts, the request carried only each selected workspace
+kind, keyboard Space toggled the control, and no control or page overflowed the
+viewport. The provenance table retained its own horizontal scroll region at the
+narrow width. Visual inspection found the general input styling enlarged the
+checkbox; the follow-up keeps a 16px checkbox inside a label with at least a
+44px target. The browser check was repeated after that repair. This establishes
+component geometry and interaction only; responses were synthetic and no runtime,
+provider, persistence or hosted acceptance is inferred. The first harness omitted
+the SDK credential resolver and refused inspection; that harness setup failure is
+retained separately from the corrected run.
+
 Published Flow Agents 9.3.0 exports v2 authority/grants, ancestor allocations and
 invocation holds, a durable group controller, Flow-owned scheduling, mailbox
 admission and bounded no-tools context acknowledgement. Station now composes the
