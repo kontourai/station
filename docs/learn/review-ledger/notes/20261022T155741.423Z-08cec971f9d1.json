@@ -1,0 +1,7 @@
+{
+  "revision": "49b3369fda241efac6825015a3bc345b1e58d201",
+
+  "notes": [
+    {"path":"docs/design/connection-list-recovery.md","note":"Second independent delta response at49b3369: journal-only archive accepts a verified regular nlink1 unconsumed stage regardless of present/restored/corrupt list, without touching list/marker or stopping services. Recovered publication revision is at least1 and above validated known revisions, so an old missing-view expected0 CAS cannot overwrite it. Explicit v1 second-loss limitation retains consumed active attempt; no silent replay. Named macOS F_FULLFSYNC and Windows NTFS/ReFS FlushFileBuffers/no-replace same-volume rename requirements, FAT exclusion, and list-present/stage-gone/commit-absent Exit. Added root binding/publication revision to bounded commit header. Added required real-old-build restored-list/stale-CAS/second-loss tests. Sevenissue4023acceptance bullets remain byte-exact; denied-vault policy unchanged pending Brian. Design only; no runtime or tests implemented.","inputs":["docs/design/connection-list-recovery.md"]}
+  ]
+}

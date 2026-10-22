@@ -106,10 +106,19 @@ jobs:
       - name: Compile desktop Rust tests
         if: ${{ steps.rust_relevance.outputs.relevant != 'false' }}
         shell: pwsh
+        # This base-controlled step compiles candidate code. A candidate that
+        # ships the private Node sidecar stages it (and the runtime resource
+        # directories) through its own prerequisite script; older candidates
+        # keep the empty resource directories they need.
         run: |
-          New-Item -ItemType Directory -Force dist-server | Out-Null
-          New-Item -ItemType Directory -Force dist-desktop-runtime/node_modules | Out-Null
-          New-Item -ItemType Directory -Force dist-desktop-runtime/examples | Out-Null
+          if (Test-Path scripts/prepare-desktop-rust-resources.mjs) {
+            node scripts/prepare-desktop-rust-resources.mjs
+            if ($LASTEXITCODE -ne 0) { throw "Desktop runtime staging failed" }
+          } else {
+            New-Item -ItemType Directory -Force dist-server | Out-Null
+            New-Item -ItemType Directory -Force dist-desktop-runtime/node_modules | Out-Null
+            New-Item -ItemType Directory -Force dist-desktop-runtime/examples | Out-Null
+          }
           cargo test --manifest-path src-desktop/Cargo.toml --no-run
 
       # No `npm run typecheck` here. tsc's verdict does not depend on the host

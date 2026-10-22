@@ -1,0 +1,9 @@
+{
+  "revision": "6013c6ef1bae3adda47298ee6444258b59f51a4d",
+
+  "notes": [
+    {"path":"docs/design/connection-list-recovery.md","note":"Phase1 design review at6013c6e: proposal only. Traced current CLI stations export, schema/store genesis/revision locks, CLI keyring locator and native custody account/payload. Existing companion cannot bind a root or expose origin through attributes. Proposal chooses inert validated import, disabled automatic reconstruction until a root-bound adapter exists, explicit new-list consent, permanent private receipt fence, genesis-then-profile locking, no-replace publication, deterministic partial-state refusal/resume and OS-specific privacy limits. All7issue4023 acceptance bullets copied verbatim. No genesis/profile source or tests changed; implementation and packaged proof remain planned after4022 merge and independent design review.","inputs":["docs/design/connection-list-recovery.md","packages/cli/src/commands/profile-store.ts","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/design/README.md","note":"Reviewed generated index at6013c6e: adds one link/title for the proposed no-backup connection-list design. The record explicitly remains unimplemented and awaits independent review plus4022 merge; other design classification/navigation text is unchanged.","inputs":["docs/design/README.md"]}
+  ]
+}

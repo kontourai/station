@@ -1,0 +1,31 @@
+{
+  "path": "docs/design/connection-list-recovery.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Proposed no-backup connection-list recovery for issue4023: evidence classification, inert export import, explicit new-list receipt, native/CLI admission, crash states, privacy and platform acceptance. Design only, pending independent review before implementation.",
+
+  "limits": "No recovery code or tests implemented. Source inspected at main d5c4a9a and prerequisite4022 head4cbc5b7; neither a proposal nor prior packaging proof establishes this flow or its platform behavior. Phase2 waits for4022 merge and design review.",
+
+  "sources": [
+    "packages/cli/src/commands/profile-command.ts",
+
+    "packages/cli/src/commands/profile-store.ts",
+
+    "packages/cli/src/commands/profile-keyring.ts",
+
+    "packages/contracts/src/station-profile.ts",
+
+    "src-desktop/src/native_device_custody.rs",
+
+    "src-desktop/src/native_proof_key_core.rs",
+
+    "src-desktop/src/lib.rs"
+  ],
+
+  "checks": [
+    "REASONED: current CLI export, profile schema, keyring companion digest inputs/payload and native/CLI genesis inspected. Root binding cannot be inferred from existing global custody attributes; planned receipt and UI behaviors are requirements, not executed evidence."
+  ]
+}
