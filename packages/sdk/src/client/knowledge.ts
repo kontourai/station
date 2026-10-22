@@ -159,6 +159,8 @@ import type {
  * the server defaults `storeRoot` server-side (personal/project scope) when omitted. */
 export interface CreateKnowledgeRootInput {
   scope: KnowledgeRootScope;
+  /** Required by current Stations for Project registration; comparison only, not stored authority. */
+  expectedProjectId?: string;
   adapterId: string;
   storeRoot?: string;
   displayName?: string;

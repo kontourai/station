@@ -2074,6 +2074,7 @@ describe('project guest administration over the production composition', () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           scope: { kind: 'project', projectSlug: 'knowledge' },
+          expectedProjectId: scope.localProjectId,
           adapterId: 'kit-default-store',
         }),
       }),

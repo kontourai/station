@@ -728,6 +728,12 @@ engine connection. Both hooks share the core query cache.
 
 ### Scoped knowledge source management
 
+`createKnowledgeRoot` and its mutation hook require `expectedProjectId` for a
+Project registration on current Stations. Read the Project first and retain its
+ID with the user's selection. A replacement under the same slug returns409;
+never silently retry with the replacement ID. Personal registration is unchanged.
+
+
 `useKnowledgeRootsQuery`, `useKnowledgeAdaptersQuery`, `useKnowledgeGraphQuery`
 and `useKnowledgeRecordQuery` accept `requestScope`
 and `requireRequestScope` in their query configuration. Scoped reads partition
@@ -4424,7 +4430,8 @@ ID and exact record ID (at most 200 characters each); aliases are unsupported.
 Use the public root-key serializer, also available from
 `@kontourai/station-shared/knowledge-root-identity`. It serializes compact JSON in
 this order: root ID, scope kind, project slug or null, adapter ID, store root,
-display name, creation timestamp. Send its URI-encoded UTF-8 representation in
+display name, creation timestamp, then the Project ID when present. Unbound
+legacy roots keep the original seven-field encoding. Send its URI-encoded UTF-8 representation in
 `x-station-knowledge-root-identity` (at most 8,192 characters after encoding). This
 metadata comparison does not detect an identically restored registration or
 provide a revision/CAS contract.

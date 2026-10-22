@@ -81,6 +81,7 @@ interface KnowledgeStoreRouteDeps {
 
 interface CreateRootBody {
   scope?: unknown;
+  expectedProjectId?: unknown;
   adapterId?: unknown;
   storeRoot?: unknown;
   displayName?: unknown;
@@ -207,6 +208,19 @@ export function createKnowledgeStoreRoutes(deps: KnowledgeStoreRouteDeps) {
           : undefined;
       if (scope.kind === 'project' && deps.projectIdForSlug && !projectId)
         return c.json({ success: false, error: 'Project not found.' }, 404);
+      if (
+        scope.kind === 'project' &&
+        deps.projectIdForSlug &&
+        body.expectedProjectId !== projectId
+      )
+        return c.json(
+          {
+            success: false,
+            error:
+              'Project changed or its expected identity is missing. Refresh and review the Project before registering a source.',
+          },
+          409,
+        );
       const storeRoot =
         typeof body.storeRoot === 'string' && body.storeRoot.length > 0
           ? expandTilde(body.storeRoot)

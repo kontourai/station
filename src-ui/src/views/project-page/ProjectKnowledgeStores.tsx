@@ -147,6 +147,7 @@ function ScopedProjectKnowledgeStores({
               onClick={() =>
                 create.mutate({
                   scope: { kind: 'project', projectSlug: slug },
+                  expectedProjectId: projectId,
                   adapterId: 'kit-default-store',
                 })
               }

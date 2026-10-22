@@ -59,6 +59,7 @@ test('creates a store for the current Project and reports failed detection witho
   fireEvent.click(screen.getByRole('button', { name: 'Create store' }));
   expect(state.create).toHaveBeenCalledWith({
     scope: { kind: 'project', projectSlug: 'demo' },
+    expectedProjectId: 'project-demo',
     adapterId: 'kit-default-store',
   });
   state.error = true;

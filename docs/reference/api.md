@@ -167,8 +167,9 @@ or asserting that future filesystem contents are unchanged.
 
 ## Project knowledge source identity
 
-New Project root registrations resolve `projectId` from the server-owned Project,
-not from a caller-provided identity. Managed storage uses that ID in its path.
+New Project root registrations require `expectedProjectId`, compared with the
+server-owned Project. A missing or mismatched precondition returns409. The
+stored `projectId` is resolved on the server, not accepted from a caller. Managed storage uses that ID in its path.
 Member reads require a registration bound to the admitted Project ID; a slug
 match alone is insufficient. Legacy roots remain visible to the operator.
 

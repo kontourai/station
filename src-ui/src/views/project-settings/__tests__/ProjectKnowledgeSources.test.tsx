@@ -70,6 +70,7 @@ test('editing an existing source invalidates validation before connection', asyn
   await waitFor(() =>
     expect(state.create).toHaveBeenCalledWith({
       scope: { kind: 'project', projectSlug: 'acme' },
+      expectedProjectId: 'project-acme',
       adapterId: 'kit-default-store',
       storeRoot: '/host/second',
     }),

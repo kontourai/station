@@ -179,4 +179,54 @@ describe('knowledge source registry lifecycle on real storage', () => {
     ).toBe('Original document bytes');
     expect((await attach({ ...replaced, projectId })).status).toBe(409);
   });
+  test('registration refuses a stale Project selection after real deletion and same-slug replacement', async () => {
+    const slug = 'research';
+    const firstId = '11111111-1111-4111-8111-111111111111';
+    const nextId = '22222222-2222-4222-8222-222222222222';
+    const project = {
+      id: firstId,
+      slug,
+      name: 'Research',
+      createdAt: '2026-10-22T00:00:00Z',
+      updatedAt: '2026-10-22T00:00:00Z',
+    };
+    await persistence.createProject(project);
+    const app = createKnowledgeStoreRoutes({
+      store,
+      dataDir: home,
+      mayRegisterRoot: () => true,
+      projectIdForSlug: (name) => persistence.getProject(name).id,
+    });
+    const register = (expectedProjectId?: string) =>
+      app.request('/roots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: { kind: 'project', projectSlug: slug },
+          expectedProjectId,
+          adapterId: 'kit-default-store',
+          storeRoot: join(home, 'private-selection'),
+        }),
+      });
+    await persistence.deleteProject(slug);
+    await persistence.createProject({ ...project, id: nextId });
+    expect((await register(firstId)).status).toBe(409);
+    expect((await register()).status).toBe(409);
+    expect(await store.listRoots()).toEqual([]);
+    expect((await register(nextId)).status).toBe(201);
+    expect((await store.listRoots())[0]?.projectId).toBe(nextId);
+    const managed = await app.request('/roots', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scope: { kind: 'project', projectSlug: slug },
+        expectedProjectId: nextId,
+        adapterId: 'kit-default-store',
+      }),
+    });
+    expect(managed.status).toBe(201);
+    expect((await store.listRoots())[1]?.storeRoot).toBe(
+      join(home, 'knowledge', 'projects', nextId, 'store'),
+    );
+  });
 });

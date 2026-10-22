@@ -66,6 +66,7 @@ export function ProjectKnowledgeSources({
     try {
       const result = await create.mutateAsync({
         scope: { kind: 'project', projectSlug: slug },
+        expectedProjectId: projectId,
         adapterId: existing ? adapterId : 'kit-default-store',
         ...(existing ? { storeRoot: path } : {}),
         ...(name.trim() ? { displayName: name.trim() } : {}),
