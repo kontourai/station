@@ -3642,6 +3642,63 @@ describe('AcpAdapter', () => {
     expect(sessions[0].status).toBe('error');
   });
 
+  // A send's turn boundary retires only on a terminal naming its
+  // invocation; without it the chat reads busy after the turn ends.
+  test('a send’s invocation rides its turn.started and every terminal of that turn, and no other turn', async () => {
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-invocation',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+
+    const send = async (input: string, invocationId?: string) => {
+      const turn = await adapter.sendTurn({
+        threadId: 'thread-invocation',
+        input,
+        ...(invocationId ? { invocationId } : {}),
+      });
+      const started = await nextEvent(iterator, 'turn.started');
+      expect(started).toMatchObject({ turnId: turn.turnId });
+      return { turn, started };
+    };
+
+    const completed = await send('one', 'invocation-completed');
+    expect(completed.started.invocationId).toBe('invocation-completed');
+    processes[0].resolvePrompt('end_turn');
+    expect(await nextEvent(iterator, 'turn.completed')).toMatchObject({
+      turnId: completed.turn.turnId,
+      invocationId: 'invocation-completed',
+    });
+
+    const failed = await send('two', 'invocation-failed');
+    processes[0].rejectPrompt(new Error('agent crashed'));
+    expect(await nextEvent(iterator, 'runtime.error')).toMatchObject({
+      turnId: failed.turn.turnId,
+      invocationId: 'invocation-failed',
+    });
+
+    const interrupted = await send('three', 'invocation-interrupted');
+    await adapter.interruptTurn('thread-invocation');
+    expect(await nextEvent(iterator, 'turn.aborted')).toMatchObject({
+      turnId: interrupted.turn.turnId,
+      invocationId: 'invocation-interrupted',
+    });
+    // The engine answers the cancelled prompt, as ACP agents do.
+    processes[0].resolvePrompt('cancelled');
+
+    // A send Station assigned no invocation names none, not the last one.
+    const bare = await send('four');
+    expect(bare.started).not.toHaveProperty('invocationId');
+    processes[0].resolvePrompt('end_turn');
+    const bareEnd = await nextEvent(iterator, 'turn.completed');
+    expect(bareEnd).not.toHaveProperty('invocationId');
+  });
+
   // archive#4084: reproduces the live archive#1860 kiro-cli evidence — a
   // notification bound to the `acp.turn-error-cause` consumer
   // (`_kiro.dev/error/rate_limit`, carrying the engine's own human-readable

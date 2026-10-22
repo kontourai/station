@@ -561,6 +561,13 @@ export interface AcpSessionRecord {
   preToolPolicy?: StagedPreToolPolicyEvaluator;
   delegation?: InvocationContext['delegation'];
   activeTurnId?: string;
+  /**
+   * The invocation Station assigned the send that opened `turnId`. Its
+   * `turn.started` and terminal carry it: the turn's boundary row retires
+   * only on a terminal naming that invocation, and a row left behind reads
+   * as a turn still running to everything that waits for the chat to idle.
+   */
+  activeTurnOrigin?: { readonly turnId: string; readonly invocationId: string };
   stopping?: boolean;
   /** At most one engine re-establishment is attempted for this session. */
   credentialRecoveryAttempted?: boolean;
@@ -2185,6 +2192,10 @@ export class AcpAdapter implements ProviderAdapterShape {
       }
     }
     record.activeTurnId = turnId;
+    record.activeTurnOrigin =
+      input.invocationId === undefined
+        ? undefined
+        : { turnId, invocationId: input.invocationId };
     record.session.status = 'running';
     record.session.updatedAt = new Date().toISOString();
     // archive#4084: start this turn's error-notification window clean —
@@ -2209,6 +2220,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       threadId: input.threadId,
       createdAt: new Date().toISOString(),
       turnId,
+      ...this.turnOrigin(record, turnId),
       method: 'turn.started',
       // Transcript-facing: the typed text, never the composed model input.
       prompt: input.displayInput ?? input.input,
@@ -2305,6 +2317,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       threadId,
       createdAt: new Date().toISOString(),
       turnId: targetTurnId,
+      ...this.turnOrigin(record, targetTurnId),
       method: 'turn.aborted',
       reason: 'interrupted',
     });
@@ -3376,6 +3389,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           threadId,
           createdAt: new Date().toISOString(),
           turnId,
+          ...this.turnOrigin(record, turnId),
           method: 'turn.aborted',
           reason: this.isCurrentGeneration(threadId, record.generation)
             ? 'engine-restarted'
@@ -3459,6 +3473,17 @@ export class AcpAdapter implements ProviderAdapterShape {
     return record;
   }
 
+  /** The send's invocation, for events of the exact turn it opened. */
+  private turnOrigin(
+    record: AcpSessionRecord,
+    turnId: string,
+  ): { invocationId?: string } {
+    const origin = record.activeTurnOrigin;
+    return origin?.turnId === turnId
+      ? { invocationId: origin.invocationId }
+      : {};
+  }
+
   private ownsActiveTurn(
     threadId: string,
     record: AcpSessionRecord,
@@ -3497,6 +3522,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           threadId,
           createdAt: new Date().toISOString(),
           turnId,
+          ...this.turnOrigin(record, turnId),
           method: 'turn.completed',
           ...mapAcpStopReasonToTurnCompletion(response.stopReason),
         });
@@ -3523,6 +3549,7 @@ export class AcpAdapter implements ProviderAdapterShape {
             threadId,
             createdAt: new Date().toISOString(),
             turnId,
+            ...this.turnOrigin(record, turnId),
             method: 'runtime.error',
             ...providerFailure('quota_exhausted'),
             severity: 'error',
@@ -3538,6 +3565,7 @@ export class AcpAdapter implements ProviderAdapterShape {
             threadId,
             createdAt: new Date().toISOString(),
             turnId,
+            ...this.turnOrigin(record, turnId),
             method: 'runtime.error',
             ...providerFailure('provider_error'),
             severity: 'error',
