@@ -12,6 +12,7 @@ declare global {
     connections: ReturnType<
       typeof import('@kontourai/station-connect').useConnections
     >;
+    fixtureMounted?: boolean;
     reading: typeof import('../lib/offlineReading');
   }
 }
@@ -33,7 +34,7 @@ beforeAll(async () => {
   writeFileSync(
     path.join(root, 'main.tsx'),
     `
-    import React from 'react';
+    import React,{useEffect} from 'react';
     import {createRoot} from 'react-dom/client';
     import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
     import {OfflineReadingBoundary} from '${ROOT}/src-ui/src/components/OfflineReadingBoundary';
@@ -42,7 +43,7 @@ beforeAll(async () => {
     import * as reading from '${ROOT}/src-ui/src/lib/offlineReading';
     window.reading=reading;
     import {ConnectionsProvider,useConnections} from '@kontourai/station-connect';
-    function Probe(){window.connections=useConnections(); return null;}
+    function Probe(){window.connections=useConnections(); useEffect(()=>{window.fixtureMounted=true},[]); return null;}
     function App(){return <><WebOfflineShell/><OfflineReadingBoundary><QueryClientProvider client={new QueryClient()}><h1>Live app</h1><OfflineReadingSection/></QueryClientProvider></OfflineReadingBoundary></>}
     createRoot(document.getElementById('root')).render(<ConnectionsProvider defaultUrl={location.origin}><Probe/><App/></ConnectionsProvider>);
 
@@ -229,16 +230,16 @@ test('opt-in text survives an offline reload under CSP, stays read-only, and cle
       await page.evaluate(() => fetch('/api/private').then((r) => r.json())),
     ).toEqual({ secret: 'api-secret' });
     const before = await page.evaluate(
-      () => window.connections.captureCredentialEvidence().generation,
+      () => window.connections.captureCredentialEvidence()!.generation,
     );
     await page.evaluate(() => {
       const c = window.connections;
-      c.recordEndpointFailure(c.activeConnection.id, 'unreachable');
+      c.recordEndpointFailure(c.activeConnection!.id, 'unreachable');
     });
     await expect
       .poll(() =>
         page.evaluate(
-          () => window.connections.captureCredentialEvidence().generation,
+          () => window.connections.captureCredentialEvidence()!.generation,
         ),
       )
       .toBeGreaterThan(before);
@@ -292,6 +293,7 @@ test('opt-in text survives an offline reload under CSP, stays read-only, and cle
     await page.getByText('Offline copies cleared.', { exact: true }).waitFor();
     await page.reload();
     await page.getByText(/No offline copies available/).waitFor();
+    await page.waitForFunction(() => window.fixtureMounted);
     await context.setOffline(false);
     await page.getByRole('heading', { name: 'Live app' }).waitFor();
   } finally {
@@ -432,12 +434,12 @@ test('changing the selected authority clears local text instead of revealing it 
       .waitFor();
     await page.evaluate(() => {
       const c = window.connections;
-      c.setCredential(c.activeConnection.id, 'replacement-credential');
+      c.setCredential(c.activeConnection!.id, 'replacement-credential');
     });
     await page.getByText(/No offline copies available/).waitFor();
     await page.evaluate(() => {
       const c = window.connections;
-      c.removeCredential(c.activeConnection.id);
+      c.removeCredential(c.activeConnection!.id);
     });
     await page.getByText(/No offline copies available/).waitFor();
     expect(

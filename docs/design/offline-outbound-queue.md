@@ -106,13 +106,15 @@ resulting revision. Ambiguous response loss preserves the same operation for
 replay. Conflict retry is an explicit rebase
 with a new operation id. It does not reuse the chat-turn queue.
 
-For other mutation families, the browser's authenticated transport fails before
-dispatch when the browser reports offline, with a reconnect message. A network failure recorded in this browser session also refuses writes until
+For other mutation families, both authenticated fetches and SDK mutations fail
+before dispatch on a current connection-layer reachability failure, with a
+reconnect message. The browser's link-layer offline flag alone does not refuse
+writes. A network failure recorded in this browser session refuses writes until
 a successful read recovers reachability. Older stored health failures do not
 block a new attempt: an accepted request must still be able to
 retire stale failure evidence. Native transport does not infer unreachability
 from `navigator.onLine`, which can be false while a VPN route works. Existing
-request deadlines bound a new attempt when no current offline signal exists.
+request deadlines bound a new attempt when no current reachability failure exists.
 This is failure reporting, not mutation durability. Any additional queued family
 must independently add an idempotency key and revision/conflict receipt.
 
@@ -153,7 +155,8 @@ owns consent, limits and local-device disclosure. The implementation is separate
 from outbound intent: [offlineReading](../../src-ui/src/lib/offlineReading.ts)
 stores a closed user/assistant text projection from successful history windows.
 It retains one explicitly enabled authority shelf, binds it to the connection,
-origin and credential generation, fences delayed writes with an atomic revision,
+origin, credential authority generation and credential state, fences delayed
+writes with an atomic revision,
 and clears it on authority changes and sign-out. The local reader is outside the
 live access gate; it does not hydrate a QueryClient, verify a person, expose live
 approvals, or reuse saved text as current online data. Other tabs hear committed
