@@ -4,10 +4,11 @@ import { once } from 'node:events';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { spawnSyncBounded } from '../../../../scripts/lib/bounded-capture.mjs';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 const root = resolve(import.meta.dirname, '../../../..');
 const require = createRequire(import.meta.url);
@@ -55,6 +56,11 @@ async function gone(pid: number): Promise<boolean> {
 }
 
 describe.skipIf(!manager)('running server workload containment', () => {
+  // Scopes do not share the fixture service's PrivateTmp mount.
+  const makeTempDir = trackTempDirs({
+    base: join(root, 'node_modules'),
+    lifetime: 'file',
+  });
   const unit = `station-resource-proof-${randomUUID()}.service`;
   const slice = `stationworkload${createHash('sha256').update(unit).digest('hex').slice(0, 16)}.slice`;
   let base: string;
@@ -106,6 +112,7 @@ describe.skipIf(!manager)('running server workload containment', () => {
         '--property=PrivateTmp=yes',
         `--setenv=PATH=${process.env.PATH}`,
         `--setenv=PORT=${port}`,
+        `--setenv=STATION_RESOURCE_PROOF_MCP_OBSERVATIONS=${join(makeTempDir('.station-mcp-proof-'), 'launches.jsonl')}`,
         ...(ptyModule
           ? [`--setenv=STATION_RESOURCE_PROOF_PTY_MODULE=${ptyModule}`]
           : []),
