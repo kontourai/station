@@ -168,7 +168,9 @@
 
     "src-server/routes/chat/conversation-reference-read.ts",
 
-    "packages/shared/src/conversation-message.ts"
+    "packages/shared/src/conversation-message.ts",
+
+    "src-server/tools/station-knowledge-tools.ts"
   ],
 
   "checks": [

@@ -248,7 +248,15 @@
 
     "src-ui/src/hooks/useProjectCreationRecovery.ts",
 
-    "src-ui/src/hooks/useProjectDraftState.ts"
+    "src-ui/src/hooks/useProjectDraftState.ts",
+
+    "src-ui/src/components/modals/NewProjectModalContent.tsx",
+
+    "src-ui/src/hooks/useNewProjectModalState.ts",
+
+    "src-ui/src/hooks/useNewProjectSubmit.ts",
+
+    "src-ui/src/components/modals/RepositoryProviderPicker.tsx"
   ],
 
   "checks": [

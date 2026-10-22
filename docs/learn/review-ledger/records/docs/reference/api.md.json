@@ -496,7 +496,19 @@
 
     "src-server/services/projects/project-creation-service.ts",
 
-    "src-ui/src/hooks/useProjectCreationRecovery.ts"
+    "src-ui/src/hooks/useProjectCreationRecovery.ts",
+
+    "src-server/services/knowledge/knowledge-document-import-service.ts",
+
+    "src-server/routes/knowledge/knowledge-document-import-routes.ts",
+
+    "src-server/knowledge-store/knowledge-write-authority.ts",
+
+    "src-server/services/projects/project-s3-sources.ts",
+
+    "src-server/routes/projects/project-s3-source-routes.ts",
+
+    "src-server/services/projects/repository-provider-catalog.ts"
   ],
 
   "checks": [

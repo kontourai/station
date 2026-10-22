@@ -18,7 +18,15 @@
 
     "src-server/services/projects/project-resource-resolver.ts",
 
-    "src-server/services/projects/project-session-directory.ts"
+    "src-server/services/projects/project-session-directory.ts",
+
+    "src-server/services/projects/repository-provider-catalog.ts",
+
+    "src-server/services/projects/repository-acquisition-service.ts",
+
+    "src-ui/src/components/modals/NewProjectModalContent.tsx",
+
+    "src-ui/src/hooks/useNewProjectModalState.ts"
   ],
 
   "checks": [

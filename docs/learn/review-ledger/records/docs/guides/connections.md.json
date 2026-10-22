@@ -346,7 +346,17 @@
 
     "src-ui/src/components/modals/NewProjectRepositorySource.tsx",
 
-    "src-ui/src/hooks/useNewProjectSubmit.ts"
+    "src-ui/src/hooks/useNewProjectSubmit.ts",
+
+    "src-server/services/projects/project-s3-sources.ts",
+
+    "src-server/routes/projects/project-s3-source-routes.ts",
+
+    "src-server/services/projects/repository-provider-catalog.ts",
+
+    "src-ui/src/components/modals/RepositoryProviderPicker.tsx",
+
+    "src-ui/src/hooks/useProjectCreationRecovery.ts"
   ],
 
   "checks": [

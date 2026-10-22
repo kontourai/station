@@ -126,7 +126,15 @@
 
     "tests/helpers/exact-request-backend.ts",
 
-    "tests/helpers/live-station-task.ts"
+    "tests/helpers/live-station-task.ts",
+
+    "src-ui/src/components/modals/NewProjectModalContent.tsx",
+
+    "src-ui/src/hooks/useNewProjectModalState.ts",
+
+    "src-ui/src/hooks/useNewProjectSubmit.ts",
+
+    "src-ui/src/hooks/useProjectCreationRecovery.ts"
   ],
 
   "checks": [
