@@ -135,6 +135,8 @@ export interface TaskDispatchGraphState {
   reserve(
     taskId: string,
     intent: DispatchIntent,
+    /** #4005: the Agent `prepare` resolved; its engine is the start's provider. */
+    agentStart?: TaskDispatchAgentStart,
   ): Promise<
     | { kind: 'reserved'; reservation: TaskDispatchReservation }
     | { kind: 'not-found' | 'contended' | 'terminal'; reason: string }
@@ -197,12 +199,12 @@ export interface TaskDispatchRemoteSessions {
   /** Whether a thrown start can have created an unobservable remote session. */
   mayHaveStarted(reservation: TaskDispatchReservation): boolean;
   /**
-   * #4005: resolves the Agent an engine start runs as, before any claim or
-   * provider effect. A refusal is definite: nothing was started, and the
-   * reservation is released.
+   * #4005: resolves the Agent the dispatch runs as, before the reservation,
+   * any claim or any provider effect. A refusal is definite and nothing is
+   * written. `agentStart` is absent for a seeded (`task-dispatch`) dispatch.
    */
   prepare?(
-    reservation: TaskDispatchReservation,
+    taskId: string,
     intent: DispatchIntent,
   ): Promise<
     | { kind: 'ready'; agentStart?: TaskDispatchAgentStart }
@@ -298,9 +300,31 @@ class TaskDispatcherImplementation implements TaskDispatcher {
     const cancelled = dispatchCancelledReason(signal, intent.timeoutMs);
     if (cancelled)
       return { kind: 'aborted', reason: cancelled, retryable: true };
+    // #4005: the Agent is resolved before anything durable is written, inside
+    // the dispatch deadline. A refusal or a timeout here leaves the Task
+    // exactly as it was, with no reservation to release.
+    let prepared:
+      | Awaited<ReturnType<NonNullable<TaskDispatchRemoteSessions['prepare']>>>
+      | undefined;
+    try {
+      prepared = this.remoteSessions.prepare
+        ? await awaitDispatchPhase(
+            this.remoteSessions.prepare(taskId, intent),
+            signal,
+            intent.timeoutMs,
+          )
+        : undefined;
+    } catch (error) {
+      if (error instanceof DispatchInterruptedError)
+        return { kind: 'aborted', reason: error.message, retryable: true };
+      prepared = { kind: 'refused', reason: errorMessage(error) };
+    }
+    if (prepared?.kind === 'refused')
+      return { kind: 'failed', reason: prepared.reason };
+    const agentStart = prepared?.agentStart;
     let admission: Awaited<ReturnType<TaskDispatchGraphState['reserve']>>;
     try {
-      admission = await this.graph.reserve(taskId, intent);
+      admission = await this.graph.reserve(taskId, intent, agentStart);
     } catch (error) {
       return { kind: 'failed', reason: errorMessage(error) };
     }
@@ -346,25 +370,6 @@ class TaskDispatcherImplementation implements TaskDispatcher {
         }
         return readiness;
       }
-      let prepared:
-        | Awaited<
-            ReturnType<NonNullable<TaskDispatchRemoteSessions['prepare']>>
-          >
-        | undefined;
-      try {
-        prepared = await this.remoteSessions.prepare?.(reservation, intent);
-      } catch (error) {
-        prepared = { kind: 'refused', reason: errorMessage(error) };
-      }
-      if (prepared?.kind === 'refused') {
-        intent.monitor?.onSessionAbandoned?.(reservation.sessionId);
-        const cleanup = await this.releaseReservation(reservation);
-        this.reportFailure(reservation, startedAt, false);
-        return cleanup.kind === 'indeterminate'
-          ? cleanup
-          : { kind: 'failed', reason: prepared.reason };
-      }
-      const agentStart = prepared?.agentStart;
       const cancelled = dispatchCancelledReason(signal, intent.timeoutMs);
       if (cancelled) {
         const cleanup = await this.releaseReservation(reservation);

@@ -40,6 +40,7 @@ import { createSessionAgentResolver } from '../../../services/orchestration/sess
 import { composeTaskDispatcher } from '../../../services/projects/task-dispatch-composition.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
 import {
+  assertTaskDispatchAgentExists,
   continueExecutionTargetMessage,
   resolveTaskDispatchAgentStart,
 } from '../../../tools/station-control-delegation.js';
@@ -250,6 +251,8 @@ describe('Task dispatch binds its Session to the Task Agent (#4005)', () => {
       taskDispatcher: composeTaskDispatcher(graph, {
         resolveAgentStart: (input) =>
           resolveTaskDispatchAgentStart(input, service),
+        assertAgentExists: (agentId) =>
+          assertTaskDispatchAgentExists(agentId, service),
         // Epic #4003's brief, which only a turn can deliver.
         taskBrief: {
           forDispatch: async (task: { id: string }) => ({
@@ -383,6 +386,90 @@ describe('Task dispatch binds its Session to the Task Agent (#4005)', () => {
     expect(JSON.stringify(claude.sendTurn.mock.calls[0]![0])).toContain(
       `BRIEF FOR ${taskId}`,
     );
+  });
+
+  test('the UI’s Dispatch request (an Agent, no provider) starts the Agent’s engine as that Agent and the Session takes a turn', async () => {
+    installCurrentStation(workspace);
+    const { app, service, claude } = compose();
+    const taskId = await createTask(app, 'task-lead');
+    const selectedTask = {
+      id: taskId,
+      agentId: 'task-lead',
+      skillName: undefined,
+    };
+
+    // The exact body ProjectTasksSection's dispatchSelectedTask sends.
+    const dispatched = await dispatch(app, taskId, {
+      agentId: selectedTask.agentId,
+      skillName: selectedTask.skillName,
+      runtimeConfig: workspace ? { cwd: workspace } : undefined,
+      sourceSurface: 'project-page',
+    });
+    expect(dispatched.body.error).toBeUndefined();
+    expect(dispatched.body.data).toMatchObject({
+      task: { status: 'in_progress', agentId: 'task-lead' },
+      dispatch: {
+        provider: 'claude',
+        outcome: 'started',
+        sourceSurface: 'project-page',
+      },
+    });
+    const sessionId = dispatched.body.data.dispatch.sessionId as string;
+    expect(claude.startSession.mock.calls[0]![0]).toMatchObject({
+      provider: 'claude',
+      modelId: 'haiku',
+      metadata: expect.objectContaining({
+        agentSlug: 'task-lead',
+        targetKind: 'agent',
+        targetId: 'task-lead',
+        environmentId: ENVIRONMENT_ID,
+      }),
+    });
+
+    await continueExecutionTargetMessage(
+      {
+        conversationId: sessionId,
+        message: 'Start on the Task',
+        userId: OWNER,
+        readAuthority: sessionReadAuthorityFromRequest(
+          OWNER,
+          undefined,
+          undefined,
+        ),
+      },
+      service,
+    );
+    expect(claude.sendTurn).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(claude.sendTurn.mock.calls[0]![0])).toContain(
+      `BRIEF FOR ${taskId}`,
+    );
+  });
+
+  test('a seeded dispatch records a known Agent and refuses an unknown one', async () => {
+    installCurrentStation(workspace);
+    const { app, graph, claude } = compose();
+    const taskId = await createTask(app);
+
+    const refused = await dispatch(app, taskId, {
+      agentId: 'ghost',
+      provider: 'task-dispatch',
+    });
+    expect(refused.status).toBe(400);
+    expect(refused.body.error).toContain(
+      "Agent 'ghost' cannot be recorded on this Task",
+    );
+    expect(graph.readTaskView(taskId)).toMatchObject({ status: 'todo' });
+    expect(graph.readTaskView(taskId)?.agentId).toBeUndefined();
+
+    const seeded = await dispatch(app, taskId, {
+      agentId: 'task-lead',
+      provider: 'task-dispatch',
+    });
+    expect(seeded.body.data).toMatchObject({
+      task: { agentId: 'task-lead', status: 'ready' },
+      dispatch: { provider: 'task-dispatch', outcome: 'seeded' },
+    });
+    expect(claude.startSession).not.toHaveBeenCalled();
   });
 
   test('the Task’s recorded Agent is used when the dispatch names none', async () => {

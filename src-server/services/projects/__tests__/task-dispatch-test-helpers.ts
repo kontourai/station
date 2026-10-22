@@ -2,11 +2,15 @@ import type {
   TaskDispatchInput,
   TaskDispatchResult,
 } from '@kontourai/station-contracts';
+import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import {
   agentId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
-import type { EngineId } from '@kontourai/station-contracts/provider';
+import type {
+  EngineId,
+  ProviderSessionStartInput,
+} from '@kontourai/station-contracts/provider';
 import { agentExecutionBindingMetadata } from '../../execution-target/execution-target-resolver.js';
 import { composeTaskDispatcher } from '../task-dispatch-composition.js';
 import type {
@@ -58,6 +62,52 @@ export function fixtureAgentStartResolver(
       workspaceIsolation: { mode: 'shared' },
     },
   });
+}
+
+/** #4005: the authored Agent fixture Task dispatches run as. */
+export const FIXTURE_TASK_AGENT = 'task-dispatch-agent';
+
+// Loaded on first use: the session-agent resolver imports the Station
+// control tool catalog, which suites that mock station-control-delegation
+// (the cold-start test) must not pull in while that mock is being built.
+let fixtureTaskAgentResolver:
+  | Promise<
+      (
+        input: ProviderSessionStartInput,
+        captured?: { agentId: string; spec: AgentSpec },
+      ) => Promise<ProviderSessionStartInput>
+    >
+  | undefined;
+function taskAgentResolver() {
+  fixtureTaskAgentResolver ??= import(
+    '../../orchestration/session-agent-resolution.js'
+  ).then(({ createSessionAgentResolver }) =>
+    createSessionAgentResolver({
+      loadAgentSpec: async (slug) =>
+        slug === FIXTURE_TASK_AGENT
+          ? { name: 'Task dispatch agent', prompt: 'You work on Tasks.' }
+          : null,
+      resolveToolServer: async () => null,
+      resolveSkillDir: async () => null,
+    }),
+  );
+  return fixtureTaskAgentResolver;
+}
+
+/**
+ * An `OrchestrationService` `resolveSessionAgent` for suites whose Task
+ * dispatches start engines: the production resolver attaches the fixture
+ * Agent's authored definition, so the start-time authored-Agent gate passes
+ * as it does for a real Agent. Every other start passes through untouched,
+ * as with no resolver configured.
+ */
+export async function fixtureTaskAgentSessionResolver(
+  input: ProviderSessionStartInput,
+  captured?: { agentId: string; spec: AgentSpec },
+): Promise<ProviderSessionStartInput> {
+  return input.metadata?.agentSlug === FIXTURE_TASK_AGENT
+    ? (await taskAgentResolver())(input, captured)
+    : input;
 }
 
 /** Composes a Dispatcher whose engine starts resolve through the fixture. */

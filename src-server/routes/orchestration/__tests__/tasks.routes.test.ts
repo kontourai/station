@@ -1138,7 +1138,12 @@ describe('Task routes', () => {
     const dispatchRes = await app.request(`/${taskId}/dispatch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ relatedFiles: ['src/routes.ts'] }),
+      // #4005: a Task with an Agent starts that Agent's engine unless the
+      // dispatch asks for the seeded `task-dispatch` Session, as here.
+      body: JSON.stringify({
+        relatedFiles: ['src/routes.ts'],
+        provider: 'task-dispatch',
+      }),
     });
     const dispatchBody = await readJson(dispatchRes);
     expect(dispatchBody.success).toBe(true);

@@ -650,6 +650,7 @@ describe('TaskGraphService', () => {
 
     await expect(
       dispatchTaskForTest(service, 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', {
+        agentId: 'agent-one',
         provider: 'claude',
       }),
     ).rejects.toThrow('Task dispatch reservation was superseded');
@@ -1678,6 +1679,26 @@ describe('TaskGraphService', () => {
   });
 
   describe('station#189 S4: metadata.taskSlug at builder-session start', () => {
+    /**
+     * The exact start metadata: the dispatching owner, the Agent binding the
+     * shared writer (`agentExecutionBindingMetadata`) records for the fixture
+     * Agent, its Project workspace, and the task slug when one is declared.
+     */
+    function startMetadata(taskSlug?: string) {
+      return {
+        agentId: 'agent-one',
+        agentSlug: 'agent-one',
+        targetKind: 'agent',
+        targetId: 'agent-one',
+        connectionId: 'codex',
+        environmentId: FIXTURE_ENVIRONMENT_ID,
+        projectSlug: 'project-alpha',
+        workspaceIsolation: { mode: 'shared' },
+        userId: 'test-owner',
+        ...(taskSlug ? { taskSlug } : {}),
+      };
+    }
+
     async function dispatchWithSidecar(options: {
       workItemRef?: string;
       readState: (cwd: string, taskSlug: string) => unknown;
@@ -1733,22 +1754,23 @@ describe('TaskGraphService', () => {
           type: 'startSession',
           input: expect.objectContaining({
             // The dispatching principal always owns the session.
-            metadata: expect.objectContaining({
-              userId: 'test-owner',
-              taskSlug: 'kontourai-station-1388',
-            }),
+            metadata: startMetadata('kontourai-station-1388'),
           }),
         },
         undefined,
         // Review M1: the Builder run behind this slug is driven by
         // flow-agents, so the attach must read it, never write it.
-        expect.objectContaining({
+        {
           workflowSidecarAttachMode: 'read-only-join',
           roomExecutionBinding: {
             projectId: 'project-alpha',
             taskId: expect.any(String),
           },
-        }),
+          conversationIdentity: {
+            conversationId: expect.any(String),
+            environmentId: FIXTURE_ENVIRONMENT_ID,
+          },
+        },
       );
     });
 
@@ -1761,7 +1783,7 @@ describe('TaskGraphService', () => {
         readState: () => null,
       });
 
-      expect(dispatch.mock.calls[0][0].input.metadata.taskSlug).toBeUndefined();
+      expect(dispatch.mock.calls[0][0].input.metadata).toEqual(startMetadata());
     });
 
     test('never derives a slug from a namespaced work item ref', async () => {
@@ -1773,7 +1795,7 @@ describe('TaskGraphService', () => {
       });
 
       expect(readState).not.toHaveBeenCalled();
-      expect(dispatch.mock.calls[0][0].input.metadata.taskSlug).toBeUndefined();
+      expect(dispatch.mock.calls[0][0].input.metadata).toEqual(startMetadata());
       // No slug means no join, so the attach mode must not be forced either.
       expect(
         dispatch.mock.calls[0][2].workflowSidecarAttachMode,
@@ -1786,7 +1808,7 @@ describe('TaskGraphService', () => {
       });
 
       expect(readState).not.toHaveBeenCalled();
-      expect(dispatch.mock.calls[0][0].input.metadata.taskSlug).toBeUndefined();
+      expect(dispatch.mock.calls[0][0].input.metadata).toEqual(startMetadata());
     });
 
     test('declares nothing when the dispatch supplies no cwd', async () => {
@@ -1818,7 +1840,7 @@ describe('TaskGraphService', () => {
       });
 
       expect(readState).not.toHaveBeenCalled();
-      expect(dispatch.mock.calls[0][0].input.metadata.taskSlug).toBeUndefined();
+      expect(dispatch.mock.calls[0][0].input.metadata).toEqual(startMetadata());
     });
 
     test('an unreadable sidecar degrades to no slug instead of failing the dispatch', async () => {
@@ -1829,7 +1851,7 @@ describe('TaskGraphService', () => {
         },
       });
 
-      expect(dispatch.mock.calls[0][0].input.metadata.taskSlug).toBeUndefined();
+      expect(dispatch.mock.calls[0][0].input.metadata).toEqual(startMetadata());
     });
   });
 

@@ -434,6 +434,7 @@ import {
 } from '../../services/search/runtime-search.js';
 import type { ServerUpdateCoordinator } from '../../services/server-update/server-update-coordinator.js';
 import {
+  assertTaskDispatchAgentExists,
   continueExecutionTargetMessage,
   resolveTaskDispatchAgentStart,
 } from '../../tools/station-control-delegation.js';
@@ -4022,6 +4023,15 @@ export class StationRuntime {
                   runAsStationServer(() =>
                     resolveTaskDispatchAgentStart(
                       input,
+                      this.orchestrationService,
+                    ),
+                  ),
+                // A seeded dispatch records its Agent; refuse one this
+                // Station does not have.
+                assertAgentExists: (agentId) =>
+                  runAsStationServer(() =>
+                    assertTaskDispatchAgentExists(
+                      agentId,
                       this.orchestrationService,
                     ),
                   ),

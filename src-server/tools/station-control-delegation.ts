@@ -2722,6 +2722,35 @@ export async function resolveTaskDispatchAgentStart(
   };
 }
 
+/**
+ * #4005: refuses an Agent this Station does not have, for a seeded Task
+ * dispatch that records the Agent without starting it. The same Agent read
+ * `/chat` resolution uses; a missing Agent throws its "not found" refusal.
+ */
+export async function assertTaskDispatchAgentExists(
+  id: string,
+  orchestrationService: OrchestrationService,
+): Promise<void> {
+  const selectedTarget = await resolveTarget(
+    {},
+    undefined,
+    orchestrationService,
+  );
+  const access = executionResolverDependencies(
+    selectedTarget,
+    orchestrationService,
+  );
+  const agent = await access.getAgent(
+    await access.resolveEnvironmentAccess({
+      environment: { kind: 'current' },
+      agent: agentId(id),
+    }),
+    agentId(id),
+  );
+  if (agent.slug !== undefined && agent.slug !== id)
+    throw new Error(`Agent '${id}' is not this Station's Agent`);
+}
+
 function sameDirectory(left: string, right: string): boolean {
   try {
     return realpathSync(left) === realpathSync(right);

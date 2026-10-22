@@ -22,7 +22,10 @@ import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { AssignmentClaimService } from '../../evidence/assignment-claim-service.js';
 import { TaskGraphService } from '../task-graph-service.js';
-import { dispatchTaskForTest } from './task-dispatch-test-helpers.js';
+import {
+  dispatchTaskForTest,
+  FIXTURE_TASK_AGENT,
+} from './task-dispatch-test-helpers.js';
 
 const require = createRequire(import.meta.url);
 // Package "exports" only defines "." and "./package.json" subpaths — the
@@ -627,6 +630,8 @@ describe('TaskGraphService dispatch-as-claim (#584)', () => {
 
     await expect(
       dispatchTaskForTest(service, task.id, {
+        // #4005: an engine start runs as an Agent; the start itself fails.
+        agentId: FIXTURE_TASK_AGENT,
         runtimeConfig: { provider: 'claude' },
       }),
     ).rejects.toThrow(/simulated orchestration dispatch failure/);
@@ -781,6 +786,8 @@ describe('TaskGraphService dispatch-as-claim (#584)', () => {
 
     await expect(
       dispatchTaskForTest(service, task.id, {
+        // #4005: an engine start runs as an Agent; the start itself fails.
+        agentId: FIXTURE_TASK_AGENT,
         runtimeConfig: { provider: 'claude' },
       }),
     ).rejects.toThrow('remote start acknowledgement lost');
