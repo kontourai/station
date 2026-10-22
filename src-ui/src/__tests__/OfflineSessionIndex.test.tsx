@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
+
+import { orchestrationQueries } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { persistQueryClientSave } from '@tanstack/react-query-persist-client';
 import { act, render } from '@testing-library/react';
 import { expect, test } from 'vitest';
 import { OfflineSessionIndex } from '../components/OfflineSessionIndex';
-import { orchestrationQueries } from '@kontourai/station-sdk';
 import { buildPersistOptions } from '../lib/queryPersistence';
 
 test('persists a session identifier index without titles, recovery cursors or runtime diagnostics', async () => {
