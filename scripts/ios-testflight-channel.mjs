@@ -82,6 +82,7 @@ export function createIosTestFlightConfig({
   return {
     productName: identity.productName,
     identifier: identity.bundleId,
+    build: { features: channel === 'nightly' ? ['native-devtools'] : [] },
     version: marketingVersion,
     bundle: {
       // The app's floor (tauri.ios.conf.json): WebKit before 16.4 rejects
