@@ -273,7 +273,7 @@ test('board and shell share the live safety poll and discover peer changes witho
   let failNext = false;
   let rows: {
     threadId: string;
-    lifecycleState: string;
+    lifecycleState: OrchestrationSessionSummary['lifecycleState'];
     answerability: { answerable: true };
   }[] = [];
   const fetcher = vi.fn(async () => {
@@ -323,7 +323,7 @@ test('board and shell share the live safety poll and discover peer changes witho
   rows = [
     {
       threadId: 'peer-task',
-      lifecycleState: 'awaiting-input',
+      lifecycleState: 'needs_input',
       answerability: { answerable: true },
     },
   ];
