@@ -32,6 +32,13 @@ normally before publication. Open one PR when the combined work is ready.
   through the shared activity UI. The inspected Muse protocol has no child
   tool stream; its missing value stays absent.
 
+At `3a5ca9c8a5d`, the contract suite also binds the documented handle-only
+case: without text, a recovery handle has no summary provenance and cannot
+replace an existing report or its recovery handle. All 46 cases pass; removing
+the text-presence guard fails the new assertion with 45 controls passing.
+Byte-identical restoration returns 46 passing cases. This adds regression
+evidence for the existing contract, not a new live return/recovery claim.
+
 At `3669442358f`, the existing audited Agents-pane browser journey passes both
 desktop and 390px phone-width cases against a built isolated Station. It checks
 CLI provenance, engine identity and live child activity, single Stop controls,
@@ -184,6 +191,12 @@ host found CLI 2.0.32 rejects the existing `debug agent` command and advertises
 `debug agents`; the latter returned an empty list under the process-local deny
 overlay. This is no resolved-policy or tool-enforcement proof. Shared engine
 configuration was unchanged, and no provider turn ran.
+Inspection of the installed Claude SDK also shows that `tools: []` removes
+built-in tools only, while `setMcpServers({})` retains plugin-owned servers.
+Neither control alone establishes an all-tools-disabled continuation of the
+same delegate session. The generated installed Codex `turn/start` protocol has
+no direct all-tools-disable field; that is not proof that no alternative native
+mechanism exists. No context-sync action is exposed on these observations.
 
 ## Production adoption sequence
 
