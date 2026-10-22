@@ -75,6 +75,10 @@ afterEach(async () => {
 });
 
 class MemberAdapter extends GateTestAdapter {
+  syncOutputs: string[] = [];
+  nativeSessionIdentity(cursor: unknown) {
+    return typeof cursor === 'string' ? { sessionId: cursor } : undefined;
+  }
   readonly starts: ProviderSessionStartInput[] = [];
   startGate: Promise<void> = Promise.resolve();
   private readonly sessions = new Map<
@@ -159,7 +163,11 @@ class MemberAdapter extends GateTestAdapter {
   override async startSession(input: ProviderSessionStartInput) {
     this.starts.push(input);
     await this.startGate;
-    const session = await super.startSession(input);
+    const session = {
+      ...(await super.startSession(input)),
+      resumeCursor: `native-${input.threadId}`,
+      cwd: input.cwd,
+    };
     this.sessions.set(input.threadId, session);
     this.events.push({
       eventId: randomUUID(),
@@ -168,12 +176,27 @@ class MemberAdapter extends GateTestAdapter {
       sessionId: input.threadId,
       method: 'session.started',
       createdAt: session.createdAt,
-      metadata: input.metadata,
+      metadata: {
+        ...input.metadata,
+        nativeResumeBindingKey: 'fixture-native-binding',
+      },
     });
     return session;
   }
   override async hasSession(threadId?: string) {
     return threadId !== undefined && this.sessions.has(threadId);
+  }
+  override async stopSession(threadId = '') {
+    this.sessions.delete(threadId);
+    this.events.push({
+      eventId: randomUUID(),
+      provider: 'claude',
+      threadId,
+      sessionId: threadId,
+      method: 'session.exited',
+      reason: 'stopped',
+      createdAt: new Date().toISOString(),
+    });
   }
   override async listSessions() {
     return [...this.sessions.values()];
@@ -241,7 +264,9 @@ class MemberAdapter extends GateTestAdapter {
       turnId,
       method: 'turn.completed',
       createdAt: new Date().toISOString(),
-      outputText: 'Returned member result',
+      outputText: input.clientTurnId?.startsWith('sync-')
+        ? (this.syncOutputs.shift() ?? 'ACK SYNC run-one')
+        : 'Returned member result',
       invocationId: input.invocationId,
     });
     return { threadId: input.threadId, turnId };
@@ -479,6 +504,58 @@ async function create(f: Awaited<ReturnType<typeof fixture>>, seats = 3) {
     },
   );
 }
+
+test('registered CLI sync reaches the retained session through HTTP, durable reservations and canonical dispatch', async () => {
+  const f = await fixture();
+  const group = await create(f, 1);
+  const output: string[] = [];
+  vi.spyOn(console, 'log').mockImplementation((value) =>
+    output.push(String(value)),
+  );
+  await runCli([
+    'group',
+    'session-run',
+    group.groupId,
+    `--api-base=${f.apiBase}`,
+    '--credential=group-test',
+    '--json',
+  ]);
+  output.splice(0);
+  const file = join(f.root, 'sync.json');
+  writeFileSync(
+    file,
+    JSON.stringify({
+      operationId: 'sync-one',
+      runId: 'run-one',
+      content: 'private complete folded result',
+      deadlineAt: Date.now() + 60_000,
+    }),
+  );
+  f.adapter.syncOutputs.push('ACK SYNC run-one\n', 'ACK SYNC run-one');
+  const argv = [
+    'group',
+    'session-sync',
+    group.groupId,
+    `--file=${file}`,
+    `--api-base=${f.apiBase}`,
+    '--credential=group-test',
+    '--json',
+  ];
+  await runCli(argv);
+  const result: CliSessionGroupView = JSON.parse(output.splice(0).join('\n'));
+  expect(result.contextSync).toMatchObject({
+    status: 'acknowledged',
+    members: [{ seatId: 'seat-0', attempts: 2, status: 'acknowledged' }],
+  });
+  expect(f.adapter.turns).toHaveLength(3);
+  expect(new Set(f.adapter.turns.map((turn) => turn.threadId)).size).toBe(1);
+  expect(f.adapter.turns[1].input).toContain('private complete folded result');
+  expect(JSON.stringify(result)).not.toContain(
+    'private complete folded result',
+  );
+  await runCli(argv);
+  expect(f.adapter.turns).toHaveLength(3);
+}, 30_000);
 
 test('registered CLI and SDK create three real orchestration sessions and initial turns joined to durable Flow completion', async () => {
   const f = await fixture();

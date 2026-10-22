@@ -4391,6 +4391,42 @@ export function createOrchestrationRoutes(
       );
       groupResponseSchema.parse(await response.json());
     },
+    sync: async (handle, input) => {
+      assertCurrent();
+      const scopeRefused = refuseOutOfScopeDispatch(
+        c,
+        deps.stationControlDispatchScope,
+        () => ({ kind: 'task', taskId: handle.taskId, remote: false }),
+      );
+      if (scopeRefused)
+        throw new CliSessionGroupUnavailable('group_authority_required');
+      const { principal, userId, ownerAttribution, fullAccessGrant } =
+        resolveDispatchActor(deps, c);
+      const response = await readAuthorizedDelegatedTask(c, handle.taskId, {});
+      const snapshot = groupSnapshotSchema.parse(
+        groupResponseSchema.parse(await response.json()).data,
+      );
+      assertCurrent();
+      if (!response.ok || snapshot.sessionId !== handle.sessionId)
+        throw new CliSessionGroupUnavailable('group_not_found');
+      return orchestrationService.syncRetainedSession({
+        threadId: handle.sessionId,
+        ...input,
+        assertCurrent: () => {
+          assertCurrent();
+          input.assertCurrent();
+        },
+        context: {
+          principal,
+          userId,
+          ownerAttribution,
+          fullAccessGrant,
+          clientOrigin: resolveClientOriginForRequest(c.req.raw),
+          requestCurrent: () =>
+            deps.isRequestPrincipalCurrent?.(c.req.raw) === true,
+        },
+      });
+    },
   });
   const sessionGroupFailure = (c: Context, error: unknown) => {
     const code =
@@ -4646,6 +4682,33 @@ export function createOrchestrationRoutes(
         sessionGroupHost(c, authority.assertCurrent),
       ),
     ),
+  );
+  app.post('/session-groups/:groupId/sync', (c) =>
+    respondSessionGroup(c, async (groups, authority) => {
+      const body = await readBoundedRequestBody(c.req.raw, 262_144);
+      if (body.status !== 'ok')
+        throw new CliSessionGroupUnavailable('group_invalid');
+      const input = z
+        .object({
+          operationId: z.string().min(1).max(128),
+          runId: z.string().min(1).max(128),
+          content: z
+            .string()
+            .min(1)
+            .max(128 * 1024),
+          deadlineAt: z.number().int().positive().safe(),
+        })
+        .strict()
+        .parse(JSON.parse(body.body));
+      authority.assertCurrent();
+      return groups.sync(
+        param(c, 'groupId'),
+        authority.owner,
+        input,
+        sessionGroupHost(c, authority.assertCurrent),
+        c.req.raw.signal,
+      );
+    }),
   );
 
   app.post('/delegations', validateFiles(delegateTaskSchema), (c) =>

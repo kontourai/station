@@ -272,6 +272,15 @@ Ordinary mode must return through another exact native resume. Codex/ACP sync
 enforcement remains unqualified; context sync and full #432/#205 acceptance
 remain open. No physical/token/dollar guarantee follows from these probes.
 
+A production sync increment now connects the session-group HTTP/SDK/CLI caller
+to durable logical-attempt reservations and an exclusive retained-session
+activation. It uses command-line wildcard denial, exact native identity and
+configuration binding, exact ACK comparison and one completed tool-free mismatch
+retry. The latest receipts are visible in the group inspector. Focused controlled
+adapter and native boundary checks are still being qualified; this source work
+does not close the remaining plugin/delegation native coverage, real-provider
+sync, #205 restrictions, fiscal guarantees or full epic acceptance.
+
 ## Production adoption sequence
 
 The personal `/api/orchestration/session-groups` path now composes the shared

@@ -5172,6 +5172,16 @@ allowance and `admissionClosed: "dispatch-limit-exhausted"` when exhausted with
 pending work; event pages retain that reason. Unknown/refused reservations count
 and survive reopen. Dollar, token and physical-attempt guarantees stay unavailable.
 
+`parseCliSessionGroupSyncInput` validates the bounded folded-result request;
+`syncCliSessionGroup(apiBase, groupId, input, options)` submits it without an
+automatic retry or client timeout. The server deadline remains authoritative.
+The latest optional `contextSync` in `CliSessionGroupView` reports per-seat ACK,
+failed or unknown receipts and reserved logical attempts. It never carries the
+folded content or raw answer. Sync uses the retained conversation and currently
+requires the qualified Claude runtime described in the API reference; other
+engines refuse. An ACK does not accept the work. Existing SDK/server strict
+schema lockstep requirements apply to these additive response fields too.
+
 `parseEnsembleCliSessionGroupInput` and `createEnsembleCliSessionGroup` use the
 preset entry point in that API. The request supplies exactly one of a preset
 `path` or `presetJson`, its exact hash, a brief and receiver bindings; the server

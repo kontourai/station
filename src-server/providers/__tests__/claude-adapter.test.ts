@@ -7,7 +7,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -123,6 +123,7 @@ import {
 } from '../../runtime/mcp/station-control-mcp-token.js';
 import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
+import { withSessionToolRestriction } from '../../services/orchestration/session-tool-restriction.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 import { scrubBootInternalSecrets } from '../../utils/child-process-environment.js';
 import { INTERNAL_API_TOKEN_ENV } from '../../utils/internal-api-token.js';
@@ -138,6 +139,7 @@ import {
   resolveSpawnableClaudeExecutable,
 } from '../adapters/claude-adapter.js';
 import { claudeRequestDisplayText } from '../adapters/claude-adapter-events.js';
+import { nativeResumeBindingKey } from '../adapters/native-resume-binding.js';
 import { createCredentialProfileAppHomeEnvResolver } from '../app-home/credential-profile-env.js';
 import { credentialProfileAppHomeDir } from '../app-home/credential-profile-registry.js';
 import {
@@ -249,6 +251,137 @@ async function completeClaudeTurn(
 }
 
 describe('ClaudeAdapter', () => {
+  test('a retained sync activation denies every tool at launch and rejects ordinary or stale sends', async () => {
+    const controlled = Object.assign(createControlledMockQuery(), {
+      initializationResult: vi
+        .fn()
+        .mockResolvedValue({ claude_code_version: '2.1.308' }),
+    });
+    mockQuery.mockReturnValue(controlled);
+    let configHome = join(homedir(), '.claude');
+    const adapter = new ClaudeAdapter({
+      getConnectionEnv: async () => ({ CLAUDE_CONFIG_DIR: configHome }),
+    });
+    let current = true;
+    const restriction = {
+      threadId: 'sync-thread',
+      nativeSessionId: 'native-sync',
+      nativeBindingKey: nativeResumeBindingKey(
+        'claude',
+        join(homedir(), '.claude'),
+        null,
+      ),
+      generation: 'generation-one',
+      clientTurnId: 'reserved-sync',
+      assertCurrent() {
+        if (!current) throw new Error('revoked');
+      },
+    };
+    try {
+      await withSessionToolRestriction(restriction, () =>
+        adapter.startSession({
+          threadId: restriction.threadId,
+          provider: 'claude',
+          resumeCursor: 'native-sync',
+        }),
+      );
+      expect(mockQuery.mock.calls.at(-1)?.[0].options).toMatchObject({
+        tools: [],
+        disallowedTools: ['*'],
+        resume: 'native-sync',
+      });
+      await expect(
+        adapter.sendTurn({ threadId: restriction.threadId, input: 'ordinary' }),
+      ).rejects.toThrow('group_sync_activation_changed');
+      await expect(
+        withSessionToolRestriction(restriction, () =>
+          adapter.sendTurn({
+            threadId: restriction.threadId,
+            input: 'wrong attempt',
+            clientTurnId: 'foreign',
+          }),
+        ),
+      ).rejects.toThrow('group_sync_activation_changed');
+      controlled.push({
+        type: 'system',
+        subtype: 'init',
+        session_id: 'native-sync',
+        tools: [],
+        mcp_servers: [],
+        model: 'claude-sonnet',
+      });
+      await withSessionToolRestriction(restriction, () =>
+        adapter.sendTurn({
+          threadId: restriction.threadId,
+          input: 'sync',
+          clientTurnId: 'reserved-sync',
+        }),
+      );
+      current = false;
+      expect(() =>
+        withSessionToolRestriction(restriction, () =>
+          adapter.sendTurn({
+            threadId: restriction.threadId,
+            input: 'stale',
+            clientTurnId: 'reserved-sync',
+          }),
+        ),
+      ).toThrow('revoked');
+      await adapter.stopSession(restriction.threadId);
+      current = true;
+      configHome = join(homedir(), '.claude-changed-sync');
+      const before = mockQuery.mock.calls.length;
+      await expect(
+        withSessionToolRestriction(restriction, () =>
+          adapter.startSession({
+            threadId: restriction.threadId,
+            provider: 'claude',
+            resumeCursor: 'native-sync',
+          }),
+        ),
+      ).rejects.toThrow('different engine home or credential profile');
+      expect(mockQuery).toHaveBeenCalledTimes(before);
+    } finally {
+      await adapter.stopAll();
+    }
+  });
+
+  test.each(['2.1.307', undefined])(
+    'refuses unqualified sync runtime %s before accepting a turn',
+    async (version) => {
+      const controlled = Object.assign(createMockQuery([]), {
+        initializationResult: vi
+          .fn()
+          .mockResolvedValue({ claude_code_version: version }),
+      });
+      mockQuery.mockReturnValue(controlled);
+      const adapter = new ClaudeAdapter();
+      await expect(
+        withSessionToolRestriction(
+          {
+            threadId: 'sync-thread',
+            nativeSessionId: 'native-sync',
+            nativeBindingKey: nativeResumeBindingKey(
+              'claude',
+              join(homedir(), '.claude'),
+              null,
+            ),
+            generation: 'generation',
+            clientTurnId: 'reserved',
+            assertCurrent() {},
+          },
+          () =>
+            adapter.startSession({
+              threadId: 'sync-thread',
+              provider: 'claude',
+              resumeCursor: 'native-sync',
+            }),
+        ),
+      ).rejects.toThrow('group_sync_policy_unavailable');
+      expect(controlled.close).toHaveBeenCalled();
+      expect(await adapter.hasSession('sync-thread')).toBe(false);
+    },
+  );
   test('does not overstate local recovery events as provider acceptance', () => {
     expect(new ClaudeAdapter().metadata.recovery).not.toHaveProperty(
       'dispatchSettlement',

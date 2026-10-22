@@ -256,6 +256,54 @@ test('legacy preset records render seat IDs without inventing retained names', a
   ).toBeNull();
 });
 
+test('incomplete context sync discloses each retained receipt without an automatic resend action', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      response({
+        ...group,
+        contextSync: {
+          operationId: 'sync-one',
+          runId: 'folded-run',
+          contentHash: `sha256:${'a'.repeat(64)}`,
+          timestamp: new Date().toISOString(),
+          status: 'incomplete',
+          members: [
+            {
+              seatId: 'first',
+              status: 'acknowledged',
+              attempts: 1,
+              toolCalls: 0,
+              turnId: 'turn-one',
+              terminalEventId: 'terminal-one',
+              nativeIdentityHash: `sha256:${'b'.repeat(64)}`,
+            },
+            { seatId: 'second', status: 'unknown', attempts: 1 },
+          ],
+        },
+      }),
+    ),
+  );
+  mount();
+  fireEvent.click(screen.getByRole('button', { name: 'Show session groups' }));
+  await screen.findByText('Context sync: incomplete · folded-run');
+  const receipts = within(
+    screen.getByRole('list', { name: 'Context sync receipts' }),
+  );
+  expect(
+    receipts.getByText('first: acknowledged · 1 attempts reserved'),
+  ).toBeDefined();
+  expect(
+    receipts.getByText('second: unknown · 1 attempts reserved'),
+  ).toBeDefined();
+  expect(
+    screen.getByText(/Unknown attempts are never resent automatically/),
+  ).toBeDefined();
+  expect(
+    screen.queryByRole('button', { name: /resend|retry sync/i }),
+  ).toBeNull();
+});
+
 test('lost authority withholds both a late response and its query cache entry', async () => {
   let resolve!: (value: Response) => void;
   const fetch = vi.fn(

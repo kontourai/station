@@ -98,6 +98,35 @@ const inputSchema = z
       .max(32),
   })
   .strict();
+const syncSchema = z
+  .object({
+    operationId: seatId,
+    runId: seatId,
+    contentHash: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+    timestamp: z.string().datetime(),
+    status: z.enum(['syncing', 'acknowledged', 'incomplete']),
+    members: z
+      .array(
+        z
+          .object({
+            seatId: seatId,
+            status: z.enum(['pending', 'acknowledged', 'failed', 'unknown']),
+            attempts: z.number().int().min(0).max(2),
+            timestamp: z.string().datetime().optional(),
+            turnId: z.string().min(1).max(512).optional(),
+            terminalEventId: z.string().min(1).max(512).optional(),
+            toolCalls: z.number().int().min(0).max(1_000_000).optional(),
+            nativeIdentityHash: z
+              .string()
+              .regex(/^sha256:[0-9a-f]{64}$/)
+              .optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(32),
+  })
+  .strict();
 const viewSchema = z
   .object({
     version: z.literal('station.cli-session-group/v1'),
@@ -110,6 +139,7 @@ const viewSchema = z
     maxDispatches: z.number().int().min(0).max(32).optional(),
     dispatchCount: z.number().int().min(0).max(32),
     admissionClosed: z.literal('dispatch-limit-exhausted').optional(),
+    contextSync: syncSchema.optional(),
     preset: z
       .object({
         presetId: z.string().min(1).max(64),
@@ -229,6 +259,7 @@ const eventPageSchema: z.ZodType<CliSessionGroupEventPage> = z
             members: z.array(viewSchema.shape.members.element).max(32),
             cancelled: z.boolean().optional(),
             admissionClosed: z.literal('dispatch-limit-exhausted').optional(),
+            contextSync: syncSchema.optional(),
             schedule: z
               .array(
                 z
@@ -509,6 +540,40 @@ export function runCliSessionGroup(
   return command(
     `${groupPath(apiBase, groupId)}/run`,
     {},
+    { timeoutMs: null, ...options },
+  );
+}
+export function parseCliSessionGroupSyncInput(input: unknown): {
+  operationId: string;
+  runId: string;
+  content: string;
+  deadlineAt: number;
+} {
+  const parsed = z
+    .object({
+      operationId: seatId,
+      runId: seatId,
+      content: z
+        .string()
+        .min(1)
+        .max(128 * 1024),
+      deadlineAt: z.number().int().positive().safe(),
+    })
+    .strict()
+    .parse(input);
+  if (new TextEncoder().encode(parsed.content).length > 128 * 1024)
+    throw new Error('group_invalid');
+  return parsed;
+}
+export function syncCliSessionGroup(
+  apiBase: string,
+  groupId: string,
+  input: ReturnType<typeof parseCliSessionGroupSyncInput>,
+  options?: ClientRequestOptions,
+): Promise<CliSessionGroupView> {
+  return command(
+    `${groupPath(apiBase, groupId)}/sync`,
+    parseCliSessionGroupSyncInput(input),
     { timeoutMs: null, ...options },
   );
 }

@@ -1796,6 +1796,16 @@ supervision calls published Flow Agents `orchestrateFlowMultiCursor`; Flow owns
 ready-frontier claims, leases and join evaluation. Station supplies observations
 of each exact initial turn, not semantic acceptance.
 
+Context sync reuses those retained member Sessions. The group store reserves
+bounded logical attempts and records exact ACK receipts. `OrchestrationService`
+holds an exclusive activation generation across confirmed teardown, exact native
+resume, canonical dispatch and terminal observation; `session-tool-restriction.ts`
+carries that process-local capability to the Claude adapter. The adapter applies
+empty builtin tools and wildcard command-line denial on the qualified runtime.
+Ordinary dispatch and prepared replay cannot join or reuse that activation.
+Receipts are Station observations in the group record and journal, not portable
+Flow authority or semantic acceptance. The inspector discloses incomplete sync.
+
 A durable launch intent precedes dispatch. Ambiguous starts retain occupied
 capacity and cannot be resent automatically. Cancellation closes admission and
 requests interruption through the existing session owner; only terminal evidence

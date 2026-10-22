@@ -98,6 +98,10 @@ import type { engineProxyLaunch } from '../../services/connections/engine-proxy-
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
 import {
+  type SessionToolRestriction,
+  sessionToolRestriction,
+} from '../../services/orchestration/session-tool-restriction.js';
+import {
   agentCapabilityUndelivered,
   agentSystemPromptSessions,
   appHomeSessions,
@@ -692,6 +696,7 @@ function claudeModelCapabilities(
 
 type ClaudeSessionRecord = {
   session: ProviderSession;
+  toolRestriction?: SessionToolRestriction;
   deliveryProbeServerId?: string;
   /** #2932: the redacted end of the engine's stderr (claude-code-spawn.ts). */
   engineStderrTail?: () => string;
@@ -1472,6 +1477,19 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   async startSession(
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
+    const restriction = sessionToolRestriction(input.threadId);
+    if (restriction) {
+      if (
+        this.nativeSessionIdentity(input.resumeCursor)?.sessionId !==
+        restriction.nativeSessionId
+      )
+        throw new Error('group_sync_identity_changed');
+      input = {
+        ...input,
+        requireNativeResumeIdentity: true,
+        nativeResumeBindingKey: restriction.nativeBindingKey,
+      };
+    }
     input = withoutUnconfinedFullAccess(input);
     if (
       input.requireNativeResumeIdentity &&
@@ -2090,6 +2108,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const probeServer = probeSuffix ? `probe${probeSuffix}` : undefined;
     const record: ClaudeSessionRecord = {
       session,
+      toolRestriction: sessionToolRestriction(input.threadId),
       deliveryProbeServerId:
         probeServer &&
         input.agent?.toolServers?.some((server) => server.id === probeServer)
@@ -2272,6 +2291,38 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
       return session;
     };
+    const announceQualified = async (
+      confinementRecord?: ReturnType<typeof observedConfinementRecord>,
+    ): Promise<ProviderSession> => {
+      if (record.toolRestriction) {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          const init = await Promise.race([
+            sdkQuery.initializationResult(),
+            new Promise<never>((_, reject) => {
+              timer = setTimeout(
+                () => reject(new Error('group_sync_policy_unavailable')),
+                10_000,
+              );
+            }),
+          ]);
+          record.toolRestriction.assertCurrent();
+          if (init.claude_code_version !== '2.1.308')
+            throw new Error('group_sync_policy_unavailable');
+        } catch (error) {
+          promptQueue.close();
+          sdkQuery.close();
+          await engineProcess.terminate();
+          seatbelt?.launch.cleanup();
+          this.sessions.delete(input.threadId);
+          this.options.revokeStationControlCallerToken?.(input.threadId);
+          throw error;
+        } finally {
+          if (timer) clearTimeout(timer);
+        }
+      }
+      return announce(confinementRecord);
+    };
     if (seatbelt && seatbeltSpawn) {
       // #2494: nothing is consumed or announced until the provider has
       // observed the started engine. The SDK sends `initialize` as the query
@@ -2311,10 +2362,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         }
         record.allowsBypassPermissions = true;
         delete record.confinementPending;
-        return announce(confinementRecord);
+        return record.toolRestriction
+          ? announceQualified(confinementRecord)
+          : announce(confinementRecord);
       })();
     }
-    return announce();
+    return record.toolRestriction ? announceQualified() : announce();
   }
 
   async sendTurn(
@@ -2322,6 +2375,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   ): Promise<ProviderTurnStartResult> {
     this.options.nativeSessionOwnership?.assertMutable(input.threadId);
     const record = this.requireSession(input.threadId);
+    if (
+      record.toolRestriction !== sessionToolRestriction(input.threadId) ||
+      (record.toolRestriction &&
+        record.toolRestriction.clientTurnId !== input.clientTurnId)
+    )
+      throw new Error('group_sync_activation_changed');
     if (record.session.status === 'error' || record.session.status === 'dead') {
       throw new ProviderTurnEndedError();
     }
@@ -2520,6 +2579,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     }
 
     // #2324: synchronous from here to the push — nothing can interleave.
+    if (
+      record.toolRestriction !== sessionToolRestriction(input.threadId) ||
+      (record.toolRestriction &&
+        record.toolRestriction.clientTurnId !== input.clientTurnId)
+    )
+      throw new Error('group_sync_activation_changed');
     this.refuseSendWhileTurnOwed(record);
     const enqueued = record.promptQueue.push({
       type: 'user',
@@ -3842,6 +3907,9 @@ export class ClaudeAdapter implements ProviderAdapterShape {
               ].map((name) => `mcp__${server.id}__${name}`),
             ),
           }
+        : {}),
+      ...(sessionToolRestriction(input.threadId)
+        ? { tools: [], disallowedTools: ['*'] }
         : {}),
       model: input.modelId,
       // #1551: run the Claude Code the user installed. Omitted when none

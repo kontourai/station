@@ -1190,6 +1190,7 @@ station group session-events <group-id> --after-revision=0 --json
 station group session-events <group-id> --after-revision=0 --follow --json
 station group session-run <group-id> --json
 station group session-cancel <group-id> --json
+station group session-sync <group-id> --file=sync.json --json
 ```
 
 The JSON file follows the [CLI session-group API](api.md#cli-session-groups): an
@@ -1201,6 +1202,14 @@ the allowance against the saved roster. Create does not start members.
 Exhaustion is retained as `admissionClosed: "dispatch-limit-exhausted"`; uncertain
 and refused starts still use the allowance. Physical provider attempts and
 charges remain outside this logical bound. Run supervises the server's Flow frontier and can wait up to its deadline.
+
+`session-sync` reads `{operationId, runId, content, deadlineAt}` from its local
+JSON file. It sends the complete folded result to each retained member and
+prints the recorded per-member ACK status; it does not create replacement
+sessions. See the API reference for the qualified Claude runtime, exact ACK,
+one mismatch retry, unknown holds and logical-attempt limits. Ctrl-C aborts
+supervision and requests interruption; it does not prove provider termination.
+The request is never automatically repeated.
 
 `session-from-ensemble` instead reads the preset-group request described in that
 API reference. Its `path` names the preset on the receiving Station; `--file`

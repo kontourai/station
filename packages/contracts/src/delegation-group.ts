@@ -155,6 +155,24 @@ export type CliSessionGroupAttention = {
   request?: { id: string; eventId?: string };
 };
 
+export type CliSessionGroupSync = {
+  operationId: string;
+  runId: string;
+  contentHash: string;
+  timestamp: string;
+  status: 'syncing' | 'acknowledged' | 'incomplete';
+  members: {
+    seatId: string;
+    status: 'pending' | 'acknowledged' | 'failed' | 'unknown';
+    attempts: number;
+    timestamp?: string;
+    turnId?: string;
+    terminalEventId?: string;
+    nativeIdentityHash?: string;
+    toolCalls?: number;
+  }[];
+};
+
 export type CliSessionGroupView = {
   version: 'station.cli-session-group/v1';
   groupId: string;
@@ -168,6 +186,7 @@ export type CliSessionGroupView = {
   dispatchCount: number;
   admissionClosed?: 'dispatch-limit-exhausted';
   preset?: CliSessionGroupPresetIdentity;
+  contextSync?: CliSessionGroupSync;
   guarantees: {
     authority: 'station-session';
     portableFlowLineage: 'unbound';
@@ -236,6 +255,7 @@ export type CliSessionGroupListPage = {
 
 /** Durable observations of group writes, not another source of scheduling decisions. */
 export type CliSessionGroupEvent = {
+  contextSync?: CliSessionGroupSync;
   revision: number;
   members: CliSessionGroupView['members'];
   cancelled?: boolean;

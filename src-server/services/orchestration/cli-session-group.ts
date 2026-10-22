@@ -85,12 +85,42 @@ const scheduleEventSchema = z
     claimId: z.string().max(512),
   })
   .strict();
+const syncSchema = z
+  .object({
+    operationId: id,
+    runId: id,
+    contentHash: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+    timestamp: z.string().datetime(),
+    status: z.enum(['syncing', 'acknowledged', 'incomplete']),
+    members: z
+      .array(
+        z
+          .object({
+            seatId: id,
+            status: z.enum(['pending', 'acknowledged', 'failed', 'unknown']),
+            attempts: z.number().int().min(0).max(2),
+            timestamp: z.string().datetime().optional(),
+            turnId: z.string().min(1).max(512).optional(),
+            terminalEventId: z.string().min(1).max(512).optional(),
+            toolCalls: z.number().int().min(0).max(1_000_000).optional(),
+            nativeIdentityHash: z
+              .string()
+              .regex(/^sha256:[0-9a-f]{64}$/)
+              .optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(32),
+  })
+  .strict();
 const groupEventSchema = z
   .object({
     revision: z.number().int().positive().safe(),
     members: z.array(memberViewSchema).max(32),
     cancelled: z.boolean().optional(),
     admissionClosed: z.literal('dispatch-limit-exhausted').optional(),
+    contextSync: syncSchema.optional(),
     schedule: z.array(scheduleEventSchema).max(32),
   })
   .strict();
@@ -173,6 +203,7 @@ const recordSchema = z
       )
       .min(1)
       .max(32),
+    syncs: z.array(syncSchema).max(8).optional(),
     scheduleEvents: z.array(scheduleEventSchema).max(4096),
   })
   .strict();
@@ -234,6 +265,22 @@ export interface CliSessionGroupHost<T> {
     pendingRequest?: { id: string; eventId?: string };
   }>;
   interrupt(handle: MemberHandle): Promise<void>;
+  sync?(
+    handle: MemberHandle,
+    input: {
+      prompt: string;
+      clientTurnId: string;
+      signal: AbortSignal;
+      assertCurrent(): void;
+    },
+  ): Promise<{
+    sessionId: string;
+    turnId: string;
+    terminalEventId: string;
+    nativeIdentityHash: string;
+    output: string;
+    toolCalls: number;
+  }>;
 }
 
 /** Station owns session authority; Flow owns readiness, claims and gate evaluation. */
@@ -321,6 +368,29 @@ export class CliSessionGroups<T> {
             (record.eventHistoryStart ?? 1) - 1) !== record.revision))
     )
       throw new CliSessionGroupUnavailable('group_storage_unavailable');
+    if (
+      new Set(record.syncs?.map((sync) => sync.operationId)).size !==
+        (record.syncs?.length ?? 0) ||
+      record.syncs?.some(
+        (sync) =>
+          sync.members.length !== record.seats.length ||
+          new Set(sync.members.map((member) => member.seatId)).size !==
+            sync.members.length ||
+          sync.members.some(
+            (member) =>
+              !record.seats.some((seat) => seat.seatId === member.seatId) ||
+              (member.status === 'acknowledged' &&
+                (!member.attempts ||
+                  !member.turnId ||
+                  !member.terminalEventId ||
+                  !member.nativeIdentityHash ||
+                  member.toolCalls !== 0)),
+          ) ||
+          (sync.status === 'acknowledged' &&
+            sync.members.some((member) => member.status !== 'acknowledged')),
+      )
+    )
+      throw new CliSessionGroupUnavailable('group_storage_unavailable');
     return record;
   }
 
@@ -342,6 +412,7 @@ export class CliSessionGroups<T> {
       const cancelled = record.cancelled;
       const admissionClosed = record.admissionClosed;
       const scheduleCount = record.scheduleEvents.length;
+      const syncBefore = canonicalJson(record.syncs?.at(-1) ?? null);
       record.eventHistoryStart ??= record.revision + 1;
       record.events ??= [];
       const result = work(record);
@@ -357,6 +428,9 @@ export class CliSessionGroups<T> {
             : {}),
           ...(admissionClosed !== record.admissionClosed
             ? { admissionClosed: record.admissionClosed }
+            : {}),
+          ...(syncBefore !== canonicalJson(record.syncs?.at(-1) ?? null)
+            ? { contextSync: record.syncs?.at(-1) }
             : {}),
           schedule: record.scheduleEvents.slice(scheduleCount),
         }),
@@ -683,6 +757,17 @@ export class CliSessionGroups<T> {
       maxDispatches: record.maxDispatches ?? record.seats.length,
       admissionClosed: record.admissionClosed,
       dispatchCount: record.dispatchCount,
+      ...(record.syncs?.length
+        ? {
+            contextSync: {
+              ...record.syncs.at(-1)!,
+              ...(!this.active.has(groupId) &&
+              record.syncs.at(-1)!.status === 'syncing'
+                ? { status: 'incomplete' as const }
+                : {}),
+            },
+          }
+        : {}),
       ...(record.preset ? { preset: record.preset } : {}),
       guarantees: {
         authority: 'station-session',
@@ -728,6 +813,185 @@ export class CliSessionGroups<T> {
         }),
       ),
     };
+  }
+
+  async sync(
+    groupId: string,
+    owner: string,
+    input: {
+      operationId: string;
+      runId: string;
+      content: string;
+      deadlineAt: number;
+    },
+    host: CliSessionGroupHost<T>,
+    signal: AbortSignal,
+  ): Promise<CliSessionGroupView> {
+    id.parse(input.operationId);
+    id.parse(input.runId);
+    if (
+      !input.content.trim() ||
+      Buffer.byteLength(input.content) > 128 * 1024 ||
+      !Number.isSafeInteger(input.deadlineAt) ||
+      input.deadlineAt <= Date.now() ||
+      input.deadlineAt > Date.now() + 30 * 60_000
+    )
+      throw new CliSessionGroupUnavailable('group_invalid');
+    host.assertCurrent();
+    if (!host.sync || this.active.has(groupId))
+      throw new CliSessionGroupUnavailable('group_busy');
+    const controller = new AbortController();
+    const abort = () => controller.abort();
+    signal.addEventListener('abort', abort, { once: true });
+    if (signal.aborted) abort();
+    const timer = setTimeout(abort, input.deadlineAt - Date.now());
+    this.active.set(groupId, controller);
+    const hash = `sha256:${createHash('sha256').update(input.content).digest('hex')}`;
+    const assertCurrent = () => {
+      host.assertCurrent();
+      if (controller.signal.aborted || Date.now() >= input.deadlineAt)
+        throw new CliSessionGroupUnavailable('group_sync_interrupted');
+    };
+    let created = false;
+    const finalize = () =>
+      this.mutate(groupId, owner, (record) => {
+        const sync = record.syncs?.find(
+          (sync) => sync.operationId === input.operationId,
+        );
+        if (sync?.status === 'syncing')
+          sync.status = sync.members.every(
+            (member) => member.status === 'acknowledged',
+          )
+            ? 'acknowledged'
+            : 'incomplete';
+      });
+    try {
+      await this.mutate(groupId, owner, (record) => {
+        assertCurrent();
+        const existing = record.syncs?.find(
+          (sync) => sync.operationId === input.operationId,
+        );
+        if (existing) {
+          if (existing.contentHash !== hash || existing.runId !== input.runId)
+            throw new CliSessionGroupUnavailable('group_conflict');
+          return;
+        }
+        if (
+          record.cancelled ||
+          record.syncs?.some(
+            (sync) =>
+              sync.status === 'syncing' ||
+              sync.members.some((member) => member.status === 'unknown'),
+          ) ||
+          record.seats.some(
+            (seat) =>
+              seat.state !== 'terminal' ||
+              seat.outcome !== 'completed' ||
+              !seat.handle,
+          ) ||
+          (record.syncs?.length ?? 0) >= 8
+        )
+          throw new CliSessionGroupUnavailable('group_sync_unavailable');
+        record.syncs ??= [];
+        record.syncs.push({
+          operationId: input.operationId,
+          runId: input.runId,
+          contentHash: hash,
+          timestamp: new Date().toISOString(),
+          status: 'syncing',
+          members: record.seats.map((seat) => ({
+            seatId: seat.seatId,
+            status: 'pending',
+            attempts: 0,
+          })),
+        });
+        created = true;
+      });
+      if (!created) return await this.view(groupId, owner);
+      const seats = this.read(groupId, owner).seats;
+      for (const seat of seats) {
+        if (!seat.handle)
+          throw new CliSessionGroupUnavailable('group_sync_unavailable');
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          const clientTurnId = `sync-${digest([groupId, input.operationId, seat.seatId, attempt])}`;
+          await this.mutate(groupId, owner, (record) => {
+            assertCurrent();
+            if (record.cancelled)
+              throw new CliSessionGroupUnavailable('group_sync_interrupted');
+            const member = record
+              .syncs!.at(-1)!
+              .members.find((member) => member.seatId === seat.seatId)!;
+            if (
+              member.attempts !== attempt - 1 ||
+              (attempt === 2 && member.status !== 'failed')
+            )
+              throw new CliSessionGroupUnavailable('group_conflict');
+            member.attempts = attempt;
+            member.status = 'unknown';
+            member.timestamp = new Date().toISOString();
+          });
+          try {
+            assertCurrent();
+            const result = await host.sync(seat.handle, {
+              clientTurnId,
+              signal: controller.signal,
+              assertCurrent: () => {
+                assertCurrent();
+                const record = this.read(groupId, owner);
+                const sync = record.syncs?.at(-1);
+                const member = sync?.members.find(
+                  (member) => member.seatId === seat.seatId,
+                );
+                if (
+                  record.cancelled ||
+                  sync?.operationId !== input.operationId ||
+                  member?.attempts !== attempt ||
+                  member.status !== 'unknown'
+                )
+                  throw new CliSessionGroupUnavailable(
+                    'group_sync_interrupted',
+                  );
+              },
+              prompt: `Retain the complete folded result below as context for this conversation. Use no tools. Reply with exactly ACK SYNC ${input.runId} and nothing else.\n\n${input.content}`,
+            });
+            assertCurrent();
+            if (result.sessionId !== seat.handle.sessionId)
+              throw new CliSessionGroupUnavailable(
+                'group_sync_identity_changed',
+              );
+            const acknowledged =
+              result.toolCalls === 0 &&
+              result.output === `ACK SYNC ${input.runId}`;
+            await this.mutate(groupId, owner, (record) => {
+              assertCurrent();
+              const member = record
+                .syncs!.at(-1)!
+                .members.find((member) => member.seatId === seat.seatId)!;
+              member.status = acknowledged ? 'acknowledged' : 'failed';
+              member.turnId = result.turnId;
+              member.terminalEventId = result.terminalEventId;
+              member.nativeIdentityHash = result.nativeIdentityHash;
+              member.toolCalls = result.toolCalls;
+              member.timestamp = new Date().toISOString();
+            });
+            if (acknowledged || result.toolCalls !== 0) break;
+          } catch {
+            // Reserved attempts are never resent after an uncertain result.
+            break;
+          }
+        }
+      }
+      await finalize();
+      return await this.view(groupId, owner);
+    } finally {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', abort);
+      try {
+        if (created) await finalize();
+      } finally {
+        this.active.delete(groupId);
+      }
+    }
   }
 
   async cancel(

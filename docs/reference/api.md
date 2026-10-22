@@ -1672,6 +1672,7 @@ partial page or disclose which group was unreadable.
 - `GET /api/orchestration/session-groups/:groupId/events/stream?afterRevision=0`: stream those deltas with resumable SSE checkpoints.
 - `POST /api/orchestration/session-groups/:groupId/run`: supervise the ready Flow frontier until return, cancellation or deadline.
 - `POST /api/orchestration/session-groups/:groupId/cancel`: close admission and request member interruption.
+- `POST /api/orchestration/session-groups/:groupId/sync`: send a folded result into the retained member conversations.
 
 This path is under development on the child-work branch. Controlled-adapter
 checks exercise the actual delegation, session and event-store path. A live
@@ -1712,6 +1713,38 @@ authentication or model-discovery process. Creation persists composed member
 briefs; it does not start sessions or prove authentication. Editing the preset
 after creation does not change those briefs. Run performs the normal current
 delegation and engine-start checks. Hard fiscal guarantees remain unavailable.
+
+Context sync takes `{operationId, runId, content, deadlineAt}`. The complete
+folded result is bounded to 128 KiB of UTF-8 inside a 256 KiB request; the
+absolute sync deadline must be within 30 minutes. All seats must have returned
+successfully. The current implementation accepts retained Claude Code sessions
+only, with an exact native identity and configuration-home/credential binding;
+other engines refuse. The qualified native runtime is Claude Code 2.1.308.
+Station stops the ordinary activation, resumes the same conversation with an
+empty builtin tool set and command-line wildcard denial, and sends through the
+canonical turn boundary. This restricts model-tool execution; it does not claim
+an empty advertised tool list, an OS sandbox or suppression of startup hooks.
+
+Each member has at most two durably reserved sync attempts. Only a completed
+turn with no reported tool calls and a mismatching reply permits the second.
+The reply must equal `ACK SYNC <runId>` byte for byte; whitespace is not trimmed.
+A reported tool call fails the member even if the reply matches. An ambiguous
+start, missing terminal evidence, cancellation or lost authority retains an
+unknown attempt and is never resent. The activation remains fenced until an
+explicit Session stop confirms teardown. Prepared-turn replay cannot bypass the
+restriction after a restart. A successful sync parks the restricted activation;
+the next ordinary turn resumes the same native conversation normally.
+
+The private group record retains up to eight sync operations. The latest
+`contextSync` view and revision deltas report the content hash, run ID, per-seat
+status, reserved attempt count, timestamps and exact terminal evidence; completed
+receipts also carry an opaque native-identity hash and reported tool-call count.
+They omit folded content and raw output. Raw context remains only in the
+Session's authorized transcript. `incomplete` and `unknown` remain visible; an
+ACK confirms received context, not accepted work or verified understanding.
+Replaying the same sync operation reads its existing state; changed content or
+run identity conflicts. New operations cannot bypass retained unknown attempts.
+No fiscal or physical-attempt guarantee follows from the two logical attempts.
 
 New preset-derived records also retain `preset` identity (`presetId`, `name`,
 `sha256`, `stationmaster`) and a bounded `members` roster of seat ID, codename,

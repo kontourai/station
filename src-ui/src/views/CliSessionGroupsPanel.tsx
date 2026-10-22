@@ -145,6 +145,27 @@ export function CliSessionGroupsPanel({
                   reserved; existing reservations remain accounted for.
                 </p>
               )}
+              {group.contextSync && (
+                <div>
+                  <p role="status">
+                    Context sync: {group.contextSync.status} ·{' '}
+                    {group.contextSync.runId}
+                  </p>
+                  <p>{group.contextSync.contentHash}</p>
+                  <ul aria-label="Context sync receipts">
+                    {group.contextSync.members.map((member) => (
+                      <li key={member.seatId}>
+                        {member.seatId}: {member.status} · {member.attempts}{' '}
+                        attempts reserved
+                      </li>
+                    ))}
+                  </ul>
+                  <p>
+                    Acknowledgement records received context; it does not accept
+                    the work. Unknown attempts are never resent automatically.
+                  </p>
+                </div>
+              )}
               <section
                 className="cli-session-groups__table"
                 // biome-ignore lint/a11y/noNoninteractiveTabindex: Keyboard users scroll this wide member table.

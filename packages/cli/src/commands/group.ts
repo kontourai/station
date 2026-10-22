@@ -12,6 +12,7 @@ import {
   listCliSessionGroups,
   listDelegationGroups,
   parseCliSessionGroupInput,
+  parseCliSessionGroupSyncInput,
   parseEnsembleCliSessionGroupInput,
   readCliSessionGroupEvents,
   readDelegationGroupEvents,
@@ -21,6 +22,7 @@ import {
   subscribeCliSessionGroupEvents,
   subscribeDelegationGroupEvents,
   subscribeDelegationGroupMemberEvents,
+  syncCliSessionGroup,
 } from '@kontourai/station-sdk/client';
 import { optionalValueFlag, type ParsedCoreArgs } from './core-api.js';
 import { terminalSafeJson, terminalSafeText } from './terminal-safe.js';
@@ -173,6 +175,7 @@ async function runSessionGroupCommand(
   parsed: ParsedCoreArgs,
 ): Promise<void> {
   const [action, groupId, ...extra] = parsed.positionals;
+  const sync = action === 'session-sync';
   const fromEnsemble = action === 'session-from-ensemble';
   const create = action === 'session-create' || fromEnsemble;
   const list = action === 'session-list';
@@ -185,6 +188,7 @@ async function runSessionGroupCommand(
       'session-events',
       'session-run',
       'session-cancel',
+      'session-sync',
     ].includes(action ?? '') ||
     extra.length ||
     (create || list ? groupId !== undefined : !groupId)
@@ -199,7 +203,7 @@ async function runSessionGroupCommand(
         'api-base',
         'station',
         'credential',
-        ...(create ? ['file'] : []),
+        ...(create || sync ? ['file'] : []),
         ...(list ? ['after-group'] : []),
         ...(action === 'session-events' ? ['after-revision', 'follow'] : []),
       ].includes(flag) ||
@@ -240,7 +244,7 @@ async function runSessionGroupCommand(
     }
     return;
   }
-  if (create) {
+  if (create || sync) {
     const descriptor = openSync(
       resolve(required(parsed, 'file')),
       constants.O_RDONLY | constants.O_NONBLOCK,
@@ -274,12 +278,31 @@ async function runSessionGroupCommand(
     const input: unknown = JSON.parse(
       new TextDecoder('utf-8', { fatal: true }).decode(bytes),
     );
-    result = fromEnsemble
-      ? await createEnsembleCliSessionGroup(
+    if (sync) {
+      const stop = new AbortController();
+      const interrupt = () => stop.abort();
+      process.once('SIGINT', interrupt);
+      try {
+        result = await syncCliSessionGroup(
           apiBase,
-          parseEnsembleCliSessionGroupInput(input),
-        )
-      : await createCliSessionGroup(apiBase, parseCliSessionGroupInput(input));
+          groupId!,
+          parseCliSessionGroupSyncInput(input),
+          { signal: stop.signal },
+        );
+      } finally {
+        process.removeListener('SIGINT', interrupt);
+      }
+    } else {
+      result = fromEnsemble
+        ? await createEnsembleCliSessionGroup(
+            apiBase,
+            parseEnsembleCliSessionGroupInput(input),
+          )
+        : await createCliSessionGroup(
+            apiBase,
+            parseCliSessionGroupInput(input),
+          );
+    }
   } else if (list)
     result = await listCliSessionGroups(apiBase, {
       afterGroupId: optionalValueFlag(parsed, 'after-group'),
