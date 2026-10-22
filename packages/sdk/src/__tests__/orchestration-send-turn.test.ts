@@ -61,17 +61,15 @@ describe('orchestration lifecycle-control client', () => {
   test('refuses a legacy full-detail envelope when an older server ignores the window view', async () => {
     vi.stubGlobal(
       'fetch',
-      vi
-        .fn<typeof fetch>()
-        .mockResolvedValue(
-          new Response(
-            JSON.stringify({
-              success: true,
-              data: { session: { threadId: 'task' }, events: [] },
-            }),
-            { headers: { 'content-type': 'application/json' } },
-          ),
+      vi.fn<typeof fetch>().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: { session: { threadId: 'task' }, events: [] },
+          }),
+          { headers: { 'content-type': 'application/json' } },
         ),
+      ),
     );
     await expect(
       getOrchestrationSessionDetailWindow('http://station.test', 'task'),
