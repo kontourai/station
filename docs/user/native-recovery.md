@@ -102,6 +102,11 @@ Some home or schema refusals occur before the supervisor starts. They show a
 separate **Exit**-only dialog and start no backend. Repeatedly launching the app
 does not repair the refused home.
 
+If Station's built-in Node component cannot start, its dialog asks you to
+reinstall the app. A helper timeout has a separate message: exit and try again,
+then collect desktop logs if it continues. A timeout alone does not establish
+that the installed component is damaged.
+
 ## Missing saved connections
 
 If Station finds an existing shared folder without its saved `profiles.json` connection list, it
@@ -114,7 +119,14 @@ backup, cutover, or credential history, Desktop can offer **Create connection
 list and restart**. This creates an empty list and preserves runtime data. The
 checks run again after confirmation and under the shared locks. A marker from
 an earlier initialization, an unknown lock, unreadable evidence, or saved
-credentials keeps recovery at **Exit** only. An existing list is never replaced.
+credentials keeps recovery at **Exit** only. This includes Station credentials
+elsewhere in the current OS account's credential store, even if they belong to
+another Station folder. Restore a known backup of the connection list before
+relaunching; if no backup is available, keep the folder intact and collect the
+diagnostics below for operator recovery. An existing list is never replaced.
+Windows checks the raw Credential Manager target names, macOS checks service
+metadata, and Linux queries Station's service attributes without searching
+unrelated collections. An inspection error never counts as an empty store.
 Regular OS metadata files such as `.DS_Store`, `Thumbs.db`, and `desktop.ini` do
 not prevent first initialization; symlinks and directories with those names do.
 

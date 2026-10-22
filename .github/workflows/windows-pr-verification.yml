@@ -111,6 +111,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Desktop runtime staging failed" }
           cargo test --manifest-path src-desktop/Cargo.toml --no-run
 
+      - name: Verify recovery against Windows Credential Manager
+        if: ${{ steps.rust_relevance.outputs.relevant != 'false' }}
+        shell: pwsh
+        run: cargo test --manifest-path src-desktop/Cargo.toml profile_store_windows_real_dotted_credential_targets_refuse_creation -- --nocapture
+
       # No `npm run typecheck` here. tsc's verdict does not depend on the host
       # OS: forceConsistentCasingInFileNames (the TypeScript default, and set
       # explicitly in tsconfig.json) makes a wrong-case import an error on

@@ -337,6 +337,8 @@ fn compile_target_capability_report(identifier: &str) -> NativeCapabilityReport 
 
 const STATION_CREDENTIAL_SERVICE: &str = "io.kontourai.station";
 #[cfg(not(mobile))]
+const NODE_BRIDGE_TIMEOUT: &str = "Station’s local helper did not respond in time. Exit and try again; if this continues, review the desktop logs.";
+#[cfg(not(mobile))]
 const NODE_RUNTIME_FAILURE: &str = "Station’s built-in Node component could not start. Reinstall Station; your data was not changed.";
 const EMPTY_STATION_PROFILE_STORE: &str =
     r#"{"schemaVersion":1,"revision":0,"defaultProfile":null,"profiles":[],"projectProfiles":{}}"#;
@@ -2173,22 +2175,76 @@ fn profile_store_recovery_files_are_absent(
     Ok(true)
 }
 
+#[cfg(all(not(mobile), any(target_os = "linux", test)))]
+const STATION_KEYRING_SERVICES: &[&str] = &[
+    STATION_CREDENTIAL_SERVICE,
+    "io.kontourai.station.credential-metadata",
+    "io.kontourai.station.account-proof",
+    "io.kontourai.station.device-proof",
+    "io.kontourai.station.relay-proof",
+    "io.kontourai.station.connection-trust",
+    "io.kontourai.station.device-binding-candidate",
+    "io.kontourai.station.native-enrollment-recipient",
+    "io.kontourai.station.native-enrollment-journal",
+];
+
+#[cfg(all(not(mobile), any(target_os = "linux", test)))]
+fn profile_store_linux_credentials_are_absent(
+    mut service_is_empty: impl FnMut(&str) -> Result<bool, String>,
+) -> Result<bool, String> {
+    for service in STATION_KEYRING_SERVICES {
+        if !service_is_empty(service)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+// Windows searches the raw account.service target name. Its greedy delimiter
+// decoder cannot recover dotted service names, so never use get_specifiers.
+#[cfg(all(not(mobile), windows))]
+const STATION_WINDOWS_CREDENTIAL_PATTERN: &str = r"io\.kontourai\.station";
+
 #[cfg(not(mobile))]
 fn profile_store_recovery_credentials_are_absent() -> Result<bool, String> {
     initialize_credential_store()?;
+    let inspection_error = |_| {
+        "Station could not inspect saved credential history. Unlock the credential store and retry."
+            .to_string()
+    };
     #[cfg(windows)]
-    let pattern = format!("^{}", STATION_CREDENTIAL_SERVICE.replace('.', r"\."));
-    #[cfg(windows)]
-    let query = std::collections::HashMap::from([("pattern", pattern.as_str())]);
-    #[cfg(not(windows))]
-    let query = std::collections::HashMap::new();
-    let observations = keyring_core::Entry::search(&query)
-        .map(|entries| entries.into_iter().map(|entry| entry.get_specifiers()).collect())
-        .map_err(|_| "Station could not inspect saved credential history. Unlock the credential store and retry.".to_string());
-    profile_store_credential_history_is_absent(observations)
+    {
+        let query =
+            std::collections::HashMap::from([("pattern", STATION_WINDOWS_CREDENTIAL_PATTERN)]);
+        return keyring_core::Entry::search(&query)
+            .map(|entries| entries.is_empty())
+            .map_err(inspection_error);
+    }
+    #[cfg(target_os = "linux")]
+    {
+        // Secret Service unlocks matched items. Never query the entire store:
+        // unrelated browser and network collections must remain untouched.
+        return profile_store_linux_credentials_are_absent(|service| {
+            keyring_core::Entry::search(&std::collections::HashMap::from([("service", service)]))
+                .map(|entries| entries.is_empty())
+                .map_err(inspection_error)
+        });
+    }
+    #[cfg(not(any(windows, target_os = "linux")))]
+    {
+        let observations = keyring_core::Entry::search(&std::collections::HashMap::new())
+            .map(|entries| {
+                entries
+                    .into_iter()
+                    .map(|entry| entry.get_specifiers())
+                    .collect()
+            })
+            .map_err(inspection_error);
+        profile_store_credential_history_is_absent(observations)
+    }
 }
 
-#[cfg(not(mobile))]
+#[cfg(all(not(mobile), any(not(any(windows, target_os = "linux")), test)))]
 fn profile_store_credential_history_is_absent(
     observations: Result<Vec<Option<(String, String)>>, String>,
 ) -> Result<bool, String> {
@@ -2259,7 +2315,7 @@ fn offer_legacy_profile_store_recovery(app: &AppHandle, root: PathBuf) {
                 })();
                 match result {
                     Ok(()) => handle.restart(),
-                    Err(error) => { log::error!("saved Station recovery refused: {error}"); let exit = handle.clone(); handle.dialog().message(error).title("Station recovery could not complete").buttons(MessageDialogButtons::OkCustom("Exit".into())).show(move |_| exit.exit(1)); }
+                    Err(error) => { log::error!("saved Station recovery refused: {error}"); let exit = handle.clone(); let (title, message) = desktop_home_preparation_failure_copy(&error); handle.dialog().message(format!("{message}\n\nDetails: {error}")).title(title).buttons(MessageDialogButtons::OkCustom("Exit".into())).show(move |_| exit.exit(1)); }
                 }
             });
         });
@@ -5803,22 +5859,20 @@ fn native_profile_lock_birth(app: &AppHandle, pid: u32) -> Result<Option<String>
                 .resource_dir()
                 .map_err(|error| format!("locate packaged process identity authority: {error}"))?,
         );
-        profile_lock_birth_observation(
-            pid == std::process::id(),
-            profile_lock_birth_bridge(&resource_dir, pid),
-        )
+        profile_lock_birth_observation(pid, profile_lock_birth_bridge(&resource_dir, pid))
     })
 }
 
 #[cfg(not(mobile))]
 fn profile_lock_birth_observation(
-    own_process: bool,
+    pid: u32,
     result: Result<String, RegistryBridgeFailure>,
 ) -> Result<Option<String>, String> {
     match result {
         Ok(birth) => Ok(Some(birth)),
         Err(RegistryBridgeFailure::Invocation) => Err(NODE_RUNTIME_FAILURE.into()),
-        Err(RegistryBridgeFailure::Protocol) if own_process => Err("Station could not verify its own process identity. Check the desktop log before changing the data folder.".into()),
+        Err(RegistryBridgeFailure::Timeout) => Err(NODE_BRIDGE_TIMEOUT.into()),
+        Err(RegistryBridgeFailure::Protocol) if pid == std::process::id() => Err("Station could not verify its own process identity. Check the desktop log before changing the data folder.".into()),
         Err(_) => Ok(None),
     }
 }
@@ -9087,6 +9141,7 @@ enum RegistryBridgeFailure {
     HomeSchema,
     Protocol,
     Invocation,
+    Timeout,
 }
 
 #[cfg(not(mobile))]
@@ -9290,7 +9345,7 @@ fn wait_for_registry_bridge_child(
         }
         if started.elapsed() >= timeout {
             terminate_registry_bridge_child(child);
-            return Err(RegistryBridgeFailure::Invocation);
+            return Err(RegistryBridgeFailure::Timeout);
         }
         thread::sleep(Duration::from_millis(20));
     }
@@ -9522,7 +9577,9 @@ fn desktop_node_executable(app_executable: &Path, development: bool) -> PathBuf 
     if development {
         return PathBuf::from("node");
     }
-    app_executable.with_file_name(if cfg!(windows) {
+    let executable = dunce::canonicalize(app_executable)
+        .unwrap_or_else(|_| dunce::simplified(app_executable).to_path_buf());
+    executable.with_file_name(if cfg!(windows) {
         "station-node.exe"
     } else {
         "station-node"
@@ -9531,10 +9588,11 @@ fn desktop_node_executable(app_executable: &Path, development: bool) -> PathBuf 
 
 #[cfg(not(mobile))]
 fn desktop_node_command(shell_path: &str) -> std::io::Result<Command> {
-    let executable = desktop_node_executable(
-        &std::env::current_exe()?.canonicalize()?,
-        cfg!(debug_assertions),
-    );
+    let executable = if cfg!(debug_assertions) {
+        PathBuf::from("node")
+    } else {
+        desktop_node_executable(&std::env::current_exe()?, false)
+    };
     let mut command = Command::new(&executable);
     command.env("PATH", shell_path);
     Ok(command)
@@ -11764,27 +11822,33 @@ where
     move |_| exit()
 }
 
-/// Home preparation happens before the desktop has an ownership state, tray,
-/// or sidecar supervisor. Returning an error from `Builder::setup` at that
-/// point crosses Tauri's platform callback and aborts the process, which
-/// hides a deterministic, user-actionable problem behind a native crash.
-///
-/// This deliberately offers no retry: choosing between two Station homes or
-/// repairing a rejected schema needs an explicit operator decision. No
-/// supervisor exists when this is called, so acknowledging the dialog exits
-/// without starting a backend or changing either home.
+#[cfg(not(mobile))]
+fn runtime_bridge_failure_detail(error: &RegistryBridgeFailure) -> &'static str {
+    match error {
+        RegistryBridgeFailure::Invocation => NODE_RUNTIME_FAILURE,
+        RegistryBridgeFailure::Timeout => NODE_BRIDGE_TIMEOUT,
+        RegistryBridgeFailure::Untrusted => "Station refused an unsafe legacy service record before starting a backend.",
+        RegistryBridgeFailure::HomeSchema => "The selected Station home has an incompatible schema.",
+        RegistryBridgeFailure::Protocol => "Station’s local helper returned an invalid response. Review the desktop logs before changing data.",
+    }
+}
+
 #[cfg(not(mobile))]
 fn desktop_home_preparation_failure_copy(detail: &str) -> (&'static str, &'static str) {
     if detail.contains(NODE_RUNTIME_FAILURE) {
         ("Station’s built-in Node component could not start", "Reinstall Station to repair its built-in Node component. Your Station data was not changed.")
+    } else if detail.contains(NODE_BRIDGE_TIMEOUT) {
+        ("Station’s local helper timed out", NODE_BRIDGE_TIMEOUT)
     } else {
         ("Station could not validate its home folder", "Station could not validate its data folder. Review the detail below, correct the folder problem without deleting data, then launch Station again.")
     }
 }
 
+/// Keep startup refusals inside the native dialog lifecycle: returning a
+/// setup error crosses Tauri's callback and aborts before the user sees it.
 #[cfg(not(mobile))]
 fn exit_desktop_home_preparation_failure(
-    app: &tauri::App,
+    app: &AppHandle,
     title: &str,
     message: &str,
     detail: &str,
@@ -11792,9 +11856,8 @@ fn exit_desktop_home_preparation_failure(
     use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
     log::error!("desktop home preparation failed: {detail}");
-    let app_handle = app.handle().clone();
-    app.handle()
-        .dialog()
+    let app_handle = app.clone();
+    app.dialog()
         .message(format!(
             "{message}\n\nNo local backend was started.\n\nDetails: {detail}"
         ))
@@ -12670,9 +12733,9 @@ fn spawn_sidecar_child(context: &SidecarRuntimeContext) -> Result<(Child, String
     // developer's own STATION_ROOT.
     let mut child =
         build_sidecar_command(&context.launch, &boot_id, std::env::var_os("STATION_ROOT"))
-            .map_err(|error| format!("locate packaged Node runtime: {error}"))?
+            .map_err(|error| format!("{NODE_RUNTIME_FAILURE} Details: {error}"))?
             .spawn()
-            .map_err(|error| format!("launch Station sidecar: {error}"))?;
+            .map_err(|error| format!("{NODE_RUNTIME_FAILURE} Details: {error}"))?;
     // Record the child before waiting for Listening: after desktop death its
     // watchdog may still be shutting down, so the child must retain the fence.
     if !registry_claim_allows_running(publish_sidecar_registry_bridge(
@@ -12885,6 +12948,16 @@ fn run_sidecar_supervisor(
                 true
             }
             Err(error) => {
+                if error.contains(NODE_RUNTIME_FAILURE) {
+                    let _ = release_sidecar_registry_bridge(
+                        &supervisor.context.launch.resource_dir,
+                        &supervisor.context.launch.station_home,
+                        &supervisor.context.registry_id,
+                    );
+                    let (title, message) = desktop_home_preparation_failure_copy(&error);
+                    exit_desktop_home_preparation_failure(&app, title, message, &error);
+                    return;
+                }
                 let mut status = supervisor
                     .status
                     .lock()
@@ -13765,6 +13838,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                             .map_err(|error| match error {
                                 RegistryBridgeFailure::HomeSchema => "This folder contains data without a compatible Station schema. Keep it intact and select a new empty folder or restore a compatible Station home.".to_string(),
                                 RegistryBridgeFailure::Invocation => NODE_RUNTIME_FAILURE.to_string(),
+                                RegistryBridgeFailure::Timeout => NODE_BRIDGE_TIMEOUT.to_string(),
                                 _ => "The local storage helper did not return a valid result. Check the desktop logs before changing this folder.".to_string(),
                             })
                     },
@@ -13778,7 +13852,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                             return Ok(());
                         }
                         let (title, message) = desktop_home_preparation_failure_copy(&error);
-                        exit_desktop_home_preparation_failure(app, title, message, &error);
+                        exit_desktop_home_preparation_failure(app.handle(), title, message, &error);
                         return Ok(());
                     }
                 };
@@ -13788,13 +13862,10 @@ If a stable instance is running, this launch will focus its window and exit.",
                     &station_home,
                 ) {
                     Ok(kind) => kind,
-                    Err(_) => {
-                        exit_desktop_home_preparation_failure(
-                            app,
-                            "Station could not prepare its runtime state",
-                            "Station refused an unsafe legacy service record before starting a backend.",
-                            "runtime preparation bridge refused the selected home",
-                        );
+                    Err(error) => {
+                        let detail = runtime_bridge_failure_detail(&error);
+                        let (title, message) = desktop_home_preparation_failure_copy(detail);
+                        exit_desktop_home_preparation_failure(app.handle(), title, message, detail);
                         return Ok(());
                     }
                 };
@@ -13814,11 +13885,15 @@ If a stable instance is running, this launch will focus its window and exit.",
                     packaged_channel,
                 )
                 .map_err(|error| format!("invalid desktop sidecar port: {error}"))?;
-                let supervisor_birth = supervisor_birth_bridge(&resource_dir, &station_home)
-                    .map_err(|error| {
-                        log::error!("desktop registry bridge could not establish supervisor identity: {error:?}");
-                        "Desktop could not establish supervisor identity."
-                    })?;
+                let supervisor_birth = match supervisor_birth_bridge(&resource_dir, &station_home) {
+                    Ok(birth) => birth,
+                    Err(error) => {
+                        let detail = runtime_bridge_failure_detail(&error);
+                        let (title, message) = desktop_home_preparation_failure_copy(detail);
+                        exit_desktop_home_preparation_failure(app.handle(), title, message, detail);
+                        return Ok(());
+                    }
+                };
                 let supervisor = Arc::new(ServerSupervisor {
                     child: Mutex::new(None), status: Arc::new(Mutex::new(status)), stderr_reader: Mutex::new(None), shutting_down: AtomicBool::new(false), tx, thread: Mutex::new(None),
                     context: SidecarRuntimeContext {
@@ -15749,7 +15824,7 @@ mod tests {
                 "prepareRuntime",
                 Duration::from_millis(1),
             ),
-            Err(RegistryBridgeFailure::Invocation)
+            Err(RegistryBridgeFailure::Timeout)
         ));
 
         let mut ordinary = Command::new("/bin/sh")
@@ -15759,7 +15834,7 @@ mod tests {
         assert!(
             matches!(
                 wait_for_registry_bridge_child(&mut ordinary, "read", Duration::from_millis(1)),
-                Err(RegistryBridgeFailure::Invocation)
+                Err(RegistryBridgeFailure::Timeout)
             ),
             "ordinary bridge operations retain their bounded kill watchdog"
         );
@@ -21704,7 +21779,7 @@ mod tests {
 
     #[cfg(not(mobile))]
     #[test]
-    fn profile_store_credential_history_includes_every_station_namespace_and_holds_unknowns() {
+    fn profile_store_credential_history_holds_unknown_mac_metadata() {
         assert!(
             profile_store_credential_history_is_absent(Err("keyring unavailable".into())).is_err()
         );
@@ -21716,54 +21791,188 @@ mod tests {
             ))])),
             Ok(true)
         );
-        let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        for service in STATION_KEYRING_SERVICES {
+            assert_eq!(
+                profile_store_credential_history_is_absent(Ok(vec![Some((
+                    (*service).into(),
+                    "account".into()
+                ))])),
+                Ok(false)
+            );
+        }
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_store_linux_searches_only_station_services_and_refuses_history_or_errors() {
+        let mut searched = Vec::new();
+        assert_eq!(
+            profile_store_linux_credentials_are_absent(|service| {
+                searched.push(service.to_owned());
+                Ok(true)
+            }),
+            Ok(true)
+        );
+        assert_eq!(searched, STATION_KEYRING_SERVICES);
+        for history in STATION_KEYRING_SERVICES {
+            assert_eq!(
+                profile_store_linux_credentials_are_absent(|service| Ok(service != *history)),
+                Ok(false)
+            );
+        }
+        assert!(
+            profile_store_linux_credentials_are_absent(|_| Err("collection locked".into()))
+                .is_err()
+        );
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_store_linux_service_queries_cover_native_secret_writers() {
+        let mut pending = vec![Path::new(env!("CARGO_MANIFEST_DIR")).join("src")];
         let mut checked = std::collections::BTreeSet::new();
-        for file in std::fs::read_dir(source).unwrap() {
-            let file = file.unwrap();
-            if file.path().extension().is_none_or(|ext| ext != "rs") {
-                continue;
-            }
-            let text = std::fs::read_to_string(file.path()).unwrap();
-            for service in text.split('"').filter(|value| {
-                value.starts_with("io.kontourai.station") && !value.chars().any(char::is_whitespace)
-            }) {
-                checked.insert(service.to_string());
-                assert_eq!(
-                    profile_store_credential_history_is_absent(Ok(vec![Some((
-                        service.into(),
-                        "account".into()
-                    ))])),
-                    Ok(false),
-                    "{service}"
-                );
+        while let Some(directory) = pending.pop() {
+            for entry in std::fs::read_dir(directory).unwrap() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    pending.push(path);
+                    continue;
+                }
+                if path.extension().is_none_or(|ext| ext != "rs") {
+                    continue;
+                }
+                let text = std::fs::read_to_string(&path).unwrap();
+                // Identify service declarations by their role, not their value's
+                // namespace, so an out-of-prefix new service also fails here.
+                let production = text.split("#[cfg(test)]").next().unwrap();
+                for statement in production.split(';') {
+                    if let Some(declaration) = statement.rsplit("const ").next() {
+                        if let Some((name, value)) = declaration.split_once(": &str =") {
+                            if name.trim() == "SERVICE" || name.trim().ends_with("_SERVICE") {
+                                if let Some(value) = value
+                                    .trim()
+                                    .strip_prefix('"')
+                                    .and_then(|value| value.split('"').next())
+                                {
+                                    if name.trim() != "NODE_RUNTIME_FAILURE" {
+                                        checked.insert(value.to_owned());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                for call in production.split("NativeSecureEntry::new(").skip(1) {
+                    if let Some(value) = call.trim_start().strip_prefix('"') {
+                        checked.insert(value.split('"').next().unwrap().to_owned());
+                    }
+                }
             }
         }
         assert!(checked.contains("io.kontourai.station.native-enrollment-recipient"));
-        assert!(checked.len() >= 9);
+        for service in checked {
+            assert!(
+                STATION_KEYRING_SERVICES.contains(&service.as_str()),
+                "Linux recovery omits service {service}"
+            );
+        }
+    }
+
+    #[cfg(all(not(mobile), windows))]
+    #[test]
+    fn profile_store_windows_real_dotted_credential_targets_refuse_creation() {
+        initialize_credential_store().unwrap();
+        let account = format!("station-runtime-recovery-test:{}", uuid::Uuid::new_v4());
+        for service in [
+            STATION_CREDENTIAL_SERVICE,
+            "io.kontourai.station.credential-metadata",
+            "io.kontourai.station.native-enrollment-recipient",
+        ] {
+            let entry = keyring_core::Entry::new(service, &account).unwrap();
+            entry.set_password("isolated-test-value").unwrap();
+            let target = format!("{account}.{service}");
+            let matches = keyring_core::Entry::search(&std::collections::HashMap::from([(
+                "pattern",
+                STATION_WINDOWS_CREDENTIAL_PATTERN,
+            )]));
+            let found = matches.map(|entries| {
+                entries.iter().any(|entry| {
+                    entry
+                        .get_attributes()
+                        .is_ok_and(|attributes| attributes.get("target_name") == Some(&target))
+                })
+            });
+            let observation = profile_store_recovery_credentials_are_absent();
+            entry.delete_credential().unwrap();
+            assert!(
+                found.expect("Credential Manager search succeeds"),
+                "query must include this exact account.service target"
+            );
+            assert_eq!(
+                observation,
+                Ok(false),
+                "real account.service target for {service}"
+            );
+        }
     }
 
     #[cfg(not(mobile))]
     #[test]
     fn profile_lock_birth_distinguishes_runtime_failure_from_a_departed_foreign_owner() {
-        let runtime = profile_lock_birth_observation(true, Err(RegistryBridgeFailure::Invocation))
-            .unwrap_err();
+        let runtime = profile_lock_birth_observation(
+            std::process::id(),
+            Err(RegistryBridgeFailure::Invocation),
+        )
+        .unwrap_err();
         let (title, message) = desktop_home_preparation_failure_copy(&runtime);
         assert_eq!(title, "Station’s built-in Node component could not start");
         assert!(message.contains("Reinstall Station"));
         assert!(!message.contains("folder problem"));
-        assert!(
-            profile_lock_birth_observation(true, Err(RegistryBridgeFailure::Protocol)).is_err()
-        );
+        assert!(profile_lock_birth_observation(
+            std::process::id(),
+            Err(RegistryBridgeFailure::Protocol)
+        )
+        .is_err());
         for refusal in [
             RegistryBridgeFailure::Protocol,
             RegistryBridgeFailure::Untrusted,
             RegistryBridgeFailure::HomeSchema,
         ] {
             assert_eq!(
-                profile_lock_birth_observation(false, Err(refusal)),
+                profile_lock_birth_observation(std::process::id().wrapping_add(1), Err(refusal)),
                 Ok(None)
             );
         }
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_bridge_silent_failure_reaches_node_repair_copy() {
+        let resources = tempfile::tempdir().unwrap();
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir(resources.path().join("dist-server")).unwrap();
+        std::fs::write(
+            registry_bridge_script_path(resources.path()),
+            "process.exit(1)",
+        )
+        .unwrap();
+        for result in [
+            supervisor_birth_bridge(resources.path(), home.path()),
+            profile_lock_birth_bridge(resources.path(), std::process::id()),
+        ] {
+            let error = result.unwrap_err();
+            assert_eq!(error, RegistryBridgeFailure::Invocation);
+            let detail = runtime_bridge_failure_detail(&error);
+            let (title, message) = desktop_home_preparation_failure_copy(detail);
+            assert_eq!(title, "Station’s built-in Node component could not start");
+            assert!(message.contains("Reinstall Station"));
+            assert!(!message.contains("folder problem"));
+        }
+        let (title, message) = desktop_home_preparation_failure_copy(
+            runtime_bridge_failure_detail(&RegistryBridgeFailure::Timeout),
+        );
+        assert_eq!(title, "Station’s local helper timed out");
+        assert!(!message.contains("Reinstall"));
     }
 
     #[cfg(not(mobile))]
@@ -21783,6 +21992,40 @@ mod tests {
         assert!(
             !expected.exists(),
             "missing sidecar must still resolve to the private path"
+        );
+        let temporary = tempfile::tempdir().unwrap();
+        let removed = temporary.path().join("station");
+        std::fs::write(&removed, "app").unwrap();
+        std::fs::remove_file(&removed).unwrap();
+        assert_eq!(
+            desktop_node_executable(&removed, false),
+            removed.with_file_name(if cfg!(windows) {
+                "station-node.exe"
+            } else {
+                "station-node"
+            })
+        );
+        #[cfg(unix)]
+        {
+            let real = temporary.path().join("real");
+            std::fs::create_dir(&real).unwrap();
+            std::fs::write(real.join("station"), "app").unwrap();
+            let launcher = temporary.path().join("launcher");
+            std::os::unix::fs::symlink(real.join("station"), &launcher).unwrap();
+            assert_eq!(
+                desktop_node_executable(&launcher, false),
+                dunce::canonicalize(&real).unwrap().join("station-node")
+            );
+            assert_eq!(
+                desktop_node_executable(&launcher, true),
+                PathBuf::from("node")
+            );
+        }
+        #[cfg(windows)]
+        assert!(
+            !desktop_node_executable(&std::env::current_exe().unwrap(), false)
+                .to_string_lossy()
+                .starts_with(r"\\?\")
         );
     }
 
