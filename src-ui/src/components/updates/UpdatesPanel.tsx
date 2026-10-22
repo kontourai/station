@@ -99,7 +99,7 @@ export function UpdatesPanel({
             </p>
             {noticesFor('desktop')}
             {profile.isDesktop ? (
-              <DesktopUpdateCheck showPolicy={false} />
+              <DesktopUpdateCheck active={open} showPolicy={false} />
             ) : (
               <p>
                 Install app updates through your app distribution source. An
@@ -111,7 +111,7 @@ export function UpdatesPanel({
         <section ref={serverRef} tabIndex={-1} aria-labelledby={`${id}-server`}>
           <h3 id={`${id}-server`}>Connected server</h3>
           {noticesFor('server')}
-          <ConnectedServerUpdates />
+          <ConnectedServerUpdates active={open} />
         </section>
       </div>
     </Dialog>

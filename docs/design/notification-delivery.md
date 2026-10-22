@@ -28,7 +28,10 @@ outcomes, stable operation IDs, explicit deduplication keys, and async action
 feedback. Updating an ID changes the existing card. Actionable messages group
 only when a caller supplies a deduplication key; the current callbacks replace
 the earlier ones. Reading time pauses while a card is hovered, focused, expanded,
-queued, or the app is hidden. Failed actions stay available to retry.
+queued, or the app is hidden. Visibility uses viewport intersection and document
+visibility; it does not detect an overlapping dialog or another occluding surface.
+Actions that transfer from Station details close that dialog before reporting their
+outcome in a toast. Failed actions stay available to retry.
 
 [NotificationsPage](../../src-ui/src/pages/NotificationsPage.tsx) shows local
 recent messages separately from server attention. Persistence is opt-in through

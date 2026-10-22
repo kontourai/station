@@ -3,6 +3,7 @@ import type { ServerUpdateState } from '@kontourai/station-contracts/system-stat
 import type { CoreUpdateStatus } from '@kontourai/station-sdk';
 import {
   act,
+  cleanup,
   fireEvent,
   render,
   screen,
@@ -96,6 +97,7 @@ const serverState: ServerUpdateState = {
   applyWhenIdle: null,
 };
 const serverAction = vi.fn();
+const coreApply = vi.fn();
 const refetch = vi.fn();
 const reset = vi.fn();
 const serviceProgress: {
@@ -125,7 +127,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     error: null,
   }),
   useApplyCoreUpdateMutation: () => ({
-    mutate: vi.fn(),
+    mutate: coreApply,
     reset,
     isPending: false,
     error: null,
@@ -150,15 +152,40 @@ beforeEach(() => {
   profile.isMobile = false;
   context.kind = 'installed-local-service';
   serverState.progress = { state: 'idle' };
+  status.stagedUpdates = true;
   serviceProgress.data = undefined;
   following = false;
   serverAction.mockImplementation((_request, options) =>
     options?.onSuccess?.({ requestId: 'update-request' }),
   );
 });
-afterEach(() => {
+afterEach(async () => {
   act(() => clearUpdateNotice('mobile-release'));
+  cleanup();
+  // Match the dialog surface suite: drain jsdom's chained traversal tasks so
+  // an unmount's pending Back cannot consume the next test's history entry.
+  for (let turn = 0; turn < 4; turn += 1) {
+    await act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+  }
 });
+
+async function closeUpdates(
+  historyBeforeOpen: unknown,
+  via: 'Close Updates' | 'browser Back' = 'Close Updates',
+) {
+  // The lazy loading dialog can leave an entry that Back skips automatically.
+  // One popstate is not necessarily the completed traversal to the base entry.
+  if (via === 'browser Back') act(() => window.history.back());
+  else {
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Close Updates', hidden: true }),
+    );
+  }
+  await waitFor(() => {
+    expect(window.history.state).toEqual(historyBeforeOpen);
+    expect(screen.queryByRole('dialog', { name: 'Updates' })).toBeNull();
+  });
+}
 
 test('one panel offers independently labelled app and server downloads, and opening it starts neither', async () => {
   const fake = installFakeNativeUpdater(
@@ -282,6 +309,7 @@ test('closing Updates retains the server request follower and rechecks its outco
     stagedAt: '2026-10-22T20:00:00Z',
   };
   render(<UpdatesControl onNavigate={vi.fn()} />);
+  const historyBeforeOpen = window.history.state;
   fireEvent.click(screen.getByRole('button', { name: 'Updates' }));
   await screen.findByRole('button', {
     name: 'Restart server to update to 0.8.0-preview.2',
@@ -298,8 +326,14 @@ test('closing Updates retains the server request follower and rechecks its outco
     version: '0.8.0-preview.2',
   });
   expect(following).toBe(true);
-  fireEvent.click(screen.getByRole('button', { name: 'Close Updates' }));
+  await closeUpdates(historyBeforeOpen);
   expect(screen.queryByRole('dialog', { name: 'Updates' })).toBeNull();
+  expect(following).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Updates' }));
+  await screen.findByRole('dialog', { name: 'Updates' });
+  expect(following).toBe(true);
+  expect(screen.queryByRole('alertdialog')).toBeNull();
+  await closeUpdates(historyBeforeOpen);
   refetch.mockClear();
   serviceProgress.data = {
     state: 'committed',
@@ -318,6 +352,87 @@ test('closing Updates retains the server request follower and rechecks its outco
   await waitFor(() => expect(refetch).toHaveBeenCalled());
   expect(following).toBe(false);
 });
+
+test.each(
+  ['desktop', 'staged-server', 'direct-server'].flatMap((target) =>
+    (['Close Updates', 'browser Back'] as const).map((close) => ({
+      target,
+      close,
+    })),
+  ),
+)(
+  '$close abandons an unsubmitted $target confirmation until explicitly reopened',
+  async ({ target, close }) => {
+    const desktop = target === 'desktop';
+    profile.isDesktop = desktop;
+    status.stagedUpdates = target !== 'direct-server';
+    if (target === 'staged-server') {
+      serverState.progress = {
+        state: 'staged',
+        requestId: 'download-request',
+        version: '0.8.0-preview.2',
+        stagedAt: '2026-10-22T20:00:00Z',
+      };
+    }
+    const fake = desktop
+      ? installFakeNativeUpdater(native, desktopUpdateFixture('ready'))
+      : null;
+    const offer = desktop
+      ? 'Restart to update…'
+      : target === 'staged-server'
+        ? 'Restart server to update to 0.8.0-preview.2'
+        : 'Update server to 0.8.0-preview.2';
+    const confirmationTitle = desktop
+      ? 'Restart Station to install 0.1.12?'
+      : target === 'staged-server'
+        ? 'Restart the server into 0.8.0-preview.2?'
+        : 'Update and restart the server?';
+    const confirmationRole = desktop ? 'dialog' : 'alertdialog';
+    const confirmLabel =
+      target === 'direct-server' ? 'Update and restart' : 'Restart now';
+    render(<UpdatesControl onNavigate={vi.fn()} />);
+    const historyBeforeOpen = window.history.state;
+    fireEvent.click(screen.getByRole('button', { name: /^Updates/ }));
+    fireEvent.click(await screen.findByRole('button', { name: offer }));
+    await screen.findByRole(confirmationRole, { name: confirmationTitle });
+
+    await closeUpdates(historyBeforeOpen, close);
+    expect(screen.queryByRole('dialog', { name: 'Updates' })).toBeNull();
+    expect(
+      screen.queryByRole(confirmationRole, { name: confirmationTitle }),
+    ).toBeNull();
+    expect(serverAction).not.toHaveBeenCalled();
+    expect(coreApply).not.toHaveBeenCalled();
+    if (fake) expect(fake.commands()).toEqual([]);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Updates/ }));
+    await screen.findByRole('button', { name: offer });
+    expect(
+      screen.queryByRole(confirmationRole, { name: confirmationTitle }),
+    ).toBeNull();
+    expect(screen.queryByRole('button', { name: confirmLabel })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: offer }));
+    const confirmation = await screen.findByRole(confirmationRole, {
+      name: confirmationTitle,
+    });
+    fireEvent.click(
+      within(confirmation).getByRole('button', { name: confirmLabel }),
+    );
+    if (fake) {
+      await waitFor(() =>
+        expect(fake.commands()).toEqual(['desktop_update_install']),
+      );
+    } else if (target === 'staged-server') {
+      expect(serverAction).toHaveBeenCalledExactlyOnceWith(
+        { action: 'apply', version: '0.8.0-preview.2' },
+        expect.any(Object),
+      );
+    } else {
+      expect(coreApply).toHaveBeenCalledExactlyOnceWith();
+    }
+    await closeUpdates(historyBeforeOpen);
+  },
+);
 
 test('native events that arrive before the pulled snapshot keep their newer progress', async () => {
   let releasePull!: () => void;

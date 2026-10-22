@@ -299,3 +299,46 @@ test('keyboard activation of a nested action cannot navigate the card behind it'
   expect(navigate).toHaveBeenCalledTimes(1);
   expect(screen.queryByText('Needs attention')).toBeNull();
 });
+
+test.each(['hover', 'focus', 'details'] as const)(
+  'a card demoted while paused by %s resumes its remaining time when remounted',
+  (reason) => {
+    toastStore.upsert({
+      message: 'Read after promotion',
+      detail: 'More context',
+      duration: 1000,
+    });
+    mount();
+    advance(400);
+    const card = screen.getByTestId('toast-card');
+    if (reason === 'hover') fireEvent.mouseEnter(card);
+    if (reason === 'focus')
+      fireEvent.focus(
+        screen.getByRole('button', { name: 'Dismiss notification' }),
+      );
+    if (reason === 'details') {
+      const details = screen.getByText('More context').closest('details')!;
+      details.open = true;
+      fireEvent(details, new Event('toggle'));
+    }
+    const newer: string[] = [];
+    act(() => {
+      for (const message of ['New first', 'New second', 'New third']) {
+        newer.push(toastStore.show(message, undefined, 0));
+      }
+    });
+    expect(screen.queryByText('Read after promotion')).toBeNull();
+    advance(30000);
+    act(() => {
+      for (const id of newer) toastStore.dismiss(id);
+    });
+    expect(screen.getByText('Read after promotion')).toBeTruthy();
+    expect(screen.getByText('More context').closest('details')!.open).toBe(
+      false,
+    );
+    advance(599);
+    expect(screen.getByText('Read after promotion')).toBeTruthy();
+    advance(1);
+    expect(screen.queryByText('Read after promotion')).toBeNull();
+  },
+);

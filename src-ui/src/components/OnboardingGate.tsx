@@ -224,21 +224,6 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const credentialRequired = activeConnection?.credentialState === 'required';
   const connectionEvidence = `${activeConnection?.id ?? ''}:${activeConnection?.lastSuccessAt ?? ''}:${activeConnection?.credentialState ?? ''}`;
   const previousConnectionEvidence = useRef(connectionEvidence);
-  // archive#1007: the pairing banner is dismissible, but the dismissal is keyed to the
-  // exact connection evidence it was shown for and lives only in component
-  // state. Deliberately not persisted: "this host needs pairing" is an
-  // unresolved, actionable state, and a relaunch is the natural moment to ask
-  // again — the same reasoning archive#794 used to prefer a page-lifetime `defer` over
-  // a durable `dismiss` for an unfinished setup. Because the key is the
-  // evidence string, selecting another connection or a change in credential
-  // state re-arms the banner on its own, with no effect and no cleanup.
-
-  // A decline is never withheld — a silent refusal is the original archive#3387
-  // defect — and it always takes the band's single visible slot, because both
-  // banners sit in `connectionBlocking` where the stack shows one and collapses
-  // the rest, and the id tie-break would otherwise bury the decline behind
-  // `chrome:onboarding:credential`. That is the exact shape archive#3387 fixed.
-  //
   // DISCLOSED TRADEOFF: while a decline stands for ANY Station, the active
   // Station's own "request access to reconnect" reminder is suppressed even
   // when they are different Stations. The reminder is a standing prompt; the
@@ -587,7 +572,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
         actions: [
           {
             label: 'Request access',
-            opensDialog: true,
+            closesDetails: true,
             onClick: () => {
               setConnectionModalMode('request-access');
               setShowModal(true);
@@ -629,7 +614,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       actions: [
         {
           label: 'Request access again',
-          opensDialog: true,
+          closesDetails: true,
           onClick: () => {
             setPairingFailure(null);
             setConnectionModalMode('list');

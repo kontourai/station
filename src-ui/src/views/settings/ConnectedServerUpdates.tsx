@@ -112,12 +112,16 @@ function ServerIdentitySummary({
 }
 
 /**
- * The connected-server side of the System settings card. The card's shape
+ * The connected-server controls in System settings and Updates. Their shape
  * follows the correlated server identity: an established embedded sidecar
  * presents the desktop app as its update path, everything else keeps the
  * server-side source check gated on a settled identity and reachability.
  */
-export function ConnectedServerUpdates() {
+export function ConnectedServerUpdates({
+  active = true,
+}: {
+  active?: boolean;
+}) {
   const context = useConnectedServerUpdateContext();
   // The same query (same key) CoreUpdateCheck and the source disclosure
   // mount: this observer never fetches on its own, it only reads the answer
@@ -158,6 +162,7 @@ export function ConnectedServerUpdates() {
         owner the correlation could not establish each keep the automatic
         source check off. */}
       <CoreUpdateCheck
+        active={active}
         apiBase={context.apiBase}
         context={context}
         enabled={

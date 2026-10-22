@@ -4,7 +4,7 @@ import {
   useServerUpdateRunningTurnsQuery,
 } from '@kontourai/station-sdk';
 import { compareStationReleaseVersions } from '@kontourai/station-shared/release-version-order';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
@@ -12,12 +12,14 @@ import { Dialog } from '../../components/Dialog';
 import { SkeletonBlock } from '../../components/state';
 
 export function ServerUpdateStageApply({
+  active = true,
   apiBase,
   state,
   latestVersion,
   canDownload,
   onRequested,
 }: {
+  active?: boolean;
   apiBase: string;
   state: ServerUpdateState;
   /** The newer version the current check offers, if any. */
@@ -30,6 +32,9 @@ export function ServerUpdateStageApply({
   const [confirmingVersion, setConfirmingVersion] = useState<string | null>(
     null,
   );
+  useEffect(() => {
+    if (!active) setConfirmingVersion(null);
+  }, [active]);
   const action = useServerUpdateActionMutation(apiBase);
   const progress = state.progress;
   const staged = progress.state === 'staged' ? progress : null;
@@ -108,7 +113,7 @@ export function ServerUpdateStageApply({
           {(action.error as Error).message}
         </div>
       )}
-      {staged && confirmingVersion === staged.version && (
+      {active && staged && confirmingVersion === staged.version && (
         <ServerUpdateRestartConfirmation
           apiBase={apiBase}
           version={staged.version}

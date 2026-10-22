@@ -301,9 +301,8 @@ function renderApp(): void {
                   shell keeps component/flow state in `RecoveryQueryBoundary`
                   (own nonpersisted client, switch-scoped cache drop) while
                   protected data stays fully quarantined per authority.
-                  Toasts now survive a connection switch instead of being
-                  cleared by the provider remount; nothing below may rely
-                  on that reset. */}
+                  ScopedToastProvider clears live notices and callbacks when
+                  the selected Station changes. */}
                     <NavigationProvider>
                       <ScopedToastProvider>
                         <RecoveryQueryBoundary>

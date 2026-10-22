@@ -1375,8 +1375,8 @@ missing (this repo's "no conditional green exits" browser-test doctrine
 applies to it too): it fails loud, naming the missing precondition and the
 fix. Run `npm run install:playwright` once per fresh worktree. For a direct
 `test:focused` invocation of that fixture, set `PLAYWRIGHT_BROWSERS_PATH=0`
-to select the repo-local browser; the suite runner sets this itself. Before either
-lane, install the browser to avoid that failure. The reusable `.github/workflows/full-regression.yml` provides the browser
+to select the repo-local browser; the suite runner sets this itself. The reusable
+`.github/workflows/full-regression.yml` provides the browser
 prerequisite for hosted completion; do not infer it from dependency installation.
 
 `npm test` is the named focused pre-push test tier. Station's own

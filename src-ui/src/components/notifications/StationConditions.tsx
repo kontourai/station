@@ -33,10 +33,10 @@ export function useStationConditions() {
 
 function Condition({
   item,
-  onOpenDialog,
+  onLeaveDetails,
 }: {
   item: BannerItem;
-  onOpenDialog?: () => void;
+  onLeaveDetails?: () => void;
 }) {
   return (
     <section
@@ -49,18 +49,18 @@ function Condition({
       )}
       {item.actions?.length ? (
         <div className="station-condition__actions">
-          {item.actions.map((action) =>
+          {item.actions.map((action, index) =>
             action.href ? (
-              <a key={action.label} href={action.href}>
+              <a key={index} href={action.href}>
                 {action.label}
               </a>
             ) : (
               <Button
-                key={action.label}
+                key={index}
                 variant={action.variant === 'danger' ? 'danger' : 'secondary'}
                 aria-label={action.ariaLabel}
                 onClick={() => {
-                  if (action.opensDialog) onOpenDialog?.();
+                  if (action.closesDetails) onLeaveDetails?.();
                   action.onClick?.();
                 }}
                 onBlur={action.onBlur}
@@ -120,7 +120,7 @@ export function StationDetailsHost() {
           <Condition
             key={item.id}
             item={item}
-            onOpenDialog={() => setOpenScope(null)}
+            onLeaveDetails={() => setOpenScope(null)}
           />
         ))
       ) : (

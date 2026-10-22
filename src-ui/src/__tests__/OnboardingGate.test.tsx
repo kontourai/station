@@ -24,6 +24,7 @@ import {
 } from '@testing-library/react';
 import { type ReactNode, useEffect } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { NotificationContainer } from '../components/notifications/NotificationContainer';
 import { StationDetailsHost } from '../components/notifications/StationConditions';
 import { openStationDetails } from '../components/notifications/stationDetailsEvents';
 import { SHARING_LABELS } from '../components/UsageSharingChoices';
@@ -132,8 +133,12 @@ vi.mock('../components/UsageTelemetryDisclosure', async (importOriginal) => {
 // Provider ordering is covered against the real application entrypoint in
 // main-provider-order.test.ts. This component suite isolates onboarding
 // behavior from the toast implementation while retaining the hook contract.
-vi.mock('../contexts/ToastContext', () => ({
+vi.mock('../contexts/ToastContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ToastContext')>()),
   useToast: () => toastMocks,
+}));
+vi.mock('../contexts/ActiveChatsContext', () => ({
+  useActiveChatIds: () => [],
 }));
 
 // The gate reads config through the identity-scoped recovery hook (never
@@ -300,6 +305,7 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
 });
 
 vi.mock('../contexts/NavigationContext', () => ({
+  useNavigationActions: () => ({ navigate }),
   useNavigation: () => ({
     navigate,
     pathname: currentPathname,
@@ -2526,6 +2532,7 @@ describe('OnboardingGate', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Restart Station' }));
       expect(restartBundledServerMock).toHaveBeenCalledTimes(1);
 
+      act(openStationDetails);
       fireEvent.click(
         screen.getByRole('button', {
           name: 'Manage Stations',
@@ -2541,39 +2548,56 @@ describe('OnboardingGate', () => {
      * owner's dangling-tailscale-proxy scenario) left the banner reading
      * exactly as it did before the tap — a dead button, silently.
      */
-    test('surfaces a visible failure when Restart from Station details does not reach the host', async () => {
+    test('transfers Restart failure from Station details to a visible, retryable toast', async () => {
+      const { toastStore } = await vi.importActual<
+        typeof import('../contexts/ToastContext')
+      >('../contexts/ToastContext');
+      toastStore.dismissAll();
+      toastMocks.upsertToast.mockImplementation((options: ToastOptions) =>
+        toastStore.upsert(options),
+      );
+      toastMocks.dismissToast.mockImplementation((id: string) =>
+        toastStore.dismiss(id),
+      );
       bundledStatus = bundled({
         phase: 'failed',
         message:
           "Station's local Station stopped. Check its log and restart it.",
       });
-      restartBundledServerMock.mockResolvedValue(false);
-      render(
-        <OnboardingGate>
-          <div>App</div>
-          <StationDetailsSurface />
-        </OnboardingGate>,
-      );
-
-      const details = screen.getByRole('dialog', { name: 'Station details' });
-      expect(
-        await within(details).findByText(/local Station stopped/i),
-      ).toBeTruthy();
-
-      fireEvent.click(screen.getByRole('button', { name: 'Restart Station' }));
-      expect(restartBundledServerMock).toHaveBeenCalledTimes(1);
-
-      await waitFor(() =>
-        expect(toastMocks.upsertToast).toHaveBeenCalledTimes(1),
-      );
-      expect(toastMocks.upsertToast.mock.calls[0]?.[0]).toMatchObject({
-        message: expect.stringMatching(/couldn.t restart/i),
-        duration: 0,
-      });
-      // Re-tappable: the banner's own action button is never disabled by
-      // this path, so a second tap reaches the same request again.
-      fireEvent.click(screen.getByRole('button', { name: 'Restart Station' }));
-      expect(restartBundledServerMock).toHaveBeenCalledTimes(2);
+      restartBundledServerMock
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(true);
+      try {
+        render(
+          <OnboardingGate>
+            <div>App</div>
+            <StationDetailsSurface />
+            <NotificationContainer />
+          </OnboardingGate>,
+        );
+        const details = screen.getByRole('dialog', { name: 'Station details' });
+        await within(details).findByText(/local Station stopped/i);
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Restart Station' }),
+        );
+        expect(
+          screen.queryByRole('dialog', { name: 'Station details' }),
+        ).toBeNull();
+        expect(
+          await screen.findByText(/couldn.t restart the local Station/i),
+        ).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+        await waitFor(() =>
+          expect(restartBundledServerMock).toHaveBeenCalledTimes(2),
+        );
+        await waitFor(() =>
+          expect(
+            screen.queryByText(/couldn.t restart the local Station/i),
+          ).toBeNull(),
+        );
+      } finally {
+        toastStore.dismissAll();
+      }
     });
 
     test('allows a first launch with a healthy desktop-owned sidecar and no service install', () => {

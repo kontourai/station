@@ -113,6 +113,9 @@ function ToastCard({
       observer?.disconnect();
       window.removeEventListener('resize', visible);
       toastStore.setVisible(notification.id, false);
+      for (const reason of ['hover', 'focus', 'details']) {
+        toastStore.pause(notification.id, reason, false);
+      }
     };
   }, [notification.id, isApproval, isPairing]);
   const shortcut = getSessionShortcut(notification.sessionId);

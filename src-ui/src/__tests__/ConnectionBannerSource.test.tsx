@@ -260,9 +260,11 @@ describe('ConnectionBannerSource → Station details — version drift', () => {
           { timeout: 5000 },
         );
 
-        fireEvent.click(
-          screen.getByRole('button', { name: 'Remove connection' }),
-        );
+        const removeButton = screen.getByRole('button', {
+          name: 'Remove connection',
+        });
+        removeButton.focus();
+        fireEvent.click(removeButton);
         expect(removeConnection).not.toHaveBeenCalled();
         expect(
           screen.queryByRole('button', { name: 'Remove connection' }),
@@ -270,6 +272,7 @@ describe('ConnectionBannerSource → Station details — version drift', () => {
         const confirmButton = screen.getByRole('button', {
           name: 'Confirm removing this connection',
         });
+        expect(document.activeElement).toBe(confirmButton);
         expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
         // Pairing remains available while removal awaits confirmation.
         expect(screen.getByRole('button', { name: 'Pair again' })).toBeTruthy();

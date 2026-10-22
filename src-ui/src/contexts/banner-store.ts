@@ -4,7 +4,8 @@ export type BannerTone = 'info' | 'warning' | 'error' | 'blocked';
 
 type BannerActionBase = {
   label: string;
-  opensDialog?: boolean;
+  /** Transfers the action to another dialog or a visible outcome surface. */
+  closesDetails?: boolean;
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
   /**
    * Overrides the accessible name (`aria-label`) while `label` stays the

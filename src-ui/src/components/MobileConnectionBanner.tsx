@@ -15,7 +15,7 @@ export function MobileConnectionBanner({ onOpen }: { onOpen: () => void }) {
       message:
         'Connect this device to a Station when you are ready. Local settings and cached work remain available.',
       actions: [
-        { label: 'Connect to a Station', opensDialog: true, onClick: onOpen },
+        { label: 'Connect to a Station', closesDetails: true, onClick: onOpen },
       ],
     });
     return () => bannerStore.dismiss(BANNER_IDS.deviceConnection);
