@@ -32,11 +32,17 @@ restrictions and ordinary Project edit authority. See [configuration](./config.m
 
 `/mcp/station-control` serves platform controls. `/mcp/station-knowledge`
 serves five read/capture tools described in the [Knowledge guide](../guides/knowledge.md#agent-tools).
-Both accept only loopback connections with a live, session-scoped credential
+Both accept only loopback connections with a live credential scoped to a recorded Session
 for that exact server. They use MCP authentication rather than a paired Device
 credential. Tokens for one server cannot open the other, and in-process tokens
 cannot be presented over HTTP. Ordinary API and Project authorization still
 apply to each tool operation.
+
+An existing local client can obtain a separate, explicitly selected Station
+Control lease through the [personal-host setup recipe](session-api.md#external-clients-using-station-tools).
+Its operator-only setup, expiry and revocation are separate from runtime token
+delivery. Binding that lease to a retained Session record does not start an
+engine or establish that the Session is active.
 
 ## Visual replies
 
