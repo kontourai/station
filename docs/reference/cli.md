@@ -1756,8 +1756,8 @@ the file at `--path`, relative to the Task's working directory, under
 `--title`; `--media` declares a media type. Repeating the same `--operation`
 with the same inputs returns the earlier record; reusing it with different
 inputs, or after that output was deleted, is refused. `list-outputs` and
-`get-output` print the records (`get-output` needs the output ID even though
-the in-terminal help shows it as optional). `download-output` writes the bytes
+`get-output` print the records; `get-output` requires the output ID.
+`download-output` writes the bytes
 to an absolute `--out` path and prints the destination, size, media type and
 `etag`. It refuses a relative path, a symlink, an existing file and a missing or
 symlinked parent directory. It writes a private temporary file and links it
