@@ -198,9 +198,7 @@ describe('page-frame registry', () => {
   // 'Connections / <section>' breadcrumb-as-eyebrow that restated the title.
   it('gives every subpage with a static eyebrow just its parent, not a breadcrumb trail', () => {
     expect(resolvePageFrame({ type: 'developer' })?.eyebrow).toBe('Developer');
-    for (const route of [
-      { type: 'connections-knowledge' },
-    ] as const) {
+    for (const route of [{ type: 'connections-knowledge' }] as const) {
       const spec = resolvePageFrame(route as NavigationView);
       expect(spec?.eyebrow, `${route.type} eyebrow`).toBe('Connections');
     }
