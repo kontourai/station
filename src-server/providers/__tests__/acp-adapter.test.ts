@@ -583,6 +583,7 @@ describe('AcpAdapter', () => {
       await nextEvent(iterator, 'session.configured');
       await adapter.sendTurn({ threadId: 'thread-padded-name', input: 'Hi' });
       const started = await nextEvent(iterator, 'turn.started');
+      if (started.method !== 'turn.started') throw new Error('no turn.started');
       expect(started.metadata?.engineDisplayName).toBe(expected);
       processes[0]!.resolvePrompt('end_turn');
       await nextEvent(iterator, 'turn.completed');

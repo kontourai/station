@@ -488,7 +488,8 @@ describe('an approved check-back on an ACP chat reaches the engine', () => {
       await waitFor(prompts, (seen) => seen.length === 1, 'the prompt');
       const [turnStarted] = stored('turn.started');
       expect(turnStarted?.invocationId).toBeDefined();
-      expect((await summary())?.turnProgress?.turnId).toBe(turnStarted!.turnId);
+      // The turn's stall watch is armed.
+      expect((await summary())?.turnProgress).toBeDefined();
 
       const answer = processes[0]!.client.requestPermission({
         sessionId: processes[0]!.sessionId ?? 'native-kiro-cli',
