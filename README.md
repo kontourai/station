@@ -145,6 +145,12 @@ authenticated ingress.
    when you need a tracked deliverable or workflow.
 4. Follow the Task's execution and inspect the evidence its workflow records.
 
+To connect a phone, start Station on your computer and create a pairing code,
+then choose **Scan QR code** on the phone. **Nearby Stations** is an optional
+local-network path when the computer's discovery setting is enabled. Follow
+[Connect your phone](docs/user/getting-started.md#connect-your-phone) for address,
+manual-entry and approval steps.
+
 If something is not ready, Station keeps the setup action visible. Run
 `station doctor` for a local diagnosis.
 
