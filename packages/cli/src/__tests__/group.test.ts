@@ -116,6 +116,33 @@ test('CLI group write carries explicit operation and revision and never invents 
   }
 });
 
+test.each([
+  ['g', '--after-revision=-1'],
+  ['invalid/group', '--after-revision=0'],
+])(
+  'CLI session follow validation releases SIGINT for %s %s without fetching',
+  async (groupId, revision) => {
+    const listeners = process.listeners('SIGINT');
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    try {
+      await assert.rejects(
+        runGroupCommand(
+          'https://station.test',
+          parseCoreArgs(['session-events', groupId, revision, '--follow']),
+        ),
+      );
+      assert.deepEqual(process.listeners('SIGINT'), listeners);
+      assert.equal(fetch.mock.calls.length, 0);
+    } finally {
+      for (const listener of process.listeners('SIGINT')) {
+        if (!listeners.includes(listener))
+          process.removeListener('SIGINT', listener);
+      }
+      fetch.mockRestore();
+    }
+  },
+);
+
 test.each(['events', 'session-events'])(
   'CLI %s follow closes its stream and SIGINT listener after interruption',
   async (action) => {

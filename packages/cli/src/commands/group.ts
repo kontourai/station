@@ -219,27 +219,30 @@ async function runSessionGroupCommand(
     const interrupt = () => stop.abort();
     process.once('SIGINT', interrupt);
     let failure: unknown;
-    const stream = subscribeCliSessionGroupEvents(
-      apiBase,
-      groupId!,
-      cursor(parsed, 'after-revision') ?? 0,
-      {
-        onPage(page) {
-          console.log(
-            terminalSafeJson(page).split('\n').map(terminalSafeText).join('\n'),
-          );
-        },
-        onTerminal(error) {
-          failure = error;
-        },
-      },
-      { signal: stop.signal },
-    );
     try {
+      const stream = subscribeCliSessionGroupEvents(
+        apiBase,
+        groupId!,
+        cursor(parsed, 'after-revision') ?? 0,
+        {
+          onPage(page) {
+            console.log(
+              terminalSafeJson(page)
+                .split('\n')
+                .map(terminalSafeText)
+                .join('\n'),
+            );
+          },
+          onTerminal(error) {
+            failure = error;
+          },
+        },
+        { signal: stop.signal },
+      );
       await stream.completed;
       if (failure) throw failure;
     } finally {
-      stream.close();
+      stop.abort();
       process.removeListener('SIGINT', interrupt);
     }
     return;
