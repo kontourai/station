@@ -240,10 +240,8 @@ test('the operator in person needs no grant: the desktop app, minted by proving 
 test('an authorized project command does not run when workload admission refuses it', async () => {
   const f = await fixture();
   const admission = vi
-    .spyOn(childWorkload, 'prepareChildWorkload')
-    .mockImplementation(() => {
-      throw new Error('workload enforcement unavailable');
-    });
+    .spyOn(childWorkload, 'execFileChildWorkload')
+    .mockRejectedValue(new Error('workload enforcement unavailable'));
   try {
     const refused = await f.exec(f.operator.credential);
     expect(refused.body.success).toBe(false);

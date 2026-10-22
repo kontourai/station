@@ -5,6 +5,7 @@ import { createServer } from 'node:http';
 import { pathToFileURL } from 'node:url';
 import {
   closeChildWorkload,
+  execFileChildWorkload,
   ownWorkloadTransport,
   prepareChildWorkload,
   spawnChildWorkload,
@@ -47,6 +48,18 @@ const held = new Map<number, ReturnType<typeof spawnChildWorkload>>();
 const server = createServer(async (request, response) => {
   try {
     const url = new URL(request.url ?? '/', 'http://localhost');
+    if (url.pathname === '/exec') {
+      const result = await execFileChildWorkload(
+        process.execPath,
+        [
+          '-e',
+          'process.stdout.write(require("fs").readFileSync("/proc/self/cgroup","utf8"))',
+        ],
+        { encoding: 'utf8', timeout: 5000 },
+      );
+      response.end(JSON.stringify(result));
+      return;
+    }
     if (url.pathname === '/mcp-handshake') {
       const transport = createMCPTransport({
         id: 'resource-negotiation',
@@ -224,7 +237,10 @@ const server = createServer(async (request, response) => {
       return;
     }
     if (url.pathname === '/terminal-grace') {
-      const adapter = new NodePtyAdapter();
+      const modulePath = process.env.STATION_RESOURCE_PROOF_PTY_MODULE;
+      const adapter = modulePath
+        ? new NodePtyAdapter(() => import(pathToFileURL(modulePath).href))
+        : new NodePtyAdapter();
       const terminal = await adapter.spawn({
         shell: process.execPath,
         args: [

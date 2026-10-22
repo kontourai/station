@@ -215,6 +215,13 @@ describe.skipIf(!manager)('running server workload containment', () => {
     expect(fds.output).toContain('fd4');
   });
 
+  test('captured command execution runs outside the control server with its workload budget', async () => {
+    const result = await request<{ stdout: string; stderr: string }>('/exec');
+    expect(result.stdout).toContain(slice);
+    expect(result.stdout).not.toContain(unit);
+    expect(result.stderr).toBe('');
+  });
+
   test('managed cancellation lets the workload handle SIGTERM before descendant cleanup', async () => {
     expect(await request('/graceful')).toEqual({
       output: 'graceful\n',
@@ -260,11 +267,14 @@ describe.skipIf(!manager)('running server workload containment', () => {
     expect(await gone(sibling.pid)).toBe(false);
   });
 
-  test('terminal close allows its SIGHUP handler to flush before scope cleanup', async () => {
-    expect(
-      (await request<{ output: string }>('/terminal-grace')).output,
-    ).toContain('flushed');
-  });
+  test.skipIf(!ptyModule)(
+    'terminal close allows its SIGHUP handler to flush before scope cleanup',
+    async () => {
+      expect(
+        (await request<{ output: string }>('/terminal-grace')).output,
+      ).toContain('flushed');
+    },
+  );
 
   test.skipIf(!ptyModule)(
     'the real terminal preserves input, size, cwd and foreground interrupt',

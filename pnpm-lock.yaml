@@ -52,7 +52,7 @@ overrides:
 packageExtensionsChecksum: sha256-V9jQTPrRdqf6Z859wSbwGftx8ZFtQKJ6xDqATP3e4pk=
 
 patchedDependencies:
-  '@modelcontextprotocol/client@2.3.1': 7b1e86fc8ab5a972a189a00e8142baf0b59a4bac84436be330ee0cebd17e9315
+  '@modelcontextprotocol/client@2.3.1': 03c6239a8350573a9bf6dd596c2079fe78d8c9638f9b413914a743fb7257900e
   '@voltagent/core@2.10.0': 8eda67a9681b85cf7adbeb5669184db3412ccc9f1954e068ac32ee5dd409170a
   '@voltagent/server-hono@2.0.14': 1ed9acb7ad00289d710ebe5f24822fef3f189794d80d8ec34469405808622ce5
   http-cache-semantics@4.3.0: 88d463d98aef02aa04f4263556dea7fe3fb8cf07121e1ea7a8e424e8bbeb7c15
@@ -182,10 +182,10 @@ importers:
         version: 1.11.3(@kontourai/survey@8.2.0(supports-color@7.2.0)(typescript@7.0.2))(supports-color@7.2.0)(zod@4.6.7)
       '@modelcontextprotocol/client':
         specifier: 2.3.1
-        version: 2.3.1(patch_hash=7b1e86fc8ab5a972a189a00e8142baf0b59a4bac84436be330ee0cebd17e9315)
+        version: 2.3.1(patch_hash=03c6239a8350573a9bf6dd596c2079fe78d8c9638f9b413914a743fb7257900e)
       '@modelcontextprotocol/ext-apps':
         specifier: ^2.0.3
-        version: 2.0.3(@modelcontextprotocol/client@2.3.1(patch_hash=7b1e86fc8ab5a972a189a00e8142baf0b59a4bac84436be330ee0cebd17e9315))(@modelcontextprotocol/core@2.3.1)(@modelcontextprotocol/server@2.3.1)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)
+        version: 2.0.3(@modelcontextprotocol/client@2.3.1(patch_hash=03c6239a8350573a9bf6dd596c2079fe78d8c9638f9b413914a743fb7257900e))(@modelcontextprotocol/core@2.3.1)(@modelcontextprotocol/server@2.3.1)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)
       '@modelcontextprotocol/sdk':
         specifier: 1.32.1
         version: 1.32.1(supports-color@7.2.0)(zod@4.6.7)
@@ -233,7 +233,7 @@ importers:
         version: 4.12.1
       '@strands-agents/sdk':
         specifier: ^1.21.0
-        version: 1.21.0(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@0.122.0(zod@4.6.7))(@aws-sdk/client-s3@3.1152.0)(@cedar-policy/cedar-wasm@4.13.0)(@modelcontextprotocol/client@2.3.1(patch_hash=7b1e86fc8ab5a972a189a00e8142baf0b59a4bac84436be330ee0cebd17e9315))(@opentelemetry/api@1.9.1)(@opentelemetry/exporter-metrics-otlp-http@0.221.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.221.0(@opentelemetry/api@1.9.1))(@opentelemetry/resources@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.12.0(@opentelemetry/api@1.9.1))(@smithy/types@4.19.0)(express@5.2.1(supports-color@7.2.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.86)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.7))(turndown@7.2.4)(zod@4.6.7)
+        version: 1.21.0(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@0.122.0(zod@4.6.7))(@aws-sdk/client-s3@3.1152.0)(@cedar-policy/cedar-wasm@4.13.0)(@modelcontextprotocol/client@2.3.1(patch_hash=03c6239a8350573a9bf6dd596c2079fe78d8c9638f9b413914a743fb7257900e))(@opentelemetry/api@1.9.1)(@opentelemetry/exporter-metrics-otlp-http@0.221.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.221.0(@opentelemetry/api@1.9.1))(@opentelemetry/resources@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.12.0(@opentelemetry/api@1.9.1))(@smithy/types@4.19.0)(express@5.2.1(supports-color@7.2.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.86)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.7))(turndown@7.2.4)(zod@4.6.7)
       '@tanstack/query-async-storage-persister':
         specifier: ^5.104.3
         version: 5.104.3
@@ -629,7 +629,7 @@ importers:
         version: 1.20.1(react@19.3.1)
       '@modelcontextprotocol/ext-apps':
         specifier: ^2.0.3
-        version: 2.0.3(@modelcontextprotocol/client@2.3.1(patch_hash=7b1e86fc8ab5a972a189a00e8142baf0b59a4bac84436be330ee0cebd17e9315))(@modelcontextprotocol/core@2.3.1)(@modelcontextprotocol/server@2.3.1)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)
+        version: 2.0.3(@modelcontextprotocol/client@2.3.1(patch_hash=03c6239a8350573a9bf6dd596c2079fe78d8c9638f9b413914a743fb7257900e))(@modelcontextprotocol/core@2.3.1)(@modelcontextprotocol/server@2.3.1)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)
       react:
         specifier: ^18.0.0 || ^19.0.0
         version: 19.3.1
@@ -837,7 +837,7 @@ importers:
         version: 0.5.0
       '@modelcontextprotocol/client':
         specifier: 2.3.1
-        version: 2.3.1(patch_hash=7b1e86fc8ab5a972a189a00e8142baf0b59a4bac84436be330ee0cebd17e9315)
+        version: 2.3.1(patch_hash=03c6239a8350573a9bf6dd596c2079fe78d8c9638f9b413914a743fb7257900e)
       agent-skills-ts-sdk:
         specifier: ^2.5.0
         version: 2.5.0
@@ -10627,7 +10627,7 @@ snapshots:
 
   '@mixmark-io/domino@2.2.0': {}
 
-  '@modelcontextprotocol/client@2.3.1(patch_hash=7b1e86fc8ab5a972a189a00e8142baf0b59a4bac84436be330ee0cebd17e9315)':
+  '@modelcontextprotocol/client@2.3.1(patch_hash=03c6239a8350573a9bf6dd596c2079fe78d8c9638f9b413914a743fb7257900e)':
     dependencies:
       '@modelcontextprotocol/core': 2.3.1
       cross-spawn: 7.0.6
@@ -10641,9 +10641,9 @@ snapshots:
     dependencies:
       zod: 4.6.7
 
-  '@modelcontextprotocol/ext-apps@2.0.3(@modelcontextprotocol/client@2.3.1(patch_hash=7b1e86fc8ab5a972a189a00e8142baf0b59a4bac84436be330ee0cebd17e9315))(@modelcontextprotocol/core@2.3.1)(@modelcontextprotocol/server@2.3.1)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)':
+  '@modelcontextprotocol/ext-apps@2.0.3(@modelcontextprotocol/client@2.3.1(patch_hash=03c6239a8350573a9bf6dd596c2079fe78d8c9638f9b413914a743fb7257900e))(@modelcontextprotocol/core@2.3.1)(@modelcontextprotocol/server@2.3.1)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(zod@4.6.7)':
     dependencies:
-      '@modelcontextprotocol/client': 2.3.1(patch_hash=7b1e86fc8ab5a972a189a00e8142baf0b59a4bac84436be330ee0cebd17e9315)
+      '@modelcontextprotocol/client': 2.3.1(patch_hash=03c6239a8350573a9bf6dd596c2079fe78d8c9638f9b413914a743fb7257900e)
       '@modelcontextprotocol/core': 2.3.1
       '@standard-schema/spec': 1.1.0
       zod: 4.6.7
@@ -10652,11 +10652,11 @@ snapshots:
       react: 19.3.1
       react-dom: 19.3.1(react@19.3.1)
 
-  '@modelcontextprotocol/ext-tasks@0.2.2(@modelcontextprotocol/client@2.3.1(patch_hash=7b1e86fc8ab5a972a189a00e8142baf0b59a4bac84436be330ee0cebd17e9315))':
+  '@modelcontextprotocol/ext-tasks@0.2.2(@modelcontextprotocol/client@2.3.1(patch_hash=03c6239a8350573a9bf6dd596c2079fe78d8c9638f9b413914a743fb7257900e))':
     dependencies:
       zod: 4.6.7
     optionalDependencies:
-      '@modelcontextprotocol/client': 2.3.1(patch_hash=7b1e86fc8ab5a972a189a00e8142baf0b59a4bac84436be330ee0cebd17e9315)
+      '@modelcontextprotocol/client': 2.3.1(patch_hash=03c6239a8350573a9bf6dd596c2079fe78d8c9638f9b413914a743fb7257900e)
 
   '@modelcontextprotocol/sdk@1.32.1(supports-color@7.2.0)(zod@4.6.7)':
     dependencies:
@@ -11979,11 +11979,11 @@ snapshots:
       openai: 6.49.0(@aws-sdk/credential-provider-node@3.972.86)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.7)
       turndown: 7.2.4
 
-  '@strands-agents/sdk@1.21.0(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@0.122.0(zod@4.6.7))(@aws-sdk/client-s3@3.1152.0)(@cedar-policy/cedar-wasm@4.13.0)(@modelcontextprotocol/client@2.3.1(patch_hash=7b1e86fc8ab5a972a189a00e8142baf0b59a4bac84436be330ee0cebd17e9315))(@opentelemetry/api@1.9.1)(@opentelemetry/exporter-metrics-otlp-http@0.221.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.221.0(@opentelemetry/api@1.9.1))(@opentelemetry/resources@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.12.0(@opentelemetry/api@1.9.1))(@smithy/types@4.19.0)(express@5.2.1(supports-color@7.2.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.86)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.7))(turndown@7.2.4)(zod@4.6.7)':
+  '@strands-agents/sdk@1.21.0(@ai-sdk/provider@3.0.19)(@anthropic-ai/sdk@0.122.0(zod@4.6.7))(@aws-sdk/client-s3@3.1152.0)(@cedar-policy/cedar-wasm@4.13.0)(@modelcontextprotocol/client@2.3.1(patch_hash=03c6239a8350573a9bf6dd596c2079fe78d8c9638f9b413914a743fb7257900e))(@opentelemetry/api@1.9.1)(@opentelemetry/exporter-metrics-otlp-http@0.221.0(@opentelemetry/api@1.9.1))(@opentelemetry/exporter-trace-otlp-http@0.221.0(@opentelemetry/api@1.9.1))(@opentelemetry/resources@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-metrics@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-base@2.12.0(@opentelemetry/api@1.9.1))(@opentelemetry/sdk-trace-node@2.12.0(@opentelemetry/api@1.9.1))(@smithy/types@4.19.0)(express@5.2.1(supports-color@7.2.0))(openai@6.49.0(@aws-sdk/credential-provider-node@3.972.86)(@smithy/signature-v4@5.7.4)(ws@8.22.0)(zod@4.6.7))(turndown@7.2.4)(zod@4.6.7)':
     dependencies:
       '@aws-sdk/client-bedrock-runtime': 3.1152.0
-      '@modelcontextprotocol/client': 2.3.1(patch_hash=7b1e86fc8ab5a972a189a00e8142baf0b59a4bac84436be330ee0cebd17e9315)
-      '@modelcontextprotocol/ext-tasks': 0.2.2(@modelcontextprotocol/client@2.3.1(patch_hash=7b1e86fc8ab5a972a189a00e8142baf0b59a4bac84436be330ee0cebd17e9315))
+      '@modelcontextprotocol/client': 2.3.1(patch_hash=03c6239a8350573a9bf6dd596c2079fe78d8c9638f9b413914a743fb7257900e)
+      '@modelcontextprotocol/ext-tasks': 0.2.2(@modelcontextprotocol/client@2.3.1(patch_hash=03c6239a8350573a9bf6dd596c2079fe78d8c9638f9b413914a743fb7257900e))
       '@opentelemetry/api': 1.9.1
       '@smithy/fetch-http-handler': 5.8.0
       '@types/json-schema': 7.0.15

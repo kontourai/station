@@ -18,7 +18,7 @@
  * sample: after the last rule that covers a permission for every pattern
  * (pattern `*`), only rules no looser than Station's may follow.
  */
-import { spawn } from 'node:child_process';
+import { spawnChildWorkload as spawn } from '@kontourai/station-shared/child-workload';
 import {
   OPENCODE_ASK_PERMISSIONS,
   OPENCODE_EXPLORE_TOOLS,

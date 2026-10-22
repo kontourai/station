@@ -719,10 +719,11 @@ function createStdioTransport(
   parameters: ConstructorParameters<typeof StdioClientTransport>[0],
 ): StdioClientTransport {
   // The pinned SDK patch retains this spawn boundary on negotiation siblings.
-  return new StdioClientTransport({
+  const ownedParameters = {
     ...parameters,
     spawnProcess: spawnChildWorkload,
-  });
+  };
+  return new StdioClientTransport(ownedParameters);
 }
 
 export function createMCPTransport(

@@ -1,15 +1,13 @@
-import { execFile as execFileCallback } from 'node:child_process';
 import { accessSync, constants, existsSync, statSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { isAbsolute } from 'node:path';
-import { promisify } from 'node:util';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
+import { execFileChildWorkload as execFile } from '@kontourai/station-shared/child-workload';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import { throwIfAborted } from '../../utils/bounded-async.js';
 import { scrubBootInternalSecrets } from '../../utils/child-process-environment.js';
 import { expandTilde } from '../../utils/paths.js';
 
-const execFile = promisify(execFileCallback);
 const CLI_PROBE_TIMEOUT_MS = 10_000;
 const LOGIN_PATH_RESOLVE_TIMEOUT_MS = 5_000;
 

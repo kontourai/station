@@ -9,6 +9,15 @@
  				env: {
  					...getDefaultEnvironment(),
  					...this._serverParams.env
+@@ -84,7 +84,7 @@
+ 				shell: false,
+ 				windowsHide: process.platform === "win32",
+ 				cwd: this._serverParams.cwd
+-			});
++			}, spawn);
+ 			this._process.on("error", (error) => {
+ 				reject(error);
+ 				this.onerror?.(error);
 --- a/dist/stdio.cjs
 +++ b/dist/stdio.cjs
 @@ -74,7 +74,7 @@
@@ -20,6 +29,15 @@
  				env: {
  					...getDefaultEnvironment(),
  					...this._serverParams.env
+@@ -87,7 +87,7 @@
+ 				shell: false,
+ 				windowsHide: node_process.default.platform === "win32",
+ 				cwd: this._serverParams.cwd
+-			});
++			}, cross_spawn.default);
+ 			this._process.on("error", (error) => {
+ 				reject(error);
+ 				this.onerror?.(error);
 --- a/dist/stdio.d.mts
 +++ b/dist/stdio.d.mts
 @@ -4,6 +4,8 @@
@@ -27,7 +45,7 @@
  //#region src/client/stdio.d.ts
  type StdioServerParameters = {
 +  /** Station-owned spawn boundary, retained by negotiation siblings. */
-+  spawnProcess?: (command: string, args: string[], options: import("node:child_process").SpawnOptions) => import("node:child_process").ChildProcess;
++  spawnProcess?: (command: string, args: string[], options: import("node:child_process").SpawnOptions, defaultSpawn: typeof import("node:child_process").spawn) => import("node:child_process").ChildProcess;
    /**
     * The executable to run to start the server.
     */
@@ -38,7 +56,7 @@
  //#region src/client/stdio.d.ts
  type StdioServerParameters = {
 +  /** Station-owned spawn boundary, retained by negotiation siblings. */
-+  spawnProcess?: (command: string, args: string[], options: import("node:child_process").SpawnOptions) => import("node:child_process").ChildProcess;
++  spawnProcess?: (command: string, args: string[], options: import("node:child_process").SpawnOptions, defaultSpawn: typeof import("node:child_process").spawn) => import("node:child_process").ChildProcess;
    /**
     * The executable to run to start the server.
     */

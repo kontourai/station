@@ -1,13 +1,7 @@
-import { execFile as execFileCb } from 'node:child_process';
 import { existsSync, realpathSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { basename, join, relative, resolve, sep } from 'node:path';
-import { promisify } from 'node:util';
-import {
-  closeChildWorkload,
-  prepareChildWorkload,
-  trackChildWorkload,
-} from '@kontourai/station-shared/child-workload';
+import { execFileChildWorkload as execFile } from '@kontourai/station-shared/child-workload';
 import { type Context, Hono, type Next } from 'hono';
 import { z } from 'zod';
 import {
@@ -79,7 +73,6 @@ const fileTreeQuerySchema = z.object({
     .optional(),
 });
 
-const execFile = promisify(execFileCb);
 /**
  * #2412, owner decision: `POST /exec` stays at the operate tier, and a
  * paired device additionally needs `coding:exec`, which the operator grants
@@ -1268,24 +1261,13 @@ export function createCodingRoutes(
         process.platform === 'win32'
           ? ['/d', '/s', '/c', `"${command}"`]
           : ['-c', command];
-      const launch = prepareChildWorkload(shell, args);
-      const execution = execFile(
-        launch?.command ?? shell,
-        launch?.args ?? args,
-        {
-          cwd: dir,
-          encoding: 'utf-8',
-          timeout: 30000,
-          maxBuffer: 1024 * 1024,
-          windowsHide: true,
-          env: launch?.env,
-          windowsVerbatimArguments: process.platform === 'win32',
-        },
-      );
-      trackChildWorkload(launch, execution.child.pid);
-      const result = await execution.finally(async () => {
-        if (execution.child.pid === undefined) await launch?.close();
-        else await closeChildWorkload(execution.child.pid);
+      const result = await execFile(shell, args, {
+        cwd: dir,
+        encoding: 'utf-8',
+        timeout: 30000,
+        maxBuffer: 1024 * 1024,
+        windowsHide: true,
+        windowsVerbatimArguments: process.platform === 'win32',
       });
       return c.json({
         success: true,

@@ -1,10 +1,13 @@
 import {
   type ChildProcess,
   type ChildProcessWithoutNullStreams,
+  type ExecFileOptionsWithStringEncoding,
+  execFile as nodeExecFile,
   type SpawnOptions,
   type SpawnOptionsWithoutStdio,
   spawn,
 } from 'node:child_process';
+import { promisify } from 'node:util';
 
 /** Installed by the server; standalone SDK consumers keep their ordinary launch. */
 export interface ChildWorkloadLaunch {
@@ -67,25 +70,33 @@ export function spawnChildWorkload(
   command: string,
   args: readonly string[],
   options?: SpawnOptionsWithoutStdio,
+  defaultSpawn?: typeof spawn,
 ): ChildProcessWithoutNullStreams;
 export function spawnChildWorkload(
   command: string,
   args: readonly string[],
   options: SpawnOptions,
+  defaultSpawn?: typeof spawn,
 ): ChildProcess;
 export function spawnChildWorkload(
   command: string,
   args: readonly string[],
   options: SpawnOptions = {},
+  defaultSpawn: typeof spawn = spawn,
 ): ChildProcess {
   const launch = prepareChildWorkload(command, args, options.env);
   let child: ChildProcess;
   try {
-    child = spawn(launch?.command ?? command, launch?.args ?? [...args], {
-      ...options,
-      env: launch?.env ?? options.env,
-      windowsHide: true,
-    });
+    const spawnProcess = launch ? spawn : defaultSpawn;
+    child = spawnProcess(
+      launch?.command ?? command,
+      launch?.args ?? [...args],
+      {
+        ...options,
+        env: launch?.env ?? options.env,
+        windowsHide: true,
+      },
+    );
   } catch (error) {
     void launch?.close().catch(() => {});
     throw error;
@@ -100,6 +111,34 @@ export function spawnChildWorkload(
     if (child.pid === undefined) cleanup();
   });
   return child;
+}
+
+const execFile = promisify(nodeExecFile);
+
+export async function execFileChildWorkload(
+  command: string,
+  args: readonly string[],
+  options: ExecFileOptionsWithStringEncoding,
+): Promise<{ stdout: string; stderr: string }> {
+  const launch = prepareChildWorkload(command, args, options.env);
+  if (!launch)
+    return execFile(command, args, { ...options, windowsHide: true });
+  let pid: number | undefined;
+  try {
+    const execution = execFile(launch.command, launch.args, {
+      ...options,
+      env: launch.env,
+      windowsHide: true,
+    });
+    pid = execution.child.pid;
+    trackChildWorkload(launch, pid);
+    execution.child.once('exit', () => {
+      void closeTrackedWorkload(launch, execution.child.pid).catch(() => {});
+    });
+    return await execution;
+  } finally {
+    await closeTrackedWorkload(launch, pid);
+  }
 }
 
 /** Both supported MCP SDKs expose this public transport lifecycle. */
