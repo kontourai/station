@@ -75,6 +75,30 @@ function pendingRecordBytesUpperBound(snapshotBytes: number) {
   );
 }
 /**
+ * Stored receipts plus every publication admitted but not yet frozen, each
+ * of those at its upper bound. Publications already frozen are in the
+ * ledger; the rest are reserved (#4007).
+ */
+function reservedRevisionLedger(): {
+  readonly count: number;
+  readonly recordBytes: number;
+} {
+  const ledger = readRevisionEvidenceLedgerUsage(db);
+  const pending = db
+    .prepare(
+      'SELECT snapshot_bytes FROM project_task_room_revision_publication_outbox WHERE evidence_revision IS NULL',
+    )
+    .all() as Array<{ snapshot_bytes: number }>;
+  return {
+    count: ledger.count + pending.length,
+    recordBytes: pending.reduce(
+      (total, row) =>
+        total + pendingRecordBytesUpperBound(Number(row.snapshot_bytes)),
+      ledger.recordBytes,
+    ),
+  };
+}
+/**
  * The room's half of the one shared check (#4007): this write is admitted
  * only if the revision evidence it publishes fits both its own record bounds
  * and the Station-wide receipt ledger, counting every publication admitted
@@ -91,13 +115,6 @@ function revisionPublicationRefusal(
   const evidenceBytes = revisionEvidenceSnapshotBytes(state.snapshot());
   if (evidenceBytes === null) return 'document-full';
   const text = state.text();
-  const ledger = readRevisionEvidenceLedgerUsage(db);
-  // Publications already frozen are in the ledger; the rest are reserved.
-  const pending = db
-    .prepare(
-      'SELECT snapshot_bytes FROM project_task_room_revision_publication_outbox WHERE evidence_revision IS NULL',
-    )
-    .all() as Array<{ snapshot_bytes: number }>;
   return revisionEvidenceAdmission({
     snapshotBytes: Math.max(snapshotBytes, evidenceBytes),
     textBytes: Buffer.byteLength(text, 'utf8'),
@@ -121,14 +138,7 @@ function revisionPublicationRefusal(
     )
       ? TASK_ROOM_INSERT_RESERVE_BYTES
       : 0,
-    ledger: {
-      count: ledger.count + pending.length,
-      recordBytes: pending.reduce(
-        (total, row) =>
-          total + pendingRecordBytesUpperBound(Number(row.snapshot_bytes)),
-        ledger.recordBytes,
-      ),
-    },
+    ledger: reservedRevisionLedger(),
   });
 }
 const send = (id: number, result: unknown) =>
@@ -472,6 +482,13 @@ async function handle(message: any) {
           ? { kind: 'duplicate', ...JSON.parse(existing.receipt_json) }
           : { kind: 'conflict' },
       );
+    }
+    if (value.type === 'revision-ledger-usage') {
+      try {
+        return send(id, { kind: 'available', ...reservedRevisionLedger() });
+      } catch {
+        return send(id, { kind: 'unavailable' });
+      }
     }
     if (value.type === 'read-revision-publication') {
       return send(id, readRevisionPublication(value.scope));

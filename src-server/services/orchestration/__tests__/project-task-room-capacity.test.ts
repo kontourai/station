@@ -6,6 +6,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import type { TaskRecord } from '@kontourai/station-contracts/task-graph';
 import { afterEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -17,7 +18,10 @@ import { sharedWorkingStateEditBatchDigest } from '../../../domain/shared-workin
 import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
 import { EventStore } from '../event-store.js';
 import { projectTaskRoomDocumentId } from '../project-task-room-document-id.js';
-import { ProjectTaskRoomRevisionEvidenceBridge } from '../project-task-room-revision-evidence-bridge.js';
+import {
+  ProjectTaskRoomRevisionEvidenceBridge,
+  type ProjectTaskRoomRevisionEvidencePort,
+} from '../project-task-room-revision-evidence-bridge.js';
 import { ProjectTaskRoomRuntime } from '../project-task-room-runtime.js';
 
 const makeTempDir = trackTempDirs();
@@ -312,5 +316,154 @@ describe('#4007 a Task document refuses what it cannot hold, explicitly and up f
       reason: 'evidence-ledger-full',
     });
     expect(await room.text()).toBe(stored);
+  }, 300_000);
+});
+
+/**
+ * Several Tasks' rooms over one store, with revision evidence that can be
+ * switched off, so a publication stays admitted but not yet frozen.
+ */
+async function setupRooms(taskIds: readonly string[]) {
+  const directory = makeTempDir('station-room-reservation-');
+  const databasePath = join(directory, 'orchestration.sqlite');
+  const store = new EventStore(databasePath);
+  const security = new EnvironmentSecurityService({ homeDir: directory });
+  await security.initialize();
+  const bridge = new ProjectTaskRoomRevisionEvidenceBridge({
+    eventStore: store,
+    security,
+  });
+  let evidenceDown = false;
+  const revisionEvidence: ProjectTaskRoomRevisionEvidencePort = {
+    available: () => !evidenceDown && bridge.available(),
+    recordPublication: (publication) =>
+      evidenceDown
+        ? { kind: 'unavailable' }
+        : bridge.recordPublication(publication),
+    links: bridge.links,
+    close: () => bridge.close(),
+    matchesCommittedRevision: (input) => bridge.matchesCommittedRevision(input),
+  };
+  const tasks = new Map(
+    taskIds.map((id) => [
+      id,
+      {
+        id,
+        projectId: 'project-1',
+        title: id,
+        description: '',
+        priority: 'normal',
+        status: 'in_progress',
+        createdBy: 'owner-1',
+        createdAt: '2026-08-20T00:00:00.000Z',
+        updatedAt: '2026-08-20T00:00:00.000Z',
+      } as TaskRecord,
+    ]),
+  );
+  const runtime = new ProjectTaskRoomRuntime({
+    taskGraph: { readTaskView: (id) => tasks.get(id) ?? null },
+    projectForId: (id) =>
+      id === 'project-1' ? { id, slug: 'project' } : undefined,
+    history: (authority) =>
+      store.createProjectTaskRoomHistory({
+        capabilities: authority.capabilities,
+        agents: authority.agents,
+        ...(authority.links ? { links: authority.links } : {}),
+      }),
+    revisionEvidence,
+    working: store.createProjectTaskRoomWorkingState(),
+    requestAuthority: {
+      resolve: async () => ({
+        kind: 'granted' as const,
+        operatorId: 'owner-1',
+        deviceId: 'device-1',
+        policyRevision: 'pairing-v1',
+      }),
+    },
+  });
+  closers.push(() => {
+    store.close();
+  });
+  closers.push(async () => {
+    await runtime.close();
+  });
+  const request = new Request('http://station');
+  for (const taskId of taskIds) await runtime.discover({ taskId, request });
+  const edit = async (taskId: string, desiredText: string) => {
+    const planned = await runtime.editPlan({
+      taskId,
+      request,
+      intentId: randomUUID(),
+      desiredText,
+      selection: { anchor: 0, focus: 0 },
+    });
+    if (planned.kind !== 'planned') throw new Error(`plan was ${planned.kind}`);
+    return runtime.submitBatch({
+      taskId,
+      request,
+      intentId: planned.intentId,
+      intentDigest: planned.digest,
+    });
+  };
+  /** Bytes the 4 MiB portable ledger still has room for. */
+  const ledgerRemaining = () => {
+    const db = new DatabaseSync(databasePath, { readOnly: true });
+    try {
+      const row = db
+        .prepare(
+          'SELECT COUNT(*) AS c, COALESCE(SUM(record_bytes), 0) AS b FROM revision_evidence_receipts',
+        )
+        .get() as { c: number; b: number };
+      return 4 * 1024 * 1024 - (32 + row.b + row.c + 2);
+    } finally {
+      db.close();
+    }
+  };
+  return {
+    runtime,
+    request,
+    edit,
+    ledgerRemaining,
+    setEvidenceDown: (down: boolean) => {
+      evidenceDown = down;
+    },
+  };
+}
+
+describe('#4007 the ledger reserves room for revisions admitted but not yet recorded', () => {
+  test('while evidence recording is down, a second room is refused instead of being admitted into a wedge', async () => {
+    const rooms = await setupRooms(['filler', 'room-b', 'room-c']);
+    // Fill the shared ledger until between 300 KB and 800 KB remain.
+    let filler = 'f'.repeat(4_000);
+    while (rooms.ledgerRemaining() > 800_000) {
+      expect(await rooms.edit('filler', filler)).toMatchObject({
+        kind: 'committed',
+        revisionEvidence: { kind: 'linked' },
+      });
+      filler += 'g';
+    }
+    const remaining = rooms.ledgerRemaining();
+    expect(remaining).toBeGreaterThan(300_000);
+    // Each of B and C alone fits; both together do not (about 0.6 each).
+    const size = Math.floor((0.6 * remaining - 28_000) / 93);
+    rooms.setEvidenceDown(true);
+    expect(await rooms.edit('room-b', 'b'.repeat(size))).toMatchObject({
+      kind: 'committed',
+      revisionEvidence: { kind: 'unavailable' },
+    });
+    // B's revision is admitted but not recorded; its reservation counts.
+    expect(await rooms.edit('room-c', 'c'.repeat(size))).toEqual({
+      kind: 'rejected',
+      reason: 'evidence-ledger-full',
+    });
+    rooms.setEvidenceDown(false);
+    // B's publication drains into the ledger it was reserved in.
+    await rooms.runtime.discover({ taskId: 'room-b', request: rooms.request });
+    expect(rooms.ledgerRemaining()).toBeLessThan(remaining);
+    // C is still refused explicitly, never left pending.
+    expect(await rooms.edit('room-c', 'c'.repeat(size))).toEqual({
+      kind: 'rejected',
+      reason: 'evidence-ledger-full',
+    });
   }, 300_000);
 });

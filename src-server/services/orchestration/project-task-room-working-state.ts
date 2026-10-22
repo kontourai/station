@@ -64,6 +64,18 @@ export interface ProjectTaskRoomWorkingState {
   readRevisionPublication(input: {
     scope: { projectId: string; taskId: string; documentId: string };
   }): Promise<RevisionPublicationRead>;
+  /**
+   * The Station-wide revision ledger as room admission counts it: stored
+   * receipts plus every admitted publication not yet frozen (#4007).
+   */
+  revisionLedgerUsage?(): Promise<
+    | {
+        readonly kind: 'available';
+        readonly count: number;
+        readonly recordBytes: number;
+      }
+    | { readonly kind: 'unavailable' }
+  >;
   markRevisionPublication(input: {
     scope: { projectId: string; taskId: string; documentId: string };
     intentId: string;
@@ -312,6 +324,11 @@ export function createProjectTaskRoomWorkingState(
         type: 'receipt',
         ...input,
       }),
+    revisionLedgerUsage: () =>
+      request<
+        | { kind: 'available'; count: number; recordBytes: number }
+        | { kind: 'unavailable' }
+      >({ type: 'revision-ledger-usage' }),
     readRevisionPublication: (
       input: Parameters<
         ProjectTaskRoomWorkingState['readRevisionPublication']

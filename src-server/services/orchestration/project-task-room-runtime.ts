@@ -42,6 +42,7 @@ import {
   type LiveWorkScope,
   LiveWorkSession,
 } from '../../domain/live-work-session.js';
+import type { RevisionEvidenceAdmissionRefusal } from '../../domain/revision-bound-evidence.js';
 import {
   SHARED_WORKING_STATE_SCHEMA_VERSION,
   SharedWorkingState,
@@ -53,6 +54,7 @@ import {
   type SharedWorkingStateEditBatch,
   sharedWorkingStateEditBatchDigest,
 } from '../../domain/shared-working-state-editing.js';
+import { taskRoomDocumentSeedRefusal } from '../../domain/task-room-document-capacity.js';
 import { ProjectTaskLiveWorkHistoryAdapter } from './project-task-live-work-history-adapter.js';
 import {
   projectTaskRoomDocumentId,
@@ -2026,12 +2028,32 @@ export class ProjectTaskRoomRuntime {
     }
   }
 
-  /** Acceptance reuses human editing authority and never replaces later edits. */
+  /**
+   * Why a proposal brief cannot seed a new Task document, checked before the
+   * Task exists (#4007): the document's own bound, then the Station-wide
+   * revision ledger as room admission counts it (#4055). Advisory: a write
+   * between this check and the seed is still refused by the seed itself.
+   */
+  async proposalBriefRefusal(
+    text: string,
+  ): Promise<RevisionEvidenceAdmissionRefusal | null> {
+    const document = taskRoomDocumentSeedRefusal(text);
+    if (document || this.#closed || this.#deps.hosted?.()) return document;
+    const usage = await this.#deps.working.revisionLedgerUsage?.();
+    return usage?.kind === 'available'
+      ? taskRoomDocumentSeedRefusal(text, usage)
+      : null;
+  }
+
+  /**
+   * Acceptance reuses human editing authority and never replaces later edits.
+   * A capacity refusal is returned as its reason: no retry can succeed.
+   */
   async seedProposalBrief(input: {
     taskId: string;
     request: Request;
     text: string;
-  }): Promise<boolean> {
+  }): Promise<boolean | RevisionEvidenceAdmissionRefusal> {
     const plan = await this.editPlan({
       ...input,
       intentId: randomUUID(),
@@ -2048,6 +2070,13 @@ export class ProjectTaskRoomRuntime {
       intentDigest: plan.digest,
     });
     if (result.kind === 'committed' || result.kind === 'duplicate') return true;
+    if (
+      result.kind === 'rejected' &&
+      'reason' in result &&
+      (result.reason === 'document-full' ||
+        result.reason === 'evidence-ledger-full')
+    )
+      return result.reason;
     // A concurrent accept may have committed the same brief after our plan.
     const document = await this.document({
       taskId: input.taskId,
@@ -4680,7 +4709,8 @@ function agentStartedLifecycle(
 /** Every room edit plan mints its identity from the planned state (#4008). */
 function roomEditIntentId({ below }: { readonly below: string | null }) {
   const intentId = lowSortingIntentId(below);
-  // Unreachable in practice (36^8 edits); the planner refuses the edit.
+  // Unreachable in practice (36^8 edits). The throw reaches the planner's
+  // catch, which returns a refused plan ('editing authority unavailable').
   if (!intentId) throw new Error('room edit identity space is exhausted');
   return intentId;
 }

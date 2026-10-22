@@ -1,5 +1,6 @@
 import {
   MAX_REVISION_EVIDENCE_IDENTIFIER_BYTES,
+  type RevisionEvidenceAdmissionRefusal,
   revisionEvidenceAdmission,
   revisionEvidenceRecordBytesUpperBound,
 } from './revision-bound-evidence.js';
@@ -33,14 +34,29 @@ const PLACEHOLDER = 'x'.repeat(MAX_REVISION_EVIDENCE_IDENTIFIER_BYTES);
  * refused explicitly when the seed is written.
  */
 export function taskRoomDocumentSeedFits(text: string): boolean {
-  if (text.length === 0) return true;
+  return taskRoomDocumentSeedRefusal(text) === null;
+}
+
+/**
+ * Why `text` cannot seed an empty Task document, or null when it can. With
+ * `ledger` (the room's reserved ledger usage) it also answers whether the
+ * Station-wide revision ledger has room for the seed's record (#4055).
+ */
+export function taskRoomDocumentSeedRefusal(
+  text: string,
+  ledger: { readonly count: number; readonly recordBytes: number } = {
+    count: 0,
+    recordBytes: 0,
+  },
+): RevisionEvidenceAdmissionRefusal | null {
+  if (text.length === 0) return null;
   const scope = {
     projectId: PLACEHOLDER,
     taskId: PLACEHOLDER,
     documentId: PLACEHOLDER,
   };
   const intentId = lowSortingIntentId(null);
-  if (!intentId) return false;
+  if (!intentId) return 'document-full';
   const state = new SharedWorkingState({ scope });
   const applied = state.apply(
     {
@@ -61,28 +77,26 @@ export function taskRoomDocumentSeedFits(text: string): boolean {
       allowedActorIds: new Set([PLACEHOLDER]),
     },
   );
-  if (applied.outcome !== 'applied') return false;
+  if (applied.outcome !== 'applied') return 'document-full';
   const snapshotBytes = Buffer.byteLength(
     JSON.stringify(state.snapshot()),
     'utf8',
   );
-  return (
-    revisionEvidenceAdmission({
+  return revisionEvidenceAdmission({
+    snapshotBytes,
+    textBytes: Buffer.byteLength(text, 'utf8'),
+    recordBytes: revisionEvidenceRecordBytesUpperBound({
       snapshotBytes,
-      textBytes: Buffer.byteLength(text, 'utf8'),
-      recordBytes: revisionEvidenceRecordBytesUpperBound({
-        snapshotBytes,
-        text,
-        scope,
-        actor: {
-          actorId: PLACEHOLDER,
-          kind: 'human',
-          displayLabel: PLACEHOLDER,
-        },
-        correlation: { projectId: PLACEHOLDER, taskId: PLACEHOLDER },
-      }),
-      reserveBytes: TASK_ROOM_INSERT_RESERVE_BYTES,
-      ledger: { count: 0, recordBytes: 0 },
-    }) === null
-  );
+      text,
+      scope,
+      actor: {
+        actorId: PLACEHOLDER,
+        kind: 'human',
+        displayLabel: PLACEHOLDER,
+      },
+      correlation: { projectId: PLACEHOLDER, taskId: PLACEHOLDER },
+    }),
+    reserveBytes: TASK_ROOM_INSERT_RESERVE_BYTES,
+    ledger,
+  });
 }
