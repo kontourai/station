@@ -158,6 +158,16 @@ an agent. Android retains its system resolver. Redirects remain disabled, and
 ureq negotiates and decodes gzip without treating its compressed length as the
 length of the decoded response.
 
+A network epoch change retires pooled connections at checkout. After the last
+successful request write, a silent response wait checks that epoch at 100 ms
+socket-wait intervals and fails with `network_changed` before any response bytes
+arrive. It retains the ordinary or foreground response deadline between checks.
+Transmission is not interrupted by epoch changes, and a written request is never
+replayed by this transport. Once response bytes arrive, the existing receive
+behavior applies. The WebView adapter preserves `network_changed` as a coded
+`TypeError` through the SDK, so the outbound queue retains uncertain delivery
+and foreground errors offer Retry; the error does not prove the request was unsent.
+
 Each request still reads the OS credential store. There is no portable keyring
 change notification covering external replacement, deletion and locked storage,
 so a cached bearer could hide a refusal. The two request-path keyring reads are
@@ -169,6 +179,9 @@ device/inode, size, mtime and ctime, including nanoseconds. Settled high-resolut
 metadata avoids opening the file. Recent, coarse or future timestamps require a
 byte comparison to cover timestamp collisions. File I/O runs outside the global
 cache mutex; a write generation prevents publishing a snapshot across invalidation.
+Publication also compares the installed path and file version with the reader's
+starting snapshot, so a late reader of an old inode cannot overwrite a newer
+reader's publication within the same write generation.
 Poisoned cache locks recover on reads as well as writes. Atomic
 replacement and in-place edits invalidate the snapshot, including a same-size
 edit that restores mtime. Errors never fall back to cached authority. Windows
