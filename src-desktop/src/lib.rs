@@ -2506,6 +2506,7 @@ struct StationProfileSnapshotCache {
     snapshot: Option<(
         std::path::PathBuf,
         StationProfileFileVersion,
+        String,
         std::sync::Arc<CredentialProfileStore>,
     )>,
 }
@@ -2534,13 +2535,9 @@ impl StationProfileSnapshotCache {
                 );
             }
             let version = StationProfileFileVersion::of(&metadata);
-            if let Some((cached_path, cached_version, store)) = &self.snapshot {
-                if cached_path == path && *cached_version == version {
-                    return Ok(std::sync::Arc::clone(store));
-                }
-            }
-            // Never let a failed refresh fall back to an older authorized snapshot.
-            self.snapshot = None;
+            // Timestamp resolution can hide an in-place edit with restored
+            // mtime. Reuse parsing only after comparing this open file's bytes.
+            let cached = self.snapshot.take();
             let mut contents = String::new();
             file.read_to_string(&mut contents)
                 .map_err(|error| error.to_string())?;
@@ -2549,8 +2546,22 @@ impl StationProfileSnapshotCache {
             {
                 return Err("saved Station metadata changed while reading".into());
             }
-            let store = std::sync::Arc::new(parse_station_profile_store(&contents)?);
-            self.snapshot = Some((path.to_owned(), version, std::sync::Arc::clone(&store)));
+            let store = match cached {
+                Some((cached_path, cached_version, cached_contents, store))
+                    if cached_path == path
+                        && cached_version == version
+                        && cached_contents == contents =>
+                {
+                    store
+                }
+                _ => std::sync::Arc::new(parse_station_profile_store(&contents)?),
+            };
+            self.snapshot = Some((
+                path.to_owned(),
+                version,
+                contents,
+                std::sync::Arc::clone(&store),
+            ));
             Ok(store)
         }
         #[cfg(not(unix))]
