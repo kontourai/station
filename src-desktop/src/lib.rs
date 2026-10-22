@@ -22013,7 +22013,8 @@ mod tests {
     #[cfg(not(mobile))]
     #[test]
     fn profile_writers_cannot_bypass_the_native_secure_entry_boundary() {
-        let mut pending = vec![Path::new(env!("CARGO_MANIFEST_DIR")).join("src")];
+        let source_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut pending = vec![source_root.clone()];
         while let Some(directory) = pending.pop() {
             for entry in std::fs::read_dir(directory).unwrap() {
                 let path = entry.unwrap().path();
@@ -22022,7 +22023,7 @@ mod tests {
                     continue;
                 }
                 if path.extension().is_none_or(|ext| ext != "rs")
-                    || path.file_name().unwrap() == "native_secure_entry.rs"
+                    || path == source_root.join("native_secure_entry.rs")
                 {
                     continue;
                 }
@@ -22036,7 +22037,7 @@ mod tests {
                 // The one lib.rs occurrence is the real Windows Credential
                 // Manager fixture. Count the whole file, including production
                 // code located after test modules; any growth needs review.
-                let allowed = usize::from(path.file_name().unwrap() == "lib.rs");
+                let allowed = usize::from(path == source_root.join("lib.rs"));
                 assert_eq!(
                     text.matches(&constructor).count(),
                     allowed,
