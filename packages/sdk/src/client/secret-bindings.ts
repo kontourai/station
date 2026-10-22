@@ -172,7 +172,13 @@ export async function updateTelemetrySecretBindingGrant(
   const response = await mutateJson(
     `${base}/api/secret-bindings/${encodeURIComponent(id)}/${operation}`,
     'POST',
-    { ...options, maxResponseBytes: 32_768 },
+    {
+      ...options,
+      maxResponseBytes: 32_768,
+      ...(operation === 'unbind'
+        ? { offlinePolicy: 'always-attempt' as const }
+        : {}),
+    },
     input,
   );
   const binding = await bindingResponse<SecretBindingView>(response);
@@ -263,6 +269,7 @@ export const unbindSecretBinding = (
     `/${encodeURIComponent(id)}/unbind`,
     {
       method: 'POST',
+      offlinePolicy: 'always-attempt',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     },

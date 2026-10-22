@@ -33,11 +33,17 @@ import { cancelPeerEnrollment } from '../client/peer-enrollments';
 import { changeProjectAccess } from '../client/project-access';
 import { commandProjectTaskRoomLive } from '../client/project-task-rooms';
 import { deleteProject } from '../client/projects';
-import { revokeSecretBinding } from '../client/secret-bindings';
+import {
+  revokeSecretBinding,
+  unbindSecretBinding,
+  updateTelemetrySecretBindingGrant,
+} from '../client/secret-bindings';
 import { useCancelDeviceCodeLoginMutation } from '../device-code-login';
 import { useEngineAccountLoginMutation } from '../engine-accounts';
 import { useRevokeAnswerShareMutation } from '../query-domains/answerShares';
 import {
+  dispatchOrchestrationCommand,
+  dispatchOrchestrationCommandWithReceipt,
   interruptOrchestrationTurn,
   resolveOrchestrationRequest,
 } from '../query-domains/chatRuntimeOrchestration';
@@ -83,6 +89,43 @@ afterEach(() => {
 });
 
 const operations: [string, () => Promise<unknown>][] = [
+  [
+    'session stop',
+    () =>
+      dispatchOrchestrationCommand(
+        { type: 'stopSession', threadId: 'session' },
+        base,
+      ),
+  ],
+  ...(['stopSession', 'interruptTurn'] as const).map(
+    (type): [string, () => Promise<unknown>] => [
+      `receipted ${type}`,
+      () =>
+        dispatchOrchestrationCommandWithReceipt(
+          { type, threadId: 'session' },
+          base,
+        ),
+    ],
+  ),
+  [
+    'secret consumer withdrawal',
+    () =>
+      unbindSecretBinding(base, 'secret', {
+        integrationId: 'integration',
+        envName: 'KEY',
+        expectedRevision: 1,
+      }),
+  ],
+  [
+    'telemetry credential withdrawal',
+    () =>
+      updateTelemetrySecretBindingGrant(base, 'secret', 'unbind', {
+        kind: 'instance-telemetry-destination',
+        transport: 'product',
+        destination: 'https://collector.example.test',
+        expectedRevision: 1,
+      }),
+  ],
   [
     'task room Stop / delegated interrupt',
     () => interruptDelegatedTask(base, 'task', {}, { requestScope: scope }),

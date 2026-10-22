@@ -1187,7 +1187,8 @@ describe('foreground admission deadline through the send caller', () => {
             outcome: 'started',
             conversationId: turn.conversationId!,
             clientTurnId: turn.clientTurnId,
-            providerTurnId: 'provider-after-timeout',
+            sessionId: chat,
+            turnId: 'provider-after-timeout',
           }),
           { station: { apiBase: 'http://api.test' } },
         );

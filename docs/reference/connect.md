@@ -237,9 +237,12 @@ normal polling cadence. The
 last verified profile/session data may remain visible during a transient
 outage. Health snapshots do not themselves make all consumers read-only. The
 SDK transport can reject non-safe HTTP methods before dispatch when a host's
-credential resolver supplies `mutationAllowed: () => false`. Station's native
-broker credential owner supplies that guard for its bounded read transport;
-the browser resolver refuses writes on connection-layer reachability failures
+credential resolver supplies `mutationAllowed: () => false`. This guard describes
+reachability. Native broker transports independently admit supported management
+POSTs with current account proof and refuse unsupported writes. Operation owners
+mark cancellation, Stop, sign-out and access withdrawal with the typed
+`offlinePolicy: 'always-attempt'` exception; it bypasses only reachability.
+The browser resolver refuses ordinary writes on connection-layer reachability failures
 observed since this page mounted. Successful authenticated reads or health
 probes recover reachability even when `navigator.onLine` reports false. Older stored failures
 permit a new recovery attempt. Individual
