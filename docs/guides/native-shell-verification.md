@@ -279,7 +279,8 @@ iOS's sleep-paused monotonic clock from keeping a pre-sleep socket eligible.
 
 A failed pooled exchange retries once with a new agent only before an HTTP
 write was attempted, or for GET/HEAD before any response bytes arrived.
-Partial response headers prevent retry. A failed write is treated as possibly
+The pooled GET/HEAD attempt waits at most three seconds for its first response
+bytes before trying the fresh connection. Partial response headers prevent retry. A failed write is treated as possibly
 sent because ureq does not report partial-write counts. Cancellation and the
 captured profile authority are checked before retry. No response body failure
 or possibly sent mutation authorizes replay.

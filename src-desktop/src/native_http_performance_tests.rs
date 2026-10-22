@@ -41,7 +41,7 @@ impl KeepAliveStation {
                                     Ok(0) | Err(_) => break,
                                     Ok(_) => {}
                                 }
-                                assert!(line.starts_with("GET /"));
+                                assert!(line.starts_with("GET /") || line.starts_with("POST /"));
                                 let mut authorization = String::new();
                                 loop {
                                     line.clear();
@@ -452,14 +452,19 @@ fn native_http_genesis_read_waits_for_publication_but_missing_initialized_store_
     )
     .unwrap();
     let reading = path.clone();
+    let (entered, waiting) = std::sync::mpsc::sync_channel(1);
     let reader = std::thread::spawn(move || {
         prepare_mobile_station_profile_read(&reading, || {
+            entered.send(()).unwrap();
             let _lock = lock_station_profiles(&reading)?;
             ensure_mobile_profile_store_genesis(&reading)
         })?;
         let contents = read_station_profile_store(&reading).map_err(|e| e.to_string())?;
         parse_station_profile_store(&contents)
     });
+    waiting
+        .recv_timeout(Duration::from_secs(3))
+        .expect("reader waits on genesis publication");
     write_empty_station_profile_store(&path).unwrap();
     drop(writer);
     assert_eq!(reader.join().unwrap().unwrap().revision, 0);
@@ -473,11 +478,12 @@ fn native_http_genesis_read_waits_for_publication_but_missing_initialized_store_
 
 #[test]
 fn native_http_stale_pool_retries_only_safe_exchanges_on_a_fresh_connection() {
-    for (method, partial_response, expected_retry) in [
-        ("GET", false, true),
-        ("HEAD", false, true),
-        ("POST", false, false),
-        ("GET", true, false),
+    for (method, partial_response, silent, expected_retry) in [
+        ("GET", false, false, true),
+        ("HEAD", false, false, true),
+        ("POST", false, false, false),
+        ("GET", true, false, false),
+        ("GET", false, true, true),
     ] {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let origin = format!("http://{}", listener.local_addr().unwrap());
@@ -509,9 +515,10 @@ fn native_http_stale_pool_retries_only_safe_exchanges_on_a_fresh_connection() {
             if partial_response {
                 reader.get_mut().write_all(b"HTTP/1.1 ").unwrap();
             }
-            drop(reader);
+            // A NAT black hole stays open without returning even a status byte.
+            let _silent_peer = if silent { Some(reader) } else { None };
             listener.set_nonblocking(true).unwrap();
-            let deadline = Instant::now() + Duration::from_secs(2);
+            let deadline = Instant::now() + Duration::from_secs(if silent { 6 } else { 2 });
             let mut retried = false;
             while Instant::now() < deadline {
                 match listener.accept() {
@@ -551,10 +558,11 @@ fn native_http_stale_pool_retries_only_safe_exchanges_on_a_fresh_connection() {
             .body(Vec::new())
             .unwrap();
         let mut revalidated = false;
-        let result = native_http_transport::run(&agent, request, &AtomicBool::new(false), || {
-            revalidated = true;
-            Ok(())
-        });
+        let result =
+            native_http_transport::run(&agent, request, &AtomicBool::new(false), None, || {
+                revalidated = true;
+                Ok(())
+            });
         assert_eq!(
             result.is_ok(),
             expected_retry,
@@ -582,4 +590,90 @@ fn native_http_network_change_retires_pool_and_already_cloned_agents() {
     assert!(station.get(&saved, "a").starts_with("2:"));
     let replacement = pool.agent(pool_key(&station.origin));
     assert!(station.get(&replacement, "a").starts_with("3:"));
+}
+
+#[test]
+fn native_http_network_change_between_checkout_and_send_retries_post_before_bytes() {
+    const WORKER: &str = "STATION_BEFORE_SEND_EPOCH_WORKER";
+    if std::env::var_os(WORKER).is_none() {
+        assert!(std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "native_http_performance_tests::native_http_network_change_between_checkout_and_send_retries_post_before_bytes", "--nocapture"])
+            .env(WORKER, "1").status().unwrap().success());
+        return;
+    }
+    use ureq::unversioned::transport::{
+        Buffers, ConnectionDetails, Connector, DefaultConnector, NextTimeout, Transport,
+    };
+    #[derive(Debug)]
+    struct ChangeOnCheckout;
+    #[derive(Debug)]
+    struct ChangingTransport {
+        inner: Box<dyn Transport>,
+        probes: usize,
+    }
+    impl Connector<Box<dyn Transport>> for ChangeOnCheckout {
+        type Out = ChangingTransport;
+        fn connect(
+            &self,
+            _: &ConnectionDetails,
+            inner: Option<Box<dyn Transport>>,
+        ) -> Result<Option<Self::Out>, ureq::Error> {
+            Ok(inner.map(|inner| ChangingTransport { inner, probes: 0 }))
+        }
+    }
+    impl Transport for ChangingTransport {
+        fn buffers(&mut self) -> &mut dyn Buffers {
+            self.inner.buffers()
+        }
+        fn transmit_output(
+            &mut self,
+            amount: usize,
+            timeout: NextTimeout,
+        ) -> Result<(), ureq::Error> {
+            self.inner.transmit_output(amount, timeout)
+        }
+        fn await_input(&mut self, timeout: NextTimeout) -> Result<bool, ureq::Error> {
+            self.inner.await_input(timeout)
+        }
+        fn is_open(&mut self) -> bool {
+            self.probes += 1;
+            let open = self.inner.is_open();
+            if self.probes == 2 {
+                native_http_transport::network_changed();
+            }
+            open
+        }
+        fn is_tls(&self) -> bool {
+            self.inner.is_tls()
+        }
+    }
+    let station = KeepAliveStation::start();
+    let connector = DefaultConnector::default()
+        .chain(ChangeOnCheckout)
+        .chain(native_http_transport::ObserveConnector);
+    let agent = ureq::Agent::with_parts(
+        native_http_agent_config().build(),
+        connector,
+        ureq::unversioned::resolver::DefaultResolver::default(),
+    );
+    assert!(station.get(&agent, "first").starts_with("1:"));
+    let request = ureq::http::Request::builder()
+        .method("POST")
+        .uri(&station.origin)
+        .body(Vec::new())
+        .unwrap();
+    let mut revalidated = false;
+    let mut response =
+        native_http_transport::run(&agent, request, &AtomicBool::new(false), None, || {
+            revalidated = true;
+            Ok(())
+        })
+        .unwrap();
+    assert!(response
+        .body_mut()
+        .read_to_string()
+        .unwrap()
+        .starts_with("2:"));
+    assert!(revalidated);
+    assert_eq!(station.connections.load(Ordering::SeqCst), 2);
 }

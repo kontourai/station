@@ -2266,7 +2266,10 @@ fn write_empty_station_profile_store(path: &std::path::Path) -> Result<(), Strin
         drop(file);
         // A completed inode is published without replacing an existing store.
         match std::fs::hard_link(&temporary, path) {
-            Ok(()) => sync_profile_store_directory(parent),
+            Ok(()) => {
+                sync_profile_store_directory(parent)?;
+                Ok(())
+            }
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(()),
             Err(error) => Err(format!("publish initial saved Station metadata: {error}")),
         }
@@ -4437,7 +4440,7 @@ fn station_native_http_request_to_sink_blocking(
             slot,
             &cancel,
             move || {
-                native_http_transport::run(&agent, request, &retry_cancel, || {
+                native_http_transport::run(&agent, request, &retry_cancel, body_deadline, || {
                     revalidate_native_http_profile(
                         &retry_app,
                         &retry_authority,
