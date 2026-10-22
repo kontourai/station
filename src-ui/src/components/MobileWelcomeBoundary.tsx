@@ -22,8 +22,8 @@ export function MobileWelcomeBoundary({ children }: { children: ReactNode }) {
         <p className="mobile-welcome__eyebrow">Station on your phone</p>
         <h1 id="mobile-welcome-title">Your work, wherever you are.</h1>
         <p className="mobile-welcome__intro">
-          Connect to Station on your computer to continue chats and review work.
-          Your computer runs the agents and keeps your files.
+          Connect to a Station on your computer to continue chats and review
+          work. Your computer runs the agents and keeps your files.
         </p>
         <Button
           variant="primary"
