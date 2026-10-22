@@ -23,8 +23,11 @@ delegation rules still apply. With it:
 
 `GET /api/orchestration/delegations/attempts/:attemptId`, served by the
 actual executing receiver only, requires the CURRENT verified delegation
-peer grant the claim is keyed by (same grant, live id match). Everyone else
-is refused with no data. The grant is re-resolved AFTER the store read, so
+peer grant the claim is keyed by (same grant, live id match). Callers without
+a current qualifying delegation-peer grant are refused with no data. A different
+valid peer grant reads only its own `(grant, attemptId)` namespace; when it has
+no matching claim, the response is `none`, without disclosing another grant's
+claim. The grant is re-resolved AFTER the store read, so
 a revocation landing mid-lookup is still refused; a store fault answers a
 fixed 503 with no exception text. The projection is closed — state, the
 reserved task reference, and (when accepted) the initial turn id. Never a

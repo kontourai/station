@@ -1465,7 +1465,9 @@ This reads the actual receiver's
 `GET /api/orchestration/delegations/attempts/:attemptId` endpoint once. `--on`
 is refused because lookup is receiver-local, not forwarded. Authenticate with
 the **same current delegation-peer grant** that owns the claim. An ordinary
-operator/Device credential or a different peer grant is refused. A CLI talking
+operator/Device credential is refused. A different valid delegation-peer grant
+looks up its own claim namespace: without its own matching attempt, the result
+is `none`, not another grant's claim or a refusal. A CLI talking
 to a forwarding controller cannot use that controller's server-held peer
 credential automatically; this command does not export it or broaden access.
 
