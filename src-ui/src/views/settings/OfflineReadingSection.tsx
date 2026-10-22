@@ -20,6 +20,12 @@ import {
 
 export function OfflineReadingSection() {
   const { namespace } = useAuthorityPersistence();
+  return namespace ? (
+    <VerifiedOfflineReadingSection namespace={namespace} />
+  ) : null;
+}
+
+function VerifiedOfflineReadingSection({ namespace }: { namespace: string }) {
   const scope = useHostRequestAuthorityScope();
   const { captureCredentialEvidence } = useConnections();
   const evidence = captureCredentialEvidence();

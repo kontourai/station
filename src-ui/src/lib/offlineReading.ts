@@ -121,6 +121,7 @@ export async function configureOfflineReading(
 }
 
 export async function clearOfflineReading() {
+  if (typeof indexedDB === 'undefined') return;
   // Keep a tombstone so a delayed writer cannot recreate a cleared shelf.
   await update<Shelf>(
     KEY,
