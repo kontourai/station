@@ -1170,15 +1170,22 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
             options?: { workItemProvenance?: 'project-board' },
           ): Promise<{ id: string; createdAt: string }>;
           readTaskView(id: string): { workItemObservedAt?: string } | null;
+          sameProject(a: string, b: string): boolean;
         };
         const projects = Reflect.get(runtime, 'projectService') as {
-          createProject(input: object): Promise<{ slug: string }>;
+          createProject(input: object): Promise<{ slug: string; id: string }>;
         };
         const project = await projects.createProject({
           name: 'Tracker project',
           slug: 'tracker-project',
           workingDirectory: home,
         });
+        // The runtime's task graph compares Projects as one identity, slug
+        // or id (review round 3, F4). A real create resolves the Project by
+        // slug, so the comparison is read directly; the runtime wires it.
+        expect(project.id).not.toBe(project.slug);
+        expect(graph.sameProject(project.slug, project.id)).toBe(true);
+        expect(graph.sameProject(project.slug, 'another-project')).toBe(false);
         // As a board-checked `POST /api/tasks` records it (#4003 review F4).
         const task = await graph.createTask(
           {
