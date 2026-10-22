@@ -1128,6 +1128,34 @@ binding and model. It does not edit the saved Agent.
 
 ---
 
+## Start a Project from a repository
+
+In **New Project**, open **Start from a Git repository**, enter the explicit
+HTTPS or SSH repository URL, and optionally choose a branch or tag. Choose
+**Acquire repository**, then **Use this checkout** to put the working copy into
+the Project draft. Station uses the repository name for an untouched name field.
+Create the Project and select its starter through the usual form.
+
+Acquisition uses this host's Git credentials and currently requires the Station
+operator. URLs containing HTTPS user information, passwords, query strings or
+fragments are refused. An absolute local mirror path is also supported.
+Station verifies the clone's origin, resolves its commit and checks it out in
+detached state. It does not install dependencies or execute repository setup.
+
+The browser retains the operation ID in session storage, partitioned by Station
+and account. Reopening the form checks that operation; a lost response does not
+automatically clone again. **Check operation** reads the recorded result.
+**Retry acquisition** explicitly starts a new attempt in a different owned
+directory, preserving earlier attempts and their edits. An interrupted operation
+can remain acquiring until inspected or explicitly retried. **Choose another
+source** clears the browser selection; it does not delete a working copy.
+
+The receipt records a completed acquisition, not continuing checkout integrity,
+Project binding, build readiness or a successful Agent turn. Provider repository
+pickers, account-specific Git credentials, cancellation and persistent Sources
+management remain part of the [onboarding epic](https://github.com/kontourai/station/issues/4027).
+See the [API contract](../reference/api.md#repository-acquisition).
+
 ## Developer services and computers
 
 Connections has one clear home for each relationship:

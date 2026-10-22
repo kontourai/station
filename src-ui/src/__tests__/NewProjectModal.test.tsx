@@ -2,15 +2,30 @@
  * @vitest-environment jsdom
  */
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
   fireEvent,
-  render,
+  render as renderView,
   screen,
   waitFor,
   within,
 } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+
+const queryClients: QueryClient[] = [];
+function render(ui: Parameters<typeof renderView>[0]) {
+  const client = new QueryClient();
+  queryClients.push(client);
+  return renderView(ui, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+}
+afterEach(() => {
+  for (const client of queryClients.splice(0)) client.clear();
+});
 
 const platformProfileState = vi.hoisted(() => ({
   profile: {
@@ -185,6 +200,7 @@ import { NewProjectModal } from '../components/modals/NewProjectModal';
 describe('NewProjectModal starter layout picker', () => {
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
     resetPlatformProfile();
     createProjectMock.mockReset();
     createProjectMock.mockResolvedValue({ slug: 'my-project' });
@@ -770,6 +786,7 @@ describe('NewProjectModal starter layout picker', () => {
 describe('NewProjectModal copy density and layout browser placement (station#1825 items 3-4)', () => {
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
     resetPlatformProfile();
     createProjectMock.mockReset();
     createProjectMock.mockResolvedValue({ slug: 'my-project' });
@@ -875,6 +892,7 @@ describe('NewProjectModal copy density and layout browser placement (station#182
 describe('NewProjectModal layout browser dismissal scope (station#1825 item 4, review round 2)', () => {
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
     resetPlatformProfile();
     createProjectMock.mockReset();
     createProjectMock.mockResolvedValue({ slug: 'my-project' });
@@ -1031,6 +1049,7 @@ describe('NewProjectModal layout browser dismissal scope (station#1825 item 4, r
 describe('NewProjectModal refusals (4-HOME-007, 4-HOME-008, SHELL-01)', () => {
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
     resetPlatformProfile();
     createProjectMock.mockReset();
     createProjectMock.mockResolvedValue({ slug: 'my-project' });

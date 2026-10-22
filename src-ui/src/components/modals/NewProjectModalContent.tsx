@@ -1,4 +1,4 @@
-import { type RefObject, useEffect, useId, useRef } from 'react';
+import { type RefObject, useEffect, useId, useRef, useState } from 'react';
 import { useNewProjectFormSubmit } from '../../hooks/useNewProjectFormSubmit';
 import type { useNewProjectModalState } from '../../hooks/useNewProjectModalState';
 import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
@@ -18,6 +18,7 @@ import {
   NewProjectIdentityField,
 } from './NewProjectFormFields';
 import { NewProjectLayoutBrowserBody } from './NewProjectLayoutBrowser';
+import { NewProjectRepositorySource } from './NewProjectRepositorySource';
 import { NewProjectStarterPicker } from './NewProjectStarterPicker';
 import { normalizeWorkingDirectory } from './project-form-utils';
 
@@ -147,10 +148,27 @@ function NewProjectIdentityInput({ state }: { state: NewProjectModalState }) {
   );
 }
 
-function NewProjectDetails({ state }: { state: NewProjectModalState }) {
+function NewProjectDetails({
+  state,
+  onAcquisitionBusy,
+}: {
+  state: NewProjectModalState;
+  onAcquisitionBusy: (busy: boolean) => void;
+}) {
   const { draft, starter, submission } = state;
   return (
     <>
+      <NewProjectRepositorySource
+        onBusyChange={onAcquisitionBusy}
+        onUseCheckout={(path, name) => {
+          starter.resetForDirectory();
+          draft.setDirectory(path);
+          if (!draft.nameTouched) {
+            draft.setName(name);
+            draft.setNameTouched(true);
+          }
+        }}
+      />
       <NewProjectDirectoryInput state={state} />
       <NewProjectIdentityInput state={state} />
       <details className="new-project-modal__options">
@@ -188,15 +206,28 @@ function NewProjectForm({
   onClose: () => void;
 }) {
   const { canSubmit, submit } = useNewProjectFormSubmit(state);
+  const [acquisitionBusy, setAcquisitionBusy] = useState(false);
 
   return (
-    <form className="new-project-modal__form" onSubmit={submit}>
+    <form
+      className="new-project-modal__form"
+      onSubmit={(event) => {
+        if (acquisitionBusy) {
+          event.preventDefault();
+          return;
+        }
+        submit(event);
+      }}
+    >
       <div className="new-project-modal__draft-scroll">
         <fieldset
           className="new-project-modal__draft-fields"
           disabled={state.submission.hasCreatedProject}
         >
-          <NewProjectDetails state={state} />
+          <NewProjectDetails
+            state={state}
+            onAcquisitionBusy={setAcquisitionBusy}
+          />
         </fieldset>
       </div>
       {state.submission.hasCreatedProject && (
@@ -205,7 +236,7 @@ function NewProjectForm({
         </p>
       )}
       <NewProjectFormActions
-        canSubmit={canSubmit}
+        canSubmit={canSubmit && !acquisitionBusy}
         hasCreatedProject={state.submission.hasCreatedProject}
         submitting={state.submission.submitting}
         onClose={onClose}

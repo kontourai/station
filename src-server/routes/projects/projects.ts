@@ -128,6 +128,7 @@ import {
 } from './layout-working-directory.js';
 import { createProjectIdentityRoutes } from './project-identity-routes.js';
 import { admitProjectLayoutWrite } from './project-layout-admission.js';
+import { createRepositoryAcquisitionRoutes } from './repository-acquisition-routes.js';
 import {
   createWorkspacePanePreviewRoutes,
   type SessionWorkspaceDirectory,
@@ -506,6 +507,7 @@ export function createProjectRoutes(
   deps: ProjectRouteDeps = {},
 ) {
   const app = new Hono();
+  app.route('/', createRepositoryAcquisitionRoutes(projectHomeDir));
   const resolution = deps.resolution;
   const listProjectCatalogue = createProjectCatalogueReader(
     projectService,

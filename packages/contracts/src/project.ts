@@ -362,3 +362,27 @@ export function projectIconProblem(
 export function isProjectIconImage(icon: string): boolean {
   return icon.startsWith('data:');
 }
+
+/** Host-local repository acquisition; this record is never portable identity. */
+export interface RepositoryAcquisitionRequest {
+  /** Caller retains this UUID across uncertain responses. */
+  requestId: string;
+  /** Explicit HTTPS, SSH or absolute local mirror source. Never inferred from identity. */
+  sourceUrl: string;
+  /** A branch or tag; omission uses the remote's default branch. */
+  sourceRef?: string;
+}
+
+export interface RepositoryAcquisition {
+  schemaVersion: 1;
+  request: RepositoryAcquisitionRequest;
+  phase: 'acquiring' | 'ready' | 'failed';
+  attempt: number;
+  /** Owned directory, retained even after a failed or interrupted acquisition. */
+  checkoutPath: string;
+  resolvedCommit?: string;
+  canonicalRemote?: string;
+  /** Fixed UI-safe summary; subprocess output is never returned here. */
+  error?: string;
+  updatedAt: string;
+}

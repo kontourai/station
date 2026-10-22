@@ -19,8 +19,12 @@ without adding a model API key:
    **Start**. You can start without a Project. The detected Codex Agent is
    enough; creating a custom Agent is optional.
 4. When you want to work with files, choose **Open local project** on Home and
-   select the folder. Station recommends **Coding** for a Git repository.
-   Choose **Create** to open it directly.
+   select an existing folder. To acquire a working copy instead, open **New
+   Project → Start from a Git repository**, enter its HTTPS or SSH URL, choose
+   **Acquire repository**, then **Use this checkout**. Acquisition currently
+   requires the Station operator and uses that host's Git credentials.
+   Station recommends **Coding** for a Git repository. Choose **Create** to open
+   the Project. See [repository setup and recovery](../guides/connections.md#start-a-project-from-a-repository).
 5. To talk to the built-in **Station** assistant using the same Codex account,
    open **Settings → General → Built-in agent engine → Change…**, choose
    **Codex**, choose **Use this engine**, then **Save**. Select **Station** in

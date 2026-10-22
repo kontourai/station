@@ -8,7 +8,9 @@
  * Real pairing service, real runtime auth boundary, real project routes over
  * a real file store.
  */
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+
+import { randomUUID } from 'node:crypto';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -27,6 +29,7 @@ import {
   STATION_CONTROL_ORIGIN_AGENT_TOOL,
   STATION_CONTROL_ORIGIN_HEADER,
 } from '../../../tools/station-control-shared.js';
+import { execGitSync } from '../../../utils/git-exec.js';
 import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
@@ -152,7 +155,7 @@ async function fixture() {
 
   const send = async (
     credential: string,
-    method: 'POST' | 'PUT',
+    method: 'POST' | 'PUT' | 'GET',
     path: string,
     body: Record<string, unknown>,
   ) => {
@@ -162,19 +165,19 @@ async function fixture() {
         Authorization: `Bearer ${credential}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(body),
+      body: method === 'GET' ? undefined : JSON.stringify(body),
     });
     return { status: res.status, body: (await res.json()) as any };
   };
   const sendInternally = async (
     agent: boolean,
-    method: 'POST' | 'PUT',
+    method: 'POST' | 'PUT' | 'GET',
     path: string,
     body: Record<string, unknown>,
   ) => {
     const [init, env] = internalRequestInit(agent, {
       method,
-      body: JSON.stringify(body),
+      body: method === 'GET' ? undefined : JSON.stringify(body),
     });
     const res = await app.request(`/api/projects${path}`, init, env as never);
     return { status: res.status, body: (await res.json()) as any };
@@ -299,4 +302,109 @@ test("an agent's station-control call, marked or not, cannot choose a Project's 
   });
   expect(unmarked).toEqual({ status: 403, body: REFUSAL });
   expect(() => f.stored('acme')).toThrow();
+});
+
+test('repository acquisition uses operator Git authority and returns one durable verified checkout', async () => {
+  const f = await fixture();
+  execGitSync(['init', '--initial-branch=main'], { cwd: f.folderA });
+  writeFileSync(join(f.folderA, 'README.md'), 'operator repository');
+  execGitSync(['add', '.'], { cwd: f.folderA });
+  execGitSync(
+    [
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.test',
+      'commit',
+      '-m',
+      'seed',
+    ],
+    { cwd: f.folderA },
+  );
+  const request = {
+    requestId: randomUUID(),
+    sourceUrl: f.folderA,
+    sourceRef: 'main',
+  };
+  const delegated = await f.send(
+    f.pair('delegation'),
+    'POST',
+    '/repository-acquisitions',
+    request,
+  );
+  expect(delegated.status).toBe(403);
+  const deviceWithExec = await f.send(
+    f.pair('standard', [PAIRING_SCOPE_CODING_EXEC]),
+    'POST',
+    '/repository-acquisitions',
+    request,
+  );
+  expect(deviceWithExec.status).toBe(403);
+  for (const agentMarker of [false, true]) {
+    const internal = await f.sendInternally(
+      agentMarker,
+      'POST',
+      '/repository-acquisitions',
+      request,
+    );
+    expect(internal.status).toBe(403);
+  }
+  const acquired = await f.send(
+    f.operator.credential,
+    'POST',
+    '/repository-acquisitions',
+    request,
+  );
+  expect(acquired.status, JSON.stringify(acquired.body)).toBe(200);
+  expect(acquired.body.data.phase).toBe('ready');
+  expect(acquired.body.data.attempt).toBe(1);
+  expect(acquired.body.data.resolvedCommit).toBe(
+    execGitSync(['rev-parse', 'HEAD'], {
+      cwd: f.folderA,
+      encoding: 'utf8',
+    }).trim(),
+  );
+  const repeated = await f.send(
+    f.operator.credential,
+    'POST',
+    '/repository-acquisitions',
+    request,
+  );
+  expect(repeated.body.data).toEqual(acquired.body.data);
+  const inspected = await f.send(
+    f.operator.credential,
+    'GET',
+    `/repository-acquisitions/${request.requestId}`,
+    {},
+  );
+  expect(inspected.status).toBe(200);
+  expect(inspected.body.data).toEqual(acquired.body.data);
+  const refusedRead = await f.send(
+    f.pair('delegation'),
+    'GET',
+    `/repository-acquisitions/${request.requestId}`,
+    {},
+  );
+  expect(refusedRead.status).toBe(403);
+  expect(JSON.stringify(refusedRead.body)).not.toContain(
+    acquired.body.data.checkoutPath,
+  );
+
+  const changed = await f.send(
+    f.operator.credential,
+    'POST',
+    '/repository-acquisitions',
+    { ...request, sourceRef: 'other' },
+  );
+  expect(changed.status).toBe(409);
+  const invalid = await f.send(
+    f.operator.credential,
+    'POST',
+    '/repository-acquisitions',
+    {
+      requestId: randomUUID(),
+      sourceUrl: 'https://token@example.test/repo.git',
+    },
+  );
+  expect(invalid.status).toBe(400);
 });

@@ -70,6 +70,36 @@ See [account preference contracts](contracts.md#account-preferences) and
 - Readiness, health, catalog discovery, and a completed model turn are distinct
   observations. Response fields and receipts state which one was observed.
 
+## Repository acquisition
+
+`POST /api/projects/repository-acquisitions` accepts
+`{requestId, sourceUrl, sourceRef?}`. Retain the UUID `requestId` across uncertain
+responses. This host-local operation uses the operator's Git configuration;
+operator authority is required for every read and write. Agent-originated
+internal requests and delegated or paired-device credentials are refused, even
+when the device can run commands.
+
+The response is `{success:true,data}` where `data.phase` is `acquiring`, `ready`
+or `failed`. A ready receipt includes `checkoutPath`, `canonicalRemote` and
+`resolvedCommit`. Failed acquisition is a recorded domain result, returned with
+HTTP 200 and a fixed safe explanation. Invalid input is 400, reuse of an ID for
+a different source/ref is 409, and unavailable storage is 503.
+
+`GET /api/projects/repository-acquisitions/:id` reads the receipt (404 when
+absent). `POST /api/projects/repository-acquisitions/:id/retry` explicitly starts
+a fresh directory for a failed or interrupted attempt. Repeating the original
+POST returns the same receipt; it never retries acquisition implicitly. A ready
+receipt is retained even if the remote branch later moves. Cross-process locking
+serializes attempts. Raw subprocess output and credentials are not response data.
+
+The request retains an explicit clone transport rather than deriving one from a
+canonical identity. Clone, remote read, commit resolution and detached checkout
+are bounded. Hook/filter hardening comes from the shared Git execution owner.
+Earlier directories are retained on failure or retry. Receipt publication failure
+preserves uncertainty; inspect the operation before retrying. These endpoints do
+not create a Project, install dependencies, authorize setup or promise that a
+previously acquired directory remains unchanged.
+
 ## Choosing a working folder
 
 Naming a folder takes the authority to run commands there: for a paired
