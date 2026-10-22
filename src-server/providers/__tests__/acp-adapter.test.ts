@@ -3822,6 +3822,29 @@ describe('AcpAdapter', () => {
     const idle = await nextOf('tool.started');
     expect(idle).not.toHaveProperty('invocationId');
     expect(idle).not.toHaveProperty('turnId');
+    // A later send does not adopt it, even when an update re-announces it.
+    await adapter.sendTurn({
+      threadId: 'thread-origin',
+      input: 'later',
+      invocationId: 'invocation-later',
+    });
+    await nextOf('turn.started');
+    await update({
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'call-idle',
+      rawInput: { command: 'sleep 5' },
+    });
+    const reannounced = await nextOf('tool.started');
+    expect(reannounced).toMatchObject({ toolCallId: 'call-idle' });
+    expect(reannounced).not.toHaveProperty('invocationId');
+    await update({
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'call-idle',
+      status: 'completed',
+    });
+    expect(await nextOf('tool.completed')).not.toHaveProperty('invocationId');
+    processes[0]!.resolvePrompt('end_turn');
+    await nextOf('turn.completed');
     await adapter.sendTurn({ threadId: 'thread-origin', input: 'three' });
     await nextOf('turn.started');
     await update({

@@ -578,7 +578,7 @@ export interface AcpSessionRecord {
    * The turn each open tool call started in, so its progress and terminal
    * name that turn even when they arrive after it ended.
    */
-  toolCallOrigins?: Map<string, AcpTurnOrigin>;
+  toolCallOrigins?: Map<string, AcpTurnOrigin | null>;
   stopping?: boolean;
   /** At most one engine re-establishment is attempted for this session. */
   credentialRecoveryAttempted?: boolean;
@@ -3501,12 +3501,11 @@ export class AcpAdapter implements ProviderAdapterShape {
       event.method === 'tool.completed'
     ) {
       const calls = (record.toolCallOrigins ??= new Map());
-      if (
-        event.method === 'tool.started' &&
-        current &&
-        !calls.has(event.toolCallId)
-      )
-        calls.set(event.toolCallId, current);
+      // Recorded at first sight, with no origin when no stamped turn is
+      // open: the supervisor re-emits `tool.started` on a metadata update,
+      // and that must not adopt whichever send is open by then.
+      if (event.method === 'tool.started' && !calls.has(event.toolCallId))
+        calls.set(event.toolCallId, current ?? null);
       const call = calls.get(event.toolCallId);
       if (event.method === 'tool.completed') calls.delete(event.toolCallId);
       this.publish(
