@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomInt } from 'node:crypto';
 import { canonicalizeForDigest } from '@kontourai/station-contracts/fleet-routing-receipt';
 import {
   MAX_COLLABORATIVE_EDIT_BATCH_BYTES,
@@ -18,6 +18,47 @@ import {
 } from './shared-working-state.js';
 
 export const MAX_SHARED_EDIT_TEXT_CODE_UNITS = 256 * 1024;
+
+const LOW_SORTING_COUNTER_WIDTH = 8;
+const LOW_SORTING_COUNTER_MAX = 36 ** LOW_SORTING_COUNTER_WIDTH - 1;
+const LOW_SORTING_SUFFIX_WIDTH = 6;
+const LOW_SORTING_ID = /^!([0-9a-z]{8})/;
+
+/**
+ * A room edit identity that sorts below `below`, the lowest atom id already in
+ * the document (#4008). RGA siblings render in ascending id order, so a new
+ * insertion lands directly after its predecessor only when its atoms sort
+ * below that predecessor's existing children, tombstones included. The lowest
+ * atom id bounds every possible sibling, so the result is derived from the
+ * document state itself: it holds across restarts, processes and clients, and
+ * two writers planning against the same state each sort below everything that
+ * state contains (their mutual order is the ordinary concurrent-insert tie).
+ *
+ * Shape: `!`, a fixed-width base-36 counter one below the lowest existing
+ * counter (so lexicographic order is numeric order), then a random suffix that
+ * keeps concurrent identities distinct. `!` sorts below every other id this
+ * runtime has minted (UUIDs, `p:` seeds). Short on purpose: every atom stores
+ * its own id and its predecessor's, so id length is most of each character's
+ * stored bytes (#4007). Returns null only when the counter space is exhausted.
+ */
+export function lowSortingIntentId(
+  below: string | null,
+  suffix: () => string = randomLowSortingSuffix,
+): string | null {
+  const match = below ? LOW_SORTING_ID.exec(below) : null;
+  const counter = match
+    ? Number.parseInt(match[1], 36) - 1
+    : LOW_SORTING_COUNTER_MAX;
+  if (counter < 0) return null;
+  return `!${counter.toString(36).padStart(LOW_SORTING_COUNTER_WIDTH, '0')}${suffix()}`;
+}
+
+function randomLowSortingSuffix(): string {
+  let value = '';
+  for (let index = 0; index < LOW_SORTING_SUFFIX_WIDTH; index += 1)
+    value += randomInt(36).toString(36);
+  return value;
+}
 const MAX_SHARED_EDIT_TEXT_BYTES = 256 * 1024;
 const SHARED_WORKING_STATE_EDIT_BATCH_DIGEST_VERSION = 1 as const;
 
@@ -326,7 +367,12 @@ export function createSharedWorkingStateEditingCapability(options: {
   readonly actor: () => WorkingStateActor;
   readonly replicaId: string;
   readonly attribution?: () => WorkingStateAttribution | undefined;
-  readonly nextIntentId: () => string;
+  /**
+   * `below` is the lowest atom id in the planning state (null when empty).
+   * Production passes `lowSortingIntentId(below)`, which never needs the
+   * suffix reinsertion below; any other identity stays correct but may.
+   */
+  readonly nextIntentId: (context: { readonly below: string | null }) => string;
 }): SharedWorkingStateEditingCapability {
   return Object.freeze({
     plan(
@@ -390,20 +436,25 @@ export function createSharedWorkingStateEditingCapability(options: {
           !codePointBoundary(input.currentText, end)
         )
           return { outcome: 'refused', reason: 'edit splits a Unicode scalar' };
-        const atoms = visibleAtoms(state.snapshot());
+        const planningSnapshot = state.snapshot();
+        const atoms = visibleAtoms(planningSnapshot);
         const predecessor =
           [...atoms].reverse().find((atom) => atom.end <= start)?.id ?? null;
-        const intentId = options.nextIntentId();
+        // Snapshot atoms are sorted by id, so the first is the lowest.
+        const intentId = options.nextIntentId({
+          below: planningSnapshot.atoms[0]?.id ?? null,
+        });
         const existingBranch = atoms.find((atom) => atom.start >= start);
         // RGA siblings are ordered by immutable operation identity. If the new
         // insertion sorts after the existing causal branch, a preserved suffix
         // would render before it. Reinsert that suffix only for this ordering;
         // the ordinary before-branch case retains exact cursor transformation.
+        // A `lowSortingIntentId` never takes this branch (#4008).
         if (
           insertText.length > 0 &&
           suffix > 0 &&
           existingBranch &&
-          compareWorkingStateIds(`${intentId}:insert:0`, existingBranch.id) > 0
+          compareWorkingStateIds(`${intentId}:i:0`, existingBranch.id) > 0
         ) {
           end = input.currentText.length;
           insertText = input.desiredText.slice(start);
@@ -428,7 +479,7 @@ export function createSharedWorkingStateEditingCapability(options: {
           let targets: string[] = [];
           let targetBytes = 0;
           for (const atom of selected) {
-            const candidateId = `${intentId}:delete:${operations.length}`;
+            const candidateId = `${intentId}:d:${operations.length}`;
             const emptyOperation = {
               ...common(candidateId, deleteId ? [deleteId] : []),
               kind: 'delete' as const,
@@ -454,7 +505,7 @@ export function createSharedWorkingStateEditingCapability(options: {
                 outcome: 'refused',
                 reason: 'one delete target exceeds operation byte capacity',
               };
-            const operationId = `${intentId}:delete:${operations.length}`;
+            const operationId = `${intentId}:d:${operations.length}`;
             operations.push({
               ...common(operationId, deleteId ? [deleteId] : []),
               kind: 'delete',
@@ -467,7 +518,7 @@ export function createSharedWorkingStateEditingCapability(options: {
             ).byteLength;
           }
           if (targets.length > 0) {
-            const operationId = `${intentId}:delete:${operations.length}`;
+            const operationId = `${intentId}:d:${operations.length}`;
             operations.push({
               ...common(operationId, deleteId ? [deleteId] : []),
               kind: 'delete',
@@ -478,7 +529,7 @@ export function createSharedWorkingStateEditingCapability(options: {
         }
         if (insertText.length > 0) {
           operations.push({
-            ...common(`${intentId}:insert`, deleteId ? [deleteId] : []),
+            ...common(`${intentId}:i`, deleteId ? [deleteId] : []),
             kind: 'insert',
             after: predecessor,
             text: insertText,

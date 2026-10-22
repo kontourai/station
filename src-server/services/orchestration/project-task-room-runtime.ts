@@ -49,6 +49,7 @@ import {
 } from '../../domain/shared-working-state.js';
 import {
   createSharedWorkingStateEditingCapability,
+  lowSortingIntentId,
   type SharedWorkingStateEditBatch,
   sharedWorkingStateEditBatchDigest,
 } from '../../domain/shared-working-state-editing.js';
@@ -600,7 +601,6 @@ export class ProjectTaskRoomRuntime {
     });
     const runId = createOrchestrationRunId(input.provider, input.sessionId);
     const actorId = agentActorId(input.taskId, input.agentId, input.sessionId);
-    const intentId = randomUUID();
     const capability = createSharedWorkingStateEditingCapability({
       scope: association.document,
       snapshot: () => snapshot,
@@ -622,7 +622,7 @@ export class ProjectTaskRoomRuntime {
         correlationId: `agent-edit:${input.taskId}:${input.sessionId}`,
       }),
       replicaId: `agent-session:${input.sessionId}`,
-      nextIntentId: () => intentId,
+      nextIntentId: roomEditIntentId,
     });
     const plan = capability.plan({
       currentText: state.text(),
@@ -2073,7 +2073,6 @@ export class ProjectTaskRoomRuntime {
     const state = new SharedWorkingState({ scope, snapshot });
     if (input.onlyIfEmpty && state.text())
       return { kind: 'unchanged' } as const;
-    const issuedIntentId = randomUUID();
     // Document operations participate in the room policy, not the credential
     // version of the browser that happened to plan them. Exact device
     // reauthorization still fences the eventual commit below.
@@ -2091,8 +2090,9 @@ export class ProjectTaskRoomRuntime {
       actor: () => ({ actorId: actorIdFor(principal), kind: 'human' }),
       replicaId: `room:${principal.deviceId}`,
       // The browser's local request identity is not an operation identity.
-      // Operation IDs are minted under this server authority.
-      nextIntentId: () => issuedIntentId,
+      // Operation IDs are minted under this server authority, below every id
+      // the planned document holds (#4008).
+      nextIntentId: roomEditIntentId,
     });
     const plan = capability.plan({
       currentText: state.text(),
@@ -4675,4 +4675,12 @@ function agentStartedLifecycle(
       'started',
     ),
   };
+}
+
+/** Every room edit plan mints its identity from the planned state (#4008). */
+function roomEditIntentId({ below }: { readonly below: string | null }) {
+  const intentId = lowSortingIntentId(below);
+  // Unreachable in practice (36^8 edits); the planner refuses the edit.
+  if (!intentId) throw new Error('room edit identity space is exhausted');
+  return intentId;
 }
