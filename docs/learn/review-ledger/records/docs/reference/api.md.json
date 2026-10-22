@@ -486,7 +486,13 @@
 
     "packages/sdk/src/client/plugin-telemetry.ts",
 
-    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts"
+    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts",
+
+    "src-server/services/projects/repository-acquisition-service.ts",
+
+    "src-server/routes/projects/repository-acquisition-routes.ts",
+
+    "src-server/domain/file-storage-schemas.ts"
   ],
 
   "checks": [

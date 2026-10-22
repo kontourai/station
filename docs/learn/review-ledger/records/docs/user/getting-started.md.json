@@ -238,7 +238,11 @@
 
     "src-ui/src/views/activity/openActivityReview.ts",
 
-    "tests/activity-related-review.spec.ts"
+    "tests/activity-related-review.spec.ts",
+
+    "src-ui/src/components/modals/NewProjectRepositorySource.tsx",
+
+    "src-server/services/projects/repository-acquisition-service.ts"
   ],
 
   "checks": [
