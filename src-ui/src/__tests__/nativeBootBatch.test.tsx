@@ -14,7 +14,7 @@ const host = vi.hoisted(() => ({
     apiBase: 'https://native-station.example.test',
     authorityKey: 'native-1',
     requiresEnrolledCredential: true,
-    isCurrent: () => true,
+    isCurrent: (): boolean => true,
   },
   invoke: vi.fn(),
   channels: [] as Array<(message: unknown) => void>,
