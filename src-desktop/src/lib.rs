@@ -22031,15 +22031,26 @@ mod tests {
                     .chars()
                     .filter(|character| !character.is_whitespace())
                     .collect::<String>();
-                let production = text.split("#[cfg(test)]modtests{").next().unwrap();
+                let keyring = "keyring_core";
+                let constructor = format!("{keyring}::Entry::new");
+                // The one lib.rs occurrence is the real Windows Credential
+                // Manager fixture. Count the whole file, including production
+                // code located after test modules; any growth needs review.
+                let allowed = usize::from(path.file_name().unwrap() == "lib.rs");
+                assert_eq!(
+                    text.matches(&constructor).count(),
+                    allowed,
+                    "{} bypasses NativeSecureEntry",
+                    path.display()
+                );
                 for bypass in [
-                    "keyring_core::Entry::new",
-                    "usekeyring_core::Entry",
-                    "usekeyring_core::{",
-                    "usekeyring_coreas",
+                    format!("use{keyring}::Entry"),
+                    format!("use{keyring}::{{"),
+                    format!("use{keyring}as"),
+                    format!("use{keyring}::*"),
                 ] {
                     assert!(
-                        !production.contains(bypass),
+                        !text.contains(&bypass),
                         "{} bypasses NativeSecureEntry: {bypass}",
                         path.display()
                     );
