@@ -135,7 +135,7 @@ authorize or perform a clone. Current operator admission is rechecked after
 provider calls and at response-body release.
 
 `POST /api/projects/repository-acquisitions` accepts
-`{requestId, sourceUrl, sourceRef?}`. Retain the UUID `requestId` across uncertain
+`{requestId, sourceUrl, sourceRef?, subdirectory?}`. Retain the UUID `requestId` across uncertain
 responses. This host-local operation uses the operator's Git configuration;
 operator authority is required for every read and write. Agent-originated
 internal requests and delegated or paired-device credentials are refused, even
@@ -152,7 +152,11 @@ absent). `POST /api/projects/repository-acquisitions/:id/retry` explicitly start
 a fresh directory for a failed or interrupted attempt. Repeating the original
 POST returns the same receipt; it never retries acquisition implicitly. A ready
 receipt is retained even if the remote branch later moves. Cross-process locking
-serializes attempts. Raw subprocess output and credentials are not response data.
+serializes attempts. Optional `subdirectory` is a forward-slash repository-relative
+directory without traversal or Git metadata segments. Acquisition verifies it
+exists without a symlink redirect and returns `workingDirectory` separately from
+the owned `checkoutPath`; Project creation rechecks the directory and retains the
+subdirectory in source provenance. Raw subprocess output and credentials are not response data.
 
 The request retains an explicit clone transport rather than deriving one from a
 canonical identity. Clone, remote read, commit resolution and detached checkout

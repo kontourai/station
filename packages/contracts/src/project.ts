@@ -82,6 +82,7 @@ export interface ProjectRepositorySource {
   canonicalRemote: string;
   resolvedCommit: string;
   acquiredAt: string;
+  subdirectory?: string;
 }
 
 export interface ProjectConfig {
@@ -459,6 +460,8 @@ export interface RepositoryAcquisitionRequest {
   sourceUrl: string;
   /** A branch or tag; omission uses the remote's default branch. */
   sourceRef?: string;
+  /** Optional repository-relative working directory, using forward slashes. */
+  subdirectory?: string;
 }
 
 export interface RepositoryAcquisition {
@@ -468,6 +471,8 @@ export interface RepositoryAcquisition {
   attempt: number;
   /** Owned directory, retained even after a failed or interrupted acquisition. */
   checkoutPath: string;
+  /** Verified starting directory within the owned checkout. */
+  workingDirectory?: string;
   resolvedCommit?: string;
   canonicalRemote?: string;
   /** Fixed UI-safe summary; subprocess output is never returned here. */

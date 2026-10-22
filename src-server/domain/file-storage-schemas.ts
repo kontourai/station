@@ -57,6 +57,7 @@ const projectSchema = z
         attempt: z.number().int().positive(),
         sourceUrl: nonEmptyString,
         sourceRef: optionalString,
+        subdirectory: optionalString,
         canonicalRemote: nonEmptyString,
         resolvedCommit: z.string().regex(/^[a-f0-9]{40,64}$/),
         acquiredAt: timestamp,

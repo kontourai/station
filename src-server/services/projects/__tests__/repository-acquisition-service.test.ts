@@ -1,14 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
+import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { execGitSync } from '../../../utils/git-exec.js';
 import {
   RepositoryAcquisitionInputError,
@@ -214,4 +217,94 @@ test('acquisition checks out repository bytes without running installed global f
   expect(readFileSync(join(acquired.checkoutPath, 'README.md'), 'utf8')).toBe(
     'first revision',
   );
+});
+
+test('monorepo acquisition retains the root receipt and verifies the selected starting directory again before creation', async () => {
+  const f = fixture();
+  mkdirSync(join(f.source, 'apps', 'web'), { recursive: true });
+  writeFileSync(join(f.source, 'apps', 'web', 'README.md'), 'web application');
+  execGitSync(['add', '.'], { cwd: f.source });
+  execGitSync(
+    [
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.test',
+      'commit',
+      '-m',
+      'monorepo',
+    ],
+    { cwd: f.source },
+  );
+  const request = {
+    requestId: randomUUID(),
+    sourceUrl: f.source,
+    subdirectory: 'apps/web',
+  };
+  const record = await f.service.acquire(request);
+  expect(record.phase).toBe('ready');
+  expect(record.workingDirectory).toBe(
+    join(record.checkoutPath, 'apps', 'web'),
+  );
+  const selected = await f.service.projectSource(
+    request.requestId,
+    record.workingDirectory,
+  );
+  expect(selected.workingDirectory).toBe(record.workingDirectory);
+  expect(selected.repositorySource.subdirectory).toBe('apps/web');
+  const storage = new FileStorageAdapter(f.home);
+  const now = new Date().toISOString();
+  await storage.createProject({
+    id: randomUUID(),
+    slug: 'monorepo',
+    name: 'Monorepo',
+    createdAt: now,
+    updatedAt: now,
+    ...selected,
+  });
+  expect(
+    new FileStorageAdapter(f.home).getProject('monorepo').repositorySource
+      ?.subdirectory,
+  ).toBe('apps/web');
+  await expect(
+    f.service.projectSource(request.requestId, record.checkoutPath),
+  ).rejects.toThrow('no longer matches');
+  rmSync(join(record.checkoutPath, 'apps', 'web'), { recursive: true });
+  symlinkSync(f.source, join(record.checkoutPath, 'apps', 'web'), 'dir');
+  await expect(f.service.projectSource(request.requestId)).rejects.toThrow(
+    'subdirectory is unavailable',
+  );
+});
+
+test.each([
+  '../outside',
+  '/absolute',
+  'apps/../web',
+  'apps\\web',
+  '.git',
+  'apps//web',
+])(
+  'rejects unsafe repository subdirectory %s before cloning',
+  async (subdirectory) => {
+    const f = fixture();
+    await expect(
+      f.service.acquire({
+        requestId: randomUUID(),
+        sourceUrl: f.source,
+        subdirectory,
+      }),
+    ).rejects.toBeInstanceOf(RepositoryAcquisitionInputError);
+  },
+);
+
+test('missing repository subdirectory leaves a durable failed acquisition instead of silently using the root', async () => {
+  const f = fixture();
+  const request = {
+    requestId: randomUUID(),
+    sourceUrl: f.source,
+    subdirectory: 'missing',
+  };
+  const record = await f.service.acquire(request);
+  expect(record.phase).toBe('failed');
+  expect(f.service.get(request.requestId)).toEqual(record);
 });

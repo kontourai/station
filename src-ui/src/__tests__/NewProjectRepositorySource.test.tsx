@@ -155,11 +155,16 @@ test.each(['github', 'gitlab'] as const)(
       'value',
       'release',
     );
+    fireEvent.change(
+      screen.getByLabelText('Repository subdirectory (optional)'),
+      { target: { value: 'apps/web' } },
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Acquire repository' }));
     await waitFor(() =>
       expect(acquired).toMatchObject({
         sourceUrl: `git@${host}:org/research.git`,
         sourceRef: 'release',
+        subdirectory: 'apps/web',
       }),
     );
   },

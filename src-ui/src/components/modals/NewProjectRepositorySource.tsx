@@ -54,9 +54,11 @@ function RepositorySourceControls({
   const [requestId, setRequestId] = useState(() => retainedId(storageKey));
   const [sourceUrl, setSourceUrl] = useState('');
   const [sourceRef, setSourceRef] = useState('');
+  const [subdirectory, setSubdirectory] = useState('');
   const [storageError, setStorageError] = useState(false);
   const sourceId = useId();
   const refId = useId();
+  const subdirectoryId = useId();
   const client = useQueryClient();
   const key = [
     'repository-acquisition',
@@ -131,6 +133,7 @@ function RepositorySourceControls({
         requestId: id,
         sourceUrl: sourceUrl.trim(),
         ...(sourceRef.trim() ? { sourceRef: sourceRef.trim() } : {}),
+        ...(subdirectory.trim() ? { subdirectory: subdirectory.trim() } : {}),
       },
       retry: false,
     });
@@ -182,6 +185,16 @@ function RepositorySourceControls({
             onChange={(event) => setSourceRef(event.target.value)}
             placeholder="Remote default branch"
           />
+          <label className="editor-label" htmlFor={subdirectoryId}>
+            Repository subdirectory (optional)
+          </label>
+          <input
+            className="editor-input"
+            id={subdirectoryId}
+            value={subdirectory}
+            onChange={(event) => setSubdirectory(event.target.value)}
+            placeholder="packages/my-app"
+          />
           <p className="editor-hint">
             Use HTTPS or SSH without credentials in the URL. An absolute path to
             a local Git mirror is also supported. This step requires the Station
@@ -219,7 +232,7 @@ function RepositorySourceControls({
                 onClick={() => {
                   if (!scope.isCurrent()) return;
                   onUseCheckout(
-                    record.checkoutPath,
+                    record.workingDirectory ?? record.checkoutPath,
                     record.request.sourceUrl
                       .split(/[/:]/)
                       .filter(Boolean)

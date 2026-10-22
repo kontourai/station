@@ -22,6 +22,7 @@ export const repositoryAcquisitionRequestSchema = z
     requestId: z.string().uuid(),
     sourceUrl: z.string().trim().min(1).max(2048),
     sourceRef: z.string().min(1).max(256).optional(),
+    subdirectory: z.string().min(1).max(1024).optional(),
   })
   .strict();
 
@@ -32,6 +33,7 @@ const recordSchema = z
     phase: z.enum(['acquiring', 'ready', 'failed']),
     attempt: z.number().int().positive(),
     checkoutPath: z.string().min(1),
+    workingDirectory: z.string().min(1).optional(),
     resolvedCommit: z
       .string()
       .regex(/^[a-f0-9]{40,64}$/)
@@ -47,6 +49,28 @@ export class RepositoryAcquisitionInputError extends Error {}
 
 function validateSource(request: RepositoryAcquisitionRequest): void {
   const source = request.sourceUrl;
+  if (
+    request.subdirectory &&
+    (request.subdirectory
+      .split('/')
+      .some(
+        (part) =>
+          !part ||
+          part === '.' ||
+          part === '..' ||
+          part.toLowerCase() === '.git',
+      ) ||
+      Array.from(request.subdirectory).some(
+        (character) =>
+          character === '\\' ||
+          character === ':' ||
+          character.charCodeAt(0) < 32 ||
+          character.charCodeAt(0) === 127,
+      ))
+  )
+    throw new RepositoryAcquisitionInputError(
+      'Choose a repository-relative subdirectory without traversal or special characters.',
+    );
   if (
     Array.from(source).some(
       (character) =>
@@ -102,6 +126,24 @@ function validateSource(request: RepositoryAcquisitionRequest): void {
   }
 }
 
+async function workingDirectory(
+  record: RepositoryAcquisition,
+): Promise<string> {
+  const directory = record.request.subdirectory
+    ? resolve(record.checkoutPath, record.request.subdirectory)
+    : record.checkoutPath;
+  const actual = await realpath(directory);
+  const expected = resolve(
+    await realpath(record.checkoutPath),
+    record.request.subdirectory ?? '.',
+  );
+  if (actual !== expected || !(await lstat(directory)).isDirectory())
+    throw new Error(
+      'Repository subdirectory must be a real directory within the checkout.',
+    );
+  return directory;
+}
+
 /** Domain receipt owns clone outcome; Activity may project it but cannot replace it. */
 export class RepositoryAcquisitionService {
   private readonly root: string;
@@ -126,6 +168,7 @@ export class RepositoryAcquisitionService {
     if (!parsed.success)
       throw new Error('Repository acquisition receipt is corrupt.');
     const record = parsed.data;
+    validateSource(record.request);
     if (
       record.request.requestId !== id ||
       record.checkoutPath !== join(this.root, id, `checkout-${record.attempt}`)
@@ -160,7 +203,12 @@ export class RepositoryAcquisitionService {
         'Acquire and verify the repository before creating the Project.',
       );
     }
-    if (directory && resolve(directory) !== record.checkoutPath) {
+    const selectedDirectory = await workingDirectory(record).catch(() => {
+      throw new RepositoryAcquisitionConflict(
+        'The selected repository subdirectory is unavailable. Reacquire or choose a folder explicitly.',
+      );
+    });
+    if (directory && resolve(directory) !== selectedDirectory) {
       throw new RepositoryAcquisitionConflict(
         'The selected directory no longer matches this acquisition.',
       );
@@ -234,7 +282,7 @@ export class RepositoryAcquisitionService {
       );
     }
     return {
-      workingDirectory: record.checkoutPath,
+      workingDirectory: selectedDirectory,
       repositorySource: {
         acquisitionId: record.request.requestId,
         attempt: record.attempt,
@@ -245,6 +293,9 @@ export class RepositoryAcquisitionService {
         canonicalRemote: record.canonicalRemote,
         resolvedCommit: record.resolvedCommit,
         acquiredAt: record.updatedAt,
+        ...(record.request.subdirectory
+          ? { subdirectory: record.request.subdirectory }
+          : {}),
       },
     };
   }
@@ -326,9 +377,11 @@ export class RepositoryAcquisitionService {
           // Acquisition materializes bytes; installed filters require separate setup consent.
           env: { GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: '1' },
         });
+        const selectedDirectory = await workingDirectory(acquiring);
         ready = {
           ...acquiring,
           phase: 'ready',
+          workingDirectory: selectedDirectory,
           resolvedCommit: commit,
           canonicalRemote,
           updatedAt: new Date().toISOString(),

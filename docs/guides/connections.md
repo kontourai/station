@@ -1140,7 +1140,8 @@ binding and model. It does not edit the saved Agent.
 ## Start a Project from a repository
 
 In **New Project**, open **Start from a Git repository**, enter the explicit
-HTTPS or SSH repository URL, and optionally choose a branch or tag. Choose
+HTTPS or SSH repository URL, and optionally choose a branch or tag and a
+repository-relative subdirectory such as `apps/web`. Choose
 **Acquire repository**, then **Use this checkout** to put the working copy into
 the Project draft. Station uses the repository name for an untouched name field.
 Create the Project and select its starter through the usual form. At creation,
@@ -1152,7 +1153,10 @@ Acquisition uses this host's Git credentials and currently requires the Station
 operator. URLs containing HTTPS user information, passwords, query strings or
 fragments are refused. An absolute local mirror path is also supported.
 Station verifies the clone's origin, resolves its commit and checks it out in
-detached state. It does not install dependencies or execute repository setup.
+detached state. For a monorepo, the selected subdirectory becomes the Project
+working directory while the receipt retains the repository root and exact commit.
+The directory must exist inside the checkout; traversal, Git metadata directories
+and symlink redirects are refused and rechecked at Project creation. It does not install dependencies or execute repository setup.
 
 **Choose from GitHub** and **Choose from GitLab** list accessible public/private
 repositories through this host's signed-in `gh` or `glab` account. A page holds
