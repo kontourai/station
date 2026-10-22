@@ -1085,7 +1085,9 @@ export class ThreadInboxDelivery {
     // held follow-up is observable without reading the store.
     const settle: typeof store.settle = (entry, to, outcome, now) => {
       const settled = store.settle(entry, to, outcome, now);
-      if (to !== 'placed')
+      // Only a settle that applied: a stale one (another drive settled the
+      // entry first) wrote nothing and is not this outcome (round 2, P3-8).
+      if (to !== 'placed' && settled.kind === 'applied')
         this.ports.logger.warn('thread inbox entry not delivered', {
           conversationId,
           clientTurnId: entry.key,

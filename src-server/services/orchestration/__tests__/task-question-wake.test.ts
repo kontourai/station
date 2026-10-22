@@ -499,6 +499,29 @@ describe('Task question lead wake (#4003)', () => {
     );
   });
 
+  test('a refused settle that another drive already won is not logged as undelivered (review round 2, P3-8)', async () => {
+    const world = boot(path(), {
+      // This drive loses the settle's compare-and-set.
+      wrapStore: (store) => ({
+        ...store,
+        settle: (entry, to, outcome, now) =>
+          to === 'refused'
+            ? { kind: 'stale' as const }
+            : store.settle(entry, to, outcome, now),
+      }),
+    });
+    await bindAll(world);
+    await startLead(world);
+    refuseSends = true;
+    await askAsHelper(world);
+    await settle(world);
+    expect(world.wakes).toMatchObject([{ kind: 'queued' }]);
+    expect(world.inboxWarn).not.toHaveBeenCalledWith(
+      'thread inbox entry not delivered',
+      expect.anything(),
+    );
+  });
+
   test("a person's answer reaches the lead once; the open question is unchanged by the wake", async () => {
     const world = boot(path());
     await bindAll(world);
