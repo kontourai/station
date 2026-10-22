@@ -80,6 +80,10 @@ function observeRootOperation(attributes: Record<string, string>): void {
  * dependency so this module doesn't have to import the full storage-adapter surface. */
 export interface KnowledgeStoreRootPersistence {
   listKnowledgeStoreRoots(): KnowledgeStoreRoot[];
+  withKnowledgeStoreRoot?<T>(
+    expected: KnowledgeStoreRoot,
+    operation: (root: KnowledgeStoreRoot) => Promise<T>,
+  ): Promise<T>;
   /** createOnly must refuse an existing ID atomically rather than replacing it. */
   saveKnowledgeStoreRoot(
     root: KnowledgeStoreRoot,
@@ -99,6 +103,7 @@ type RecordsChangedListener = (event: {
 }) => void;
 
 export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
+  readonly withRootRevision?: KnowledgeStoreProviderContract['withRootRevision'];
   private readonly registry = new KnowledgeAdapterRegistry();
   private readonly adapterInstances = new Map<
     string,
@@ -114,6 +119,12 @@ export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
     private readonly persistence: KnowledgeStoreRootPersistence,
     observationPolicy?: KnowledgeRecordObservationPolicy,
   ) {
+    const withRoot = persistence.withKnowledgeStoreRoot?.bind(persistence);
+    if (withRoot)
+      this.withRootRevision = (expected, operation) =>
+        withRoot(expected, async () =>
+          operation(await this.adapterFor(expected.id)),
+        );
     if (observationPolicy) {
       const authorize = observationPolicy.authorize;
       this.observationPolicy = {

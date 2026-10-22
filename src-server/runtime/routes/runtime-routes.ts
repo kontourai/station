@@ -311,6 +311,7 @@ import {
   createCrossProjectKnowledgeRoutes,
   createKnowledgeRoutes,
 } from '../../routes/knowledge/knowledge.js';
+import { createKnowledgeDocumentImportRoutes } from '../../routes/knowledge/knowledge-document-import-routes.js';
 import { createKnowledgeIndexRoutes } from '../../routes/knowledge/knowledge-index-routes.js';
 import { createKnowledgeRecordRoutes } from '../../routes/knowledge/knowledge-record-routes.js';
 import { createKnowledgeSourceRoutes } from '../../routes/knowledge/knowledge-source-routes.js';
@@ -544,6 +545,10 @@ import { OperatingStateService } from '../../services/infra/operating-state-serv
 import { createServerLogReader } from '../../services/infra/server-log-reader.js';
 import { StationKitObservabilityHost } from '../../services/kits/kit-observability-host.js';
 import { StationKitObservabilityRegistry } from '../../services/kits/kit-observability-registry.js';
+import {
+  KnowledgeDocumentImportError,
+  KnowledgeDocumentImportService,
+} from '../../services/knowledge/knowledge-document-import-service.js';
 import type { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
 import { ownedLayoutStore } from '../../services/layouts/personal-layout-service.js';
 import type { AgentActivityPublisher } from '../../services/notifications/agent-activity-publisher.js';
@@ -6996,6 +7001,39 @@ export function configureRuntimeRoutes(
         mayUseKnowledgeRoot(request, root, 'edit'),
       mayValidateRoot: isOperatorInPersonNotAgent,
       mayRegisterRoot: (request) => isOperatorInPersonNotAgent(request),
+    }),
+  );
+  context.app.route(
+    '/api/knowledge',
+    createKnowledgeDocumentImportRoutes({
+      service: new KnowledgeDocumentImportService(
+        context.configLoader.getProjectHomeDir(),
+        context.knowledgeStoreProvider,
+      ),
+      authority: (request) => {
+        const principal = roomRequestPrincipals.get(request);
+        const assertCurrent = () => {
+          if (
+            !principal ||
+            request.signal.aborted ||
+            roomRequestPrincipals.get(request)?.id !== principal.id ||
+            !isOperatorInPersonNotAgent(request) ||
+            !isRuntimeRequestPrincipalCurrent(
+              request,
+              context.environmentSecurityService,
+            )
+          )
+            throw new KnowledgeDocumentImportError(
+              'Document import requires current operator authority.',
+              403,
+            );
+        };
+        assertCurrent();
+        return { actorId: principal!.id, assertCurrent };
+      },
+      mayReadRoot: (request, root) =>
+        mayUseKnowledgeRoot(request, root, 'view'),
+      guardReadResponse: guardKnowledgeReadResponse,
     }),
   );
   // K5 record-CRUD routes (`s203-knowledge-meeting-notes` Wave 1 Task 2) — same

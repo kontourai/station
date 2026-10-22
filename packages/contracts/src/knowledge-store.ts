@@ -306,6 +306,12 @@ export interface KnowledgeStoreProvider {
   ): Promise<KnowledgeStoreRoot>;
   removeRoot(rootId: string, expected?: KnowledgeStoreRoot): Promise<void>; // deregisters only — NEVER deletes store files
 
+  /** Hold the exact registry registration across a bounded adapter operation. */
+  readonly withRootRevision?: <T>(
+    expected: KnowledgeStoreRoot,
+    operation: (adapter: KnowledgeStoreAdapter) => Promise<T>,
+  ) => Promise<T>;
+
   // Adapter registry (additive provider pattern; plugins may contribute)
   registerAdapter(descriptor: KnowledgeAdapterDescriptor): void;
   listAdapters(): KnowledgeAdapterDescriptor[];
@@ -332,4 +338,28 @@ export interface KnowledgeStoreProvider {
   onRecordsChanged(
     listener: (event: { rootId: string; recordIds: string[] }) => void,
   ): () => void;
+}
+
+export const KNOWLEDGE_DOCUMENT_MAX_BYTES = 262144;
+export const KNOWLEDGE_DOCUMENT_BATCH_MAX_BYTES = 1048576;
+export const KNOWLEDGE_DOCUMENT_BATCH_MAX_FILES = 8;
+export interface KnowledgeDocumentImportInput {
+  requestId: string;
+  expectedRoot: KnowledgeStoreRoot;
+  documents: { filename: string; contentBase64: string }[];
+  retryUncertain?: boolean;
+}
+export interface KnowledgeDocumentImportReceipt {
+  requestId: string;
+  rootId: string;
+  registrationId: string;
+  phase: 'pending' | 'imported' | 'partial' | 'uncertain' | 'unavailable';
+  documents: {
+    filename: string;
+    bytes: number;
+    sha256: string;
+    recordId: string;
+    phase: 'pending' | 'imported' | 'uncertain' | 'unavailable';
+    originalAvailable: boolean;
+  }[];
 }

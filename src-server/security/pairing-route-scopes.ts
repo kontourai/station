@@ -3175,6 +3175,19 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/api/knowledge/index/search' },
     { method: 'POST', path: '/api/knowledge/migrate' },
     { method: 'GET', path: '/api/knowledge/capabilities' },
+    { method: 'POST', path: '/api/knowledge/document-imports' },
+    {
+      method: 'GET',
+      path: '/api/knowledge/roots/:rootId/document-imports/:requestId',
+    },
+    {
+      method: 'POST',
+      path: '/api/knowledge/roots/:rootId/document-imports/:requestId/resume',
+    },
+    {
+      method: 'GET',
+      path: '/api/knowledge/roots/:rootId/document-imports/:requestId/originals/:index',
+    },
     { method: 'GET', path: '/api/knowledge/roots' },
     { method: 'POST', path: '/api/knowledge/roots' },
     { method: 'DELETE', path: '/api/knowledge/roots/:id' },

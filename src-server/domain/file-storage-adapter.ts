@@ -16,6 +16,7 @@ import type {
 } from '@kontourai/station-contracts/project';
 import type { ProjectPortableIdentity } from '@kontourai/station-contracts/project-identity';
 import type { ProviderConnectionConfig } from '@kontourai/station-contracts/tool';
+import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import {
   assertObservationTreeBudget,
   KnowledgeObservationRefusal,
@@ -768,6 +769,29 @@ export class FileStorageAdapter implements IStorageAdapter {
     }
     file.recheck();
     return { roots, digest: file.digest };
+  }
+
+  async withKnowledgeStoreRoot<T>(
+    expected: KnowledgeStoreRoot,
+    operation: (root: KnowledgeStoreRoot) => Promise<T>,
+  ): Promise<T> {
+    const pinned = { ...expected, scope: { ...expected.scope } };
+    parseKnowledgeStoreRoots([pinned]);
+    const release = await acquireFileMutationLockAsync(
+      `${this.knowledgeStoreRootsPath}.mutation`,
+    );
+    try {
+      const root = this.listKnowledgeStoreRoots().find(
+        (candidate) => candidate.id === pinned.id,
+      );
+      if (!root || !isDeepStrictEqual(root, pinned))
+        throw new FileStorageConflictError(
+          'Knowledge registration changed before the operation.',
+        );
+      return await operation(root);
+    } finally {
+      await release();
+    }
   }
 
   async saveKnowledgeStoreRoot(

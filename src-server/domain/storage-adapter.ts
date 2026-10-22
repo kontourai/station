@@ -139,6 +139,11 @@ export interface IStorageAdapter {
   saveTemplate(template: LayoutTemplate): Promise<void>;
   deleteTemplate(id: string): Promise<void>;
 
+  withKnowledgeStoreRoot?<T>(
+    expected: KnowledgeStoreRoot,
+    operation: (root: KnowledgeStoreRoot) => Promise<T>,
+  ): Promise<T>;
+
   // Knowledge store roots (K2) — metadata only; never the store's own record files.
   listKnowledgeStoreRoots(): KnowledgeStoreRoot[];
   saveKnowledgeStoreRoot(
