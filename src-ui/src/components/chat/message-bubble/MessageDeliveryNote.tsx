@@ -26,7 +26,7 @@ export interface DeliveryNotice {
 }
 
 /** Every state a bubble outlines: all but `delivered`, which is filled. */
-export type UndeliveredState = Exclude<MessageDeliveryState, 'delivered'>;
+type UndeliveredState = Exclude<MessageDeliveryState, 'delivered'>;
 
 /** The happy path, told by the bubble's outline and a glyph, never a line. */
 type HappyState = 'sending' | 'received' | 'delivered';
