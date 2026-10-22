@@ -15,9 +15,9 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { openExternalLink } from '../../platform/openExternalLink';
 import { Button } from '../Button';
-import { SkeletonBlock } from '../state';
 import { TerminalPanel } from '../coding-layout/TerminalPanel';
 import { hostActionCopy } from '../host-action/host-action-copy';
+import { SkeletonBlock } from '../state';
 import './EngineSignInPanel.css';
 
 const STATE_LABEL: Record<EngineSignInView['status']['state'], string> = {
