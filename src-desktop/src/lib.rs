@@ -22033,13 +22033,17 @@ mod tests {
                     .filter(|character| !character.is_whitespace())
                     .collect::<String>();
                 let keyring = "keyring_core";
-                let constructor = format!("{keyring}::Entry::new");
-                // The one lib.rs occurrence is the real Windows Credential
-                // Manager fixture. Count the whole file, including production
-                // code located after test modules; any growth needs review.
-                let allowed = usize::from(path == source_root.join("lib.rs"));
+                let entry = format!("{keyring}::Entry");
+                // lib.rs has four metadata searches and one real Windows
+                // credential fixture. Count every Entry reference in the whole
+                // file so aliases and code after tests cannot evade the fence.
+                let allowed = if path == source_root.join("lib.rs") {
+                    5
+                } else {
+                    0
+                };
                 assert_eq!(
-                    text.matches(&constructor).count(),
+                    text.matches(&entry).count(),
                     allowed,
                     "{} bypasses NativeSecureEntry",
                     path.display()
