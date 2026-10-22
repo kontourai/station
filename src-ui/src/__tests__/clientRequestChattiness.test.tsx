@@ -80,6 +80,7 @@ vi.mock('../components/session-detail/MutableSessionDetail', () => ({
 }));
 
 import { SessionDetail } from '../components/session-detail/SessionDetail';
+import { ensureOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
 import { SessionReadModelProvider } from '../hooks/orchestration/SessionReadModelProvider';
 import { useSessionEventStream } from '../hooks/orchestration/useSessionEventStream';
 
@@ -235,6 +236,24 @@ test('mounted details share one host stream, hydrate before it opens, isolate th
   );
   expect(second.result.current.connected).toBe(true);
   expect(streams.size).toBe(2);
+  ensureOrchestrationEventStream(origin, undefined, 'new-person');
+  const replacement = streams.get(`${origin}/api/orchestration/events`)!;
+  expect(replacement).not.toBe(shared);
+  expect(replacement.options.initialLastEventId).toBeUndefined();
+  expect(
+    replacement.options.headers?.['X-Station-Stream-Epoch'],
+  ).toBeUndefined();
+  await act(async () => {
+    shared.options.onMessage({
+      event: 'orchestration:event',
+      id: '999',
+      data: JSON.stringify({ event: event('second', 'retired-source') }),
+    });
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  });
+  expect(
+    second.result.current.events.map((item) => item.eventId),
+  ).not.toContain('retired-source');
 });
 
 test('board and shell share scoped list requests, pause idle polling live, and retain a disconnected fallback', async () => {
