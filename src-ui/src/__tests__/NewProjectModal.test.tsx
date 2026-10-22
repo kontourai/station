@@ -58,9 +58,13 @@ beforeEach(() => {
   authorityState.recoveryKey = 'creating-account';
 });
 
-const savedCreationFixture = vi.hoisted(() => ({ enabled: false }));
+const savedCreationFixture = vi.hoisted(() => ({
+  enabled: false,
+  realPath: false,
+}));
 beforeEach(() => {
   savedCreationFixture.enabled = false;
+  savedCreationFixture.realPath = false;
 });
 
 const createProjectMock = vi.fn();
@@ -227,28 +231,57 @@ vi.mock('../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => platformProfileState.profile,
 }));
 
-vi.mock('../components/PathAutocomplete', () => ({
-  PathAutocomplete: ({
-    value,
-    onChange,
-    placeholder,
-  }: {
-    value: string;
-    onChange: (value: string) => void;
-    placeholder: string;
-  }) => (
-    <input
-      aria-label="Project folder"
-      value={value}
-      placeholder={placeholder}
-      onChange={(event) => onChange(event.target.value)}
-    />
-  ),
-}));
+vi.mock('../components/PathAutocomplete', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../components/PathAutocomplete')>();
+  return {
+    ...actual,
+    PathAutocomplete: ({
+      value,
+      onChange,
+      placeholder,
+      ...rest
+    }: Parameters<typeof actual.PathAutocomplete>[0]) =>
+      savedCreationFixture.realPath ? (
+        <actual.PathAutocomplete
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          {...rest}
+        />
+      ) : (
+        <input
+          aria-label="Project folder"
+          value={value}
+          placeholder={placeholder}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      ),
+  };
+});
 
 import { NewProjectModal } from '../components/modals/NewProjectModal';
 
 describe('NewProjectModal starter layout picker', () => {
+  test('real path mounting keeps initial name focus and preserves focus on the selected intent', () => {
+    savedCreationFixture.realPath = true;
+    render(<NewProjectModal isOpen onClose={onCloseMock} />);
+    expect(document.activeElement).toBe(
+      screen.getByPlaceholderText('My Project'),
+    );
+    const knowledge = screen.getByRole('radio', {
+      name: /Documents and knowledge/,
+    });
+    knowledge.focus();
+    fireEvent.click(knowledge);
+    const workspace = screen.getByRole('radio', {
+      name: /Repository or folder/,
+    });
+    workspace.focus();
+    fireEvent.click(workspace);
+    expect(screen.getByPlaceholderText('/path/to/project')).toBeTruthy();
+    expect(document.activeElement).toBe(workspace);
+  });
   test('knowledge intent skips workspace setup and opens Sources after creation', async () => {
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
     fireEvent.change(screen.getByPlaceholderText('My Project'), {
@@ -1266,15 +1299,6 @@ describe('NewProjectModal layout browser dismissal scope (station#1825 item 4, r
 
     fireEvent.click(screen.getByRole('button', { name: 'Back to project' }));
 
-    // This test's own top-of-file mock replaces `PathAutocomplete` with a
-    // bare `<input>` carrying no autofocus behavior of its own, so it cannot
-    // exercise the real-app effect-ordering race the production comment
-    // documents (a `useLayoutEffect` here loses to `PathAutocomplete`'s own
-    // deeper passive `useEffect`, verified live in a real browser — fixed by
-    // matching effect types so this ancestor's callback runs after). What
-    // this test CAN and does prove: focus deliberately lands on an explicit,
-    // owned target — never `document.body` — regardless of what any
-    // descendant field does.
     expect(document.activeElement).not.toBe(document.body);
     expect(document.activeElement).toBe(
       screen.getByRole('heading', { name: 'New Project' }),

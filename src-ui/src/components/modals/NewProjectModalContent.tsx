@@ -136,12 +136,19 @@ function NewProjectDirectoryInput({ state }: { state: NewProjectModalState }) {
   );
 }
 
-function NewProjectIdentityInput({ state }: { state: NewProjectModalState }) {
+function NewProjectIdentityInput({
+  state,
+  inputRef,
+}: {
+  state: NewProjectModalState;
+  inputRef: RefObject<HTMLInputElement | null>;
+}) {
   const { draft, iconCandidates, nameAdvisory, submission } = state;
   const profile = usePlatformProfile();
   const hostOwnedWorkspace = !hasLocalStationForProfile(profile);
   return (
     <NewProjectIdentityField
+      inputRef={inputRef}
       candidates={iconCandidates.data ?? []}
       icon={draft.icon}
       name={draft.name}
@@ -174,9 +181,11 @@ function NewProjectIdentityInput({ state }: { state: NewProjectModalState }) {
 function NewProjectDetails({
   state,
   onAcquisitionBusy,
+  nameRef,
 }: {
   state: NewProjectModalState;
   onAcquisitionBusy: (busy: boolean) => void;
+  nameRef: RefObject<HTMLInputElement | null>;
 }) {
   const { draft, starter, submission } = state;
   const authority = useHostRequestAuthorityScope();
@@ -209,7 +218,7 @@ function NewProjectDetails({
   ];
   return (
     <>
-      <NewProjectIdentityInput state={state} />
+      <NewProjectIdentityInput state={state} inputRef={nameRef} />
       <fieldset className="new-project-modal__intents">
         <legend>What would you like to start with?</legend>
         <div className="new-project-modal__intent-grid">
@@ -311,9 +320,11 @@ function NewProjectDetails({
 function NewProjectForm({
   state,
   onClose,
+  nameRef,
 }: {
   state: NewProjectModalState;
   onClose: () => void;
+  nameRef: RefObject<HTMLInputElement | null>;
 }) {
   const { canSubmit, submit, sourceError } = useNewProjectFormSubmit(state);
   const [acquisitionBusy, setAcquisitionBusy] = useState(false);
@@ -338,6 +349,7 @@ function NewProjectForm({
           }
         >
           <NewProjectDetails
+            nameRef={nameRef}
             state={state}
             onAcquisitionBusy={setAcquisitionBusy}
           />
@@ -459,28 +471,10 @@ export function NewProjectModalContent({
   const dismiss = browsingLayouts ? returnToForm : onClose;
 
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
   const wasBrowsingRef = useRef(false);
-  // Return-focus for the reverse transition (archive#1825
-  //): `NewProjectLayoutBrowserBody` moves focus onto its own heading
-  // when it mounts (forward). Coming back, the modal frame itself doesn't
-  // remount (unlike the old nested dialog, which got a fresh focus trap for
-  // free), so without this, focus falls to `document.body` — outside the
-  // panel's own Tab-containment, which only intercepts keydowns targeted at
-  // a descendant of the panel — and no announcement reaches screen readers
-  // that the content changed back.
-  //
-  // Deliberately a passive `useEffect`, not `useLayoutEffect`: `NewProjectForm`
-  // (mounted fresh on this same transition, as the ternary's other branch)
-  // contains `PathAutocomplete`, which has its own pre-existing `autoFocus`
-  // default — the same behavior the modal's genuine first open already
-  // relies on — implemented as its own passive `useEffect` several levels
-  // deeper in the tree. React flushes passive effects child-before-parent
-  // within one commit, so a `useLayoutEffect` here (verified live in a real
-  // browser) fires and is immediately overwritten by that deeper passive
-  // effect afterward, leaving focus in the Working Directory field instead
-  // of the heading. Matching the effect type puts this callback in the same
-  // passive-effect phase, still ordered after PathAutocomplete's as the
-  // shallower ancestor, so it reliably wins instead.
+  // The frame stays mounted during layout browsing; returning must restore an
+  // announced target inside its focus trap (archive#1825).
   useEffect(() => {
     if (wasBrowsingRef.current && !browsingLayouts) {
       headingRef.current?.focus();
@@ -493,6 +487,8 @@ export function NewProjectModalContent({
       layer="dialog"
       onClose={dismiss}
       historyMode="route"
+      initialFocusRef={nameRef}
+      initialFocusPolicy="desktop"
       ariaLabelledBy={
         browsingLayouts
           ? 'new-project-layout-browser-title'
@@ -517,7 +513,7 @@ export function NewProjectModalContent({
       ) : (
         <>
           <NewProjectModalHeader onClose={onClose} headingRef={headingRef} />
-          <NewProjectForm state={state} onClose={onClose} />
+          <NewProjectForm state={state} onClose={onClose} nameRef={nameRef} />
         </>
       )}
     </ResponsiveDialogSurface>
