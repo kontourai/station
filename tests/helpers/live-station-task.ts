@@ -99,6 +99,30 @@ async function waitForReady(
   throw new Error(`${label} did not become ready: ${lastError}`);
 }
 
+/** Compile the exact disposable instance before its process-start deadline begins. */
+export async function prepareLiveStationBuild(
+  live: LiveStation,
+): Promise<void> {
+  await runCommand(
+    ...stationCommand([
+      'build',
+      `--instance=${live.instance}`,
+      `--base=${live.home}`,
+      `--port=${live.serverPort}`,
+      `--ui-port=${live.uiPort}`,
+    ]),
+    {
+      timeoutMs: 180_000,
+      env: {
+        ...process.env,
+        PATH: `${NODE_BIN}${delimiter}${process.env.PATH ?? ''}`,
+        STATION_ROOT: stationRootForLiveHome(live.home),
+        STATION_HOME: live.home,
+      },
+    },
+  );
+}
+
 export async function startStation(
   live: LiveStation,
   clean: boolean,

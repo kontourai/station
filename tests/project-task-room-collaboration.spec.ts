@@ -20,6 +20,7 @@ import {
   createTaskFromProject,
   type LiveStation,
   pairBrowserDevice,
+  prepareLiveStationBuild,
   publishTaskRoomAgentEdit,
   startStation,
   stopStation,
@@ -179,7 +180,8 @@ test.describe
         'station-room-acceptance-home-',
         'room-acceptance',
       );
-      await startStation(live, true, {
+      await prepareLiveStationBuild(live);
+      await startStation(live, false, {
         taskRoomControlSocket,
         logFile: testInfo.outputPath(`${live.instance}.log`),
       });
