@@ -185,7 +185,7 @@ attempt guarantees and real subscription charges remain unavailable.
 The first live form-elicitation attempts completed without calling the requested
 MCP tool and are excluded from elicitation acceptance. A direct installed-Codex
 control after an exact thread inventory read did call it and returned its form
-answer; that bypassed Station and is diagnostic only. The adapter now waits for
+answer; that bypassed Station and is diagnostic only. The adapter now checks
 thread-bound authored MCP inventory before reporting a ready session, and
 refuses a turn while the session is still connecting. Focused startup-order and
 inventory-refusal checks pass. A fresh live Station elicitation check remains
@@ -194,9 +194,8 @@ The next run did call the tool, but the connection's native `never` approval
 policy declined its form before Station received it. Its completion text is
 not answer evidence. The Codex MCP edge now maps supported data forms into the
 canonical input-request contract and returns validated content through the
-exact-event reply path. A fresh live check will use an explicit asking posture;
-shared connection/proxy configuration remains unchanged.
-That fresh asking-mode group still opened no question and returned
+exact-event reply path. A subsequent live check used an explicit asking posture
+without changing shared connection/proxy configuration. That group opened no question and returned
 `NOT_ACCEPTED`; it is also excluded from live elicitation acceptance. The
 controlled real-service form case now passes: invalid credential, foreign event
 and invalid content reach no adapter response; a valid exact answer reaches its
