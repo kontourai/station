@@ -1,0 +1,7 @@
+{
+  "revision": "9ac46de79a9311d5dd88a0a359464b3e01a21816",
+
+  "notes": [
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed the subsequent SDK lookup delta: only lookupDelegationAttempt JSDoc changed to distinguish unqualified-caller refusal from a different valid peer grant own-namespace none response. The HTTP URL, arguments, response unwrapping and executable code are unchanged. This matches the already reviewed receiver route/runtime namespace and no-resend semantics; no new runtime, test or full-SDK acceptance claim.","inputs":["docs/guides/delegation-attempt-claims.md","packages/sdk/src/client/delegations.ts"]}
+  ]
+}
