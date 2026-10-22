@@ -132,6 +132,7 @@ describe('CommandsView', () => {
     process.stdout.write(
       `COMMANDS_PROFILE ${JSON.stringify({ updates: commits - initial, cpuMs: performance.now() - started })}\n`,
     );
+    expect(commits - initial).toBe(0);
     expect(screen.getAllByRole('button', { name: 'Use in chat' })).toHaveLength(
       4,
     );

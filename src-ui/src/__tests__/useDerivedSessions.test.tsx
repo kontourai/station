@@ -728,7 +728,10 @@ describe('useDerivedSessions — end to end: no duplicate user bubble across a b
 test('profiles derived-session consumer commits during token delivery', () => {
   clearChats();
   activeChatsStore.initChat(SESSION_A, { agentSlug: 'agent-one' });
-  activeChatsStore.updateChat(SESSION_A, { orchestrationTurnOpen: true });
+  activeChatsStore.updateChat(SESSION_A, {
+    orchestrationTurnOpen: true,
+    planArtifact: null,
+  });
   let commits = 0;
   const mounted = renderHook(() => useDerivedSessions('', null), {
     wrapper: ({ children }) => (
