@@ -783,6 +783,13 @@ alone does not override that result. **Refresh models** refreshes the catalog.
 
 Model requests use the proxy; the engine and its tools still run on this Station.
 
+A routed connection authenticates with that proxy key: readiness reports the
+saved key as the engine's credential (shown as **Proxy key**) and does not
+require the CLI's own login. Without a route the engine's CLI login is the
+credential, and a missing login blocks launch. The readiness answer, the launch
+gate, and the connection list all read that one derivation from the engine
+adapter, so they cannot disagree.
+
 The engine stores `config.proxyConnectionId`, referring to the saved Model
 connection. Its current key is resolved on each launch and never copied into
 engine settings. Codex uses provider arguments while keeping its config home.

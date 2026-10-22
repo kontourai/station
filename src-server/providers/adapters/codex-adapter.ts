@@ -86,6 +86,7 @@ import {
 } from '../app-home/app-home-profiles.js';
 import {
   buildCliRuntimePrerequisites,
+  type CliAuthState,
   type CliCommandResult,
   runCliCommand,
 } from '../auth/cli-auth.js';
@@ -159,6 +160,7 @@ import {
 import type { CodexModelOptions } from './codex-models.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
 import { findUnaccountedCodexConfig } from './codex-project-config-provenance.js';
+import { applyEngineProxyAuthPrerequisite } from './engine-proxy-auth-prerequisite.js';
 import { codexAnswers, codexInputRequest } from './harness-questions.js';
 import {
   nativeResumeBindingKey,
@@ -348,6 +350,9 @@ type CodexModelListResult = {
   data?: Array<any>;
   nextCursor?: string | null;
 };
+
+/** The executable name this adapter probes and spawns. */
+const CODEX_CLI_COMMAND = 'codex';
 
 const CODEX_MODEL_MAX_ENTRIES = 1000;
 const CODEX_MODEL_MAX_PAGES = 32;
@@ -870,13 +875,36 @@ export class CodexAdapter implements ProviderAdapterShape {
     // configHome (→ CODEX_HOME) is the account readiness reports on. The
     // app-home / credential-profile layer is not modelled: resolving it can
     // create profile directories, which a readiness read must not do.
-    const connectionEnv = await this.resolveConnectionEnv();
+    //
+    // Resolve the LAUNCH, not just the env: the route is part of the answer
+    // for a proxy-routed connection (see the `detectAuthState` comment below),
+    // and only the launch resolves it.
+    const launch = await this.resolveConnectionLaunch();
+    const connectionEnv = launch.env;
     const runCommand = this.options.runCommand ?? runCliCommand;
-    return buildCliRuntimePrerequisites({
-      command: 'codex',
+    const prerequisites = await buildCliRuntimePrerequisites({
+      command: CODEX_CLI_COMMAND,
       displayName: 'Codex',
       versionArgs: ['--version'],
       authArgs: ['login', 'status'],
+      // A connection routed through a selected model connection
+      // (`config.proxyConnectionId`) authenticates with THAT connection's key:
+      // `engineProxyLaunch` passes it as `STATION_ENGINE_PROXY_KEY` and as
+      // `model_provider` overrides on every `codex app-server` spawn, and never
+      // asks the CLI to log in. `codex login status` therefore answered "Not
+      // logged in" (exit 1) for a connection that runs fine — `codex exec`
+      // over the same proxy answered with no login at all on 2026-10-22 — and
+      // that single wrong answer marked the engine "Setup required" in the
+      // inventory AND made the launch gate
+      // (`orchestration-service.assertAdapterReady`) refuse to start it:
+      // `POST /api/connections/codex/smoke` reported `codex prerequisites
+      // missing: Codex login`. Route present ⇒ the CLI's login is not the
+      // credential, so it is not probed.
+      ...(launch.route
+        ? {
+            detectAuthState: async (): Promise<CliAuthState> => 'authenticated',
+          }
+        : {}),
       runCommand: (command, args, signal) =>
         runCommand(command, args, signal, connectionEnv),
       ...(this.options.findBinary
@@ -886,6 +914,11 @@ export class CodexAdapter implements ProviderAdapterShape {
       authStep: 'Run `codex login` before starting Station.',
       signal: options?.signal,
     });
+    return applyEngineProxyAuthPrerequisite(
+      prerequisites,
+      CODEX_CLI_COMMAND,
+      launch.route?.label,
+    );
   }
 
   async readQuotaSnapshot(options: {
