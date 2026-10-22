@@ -41,6 +41,7 @@ import {
   authenticatedFetch,
   type ClientRequestOptions,
   DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+  getJson,
   isApiRequestScope,
 } from '../client/http';
 import {
@@ -913,7 +914,7 @@ export async function fetchOrchestrationSessions(
   options?: ClientRequestOptions,
 ): Promise<OrchestrationSessionSummary[]> {
   const resolvedApiBase = await resolveApiBase(apiBase);
-  const response = await authenticatedFetch(
+  const response = await getJson(
     `${resolvedApiBase}/api/orchestration/sessions/read-model`,
     { ...options, progressTimeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS },
   );
@@ -1329,6 +1330,7 @@ export function useOrchestrationSessionsQuery(
     {
       staleTime: streamLive ? Infinity : (config?.staleTime ?? 60_000),
       gcTime: config?.gcTime,
+      refetchIntervalForError: (error) => (error ? 60_000 : undefined),
       retry: config?.retry,
       refetchOnWindowFocus: config?.refetchOnWindowFocus,
       enabled: config?.enabled,

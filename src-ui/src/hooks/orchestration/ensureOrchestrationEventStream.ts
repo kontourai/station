@@ -109,7 +109,7 @@ const ORCHESTRATION_STREAM_STALL_TIMEOUT_MS = 75_000;
 /**
  * station#2301: every apiBase a caller has asked for, so a recovery signal can
  * re-ensure a stream whose connection ended without anyone remounting the
- * dock. `ChatDock`'s mount effect is the only caller, and it does not re-run
+ * dock. A mounted detail also ensures its shared feed; neither effect re-runs
  * when the page merely comes back to the foreground.
  */
 const requestedBases = new Set<string>();
@@ -209,11 +209,15 @@ function installRecoveryListeners(): void {
  *
  * #2307: the refresh targets the `QueryClient` REGISTERED for the stream's
  * apiBase (see `streamQueryClients` below) at the moment it fires. `ChatDock`
- * registers its own client on mount, so a stream with no mounted dock for its
- * apiBase refreshes nothing. #2309 Phase B, a server-pushed conversation
+ * and the authority query subtree register their client on mount, so list
+ * refresh remains available without a mounted dock. #2309 Phase B, a server-pushed conversation
  * activity record, supersedes this.
  */
 const SESSION_READ_MODEL_FACT_METHODS: ReadonlySet<string> = new Set([
+  'session.started',
+  'session.configured',
+  'session.state-changed',
+  'session.deleted',
   'child-work.updated',
   'turn.started',
   'runtime.error',
@@ -263,13 +267,13 @@ function sessionReadModelRefreshState(
  * every unverified fallback) and replaces its whole protected subtree when
  * that changes, while this stream is module-scoped per apiBase and outlives
  * any one of those subtrees. So the client is not bound to the stream's
- * closure: `ChatDock`, which renders inside that protected subtree, registers
- * the client `useQueryClient()` gives it and releases it on unmount, and every
+ * closure: the authority query subtree registers its client independently of
+ * the optional dock and releases it on unmount, and every
  * consumer below resolves the CURRENT registration for its apiBase when it
  * runs. A retired authority's subtree unmounts before (or in the same commit
  * as) `retireAuthorityClient`, so its client stops receiving invalidations
  * and reconnect refetches at that point, and a stream whose apiBase has no
- * mounted dock writes into no cache at all.
+ * mounted authority subtree writes into no cache at all.
  *
  * The registry is keyed by apiBase, not by authority. A principal switch on
  * the SAME apiBase does not by itself reconnect a live stream (credential
@@ -292,7 +296,7 @@ function currentStreamQueryClient(apiBase: string): QueryClient | undefined {
     ?.queryClient;
 }
 
-function registerStreamQueryClient(
+export function registerOrchestrationStreamQueryClient(
   apiBase: string,
   queryClient: QueryClient,
 ): () => void {
@@ -419,7 +423,7 @@ export function ensureOrchestrationEventStream(
   authorityKey?: string,
 ): () => void {
   const release = queryClient
-    ? registerStreamQueryClient(apiBase, queryClient)
+    ? registerOrchestrationStreamQueryClient(apiBase, queryClient)
     : () => {};
   requestedBases.add(apiBase);
   installRecoveryListeners();

@@ -4835,7 +4835,8 @@ framing ends and the application's authority checks begin.
 to the same API base and authority key. Station supplies that binding through
 `OrchestrationSessionsContext`. A caught-up orchestration stream invalidates the
 list on projection updates and turn boundaries, so its observers do not poll.
-Without a live stream, observers use a 60-second fallback (standalone SDK
+Failed list reads keep a 60-second recovery interval even while the stream
+is healthy. Without a live stream, observers use a 60-second fallback (standalone SDK
 callers may supply `refetchInterval`). Different authority keys use separate
 cache entries, and request scopes still guard dispatch and response reads.
 
@@ -4854,7 +4855,7 @@ A five-minute total cap also bounds responses that keep trickling bytes. This
 allows over seven times the observed ~41-second healthy read on a slow tailnet
 link. Either bound rejects with
 `StationRequestTimeoutError`, allowing the stream's owed refresh to run after the query settles; existing cached sessions remain available
-during retries. The opt-in `authenticatedFetch` option `progressTimeoutMs`
+during retries. The opt-in `getJson` and `authenticatedFetch` option `progressTimeoutMs`
 supersedes the configured total request deadline for this call, while retaining
 the five-minute cap. Both timeout paths preserve cancellation from a `Request`
 input and an explicit `init.signal`. This per-read bound does not

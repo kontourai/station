@@ -88,6 +88,8 @@ export interface ClientRequestOptions {
    * whose response body is deliberately open-ended.
    */
   timeoutMs?: number | null;
+  /** Header/body inactivity bound with a five-minute total cap for JSON GETs. */
+  progressTimeoutMs?: number;
 }
 
 /** Public, non-secret identity of the host authority a request is bound to. */
@@ -1289,6 +1291,7 @@ export async function getJson(
     init.headers = headers;
   }
   const timeoutMs = resolveTimeoutMs(requestOptions);
+  const progressTimeout = normalizeTimeout(requestOptions?.progressTimeoutMs);
   const request =
     configured?.transport && sameOrigin(url, configured.origin)
       ? configured.transport
@@ -1306,11 +1309,20 @@ export async function getJson(
     assertAuthority,
   );
   const response =
-    timeoutMs === undefined
-      ? await request(url, dispatchInit)
-      : await fetchWithDeadline(url, dispatchInit, timeoutMs, url, {
+    progressTimeout !== undefined
+      ? await fetchWithProgressTimeout(
+          url,
+          dispatchInit,
+          progressTimeout,
+          url,
           request,
-        });
+          requestOptions?.readOnly,
+        )
+      : timeoutMs === undefined
+        ? await request(url, dispatchInit)
+        : await fetchWithDeadline(url, dispatchInit, timeoutMs, url, {
+            request,
+          });
   await settleCredentialResponse(
     url,
     response,
@@ -1916,6 +1928,7 @@ export function fetchSSE(
           // here would tear down a healthy connection on its first quiet
           // minute. Cancellation is `controller`'s job, not a timer's.
           timeoutMs: null,
+          progressTimeoutMs: undefined,
         });
         if (controller.signal.aborted) break;
         attemptOpenedAt = Date.now();

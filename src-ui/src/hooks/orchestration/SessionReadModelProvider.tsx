@@ -1,9 +1,16 @@
 import { OrchestrationSessionsContext } from '@kontourai/station-sdk';
-import { type ReactNode, useMemo, useSyncExternalStore } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import {
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useSyncExternalStore,
+} from 'react';
 import {
   useApiBase,
   useHostRequestAuthorityScope,
 } from '../../contexts/ApiBaseContext';
+import { registerOrchestrationStreamQueryClient } from './ensureOrchestrationEventStream';
 import {
   getStreamConnectionState,
   subscribeStreamConnectionState,
@@ -16,6 +23,11 @@ export function SessionReadModelProvider({
 }) {
   const { apiBase } = useApiBase();
   const scope = useHostRequestAuthorityScope();
+  const queryClient = useQueryClient();
+  useEffect(
+    () => registerOrchestrationStreamQueryClient(apiBase, queryClient),
+    [apiBase, queryClient],
+  );
   const state = useSyncExternalStore(subscribeStreamConnectionState, () =>
     getStreamConnectionState(apiBase),
   );
