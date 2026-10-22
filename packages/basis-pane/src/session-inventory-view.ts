@@ -325,9 +325,7 @@ export function buildSessionInventoryViewModel(
   // not-captured/unsupported gaps, not only errors.
   const ownerGaps = [
     ...new Set(
-      groups
-        .filter((group) => group.id !== 'attention')
-        .flatMap((group) => group.gaps),
+      groups.flatMap((group) => (group.id === 'attention' ? [] : group.gaps)),
     ),
   ];
   const withAttention = isV1
