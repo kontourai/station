@@ -53,7 +53,7 @@ export function registerSessionInventoryHost(
   };
 }
 /** Refresh the live execution without replacing an already captured inspection. */
-export function refreshSessionInventoryHostExecution(
+function refreshSessionInventoryHostExecution(
   hostId: string,
   executionId: string,
 ) {
