@@ -31,7 +31,11 @@ import {
   registerACPConnectionRegistryProvider,
 } from '../../../providers/registries/registry.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
-import { resetEngineAuthStatus } from '../../../services/acp/engine-auth-status.js';
+import {
+  engineSignInStatus,
+  resetEngineAuthStatus,
+  setEngineStatusTestHooks,
+} from '../../../services/acp/engine-auth-status.js';
 import {
   EngineCredentials,
   registerEngineCredentials,
@@ -72,6 +76,7 @@ beforeEach(() => {
 afterEach(() => {
   clearAll();
   resetEngineAuthStatus();
+  setEngineStatusTestHooks({});
   registerEngineCredentials(null);
   installLoggerLineSink(undefined);
   vi.unstubAllEnvs();
@@ -93,7 +98,7 @@ function engineProgram(program: string, profile: string): string {
   return command;
 }
 
-async function fixture() {
+async function fixture(extraConnections: ACPConnectionConfig[] = []) {
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
   const root = makeTempDir('station-sign-in-routes-');
   const security = new EnvironmentSecurityService({
@@ -147,6 +152,7 @@ async function fixture() {
       command: engineProgram('droid', 'factory-droid.json'),
       enabled: true,
     },
+    ...extraConnections,
   ];
   const acpJson = JSON.stringify({ connections });
   const opened: TerminalOpenInput[] = [];
@@ -330,6 +336,83 @@ describe.runIf(posix)('engine sign-in route authority', () => {
 });
 
 describe.runIf(posix)('an engine key', () => {
+  test.each(['PUT', 'DELETE'] as const)(
+    '%s retires status work launched with the previous key environment',
+    async (method) => {
+      const config = {
+        id: 'cursor',
+        name: 'Cursor',
+        command: engineProgram('cursor-agent', 'cursor.json'),
+        enabled: true,
+      };
+      const f = await fixture([config]);
+      vi.stubEnv('CURSOR_API_KEY', '');
+      if (method === 'DELETE')
+        await new EngineCredentials(f.home).set(
+          config.id,
+          'CURSOR_API_KEY',
+          SECRET,
+          ['CURSOR_API_KEY'],
+        );
+      const envs: Array<Record<string, string> | undefined> = [];
+      let releaseOld!: () => void;
+      const old = new Promise<{ stdout: string; stderr: string; code: number }>(
+        (resolve) => {
+          releaseOld = () =>
+            resolve({
+              stdout: JSON.stringify({ isAuthenticated: method === 'DELETE' }),
+              stderr: '',
+              code: 0,
+            });
+        },
+      );
+      setEngineStatusTestHooks({
+        runner: async (_command, _args, env) => {
+          envs.push(env);
+          if (envs.length === 1) return old;
+          return {
+            stdout: JSON.stringify({ isAuthenticated: method === 'PUT' }),
+            stderr: '',
+            code: 0,
+          };
+        },
+      });
+      const previous = engineSignInStatus(config);
+      await expect.poll(() => envs.length).toBe(1);
+      const changed = f.call(
+        f.operator.credential,
+        method,
+        'cursor/credentials/CURSOR_API_KEY',
+        method === 'PUT' ? { value: SECRET } : undefined,
+      );
+      try {
+        await expect.poll(() => envs.length).toBe(2);
+        expect(envs[0]?.CURSOR_API_KEY).toBe(
+          method === 'DELETE' ? SECRET : undefined,
+        );
+        expect(envs[1]?.CURSOR_API_KEY).toBe(
+          method === 'PUT' ? SECRET : undefined,
+        );
+        const response = await changed;
+        expect(response.status).toBe(200);
+        const expected = method === 'PUT' ? 'authenticated' : 'unauthenticated';
+        expect(response.body.data.status.state).toBe(expected);
+        releaseOld();
+        expect((await previous).state).toBe('unknown');
+        const view = await f.call(
+          f.operator.credential,
+          'GET',
+          'cursor/sign-in',
+        );
+        expect(view.body.data.status.state).toBe(expected);
+        expect(envs).toHaveLength(2);
+      } finally {
+        releaseOld();
+        await Promise.all([previous, changed]);
+      }
+    },
+  );
+
   test('is stored only in the engine credential store and never served or logged', async () => {
     const f = await fixture();
     const lines: string[] = [];

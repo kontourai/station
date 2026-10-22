@@ -418,6 +418,7 @@ export class EngineSignInService {
 
   #register(
     config: ACPConnectionConfig,
+    generation: { key: string },
     view: EngineSignInAttempt,
     cancel: () => void,
     onFinish: () => void,
@@ -428,6 +429,11 @@ export class EngineSignInService {
       cancel,
       finish: (state, message) => {
         if (live.view.state !== 'running') return;
+        if (
+          state === 'succeeded' &&
+          this.#generations.get(config.id) !== generation
+        )
+          state = 'cancelled';
         live.view = { ...live.view, state, ...(message ? { message } : {}) };
         live.finishedAt = this.#now();
         if (state === 'succeeded') recordEngineAuthenticated(config);
@@ -506,6 +512,7 @@ export class EngineSignInService {
     };
     const live = this.#register(
       config,
+      generation,
       view,
       () => {
         live.finish('cancelled');
@@ -589,6 +596,7 @@ export class EngineSignInService {
     });
     const live = this.#register(
       config,
+      generation,
       view,
       () => live.finish('cancelled'),
       () => void process.destroy().catch(() => undefined),
@@ -600,11 +608,15 @@ export class EngineSignInService {
           this.#timeouts.handshake,
           'answer',
         );
+        if (live.view.state !== 'running') return;
+        this.#requireCurrent(config, generation);
         await this.#withDeadline(
           process.authenticate(methodId),
           this.#timeouts.agent,
           'finish signing in',
         );
+        if (live.view.state !== 'running') return;
+        this.#requireCurrent(config, generation);
         live.finish('succeeded');
       } catch (error) {
         if (live.view.state !== 'running') return;

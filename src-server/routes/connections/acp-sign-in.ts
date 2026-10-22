@@ -32,7 +32,10 @@ import {
 } from '../../security/pairing-route-scopes.js';
 import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
 import { registryAuthFor } from '../../services/acp/acp-engine-descriptors.js';
-import { engineSignInStatus } from '../../services/acp/engine-auth-status.js';
+import {
+  engineSignInStatus,
+  invalidateEngineStatus,
+} from '../../services/acp/engine-auth-status.js';
 import {
   EngineCredentialRefusedError,
   engineCredentials,
@@ -251,6 +254,7 @@ export function createACPSignInRoutes(input: {
     } catch (error) {
       return failure(c, error);
     }
+    invalidateEngineStatus(config.id);
     return c.json({
       success: true,
       data: await viewFor(c, service, config, true),
@@ -263,6 +267,7 @@ export function createACPSignInRoutes(input: {
     if (!config) return notFound(c);
     try {
       await engineCredentials()?.remove(config.id, c.req.param('name'));
+      invalidateEngineStatus(config.id);
     } catch (error) {
       return failure(c, error);
     }

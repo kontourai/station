@@ -20,6 +20,7 @@ import {
   registerACPConnectionRegistryProvider,
 } from '../../../providers/registries/registry.js';
 import { ACPProbe } from '../acp-probe.js';
+import { ACPProcess } from '../acp-process.js';
 import {
   engineSignInStatus,
   resetEngineAuthStatus,
@@ -261,6 +262,18 @@ describe.runIf(posix)('engine sign-in through a live handshake', () => {
     },
   );
 
+  test('a terminal result cannot establish sign-in after another invocation replaces its generation', async () => {
+    const pi = engineProgram('pi-acp', 'pi-acp.json');
+    const terminal = recordingTerminal();
+    const service = new EngineSignInService({ terminal: terminal.host });
+    const config = connection('pi', pi.command);
+    await service.startTerminal(config, 'pi_terminal_login');
+    await service.refreshMethods({ ...config, args: ['--other-profile'] });
+    terminal.exit(terminal.opened[0], 0);
+    expect(service.attempt('pi')?.state).toBe('cancelled');
+    expect((await engineSignInStatus(config)).state).toBe('unknown');
+  });
+
   test('a terminal sign-in that exits non-zero fails and claims nothing', async () => {
     const pi = engineProgram('pi-acp', 'pi-acp.json');
     const terminal = recordingTerminal();
@@ -314,6 +327,73 @@ describe.runIf(posix)('engine sign-in through a live handshake', () => {
       source: 'sign-in',
     });
   });
+
+  test.each([
+    ['cancel', (s: EngineSignInService) => s.cancel('droid')],
+    ['forget', (s: EngineSignInService) => s.forget('droid')],
+    ['dispose', (s: EngineSignInService) => s.dispose()],
+  ] as const)(
+    '%s during agent initialization never dispatches authenticate',
+    async (_how, end) => {
+      const droid = engineProgram('droid', 'factory-droid.json');
+      let releaseStart!: () => void;
+      const startGate = new Promise<void>((resolve) => {
+        releaseStart = resolve;
+      });
+      let initialized!: () => void;
+      const ready = new Promise<void>((resolve) => {
+        initialized = resolve;
+      });
+      let releaseDestroy!: () => void;
+      const destroyGate = new Promise<void>((resolve) => {
+        releaseDestroy = resolve;
+      });
+      const processes: ACPProcess[] = [];
+      const service = new EngineSignInService({
+        terminal: null,
+        processFactory: (options) => {
+          const process = new ACPProcess(options);
+          processes.push(process);
+          // Discovery completes normally; hold only the sign-in's process.
+          if (processes.length === 2) {
+            const start = process.start.bind(process);
+            vi.spyOn(process, 'start').mockImplementation(async () => {
+              const result = await start();
+              initialized();
+              await startGate;
+              return result;
+            });
+            const destroy = process.destroy.bind(process);
+            vi.spyOn(process, 'destroy').mockImplementation(async () => {
+              await destroyGate;
+              await destroy();
+            });
+          }
+          return process;
+        },
+      });
+      const config = connection('droid', droid.command);
+      try {
+        await service.startAgent(config, 'device-pairing');
+        await ready;
+        const authenticate = vi.spyOn(processes[1], 'authenticate');
+        end(service);
+        releaseStart();
+        // Let the service continuation resume while cleanup remains pending.
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(authenticate).not.toHaveBeenCalled();
+        expect(
+          droid.record().some((entry) => entry.method === 'authenticate'),
+        ).toBe(false);
+        expect((await engineSignInStatus(config)).state).toBe('unknown');
+      } finally {
+        releaseStart();
+        releaseDestroy();
+        service.dispose();
+        await Promise.all(processes.map((process) => process.destroy()));
+      }
+    },
+  );
 
   test('a refused authenticate fails with the engine reason and claims nothing', async () => {
     const droid = engineProgram('droid', 'factory-droid.json', [
