@@ -137,8 +137,20 @@ Preset-derived groups now retain each member's codename, color and role beside
 its stable seat identity. The inspector reads that saved roster after execution;
 older groups retain the seat-ID fallback. The server rejects roster/seat
 substitution on read. Focused real-service and SDK/UI checks cover this identity
-path without exposing prompt additions. Browser/theme/native and full-run
-identity qualification remain separate.
+path without exposing prompt additions. At `de1888c324b`, a real read-only
+browser inspection passed light/dark at 1366px and 390px plus reload. The first
+fresh-browser login attempt never observed bootstrap and is excluded; the
+corrected harness required bootstrap 200 before proceeding. Collaborative
+snapshots timed out twice, so screenshots use isolated local Playwright. The
+group was created and canceled with zero dispatches and zero provider calls.
+
+That check exposed the wide member table's missing named keyboard entry point.
+Repair `206adac1810` adds it and a focus indicator. A fresh real browser check
+passed Tab/Shift+Tab entry and over 400px of ArrowRight scrolling in both narrow
+themes; retained labels/colors and reload also passed. A compiling tab-order
+mutation failed the panel regression and byte-identical restoration passed.
+This is read-only presentation evidence, not native, second-device, a new live
+member run or full-run identity acceptance. The isolated runtime was stopped.
 
 ## Production adoption sequence
 

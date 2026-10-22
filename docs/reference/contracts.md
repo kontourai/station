@@ -51,6 +51,7 @@ conversation access. Filesystem preparation stays in the server.
 | Module | Owns |
 |---|---|
 | `@kontourai/station-contracts/ensemble` | Versioned named-member preset parsing and deterministic roster/brief text; presets grant no execution or authentication authority |
+| `@kontourai/station-contracts/delegation-group` | Group transport and Station-authorized CLI session-group views, retained preset/member identities and bounded revision pages; these shapes grant no launch authority and do not bind portable Flow lineage |
 | `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota, optional identity/credit/model/spending/breakdown metadata and bounded capture-audit projections, plus provider-owned login; runtime validation stays in SDK consumers |
 | `@kontourai/station-contracts/acp` | ACP connection config, ACP connection status values, and engine catalogue entries with their install/launch/sign-in descriptor and its validator (`validateACPEngineDescriptor`) |
 | `@kontourai/station-contracts/engine-capability-matrix` | Per-engine capability and delivery declarations, and for ACP who decides which actions ask (`acpApprovalControl`: `station` for an engine whose approval rules Station sets at launch, today OpenCode, `engine` otherwise) |
