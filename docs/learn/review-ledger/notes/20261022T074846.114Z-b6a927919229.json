@@ -1,0 +1,7 @@
+{
+  "revision": "540f8a6e5a0c2909fc9d3bd6c2cecddd6911b9e5",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed Activity startup repair8767c2dc482 and test followup d4d3610b35a. Actual ActivityRegionShell+SDK query+ActivityReviewProvider pending request reproduces max update depth on old source; fixed selection148green and UI types/Biome pass. Compiling old-default mutant fails both cases with12controls; byte restore14green. Independent source review accepts production and repaired restoration mount assertion. Exact8767c canonical simulator build/install binary match and same-revision server: two cold launches load actual retained CLI conversation without Retry. Earlier6b2e933 failures remain evidence; physical-device, no-tools, portable lineage and full epic qualification remain incomplete. Generated Apple assets archived/restored and own runtime/device stopped.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}
