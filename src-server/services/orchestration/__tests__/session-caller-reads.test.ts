@@ -47,6 +47,7 @@ function fixture() {
       environmentId: 'local',
       targetKind: 'agent',
       targetId: 'helper',
+      agentSlug: 'helper',
     },
   });
   const service = new OrchestrationService({
@@ -120,6 +121,13 @@ test('authorized existence, binding and conversation reads keep image bytes lazy
   expect(messages.length).toBeGreaterThan(0);
   expect(JSON.stringify(messages)).toContain('blobRef');
   expect(JSON.stringify(messages)).not.toContain('data:image');
+  const conversation = await service.sessionQueries.read(
+    { type: 'conversation', threadId: 'thread' },
+    authority(),
+  );
+  expect(conversation.status).toBe('found');
+  expect(JSON.stringify(conversation)).toContain('blobRef');
+  expect(JSON.stringify(conversation)).not.toContain('data:image');
   expect(
     await service.readSession('thread', authority('stranger'), {
       eventMethods: ['session.started'],
@@ -173,6 +181,28 @@ test('usage polling reuses unchanged per-session projections and observes new us
   expect(
     payloads.find((event) => event.method === 'tool.completed'),
   ).not.toHaveProperty('output');
+});
+
+test('portable consent scans only durable binding methods', () => {
+  const { store, service, append } = fixture();
+  const consent = {
+    portableProjectId: 'portable',
+    resourceId: 'git.example/project',
+    localProjectId: 'local',
+  };
+  append({
+    method: 'session.configured',
+    sessionId: 'thread',
+    metadata: { portableExecutionConsent: consent },
+  });
+  append({
+    method: 'content.text-delta',
+    turnId: 'turn',
+    delta: 'unrelated transcript',
+  });
+  const replay = vi.spyOn(store, 'listEvents');
+  expect(service.persistedPortableConsentOfThread('thread')).toEqual(consent);
+  expect(replay).not.toHaveBeenCalled();
 });
 
 test('hot global sequence reads compile once and retain fresh bindings', () => {

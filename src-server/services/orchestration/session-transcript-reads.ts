@@ -239,7 +239,17 @@ export class SessionTranscriptReads {
           projection,
           ...(relayAgentId ? { relayAgentId } : {}),
         };
-        this.usageProjections.set(threadId, cached);
+        // Bound retained read state independently of the lifetime event log.
+        if (
+          projection.observations.length <= 2_000 &&
+          Buffer.byteLength(JSON.stringify(projection)) <= 262_144
+        ) {
+          if (this.usageProjections.size >= 128)
+            this.usageProjections.delete(
+              this.usageProjections.keys().next().value!,
+            );
+          this.usageProjections.set(threadId, cached);
+        } else this.usageProjections.delete(threadId);
       }
       const { projection, relayAgentId } = cached;
       if (
