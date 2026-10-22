@@ -1781,9 +1781,13 @@ the deadline does not itself issue interruption requests; use explicit cancel.
 Unknown cost is not zero.
 
 A dispatch refusal retains its HTTP status and closed code as `dispatchFailure`,
-without copying provider diagnostics into the group. A refusal response is not
-by itself proof that no effect occurred. An ambiguous start retains its occupied
-seat and its reserved identifiers across
+without copying provider diagnostics into the group. When the shared route
+witnesses refusal before calling the delegation launcher, the seat becomes
+`terminal` with outcome `failed`, without inventing a session handle or provider
+terminal event. It is not resent after reopen and cannot satisfy a required
+dependency. A refusal response alone is not proof that no effect occurred:
+if the launcher was entered, uncertainty retains its occupied seat and reserved
+identifiers across
 restart. Re-running supervision never re-sends that seat. Cancellation is durable,
 and synchronous checks also fence the initial adapter start and turn after
 asynchronous setup. Interrupted supervision can re-observe accepted members;

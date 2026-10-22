@@ -134,6 +134,7 @@ const recordSchema = z
             outcome: z.enum(['completed', 'failed', 'canceled']).optional(),
             attention: attentionSchema.optional(),
             terminalObservedAt: z.string().datetime().optional(),
+            notDispatched: z.literal(true).optional(),
             terminalEvent: terminalEventSchema.optional(),
             dispatchFailure: z
               .object({
@@ -167,6 +168,7 @@ export class CliSessionGroupDispatchRefusal extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
+    readonly admission: 'unknown' | 'not-dispatched' = 'unknown',
   ) {
     super('The delegated session did not return an accepted handle.');
     this.name = 'CliSessionGroupDispatchRefusal';
@@ -247,7 +249,15 @@ export class CliSessionGroups<T> {
       record.dispatchCount !==
         record.seats.filter((s) => s.state !== 'pending').length ||
       record.seats.some(
-        (s) => (s.state === 'started' || s.state === 'terminal') && !s.handle,
+        (s) =>
+          (s.state === 'started' || s.state === 'terminal') &&
+          !s.handle &&
+          !(
+            s.state === 'terminal' &&
+            s.outcome === 'failed' &&
+            s.notDispatched &&
+            s.dispatchFailure
+          ),
       ) ||
       (record.preset !== undefined &&
         !record.seats.some(
@@ -871,7 +881,14 @@ export class CliSessionGroups<T> {
           await this.mutate(groupId, owner, (record) => {
             const seat = record.seats.find((s) => s.seatId === seatId)!;
             seat.dispatchFailure = { status: error.status, code: error.code };
+            if (error.admission === 'not-dispatched') {
+              seat.state = 'terminal';
+              seat.outcome = 'failed';
+              seat.notDispatched = true;
+              delete seat.attention;
+            }
           });
+          if (error.admission === 'not-dispatched') throw error;
         }
         const reserved = launch.seat.reservedSessionId!;
         await this.requestInterrupt(host, {

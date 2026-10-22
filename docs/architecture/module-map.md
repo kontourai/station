@@ -1788,7 +1788,7 @@ does not redact engine history or establish engine acknowledgement.
 
 [CliSessionGroups](../../src-server/services/orchestration/cli-session-group.ts)
 retains personal-host group definitions, seat launch intents, actual session and
-initial-turn identities, and bounded revision events in the isolated Station
+initial-turn identities, and bounded revision events in the configured Station
 home. The [orchestration route](../../src-server/routes/orchestration/orchestration.ts)
 binds every operation to the current credential and reuses the single-task
 `dispatchAuthorizedDelegation` path. Group creation starts no engine. Run

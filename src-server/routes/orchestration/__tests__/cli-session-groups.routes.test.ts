@@ -619,18 +619,31 @@ test('group launch retains the ordinary full-access refusal instead of calling t
           model: { options: { approvalMode: 'never' } },
         },
       },
+      member('dependent', ['first']),
     ],
     1,
   );
   await f.request(`/session-groups/${group.groupId}/run`, {});
   expect(f.calls).toHaveLength(0);
-  expect((await view(f, group.groupId)).members[0]?.state).toBe(
-    'launch-intent',
-  );
+  const refused = await view(f, group.groupId);
+  expect(refused.members.map((seat) => seat.state)).toEqual([
+    'terminal',
+    'pending',
+  ]);
+  expect(refused.members[0]?.outcome).toBe('failed');
+  expect(refused.members[0]?.handle).toBeUndefined();
+  expect(refused.members[0]?.terminalEvent).toBeUndefined();
+  expect(f.interruptDelegatedTask).not.toHaveBeenCalled();
   expect((await view(f, group.groupId)).members[0]?.dispatchFailure).toEqual({
     status: 403,
     code: 'approval-full-access-not-granted',
   });
+  const reopened = fixture(f.home);
+  await reopened.request(`/session-groups/${group.groupId}/run`, {});
+  expect(reopened.calls).toHaveLength(0);
+  expect((await view(reopened, group.groupId)).members).toEqual(
+    refused.members,
+  );
 }, 30_000);
 
 test('a completed snapshot from a different provider turn cannot release a dependent seat', async () => {

@@ -3691,6 +3691,7 @@ export function createOrchestrationRoutes(
       sessionId: string;
       initialClientTurnId: string;
     },
+    onDispatch?: () => void,
   ): Promise<Response> {
     if (!deps.delegateTask) {
       return c.json(
@@ -3863,6 +3864,7 @@ export function createOrchestrationRoutes(
           await deps.taskRoomWork?.beforeInvocation?.(roomRequest.taskId);
         }
         delegationGroupAdmission?.assertCurrent();
+        onDispatch?.();
         return delegate({
           ...(delegationGroupAdmission
             ? {
@@ -4295,7 +4297,15 @@ export function createOrchestrationRoutes(
     assertCurrent,
     dispatch: async (input, admission) => {
       assertCurrent();
-      const response = await dispatchAuthorizedDelegation(c, input, admission);
+      let dispatched = false;
+      const response = await dispatchAuthorizedDelegation(
+        c,
+        input,
+        admission,
+        () => {
+          dispatched = true;
+        },
+      );
       const payload: unknown = await response.json();
       const result = groupResponseSchema.safeParse(payload);
       if (!response.ok || !result.success) {
@@ -4320,6 +4330,7 @@ export function createOrchestrationRoutes(
         throw new CliSessionGroupDispatchRefusal(
           response.ok ? 503 : response.status,
           code,
+          dispatched ? 'unknown' : 'not-dispatched',
         );
       }
       return result.data.data;
