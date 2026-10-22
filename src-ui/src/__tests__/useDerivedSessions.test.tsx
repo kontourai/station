@@ -25,6 +25,7 @@ vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => STABLE_AGENTS,
 }));
 
+import { handleTextDeltaEvent } from '../hooks/orchestration/streamHandlers';
 import { isTurnInFlight } from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { conversationsStore } from '../contexts/ConversationsContext';
@@ -720,4 +721,28 @@ describe('useDerivedSessions — end to end: no duplicate user bubble across a b
     expect(contents.filter((c) => c === 'first turn')).toHaveLength(1);
     expect(after.messages).toHaveLength(3);
   });
+});
+
+// Mounted consumer profile: each delta is a separate external-store delivery.
+test('profiles derived-session consumer commits during token delivery', () => {
+  clearChats();
+  activeChatsStore.initChat(SESSION_A, { agentSlug: 'agent-one' });
+  activeChatsStore.updateChat(SESSION_A, { orchestrationTurnOpen: true });
+  let commits = 0;
+  const mounted = renderHook(() => {
+    commits++;
+    return useDerivedSessions('', null);
+  });
+  const initial = commits;
+  const started = performance.now();
+  for (let index = 0; index < 100; index++) {
+    act(() => handleTextDeltaEvent({
+      method: 'content.text-delta', threadId: SESSION_A,
+      delta: 'word ', createdAt: '2026-10-22T00:00:00.000Z',
+    }));
+  }
+  console.info('DERIVED_PROFILE', JSON.stringify({ updates: commits - initial, cpuMs: performance.now() - started }));
+  expect(activeChatsStore.getSnapshot()[SESSION_A].streamingMessage?.content).toBe('word '.repeat(100));
+  mounted.unmount();
+  clearChats();
 });
