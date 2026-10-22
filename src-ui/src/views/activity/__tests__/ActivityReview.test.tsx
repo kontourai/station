@@ -257,6 +257,7 @@ test.each([false, true])(
     vi.stubGlobal('fetch', fetch);
     try {
       const view = await mount({ shell: true, restoring });
+    await screen.findByPlaceholderText('Search activity…');
       expect(
         screen.queryByText('Unable to load this part of Station.'),
       ).toBeNull();
