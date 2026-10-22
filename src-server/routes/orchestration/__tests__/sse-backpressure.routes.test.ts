@@ -349,10 +349,7 @@ describe('SSE backpressure over real loopback sockets (#3817)', () => {
     release();
     const text = await client.until('still-live');
     expect(text.includes('event: data:changed')).toBe(true);
-    expect(text).toContain('"notifications"');
-    expect(text).toContain('"scheduler-jobs"');
-    expect(text).toContain('"answer-basis"');
-    expect(text).toContain('"server-update-state"');
+    expect(text).toContain('data: {"resync":true}');
     expect(text).not.toContain('"index":1499');
   });
 });
