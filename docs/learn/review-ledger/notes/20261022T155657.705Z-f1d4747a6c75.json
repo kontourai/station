@@ -1,0 +1,7 @@
+{
+  "revision": "bcd897ef6111ae7601ef802ec8d3a3c24c250c3a",
+
+  "notes": [
+    {"path":"docs/plans/README.md","note":"Regenerated plan navigation; inspected the sole added plugin-core-delivery link against its tracked plan and heading. No runtime or delivery claim added by this index.","inputs":["docs/plans/README.md"]}
+  ]
+}
