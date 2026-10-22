@@ -217,9 +217,11 @@ above:
   part longer, so the caps alone no longer leave room for a record when
   every part is at its worst. The newest standing record's line is reserved
   instead: when the fixed parts leave too little, what the Task document
-  shows shrinks first and then what the summary shows, each by at least the
-  shortfall and with a note saying it was cut, so the newest record always
-  fits. Records
+  shows shrinks first, then what the summary shows. The document is cut with
+  a note, or left out with a note saying the Task document has it, and is
+  never replaced by a note longer than itself; the summary shrinks no
+  further than a `(cut)` marker. In the worst case every part allows, the
+  newest record fits. Records
   fill the space newest first, starting with the kind of the newest record
   and then taking in turn from each kind, followed by Session lines (at
   most eight, newest activity first). Everything left out is counted.

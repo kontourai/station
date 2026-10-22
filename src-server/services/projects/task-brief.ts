@@ -73,8 +73,9 @@ export const TASK_BRIEF_MAX_CHARS = 16000;
 // the caps alone no longer leave room for a record at every part's worst.
 // The newest standing record's line is therefore reserved: when the fixed
 // parts leave less than it needs, what the Task document shows shrinks
-// first, then what the summary shows, each by at least the shortfall
-// (review rounds 2 and 3; task-brief.test.ts pins both steps).
+// first (cut with a note, or left out with a note, but never replaced by a
+// longer note), then what the summary shows, down to a cut marker (review
+// rounds 2 to 4; task-brief.test.ts pins both steps).
 const TITLE_MAX = 512;
 const GOAL_MAX = 1000;
 /** The Task document's text: the seeded brief, before any summary exists. */
@@ -231,7 +232,9 @@ export function quotedWithin(
   const lines = quotedLines(text);
   if (lines.join('\n').length <= max) return lines;
   // A cap too small for the note gets a short one, or nothing: never a
-  // line longer than the cap (review round 3, F3).
+  // line longer than the cap (review round 3, F3). The brief's own callers
+  // never pass a cap below the short note (the summary step floors it, the
+  // document has its own note), so `[]` is only for other callers.
   if (note.length + 1 > max)
     return max >= SHORT_CUT_NOTE.length ? [SHORT_CUT_NOTE] : [];
   const budget = max - note.length - 1;
@@ -625,16 +628,26 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
     ? DOCUMENT_WITH_SUMMARY_MAX
     : DOCUMENT_MAX;
   const DOCUMENT_CUT_NOTE = '(cut; the Task document has the rest)';
-  const renderDocument = (max: number) =>
-    documentText
-      ? [
-          '## Task document',
-          task.workItemRef ? BY_TASK_AND_TRACKER : BY_TASK,
-          ...(max > DOCUMENT_CUT_NOTE.length + 3
-            ? quotedWithin(documentText, max, DOCUMENT_CUT_NOTE)
-            : [DOCUMENT_CUT_NOTE]),
-        ]
-      : [];
+  const DOCUMENT_LEFT_OUT_NOTE =
+    '(left out to fit this brief; the Task document has it)';
+  const documentQuoted = quotedLines(documentText);
+  const renderDocument = (max: number) => {
+    if (!documentText) return [];
+    const heading = [
+      '## Task document',
+      task.workItemRef ? BY_TASK_AND_TRACKER : BY_TASK,
+    ];
+    // Whole when it fits; cut with a note when the cut leaves something;
+    // otherwise left out, saying so (review round 4, P3-3).
+    if (documentQuoted.join('\n').length <= max)
+      return [...heading, ...documentQuoted];
+    if (max > DOCUMENT_CUT_NOTE.length + 3)
+      return [
+        ...heading,
+        ...quotedWithin(documentText, max, DOCUMENT_CUT_NOTE),
+      ];
+    return [...heading, DOCUMENT_LEFT_OUT_NOTE];
+  };
   let document = renderDocument(documentMax);
   // 2. The summary, whole unless the newest record needs its room.
   let summary = renderSummary(input.memory);
@@ -725,7 +738,10 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
       documentMax,
       quotedLines(documentText).join('\n').length,
     );
-    document = renderDocument(Math.max(0, shown - shortfall));
+    const shrunk = renderDocument(Math.max(0, shown - shortfall));
+    // Never trade a short document for a longer note: keep it when the
+    // shrunk form is no shorter (review round 4, P3-3).
+    if (block(shrunk).length < block(document).length) document = shrunk;
     shortfall = newestCost - budgetFor();
   }
   if (shortfall > 0 && memory?.summary) {
@@ -733,7 +749,14 @@ export function buildTaskBrief(input: TaskBriefInput): TaskBriefSnapshot {
       SUMMARY_QUOTED_MAX,
       quotedLines(memory.summary.text).join('\n').length,
     );
-    summary = renderSummary(input.memory, Math.max(0, shown - shortfall));
+    // Never below a cut marker's length, so a summary cut this far still
+    // says it was cut rather than vanishing (round 4, P3-3). A backstop:
+    // within the per-part caps, the other parts alone always leave room
+    // for the newest record, so this step never cuts the summary that far.
+    summary = renderSummary(
+      input.memory,
+      Math.max(SHORT_CUT_NOTE.length, shown - shortfall),
+    );
     shortfall = newestCost - budgetFor();
   }
   const budget = Math.max(0, budgetFor());

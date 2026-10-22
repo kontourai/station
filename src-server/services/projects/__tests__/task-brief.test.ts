@@ -454,7 +454,9 @@ describe('buildTaskBrief', () => {
     expect(brief.text).toContain(
       '(cut: quoted, this summary is longer than the brief allows;',
     );
-    expect(brief.text).toContain('(cut; the Task document has the rest)');
+    expect(brief.text).toContain(
+      '(left out to fit this brief; the Task document has it)',
+    );
   });
 
   test('a document shorter than its share gives up what it shows before the summary does (review round 3, F3)', () => {
@@ -464,8 +466,18 @@ describe('buildTaskBrief', () => {
     expect(brief.text.length).toBeLessThanOrEqual(TASK_BRIEF_MAX_CHARS);
     expect(brief.text).toContain(`> newest ${'r'.repeat(993)}`);
     expect(brief.text).toContain(
-      '## Task document\nQuoted, written by agents and people on this Task; a Task started from a tracker item is seeded with public tracker content:\n(cut; the Task document has the rest)\n',
+      '## Task document\nQuoted, written by agents and people on this Task; a Task started from a tracker item is seeded with public tracker content:\n(left out to fit this brief; the Task document has it)\n',
     );
+  });
+
+  test('a document shorter than the note is kept whole, never replaced by a longer note (review round 4, P3-3)', () => {
+    const brief = briefAtEveryCap('abc');
+    expect(brief.text.length).toBeLessThanOrEqual(TASK_BRIEF_MAX_CHARS);
+    expect(brief.text).toContain(`> newest ${'r'.repeat(993)}`);
+    expect(brief.text).toContain(
+      '## Task document\nQuoted, written by agents and people on this Task; a Task started from a tracker item is seeded with public tracker content:\n> abc\n',
+    );
+    expect(brief.text).not.toContain('the Task document has');
   });
 
   test("a Session's active claims follow its line, on one bounded line", () => {
