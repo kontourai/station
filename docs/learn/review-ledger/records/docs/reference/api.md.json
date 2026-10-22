@@ -492,7 +492,9 @@
 
     "src-server/routes/projects/repository-acquisition-routes.ts",
 
-    "src-server/domain/file-storage-schemas.ts"
+    "src-server/domain/file-storage-schemas.ts",
+
+    "src-server/services/projects/project-creation-service.ts"
   ],
 
   "checks": [
