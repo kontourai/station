@@ -118,6 +118,12 @@ export type TaskLearningDismissResult =
     }
   /** The version is not the key's current active, standing version. */
   | { readonly kind: 'not-a-candidate' }
+  /**
+   * A promotion row already names a store for this version (round 3, F1):
+   * the promotion stands, even if its knowledge write has not finished yet,
+   * and nothing is written.
+   */
+  | { readonly kind: 'promoted' }
   | { readonly kind: 'stale' };
 
 /** Which Project store a record version was promoted into (migration 022). */
@@ -134,9 +140,11 @@ export type TaskLearningPromotionClaim =
       readonly promotion: TaskLearningPromotionRecord;
     }
   /**
-   * The version was dismissed; nothing is recorded. Decided in the same
-   * transaction as the insert, so a dismissal and a promotion that race
-   * cannot both stand (review round 2, P3-6).
+   * The version was dismissed; nothing is recorded. Each side checks the
+   * other inside its own transaction (this one before inserting the row,
+   * `dismissLearningCandidate` before inserting a dismissal), so a
+   * dismissal and a promotion of one version can never both stand: the
+   * first to commit wins (review rounds 2 and 3).
    */
   | { readonly kind: 'dismissed' }
   /** An earlier promotion's row stands; write or read back only there. */
@@ -443,6 +451,23 @@ export function createSqliteTaskMemoryStore(
         .all(input.taskId, input.taskCreatedAt) as RecordRow[]
     ).map(recordFromRow);
 
+  const readPromotion = (
+    input: TaskMemoryIncarnation & TaskLearningDismissal,
+  ) =>
+    db
+      .prepare(
+        `SELECT ${PROMOTION_COLUMNS} FROM task_learning_promotions
+          WHERE task_id = ? AND task_created_at = ? AND kind = ?
+            AND record_key = ? AND version = ?`,
+      )
+      .get(
+        input.taskId,
+        input.taskCreatedAt,
+        input.kind,
+        input.key,
+        input.version,
+      ) as PromotionRow | undefined;
+
   const readDismissal = (
     input: TaskMemoryIncarnation & TaskLearningDismissal,
   ) => {
@@ -678,6 +703,8 @@ export function createSqliteTaskMemoryStore(
               commit: false,
               value: { kind: 'already-dismissed', dismissal: existing },
             };
+          if (readPromotion(input))
+            return { commit: false, value: { kind: 'promoted' } };
           const current = currentRecord(input, input.kind, input.key);
           if (
             !current ||
@@ -718,19 +745,7 @@ export function createSqliteTaskMemoryStore(
       return transact<TaskLearningPromotionClaim>(input.beforeCommit, () => {
         if (readDismissal(input))
           return { commit: false, value: { kind: 'dismissed' } };
-        const row = db
-          .prepare(
-            `SELECT ${PROMOTION_COLUMNS} FROM task_learning_promotions
-              WHERE task_id = ? AND task_created_at = ? AND kind = ?
-                AND record_key = ? AND version = ?`,
-          )
-          .get(
-            input.taskId,
-            input.taskCreatedAt,
-            input.kind,
-            input.key,
-            input.version,
-          ) as PromotionRow | undefined;
+        const row = readPromotion(input);
         if (row)
           return {
             commit: false,

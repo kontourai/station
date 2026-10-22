@@ -20,7 +20,9 @@
  *   promotion finishes it in the row's store, with that request's edited
  *   title and text. A version whose recorded store has since been removed
  *   from the Project stays `no-store`: it is never written anywhere else.
- *   The dismissal check runs inside the row's transaction too. "Promoted"
+ *   The dismissal check runs inside the row's transaction too, and a
+ *   dismissal is refused once the row exists, so a claimed promotion whose
+ *   write failed can still be finished. "Promoted"
  *   in the candidate list is still read back from the stores.
  * - A dismissal is kept in `task_learning_dismissals` (migration 021).
  *
@@ -81,6 +83,8 @@ export type TaskLearningRefusal =
   | { readonly kind: 'not-done' }
   | { readonly kind: 'not-a-candidate' }
   | { readonly kind: 'was-dismissed' }
+  /** A promotion of this version stands; it cannot be dismissed. */
+  | { readonly kind: 'was-promoted' }
   | { readonly kind: 'no-store' }
   | { readonly kind: 'invalid'; readonly field: 'title' | 'text' }
   | { readonly kind: 'stale' }
@@ -345,11 +349,12 @@ export function dismissTaskLearning(
   dismissal: TaskLearningDismissal,
 ): TaskLearningDismissOutcome {
   if (access.task.status !== 'done') return { kind: 'not-done' };
-  return access.memory.dismissLearningCandidate({
+  const result = access.memory.dismissLearningCandidate({
     ...incarnationOf(access.task),
     ...dismissal,
     projectId: access.projectId,
     principalId: access.principalId,
     beforeCommit: access.isCurrent,
   });
+  return result.kind === 'promoted' ? { kind: 'was-promoted' } : result;
 }

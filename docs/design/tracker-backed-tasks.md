@@ -395,8 +395,11 @@ step.
   next promotion finishes it in the recorded store, with that request's
   edited title and text. A version whose recorded store has since been
   removed from the Project answers `no-store` and is never written
-  elsewhere. Whether the version was dismissed is checked inside the same
-  transaction as the row's insert. "Promoted" in the candidate list is read back from
+  elsewhere. Promotion and dismissal each check the other inside their own
+  transaction, so the first to commit wins: a dismissed version is not
+  promoted, and once a promotion row exists the version cannot be dismissed
+  (`409 task_learning_promoted`), so a promotion whose write failed can still
+  be finished. "Promoted" in the candidate list is read back from
   the stores. A later version of the same key is a new candidate.
 - **Dismissals** are kept as an append-only row per dismissed record version
   (`task_learning_dismissals`, migration 021).

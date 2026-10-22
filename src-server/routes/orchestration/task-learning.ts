@@ -91,6 +91,16 @@ function refusal(c: Context, refused: TaskLearningRefusal) {
         },
         409,
       );
+    case 'was-promoted':
+      return c.json(
+        {
+          success: false,
+          code: 'task_learning_promoted',
+          error:
+            'That version was already promoted, so it cannot be dismissed. Nothing was written.',
+        },
+        409,
+      );
     case 'no-store':
       return c.json(
         {

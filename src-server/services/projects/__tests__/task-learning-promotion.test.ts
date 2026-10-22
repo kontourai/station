@@ -19,6 +19,7 @@ import { afterEach, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import {
+  dismissTaskLearning,
   promoteTaskLearning,
   type TaskLearningAccess,
 } from '../task-learning.js';
@@ -228,4 +229,60 @@ test('a dismissal that lands after the pre-check still stops the promotion, insi
   );
   expect(result).toEqual({ kind: 'was-dismissed' });
   expect(records.get(stores[0]!.id)!.size).toBe(0);
+});
+
+test('once a promotion claims a version it cannot be dismissed, and a failed write still finishes (review round 3, F1)', async () => {
+  const stores = [root('a')];
+  const { provider, records, open } = knowledge(stores);
+  open();
+  const memory = memoryWithDecision();
+  const access: TaskLearningAccess = {
+    memory,
+    task: TASK,
+    projectId: TASK.projectId,
+    projectSlug: 'alpha',
+    principalId: 'person-a',
+    isCurrent: () => true,
+  };
+  const request = {
+    kind: 'decision' as const,
+    key: 'storage',
+    version: 1,
+    rootId: stores[0]!.id,
+    title: 'Storage',
+    text: 'Use SQLite.',
+  };
+  // The claim lands, then the knowledge write fails.
+  const failing = {
+    listRoots: provider.listRoots,
+    adapterFor: async (rootId: string) => ({
+      ...(await provider.adapterFor(rootId)),
+      create: async () => {
+        throw new Error('disk full');
+      },
+    }),
+  } as unknown as KnowledgeStoreProvider;
+  expect((await promoteTaskLearning(failing, access, request)).kind).toBe(
+    'store-failed',
+  );
+  // A dismissal now is refused, not recorded.
+  expect(
+    dismissTaskLearning(access, {
+      kind: 'decision',
+      key: 'storage',
+      version: 1,
+    }),
+  ).toEqual({ kind: 'was-promoted' });
+  expect(
+    memory.listLearningDismissals({
+      taskId: TASK.id,
+      taskCreatedAt: TASK.createdAt,
+    }),
+  ).toEqual([]);
+  // The retried promotion completes.
+  expect(await promoteTaskLearning(provider, access, request)).toMatchObject({
+    kind: 'promoted',
+    rootId: stores[0]!.id,
+  });
+  expect(records.get(stores[0]!.id)!.size).toBe(1);
 });
