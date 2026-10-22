@@ -436,8 +436,9 @@ class TaskDispatcherImplementation implements TaskDispatcher {
       return { kind: 'dispatched', result };
     } catch (error) {
       const interrupted = error instanceof DispatchInterruptedError;
+      const startRefused = error instanceof TaskDispatchStartRefusedError;
       const indeterminate =
-        providerStartAttempted ||
+        (providerStartAttempted && !startRefused) ||
         (claimRequiresExternal && claimAttempted && !claimResult);
       // Once provider start was attempted, the monitor must retain its
       // observer: the remote session can still publish the Task's canonical
@@ -539,6 +540,19 @@ class TaskDispatcherImplementation implements TaskDispatcher {
       await this.markIndeterminate(reservation);
       return { kind: 'indeterminate', reason: errorMessage(error) };
     }
+  }
+}
+
+/**
+ * #4005: the session service refused the start before any provider effect
+ * (its receipt is `rejected`: a model that cannot launch, a cwd refusal, an
+ * unresolvable Agent, engine capacity). Nothing was started, so the Dispatcher
+ * restores the Task instead of recording an indeterminate start.
+ */
+export class TaskDispatchStartRefusedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'TaskDispatchStartRefusedError';
   }
 }
 

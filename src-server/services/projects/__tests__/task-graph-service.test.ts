@@ -82,7 +82,10 @@ import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.j
 import { fullAccessGrantForTesting } from '../../../security/coding-authority.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { EventStore } from '../../orchestration/event-store.js';
-import { OrchestrationService } from '../../orchestration/orchestration-service.js';
+import {
+  OrchestrationCommandDispatchError,
+  OrchestrationService,
+} from '../../orchestration/orchestration-service.js';
 import {
   TaskDeclaredOutputKeepConflictError,
   TaskDeclaredOutputKeepDeletedError,
@@ -1469,6 +1472,68 @@ describe('TaskGraphService', () => {
       service.readSessionRelations(`task-${task.id}-1`).links,
     ).toHaveLength(1);
   });
+
+  test.each([
+    ['rejected', 'failed', 'restores the Task'],
+    ['failed', 'indeterminate', 'keeps the possible start'],
+  ] as const)(
+    '#4005: a start whose receipt is %s ends %s and %s',
+    async (receiptStatus, outcomeKind, _effect) => {
+      // The session service's own error for a start it ended before any
+      // provider effect (a model that cannot launch, a cwd refusal, engine
+      // capacity) carries a `rejected` receipt; any other failure may have
+      // reached the engine.
+      const dispatch = vi.fn(async () => {
+        throw new OrchestrationCommandDispatchError(
+          'model_override_unsupported: model-required',
+          {
+            commandId: 'command-1',
+            threadId: 'task-runtime-1',
+            commandType: 'startSession',
+            status: receiptStatus,
+            createdAt: '2026-10-22T00:00:00.000Z',
+          },
+          undefined,
+          'persisted',
+        );
+      });
+      const service = createTempService({
+        orchestrationService: { dispatch, seedSessionRecord: vi.fn() },
+      });
+      const task = await service.createTask({
+        projectId: 'project-alpha',
+        title: 'Start runtime',
+        agentId: 'agent-one',
+      });
+      const outcome = await composeTestTaskDispatcher(
+        service,
+        'ollama',
+      ).dispatch(task.id, {
+        runtimeConfig: { provider: 'ollama' },
+        ownerUserId: 'test-owner',
+        fullAccessGrant: null,
+      });
+      expect(dispatch).toHaveBeenCalledTimes(1);
+      expect(outcome.kind).toBe(outcomeKind);
+      const after = service.readTaskView(task.id);
+      if (outcomeKind === 'failed') {
+        expect(after?.status).toBe('todo');
+        expect(after?.sessionId).toBeUndefined();
+        const retry = await composeTestTaskDispatcher(
+          service,
+          'ollama',
+        ).dispatch(task.id, {
+          runtimeConfig: { provider: 'ollama' },
+          ownerUserId: 'test-owner',
+          fullAccessGrant: null,
+        });
+        expect(retry.kind).toBe('failed');
+        expect(dispatch).toHaveBeenCalledTimes(2);
+      } else {
+        expect(after?.status).toBe('in_progress');
+      }
+    },
+  );
 
   test('dispatch starts orchestration when a runtime provider is supplied', async () => {
     const dispatch = vi.fn().mockResolvedValue({

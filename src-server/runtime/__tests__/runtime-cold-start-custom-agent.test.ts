@@ -130,6 +130,27 @@ const routeMocks = vi.hoisted(() => {
 
 vi.mock('../routes/runtime-routes.js', () => routeMocks);
 
+// #4005: a Task dispatch's engine start resolves its Agent through Station's
+// own HTTP reads, which this file's mocked routes do not serve. The dispatch
+// case below observes the brief, not Agent resolution (covered by
+// task-dispatch-agent-binding.routes.test.ts), so that one export answers as
+// the shared fixture does; the rest of the module is real.
+vi.mock('../../tools/station-control-delegation.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../../tools/station-control-delegation.js')
+    >();
+  const { fixtureAgentStartResolver } = await import(
+    '../../services/projects/__tests__/task-dispatch-test-helpers.js'
+  );
+  const resolve = fixtureAgentStartResolver('codex');
+  return {
+    ...actual,
+    resolveTaskDispatchAgentStart: (input: Parameters<typeof resolve>[0]) =>
+      resolve(input),
+  };
+});
+
 // `config-loader.ts` is the only chokidar consumer in the tree, so this
 // replaces exactly one thing: the OS handle behind `ConfigLoader`'s config
 // hot-reload watcher. See the header note for the measurements.
@@ -1204,6 +1225,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         };
         await expect(
           dispatcher.dispatch(task.id, {
+            agentId: 'tracker-agent',
             ownerUserId: 'human:local:operator',
             fullAccessGrant: null,
             runtimeConfig: { provider: 'codex', cwd: home },

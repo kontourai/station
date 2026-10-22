@@ -130,6 +130,7 @@ import { ReceiverExecutionRefusal } from '../../projects/project-contribution-se
 import { ProjectManifestStore } from '../../projects/project-manifest-store.js';
 import type { CwdShadowSample } from '../../projects/project-resource-shadow.js';
 import { createProjectSessionDirectoryResolver } from '../../projects/project-session-directory.js';
+import { fixtureAgentStartResolver } from '../../projects/__tests__/task-dispatch-test-helpers.js';
 import { composeTaskDispatcher } from '../../projects/task-dispatch-composition.js';
 import { TaskGraphService } from '../../projects/task-graph-service.js';
 import type { AdoptionLedger } from '../adoption-ledger.js';
@@ -774,6 +775,17 @@ const OrchestrationService: new (
   options: ConstructorParameters<typeof RawOrchestrationService>[0],
 ) => InternalObserver = internalObserver as never;
 
+/** #4005: the authored Agent this suite's Task dispatches run as. */
+const TASK_DISPATCH_AGENT = 'task-dispatch-agent';
+const taskDispatchAgentResolver = createSessionAgentResolver({
+  loadAgentSpec: async (slug) =>
+    slug === TASK_DISPATCH_AGENT
+      ? { name: 'Task dispatch agent', prompt: 'You work on Tasks.' }
+      : null,
+  resolveToolServer: async () => null,
+  resolveSkillDir: async () => null,
+});
+
 describe('OrchestrationService', () => {
   let bedrock: FakeAdapter;
   let claude: FakeAdapter;
@@ -829,6 +841,14 @@ describe('OrchestrationService', () => {
       }),
       workflowSidecarService,
       logger: { debug: vi.fn(), warn: vi.fn() },
+      // #4005: a Task dispatch's engine start runs as the Task's Agent, so
+      // the start names `TASK_DISPATCH_AGENT` and the production resolver
+      // must attach its authored definition. Every other start passes
+      // through untouched, as it did with no resolver.
+      resolveSessionAgent: (input, captured) =>
+        input.metadata?.agentSlug === TASK_DISPATCH_AGENT
+          ? taskDispatchAgentResolver(input, captured)
+          : Promise.resolve(input),
     });
   });
 
@@ -1708,13 +1728,17 @@ describe('OrchestrationService', () => {
           }),
         },
       });
+      // #4005: the dispatched start is bound to its Project, which the
+      // service resolves.
+      configuredProjects.push({ slug: 'owned-project', workingDirectory: tmp });
       const task = await graph.createTask({
         projectId: 'owned-project',
         title: 'Owned dispatch',
-        agentId: 'codex',
+        agentId: TASK_DISPATCH_AGENT,
       });
       const dispatcher = composeTaskDispatcher(graph, {
         orchestrationService: service,
+        resolveAgentStart: fixtureAgentStartResolver('claude'),
       });
       const dispatched = await dispatcher.dispatch(task.id, {
         ownerUserId: 'human:device:phone',
@@ -1775,13 +1799,17 @@ describe('OrchestrationService', () => {
           }),
         },
       });
+      // #4005: the dispatched start is bound to its Project, which the
+      // service resolves.
+      configuredProjects.push({ slug: 'unattributed-project', workingDirectory: tmp });
       const task = await graph.createTask({
         projectId: 'unattributed-project',
         title: 'Agent dispatch',
-        agentId: 'codex',
+        agentId: TASK_DISPATCH_AGENT,
       });
       const dispatched = await composeTaskDispatcher(graph, {
         orchestrationService: service,
+        resolveAgentStart: fixtureAgentStartResolver('claude'),
       }).dispatch(task.id, {
         ownerUserId: 'human:local:operator',
         ownerAttribution: 'unattributed-agent',
@@ -1830,10 +1858,13 @@ describe('OrchestrationService', () => {
           }),
         },
       });
+      // #4005: the dispatched start is bound to its Project, which the
+      // service resolves.
+      configuredProjects.push({ slug: 'recovery-project', workingDirectory: tmp });
       const task = await graph.createTask({
         projectId: 'recovery-project',
         title: 'Recover finalization',
-        agentId: 'codex',
+        agentId: TASK_DISPATCH_AGENT,
       });
       if (uncertain)
         claude.startSession.mockRejectedValueOnce(
@@ -1841,7 +1872,10 @@ describe('OrchestrationService', () => {
         );
       const dispatcher = composeTaskDispatcher(
         graph,
-        { orchestrationService: service },
+        {
+          orchestrationService: service,
+          resolveAgentStart: fixtureAgentStartResolver('claude'),
+        },
         {
           prepareAgentStarted: async () => {
             throw new Error('crash before publication acknowledgement');
@@ -2021,9 +2055,13 @@ describe('OrchestrationService', () => {
         }),
       },
     });
+    // #4005: the dispatched start is bound to its Project, which the
+    // service resolves.
+    configuredProjects.push({ slug: 'transfer-project', workingDirectory: tmp });
     const task = await graph.createTask({
       projectId: 'transfer-project',
       title: 'Bound execution',
+      agentId: TASK_DISPATCH_AGENT,
       workItemRef: 'github:example/transfer#1',
     });
     const releaseClaim = deferred<void>();
@@ -2034,6 +2072,7 @@ describe('OrchestrationService', () => {
       graph,
       {
         orchestrationService: service,
+        resolveAgentStart: fixtureAgentStartResolver('claude'),
         resolveProjectWorkspace: () => tmp,
         assignmentClaimService: {
           claim: vi.fn(async () => {

@@ -70,7 +70,10 @@ import type {
 } from '../evidence/assignment-claim-service.js';
 import type { WorkflowSidecarService } from '../evidence/workflow-sidecar-service.js';
 import { JsonFileStore } from '../infra/json-store.js';
-import type { OrchestrationService } from '../orchestration/orchestration-service.js';
+import {
+  OrchestrationCommandDispatchError,
+  type OrchestrationService,
+} from '../orchestration/orchestration-service.js';
 import type { SessionOwnerStamp } from '../orchestration/session-owner-attribution.js';
 import type { SessionStartBoundaryClaim } from '../orchestration/session-turn-boundary.js';
 import { createIsolatedTaskSearch } from '../search/isolated-task-search.js';
@@ -92,6 +95,7 @@ import {
   type TaskDispatchClaims,
   type TaskDispatchGraphState,
   type TaskDispatchRemoteSessions,
+  TaskDispatchStartRefusedError,
   type TaskDispatchTelemetry,
 } from './task-dispatcher.js';
 
@@ -320,6 +324,26 @@ function canonicalInstant(value: string | undefined): string | undefined {
   return Number.isNaN(ms) || new Date(ms).toISOString() !== value
     ? undefined
     : value;
+}
+
+/**
+ * #4005: a start the session service rejected before any provider effect
+ * (`receipt.status: 'rejected'`, not indeterminate) is a definite refusal,
+ * so the Dispatcher restores the Task rather than stranding it
+ * indeterminate. Every other failure keeps its possible-start meaning.
+ */
+async function refuseDefiniteStartRejection<T>(start: Promise<T>): Promise<T> {
+  try {
+    return await start;
+  } catch (error) {
+    if (
+      error instanceof OrchestrationCommandDispatchError &&
+      error.receipt.status === 'rejected' &&
+      error.outcome !== 'indeterminate'
+    )
+      throw new TaskDispatchStartRefusedError(error.message);
+    throw error;
+  }
 }
 
 function isNamespacedWorkItemRef(ref: string): boolean {
@@ -3425,71 +3449,75 @@ export class TaskGraphService {
           await this.assertDispatchReservationProviderStarting(
             reservation as TaskDispatchReservation,
           );
-          const session = (await orchestrationService.dispatch(
-            {
-              type: 'startSession',
-              input: {
-                threadId: reservation.sessionId,
-                provider: reservation.provider,
-                cwd: agentStart.cwd,
-                ...(agentStart.modelId ? { modelId: agentStart.modelId } : {}),
-                ...(agentStart.modelOptions
-                  ? { modelOptions: { ...agentStart.modelOptions } }
-                  : {}),
-                workspaceIsolation: { mode: 'shared' },
-                // #765 A1, as a foreground start: the Session is a durable
-                // conversation whose later turns may resume its native
-                // transcript, so the engine must keep it.
-                persistSession: true,
-                metadata: {
-                  // #4005: the Environment + Agent binding a continuation
-                  // verifies, and the Agent whose prompt, skills and tools
-                  // the start applies. The service strips and re-stamps
-                  // `environmentId`/`conversationId` from
-                  // `conversationIdentity` below.
-                  ...agentStart.metadata,
-                  userId: input.ownerUserId,
-                  ...(taskSlug ? { taskSlug } : {}),
+          const session = (await refuseDefiniteStartRejection(
+            orchestrationService.dispatch(
+              {
+                type: 'startSession',
+                input: {
+                  threadId: reservation.sessionId,
+                  provider: reservation.provider,
+                  cwd: agentStart.cwd,
+                  ...(agentStart.modelId
+                    ? { modelId: agentStart.modelId }
+                    : {}),
+                  ...(agentStart.modelOptions
+                    ? { modelOptions: { ...agentStart.modelOptions } }
+                    : {}),
+                  workspaceIsolation: { mode: 'shared' },
+                  // #765 A1, as a foreground start: the Session is a durable
+                  // conversation whose later turns may resume its native
+                  // transcript, so the engine must keep it.
+                  persistSession: true,
+                  metadata: {
+                    // #4005: the Environment + Agent binding a continuation
+                    // verifies, and the Agent whose prompt, skills and tools
+                    // the start applies. The service strips and re-stamps
+                    // `environmentId`/`conversationId` from
+                    // `conversationIdentity` below.
+                    ...agentStart.metadata,
+                    userId: input.ownerUserId,
+                    ...(taskSlug ? { taskSlug } : {}),
+                  },
                 },
               },
-            },
-            // #2493: the dispatching request's grant, or none (a monitor, the
-            // board intent): the session runs `host` only with it. The owner
-            // attribution marks an unverified agent's or external sender's
-            // session to act for no one, at the service's start choke point.
-            // #1796: and the dispatching request's origin, so the start's
-            // receipt records who asked (the grant names its own grantor).
-            input.fullAccessGrant ||
-              input.ownerAttribution ||
-              input.clientOrigin
-              ? {
-                  ...(input.fullAccessGrant
-                    ? { fullAccessGrant: input.fullAccessGrant }
-                    : {}),
-                  ...(input.ownerAttribution
-                    ? { ownerAttribution: input.ownerAttribution }
-                    : {}),
-                  ...(input.clientOrigin
-                    ? { clientOrigin: input.clientOrigin }
-                    : {}),
-                }
-              : undefined,
-            {
-              roomExecutionBinding: {
-                projectId: reservation.task.projectId,
-                taskId: reservation.task.id,
+              // #2493: the dispatching request's grant, or none (a monitor, the
+              // board intent): the session runs `host` only with it. The owner
+              // attribution marks an unverified agent's or external sender's
+              // session to act for no one, at the service's start choke point.
+              // #1796: and the dispatching request's origin, so the start's
+              // receipt records who asked (the grant names its own grantor).
+              input.fullAccessGrant ||
+                input.ownerAttribution ||
+                input.clientOrigin
+                ? {
+                    ...(input.fullAccessGrant
+                      ? { fullAccessGrant: input.fullAccessGrant }
+                      : {}),
+                    ...(input.ownerAttribution
+                      ? { ownerAttribution: input.ownerAttribution }
+                      : {}),
+                    ...(input.clientOrigin
+                      ? { clientOrigin: input.clientOrigin }
+                      : {}),
+                  }
+                : undefined,
+              {
+                roomExecutionBinding: {
+                  projectId: reservation.task.projectId,
+                  taskId: reservation.task.id,
+                },
+                ...(brief ? { taskBrief: brief } : {}),
+                // The dispatched Session is the root of its own conversation.
+                conversationIdentity: {
+                  conversationId: reservation.sessionId,
+                  environmentId: agentStart.environmentId,
+                },
+                ...(admission ? { sessionStartAdmission: admission } : {}),
+                ...(taskSlug
+                  ? { workflowSidecarAttachMode: 'read-only-join' as const }
+                  : {}),
               },
-              ...(brief ? { taskBrief: brief } : {}),
-              // The dispatched Session is the root of its own conversation.
-              conversationIdentity: {
-                conversationId: reservation.sessionId,
-                environmentId: agentStart.environmentId,
-              },
-              ...(admission ? { sessionStartAdmission: admission } : {}),
-              ...(taskSlug
-                ? { workflowSidecarAttachMode: 'read-only-join' as const }
-                : {}),
-            },
+            ),
           )) as ProviderSession;
           return {
             session,
