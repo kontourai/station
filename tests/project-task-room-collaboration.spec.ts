@@ -133,6 +133,13 @@ async function expectAgentPresence(
   runId: string,
 ) {
   await page.getByRole('tab', { name: 'Chat', exact: true }).click();
+  const here = page.getByRole('region', { name: 'Here now', exact: true });
+  await expect(here).toHaveAttribute('data-viewer-actor-id', /\S+/);
+  const viewerActorId = await here.getAttribute('data-viewer-actor-id');
+  if (!viewerActorId) throw new Error('Viewer actor identity is unavailable');
+  await expect(
+    here.locator(`[data-actor-id=${JSON.stringify(viewerActorId)}]`),
+  ).toBeVisible();
   const live = await liveFixtureCommand(
     page,
     taskId,
