@@ -3,7 +3,6 @@ import {
   copyFileSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -11,21 +10,17 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../../__test-utils__/temp-dirs.js';
 import { DeviceHubSupervisor } from '../device-hub-supervisor.js';
 import { resolveDeviceToolRuntime } from '../device-tool-runtime.js';
 import { createNpmCiInstaller } from '../device-toolchain.js';
 
-const homes: string[] = [];
-afterEach(() => {
-  for (const home of homes.splice(0))
-    rmSync(home, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 function fixture() {
   const home = realpathSync(
-    mkdtempSync(join(tmpdir(), 'station-device-user-node-')),
+    makeTempDir('station-device-user-node-'),
   );
-  homes.push(home);
   function nodeInstallation(name: string) {
     const prefix = join(home, name);
     const bin = join(prefix, 'bin');
