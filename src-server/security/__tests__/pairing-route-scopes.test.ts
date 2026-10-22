@@ -1059,6 +1059,23 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     ).toBe(true);
   });
 
+  // Re-detection runs the host user's login shell, so it is a POST at the
+  // operate tier; the catalogue read beside it stays a side-effect-free GET.
+  test('gives the engine catalogue re-check the operate tier and keeps the catalogue read at read', () => {
+    expect(
+      matchPairingScopeRule('POST', '/acp/registry/recheck'),
+    ).toMatchObject({
+      origin: 'explicit',
+      prefix: '/acp/registry/recheck',
+      exact: true,
+      scope: 'orchestration:operate',
+    });
+    expect(isLeafScopeDeclared('POST', '/acp/registry/recheck')).toBe(true);
+    expect(requiredPairingScope('GET', '/acp/registry')).toBe(
+      'orchestration:read',
+    );
+  });
+
   test('does not let an exact ACP provider override classify a trailing descendant', () => {
     const path = '/acp/connections/:id/providers/set/future';
     expect(matchPairingScopeRule('POST', path)).toMatchObject({

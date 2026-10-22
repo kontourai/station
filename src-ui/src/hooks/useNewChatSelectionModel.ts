@@ -88,12 +88,15 @@ export interface ACPSelectionConnection {
     /** ACP select options are { value, name } objects; bare strings tolerated. */
     options?: Array<string | { value: string; name?: string }>;
   }>;
+  /** The served model catalog (config option, else the `models` list). */
+  advertisedModels?: Array<{ id: string; name: string }>;
 }
 
 /**
- * #3028: an ACP engine's model catalog arrives on the connection's config
- * options (category "model"), a channel neither the runtime catalog nor
- * `agent.modelOptions` carries. Exported pure so the contract — an engine
+ * #3028: an ACP engine's model catalog arrives on the connection's served
+ * `advertisedModels` (its model config option, else its `models` list; from
+ * an older server, its model config option), a channel neither the runtime
+ * catalog nor `agent.modelOptions` carries. Exported pure so the contract — an engine
  * advertising models yields selectable models — is directly testable.
  */
 export function acpCatalogModelOptions(
@@ -102,7 +105,7 @@ export function acpCatalogModelOptions(
 ): Array<{ id: string; name: string }> {
   if (!agentConnectionId) return [];
   return acpAdvertisedModels(
-    acpConnections.find((acp) => acp.id === agentConnectionId)?.configOptions,
+    acpConnections.find((acp) => acp.id === agentConnectionId),
   );
 }
 
@@ -436,10 +439,11 @@ export function useNewChatSelectionModel({
     const connectionModels = connection
       ? runtimeCatalogVisibleModels(connection)
       : [];
-    // #3028: an ACP engine's catalog arrives on the connection's config
-    // options (category "model"), a channel neither the runtime catalog nor
-    // agent.modelOptions carries — OpenCode advertised a full model select
-    // while this picker rendered no affordance at all.
+    // #3028: an ACP engine's catalog arrives on the connection's served
+    // `advertisedModels` (its model config option, else its #352 `models`
+    // list), a channel neither the runtime catalog nor agent.modelOptions
+    // carries — OpenCode advertised a full model select while this picker
+    // rendered no affordance at all.
     const acpModelOptions = acpCatalogModelOptions(
       acpConnections,
       agent.execution?.agentConnectionId,
@@ -530,7 +534,7 @@ export function useNewChatSelectionModel({
           runtimeCurrentMode: acpConnection?.configOptions?.find(
             (option) => option.category === 'mode',
           )?.currentValue,
-          advertisedModels: acpAdvertisedModels(acpConnection?.configOptions),
+          advertisedModels: acpAdvertisedModels(acpConnection),
           projectDefaultModel: newChatProjectDefaultModel(
             agent,
             selectedProjectConfig?.defaultModel,

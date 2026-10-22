@@ -36,7 +36,9 @@ describe('acp-manager-view helpers', () => {
           available: true,
           lastProbeAt: 123,
           modes: [{ id: 'dev' }],
-          configOptions: [{ category: 'model', currentValue: 'claude-sonnet' }],
+          configOptions: [
+            { id: 'model', category: 'model', currentValue: 'claude-sonnet' },
+          ],
         }),
       ],
       [

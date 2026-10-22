@@ -21,6 +21,7 @@ import {
 import {
   inputRequestFromRequestEvent,
   inputRequestOutcome,
+  inputRequestSummary,
 } from './input-request.js';
 import {
   toolRequestDisplayName,
@@ -1170,7 +1171,7 @@ export function projectRuntimeEventsToMessages(
         // tool's Allow/Deny.
         const form = inputRequestFromRequestEvent(ev);
         if (form) {
-          openRecord('form', form.requester, form.message);
+          openRecord('form', form.requester, inputRequestSummary(form.message));
           break;
         }
         const toolName = ev.payload?.toolName ?? ev.payload?.tool;

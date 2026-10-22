@@ -46,6 +46,11 @@ import {
   providerCatalogModelCount,
   providerCatalogOps,
 } from '../../telemetry/metrics.js';
+import {
+  type AcpDeclaredHandshake,
+  acpAdvertisedModelCatalog,
+} from '../acp/acp-handshake-facts.js';
+import type { AcpSessionModelState } from '../acp/acp-process.js';
 import { openCodeModelImageInput } from '../acp/opencode-model-capabilities.js';
 import {
   sanitizeConnectionConfigHome,
@@ -77,6 +82,10 @@ type ACPConnectionCapabilitiesStatus = {
 export type ACPConnectionStatus = {
   id: string;
   status?: ACPStatusValue;
+  /** ADR 0013: the agent's self-reported `initialize` facts. */
+  declaredHandshake?: AcpDeclaredHandshake;
+  /** #352: the session's `models` list (the `session/set_model` dialect). */
+  sessionModels?: AcpSessionModelState;
   slashCommands?: Array<{
     name: string;
     description?: string;
@@ -92,6 +101,7 @@ export type ACPConnectionStatus = {
    * so the connection view can project a runtimeCatalog from it.
    */
   configOptions?: Array<{
+    id?: string;
     category?: string;
     currentValue?: string;
     options?: Array<string | { name?: string; value?: string }>;
@@ -704,15 +714,20 @@ function projectSessionSurfaces(
  */
 export function buildACPCapabilityInventory({
   connection,
+  displayName,
   configuredCount,
   connectedCount,
   enabled,
 }: {
   connection: ACPConnectionStatus | undefined;
+  /** The connection's configured name. */
+  displayName: string;
   configuredCount: number;
   connectedCount: number;
   enabled: boolean;
 }): ProviderCapabilityInventory {
+  const observedAt = connection?.handshakeObservedAt;
+  const declared = observedAt ? connection?.declaredHandshake : undefined;
   // Narrowed once rather than optional-chained inside the map: `connection`
   // is necessarily defined there (the array came off it), and
   // `${connection?.id}` is the one form that would silently mint the literal
@@ -726,7 +741,7 @@ export function buildACPCapabilityInventory({
         inputHint: command.hint,
         provenance: runtimeCapabilityProvenance({
           connectionId: connection.id,
-          connectionName: connection.id,
+          connectionName: displayName,
         }),
       }))
     : [];
@@ -734,7 +749,11 @@ export function buildACPCapabilityInventory({
   return {
     providerId: 'acp',
     connectionId: 'acp',
-    displayName: 'Custom engine',
+    displayName,
+    ...(declared?.agentInfo?.version
+      ? { version: declared.agentInfo.version }
+      : {}),
+    ...(observedAt ? { checkedAt: observedAt } : {}),
     status: !enabled
       ? 'disabled'
       : configuredCount === 0
@@ -749,11 +768,24 @@ export function buildACPCapabilityInventory({
       configuredCount === 0
         ? 'Configure a command-backed engine connection to expose external runtime capabilities.'
         : undefined,
-    models: [],
+    models: acpAdvertisedModels(connection),
     skills: [],
     slashCommands,
     sessionSurfaces: projectSessionSurfaces(connection),
+    ...(declared && observedAt
+      ? { declaredHandshake: { ...declared, observedAt } }
+      : {}),
   };
+}
+
+/** The connection's catalog, by the rule a session start applies. */
+function acpAdvertisedModels(
+  liveStatus: ACPConnectionStatus | undefined,
+): Array<{ id: string; name: string }> {
+  return acpAdvertisedModelCatalog(
+    liveStatus?.configOptions,
+    liveStatus?.sessionModels,
+  ).models;
 }
 
 /**
@@ -799,7 +831,8 @@ function imageInputCapability(
 /**
  * archive#3054: project an ACP connection's live model catalog into the
  * RuntimeCatalogStatus every other engine connection already carries. The
- * catalog is the handshake's category-'model' config option — a real runtime
+ * catalog is the handshake's category-'model' config option, else its
+ * session `models` list (#352) — a real runtime
  * observation (archive#1549's handshakeObservedAt dates it), which is exactly
  * the evidence the acp capability matrix's wire-channel model-selection gate
  * requires. Without this projection the in-chat model button stayed disabled
@@ -810,29 +843,16 @@ export function acpRuntimeCatalogStatus(
   /** The connection's current configuration, to reject a stale per-model cache. */
   config?: ACPConnectionConfig,
 ): RuntimeCatalogStatus {
-  const modelOption = liveStatus?.configOptions?.find(
-    (option) => option.category === 'model',
-  );
-  const models = (modelOption?.options ?? [])
-    .map((entry) =>
-      typeof entry === 'string' ? { value: entry, name: entry } : entry,
-    )
-    .flatMap((entry) =>
-      typeof entry?.value === 'string' && entry.value.length > 0
-        ? [
-            {
-              id: entry.value,
-              name: entry.name ?? entry.value,
-              originalId: entry.value,
-              // OpenCode's per-model image input, read from the cache the
-              // post-handshake listing fills. Memory only; never spawns here.
-              ...imageInputCapability(
-                openCodeModelImageInput(liveStatus?.id, entry.value, config),
-              ),
-            },
-          ]
-        : [],
-    );
+  const models = acpAdvertisedModels(liveStatus).map((entry) => ({
+    id: entry.id,
+    name: entry.name,
+    originalId: entry.id,
+    // OpenCode's per-model image input, read from the cache the
+    // post-handshake listing fills. Memory only; never spawns here.
+    ...imageInputCapability(
+      openCodeModelImageInput(liveStatus?.id, entry.id, config),
+    ),
+  }));
   if (models.length === 0) {
     return {
       source: 'none',

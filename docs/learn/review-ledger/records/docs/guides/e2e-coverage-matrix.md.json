@@ -92,7 +92,9 @@
 
     "tests/task-first-home.spec.ts",
 
-    "src-ui/src/views/MonitoringWidgets.css"
+    "src-ui/src/views/MonitoringWidgets.css",
+
+    "tests/task-room-reload-recovery.spec.ts"
   ],
 
   "checks": [

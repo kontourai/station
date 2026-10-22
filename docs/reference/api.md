@@ -3371,6 +3371,12 @@ always an observed absence. The broad top-level `ready` is an OR of detected or
 configured paths; it is not proof that the user's chosen Agent/model can finish
 a chat turn. Use the more specific readiness and model evidence.
 
+Catalogue engines with no connection also appear in `externalEngines`, never
+ready: one whose command was found reads `reason: 'not_connected'` and carries
+its `registryEntryId`; one whose command was not found reads
+`reason: 'not_installed'` and, when its catalogue entry has one, the host
+platform's `install` recipe.
+
 `engineId` selects engine capability semantics; `engineConnectionId` identifies
 a public Agent App connection. Do not derive one from the other. See the
 [status owner](../../src-server/routes/system/system-status-routes.ts).

@@ -40,6 +40,10 @@ import {
   acpApprovalControl,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
+  InputRequestContent,
+  InputRequestForm,
+} from '@kontourai/station-contracts/input-request';
+import type {
   CapabilityUndelivered,
   ResolvedAgentDefinition,
 } from '@kontourai/station-contracts/provider';
@@ -56,6 +60,7 @@ import {
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { Prerequisite, ToolDef } from '@kontourai/station-contracts/tool';
 import { TURN_ENGINE_DISPLAY_NAME_METADATA_KEY } from '@kontourai/station-contracts/turn-provenance';
+import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
 import { toolRequestNeedsPerson } from '@kontourai/station-shared/tool-request-preview';
 import {
   delegatedApprovalDenial,
@@ -69,9 +74,19 @@ import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js
 import type { InvocationContext } from '../../runtime/types.js';
 import { createACPBridgeClient } from '../../services/acp/acp-bridge-client.js';
 import type { ManagedTerminal } from '../../services/acp/acp-bridge-types.js';
+import { registryLaunchEnvFor } from '../../services/acp/acp-engine-descriptors.js';
 import {
+  acpAdvertisedModelCatalog,
+  findAcpModelConfigOption,
+  parseAcpSessionModelState,
+} from '../../services/acp/acp-handshake-facts.js';
+import {
+  type AcpInboundExtensionHandler,
   type AcpInboundExtensionRefusalReason,
+  AcpInboundExtensionRegistry,
+  type AcpInboundExtensionRequestHandlerId,
   createAcpInboundExtensionRequestHandler,
+  REVIEWED_INBOUND_EXTENSION_REQUESTS,
 } from '../../services/acp/acp-inbound-extension-policy.js';
 import { COLD_START_OPERATION_TIMEOUT_MS } from '../../services/acp/acp-probe.js';
 import {
@@ -142,7 +157,6 @@ import {
 import {
   type AcpExtensionErrorNotification,
   type AcpMapperContext,
-  extractReportedModelFromConfigOptions,
   mapAcpDecisionToApprovalStatus,
   mapAcpDecisionToOutcome,
   mapAcpExtensionNotification,
@@ -159,6 +173,17 @@ import {
   isOpenCodeGovernedMode,
 } from './acp-approval-mode.js';
 import {
+  type CursorRequestDecision,
+  type CursorTodo,
+  cursorPlanRejected,
+  cursorPlanResponse,
+  cursorQuestionResponse,
+  cursorQuestionSkipped,
+  cursorTodosToPlanEntries,
+  readCursorAskQuestion,
+  readCursorCreatePlan,
+} from './acp-cursor-extensions.js';
+import {
   type AcpToolServerSkip,
   type AcpToolServerSkipReason,
   resolveAcpPassthroughMcpServers,
@@ -171,10 +196,7 @@ import {
   requestedAcpSessionMode,
 } from './acp-session-mode.js';
 import {
-  ACP_INTERJECT_METHODS,
-  ACP_SESSION_STEER_METHOD,
-  acpInterjectParams,
-  acpSessionSteerParams,
+  acpSteerParams,
   isAcpMethodNotFound,
   resolveAcpSteerChannel,
 } from './acp-steer.js';
@@ -442,48 +464,6 @@ interface AcpSlashCommand {
   argumentHint?: string;
 }
 
-type AcpModelConfigOption = {
-  id: string;
-  category: 'model';
-  currentValue?: string;
-  options: Array<{ value: string }>;
-};
-
-function findAcpModelConfigOption(
-  configOptions: unknown,
-): AcpModelConfigOption | undefined {
-  if (!Array.isArray(configOptions)) return undefined;
-  for (const option of configOptions) {
-    if (!option || typeof option !== 'object') continue;
-    const candidate = option as Record<string, unknown>;
-    if (
-      candidate.category !== 'model' ||
-      typeof candidate.id !== 'string' ||
-      !candidate.id.trim()
-    ) {
-      continue;
-    }
-    const options = Array.isArray(candidate.options)
-      ? candidate.options.flatMap((entry) =>
-          entry &&
-          typeof entry === 'object' &&
-          typeof (entry as { value?: unknown }).value === 'string'
-            ? [{ value: (entry as { value: string }).value }]
-            : [],
-        )
-      : [];
-    return {
-      id: candidate.id,
-      category: 'model',
-      ...(typeof candidate.currentValue === 'string'
-        ? { currentValue: candidate.currentValue }
-        : {}),
-      options,
-    };
-  }
-  return undefined;
-}
-
 /**
  * A pending mid-turn `session/request_permission` call, keyed by requestId.
  * `resolve` is invoked by `respondToRequest` with the adapter-level decision;
@@ -492,8 +472,15 @@ function findAcpModelConfigOption(
  * `mapAcpDecisionToOutcome` (acp-adapter-events.ts).
  */
 interface AcpPendingRequest {
-  resolve: (decision: AcpDecision) => void;
+  resolve: (decision: AcpDecision, content?: InputRequestContent) => void;
   options: PermissionOption[];
+  /**
+   * #3390: the form a harness question opened (Cursor's
+   * `cursor/ask_question`), answered with content, and the id of the
+   * `request.opened` event an answer must name.
+   */
+  inputRequest?: InputRequestForm;
+  eventId?: string;
   /**
    * Tool-level session-grant identity (`params.toolCall.name`), stored so
    * `respondToRequest` can remember an `acceptForSession` grant. Absent
@@ -531,6 +518,8 @@ export interface AcpSessionRecord {
    * engine instead of the generic `acp` provider.
    */
   connectionName?: string;
+  /** The connection's display name: what copy calls this engine. */
+  engineName: string;
   command: string;
   args?: string[];
   /**
@@ -633,6 +622,8 @@ export interface AcpSessionRecord {
    * useful amount.
    */
   credentialRefusalsSurfaced?: Set<string>;
+  /** Cursor's todo list as `cursor/create_plan`/`cursor/update_todos` left it. */
+  cursorTodos?: CursorTodo[];
   /**
    * Extension notifications bound to `acp.turn-error-cause` (an exact,
    * evidenced tuple — see `src-shared/extension-notification-bindings.ts`)
@@ -787,8 +778,9 @@ export class AcpAdapter implements ProviderAdapterShape {
     builtin: true,
     engineId: engineId('acp'),
     // A fresh ACP session can advertise a model config option and confirm an
-    // applied value through session/set_config_option. Resume and per-turn
-    // lack the fresh option evidence required by that fail-closed path.
+    // applied value through session/set_config_option, or list `models` and
+    // accept session/set_model (#352). Resume and per-turn lack the fresh
+    // session evidence either fail-closed path requires.
     modelLaunch: {
       defaultAtStart: 'engine-selected',
       omissionAtResume: 'engine-selected',
@@ -1158,6 +1150,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       process: undefined as unknown as ACPProcess,
       connectionId: config.id,
       ...(config.name ? { connectionName: config.name } : {}),
+      engineName: config.name.trim() || config.id,
       command: config.command,
       args: config.args,
       promptEpoch: 0,
@@ -1210,11 +1203,13 @@ export class AcpAdapter implements ProviderAdapterShape {
     // #3290: a governed OpenCode is launched on Station's floor for its mode,
     // merged into whatever inline configuration it already had; the same
     // launch is reused to move the session onto another floor.
+    const launchEnv = registryLaunchEnvFor(config);
     const launch = (floor: OpenCodeApprovalFloor | undefined) =>
       processFactory({
         command: config.command,
         args: config.args,
         cwd,
+        launchEnv,
         // #3957: not offered, because OpenCode's own tools already write
         // every edit; its client write would only be a redundant copy. The
         // bridge refuses one it sends anyway (`fileMethodsOffered`).
@@ -1605,9 +1600,8 @@ export class AcpAdapter implements ProviderAdapterShape {
         });
       }
 
-      // archive#1182: the ACP agent's own reported model, when its `newSession`
-      // response includes a `model`-category config option — see
-      // `extractReportedModelFromConfigOptions`'s docblock. `loadSession`
+      // archive#1182: the ACP agent's own reported model, read from a fresh
+      // `newSession` answer by `acpAdvertisedModelCatalog`. `loadSession`
       // (the resume branch below) returns nothing, so a resumed session
       // stays honestly unset here.
       let reportedModel: string | undefined;
@@ -1762,17 +1756,57 @@ export class AcpAdapter implements ProviderAdapterShape {
             record.configOptions = appliedMode.configOptions;
           }
         }
-        reportedModel = extractReportedModelFromConfigOptions(
-          sessionResult.configOptions,
+        // #352: a `model` config option is preferred; an agent without one
+        // may still list models on the session and switch with set_model.
+        const sessionModelsObservation = parseAcpSessionModelState(
+          sessionResult.models,
         );
+        const sessionModels =
+          sessionModelsObservation.kind === 'listed'
+            ? sessionModelsObservation.state
+            : undefined;
+        reportedModel = acpAdvertisedModelCatalog(
+          sessionResult.configOptions,
+          sessionModels,
+        ).currentModelId;
         const requestedModel = input.modelId?.trim();
-        if (requestedModel) {
-          const modelOption = findAcpModelConfigOption(
-            sessionResult.configOptions,
+        const modelOption = requestedModel
+          ? findAcpModelConfigOption(sessionResult.configOptions)
+          : undefined;
+        if (
+          requestedModel &&
+          !modelOption &&
+          sessionModelsObservation.kind === 'refused'
+        ) {
+          throw new SessionStartRefusedError(
+            `ACP model list refused: connection '${config.id}' listed models beyond Station's bounds for this session.`,
+            MODEL_NOT_ADVERTISED_CODE,
           );
+        }
+        if (requestedModel && !modelOption && sessionModels) {
+          if (
+            !sessionModels.availableModels.some(
+              (model) => model.modelId === requestedModel,
+            )
+          ) {
+            throw new SessionStartRefusedError(
+              `ACP model value unsupported: connection '${config.id}' did not advertise '${requestedModel}' for this session.`,
+              MODEL_NOT_ADVERTISED_CODE,
+            );
+          }
+          // The set_model answer carries no current value to read back; an
+          // agent refuses an unknown id with an error, so success is the
+          // acceptance this dialect offers.
+          await acpProcess.setModel(requestedModel);
+          reportedModel = requestedModel;
+          verifiedModelSelection = modelSelectionReceipt(
+            requestedModel,
+            requestedModel,
+          );
+        } else if (requestedModel) {
           if (!modelOption) {
             throw new SessionStartRefusedError(
-              `ACP model option unavailable: connection '${config.id}' did not advertise a model configuration option for this session.`,
+              `ACP model option unavailable: connection '${config.id}' did not advertise a model configuration option or model list for this session.`,
               MODEL_NOT_ADVERTISED_CODE,
             );
           }
@@ -2372,12 +2406,32 @@ export class AcpAdapter implements ProviderAdapterShape {
     threadId: string,
     requestId: string,
     decision: AcpDecision,
+    context?: Parameters<ProviderAdapterShape['respondToRequest']>[3],
   ): Promise<void> {
     const record = this.requireSession(threadId);
     const pending = record.pendingRequests.get(requestId);
     if (!pending) {
       throw new Error(`Unknown ACP permission request: ${requestId}`);
     }
+
+    let content: InputRequestContent | undefined;
+    if (pending.inputRequest) {
+      if (
+        context?.expectedRequestEventId !== pending.eventId ||
+        decision === 'acceptForSession'
+      )
+        throw new Error('Inspect this question before answering it.');
+      // Checked again against the form this adapter opened: this is the
+      // copy that reaches the engine.
+      if (decision === 'accept')
+        content = validateInputRequestContent(
+          pending.inputRequest,
+          context?.inputContent,
+        );
+      else if (context?.inputContent !== undefined)
+        throw new Error('A declined question cannot carry answers.');
+    } else if (context?.inputContent !== undefined)
+      throw new Error('This request does not accept question answers.');
 
     record.pendingRequests.delete(requestId);
     // #2933: a plan exit is answered for this call only: no session grant is
@@ -2395,6 +2449,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       effective === 'acceptForSession' && pending.governedEdit
         ? 'accept'
         : effective,
+      content,
     );
 
     this.publish({
@@ -2689,6 +2744,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       // #3957: not offered to OpenCode (see the launch), so not served.
       fileMethodsOffered: record.approvalControl !== 'station',
       onExtMethod: createAcpInboundExtensionRequestHandler({
+        registry: this.reviewedInboundRequests(record, context.logger),
         logger: context.logger,
         connectionId: record.connectionId,
         onRefused: (method, reason) =>
@@ -3456,6 +3512,189 @@ export class AcpAdapter implements ProviderAdapterShape {
     });
   }
 
+  /**
+   * This session's handlers for the reviewed inbound requests
+   * (`REVIEWED_INBOUND_EXTENSION_REQUESTS`). The registry is the session's
+   * own; nothing else holds it.
+   */
+  private reviewedInboundRequests(
+    record: AcpSessionRecord,
+    logger: AcpLogger,
+  ): AcpInboundExtensionRegistry {
+    const handlers: Record<
+      AcpInboundExtensionRequestHandlerId,
+      AcpInboundExtensionHandler
+    > = {
+      'cursor.ask-question': (method, params) =>
+        this.answerCursorQuestion(record, method, params, logger),
+      'cursor.create-plan': (method, params) =>
+        this.answerCursorPlan(record, method, params, logger),
+    };
+    const registry = new AcpInboundExtensionRegistry();
+    for (const entry of REVIEWED_INBOUND_EXTENSION_REQUESTS)
+      registry.register(entry.method, handlers[entry.handler]);
+    return registry;
+  }
+
+  /** `cursor/ask_question`, through the harness-question form (#3390). */
+  private async answerCursorQuestion(
+    record: AcpSessionRecord,
+    method: string,
+    params: Record<string, unknown>,
+    logger: AcpLogger,
+  ): Promise<Record<string, unknown>> {
+    const question = readCursorAskQuestion(params, record.engineName);
+    if (!question) {
+      this.reportUnreadableCursorRequest(
+        record,
+        method,
+        logger,
+        `${record.engineName} asked a question Station could not show, so Station told it the question was skipped.`,
+      );
+      return cursorQuestionSkipped('The client could not show this question.');
+    }
+    // As for a permission request (#2933): nobody can answer a child that
+    // may not ask a person, so it is answered at once rather than left open.
+    if (record.delegation?.denyApprovals)
+      return cursorQuestionSkipped(
+        'No one is present to answer this question.',
+      );
+    const answer = await this.awaitPersonRequest(record, {
+      title: question.form.message,
+      form: question.form,
+      // Named so no session grant is derived for it (`toolRequestNeedsPerson`).
+      payload: { toolCallId: question.toolCallId, toolName: method },
+    });
+    return cursorQuestionResponse(
+      answer.decision,
+      question.form,
+      params,
+      answer.content,
+    );
+  }
+
+  /**
+   * `cursor/create_plan`: a plan-mode request to approve a plan, shown whole
+   * as a plan-review form. Only an approved plan reaches the session's plan
+   * surface; a rejected or unanswered one leaves it as it was.
+   */
+  private async answerCursorPlan(
+    record: AcpSessionRecord,
+    method: string,
+    params: Record<string, unknown>,
+    logger: AcpLogger,
+  ): Promise<Record<string, unknown>> {
+    const plan = readCursorCreatePlan(params, record.engineName);
+    if (!plan) {
+      this.reportUnreadableCursorRequest(
+        record,
+        method,
+        logger,
+        `${record.engineName} sent a plan Station could not show, so Station told it the plan was not approved.`,
+      );
+      return cursorPlanRejected('The client could not show this plan.');
+    }
+    if (record.delegation?.denyApprovals)
+      return cursorPlanRejected('No one is present to review this plan.');
+    const answer = await this.awaitPersonRequest(record, {
+      title: plan.name
+        ? `${record.engineName} wants you to review a plan: ${plan.name}`
+        : `${record.engineName} wants you to review a plan`,
+      form: plan.form,
+      payload: { toolCallId: plan.toolCallId, toolName: method },
+    });
+    const response = cursorPlanResponse(answer.decision, answer.content);
+    // An approval that lands as the session stops plans nothing for a
+    // session that has already ended.
+    if (
+      (response.outcome as { outcome: string }).outcome === 'accepted' &&
+      !record.stopping
+    ) {
+      record.cursorTodos = plan.todos;
+      // A plan approved mid-turn belongs to that turn, so it carries the
+      // send's invocation like any other engine-reported plan.
+      this.publishForTurn(record, {
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: record.session.threadId,
+        createdAt: new Date().toISOString(),
+        turnId: record.activeTurnId,
+        method: 'plan.updated',
+        entries: cursorTodosToPlanEntries(plan.todos),
+      });
+    }
+    return response;
+  }
+
+  /**
+   * Publish a form addressed to a person and wait for the answer. It is
+   * settled with `cancel` like any permission request when the prompt ends,
+   * the turn is interrupted or the session stops.
+   */
+  private awaitPersonRequest(
+    record: AcpSessionRecord,
+    request: {
+      title: string;
+      form: InputRequestForm;
+      payload: Record<string, unknown>;
+    },
+  ): Promise<{
+    decision: CursorRequestDecision;
+    content?: InputRequestContent;
+  }> {
+    if (record.stopping) return Promise.resolve({ decision: 'cancel' });
+    const requestId = crypto.randomUUID();
+    const eventId = crypto.randomUUID();
+    this.publish({
+      eventId,
+      provider: this.provider,
+      threadId: record.session.threadId,
+      createdAt: new Date().toISOString(),
+      requestId,
+      method: 'request.opened',
+      requestType: 'approval',
+      title: request.title,
+      payload: { ...request.payload, inputRequest: request.form },
+    });
+    return new Promise((resolve) => {
+      record.pendingRequests.set(requestId, {
+        resolve: (decision, content) =>
+          resolve({
+            // `respondToRequest` refuses a session answer to a form.
+            decision: decision === 'acceptForSession' ? 'accept' : decision,
+            ...(content ? { content } : {}),
+          }),
+        options: [],
+        needsPerson: true,
+        eventId,
+        inputRequest: request.form,
+      });
+    });
+  }
+
+  private reportUnreadableCursorRequest(
+    record: AcpSessionRecord,
+    method: string,
+    logger: AcpLogger,
+    message: string,
+  ): void {
+    logger.warn?.('refused unreadable Cursor extension request', {
+      method,
+      connectionId: record.connectionId,
+    });
+    this.publish({
+      eventId: crypto.randomUUID(),
+      provider: this.provider,
+      threadId: record.session.threadId,
+      createdAt: new Date().toISOString(),
+      method: 'runtime.warning',
+      severity: 'warning',
+      code: 'acp.extension-request-unreadable',
+      message,
+      details: { method, connectionId: record.connectionId },
+    });
+  }
+
   private handleExtensionNotification(
     record: AcpSessionRecord,
     method: string,
@@ -3645,38 +3884,19 @@ export class AcpAdapter implements ProviderAdapterShape {
     record: AcpSessionRecord,
     text: string,
   ): Promise<boolean> {
-    const channel = resolveAcpSteerChannel({
-      command: record.command,
-      args: record.args,
-      agentName: record.process.initResult?.agentInfo?.name,
-    });
+    const selection = resolveAcpSteerChannel(record.process.initResult);
     const sessionId = record.process.sessionId;
-    if (!sessionId) return false;
-    if (channel === 'session-steer') {
+    if (!sessionId || selection.channel === 'cancel-reprompt') return false;
+    for (const method of selection.methods) {
       try {
         await record.process.extMethod(
-          ACP_SESSION_STEER_METHOD,
-          acpSessionSteerParams(sessionId, text),
+          method,
+          acpSteerParams(selection.channel, sessionId, text),
         );
         return true;
       } catch (error) {
         if (!isAcpMethodNotFound(error)) throw error;
-        return false;
       }
-    }
-    if (channel === 'interject') {
-      for (const method of ACP_INTERJECT_METHODS) {
-        try {
-          await record.process.extMethod(
-            method,
-            acpInterjectParams(sessionId, text),
-          );
-          return true;
-        } catch (error) {
-          if (!isAcpMethodNotFound(error)) throw error;
-        }
-      }
-      return false;
     }
     return false;
   }

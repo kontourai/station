@@ -173,14 +173,6 @@ export function ApiBaseProvider({ children }: { children: ReactNode }) {
         source: 'cli-base',
       };
     }
-    if (profile.isMobile && profile.mobileDefaultEndpoint) {
-      return {
-        id: `mobile-default-${profile.channel ?? 'stable'}`,
-        name: `Station ${profile.channel ?? 'stable'}`,
-        url: profile.mobileDefaultEndpoint,
-        source: 'mobile-default',
-      };
-    }
     if (!bundledStatus) return null;
     const status =
       bundledStatus.phase === 'running'
@@ -201,12 +193,7 @@ export function ApiBaseProvider({ children }: { children: ReactNode }) {
         ? { ownerId: bundledStatus.instanceId }
         : {}),
     };
-  }, [
-    bundledStatus,
-    profile.channel,
-    profile.isMobile,
-    profile.mobileDefaultEndpoint,
-  ]);
+  }, [bundledStatus]);
 
   return (
     <ConnectionsProvider
@@ -773,6 +760,8 @@ export function useHostRequestAuthorityScope() {
        * (#2598). Absent means required.
        */
       requiresEnrolledCredential?: boolean;
+      /** Non-secret reload partition; restored drafts still require live admission. */
+      draftRecoveryKey?: string;
     } = {
       requiresEnrolledCredential:
         profile.isTauri || Boolean(evidence.brokerRoute),
@@ -790,6 +779,14 @@ export function useHostRequestAuthorityScope() {
             ? { authorityQualifier: relayAccountScopeKey }
             : {}),
       }),
+      draftRecoveryKey: JSON.stringify([
+        evidence.connectionId,
+        evidence.origin,
+        evidence.authorityGeneration,
+        evidence.credentialState,
+        nativeBinding?.bindingId ?? null,
+        relayAccountScopeKey ?? nativeRelayAccountAuthority ?? null,
+      ]),
       isCurrent: () =>
         isCredentialEvidenceCurrent(evidence) &&
         (!evidence.brokerRoute ||
