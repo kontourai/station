@@ -788,7 +788,7 @@ describe('native release workflow topology', () => {
     expect(workflowJob(publish, 'qualification').uses).toBe(
       './.github/workflows/full-regression.yml',
     );
-    expect(promotion.needs).toEqual(['resolve', 'qualification']);
+    expect(promotion.needs).toEqual(['resolve', 'qualification', 'advisory']);
     expect(parsed.permissions).toEqual({ contents: 'read', actions: 'read' });
     expect(source.run).toContain('gh release view "$desktop_updater_tag"');
     expect(source.run).not.toContain('2>/dev/null || true');
@@ -821,7 +821,7 @@ describe('native release workflow topology', () => {
         'Publish and verify the rolling desktop updater channel',
       ).if,
     ).toBeUndefined();
-    expect(promotion.needs).toEqual(['resolve', 'qualification']);
+    expect(promotion.needs).toEqual(['resolve', 'qualification', 'advisory']);
     expect(parsed.concurrency).toEqual({
       group: 'station-release-publish',
       'cancel-in-progress': false,
@@ -859,6 +859,7 @@ describe('native release workflow topology', () => {
     expect(policyEntries).toEqual({
       resolve: ['scripts/lib/native-release-config.mjs'],
       qualification: [],
+      advisory: [],
       publish: [
         'scripts/deploy-ledger.mjs',
         // #2959: the host-stream manifest signer and its publication checks.
@@ -878,6 +879,16 @@ describe('native release workflow topology', () => {
     const parsed = workflow(publish);
     expect(parsed.defaults).toBeUndefined();
     for (const [jobName, job] of Object.entries(parsed.jobs ?? {})) {
+      if (jobName === 'advisory') {
+        expect(job.uses).toBe('./.github/workflows/release-advisory.yml');
+        expect(job.with?.source_sha).toBe(
+          githubExpression('needs.resolve.outputs.sha'),
+        );
+        expect(job.with?.policy_sha).toBe(
+          githubExpression('needs.resolve.outputs.policy_sha'),
+        );
+        continue;
+      }
       if (jobName === 'qualification') {
         expect(job.uses).toBe('./.github/workflows/full-regression.yml');
         expect(job.with?.source_sha).toBe(
@@ -1405,6 +1416,61 @@ describe('native release workflow topology', () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  it('installs the hash-pinned dmgbuild without secrets and hands its absolute path to both macOS packagers', () => {
+    const install = 'Install the hash-pinned macOS DMG layout tool';
+    const dmgbuild = '--dmgbuild "$RUNNER_TEMP/station-dmgbuild/bin/dmgbuild"';
+    for (const [file, jobName, seal] of [
+      [
+        release,
+        'desktop-macos',
+        'Seal, notarize, and derive canonical macOS artifacts',
+      ],
+      [
+        nativeCohort,
+        'stage-macos',
+        'Fail closed and build/sign/notarize macOS staging artifacts',
+      ],
+    ]) {
+      const job = workflowJob(file, jobName);
+      expect(stepIndex(job, install), jobName).toBeLessThan(
+        stepIndex(job, seal),
+      );
+      const step = namedStep(job, install);
+      // Installing reads no secret; the signing step's own env is unchanged.
+      expect(step.env, jobName).toBeUndefined();
+      expect(step.run, jobName).not.toContain('secrets.');
+      expect(step.run, jobName).toContain('set -euo pipefail');
+      expect(step.run, jobName).toContain(
+        'python3 -m venv "$RUNNER_TEMP/station-dmgbuild"',
+      );
+      expect(step.run, jobName).toContain(
+        '"$RUNNER_TEMP/station-dmgbuild/bin/python" -m pip install --disable-pip-version-check --no-input --no-cache-dir --require-hashes --only-binary :all: --no-deps -r ops/release/dmg/requirements.txt',
+      );
+      const invocations = namedStep(job, seal)
+        .run.split('\n')
+        .filter((line) => line.includes('macos-notarized-artifacts.mjs'));
+      expect(invocations, jobName).toHaveLength(1);
+      expect(invocations[0], jobName).toContain(dmgbuild);
+    }
+    // Every requirement is an exact version with a pinned wheel digest.
+    const requirements = readFileSync(
+      resolve(root, 'ops/release/dmg/requirements.txt'),
+      'utf8',
+    )
+      .replace(/\\\n\s*/g, ' ')
+      .split('\n')
+      .filter((line) => line.trim() !== '' && !line.startsWith('#'));
+    expect(requirements.map((line) => line.split('==')[0]).sort()).toEqual([
+      'dmgbuild',
+      'ds-store',
+      'mac-alias',
+    ]);
+    for (const line of requirements)
+      expect(line).toMatch(
+        /^[a-z-]+==\d+(?:\.\d+)+ +--hash=sha256:[0-9a-f]{64}$/,
+      );
   });
 
   it('builds deb and rpm before the signed AppImage overlay without post-sign mutation', () => {
