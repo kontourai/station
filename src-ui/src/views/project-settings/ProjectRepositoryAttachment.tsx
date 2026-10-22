@@ -68,7 +68,7 @@ export function ProjectRepositoryAttachment({
           Could not read current Project identity. {errorText(identity.error)}{' '}
           <Button onClick={() => void identity.refetch()}>Retry</Button>
         </p>
-      ) : identity.isPending || identity.isFetching ? (
+      ) : identity.isPending ? (
         <p role="status">Checking current Project identity…</p>
       ) : (
         <NewProjectRepositorySource

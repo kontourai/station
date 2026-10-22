@@ -3,7 +3,13 @@ import type { ProjectIdentityView } from '@kontourai/station-contracts/project-i
 import { _setApiBase } from '@kontourai/station-sdk';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { ProjectRepositoryAttachment } from '../ProjectRepositoryAttachment';
 
@@ -61,6 +67,8 @@ test('attachment is separately confirmed and a lost response retries the same id
     },
   };
   const posts: unknown[] = [];
+  let pauseIdentity = false;
+  let resumeIdentity!: (response: Response) => void;
   vi.stubGlobal(
     'fetch',
     vi.fn(async (_url: string, init?: RequestInit) => {
@@ -68,6 +76,10 @@ test('attachment is separately confirmed and a lost response retries the same id
         posts.push(JSON.parse(String(init.body)));
         if (posts.length === 1) throw new TypeError('response lost');
       }
+      if (pauseIdentity && init?.method !== 'POST')
+        return new Promise<Response>((resolve) => {
+          resumeIdentity = resolve;
+        });
       return new Response(JSON.stringify({ success: true, data: view }));
     }),
   );
@@ -84,9 +96,23 @@ test('attachment is separately confirmed and a lost response retries the same id
       />
     </QueryClientProvider>,
   );
-  fireEvent.click(
-    await screen.findByRole('button', { name: 'Choose verified repository' }),
-  );
+  const picker = await screen.findByRole('button', {
+    name: 'Choose verified repository',
+  });
+  pauseIdentity = true;
+  const refreshing = client.invalidateQueries({
+    queryKey: ['projects', 'notes'],
+  });
+  await waitFor(() => expect(resumeIdentity).toBeTypeOf('function'));
+  expect(client.isFetching()).toBeGreaterThan(0);
+  expect(picker.isConnected).toBe(true);
+  expect(
+    screen.getByRole('button', { name: 'Choose verified repository' }),
+  ).toBe(picker);
+  pauseIdentity = false;
+  resumeIdentity(new Response(JSON.stringify({ success: true, data: view })));
+  await refreshing;
+  fireEvent.click(picker);
   const confirm = await screen.findByRole('button', {
     name: 'Attach repository',
   });
