@@ -458,6 +458,35 @@ the key-approval and grant-lifecycle lanes are explicit opt-ins. Harness
 availability is source evidence, not an executed platform result. Record the
 exact binary, revision, host and completed lane result when running it.
 
+The desktop sidecar starts Node with a home-scoped compile cache. The first
+[server bootstrap import](../../src-server/runtime/bootstrap/server-compile-cache.ts)
+loads `.env`, then removes `NODE_COMPILE_CACHE` from the server environment
+after Node has consumed its startup setting, so dotenv cannot restore it for
+generic child launchers.
+Targeted child environment scrubs remain in place. The process supervisor keeps
+the setting when launching replacement Station server generations; each enters
+through the same server bootstrap. The
+[process regression](../../src-server/runtime/bootstrap/__tests__/server-compile-cache.process.test.ts)
+checks Node's active cache across two starts and executes real stdio MCP,
+Strands, Flow Agents, Veritas and login-shell child paths. Its first-import
+ordering assertion is a source-only wiring guard, separate from packaged-shell
+startup evidence. A second regression builds the real server entry and runs it
+from a working directory whose `.env` contains the cache setting. It verifies
+that dotenv loaded, reaches a deliberate invalid-port refusal, and observes a
+real child without that variable, both with and without a startup cache.
+External ESM dependencies evaluate before the bundled bootstrap. The regression
+observes no Node child-process launches during evaluation of the installed
+dependency graph; this evidence is specific to those dependency versions.
+
+Ownership refresh reserves a generation before the registry bridge runs and
+publishes only while that generation remains current. Explicit invalidation
+also advances the generation, so an older idle poll cannot replace a newer
+service-convergence observation. Channel-controlled Rust tests exercise that
+overlap; cover admission and service convergence have executable decision and
+ordering tests. Labeled source-only guards retain the AppHandle/native wiring
+checks. These checks do not establish a visible cover or installed service
+behavior.
+
 Run the changed selector first, then the exact focused checks it selects:
 
 ```sh

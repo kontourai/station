@@ -144,7 +144,15 @@
 
     "pnpm-lock.yaml#/snapshots",
 
-    "src-desktop/src/desktop_update.rs"
+    "src-desktop/src/desktop_update.rs",
+
+    "src-desktop/src/linux_webkit.rs",
+
+    "src-desktop/src/login_shell.rs",
+
+    "esbuild.config.mjs",
+
+    "src-server/index.ts"
   ],
 
   "checks": [
