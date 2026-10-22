@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import { chmodSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { probeExactProcessIdentity as realProbe } from '@kontourai/station-shared/process-identity';
@@ -19,22 +19,19 @@ import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 function isAlive(pid: number | undefined): boolean {
   if (pid === undefined) return false;
   try {
-    process.kill(pid, 0);
-    if (process.platform === 'linux') {
-      // SIGKILLed grandchildren can remain zombies until init reaps them.
-      // They cannot execute, but kill(pid, 0) still succeeds for their PIDs.
-      const stat = readFileSync(`/proc/${pid}/stat`, 'utf8');
-      const state = stat
-        .slice(stat.lastIndexOf(')') + 1)
-        .trim()
-        .split(/\s+/)[0];
-      return state !== 'Z';
-    }
-    return true;
+    // A terminated grandchild can remain a zombie until init reaps it;
+    // kill(pid, 0) would still report that PID as present.
+    const state = execFileSync('ps', ['-o', 'stat=', '-p', String(pid)], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+      timeout: 5_000,
+      maxBuffer: 4_096,
+    }).trim();
+    return state !== '' && !state.startsWith('Z');
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code === 'ESRCH' || code === 'ENOENT') return false;
-    if (code === 'EPERM') return true;
+    // ps exits 1 when the selected PID no longer exists.
+    if ((error as { status?: number }).status === 1) return false;
     throw error;
   }
 }
