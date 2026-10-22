@@ -34,3 +34,18 @@ Every confirmed release of a prior assignment claim is persisted immediately.
 It is never deferred to a later association write, because that write might not
 happen. A failed release or reservation restoration is likewise `indeterminate`,
 never presented as retryable success.
+
+A dispatch that starts an engine runs as the Task's Agent: the dispatch's
+`agentId`, else the Agent the Task records
+([#4005](https://github.com/kontourai/station/issues/4005)). The remote-sessions
+Adapter resolves it with the same resolver a foreground `/chat` start uses
+(`resolveTaskDispatchAgentStart`), before any assignment claim or provider
+effect, and the start records the same Environment and Agent binding, so the
+Session takes `/chat` follow-ups and conversation-inbox entries. The Session
+runs in the Project's working directory, in the shared checkout, and keeps its
+native transcript. A dispatch naming no Agent, an unknown or unavailable Agent,
+an engine that is not ready, a model that cannot launch, a provider other than
+the Agent's engine, or a directory other than the Project's is refused as
+`failed` with the reservation restored; none of these can leave the Task
+`indeterminate`. A dispatch with no provider still seeds a `task-dispatch`
+Session and starts no engine.

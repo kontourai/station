@@ -199,9 +199,10 @@ above:
   brief and records it in the Session's start metadata under a reserved,
   server-only key. Station prepends it to the first turn's ambient context,
   the same place an authored Agent prompt goes on engines without a
-  system-prompt channel. It is not a system-prompt addition, even on Claude.
-  Task dispatch resolves no Agent definition to append to, so this is one
-  path for Claude Code, Codex, ACP and Station's engine. It also keeps the
+  system-prompt channel. It is not a system-prompt addition, even on Claude,
+  though the dispatched Session does run as the Task's Agent and gets that
+  Agent's own prompt as usual: the brief stays one path for Claude Code,
+  Codex, ACP and Station's engine. It also keeps the
   snapshot a single turn in the transcript, so a later resume does not
   re-apply a stale one. The person's typed text stays the transcript text.
   Station's engine relays ambient context to `/chat`, whose ambient bound
@@ -348,17 +349,6 @@ in Needs you and in the lead's next `get_task_brief`.
   one, and nothing stops it. The answer's version records who answered, and
   the Task workspace shows it as "answered by Session X" (or the person).
   The lead wake names the answering Session too.
-- **Delivery to a Task-dispatched Session waits on
-  [#4005](https://github.com/kontourai/station/issues/4005).** Dispatch does
-  not bind the Session to an Agent, so live, the Session cannot receive the
-  turns that carry the first-turn brief or a lead wake. Until #4005 lands,
-  the brief reaches the agent only through `get_task_brief` and the
-  `session.started` record of its start metadata. A wake to such a lead is
-  accepted by the inbox and then settles `refused`; that is recorded on the
-  inbox entry, which the conversation inbox read lists, and logged as
-  `thread inbox entry not delivered` with the entry key (`tq-…`), state and
-  reason code. Nothing retries it, and the question still shows in Needs
-  you.
 - **A candidate's id taken by another record is a dead end.** If a record
   not written by Task Learning already uses a version's knowledge-record
   id in its store, promote answers `409 task_learning_id_taken`, naming the
