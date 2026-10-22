@@ -153,6 +153,12 @@ import {
   runCliCommand,
 } from '../auth/cli-auth.js';
 import { observeExecutableInvocation } from '../auth/executable-observation.js';
+import {
+  assertNativeAuthenticationProfile,
+  captureNativeAuthenticationLaunch,
+  observeNativeAuthenticationLaunch,
+  retainNativeAuthenticationContinuation,
+} from '../auth/native-authentication-context.js';
 import { effectiveModelMetadata } from '../llm/effective-model-metadata.js';
 import { providerFailure } from '../provider-failure.js';
 import {
@@ -1544,6 +1550,12 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     const claudeExecutable = launchedClaudeExecutable(
       await this.resolveClaudeExecutable(),
     );
+    assertNativeAuthenticationProfile(
+      this,
+      input.threadId,
+      resolvedHome?.profileRef ?? null,
+      input.cwd,
+    );
     const usageAccountKey = resolvedHome
       ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
       : undefined;
@@ -2065,9 +2077,23 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     // #2932: Station owns the engine spawn so it can read the permission
     // asks on the engine's stdout (see claude-code-spawn.ts). #2494: a
     // confined start's spawn goes through the provider's `confine`.
-    const engineProcess = seatbeltSpawn
-      ? createClaudeEngineProcess(undefined, seatbeltSpawn.wrap)
-      : createClaudeEngineProcess();
+    const assertAuthenticatedLaunch = captureNativeAuthenticationLaunch(
+      this,
+      input.threadId,
+    );
+    const engineProcess = createClaudeEngineProcess(undefined, (launch) => {
+      const authenticatedLaunch =
+        assertAuthenticatedLaunch &&
+        claudeExecutable?.toLowerCase().endsWith('.js') &&
+        launch.command === 'node' &&
+        launch.args[0] === claudeExecutable
+          ? { ...launch, command: process.execPath }
+          : launch;
+      assertAuthenticatedLaunch?.(authenticatedLaunch);
+      return seatbeltSpawn
+        ? seatbeltSpawn.wrap(authenticatedLaunch)
+        : authenticatedLaunch;
+    });
     if (sessionToolRestriction(input.threadId))
       this.restrictedStartingProcesses.set(input.threadId, engineProcess);
     let sdkQuery: ReturnType<typeof query>;
@@ -3370,6 +3396,7 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       return {
         executable,
         executableIdentity,
+        profileRef: home?.profileRef ?? null,
         env: overlay,
         hash,
         command,
@@ -3377,6 +3404,21 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       };
     };
     const before = await context();
+    const finalize = await input.assertCurrent();
+    const nativeContinuation = before.command
+      ? await observeNativeAuthenticationLaunch({
+          engine: 'claude',
+          profileRef: before.profileRef,
+          command: before.command,
+          script: before.script,
+          cwd: input.cwd,
+          env: before.env,
+          assertCurrent: () => {
+            input.signal?.throwIfAborted();
+            finalize();
+          },
+        })
+      : undefined;
     const executable = before.executable;
     const supported =
       input.connectionId === this.metadata.connectionId &&
@@ -3426,16 +3468,19 @@ export class ClaudeAdapter implements ProviderAdapterShape {
           )
         : null;
     const after = await context();
-    return {
-      state:
-        before.executableIdentity && before.hash === after.hash
-          ? parseClaudeAuthStatus(result)
-          : 'unknown',
-      contextHash: `sha256:${before.hash}`,
-      checkedAt: Date.now(),
-      modelEntitlement: 'not-checked',
-      outputTokenLimitFidelity: 'unavailable',
-    };
+    return retainNativeAuthenticationContinuation(
+      {
+        state:
+          before.executableIdentity && before.hash === after.hash
+            ? parseClaudeAuthStatus(result)
+            : 'unknown',
+        contextHash: `sha256:${before.hash}`,
+        checkedAt: Date.now(),
+        modelEntitlement: 'not-checked',
+        outputTokenLimitFidelity: 'unavailable',
+      },
+      before.hash === after.hash ? nativeContinuation : undefined,
+    );
   }
 
   async getPrerequisites(options?: {

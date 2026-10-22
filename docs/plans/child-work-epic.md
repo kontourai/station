@@ -398,6 +398,17 @@ visible on its pending seat without consuming a reservation; its owner regressio
 fails before the publication repair and passes afterward. Final combined
 validation, mutation/restore and independent delta review remain pending. No new live provider claim follows from these fixtures.
 
+The native-context P2 repair is in progress: a private object-identity continuation
+now reaches the actual Codex and Claude spawn wrappers, checks resolved profile,
+executable/environment/argument context, and retains bounded local auth/config
+witnesses. Scalar copied observations refuse before reservations. Controlled
+adapter/spawn tests exercise drift after receiver-resolution awaits and benign
+native bookkeeping. The four-file selection passed 92 cases before the final SDK
+metadata normalization. Unsupported OS stores and detected dynamic/managed policy
+refuse; no complete native policy inventory, live provider, hostile-host or
+post-spawn continuity claim follows. Baseline proof, mutation/restore, final
+qualification and independent P2 disposition remain pending.
+
 ## Production adoption sequence
 
 The personal `/api/orchestration/session-groups` path now composes the shared

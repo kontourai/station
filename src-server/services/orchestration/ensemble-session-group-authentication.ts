@@ -4,6 +4,10 @@ import { canonicalJson } from '@kontourai/relay';
 import type { ExecutionTarget } from '@kontourai/station-contracts/execution-target';
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import {
+  type NativeAuthenticationContinuation,
+  nativeAuthenticationContinuation,
+} from '../../providers/auth/native-authentication-context.js';
+import {
   type ExecutionTargetResolverDependencies,
   resolveExecutionTarget,
 } from '../execution-target/execution-target-resolver.js';
@@ -60,6 +64,7 @@ export async function authenticateEnsembleSessionGroup(
     directory: Stats;
     identity: string;
     checkedAt: number;
+    nativeContinuation?: NativeAuthenticationContinuation;
   }> = [];
   // Establish support for the whole roster before any authentication command.
   for (const member of members) {
@@ -163,16 +168,44 @@ export async function authenticateEnsembleSessionGroup(
       Date.now() - observation.checkedAt > 30_000
     )
       throw new CliSessionGroupUnavailable('ensemble_auth_unverified');
+    const continuation = nativeAuthenticationContinuation(observation);
+    if (!continuation)
+      throw new CliSessionGroupUnavailable('ensemble_auth_unsupported');
+    continuation.assertCurrent();
     selection.checkedAt = observation.checkedAt;
+    selection.nativeContinuation = continuation;
   };
   for (const selection of selections) await observe(selection);
   for (const selection of selections) {
     assertSelection(selection);
+    selection.nativeContinuation?.assertCurrent();
     if (Date.now() - selection.checkedAt >= 30_000)
       throw new CliSessionGroupUnavailable('ensemble_auth_stale');
   }
   const refreshing = new Map<string, Promise<void>>();
   return {
+    invokeDispatch(seatId, sessionId, work) {
+      const selection = selections.find((s) => s.seatId === seatId);
+      if (!selection)
+        throw new CliSessionGroupUnavailable('ensemble_binding_changed');
+      const checkedAt = selection.checkedAt;
+      if (!selection.nativeContinuation)
+        throw new CliSessionGroupUnavailable('ensemble_auth_unsupported');
+      return selection.nativeContinuation.invoke(
+        selection.adapter,
+        sessionId,
+        () => {
+          if (
+            checkedAt !== selection.checkedAt ||
+            Date.now() < checkedAt ||
+            Date.now() - checkedAt >= 30_000
+          )
+            throw new CliSessionGroupUnavailable('ensemble_auth_stale');
+          assertSelection(selection);
+        },
+        work,
+      );
+    },
     async prepareDispatch(seatId) {
       const selection = selections.find((s) => s.seatId === seatId);
       if (!selection)
@@ -197,6 +230,7 @@ export async function authenticateEnsembleSessionGroup(
         )
           throw new CliSessionGroupUnavailable('ensemble_auth_stale');
         assertSelection(selection);
+        selection.nativeContinuation?.assertCurrent();
       };
       assertCurrent();
       return assertCurrent;

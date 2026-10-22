@@ -94,6 +94,12 @@ import {
 } from '../auth/cli-auth.js';
 import { observeExecutableInvocation } from '../auth/executable-observation.js';
 import {
+  assertNativeAuthenticationProfile,
+  captureNativeAuthenticationLaunch,
+  observeNativeAuthenticationLaunch,
+  retainNativeAuthenticationContinuation,
+} from '../auth/native-authentication-context.js';
+import {
   effectiveModelMetadata,
   reportedModelMetadata,
 } from '../llm/effective-model-metadata.js';
@@ -901,12 +907,25 @@ export class CodexAdapter implements ProviderAdapterShape {
       return {
         ...spawn,
         executableIdentity,
+        profileRef: home?.profileRef ?? null,
         env,
         hash,
         routed: Boolean(launch.route) || launch.args.length > 0,
       };
     };
     const before = await context();
+    const finalize = await input.assertCurrent();
+    const nativeContinuation = await observeNativeAuthenticationLaunch({
+      engine: 'codex',
+      profileRef: before.profileRef,
+      command: before.binary,
+      cwd: input.cwd,
+      env: before.env,
+      assertCurrent: () => {
+        input.signal?.throwIfAborted();
+        finalize();
+      },
+    });
     // Login status does not authenticate a custom model-provider route.
     const result =
       before.routed ||
@@ -962,13 +981,16 @@ export class CodexAdapter implements ProviderAdapterShape {
       )
         state = 'authenticated';
     }
-    return {
-      state,
-      contextHash: `sha256:${before.hash}`,
-      checkedAt: Date.now(),
-      modelEntitlement: 'not-checked',
-      outputTokenLimitFidelity: 'unavailable',
-    };
+    return retainNativeAuthenticationContinuation(
+      {
+        state,
+        contextHash: `sha256:${before.hash}`,
+        checkedAt: Date.now(),
+        modelEntitlement: 'not-checked',
+        outputTokenLimitFidelity: 'unavailable',
+      },
+      before.hash === after.hash ? nativeContinuation : undefined,
+    );
   }
 
   async getPrerequisites(options?: {
@@ -1963,6 +1985,12 @@ export class CodexAdapter implements ProviderAdapterShape {
       appHomeEnv = resolvedHome?.env;
       appHome = appHomeEnv ? 'profile' : 'global';
     }
+    assertNativeAuthenticationProfile(
+      this,
+      input.threadId,
+      resolvedHome?.profileRef ?? null,
+      input.cwd,
+    );
     const quotaConnectionId = string(input.metadata?.connectionId);
     const toolServers = this.resolveAgentToolServers(input);
     // station#2072: the connection env layer merges UNDER the app-home
@@ -2017,6 +2045,19 @@ export class CodexAdapter implements ProviderAdapterShape {
       ...(toolServers.configArgs ?? []),
       ...codexConfinementConfigArgs(input.confinement),
     ];
+    const authenticatedLaunch = captureNativeAuthenticationLaunch(
+      this,
+      input.threadId,
+    );
+    if (authenticatedLaunch) {
+      const actual = resolveCodexSpawnContext(spawnEnv);
+      authenticatedLaunch({
+        cwd: input.cwd,
+        command: actual.binary,
+        args: ['app-server', ...spawnArgs],
+        env: actual.env,
+      });
+    }
     const processHandle = this.processFactory(
       spawnEnv,
       spawnArgs.length ? spawnArgs : undefined,

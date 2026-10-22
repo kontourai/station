@@ -1822,6 +1822,16 @@ ordinary target/posture/directory/scope authorization before probing. This
 host prerequisite issues no portable envelope or execution grant. ACP/OpenCode
 preset runs refuse until an actual-context login observer exists.
 
+The private `native-authentication-context.ts` continuation is associated with
+its scalar observation by object identity and carried through the reserved
+session dispatch using async-local scope. The adapter checks its resolved profile;
+Codex's real process factory and Claude's captured SDK spawn wrapper check the
+actual launch. `native-authentication-files.ts` owns bounded auth/config file and
+absence witnesses, with a separate authentication projection for native metadata.
+Unsupported stores/helpers and detected managed policy refuse. These are local
+observations; remote policy, hostile-host isolation and post-spawn rotation are
+not qualified.
+
 A durable launch intent precedes dispatch. Ambiguous starts retain occupied
 capacity and cannot be resent automatically. Cancellation closes admission and
 requests interruption through the existing session owner; only terminal evidence

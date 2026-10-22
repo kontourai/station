@@ -1684,6 +1684,22 @@ seat without consuming a start reservation. Manual groups retain their ordinary
 dispatch path. Login proves neither selected
 model entitlement nor output, token, dollar or portable-envelope enforcement.
 
+The private login continuation also checks the resolved credential profile and
+native executable at launch, and witnesses bounded local auth/config files,
+including their absence. It does not travel in JSON or grant permission. Guarded
+Codex app-server starts use the observed member cwd; its session tool/confinement
+overrides may not change authentication configuration. Claude checks the SDK's
+actual process launch before confinement wrapping and permits only the authored
+speed-mode settings at that argument layer. Native bookkeeping changes do not
+invalidate an unchanged authentication projection.
+
+These checks support local file/env authentication only. Implicit Claude macOS
+Keychain login, non-file Codex stores, credential/policy helpers, detected managed
+preferences or cloud-config cache, Windows registry stores and alternate cloud
+credential chains currently refuse. File witnesses are bounded observations,
+not atomic file handles or protection from a hostile host owner. Remote policy,
+provider revocation and credential rotation after spawn remain unverified.
+
 Local-operator inventory inspection fails the whole page with 404 when any
 accepted member on that page fails the session-read check. It does not return a
 partial page or disclose which group was unreadable.

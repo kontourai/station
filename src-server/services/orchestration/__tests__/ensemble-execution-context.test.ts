@@ -1,5 +1,12 @@
 import { createHash } from 'node:crypto';
-import { mkdir, realpath, rename, symlink, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  realpath,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { join } from 'node:path';
 import type {
   AgentExecutionConfig,
@@ -42,11 +49,25 @@ import {
 import { authenticateEnsembleSessionGroup } from '../ensemble-session-group-authentication.js';
 import { EventBus } from '../event-bus.js';
 
-const { execFile } = vi.hoisted(() => ({ execFile: vi.fn() }));
+const { execFile, nativeSpawn, nativeQuery } = vi.hoisted(() => ({
+  execFile: vi.fn(),
+  nativeSpawn: vi.fn(),
+  nativeQuery: vi.fn(),
+}));
+// File-store fixtures must not depend on this host's Keychain or managed preferences.
+vi.mock('node:os', async (original) => ({
+  ...(await original<typeof import('node:os')>()),
+  platform: () => 'linux',
+}));
+vi.mock('@anthropic-ai/claude-agent-sdk', async (original) => ({
+  ...(await original<typeof import('@anthropic-ai/claude-agent-sdk')>()),
+  query: nativeQuery,
+}));
 vi.mock('node:child_process', async (original) => {
   const actual = await original<typeof import('node:child_process')>();
   return {
     ...actual,
+    spawn: nativeSpawn,
     execFile: (command: string, ...args: unknown[]) => {
       const argv = args[0];
       if (
@@ -69,6 +90,29 @@ const endpoint = '/api/orchestration/ensembles/prepare';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  nativeSpawn.mockImplementation(() => {
+    throw new Error('native_spawn_control');
+  });
+  nativeQuery.mockImplementation(({ options }) =>
+    options.spawnClaudeCodeProcess({
+      command: options.pathToClaudeCodeExecutable?.endsWith('.js')
+        ? 'node'
+        : options.pathToClaudeCodeExecutable,
+      args: [
+        ...(options.pathToClaudeCodeExecutable?.endsWith('.js')
+          ? [options.pathToClaudeCodeExecutable]
+          : []),
+        '--model',
+        options.model,
+      ],
+      cwd: options.cwd,
+      env: {
+        ...options.env,
+        CLAUDE_CODE_ENTRYPOINT: 'sdk-ts',
+        CLAUDE_AGENT_SDK_VERSION: '0.3.302',
+      },
+    }),
+  );
   vi.stubEnv('STATION_DISABLE_LOGIN_PATH_RESOLVE', '1');
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
   execFile.mockImplementation((_command, args, _options, callback) => {
@@ -94,6 +138,7 @@ async function fixture(
   javascript = false,
 ) {
   const root = await realpath(tempDir('ensemble-context-'));
+  vi.stubEnv('HOME', root);
   vi.stubEnv('STATION_HOME', join(root, 'station-home'));
   const bin = join(root, 'bin');
   await mkdir(bin);
@@ -191,24 +236,36 @@ async function fixture(
     loadConnectionSettings: async () =>
       (await configLoader.loadAppConfig()).agentConnections?.[engine],
   });
+  let profileOverride: string | undefined;
+  const resolveAppHome = async (ref?: string) => {
+    const home = await getAppHomeEnv(ref);
+    return home && profileOverride
+      ? { ...home, profileRef: profileOverride }
+      : home;
+  };
+  let connectionArgsOverride: string[] | undefined;
   let onConnectionRead: (() => Promise<void>) | undefined;
   const getConnectionLaunch = async () => {
     await onConnectionRead?.();
     await persist();
-    return engineProxyLaunch(
+    const launch = engineProxyLaunch(
       engine,
       (await configLoader.loadAppConfig()).agentConnections?.[engine]?.config,
       providers.listProviderConnections(),
     );
+    return { ...launch, args: connectionArgsOverride ?? launch.args };
   };
   const adapter =
     engine === 'claude'
       ? new ClaudeAdapter({
-          getAppHomeEnv,
+          getAppHomeEnv: resolveAppHome,
           getConnectionLaunch,
           ...(javascript ? { findBinary: async () => executable } : {}),
         })
-      : new CodexAdapter({ getAppHomeEnv, getConnectionLaunch });
+      : new CodexAdapter({
+          getAppHomeEnv: resolveAppHome,
+          getConnectionLaunch,
+        });
   const starts = vi.spyOn(adapter, 'startSession');
   const turns = vi.spyOn(adapter, 'sendTurn');
   const connection: ConnectionConfig = {
@@ -398,6 +455,12 @@ async function fixture(
     operator,
     rawOperator,
     revokeCurrent,
+    setConnectionArgs: (value: string[] | undefined) => {
+      connectionArgsOverride = value;
+    },
+    setProfileOverride: (value: string) => {
+      profileOverride = value;
+    },
     setConnectionRead: (read: () => Promise<void>) => {
       onConnectionRead = read;
     },
@@ -412,8 +475,117 @@ async function fixture(
 }
 
 describe('production Ensemble preparation authentication', () => {
+  test.each([
+    ['codex', false],
+    ['claude', false],
+    ['claude', true],
+  ] as const)(
+    '%s guards the actual spawn after login and receiver-resolution awaits (JavaScript: %s)',
+    async (engine, javascript) => {
+      const f = await fixture(engine, javascript);
+      const target: ExecutionTarget = {
+        agent: agentId('coordinator'),
+        environment: { kind: 'current' },
+        expectedEngine: {
+          kind: 'connection',
+          connectionId: engineConnectionId(engine),
+        },
+        workspace: { kind: 'project', projectSlug: 'project' },
+        model: { override: f.preset.members[0].model, options: {} },
+      };
+      const admission = await authenticateEnsembleSessionGroup(
+        {
+          groupId: 'native-spawn',
+          intentDigest: 'native-intent',
+          members: [{ seatId: 'lead', target }],
+          signal: new AbortController().signal,
+        },
+        f.inventory,
+        'fixture-principal',
+        () => {},
+      );
+      const start = () =>
+        admission.invokeDispatch!('lead', 'reserved-native', () =>
+          f.adapter.startSession({
+            provider: f.engine,
+            threadId: 'reserved-native',
+            cwd: f.cwd,
+            modelId: f.preset.members[0].model,
+            confinement: 'host',
+          }),
+        );
+      await expect(start()).rejects.toThrow('native_spawn_control');
+      expect(nativeSpawn).toHaveBeenCalledTimes(1);
+      expect(nativeSpawn.mock.calls[0][2].cwd).toBe(f.cwd);
+      nativeSpawn.mockClear();
+      if (engine === 'codex') {
+        f.setConnectionArgs(['-c', 'cli_auth_credentials_store="keyring"']);
+      } else {
+        nativeQuery.mockImplementationOnce(({ options }) =>
+          options.spawnClaudeCodeProcess({
+            command: options.pathToClaudeCodeExecutable?.endsWith('.js')
+              ? 'node'
+              : options.pathToClaudeCodeExecutable,
+            args: [
+              ...(options.pathToClaudeCodeExecutable?.endsWith('.js')
+                ? [options.pathToClaudeCodeExecutable]
+                : []),
+              '--settings',
+              '{"apiKeyHelper":"different-account"}',
+            ],
+            cwd: options.cwd,
+            env: options.env,
+          }),
+        );
+      }
+      await expect(start()).rejects.toThrow('ensemble_auth_arguments_changed');
+      expect(nativeSpawn).not.toHaveBeenCalled();
+      f.setConnectionArgs(undefined);
+      if (engine === 'claude') {
+        nativeQuery.mockImplementationOnce(({ options }) =>
+          options.spawnClaudeCodeProcess({
+            command: options.pathToClaudeCodeExecutable?.endsWith('.js')
+              ? 'node'
+              : options.pathToClaudeCodeExecutable,
+            args: [
+              ...(options.pathToClaudeCodeExecutable?.endsWith('.js')
+                ? [options.pathToClaudeCodeExecutable]
+                : []),
+              '--model',
+              options.model,
+            ],
+            cwd: options.cwd,
+            env: { ...options.env, ANTHROPIC_API_KEY: 'changed-after-query' },
+          }),
+        );
+        await expect(start()).rejects.toThrow(
+          'ensemble_auth_native_context_changed',
+        );
+        expect(nativeSpawn).not.toHaveBeenCalled();
+      }
+      f.setProfileOverride('different-profile-same-home');
+      await expect(start()).rejects.toThrow(
+        'ensemble_auth_native_context_changed',
+      );
+      expect(nativeSpawn).not.toHaveBeenCalled();
+      f.setProfileOverride('selected');
+      let changed = false;
+      f.setConnectionRead(async () => {
+        if (!changed) {
+          changed = true;
+          await writeFile(f.executable, 'changed during receiver resolution');
+        }
+      });
+      await expect(start()).rejects.toThrow(
+        'Execution authentication executable changed',
+      );
+      expect(nativeSpawn).not.toHaveBeenCalled();
+      expect(f.adapter.sendTurn).not.toHaveBeenCalled();
+    },
+  );
+
   test.each(['codex', 'claude'] as const)(
-    '%s run admission refreshes stale login once and rejects expired or aborted effect fences',
+    '%s run admission refreshes stale login once and rejects expired, replaced-executable or aborted effect fences',
     async (engine) => {
       const f = await fixture(engine);
       const controller = new AbortController();
@@ -462,6 +634,36 @@ describe('production Ensemble preparation authentication', () => {
         call[1].includes('status'),
       );
       expect(statusCall?.[2].signal).toBe(controller.signal);
+      const observedHome =
+        statusCall?.[2].env[
+          engine === 'codex' ? 'CODEX_HOME' : 'CLAUDE_CONFIG_DIR'
+        ];
+      expect(typeof observedHome).toBe('string');
+      if (engine === 'claude') {
+        const metadata = join(f.root, '.claude.json');
+        await writeFile(metadata, '{"numStartups":1}');
+        refreshed[0]();
+        await writeFile(metadata, '{"oauthAccount":{"accountUuid":"changed"}}');
+        expect(refreshed[0]).toThrow('ensemble_auth_file_changed');
+        await rm(metadata);
+        refreshed[0]();
+      }
+      const configFile = join(
+        observedHome,
+        engine === 'codex' ? 'config.toml' : 'settings.json',
+      );
+      await writeFile(
+        configFile,
+        engine === 'codex' ? 'model = "changed"' : '{"model":"changed"}',
+      );
+      expect(refreshed[0]).toThrow('ensemble_auth_file_changed');
+      await rm(configFile);
+      refreshed[0]();
+      await writeFile(f.executable, 'replaced after login');
+      expect(refreshed[0]).toThrow(
+        'Execution authentication executable changed',
+      );
+      expect(statusCount()).toBe(2);
       controller.abort();
       expect(refreshed[0]).toThrow();
       await expect(admission.prepareDispatch('lead')).rejects.toThrow();

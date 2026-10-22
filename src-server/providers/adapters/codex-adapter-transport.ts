@@ -13,6 +13,10 @@ import {
 } from '../../services/infra/process-utils.js';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
 import { findCliBinary, resolveAugmentedPathSync } from '../auth/cli-auth.js';
+import {
+  assertNativeAuthenticationLaunch,
+  nativeAuthenticationSpawnCwd,
+} from '../auth/native-authentication-context.js';
 import { providerFailure } from '../provider-failure.js';
 import { AsyncEventQueue } from '../sessions/async-event-queue.js';
 import {
@@ -1429,11 +1433,19 @@ function spawnCodexProcess(
   // an unwritable or untrusted temp dir into a Codex outage, while the
   // in-process termination paths work either way. The record is released
   // only once the whole group has exited.
+  const cwd = nativeAuthenticationSpawnCwd();
+  assertNativeAuthenticationLaunch({
+    cwd,
+    command: binary,
+    args: ['app-server', ...(extraArgs ?? [])],
+    env,
+  });
   const { proc, release } = spawnOwnedChild(
     binary,
     ['app-server', ...(extraArgs ?? [])],
     {
       stdio: ['pipe', 'pipe', 'pipe'],
+      cwd,
       env,
     },
   );

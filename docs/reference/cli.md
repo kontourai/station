@@ -1223,6 +1223,11 @@ ACP/OpenCode presets refuse before member dispatch until an actual-context
 observer is available. This login check grants no model entitlement or fiscal
 authority. Manual session groups keep their existing dispatch path. The saved briefs include each member's prompt additions
 and the full roster. It does not call an engine until `session-run`.
+The run's private login continuation checks executable, profile, native launch
+environment and bounded local auth/config witnesses before spawning. Unsupported
+OS credential stores, dynamic credential/policy helpers and detected managed
+policy refuse; see the [API's login limits](api.md#cli-session-groups). Remote
+policy and credential changes after spawn are not qualified.
 Ctrl-C disconnects that supervision and requests interruption; it is not proof of
 physical termination. Inspect the same group after an uncertain response; never
 create a replacement merely because the response was lost. Member handles use

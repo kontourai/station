@@ -248,6 +248,7 @@ export class CliSessionGroupDispatchRefusal extends Error {
 
 export interface CliSessionGroupRunAdmission {
   prepareDispatch(seatId: string): Promise<() => void>;
+  invokeDispatch?<R>(seatId: string, sessionId: string, work: () => R): R;
 }
 
 export interface CliSessionGroupHost<T> {
@@ -1271,8 +1272,8 @@ export class CliSessionGroups<T> {
     if (launch.dispatch) {
       host.assertCurrent();
       execution.signal.throwIfAborted();
-      const dispatched = host
-        .dispatch(this.parseInput(launch.seat.input), {
+      const dispatch = () =>
+        host.dispatch(this.parseInput(launch.seat.input), {
           signal: execution.signal,
           sessionId: z.string().min(1).parse(launch.seat.reservedSessionId),
           initialClientTurnId: z
@@ -1293,18 +1294,26 @@ export class CliSessionGroups<T> {
             )
               throw new CliSessionGroupUnavailable('group_closed');
           },
-        })
-        .then(async (result) => {
-          const accepted = handleSchema.parse(result);
-          if (accepted.sessionId !== launch.seat.reservedSessionId)
-            throw new CliSessionGroupUnavailable('group_session_changed');
-          await this.mutate(groupId, owner, (record) => {
-            const seat = record.seats.find((s) => s.seatId === seatId)!;
-            seat.handle = accepted;
-            seat.state = 'started';
-          });
-          return accepted;
         });
+      const dispatched = (
+        runAdmission?.invokeDispatch
+          ? runAdmission.invokeDispatch(
+              seatId,
+              z.string().min(1).parse(launch.seat.reservedSessionId),
+              dispatch,
+            )
+          : dispatch()
+      ).then(async (result) => {
+        const accepted = handleSchema.parse(result);
+        if (accepted.sessionId !== launch.seat.reservedSessionId)
+          throw new CliSessionGroupUnavailable('group_session_changed');
+        await this.mutate(groupId, owner, (record) => {
+          const seat = record.seats.find((s) => s.seatId === seatId)!;
+          seat.handle = accepted;
+          seat.state = 'started';
+        });
+        return accepted;
+      });
       // Losing work can still return its actual identity; retain it without authorizing a resend.
       void dispatched.catch(() => {});
       try {

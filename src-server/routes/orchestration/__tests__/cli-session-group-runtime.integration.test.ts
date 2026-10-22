@@ -43,6 +43,11 @@ import type {
   ProviderExecutionAuthInput,
   ProviderExecutionAuthObservation,
 } from '../../../providers/adapter-shape.js';
+import {
+  captureNativeAuthenticationLaunch,
+  observeNativeAuthenticationLaunch,
+  retainNativeAuthenticationContinuation,
+} from '../../../providers/auth/native-authentication-context.js';
 import { createOrchestrationRequestPrincipalResolver } from '../../../runtime/bootstrap/orchestration-request-principal.js';
 import {
   bindRuntimeLocalOperator,
@@ -80,6 +85,7 @@ afterEach(async () => {
 });
 
 class MemberAdapter extends GateTestAdapter {
+  authenticationExecutable = '';
   readonly authentications: ProviderExecutionAuthInput[] = [];
   onAuthentication?: (input: ProviderExecutionAuthInput) => Promise<void>;
   authenticationStates: ProviderExecutionAuthObservation['state'][] = [];
@@ -90,13 +96,25 @@ class MemberAdapter extends GateTestAdapter {
     await this.onAuthentication?.(input);
     (await input.assertCurrent())();
     input.signal?.throwIfAborted();
-    return {
-      state: this.authenticationStates.shift() ?? 'authenticated',
-      contextHash: `sha256:${input.bindingHash}`,
-      checkedAt: Date.now(),
-      modelEntitlement: 'not-checked',
-      outputTokenLimitFidelity: 'unavailable',
-    };
+    const finalize = await input.assertCurrent();
+    const continuation = await observeNativeAuthenticationLaunch({
+      engine: 'codex',
+      profileRef: null,
+      command: this.authenticationExecutable,
+      cwd: input.cwd,
+      env: { HOME: input.cwd, CODEX_HOME: join(input.cwd, '.codex') },
+      assertCurrent: finalize,
+    });
+    return retainNativeAuthenticationContinuation(
+      {
+        state: this.authenticationStates.shift() ?? 'authenticated',
+        contextHash: `sha256:${input.bindingHash}`,
+        checkedAt: Date.now(),
+        modelEntitlement: 'not-checked',
+        outputTokenLimitFidelity: 'unavailable',
+      },
+      continuation,
+    );
   }
   async assertContextSyncRuntime() {}
   syncOutputs: string[] = [];
@@ -187,6 +205,15 @@ class MemberAdapter extends GateTestAdapter {
   override async startSession(input: ProviderSessionStartInput) {
     this.starts.push(input);
     await this.startGate;
+    captureNativeAuthenticationLaunch(
+      this,
+      input.threadId,
+    )?.({
+      command: this.authenticationExecutable,
+      args: ['app-server'],
+      cwd: input.cwd,
+      env: { HOME: input.cwd, CODEX_HOME: join(input.cwd ?? '', '.codex') },
+    });
     const session = {
       ...(await super.startSession(input)),
       resumeCursor: `native-${input.threadId}`,
@@ -313,6 +340,8 @@ async function fixture(operatorInspection = false) {
       })
     : () => actor;
   const adapter = new MemberAdapter();
+  adapter.authenticationExecutable = join(root, 'fixture-native');
+  writeFileSync(adapter.authenticationExecutable, '');
   Object.assign(adapter.metadata, {
     connectionId: 'claude',
     modelLaunch: {
@@ -1256,6 +1285,31 @@ test('a preset authenticates all members before starts, fences canceled or chang
   expect(await unsupported.text()).toContain('ensemble_auth_unsupported');
   expect(f.adapter.authentications).toHaveLength(0);
   expect(f.adapter.starts).toHaveLength(0);
+  Reflect.deleteProperty(f.adapter, 'observeExecutionAuthentication');
+  const nativeObservation = f.adapter.observeExecutionAuthentication.bind(
+    f.adapter,
+  );
+  Object.defineProperty(f.adapter, 'observeExecutionAuthentication', {
+    configurable: true,
+    value: async (input: ProviderExecutionAuthInput) => ({
+      ...(await nativeObservation(input)),
+    }),
+  });
+  const missingContinuation = await f.app.request(
+    `/api/orchestration/session-groups/${group.groupId}/run`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${local.credential}` },
+    },
+  );
+  expect(missingContinuation.status).toBe(409);
+  expect(await missingContinuation.text()).toContain(
+    'ensemble_auth_unsupported',
+  );
+  expect(f.adapter.starts).toHaveLength(0);
+  expect(f.adapter.turns).toHaveLength(0);
+  expect(f.adapter.authentications).toHaveLength(1);
+  f.adapter.authentications.length = 0;
   Reflect.deleteProperty(f.adapter, 'observeExecutionAuthentication');
   f.adapter.authenticationStates = [
     'authenticated',
