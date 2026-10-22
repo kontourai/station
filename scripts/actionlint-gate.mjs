@@ -470,6 +470,9 @@ const WINDOWS_PR_EVIDENCE_PATHS =
  */
 export const PNPM_SETUP_ACTION =
   'pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4';
+// Reviewed fixed source: npm signature plus pinned SHA512, no dependency install or cache.
+export const VERIFIED_PNPM_SETUP_ACTION =
+  'kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20';
 /**
  * #2675: pnpm/setup installs only pnpm's native single-executable build, and
  * for pnpm v11 it refuses Intel macOS ("does not provide a working binary for
@@ -732,6 +735,8 @@ const UNTRUSTED_ACTION_CACHE_POLICY = Object.freeze({
       ? []
       : [SETUP_NODE_AUTO_CACHE_MESSAGE]),
   ],
+  'kontourai/station/.github/actions/setup-verified-pnpm': (step) =>
+    isPinnedVerifiedPnpmSetup(step) ? [] : [UNREVIEWED_CACHE_ACTION_MESSAGE],
   'pnpm/setup': (step) =>
     String(step?.uses).toLowerCase() !== PNPM_SETUP_ACTION.toLowerCase()
       ? [UNREVIEWED_CACHE_ACTION_MESSAGE]
@@ -2001,7 +2006,16 @@ function securityAnalysisTopologyFindings(file, jobs) {
 // This bootstrap installs only the package manager pinned by package.json.
 // Keep install explicitly disabled: the action otherwise installs candidate dependencies
 // before the reviewed lifecycle entrypoint gets to apply its policy.
+function isPinnedVerifiedPnpmSetup(step) {
+  return (
+    step?.uses === VERIFIED_PNPM_SETUP_ACTION &&
+    step?.name === 'Setup pinned pnpm' &&
+    Object.keys(step).sort().join(',') === 'name,uses'
+  );
+}
+
 function isPinnedPnpmSetup(step) {
+  if (isPinnedVerifiedPnpmSetup(step)) return true;
   return (
     step?.uses === PNPM_SETUP_ACTION &&
     step?.name === 'Setup pinned pnpm' &&
