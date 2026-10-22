@@ -1649,6 +1649,18 @@ session** navigates to the ordinary Activity session view. Inspection neither
 starts a group nor inherits mutation authority. The view withholds observations
 when current authority is lost or a refresh is refused.
 
+After inspecting a preset, **Create a CLI session group** opens an explicit
+brief and receiver-binding form. **Save session group** persists the group without
+starting engines. **Run session group** starts supervision using the same current
+Station authority; **Cancel session group** requests interruption. Leaving the
+form aborts its pending supervision request. An unconfirmed creation or run is
+never automatically repeated; inspect the saved inventory before another action.
+The form reports scheduling completion separately from work acceptance.
+
+Local-operator inventory inspection fails the whole page with 404 when any
+accepted member on that page fails the session-read check. It does not return a
+partial page or disclose which group was unreadable.
+
 
 - `POST /api/orchestration/session-groups`: create or replay an operation.
 - `POST /api/orchestration/session-groups/from-ensemble`: create from a preset and explicit receiver bindings.

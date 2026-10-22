@@ -1,4 +1,6 @@
 /** @vitest-environment jsdom */
+
+import type { CliSessionGroupView } from '@kontourai/station-contracts/delegation-group';
 import type { EnsembleInspection } from '@kontourai/station-contracts/ensemble';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -301,3 +303,198 @@ test.each([403, 409])(
     expect(owner.editorReads).toBe(0);
   },
 );
+
+const savedGroup: CliSessionGroupView = {
+  version: 'station.cli-session-group/v1',
+  groupId: 'cli-saved',
+  revision: 0,
+  supervision: 'not-running',
+  cancelled: false,
+  deadlineAt: Date.now() + 60_000,
+  maxConcurrent: 1,
+  dispatchCount: 0,
+  guarantees: {
+    authority: 'station-session',
+    portableFlowLineage: 'unbound',
+    dollarCap: 'unavailable',
+    tokenCap: 'unavailable',
+    physicalAttemptCap: 'unavailable',
+    deadline: 'stop-admission-and-request-interruption',
+  },
+  flow: {
+    runId: 'cli-saved',
+    definition: { id: 'cli-saved', version: '1', digest: 'definition' },
+    status: 'active',
+  },
+  acceptance: 'unassessed',
+  members: [{ seatId: 'lead', needs: [], state: 'pending' }],
+};
+
+async function draftGroup() {
+  fireEvent.change(
+    await screen.findByLabelText('Preset path on This Station'),
+    { target: { value: '/private/team.json' } },
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Inspect configuration' }),
+  );
+  await screen.findByRole('button', { name: 'Create a CLI session group' });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Create a CLI session group' }),
+  );
+  for (const [label, value] of [
+    ['Shared brief', 'Review this work.'],
+    ['Agent ID for lead', 'reviewer'],
+    ['Engine connection ID for lead', 'opencode'],
+    ['Working directory on This Station for lead', '/work'],
+  ])
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+}
+
+test('preset creation saves exact scoped bindings without starting engines; explicit run and cancellation use the same group', async () => {
+  navigationStore.navigate('/agents?tab=ensembles');
+  let finishRun: ((response: Response) => void) | undefined;
+  const fetch = vi.fn(async (url: unknown, _init?: RequestInit) => {
+    if (String(url).endsWith('/inspect'))
+      return new Response(JSON.stringify({ success: true, data: result }));
+    if (String(url).endsWith('/run'))
+      return new Promise<Response>((resolve) => {
+        finishRun = resolve;
+      });
+    return new Response(JSON.stringify({ success: true, data: savedGroup }));
+  });
+  vi.stubGlobal('fetch', fetch);
+  mount();
+  await draftGroup();
+  expect(fetch).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Reload source' }));
+  await screen.findByRole('dialog', { name: 'Unsaved Changes' });
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(
+    (screen.getByLabelText('Shared brief') as HTMLTextAreaElement).value,
+  ).toBe('Review this work.');
+  expect(fetch).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Save session group' }));
+  await screen.findByText(/Saved session group/);
+  expect(fetch).toHaveBeenCalledTimes(2);
+  const [url, init] = fetch.mock.calls[1];
+  expect(String(url)).toBe(
+    'https://station.test/api/orchestration/session-groups/from-ensemble',
+  );
+  const input = JSON.parse(String(init?.body));
+  expect(input).toMatchObject({
+    path: '/private/team.json',
+    expectedPresetHash: result.source.sha256,
+    brief: 'Review this work.',
+    maxConcurrent: 1,
+    bindings: {
+      lead: {
+        target: {
+          agent: 'reviewer',
+          expectedEngine: { kind: 'connection', connectionId: 'opencode' },
+          workspace: { kind: 'directory', cwd: '/work' },
+        },
+        needs: [],
+      },
+    },
+  });
+  expect(input.operationId).toMatch(/^[0-9a-f-]{36}$/);
+  expect(input.deadlineAt).toBeGreaterThan(Date.now());
+  expect(input.bindings.lead.target.model).toBeUndefined();
+  expect(screen.getByText('No engines started by this form.')).toBeDefined();
+  fireEvent.click(screen.getByRole('button', { name: 'Run session group' }));
+  await waitFor(() => expect(finishRun).toBeDefined());
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel session group' }));
+  await screen.findByText(
+    'Cancellation requested. Engine termination is not proven.',
+  );
+  expect(fetch.mock.calls.map(([request]) => String(request))).toEqual([
+    'https://station.test/api/orchestration/ensembles/inspect',
+    'https://station.test/api/orchestration/session-groups/from-ensemble',
+    'https://station.test/api/orchestration/session-groups/cli-saved/run',
+    'https://station.test/api/orchestration/session-groups/cli-saved/cancel',
+  ]);
+  finishRun!(
+    new Response(
+      JSON.stringify({
+        success: true,
+        data: { ...savedGroup, cancelled: true },
+      }),
+    ),
+  );
+  await screen.findByText('Flow: active. Work acceptance: not assessed.');
+  expect(
+    screen
+      .getByRole('button', { name: 'Run session group' })
+      .hasAttribute('disabled'),
+  ).toBe(true);
+});
+
+test('a late group-create response cannot publish or cache success after authority loss and is not resubmitted', async () => {
+  navigationStore.navigate('/agents?tab=ensembles');
+  let finish: ((response: Response) => void) | undefined;
+  const fetch = vi.fn(async (url: unknown) =>
+    String(url).endsWith('/inspect')
+      ? new Response(JSON.stringify({ success: true, data: result }))
+      : new Promise<Response>((resolve) => {
+          finish = resolve;
+        }),
+  );
+  vi.stubGlobal('fetch', fetch);
+  const client = mount();
+  await draftGroup();
+  fireEvent.click(screen.getByRole('button', { name: 'Save session group' }));
+  await waitFor(() => expect(finish).toBeDefined());
+  owner.current = false;
+  finish!(new Response(JSON.stringify({ success: true, data: savedGroup })));
+  await screen.findByText(
+    'Station authority changed. Reopen the inspector before creating a group.',
+  );
+  const mutation = client
+    .getMutationCache()
+    .getAll()
+    .find(
+      (entry) => entry.options.mutationKey?.[0] === 'ensemble-cli-group-create',
+    );
+  expect(mutation?.state.status).toBe('error');
+  expect(mutation?.state.error).toBeDefined();
+  expect(mutation?.state.data).toBeUndefined();
+  expect(screen.queryByText(/Saved session group/)).toBeNull();
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
+
+test('leaving the group form aborts pending run supervision and settles the waiting mutation without a resend', async () => {
+  navigationStore.navigate('/agents?tab=ensembles');
+  let runSignal: AbortSignal | undefined;
+  const fetch = vi.fn(async (url: unknown, init?: RequestInit) => {
+    if (String(url).endsWith('/inspect'))
+      return new Response(JSON.stringify({ success: true, data: result }));
+    if (String(url).endsWith('/run'))
+      return new Promise<Response>((_resolve, reject) => {
+        runSignal = init?.signal ?? undefined;
+        runSignal?.addEventListener(
+          'abort',
+          () => reject(new DOMException('Run interrupted', 'AbortError')),
+          { once: true },
+        );
+      });
+    return new Response(JSON.stringify({ success: true, data: savedGroup }));
+  });
+  vi.stubGlobal('fetch', fetch);
+  const client = mount();
+  await draftGroup();
+  fireEvent.click(screen.getByRole('button', { name: 'Save session group' }));
+  await screen.findByText(/Saved session group/);
+  fireEvent.click(screen.getByRole('button', { name: 'Run session group' }));
+  await waitFor(() => expect(runSignal).toBeDefined());
+  const mutation = client
+    .getMutationCache()
+    .getAll()
+    .find((entry) => entry.options.mutationKey?.[0] === 'cli-group-run');
+  fireEvent.click(screen.getByRole('button', { name: 'Agents' }));
+  await waitFor(() => expect(runSignal?.aborted).toBe(true));
+  await waitFor(() => expect(mutation?.state.status).toBe('error'));
+  expect(mutation?.state.error).toBeDefined();
+  expect(mutation?.state.data).toBeUndefined();
+  expect(fetch).toHaveBeenCalledTimes(3);
+});

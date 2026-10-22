@@ -5133,6 +5133,14 @@ brief and receiver bindings; the server composes the authored models, additions
 and roster. Creation requires the current locally granted operator and starts
 no engines. Use the returned group ID with `runCliSessionGroup` to start work.
 
+The root SDK exports `useCreateEnsembleCliSessionGroup(scope)`,
+`useRunCliSessionGroup(scope)` and `useCancelCliSessionGroup(scope)` for these
+explicit actions. They use the captured request scope and recheck its currency
+before dispatch and response publication, with retries disabled. The run hook
+aborts pending supervision on unmount or an authority-key change; this requests
+interruption, not proven engine termination. A failed mutation does not authorize
+a replacement group or a repeated launch.
+
 The root and `/queries` entries also export `useCliSessionGroupsQuery(scope,
 {enabled, afterGroupId?})`. Its cache key includes the API base and authority
 key; it rechecks the supplied `isCurrent()` fence around the HTTP read. The

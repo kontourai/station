@@ -1237,7 +1237,12 @@ export {
   useDenyDevicePairingRequestMutation,
   usePairedDevicesQuery,
 } from './query-domains/devicePairingRequests.js';
-export { useInspectEnsemble } from './query-domains/ensembles';
+export {
+  useCancelCliSessionGroup,
+  useCreateEnsembleCliSessionGroup,
+  useInspectEnsemble,
+  useRunCliSessionGroup,
+} from './query-domains/ensembles';
 export {
   type FeaturePreview,
   fetchFeaturePreviews,

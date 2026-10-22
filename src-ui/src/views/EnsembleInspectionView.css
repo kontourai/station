@@ -13,12 +13,22 @@
   max-width: 100%;
   gap: var(--k-space-4);
 }
-.ensemble-inspection input {
+.ensemble-inspection input,
+.ensemble-inspection textarea {
   min-height: 44px;
   background: var(--k-panel);
   color: var(--k-text);
   border: 1px solid var(--k-line);
   padding: var(--k-space-2);
+  min-width: 0;
+  max-width: 100%;
+}
+.ensemble-inspection textarea {
+  min-height: 8rem;
+  resize: vertical;
+}
+.ensemble-inspection fieldset > label {
+  flex: 1 1 15rem;
 }
 .ensemble-inspection fieldset {
   display: flex;

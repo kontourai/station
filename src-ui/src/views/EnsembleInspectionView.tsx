@@ -5,7 +5,9 @@ import { useState } from 'react';
 import { Button } from '../components/Button';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { useNavigationActions } from '../contexts/NavigationContext';
+import { useUnsavedGuard } from '../hooks/useUnsavedGuard';
 import { CliSessionGroupsPanel } from './CliSessionGroupsPanel';
+import { EnsembleCliGroupForm } from './EnsembleCliGroupForm';
 import { layoutEnsembleInspection } from './ensemble-inspection-layout';
 import './EnsembleInspectionView.css';
 
@@ -14,7 +16,10 @@ export function EnsembleInspectionView() {
   const { navigate } = useNavigationActions();
   return (
     <section className="ensemble-inspection" aria-label="Ensemble inspection">
-      <Button variant="secondary" onClick={() => navigate('/agents')}>
+      <Button
+        variant="secondary"
+        onClick={() => navigate('/agents', { tab: null })}
+      >
         Agents
       </Button>
       <h1>Inspect an Ensemble</h1>
@@ -48,6 +53,8 @@ function InspectionForm({
   const inspection = useInspectEnsemble(scope);
   const { navigate } = useNavigationActions();
   const [path, setPath] = useState('');
+  const [groupDraftDirty, setGroupDraftDirty] = useState(false);
+  const { guard, DiscardModal } = useUnsavedGuard(groupDraftDirty);
   const [source, setSource] = useState<{ hash: string; memberIds: string[] }>();
   const [bindings, setBindings] = useState<EnsembleInspectionInput['bindings']>(
     {},
@@ -100,15 +107,19 @@ function InspectionForm({
             spellCheck={false}
             disabled={inspection.isPending}
             onChange={(event) => {
-              setPath(event.target.value);
-              setSource(undefined);
-              setBindings({});
-              inspection.reset();
+              const nextPath = event.target.value;
+              guard(() => {
+                setGroupDraftDirty(false);
+                setPath(nextPath);
+                setSource(undefined);
+                setBindings({});
+                inspection.reset();
+              });
             }}
           />
         </label>
         {source?.memberIds.map((id) => (
-          <fieldset key={id} disabled={inspection.isPending}>
+          <fieldset key={id} disabled={inspection.isPending || groupDraftDirty}>
             <legend>Receiver binding for {id}</legend>
             <label>
               Agent ID
@@ -151,7 +162,7 @@ function InspectionForm({
         <Button
           type="submit"
           pending={inspection.isPending}
-          disabled={!scope.isCurrent() || !path}
+          disabled={!scope.isCurrent() || !path || groupDraftDirty}
           pendingLabel="Inspecting…"
         >
           Inspect configuration
@@ -162,9 +173,12 @@ function InspectionForm({
             type="button"
             disabled={inspection.isPending}
             onClick={() => {
-              setSource(undefined);
-              setBindings({});
-              inspection.reset();
+              guard(() => {
+                setGroupDraftDirty(false);
+                setSource(undefined);
+                setBindings({});
+                inspection.reset();
+              });
             }}
           >
             Reload source
@@ -172,6 +186,17 @@ function InspectionForm({
         )}
       </form>
       {inspection.isError && <p role="alert">{failure}</p>}
+      {source && result && scope.isCurrent() && (
+        <EnsembleCliGroupForm
+          key={`${path}:${source.hash}`}
+          scope={scope}
+          path={path}
+          hash={source.hash}
+          memberIds={source.memberIds}
+          onDirtyChange={setGroupDraftDirty}
+        />
+      )}
+      <DiscardModal />
       {result && (
         <>
           <h2>{result.source.name}</h2>
