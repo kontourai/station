@@ -244,6 +244,7 @@ async function startFixture() {
   const tokensByCode: Record<string, string> = {
     'code-alice': 'token-alice',
     'code-bob': 'token-bob',
+    'code-dave-sales': 'token-dave-sales',
   };
   const issued = new Set(Object.values(tokensByCode));
   const toolCalls: Array<{ authorization: string | undefined; value: string }> =
@@ -395,12 +396,17 @@ async function get(app: Hono, path: string, credential: Credential) {
 }
 
 /** Starts consent as `credential` and returns the paste-back URL for `code`. */
-async function consentUrl(app: Hono, credential: Credential, code: string) {
+async function consentUrl(
+  app: Hono,
+  credential: Credential,
+  code: string,
+  projectSlug?: string,
+) {
   const started = await post(
     app,
     `/integrations/${SERVER}/oauth/authorize`,
     credential,
-    { mode: 'remote' },
+    { mode: 'remote', ...(projectSlug ? { projectSlug } : {}) },
   );
   expect(started.status, JSON.stringify(started.body)).toBe(200);
   const authorizationUrl = new URL(started.body.data.authorizationUrl);
@@ -596,6 +602,85 @@ test('two principals each reach the MCP server with their own token and cannot u
       authorization: 'Bearer token-alice',
       value: 'alice-after-bob-left',
     });
+
+    const daveSalesCallback = await consentUrl(
+      app,
+      'dave-credential',
+      'code-dave-sales',
+      'sales',
+    );
+    const daveSalesConnected = await post(
+      app,
+      `/integrations/${SERVER}/oauth/callback`,
+      'dave-credential',
+      { callbackUrl: daveSalesCallback, projectSlug: 'sales' },
+    );
+    expect(
+      daveSalesConnected.status,
+      JSON.stringify(daveSalesConnected.body),
+    ).toBe(200);
+    const retainedProjectTools = new Map<string, typeof whoami>();
+    for (const project of ['sales', 'engineering']) {
+      const projectTools = await loadAgentTools(
+        'mail-agent',
+        {
+          name: 'Project mail',
+          prompt: 'Use only the connected mail tools.',
+          project,
+          tools: { mcpServers: [SERVER], available: ['*'] },
+        },
+        loader,
+        new Map(),
+        new Map(),
+        new Map(),
+        new Map(),
+        new Map(),
+        { debug: vi.fn(), info: vi.fn(), error: vi.fn() },
+        PORT,
+        createMCPToolProvenanceGeneration(),
+        undefined,
+        custody,
+      );
+      const projectTool = projectTools.find((tool) =>
+        tool.name.endsWith('whoami'),
+      );
+      expect(projectTool).toBeDefined();
+      retainedProjectTools.set(project, projectTool);
+    }
+    const callDaveProject = (project: string, value: string) =>
+      runWithAuthorizedTurnCorrelation(
+        createAuthorizedTurnCorrelation({
+          accountId: DAVE,
+          sessionId: `session-${value}`,
+        }),
+        () =>
+          retainedProjectTools.get(project)!.execute!({ value }, {} as never),
+      );
+    await callDaveProject('sales', 'dave-sales');
+    expect(fixture.toolCalls.at(-1)).toEqual({
+      authorization: 'Bearer token-dave-sales',
+      value: 'dave-sales',
+    });
+    const beforeDeniedProject = fixture.toolCalls.length;
+    await expect(
+      callDaveProject('engineering', 'dave-wrong-project'),
+    ).rejects.toThrow('Connect your account');
+    await expect(callAs(DAVE, 'dave-no-project')).rejects.toThrow(
+      'Connect your account',
+    );
+    expect(fixture.toolCalls).toHaveLength(beforeDeniedProject);
+    const daveDisconnected = await post(
+      app,
+      `/integrations/${SERVER}/account?projectSlug=sales`,
+      'dave-credential',
+      undefined,
+      'DELETE',
+    );
+    expect(daveDisconnected.status).toBe(200);
+    await expect(
+      callDaveProject('sales', 'dave-retained-after-disconnect'),
+    ).rejects.toThrow('Connect your account');
+    expect(fixture.toolCalls).toHaveLength(beforeDeniedProject);
 
     // Secret bindings: nothing can consume a person-owned binding yet, so
     // the route refuses to create one, for the caller themselves too.
