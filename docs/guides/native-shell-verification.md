@@ -159,14 +159,20 @@ ureq negotiates and decodes gzip without treating its compressed length as the
 length of the decoded response.
 
 A network epoch change retires pooled connections at checkout. After the last
-successful request write, a silent response wait checks that epoch at 100 ms
-socket-wait intervals and fails with `network_changed` before any response bytes
-arrive. It retains the ordinary or foreground response deadline between checks.
+successful request write, a silent response wait registers its socket under the
+network epoch lock and blocks until data or its real receive deadline. A network
+change shuts down registered sockets and returns `network_changed`, without
+periodic read-timeout wakeups. Registration and epoch publication share the same
+lock so a change just before the read cannot be missed.
 Transmission is not interrupted by epoch changes, and a written request is never
 replayed by this transport. Once response bytes arrive, the existing receive
 behavior applies. The WebView adapter preserves `network_changed` as a coded
-`TypeError` through the SDK, so the outbound queue retains uncertain delivery
-and foreground errors offer Retry; the error does not prove the request was unsent.
+`TypeError` through the SDK. The outbound queue records unanswered sends as
+awaiting a delivery lookup under the same key, including attachments and sends
+whose pre-request durable write failed. Fetch/proxy failures and native resets,
+receive timeouts and ambiguous transport failures use the same fence. Only
+Station's `not-received` lookup answer permits a resend; uncertainty does not
+prove the request was unsent.
 
 Each request still reads the OS credential store. There is no portable keyring
 change notification covering external replacement, deletion and locked storage,

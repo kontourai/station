@@ -13,7 +13,7 @@ on:
         type: boolean
         default: false
       native_broker_review_faults:
-        description: "Exercise silent-response, snapshot-publication and timestamp collision controls"
+        description: "Exercise silent-response, response-wait, snapshot-publication and timestamp collision controls"
         type: boolean
         default: false
 permissions:
@@ -153,7 +153,7 @@ jobs:
           android = "src-desktop/plugins/agent-activity/android/src/main/java/io/kontourai/station/agentactivity/StationRendererRecovery.kt"
           try:
               change(transport, "        // Mark BEFORE calling:", "        if self.epoch != network_epoch() { return Err(ureq::Error::Io(std::io::ErrorKind::NotConnected.into())); }\n        // Mark BEFORE calling:")
-              change(transport, "        let started = Instant::now();", "        let mut timeout = timeout;\n        if PROGRESS.with(Cell::get).reused && *timeout.after > Duration::from_secs(3) {\n            timeout.after = ureq::unversioned::transport::time::Duration::Exact(Duration::from_secs(3));\n            timeout.reason = ureq::Timeout::RecvResponse;\n        }\n        let started = Instant::now();")
+              change(transport, "        let result = self.inner.await_input(timeout);", "        let mut timeout = timeout;\n        if PROGRESS.with(Cell::get).reused && *timeout.after > Duration::from_secs(3) {\n            timeout.after = ureq::unversioned::transport::time::Duration::Exact(Duration::from_secs(3));\n            timeout.reason = ureq::Timeout::RecvResponse;\n        }\n        let result = self.inner.await_input(timeout);")
               change(transport, "let safe = !progress.send_attempted;", "let safe = true;")
               change(lib, "&& self.metadata_verified", "&& false && self.metadata_verified")
               change(lib, "    let mut local = cache\n        .lock()\n        .unwrap_or_else(|error| error.into_inner())\n        .clone();", "    let mut local = cache.lock().unwrap().clone();")
@@ -214,6 +214,8 @@ jobs:
           print("Native broker baseline: GREEN (full Rust suite passed).", flush=True)
           try:
               change("src-desktop/src/native_http_transport.rs", "if self.response_epoch != network_epoch()", "if false && self.response_epoch != network_epoch()")
+              change("src-desktop/src/native_http_transport.rs", "if epoch != network_epoch()", "if false && epoch != network_epoch()")
+              change("src-desktop/src/native_http_transport.rs", "for wait in waits.iter()", "for wait in waits.iter().take(0)")
               change("src-desktop/src/lib.rs", "if self.file_version() == previous", "if true || self.file_version() == previous")
               change("src-desktop/src/lib.rs", "&& self.metadata_verified\n                    && version.unambiguous(_observed_at)", "&& true")
               result = cargo()
@@ -225,7 +227,27 @@ jobs:
               for path, source in originals.items():
                   assert path.read_text() == mutated[path], (str(path), "intervening edits; refusing restoration")
                   path.write_text(source)
+          originals.clear()
+          mutated.clear()
+          try:
+              change("src-desktop/src/native_http_transport.rs", "        let result = self.inner.await_input(timeout);", """        let started = Instant::now();
+                  let result = loop {
+                      let remaining = timeout.after.saturating_sub(started.elapsed());
+                      if remaining.is_zero() { break Err(ureq::Error::Timeout(timeout.reason)); }
+                      match self.inner.await_input(NextTimeout { after: Duration::from_millis(100).min(remaining).into(), reason: timeout.reason }) {
+                          Err(ureq::Error::Timeout(_)) => continue,
+                          result => break result,
+                      }
+                  };""")
+              result = cargo()
+              assert result.returncode == 101, "polling mutation must fail a test assertion"
+              assert "a healthy 650 ms response wait must block once, without periodic timeout wakeups" in result.stdout
+              print("Native broker injected: RED caught periodic response wakeups", flush=True)
+          finally:
+              for path, source in originals.items():
+                  assert path.read_text() == mutated[path], (str(path), "intervening edits; refusing restoration")
+                  path.write_text(source)
           assert cargo().returncode == 0, "restored native broker suite must pass"
           subprocess.run(["git", "diff", "--exit-code", "--", *map(str, originals)], check=True)
-          print("Native broker restored: GREEN; all three named faults caught; exact sources restored.", flush=True)
+          print("Native broker restored: GREEN; all four named faults caught; exact sources restored.", flush=True)
           PYTHON

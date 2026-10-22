@@ -166,6 +166,18 @@ vi.mock('../lib/outboundQueue', async (importOriginal) => {
         outboundQueueMode.useActual
           ? actual.outboundDispatch.enqueue(...args)
           : enqueueOutboundTurnMock(...args),
+      recordUnanswered: (
+        ...args: Parameters<typeof actual.outboundDispatch.recordUnanswered>
+      ) =>
+        outboundQueueMode.useActual
+          ? actual.outboundDispatch.recordUnanswered(...args)
+          : enqueueOutboundTurnMock(...args),
+      dismissUnconfirmed: (
+        ...args: Parameters<typeof actual.outboundDispatch.dismissUnconfirmed>
+      ) =>
+        outboundQueueMode.useActual
+          ? actual.outboundDispatch.dismissUnconfirmed(...args)
+          : discardOutboundTurnMock(...args),
       discard: (...args: Parameters<typeof actual.outboundDispatch.discard>) =>
         outboundQueueMode.useActual
           ? actual.outboundDispatch.discard(...args)

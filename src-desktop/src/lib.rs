@@ -4086,8 +4086,9 @@ pub(crate) fn native_http_agent() -> ureq::Agent {
 }
 
 fn native_http_agent_with(config: ureq::config::Config) -> ureq::Agent {
-    use ureq::unversioned::transport::{Connector, DefaultConnector};
-    let connector = DefaultConnector::default().chain(native_http_transport::ObserveConnector);
+    use ureq::unversioned::transport::Connector;
+    let connector =
+        native_http_transport::SocketConnector.chain(native_http_transport::ObserveConnector);
     #[cfg(target_os = "android")]
     let resolver = android_dns::AndroidSystemResolver;
     #[cfg(not(target_os = "android"))]

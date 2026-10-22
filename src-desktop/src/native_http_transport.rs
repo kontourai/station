@@ -2,15 +2,33 @@
 //! ureq's transport API cannot report how many bytes reached the socket.
 use super::*;
 use std::cell::Cell;
+use std::io::{Read, Write};
+use std::net::{Shutdown, TcpStream};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use ureq::unversioned::transport::{Buffers, ConnectionDetails, Connector, NextTimeout, Transport};
+
+static RESPONSE_WAITS: Mutex<Vec<Arc<ResponseWait>>> = Mutex::new(Vec::new());
+
+#[derive(Debug)]
+struct ResponseWait {
+    socket: Arc<TcpStream>,
+    interrupted: AtomicBool,
+}
 
 static NETWORK_EPOCH: AtomicU64 = AtomicU64::new(0);
 pub(crate) fn network_epoch() -> u64 {
     NETWORK_EPOCH.load(Ordering::Acquire)
 }
 pub(crate) fn network_changed() {
+    // Registration and epoch publication share this lock: a change between
+    // the plaintext check and the blocking socket read cannot be missed.
+    let waits = RESPONSE_WAITS.lock().unwrap_or_else(|e| e.into_inner());
     NETWORK_EPOCH.fetch_add(1, Ordering::AcqRel);
+    for wait in waits.iter() {
+        wait.interrupted.store(true, Ordering::Release);
+        let _ = wait.socket.shutdown(Shutdown::Both);
+    }
 }
 
 #[cfg(target_os = "android")]
@@ -29,6 +47,7 @@ struct Progress {
     network_changed: bool,
 }
 thread_local! {
+    static RESPONSE_EPOCH: Cell<Option<u64>> = const { Cell::new(None) };
     static PROGRESS: Cell<Progress> = Cell::new(Progress::default());
 }
 fn observe(update: impl FnOnce(&mut Progress)) {
@@ -91,40 +110,23 @@ impl<T: Transport> Transport for ObservedTransport<T> {
         {
             return self.inner.await_input(timeout);
         }
-        let started = Instant::now();
-        loop {
-            if self.response_epoch != network_epoch() {
-                observe(|p| p.network_changed = true);
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::ConnectionAborted,
-                    "network_changed",
-                )
-                .into());
-            }
-            let remaining = timeout.after.saturating_sub(started.elapsed());
-            if remaining.is_zero() {
-                return Err(ureq::Error::Timeout(timeout.reason));
-            }
-            let slice = Duration::from_millis(100).min(remaining);
-            let result = self.inner.await_input(NextTimeout {
-                after: slice.into(),
-                reason: timeout.reason,
-            });
-            match result {
-                Ok(progress) => {
-                    self.response_received |= !self.inner.buffers().input().is_empty();
-                    return Ok(progress);
-                }
-                Err(ureq::Error::Timeout(_)) => {}
-                Err(ureq::Error::Io(error))
-                    if matches!(
-                        error.kind(),
-                        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
-                    ) => {}
-                Err(error) => return Err(error),
+        if self.response_epoch != network_epoch() {
+            return Err(network_change_error());
+        }
+        // Only this plaintext response wait arms the socket below TLS. TLS
+        // handshakes, Expect:100 and upload writes never register an abort.
+        struct Scope(Option<u64>);
+        impl Drop for Scope {
+            fn drop(&mut self) {
+                RESPONSE_EPOCH.with(|epoch| epoch.set(self.0));
             }
         }
+        let _scope = Scope(RESPONSE_EPOCH.with(|epoch| epoch.replace(Some(self.response_epoch))));
+        let result = self.inner.await_input(timeout);
+        self.response_received |= !self.inner.buffers().input().is_empty();
+        result
     }
+
     fn is_open(&mut self) -> bool {
         // ureq probes on return AND checkout. The request-local cell is reset
         // for each run, so only the checkout observation authorizes a retry.
@@ -137,6 +139,174 @@ impl<T: Transport> Transport for ObservedTransport<T> {
     }
     fn is_tls(&self) -> bool {
         self.inner.is_tls()
+    }
+}
+
+fn network_change_error() -> ureq::Error {
+    observe(|p| p.network_changed = true);
+    std::io::Error::new(std::io::ErrorKind::ConnectionAborted, "network_changed").into()
+}
+
+/// ureq does not expose a socket handle from its default TCP transport. Keep
+/// TLS and CONNECT upstream, but own the TCP handle needed to wake a read.
+#[derive(Debug)]
+pub(crate) struct SocketConnector;
+impl Connector<()> for SocketConnector {
+    type Out = Box<dyn Transport>;
+    fn connect(
+        &self,
+        details: &ConnectionDetails,
+        chained: Option<()>,
+    ) -> Result<Option<Self::Out>, ureq::Error> {
+        use ureq::unversioned::transport::{ConnectProxyConnector, RustlsConnector};
+        if details.config.proxy().is_some_and(|proxy| {
+            !matches!(
+                proxy.protocol(),
+                ureq::ProxyProtocol::Http | ureq::ProxyProtocol::Https
+            )
+        }) {
+            // This build has no SOCKS feature; never fall through to a direct
+            // connection when the configured proxy cannot be honored.
+            return Err(ureq::Error::ConnectionFailed);
+        }
+        ().chain(ConnectProxyConnector::default())
+            .chain(SocketDial)
+            .chain(RustlsConnector::default())
+            .connect(details, chained)
+            .map(|transport| transport.map(Transport::boxed))
+    }
+}
+
+#[derive(Debug)]
+struct SocketDial;
+impl<T: Transport> Connector<T> for SocketDial {
+    type Out = ureq::unversioned::transport::Either<T, SocketTransport>;
+    fn connect(
+        &self,
+        details: &ConnectionDetails,
+        chained: Option<T>,
+    ) -> Result<Option<Self::Out>, ureq::Error> {
+        use ureq::unversioned::transport::{Either, LazyBuffers};
+        if let Some(inner) = chained {
+            return Ok(Some(Either::A(inner)));
+        }
+        let started = Instant::now();
+        let total = details.timeout.not_zero().map(|duration| *duration);
+        let count = details.addrs.len();
+        let total_weight = 2.0 * (1.0 - 0.5_f64.powi(count as i32));
+        let mut weight = 1.0;
+        let mut last = ureq::Error::ConnectionFailed;
+        for addr in &details.addrs {
+            let budget = total.map(|total| {
+                total
+                    .mul_f64(weight / total_weight)
+                    .max(Duration::from_millis(10))
+                    .min(total.saturating_sub(started.elapsed()))
+            });
+            if budget.is_some_and(|budget| budget.is_zero()) {
+                return Err(ureq::Error::Timeout(details.timeout.reason));
+            }
+            let result = match budget {
+                Some(budget) => TcpStream::connect_timeout(addr, budget),
+                None => TcpStream::connect(addr),
+            };
+            match result {
+                Ok(stream) => {
+                    stream.set_nodelay(details.config.no_delay())?;
+                    return Ok(Some(Either::B(SocketTransport {
+                        socket: Arc::new(stream),
+                        buffers: LazyBuffers::new(
+                            details.config.input_buffer_size(),
+                            details.config.output_buffer_size(),
+                        ),
+                    })));
+                }
+                Err(error) => {
+                    use std::io::ErrorKind::*;
+                    let address_failure = matches!(
+                        error.kind(),
+                        ConnectionRefused | HostUnreachable | NetworkUnreachable | AddrNotAvailable
+                    );
+                    #[cfg(windows)]
+                    let address_failure = address_failure || error.raw_os_error() == Some(10013);
+                    if !address_failure && !matches!(error.kind(), TimedOut | WouldBlock) {
+                        return Err(error.into());
+                    }
+                    last = if matches!(error.kind(), TimedOut | WouldBlock) {
+                        ureq::Error::Timeout(details.timeout.reason)
+                    } else {
+                        error.into()
+                    };
+                }
+            }
+            weight /= 2.0;
+        }
+        Err(last)
+    }
+}
+
+#[derive(Debug)]
+struct SocketTransport {
+    socket: Arc<TcpStream>,
+    buffers: ureq::unversioned::transport::LazyBuffers,
+}
+impl Transport for SocketTransport {
+    fn buffers(&mut self) -> &mut dyn Buffers {
+        &mut self.buffers
+    }
+    fn transmit_output(&mut self, amount: usize, timeout: NextTimeout) -> Result<(), ureq::Error> {
+        self.socket
+            .set_write_timeout(timeout.not_zero().map(|duration| *duration))?;
+        (&*self.socket)
+            .write_all(&self.buffers.output()[..amount])
+            .map_err(|error| socket_error(error, timeout))
+    }
+    fn await_input(&mut self, timeout: NextTimeout) -> Result<bool, ureq::Error> {
+        self.socket
+            .set_read_timeout(timeout.not_zero().map(|duration| *duration))?;
+        let wait = RESPONSE_EPOCH
+            .with(Cell::get)
+            .map(|epoch| {
+                let mut waits = RESPONSE_WAITS.lock().unwrap_or_else(|e| e.into_inner());
+                if epoch != network_epoch() {
+                    return Err(network_change_error());
+                }
+                let wait = Arc::new(ResponseWait {
+                    socket: Arc::clone(&self.socket),
+                    interrupted: AtomicBool::new(false),
+                });
+                waits.push(Arc::clone(&wait));
+                Ok(wait)
+            })
+            .transpose()?;
+        let result = (&*self.socket).read(self.buffers.input_append_buf());
+        if let Some(wait) = wait {
+            let mut waits = RESPONSE_WAITS.lock().unwrap_or_else(|e| e.into_inner());
+            waits.retain(|entry| !Arc::ptr_eq(entry, &wait));
+            if wait.interrupted.load(Ordering::Acquire) {
+                return Err(network_change_error());
+            }
+        }
+        let amount = result.map_err(|error| socket_error(error, timeout))?;
+        self.buffers.input_appended(amount);
+        Ok(amount > 0)
+    }
+    fn is_open(&mut self) -> bool {
+        if self.socket.set_nonblocking(true).is_err() {
+            return false;
+        }
+        let open = matches!(self.socket.peek(&mut [0]), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock);
+        self.socket.set_nonblocking(false).is_ok() && open
+    }
+}
+fn socket_error(error: std::io::Error, timeout: NextTimeout) -> ureq::Error {
+    if matches!(
+        error.kind(),
+        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+    ) {
+        ureq::Error::Timeout(timeout.reason)
+    } else {
+        error.into()
     }
 }
 

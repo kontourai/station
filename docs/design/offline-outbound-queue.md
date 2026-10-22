@@ -33,6 +33,12 @@ fails. An unkeyed legacy match is not proof for retiring the send, and a weaker
 lookup already in flight cannot erase a witnessed start. Acceptance retires the
 key and removes its overlapping attempts together. Durable flush dispatches
 (`options.dispatch`) retain their separate provider-turn settlement rules.
+If a send had no live row (attachments or a failed pre-request storage write),
+an unanswered request creates an `invoking` row released for that same lookup,
+with its original delivery key, conversation and Station identity. It never
+creates a fresh pending draft. This includes network changes, fetch/proxy
+failures, native resets and response timeouts; Edit and ordinary Discard are
+refused until delivery is settled.
 While it waits, the message reads "No answer yet · sends once Station confirms
 it never arrived" on its bubble and in the outbox list, and its chat notice's and
 the list's Discard… withdraw it only after the shared confirmation, which says

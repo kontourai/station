@@ -632,7 +632,7 @@ fn native_http_network_change_during_upload_does_not_interrupt_or_replay_post() 
         return;
     }
     use ureq::unversioned::transport::{
-        Buffers, ConnectionDetails, Connector, DefaultConnector, NextTimeout, Transport,
+        Buffers, ConnectionDetails, Connector, NextTimeout, Transport,
     };
     #[derive(Debug)]
     struct ChangeDuringUpload;
@@ -678,7 +678,7 @@ fn native_http_network_change_during_upload_does_not_interrupt_or_replay_post() 
         }
     }
     let station = KeepAliveStation::start();
-    let connector = DefaultConnector::default()
+    let connector = native_http_transport::SocketConnector
         .chain(ChangeDuringUpload)
         .chain(native_http_transport::ObserveConnector);
     let agent = ureq::Agent::with_parts(
@@ -918,10 +918,11 @@ fn native_http_silent_reused_connection_fails_on_epoch_change_without_replay() {
         return;
     }
     use ureq::unversioned::transport::{
-        Buffers, ConnectionDetails, Connector, DefaultConnector, NextTimeout, Transport,
+        Buffers, ConnectionDetails, Connector, NextTimeout, Transport,
     };
     #[derive(Debug)]
     struct SignalWait {
+        reads: Arc<AtomicUsize>,
         armed: Arc<AtomicBool>,
         waiting: std::sync::mpsc::Sender<()>,
     }
@@ -940,6 +941,7 @@ fn native_http_silent_reused_connection_fails_on_epoch_change_without_replay() {
             Ok(inner.map(|inner| WaitingTransport {
                 inner,
                 signal: SignalWait {
+                    reads: Arc::clone(&self.reads),
                     armed: Arc::clone(&self.armed),
                     waiting: self.waiting.clone(),
                 },
@@ -958,6 +960,7 @@ fn native_http_silent_reused_connection_fails_on_epoch_change_without_replay() {
             self.inner.transmit_output(amount, timeout)
         }
         fn await_input(&mut self, timeout: NextTimeout) -> Result<bool, ureq::Error> {
+            self.signal.reads.fetch_add(1, Ordering::AcqRel);
             if self.signal.armed.swap(false, Ordering::AcqRel) {
                 self.signal.waiting.send(()).unwrap();
             }
@@ -975,9 +978,11 @@ fn native_http_silent_reused_connection_fails_on_epoch_change_without_replay() {
         let origin = format!("http://{}", listener.local_addr().unwrap());
         let (waiting, wait) = std::sync::mpsc::channel();
         let (done, finish) = std::sync::mpsc::channel();
+        let reads = Arc::new(AtomicUsize::new(0));
         let armed = Arc::new(AtomicBool::new(false));
-        let connector = DefaultConnector::default()
+        let connector = native_http_transport::SocketConnector
             .chain(SignalWait {
+                reads: Arc::clone(&reads),
                 armed: Arc::clone(&armed),
                 waiting,
             })
@@ -995,7 +1000,7 @@ fn native_http_silent_reused_connection_fails_on_epoch_change_without_replay() {
                 .set_read_timeout(Some(Duration::from_secs(6)))
                 .unwrap();
             let mut reader = BufReader::new(stream);
-            for request in 0..2 {
+            for request in 0..3 {
                 loop {
                     let mut line = String::new();
                     assert!(reader.read_line(&mut line).unwrap() > 0);
@@ -1003,7 +1008,10 @@ fn native_http_silent_reused_connection_fails_on_epoch_change_without_replay() {
                         break;
                     }
                 }
-                if request == 0 {
+                if request < 2 {
+                    if request == 1 {
+                        std::thread::sleep(Duration::from_millis(650));
+                    }
                     reader
                         .get_mut()
                         .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
@@ -1027,6 +1035,19 @@ fn native_http_silent_reused_connection_fails_on_epoch_change_without_replay() {
             .body_mut()
             .read_to_string()
             .unwrap();
+        reads.store(0, Ordering::Release);
+        agent
+            .get(&origin)
+            .call()
+            .unwrap()
+            .body_mut()
+            .read_to_string()
+            .unwrap();
+        assert_eq!(
+            reads.load(Ordering::Acquire),
+            1,
+            "a healthy 650 ms response wait must block once, without periodic timeout wakeups"
+        );
         armed.store(true, Ordering::Release);
         let request = ureq::http::Request::builder()
             .method(method)
