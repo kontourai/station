@@ -10,7 +10,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { FileTreeService } from '../../../services/projects/file-tree-service.js';
 import { execGitSync } from '../../../utils/git-exec.js';
-import { createCodingRoutes } from '../coding.js';
+import { createCodingRoutes, DISCOVER_MAX_ROOTS } from '../coding.js';
 
 /**
  * Integration test for multi-repo / nested-repo discovery + per-path repo
@@ -21,8 +21,11 @@ import { createCodingRoutes } from '../coding.js';
 
 // #2412: every read names its Project; the workspace below is Project `w`.
 let workspace: string;
+// A deliberately over-broad workspace (more repos than discovery may report).
+let swarm: string;
 const app = createCodingRoutes(new FileTreeService(), {
-  resolveProjectFolder: (slug) => (slug === 'w' ? workspace : undefined),
+  resolveProjectFolder: (slug) =>
+    slug === 'w' ? workspace : slug === 'swarm' ? swarm : undefined,
 });
 
 async function get(path: string) {
@@ -54,9 +57,20 @@ describe('coding multi-repo discovery (real git, no mocks)', () => {
     writeFileSync(join(workspace, 'just-files', 'x.txt'), 'x\n');
     // node_modules must be skipped by the scan even though it has subdirs.
     mkdirSync(join(workspace, 'node_modules', 'pkg'), { recursive: true });
+    // More repositories than discovery is allowed to report, so a regression
+    // back to an unbounded walk (and its unbounded git fan-out) fails here.
+    // A `.git` directory is enough for discovery; the enrichment read refuses
+    // these quickly and they still list, which is the behavior under test.
+    swarm = mkdtempSync(join(tmpdir(), 'station-repo-swarm-'));
+    for (let index = 0; index < DISCOVER_MAX_ROOTS + 6; index += 1) {
+      mkdirSync(join(swarm, `repo-${index}`, '.git'), { recursive: true });
+    }
   });
 
-  afterAll(() => rmSync(workspace, { recursive: true, force: true }));
+  afterAll(() => {
+    rmSync(workspace, { recursive: true, force: true });
+    rmSync(swarm, { recursive: true, force: true });
+  });
 
   test('discovers every nested repo under a non-repo workspace', async () => {
     const res = await get(
@@ -72,6 +86,21 @@ describe('coding multi-repo discovery (real git, no mocks)', () => {
     expect(byName['repo-b'].branch).toBe('develop');
     expect(byName['repo-c'].branch).toBe('feature');
     expect(byName['repo-c'].relativePath).toBe(join('group', 'repo-c'));
+  });
+
+  test('discovery stops at its root bound on an over-broad workspace', async () => {
+    const res = await get(
+      `/repos?projectSlug=swarm&path=${encodeURIComponent(swarm)}`,
+    );
+    expect(res.status).toBe(200);
+    expect(res.json.success).toBe(true);
+    // Fewer roots than the walk found, and never more than the bound: the
+    // bound is what keeps one git process per checkout from fanning out.
+    expect(res.json.data.repos).toHaveLength(DISCOVER_MAX_ROOTS);
+    for (const repo of res.json.data.repos) {
+      expect(repo.root).toContain('repo-');
+      expect(repo.name).toMatch(/^repo-\d+$/);
+    }
   });
 
   test('a workspace that IS a repo reports itself as the single repo', async () => {
