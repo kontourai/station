@@ -1468,8 +1468,8 @@ outside the replay budget requires snapshot recovery. The
 available) after the replay/snapshot boundary, before buffered live delivery.
 Do not assume the first frame is a snapshot; keepalive frames may arrive while
 history is being read. Each connection buffers at most 8 MiB of serialized live
-payloads and 16,384 frames before caught-up. The live frame allowance is the
-remaining snapshot backlog plus 1,024 frames. Overflow discards that buffer and
+payloads and 16,384 frames before caught-up. At caught-up, the frame cap becomes the
+backlog remaining at that moment plus 1,024 frames; the 8 MiB byte cap continues. Overflow discards that buffer and
 replays persisted events in pages of at most 64 rows and approximately 1 MiB
 (one larger ingress-bounded event may occupy its own page). Recovery stays on
 the same connection, so CLI observers do not see a false completion. A snapshot
