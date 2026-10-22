@@ -75,7 +75,7 @@ import type {
  * The origin a wake-up's turn records: Station's own server code, never a
  * person, as a delegated result's is.
  */
-export const AGENT_WAKE_UP_CLIENT_ORIGIN: ClientOrigin = Object.freeze({
+const AGENT_WAKE_UP_CLIENT_ORIGIN: ClientOrigin = Object.freeze({
   version: CLIENT_ORIGIN_VERSION,
   actor: Object.freeze({ kind: 'internal' as const }),
   reported: UNKNOWN_CLIENT_REPORTED_ORIGIN,
@@ -175,7 +175,7 @@ function callerJson(caller: AgentWakeUpCaller): string {
   });
 }
 
-export const AGENT_SCHEDULE_SCHEMA = `CREATE TABLE IF NOT EXISTS agent_wake_ups (
+const AGENT_SCHEDULE_SCHEMA = `CREATE TABLE IF NOT EXISTS agent_wake_ups (
   id TEXT PRIMARY KEY,
   conversation_id TEXT NOT NULL,
   session_id TEXT NOT NULL,

@@ -70,7 +70,7 @@ const MAX_BODY_BYTES = 16 * 1024;
 const NO_STORE = { 'Cache-Control': 'no-store' };
 
 /** Fixed copy an agent relays; each says what to do instead. */
-export const WAKE_UP_REFUSAL_COPY: Record<AgentWakeUpRefusalCode, string> = {
+const WAKE_UP_REFUSAL_COPY: Record<AgentWakeUpRefusalCode, string> = {
   wake_up_too_soon: `Pick a time at least ${AGENT_WAKE_UP_MIN_DELAY_MS / 60_000} minute from now.`,
   wake_up_too_far: `Pick a time within ${AGENT_WAKE_UP_MAX_HORIZON_MS / 3_600_000} hours. For later or repeating work, use propose_job.`,
   wake_up_limit_reached: `This chat already has ${AGENT_WAKE_UP_MAX_PENDING_PER_CONVERSATION} check-backs waiting. Cancel one first.`,

@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { formatDuration } from '../../utils/relativeTime';
 
 /** A call shows how long it has run only once that stops being obvious. */
-export const TOOL_CALL_ELAPSED_THRESHOLD_MS = 10_000;
+const TOOL_CALL_ELAPSED_THRESHOLD_MS = 10_000;
 
 // One clock for every mounted elapsed label, running only while one is
 // mounted. Each label subscribes on its own, so a tick re-renders these

@@ -27,7 +27,7 @@ const EMPTY: ConversationAgentSchedule = {
 const SETTLE_MS = 1_500;
 const MAX_TIMER_MS = 2 ** 31 - 1 - SETTLE_MS;
 
-export const agentScheduleKey = (
+const agentScheduleKey = (
   apiBase: string | undefined,
   authorityKey: string | undefined,
   conversationId: string,

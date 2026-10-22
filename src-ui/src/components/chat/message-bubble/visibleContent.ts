@@ -28,7 +28,7 @@ const NO_APP_TOOLS: ReadonlySet<string> = new Set();
  * streaming row (`StreamingMessage`) share, so a bubble never renders as a
  * header with nothing under it in either phase.
  */
-export function partHasVisibleContent(
+function partHasVisibleContent(
   part: TranscriptPart,
   { showReasoning }: VisibleContentOptions,
 ): boolean {
