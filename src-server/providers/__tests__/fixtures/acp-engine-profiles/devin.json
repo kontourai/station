@@ -1,0 +1,30 @@
+{
+  "engine": "devin",
+  "registry": {
+    "id": "devin",
+    "version": "3000.11.92",
+    "distribution": "binary",
+    "cmd": "devin",
+    "args": ["acp"]
+  },
+  "initialize": {
+    "protocolVersion": 1,
+    "agentInfo": {
+      "name": "devin",
+      "title": "Devin",
+      "version": "3000.11.92"
+    },
+    "agentCapabilities": {
+      "loadSession": true,
+      "promptCapabilities": {
+        "image": true
+      }
+    },
+    "authMethods": [
+      {
+        "id": "browser-login",
+        "name": "Log in with a browser"
+      }
+    ]
+  }
+}

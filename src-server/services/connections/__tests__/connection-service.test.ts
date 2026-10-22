@@ -3435,6 +3435,52 @@ describe('ConnectionService', () => {
     });
   });
 
+  test('an engine connection keeps smoke-passed only while its launch command matches the receipt', async () => {
+    const acpConnections = [
+      { id: 'kiro', name: 'Kiro', command: 'kiro-cli', enabled: true },
+    ];
+    const service = createConnectionServiceForTest(
+      {
+        listProviderConnections: vi.fn(() => []),
+        saveProviderConnection: vi.fn(),
+        deleteProviderConnection: vi.fn(),
+        checkHealth: vi.fn(),
+      } as any,
+      () => [],
+      async () => structuredClone(acpConnections),
+      () => ({ connections: [{ id: 'kiro', status: 'available' }] }),
+      async () => ({}) as any,
+      vi.fn(async (updates: any) => updates),
+    );
+    service.setSmokeRunner(
+      vi.fn().mockResolvedValue({ ok: true, durationMs: 25 }),
+    );
+    await service.smokeConnection('kiro', { confirmed: true });
+    const level = async () =>
+      (await service.listRuntimeConnections()).find(
+        (connection) => connection.id === 'kiro',
+      )?.readinessEvidence;
+
+    expect(await level()).toMatchObject({
+      level: 'smoke-passed',
+      smoke: { status: 'passed' },
+    });
+
+    // A different binary at the same connection id is a different engine;
+    // the receipt no longer speaks for it.
+    acpConnections[0] = {
+      ...acpConnections[0],
+      command: '/opt/other/kiro-cli',
+    };
+    const retired = await level();
+    expect(retired?.level).not.toBe('smoke-passed');
+    expect(retired?.smoke.status).toBe('not-tested');
+
+    // Restoring the tested command restores the still-fresh receipt.
+    acpConnections[0] = { ...acpConnections[0], command: 'kiro-cli' };
+    expect((await level())?.level).toBe('smoke-passed');
+  });
+
   test('discards smoke evidence when the tested connection changes in flight', async () => {
     const acpConnections = [
       {

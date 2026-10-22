@@ -1,0 +1,31 @@
+{
+  "engine": "kimi",
+  "registry": {
+    "id": "kimi",
+    "version": "1.52.0",
+    "distribution": "binary",
+    "cmd": "kimi",
+    "args": ["acp"]
+  },
+  "initialize": {
+    "protocolVersion": 1,
+    "agentInfo": {
+      "name": "kimi",
+      "title": "Kimi CLI",
+      "version": "1.52.0"
+    },
+    "agentCapabilities": {
+      "loadSession": true,
+      "promptCapabilities": {
+        "image": true
+      }
+    },
+    "authMethods": [
+      {
+        "id": "login",
+        "name": "Log in",
+        "description": "Run `kimi login` in a terminal"
+      }
+    ]
+  }
+}

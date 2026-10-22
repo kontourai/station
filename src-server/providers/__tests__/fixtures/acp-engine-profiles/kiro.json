@@ -1,0 +1,27 @@
+{
+  "engine": "kiro",
+  "registry": null,
+  "initialize": {
+    "protocolVersion": 1,
+    "agentInfo": {
+      "name": "kiro-cli",
+      "title": "Kiro",
+      "version": "0.0.0-assumed"
+    },
+    "agentCapabilities": {
+      "loadSession": true,
+      "promptCapabilities": {
+        "image": true
+      }
+    },
+    "authMethods": []
+  },
+  "vendorNotifications": [
+    {
+      "method": "_kiro.dev/metadata",
+      "params": {
+        "sessionId": "assumed"
+      }
+    }
+  ]
+}
