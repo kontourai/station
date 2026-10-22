@@ -18,9 +18,7 @@ import { createNpmCiInstaller } from '../device-toolchain.js';
 
 const makeTempDir = trackTempDirs();
 function fixture() {
-  const home = realpathSync(
-    makeTempDir('station-device-user-node-'),
-  );
+  const home = realpathSync(makeTempDir('station-device-user-node-'));
   function nodeInstallation(name: string) {
     const prefix = join(home, name);
     const bin = join(prefix, 'bin');
