@@ -1379,7 +1379,8 @@ record on 2026-09-29. It is a proposal awaiting the owner, not a decision.
 The [consolidated delivery plan](../plans/plugin-core-delivery.md) tracks the
 single feature branch and its remaining implementation and acceptance work.
 
-Each slice is one pull request unless noted. **[security]** marks a slice
+The owner now requests one feature-branch PR for the epic. The slices below
+remain implementation and acceptance units within that PR. **[security]** marks a slice
 that touches a security boundary and needs an independent security review
 before merge.
 
