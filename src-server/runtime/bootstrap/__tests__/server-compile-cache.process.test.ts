@@ -138,9 +138,9 @@ describe.skipIf(process.platform === 'win32')(
         expect(observed.childError).toBeNull();
         expect(observed.childStatus).toBe(0);
         expect(observed.child).toEqual({ cache: null });
-        expect(observed.cacheDir?.startsWith(startupCache) ?? false).toBe(
-          Boolean(startupCache),
-        );
+        if (startupCache)
+          expect(observed.cacheDir.startsWith(startupCache)).toBe(true);
+        else expect(observed.cacheDir).toBeNull();
         // External ESM dependencies evaluate before bundled bootstrap code.
         // No child launch is observed in that dependency graph for this build.
         expect(observed.dependencyLaunches).toEqual([]);
