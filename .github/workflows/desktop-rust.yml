@@ -12,6 +12,10 @@ on:
         description: "Exercise native performance regression fault controls"
         type: boolean
         default: false
+      ios_network_review_faults:
+        description: "Prove iOS resume, startup, interface identity and in-flight preservation controls"
+        type: boolean
+        default: false
       native_broker_review_faults:
         description: "Exercise silent-response, response-wait, snapshot-publication and timestamp collision controls"
         type: boolean
@@ -279,4 +283,41 @@ jobs:
           assert cargo().returncode == 0, "restored native broker suite must pass"
           subprocess.run(["git", "diff", "--exit-code", "--", *map(str, originals)], check=True)
           print("Native broker restored: GREEN; all four named faults caught; exact sources restored.", flush=True)
+          PYTHON
+
+      - name: Prove iOS network review regressions and restore sources
+        if: ${{ success() && inputs.ios_network_review_faults }}
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import subprocess
+
+          assert not subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=no"]).strip(), "fault controls require committed, clean sources"
+          controls = [
+              ("src-desktop/src/ios_network_path.rs", "        crate::native_http_transport::retire_idle_connections();", "        // Injected: omit resume retirement.", "ios_network_path::tests::resume_and_first_observation_retire_preexisting_connections_without_epoch_change", "resume must retire connections even without a path callback"),
+              ("src-desktop/src/ios_network_path.rs", "None => crate::native_http_transport::retire_idle_connections(),", "None => {},", "ios_network_path::tests::resume_and_first_observation_retire_preexisting_connections_without_epoch_change", "first observation must retire startup connections"),
+              ("src-desktop/src/ios_network_path.rs", "(0..=4).fold", "(1..=3).fold", "ios_network_path::tests::only_connectivity_or_interface_changes_invalidate_transport_and_cost_is_retained", "assertion `left == right` failed"),
+              ("src-desktop/src/native_http_transport.rs", "    IDLE_GENERATION.fetch_add(1, Ordering::AcqRel);", "    IDLE_GENERATION.fetch_add(1, Ordering::AcqRel);\n    network_changed();", "native_http_transport::tests::ios_resume_leaves_registered_response_wait_alive_and_never_replays_post", "resume must leave registered response waits uninterrupted"),
+          ]
+          def cargo(name):
+              result = subprocess.run(["cargo", "test", "--manifest-path", "src-desktop/Cargo.toml", "--lib", name, "--", "--exact", "--nocapture"], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+              print(result.stdout, flush=True)
+              return result
+          for source, before, after, name, assertion in controls:
+              path = Path(source)
+              original = path.read_text()
+              assert original.count(before) == 1, (source, "ambiguous mutation landmark")
+              assert cargo(name).returncode == 0, (name, "baseline must pass")
+              mutated = original.replace(before, after)
+              try:
+                  path.write_text(mutated)
+                  result = cargo(name)
+                  assert result.returncode == 101 and assertion in result.stdout, (name, "must catch intended assertion, not compile/setup failure")
+                  print(f"iOS network injected: RED caught by {name}: {assertion}", flush=True)
+              finally:
+                  assert path.read_text() == mutated, (source, "intervening edits; refusing restoration")
+                  path.write_text(original)
+              assert cargo(name).returncode == 0, (name, "restored must pass")
+              subprocess.run(["git", "diff", "--exit-code", "--", source], check=True)
+          print("iOS network controls: baseline GREEN, four injected regressions RED, exact sources restored GREEN.", flush=True)
           PYTHON

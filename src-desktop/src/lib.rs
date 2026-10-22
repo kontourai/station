@@ -14181,6 +14181,10 @@ If a stable instance is running, this launch will focus its window and exit.",
                     }
                 }
             }
+            #[cfg(target_os = "ios")]
+            if let tauri::RunEvent::WindowEvent { event, .. } = &event {
+                ios_network_path::window_event(event);
+            }
             #[cfg(target_os = "android")]
             if let tauri::RunEvent::WindowEvent { event: tauri::WindowEvent::Resumed, .. } = &event {
                 native_http_transport::network_changed();

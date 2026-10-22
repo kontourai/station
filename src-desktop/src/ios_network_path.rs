@@ -44,11 +44,12 @@ impl PathState {
         emit: impl FnOnce(NetworkPathSnapshot),
     ) {
         let mut current = self.0.lock().unwrap_or_else(|error| error.into_inner());
-        if current
-            .as_ref()
-            .is_some_and(|path| path.identity != identity)
-        {
-            crate::native_http_transport::network_changed();
+        match current.as_ref() {
+            None => crate::native_http_transport::retire_idle_connections(),
+            Some(path) if path.identity != identity => {
+                crate::native_http_transport::network_changed();
+            }
+            Some(_) => {}
         }
         if current.as_ref().is_some_and(|path| {
             path.identity == identity
@@ -67,6 +68,29 @@ impl PathState {
         *current = Some(ObservedPath { identity, snapshot });
         emit(snapshot);
     }
+}
+
+#[cfg(any(target_os = "ios", test))]
+pub(crate) fn window_event(event: &tauri::WindowEvent) {
+    if matches!(event, tauri::WindowEvent::Resumed) {
+        // Activation also follows alerts and Face ID; never abort an active send.
+        crate::native_http_transport::retire_idle_connections();
+    }
+}
+
+#[cfg(any(target_os = "ios", test))]
+fn interface_mask(mut uses: impl FnMut(u32) -> bool) -> u8 {
+    // nw_interface_type_t: other=0, Wi-Fi=1, cellular=2, wired=3, loopback=4.
+    (0..=4).fold(
+        0,
+        |set, kind| {
+            if uses(kind) {
+                set | (1 << kind)
+            } else {
+                set
+            }
+        },
+    )
 }
 
 #[tauri::command]
@@ -130,16 +154,11 @@ mod platform {
         let handler = RcBlock::new(move |path: *mut c_void| {
             let (constrained, expensive) =
                 unsafe { (nw_path_is_constrained(path), nw_path_is_expensive(path)) };
-            // Apple's interface enum: Wi-Fi=1, cellular=2, wired Ethernet=3.
             // Cost changes and duplicate callbacks must not retire connections.
             let identity = PathIdentity {
                 satisfied: unsafe { nw_path_get_status(path) == 1 },
-                interfaces: (1..=3).fold(0, |set, kind| {
-                    if unsafe { nw_path_uses_interface_type(path, kind) } {
-                        set | (1 << kind)
-                    } else {
-                        set
-                    }
+                interfaces: super::interface_mask(|kind| unsafe {
+                    nw_path_uses_interface_type(path, kind)
                 }),
             };
             PATH.update(identity, constrained, expensive, |snapshot| {
@@ -205,13 +224,33 @@ mod tests {
             interfaces: 8,
         };
         for (identity, constrained, expensive, epoch_changes) in [
-            (wifi, false, false, false), // First callback establishes identity.
+            (wifi, false, false, false), // First callback retires idle connections, without changing epoch.
             (wifi, false, false, false), // Duplicate, including app activation.
             (wifi, true, false, false),  // Low Data Mode only.
             (wifi, false, true, false),  // Cost only.
             (offline, false, true, true),
             (wifi, false, true, true),
             (cellular, false, true, true), // Same cost, different interface.
+            (wired, false, false, true),
+            (
+                PathIdentity {
+                    satisfied: true,
+                    interfaces: interface_mask(|kind| kind == 3 || kind == 0),
+                },
+                false,
+                false,
+                true,
+            ),
+            (wired, false, false, true),
+            (
+                PathIdentity {
+                    satisfied: true,
+                    interfaces: interface_mask(|kind| kind == 3 || kind == 4),
+                },
+                false,
+                false,
+                true,
+            ),
             (wired, false, false, true),
         ] {
             let before = crate::native_http_transport::network_epoch();
@@ -223,7 +262,7 @@ mod tests {
                 epoch_changes
             );
         }
-        assert_eq!(events.len(), 7, "duplicate callbacks do not emit");
+        assert_eq!(events.len(), 11, "duplicate callbacks do not emit");
         assert_eq!(
             events[1],
             serde_json::json!({"revision": 2, "constrained": true, "expensive": false})
@@ -234,7 +273,48 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_value(state.snapshot()).unwrap(),
-            serde_json::json!({"revision": 7, "constrained": false, "expensive": false})
+            serde_json::json!({"revision": 11, "constrained": false, "expensive": false})
         );
+    }
+
+    #[test]
+    fn resume_and_first_observation_retire_preexisting_connections_without_epoch_change() {
+        const WORKER: &str = "STATION_IOS_IDLE_TEST_WORKER";
+        if std::env::var_os(WORKER).is_none() {
+            assert!(std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "ios_network_path::tests::resume_and_first_observation_retire_preexisting_connections_without_epoch_change", "--nocapture"])
+                .env(WORKER, "1").status().unwrap().success());
+            return;
+        }
+        let station = crate::native_http_performance_tests::KeepAliveStation::start();
+        let agent = crate::native_http_agent();
+        let saved = agent.clone();
+        assert!(station.get(&agent, "fixture").starts_with("1:"));
+        let epoch = crate::native_http_transport::network_epoch();
+        let state = PathState::default();
+        let wifi = PathIdentity {
+            satisfied: true,
+            interfaces: 2,
+        };
+        state.update(wifi, false, false, |_| {});
+        assert_eq!(crate::native_http_transport::network_epoch(), epoch);
+        assert!(
+            station.get(&saved, "fixture").starts_with("2:"),
+            "first observation must retire startup connections"
+        );
+        state.update(wifi, false, false, |_| panic!("duplicate must not emit"));
+        window_event(&tauri::WindowEvent::Focused(true));
+        assert!(station.get(&agent, "fixture").starts_with("2:"));
+        window_event(&tauri::WindowEvent::Resumed);
+        assert_eq!(
+            crate::native_http_transport::network_epoch(),
+            epoch,
+            "activation must not wake response waits"
+        );
+        assert!(
+            station.get(&saved, "fixture").starts_with("3:"),
+            "resume must retire connections even without a path callback"
+        );
+        assert!(station.get(&agent, "fixture").starts_with("3:"));
     }
 }
