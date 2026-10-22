@@ -39,6 +39,26 @@ the text-presence guard fails the new assertion with 45 controls passing.
 Byte-identical restoration returns 46 passing cases. This adds regression
 evidence for the existing contract, not a new live return/recovery claim.
 
+At `eebc04890a2`, an owned loopback model exercised installed Claude Code
+2.1.308 and SDK 0.3.302 through the production Station service and adapter.
+An explicit foreground Agent made its own model request and returned exact text
+to the parent. Persisted child-work facts retained that text as `tool-return`;
+the owner-authorized transcript reader recovered it and refused a foreign user.
+Closing and reopening SQLite in a fresh service with no adapters preserved the
+same provenance and transcript access without another model request. All 13
+probe checks passed. Relabeling the production return as `provider-summary`
+failed the two provenance checks with 11 controls passing; byte-identical source
+restoration passed all 13 again. The final harness also exits nonzero on failure
+and requires successful shutdown, a closed listener and no adapter sessions.
+
+The initial probe is retained as failed evidence: it omitted the explicit
+foreground flag and read a turn window rather than unscoped child-work history.
+Independent source/evidence review accepted the corrected controls without
+independently executing them. This establishes controlled native foreground
+return and cold SQLite/service reconstruction in one OS process, not crash
+recovery, native reattachment, every background/order/error case, independent
+network isolation, real-provider behavior or full #1879 acceptance.
+
 At `3669442358f`, the existing audited Agents-pane browser journey passes both
 desktop and 390px phone-width cases against a built isolated Station. It checks
 CLI provenance, engine identity and live child activity, single Stop controls,
