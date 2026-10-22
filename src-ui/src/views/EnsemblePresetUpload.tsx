@@ -20,6 +20,7 @@ export function EnsemblePresetUpload({
   }>();
   const [failure, setFailure] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [selectionCancelled, setSelectionCancelled] = useState(false);
   const sequence = useRef(0);
   const { guard, DiscardModal } = useUnsavedGuard(dirty);
   const current = scope.isCurrent();
@@ -27,6 +28,7 @@ export function EnsemblePresetUpload({
     const attempt = ++sequence.current;
     setSource(undefined);
     setFailure(false);
+    setSelectionCancelled(false);
     setDirty(false);
     try {
       if (file.size > ENSEMBLE_MAX_BYTES)
@@ -60,14 +62,26 @@ export function EnsemblePresetUpload({
           disabled={!current}
           onChange={(event) => {
             const file = event.target.files?.[0];
+            const input = event.currentTarget;
             if (file)
-              guard(() => {
-                void load(file);
-              });
-            event.target.value = '';
+              guard(
+                () => {
+                  input.value = '';
+                  void load(file);
+                },
+                () => {
+                  input.value = '';
+                  setSelectionCancelled(true);
+                },
+              );
           }}
         />
       </label>
+      {selectionCancelled && current && (
+        <p role="status">
+          File selection cancelled. The current preset and draft are unchanged.
+        </p>
+      )}
       {failure && current && (
         <p role="alert">
           Preset could not be read. Select a valid UTF-8 Ensemble JSON file of

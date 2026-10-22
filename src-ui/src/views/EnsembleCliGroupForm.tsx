@@ -2,12 +2,16 @@ import {
   agentId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
+import type { EnsembleCliSessionGroupInput } from '@kontourai/station-contracts/ensemble';
 import {
   useCancelCliSessionGroup,
   useCreateEnsembleCliSessionGroup,
   useRunCliSessionGroup,
 } from '@kontourai/station-sdk';
-import type { ApiRequestScope } from '@kontourai/station-sdk/client';
+import {
+  type ApiRequestScope,
+  parseEnsembleCliSessionGroupInput,
+} from '@kontourai/station-sdk/client';
 import { useState } from 'react';
 import { Button } from '../components/Button';
 
@@ -40,6 +44,7 @@ export function EnsembleCliGroupForm({
     >
   >({});
   const [operationId] = useState(() => crypto.randomUUID());
+  const [inputError, setInputError] = useState(false);
   const current = scope.isCurrent();
   const saved = current ? create.data : undefined;
   const submitted = !create.isIdle;
@@ -72,43 +77,51 @@ export function EnsembleCliGroupForm({
             onSubmit={(event) => {
               event.preventDefault();
               if (!current || submitted || !complete) return;
-              onDirtyChange(false);
-              create.mutate({
-                path,
-                presetJson,
-                expectedPresetHash: hash,
-                brief,
-                operationId,
-                maxConcurrent: concurrency,
-                deadlineAt: Date.now() + minutes * 60_000,
-                bindings: Object.fromEntries(
-                  memberIds.map((id) => {
-                    const value = bindings[id];
-                    return [
-                      id,
-                      {
-                        target: {
-                          agent: agentId(value.agent.trim()),
-                          expectedEngine: {
-                            kind: 'connection' as const,
-                            connectionId: engineConnectionId(
-                              value.engine.trim(),
-                            ),
+              let input: EnsembleCliSessionGroupInput;
+              try {
+                input = parseEnsembleCliSessionGroupInput({
+                  path,
+                  presetJson,
+                  expectedPresetHash: hash,
+                  brief,
+                  operationId,
+                  maxConcurrent: concurrency,
+                  deadlineAt: Date.now() + minutes * 60_000,
+                  bindings: Object.fromEntries(
+                    memberIds.map((id) => {
+                      const value = bindings[id];
+                      return [
+                        id,
+                        {
+                          target: {
+                            agent: agentId(value.agent.trim()),
+                            expectedEngine: {
+                              kind: 'connection' as const,
+                              connectionId: engineConnectionId(
+                                value.engine.trim(),
+                              ),
+                            },
+                            workspace: {
+                              kind: 'directory' as const,
+                              cwd: value.cwd.trim(),
+                            },
                           },
-                          workspace: {
-                            kind: 'directory' as const,
-                            cwd: value.cwd.trim(),
-                          },
+                          needs: value.needs
+                            .split(',')
+                            .map((entry) => entry.trim())
+                            .filter(Boolean),
                         },
-                        needs: value.needs
-                          .split(',')
-                          .map((entry) => entry.trim())
-                          .filter(Boolean),
-                      },
-                    ];
-                  }),
-                ),
-              });
+                      ];
+                    }),
+                  ),
+                });
+              } catch {
+                setInputError(true);
+                return;
+              }
+              setInputError(false);
+              onDirtyChange(false);
+              create.mutate(input);
             }}
           >
             <fieldset disabled={submitted || !current}>
@@ -254,6 +267,12 @@ export function EnsembleCliGroupForm({
                 </p>
               )}
             </>
+          )}
+          {inputError && current && (
+            <p role="alert">
+              Check the Agent and engine connection IDs, member dependencies and
+              group limits. Nothing was submitted.
+            </p>
           )}
           {create.isError && current && (
             <p role="alert">

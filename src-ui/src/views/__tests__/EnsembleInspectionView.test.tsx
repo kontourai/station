@@ -531,6 +531,25 @@ test('a selected local preset submits its exact bytes without a host-file inspec
     ['Working directory on This Station for lead', '/work'],
   ])
     fireEvent.change(screen.getByLabelText(label), { target: { value } });
+  const replacement = json.replace('Uploaded team', 'Replacement team');
+  fireEvent.change(screen.getByLabelText('Preset file from this device'), {
+    target: {
+      files: [
+        new File([replacement], 'replacement.json', {
+          type: 'application/json',
+        }),
+      ],
+    },
+  });
+  await screen.findByRole('dialog', { name: 'Unsaved Changes' });
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  await screen.findByText(
+    'File selection cancelled. The current preset and draft are unchanged.',
+  );
+  expect(screen.getByRole('heading', { name: 'Uploaded team' })).toBeDefined();
+  expect(
+    screen.queryByRole('heading', { name: 'Replacement team' }),
+  ).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Save session group' }));
   await screen.findByText(/Saved session group/);
   expect(fetch).toHaveBeenCalledOnce();
@@ -545,3 +564,39 @@ test('a selected local preset submits its exact bytes without a host-file inspec
     `sha256:${createHash('sha256').update(json).digest('hex')}`,
   );
 });
+
+test.each(['Agent ID for lead', 'Engine connection ID for lead'])(
+  'invalid %s keeps the draft and permits correction before any creation request',
+  async (label) => {
+    navigationStore.navigate('/agents?tab=ensembles');
+    const fetch = vi.fn(
+      async (url: unknown) =>
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: String(url).endsWith('/inspect') ? result : savedGroup,
+          }),
+        ),
+    );
+    vi.stubGlobal('fetch', fetch);
+    mount();
+    await draftGroup();
+    fireEvent.change(screen.getByLabelText(label), {
+      target: { value: 'Not Clean' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save session group' }));
+    await screen.findByText(
+      'Check the Agent and engine connection IDs, member dependencies and group limits. Nothing was submitted.',
+    );
+    expect(fetch).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Reload source' }));
+    await screen.findByRole('dialog', { name: 'Unsaved Changes' });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.change(screen.getByLabelText(label), {
+      target: { value: label.startsWith('Agent') ? 'reviewer' : 'opencode' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save session group' }));
+    await screen.findByText(/Saved session group/);
+    expect(fetch).toHaveBeenCalledTimes(2);
+  },
+);
