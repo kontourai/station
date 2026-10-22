@@ -1,0 +1,7 @@
+{
+  "revision": "b4dec779ba74ebbebd5c5314adbd8b569af752cd",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed direct typed context access in engine-login scope lookup: same Hono getter and unchanged operator/agent/scope decisions; removed redundant assertion only. Public sign-in and credential boundaries unchanged, no provider proof.","inputs":["docs/guides/connections.md","src-server/routes/connections/acp-sign-in.ts"]}
+  ]
+}
