@@ -914,7 +914,9 @@ result is `{ ok: true, registryId }` or `{ ok: false, reason, message }`, with
   Mac), and Ctrl+Y. Station never lets a plugin shortcut fire on them.
 
 Plugin shortcuts rank below Station's own: a Station shortcut on the same
-chord wins whichever registered first. See
+chord wins whichever registered first, except the lower-priority “go up a level”
+Escape fallback, which yields to a plugin. Reserved Station and editing chords
+remain unavailable to plugins. See
 [plugin shortcuts](../guides/keyboard-shortcuts.md#plugin-shortcuts).
 
 A `when` string is a host context key (`'composerFocused'`,
