@@ -255,8 +255,10 @@ thread-bound `mcpServerStatus/list` read before startup returns or a turn can
 start. The adapter requires one matching server with a tool inventory, no
 reported tool-list/authentication failure, and `connected` when the engine
 reports an explicit runtime status. Older responses may omit that status.
-The reads share a 15-second deadline and the existing bounded response limit;
-unavailable or ambiguous inventory refuses startup and stops the process.
+The one-shot reads share a 15-second response deadline and the existing bounded
+response limit; they do not poll or retry a `starting` server. Unavailable or
+ambiguous inventory refuses startup and stops the process. Server logs retain
+the authored server ID and a closed refusal reason, not native error text.
 This is MCP availability evidence, not proof that a model selected or called
 a tool. Sessions without authored servers make no additional inventory call.
 

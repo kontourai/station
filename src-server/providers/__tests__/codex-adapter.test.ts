@@ -6651,7 +6651,8 @@ test.each([
   'an authored MCP server refuses startup when its exact thread inventory is %s',
   async (defect) => {
     const process = new FakeCodexProcess();
-    const adapter = new CodexAdapter({ processFactory: () => process });
+    const logger = { warn: vi.fn() };
+    const adapter = new CodexAdapter({ processFactory: () => process, logger });
     const events: string[] = [];
     const observing = (async () => {
       for await (const event of adapter.streamEvents())
@@ -6690,7 +6691,8 @@ test.each([
         runtimeStatus: defect === 'starting' ? 'starting' : 'connected',
         tools: defect === 'tools-missing' ? null : {},
         authStatus: defect === 'auth-required' ? 'notLoggedIn' : 'unsupported',
-        toolsError: defect === 'tool-list-failed' ? 'unavailable' : null,
+        toolsError:
+          defect === 'tool-list-failed' ? 'private-native-error-token' : null,
       };
       writeServerMessage(adapter, 'mcp-refusal', {
         id: request.id,
@@ -6705,6 +6707,17 @@ test.each([
       });
       await refused;
       expect(process.killed).toBe(true);
+      expect(logger.warn).toHaveBeenCalledWith(
+        'Codex authored MCP inventory refused',
+        {
+          threadId: 'mcp-refusal',
+          serverId: 'question',
+          reason: expect.any(String),
+        },
+      );
+      expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(
+        'private-native-error-token',
+      );
       expect(events).not.toContain('session.started');
     } finally {
       await adapter.stopAll();

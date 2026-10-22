@@ -196,6 +196,15 @@ not answer evidence. The Codex MCP edge now maps supported data forms into the
 canonical input-request contract and returns validated content through the
 exact-event reply path. A fresh live check will use an explicit asking posture;
 shared connection/proxy configuration remains unchanged.
+That fresh asking-mode group still opened no question and returned
+`NOT_ACCEPTED`; it is also excluded from live elicitation acceptance. The
+controlled real-service form case now passes: invalid credential, foreign event
+and invalid content reach no adapter response; a valid exact answer reaches its
+request once, returns raw output only through the authorized task read, and
+releases the dependent. These are separate from live-provider proof. The
+startup availability review accepted the bounded guard and highlighted that
+one-shot inventory reads do not poll until readiness. Closed diagnostics now
+identify refusals without retaining native error text.
 
 This establishes only the exercised CLI paths. Live elicitation, second-device
 lifecycle, the remaining lineage/context/recovery obligations, final combined

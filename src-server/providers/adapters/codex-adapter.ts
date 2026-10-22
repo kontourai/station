@@ -2451,15 +2451,27 @@ export class CodexAdapter implements ProviderAdapterShape {
       const matches = Array.isArray(rows)
         ? rows.map(record).filter((row) => row?.name === serverName)
         : [];
-      if (
-        matches.length !== 1 ||
-        (matches[0]?.runtimeStatus !== undefined &&
-          matches[0].runtimeStatus !== 'connected') ||
-        !record(matches[0]?.tools) ||
-        matches[0]?.authStatus === 'notLoggedIn' ||
-        matches[0]?.toolsError != null
-      )
+      const refusal =
+        matches.length === 0
+          ? 'missing-server'
+          : matches.length !== 1
+            ? 'ambiguous-server'
+            : matches[0]?.authStatus === 'notLoggedIn'
+              ? 'authentication-required'
+              : !record(matches[0]?.tools) || matches[0]?.toolsError != null
+                ? 'tool-inventory-unavailable'
+                : matches[0]?.runtimeStatus !== undefined &&
+                    matches[0].runtimeStatus !== 'connected'
+                  ? 'not-connected'
+                  : undefined;
+      if (refusal) {
+        this.options.logger?.warn?.('Codex authored MCP inventory refused', {
+          threadId: session.externalThreadId,
+          serverId: serverName,
+          reason: refusal,
+        });
         throw new Error('Codex required MCP server is unavailable.');
+      }
     }
   }
 
