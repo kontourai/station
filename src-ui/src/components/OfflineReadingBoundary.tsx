@@ -22,10 +22,11 @@ export function OfflineReadingBoundary({ children }: { children: ReactNode }) {
       ])
     : null;
   const profile = usePlatformProfile();
-  const [offline, setOffline] = useState(() => navigator.onLine === false);
-  const [readerOpen, setReaderOpen] = useState(
-    () => navigator.onLine === false,
-  );
+  const initiallyOffline = () =>
+    navigator.onLine === false ||
+    document.querySelector('meta[name="station-offline-shell"]') !== null;
+  const [offline, setOffline] = useState(initiallyOffline);
+  const [readerOpen, setReaderOpen] = useState(initiallyOffline);
   const [copies, setCopies] = useState<{
     binding: string;
     values: OfflineCopy[];

@@ -12,6 +12,7 @@ const temp = trackTempDirs({ base: path.join(ROOT, 'node_modules/.cache') });
 let browser: Awaited<ReturnType<typeof chromium.launch>>;
 let server: ReturnType<typeof createServer>;
 let origin: string;
+let navigationFailure: 'disconnect' | 'unavailable' | undefined;
 const requests: { path: string; cookie?: string }[] = [];
 beforeAll(async () => {
   mkdirSync(path.join(ROOT, 'node_modules/.cache'), { recursive: true });
@@ -81,8 +82,16 @@ beforeAll(async () => {
   );
   server = createServer((req, res) => {
     const url = new URL(req.url!, 'http://localhost');
+    if (url.pathname === '/' && navigationFailure) {
+      if (navigationFailure === 'disconnect') req.socket.destroy();
+      else {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end('{"success":false}');
+      }
+      return;
+    }
     requests.push({ path: url.pathname, cookie: req.headers.cookie });
-    if (url.pathname.startsWith('/api/')) {
+    if (url.pathname === '/api/private') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end('{"secret":"api-secret"}');
       return;
@@ -404,3 +413,55 @@ test('changing the selected authority clears local text instead of revealing it 
     await context.close();
   }
 });
+
+test.each(['disconnect', 'unavailable'] as const)(
+  'fallback opens the local reader when the Station route is %s but the browser link stays online',
+  async (failure) => {
+    const context = await browser.newContext();
+    context.setDefaultTimeout(5000);
+    try {
+      const page = await context.newPage();
+      await page.goto(origin);
+      await page.getByRole('switch').waitFor();
+      await page.waitForFunction(() => !!navigator.serviceWorker.controller);
+      await page.getByRole('switch').click();
+      await expect
+        .poll(() => page.getByRole('switch').getAttribute('aria-checked'))
+        .toBe('true');
+      await page.evaluate(async () => {
+        await (window as any).reading.saveOfflineReading(
+          'authority-a',
+          'route-offline',
+          [
+            {
+              sequence: 1,
+              event: {
+                method: 'turn.started',
+                turnId: 't',
+                prompt: 'Route offline copy',
+              },
+            },
+          ],
+          () => true,
+        );
+      });
+      navigationFailure = failure;
+      await page.reload();
+      expect(await page.evaluate(() => navigator.onLine)).toBe(true);
+      await page.getByRole('heading', { name: 'Station is offline' }).waitFor();
+      await page
+        .getByText('Conversation route-offline', { exact: true })
+        .click();
+      await page.getByText('Route offline copy', { exact: true }).waitFor();
+      navigationFailure = undefined;
+      await page.getByRole('button', { name: 'Retry connection' }).click();
+      await page.getByRole('heading', { name: 'Live app' }).waitFor();
+      expect(
+        await page.getByText('Route offline copy', { exact: true }).count(),
+      ).toBe(0);
+    } finally {
+      navigationFailure = undefined;
+      await context.close();
+    }
+  },
+);

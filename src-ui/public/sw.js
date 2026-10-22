@@ -92,7 +92,12 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       (async () => {
         try {
-          return await fetch(request);
+          const response = await fetch(request);
+          if (![502, 503, 504].includes(response.status)) return response;
+          const cached = await (await caches.open(SHELL_CACHE)).match(
+            '/offline.html',
+          );
+          return cached || response;
         } catch {
           const cached = await (await caches.open(SHELL_CACHE)).match(
             '/offline.html',

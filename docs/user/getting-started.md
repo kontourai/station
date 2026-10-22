@@ -181,7 +181,7 @@ while offline. Enable this only on a device where that trade-off is acceptable.
 **Clear offline copies** deletes the saved text and turns saving off. Signing out,
 changing credential generation, or switching authority also clears the copies.
 
-An offline browser reload shows a separate, read-only reader with an **offline
+A browser reload while the Station route is unavailable shows a separate, read-only reader with an **offline
 copy from** timestamp. If you lose connectivity in an already open workspace,
 choose **Read offline copies**; **Back to workspace** keeps drafts and the existing
 outbox available. Reconnecting leaves the reader, verifies live access and uses
