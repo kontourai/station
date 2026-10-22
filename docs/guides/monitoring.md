@@ -1009,14 +1009,20 @@ now. Invalid bounds fail rather than widening the window. User ownership and
 Session/tenant policy are applied before dimension filters and a requested
 limit. Results are timestamp-ordered oldest first; a limit keeps the newest
 matching rows. `limit` is optional and capped at 5,000 when supplied.
-Before route visibility/dimension filtering, the disk reader refuses queries
-exceeding 10,000 owner-matching rows, 8 MiB of matching NDJSON, 32 MiB of scanned
-bytes, or a 1 MiB line. The route returns 413 `event_history_limit_exceeded`,
-never a partial success. Narrow the time range; oversized/cold files may need
-archiving because scanning also has a budget. A presentation `limit=1` does not
-bypass these limits. The returned `truncated` flag says
-whether the limit dropped matching rows; `data.length` is the returned row
-count. The response does not report the total number of matches.
+The route passes visibility, dimensions and the limit into the disk reader.
+It retains at most 10,000 matching rows and 8 MiB of matching NDJSON, scans at
+most 32 MiB, and parses lines no larger than 1 MiB. Rows dropped by the requested
+limit or these budgets produce a successful response with `truncated: true`.
+If scanning stops at its byte or line bound, the result contains the newest
+matching rows among scanned bytes; unread bytes may contain newer timestamps.
+Narrow the window or archive oversized files to inspect omitted history.
+`data.length` is the returned row count; no total match count is reported.
+CLI and SDK exports use this same authorized route and obey its budgets.
+
+The separate `/events` broadcast stream also bounds slow-reader
+backlogs. Overflow emits `data:changed` with `{ "resync": true }`; the UI invalidates
+its query cache to recover current state. Transient effects such as navigation,
+toasts and approval prompts may be dropped; they are not replayed by resync.
 
 `RuntimeEventLog` caches per-file timestamp bounds with filesystem identity,
 not payloads. Appends/replacements invalidate that shortcut. Missing history is

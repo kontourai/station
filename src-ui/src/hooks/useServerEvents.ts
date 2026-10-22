@@ -354,6 +354,9 @@ export function useServerEvents(handlers?: Record<string, EventHandler>) {
         if (event === SERVER_EVENTS.DATA_CHANGED) {
           try {
             const data = JSON.parse(message.data);
+            if (data.resync === true) {
+              void queryClient.invalidateQueries();
+            }
             const keys = data.keys as string[] | undefined;
             if (keys) {
               for (const key of keys) {

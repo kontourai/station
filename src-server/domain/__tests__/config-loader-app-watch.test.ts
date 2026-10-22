@@ -34,7 +34,15 @@
  * make deterministic.
  */
 import { EventEmitter } from 'node:events';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  statSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -55,7 +63,7 @@ class ScriptedWatcher extends EventEmitter {
     return this;
   }
 
-  reliable = false;
+  reliable = true;
   getWatched(): Record<string, string[]> {
     return this.reliable ? { config: ['app.json'] } : {};
   }
@@ -136,25 +144,40 @@ afterEach(async () => {
 });
 
 describe('app config launchability', () => {
-  it('uses watcher events without idle app stats, then enables a slow fallback after a watch error', async () => {
-    writeFileSync(appPath, '{"defaultModel":"before"}');
-    vi.useFakeTimers();
-    const { revisions, watcher } = startLoader();
-    watcher.reliable = true;
-    await vi.advanceTimersByTimeAsync(0);
-    appStats.count = 0;
-    await vi.advanceTimersByTimeAsync(10_000);
-    expect(appStats.count).toBe(0);
-    writeFileSync(appPath, '{"defaultModel":"after"}');
-    watcher.emit('change', appPath);
-    await vi.waitFor(() => expect(revisions).toEqual([1]));
-    watcher.emit('error', new Error('watch unavailable'));
-    appStats.count = 0;
-    await vi.advanceTimersByTimeAsync(4_999);
-    expect(appStats.count).toBe(0);
-    await vi.advanceTimersByTimeAsync(1);
-    expect(appStats.count).toBe(1);
-  });
+  it.each(['rewrite', 'chmod'])(
+    'keeps a slow safety poll for an armed silent watcher after %s with unchanged mtime',
+    async (kind) => {
+      writeFileSync(appPath, '{"defaultModel":"before"}');
+      const epoch = 1780000000;
+      utimesSync(appPath, epoch, epoch);
+      vi.useFakeTimers();
+      const { revisions, watcher } = startLoader();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(Object.keys(watcher.getWatched())).not.toHaveLength(0);
+      appStats.count = 0;
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(appStats.count).toBe(0);
+      const before = statSync(appPath, { bigint: true });
+      if (kind === 'rewrite') {
+        writeFileSync(appPath, '{"defaultModel":"after!"}');
+        utimesSync(appPath, epoch, epoch);
+      } else {
+        chmodSync(appPath, 0o400);
+      }
+      const after = statSync(appPath, { bigint: true });
+      expect(after.mtimeNs).toBe(before.mtimeNs);
+      expect(after.size).toBe(before.size);
+      expect(after.ctimeNs).not.toBe(before.ctimeNs);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(revisions).toEqual([1]);
+      const polls = appStats.count;
+      await vi.advanceTimersByTimeAsync(4_999);
+      expect(appStats.count).toBe(polls);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(appStats.count).toBeGreaterThan(polls);
+      expect(revisions).toEqual([1]);
+    },
+  );
 
   it('publishes revisions for external add, change and remove with no watcher event at all', async () => {
     // The archive#970 host, exactly: the watcher is armed and stays silent forever.
