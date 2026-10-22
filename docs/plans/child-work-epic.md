@@ -591,6 +591,26 @@ two SDK repairs each have prefix/mutation failures with 60 controls and a restor
 Vitest 4.1.12 and the macOS installer work; managed installation and real PTY
 handshake pass. Native evidence stays bound to the earlier `d64e3156fc5` source.
 
+At `ad49502d1ed`, an isolated `StationRuntime` qualification exercises the
+production HTTP security and group routes with installed Claude and an owned
+loopback model. The per-boot local-grant exchange succeeds; the same preset
+request without a credential returns 401. Creation starts nothing. Both members
+authenticate before the first session starts, receive roster-bearing briefs, and
+complete in prerequisite order with two logical dispatches and two loopback model
+requests. All eight probe checks pass, and the allocated listener ports are
+closed after the owned process exits.
+
+Four failed setup attempts remain retained: an invalid client-instance identity,
+an unadopted native connection, a runtime-configuration reconciliation window,
+and the diagnostic run identifying the unsupported inventory entry. The final
+helper adopts the connection through its registry owner and observes stable
+configuration before submitting. Its wrappers forward original arguments and
+results; they do not replace authentication or dispatch. The first attempt also
+left a listener after awaited shutdown; its owned process was terminated, and
+later helpers explicitly exit after awaited cleanup. This qualifies the exercised
+HTTP/native path, not the `index.ts` entrypoint, a real-provider account, model
+entitlement, billing, resume continuity or whole-epic acceptance.
+
 ## Production adoption sequence
 
 The personal `/api/orchestration/session-groups` path now composes the shared
