@@ -289,10 +289,15 @@ and folded context, exact ACK persisted, an injected Write was denied and record
 as failed without retry, and an ordinary resumed turn restored advertised tools.
 The initial harness omitted the canonical session refresh and refused preflight;
 that receipt is retained alongside the corrected probe. No real-provider model
-request or shared configuration write occurred. Independent native execution
-qualification is pending. This does not close plugin/delegation/internal-effect
-coverage, real-provider sync, #205 restrictions, fiscal guarantees or full epic
-acceptance.
+request or shared configuration write occurred. An independent owned-loopback
+run against pinned primary source then rejected a trailing-space ACK after two
+attempts, blocked Write after one, and restored ordinary tools/history in the
+same native conversation. Its first workspace-linked run is excluded; the final
+run used archived workspace packages and two declared generated artifacts whose
+generation was not verified. Its archive briefly exceeded the 200 MiB bound
+before being reduced to 84 MiB. These limits remain part of the evidence. This
+does not close plugin/delegation/internal-effect coverage, real-provider sync,
+#205 restrictions, fiscal guarantees or full epic acceptance.
 
 ## Production adoption sequence
 
