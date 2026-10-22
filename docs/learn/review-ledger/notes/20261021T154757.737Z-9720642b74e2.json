@@ -1,0 +1,7 @@
+{
+  "revision": "3116dab09000dfaf6084ac1640836a78bedc0c7e",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Fix round: checked step 4 against runtimeConnectionFingerprint, which hashes the whole ACPConnectionConfig (name, command, args, env, enabled), so any edit or rename drops the tier. Checked step 2 against ACPProbe COLD_START_OPERATION_TIMEOUT_MS (60s, background first contact only) and the request budget. Checked that authMethods and agentInfo in profiles have no consumer in the qualification path.","inputs":["docs/reference/agent-smoke-confidence.md"]}
+  ]
+}

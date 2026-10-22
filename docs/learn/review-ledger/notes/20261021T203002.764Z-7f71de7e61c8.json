@@ -1,0 +1,7 @@
+{
+  "revision": "d8bf26b6c586d3fc3697298de9aa29f0b8dda9ca",
+
+  "notes": [
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Merge of #3991: this branch's only change to scripts/vitest-resource-manifest.mjs adds acp-engine-qualification.process.test.ts to the bounded spawn group. The agent-runtime test entries (r1-outbox, body-process) are unchanged. This document names its evidence-owner tests but makes no claim about manifest grouping, so no prose change.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}
