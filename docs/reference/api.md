@@ -228,7 +228,10 @@ routes, so an agent's request is refused (`403`,
   directory's native real path. Promote decides by the same rule, so
   promoting a `promotion-store-gone` version is `409`
   `task_learning_store_gone`, and promoting a `promoted` one is `200`
-  `already-promoted`.
+  `already-promoted`. When a record not written by Task Learning already
+  uses the version's id, promote is `409` `task_learning_id_taken`.
+  `POST /api/knowledge/roots/:rootId/records` refuses (`400`) a
+  `provenance.agent` of `station-task-learning`, which is reserved.
 
 A promoted record is searchable once its store is reindexed
 (`POST /api/knowledge/index/rebuild`); promotion does not index it.

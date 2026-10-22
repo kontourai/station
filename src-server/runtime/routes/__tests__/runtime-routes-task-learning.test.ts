@@ -19,7 +19,6 @@
  */
 
 import {
-  existsSync,
   mkdirSync,
   mkdtempSync,
   realpathSync,
@@ -28,7 +27,7 @@ import {
 } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { serve } from '@hono/node-server';
 import type { IEmbeddingProvider } from '@kontourai/station-contracts/knowledge-index';
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
@@ -92,12 +91,22 @@ const PROJECT = 'project-alpha';
 const AT = '2026-10-04T00:00:00.000Z';
 const makeTempDir = trackTempDirs();
 
-/** Whether the temp filesystem ignores case: decided by trying, not by OS. */
+/**
+ * Whether the native realpath returns the on-disk case for another spelling:
+ * decided by trying, not by OS. A case-insensitive volume is not enough
+ * (Linux casefold mounts answer with the case given), so ask realpath itself.
+ */
 const caseInsensitiveTemp = (() => {
   const probe = mkdtempSync(join(tmpdir(), 'station-case-probe-'));
   try {
     mkdirSync(join(probe, 'CaseProbe'));
-    return existsSync(join(probe, 'caseprobe'));
+    try {
+      return realpathSync
+        .native(join(probe, 'caseprobe'))
+        .endsWith(`${sep}CaseProbe`);
+    } catch {
+      return false;
+    }
   } finally {
     rmSync(probe, { recursive: true, force: true });
   }
@@ -851,7 +860,7 @@ describe("a done Task's lessons are promoted by a person, never by an agent", ()
   });
 
   test.skipIf(!caseInsensitiveTemp)(
-    'a pending promotion whose store is registered in another letter case is the same store on a case-insensitive volume (review round 7; skipped where the temp filesystem is case-sensitive, since two spellings are then two directories)',
+    'a pending promotion whose store is registered in another letter case is the same store when the native realpath folds case (review round 7; skipped where it does not, since the two spellings then name two directories, or two identities)',
     async () => {
       const e = await setup();
       const { taskId } = await e.closedTaskWithLessons();
@@ -943,10 +952,46 @@ describe("a done Task's lessons are promoted by a person, never by an agent", ()
       `/api/tasks/${taskId}/room/memory/learning/promote`,
       promotionBody(root.id),
     );
-    // Not 'already-promoted' with the forged content: the store refuses the
-    // taken id, so the promotion fails and nothing forged is returned.
-    expect(promoted.json.data?.status).not.toBe('already-promoted');
+    // Not 'already-promoted' with the forged content: the id is taken by a
+    // record Task Learning did not write, and the answer says so (round 8).
+    expect(promoted.status).toBe(409);
+    expect(promoted.json).toMatchObject({
+      success: false,
+      code: 'task_learning_id_taken',
+      error: `A record not written by Task Learning already uses the id ${candidate.knowledgeRecordId}. Remove it from the store, or remove the store. Nothing was written.`,
+    });
     expect(JSON.stringify(promoted.json)).not.toContain('Not what the Task');
+  });
+
+  test('a person cannot create a record as Task Learning through the records route, so a candidate stays open (review round 8)', async () => {
+    const e = await setup();
+    const { taskId } = await e.closedTaskWithLessons();
+    const root = await e.createProjectStore();
+    const candidate = (await e.learning(taskId)).candidates.find(
+      (c: any) => c.record.key === 'storage-engine',
+    );
+    const forged = await e.asOperator(
+      'POST',
+      `/api/knowledge/roots/${root.id}/records`,
+      {
+        id: candidate.knowledgeRecordId,
+        type: 'raw',
+        title: 'Forged',
+        body: 'Not what the Task decided.',
+        category: 'task-learning.decisions',
+        provenance: {
+          agent: 'station-task-learning',
+          note: `task: ${taskId}`,
+        },
+      },
+    );
+    expect(forged.status).toBe(400);
+    expect(forged.json.error).toBe(
+      'provenance.agent "station-task-learning" is reserved for Station\'s Task Learning.',
+    );
+    expect(await reviewOf(e, taskId)).toEqual({ state: 'open' });
+    const adapter = await e.knowledge.adapterFor(root.id);
+    expect(await adapter.listByType('raw')).toEqual([]);
   });
 
   test("a Learning route failure reaches the runtime's logger (review round 7)", async () => {

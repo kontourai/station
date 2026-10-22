@@ -359,6 +359,12 @@ in Needs you and in the lead's next `get_task_brief`.
   `thread inbox entry not delivered` with the entry key (`tq-…`), state and
   reason code. Nothing retries it, and the question still shows in Needs
   you.
+- **A candidate's id taken by another record is a dead end.** If a record
+  not written by Task Learning already uses a version's knowledge-record
+  id in its store, promote answers `409 task_learning_id_taken`, naming the
+  id, and a recorded promotion keeps the version from being dismissed. The
+  way out is outside Task Learning: remove that record from the store, or
+  remove the store. Station adds no other escape for it.
 - **Revisions and versions are unbounded in count.** Each summary write and
   each record action adds a row, and nothing caps how many a Task
   accumulates. Every row's size is bounded, the brief shows only the newest
@@ -408,7 +414,9 @@ step.
   **promoted** whenever its record is in any of the Project's current
   stores; a record counts only if this process wrote it for this Task
   (`provenance.agent` is `station-task-learning` and its note names the
-  Task), since a person can create a record under any id. Otherwise, with a promotion row, it is
+  Task), since a person can create a record under any id. That agent is
+  reserved: the knowledge records route refuses a create naming it (400),
+  because Task Learning writes in process through the store's adapter. Otherwise, with a promotion row, it is
   **pending** when the pinned store is still one of the Project's, offering
   only to finish the promotion there, or a closed review when it is not,
   which is never offered again and says nothing about whether the record
@@ -417,8 +425,8 @@ step.
   store is compared by adapter and by its directory's identity: absolute,
   without trailing separators, and through the native `realpath` when the
   directory exists, so `/tmp` and `/private/tmp`, a trailing `/`, a `./`
-  segment or, on a case-insensitive volume, another letter case name one
-  store. Registration keeps the path as given. "Promoted" in the candidate list is read back from
+  segment or, on macOS and Windows case-insensitive volumes, another letter
+  case name one store. Registration keeps the path as given. "Promoted" in the candidate list is read back from
   the stores. A later version of the same key is a new candidate.
 - **Dismissals** are kept as an append-only row per dismissed record version
   (`task_learning_dismissals`, migration 021).

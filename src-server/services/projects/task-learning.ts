@@ -90,6 +90,8 @@ export type TaskLearningRefusal =
   /** A promotion of this version stands; it cannot be dismissed. */
   | { readonly kind: 'was-promoted' }
   | { readonly kind: 'no-store' }
+  /** A record not written by Task Learning already uses this version's id. */
+  | { readonly kind: 'id-taken'; readonly recordId: string }
   /** The version's promotion is recorded for a store the Project no longer has. */
   | { readonly kind: 'promotion-store-gone' }
   | { readonly kind: 'invalid'; readonly field: 'title' | 'text' }
@@ -470,6 +472,10 @@ export async function promoteTaskLearning(
       // refuses an existing id, so read back the record it wrote.
       const raced = await findPromoted(store, [target], id, access.task.id);
       if (raced) return { kind: 'already-promoted', ...raced };
+      // Another writer's record holds the id: the store will refuse every
+      // retry, so say so instead of 'try again' (review round 8).
+      const holder = await adapter.get(id);
+      if (holder?.id === id) return { kind: 'id-taken', recordId: id };
       throw error;
     }
     const written = await adapter.get(id);

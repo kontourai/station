@@ -69,6 +69,7 @@ import {
   ReadOnlyStoreError,
   SlugConflictError,
 } from '../../knowledge-store/errors.js';
+import { TASK_LEARNING_PROVENANCE_AGENT } from '../../services/projects/task-learning.js';
 import { errorMessage } from '../schemas/schemas.js';
 import { projectKnowledgePersistenceError } from './knowledge-persistence-errors.js';
 
@@ -246,6 +247,19 @@ export function createKnowledgeRecordRoutes(deps: KnowledgeRecordRouteDeps) {
       ) {
         return c.json(
           { success: false, error: 'Invalid provenance.agent' },
+          400,
+        );
+      }
+      // Reserved (#4003 review round 8): Task Learning writes its records
+      // in process through the store's adapter, never through this route,
+      // so a request naming its agent is someone claiming to be it.
+      if (provenance.agent === TASK_LEARNING_PROVENANCE_AGENT) {
+        return c.json(
+          {
+            success: false,
+            error:
+              'provenance.agent "station-task-learning" is reserved for Station\'s Task Learning.',
+          },
           400,
         );
       }

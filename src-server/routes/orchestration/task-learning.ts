@@ -109,6 +109,15 @@ function refusal(c: Context, refused: TaskLearningRefusal) {
         },
         409,
       );
+    case 'id-taken':
+      return c.json(
+        {
+          success: false,
+          code: 'task_learning_id_taken',
+          error: `A record not written by Task Learning already uses the id ${refused.recordId}. Remove it from the store, or remove the store. Nothing was written.`,
+        },
+        409,
+      );
     case 'promotion-store-gone':
       return c.json(
         {
