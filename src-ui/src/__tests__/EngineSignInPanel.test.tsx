@@ -10,11 +10,12 @@ import {
 } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 
-const scope = {
+const initialScope = {
   apiBase: 'https://sign-in.example.test',
   authorityKey: 'operator-test',
   isCurrent: () => true,
 };
+let scope: typeof initialScope | undefined = initialScope;
 vi.mock('../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => scope,
 }));
@@ -41,6 +42,7 @@ afterEach(() => {
   setClientCredentialResolver(undefined);
   openLink.mockClear();
   presentation = { deviceClass: 'host', hostName: 'studio' };
+  scope = initialScope;
 });
 
 type Call = { path: string; method: string; body?: string };
@@ -59,7 +61,7 @@ function serve(
       headers: { 'Content-Type': 'application/json' },
     });
   setClientCredentialResolver(() => ({
-    origin: scope.apiBase,
+    origin: scope?.apiBase ?? initialScope.apiBase,
     requestAuthority: scope,
     transport: async (url, init) => {
       const u = new URL(String(url));
@@ -300,3 +302,116 @@ test('"Setup required" offers the sign-in, and reads nothing until it is opened'
   expect(await screen.findByText('Not checked')).toBeTruthy();
   expect(calls[0]?.path).toBe('/acp/connections/pi/sign-in');
 });
+
+test.each(['connection', 'authority', 'host', 'disconnect'] as const)(
+  'switching %s resets discovery and unsaved key drafts',
+  async (change) => {
+    const checks: string[] = [];
+    const writes: { identity: string; body: unknown }[] = [];
+    const discovered = new Set<string>();
+    setClientCredentialResolver(() => ({
+      origin: scope?.apiBase ?? initialScope.apiBase,
+      requestAuthority: scope,
+      transport: async (url, init) => {
+        const path = new URL(String(url)).pathname;
+        const connectionId = path.split('/')[3];
+        const identity = JSON.stringify([
+          scope?.apiBase,
+          scope?.authorityKey,
+          connectionId,
+        ]);
+        if (path.endsWith('/sign-in/check')) {
+          checks.push(identity);
+          discovered.add(identity);
+        }
+        if (init?.method === 'PUT')
+          writes.push({ identity, body: JSON.parse(String(init.body)) });
+        const view = {
+          ...baseView,
+          connectionId,
+          engineName: connectionId,
+          methods: discovered.has(identity) ? [] : undefined,
+          credentials: [{ name: 'SHARED_API_KEY', configured: false }],
+        };
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: path.endsWith('/sign-in/attempt') ? null : view,
+          }),
+          { headers: { 'Content-Type': 'application/json' } },
+        );
+      },
+    }));
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: { retry: false },
+        mutations: { retry: false },
+      },
+    });
+    const panel = (connectionId: string) => (
+      <QueryClientProvider client={client}>
+        <EngineSignInPanel connectionId={connectionId} />
+      </QueryClientProvider>
+    );
+    const mounted = render(panel('pi'));
+    const input = (await screen.findByLabelText(
+      'SHARED_API_KEY',
+    )) as HTMLInputElement;
+    await waitFor(() => expect(checks).toHaveLength(1));
+    fireEvent.change(input, { target: { value: 'unsaved-fixture-draft' } });
+    let nextConnection = 'pi';
+    if (change === 'connection') nextConnection = 'goose';
+    else if (change === 'authority')
+      scope = { ...initialScope, authorityKey: 'different-operator' };
+    else if (change === 'host')
+      scope = {
+        ...initialScope,
+        apiBase: 'https://other-sign-in.example.test',
+      };
+    else {
+      scope = undefined;
+      mounted.rerender(panel('pi'));
+      expect(screen.queryByLabelText('SHARED_API_KEY')).toBeNull();
+      scope = initialScope;
+    }
+    if (change !== 'disconnect')
+      client.setQueryData(
+        [
+          'engine-sign-in',
+          scope?.apiBase,
+          scope?.authorityKey,
+          nextConnection,
+          'view',
+        ],
+        {
+          ...baseView,
+          connectionId: nextConnection,
+          engineName: nextConnection,
+          methods: undefined,
+          credentials: [{ name: 'SHARED_API_KEY', configured: false }],
+        },
+      );
+    mounted.rerender(panel(nextConnection));
+    const nextInput = (await screen.findByLabelText(
+      'SHARED_API_KEY',
+    )) as HTMLInputElement;
+    expect(nextInput.value).toBe('');
+    if (change !== 'disconnect')
+      await waitFor(() => expect(checks).toHaveLength(2));
+    expect(writes).toEqual([]);
+    fireEvent.change(nextInput, { target: { value: 'new-fixture-key' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save key' }));
+    await waitFor(() =>
+      expect(writes).toEqual([
+        {
+          identity: JSON.stringify([
+            scope?.apiBase,
+            scope?.authorityKey,
+            nextConnection,
+          ]),
+          body: { value: 'new-fixture-key' },
+        },
+      ]),
+    );
+  },
+);

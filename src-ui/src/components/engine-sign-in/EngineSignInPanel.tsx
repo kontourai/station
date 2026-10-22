@@ -218,31 +218,37 @@ export function EngineSignInPanel({
   onSignedIn?: () => void;
 }) {
   const scope = useHostRequestAuthorityScope();
-  const presentation = useDevicePresentation();
-  const enabled = !!scope;
-  const view = useEngineSignInQuery(
-    connectionId,
-    scope ?? { apiBase: '', authorityKey: '' },
-    enabled,
+  if (!scope) return null;
+  return (
+    <ScopedEngineSignInPanel
+      key={JSON.stringify([scope.apiBase, scope.authorityKey, connectionId])}
+      connectionId={connectionId}
+      scope={scope}
+      onSignedIn={onSignedIn}
+    />
   );
+}
+
+function ScopedEngineSignInPanel({
+  connectionId,
+  scope,
+  onSignedIn,
+}: {
+  connectionId: string;
+  scope: NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
+  onSignedIn?: () => void;
+}) {
+  const presentation = useDevicePresentation();
+  const view = useEngineSignInQuery(connectionId, scope, true);
   const signInAllowed = view.data?.allowed.signIn === true;
   const attempt = useEngineSignInAttemptQuery(
     connectionId,
-    scope ?? { apiBase: '', authorityKey: '' },
-    enabled && signInAllowed,
+    scope,
+    signInAllowed,
   );
-  const check = useEngineSignInCheckMutation(
-    connectionId,
-    scope ?? { apiBase: '', authorityKey: '' },
-  );
-  const signIn = useEngineSignInMutation(
-    connectionId,
-    scope ?? { apiBase: '', authorityKey: '' },
-  );
-  const credential = useEngineCredentialMutation(
-    connectionId,
-    scope ?? { apiBase: '', authorityKey: '' },
-  );
+  const check = useEngineSignInCheckMutation(connectionId, scope);
+  const signIn = useEngineSignInMutation(connectionId, scope);
+  const credential = useEngineCredentialMutation(connectionId, scope);
 
   // Read the engine's sign-in methods once if this Station has not yet.
   const autoChecked = useRef(false);
@@ -271,7 +277,6 @@ export function EngineSignInPanel({
     }
   }, [current, check, onSignedIn]);
 
-  if (!scope) return null;
   if (view.isLoading)
     return (
       <section className="engine-sign-in" aria-label="Sign-in">
