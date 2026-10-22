@@ -500,7 +500,6 @@ jobs:
       bundle_version: ${{ needs.plan-cohort.outputs.bundle_version }}
       release_label: nightly-${{ needs.plan-cohort.outputs.bundle_version }}
       web_build_version: ${{ needs.plan-cohort.outputs.web_build_version }}
-      mobile_endpoint: ${{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_NIGHTLY }}
       update_feed_url: ${{ vars.NATIVE_APP_UPDATE_FEED_URL }}
       update_provider_origin: ${{ vars.NATIVE_APP_UPDATE_PROVIDER_ORIGIN }}
       update_action_url: ${{ vars.NATIVE_APP_UPDATE_ACTION_URL }}

@@ -179,7 +179,8 @@ export function useAuth(): SDKAuthState {
 
 export function useConfig() {
   const sdk = useContext(SDKContext);
-  if (!sdk?.contexts?.config) throw new Error('ConfigContext not available');
+  if (!sdk?.contexts?.config?.useConfig)
+    throw new Error('ConfigContext.useConfig not available');
   return sdk.contexts.config.useConfig();
 }
 

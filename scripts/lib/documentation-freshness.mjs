@@ -28,6 +28,7 @@ import {
   readReviewState,
   readReviewStateAt,
 } from './review-ledger-store.mjs';
+import { redactReviewNoteHosts } from './review-note-privacy.mjs';
 
 /**
  * One owner decides when a stale recorded review or capture blocks (#2923).
@@ -297,6 +298,22 @@ export function appendOnlyNoteProblems(root, mergeBase, { from, to }) {
       continue;
     }
     for (const file of files) moved.add(file);
+  }
+  // Privacy redactions retain the original review context and every byte
+  // outside recognized private hostnames. Reworded claims and removed inputs
+  // cannot satisfy this exact transformation, nor can an edited archive.
+  const removedNotes = baseNotes.filter(
+    (file) => !reader.exists(file) && !moved.has(file),
+  );
+  const atBase = blobs(mergeBase, removedNotes);
+  for (const [index, file] of removedNotes.entries()) {
+    const redacted = redactReviewNoteHosts(file, atBase[index]);
+    if (
+      redacted &&
+      reader.exists(redacted.file) &&
+      reader.read(redacted.file).toString('utf8') === redacted.text
+    )
+      moved.add(file);
   }
   const currentNotes = new Set(listReviewNoteFilesAt(root, 'HEAD'));
   for (const file of baseNotes)

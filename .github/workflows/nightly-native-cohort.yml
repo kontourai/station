@@ -349,7 +349,6 @@ jobs:
       marketing_version: ${{ inputs.marketing_version }}
       bundle_version: ${{ inputs.bundle_version }}
       release_label: nightly-${{ inputs.bundle_version }}
-      mobile_endpoint: ${{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_NIGHTLY }}
       update_feed_url: ${{ vars.NATIVE_APP_UPDATE_FEED_URL }}
       update_provider_origin: ${{ vars.NATIVE_APP_UPDATE_PROVIDER_ORIGIN }}
       update_action_url: ${{ vars.NATIVE_APP_UPDATE_ACTION_URL }}

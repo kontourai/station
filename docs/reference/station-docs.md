@@ -323,7 +323,7 @@ Reaching another Station is a relationship you set up deliberately — pairing a
 
 Station's core owns durable product and authorization behavior as well as runtime composition, streaming, routing, and provider registration. Plugins add capabilities and work surfaces at the published extension boundaries.
 
-A plugin is manifest-driven and can declare layouts, Agents, MCP integrations, providers, knowledge namespaces, engine connections, branding, and settings. Declaring a contribution is not authority to activate it: validation, permissions, grants, and host admission apply. Plugin authors use the published SDK and contracts; private core capabilities are not automatically available to a plugin.
+A plugin is manifest-driven and can declare layouts, Agents, MCP integrations, providers, knowledge namespaces, engine connections, branding, and settings. Declaring a contribution is not authority to activate it: validation, permissions, grants, and host admission apply. Plugin authors build on core capabilities through the public SDK and extension contracts. The default in-process host connects configuration, models, conversation lists and chat state to their core owners; host bindings do not grant extra authority. See the SDK reference for exact bindings, remaining gaps and isolated-frame limits.
 
 The registry is the unified place to browse and install agents, skills, integrations, and plugins (a plugin only with a person’s approval of its preview), with an install lifecycle that includes updates and removal. Installs can route through approval, because installing something is a platform mutation like any other.
 

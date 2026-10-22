@@ -58,7 +58,7 @@ describe('capability report carries the dev-build flag across the adapter', () =
 
     expect(result.status === 'ok' && result.value.channel).toBe('beta');
   });
-  it('preserves a trusted mobile build-default HTTPS origin', async () => {
+  it('drops legacy build-default connection metadata from the native host', async () => {
     const result = await adapterReporting({
       platform: 'android',
       channel: 'beta',
@@ -67,31 +67,11 @@ describe('capability report carries the dev-build flag across the adapter', () =
       mobileDefaultEndpoint: 'https://station.example.test:8442',
     }).getCapabilityReport();
 
-    expect(result.status === 'ok' && result.value.mobileDefaultEndpoint).toBe(
-      'https://station.example.test:8442',
-    );
+    expect(result.status).toBe('ok');
+    if (result.status !== 'ok') throw new Error('Expected a valid report');
+    expect(result.value).not.toHaveProperty('mobileDefaultEndpoint');
   });
 
-  it.each([
-    'tauri://localhost',
-    'http://100.64.0.1:28141',
-    'https://user:secret@station.example.test',
-    'https://station.example.test/path',
-  ])(
-    'drops an unsafe mobile build default without rejecting the report: %s',
-    async (endpoint) => {
-      const result = await adapterReporting({
-        platform: 'android',
-        capabilities: CAPABILITIES,
-        mobileDefaultEndpoint: endpoint,
-      }).getCapabilityReport();
-
-      expect(result.status).toBe('ok');
-      expect(
-        result.status === 'ok' && result.value.mobileDefaultEndpoint,
-      ).toBeUndefined();
-    },
-  );
   it('preserves devBuild: true from the host', async () => {
     const result = await adapterReporting({
       platform: 'android',

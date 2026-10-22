@@ -35,8 +35,8 @@ const AGENTS = [
     slug: 'codex',
     // Long on purpose: the composer's Agent chip must end it in an ellipsis
     // inside the chip on a phone, not run it under the caret.
-    name: 'Codex · via CLIProxyAPI (brian-media · Claude + Codex)',
-    description: 'Direct chat using Codex (brian-media proxy).',
+    name: 'Codex · via CLIProxyAPI (remote-host · Claude + Codex)',
+    description: 'Direct chat using Codex (remote-host proxy).',
     source: 'local',
     execution: {
       agentConnectionId: 'codex',
@@ -137,7 +137,7 @@ async function seedRoutes(
               type: textOnly ? 'acp' : 'codex',
               name: textOnly
                 ? 'Hypothetical text-only runtime'
-                : 'Codex (brian-media proxy)',
+                : 'Codex (remote-host proxy)',
               enabled: true,
               // Only the hypothetical runtime refuses images. Real Codex and
               // Claude Code adapters both declare image-input.

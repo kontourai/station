@@ -598,7 +598,7 @@
       }
     ]
   },
-  "galleryCommand": "PLAYWRIGHT_BROWSERS_PATH=/Users/brian/Library/Caches/ms-playwright npm run test:e2e:screenshot -- --screens=telemetry-lite-notice-desktop,telemetry-lite-notice-mobile,telemetry-outbox-desktop,telemetry-outbox-mobile,telemetry-feedback-desktop,telemetry-feedback-mobile",
+  "galleryCommand": "PLAYWRIGHT_BROWSERS_PATH=${HOME}/Library/Caches/ms-playwright npm run test:e2e:screenshot -- --screens=telemetry-lite-notice-desktop,telemetry-lite-notice-mobile,telemetry-outbox-desktop,telemetry-outbox-mobile,telemetry-feedback-desktop,telemetry-feedback-mobile",
   "beforeImages": {
     "scope": "Diagnostic working-tree captures before dock-clearance repair; no committed source SHA is asserted.",
     "files": [

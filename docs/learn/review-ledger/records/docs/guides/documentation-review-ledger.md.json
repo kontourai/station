@@ -30,7 +30,9 @@
 
     "scripts/lib/review-history.mjs",
 
-    "scripts/lib/review-git.mjs"
+    "scripts/lib/review-git.mjs",
+
+    "scripts/lib/review-note-privacy.mjs"
   ],
 
   "checks": [

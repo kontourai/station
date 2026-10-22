@@ -53,11 +53,13 @@ import {
   serializeRecordFile,
   writeReviewFiles,
 } from './lib/review-ledger-store.mjs';
+import { redactReviewNoteHosts } from './lib/review-note-privacy.mjs';
 
 const USAGE = [
   'Usage: docs:review:record -- <path> --note "<review note>" [--drop-source <path>]... [--add-source <path>]... [--rereview] [--json]',
   '       docs:review:record -- --batch <file.json>',
   '       docs:review:record -- --advance-baseline',
+  '       docs:review:record -- --redact-private-hosts <note-file>...',
   '       docs:review:record -- --show-delta [<path>...]',
   '       docs:review:record -- --verify-bindings [<path>...]',
 ].join('\n');
@@ -107,7 +109,8 @@ export function parseRecordArguments(argv) {
     else if (
       arg === '--show-delta' ||
       arg === '--verify-bindings' ||
-      arg === '--advance-baseline'
+      arg === '--advance-baseline' ||
+      arg === '--redact-private-hosts'
     ) {
       if (mode !== 'record')
         throw reviewError(
@@ -964,6 +967,36 @@ export async function main(argv = process.argv.slice(2)) {
   const json = argv.includes('--json');
   const parsed = parseRecordArguments(argv);
   const root = git(process.cwd(), ['rev-parse', '--show-toplevel']).trim();
+  if (parsed.mode === 'redact-private-hosts') {
+    if (!parsed.paths.length) throw reviewError('usage', USAGE);
+    const { parsed: files } = readReviewFiles(root);
+    const before = serializeLedgerFiles(files);
+    const after = new Map();
+    for (const file of parsed.paths) {
+      if (
+        !files.notes.some(
+          (note) => note.file === file && note.archive === undefined,
+        )
+      )
+        throw reviewError('usage', `Expected a loose review note: ${file}`);
+      const redacted = redactReviewNoteHosts(file, before.get(file));
+      if (!redacted) continue;
+      after.set(file, undefined);
+      after.set(redacted.file, redacted.text);
+    }
+    const proposed = new Map(before);
+    for (const [file, text] of after)
+      if (text === undefined) proposed.delete(file);
+      else proposed.set(file, text);
+    parseReviewLedgerFiles(proposed);
+    writeReviewFiles(root, after, before);
+    console.log(
+      json
+        ? JSON.stringify({ redacted: after.size / 2 })
+        : `Redacted private hosts in ${after.size / 2} review note(s); original review context retained.`,
+    );
+    return;
+  }
   if (parsed.mode === 'advance-baseline') {
     if (git(root, ['status', '--porcelain']).trim())
       throw reviewError(

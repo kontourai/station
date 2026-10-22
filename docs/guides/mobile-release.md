@@ -30,6 +30,19 @@ candidate source SHA, IPA digest, app ID, build ID, and build number. A new
 upload and an already-existing provider build have different provenance: see
 the receipt boundary at the end of this guide.
 
+## Connection setup
+
+Mobile artifacts contain no default Station backend address. Dev, Nightly,
+Beta, and Stable builds use runtime pairing or an explicitly configured saved
+connection. CI does not need access to a personal Station or tailnet to build
+the app, and a release variable must not supply a backend address.
+
+The removed `STATION_MOBILE_DEFAULT_ENDPOINT` build setting and
+`mobile_endpoint` workflow input are no longer supported. Existing installed
+apps and retained artifacts keep their original bytes; this change applies
+when a new app is built and installed. Saved runtime connections remain local
+to the device.
+
 ## Native app update feed
 
 **TestFlight/App Store is the authoritative iOS update path.** Stable, Beta,

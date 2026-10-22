@@ -2203,8 +2203,8 @@ describe('environment-security verbs honor saved Stations (station#4515)', () =>
     const localHome = join(stationRoot, 'homes', 'local');
     const localApiBase = 'http://127.0.0.1:43141';
     upsertProfile({
-      name: 'brian-media',
-      endpoint: 'https://brian-media.example.test',
+      name: 'remote-host',
+      endpoint: 'https://remote-host.example.test',
       setupSource: 'paired',
       configurationState: 'configured',
       makeDefault: true,

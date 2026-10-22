@@ -43,9 +43,10 @@ Station brings several parts of agent work into one workspace:
 - **Local-first ownership** — Station data lives under `~/.station` by
   default. Networked features have separate settings and destinations;
   review those boundaries under [Data and privacy](#data-and-privacy).
-- **Built to extend** — plugins add layouts, agents, tools, knowledge,
-  connections, skills, and work surfaces through the public SDK and extension
-  contracts. Private core services are not part of that plugin API.
+- **Built to extend** — build on Station's core capabilities through its public
+  SDK and plugin APIs. Add layouts, agents, tools, knowledge, connections, skills,
+  and work surfaces to shape the workspace around your work. Start with the
+  included experience and extend it with your own plugins.
 
 ## What people use it for
 

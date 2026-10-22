@@ -51,6 +51,7 @@ vi.mock('../../contexts/ApiBaseContext', () => ({
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({}) }));
 vi.mock('../../contexts/ActiveChatsContext', () => ({
   useActiveChatActions: () => ({}),
+  useActiveChatState: () => null,
 }));
 vi.mock('../../hooks/useActiveChatSessions', () => ({
   useSendMessage: () => vi.fn(),

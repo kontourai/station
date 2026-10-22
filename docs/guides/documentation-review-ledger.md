@@ -212,13 +212,13 @@ store in file-name order, so compaction changes no compiled output; a note
 stored both loose and archived is refused with `duplicate-note`, and an archive
 whose bytes are not the serializer's with `not-canonical`.
 
-Five guards sit on top of the layout (#3036, #3394):
+Six guards sit on top of the layout (#3036, #3394):
 
 - **Notes are append-only.** Scoped freshness compares the note files at the
   merge base with the working tree and blocks with `note-removed` for each one
   that is gone, whether deleted outright or rewritten under a new hash name.
   Re-record with `docs:review:record` instead; that adds a note. The one
-  exception is compaction: a removed note passes only when the archive the
+  storage exception is compaction: a removed note passes when the archive the
   advance writes holds it. The merge base fully determines that archive, so
   any other added archive blocks with `archive-unbacked`: it must be named for
   the merge base's coverage baseline, the same change must advance
@@ -226,6 +226,14 @@ Five guards sit on top of the layout (#3036, #3394):
   exactly the merge base's loose notes that were in the tree at that baseline,
   with their exact merge-base bytes. No PR can therefore take the name the
   next advance will write.
+- **Private hosts can be redacted from loose notes.** Run
+  `npm run docs:review:record -- --redact-private-hosts <note-file>...` to replace
+  recognized private hostnames in review prose with `[private host]`. The
+  original revision, reviewed paths, inputs and timestamp stay exact; the
+  filename receives the new content hash. Scoped freshness accepts only that
+  deterministic transformation of the merge-base note. Other prose changes,
+  changed evidence claims or inputs, and deleted notes without the exact
+  replacement still fail. This does not redact Git history or immutable archives.
 - **Archives are immutable.** An archive at the merge base must keep its exact
   bytes in HEAD and the working tree; a modified or removed archive blocks with
   `archive-changed`.

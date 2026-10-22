@@ -1,9 +1,12 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { generateKeyPairSync } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { load } from 'js-yaml';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import { iosTestFlightChannel } from '../ios-testflight-channel.mjs';
+import { runBoundedFixture } from './helpers/bounded-fixture-process.mjs';
 
 // The TestFlight delivery builds the Live Activity (#2513 slice D) for the
 // channels whose table entry names a widget extension. These pin how the
@@ -81,6 +84,55 @@ const BUILD = 'Build signed and channel-audited iOS package';
 const VERIFY = 'Verify IPA identity, profile and package contents';
 const LIVE = "steps.live_activity.outputs.enabled == 'true'";
 const NOTIFICATION = 'if [ "$NOTIFICATION_SERVICE" = true ]; then';
+
+// Independent prerequisites: deriving these from the guard hid the hosted
+// missing-endpoint failure by supplying whatever the guard happened to require.
+const signingPrerequisites = {
+  APPLE_API_KEY_ID: 'fixture-key',
+  APPLE_API_ISSUER_ID: 'fixture-issuer',
+  APPLE_API_PRIVATE_KEY: 'fixture-key-material',
+  APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64: 'fixture-certificate',
+  APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: 'fixture-password',
+  APPLE_DEVELOPMENT_TEAM: 'ABCDE12345',
+  APPLE_SIGNING_IDENTITY: 'Apple Distribution: Example',
+  APPLE_PROVISIONING_PROFILE_BASE64: 'fixture-profile',
+  TESTFLIGHT_INTERNAL_GROUP_ID: 'fixture-group',
+  VITE_NATIVE_APP_UPDATE_CHANNEL: 'nightly',
+  VITE_NATIVE_APP_VERSION: '1.2.3',
+};
+function endpointFreeEnvironment(overrides: NodeJS.ProcessEnv = {}) {
+  const env = { ...process.env, ...overrides };
+  for (const key of Object.keys(env))
+    if (key.startsWith('STATION_MOBILE_DEFAULT_ENDPOINT')) delete env[key];
+  env.PATH = `${dirname(process.execPath)}${process.platform === 'win32' ? ';' : ':'}${env.PATH ?? ''}`;
+  return env;
+}
+function channelPrerequisites(channel: string) {
+  const enabled = Boolean(iosTestFlightChannel(channel).agentActivityBundleId);
+  return {
+    ...signingPrerequisites,
+    VITE_NATIVE_APP_UPDATE_CHANNEL: channel,
+    APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64: enabled
+      ? 'fixture-widget-profile'
+      : '',
+    APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64: enabled
+      ? 'fixture-notification-profile'
+      : '',
+  };
+}
+function admissionScript(channel: string) {
+  const enabled = String(
+    Boolean(iosTestFlightChannel(channel).agentActivityBundleId),
+  );
+  const script = run(SECRETS)
+    .replaceAll(`\${{ steps.live_activity.outputs.enabled }}`, enabled)
+    .replaceAll(
+      `\${{ steps.live_activity.outputs.notification_enabled }}`,
+      enabled,
+    );
+  expect(script).not.toContain(`\${{`);
+  return script;
+}
 
 describe('TestFlight delivery builds the Live Activity where the channel names one', () => {
   it('derives the switch from the channel table before anything checks or signs', () => {
@@ -226,7 +278,7 @@ describe('TestFlight delivery builds the Live Activity where the channel names o
       'if [ "$LIVE_ACTIVITY" = true ]; then',
     );
     expect(step.run).toContain(
-      'mobileCargoConfig(process.env.STATION_MOBILE_DEFAULT_ENDPOINT, { liveActivity: process.env.LIVE_ACTIVITY === "true" })',
+      'mobileCargoConfig({ liveActivity: process.env.LIVE_ACTIVITY === "true" })',
     );
     expect(step.run).toContain(
       'grep -Fq \'STATION_IOS_LIVE_ACTIVITY\' "$RUNNER_TEMP/station-ios-mobile-env.toml"',
@@ -349,53 +401,154 @@ describe('TestFlight delivery builds the Live Activity where the channel names o
       check,
       `if [ '\${{ steps.live_activity.outputs.notification_enabled }}' = true ]; then`,
     );
-    const requiredNames = secrets.match(/for name in ([^;]+); do/)?.[1];
-    expect(requiredNames).toBeDefined();
-    const requiredEnv = Object.fromEntries(
-      (requiredNames as string).split(' ').map((name) => [name, 'present']),
-    );
-    for (const [channel, enabled] of [
-      ['beta', 'true'],
-      ['nightly', 'true'],
-      ['stable', 'false'],
-    ]) {
-      const script = secrets
-        .replaceAll(`\${{ steps.live_activity.outputs.enabled }}`, enabled)
-        .replaceAll(
-          `\${{ steps.live_activity.outputs.notification_enabled }}`,
-          enabled,
-        );
-      expect(script, channel).not.toContain(`\${{`);
-      for (const secret of ['', 'present']) {
-        const result = spawnSync('bash', ['-c', script], {
+  });
+
+  it.each(['stable', 'beta', 'nightly'])(
+    'admits %s signing without a mobile endpoint and still rejects missing protected prerequisites',
+    async (channel) => {
+      const env = endpointFreeEnvironment(channelPrerequisites(channel));
+      expect(env).not.toHaveProperty('STATION_MOBILE_DEFAULT_ENDPOINT');
+      const script = admissionScript(channel);
+      const admitted = await runBoundedFixture('bash', ['-e', '-c', script], {
+        cwd: root,
+        env,
+      });
+      expect(admitted.status, admitted.stderr).toBe(0);
+      const required = Object.entries(channelPrerequisites(channel))
+        .filter(([, value]) => value !== '')
+        .map(([name]) => name);
+      for (const name of required) {
+        const rejected = await runBoundedFixture('bash', ['-e', '-c', script], {
           cwd: root,
-          env: {
-            ...process.env,
-            ...requiredEnv,
-            APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64: 'present',
-            APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64: secret,
-          },
-          encoding: 'utf8',
-          windowsHide: true,
+          env: { ...env, [name]: '' },
         });
+        expect(rejected.status, `${channel}: missing ${name}`).toBe(1);
+        expect(rejected.stderr).toContain(
+          `Missing required protected channel value: ${name}`,
+        );
+      }
+    },
+  );
+
+  it.each(['stable', 'beta', 'nightly'])(
+    'writes endpoint-free Cargo configuration through the %s package build command',
+    async (channel) => {
+      const lines = run(BUILD)
+        .split('\n')
+        .filter((line) => line.includes('mobileCargoConfig('));
+      expect(lines).toHaveLength(1);
+      const directory = makeTempDir('station-endpoint-free-cargo-');
+      const result = await runBoundedFixture('bash', ['-e', '-c', lines[0]], {
+        cwd: join(root, 'src-desktop'),
+        env: endpointFreeEnvironment({
+          RUNNER_TEMP: directory,
+          LIVE_ACTIVITY: String(
+            Boolean(iosTestFlightChannel(channel).agentActivityBundleId),
+          ),
+        }),
+      });
+      expect(result.status, result.stderr).toBe(0);
+      const config = readFileSync(
+        join(directory, 'station-ios-mobile-env.toml'),
+        'utf8',
+      );
+      expect(config).toBe(
+        channel === 'stable'
+          ? ''
+          : '[env]\nSTATION_IOS_LIVE_ACTIVITY = { value = "1", force = true }\n',
+      );
+    },
+  );
+
+  it.each(['stable', 'beta', 'nightly'])(
+    'admits %s app authority in build and upload without an endpoint while retaining API credential checks',
+    async (channel) => {
+      const directory = makeTempDir('station-endpoint-free-app-authority-');
+      mkdirSync(join(directory, 'provider-receipts'));
+      const preload = join(directory, 'provider-fixture.mjs');
+      const requests = join(directory, 'provider-requests.log');
+      const identity = iosTestFlightChannel(channel);
+      const privateKey = generateKeyPairSync('ec', { namedCurve: 'prime256v1' })
+        .privateKey.export({ type: 'pkcs8', format: 'pem' })
+        .toString();
+      writeFileSync(
+        preload,
+        `
+        import { appendFileSync } from 'node:fs';
+        globalThis.fetch = async (input, init) => {
+          const url = new URL(input);
+          if (url.origin !== 'https://api.appstoreconnect.apple.com' || url.pathname !== '/v1/apps' || url.searchParams.get('filter[bundleId]') !== process.env.bundle_id || !init.headers.Authorization.startsWith('Bearer '))
+            throw new Error('Unexpected provider fixture request');
+          appendFileSync(process.env.FIXTURE_REQUESTS, 'app-preflight\\n');
+          return Response.json({ data: [{ type: 'apps', id: 'fixture-app', attributes: { bundleId: process.env.bundle_id, name: process.env.expected_name } }] });
+        };
+      `,
+      );
+      for (const [jobName, job] of [
+        ['build', deliver],
+        ['upload', upload],
+      ] as const) {
+        const preflight = job.steps.filter((step) => step.id === 'app_store');
+        expect(preflight, jobName).toHaveLength(1);
+        const commands = preflight[0].run
+          ?.split('\n')
+          .filter((line) => line.includes(' app-preflight '));
+        expect(commands, jobName).toHaveLength(1);
+        const command = commands![0].replace(
+          'node scripts/',
+          'node "$FIXTURE_REPO"/scripts/',
+        );
+        const env = endpointFreeEnvironment({
+          APPLE_API_ISSUER_ID: 'fixture-issuer',
+          APPLE_API_KEY_ID: 'fixture-key',
+          APPLE_API_PRIVATE_KEY: privateKey,
+          NODE_OPTIONS: `--import=${preload}`,
+          FIXTURE_REQUESTS: requests,
+          FIXTURE_REPO: root,
+          bundle_id: identity.bundleId,
+          expected_name: identity.appStoreName,
+          GITHUB_OUTPUT: join(directory, `${jobName}.out`),
+        });
+        const result = await runBoundedFixture('bash', ['-e', '-c', command], {
+          cwd: directory,
+          env,
+        });
+        expect(result.status, `${jobName}: ${result.stderr}`).toBe(0);
+        const receiptPath =
+          jobName === 'build'
+            ? 'app-store-connect-app-preflight.json'
+            : 'app-store-connect-app-preflight-upload.json';
         expect(
-          result.error,
-          `${channel}: bash failed to start`,
-        ).toBeUndefined();
-        if (enabled === 'true' && !secret) {
-          expect(result.status, `${channel}: empty NSE secret`).not.toBe(0);
-          expect(result.stderr).toContain(
-            'Missing required protected channel value: APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64',
+          JSON.parse(
+            readFileSync(
+              join(directory, 'provider-receipts', receiptPath),
+              'utf8',
+            ),
+          ),
+        ).toMatchObject({
+          kind: 'app-store-connect-app-preflight',
+          bundleId: identity.bundleId,
+          appId: 'fixture-app',
+        });
+        for (const [variable, diagnostic] of [
+          ['APPLE_API_ISSUER_ID', 'issuerId'],
+          ['APPLE_API_KEY_ID', 'keyId'],
+          ['APPLE_API_PRIVATE_KEY', 'privateKey'],
+        ]) {
+          const before = readFileSync(requests, 'utf8');
+          const rejected = await runBoundedFixture(
+            'bash',
+            ['-e', '-c', command],
+            { cwd: directory, env: { ...env, [variable]: '' } },
           );
-        } else {
-          expect(
-            result.status,
-            `${channel}: NSE secret ${secret || 'empty'}`,
-          ).toBe(0);
+          expect(rejected.status, `${jobName}: missing ${variable}`).toBe(1);
+          expect(rejected.stderr).toContain(`${diagnostic} is required`);
+          expect(readFileSync(requests, 'utf8')).toBe(before);
         }
       }
-    }
-  });
+      expect(existsSync(requests)).toBe(true);
+    },
+  );
 
   it('audits exactly the two named extensions on Beta/Nightly and none on Stable', () => {
     const step = deliver.steps[stepIndex(VERIFY)];

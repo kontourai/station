@@ -384,23 +384,6 @@ function parseCapabilityReport(value: unknown): NativeCapabilityReport | null {
     return null;
   }
 
-  let mobileDefaultEndpoint: string | undefined;
-  if (typeof candidate.mobileDefaultEndpoint === 'string') {
-    try {
-      const endpoint = new URL(candidate.mobileDefaultEndpoint);
-      if (
-        endpoint.protocol === 'https:' &&
-        !endpoint.username &&
-        !endpoint.password &&
-        endpoint.origin === candidate.mobileDefaultEndpoint
-      ) {
-        mobileDefaultEndpoint = endpoint.origin;
-      }
-    } catch {
-      // Invalid optional bootstrap metadata is ignored fail-closed. The rest
-      // of the capability report remains useful and the pairing UI remains.
-    }
-  }
   const clientBuild = parseClientBuildProvenance(candidate.clientBuild);
   const pairingDeepLinkScheme =
     typeof candidate.pairingDeepLinkScheme === 'string' &&
@@ -422,7 +405,6 @@ function parseCapabilityReport(value: unknown): NativeCapabilityReport | null {
     // absent or malformed value reads as release rather than tinting a real
     // install. Dropping it here silently disabled the dev tint entirely.
     devBuild: candidate.devBuild === true,
-    ...(mobileDefaultEndpoint ? { mobileDefaultEndpoint } : {}),
     ...(clientBuild ? { clientBuild } : {}),
     ...(pairingDeepLinkScheme ? { pairingDeepLinkScheme } : {}),
   };

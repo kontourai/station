@@ -1,0 +1,7 @@
+{
+  "revision": "effae695865a77f550e5c9bc64611d8586ddc83c",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the queue-failure fixture repair against persisted telemetry withdrawal: activation entry is observed by an event after real filesystem persistence, held transport timeout APIs are controlled during cancellation assertions, and real timers resume before shutdown. Production configuration writes, privacy fencing, acknowledgement and request deadlines are unchanged. Original short observation failed under controlled prerequisite latency; final fixture passes with that latency and omission of the persisted-configuration callback still fails privacy assertions. No live receiver or provider qualification is claimed.","inputs":["docs/reference/usage-telemetry.md","src-server/runtime/routes/__tests__/runtime-routes-usage-telemetry-late-binding.test.ts"]}
+  ]
+}

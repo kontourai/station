@@ -12,6 +12,8 @@ import {
   type ToastType,
   useProjectLayoutQuery,
   useProjectLayoutsQuery,
+  useSDK,
+  useNavigation as useSDKNavigation,
 } from '@kontourai/station-sdk';
 import {
   getPluginHeaders,
@@ -19,11 +21,16 @@ import {
 } from '@kontourai/station-sdk/client';
 import { useQuery } from '@tanstack/react-query';
 import { type ReactNode, useEffect, useId, useMemo } from 'react';
-import { useActiveChatActions } from '../contexts/ActiveChatsContext';
+import {
+  useActiveChatActions,
+  useActiveChatState,
+} from '../contexts/ActiveChatsContext';
 import { useAgents } from '../contexts/AgentsContext';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useAuth } from '../contexts/AuthContext';
+import { useConfig } from '../contexts/ConfigContext';
 import { useConversations } from '../contexts/ConversationsContext';
+import { useModels } from '../contexts/ModelsContext';
 import {
   useNavigation,
   useNavigationActions,
@@ -35,6 +42,8 @@ import {
   useOpenConversation,
   useSendMessage,
 } from '../hooks/useActiveChatSessions';
+import { useSlashCommandHandler } from '../hooks/useSlashCommandHandler';
+import { useToolApproval } from '../hooks/useToolApproval';
 import { copyToClipboard } from '../lib/clipboard';
 import { openPluginExternalLink } from '../platform/openExternalLink';
 import {
@@ -52,6 +61,16 @@ import {
 import { useSDKShortcutsHost } from './sdkShortcutsHost';
 
 const EMPTY_LAYOUTS: never[] = [];
+
+function usePluginConversations(agentSlug?: string) {
+  const navigation = useSDKNavigation();
+  return useConversations(agentSlug ?? navigation.selectedAgent ?? '');
+}
+
+function usePluginToolApproval() {
+  const { apiBase } = useSDK();
+  return useToolApproval(apiBase);
+}
 
 /** Every button a toast request names, `action` first; none is `undefined`. */
 function toastActions(request: ToastRequest): ToastAction[] | undefined {
@@ -167,7 +186,6 @@ export function SDKAdapter({
       enabled: !!selectedProject && !!selectedProjectLayout,
     },
   );
-  const conversations = useConversations(layout?.slug || '');
   const toast = useToast();
   // The public SDK has shipped both `showToast(message, type, duration)` and
   // the object form used by the first-party starters. The shell context's
@@ -246,10 +264,13 @@ export function SDKAdapter({
             useLayouts: () => layouts,
             useLayout: () => ({ data: activeLayout?.config ?? layout }),
           },
-          conversations: { useConversations: () => conversations },
+          conversations: {
+            useConversations: usePluginConversations,
+          },
+          models: { useModels, useAvailableModels: useModels },
           navigation: { useNavigation: () => sdkNavigation },
           toast: { useToast: () => sdkToast },
-          config: { useApiBase: () => ({ apiBase }) },
+          config: { useApiBase: () => ({ apiBase }), useConfig },
           auth: { useAuth: () => auth },
           host: { useHost: () => sdkHost, facts },
           ...(shortcuts ? { shortcuts } : {}),
@@ -257,11 +278,15 @@ export function SDKAdapter({
             useSendMessage: () => sendMessage,
             useCreateChatSession: () => createChatSession,
             useActiveChatActions: () => activeChatActions,
+            useActiveChatState,
             useOpenConversation: () => openConversation,
             useLaunchChat: () => launchChat,
           },
         },
-        hooks: {},
+        hooks: {
+          slashCommandHandler: useSlashCommandHandler,
+          toolApproval: usePluginToolApproval,
+        },
       }) satisfies SDKContextValue,
     [
       apiBase,
@@ -271,7 +296,6 @@ export function SDKAdapter({
       layouts,
       activeLayout?.config,
       layout,
-      conversations,
       sdkNavigation,
       sdkToast,
       sendMessage,

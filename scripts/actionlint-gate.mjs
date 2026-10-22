@@ -249,8 +249,6 @@ const NIGHTLY_JOB_ENV = Object.freeze({
   ANDROID_UPLOAD_KEY_ALIAS: '${' + '{ vars.ANDROID_UPLOAD_KEY_ALIAS }}',
   ANDROID_UPLOAD_CERT_SHA256: '${' + '{ vars.ANDROID_UPLOAD_CERT_SHA256 }}',
   ANDROID_BUILD_TOOLS_VERSION,
-  STATION_MOBILE_DEFAULT_ENDPOINT:
-    '${' + '{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_NIGHTLY }}',
 });
 /** The one place the reviewed capacity-action commit is declared.
  *

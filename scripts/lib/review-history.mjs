@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { execFileSyncBounded } from './bounded-capture.mjs';
+import { createLearningSourceReader } from './learning-source-reader.mjs';
 import { bindingDigest, bindingFile } from './review-binding.mjs';
 import { readGitObjects } from './review-git.mjs';
 import {
@@ -7,6 +8,7 @@ import {
   REVIEW_LEDGER_DIR,
   REVIEW_NOTES_DIR,
 } from './review-ledger-paths.mjs';
+import { redactReviewNoteHosts } from './review-note-privacy.mjs';
 
 function git(root, args) {
   return execFileSyncBounded('git', args, {
@@ -31,6 +33,20 @@ const addedNote = (status, file) =>
   status === 'A' &&
   file.startsWith(REVIEW_NOTES_DIR) &&
   !isNoteArchiveFile(file);
+
+// A renamed privacy redaction retains its original review introduction. Only
+// the exact same transformation accepted by append-only validation qualifies.
+function noteRedactions(changes, before) {
+  const redacted = new Map();
+  for (const { status, file } of changes) {
+    if (status !== 'D' || !addedNote('A', file)) continue;
+    const original = before(file);
+    if (original === undefined) continue;
+    const replacement = redactReviewNoteHosts(file, original);
+    if (replacement) redacted.set(replacement.file, replacement.text);
+  }
+  return redacted;
+}
 
 /** Compare human decisions across layouts, ignoring old derived bindings. */
 export function reviewDecisionChanged(before, after) {
@@ -191,8 +207,31 @@ export function deriveReviewHistory(root, state, committedNotes) {
       current.flatMap(inputs).filter((input) => input !== bindingFile(input)),
     ),
   ];
+  const committedNoteFiles = committedNotes();
+  const dirty = new Set(
+    git(root, ['diff', '--no-renames', '--name-only', '-z', 'HEAD', '--'])
+      .split('\0')
+      .filter(Boolean),
+  );
+  const reader = createLearningSourceReader(root);
+  const workingNoteChanges = [
+    ...[...dirty]
+      .filter((file) => committedNoteFiles.has(file) && !reader.exists(file))
+      .map((file) => ({ status: 'D', file })),
+    ...[
+      ...new Set(
+        current
+          .flatMap(notes)
+          .filter((note) => !committedNoteFiles.has(note.file))
+          .map((note) => note.file),
+      ),
+    ].map((file) => ({ status: 'A', file })),
+  ];
   const specs = new Set([
     'HEAD:docs/learn/media.json',
+    ...workingNoteChanges
+      .filter(({ status }) => status === 'D')
+      .map(({ file }) => `HEAD:${file}`),
     ...current.map((entry) => `HEAD:${recordPath(entry)}`),
   ]);
   for (const commit of commits) {
@@ -203,6 +242,8 @@ export function deriveReviewHistory(root, state, committedNotes) {
     }
     for (const { status, file } of commit.changes) {
       if (addedNote(status, file)) specs.add(`${commit.revision}:${file}`);
+      if (status === 'D' && addedNote('A', file))
+        specs.add(`${commit.revision}^1:${file}`);
       if (owned.has(file)) {
         specs.add(`${commit.revision}^1:${file}`);
         specs.add(`${commit.revision}:${file}`);
@@ -256,6 +297,25 @@ export function deriveReviewHistory(root, state, committedNotes) {
         typeof source === 'string' ? { path: source } : source,
       ),
     };
+  const deletedNoteBytes = new Map();
+  for (const commit of commits)
+    for (const { status, file } of commit.changes)
+      if (status === 'D' && addedNote('A', file))
+        deletedNoteBytes.set(
+          file,
+          blobs.get(`${commit.revision}^1:${file}`)?.toString('utf8'),
+        );
+  // Include uncommitted deletions before replay: the replacement may have
+  // been committed first, but it still records the original review only.
+  const historicalRedactions = new Map([
+    ...noteRedactions(
+      [...deletedNoteBytes.keys()].map((file) => ({ status: 'D', file })),
+      (file) => deletedNoteBytes.get(file),
+    ),
+    ...noteRedactions(workingNoteChanges, (file) =>
+      blobs.get(`HEAD:${file}`)?.toString('utf8'),
+    ),
+  ]);
   const pending = new Map(current.map((entry) => [entry.path, new Set()]));
   for (const commit of commits) {
     const changed = new Set(commit.changes.map(({ file }) => file));
@@ -295,7 +355,12 @@ export function deriveReviewHistory(root, state, committedNotes) {
         outstanding.add(entry.path);
     }
     for (const { status, file } of commit.changes) {
-      if (!addedNote(status, file)) continue;
+      if (
+        !addedNote(status, file) ||
+        historicalRedactions.get(file) ===
+          blobs.get(`${commit.revision}:${file}`)?.toString('utf8')
+      )
+        continue;
       for (const note of json(`${commit.revision}:${file}`).notes)
         for (const input of note.inputs ?? [])
           pending.get(note.path)?.delete(input);
@@ -303,12 +368,12 @@ export function deriveReviewHistory(root, state, committedNotes) {
   }
   // Only a note not yet committed may cover a working-tree edit; an archived
   // note is committed even though no loose file carries its name.
-  const committedNoteFiles = committedNotes();
-  const dirty = new Set(
-    git(root, ['diff', '--no-renames', '--name-only', '-z', 'HEAD', '--'])
-      .split('\0')
-      .filter(Boolean),
-  );
+  const redactedWorking = new Map([
+    ...historicalRedactions,
+    ...noteRedactions(workingNoteChanges, (file) =>
+      blobs.get(`HEAD:${file}`)?.toString('utf8'),
+    ),
+  ]);
   for (const entry of current) {
     const outstanding = pending.get(entry.path);
     const committed = decision(json(`HEAD:${recordPath(entry)}`));
@@ -322,7 +387,11 @@ export function deriveReviewHistory(root, state, committedNotes) {
     )
       outstanding.add(entry.path);
     for (const note of notes(entry).filter(
-      (note) => !committedNoteFiles.has(note.file),
+      (note) =>
+        !committedNoteFiles.has(note.file) &&
+        (!redactedWorking.has(note.file) ||
+          reader.read(note.file).toString('utf8') !==
+            redactedWorking.get(note.file)),
     ))
       for (const input of note.inputs ?? []) outstanding.delete(input);
     for (const input of inputs(entry))

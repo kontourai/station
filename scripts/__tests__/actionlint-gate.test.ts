@@ -61,8 +61,6 @@ function persistentNightlyCapacityDocument(): MutableNightlyWorkflow {
           ANDROID_UPLOAD_CERT_SHA256:
             '${' + '{ vars.ANDROID_UPLOAD_CERT_SHA256 }}',
           ANDROID_BUILD_TOOLS_VERSION: '36.0.0',
-          STATION_MOBILE_DEFAULT_ENDPOINT:
-            '${' + '{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_NIGHTLY }}',
         },
         steps: [
           {
@@ -2797,8 +2795,6 @@ describe('persistent runner policy', () => {
                 ANDROID_UPLOAD_CERT_SHA256:
                   '${' + '{ vars.ANDROID_UPLOAD_CERT_SHA256 }}',
                 ANDROID_BUILD_TOOLS_VERSION: '36.0.0',
-                STATION_MOBILE_DEFAULT_ENDPOINT:
-                  '${' + '{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_NIGHTLY }}',
               },
               steps: [
                 {

@@ -425,49 +425,71 @@ describe.skipIf(!chromiumAvailable)('Basis chip at rest, in Chromium', () => {
     await browser?.close();
   });
 
-  it('is visible and hittable while the hover-revealed row is hidden', async () => {
-    const { container } = renderTranscript([answer('turn-7')]);
-    await screen.findByRole('button', { name: CHIP });
-    const css = `${resolveCssImports(resolve(HERE, '../index.css'))}\n${resolveCssImports(resolve(HERE, '../components/chat/chat.css'))}`;
-    assertNoImportsSurvive(css);
-    const page = await browser.newPage({
-      viewport: { width: 1280, height: 800 },
-    });
-    try {
-      await page.setContent(
-        `<!doctype html><style>${css}</style><main style="padding:24px">${container.innerHTML}</main>`,
-      );
-      expect(
-        await page.evaluate(() => matchMedia('(hover: hover)').matches),
-      ).toBe(true);
-      await page.mouse.move(1, 1);
-      const result = await page.evaluate(() => {
-        const chip = document.querySelector<HTMLElement>('.answer-basis-chip')!;
-        const row = document.querySelector<HTMLElement>(
-          '.turn-footer__actions',
-        )!;
-        const box = chip.getBoundingClientRect();
-        const hit = document.elementFromPoint(
-          box.x + box.width / 2,
-          box.y + box.height / 2,
+  it.each([
+    ['normal entry', ''],
+    [
+      'delayed entry',
+      '.message-row { animation-delay: 1s; animation-fill-mode: backwards; }',
+    ],
+  ])(
+    'is visible and hittable while the hover-revealed row is hidden (%s)',
+    async (_entry, fixtureTiming) => {
+      const { container } = renderTranscript([answer('turn-7')]);
+      await screen.findByRole('button', { name: CHIP });
+      const css = `${resolveCssImports(resolve(HERE, '../index.css'))}\n${resolveCssImports(resolve(HERE, '../components/chat/chat.css'))}`;
+      assertNoImportsSurvive(css);
+      const page = await browser.newPage({
+        viewport: { width: 1280, height: 800 },
+      });
+      try {
+        await page.setContent(
+          `<!doctype html><style>${css}\n${fixtureTiming}</style><main style="padding:24px">${container.innerHTML}</main>`,
         );
-        return {
-          chipVisible: chip.checkVisibility({ opacityProperty: true }),
-          rowVisible: row.checkVisibility({ opacityProperty: true }),
-          hitIsChip: hit === chip,
-          height: Math.round(box.height),
-        };
-      });
-      expect(result).toEqual({
-        chipVisible: true,
-        rowVisible: false,
-        hitIsChip: true,
-        height: 28,
-      });
-    } finally {
-      await page.close();
-    }
-  });
+        expect(
+          await page.evaluate(() => matchMedia('(hover: hover)').matches),
+        ).toBe(true);
+        // Measure the at-rest cascade, after the message's real entry animation.
+        await page.locator('.message-row').evaluate(async (node) => {
+          await Promise.all(
+            node
+              .getAnimations({ subtree: true })
+              .filter(
+                (animation) =>
+                  animation.effect?.getTiming().iterations !== Infinity,
+              )
+              .map((animation) => animation.finished),
+          );
+        });
+        await page.mouse.move(1, 1);
+        const result = await page.evaluate(() => {
+          const chip =
+            document.querySelector<HTMLElement>('.answer-basis-chip')!;
+          const row = document.querySelector<HTMLElement>(
+            '.turn-footer__actions',
+          )!;
+          const box = chip.getBoundingClientRect();
+          const hit = document.elementFromPoint(
+            box.x + box.width / 2,
+            box.y + box.height / 2,
+          );
+          return {
+            chipVisible: chip.checkVisibility({ opacityProperty: true }),
+            rowVisible: row.checkVisibility({ opacityProperty: true }),
+            hitIsChip: hit === chip,
+            height: Math.round(box.height),
+          };
+        });
+        expect(result).toEqual({
+          chipVisible: true,
+          rowVisible: false,
+          hitIsChip: true,
+          height: 28,
+        });
+      } finally {
+        await page.close();
+      }
+    },
+  );
 });
 
 it.skipIf(chromiumAvailable)(

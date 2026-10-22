@@ -112,10 +112,6 @@ struct NativeCapabilityReport {
     /// application id installed alongside a release build, so the UI can look
     /// visibly different and leave no doubt which one is on screen.
     dev_build: bool,
-    /// Optional trusted build-time bootstrap for a native-mobile shell. It is
-    /// secret-free and never replaces a saved/default profile in the UI.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    mobile_default_endpoint: Option<String>,
     /// Immutable source-derived provenance of this installed client artifact.
     /// It is intentionally independent from a connected backend's build.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -139,21 +135,6 @@ fn client_build_provenance() -> Option<NativeClientBuildProvenance> {
         branch: branch.to_string(),
         built_at: built_at.to_string(),
     })
-}
-
-fn trusted_mobile_default_endpoint(raw: Option<&str>) -> Option<String> {
-    let raw = raw?.trim();
-    let parsed = url::Url::parse(raw).ok()?;
-    if parsed.scheme() != "https"
-        || !parsed.username().is_empty()
-        || parsed.password().is_some()
-        || parsed.path() != "/"
-        || parsed.query().is_some()
-        || parsed.fragment().is_some()
-    {
-        return None;
-    }
-    Some(parsed.origin().ascii_serialization())
 }
 
 fn compile_target_platform() -> &'static str {
@@ -349,11 +330,6 @@ fn compile_target_capability_report(identifier: &str) -> NativeCapabilityReport 
                 native_app_channel(identifier, cfg!(debug_assertions)),
             ),
         dev_build: cfg!(debug_assertions),
-        mobile_default_endpoint: if cfg!(mobile) {
-            trusted_mobile_default_endpoint(option_env!("STATION_MOBILE_DEFAULT_ENDPOINT"))
-        } else {
-            None
-        },
         client_build: client_build_provenance(),
         capabilities,
     }
@@ -22564,6 +22540,10 @@ mod tests {
 
         assert_eq!(report.platform, compile_target_platform());
         assert_ne!(report.platform, "unknown");
+        assert!(serde_json::to_value(&report)
+            .unwrap()
+            .get("mobileDefaultEndpoint")
+            .is_none());
     }
 
     #[test]
@@ -22586,25 +22566,6 @@ mod tests {
             ),
             "station-dev-dev-release-7",
         );
-    }
-
-    #[test]
-    fn mobile_build_default_accepts_only_a_secret_free_https_origin() {
-        assert_eq!(
-            trusted_mobile_default_endpoint(Some(" https://station.example.test:8442/ ")),
-            Some("https://station.example.test:8442".to_string())
-        );
-        for rejected in [
-            "tauri://localhost",
-            "http://100.64.0.1:28141",
-            "https://user:secret@station.example.test",
-            "https://station.example.test/path",
-            "https://station.example.test/?channel=beta",
-            "https://station.example.test/#beta",
-        ] {
-            assert_eq!(trusted_mobile_default_endpoint(Some(rejected)), None);
-        }
-        assert_eq!(trusted_mobile_default_endpoint(None), None);
     }
 
     #[test]

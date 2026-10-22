@@ -32,9 +32,6 @@ on:
           to marketing_version.
         required: false
         type: string
-      mobile_endpoint:
-        required: true
-        type: string
       update_feed_url:
         required: false
         type: string
@@ -90,7 +87,6 @@ jobs:
       APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_AGENT_ACTIVITY_PROVISIONING_PROFILE_BASE64 }}
       APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_NOTIFICATION_SERVICE_PROVISIONING_PROFILE_BASE64 }}
       TESTFLIGHT_INTERNAL_GROUP_ID: ${{ vars.TESTFLIGHT_INTERNAL_GROUP_ID }}
-      STATION_MOBILE_DEFAULT_ENDPOINT: ${{ inputs.mobile_endpoint }}
       STATION_BUILD_VERSION: ${{ inputs.web_build_version || inputs.marketing_version }}
       STATION_BUILD_CHANNEL: ${{ inputs.channel }}
       STATION_RELEASE_LABEL: ${{ inputs.release_label }}
@@ -182,7 +178,7 @@ jobs:
           { echo "notification_enabled=$notification_enabled"; echo "notification_bundle_id=$notification_bundle_id"; } >> "$GITHUB_OUTPUT"
       - name: Fail closed on channel-owned secrets and exact iOS identity
         run: |
-          for name in APPLE_API_KEY_ID APPLE_API_ISSUER_ID APPLE_API_PRIVATE_KEY APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64 APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD APPLE_DEVELOPMENT_TEAM APPLE_SIGNING_IDENTITY APPLE_PROVISIONING_PROFILE_BASE64 TESTFLIGHT_INTERNAL_GROUP_ID STATION_MOBILE_DEFAULT_ENDPOINT VITE_NATIVE_APP_UPDATE_CHANNEL VITE_NATIVE_APP_VERSION; do
+          for name in APPLE_API_KEY_ID APPLE_API_ISSUER_ID APPLE_API_PRIVATE_KEY APPLE_IOS_DISTRIBUTION_CERTIFICATE_BASE64 APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD APPLE_DEVELOPMENT_TEAM APPLE_SIGNING_IDENTITY APPLE_PROVISIONING_PROFILE_BASE64 TESTFLIGHT_INTERNAL_GROUP_ID VITE_NATIVE_APP_UPDATE_CHANNEL VITE_NATIVE_APP_VERSION; do
             test -n "${!name}" || { echo "Missing required protected channel value: $name" >&2; exit 1; }
           done
           if [ '${{ steps.live_activity.outputs.enabled }}' = true ]; then
@@ -456,7 +452,7 @@ jobs:
             IOS_MOBILE_PROVISION="$(base64 < "$RUNNER_TEMP/station-ios.mobileprovision" | tr -d '\n')"
             export IOS_MOBILE_PROVISION
           fi
-          node --input-type=module -e 'import { writeFileSync } from "node:fs"; import { mobileCargoConfig } from "../scripts/ios-store-signing-config.mjs"; writeFileSync(process.argv[1], mobileCargoConfig(process.env.STATION_MOBILE_DEFAULT_ENDPOINT, { liveActivity: process.env.LIVE_ACTIVITY === "true" }), { mode: 0o600 });' "$RUNNER_TEMP/station-ios-mobile-env.toml"
+          node --input-type=module -e 'import { writeFileSync } from "node:fs"; import { mobileCargoConfig } from "../scripts/ios-store-signing-config.mjs"; writeFileSync(process.argv[1], mobileCargoConfig({ liveActivity: process.env.LIVE_ACTIVITY === "true" }), { mode: 0o600 });' "$RUNNER_TEMP/station-ios-mobile-env.toml"
           if [ "$LIVE_ACTIVITY" = true ]; then grep -Fq 'STATION_IOS_LIVE_ACTIVITY' "$RUNNER_TEMP/station-ios-mobile-env.toml"; fi
           rm -rf gen/apple/build
           security unlock-keychain -p "$APPLE_IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" "$RUNNER_TEMP/station-ios.keychain-db"
@@ -619,7 +615,6 @@ jobs:
       APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_IOS_SIGNING_IDENTITY }}
       APPLE_PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
       TESTFLIGHT_INTERNAL_GROUP_ID: ${{ vars.TESTFLIGHT_INTERNAL_GROUP_ID }}
-      STATION_MOBILE_DEFAULT_ENDPOINT: ${{ inputs.mobile_endpoint }}
       STATION_BUILD_VERSION: ${{ inputs.web_build_version || inputs.marketing_version }}
       STATION_BUILD_CHANNEL: ${{ inputs.channel }}
       STATION_RELEASE_LABEL: ${{ inputs.release_label }}

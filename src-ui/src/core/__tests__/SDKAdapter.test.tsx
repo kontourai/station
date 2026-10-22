@@ -56,6 +56,7 @@ function render(ui: ReactNode) {
 
 vi.mock('../../contexts/ActiveChatsContext', () => ({
   useActiveChatActions: () => ({}),
+  useActiveChatState: () => null,
 }));
 vi.mock('../../contexts/AgentsContext', () => ({ useAgents: () => [] }));
 vi.mock('../../contexts/ApiBaseContext', () => ({

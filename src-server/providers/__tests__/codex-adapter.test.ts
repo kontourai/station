@@ -5981,7 +5981,7 @@ describe('CodexAdapter', () => {
       const makeTempDir = trackTempDirs();
       const connectionEnv = async () => ({
         OPENAI_BASE_URL: 'http://connection.example.internal',
-        CODEX_HOME: '/Users/brian/.codex_vibe',
+        CODEX_HOME: '/Users/example/.codex_vibe',
         CONNECTION_ONLY: 'kept',
       });
       const resolverFor = (homeDir: string, env: Record<string, string>) =>
