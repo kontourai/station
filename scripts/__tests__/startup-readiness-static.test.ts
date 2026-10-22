@@ -145,22 +145,28 @@ function deadlineRestartRoutes(readiness: string) {
 describe('desktop startup readiness static boundary', () => {
   // These are native composition guards. They do not establish a visible
   // tray/window result; the packaged-shell checklist remains mandatory.
-  it('bypasses the early native cover for tray-only launches', () => {
+  it('source-only wiring: routes the early native cover through launch admission', () => {
     const lib = read('src-desktop/src/lib.rs');
     const setup = rustBlock(lib, '.setup(move |app|');
-    const coverGate = rustBlock(setup, 'if !cfg!(debug_assertions)');
-    expect(coverGate).toContain('!desktop_companion::background(app.handle())');
+    const coverGate = rustBlock(
+      setup,
+      'if desktop_companion::initial_cover_requested(',
+    );
+    expect(coverGate).toContain(
+      'cfg!(debug_assertions), desktop_companion::background(app.handle())',
+    );
     expect(coverGate).toContain('with_native_startup_cover(');
   });
 
-  it('invalidates ownership before each service convergence read and after a failed attached probe', () => {
+  it('source-only wiring: connects service convergence and failed-probe invalidation', () => {
     const tray = read('src-desktop/src/tray.rs');
     const action = rustBlock(tray, 'fn run_service_action(');
-    expect(shape(rustBlock(action, 'for attempt in 0..4'))).toContain(
-      shape(`
-      crate::invalidate_home_ownership(&app);
-      let _ = update_once(&app);
-    `),
+    expect(shape(action)).toContain(
+      shape(`converge_service_action(
+      || crate::invalidate_home_ownership(&app),
+      || { let _ = update_once(&app); },
+      thread::sleep,
+    );`),
     );
     const context = rustBlock(tray, 'fn tray_context(');
     const failedProbe = rustBlock(

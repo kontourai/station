@@ -9897,7 +9897,7 @@ struct DesktopServerState {
     /// status read pay for a registry-bridge child. station#3116 recorded what
     /// happened without this field: a real observation (pid probe + birth
     /// fingerprint) taken at one instant and then asserted forever.
-    ownership_checked_at: Mutex<Option<Instant>>,
+    ownership_refresh: Mutex<OwnershipRefresh>,
 }
 
 #[cfg(not(mobile))]
@@ -12484,51 +12484,81 @@ fn adoptable_refreshed_owner(derived: DesktopOwner) -> DesktopOwner {
     }
 }
 
-/// Explicit service actions and failed endpoint probes bypass the idle cache.
 #[cfg(not(mobile))]
-pub(crate) fn invalidate_home_ownership<R: tauri::Runtime>(app: &AppHandle<R>) {
-    if let Some(state) = app.try_state::<DesktopServerState>() {
-        *state
-            .ownership_checked_at
-            .lock()
-            .unwrap_or_else(|error| error.into_inner()) = None;
+struct OwnershipRefresh {
+    checked_at: Option<Instant>,
+    generation: u64,
+}
+
+#[cfg(not(mobile))]
+impl OwnershipRefresh {
+    fn new() -> Self {
+        Self {
+            checked_at: Some(Instant::now()),
+            generation: 0,
+        }
+    }
+
+    fn invalidate(&mut self) {
+        self.checked_at = None;
+        self.generation += 1;
     }
 }
 
-/// Re-derive status without claiming a free home or changing the launch path.
+/// Invalidation also fences any registry read already in flight.
+#[cfg(not(mobile))]
+pub(crate) fn invalidate_home_ownership<R: tauri::Runtime>(app: &AppHandle<R>) {
+    if let Some(state) = app.try_state::<DesktopServerState>() {
+        state
+            .ownership_refresh
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .invalidate();
+    }
+}
+
 #[cfg(not(mobile))]
 fn refresh_home_ownership_if_stale(state: &DesktopServerState) {
-    let now = Instant::now();
-    // Check-and-stamp under ONE guard. Releasing between them let two callers
-    // (the tray poll thread and the main/IPC thread) both pass the interval
-    // check, both spawn a registry-bridge child, and a slower stale derivation
-    // overwrite a faster fresh one.
-    {
-        let mut checked_at = state
-            .ownership_checked_at
+    refresh_home_ownership_with(state, || {
+        owner_for_decision(decide_home_ownership_from_runtime(
+            &state.supervisor.context.launch.resource_dir,
+            &state.supervisor.context.launch.station_home,
+        ))
+    });
+}
+
+/// Reserve a generation under the cache lock, release it for Node I/O, then
+/// publish under that same lock only if no invalidation or newer read won.
+#[cfg(not(mobile))]
+fn refresh_home_ownership_with(state: &DesktopServerState, derive: impl FnOnce() -> DesktopOwner) {
+    let generation = {
+        let mut refresh = state
+            .ownership_refresh
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
+            .unwrap_or_else(|error| error.into_inner());
         let current = state
             .owner
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(|error| error.into_inner())
             .clone();
-        if !should_rederive_home_ownership(&current, *checked_at, now) {
+        if !should_rederive_home_ownership(&current, refresh.checked_at, Instant::now()) {
             return;
         }
-        *checked_at = Some(now);
-    }
-
-    let resource_dir = state.supervisor.context.launch.resource_dir.clone();
-    let station_home = state.supervisor.context.launch.station_home.clone();
-    let next = adoptable_refreshed_owner(owner_for_decision(decide_home_ownership_from_runtime(
-        &resource_dir,
-        &station_home,
-    )));
-    *state
-        .owner
+        refresh.checked_at = Some(Instant::now());
+        refresh.generation += 1;
+        refresh.generation
+    };
+    let next = adoptable_refreshed_owner(derive());
+    let refresh = state
+        .ownership_refresh
         .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner()) = next;
+        .unwrap_or_else(|error| error.into_inner());
+    if refresh.generation == generation {
+        *state
+            .owner
+            .lock()
+            .unwrap_or_else(|error| error.into_inner()) = next;
+    }
 }
 
 /// Which status producer a given owner routes to.
@@ -13788,7 +13818,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                 #[cfg(target_os = "macos")]
                 {
                     if let Some(window) = app.get_webview_window("main") {
-                        if !cfg!(debug_assertions) && !desktop_companion::background(app.handle()) {
+                        if desktop_companion::initial_cover_requested(cfg!(debug_assertions), desktop_companion::background(app.handle())) {
                             if let Err(error) = with_native_startup_cover(&window, app.handle(), Some(startup_readiness::StartupCoverContent::Waiting)) {
                                 log::warn!("early startup cover unavailable: {error}");
                             }
@@ -13911,7 +13941,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                 if let Some(dispatcher) = native_cover_dispatcher(app.handle().clone()) {
                     app.manage(dispatcher);
                 }
-                app.manage(DesktopServerState { owner: Mutex::new(owner.clone()), supervisor: supervisor.clone(), readiness: Mutex::new(readiness), startup_commit_claim: Mutex::new(StartupCommitClaim::default()), ownership_checked_at: Mutex::new(Some(Instant::now())) });
+                app.manage(DesktopServerState { owner: Mutex::new(owner.clone()), supervisor: supervisor.clone(), readiness: Mutex::new(readiness), startup_commit_claim: Mutex::new(StartupCommitClaim::default()), ownership_refresh: Mutex::new(OwnershipRefresh::new()) });
                 replay_native_startup_renderer_observations(app.handle());
                 replay_pending_main_window_activation(app.handle(), &pending_activation);
                 // The tray poll reads this managed ownership state. Starting
@@ -16934,7 +16964,7 @@ mod tests {
             supervisor,
             readiness: Mutex::new(readiness),
             startup_commit_claim: claim,
-            ownership_checked_at: Mutex::new(Some(Instant::now())),
+            ownership_refresh: Mutex::new(OwnershipRefresh::new()),
         }));
 
         complete_startup_commit(app.handle(), epoch, |_| {
@@ -17538,7 +17568,7 @@ mod tests {
             supervisor,
             readiness: Mutex::new(startup_readiness::StartupReadiness::default()),
             startup_commit_claim: Mutex::new(StartupCommitClaim::default()),
-            ownership_checked_at: Mutex::new(Some(Instant::now())),
+            ownership_refresh: Mutex::new(OwnershipRefresh::new()),
         };
         (state, pid, temp)
     }
@@ -17557,20 +17587,62 @@ mod tests {
         let state = app.state::<DesktopServerState>();
         assert!(!should_rederive_home_ownership(
             &DesktopOwner::Unowned,
-            *state.ownership_checked_at.lock().unwrap(),
+            state.ownership_refresh.lock().unwrap().checked_at,
             Instant::now()
         ));
         invalidate_home_ownership(app.handle());
         assert!(should_rederive_home_ownership(
             &DesktopOwner::Unowned,
-            *state.ownership_checked_at.lock().unwrap(),
+            state.ownership_refresh.lock().unwrap().checked_at,
             Instant::now()
         ));
         assert!(!should_rederive_home_ownership(
             &DesktopOwner::Sidecar,
-            *state.ownership_checked_at.lock().unwrap(),
+            state.ownership_refresh.lock().unwrap().checked_at,
             Instant::now()
         ));
+    }
+
+    #[cfg(all(not(mobile), unix))]
+    #[test]
+    fn older_ownership_refresh_cannot_overwrite_service_convergence() {
+        let (state, _, _home) = teardown_fixture(DesktopOwner::Unowned);
+        let _ = state.supervisor.tx.send(SupervisorMessage::Shutdown);
+        if let Some(worker) = state.supervisor.thread.lock().unwrap().take() {
+            worker.join().unwrap();
+        }
+        let app = tauri::test::mock_app();
+        app.manage(state);
+        let state = app.state::<DesktopServerState>();
+        invalidate_home_ownership(app.handle());
+        let (started_tx, started_rx) = channel();
+        let (finish_tx, finish_rx) = channel();
+        thread::scope(|scope| {
+            let state = state.inner();
+            let older = scope.spawn(move || {
+                refresh_home_ownership_with(state, || {
+                    started_tx.send(()).unwrap();
+                    finish_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+                    DesktopOwner::Unowned
+                })
+            });
+            started_rx.recv_timeout(Duration::from_secs(10)).unwrap();
+            invalidate_home_ownership(app.handle());
+            refresh_home_ownership_with(state, || DesktopOwner::Service {
+                id: "service".into(),
+                port: 43121,
+            });
+            finish_tx.send(()).unwrap();
+            older.join().unwrap();
+        });
+        assert_eq!(
+            *state.owner.lock().unwrap(),
+            DesktopOwner::Service {
+                id: "service".into(),
+                port: 43121
+            }
+        );
+        refresh_home_ownership_with(&state, || panic!("converged owner must stay cached"));
     }
 
     #[cfg(all(not(mobile), unix))]
