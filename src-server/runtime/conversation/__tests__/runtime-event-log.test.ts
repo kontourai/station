@@ -496,3 +496,33 @@ describe('bounded history pages', () => {
     expect(page.truncated).toBe(true);
   });
 });
+
+it('starts a scan-bounded history page at the recent end of a busy day', async () => {
+  const root = makeTempDir('station-event-recent-tail-');
+  const file = join(root, 'events-2026-09-06.ndjson');
+  const large =
+    JSON.stringify({
+      timestamp: '2026-09-06T12:00:00Z',
+      userId: 'other',
+      text: 'x'.repeat(900_000),
+    }) + '\n';
+  await writeFile(
+    file,
+    large.repeat(40) +
+      JSON.stringify({
+        timestamp: '2026-09-06T23:00:00Z',
+        userId: 'one',
+        recent: true,
+      }) +
+      '\n',
+  );
+  const log = new RuntimeEventLog(root, {
+    debug() {},
+    info() {},
+    warn() {},
+    error() {},
+  });
+  expect(
+    await log.queryEvents(0, Date.now() + 1e12, 'one', { limit: 1 }),
+  ).toMatchObject({ truncated: true, events: [{ recent: true }] });
+});

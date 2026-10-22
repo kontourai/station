@@ -1,5 +1,12 @@
 import { createReadStream, existsSync } from 'node:fs';
-import { appendFile, mkdir, readdir, stat, unlink } from 'node:fs/promises';
+import {
+  appendFile,
+  mkdir,
+  open,
+  readdir,
+  stat,
+  unlink,
+} from 'node:fs/promises';
 import { join } from 'node:path';
 
 interface RuntimeLogger {
@@ -70,6 +77,46 @@ async function* boundedEventLines(
     if (pending.length) yield pending.toString('utf8');
   } finally {
     stream.destroy();
+  }
+}
+
+/** Page scans start at each file's append tail, so a busy day cannot spend
+ * the whole scan budget on its oldest bytes before seeing recent activity. */
+async function* boundedRecentEventLines(
+  path: string,
+  budget: { scanned: number },
+): AsyncGenerator<string> {
+  const file = await open(path, 'r');
+  try {
+    let position = (await file.stat()).size;
+    let pending = Buffer.alloc(0);
+    while (position > 0) {
+      const size = Math.min(64 * 1024, position);
+      if (budget.scanned + size > MAX_QUERY_SCAN_BYTES)
+        throw new EventHistoryLimitError();
+      position -= size;
+      const chunk = Buffer.allocUnsafe(size);
+      const { bytesRead } = await file.read(chunk, 0, size, position);
+      budget.scanned += size;
+      const bytes = Buffer.concat([chunk.subarray(0, bytesRead), pending]);
+      let end = bytes.length;
+      for (
+        let index = bytes.lastIndexOf(10);
+        index >= 0;
+        index = bytes.lastIndexOf(10, end - 1)
+      ) {
+        if (end - index - 1 > MAX_EVENT_LINE_BYTES)
+          throw new EventHistoryLimitError();
+        yield bytes.subarray(index + 1, end).toString('utf8');
+        end = index;
+        if (end === 0) break;
+      }
+      if (end > MAX_EVENT_LINE_BYTES) throw new EventHistoryLimitError();
+      pending = Buffer.from(bytes.subarray(0, end));
+    }
+    if (pending.length) yield pending.toString('utf8');
+  } finally {
+    await file.close();
   }
 }
 
@@ -226,7 +273,10 @@ export class RuntimeEventLog {
         let min = Number.POSITIVE_INFINITY;
         let max = Number.NEGATIVE_INFINITY;
         let lineNumber = 0;
-        for await (const line of boundedEventLines(path, budget)) {
+        const lines = options
+          ? boundedRecentEventLines(path, budget)
+          : boundedEventLines(path, budget);
+        for await (const line of lines) {
           lineNumber++;
           if (!line.trim()) continue;
           let event: any;
@@ -270,7 +320,7 @@ export class RuntimeEventLog {
             bytes,
             time,
             file,
-            line: lineNumber,
+            line: -lineNumber,
           };
           if (heap.length >= limit && compare(row, heap[0]!) <= 0) {
             truncated = true;
