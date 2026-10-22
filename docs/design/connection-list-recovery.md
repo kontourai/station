@@ -84,7 +84,7 @@ it can enable candidate reconstruction.
 
 | Observation | Meaning and Desktop actions |
 | --- | --- |
-| Valid list exists | Normal startup; no missing-list recovery. A pending receipt takes precedence. |
+| Valid list exists | Normal startup if the cheap recovery admission check accepts its committed publication; otherwise preserve and refuse. |
 | Missing list, trusted root, readable evidence, no locks/activity, vault absent | Import or explicit new list through this same receipt flow; existing safe genesis remains separate. |
 | Verifiable root-bound typed metadata | Review candidates, import, or explicit new list. No supported adapter in version 1. |
 | Provably unrelated history | Retain it; it does not supply candidates or block an acknowledged new list. Requires an explicit foreign-root binding, not app/channel inference. |
@@ -92,8 +92,9 @@ it can enable candidate reconstruction.
 | Known live lock, root service or maintenance operation | Busy: retry assessment or Exit. No commit, stop or takeover. |
 | Unknown/malformed/unreadable lock or unavailable process identity | Exit only; ordinary ownership-safe stale-lock handling remains the only reclaim authority. |
 | Unreadable/denied vault, required file evidence, unknown receipt/schema, unsafe path or exceeded budget | Exit only with local retry/unlock guidance where applicable. No new-list bypass. |
-| Valid pending recovery | Resume the exact attempt after revalidation, or Exit; never a new genesis attempt. |
-| Valid completed recovery, list missing again | Exit only. No replay of its initial list; recover as a separately reviewed subsequent loss. |
+| Valid pending recovery, staged list still present | Resume the exact attempt, abandon it before publication, or Exit; never a new genesis attempt. |
+| Partial unpublished attempt | Explicit abandon/archive under both locks, then fresh recovery assessment; no genesis. Unknown publication state remains Exit-only. |
+| Committed recovery, stage consumed, list missing again | Exit only. No replay of its initial list; do not infer an unpublished attempt. |
 
 Classify the whole root without recursively scanning `instances/**`. A realistic
 used home can have millions of unrelated files. Observe trusted root/config
@@ -107,20 +108,32 @@ subdirectories are not traversed or modified. An inventory of excluded areas is
 part of the receipt; a bounded inventory is not a whole-root consistency claim.
 
 Initial limits: 4,096 root/config directory entries combined, 256 recognized
-evidence files, 1 MiB per imported list, 16 MiB per recognized evidence file and
-64 MiB total preserved file bytes. Reject oversize, duplicate-key JSON, invalid
-UTF-8 and unsupported fields/versions. Vault enumeration is bounded to 4,096
-Station entries and a 10-second operation deadline; an incomplete/cancelled
-enumeration refuses. The UI may cancel while waiting for OS interaction, but a
-cancelled/late result grants no write authority. Limits are centralized contract
-constants, with boundary tests, not silently truncated success.
+evidence files and 1 MiB per imported list. Existing evidence remains in place;
+stream its size/digest with 64 KiB buffers, without the former 16/64 MiB copying
+caps. Bound the total evidence-hashing operation to 60 seconds; a timeout is an
+incomplete observation, never absence. Reject oversize imports, duplicate-key
+JSON, invalid UTF-8 and unsupported fields/versions. Query the canonical Station
+services individually on macOS and Linux, with a 4,096-Station-entry total and a
+10-second operation deadline. An incomplete/cancelled enumeration refuses.
+The UI may cancel while waiting for OS interaction, but a cancelled/late result
+grants no write authority. Limits are centralized contract constants, with
+boundary tests, not silently truncated success.
+
+Vault absence and readable global history permit the same recovery actions.
+Recheck only **readable versus unreadable**, not an account inventory/digest;
+an unrelated channel adding a credential must not invalidate consent. No vault
+attribute digest is retained. For now, denied/unreadable vault still refuses
+new-list creation; Brian's decision on whether this prerequisite can be removed
+is pending. This proposal does not preempt it.
 
 ## Recovery paths, in preference order
 
 ### Import an existing export
 
 Reuse the raw JSON produced by `station stations export`, with no new wrapper
-or claim of authenticated provenance. Validate the entire `StationProfileStore`
+or claim of authenticated provenance. The updated CLI export must refuse when
+the persisted list is missing or recovery is pending; it must not export the
+current missing-file empty projection. Validate the entire `StationProfileStore`
 using the shared schema plus strict unknown/duplicate-field and size checks.
 Require unique names, valid origins and existing transport rules. A malformed
 row refuses the entire input rather than quietly dropping it. Copy the exact
@@ -140,7 +153,11 @@ normal explicit setup/pairing re-establishes authority.
 
 This deliberately requires re-enrollment even on the same machine. The retained
 original export contains the old locators for later operator investigation;
-recovery does not use them to read, overwrite or delete credentials.
+recovery does not use them to read, overwrite or delete credentials. Every
+import requires the same explicit acknowledgement that old connections must be
+re-enrolled, bound to the exact normalized target before commit. A zero-row
+import is **new-list mode**, with the new-list warning and final action; choosing
+an empty export cannot bypass that acknowledgement.
 
 ### Reconstruct from verified metadata
 
@@ -172,144 +189,208 @@ cannot be replaced or repaired by this flow.
 ## Receipt, admission and durability
 
 Use one private root directory, `.station-connection-recovery/`, alongside the
-existing `.station-profile-store-v1` marker. It is a permanent recovery fence,
-not a genesis-allowed directory. Do not reuse the instance-home restore marker;
-its release/archive semantics are different. Root/config/journal objects must
-be current-user controlled, Unix 0700 directories/0600 files or verified Windows
-owner-only ACLs, with no symlinks/reparse points or unsupported hard links.
-Unsupported filesystems fail closed; do not substitute a lossy atomicity scheme.
+existing `.station-profile-store-v1` marker. It remains a permanent genesis
+fence, including when it contains only archived attempts. `preparing/<uuid>/`
+holds preparation bytes that can never publish a list; atomic directory rename
+activates one fully staged attempt as `active/`. `archive/<uuid>/` retains
+byte-preserved abandoned attempts. Attempt N
+is permitted after a safe archive of N-1; never erase the journal to start over.
+Do not reuse the instance-home restore marker; its release/archive semantics are
+different. Root/config/journal objects must be current-user controlled, Unix
+0700 directories/0600 files or verified Windows owner-only ACLs, without
+symlinks/reparse points or hard links. Unsupported filesystems fail closed.
 
-Version 1 permits one attempt, UUID-named under that directory. A malformed,
-empty, unknown-version or extra attempt is a recovery condition, never permission
-to delete the directory and start over. An exited unfinished attempt remains
-resumable only through its exact validated plan. Automatic cancellation cleanup
-does not erase it. A later independent loss after completion is out of scope.
+Use three immutable strict JSON records, plus a staging file and optional import
+blob. Existing backup, cutover and marker bytes stay in place; do not copy them.
 
-The private receipt consists of immutable, strict JSON records and byte blobs:
-
-| Artifact | Required contents |
+| Artifact in `active/` | Required contents |
 | --- | --- |
-| `intent.json` | Schema `station.connection-list-recovery/v1`, attempt UUID, mode, root binding, UTC observation time, source version, assessment classifications, evidence manifest, target digest/size, required acknowledgement version and excluded inventory scope. |
-| `evidence/` | Exact recognized pre-existing profile/backup/cutover/marker bytes, with fixed opaque blob IDs and digests; exact import bytes when selected. No copied runtime trees, credentials or keyring payloads. |
-| `target.json` | Fully validated normalized proposed store bytes; immutable even after later ordinary profile writes. |
-| `acknowledged.json` | Intent digest, evidence digest, target digest, acknowledgement text version, mode, time and current local operator-process identity. A click by the current OS user, not a remote-authentication proof. |
-| `complete.json` | Digests of intent, acknowledgement and initially published target, publication time and completion version. Created only after locked readback and required flushes. |
+| `intent.json` | Schema `station.connection-list-recovery/v1`, attempt UUID, mode, root binding, observation time/source version, assessment classes, evidence manifest, embedded normalized target with exact serialization/digest/size, acknowledgement version and excluded inventory scope. |
+| `acknowledged.json` | Intent/evidence/target digests, acknowledgement text version, mode, time and current local operator-process identity. Required for import and new-list modes. A local OS-user action, not a remote-authentication proof. |
+| `commit.json` | Intent/acknowledgement/target digests, stage identity, publication-protocol version and commit time. Fully durable **before** the list can appear. It authorizes only consumption of the existing exact stage, never regeneration of a missing stage. |
+| `publish.tmp` | Full target bytes in the same filesystem as `config/profiles.json`. Atomic no-replace rename consumes this file into the list as the last durable publication step. |
+| `import.json` (import only) | Exact operator-selected export bytes, retained privately and never modified. |
 
-The root binding combines the canonical root identity, stable platform
-volume/file identity and current OS owner, encoded as private digests with a
-format version; plain paths are not stored in public diagnostics. The receipt
-is not portable to another directory, volume or user. A copied receipt, moved
-root, unavailable stable identity or inconsistent opened-handle identity refuses
-resume. Local digests detect change; they are not protection against the same
-OS user rewriting both data and receipt. Do not advertise a cryptographic audit
-trail against that user.
+The evidence manifest records registered authority-path code, file identity,
+size and content digest of recognized evidence, with absence observations where
+applicable. No contents are copied from existing evidence. Preserve each old
+file byte-for-byte in place. Only import bytes and the proposed target are new
+payload copies. Use bounded root-relative components, never absolute paths or
+traversal, and reject unregistered authority locations on resume. Do not expose
+the manifest in diagnostics. It is a change-detection record, not a backup or
+promise to retain bytes against later external deletion.
 
-Preserve existing marker bytes and existing vault entries in place. A valid
-existing genesis marker is copied as evidence, never rewritten. A missing marker
-may be created with its existing v1 signature only after the acknowledged
-receipt is durable. The private evidence manifest uses registered authority-path codes or bounded
-root-relative components to map blobs back to their unchanged sources; reject
-absolute paths, traversal and unregistered authority locations on resume. Never
-include that manifest in shared diagnostics. No raw vault account names or secret-derived bearer hashes
-enter the receipt: retain bounded service-class counts and a per-attempt salted
-digest of enumerated attributes to recheck observations; keep the salt private.
-Vault values remain untouched in the OS store. A receipt cannot snapshot or
-promise to recover external keychain state after another program changes it.
+The root binding combines canonical root identity, stable platform volume/file
+identity and current OS owner, encoded as private digests with a format version.
+A moved/restored root or copied receipt cannot resume publication under its old
+binding. A demonstrably unpublished attempt can instead be archived after fresh
+root trust checks and acknowledgement, then reassessed under the new identity.
+Unknown publication state cannot. Digests do not defend against the same OS user
+rewriting both data and receipt; do not claim a cryptographic audit trail.
 
-Both updated Desktop and CLI must check this directory **before** a missing-file
-empty projection, genesis, profile read/write or backend launch. A pending
-transaction refuses ordinary access even if `profiles.json` is already present.
-Only the recovery coordinator can resume. A valid completed transaction permits
-normal store reads and revision-CAS writes; the initial target digest is not a
-permanent constraint on later revisions. Completed receipt plus missing store
-always refuses; completed transactions are never replayed.
+**Recovery never creates or rewrites the legacy genesis marker.** Preserve an
+existing valid marker in place, and record its digest. When no marker exists,
+the committed recovery receipt is the updated CLI/native admission alternative
+for this explicit flow, not a widening of ordinary genesis. This removes a
+marker-only crash window that would otherwise prevent safe abandonment. An old
+client may create the normal v1 marker after it sees the final committed list;
+that later ordinary action must remain compatible. Invalid pre-existing markers
+are never repaired here. Vault entries and payloads remain untouched; store only
+the readable/unreadable observation and bounded class counts, not accounts or
+attribute/bearer digests.
 
-Deploy the Desktop/CLI admission change together. Older clients cannot enforce
-the new pending-receipt rule and must not participate during recovery. Existing
-#4022 genesis already refuses a marker/journal with a missing store. An old
-writer that publishes after a recovery crash cannot be mistaken for our write:
-resume compares the exact target bytes and refuses mismatch without replacing
-them. This is preservation on version skew, not a claim that old readers honor
-new admission. UI/docs require all participating clients to be updated.
+### Shared read admission and old-client compatibility
+
+Add a cheap bounded receipt-state parse inside `readPersistedProfileStore` /
+`readProfileStore` and `read_station_profile_store`, and before
+`station_profile_store_is_initialized` can return early. It parses only the small, bounded committed-record header and checks its
+version/root binding plus stage/list presence through no-follow file
+observations; absent/invalid commit is pending, never success. Intent/target
+parsing and full acknowledgement/digest validation remain in the coordinator. It must run before the CLI's missing-file empty fallback.
+No PowerShell ACL subprocess, recursive evidence hash or vault query belongs on
+these normal read paths. Existing profile-file trust checks remain; full receipt
+ACL/root/evidence verification belongs to the recovery coordinator. Cross-language
+fixtures pin the same admission outcomes without duplicating the protocol.
+
+Before the final rename, ordinary reads, writes and backend startup refuse and
+point to recovery; archived attempts alone never authorize genesis. After valid
+commit plus consumed stage plus a valid present list, normal reads and revision
+CAS writes proceed. The original target digest is not a permanent constraint on
+later revisions. Commit plus missing stage and missing/corrupt list refuses and
+never replays the initial target. The receipt directory remains after success.
+
+For the pinned pre-#4022 main and #4022 clients, the permanent unknown journal
+directory/legacy marker already makes missing-store genesis refuse. They can
+see only a missing list, or a list whose commit record already exists. There is
+no published-but-uncommitted interval and no later completion write to strand an
+old writer's valid update. After publication, old-client CAS edits are legitimate
+later revisions, not a reason to compare back to the initial target. Clients
+predating the genesis-marker fence are **NOT_VERIFIED** and unsupported during
+recovery; require upgrading them. Compatibility tests must execute the actual
+pinned old builds, not a simulated writer.
 
 ## Locks and commit protocol
 
-The read-only UI holds no locks. It operates on a host-owned plan expiring
-after five minutes and bound to a recovery-window nonce; renderer input contains only selections and
-that nonce, not arbitrary write paths, root identities or credentials.
+The read-only UI holds no locks. A host-owned plan expires after five minutes
+and is bound to its recovery-window nonce. Renderer input carries selections
+and that nonce, not arbitrary write paths, root identities or credentials.
 
 On explicit final confirmation:
 
 1. Acquire the existing root genesis lock, then the existing `profiles.json`
    lock. Use the shared process-incarnation protocol, bounded contention and
-   ownership checks; do not implement a second lock algorithm. Validate the
-   root/config before creating any required trusted config directory. A crash
-   leaving that directory does not authorize fresh genesis.
+   ownership checks. Validate the root/config before creating any needed trusted
+   config directory. Do not implement or recursively acquire a second lock
+   protocol. Config creation alone never grants fresh-genesis authority.
 2. Revalidate current process birth identity, window/plan currentness, root and
-   opened path identities, missing store, marker, known evidence, vault
-   classification and live instance/service registry immediately under both
-   locks. Any change invalidates confirmation and requires a new assessment.
-   Unknown process identity or a live service refuses; no implicit shutdown.
-3. Exclusively create the journal/attempt and evidence blobs. Finish, flush and
-   validate intent/target/evidence before publishing the acknowledged record.
-   Publish records without replacement. No existing recognized evidence is
-   moved or rewritten. Directory names and the new receipt are the only changes
-   before the marker/list commit.
-4. Flush the acknowledgement. Immediately recheck the same identities/evidence
-   and process liveness before marker or list publication. Vault enumeration
-   is observational, not a vault-wide lock: a changed/failed observation refuses,
-   and recovery never mutates vault data. Do not hold maintenance/registry locks
-   while waiting for a keyring prompt. Registry/process uncertainty refuses.
-5. Preserve/validate the existing marker or exclusively publish its v1 signature.
-   Copy the immutable target bytes into an exclusively created `publish.tmp`
-   in the same filesystem, flush it, then publish the complete staged list with
-   an atomic no-replace operation. POSIX hard-link publication followed by
-   removal of only the owned staging link, and Windows fail-if-exists publication,
-   must be qualified on supported filesystems; plain overwrite-rename is not
-   acceptable. Never link the permanent `target.json` to the mutable list. A
-   destination that appeared is never overwritten. A crash between linking and
-   staging-link removal is an explicit pending state: resume verifies both
-   identities and bytes before removing that one owned link. Unexpected link
-   counts refuse. Flush file and directory entries where supported, then
-   read/validate the exact target.
-6. Exclusively publish and flush `complete.json`. Release profile then genesis
-   lock. Only a completed, validated receipt may lead to normal startup. The
-   operator explicitly continues/restarts; the window cannot imply a successful
-   connection or silently attach to an old service.
+   opened-path identities, missing list, marker, known evidence, vault
+   readability and live instance/service owners under both locks. Changed
+   relevant evidence invalidates confirmation. Unknown identity or a live
+   service refuses; unrelated readable-vault inventory changes do not.
+3. Exclusively create `preparing/<uuid>/`, intent, optional import bytes and
+   `publish.tmp`. Finish/flush and validate them, including required directory
+   entries, then atomically no-replace rename that directory to `active/`. The
+   publisher only ever consumes `active/publish.tmp`; a preparation path can
+   never publish. A partial preparation remains safely archivable. Only a fully
+   staged attempt may become active. No old evidence is moved/rewritten.
+4. Flush acknowledgement, then recheck the same relevant evidence, root/process
+   identities and vault readability immediately before commit. No maintenance
+   or registry lock may be held across a potentially prompting vault operation;
+   tests must observe those locks while the prompt/query is deliberately paused.
+   Do not treat a late, cancelled or unreadable query as approval.
+5. Exclusively publish and flush `commit.json` and its directory entry before
+   any list publication. Validate its exact stage identity and target bytes.
+   No legacy marker is created. A crash now is a committed-but-unpublished
+   attempt, resumable only by consuming that same stage after revalidation.
+6. As the **last durable publication step**, atomically rename the owned stage
+   to `config/profiles.json` without replacement: Linux `renameat2` with
+   `RENAME_NOREPLACE`, macOS `renamex_np` with `RENAME_EXCL`, Windows
+   `MoveFileExW` without `MOVEFILE_REPLACE_EXISTING` or cross-volume copy flags.
+   A destination that appeared is never overwritten. No hard-link publication,
+   copying fallback, overwrite-rename or stage reconstruction is allowed.
+   Flush the destination/directory where supported; release profile then genesis
+   lock. There is no post-publication completion record or evidence recheck that
+   could lock out a valid old-client edit. The operator explicitly continues or
+   restarts; recovery does not auto-attach an old service.
 
-This transaction acquires only genesis then profile; it must not call a helper
-which acquires them again or invert the maintenance → registry → profile order
-of other lifecycle coordinators. Inspect runtime state using read-only identity
-probes; if race-free exclusion would require maintenance/registry mutation,
-refuse and ask the operator to quiesce that service first. Cooperative CLI/native
-writers must reach the existing locks before changing profile/instance bindings.
-Noncooperating same-user file writers are outside lock authority; changed
-evidence always causes refusal, not replacement.
+A failed/uncertain rename or flush is not reported as success. Re-read observed
+stage/list state through the coordinator; never retry a no-replace operation
+with a recreated stage. An error after a consumed stage can mean publication
+occurred, so preserve the list and report that exact state. New ordinary writers
+remain blocked by the held profile lock until the coordinator releases it;
+a crashed coordinator is handled by the existing process-incarnation protocol.
+
+This transaction acquires only genesis then profile. Do not invert the separate
+maintenance → registry → profile order. Runtime probes are read-only; if stable
+exclusion needs maintenance/registry mutation, refuse and ask the operator to
+quiesce the service first. The concrete command is
+`station service stop --instance=<verified-instance> --base="<verified-home>"`,
+using locally verified ownership, never guessed values or a public diagnostic
+path. Source inspection finds service stop has no profile-genesis dependency;
+Phase 2 must keep its dispatcher/lifecycle path outside the new receipt fence
+and test stop with a pending receipt. A directly launched instance instead uses
+its existing ownership-checked `station stop --instance=<verified-instance>`
+from the owning checkout. Recovery never runs either command automatically.
+
+### Abandon an unpublished attempt
+
+Offer **Abandon attempt and reassess** with a separate acknowledgement. Under
+both existing locks, validate current root/owner/process identity, no live
+service, absent list and unchanged pre-existing marker. Recovery creates no
+marker, so it cannot leave one to undo. A `preparing/<uuid>/` path, including
+partial intent/import/stage bytes, cannot publish by construction and can be
+archived without inferring publication from absent records. An active attempt
+can be archived only when its known-v1 intent and still-present exact stage
+prove the stage unconsumed; a partial acknowledgement/commit does not defeat
+that positive proof. An absent stage, unsafe path, unknown protocol or
+unverifiable active intent does not prove it. Never infer unpublished from a
+missing commit alone: power loss might have lost that directory entry.
+
+For these demonstrably unpublished states, atomically no-replace rename the
+whole preparation or active directory to a new private `archive/<uuid>/`, without opening
+or modifying payloads; retain partial bytes and names exactly. Refuse unsafe
+source/destination paths, sharing violations or unsupported rename semantics.
+Do not delete locks, markers, profile evidence, vault data or archive contents.
+A crash before/after the archive rename leaves either the original directory
+or its archive, never a fresh root. No active directory plus archive history permits
+only a **new explicit recovery assessment/acknowledgement**, not genesis.
+
+This handles partial preparation intent/import/stage writes, active partial
+ack/commit writes, cancellation before publication and stale root binding on a
+demonstrably unpublished attempt.
+A consumed/missing stage, unknown publication state, or a present list disables
+abandonment. There is no unspecified manual deletion/receipt-edit repair path:
+show Exit and retain evidence; restoration of a known valid list or a separately
+reviewed subsequent-loss flow is required. Abandonment must not masquerade as
+recovery of a list that was published and later lost.
 
 ### Crash and restart decisions
 
-| Last durable step / observed state | Next launch or explicit resume |
+| Last durable step / observed state | Next launch or explicit action |
 | --- | --- |
-| Read-only assessment or config directory only | Reassess. No saved intent or acknowledgement is inferred. |
-| Journal/attempt exists but intent, blob or target is incomplete | Exit only; preserve partial bytes for operator repair. Never genesis. |
-| Valid intent/target/evidence, no acknowledgement | Show exact pending plan; require fresh acknowledgement after revalidation. No automatic publication. |
-| Valid acknowledgement, marker/list absent | Explicit Resume rechecks under locks and commits the same target; changed evidence refuses. |
-| Marker published, list absent | Receipt authorizes only exact acknowledged Resume, not ordinary genesis. |
-| Full target published, completion absent | Ordinary readers/startup refuse. Explicit Resume may finalize only when current bytes exactly match target and all evidence/identities still agree. Otherwise preserve and Exit. |
-| Completion present and current list valid | Normal startup; subsequent CAS revisions may differ from initial target. |
-| Completion present, list missing/corrupt, or contradictory journal/target | Exit only; no replay or empty replacement. |
-| Any write/flush/readback failure, filesystem durability uncertain | Keep artifacts; report incomplete, not success. Re-evaluate the observed state on next launch. |
+| Read-only assessment/config directory only | Reassess; no intent or acknowledgement inferred. |
+| Partial preparation directory | It can never publish: archive under both locks and reassess, or Exit; never genesis. |
+| Active attempt with valid intent and exact stage, partial ack/commit | Stage proves unconsumed: archive or rebuild the plan via fresh assessment, never infer consent. |
+| Valid intent/stage, no acknowledgement | Revalidate and require fresh acknowledgement, or abandon/archive. |
+| Valid acknowledgement, no commit/list | Revalidate and publish commit, or abandon/archive. |
+| Valid commit, exact stage present, list absent | Explicit Resume rechecks and consumes only that stage; abandonment/archive remains possible. |
+| Valid commit, stage consumed, valid list present | Publication finished; normal reads and later CAS revisions proceed. No completion write remains. |
+| Commit plus stage and list both present | Collision/contradiction: preserve and Exit; never overwrite. |
+| Commit plus stage and list both absent, or corrupt list | Publication may have happened and been lost: Exit; never replay or abandon as unpublished. |
+| Unknown protocol, unsafe journal, missing active intent/stage or uncertain publication | Exit; never infer absence. Only positive preparation/stage proof authorizes archive. |
+| Archive rename interrupted | Re-read active/archive identity under both locks; retain bytes, then resume the observed side of the atomic operation. |
 
-On Windows, file flush plus atomic publication is not a promise of portable
-directory-fsync behavior. Power loss can yield a missing or partial journal
-record; the existence fence must refuse it. Process-crash tests do not establish
-power-loss durability. Resume never rewrites preserved evidence to make it fit.
+On Windows, file flush plus atomic rename does not promise portable directory
+fsync behavior. Power loss can leave missing/partial records. A step-3 partial
+preparation attempt can be safely archived; an uncertain active commit/publication
+state still refuses. Process-crash tests do not establish power-loss durability.
+No resume rewrites old evidence to make it fit.
 
 ## Desktop experience and privacy
 
 Use a dedicated pre-backend Tauri recovery window, not a multi-step no-parent
 alert or a backend HTTP page. It has narrowly scoped native assessment/import/
-commit/resume commands and no normal credential, enrollment or shell capability.
+commit/resume/abandon commands and no normal credential, enrollment or shell capability.
 Package its production UI with the app. Closing it exits; killing the app closes
 the flow. No-parent macOS CFUserNotification alerts can outlive a killed app,
 which makes them unsuitable for keeping a multi-step consent current.
@@ -329,14 +410,25 @@ nested paths, vault accounts, origins, Device/session IDs or raw OS error text.
 The private import/candidate review is an explicit disclosure surface; it is not
 a diagnostic. Shared diagnostic export contains fixed reason codes, counts,
 platform/schema and recovery state only—no names or identity/digest locators.
-Keep receipt blobs private and exclude them from ordinary issue/report bundles.
-Public test evidence uses synthetic identities/origins and redacted screenshots.
+Keep receipts/imports private and exclude them from ordinary issue/report bundles.
+These bounds apply to native `log::error!` and dialog `desktop_failure_body`
+paths too: map raw OS/keyring errors to fixed codes before logging or rendering;
+never interpolate paths, account text or payloads into recovery errors. Private
+import disclosure is not an exception for log output. Public test evidence uses
+synthetic identities/origins and redacted screenshots.
+
+Version 1 intentionally has no CLI/headless recovery writer. Headless operators
+can stop their verified service, but must open the packaged Desktop on that
+root to import/create/abandon. The CLI export refusal and receipt read guards
+ship with it; no unattended `--force` or guessed-ack shortcut is provided.
+A future typed-ack CLI coordinator is separate work. State this gap in help and
+operator guidance; do not claim complete headless recovery.
 
 ## Platform assessment contracts
 
 | Platform | Attribute-only observation | Cannot establish / required refusal |
 | --- | --- | --- |
-| macOS Keychain | Enumerate generic-password attributes, filter Station services; no password reads. App identifier/channel are observations only. | Custody digest is not a root binding; access denial, locked/unavailable query or incomplete enumeration is unreadable. Prompt behavior must be tested with the signed packaged app. |
+| macOS Keychain | Query attributes for each service in the canonical nine-service `STATION_KEYRING_SERVICES` registry; no empty-spec generic-password scan or password reads. App identifier/channel are observations only. | Custody digest is not a root binding; access denial, locked/unavailable query or incomplete enumeration is unreadable. Prompt behavior must be tested with the signed packaged app. |
 | Windows Credential Manager | Match Station services against raw account-first `account.service` target names. Do not use the store's greedy dotted-service decoder. | Raw target proves history, not root/origin. Session storage refusal, access failure, malformed entry or incomplete enumeration refuses. No CredentialBlob reads. |
 | Linux Secret Service | Query each service from the enforced canonical Station service registry, with the same native-store boundary. | Do not search/unlock all unrelated items. Unlocking a requested Station item can unlock its collection. Denied/locked/error/incomplete results are unreadable; provider behavior needs executed proof. |
 
@@ -372,8 +464,9 @@ caller, not only a classifier helper.
 
 - A realistic used root with many unrelated runtime files, missing list and
   readable global vault history reaches acknowledged new-list recovery without
-  recursively reading runtime contents. Old file evidence is byte-identical and
-  vault item values/counts are unchanged by recovery.
+  recursively reading runtime contents. Large backup/cutover files are hashed
+  in place rather than copied or refused by the removed 16/64 MiB copy caps. Old
+  evidence is byte-identical and recovery does not mutate vault values/items.
 - Real CLI export → native import → real CLI read/write succeeds. Verify inert
   normalization, strict malformed/unknown/duplicate-field rejection, unsafe HTTP
   refusal and no automatic credential, default, project or service activation.
@@ -383,18 +476,31 @@ caller, not only a classifier helper.
 - Interleave native recovery with real CLI writers and service ownership changes.
   Removing final evidence/process rechecks or reversing lock order must produce
   a targeted failure; no user service is stopped by the fixture.
-- Inject failures before/after each receipt write, acknowledgement, marker,
-  atomic list publication and completion; restart both Desktop and CLI. Cover
-  truncated JSON, missing blobs, partial directories, destination appearance,
-  replaced paths, symlink/reparse OS-metadata files, root moves and lost identity.
-  Remove the receipt admission check and prove ordinary reads/writes/startup
-  fail their tests; completion plus missing list must never replay.
+- Inject failures before/after intent/import/stage, acknowledgement, commit,
+  atomic list rename and attempt-archive rename; restart both Desktop and CLI.
+  Cover truncated records, partial directories, destination appearance, replaced
+  paths, symlink/reparse OS-metadata files, root moves and lost identity. Prove
+  partial precommit attempts archive byte-for-byte and attempt N can proceed.
+  Remove the cheap receipt guard at each real shared read/initialized-entry
+  caller and prove admission fails its test; a consumed stage plus missing list
+  must never replay. There must be no post-publication completion write.
+- Export on a missing/pending store refuses. A zero-row import takes new-list
+  mode and cannot commit without its acknowledgement. No import skips consent.
+- Vault queries use Station-service filters; an unrelated account addition does
+  not invalidate consent, but a readable-to-unreadable transition refuses under
+  the current pending-owner policy. No attribute digest or whole-vault scan.
+- Pause a prompting vault query and verify no maintenance/registry locks are
+  held. The recovery fence must not block real ownership-checked service stop;
+  no extra ACL subprocess is launched solely by the cheap shared read guard.
 - Exercise stale process incarnation, PID reuse, receipt from a different root,
   expired window nonce, double-click commit, killed window/app and OS prompt
   cancellation. Every failure preserves previously existing bytes.
-- After completion, real CLI writes increment revision normally; restart reads
-  the edited list rather than demanding its original target digest. Older-client
-  post-crash mutation must cause resume refusal rather than overwrite.
+- After publication, real CLI writes increment revision normally; restart reads
+  the edited list rather than demanding its initial target digest. Run real
+  pinned old builds from pre-#4022 main and merged #4022: before rename they
+  refuse missing-list genesis; after a crash following rename, their CAS write
+  is accepted as a later committed revision and cannot cause receipt lockout.
+  A simulated old writer is insufficient version-skew evidence.
 - Packaged Windows (implementation lane) and signed macOS (independent lane):
   import, new-list acknowledgement, denied vault, unknown lock, crash/resume,
   Exit, app kill and post-recovery CLI interoperability. Inspect rendered UI,
