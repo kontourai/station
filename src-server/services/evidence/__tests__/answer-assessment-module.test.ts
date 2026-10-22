@@ -14,12 +14,15 @@ import {
 } from '@kontourai/station-contracts';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   AnswerAssessmentModule,
   AnswerAssessmentNotFoundError,
   AnswerAssessmentUnavailableError,
   stationAnswerAssessmentClaimProfile,
 } from '../answer-assessment-module.js';
+
+const makeTempDir = trackTempDirs();
 
 const binding: StationAnswerBinding = createStationAnswerBinding({
   sessionId: 'session-a',
@@ -130,7 +133,7 @@ describe('AnswerAssessmentModule', () => {
   });
 
   test('hosted assessment reads are not captured without reading personal storage', async () => {
-    const home = mkdtempSync(join(tmpdir(), 'station-assessment-hosted-'));
+    const home = makeTempDir('station-assessment-hosted-');
     try {
       mkdirSync(join(home, 'answer-assessments'));
       writeFileSync(join(home, 'answer-assessments', 'index.json'), '{broken');
@@ -155,7 +158,7 @@ describe('AnswerAssessmentModule', () => {
   ])(
     'reports %s as corrupt, while an owner read failure stays retryable',
     async (_name, bytes) => {
-      const home = mkdtempSync(join(tmpdir(), 'station-assessment-corrupt-'));
+      const home = makeTempDir('station-assessment-corrupt-');
       try {
         mkdirSync(join(home, 'answer-assessments'));
         const index = join(home, 'answer-assessments', 'index.json');
