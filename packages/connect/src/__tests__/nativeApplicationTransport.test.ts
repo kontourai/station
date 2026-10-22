@@ -184,6 +184,13 @@ async function fixture(configuration: RTCConfiguration = {}) {
         const responseExpiresAt =
           readExpirySequence[readIndex] ?? readExpiresAt;
         const answerPending = readIndex < pendingReadCount;
+        if (answerPending)
+          return {
+            version: 'station-broker-native-connection-answer/v2',
+            expiresAt: responseExpiresAt,
+            answerSdp: null,
+            stationProof: null,
+          };
         if (revokeOnRead) current = null;
         const binding = {
           stationId: trust.stationId,
@@ -516,6 +523,33 @@ describe('native application transport client', () => {
       }
     },
   );
+
+  test('backs pending signaling reads off from 100 ms to a bounded one second', async () => {
+    const f = await fixture();
+    f.setReadExpirySequence([], 5);
+    vi.useFakeTimers();
+    try {
+      const start = Date.now();
+      const reads: number[] = [];
+      const read = f.signaling.read.getMockImplementation()!;
+      f.signaling.read.mockImplementation(async (...args) => {
+        reads.push(Date.now() - start);
+        return read(...args);
+      });
+      const response = f.transport.fetch(new URL('/api/health', ORIGIN));
+      await vi.waitFor(() => expect(f.signaling.read).toHaveBeenCalledTimes(1));
+      await vi.advanceTimersByTimeAsync(2500);
+      vi.useRealTimers();
+      await (await response).text();
+      expect(reads.map((time) => time - reads[0]!)).toEqual([
+        0, 100, 300, 700, 1500, 2500,
+      ]);
+      expect(f.signaling.sign).toHaveBeenCalledOnce();
+    } finally {
+      f.controller.abort();
+      vi.useRealTimers();
+    }
+  });
 
   test('accepts a valid signed answer with an earlier host read expiry', async () => {
     const f = await fixture();
