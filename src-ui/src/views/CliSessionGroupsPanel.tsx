@@ -8,6 +8,13 @@ import { useNavigationActions } from '../contexts/NavigationContext';
 import './CliSessionGroupsPanel.css';
 
 function memberStatus(member: CliSessionGroupView['members'][number]): string {
+  if (
+    member.state === 'terminal' &&
+    member.outcome === 'failed' &&
+    !member.handle &&
+    member.dispatchFailure
+  )
+    return 'Launch refused';
   if (member.state === 'terminal')
     return member.outcome === 'completed'
       ? 'Turn completed'
