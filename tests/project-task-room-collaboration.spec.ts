@@ -615,6 +615,17 @@ test.describe
           revision: expect.stringMatching(/^swsr-v1:[0-9a-f]{64}$/),
           text: converged,
         });
+        for (const context of [owner, peer]) {
+          await expect(
+            context.getByRole('tab', { name: 'Brief', exact: true }),
+          ).toHaveAttribute('aria-selected', 'true');
+          await expect(
+            context.getByRole('region', { name: 'Task room editor' }),
+          ).toContainText(converged);
+          await context
+            .getByRole('button', { name: 'Edit brief', exact: true })
+            .click();
+        }
         await expect(ownerDocument).toHaveValue(converged);
         await expect(peerDocument).toHaveValue(converged);
         expect(sharedBase).not.toBe(converged);

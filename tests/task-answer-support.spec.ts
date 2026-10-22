@@ -1243,6 +1243,17 @@ test('renders an exact answer-support projection in the real Task workspace DOM'
     .getByRole('button', { name: 'Close Basis' })
     .last();
   await expect(closeWholeTask).toBeFocused();
+  const wholeTaskPanelId = await page
+    .getByRole('tabpanel', { name: 'Basis', exact: true })
+    .filter({ has: wholeTaskBasis })
+    .getAttribute('id');
+  if (!wholeTaskPanelId)
+    throw new Error('Whole Task panel identity is unavailable');
+  const wholeTaskTab = basisGroup.locator(
+    `[role=tab][aria-controls=${JSON.stringify(wholeTaskPanelId)}]`,
+  );
+  await wholeTaskTab.focus();
+  await page.keyboard.press('Tab');
   await page.keyboard.press('Enter');
   await expect(wholeTaskBasis).toHaveCount(0);
   await expect(basisGroup.getByRole('tab', { selected: true })).toBeFocused();
