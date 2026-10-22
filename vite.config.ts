@@ -6,6 +6,7 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { type Alias, defineConfig, type ProxyOptions } from 'vite';
 import { UI_PROXY_BACKEND_PREFIXES } from './packages/cli/src/commands/ui-proxy-prefixes';
+import { offlineShell } from './scripts/vite-offline-shell';
 import { sharedShikiGrammars, uiAssetDelivery } from './scripts/vite-ui-assets';
 import tauriConfig from './src-desktop/tauri.conf.json';
 
@@ -299,6 +300,7 @@ export default defineConfig(({ command, mode }) => {
   return {
     plugins: [
       sharedShikiGrammars(),
+      ...(mode === 'native' ? [] : [offlineShell()]),
       uiAssetDelivery({ precompress: mode !== 'native' }),
       tailwindcss(),
       react(),

@@ -50,6 +50,9 @@ import { buildInfo } from '../build-info';
  *  - 'agents', 'agent', 'agent-tools' — agent list/detail/tools
  *  - 'conversations' — conversation summaries (NOT `messages`, which holds
  *    full message bodies; see the exclusions below)
+ *  - 'offline-session-index' — bounded conversation/session identifiers only.
+ *    Raw orchestration sessions stay excluded: resumeCursor, provider routing,
+ *    prompt-derived titles and diagnostics are not safe shell metadata.
  *  - 'projects' — project list/detail, including the nested layouts/
  *    icon-candidate queries under the same prefix (still shell metadata,
  *    not file contents)
@@ -91,6 +94,7 @@ export const PERSISTED_QUERY_KEY_PREFIXES = [
   'agent',
   'agent-tools',
   'conversations',
+  'offline-session-index',
   'projects',
   'runs',
   'system-status',

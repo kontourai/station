@@ -1885,3 +1885,16 @@ the public handshake, loopback access, unauthenticated remote denial, and an
 authenticated protected read. If a release changed the credential or identity,
 restore access through the local CLI rather than copying an old security record
 over a newer one.
+
+## Opt-in local offline reading
+
+The browser can explicitly retain recent message text for offline reading. This
+is plaintext IndexedDB data available to anyone controlling that browser profile;
+it is not account verification, encryption, or an offline extension of server
+authorization. The [user disclosure and limits](../user/getting-started.md#read-recent-conversations-offline)
+and [implementation boundary](../design/offline-outbound-queue.md#offline-reading-and-the-browser-shell)
+own this exception. It is off by default, retains one authority at a time, and
+clears on explicit deletion, sign-out or authority changes. A disconnected browser
+cannot learn about a remote revocation until reconnect. Live protected query
+shelves still require fresh authority observation. The worker caches an anonymous
+static shell and anonymous assets, never authenticated navigation or API bodies.

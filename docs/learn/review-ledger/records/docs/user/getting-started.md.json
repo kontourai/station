@@ -238,7 +238,19 @@
 
     "src-ui/src/views/activity/openActivityReview.ts",
 
-    "tests/activity-related-review.spec.ts"
+    "tests/activity-related-review.spec.ts",
+
+    "src-ui/src/lib/offlineReading.ts",
+
+    "src-ui/src/views/settings/OfflineReadingSection.tsx",
+
+    "src-ui/src/components/OfflineReadingBoundary.tsx",
+
+    "src-ui/src/components/WebOfflineShell.tsx",
+
+    "src-ui/public/sw.js",
+
+    "scripts/vite-offline-shell.ts"
   ],
 
   "checks": [

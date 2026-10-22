@@ -18,7 +18,25 @@
 
     "src-ui/src/hooks/useActiveChatSessionMessaging.ts",
 
-    "src-ui/src/lib/outboundQueue.ts"
+    "src-ui/src/lib/outboundQueue.ts",
+
+    "src-ui/src/lib/offlineReading.ts",
+
+    "src-ui/src/components/OfflineReadingBoundary.tsx",
+
+    "src-ui/src/components/OfflineSessionIndex.tsx",
+
+    "src-ui/src/components/WebOfflineShell.tsx",
+
+    "src-ui/src/lib/queryPersistence.ts",
+
+    "src-ui/src/contexts/AuthorityQueryContext.tsx",
+
+    "src-ui/src/hooks/orchestration/useSessionEventWindow.ts",
+
+    "src-ui/public/sw.js",
+
+    "scripts/vite-offline-shell.ts"
   ],
 
   "checks": [
