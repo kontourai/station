@@ -84,6 +84,23 @@ export function revisionEvidenceRecordBytesUpperBound(input: {
   );
 }
 
+/**
+ * A snapshot's bytes by the very measure `freeze` applies to it, or null when
+ * that measure refuses its shape. Room admission uses this, not its own
+ * JSON length, so the two can never disagree (#4007).
+ */
+export function revisionEvidenceSnapshotBytes(
+  snapshot: unknown,
+  bounds: {
+    readonly maxSnapshotBytes: number;
+  } = REVISION_EVIDENCE_DEFAULT_BOUNDS,
+): number | null {
+  const measured = boundedPortableJsonBytes(snapshot, bounds.maxSnapshotBytes);
+  return measured === null || measured > bounds.maxSnapshotBytes
+    ? null
+    : measured;
+}
+
 export type RevisionEvidenceAdmissionRefusal =
   /** This document's own revision could never be frozen. */
   | 'document-full'

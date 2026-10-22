@@ -7,6 +7,7 @@ import {
   type RevisionEvidenceAdmissionRefusal,
   revisionEvidenceAdmission,
   revisionEvidenceRecordBytesUpperBound,
+  revisionEvidenceSnapshotBytes,
 } from '../../domain/revision-bound-evidence.js';
 import {
   DEFAULT_RETAINED_WORKING_STATE_OPERATIONS,
@@ -86,6 +87,9 @@ function revisionPublicationRefusal(
   state: SharedWorkingState,
   snapshotBytes: number,
 ): RevisionEvidenceAdmissionRefusal | null {
+  // Freeze's own measure: a shape it would refuse is refused here instead.
+  const evidenceBytes = revisionEvidenceSnapshotBytes(state.snapshot());
+  if (evidenceBytes === null) return 'document-full';
   const text = state.text();
   const ledger = readRevisionEvidenceLedgerUsage(db);
   // Publications already frozen are in the ledger; the rest are reserved.
@@ -95,7 +99,7 @@ function revisionPublicationRefusal(
     )
     .all() as Array<{ snapshot_bytes: number }>;
   return revisionEvidenceAdmission({
-    snapshotBytes,
+    snapshotBytes: Math.max(snapshotBytes, evidenceBytes),
     textBytes: Buffer.byteLength(text, 'utf8'),
     recordBytes: revisionEvidenceRecordBytesUpperBound({
       snapshotBytes,
