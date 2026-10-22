@@ -145,9 +145,13 @@ report remains absent.
 
 ### Read a reported child's transcript
 
-A child report's `source` records `provider-summary`, `child-message`, or
-`provider-error`; absent provenance stays unknown. Neither completion nor report
-text establishes artifact verification or semantic acceptance.
+A child report's `source` records `tool-return`, `provider-summary`,
+`child-message`, or `provider-error`; absent provenance stays unknown. A structured
+Claude Agent/Task return is bound to its tracked child and call, and replaces an
+earlier summary while preserving recovery handles. Without summary text, a
+handle has no report provenance and does not supersede a returned report.
+Neither completion nor returned text establishes artifact verification or
+semantic acceptance.
 
 When a persisted transcript reference exists,
 `getChildWorkTranscript(apiBase, threadId, childId, page?, options?)` from the
