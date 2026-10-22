@@ -78,7 +78,10 @@
     ".github/workflows/desktop-rust.yml",
     "src-desktop/**",
     "packages/contracts/src/native-push.ts",
-    "scripts/run-agent-activity-android-unit-tests.mjs"
+    "scripts/run-agent-activity-android-unit-tests.mjs",
+    "scripts/lib/desktop-node-runtime.mjs",
+    "scripts/prepare-desktop-rust-resources.mjs",
+    "config/portable-server-node-runtime.json"
   ],
   "desktop": [
     ".github/workflows/desktop-clean-checkout.yml",

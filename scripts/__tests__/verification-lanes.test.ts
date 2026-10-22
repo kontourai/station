@@ -282,6 +282,7 @@ describe('lane ownedOutputs truthfulness', () => {
       'packages/connect/dist',
       'packages/cli/dist/',
       'src-desktop/target/',
+      'src-desktop/binaries/',
     ]);
   });
 

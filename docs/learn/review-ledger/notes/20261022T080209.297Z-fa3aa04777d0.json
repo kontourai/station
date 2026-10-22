@@ -1,0 +1,7 @@
+{
+  "revision": "20c07e31369eef541ced83674df604ee7ba90250",
+
+  "notes": [
+    {"path":"docs/guides/desktop-build.md","note":"Reviewed private station-node sidecar staging and absolute release resolver, unchanged user PATH, preserved service ownership, omitted server maps and reviewed SDK source trees, and separate macOS Node signing. Resource build and focused runtime tests executed locally; Windows and signed macOS proof pending.","inputs":["docs/guides/desktop-build.md","src-desktop/src/lib.rs","src-desktop/tauri.nightly.conf.json"]}
+  ]
+}
