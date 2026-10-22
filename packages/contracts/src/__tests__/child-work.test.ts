@@ -518,6 +518,32 @@ describe('applyChildWorkDelta', () => {
     });
   });
 
+  test('a handle-only return preserves recovery without claiming returned text or replacing an earlier report', () => {
+    const handleOnly = settle('reported', 'completed', {
+      result: {
+        source: 'tool-return',
+        handle: { kind: 'transcript-file', path: '/reports/child.jsonl' },
+      },
+    });
+    const withoutReport = fold(handleOnly);
+    expect(get(withoutReport, 'reported')?.result).toEqual({
+      handle: { kind: 'transcript-file', path: '/reports/child.jsonl' },
+    });
+
+    const report = settle('reported', 'completed', {
+      result: {
+        summary: 'Provider report',
+        source: 'provider-summary',
+        handle: { kind: 'session', threadId: 'child-session' },
+      },
+    });
+    expect(get(fold(report, handleOnly), 'reported')?.result).toEqual({
+      summary: 'Provider report',
+      source: 'provider-summary',
+      handle: { kind: 'session', threadId: 'child-session' },
+    });
+  });
+
   test('truncated matching prefixes cannot establish report identity or truncation', () => {
     const prefix = 'x'.repeat(CHILD_WORK_SUMMARY_MAX_CHARS);
     for (const original of [prefix, `${prefix} first suffix`]) {
