@@ -1,0 +1,7 @@
+{
+  "revision": "a237e69ac5d1d555c50dc769e13964f59f467c92",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed a237e69ac5d against the merged connection-route helper and module composition claims. The first-handshake registration helper now accesses ConfigLoader.getProjectHomeDir through its declared method type rather than as any; its typeof guard, skipped result for transport fixtures, saved-config equality, serialized registration and mutation ordering are unchanged. No module interface, authority, persistence or lifecycle behavior changes; the combined registry/onboarding mappings remain those reviewed at93e4eb493d0. Specific type-laundering gate and server-tests typecheck pass after cleanup; no new runtime or provider qualification claimed.","inputs":["docs/architecture/module-map.md","src-server/routes/connections/acp.ts"]}
+  ]
+}
