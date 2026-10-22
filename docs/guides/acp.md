@@ -272,15 +272,17 @@ expiry** — so a long Station chat previously received `{}` *as its refreshed
 token* and then failed downstream in a confusing way.
 
 Station holds `STATION_INTERNAL_API_TOKEN` and model-connection credentials
-in the same process; an external agent is a less-trusted principal. And
-Station holds no credential belonging to an engine at all: **Station does
-not become an engine's auth host.** Answering that request is not a feature
-to be added carefully — it is the thing that cannot be built.
+in the same process; an external agent is a less-trusted principal.
+Station does not read or bridge an engine's own login tokens or answer its
+credential callbacks. **Station does not become an engine's auth host.**
+A person may separately save an API key for a connection; Station stores it
+in its engine credential store and passes it through that connection's process
+environment (see [Sign an engine in](connections.md#sign-an-engine-in)).
 
 After refusing the credential callback on the wire, the adapter attempts at
 most one bounded re-establishment from its own validated resume cursor. It
 requires the same connection/fingerprint and live `loadSession` support; it
-does not read, refresh, or forward an engine credential. A missing safe cursor,
+does not read, refresh, or forward the engine's own login tokens. A missing safe cursor,
 failed recovery, or repeated refusal falls back to one `runtime.warning` per
 session per method (`code: acp.credential-request-refused`) telling the user
 to sign in with the engine's own CLI and start a new chat, since a fresh
@@ -564,9 +566,9 @@ and any a plugin contributes. Besides the launch fields above, an entry
 | Field | Description |
 |---|---|
 | `install` | Per platform (`darwin`, `linux`, `win32`): a copyable `command`, an https `docsUrl`, and a `note`. Station shows it and never runs it. The response adds `hostInstall`, the recipe for the platform Station runs on. |
-| `launchEnv` | Built-in entries only. Non-secret variables set when Station starts a connection whose executable has the entry's command name, by name or full path (`/opt/homebrew/bin/goose` gets Goose's; on Windows `C:\tools\Goose.EXE` matches too, case-insensitively and without `.exe`/`.cmd`/`.bat`). Names must start with an engine-scoped prefix (`GOOSE_`, `DROID_`, `FACTORY_`). The environment Station already launches with wins a conflict. |
+| `launchEnv` | Built-in entries only. Non-secret variables set when Station starts a connection whose executable has the entry's command name, by name or full path (`/opt/homebrew/bin/goose` gets Goose's; on Windows `C:\tools\Goose.EXE` matches too, case-insensitively and without `.exe`/`.cmd`/`.bat`). Names must start with an engine-scoped prefix (`GOOSE_`, `DROID_`, `FACTORY_`, `AUGMENT_`). The environment Station already launches with wins a conflict. |
 | `platforms` | The host platforms the entry launches on; absent means all. Elsewhere it is reported as not detected and `POST /acp/registry/:id/install` refuses it. |
-| `auth` | `statusCommand` (argv), `signInHint`, `credentialEnvVars` (names only) and `hiddenAuthMethodIds`. Data only, not yet applied: nothing runs or reads these yet. |
+| `auth` | Sign-in, matched like `launchEnv` and read from built-in entries only. `statusCommand` (argv) runs only with a `statusRule` (`signedInJsonField`, `signedOutText`, `signedOutExitCodes`, `signedInText`, `exitZeroMeansSignedIn`); anything the rule does not name reads as unknown. `signInHint`; `credentialEnvVars`, the variables whose values a person may store for a connection; `hiddenAuthMethodIds`, advertised methods Station does not offer; `subscriptionTermsNotices` (`provider`, https `termsUrl`, optional `authMethodIds`). See [Sign an engine in](connections.md#sign-an-engine-in). |
 | `homepageUrl` | An https link to the engine's docs. Data only; nothing renders it yet. |
 
 `validateACPEngineDescriptor` checks these fields and the entry's `name`,
@@ -691,6 +693,13 @@ POST   /acp/registry/recheck           Re-read the login-shell PATH, then list a
 POST   /acp/registry/:id/install       Add a catalogue entry as a connection; a public listing needs its confirmed command
 GET    /acp/registry/source            Where the public agent registry listing comes from, and how fresh it is
 POST   /acp/registry/source/refresh    Download the public agent registry index now (orchestration:operate)
+GET    /acp/connections/:id/sign-in    Sign-in status, offered methods and key names (orchestration:read)
+POST   /acp/connections/:id/sign-in/check   Run the status command and a sign-in handshake again (orchestration:operate)
+POST   /acp/connections/:id/sign-in/start   Start a sign-in by method id (engine:login; a terminal method also coding:exec and terminal:operate)
+GET    /acp/connections/:id/sign-in/attempt Read the running or last sign-in, with links the engine printed (engine:login)
+DELETE /acp/connections/:id/sign-in/attempt Cancel it (engine:login)
+PUT    /acp/connections/:id/credentials/:name  Store a key for one of the engine's credentialEnvVars (engine:login)
+DELETE /acp/connections/:id/credentials/:name  Remove it (engine:login)
 ```
 
 Creating a connection, or changing its `command`, `args` or `cwd`, chooses a
@@ -750,13 +759,22 @@ A connection surfaces as an External agent with the same clean ID once its probe
 
 ### Sign-in shows as not checked
 
-Station has no sign-in check for a command-backed engine, so its login
-prerequisite reports that sign-in is not checked. That row is optional and
-never blocks a chat. A successful probe proves the engine started a session,
-not that it is signed in: some engines refuse only at the first prompt. The
-check plugs in through `buildCliRuntimePrerequisites`' `detectAuthState`
-(`src-server/providers/auth/cli-auth.ts`), which the engine adapter supplies
-(`src-server/providers/adapters/acp-adapter.ts`).
+The login prerequisite reads only the engine's documented status command
+([engine-auth-status.ts](../../src-server/services/acp/engine-auth-status.ts),
+supplied as `detectAuthState`). Without one, or when it is inconclusive, the
+row says sign-in is not checked; that row is optional and never blocks a chat.
+A command answer of signed out is a required, missing prerequisite. A
+successful probe proves the engine started a session, not that it is signed
+in: some engines refuse only at the first prompt. An `auth_required` refusal
+(from a chat or a probe) and a finished Station sign-in are shown in the
+engine's sign-in panel but never gate readiness, because only a later answered
+prompt clears a refusal.
+
+The sign-in handshake is a separate short-lived process that advertises
+`clientCapabilities.auth.terminal`, so an engine may list `type: "terminal"`
+methods; their `args` and `env` stay on the server. A terminal method is never
+passed to `authenticate`
+([engine-sign-in.ts](../../src-server/services/acp/engine-sign-in.ts)).
 
 ### A previous ACP session cannot be restored
 
@@ -827,7 +845,8 @@ stays a generic error) is refused the same settled way, with the
 `engine-sign-in-required` code (kind `auth`): the announced session ends with
 that cause and the thread is not fenced. The same error on a prompt is that
 turn's `runtime.error` with the same code. Chat shows **Sign in to this engine**
-with the engine's own words. Any other `session/new` failure keeps the
+with the engine's own words, and a **Sign in** action that opens the engine's
+page. Any other `session/new` failure keeps the
 uncertain-start behaviour.
 
 OpenCode's own model listing and Station's ACP model listing are different

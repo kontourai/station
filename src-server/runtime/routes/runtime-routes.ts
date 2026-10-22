@@ -282,6 +282,7 @@ import {
   createGlobalConversationRoutes,
 } from '../../routes/chat/conversations.js';
 import { createACPRoutes } from '../../routes/connections/acp.js';
+import { createACPSignInRoutes } from '../../routes/connections/acp-sign-in.js';
 import { createAppHomeRoutes } from '../../routes/connections/app-home.js';
 import { createBedrockRoutes } from '../../routes/connections/bedrock.js';
 import { createConnectionRoutes } from '../../routes/connections/connections.js';
@@ -459,6 +460,10 @@ import {
 } from '../../services/access/personal-token-store.js';
 import { StationGroupsError } from '../../services/access/station-groups-service.js';
 import type { ACPManager } from '../../services/acp/acp-bridge.js';
+import {
+  EngineSignInService,
+  registerEngineSignIn,
+} from '../../services/acp/engine-sign-in.js';
 import { createPublicAgentRegistrySource } from '../../services/acp/public-agent-registry.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
 import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
@@ -5345,6 +5350,17 @@ export function configureRuntimeRoutes(
       publicAgentRegistry: createPublicAgentRegistrySource(
         context.configLoader.getProjectHomeDir(),
       ),
+    }),
+  );
+  const engineSignInService = new EngineSignInService({
+    terminal: context.terminalService,
+  });
+  registerEngineSignIn(engineSignInService);
+  context.app.route(
+    '/acp',
+    createACPSignInRoutes({
+      ctx: runtimeContext,
+      service: engineSignInService,
     }),
   );
   context.app.route('/agents', createAgentToolRoutes(runtimeContext));

@@ -777,6 +777,26 @@ raw CLI output is private. Saved Claude profiles override both the config root
 and secure-store root so an ambient Keychain namespace cannot select another
 profile's account.
 
+Engines run as commands (the `/acp/connections/:id/sign-in*` and
+`/credentials/:name` leaves, [acp-sign-in.ts](../../src-server/routes/connections/acp-sign-in.ts))
+have no profiles: their sign-in acts on the engine's own login on the host.
+Starting, reading or cancelling one, and storing or removing an engine key, are
+`engine:login` leaves with the same operator exception; a request that may be
+an agent's is refused. A terminal sign-in runs the connection's own program
+with arguments taken only from the engine's live handshake, never from the
+request, so a paired device also needs both `coding:exec` and
+`terminal:operate` to start it; attaching also needs `terminal:operate`. Its
+session is closed at a 15-minute deadline and its terminal reopens only while
+it runs (`attachOnly`), never as a fresh shell. Any other
+method goes to ACP `authenticate` on a short-lived process with a five-minute
+deadline; only https links from its stderr are relayed, and the server opens
+none. The attempt read is `engine:login` because it carries those links. A
+stored key lives in `security/engine-credentials.json` (0600, its own document,
+not the tool-server store), is accepted only for a variable the built-in
+descriptor lists, is never returned or logged, and is added only to that
+connection's engine processes and status command. Station still answers no
+engine's credential callback (ADR 0013).
+
 Quota reads remain `access:manage`: they borrow a selected account's stored token
 for an outbound provider request. An engine-login grant alone admits neither
 quota reads nor account creation or manual enrolment metadata. Activity uses the existing management-scoped rollup API even for local-only

@@ -6,6 +6,7 @@
 
 import {
   type ACPConnectionRegistryEntry,
+  type ACPEngineAuthDescriptor,
   validateACPEngineDescriptor,
 } from '@kontourai/station-contracts/acp';
 import type { IACPConnectionRegistryProvider } from '../../providers/provider-interfaces.js';
@@ -198,4 +199,32 @@ export function registryLaunchEnvFor(
       executableName(entry.command, platform) === name,
   );
   return match?.entry.launchEnv ? { ...match.entry.launchEnv } : undefined;
+}
+
+/**
+ * The built-in sign-in descriptor for a connection's executable, keyed like
+ * {@link registryLaunchEnvFor}. Built-in only: a status command is a program
+ * Station runs on its own, so plugin descriptors never supply one.
+ */
+export function registryAuthFor(
+  connection: { command: string },
+  platform: string = process.platform,
+): { command: string; auth: ACPEngineAuthDescriptor } | undefined {
+  const name = executableName(connection.command, platform);
+  const match = listValidatedACPRegistryEntries({ detect: false }).find(
+    ({ entry, builtin }) =>
+      builtin && entry.auth && executableName(entry.command, platform) === name,
+  );
+  return match?.entry.auth
+    ? { command: match.entry.command, auth: match.entry.auth }
+    : undefined;
+}
+
+/** Whether `argv0` names the same program as `command`, by executable name. */
+export function namesSameExecutable(
+  argv0: string,
+  command: string,
+  platform: string = process.platform,
+): boolean {
+  return executableName(argv0, platform) === executableName(command, platform);
 }

@@ -215,6 +215,9 @@ describe('ACPConnectionSetupPanel', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
     await screen.findByRole('button', { name: 'Retry check' });
+    expect(
+      screen.getByRole('button', { name: 'Sign in to Kiro CLI' }),
+    ).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Start a chat/ })).toBeNull();
   });
 

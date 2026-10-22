@@ -51,6 +51,7 @@ conversation access. Filesystem preparation stays in the server.
 | Module | Owns |
 |---|---|
 | `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota, optional identity/credit/model/spending/breakdown metadata and bounded capture-audit projections, plus provider-owned login; runtime validation stays in SDK consumers |
+| `@kontourai/station-contracts/engine-sign-in` | Sign-in for engines run as commands: status with its source, offered methods (id, name, kind, terms note), key names (never values), the running attempt and what the caller may do |
 | `@kontourai/station-contracts/acp` | ACP connection config, ACP connection status values, and engine catalogue entries with their install/launch/sign-in descriptor and its validator (`validateACPEngineDescriptor`), and the public agent registry's listing facts and source status |
 | `@kontourai/station-contracts/engine-capability-matrix` | Per-engine capability and delivery declarations, and for ACP who decides which actions ask (`acpApprovalControl`: `station` for an engine whose approval rules Station sets at launch, today OpenCode, `engine` otherwise) |
 | `@kontourai/station-contracts/agent` | Agent specs, metadata, tools, slash commands, the versioned Agent audience and the member Agent view |

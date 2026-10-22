@@ -716,7 +716,7 @@ gates, live receipts (partially reachable for Claude Code via hooks; out of scop
 | First-run gate: durable `AppConfig.firstRun`, Home dialog + re-offer card, shared dialog/Button/Checkbox (§4.1) | Shipped (UX audit RT-02, SHELL-12) |
 | Add engine as one journey in the Engines detail pane: one catalogue (not-connected, native, built-in Found/Not installed, custom), new catalogue choices confirmed, saved not-connected choices retried directly, Checking and the result in place, deep links to an entry; Not installed offers install and Check again only; Ready offers Start a chat | Built (engine add-flow lane, 2026-10-21) |
 | Not connected yet engines listed on the Engines page with their repairs; Retry check only for a failed engine, Check connection for a Ready one | Built (engine add-flow lane, 2026-10-21) |
-| Engine sign-in from the engine page and the Setup required result | Target (engine sign-in lane; mount points left in both) |
+| Engine sign-in from the engine page, a saved not-connected engine and the Setup required result | Built (engine sign-in lane); real vendor-account sign-in remains unverified |
 | Azure OpenAI / Vertex shapes | Target, unprioritized |
 
 ### Later program boundaries

@@ -8,6 +8,7 @@ import {
   publicRegistryCommandLine,
 } from '../engine-install/PublicRegistry';
 import { RegistryEntryInstallHint } from '../engine-install/RegistryEntryInstallHint';
+import { EngineSignInDisclosure } from '../engine-sign-in/EngineSignInDisclosure';
 import type { ACPConnectionDraft } from './types';
 import type {
   ACPConnectionSetupAttempt,
@@ -379,11 +380,13 @@ export function ACPConnectionSetupStatus({
   firstContact = false,
   attempt = 'add',
   engineName,
-  setupRequiredSlot,
+  connectionId,
 }: {
   stage: ACPConnectionSetupStage;
   label?: string;
   error: string | null;
+  /** The saved connection, so "Setup required" can offer its sign-in. */
+  connectionId?: string;
   /**
    * CI-R8: the probe's own most recent failure, when it has one. "This
    * provider needs more setup before it can run work" named nothing and both
@@ -397,11 +400,6 @@ export function ACPConnectionSetupStatus({
   /** A first add, a re-check, or a saved edit: they are said differently. */
   attempt?: ACPConnectionSetupAttempt;
   engineName?: string;
-  /**
-   * Mount point beside a result that is not Ready (the engine sign-in lane
-   * places its panel here). Rendered after the reason, inside the result.
-   */
-  setupRequiredSlot?: ReactNode;
 }) {
   const engine = engineName ?? 'this engine';
   if (stage === 'checking') {
@@ -462,7 +460,12 @@ export function ACPConnectionSetupStatus({
             ) : null}
           </>
         )}
-        {label !== 'Ready' && setupRequiredSlot}
+        {label === 'Setup required' && connectionId && (
+          <EngineSignInDisclosure
+            connectionId={connectionId}
+            engineName={engine}
+          />
+        )}
       </div>
     );
   }

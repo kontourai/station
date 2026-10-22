@@ -239,6 +239,58 @@ describe('validateACPEngineDescriptor', () => {
       'auth.credentialEnvVars[0] is not valid',
     ]);
   });
+
+  test('accepts a status rule and terms notice, and refuses a rule that reads nothing', () => {
+    expect(
+      validateACPEngineDescriptor({
+        auth: {
+          statusCommand: ['engine', 'status', '--json'],
+          statusRule: {
+            signedInJsonField: 'isAuthenticated',
+            signedOutText: ['Not logged in'],
+            signedOutExitCodes: [3],
+          },
+          subscriptionTermsNotices: [
+            {
+              provider: 'Anthropic',
+              termsUrl: 'https://example.com/terms',
+              authMethodIds: ['login'],
+            },
+          ],
+        },
+      }),
+    ).toEqual([]);
+    expect(
+      validateACPEngineDescriptor({
+        auth: { statusCommand: ['engine', 'status'], statusRule: {} },
+      }),
+    ).toEqual(['auth.statusRule reads nothing']);
+  });
+
+  test('refuses a rule without a command, a bad field or exit code, and a non-https terms link', () => {
+    expect(
+      validateACPEngineDescriptor({
+        auth: {
+          statusRule: {
+            signedInJsonField: 'a.b',
+            signedOutExitCodes: [0],
+            exitZeroMeansSignedIn: 'yes' as never,
+            extra: true,
+          } as never,
+          subscriptionTermsNotices: [
+            { provider: 'Anthropic', termsUrl: 'http://example.com/terms' },
+          ],
+        },
+      }),
+    ).toEqual([
+      'auth.statusRule needs auth.statusCommand',
+      'auth.statusRule: unknown field extra',
+      'auth.statusRule.signedInJsonField must be a field name',
+      'auth.statusRule.signedOutExitCodes must be exit codes 1-255',
+      'auth.statusRule.exitZeroMeansSignedIn must be a boolean',
+      'auth.subscriptionTermsNotices[0].termsUrl must be an https URL',
+    ]);
+  });
 });
 
 describe('installRecipeForPlatform', () => {

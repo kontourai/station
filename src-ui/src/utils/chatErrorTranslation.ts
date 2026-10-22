@@ -544,7 +544,7 @@ export function translateChatError(
     return {
       title: 'Sign in to this engine',
       body: text || 'This engine needs you to sign in before it can run.',
-      hint: 'Sign in with the engine itself on the computer Station runs on, then start a new chat.',
+      hint: "Sign in from the engine's page in Connections, then start a new chat.",
       retryable: false,
     };
   }

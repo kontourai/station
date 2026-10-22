@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import type {
   ACPConnectionInfo,
   ACPConnectionRegistryEntry,
@@ -56,8 +56,6 @@ export interface ACPConnectionSetupPanelProps {
   /** Ready: start a chat with the connected engine. */
   onStartChat?: (connection: ACPConnectionInfo) => void;
   startChatPending?: boolean;
-  /** Mount point beside a result that is not Ready (see the status). */
-  renderSetupRequired?: (connection: ACPConnectionInfo) => ReactNode;
 }
 
 /**
@@ -88,7 +86,6 @@ export function ACPConnectionSetupPanel({
   onCheck,
   onStartChat,
   startChatPending = false,
-  renderSetupRequired,
 }: ACPConnectionSetupPanelProps) {
   const nameInputRef = useRef<HTMLInputElement>(null);
   // The choice that opened this setup is gone from the page, so focus moves
@@ -186,6 +183,7 @@ export function ACPConnectionSetupPanel({
         )}
         <ACPConnectionSetupStatus
           stage={state.stage}
+          connectionId={resultConnection?.id}
           label={readiness?.statusLabel}
           error={state.error}
           reason={resultConnection?.lastError ?? null}
@@ -193,9 +191,6 @@ export function ACPConnectionSetupPanel({
           firstContact={awaitingFirstContact}
           attempt={state.attempt}
           engineName={engineName}
-          setupRequiredSlot={
-            resultConnection && renderSetupRequired?.(resultConnection)
-          }
         />
         <ACPConnectionSetupActions
           stage={state.stage}

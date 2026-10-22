@@ -6,6 +6,7 @@ import type { AuthorityObservation } from '@kontourai/station-sdk/authority-obse
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   fireEvent,
   render as renderView,
   screen,
@@ -423,6 +424,24 @@ describe('AgentConnectionView', () => {
         const reply = (data: unknown) =>
           new Response(JSON.stringify(data), {
             headers: { 'Content-Type': 'application/json' },
+          });
+        if (path.endsWith('/sign-in/attempt'))
+          return reply({ success: true, data: null });
+        if (path.endsWith('/sign-in'))
+          return reply({
+            success: true,
+            data: {
+              connectionId: path.split('/').at(-2),
+              engineName: 'Command engine',
+              status: {
+                state: 'unauthenticated',
+                source: 'refusal',
+                checkable: false,
+              },
+              methods: [],
+              credentials: [],
+              allowed: { signIn: true, terminal: false },
+            },
           });
         if (path.endsWith('/accounts'))
           return reply({
@@ -1431,9 +1450,11 @@ describe('AgentConnectionView', () => {
     expect(acpInstall).not.toHaveBeenCalled();
     const setup = screen.getByRole('region', { name: 'Engine setup' });
     expect(within(setup).getByText('stakpak acp')).toBeTruthy();
-    fireEvent.click(
-      within(setup).getByRole('button', { name: 'Connect Stakpak' }),
-    );
+    await act(async () => {
+      fireEvent.click(
+        within(setup).getByRole('button', { name: 'Connect Stakpak' }),
+      );
+    });
     expect(acpInstall).toHaveBeenCalledWith({
       id: 'stakpak',
       confirmCommand: { command: 'stakpak', args: ['acp'] },
@@ -1477,6 +1498,8 @@ describe('AgentConnectionView', () => {
       <AgentConnectionView selectedRuntimeId="stakpak" onNavigate={vi.fn()} />,
     );
 
+    expect(screen.getByRole('region', { name: 'Sign-in' })).toBeTruthy();
+    expect(screen.getByText('Not signed in')).toBeTruthy();
     const notice = screen.getByTestId('public-registry-update');
     expect(notice.textContent).toContain(
       'The public registry now lists Stakpak version 0.3.88, run as stakpak acp.',
@@ -1586,6 +1609,9 @@ describe('AgentConnectionView', () => {
     const { rerender } = await render(
       <AgentConnectionView selectedRuntimeId="lab" onNavigate={vi.fn()} />,
     );
+    expect(
+      screen.getByRole('button', { name: 'Sign in to Lab Engine' }),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Retry check' }));
     await waitFor(() => expect(acpCheck).toHaveBeenCalledWith('lab'));
 

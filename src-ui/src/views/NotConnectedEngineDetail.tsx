@@ -7,6 +7,7 @@ import { useACPConnectionSetupOwner } from '../components/acp-connections/useACP
 import { useStartChatWithEngine } from '../components/acp-connections/useStartChatWithEngine';
 import { Button } from '../components/Button';
 import { DetailHeader } from '../components/DetailHeader';
+import { EngineSignInDisclosure } from '../components/engine-sign-in/EngineSignInDisclosure';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import type { NotConnectedEngine } from './EngineAddFlow';
 
@@ -84,8 +85,10 @@ export function NotConnectedEngineDetail({
             </span>
           ) : null}
         </div>
-        {/* Sign-in slot (engine sign-in lane): an account panel for this
-            engine mounts here, beside the reason it did not connect. */}
+        <EngineSignInDisclosure
+          connectionId={connection.id}
+          engineName={connection.name}
+        />
         <ActionRow
           className="engine-setup__actions"
           overflowLabel={`Manage ${connection.name}`}

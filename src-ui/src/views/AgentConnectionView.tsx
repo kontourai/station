@@ -39,6 +39,7 @@ import { Checkbox } from '../components/Checkbox';
 import { ConnectionReadinessNotice } from '../components/connections/ConnectionReadinessNotice';
 import { DetailHeader } from '../components/DetailHeader';
 import { PublicRegistryUpdateNotice } from '../components/engine-install/PublicRegistry';
+import { EngineSignInPanel } from '../components/engine-sign-in/EngineSignInPanel';
 import { BrandIcon } from '../components/icons/BrandIcon';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
@@ -628,6 +629,14 @@ export function AgentConnectionView({
                 (entry) => entry.installed && entry.id === form.id,
               )}
             />
+            {selectedAcpConnectionId && (
+              <EngineSignInPanel
+                connectionId={selectedAcpConnectionId}
+                onSignedIn={() =>
+                  reconnectMutation.mutate(selectedAcpConnectionId)
+                }
+              />
+            )}
             {providerPresentation?.readiness !== 'Ready' && (
               <ConnectionReadinessNotice
                 readiness={providerPresentation?.readiness ?? ''}
@@ -637,8 +646,6 @@ export function AgentConnectionView({
                 devicePresentation={devicePresentation}
               />
             )}
-            {/* Sign-in slot (engine sign-in lane): an engine's account and
-                sign-in panel mounts here, below its readiness. */}
 
             <div className="editor-field">
               <label className="editor-label" htmlFor="agent-default-model">
