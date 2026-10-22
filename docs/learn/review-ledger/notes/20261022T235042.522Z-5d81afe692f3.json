@@ -1,0 +1,7 @@
+{
+  "revision": "280b36ae2a31c6db3951f34b19918e9c077dd0c3",
+
+  "notes": [
+    {"path":"docs/guides/mobile-release.md","note":"Reviewed startup retirement now placed before the unchanged material identity predicate so existing hosted cost/non-invalidation fault controls remain effective. Runtime behavior and accepted callback freshness limit remain as documented. Source review and focused polling tests only; hosted controls pending, physical iOS NOT_VERIFIED.","inputs":["docs/guides/mobile-release.md"]}
+  ]
+}
