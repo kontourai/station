@@ -51,6 +51,45 @@ const mockLogger = {
 };
 
 describe('paired-device event-stream lifecycle', () => {
+  test('keeps only one outstanding heartbeat write for a stalled reader', async () => {
+    vi.useFakeTimers();
+    let release!: () => void;
+    const barrier = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const write = vi.fn(
+      async (_stream: unknown, frame: { event: string; data: string }) => {
+        if (frame.event === 'ping') await barrier;
+      },
+    );
+    const controller = new AbortController();
+    const app = createEventRoutes({
+      eventBus: new EventBus(),
+      getACPStatus: () => ({ connected: false, connections: [] }),
+      logger: mockLogger,
+      writeSse: write,
+    });
+    try {
+      await app.request(
+        new Request('http://station.test/', { signal: controller.signal }),
+      );
+      await vi.advanceTimersByTimeAsync(30_000 * 5);
+      expect(
+        write.mock.calls.filter(([, frame]) => frame.event === 'ping'),
+      ).toHaveLength(1);
+      release();
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(
+        write.mock.calls.filter(([, frame]) => frame.event === 'ping'),
+      ).toHaveLength(2);
+    } finally {
+      release();
+      controller.abort();
+      await vi.advanceTimersByTimeAsync(0);
+      vi.useRealTimers();
+    }
+  });
+
   test('does not acquire a lease or subscribe for an already-aborted request', () => {
     const connectClientSession = vi.fn();
     const subscribe = vi.fn();

@@ -2014,6 +2014,7 @@ export class EventStore {
   private readonly databasePath: string;
   private htmlReplyPageStore?: ReturnType<typeof createHtmlReplyPages>;
   private readonly db: InstanceType<typeof DatabaseSync>;
+  private eventGlobalSequenceRead?: ReturnType<EventStore['db']['prepare']>;
   private appendEventInsert?: ReturnType<EventStore['db']['prepare']>;
   private appendEventInsertOrIgnore?: ReturnType<EventStore['db']['prepare']>;
   private appendEventHighWaterUpdate?: ReturnType<EventStore['db']['prepare']>;
@@ -9589,9 +9590,12 @@ export class EventStore {
    * same call stack), so this lookup always resolves for a real event.
    */
   readGlobalSequence(eventId: string): number | undefined {
-    const row = this.db
-      .prepare(`SELECT global_sequence FROM orchestration_events WHERE id = ?`)
-      .get(eventId) as { global_sequence: number } | undefined;
+    this.eventGlobalSequenceRead ??= this.db.prepare(
+      `SELECT global_sequence FROM orchestration_events WHERE id = ?`,
+    );
+    const row = this.eventGlobalSequenceRead.get(eventId) as
+      | { global_sequence: number }
+      | undefined;
     return row?.global_sequence;
   }
 

@@ -4967,8 +4967,9 @@ export class OrchestrationService {
    * the rebinding the client acts on (unchanged). #2309: turn, tool and
    * terminal frames — and at most one coalesced frame per second per
    * execution child — carry the conversation's activity after that event
-   * committed. Runs per frame per subscriber; the activity path is map reads
-   * once a conversation's threads are seeded.
+   * committed. The SSE route shares the binding across subscribers for one
+   * emitted envelope; the activity path uses map reads once a conversation's
+   * threads are seeded.
    */
   conversationStreamBinding(event: {
     threadId: string;
@@ -5639,6 +5640,19 @@ export class OrchestrationService {
   ): PersistedRuntimeEvent[] {
     this.initialize();
     return this.sessionEventReads.readEventStreamReplay(
+      afterGlobalSequence,
+      options,
+      authority,
+    );
+  }
+
+  readEventStreamReplayPage(
+    afterGlobalSequence: number,
+    options: { threadId?: string; through: number },
+    authority: SessionReadScope,
+  ): { events: PersistedRuntimeEvent[]; scannedThrough: number } {
+    this.initialize();
+    return this.sessionEventReads.readEventStreamReplayPage(
       afterGlobalSequence,
       options,
       authority,
@@ -12235,6 +12249,9 @@ export class OrchestrationService {
     }
     this.options.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
       event: projectedEvent,
+      globalSequence: this.options.eventStore?.readGlobalSequence(
+        projectedEvent.eventId,
+      ),
       // archive#1410: a turn's provenance envelope rides ALONGSIDE the
       // canonical event, never inside it — the persisted event stays
       // byte-identical to what the adapter produced, and this stays a

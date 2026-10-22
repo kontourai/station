@@ -121,7 +121,20 @@ and authorization limits. This export requires a published version containing it
 `fetchSSE` accepts `initialLastEventId` for a replacement stream. It sends that
 cursor as `Last-Event-ID` on the first request and continues updating the cursor
 from accepted SSE frames during transport retries. Callers should provide the
-last event they applied for the same server authority.
+last event they applied for the same server authority. Streams reconnect after
+75 seconds without body bytes by default; Station writes keepalives every
+30 seconds (Task rooms use 15 seconds). `stallTimeoutMs` overrides the deadline;
+`null` explicitly disables it for a server without heartbeats. Any bytes count,
+including comments. Hidden pages defer the check until visible, focus or online
+signals; this is transport recovery, not physical-device qualification.
+
+`applyACPStatusEvent(queryClient, payload, scope)` compares an ACP snapshot with
+the last applied status for `scope.apiBase` and `scope.authorityKey`. An unchanged
+reconnect does not refetch agents, ACP connections or system status; a changed
+snapshot invalidates those queries even when the change was missed offline.
+The first snapshot uses cached server status as its baseline when available;
+an absent or evicted baseline conservatively refreshes those queries. Invalid payloads and expired
+authority have no effect. All status fields are compared.
 
 The session collections observed by `useOrchestrationSessionsQuery` and personal
 boards retain row identity by thread ID when only `answerability.observedAt` and

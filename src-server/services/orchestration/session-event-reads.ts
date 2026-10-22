@@ -539,6 +539,45 @@ export class SessionEventReads {
     );
   }
 
+  /** Bounded overflow recovery; advance across denied rows without publishing their ids. */
+  readEventStreamReplayPage(
+    afterGlobalSequence: number,
+    options: { threadId?: string; through: number },
+    authority: SessionReadScope,
+  ): { events: PersistedRuntimeEvent[]; scannedThrough: number } {
+    const store = this.deps.eventStore;
+    if (!store) return { events: [], scannedThrough: options.through };
+    const descriptors = store
+      .listEventReplayDescriptors(afterGlobalSequence, {
+        ...(options.threadId ? { threadId: options.threadId } : {}),
+        limit: 64,
+      })
+      .filter((entry) => entry.globalSequence <= options.through);
+    let bytes = 0;
+    let limit = 0;
+    for (const descriptor of descriptors) {
+      // A single ingress-bounded event may exceed the page budget.
+      if (limit > 0 && bytes + descriptor.serializedFrameBytes > 1024 * 1024)
+        break;
+      bytes += descriptor.serializedFrameBytes;
+      limit++;
+    }
+    if (limit === 0) return { events: [], scannedThrough: options.through };
+    const candidates = store.listEventsAfterGlobalSequence(
+      afterGlobalSequence,
+      {
+        ...(options.threadId ? { threadId: options.threadId } : {}),
+        limit,
+      },
+    );
+    return {
+      events: candidates.filter((event) =>
+        this.deps.canUserReadSession(event.threadId, authority),
+      ),
+      scannedThrough: candidates.at(-1)?.globalSequence ?? options.through,
+    };
+  }
+
   readEventStreamReplayPlan(
     afterGlobalSequence: number,
     options: { threadId?: string; limit: number; maxSerializedBytes: number },

@@ -1403,6 +1403,7 @@ export {
   inspectAttentionRequest,
   useAttentionRequestInspection,
 } from './request-inspection';
+export { applyACPStatusEvent } from './server-events';
 export {
   claimSessionEventWindowCapabilityRecovery,
   fetchSessionEventWindowCapability,
