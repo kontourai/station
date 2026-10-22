@@ -15,6 +15,7 @@ import {
 } from '@kontourai/station-contracts/orchestration';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useInfiniteQuery, useMutation, useQuery } from '@tanstack/react-query';
+import { useContext } from 'react';
 import { apiErrorMessage } from '../api-core';
 import { StationHttpError } from '../client/api-error-message';
 import { ChatHttpError } from '../client/chatHttpError';
@@ -40,7 +41,9 @@ import {
   authenticatedFetch,
   type ClientRequestOptions,
   DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+  getJson,
   isApiRequestScope,
+  StationRequestAuthorityError,
 } from '../client/http';
 import {
   getChildWorkTranscript,
@@ -56,6 +59,7 @@ import {
 } from '../client/orchestration';
 import { StationRequestTimeoutError } from '../client/request-deadline';
 import { isStationAnswer } from '../client/station-envelope';
+import { OrchestrationSessionsContext } from '../orchestrationSessionsContext';
 import {
   type MutationOptions,
   type QueryConfig,
@@ -911,7 +915,7 @@ export async function fetchOrchestrationSessions(
   options?: ClientRequestOptions,
 ): Promise<OrchestrationSessionSummary[]> {
   const resolvedApiBase = await resolveApiBase(apiBase);
-  const response = await authenticatedFetch(
+  const response = await getJson(
     `${resolvedApiBase}/api/orchestration/sessions/read-model`,
     { ...options, progressTimeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS },
   );
@@ -1305,16 +1309,37 @@ export function useOrchestrationProvidersQuery(
 
 export function useOrchestrationSessionsQuery(
   config?: QueryConfig<OrchestrationSessionSummary[]>,
+  requestScope?: ApiRequestScope | null,
 ) {
+  const host = useContext(OrchestrationSessionsContext);
+  const scope =
+    requestScope === null ? undefined : (requestScope ?? host?.scope);
+  const streamLive =
+    host?.streamLive === true &&
+    host.scope?.apiBase === scope?.apiBase &&
+    host.scope?.authorityKey === scope?.authorityKey;
   return useApiQueryWithSharing(
-    orchestrationQueries.sessions().queryKey,
-    () => fetchOrchestrationSessions(),
+    requestScope === null
+      ? ['orchestration-sessions-unavailable']
+      : orchestrationQueries.sessions(scope).queryKey,
+    (signal) => {
+      if (requestScope === null) throw new StationRequestAuthorityError();
+      return fetchOrchestrationSessions(scope?.apiBase, {
+        signal,
+        ...(scope ? { requestScope: scope } : {}),
+      });
+    },
     shareSessionReadModel,
     {
-      staleTime: config?.staleTime ?? orchestrationQueries.sessions().staleTime,
+      staleTime: streamLive ? Infinity : (config?.staleTime ?? 60_000),
       gcTime: config?.gcTime,
+      refetchIntervalForError: (error) => (error ? 60_000 : undefined),
+      retry: config?.retry,
+      refetchOnWindowFocus: config?.refetchOnWindowFocus,
       enabled: config?.enabled,
-      refetchInterval: config?.refetchInterval,
+      refetchOnMount: config?.refetchOnMount ?? true,
+      // Peer reconciliation is still read-driven; SSE cannot replace this safety poll.
+      refetchInterval: config?.refetchInterval ?? 60_000,
     },
   );
 }

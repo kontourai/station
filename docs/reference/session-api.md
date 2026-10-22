@@ -401,6 +401,15 @@ conversation you may not read, or a Station without an inbox, answers `404`.
 one person's possibly-sent message cannot hold everyone's). Anyone else gets
 `404`. A message being sent right now answers `409` with
 `code: "inbox_entry_sending"`, and one already sent `inbox_entry_sent`.
+
+Committed inbox transitions emit `orchestration:inbox-changed` with
+`{ conversationId }` on `/api/orchestration/events`, only to readers of that
+Conversation. The general `/api/events` route does not relay it. The UI
+invalidates that exact inbox query, with a 30-second foreground safety poll
+when no entries are pending or uncertain. Queued, sending and unconfirmed
+entries use 2 seconds (10 seconds on an explicitly constrained network).
+Background polling pauses; HTTP 401/403/404 stops interval retries.
+
 Deleting the conversation deletes its held messages. `@kontourai/station-sdk/client`
 exposes these as `queueExecutionMessage`, `listConversationInbox` and
 `cancelConversationInboxEntry`.
@@ -870,7 +879,17 @@ The remaining controls are defined by
   engine whose approval rules Station sets at launch (OpenCode) has one
   ([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)).
 - `discardDraft`: `{ type: 'discardDraft', threadId }` asks the server to verify
-  and discard a Draft; it is not a general Session deletion.
+  and discard a Draft; it is not a general Session deletion. After committed
+  thread deletion, the server emits `orchestration:sessions-changed` with an
+  empty payload on the orchestration SSE stream. This invalidates connected
+  clients' lists only if they could read the Session before deletion. The server
+  captures that audience before removing ownership records, keeps it internal
+  through commit, and rechecks request authority at delivery. A thread-filtered
+  stream receives only its own deletion; the general `/api/events` route never
+  relays this notice. Deleting a nonexistent thread emits nothing. The same
+  post-commit notification covers attached-alias and other
+  thread cleanup paths. It is a live invalidation, not a durable replay event;
+  reconnect/list reads and the client's safety poll recover a missed notice.
 
 The other lifecycle controls are `adoptSession`
 (`{ type: 'adoptSession', sourceThreadId, idempotencyKey?, target? }`, create an independent continuation of a
@@ -1498,6 +1517,15 @@ replays persisted events in pages of at most 64 rows and approximately 1 MiB
 the same connection, so CLI observers do not see a false completion. A snapshot
 reconciles compacted activity/projection notifications; per-session read access
 is checked again before queued content is written.
+
+Station's SessionDetail subscribes to the tab's shared orchestration feed and
+filters canonical events by Session id. Closing a detail releases its local
+subscription. The shared transport retains the server cursor and epoch across
+retries; a snapshot fallback reloads each mounted detail's bounded history.
+History starts after capability discovery and does not wait for SSE to open.
+The same-tab subscription needs no BroadcastChannel or SharedWorker. Tabs still
+own separate shared feeds; scheduler, monitoring and Task-room feeds remain
+separate connections.
 
 Snapshot and caught-up session summaries use the same scope as the stream:
 `?threadId=X` includes only X; the global stream includes all readable sessions.

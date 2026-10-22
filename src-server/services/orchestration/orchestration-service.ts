@@ -2234,7 +2234,37 @@ export class OrchestrationService {
     return { promise, settle };
   })();
 
+  private readonly stopSessionDeletionNotifications?: () => void;
+  private readonly sessionDeletionReaders = new Set<SessionReadScope>();
+
+  retainSessionDeletionReader(authority: SessionReadScope): () => void {
+    this.sessionDeletionReaders.add(authority);
+    return () => {
+      this.sessionDeletionReaders.delete(authority);
+    };
+  }
+
   constructor(private readonly options: OrchestrationServiceOptions) {
+    // All delete paths converge here, including Draft discard and attached alias cleanup.
+    this.stopSessionDeletionNotifications = options.eventStore?.observeCommits({
+      threadDeleting: (threadId) => {
+        const audience = new Set(
+          [...this.sessionDeletionReaders].filter((scope) =>
+            this.canUserReadSession(threadId, scope),
+          ),
+        );
+        const canRead = (scope: SessionReadScope) => audience.has(scope);
+        return () =>
+          options.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_SESSIONS_CHANGED, {
+            threadId,
+            canRead,
+          });
+      },
+      inboxChanged: (conversationId) =>
+        options.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_INBOX_CHANGED, {
+          conversationId,
+        }),
+    });
     this.resolveProjectSessionDirectory =
       options.resolveProjectSessionDirectory;
     this.resolveStationDefaultWorkspaceIsolation =
@@ -3803,6 +3833,7 @@ export class OrchestrationService {
   }
 
   async shutdown(): Promise<void> {
+    this.stopSessionDeletionNotifications?.();
     // #3562: boot recovery retries on a backoff; none of it may publish once
     // the publish path below starts coming down. Its rows stay for next boot.
     this.interruptedTurns.stop();

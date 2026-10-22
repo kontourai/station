@@ -36,6 +36,7 @@ vi.mock('@kontourai/station-connect', async (original) => ({
   }),
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
+  useApiBase: () => ({ apiBase: host.scope.apiBase }),
   useHostRequestAuthorityScope: () => host.scope,
 }));
 vi.mock('../platform/PlatformProfileContext', async (original) => ({
