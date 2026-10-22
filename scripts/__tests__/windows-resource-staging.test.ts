@@ -85,10 +85,15 @@ describe('Windows desktop resource staging', () => {
       const prepare = fileURLToPath(
         new URL('../prepare-desktop-rust-resources.mjs', import.meta.url),
       );
-      const command = compile.run.replace(
-        'node scripts/prepare-desktop-rust-resources.mjs',
-        `& '${process.execPath.replaceAll("'", "''")}' '${prepare.replaceAll("'", "''")}'`,
-      );
+      const command = compile.run
+        .replace(
+          'Test-Path scripts/prepare-desktop-rust-resources.mjs',
+          `Test-Path -LiteralPath '${prepare.replaceAll("'", "''")}'`,
+        )
+        .replace(
+          'node scripts/prepare-desktop-rust-resources.mjs',
+          `& '${process.execPath.replaceAll("'", "''")}' '${prepare.replaceAll("'", "''")}'`,
+        );
       const script = join(root, 'compile-resources.ps1');
       writeFileSync(
         script,
