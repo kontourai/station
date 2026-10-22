@@ -135,6 +135,36 @@ describe('device tooling user runtime', () => {
   });
 
   test.skipIf(process.platform === 'win32')(
+    'custom version-manager directories reach the user Node shim',
+    async () => {
+      const f = fixture();
+      const shim = join(f.home, 'custom-manager');
+      mkdirSync(shim);
+      const managerEnv = {
+        ASDF_DATA_DIR: '/fixture/asdf-data',
+        ASDF_DIR: '/fixture/asdf',
+        NODENV_ROOT: '/fixture/nodenv',
+      };
+      writeFileSync(
+        join(shim, 'node'),
+        `#!/bin/sh
+[ "$ASDF_DATA_DIR" = '/fixture/asdf-data' ] || exit 1
+[ "$ASDF_DIR" = '/fixture/asdf' ] || exit 1
+[ "$NODENV_ROOT" = '/fixture/nodenv' ] || exit 1
+exec "${f.first.nodePath}" "$@"
+`,
+        { mode: 0o755 },
+      );
+      const runtime = await resolveDeviceToolRuntime({
+        ...f.env,
+        ...managerEnv,
+        PATH: [shim, f.second.bin].join(delimiter),
+      });
+      expect(runtime.nodePath).toBe(f.first.nodePath);
+    },
+  );
+
+  test.skipIf(process.platform === 'win32')(
     'an old first Node shim is rejected instead of silently choosing a later Node',
     async () => {
       const f = fixture();

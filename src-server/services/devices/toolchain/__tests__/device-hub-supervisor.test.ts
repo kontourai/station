@@ -20,7 +20,6 @@ import {
   deviceHubEnvironment,
   type SupervisedChild,
 } from '../device-hub-supervisor.js';
-import { DeviceToolRuntimeUnavailableError } from '../device-tool-runtime.js';
 
 const runDirs: string[] = [];
 afterEach(() => {
@@ -172,9 +171,7 @@ describe('device hub supervisor', () => {
         version: '0.10.1',
         runDir: '/unused',
       }),
-      resolveRuntime: async () => {
-        throw new DeviceToolRuntimeUnavailableError('No user Node.');
-      },
+      env: { PATH: '' },
       spawn,
       setTimer: timer,
     });
