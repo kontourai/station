@@ -194,7 +194,9 @@ The next run did call the tool, but the connection's native `never` approval
 policy declined its form before Station received it. Its completion text is
 not answer evidence. The Codex MCP edge now maps supported data forms into the
 canonical input-request contract and returns validated content through the
-exact-event reply path. A subsequent live check used an explicit asking posture
+exact-event reply path for supported nonempty data forms. Empty-schema and
+unsupported elicitation retain the existing approval path and cannot supply
+form content. A subsequent live check used an explicit asking posture
 without changing shared connection/proxy configuration. That group opened no question and returned
 `NOT_ACCEPTED`; it is also excluded from live elicitation acceptance. The
 controlled real-service form case now passes: invalid credential, foreign event
@@ -204,6 +206,21 @@ releases the dependent. These are separate from live-provider proof. The
 startup availability review accepted the bounded guard and highlighted that
 one-shot inventory reads do not poll until readiness. Closed diagnostics now
 identify refusals without retaining native error text.
+
+Independent review of the form increment at `b66daf94ba4` found no blocking
+findings and independently exercised the exact-event/content path, native reply
+acknowledgement, sanitized diagnostics and real-service group integration. It
+left live answered elicitation open. Its diagnostic reason assertion advisory
+is addressed by pinning the expected closed reason for each inventory defect.
+
+At `1c682a5a2dd`, a read-only retained-session check observed the earlier mixed
+CLI group's completed tasks and closed, idle, resumable conversations. The real
+390px browser showed directory context and Operator/CLI provenance across
+reload, with no Active now lane or document overflow. Startup carried a
+pass-through process-probe diagnostic; the prior uninstrumented start refused
+its own process identity and remains unexplained. Both screenshot attempts
+timed out. This is not a fresh running-to-ready journey, packaged desktop or
+second-device acceptance, and made no provider calls.
 
 This establishes only the exercised CLI paths. Live elicitation, second-device
 lifecycle, the remaining lineage/context/recovery obligations, final combined

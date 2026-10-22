@@ -6640,16 +6640,16 @@ test('external adoption forks the native thread and records its distinct child b
 });
 
 test.each([
-  'missing',
-  'wrong-server',
-  'duplicate',
-  'starting',
-  'auth-required',
-  'tool-list-failed',
-  'tools-missing',
+  ['missing', 'missing-server'],
+  ['wrong-server', 'missing-server'],
+  ['duplicate', 'ambiguous-server'],
+  ['starting', 'not-connected'],
+  ['auth-required', 'authentication-required'],
+  ['tool-list-failed', 'tool-inventory-unavailable'],
+  ['tools-missing', 'tool-inventory-unavailable'],
 ] as const)(
   'an authored MCP server refuses startup when its exact thread inventory is %s',
-  async (defect) => {
+  async (defect, expectedReason) => {
     const process = new FakeCodexProcess();
     const logger = { warn: vi.fn() };
     const adapter = new CodexAdapter({ processFactory: () => process, logger });
@@ -6712,7 +6712,7 @@ test.each([
         {
           threadId: 'mcp-refusal',
           serverId: 'question',
-          reason: expect.any(String),
+          reason: expectedReason,
         },
       );
       expect(JSON.stringify(logger.warn.mock.calls)).not.toContain(
