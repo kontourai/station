@@ -25,8 +25,8 @@ interface PendingStart {
  * Agent comes from the one find-or-create path (`/agents/materialize-engine`,
  * the same one New chat's Enable posts), so an engine whose connect already
  * made its Agent gets that Agent back, never a second one. The chat opens in
- * the dock's current Project when it has one, else without a Project; the
- * person still sends the first message.
+ * Agent's Project when it owns one, otherwise the dock's current Project
+ * or no Project; the person still sends the first message.
  *
  * New chat only selects an Agent its list holds, and a new Agent activates
  * after the write answers, so the request waits (bounded) until the list has

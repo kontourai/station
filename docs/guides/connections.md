@@ -760,8 +760,9 @@ opens on that entry's first step.
    the cause, or **Edit setup** for a custom engine. The engine's Agent is
    added only once its check succeeds.
 5. When it is **Ready**, **Start a chat with** the engine opens New chat with
-   its Agent selected, in the dock's current Project when it has one and
-   otherwise without a Project, or choose **Done**.
+   its Agent selected. A Project-owned Agent uses its own Project; otherwise
+   New chat uses the dock's current Project, or no Project when none is open.
+   Choose **Done** to finish without opening a chat.
 
 A configured engine that reads **Setup required** offers **Retry check** on its
 engine page; a Ready engine offers **Check connection** instead.
