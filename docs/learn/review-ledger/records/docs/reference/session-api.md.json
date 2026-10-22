@@ -120,7 +120,9 @@
 
     "src-server/routes/orchestration/__tests__/thread-inbox.routes.test.ts",
 
-    "docs/guides/self-configuring-agent.md"
+    "docs/guides/self-configuring-agent.md",
+
+    "src-server/routes/orchestration/events.ts"
   ],
 
   "checks": [
