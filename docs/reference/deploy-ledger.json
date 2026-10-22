@@ -1,5 +1,178 @@
 [
   {
+    "timestampUtc": "2026-10-22T06:17:39Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2486.3",
+    "sha": "a6e8f37663391132bae4e8e35772c2e9e8a53099",
+    "artifactBuiltAt": "2026-10-22T05:33:09.064Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39727706028",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 39727706028)"
+    ],
+    "changelog": {
+      "previousSha": "71cb589732f53b9372ce572fd701c873e5270129",
+      "groups": {
+        "feat": [
+          "[#4011](https://github.com/kontourai/station/pull/4011) feat(acp): answer Cursor's questions and plan reviews; keep mid-turn plans on the Plan pane",
+          "[#4006](https://github.com/kontourai/station/pull/4006) feat(acp): per-connection handshake facts, steer by declaration, session/set_model",
+          "[#4009](https://github.com/kontourai/station/pull/4009) feat(engines): engine descriptors, new built-in harnesses, and install hints",
+          "[#4014](https://github.com/kontourai/station/pull/4014) feat(tasks): recover drafts and uncertain requests across reloads",
+          "[#3991](https://github.com/kontourai/station/pull/3991) feat(integration): consolidate required backlog into one delivery head"
+        ],
+        "fix": [
+          "[#4016](https://github.com/kontourai/station/pull/4016) fix(mobile): remove personal backend defaults from builds",
+          "[#3992](https://github.com/kontourai/station/pull/3992) fix(sdk): connect plugin hooks to core application services",
+          "[#4015](https://github.com/kontourai/station/pull/4015) fix(release): retry transient Apple staple ticket lookups once"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4010](https://github.com/kontourai/station/pull/4010) test(install): read the verified installer command from Getting started"
+        ]
+      },
+      "note": null,
+      "commitCount": 9
+    }
+  },
+  {
+    "timestampUtc": "2026-10-22T06:17:37Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2486.3",
+    "sha": "a6e8f37663391132bae4e8e35772c2e9e8a53099",
+    "artifactBuiltAt": "2026-10-22T05:32:49.033Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39727706028",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 39727706028)"
+    ],
+    "changelog": {
+      "previousSha": "71cb589732f53b9372ce572fd701c873e5270129",
+      "groups": {
+        "feat": [
+          "[#4011](https://github.com/kontourai/station/pull/4011) feat(acp): answer Cursor's questions and plan reviews; keep mid-turn plans on the Plan pane",
+          "[#4006](https://github.com/kontourai/station/pull/4006) feat(acp): per-connection handshake facts, steer by declaration, session/set_model",
+          "[#4009](https://github.com/kontourai/station/pull/4009) feat(engines): engine descriptors, new built-in harnesses, and install hints",
+          "[#4014](https://github.com/kontourai/station/pull/4014) feat(tasks): recover drafts and uncertain requests across reloads",
+          "[#3991](https://github.com/kontourai/station/pull/3991) feat(integration): consolidate required backlog into one delivery head"
+        ],
+        "fix": [
+          "[#4016](https://github.com/kontourai/station/pull/4016) fix(mobile): remove personal backend defaults from builds",
+          "[#3992](https://github.com/kontourai/station/pull/3992) fix(sdk): connect plugin hooks to core application services",
+          "[#4015](https://github.com/kontourai/station/pull/4015) fix(release): retry transient Apple staple ticket lookups once"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4010](https://github.com/kontourai/station/pull/4010) test(install): read the verified installer command from Getting started"
+        ]
+      },
+      "note": null,
+      "commitCount": 9
+    }
+  },
+  {
+    "timestampUtc": "2026-10-22T05:32:57Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2486.39727706028",
+    "sha": "a6e8f37663391132bae4e8e35772c2e9e8a53099",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39727706028",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2486.39727706028 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "8e86626efc3a276cedf43f0243152f4686756e0f",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#4016](https://github.com/kontourai/station/pull/4016) fix(mobile): remove personal backend defaults from builds",
+          "[#3992](https://github.com/kontourai/station/pull/3992) fix(sdk): connect plugin hooks to core application services"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
+    "timestampUtc": "2026-10-22T00:24:08Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2486.39698407325",
+    "sha": "8e86626efc3a276cedf43f0243152f4686756e0f",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39698407325",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2486.39698407325 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "1dd83e0f305149b2d28e2eaff6645358cde5ad7f",
+      "groups": {
+        "feat": [
+          "[#4011](https://github.com/kontourai/station/pull/4011) feat(acp): answer Cursor's questions and plan reviews; keep mid-turn plans on the Plan pane",
+          "[#4006](https://github.com/kontourai/station/pull/4006) feat(acp): per-connection handshake facts, steer by declaration, session/set_model",
+          "[#4009](https://github.com/kontourai/station/pull/4009) feat(engines): engine descriptors, new built-in harnesses, and install hints",
+          "[#4014](https://github.com/kontourai/station/pull/4014) feat(tasks): recover drafts and uncertain requests across reloads"
+        ],
+        "fix": [
+          "[#4015](https://github.com/kontourai/station/pull/4015) fix(release): retry transient Apple staple ticket lookups once"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
+    "timestampUtc": "2026-10-21T21:05:58Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2485.39674294567",
+    "sha": "1dd83e0f305149b2d28e2eaff6645358cde5ad7f",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39674294567",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2485.39674294567 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "71cb589732f53b9372ce572fd701c873e5270129",
+      "groups": {
+        "feat": [
+          "[#3991](https://github.com/kontourai/station/pull/3991) feat(integration): consolidate required backlog into one delivery head"
+        ],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4010](https://github.com/kontourai/station/pull/4010) test(install): read the verified installer command from Getting started"
+        ]
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
     "timestampUtc": "2026-10-21T07:31:53Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2485",

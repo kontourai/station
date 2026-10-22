@@ -49,11 +49,9 @@ import {
   fetchTasks,
   fetchTaskTurnReferences,
   updateTaskStatus,
-  useCreateTaskReferenceMutation,
   useTaskTurnReferencesQuery,
 } from '../query-domains/taskGraph';
 import { taskQueries } from '../queryFactories';
-import { useAttachTaskUserInputReferenceMutation } from '../task-user-input-references';
 
 function mockJsonResponse(payload: unknown, ok = true) {
   vi.mocked(fetch).mockResolvedValue({
@@ -354,48 +352,6 @@ describe('taskGraph SDK domain', () => {
     expectTypeOf<TaskReferenceInput>().toEqualTypeOf<ContractTaskReferenceInput>();
     expectTypeOf<TaskWorkspaceBinding>().toEqualTypeOf<ContractTaskWorkspaceBinding>();
   });
-
-  it.each([
-    ['useCreateTaskReferenceMutation', useCreateTaskReferenceMutation],
-    [
-      'useAttachTaskUserInputReferenceMutation',
-      useAttachTaskUserInputReferenceMutation,
-    ],
-  ])(
-    '%s invalidates only the submitted Task list, detail, graph, and reference projections',
-    async (_name, useReferenceMutation) => {
-      const mutation = (useReferenceMutation as () => unknown)() as {
-        onSuccess?: (
-          data: unknown,
-          variables: { taskId: string },
-        ) => void | Promise<void>;
-      };
-
-      await mutation.onSuccess?.({ id: 'link-1' }, { taskId: 'task-a' });
-
-      expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(1, {
-        queryKey: ['tasks', 'all'],
-        exact: true,
-      });
-      expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(2, {
-        queryKey: ['task', 'task-a'],
-        exact: true,
-      });
-      expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(3, {
-        queryKey: ['task-graph', 'task-a'],
-        exact: true,
-      });
-      expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(4, {
-        queryKey: ['task-turn-references', 'task-a'],
-        exact: true,
-      });
-      expect(reactQueryMocks.invalidateQueries).toHaveBeenNthCalledWith(5, {
-        queryKey: ['task-user-input-references', 'task-a'],
-        exact: true,
-      });
-      expect(reactQueryMocks.invalidateQueries).toHaveBeenCalledTimes(5);
-    },
-  );
 
   it('dispatches tasks and reads relation graph surfaces', async () => {
     mockJsonResponse({

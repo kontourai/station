@@ -70,9 +70,18 @@ table). A profile has no per-engine prompt script.
 `fake-opencode-acp.mjs` cannot be expressed as a profile without changing its
 behavior. It evaluates OpenCode's permission rules from
 `OPENCODE_CONFIG_CONTENT` (last match wins), answers `debug agent`, writes
-launch and resume records, and can refuse `session/resume`. `opencode.json`
-carries only its static wire shapes. That fixture is deliberately left as it
-is.
+launch and resume records, and can refuse `session/resume`. Since #3991 it
+also sends OpenCode's edit and `apply_patch` permission metadata, can write
+through the client (`fs/write_text_file`), and remembers an `always` answer.
+`opencode.json` carries only its static wire shapes: the initialize answer,
+config options and permission option ids, which #3991 left unchanged. That
+fixture is deliberately left as it is.
+
+The qualification harness launches every profile through `node`, so the
+adapter does not recognize the opencode profile as OpenCode
+(`acpApprovalControl` reads the command). Station's OpenCode approval
+governance is not exercised here. `acp-approval-mode.process.test.ts` covers
+it through an executable named `opencode`.
 
 ## Adding a profile
 
