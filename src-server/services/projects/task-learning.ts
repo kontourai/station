@@ -19,7 +19,9 @@
  *   one record. When the row's write failed or was interrupted, the next
  *   promotion finishes it in the row's store, with that request's edited
  *   title and text. A version whose recorded store has since been removed
- *   from the Project stays `no-store`: it is never written anywhere else.
+ *   from the Project answers `no-store` and is never written anywhere else;
+ *   it can then be dismissed, and the candidate list shows it as `pending`
+ *   with `storeAvailable: false`.
  *   The dismissal check runs inside the row's transaction too, and a
  *   dismissal is refused once the row exists, so a claimed promotion whose
  *   write failed can still be finished. "Promoted"
@@ -181,17 +183,24 @@ export async function readTaskLearning(
         .listLearningDismissals(incarnation)
         .map((d) => [`${d.kind}:${d.key}:${d.version}`, d]),
     );
+    const promotions = new Map(
+      access.memory
+        .listLearningPromotions(incarnation)
+        .map((p) => [`${p.kind}:${p.key}:${p.version}`, p]),
+    );
     for (const record of standingCandidates(access)) {
       const knowledgeRecordId = taskLearningKnowledgeRecordId(
         incarnation,
         record,
       );
-      const dismissed = dismissals.get(
-        `${record.kind}:${record.key}:${record.version}`,
-      );
+      const identity = `${record.kind}:${record.key}:${record.version}`;
+      const dismissed = dismissals.get(identity);
       const promoted = dismissed
         ? undefined
         : await findPromoted(store, roots, knowledgeRecordId);
+      // A row with no record: the promotion did not finish (round 4).
+      const pending =
+        !dismissed && !promoted ? promotions.get(identity) : undefined;
       candidates.push({
         record,
         knowledgeRecordId,
@@ -203,7 +212,13 @@ export async function readTaskLearning(
             }
           : promoted
             ? { state: 'promoted', rootId: promoted.rootId, knowledgeRecordId }
-            : { state: 'open' },
+            : pending
+              ? {
+                  state: 'pending',
+                  rootId: pending.rootId,
+                  storeAvailable: roots.some((r) => r.id === pending.rootId),
+                }
+              : { state: 'open' },
       });
     }
   }
@@ -344,17 +359,24 @@ export async function promoteTaskLearning(
   }
 }
 
-export function dismissTaskLearning(
+export async function dismissTaskLearning(
+  store: KnowledgeStoreProvider,
   access: TaskLearningAccess,
   dismissal: TaskLearningDismissal,
-): TaskLearningDismissOutcome {
+): Promise<TaskLearningDismissOutcome> {
   if (access.task.status !== 'done') return { kind: 'not-done' };
+  // A promotion whose recorded store left the Project can never finish, so
+  // it no longer blocks a dismissal (review round 4).
+  const rootIds = new Set(
+    (await projectStores(store, access.projectSlug)).map((root) => root.id),
+  );
   const result = access.memory.dismissLearningCandidate({
     ...incarnationOf(access.task),
     ...dismissal,
     projectId: access.projectId,
     principalId: access.principalId,
     beforeCommit: access.isCurrent,
+    promotionStoreGone: (rootId) => !rootIds.has(rootId),
   });
   return result.kind === 'promoted' ? { kind: 'was-promoted' } : result;
 }

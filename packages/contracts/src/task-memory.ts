@@ -389,6 +389,17 @@ export const TASK_LEARNING_LIMITS = Object.freeze({
  */
 export type TaskLearningReview =
   | { readonly state: 'open' }
+  /**
+   * A promotion recorded this version's store but its knowledge record is
+   * not there: the write failed or was interrupted. `storeAvailable` says
+   * whether that store is still one of the Project's: if it is, promoting
+   * again finishes it there; if not, the version can only be dismissed.
+   */
+  | {
+      readonly state: 'pending';
+      readonly rootId: string;
+      readonly storeAvailable: boolean;
+    }
   | {
       readonly state: 'promoted';
       readonly rootId: string;

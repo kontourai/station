@@ -202,9 +202,10 @@ export function createTaskLearningRoutes(deps: TaskLearningRouteDeps) {
     async (c) => {
       const access = await deps.access(param(c, 'taskId'), c.req.raw);
       if (access.kind !== 'granted') return accessRefused(c, access.kind);
-      let result: ReturnType<typeof dismissTaskLearning>;
+      let result: Awaited<ReturnType<typeof dismissTaskLearning>>;
       try {
-        result = dismissTaskLearning(
+        result = await dismissTaskLearning(
+          deps.store,
           access,
           getBody(c) as z.infer<typeof taskLearningDismissSchema>,
         );

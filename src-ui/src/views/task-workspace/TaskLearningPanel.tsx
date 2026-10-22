@@ -31,9 +31,11 @@ export function TaskLearningPanel({ taskId }: { taskId: string }) {
   const learning = useTaskLearningQuery(taskId);
   const titleId = useId();
   const view = learning.data;
-  const open = view?.candidates.filter((c) => c.review.state === 'open') ?? [];
-  const reviewed =
-    view?.candidates.filter((c) => c.review.state !== 'open') ?? [];
+  // A pending promotion still needs a person: it stays with the open ones.
+  const needsReview = (c: TaskLearningCandidate) =>
+    c.review.state === 'open' || c.review.state === 'pending';
+  const open = view?.candidates.filter(needsReview) ?? [];
+  const reviewed = view?.candidates.filter((c) => !needsReview(c)) ?? [];
   return (
     <section
       className="task-workspace__section task-memory task-learning"
@@ -148,7 +150,14 @@ function CandidateItem({
   candidate: TaskLearningCandidate;
   stores: readonly TaskLearningStore[];
 }) {
-  const { record } = candidate;
+  const { record, review } = candidate;
+  // A promotion that recorded its store but did not finish (round 4): it can
+  // only be finished in that store, or, once the store has left the Project,
+  // dismissed.
+  const pending = review.state === 'pending' ? review : undefined;
+  const pinnedStores = pending
+    ? stores.filter((store) => store.rootId === pending.rootId)
+    : stores;
   const promote = usePromoteTaskLearningMutation(taskId);
   const dismiss = useDismissTaskLearningMutation(taskId);
   const [draft, setDraft] = useState<
@@ -179,6 +188,13 @@ function CandidateItem({
         <code className="task-memory__key">{record.key}</code>
         {record.version > 1 ? <span>v{record.version}</span> : null}
       </p>
+      {pending ? (
+        <p className="task-memory__note" role="status">
+          {pending.storeAvailable
+            ? `Promotion into ${storeName(stores, pending.rootId)} did not finish. Promote it again to finish it there.`
+            : 'Promotion did not finish, and the store it was going into is no longer one of this Project’s. Dismiss it to stop offering it.'}
+        </p>
+      ) : null}
       {draft ? (
         <form className="task-memory__form" onSubmit={submit}>
           <label className="task-memory__field">
@@ -203,7 +219,7 @@ function CandidateItem({
               }
             />
           </label>
-          {stores.length > 1 ? (
+          {pinnedStores.length > 1 ? (
             <label className="task-memory__field">
               <span>Knowledge store</span>
               <select
@@ -214,7 +230,7 @@ function CandidateItem({
                   setDraft({ ...draft, rootId: event.target.value })
                 }
               >
-                {stores.map((store) => (
+                {pinnedStores.map((store) => (
                   <option key={store.rootId} value={store.rootId}>
                     {store.displayName}
                   </option>
@@ -223,8 +239,8 @@ function CandidateItem({
             </label>
           ) : (
             <p className="task-memory__hint">
-              Into {stores[0]?.displayName ?? 'the Project store'}, with this
-              Task and record version as its source.
+              Into {pinnedStores[0]?.displayName ?? 'the Project store'}, with
+              this Task and record version as its source.
             </p>
           )}
           {promote.error ? (
@@ -260,29 +276,33 @@ function CandidateItem({
         </form>
       ) : (
         <div className="task-memory__actions">
-          <Button
-            size="sm"
-            disabled={stores.length === 0 || busy}
-            onClick={() =>
-              setDraft({
-                title: defaultTitle(candidate),
-                text: record.text,
-                rootId: stores[0]?.rootId ?? '',
-              })
-            }
-          >
-            Promote…
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={busy}
-            pending={dismiss.isPending}
-            pendingLabel="Dismissing…"
-            onClick={() => dismiss.mutate(identity)}
-          >
-            Dismiss
-          </Button>
+          {pending && !pending.storeAvailable ? null : (
+            <Button
+              size="sm"
+              disabled={pinnedStores.length === 0 || busy}
+              onClick={() =>
+                setDraft({
+                  title: defaultTitle(candidate),
+                  text: record.text,
+                  rootId: pinnedStores[0]?.rootId ?? '',
+                })
+              }
+            >
+              {pending ? 'Finish promotion…' : 'Promote…'}
+            </Button>
+          )}
+          {pending?.storeAvailable ? null : (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={busy}
+              pending={dismiss.isPending}
+              pendingLabel="Dismissing…"
+              onClick={() => dismiss.mutate(identity)}
+            >
+              Dismiss
+            </Button>
+          )}
           {dismiss.error ? (
             <p className="task-memory__note" role="alert">
               {errorText(dismiss.error)}

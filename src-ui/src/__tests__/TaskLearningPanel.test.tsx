@@ -239,6 +239,83 @@ describe('TaskLearningPanel', () => {
     });
   });
 
+  /** A promotion that recorded `rootId` as its store, then never wrote. */
+  const unfinishedPromotion = (rootId: string) =>
+    createSqliteTaskMemoryStore(db).claimLearningPromotion({
+      ...INCARNATION,
+      kind: 'decision',
+      key: 'storage-engine',
+      version: 1,
+      projectId: TASK.projectId,
+      rootId,
+      principalId: 'human:local:operator',
+    });
+
+  test('an unfinished promotion into a store the Project still has offers only to finish it (review round 4, P3-1)', async () => {
+    const root = await createStore();
+    expect(unfinishedPromotion(root.id).kind).toBe('claimed');
+    renderPanel();
+    const candidates = await screen.findAllByTestId('task-learning-candidate');
+    const pending = candidates.find((item) =>
+      item.textContent?.includes('storage-engine'),
+    )!;
+    expect(within(pending).getByRole('status').textContent).toBe(
+      'Promotion into Widgets knowledge did not finish. Promote it again to finish it there.',
+    );
+    expect(
+      within(pending).getByRole('button', { name: 'Finish promotion…' }),
+    ).toBeTruthy();
+    expect(within(pending).queryByRole('button', { name: 'Dismiss' })).toBe(
+      null,
+    );
+  });
+
+  test('an unfinished promotion into a store the Project no longer has can be dismissed, and is (review round 4, P3-1)', async () => {
+    await createStore();
+    expect(unfinishedPromotion('root:project-widgets:removed').kind).toBe(
+      'claimed',
+    );
+    renderPanel();
+    const candidates = await screen.findAllByTestId('task-learning-candidate');
+    const pending = candidates.find((item) =>
+      item.textContent?.includes('storage-engine'),
+    )!;
+    expect(within(pending).getByRole('status').textContent).toContain(
+      'is no longer one of this Project’s',
+    );
+    expect(within(pending).queryByRole('button', { name: /romot/ })).toBe(null);
+    fireEvent.click(within(pending).getByRole('button', { name: 'Dismiss' }));
+    await waitFor(() =>
+      expect(
+        createSqliteTaskMemoryStore(db).listLearningDismissals(INCARNATION),
+      ).toMatchObject([{ kind: 'decision', key: 'storage-engine' }]),
+    );
+  });
+
+  test('the dismiss route refuses a version whose promotion can still finish: 409 task_learning_promoted, nothing written (review round 4, P3-2)', async () => {
+    const root = await createStore();
+    unfinishedPromotion(root.id);
+    const response = await fetch(
+      `${BASE}/api/tasks/task-1/room/memory/learning/dismiss`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          kind: 'decision',
+          key: 'storage-engine',
+          version: 1,
+        }),
+      },
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      success: false,
+      code: 'task_learning_promoted',
+    });
+    expect(
+      createSqliteTaskMemoryStore(db).listLearningDismissals(INCARNATION),
+    ).toEqual([]);
+  });
+
   test('Dismiss persists and the candidate is no longer offered', async () => {
     await createStore();
     renderPanel();

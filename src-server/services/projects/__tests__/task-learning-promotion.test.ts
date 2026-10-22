@@ -21,6 +21,7 @@ import { EventStore } from '../../orchestration/event-store.js';
 import {
   dismissTaskLearning,
   promoteTaskLearning,
+  readTaskLearning,
   type TaskLearningAccess,
 } from '../task-learning.js';
 
@@ -53,7 +54,8 @@ function root(name: string): KnowledgeStoreRoot {
   };
 }
 
-function knowledge(roots: KnowledgeStoreRoot[]) {
+function knowledge(initialRoots: KnowledgeStoreRoot[]) {
+  let roots = initialRoots;
   const records = new Map<string, Map<string, KitRecord>>(
     roots.map((r) => [r.id, new Map()]),
   );
@@ -74,7 +76,11 @@ function knowledge(roots: KnowledgeStoreRoot[]) {
       },
     }),
   } as unknown as KnowledgeStoreProvider;
-  return { provider, records, open };
+  /** The Project's stores from now on (one removed, say). */
+  const setRoots = (next: KnowledgeStoreRoot[]) => {
+    roots = next;
+  };
+  return { provider, records, open, setRoots };
 }
 
 function memoryWithDecision() {
@@ -267,7 +273,7 @@ test('once a promotion claims a version it cannot be dismissed, and a failed wri
   );
   // A dismissal now is refused, not recorded.
   expect(
-    dismissTaskLearning(access, {
+    await dismissTaskLearning(provider, access, {
       kind: 'decision',
       key: 'storage',
       version: 1,
@@ -285,4 +291,69 @@ test('once a promotion claims a version it cannot be dismissed, and a failed wri
     rootId: stores[0]!.id,
   });
   expect(records.get(stores[0]!.id)!.size).toBe(1);
+});
+
+test('an unfinished promotion reads as pending; once its store leaves the Project it can be dismissed (review round 4, P3-1)', async () => {
+  const stores = [root('a'), root('b')];
+  const { provider, records, open, setRoots } = knowledge(stores);
+  open();
+  const memory = memoryWithDecision();
+  const access: TaskLearningAccess = {
+    memory,
+    task: TASK,
+    projectId: TASK.projectId,
+    projectSlug: 'alpha',
+    principalId: 'person-a',
+    isCurrent: () => true,
+  };
+  const failing = {
+    listRoots: provider.listRoots,
+    adapterFor: async (rootId: string) => ({
+      ...(await provider.adapterFor(rootId)),
+      create: async () => {
+        throw new Error('disk full');
+      },
+    }),
+  } as unknown as KnowledgeStoreProvider;
+  const identity = { kind: 'decision' as const, key: 'storage', version: 1 };
+  expect(
+    (
+      await promoteTaskLearning(failing, access, {
+        ...identity,
+        rootId: stores[0]!.id,
+        title: 'Storage',
+        text: 'Use SQLite.',
+      })
+    ).kind,
+  ).toBe('store-failed');
+  // Pending, not open, while its store is still the Project's.
+  expect((await readTaskLearning(provider, access)).candidates).toMatchObject([
+    {
+      record: { key: 'storage' },
+      review: { state: 'pending', rootId: stores[0]!.id, storeAvailable: true },
+    },
+  ]);
+  expect(await dismissTaskLearning(provider, access, identity)).toEqual({
+    kind: 'was-promoted',
+  });
+  // The store leaves the Project: the promotion can never finish there.
+  setRoots([stores[1]!]);
+  expect((await readTaskLearning(provider, access)).candidates).toMatchObject([
+    { review: { state: 'pending', storeAvailable: false } },
+  ]);
+  expect(
+    await promoteTaskLearning(provider, access, {
+      ...identity,
+      rootId: stores[1]!.id,
+      title: 'Storage',
+      text: 'Use SQLite.',
+    }),
+  ).toEqual({ kind: 'no-store' });
+  expect(await dismissTaskLearning(provider, access, identity)).toMatchObject({
+    kind: 'dismissed',
+  });
+  expect((await readTaskLearning(provider, access)).candidates).toMatchObject([
+    { review: { state: 'dismissed' } },
+  ]);
+  expect(records.get(stores[1]!.id)!.size).toBe(0);
 });

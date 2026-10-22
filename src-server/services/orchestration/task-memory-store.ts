@@ -204,6 +204,12 @@ export interface TaskMemoryStore {
         readonly projectId: string;
         readonly principalId: string;
         readonly beforeCommit?: () => boolean;
+        /**
+         * Whether a promotion row's store is no longer one of the
+         * Project's. Such a promotion can never finish, so it does not stop
+         * the dismissal (review round 4). Absent: every row stops it.
+         */
+        readonly promotionStoreGone?: (rootId: string) => boolean;
       },
   ): TaskLearningDismissResult;
   /**
@@ -220,6 +226,10 @@ export interface TaskMemoryStore {
         readonly beforeCommit?: () => boolean;
       },
   ): TaskLearningPromotionClaim;
+  /** Every promotion row of the incarnation (migration 022), oldest first. */
+  listLearningPromotions(
+    input: TaskMemoryIncarnation,
+  ): TaskLearningPromotionRecord[];
   /** Every dismissal of the incarnation, oldest first. */
   listLearningDismissals(
     input: TaskMemoryIncarnation,
@@ -703,7 +713,8 @@ export function createSqliteTaskMemoryStore(
               commit: false,
               value: { kind: 'already-dismissed', dismissal: existing },
             };
-          if (readPromotion(input))
+          const promotion = readPromotion(input);
+          if (promotion && !input.promotionStoreGone?.(promotion.root_id))
             return { commit: false, value: { kind: 'promoted' } };
           const current = currentRecord(input, input.kind, input.key);
           if (
@@ -777,6 +788,18 @@ export function createSqliteTaskMemoryStore(
         );
         return { commit: true, value: { kind: 'claimed', promotion } };
       });
+    },
+
+    listLearningPromotions(input) {
+      return (
+        db
+          .prepare(
+            `SELECT ${PROMOTION_COLUMNS} FROM task_learning_promotions
+              WHERE task_id = ? AND task_created_at = ?
+              ORDER BY promoted_at, kind, record_key, version`,
+          )
+          .all(input.taskId, input.taskCreatedAt) as PromotionRow[]
+      ).map(promotionFromRow);
     },
 
     listLearningDismissals(input) {

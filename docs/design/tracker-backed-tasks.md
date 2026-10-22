@@ -394,13 +394,16 @@ step.
   that store: two people choosing two stores at once still get one record
   (the second answer is `already-promoted`). When the first write failed, the
   next promotion finishes it in the recorded store, with that request's
-  edited title and text. A version whose recorded store has since been
-  removed from the Project answers `no-store` and is never written
-  elsewhere. Promotion and dismissal each check the other inside their own
-  transaction, so the first to commit wins: a dismissed version is not
-  promoted, and once a promotion row exists the version cannot be dismissed
-  (`409 task_learning_promoted`), so a promotion whose write failed can still
-  be finished. "Promoted" in the candidate list is read back from
+  edited title and text. Promotion and dismissal each check the other
+  inside their own transaction, so the first to commit wins: a dismissed
+  version is not promoted, and while a promotion row's store is still one
+  of the Project's the version cannot be dismissed (`409
+  task_learning_promoted`), so a promotion whose write failed can still be
+  finished. The candidate list shows such a version as **promotion
+  pending**, offering only to finish it in that store. If the recorded
+  store has since left the Project, promoting answers `no-store` and is
+  never written elsewhere; the version then reads as pending with its store
+  gone, and can only be dismissed. "Promoted" in the candidate list is read back from
   the stores. A later version of the same key is a new candidate.
 - **Dismissals** are kept as an append-only row per dismissed record version
   (`task_learning_dismissals`, migration 021).
