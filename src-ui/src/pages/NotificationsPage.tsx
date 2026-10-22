@@ -199,7 +199,8 @@ export function NotificationsPage() {
     return (
       <div className="notifications-page">
         <NotificationsHeader
-          attentionCount={0}
+          dismissibleCount={0}
+          filtered={false}
           onDismissAll={() => setShowDismissConfirm(true)}
           onOpenSettings={() =>
             navigate('/settings', {
@@ -221,7 +222,8 @@ export function NotificationsPage() {
     return (
       <div className="notifications-page">
         <NotificationsHeader
-          attentionCount={0}
+          dismissibleCount={0}
+          filtered={false}
           onDismissAll={() => setShowDismissConfirm(true)}
           onOpenSettings={() =>
             navigate('/settings', {
@@ -248,7 +250,8 @@ export function NotificationsPage() {
     <>
       <div className="notifications-page">
         <NotificationsHeader
-          attentionCount={dismissibleItems.length}
+          dismissibleCount={dismissibleItems.length}
+          filtered={filtersActive}
           onDismissAll={() => setShowDismissConfirm(true)}
           isDismissing={dismissAllAttention.isPending}
           onOpenSettings={() =>
@@ -330,13 +333,13 @@ export function NotificationsPage() {
        */}
       <ConfirmModal
         isOpen={showDismissConfirm}
-        title={`${ACKNOWLEDGE_ATTENTION_ACTION.label} attention items`}
+        title={`${ACKNOWLEDGE_ATTENTION_ACTION.label} eligible attention items`}
         message={`${ACKNOWLEDGE_ATTENTION_ACTION.label} ${
           dismissibleItems.length
-        } item${
+        } eligible item${
           dismissibleItems.length === 1 ? '' : 's'
-        } needing attention? Activity stays.`}
-        confirmLabel={`${ACKNOWLEDGE_ATTENTION_ACTION.label} all attention items`}
+        }${filtersActive ? ' in this view' : ''}? Activity stays.`}
+        confirmLabel={`${ACKNOWLEDGE_ATTENTION_ACTION.label} eligible items`}
         variant="warning"
         onConfirm={() => {
           dismissAllAttention.mutate();
@@ -508,27 +511,40 @@ function RecentAppMessages() {
 }
 
 function NotificationsHeader({
-  attentionCount,
+  dismissibleCount,
+  filtered,
   onDismissAll,
   onOpenSettings,
   isDismissing = false,
 }: {
-  attentionCount: number;
+  dismissibleCount: number;
+  filtered: boolean;
   onDismissAll: () => void;
   onOpenSettings: () => void;
   isDismissing?: boolean;
 }) {
+  /**
+   * The bulk action acknowledges the eligible subset of the rows this view
+   * shows — never "everything outstanding". Two narrowings are invisible in
+   * the row list: an active filter, and the kinds the server refuses to
+   * acknowledge (standing notices, undecided reviews and gates). Naming the
+   * eligible scope keeps the control from promising rows it will not touch;
+   * the count stays on the confirmation, where the rows it names are visible.
+   */
+  const bulkLabel = `${ACKNOWLEDGE_ATTENTION_ACTION.label} eligible items${
+    filtered ? ' in this view' : ''
+  }`;
   return (
     <PageFrameActions>
       <Button
         variant="secondary"
         size="sm"
         onClick={onDismissAll}
-        disabled={attentionCount === 0}
+        disabled={dismissibleCount === 0}
         pending={isDismissing}
         pendingLabel="Dismissing…"
       >
-        {ACKNOWLEDGE_ATTENTION_ACTION.label} all attention items
+        {bulkLabel}
       </Button>
       <details className="notifications-page__overflow">
         <summary>More</summary>
