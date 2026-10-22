@@ -2413,10 +2413,10 @@ export function createOrchestrationRoutes(
       !conversationId ||
       !clientTurnId ||
       !deps.threadInbox?.heldByOther(conversationId, clientTurnId, userId) ||
-      !(await orchestrationService.readSession(
+      !orchestrationService.hasReadableSession(
         conversationId,
         readAuthorityFor(c),
-      ))
+      )
     )
       return undefined;
     return c.json(
@@ -2451,10 +2451,10 @@ export function createOrchestrationRoutes(
       !conversationId ||
       !clientTurnId ||
       !deps.threadInbox?.inFlight(conversationId, clientTurnId) ||
-      !(await orchestrationService.readSession(
+      !orchestrationService.hasReadableSession(
         conversationId,
         readAuthorityFor(c),
-      ))
+      )
     )
       return undefined;
     return c.json(
@@ -2800,10 +2800,10 @@ export function createOrchestrationRoutes(
         : undefined;
       if (
         followUp &&
-        (await orchestrationService.readSession(
+        orchestrationService.hasReadableSession(
           followUp.conversationId,
           readAuthorityFor(c),
-        )) &&
+        ) &&
         (await followUpTargetMatchesBinding(
           orchestrationService,
           followUp.conversationId,
@@ -3310,10 +3310,10 @@ export function createOrchestrationRoutes(
       );
     if (
       conversationId.length > 512 ||
-      !(await orchestrationService.readSession(
+      !orchestrationService.hasReadableSession(
         conversationId,
         readAuthorityFor(c),
-      ))
+      )
     )
       return c.json({ success: false, error: 'Conversation not found' }, 404);
     return c.json({
@@ -3345,10 +3345,10 @@ export function createOrchestrationRoutes(
         !deps.threadInbox ||
         conversationId.length > 512 ||
         clientTurnId.length > 200 ||
-        !(await orchestrationService.readSession(
+        !orchestrationService.hasReadableSession(
           conversationId,
           readAuthorityFor(c),
-        ))
+        )
       )
         return notFound();
       const result = deps.threadInbox.cancel(
