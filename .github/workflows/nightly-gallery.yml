@@ -104,7 +104,7 @@ jobs:
           node-version-file: .nvmrc
 
       - name: Setup pinned pnpm
-        uses: kontourai/station/.github/actions/setup-verified-pnpm@2ff3dcfaff17eea0197f260fa06781a7d0071b41
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
 
       # The Playwright image carries no C++ toolchain (verified against the
       # pinned digest: no `make`, `g++`, `cc` or `gcc`), and

@@ -472,7 +472,7 @@ export const PNPM_SETUP_ACTION =
   'pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4';
 // Reviewed fixed source: npm signature plus pinned SHA512, no dependency install or cache.
 export const VERIFIED_PNPM_SETUP_ACTION =
-  'kontourai/station/.github/actions/setup-verified-pnpm@2ff3dcfaff17eea0197f260fa06781a7d0071b41';
+  'kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20';
 /**
  * #2675: pnpm/setup installs only pnpm's native single-executable build, and
  * for pnpm v11 it refuses Intel macOS ("does not provide a working binary for
