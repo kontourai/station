@@ -1628,7 +1628,9 @@ form. Empty legacy bindings permit an initial host-file declaration inspection.
 The response envelope is `{success:true,data}` with version
 `station.ensemble.inspection/v1`, exact source hash, environment, observation time,
 allowlisted resolution receipts and bounded facts. Declared prerequisites remain
-authored draft facts, separate from runtime observations. Missing and disabled
+authored draft facts, separate from runtime observations. A prerequisite ID absent
+from the preset is refused with `422 ensemble_inspection_invalid` before receiver
+resolution or capability inspection. Missing and disabled
 MCP definitions are labeled; effective delivery and grants remain unknown. No
 prompt appends, credentials or raw definitions are returned.
 

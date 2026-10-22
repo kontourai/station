@@ -515,6 +515,22 @@ test('a host browser inspects exact uploaded group bindings without gaining host
   expect(data.facts).toContainEqual(
     expect.objectContaining({ id: 'tool:lead:external', state: 'unknown' }),
   );
+  const readsBeforeInvalid = f.readIntegration.mock.calls.length;
+  const missingDependency = await f.request(
+    {
+      ...input,
+      groupBindings: {
+        lead: { ...input.groupBindings.lead, needs: ['absent-member'] },
+      },
+    },
+    f.browser,
+  );
+  expect(missingDependency.status).toBe(422);
+  expect(await missingDependency.json()).toMatchObject({
+    success: false,
+    code: 'ensemble_inspection_invalid',
+  });
+  expect(f.readIntegration).toHaveBeenCalledTimes(readsBeforeInvalid);
   expect(JSON.stringify(data)).not.toMatch(
     /SECRET_|preparationDefinitions|requestOptions|credentialProfile/,
   );
