@@ -4959,9 +4959,7 @@ export class EventStore {
       `SELECT CASE
          WHEN method = 'turn.started' THEN json_remove(payload, '$.prompt', '$.attachments', '$.metadata')
          WHEN method = 'turn.completed' THEN json_remove(payload, '$.outputText')
-         WHEN method = 'tool.completed' THEN json_object(
-           'eventId', json_extract(payload, '$.eventId'), 'threadId', thread_id, 'turnId', turn_id,
-           'provider', provider, 'method', method, 'createdAt', created_at)
+         WHEN method = 'tool.completed' THEN json_remove(payload, '$.output', '$.result', '$.images', '$.attachments', '$.metadata')
          WHEN method IN ('session.started', 'session.configured', 'turn.completed', 'token-usage.updated') THEN payload
          ELSE json_object('eventId', id, 'threadId', thread_id,
            'provider', provider, 'method', method, 'createdAt', created_at)

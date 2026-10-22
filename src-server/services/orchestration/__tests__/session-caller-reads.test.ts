@@ -205,25 +205,26 @@ test('portable consent scans only durable binding methods', () => {
   expect(replay).not.toHaveBeenCalled();
 });
 
-test('usage facts refuse malformed selected tool JSON instead of manufacturing a count', () => {
-  const { store, service, append } = fixture();
-  append({
-    method: 'tool.completed',
-    turnId: 'turn',
-    toolCallId: 'tool',
-    toolName: 'read',
-    status: 'success',
-    output: 'large output',
-  });
-  store['db']
-    .prepare(
-      "UPDATE orchestration_events SET payload = '{' WHERE method = 'tool.completed'",
-    )
-    .run();
-  expect(() => service.readSessionUsage('thread', authority())).toThrow(
-    'malformed JSON',
-  );
-});
+test.each(['{', 'null'])(
+  'usage refuses corrupt selected tool payload %s instead of manufacturing a count',
+  (payload) => {
+    const { store, service, append } = fixture();
+    append({
+      method: 'tool.completed',
+      turnId: 'turn',
+      toolCallId: 'tool',
+      toolName: 'read',
+      status: 'success',
+      output: 'large output',
+    });
+    store['db']
+      .prepare(
+        "UPDATE orchestration_events SET payload = ? WHERE method = 'tool.completed'",
+      )
+      .run(payload);
+    expect(() => service.readSessionUsage('thread', authority())).toThrow();
+  },
+);
 
 test('hot global sequence reads compile once and retain fresh bindings', () => {
   const { store, append } = fixture();
