@@ -193,7 +193,7 @@ network connection. Only the local text reader bypasses live access verification
 ordinary protected query caches remain quarantined on a cold offline start. A
 small identifier-only session index is persisted under the normal 24-hour,
 build and authority rules, rather than caching provider recovery state or titles
-derived from prompts. Native shells already bundle their app assets; the browser
+taken from prompts. Native shells already bundle their app assets; the browser
 service-worker cache is not installed there.
 
 ## Ways To Run Station Today
