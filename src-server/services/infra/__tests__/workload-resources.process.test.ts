@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { createServer } from 'node:net';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { spawnSyncBounded } from '../../../../scripts/lib/bounded-capture.mjs';
 
@@ -116,7 +117,9 @@ describe.skipIf(!manager)('running server workload containment', () => {
         process.execPath,
         '--import',
         'tsx',
-        resolve(import.meta.dirname, 'helpers/workload-resource-server.ts'),
+        fileURLToPath(
+          new URL('./helpers/workload-resource-server.ts', import.meta.url),
+        ),
       ],
       { stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true },
     );
@@ -126,17 +129,22 @@ describe.skipIf(!manager)('running server workload containment', () => {
     runner.stderr?.on('data', (data) => {
       output = (output + data).slice(-32768);
     });
-    await vi.waitFor(
-      async () => {
-        if (runner.exitCode !== null)
-          throw new Error(`Fixture exited: ${output}`);
-        expect(
-          (await request<{ workloads: Snapshot }>('/status')).workloads.state,
-          output,
-        ).toBe('ready');
-      },
-      { timeout: 20_000 },
-    );
+    await vi
+      .waitFor(
+        async () => {
+          if (runner.exitCode !== null)
+            throw new Error(`Fixture exited: ${output}`);
+          expect(
+            (await request<{ workloads: Snapshot }>('/status')).workloads.state,
+            output,
+          ).toBe('ready');
+        },
+        { timeout: 20_000 },
+      )
+      .catch((error) => {
+        console.error('Workload fixture setup failed:', output, error);
+        throw error;
+      });
   }, 30_000);
 
   afterAll(async () => {
