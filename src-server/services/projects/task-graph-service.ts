@@ -3437,6 +3437,10 @@ export class TaskGraphService {
                   ? { modelOptions: { ...agentStart.modelOptions } }
                   : {}),
                 workspaceIsolation: { mode: 'shared' },
+                // #765 A1, as a foreground start: the Session is a durable
+                // conversation whose later turns may resume its native
+                // transcript, so the engine must keep it.
+                persistSession: true,
                 metadata: {
                   // #4005: the Environment + Agent binding a continuation
                   // verifies, and the Agent whose prompt, skills and tools

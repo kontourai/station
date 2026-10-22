@@ -337,6 +337,7 @@ describe('Task dispatch binds its Session to the Task Agent (#4005)', () => {
       provider: 'claude',
       modelId: 'haiku',
       cwd: workspace,
+      persistSession: true,
       metadata: expect.objectContaining({
         agentId: 'task-lead',
         agentSlug: 'task-lead',
