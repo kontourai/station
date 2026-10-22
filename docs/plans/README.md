@@ -13,5 +13,6 @@ Concrete execution plans that expand roadmap phases or major initiatives into im
 - [onboarding-improvement-rounds.md](onboarding-improvement-rounds.md) — Onboarding improvement rounds
 - [pane-workspace.md](pane-workspace.md) — Pane workspace implementation
 - [shared-work-delivery.md](shared-work-delivery.md) — Shared work delivery ledger
+- [task-experience-follow-through.md](task-experience-follow-through.md) — Task experience follow-through
 - [task-tracker-sync-upstream-gaps.md](task-tracker-sync-upstream-gaps.md) — Task tracker sync: published-contract gaps
 <!-- docs-index:end -->

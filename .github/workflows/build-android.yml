@@ -135,9 +135,6 @@ jobs:
         run: STATION_CLIENT_BUILD_REUSE=1 RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384" npx tauri android build --debug --apk --aab --config tauri.conf.json --config tauri.android.dev.conf.json
         env:
           NDK_HOME: "${{ env.ANDROID_HOME }}/ndk/27.0.12077973"
-          # Optional secret-free Dev backend origin supplied by repository or
-          # environment configuration; absent leaves the pairing UI unchanged.
-          STATION_MOBILE_DEFAULT_ENDPOINT: ${{ vars.STATION_MOBILE_DEFAULT_ENDPOINT_DEV }}
       # Observational only: runs even when the build failed so the hosted log
       # reveals post-build/failure headroom. It never affects job outcome.
       - name: Report disk headroom after Android build

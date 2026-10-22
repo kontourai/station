@@ -708,7 +708,11 @@
 
     "src-ui/src/contexts/openRelatedOccurrence.ts",
 
-    "tests/helpers/related-pane-upgrade.ts"
+    "tests/helpers/related-pane-upgrade.ts",
+
+    "packages/sdk/src/task-user-input-references.ts",
+
+    "packages/sdk/src/__tests__/taskGraph-invalidation.test.tsx"
   ],
 
   "checks": [

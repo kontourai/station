@@ -19,7 +19,9 @@ import { UnsavedGuardOwnerContext } from '../contexts/UnsavedGuardOwnerContext';
  *   function handleSelect(id) { guard( => doSelect(id)); }
  *   return <>{view}<DiscardModal /></>;
  */
-export function useUnsavedGuard(dirty: boolean) {
+export function useUnsavedGuard(dirty: boolean, onDiscard?: () => boolean) {
+  const discard = useRef(onDiscard);
+  discard.current = onDiscard;
   const [showDiscard, setShowDiscard] = useState(false);
   const pendingRef = useRef<(() => void) | null>(null);
   const pendingCancel = useRef<(() => void) | undefined>(undefined);
@@ -74,6 +76,7 @@ export function useUnsavedGuard(dirty: boolean) {
   }, [dirty, guard, owner]);
 
   const onConfirm = useCallback(() => {
+    if (discard.current?.() === false) return;
     setShowDiscard(false);
     pendingCancel.current = undefined;
     const continuation = pendingRef.current;

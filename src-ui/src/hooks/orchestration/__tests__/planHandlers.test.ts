@@ -157,6 +157,109 @@ describe('handlePlanUpdatedEvent', () => {
     ]);
   });
 
+  test('a plan delivered mid-turn survives the turn completing', async () => {
+    // The live ACP order (session/update \`plan\`, then text, then the
+    // prompt settles): turn.completed commits the answer and used to re-derive
+    // the plan from message prose, replacing the typed plan with null.
+    const { handleOrchestrationEvent } = await import('../eventHandlers');
+    const base = { provider: 'acp', threadId, turnId: 'turn-1' } as const;
+    handleOrchestrationEvent('http://station.test', {
+      ...base,
+      eventId: 'evt-start',
+      createdAt: '2026-07-03T00:00:00.000Z',
+      method: 'turn.started',
+    } as never);
+    handleOrchestrationEvent('http://station.test', {
+      ...base,
+      eventId: 'evt-plan',
+      createdAt: '2026-07-03T00:00:01.000Z',
+      method: 'plan.updated',
+      entries: [
+        { content: 'Standard ACP plan step one', status: 'completed' },
+        { content: 'Standard ACP plan step two', status: 'pending' },
+      ],
+    });
+    handleOrchestrationEvent('http://station.test', {
+      ...base,
+      eventId: 'evt-text',
+      createdAt: '2026-07-03T00:00:02.000Z',
+      method: 'content.text-delta',
+      itemId: 'item-1',
+      delta: 'Sent a standard ACP plan update.\n',
+    } as never);
+    handleOrchestrationEvent('http://station.test', {
+      ...base,
+      eventId: 'evt-done',
+      createdAt: '2026-07-03T00:00:03.000Z',
+      method: 'turn.completed',
+      finishReason: 'stop',
+    } as never);
+
+    const chat = activeChatsStore.getSnapshot()[threadId];
+    expect(chat?.orchestrationTurnOpen).not.toBe(true);
+    expect(chat?.planArtifact?.source).toBe('canonical');
+    expect(chat?.planArtifact?.steps).toEqual([
+      { content: 'Standard ACP plan step one', status: 'completed' },
+      { content: 'Standard ACP plan step two', status: 'pending' },
+    ]);
+  });
+
+  test("a later turn's own prose plan replaces an earlier typed plan at completion", async () => {
+    // The final, unterminated line is only parsed when the turn commits; a
+    // canonical plan from an earlier turn must not shadow that parse.
+    const { handleOrchestrationEvent } = await import('../eventHandlers');
+    const send = (event: Record<string, unknown>) =>
+      handleOrchestrationEvent('http://station.test', {
+        provider: 'acp',
+        threadId,
+        createdAt: '2026-07-03T00:00:00.000Z',
+        ...event,
+      } as never);
+    send({ eventId: 'a1', turnId: 'turn-1', method: 'turn.started' });
+    send({
+      eventId: 'a2',
+      turnId: 'turn-1',
+      method: 'plan.updated',
+      entries: [
+        { content: 'Old A', status: 'pending' },
+        { content: 'Old B', status: 'pending' },
+      ],
+    });
+    send({
+      eventId: 'a3',
+      turnId: 'turn-1',
+      method: 'turn.completed',
+      finishReason: 'stop',
+    });
+    send({ eventId: 'b1', turnId: 'turn-2', method: 'turn.started' });
+    send({
+      eventId: 'b2',
+      turnId: 'turn-2',
+      method: 'content.text-delta',
+      itemId: 'item-2',
+      delta: 'Doing this:\n1. New A\n',
+    });
+    send({
+      eventId: 'b3',
+      turnId: 'turn-2',
+      method: 'content.text-delta',
+      itemId: 'item-2',
+      delta: '2. New B',
+    });
+    send({
+      eventId: 'b4',
+      turnId: 'turn-2',
+      method: 'turn.completed',
+      finishReason: 'stop',
+    });
+
+    const artifact = activeChatsStore.getSnapshot()[threadId]?.planArtifact;
+    expect(artifact?.steps.map((step) => step.content)).toEqual([
+      'New A',
+      'New B',
+    ]);
+  });
+
   test('ignores an event for a thread with no active chat', () => {
     handlePlanUpdatedEvent({
       eventId: 'evt-1',
