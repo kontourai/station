@@ -1,0 +1,85 @@
+{
+  "engine": "cursor",
+  "registry": {
+    "id": "cursor",
+    "version": "2026.10.19",
+    "distribution": "binary",
+    "cmd": "cursor-agent",
+    "args": ["acp"]
+  },
+  "initialize": {
+    "protocolVersion": 1,
+    "agentInfo": {
+      "name": "cursor-agent",
+      "title": "Cursor",
+      "version": "2026.10.19"
+    },
+    "agentCapabilities": {
+      "loadSession": true,
+      "promptCapabilities": {
+        "image": true
+      }
+    },
+    "authMethods": [
+      {
+        "id": "cursor_login",
+        "name": "Cursor login"
+      }
+    ]
+  },
+  "sessionNew": {
+    "modes": {
+      "currentModeId": "agent",
+      "availableModes": [
+        {
+          "id": "agent",
+          "name": "Agent",
+          "description": "Full tool access"
+        },
+        {
+          "id": "plan",
+          "name": "Plan",
+          "description": "Planning, read-only behavior"
+        },
+        {
+          "id": "ask",
+          "name": "Ask",
+          "description": "Q&A/read-only behavior"
+        }
+      ]
+    }
+  },
+  "permissionOptions": [
+    {
+      "optionId": "allow-once",
+      "kind": "allow_once",
+      "name": "Allow once"
+    },
+    {
+      "optionId": "allow-always",
+      "kind": "allow_always",
+      "name": "Allow always"
+    },
+    {
+      "optionId": "reject-once",
+      "kind": "reject_once",
+      "name": "Reject"
+    }
+  ],
+  "vendorNotifications": [
+    {
+      "method": "cursor/update_todos",
+      "params": {
+        "toolCallId": "call_125",
+        "todos": [
+          {
+            "id": "1",
+            "content": "Set up project structure",
+            "status": "completed"
+          }
+        ],
+        "merge": true
+      }
+    }
+  ]
+}
