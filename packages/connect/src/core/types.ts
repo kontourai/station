@@ -178,7 +178,7 @@ export interface InjectedConnection {
   name: string;
   /** Present only when reachable: a `running` bundled server, or a CLI base. */
   url?: string;
-  source: 'managed-loopback' | 'cli-base' | 'mobile-default';
+  source: 'managed-loopback' | 'cli-base';
   /** Bundled-server lifecycle state; set for `managed-loopback` only. */
   status?: InjectedConnectionStatus;
   /** Current host-reported local-service identity, when one is available. */

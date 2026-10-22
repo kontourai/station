@@ -169,8 +169,9 @@ Adapter mappings, same Station event:
 | --- | --- |
 | Claude | `Query.streamInput` (additive) |
 | Codex | app-server `turn/steer` `{ threadId, input, expectedTurnId }` (additive; does not emit a Codex `turn/started`) |
-| Kiro | ACP extension **method** `_session/steer` when the command, arguments or reported agent name match Kiro (additive; not a notification) |
-| Grok | ACP extension **method** `_x.ai/interject` (then `x.ai/interject`). `_x.ai/queue/changed` is the engine's prompt **queue**, host→agent interject is steer. |
+| Any ACP declaring a native method | The declared ACP extension **method** (`_session/steer` or `_x.ai/interject`) named in its `initialize` capability `_meta` `extensionMethods` list |
+| Kiro | ACP extension **method** `_session/steer` (additive; not a notification). Kiro does not declare it; matched on its handshake's `agentInfo.name` `Kiro CLI Agent` or its `_meta.kiro` capability namespace, never on the command |
+| Grok | ACP extension **method** `_x.ai/interject` (then `x.ai/interject`), undeclared; matched on the handshake's `_meta.grokShell` flag. `_x.ai/queue/changed` is the engine's prompt **queue**, host→agent interject is steer. |
 | Any other ACP | Cancel + re-prompt fallback: `session/cancel` + `session/prompt` on the same Station `turnId` (interruptive: it also cancels any tool the prompt was running). Also the fallback when the native method returns JSON-RPC -32601. Its steer `turn.started` carries `steerInterruptedRun: true`, and the steer row says it was sent by stopping the running step. |
 
 Muse can run one `muse serve` host per Session, with `muse exec` per-turn fallback where configured. Neither process mode establishes native mid-turn steering in the dock; supported input and control capabilities remain owned by the Muse adapter and capability matrix.

@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 
@@ -20,6 +21,7 @@ const mocks = vi.hoisted(() => ({
     text: 'Agreed brief.',
   },
   people: [] as string[],
+  researcherAvailable: true,
   refetch: vi.fn(),
   status: vi.fn(),
   agent: vi.fn(),
@@ -27,6 +29,7 @@ const mocks = vi.hoisted(() => ({
   scope: {
     apiBase: 'http://station.test',
     authorityKey: 'home-a',
+    draftRecoveryKey: 'home-a-authorization-1',
     isCurrent: () => true,
   },
 }));
@@ -36,7 +39,12 @@ vi.mock('../contexts/ApiBaseContext', () => ({
 vi.mock('../hooks/useUnsavedGuard', () => ({
   useUnsavedGuard: () => ({ DiscardModal: () => null }),
 }));
-vi.mock('@kontourai/station-sdk', () => ({ updateTaskStatus: mocks.status }));
+vi.mock('@kontourai/station-sdk', () => ({
+  useUpdateTaskStatusMutation: () => ({
+    mutateAsync: mocks.status,
+    isPending: false,
+  }),
+}));
 vi.mock('../workspace-panes/ProjectTaskRoomContext', () => ({
   useProjectTaskRoomContext: () => ({
     live: {
@@ -80,7 +88,7 @@ vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
           id: 'researcher',
           name: 'Researcher',
           description: 'Explore ideas',
-          ready: true,
+          ready: mocks.researcherAvailable,
         },
         {
           id: 'offline',
@@ -105,8 +113,12 @@ const props = {
   readable: true,
 };
 beforeEach(() => {
+  window.sessionStorage.clear();
+  mocks.scope.apiBase = 'http://station.test';
   mocks.scope.authorityKey = 'home-a';
+  mocks.scope.draftRecoveryKey = 'home-a-authorization-1';
   mocks.people = [];
+  mocks.researcherAvailable = true;
   mocks.brief = {
     version: 'station.task-room-context/v1',
     digest: 'a'.repeat(64),
@@ -122,9 +134,10 @@ beforeEach(() => {
       record: { ...input, state: 'dispatched' },
       replayed: false,
     }));
-  mocks.refetch
-    .mockReset()
-    .mockResolvedValue({ data: { context: mocks.brief }, isError: false });
+  mocks.refetch.mockReset().mockResolvedValue({
+    data: { records: [], context: mocks.brief },
+    isError: false,
+  });
   mocks.message.mockReset().mockResolvedValue({ kind: 'committed' });
 });
 
@@ -415,5 +428,335 @@ test.each([
       ),
     );
     expect(mocks.agent).not.toHaveBeenCalled();
+  },
+);
+
+test('a reload offers a draft for explicit restoration without sending or reattaching a different brief choice', () => {
+  const first = render(<TaskRoomComposer {...props} />);
+  fireEvent.change(screen.getByRole('textbox'), {
+    target: { value: 'A private unsent draft' },
+  });
+  fireEvent.click(
+    screen.getByRole('checkbox', { name: 'Brief attached to agent requests' }),
+  );
+  first.unmount();
+  mocks.scope.authorityKey = 'new-page-boot';
+  render(<TaskRoomComposer {...props} />);
+  expect(screen.getByRole('region', { name: 'Saved Task draft' })).toBeTruthy();
+  expect(screen.getByRole('textbox').matches(':disabled')).toBe(true);
+  expect(mocks.agent).not.toHaveBeenCalled();
+  expect(mocks.message).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Restore saved draft' }));
+  expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe(
+    'A private unsent draft',
+  );
+  expect((screen.getByRole('checkbox') as HTMLInputElement).checked).toBe(
+    false,
+  );
+  expect(mocks.message).not.toHaveBeenCalled();
+});
+
+test('a reload during dispatch retains its exact uncertain operation before the provider call and only retries explicitly', async () => {
+  let settle!: (value: unknown) => void;
+  mocks.agent.mockImplementationOnce((input: TaskRoomWorkInput) => {
+    expect(
+      window.sessionStorage.getItem('station-task-room-draft-recovery-v1'),
+    ).toContain(input.operationId);
+    return new Promise((resolve) => {
+      settle = resolve;
+    });
+  });
+  const first = render(<TaskRoomComposer {...props} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Ask an agent' }));
+  fireEvent.click(
+    screen.getByRole('option', { name: 'Researcher @researcher' }),
+  );
+  fireEvent.change(screen.getByRole('textbox'), {
+    target: { value: 'Explore exactly this' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
+  await waitFor(() => expect(mocks.agent).toHaveBeenCalledOnce());
+  const original = mocks.agent.mock.calls[0][0];
+  first.unmount();
+  mocks.scope.authorityKey = 'new-boot';
+  mocks.brief.digest = 'b'.repeat(64);
+  render(<TaskRoomComposer {...props} />);
+  expect(mocks.agent).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole('button', { name: 'Restore saved draft' }));
+  expect(screen.getByRole('textbox').matches(':disabled')).toBe(true);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Check saved request status' }),
+  );
+  await screen.findByText(/This does not prove the request failed/);
+  expect(mocks.agent).toHaveBeenCalledOnce();
+  await act(async () => {
+    settle({ kind: 'recorded', record: { state: 'dispatched' } });
+  });
+  expect(screen.getByRole('textbox').matches(':disabled')).toBe(true);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Retry same agent request' }),
+  );
+  await waitFor(() => expect(mocks.agent).toHaveBeenCalledTimes(2));
+  expect(mocks.agent.mock.calls[1][0]).toEqual(original);
+});
+
+test.each(['api', 'authorization', 'task', 'incarnation', 'project'])(
+  'a saved draft never crosses a changed %s owner',
+  (changed) => {
+    const first = render(<TaskRoomComposer {...props} />);
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: 'Only original owner' },
+    });
+    first.unmount();
+    const next = { ...props };
+    if (changed === 'api') mocks.scope.apiBase = 'http://another-station.test';
+    if (changed === 'authorization')
+      mocks.scope.draftRecoveryKey = 'new-authorization';
+    if (changed === 'task') next.taskId = 'task-two';
+    if (changed === 'incarnation')
+      next.taskCreatedAt = '2026-10-01T00:00:00.000Z';
+    if (changed === 'project') next.projectSlug = 'another-project';
+    const second = render(<TaskRoomComposer {...next} />);
+    expect(
+      screen.queryByRole('region', { name: 'Saved Task draft' }),
+    ).toBeNull();
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe('');
+    second.unmount();
+    mocks.scope.apiBase = 'http://station.test';
+    mocks.scope.draftRecoveryKey = 'home-a-authorization-1';
+    render(<TaskRoomComposer {...props} />);
+    expect(
+      screen.getByRole('button', { name: 'Restore saved draft' }),
+    ).toBeTruthy();
+    expect(mocks.message).not.toHaveBeenCalled();
+  },
+);
+
+test('an uncertain room message reuses its exact proposal after reload and Cancel preserves it', async () => {
+  mocks.message.mockRejectedValueOnce(new Error('acknowledgement lost'));
+  const first = render(<TaskRoomComposer {...props} />);
+  fireEvent.change(screen.getByRole('textbox'), {
+    target: { value: 'Hello exactly once' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Send to task room' }));
+  await screen.findByText(/Message acknowledgement is unavailable/);
+  const original = mocks.message.mock.calls[0][0];
+  first.unmount();
+  const second = render(<TaskRoomComposer {...props} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Discard saved draft' }));
+  fireEvent.click(
+    within(screen.getByRole('dialog')).getByRole('button', { name: 'Cancel' }),
+  );
+  expect(
+    screen.getByRole('button', { name: 'Restore saved draft' }),
+  ).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Restore saved draft' }));
+  expect(mocks.message).toHaveBeenCalledOnce();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Retry same room message' }),
+  );
+  await waitFor(() => expect(mocks.message).toHaveBeenCalledTimes(2));
+  expect(mocks.message.mock.calls[1][0]).toEqual(original);
+  await waitFor(() =>
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe(''),
+  );
+  second.unmount();
+  render(<TaskRoomComposer {...props} />);
+  expect(screen.queryByRole('region', { name: 'Saved Task draft' })).toBeNull();
+});
+
+test('recovery storage failure refuses provider invocation and keeps the draft', async () => {
+  const view = render(<TaskRoomComposer {...props} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Ask an agent' }));
+  fireEvent.click(
+    screen.getByRole('option', { name: 'Researcher @researcher' }),
+  );
+  fireEvent.change(screen.getByRole('textbox'), {
+    target: { value: 'Keep me' },
+  });
+  const store = vi
+    .spyOn(Storage.prototype, 'setItem')
+    .mockImplementation(() => {
+      throw new Error('quota');
+    });
+  try {
+    fireEvent.click(screen.getByRole('button', { name: 'Ask Researcher' }));
+    await screen.findByText(/Recovery could not be updated/);
+    expect(mocks.agent).not.toHaveBeenCalled();
+    expect((screen.getByRole('textbox') as HTMLTextAreaElement).value).toBe(
+      'Keep me',
+    );
+  } finally {
+    store.mockRestore();
+    view.unmount();
+  }
+});
+
+test('a saved agent cannot be silently replaced by a newly available recipient', async () => {
+  mocks.agent.mockRejectedValueOnce(new Error('unknown'));
+  const first = render(<TaskRoomComposer {...props} />);
+  fireEvent.change(screen.getByRole('textbox'), {
+    target: { value: '@researcher Exact request' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Send to task room' }));
+  await screen.findByText(/Request acknowledgement is unavailable/);
+  first.unmount();
+  mocks.researcherAvailable = false;
+  render(<TaskRoomComposer {...props} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Restore saved draft' }));
+  await screen.findByText(/The saved agent is unavailable/);
+  expect(mocks.agent).toHaveBeenCalledOnce();
+  expect(mocks.message).not.toHaveBeenCalled();
+  expect(screen.getByRole('textbox').matches(':disabled')).toBe(true);
+});
+
+test('confirmed discard removes reload recovery without claiming an uncertain request failed', async () => {
+  mocks.agent.mockRejectedValueOnce(new Error('unknown'));
+  const first = render(<TaskRoomComposer {...props} />);
+  fireEvent.change(screen.getByRole('textbox'), {
+    target: { value: '@researcher Exact request' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Send to task room' }));
+  await screen.findByText(/Request acknowledgement is unavailable/);
+  first.unmount();
+  const next = render(<TaskRoomComposer {...props} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Discard saved draft' }));
+  expect(screen.getByRole('dialog').textContent).toContain(
+    'An unconfirmed request may still be running',
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+  next.unmount();
+  render(<TaskRoomComposer {...props} />);
+  expect(screen.queryByRole('region', { name: 'Saved Task draft' })).toBeNull();
+  expect(mocks.agent).toHaveBeenCalledOnce();
+});
+
+test('malformed saved uncertainty refuses recovery rather than minting a replacement operation', () => {
+  window.sessionStorage.setItem(
+    'station-task-room-draft-recovery-v1',
+    '{not-json',
+  );
+  render(<TaskRoomComposer {...props} />);
+  expect(screen.getByRole('alert').textContent).toContain(
+    'recovery is unavailable',
+  );
+  expect(screen.getByRole('textbox').matches(':disabled')).toBe(true);
+  expect(mocks.agent).not.toHaveBeenCalled();
+  expect(mocks.message).not.toHaveBeenCalled();
+});
+
+test('restoring an ordinary mention of a person cannot turn it into an agent request', async () => {
+  mocks.people = ['Researcher'];
+  const first = render(<TaskRoomComposer {...props} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Ask an agent' }));
+  fireEvent.click(screen.getByRole('option', { name: 'Researcher' }));
+  fireEvent.change(screen.getByRole('textbox'), {
+    target: { value: '@Researcher Please review' },
+  });
+  first.unmount();
+  render(<TaskRoomComposer {...props} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Restore saved draft' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Send to task room' }));
+  await waitFor(() => expect(mocks.message).toHaveBeenCalledOnce());
+  expect(mocks.agent).not.toHaveBeenCalled();
+});
+
+test('a second mounted room composer cannot overwrite another view’s uncertain operation', async () => {
+  mocks.agent.mockRejectedValueOnce(new Error('acknowledgement lost'));
+  const first = render(<TaskRoomComposer {...props} />);
+  const second = render(<TaskRoomComposer {...props} />);
+  fireEvent.change(within(first.container).getByRole('textbox'), {
+    target: { value: '@researcher Preserve this exact operation' },
+  });
+  fireEvent.click(
+    within(first.container).getByRole('button', { name: 'Send to task room' }),
+  );
+  await within(first.container).findByText(
+    /Request acknowledgement is unavailable/,
+  );
+  const original = mocks.agent.mock.calls[0][0];
+  fireEvent.change(within(second.container).getByRole('textbox'), {
+    target: { value: 'A different unsent message' },
+  });
+  fireEvent.click(
+    within(second.container).getByRole('button', { name: 'Send to task room' }),
+  );
+  await act(async () => {});
+  expect(mocks.message).not.toHaveBeenCalled();
+  expect(
+    window.sessionStorage.getItem('station-task-room-draft-recovery-v1'),
+  ).toContain(original.operationId);
+});
+
+test('a refused retry does not erase the original unknown operation or unlock a replacement send', async () => {
+  mocks.agent
+    .mockRejectedValueOnce(new Error('lost'))
+    .mockResolvedValueOnce({ kind: 'refused', reason: 'conflict' });
+  const first = render(<TaskRoomComposer {...props} />);
+  fireEvent.change(screen.getByRole('textbox'), {
+    target: { value: '@researcher Keep original intent' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Send to task room' }));
+  await screen.findByText(/Request acknowledgement is unavailable/);
+  const original = mocks.agent.mock.calls[0][0];
+  first.unmount();
+  const next = render(<TaskRoomComposer {...props} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Restore saved draft' }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Retry same agent request' }),
+  );
+  await screen.findByText(/The original request remains unconfirmed/);
+  expect(screen.getByRole('textbox').matches(':disabled')).toBe(true);
+  expect(mocks.agent.mock.calls[1][0]).toEqual(original);
+  next.unmount();
+  render(<TaskRoomComposer {...props} />);
+  expect(
+    screen.getByRole('region', { name: 'Saved Task draft' }).textContent,
+  ).toContain('unknown outcome');
+  expect(mocks.agent).toHaveBeenCalledTimes(2);
+});
+
+test.each([
+  'missing-operation',
+  'changed-recipient',
+  'changed-visible-prompt',
+  'unsupported-payload',
+  'duplicate-owner',
+  'over-capacity',
+])(
+  'a corrupt saved request (%s) refuses restoration without any new send',
+  async (corruption) => {
+    mocks.agent.mockRejectedValueOnce(new Error('unknown'));
+    const first = render(<TaskRoomComposer {...props} />);
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: '@researcher Exact request' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send to task room' }));
+    await screen.findByText(/Request acknowledgement is unavailable/);
+    first.unmount();
+    const key = 'station-task-room-draft-recovery-v1';
+    const saved = JSON.parse(window.sessionStorage.getItem(key)!);
+    const record = saved.entries[0];
+    if (corruption === 'missing-operation')
+      delete record.unconfirmed.operationId;
+    if (corruption === 'changed-recipient') record.recipient.id = 'builder';
+    if (corruption === 'changed-visible-prompt')
+      record.draft = 'A different prompt';
+    if (corruption === 'unsupported-payload')
+      record.unconfirmed.model = { override: 'unexpected' };
+    if (corruption === 'duplicate-owner') saved.entries.push(record);
+    if (corruption === 'over-capacity')
+      saved.entries = Array.from({ length: 21 }, (_, index) => ({
+        ...record,
+        owner: `owner-${index}`,
+      }));
+    window.sessionStorage.setItem(key, JSON.stringify(saved));
+    render(<TaskRoomComposer {...props} />);
+    expect(
+      screen.queryByRole('button', { name: 'Restore saved draft' }),
+    ).toBeNull();
+    expect(screen.getByRole('textbox').matches(':disabled')).toBe(true);
+    expect(mocks.agent).toHaveBeenCalledOnce();
+    expect(mocks.message).not.toHaveBeenCalled();
   },
 );

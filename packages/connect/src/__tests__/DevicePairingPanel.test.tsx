@@ -2961,7 +2961,7 @@ describe('device pairing panels', () => {
       'station-pairing-endpoint-suggestion:v1:https://station.example.test';
     globalThis.localStorage.setItem(
       suggestionKey,
-      'https://kontour.python-smelt.ts.net:3773',
+      'https://station.example.ts.net:3773',
     );
     try {
       render(
@@ -2976,7 +2976,7 @@ describe('device pairing panels', () => {
       // loopback URL as the field's starting value.
       expect(
         (screen.getByLabelText('Pairing endpoint') as HTMLInputElement).value,
-      ).toBe('https://kontour.python-smelt.ts.net:3773');
+      ).toBe('https://station.example.ts.net:3773');
     } finally {
       globalThis.localStorage.removeItem(suggestionKey);
     }
@@ -3023,7 +3023,7 @@ describe('device pairing panels', () => {
         'Localhost points to the phone.',
       );
       fireEvent.change(screen.getByLabelText('Pairing endpoint'), {
-        target: { value: 'https://kontour.python-smelt.ts.net:3773' },
+        target: { value: 'https://station.example.ts.net:3773' },
       });
       await waitFor(() => expect(screen.queryByRole('note')).toBeNull());
 
@@ -3033,7 +3033,7 @@ describe('device pairing panels', () => {
       expect(await screen.findByText('PAIRME2345')).toBeTruthy();
       // The reachable address the operator typed is remembered for next time.
       expect(globalThis.localStorage.getItem(suggestionKey)).toBe(
-        'https://kontour.python-smelt.ts.net:3773',
+        'https://station.example.ts.net:3773',
       );
     } finally {
       globalThis.localStorage.removeItem(suggestionKey);

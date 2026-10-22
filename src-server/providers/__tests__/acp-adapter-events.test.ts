@@ -7,7 +7,6 @@ import type {
 import {
   type AcpMapperContext,
   type AcpMapperState,
-  extractReportedModelFromConfigOptions,
   mapAcpDecisionToApprovalStatus,
   mapAcpDecisionToOutcome,
   mapAcpExtensionNotification,
@@ -1275,48 +1274,5 @@ describe('mapAcpStopReasonToTurnCompletion — stopReason table', () => {
     expect(
       mapAcpStopReasonToTurnCompletion('x'.repeat(200) as StopReason),
     ).toEqual({ finishReason: 'other', stopReason: 'x'.repeat(64) });
-  });
-});
-
-describe('station#1182 — extractReportedModelFromConfigOptions', () => {
-  test('reads currentValue off the model-category select option', () => {
-    expect(
-      extractReportedModelFromConfigOptions([
-        { id: 'a', category: 'thought_level', currentValue: 'high' },
-        { id: 'b', category: 'model', currentValue: 'engine-native-opus' },
-      ]),
-    ).toBe('engine-native-opus');
-  });
-
-  test('is undefined for non-array, empty array, or no model-category option', () => {
-    expect(extractReportedModelFromConfigOptions(undefined)).toBeUndefined();
-    expect(extractReportedModelFromConfigOptions(null)).toBeUndefined();
-    expect(extractReportedModelFromConfigOptions([])).toBeUndefined();
-    expect(
-      extractReportedModelFromConfigOptions([
-        { id: 'a', category: 'thought_level', currentValue: 'high' },
-      ]),
-    ).toBeUndefined();
-  });
-
-  test('ignores a boolean-type model-category option with no currentValue string', () => {
-    expect(
-      extractReportedModelFromConfigOptions([
-        { id: 'a', category: 'model', currentValue: true },
-      ]),
-    ).toBeUndefined();
-  });
-
-  test('trims and rejects a blank currentValue', () => {
-    expect(
-      extractReportedModelFromConfigOptions([
-        { id: 'a', category: 'model', currentValue: '   ' },
-      ]),
-    ).toBeUndefined();
-    expect(
-      extractReportedModelFromConfigOptions([
-        { id: 'a', category: 'model', currentValue: '  opus  ' },
-      ]),
-    ).toBe('opus');
   });
 });
