@@ -78,6 +78,7 @@ import {
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
 import type { CheckoutRemoteReader } from '../../services/projects/checkout-remote-reader.js';
 import { findGitEntryOnPath } from '../../services/projects/checkout-remote-reader.js';
+import { ProjectBindingsStore } from '../../services/projects/project-binding-store.js';
 import {
   ProjectCreationConflict,
   ProjectCreationService,
@@ -552,6 +553,11 @@ export function createProjectRoutes(
             () => resolution.bindings.hostAliases(),
           )
         : undefined,
+      {
+        acquisitions,
+        bindings: new ProjectBindingsStore(projectHomeDir),
+        current: deps.repositoryDiscoveryCurrent ?? isOperatorInPersonNotAgent,
+      },
     ),
   );
   const layoutCatalog =

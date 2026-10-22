@@ -182,12 +182,16 @@ export class FileStorageAdapter implements IStorageAdapter {
       value: stored.value,
       withCurrentRead: <R>(operation: (value: ProjectConfig) => Promise<R>) =>
         stored.withCurrentRead!(operation),
-      replaceManifest: (expected: unknown, next: unknown) => {
+      replaceManifest: (
+        expected: unknown,
+        next: unknown,
+        assertCurrent?: () => void,
+      ) => {
         if (!stored.replaceManifest)
           throw new FileStorageUnavailableError(
             'Project manifest mutation is unavailable',
           );
-        return stored.replaceManifest(expected, next);
+        return stored.replaceManifest(expected, next, assertCurrent);
       },
       replace: async (next: ProjectConfig) => {
         const parsed = parseProjectConfig(next);

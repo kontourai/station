@@ -11,7 +11,9 @@ import {
 } from '../../domain/project-file-transactions.js';
 import { ProjectIdentityValidationError } from '../../domain/project-identity-record.js';
 import { InvalidPathSegmentError } from '../../knowledge-index/path-safety.js';
+import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
 import type { ProjectIdentityService } from '../../services/projects/project-identity-service.js';
+import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import { createLogger } from '../../utils/logger.js';
 import { getBody, param, validate } from '../schemas/schemas.js';
 import { refuseUngrantedWorkingDirectory } from '../working-directory-authority.js';
@@ -39,6 +41,10 @@ const executionRootMutationSchema = z
 /** Mounted under the existing Project read/write authorization boundary. */
 export function createProjectIdentityRoutes(
   service: ProjectIdentityService | undefined,
+  repositoryAttachment?: Omit<
+    Parameters<ProjectIdentityService['attachRepository']>[2],
+    'assertCurrent'
+  > & { current: (request: Request) => boolean },
 ) {
   const app = new Hono();
   async function run(
@@ -124,6 +130,50 @@ export function createProjectIdentityRoutes(
       );
     }
   }
+  app.post(
+    '/:slug/identity/repositories',
+    validate(
+      z
+        .object({
+          expectedIdentity: z.record(z.string(), z.unknown()),
+          expectedLocalProjectId: z.string().min(1),
+          acquisitionId: z.string().uuid(),
+          useForCode: z.boolean(),
+        })
+        .strict(),
+    ),
+    async (c) => {
+      const current = () =>
+        isOperatorInPersonNotAgent(c.req.raw) &&
+        repositoryAttachment?.current(c.req.raw) === true &&
+        !c.req.raw.signal.aborted;
+      if (!current())
+        return c.json(
+          {
+            success: false,
+            error:
+              'Repository attachment requires the current Station operator.',
+          },
+          403,
+        );
+      const response = await run(c, (owner) =>
+        owner.attachRepository(param(c, 'slug'), getBody(c), {
+          acquisitions: repositoryAttachment!.acquisitions,
+          bindings: repositoryAttachment!.bindings,
+          assertCurrent: () => {
+            if (!current())
+              throw new Error('Repository attachment authority ended.');
+          },
+        }),
+      );
+      if (!current())
+        return c.json(
+          { success: false, error: 'Repository attachment authority ended.' },
+          403,
+        );
+      return guardProjectResponse(response, async () => current());
+    },
+  );
   app.get('/:slug/identity', (c) =>
     run(c, (owner) => owner.read(param(c, 'slug'))),
   );

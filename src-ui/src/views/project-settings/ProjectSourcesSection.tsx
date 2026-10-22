@@ -1,6 +1,7 @@
 import { PageSection } from '../../components/PageSection';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { ProjectKnowledgeSources } from './ProjectKnowledgeSources';
+import { ProjectRepositoryAttachment } from './ProjectRepositoryAttachment';
 import { ProjectS3Sources } from './ProjectS3Sources';
 import { ResourcesSection } from './ResourcesSection';
 import './ProjectSourcesSection.css';
@@ -25,6 +26,13 @@ export function ProjectSourcesSection({
           className="project-sources"
         >
           <ResourcesSection slug={slug} requestScope={authority} embedded />
+          {projectId && (
+            <ProjectRepositoryAttachment
+              slug={slug}
+              projectId={projectId}
+              authority={authority}
+            />
+          )}
           <ProjectKnowledgeSources
             slug={slug}
             projectId={projectId}

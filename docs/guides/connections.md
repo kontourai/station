@@ -1217,6 +1217,20 @@ registration, refresh and disconnect. A repository repair row offers the same
 acquisition and retained-checkout picker. **Use this checkout** fills the repair
 path; the separate bind action verifies the current declared resource before
 recording its location. Selection does not change the primary resource. See [knowledge sources](knowledge.md#project-settings--sources).
+**Add a repository** also works for blank and knowledge-first Projects. Acquire
+or reuse a copy, choose **Use this checkout**, then confirm **Attach repository**.
+The existing primary resource, working directory and knowledge configuration are
+preserved. The optional **Use this repository for code work in this Project**
+checkbox explicitly selects its verified repository-relative execution root;
+it is unchecked initially and does not promote or remove a primary resource.
+Attachment checks the expected portable identity and immutable local Project ID.
+A changed Project or binding is refused instead of overwriting it. If the
+response is lost, **Retry saved attachment** repeats the same selection. A
+binding can be recorded before manifest publication; inspect Sources after an
+uncertain result. Retrying the same intent recovers it without another clone.
+This attaches repository resources; it does not run setup or grant remote Git
+credentials to an Agent.
+
 See the [API contract](../reference/api.md#repository-acquisition).
 
 ## Developer services and computers

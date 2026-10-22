@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
@@ -9,7 +11,10 @@ import {
 } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
-import type { ProjectConfig } from '@kontourai/station-contracts/project';
+import type {
+  ProjectConfig,
+  RepositoryAcquisition,
+} from '@kontourai/station-contracts/project';
 import type { ProjectPortableIdentity } from '@kontourai/station-contracts/project-identity';
 import { PROJECT_IDENTITY_NOT_PREPARED_CODE } from '@kontourai/station-contracts/project-identity';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -31,6 +36,7 @@ import {
   type CheckoutRemoteReader,
   readCheckoutRemotes,
 } from '../checkout-remote-reader.js';
+import { ProjectBindingsStore } from '../project-binding-store.js';
 import { ProjectIdentityService } from '../project-identity-service.js';
 import {
   ProjectManifestStore,
@@ -747,4 +753,235 @@ describe('portable identity input boundary', () => {
   ])('refuses unknown versions or local/secret-bearing fields', (value) => {
     expect(() => parseProjectPortableIdentity(value)).toThrow();
   });
+});
+
+test.each([false, true])(
+  'a knowledge Project attaches a verified acquisition with explicit code choice %s and retries without replacing its original resource',
+  async (useForCode) => {
+    const h = harness();
+    await h.projects.createProject({
+      name: 'Knowledge',
+      slug: 'knowledge',
+      knowledgeNamespaces: [{ id: 'notes', label: 'Notes', behavior: 'rag' }],
+    });
+    const prepared = await h.service.read('knowledge');
+    const originalProject = h.storage.getProject('knowledge');
+    const checkout = directory();
+    mkdirSync(join(checkout, 'docs'));
+    const acquisition: RepositoryAcquisition = {
+      schemaVersion: 1,
+      request: {
+        requestId: randomUUID(),
+        sourceUrl: 'https://git.example/acme/repo.git',
+        subdirectory: 'docs',
+      },
+      phase: 'ready',
+      attempt: 1,
+      checkoutPath: checkout,
+      workingDirectory: join(checkout, 'docs'),
+      canonicalRemote: 'git.example/acme/repo',
+      resolvedCommit: 'a'.repeat(40),
+      updatedAt: '2026-10-22T00:00:00.000Z',
+    };
+    const verification = vi.fn(async () => ({
+      workingDirectory: acquisition.workingDirectory!,
+      repositorySource: {
+        acquisitionId: acquisition.request.requestId,
+        attempt: 1,
+        sourceUrl: acquisition.request.sourceUrl,
+        canonicalRemote: acquisition.canonicalRemote!,
+        resolvedCommit: acquisition.resolvedCommit!,
+        acquiredAt: acquisition.updatedAt,
+      },
+    }));
+    const bindings = new ProjectBindingsStore(h.home);
+    const deps = {
+      acquisitions: { get: () => acquisition, projectSource: verification },
+      bindings,
+      assertCurrent: () => {},
+    };
+    const input = {
+      expectedIdentity: prepared.identity,
+      expectedLocalProjectId: originalProject.id,
+      acquisitionId: acquisition.request.requestId,
+      useForCode,
+    };
+    const attached = await h.service.attachRepository('knowledge', input, deps);
+    expect(attached.identity.id).toBe(prepared.identity.id);
+    expect(attached.identity.repos).toHaveLength(
+      prepared.identity.repos.length + 1,
+    );
+    expect(attached.identity.repos[0]).toMatchObject({
+      id: prepared.identity.repos[0].id,
+      role: 'primary',
+    });
+    expect(attached.identity.executionRoot).toEqual(
+      useForCode
+        ? { repoId: acquisition.canonicalRemote, path: 'docs' }
+        : prepared.identity.executionRoot,
+    );
+    if (useForCode)
+      expect(
+        await new ProjectResourceResolver({
+          homeDir: h.home,
+          source: h.storage,
+          readRemotes,
+        }).resolveProjectExecutionRoot('knowledge'),
+      ).toBe(realpathSync(join(checkout, 'docs')));
+    expect(h.storage.getProject('knowledge')).toEqual(originalProject);
+    expect(
+      bindings.findBinding(prepared.identity.id, acquisition.canonicalRemote!)
+        ?.path,
+    ).toBe(checkout);
+    expect(
+      (await h.service.attachRepository('knowledge', input, deps)).identity,
+    ).toEqual(attached.identity);
+    expect(
+      (
+        await h.service.attachRepository(
+          'knowledge',
+          { ...input, expectedIdentity: attached.identity },
+          deps,
+        )
+      ).identity,
+    ).toEqual(attached.identity);
+    expect(verification).toHaveBeenCalledTimes(3);
+    await expect(
+      h.service.attachRepository(
+        'knowledge',
+        { ...input, expectedLocalProjectId: 'replacement' },
+        deps,
+      ),
+    ).rejects.toThrow('local Project changed');
+  },
+);
+
+test('repository attachment refuses changed Project identity during acquisition verification and publishes no binding', async () => {
+  const h = harness();
+  await h.projects.createProject({ name: 'Notes', slug: 'notes' });
+  const prepared = await h.service.read('notes');
+  const p = h.storage.getProject('notes');
+  const bindings = new ProjectBindingsStore(h.home);
+  const acquired: RepositoryAcquisition = {
+    schemaVersion: 1,
+    request: {
+      requestId: randomUUID(),
+      sourceUrl: 'https://git.example/acme/repo.git',
+    },
+    phase: 'ready',
+    attempt: 1,
+    checkoutPath: directory(),
+    canonicalRemote: 'git.example/acme/repo',
+    resolvedCommit: 'a'.repeat(40),
+    updatedAt: '2026-10-22T00:00:00.000Z',
+  };
+  const deps = {
+    bindings,
+    assertCurrent: () => {},
+    acquisitions: {
+      get: () => acquired,
+      projectSource: async () => {
+        await h.projects.updateProject('notes', { name: 'Edited meanwhile' });
+        return {
+          workingDirectory: acquired.checkoutPath,
+          repositorySource: {
+            acquisitionId: acquired.request.requestId,
+            attempt: 1,
+            sourceUrl: acquired.request.sourceUrl,
+            canonicalRemote: acquired.canonicalRemote!,
+            resolvedCommit: acquired.resolvedCommit!,
+            acquiredAt: acquired.updatedAt,
+          },
+        };
+      },
+    },
+  };
+  await expect(
+    h.service.attachRepository(
+      'notes',
+      {
+        expectedIdentity: prepared.identity,
+        expectedLocalProjectId: p.id,
+        acquisitionId: acquired.request.requestId,
+        useForCode: true,
+      },
+      deps,
+    ),
+  ).rejects.toThrow('Project changed');
+  expect(
+    bindings.findBinding(prepared.identity.id, acquired.canonicalRemote!),
+  ).toBeUndefined();
+  expect((await h.service.read('notes')).identity).toEqual(prepared.identity);
+});
+
+test('repository attachment refuses lost authority at the manifest rename while retaining an honest recoverable binding', async () => {
+  const h = harness();
+  await h.projects.createProject({ name: 'Notes', slug: 'notes' });
+  const prepared = await h.service.read('notes');
+  const project = h.storage.getProject('notes');
+  const acquired: RepositoryAcquisition = {
+    schemaVersion: 1,
+    request: {
+      requestId: randomUUID(),
+      sourceUrl: 'https://git.example/acme/repo.git',
+    },
+    phase: 'ready',
+    attempt: 1,
+    checkoutPath: directory(),
+    canonicalRemote: 'git.example/acme/repo',
+    resolvedCommit: 'a'.repeat(40),
+    updatedAt: '2026-10-22T00:00:00.000Z',
+  };
+  const bindings = new ProjectBindingsStore(h.home);
+  let refusedAtRename = false;
+  const deps = {
+    bindings,
+    acquisitions: {
+      get: () => acquired,
+      projectSource: async () => ({
+        workingDirectory: acquired.checkoutPath,
+        repositorySource: {
+          acquisitionId: acquired.request.requestId,
+          attempt: 1,
+          sourceUrl: acquired.request.sourceUrl,
+          canonicalRemote: acquired.canonicalRemote!,
+          resolvedCommit: acquired.resolvedCommit!,
+          acquiredAt: acquired.updatedAt,
+        },
+      }),
+    },
+    assertCurrent: () => {
+      if (
+        readdirSync(join(h.home, 'projects', 'notes')).some(
+          (name) => name.startsWith('manifest.json.') && name.endsWith('.tmp'),
+        )
+      ) {
+        refusedAtRename = true;
+        throw new Error('Authority ended at publication');
+      }
+    },
+  };
+  const input = {
+    expectedIdentity: prepared.identity,
+    expectedLocalProjectId: project.id,
+    acquisitionId: acquired.request.requestId,
+    useForCode: false,
+  };
+  await expect(
+    h.service.attachRepository('notes', input, deps),
+  ).rejects.toThrow('Project storage mutation is unavailable');
+  expect(refusedAtRename).toBe(true);
+  expect((await h.service.read('notes')).identity).toEqual(prepared.identity);
+  expect(
+    bindings.findBinding(prepared.identity.id, acquired.canonicalRemote!)?.path,
+  ).toBe(acquired.checkoutPath);
+  const recovered = await h.service.attachRepository('notes', input, {
+    ...deps,
+    assertCurrent: () => {},
+  });
+  expect(
+    recovered.identity.repos.some(
+      (repo) => repo.id === acquired.canonicalRemote,
+    ),
+  ).toBe(true);
 });

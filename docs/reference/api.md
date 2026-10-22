@@ -158,6 +158,22 @@ exists without a symlink redirect and returns `workingDirectory` separately from
 the owned `checkoutPath`; Project creation rechecks the directory and retains the
 subdirectory in source provenance. Raw subprocess output and credentials are not response data.
 
+Operator-only `POST /api/projects/:slug/identity/repositories` accepts
+`{expectedIdentity, expectedLocalProjectId, acquisitionId, useForCode}`. The
+acquisition must be ready and identify a portable remote repository. The owner
+rechecks its pinned checkout, binds its repository root with a current-binding
+precondition, then updates the existing portable manifest under the exact local
+Project revision and expected identity. Existing resources and primary selection
+are preserved; `useForCode: true` explicitly selects the acquired subdirectory
+as the execution root. It does not edit `ProjectConfig.workingDirectory` or
+knowledge settings. Changed identity/binding yields409. Authority is checked at
+binding write, immediately before manifest rename and at response release.
+Binding publication precedes manifest publication: an uncertain result may have
+recorded a private binding without declaring the resource yet. Retrying the
+same acquisition and expected identity recovers that intent; a different
+binding requires explicit repair. No setup command or remote credential grant
+is performed.
+
 Operator-only `GET /api/projects/repository-acquisitions?sourceUrl=...&sourceRef=...&subdirectory=...`
 searches at most 1000 retained operation directories and returns up to 20 ready
 receipts matching canonical repository identity, requested ref and subdirectory.
