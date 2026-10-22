@@ -25,7 +25,7 @@ import { connectionEngineId } from '../utils/execution';
 import { resolveProviderPresentation } from './provider-settings/providerCatalog';
 import './EngineAddFlow.css';
 
-/** What a catalogue row opens. Every choice goes through its own confirm. */
+/** A catalogue choice opens setup; a saved engine opens its retry check. */
 export type EngineAddChoice =
   | { kind: 'native'; connection: AgentConnectionViewData }
   | { kind: 'command'; entry: ACPConnectionRegistryEntry }
