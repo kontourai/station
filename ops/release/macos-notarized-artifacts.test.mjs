@@ -1,16 +1,24 @@
+import { createHash } from 'node:crypto';
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { expect, test } from 'vitest';
 import {
   admitMacosAppBundle,
   assertAcceptedNotaryReceipt,
+  assertInstallerDmgLayout,
   commandFailureExcerpt,
   createMacosNotarizedArtifacts,
   DEFAULT_COMMAND_TIMEOUT_MS,
@@ -32,10 +40,47 @@ import {
 const requirement =
   'identifier "io.kontourai.station" and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = U7KHF2QAC4';
 const currentRequirement = `Executable=/app/Station.app/Contents/MacOS/Station\ndesignated => ${requirement}`;
+// Derived independently of the release script so a moved or renamed input is
+// a test failure rather than a silently followed path.
+const dmgSettings = fileURLToPath(
+  new URL('./dmg/dmgbuild-settings.py', import.meta.url),
+);
+const committedBackground = fileURLToPath(
+  new URL('./dmg/background.tiff', import.meta.url),
+);
+const committedBackgroundBytes = readFileSync(committedBackground);
+const dmgbuild = '/venv/bin/dmgbuild';
+const mountRoot = '/scratch/mounted';
+
+/** The mounted root dmgbuild produces for `Station.app`, entry by entry. */
+function installerRoot(overrides = {}) {
+  const root = {
+    '.DS_Store': { kind: 'file' },
+    '.background.tiff': { kind: 'file', bytes: committedBackgroundBytes },
+    Applications: { kind: 'symlink', target: '/Applications' },
+    'Station.app': { kind: 'directory' },
+    ...overrides,
+  };
+  for (const [name, entry] of Object.entries(root))
+    if (entry === undefined) delete root[name];
+  return root;
+}
+
+function entryMetadata(kind) {
+  return {
+    isDirectory: () => kind === 'directory',
+    isFile: () => kind === 'file',
+    isSymbolicLink: () => kind === 'symlink',
+  };
+}
+
+function missingEntry(file) {
+  return Object.assign(new Error(`ENOENT: ${file}`), { code: 'ENOENT' });
+}
 
 function fixture({
   appVersion = '1.2.3',
-  files = ['Station.app'],
+  mounted = installerRoot(),
   reject = false,
   app = '/app/Station.app',
   canonicalApp = '/app/Station.app',
@@ -52,18 +97,47 @@ function fixture({
   const calls = [];
   const removed = [];
   let signed = false;
+  const mountedEntry = (file) => {
+    const name = file.startsWith(`${mountRoot}/`)
+      ? file.slice(mountRoot.length + 1)
+      : undefined;
+    if (name === undefined || !Object.hasOwn(mounted, name))
+      throw missingEntry(file);
+    return mounted[name];
+  };
   const fs = {
     existsSync: (file) =>
       (appExists && (file === app || file === canonicalApp)) ||
       file === '/key' ||
+      file === dmgbuild ||
+      file === dmgSettings ||
       (signed && file.endsWith('.sig')),
-    lstatSync: () => ({
-      isDirectory: () => appDirectory,
-      isSymbolicLink: () => appSymbolicLink,
-    }),
+    lstatSync: (file) =>
+      file.startsWith(`${mountRoot}/`)
+        ? entryMetadata(mountedEntry(file).kind)
+        : {
+            isDirectory: () => appDirectory,
+            isFile: () => false,
+            isSymbolicLink: () => appSymbolicLink,
+          },
     mkdirSync() {},
     mkdtempSync: () => '/scratch',
-    readdirSync: () => files,
+    readdirSync: (directory) => {
+      if (directory !== mountRoot) throw missingEntry(directory);
+      return Object.keys(mounted);
+    },
+    readFileSync: (file) => {
+      if (file === committedBackground) return committedBackgroundBytes;
+      const entry = mountedEntry(file);
+      if (entry.kind !== 'file') throw missingEntry(file);
+      return entry.bytes ?? Buffer.from('window layout');
+    },
+    readlinkSync: (file) => {
+      const entry = mountedEntry(file);
+      if (entry.kind !== 'symlink')
+        throw Object.assign(new Error(`EINVAL: ${file}`), { code: 'EINVAL' });
+      return entry.target;
+    },
     realpathSync: () => canonicalApp,
     rmSync: (file) => removed.push(file),
   };
@@ -129,6 +203,7 @@ function fixture({
       releaseTag: 'v1.2.3',
       architecture: 'aarch64',
       bundleId: 'io.kontourai.station',
+      dmgbuild,
     },
     removed,
     run,
@@ -375,7 +450,6 @@ test('uses a visible phase for each injected command and preserves the canonical
     'application stapling',
     'application staple validation',
     'application Gatekeeper assessment',
-    'DMG staging',
     'DMG creation',
     'DMG signing',
     'DMG signature verification',
@@ -510,7 +584,6 @@ test('overlapped notarization submits the DMG before the application is stapled'
   ).toEqual([
     'application notarization archive',
     'notarize notarization-input.zip',
-    'DMG staging',
     'DMG creation',
     'DMG signing',
     'DMG signature verification',
@@ -630,9 +703,9 @@ test('removes the scratch root only after a mid-flight failure has settled the a
         }),
       );
     }
-    if (program === 'hdiutil' && args[0] === 'create') {
+    if (program === dmgbuild && options.phase === 'DMG creation') {
       baseRun(program, args, options);
-      throw new Error('hdiutil create failed');
+      throw new Error('dmgbuild failed');
     }
     return baseRun(program, args, options);
   };
@@ -641,7 +714,7 @@ test('removes the scratch root only after a mid-flight failure has settled the a
       { ...release.options, overlapNotarization: true },
       release,
     ),
-  ).rejects.toThrow('hdiutil create failed');
+  ).rejects.toThrow('dmgbuild failed');
   expect(state.startedSubmissions).toBe(1);
   expect(state.removals).toEqual([
     { file: '/scratch', outstandingSubmissions: 0 },
@@ -681,7 +754,7 @@ test('DMG-only mode revalidates a notarized app but never signs, archives, submi
   expect(dmgSubmission).toBeDefined();
   expect(
     release.calls.indexOf(phase('application Gatekeeper assessment')),
-  ).toBeLessThan(release.calls.indexOf(phase('DMG staging')));
+  ).toBeLessThan(release.calls.indexOf(phase('DMG creation')));
 });
 
 test('DMG-only mode refuses an app that has not passed stapler and Gatekeeper preflight', async () => {
@@ -704,7 +777,7 @@ test('DMG-only mode refuses an app that has not passed stapler and Gatekeeper pr
     ).rejects.toThrow(`refused ${failedPhase}`);
     expect(
       release.calls.some(
-        ([_program, _args, options]) => options.phase === 'DMG staging',
+        ([_program, _args, options]) => options.phase === 'DMG creation',
       ),
     ).toBe(false);
     expect(
@@ -725,8 +798,7 @@ test('uses the explicit ten-minute authority for every complete-payload artifact
   });
   const artifactOperations = [
     ['ditto', 'application notarization archive'],
-    ['ditto', 'DMG staging'],
-    ['hdiutil', 'DMG creation'],
+    [dmgbuild, 'DMG creation'],
     ['tar', 'updater archive derivation'],
   ];
   for (const [program, phase] of artifactOperations) {
@@ -873,10 +945,173 @@ test('cleans scratch state on terminal notary rejection and rejects an unexpecte
     createMacosNotarizedArtifacts(rejected.options, rejected),
   ).rejects.toThrow(/rejected/);
   expect(rejected.removed).toContain('/scratch');
-  const wrongDmg = fixture({ files: ['Contents'] });
+  const wrongDmg = fixture({ mounted: { Contents: { kind: 'directory' } } });
   await expect(
     createMacosNotarizedArtifacts(wrongDmg.options, wrongDmg),
   ).rejects.toThrow(/exactly/);
+});
+
+test('builds the installer image with one dmgbuild call over the sealed app and committed layout', async () => {
+  const release = fixture();
+  await createMacosNotarizedArtifacts(release.options, release);
+  const creation = release.calls.filter(
+    ([_program, _args, options]) => options.phase === 'DMG creation',
+  );
+  expect(creation).toEqual([
+    [
+      dmgbuild,
+      [
+        '-s',
+        dmgSettings,
+        '-D',
+        'app=/app/Station.app',
+        '-D',
+        `background=${committedBackground}`,
+        '--no-hidpi',
+        'Station',
+        dmgPath,
+      ],
+      expect.objectContaining({ timeoutMs: LARGE_ARTIFACT_COMMAND_TIMEOUT_MS }),
+    ],
+  ]);
+  // dmgbuild owns staging and the hdiutil calls; the release no longer copies
+  // the app into a scratch root or creates the image itself.
+  expect(
+    release.calls.some(
+      ([program, args]) =>
+        (program === 'hdiutil' && args[0] === 'create') ||
+        (program === 'ditto' && !args.includes('--keepParent')),
+    ),
+  ).toBe(false);
+});
+
+test('requires an absolute, existing dmgbuild before any release command runs', async () => {
+  for (const [value, message] of [
+    [undefined, 'Expected dmgbuild.'],
+    ['venv/bin/dmgbuild', 'dmgbuild must be an absolute path'],
+    ['/missing/bin/dmgbuild', 'dmgbuild must be an absolute path'],
+  ]) {
+    const release = fixture();
+    await expect(
+      createMacosNotarizedArtifacts(
+        { ...release.options, dmgbuild: value },
+        release,
+      ),
+    ).rejects.toThrow(message);
+    expect(release.calls).toEqual([]);
+  }
+});
+
+test('reads the dmgbuild path from its CLI flag', () => {
+  const args = ['--app', '/app/Station.app', '--dmgbuild', dmgbuild];
+  expect(parseMacosNotarizedArtifactsCli(args)).toMatchObject({ dmgbuild });
+  expect(
+    parseMacosNotarizedArtifactsCli(['--app', '/app/Station.app']),
+  ).toEqual(expect.objectContaining({ dmgbuild: undefined }));
+  for (const invalid of [
+    [...args, '--dmgbuild', dmgbuild],
+    ['--dmgbuild'],
+    ['--dmgbuild', '--dmg-only'],
+  ])
+    expect(() => parseMacosNotarizedArtifactsCli(invalid)).toThrow(
+      /unique --name value/,
+    );
+});
+
+test('refuses a mounted installer image whose root is not exactly the reviewed layout', async () => {
+  const cases = [
+    [
+      'missing Applications link',
+      installerRoot({ Applications: undefined }),
+      /missing \["Applications"\]/,
+    ],
+    [
+      'Applications pointing elsewhere',
+      installerRoot({
+        Applications: { kind: 'symlink', target: '/Users/Shared' },
+      }),
+      'Applications must be a symbolic link to exactly /Applications',
+    ],
+    [
+      'Applications as a real folder',
+      installerRoot({ Applications: { kind: 'directory' } }),
+      'Applications must be a symbolic link to exactly /Applications',
+    ],
+    [
+      'an extra root file',
+      installerRoot({ 'README.txt': { kind: 'file' } }),
+      /unexpected \["README\.txt"\]/,
+    ],
+    [
+      'a background that differs from the committed art',
+      installerRoot({
+        '.background.tiff': {
+          kind: 'file',
+          bytes: Buffer.concat([committedBackgroundBytes, Buffer.from([0])]),
+        },
+      }),
+      '.background.tiff must be a regular file identical to ops/release/dmg/background.tiff',
+    ],
+    [
+      'a background symlink',
+      installerRoot({
+        '.background.tiff': { kind: 'symlink', target: committedBackground },
+      }),
+      '.background.tiff must be a regular file',
+    ],
+    [
+      'a window layout that is not a regular file',
+      installerRoot({ '.DS_Store': { kind: 'directory' } }),
+      '.DS_Store must be a regular file',
+    ],
+    [
+      'an application symlink',
+      installerRoot({
+        'Station.app': { kind: 'symlink', target: '/app/Station.app' },
+      }),
+      'Station.app must be the application directory',
+    ],
+  ];
+  for (const [label, mounted, message] of cases) {
+    const release = fixture({ mounted });
+    await expect(
+      createMacosNotarizedArtifacts(release.options, release),
+      label,
+    ).rejects.toThrow(message);
+    const phases = release.calls.map(([, , options]) => options.phase);
+    expect(phases, label).toContain('DMG mount');
+    expect(phases, label).not.toContain('mounted app signature verification');
+    expect(phases, label).toContain('DMG detach cleanup');
+  }
+});
+
+test('admits a real installer root and refuses the same root once tampered', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'station-dmg-layout-'));
+  const realFs = { lstatSync, readdirSync, readFileSync, readlinkSync };
+  const digest = createHash('sha256')
+    .update(committedBackgroundBytes)
+    .digest('hex');
+  try {
+    writeFileSync(join(directory, '.DS_Store'), 'window layout');
+    writeFileSync(
+      join(directory, '.background.tiff'),
+      committedBackgroundBytes,
+    );
+    symlinkSync('/Applications', join(directory, 'Applications'));
+    mkdirSync(join(directory, 'Station.app'));
+    expect(() =>
+      assertInstallerDmgLayout(directory, 'Station.app', digest, realFs),
+    ).not.toThrow();
+    // A relative or trailing-slash spelling resolves to the same folder in
+    // Finder but is not the reviewed link, so it is refused.
+    rmSync(join(directory, 'Applications'));
+    symlinkSync('/Applications/', join(directory, 'Applications'));
+    expect(() =>
+      assertInstallerDmgLayout(directory, 'Station.app', digest, realFs),
+    ).toThrow('Applications must be a symbolic link to exactly /Applications');
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 function logger() {
@@ -1411,16 +1646,19 @@ test('keeps notary rejection terminal and fail-closed', () => {
 
 const dmgPath = '/assets/station-v1.2.3-macos-aarch64.dmg';
 
+const dmgbuildCreateFailure =
+  'dmgbuild.core.DMGError: Unable to create disk image: hdiutil: create failed - Resource busy';
+
 /**
- * Replaces the fixture's `hdiutil create` outcome for the first `failures`
+ * Replaces the fixture's `dmgbuild` outcome for the first `failures`
  * attempts with `failure` (a ReleaseCommandError by default, the only shape
- * the release classifies as a transient hdiutil exit) and counts attempts.
+ * the release classifies as a transient creation exit) and counts attempts.
  */
 function withFailingDmgCreation(release, { failures, failure } = {}) {
   const baseRun = release.run;
   const state = { attempts: 0, sleeps: [] };
   release.run = (program, args, options) => {
-    if (program === 'hdiutil' && args[0] === 'create') {
+    if (program === dmgbuild) {
       state.attempts += 1;
       if (state.attempts <= failures) {
         baseRun(program, args, options);
@@ -1431,7 +1669,7 @@ function withFailingDmgCreation(release, { failures, failure } = {}) {
             program,
             status: 1,
             stdout: '',
-            stderr: 'hdiutil: create failed - Resource busy\n',
+            stderr: `Traceback (most recent call last):\n${dmgbuildCreateFailure}\n`,
           })
         );
       }
@@ -1444,7 +1682,7 @@ function withFailingDmgCreation(release, { failures, failure } = {}) {
   return state;
 }
 
-test('retries a nonzero hdiutil DMG creation exit with bounded backoff and discards the partial image', async () => {
+test('retries a nonzero dmgbuild DMG creation exit with bounded backoff and discards the partial image', async () => {
   const release = fixture();
   const releaseLogger = logger();
   const state = withFailingDmgCreation(release, { failures: 2 });
@@ -1460,22 +1698,26 @@ test('retries a nonzero hdiutil DMG creation exit with bounded backoff and disca
   expect(state.sleeps).toEqual([5_000, 15_000]);
   expect(release.removed).toEqual([dmgPath, dmgPath, '/scratch']);
   const retryLines = releaseLogger.entries.filter((entry) =>
-    entry.includes('hdiutil attempt'),
+    entry.includes('dmgbuild attempt'),
   );
   expect(retryLines).toEqual([
-    '[macOS release] DMG creation: hdiutil attempt 1/3 failed; retrying in 5s.',
-    '[macOS release] DMG creation: hdiutil attempt 2/3 failed; retrying in 15s.',
+    '[macOS release] DMG creation: dmgbuild attempt 1/3 failed; retrying in 5s.',
+    '[macOS release] DMG creation: dmgbuild attempt 2/3 failed; retrying in 15s.',
   ]);
   // Only the creation phase repeats; every other phase still runs once.
   const phases = release.calls.map(
     ([_program, _args, options]) => options.phase,
   );
   expect(phases.filter((phase) => phase === 'DMG creation')).toHaveLength(3);
-  for (const phase of ['DMG staging', 'DMG signing', 'DMG mount'])
+  for (const phase of [
+    'application Gatekeeper assessment',
+    'DMG signing',
+    'DMG mount',
+  ])
     expect(phases.filter((candidate) => candidate === phase)).toHaveLength(1);
 });
 
-test('surfaces the phase and a stderr excerpt when hdiutil fails on its final attempt', async () => {
+test('surfaces the phase and a stderr excerpt when dmgbuild fails on its final attempt', async () => {
   const release = fixture();
   const releaseLogger = logger();
   const state = withFailingDmgCreation(release, { failures: 3 });
@@ -1485,13 +1727,13 @@ test('surfaces the phase and a stderr excerpt when hdiutil fails on its final at
       logger: releaseLogger,
     }),
   ).rejects.toThrow(
-    'hdiutil failed during DMG creation (exit status 1): hdiutil: create failed - Resource busy',
+    `${dmgbuild} failed during DMG creation (exit status 1): Traceback (most recent call last): ${dmgbuildCreateFailure}`,
   );
   expect(state.attempts).toBe(3);
   expect(state.sleeps).toEqual([5_000, 15_000]);
   expect(release.removed).toEqual([dmgPath, dmgPath, dmgPath, '/scratch']);
   expect(
-    releaseLogger.entries.filter((entry) => entry.includes('hdiutil attempt')),
+    releaseLogger.entries.filter((entry) => entry.includes('dmgbuild attempt')),
   ).toHaveLength(2);
   expect(
     release.calls.some(([_program, _args, options]) =>
@@ -1504,18 +1746,18 @@ test('never retries a timed-out, overflowed, or unclassified DMG creation failur
   const cases = [
     new ReleaseCommandError({
       phase: 'DMG creation',
-      program: 'hdiutil',
+      program: dmgbuild,
       timedOut: true,
       stderr: '',
     }),
     new ReleaseCommandError({
       phase: 'DMG creation',
-      program: 'hdiutil',
+      program: dmgbuild,
       status: 1,
       outputTruncated: true,
       stderr: 'x'.repeat(16),
     }),
-    new Error('hdiutil create failed'),
+    new Error('dmgbuild failed'),
   ];
   for (const failure of cases) {
     const release = fixture();
@@ -1525,7 +1767,7 @@ test('never retries a timed-out, overflowed, or unclassified DMG creation failur
     ).rejects.toBe(failure);
     expect(state.attempts).toBe(1);
     expect(state.sleeps).toEqual([]);
-    expect(isRetryableDmgCreationFailure(failure)).toBe(false);
+    expect(isRetryableDmgCreationFailure(failure, dmgbuild)).toBe(false);
   }
   // The classifier is scoped to the creation phase: an hdiutil attach or
   // detach exit is not retried through it.
@@ -1536,20 +1778,24 @@ test('never retries a timed-out, overflowed, or unclassified DMG creation failur
         program: 'hdiutil',
         status: 1,
       }),
+      'hdiutil',
     ),
   ).toBe(false);
-  expect(
-    isRetryableDmgCreationFailure(
-      new ReleaseCommandError({
-        phase: 'DMG creation',
-        program: 'hdiutil',
-        status: 1,
-      }),
-    ),
-  ).toBe(true);
+  // ...and to the release's own creation program: another program's exit in
+  // that phase, or a classifier call that names no program, is terminal.
+  const creationExit = new ReleaseCommandError({
+    phase: 'DMG creation',
+    program: dmgbuild,
+    status: 1,
+  });
+  expect(isRetryableDmgCreationFailure(creationExit, dmgbuild)).toBe(true);
+  expect(isRetryableDmgCreationFailure(creationExit, '/other/dmgbuild')).toBe(
+    false,
+  );
+  expect(isRetryableDmgCreationFailure(creationExit, undefined)).toBe(false);
 });
 
-test('creates the DMG with exactly one hdiutil invocation and no backoff on the happy path', async () => {
+test('creates the DMG with exactly one dmgbuild invocation and no backoff on the happy path', async () => {
   const release = fixture();
   const state = withFailingDmgCreation(release, { failures: 0 });
   release.sleep = () => {
@@ -1562,7 +1808,7 @@ test('creates the DMG with exactly one hdiutil invocation and no backoff on the 
   expect(release.removed).toEqual(['/scratch']);
 });
 
-test('rethrows the hdiutil failure instead of sleeping when the release deadline leaves no room to retry', async () => {
+test('rethrows the dmgbuild failure instead of sleeping when the release deadline leaves no room to retry', async () => {
   const release = fixture();
   const releaseLogger = logger();
   const state = withFailingDmgCreation(release, { failures: 3 });
@@ -1571,8 +1817,9 @@ test('rethrows the hdiutil failure instead of sleeping when the release deadline
   const baseRun = release.run;
   release.run = (program, args, options) => {
     // The first backoff is 5s and cleanup grace is 10s: 14s remaining admits
-    // this attempt (more than grace) but cannot fund backoff plus grace.
-    if (program === 'ditto' && options.phase === 'DMG staging')
+    // this attempt (more than grace) but cannot fund backoff plus grace. The
+    // application's Gatekeeper assessment is the last phase before creation.
+    if (options.phase === 'application Gatekeeper assessment')
       clock = start + 60_000 - 14_000;
     return baseRun(program, args, options);
   };
@@ -1583,12 +1830,12 @@ test('rethrows the hdiutil failure instead of sleeping when the release deadline
       logger: releaseLogger,
       now: () => clock,
     }),
-  ).rejects.toThrow('hdiutil failed during DMG creation (exit status 1)');
+  ).rejects.toThrow(`${dmgbuild} failed during DMG creation (exit status 1)`);
   expect(state.attempts).toBe(1);
   expect(state.sleeps).toEqual([]);
   expect(release.removed).toEqual([dmgPath, '/scratch']);
   expect(releaseLogger.entries).toContain(
-    '[macOS release] DMG creation: hdiutil attempt 1/3 failed; the release deadline leaves no room to retry.',
+    '[macOS release] DMG creation: dmgbuild attempt 1/3 failed; the release deadline leaves no room to retry.',
   );
 });
 

@@ -1,0 +1,29 @@
+{
+  "engine": "hermes",
+  "registry": null,
+  "initialize": {
+    "protocolVersion": 1,
+    "agentInfo": {
+      "name": "hermes",
+      "title": "Hermes Agent",
+      "version": "0.0.0-assumed"
+    },
+    "agentCapabilities": {
+      "loadSession": true,
+      "promptCapabilities": {
+        "image": true
+      }
+    },
+    "authMethods": [
+      {
+        "id": "openai-codex",
+        "name": "OpenAI Codex"
+      },
+      {
+        "id": "hermes-setup",
+        "name": "Hermes setup",
+        "description": "Run `hermes --setup` in a terminal"
+      }
+    ]
+  }
+}
