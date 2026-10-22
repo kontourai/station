@@ -13,8 +13,7 @@
  * (handshake, Agent, connection, Project) are answered in the shapes the
  * real routes return.
  */
-import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   engineConnectionId,
@@ -25,6 +24,7 @@ import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/te
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type {
   ProviderAdapterMetadata,
   ProviderAdapterShape,
@@ -184,24 +184,31 @@ function installCurrentStation(projectDirectory: string) {
 }
 
 describe('Task dispatch binds its Session to the Task Agent (#4005)', () => {
+  const makeTempDir = trackTempDirs();
+  const services: OrchestrationService[] = [];
+  const stores: EventStore[] = [];
   let home: string;
   let workspace: string;
 
   beforeEach(() => {
     process.env.STATION_API_BASE = CURRENT_API;
     process.env.STATION_INTERNAL_API_TOKEN = 'internal-test-token';
-    home = mkdtempSync(join(tmpdir(), 'task-dispatch-agent-'));
-    workspace = realpathSync(mkdtempSync(join(tmpdir(), 'task-dispatch-ws-')));
+    home = makeTempDir('task-dispatch-agent-');
+    workspace = realpathSync(makeTempDir('task-dispatch-ws-'));
   });
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    rmSync(home, { recursive: true, force: true });
-    rmSync(workspace, { recursive: true, force: true });
+  afterEach(async () => {
+    try {
+      for (const service of services.splice(0)) await service.shutdown();
+    } finally {
+      for (const store of stores.splice(0)) store.close();
+      vi.unstubAllGlobals();
+    }
   });
 
   function compose() {
     const eventStore = new EventStore(join(home, 'orchestration.sqlite'));
+    stores.push(eventStore);
     const claude = new FakeClaudeAdapter();
     const service = new OrchestrationService({
       adapterRegistry: {
@@ -231,6 +238,7 @@ describe('Task dispatch binds its Session to the Task Agent (#4005)', () => {
         resolveSkillDir: async () => null,
       }),
     });
+    services.push(service);
     const graph = new TaskGraphService(home, {
       orchestrationService: service,
       projectService: {
