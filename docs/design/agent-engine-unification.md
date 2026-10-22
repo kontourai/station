@@ -250,6 +250,16 @@ Seed matrix (initial honest state — entries move as slices land):
 | Model + knobs | native (Model connection) | session (model, effort, thinking, fastMode) | session (model, approvalPolicy, sandbox, serviceTier) | model selection unavailable until the adapter invokes an ACP model-category configuration operation |
 | Approvals / interrupt / resume | per adapter metadata (`ConnectionCapability`) | yes/yes/yes | yes/yes/yes | per-CLI probe |
 
+For an authored Codex MCP server, configuration delivery is followed by a
+thread-bound `mcpServerStatus/list` read before startup returns or a turn can
+start. The adapter requires one matching server with a tool inventory, no
+reported tool-list/authentication failure, and `connected` when the engine
+reports an explicit runtime status. Older responses may omit that status.
+The reads share a 15-second deadline and the existing bounded response limit;
+unavailable or ambiguous inventory refuses startup and stops the process.
+This is MCP availability evidence, not proof that a model selected or called
+a tool. Sessions without authored servers make no additional inventory call.
+
 ### 4.1b Declared vs observed capability basis (archive#1549, slice 1)
 
 A matrix cell is *static per engine*. Some capabilities are not: ACP's HTTP

@@ -4779,6 +4779,23 @@ describe('CodexAdapter', () => {
       id: '3',
       result: { thread: { id: 'native-replace-tools' } },
     });
+    await flushIo();
+    const inventory = processHandle!.stdin.lines
+      .map(parseLine)
+      .find((line) => line.method === 'mcpServerStatus/list');
+    writeServerMessage(adapter, 'replace-tools', {
+      id: inventory.id,
+      result: {
+        data: [
+          {
+            name: 'chosen',
+            runtimeStatus: 'connected',
+            tools: {},
+            toolsError: null,
+          },
+        ],
+      },
+    });
     await withTimeout(started, 'replace-tools');
     expect(
       processHandle.stdin.lines
@@ -5646,6 +5663,23 @@ describe('CodexAdapter', () => {
         id: '2',
         result: { thread: { id: 'codex-combined' } },
       });
+      await flushIo();
+      const inventory = processHandle!.stdin.lines
+        .map(parseLine)
+        .find((line) => line.method === 'mcpServerStatus/list');
+      writeServerMessage(adapter, 'thread-profile-with-tools', {
+        id: inventory.id,
+        result: {
+          data: [
+            {
+              name: 'station-control',
+              runtimeStatus: 'connected',
+              tools: {},
+              toolsError: null,
+            },
+          ],
+        },
+      });
       await withTimeout(started, 'startSession');
 
       expect(processFactory).toHaveBeenCalledWith({ CODEX_HOME: profileHome }, [
@@ -6201,66 +6235,107 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
     await adapter.stopAll();
   });
 
-  test('delivers a third-party stdio tool server as -c mcp_servers.<id>.command/.args on the spawn argv', async () => {
-    const processHandle = new FakeCodexProcess();
-    let capturedArgs: string[] | undefined;
-    const adapter = new CodexAdapter({
-      processFactory: (_env?: Record<string, string>, extraArgs?: string[]) => {
-        capturedArgs = extraArgs;
-        return processHandle!;
-      },
-    } as any);
-    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+  test.each([true, false])(
+    'delivers a third-party stdio tool server only after its inventory is available (explicit status: %s)',
+    async (explicitStatus) => {
+      const processHandle = new FakeCodexProcess();
+      let capturedArgs: string[] | undefined;
+      const adapter = new CodexAdapter({
+        processFactory: (
+          _env?: Record<string, string>,
+          extraArgs?: string[],
+        ) => {
+          capturedArgs = extraArgs;
+          return processHandle!;
+        },
+      } as any);
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
 
-    const startSessionPromise = adapter.startSession({
-      provider: 'codex',
-      confinement: 'host',
-      threadId: 'thread-tools',
-      cwd: '/tmp/project',
-      modelId: 'gpt-5-codex',
-      agent: {
-        slug: 'my-agent',
-        toolServers: [
-          {
-            id: 'weather',
-            transport: 'stdio',
-            command: 'npx',
-            args: ['-y', 'weather-mcp'],
-          },
-        ],
-      },
-    } as any);
-    await flushIo();
-    writeServerMessage(adapter, 'thread-tools', {
-      id: '1',
-      result: { userAgent: 'test' },
-    });
-    await flushIo();
-    writeServerMessage(adapter, 'thread-tools', {
-      id: '2',
-      result: { thread: { id: 'codex-thread-tools' }, model: 'gpt-5-codex' },
-    });
-    await withTimeout(startSessionPromise, 'startSession');
-    await flushIo();
+      const startSessionPromise = adapter.startSession({
+        provider: 'codex',
+        confinement: 'host',
+        threadId: 'thread-tools',
+        cwd: '/tmp/project',
+        modelId: 'gpt-5-codex',
+        agent: {
+          slug: 'my-agent',
+          toolServers: [
+            {
+              id: 'weather',
+              transport: 'stdio',
+              command: 'npx',
+              args: ['-y', 'weather-mcp'],
+            },
+          ],
+        },
+      } as any);
+      await flushIo();
+      writeServerMessage(adapter, 'thread-tools', {
+        id: '1',
+        result: { userAgent: 'test' },
+      });
+      await flushIo();
+      writeServerMessage(adapter, 'thread-tools', {
+        id: '2',
+        result: { thread: { id: 'codex-thread-tools' }, model: 'gpt-5-codex' },
+      });
+      let announced = false;
+      void startSessionPromise.then(() => {
+        announced = true;
+      });
+      await flushIo();
+      const inventory = processHandle.stdin.lines
+        .map(parseLine)
+        .find((line) => line.method === 'mcpServerStatus/list');
+      expect(inventory?.params).toEqual({
+        threadId: 'codex-thread-tools',
+        serverName: 'weather',
+        detail: 'toolsAndAuthOnly',
+      });
+      expect(announced).toBe(false);
+      await expect(
+        adapter.sendTurn({ threadId: 'thread-tools', input: 'too early' }),
+      ).rejects.toThrow('still starting');
+      expect(
+        processHandle.stdin.lines
+          .map(parseLine)
+          .some((line) => line.method === 'turn/start'),
+      ).toBe(false);
+      writeServerMessage(adapter, 'thread-tools', {
+        id: inventory.id,
+        result: {
+          data: [
+            {
+              name: 'weather',
+              ...(explicitStatus ? { runtimeStatus: 'connected' } : {}),
+              tools: {},
+              toolsError: null,
+            },
+          ],
+        },
+      });
+      await withTimeout(startSessionPromise, 'startSession');
+      await flushIo();
 
-    expect(capturedArgs).toEqual([
-      '-c',
-      'mcp_servers.weather.command="npx"',
-      '-c',
-      'mcp_servers.weather.args=["-y", "weather-mcp"]',
-    ]);
+      expect(capturedArgs).toEqual([
+        '-c',
+        'mcp_servers.weather.command="npx"',
+        '-c',
+        'mcp_servers.weather.args=["-y", "weather-mcp"]',
+      ]);
 
-    await nextEvent(iterator, 'session.started');
-    const configured = await nextEvent(iterator, 'session.configured');
-    expect(configured.metadata.capabilityDelivery.toolServers).toEqual({
-      source: 'agent',
-      requested: ['weather'],
-      delivered: ['weather'],
-      undelivered: [],
-    });
+      await nextEvent(iterator, 'session.started');
+      const configured = await nextEvent(iterator, 'session.configured');
+      expect(configured.metadata.capabilityDelivery.toolServers).toEqual({
+        source: 'agent',
+        requested: ['weather'],
+        delivered: ['weather'],
+        undelivered: [],
+      });
 
-    await adapter.stopAll();
-  });
+      await adapter.stopAll();
+    },
+  );
 
   test('SECURITY: delivers the built-in station-control server as a -c mcp_servers.station-control.url override with the minted per-session URL, never via env', async () => {
     const processHandle = new FakeCodexProcess();
@@ -6308,6 +6383,23 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
       result: {
         thread: { id: 'codex-thread-station-control' },
         model: 'gpt-5-codex',
+      },
+    });
+    await flushIo();
+    const inventory = processHandle!.stdin.lines
+      .map(parseLine)
+      .find((line) => line.method === 'mcpServerStatus/list');
+    writeServerMessage(adapter, 'thread-station-control', {
+      id: inventory.id,
+      result: {
+        data: [
+          {
+            name: 'station-control',
+            runtimeStatus: 'connected',
+            tools: {},
+            toolsError: null,
+          },
+        ],
       },
     });
     await withTimeout(startSessionPromise, 'startSession');
@@ -6374,6 +6466,23 @@ describe('station#1195: toolServers wire delivery (mcp_servers -c config args)',
     writeServerMessage(adapter, 'thread-impostor', {
       id: '2',
       result: { thread: { id: 'codex-thread-impostor' }, model: 'gpt-5-codex' },
+    });
+    await flushIo();
+    const inventory = processHandle!.stdin.lines
+      .map(parseLine)
+      .find((line) => line.method === 'mcpServerStatus/list');
+    writeServerMessage(adapter, 'thread-impostor', {
+      id: inventory.id,
+      result: {
+        data: [
+          {
+            name: 'station-control',
+            runtimeStatus: 'connected',
+            tools: {},
+            toolsError: null,
+          },
+        ],
+      },
     });
     await withTimeout(startSessionPromise, 'startSession');
     await flushIo();
@@ -6463,3 +6572,77 @@ test('external adoption forks the native thread and records its distinct child b
   process.stdout.write(`${JSON.stringify({ id: '3', result: {} })}\n`);
   await cleanup;
 });
+
+test.each([
+  'missing',
+  'wrong-server',
+  'duplicate',
+  'starting',
+  'auth-required',
+  'tool-list-failed',
+  'tools-missing',
+] as const)(
+  'an authored MCP server refuses startup when its exact thread inventory is %s',
+  async (defect) => {
+    const process = new FakeCodexProcess();
+    const adapter = new CodexAdapter({ processFactory: () => process });
+    const events: string[] = [];
+    const observing = (async () => {
+      for await (const event of adapter.streamEvents())
+        events.push(event.method);
+    })();
+    const started = adapter.startSession({
+      provider: 'codex',
+      confinement: 'host',
+      threadId: 'mcp-refusal',
+      agent: {
+        slug: 'helper',
+        toolServers: [{ id: 'question', transport: 'stdio', command: 'node' }],
+      },
+    });
+    const refused = expect(started).rejects.toThrow(
+      'MCP server is unavailable',
+    );
+    try {
+      await flushIo();
+      writeServerMessage(adapter, 'mcp-refusal', {
+        id: '1',
+        result: { userAgent: 'test' },
+      });
+      await flushIo();
+      writeServerMessage(adapter, 'mcp-refusal', {
+        id: '2',
+        result: { thread: { id: 'native-mcp-refusal' } },
+      });
+      await flushIo();
+      const request = process.stdin.lines
+        .map(parseLine)
+        .find((line) => line.method === 'mcpServerStatus/list');
+      expect(request.params.threadId).toBe('native-mcp-refusal');
+      const ready = {
+        name: defect === 'wrong-server' ? 'other' : 'question',
+        runtimeStatus: defect === 'starting' ? 'starting' : 'connected',
+        tools: defect === 'tools-missing' ? null : {},
+        authStatus: defect === 'auth-required' ? 'notLoggedIn' : 'unsupported',
+        toolsError: defect === 'tool-list-failed' ? 'unavailable' : null,
+      };
+      writeServerMessage(adapter, 'mcp-refusal', {
+        id: request.id,
+        result: {
+          data:
+            defect === 'missing'
+              ? []
+              : defect === 'duplicate'
+                ? [ready, ready]
+                : [ready],
+        },
+      });
+      await refused;
+      expect(process.killed).toBe(true);
+      expect(events).not.toContain('session.started');
+    } finally {
+      await adapter.stopAll();
+      await observing;
+    }
+  },
+);

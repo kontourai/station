@@ -182,6 +182,15 @@ canceled rather than retried. Inventory readiness was not live entitlement.
 No shared proxy configuration or credentials were changed. Dollar/token/physical
 attempt guarantees and real subscription charges remain unavailable.
 
+The first live form-elicitation attempts completed without calling the requested
+MCP tool and are excluded from elicitation acceptance. A direct installed-Codex
+control after an exact thread inventory read did call it and returned its form
+answer; that bypassed Station and is diagnostic only. The adapter now waits for
+thread-bound authored MCP inventory before reporting a ready session, and
+refuses a turn while the session is still connecting. Focused startup-order and
+inventory-refusal checks pass. A fresh live Station elicitation check remains
+required; the earlier model refusals are not silently converted into success.
+
 This establishes only the exercised CLI paths. Live elicitation, second-device
 lifecycle, the remaining lineage/context/recovery obligations, final combined
 review and full epic acceptance remain outstanding.

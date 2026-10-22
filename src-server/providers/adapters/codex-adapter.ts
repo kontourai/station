@@ -2218,6 +2218,11 @@ export class CodexAdapter implements ProviderAdapterShape {
           describeCodexSandboxGap(sandboxEvidence),
         );
       this.transport.setCodexThreadId(record, codexThread.id);
+      await this.assertAuthoredMcpReady(
+        record,
+        codexThread.id,
+        toolServers.report?.delivered ?? [],
+      );
       this.options.nativeSessionOwnership?.claim(
         nativeSessionIdentityKey(
           this.provider,
@@ -2419,6 +2424,41 @@ export class CodexAdapter implements ProviderAdapterShape {
         );
       }
       throw error;
+    }
+  }
+
+  private async assertAuthoredMcpReady(
+    session: CodexSessionRecord,
+    threadId: string,
+    serverIds: readonly string[],
+  ): Promise<void> {
+    const deadline = Date.now() + CODEX_ADOPTION_REQUEST_TIMEOUT_MS;
+    for (const serverName of serverIds) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0)
+        throw new Error('Codex required MCP inventory timed out.');
+      const response = record(
+        await this.boundedProviderRequest(
+          this.transport,
+          session,
+          'mcpServerStatus/list',
+          { threadId, serverName, detail: 'toolsAndAuthOnly' },
+          remaining,
+        ),
+      );
+      const rows = response?.data;
+      const matches = Array.isArray(rows)
+        ? rows.map(record).filter((row) => row?.name === serverName)
+        : [];
+      if (
+        matches.length !== 1 ||
+        (matches[0]?.runtimeStatus !== undefined &&
+          matches[0].runtimeStatus !== 'connected') ||
+        !record(matches[0]?.tools) ||
+        matches[0]?.authStatus === 'notLoggedIn' ||
+        matches[0]?.toolsError != null
+      )
+        throw new Error('Codex required MCP server is unavailable.');
     }
   }
 
@@ -2755,6 +2795,8 @@ export class CodexAdapter implements ProviderAdapterShape {
   ): Promise<ProviderTurnStartResult> {
     this.options.nativeSessionOwnership?.assertMutable(input.threadId);
     const record = this.transport.requireSession(input.threadId);
+    if (record.session.status === 'connecting')
+      throw new Error('Codex session is still starting.');
     const turnStartedAt = Date.now();
     const modelOptions = (input.modelOptions ?? {}) as CodexModelOptions;
     const hasModelOptions = Boolean(
