@@ -94,7 +94,10 @@ serializes attempts. Raw subprocess output and credentials are not response data
 
 The request retains an explicit clone transport rather than deriving one from a
 canonical identity. Clone, remote read, commit resolution and detached checkout
-are bounded. Hook/filter hardening comes from the shared Git execution owner.
+are bounded. The shared Git runner disables hooks. Before checkout, acquisition
+refuses unsafe repository-local configuration and excludes system/global Git
+configuration so repository attributes cannot select installed filters. Clone
+transport still uses the operator's configured authentication.
 Earlier directories are retained on failure or retry. Receipt publication failure
 preserves uncertainty; inspect the operation before retrying. These endpoints do
 not create a Project, install dependencies, authorize setup or promise that a

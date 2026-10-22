@@ -1,13 +1,23 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, expect, test } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { execGitSync } from '../../../utils/git-exec.js';
-import { RepositoryAcquisitionService } from '../repository-acquisition-service.js';
+import {
+  RepositoryAcquisitionInputError,
+  RepositoryAcquisitionService,
+} from '../repository-acquisition-service.js';
 
 const roots: string[] = [];
 afterEach(() => {
+  vi.unstubAllEnvs();
   for (const root of roots.splice(0))
     rmSync(root, { recursive: true, force: true });
 });
@@ -147,6 +157,7 @@ test('an interrupted receipt is held until explicit retry and the earlier checko
 });
 
 test.each([
+  'https://[broken/repo',
   'https://token@github.com/org/repo.git',
   'https://github.com/org/repo.git?token=private',
   'ext::sh -c touch marker',
@@ -157,7 +168,46 @@ test.each([
   async (sourceUrl) => {
     const f = fixture();
     const requestId = randomUUID();
-    await expect(f.service.acquire({ requestId, sourceUrl })).rejects.toThrow();
+    await expect(f.service.acquire({ requestId, sourceUrl })).rejects.toThrow(
+      RepositoryAcquisitionInputError,
+    );
     expect(f.service.get(requestId)).toBeNull();
   },
 );
+
+test('acquisition checks out repository bytes without running installed global filters', async () => {
+  const f = fixture();
+  const marker = join(f.home, 'filter-executed');
+  writeFileSync(
+    join(f.source, '.gitattributes'),
+    'README.md filter=acquisition-review\n',
+  );
+  execGitSync(['add', '.'], { cwd: f.source });
+  execGitSync(
+    [
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.test',
+      'commit',
+      '-m',
+      'select installed filter',
+    ],
+    { cwd: f.source },
+  );
+  const config = join(f.home, 'global-config');
+  writeFileSync(
+    config,
+    `[filter "acquisition-review"]\n  smudge = "touch '${marker}'; cat"\n`,
+  );
+  vi.stubEnv('GIT_CONFIG_GLOBAL', config);
+  const acquired = await f.service.acquire({
+    requestId: randomUUID(),
+    sourceUrl: f.source,
+  });
+  expect(acquired.phase).toBe('ready');
+  expect(existsSync(marker)).toBe(false);
+  expect(readFileSync(join(acquired.checkoutPath, 'README.md'), 'utf8')).toBe(
+    'first revision',
+  );
+});

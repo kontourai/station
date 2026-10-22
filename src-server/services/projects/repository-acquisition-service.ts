@@ -1,4 +1,5 @@
 import { mkdirSync } from 'node:fs';
+import { devNull } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { normalizeGitOrigin } from '@kontourai/station-contracts/git-remote-identity';
@@ -11,6 +12,7 @@ import { z } from 'zod/v3';
 import { execGit, isLocalGitSource } from '../../utils/git-exec.js';
 import { JsonFileStore } from '../infra/json-store.js';
 import { readCheckoutRemotes } from './checkout-remote-reader.js';
+import { checkRepositoryConfig } from './git-repository-config.js';
 
 export const repositoryAcquisitionRequestSchema = z
   .object({
@@ -57,7 +59,12 @@ function validateSource(request: RepositoryAcquisitionRequest): void {
         'A local mirror must use an absolute path.',
       );
   } else if (/^[a-z][a-z0-9+.-]*:\/\//i.test(source)) {
-    const url = new URL(source);
+    let url: URL;
+    try {
+      url = new URL(source);
+    } catch {
+      throw new RepositoryAcquisitionInputError('Repository URL is malformed.');
+    }
     if (
       !['https:', 'ssh:'].includes(url.protocol) ||
       url.password ||
@@ -202,9 +209,13 @@ export class RepositoryAcquisitionService {
         ).stdout.trim();
         if (!/^[a-f0-9]{40,64}$/.test(commit))
           throw new Error('Commit could not be resolved.');
+        const config = await checkRepositoryConfig(checkoutPath, 'read');
+        if (!config.ok) throw new Error('Checkout configuration was refused.');
         await execGit(['checkout', '--detach', commit, '--'], {
           cwd: checkoutPath,
           timeout: 30000,
+          // Acquisition materializes bytes; installed filters require separate setup consent.
+          env: { GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: '1' },
         });
         ready = {
           ...acquiring,
