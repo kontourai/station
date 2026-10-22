@@ -132,6 +132,8 @@ export function TerminalPanel({
     let disposed = false;
     let exited = false;
     let cwdRequest = 0;
+    let resizeFrame: number | null = null;
+    let lastSize = { cols: terminal.cols, rows: terminal.rows };
     const cwdRequests = new Map<string, (cwd: string | null) => void>();
 
     const ensureTerminalSocketAllowed = (): boolean => {
@@ -179,6 +181,7 @@ export function TerminalPanel({
           ws.readyState !== WebSocket.OPEN
         )
           return;
+        lastSize = { cols: terminal.cols, rows: terminal.rows };
         ws.send(
           JSON.stringify({
             type: 'open',
@@ -222,6 +225,7 @@ export function TerminalPanel({
             return;
           if (msg.type === 'snapshot') {
             sessionId = msg.sessionId;
+            scheduleResize();
             setConnected(true);
             if (msg.history) terminal.write(msg.history);
           } else if (msg.type === 'data') {
@@ -323,23 +327,35 @@ export function TerminalPanel({
       setHandoffError(null);
     });
 
-    const observer = new ResizeObserver(() => {
-      fitAddon.fit();
-      if (
-        ensureTerminalSocketAllowed() &&
-        ws?.readyState === WebSocket.OPEN &&
-        sessionId
-      ) {
-        ws.send(
-          JSON.stringify({
-            type: 'resize',
-            sessionId,
-            cols: terminal.cols,
-            rows: terminal.rows,
-          }),
-        );
-      }
-    });
+    const scheduleResize = () => {
+      if (disposed || resizeFrame !== null) return;
+      resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = null;
+        if (disposed) return;
+        const proposed = fitAddon.proposeDimensions();
+        if (!proposed) return;
+        if (proposed.cols !== terminal.cols || proposed.rows !== terminal.rows)
+          fitAddon.fit();
+        if (terminal.cols === lastSize.cols && terminal.rows === lastSize.rows)
+          return;
+        if (
+          ensureTerminalSocketAllowed() &&
+          ws?.readyState === WebSocket.OPEN &&
+          sessionId
+        ) {
+          ws.send(
+            JSON.stringify({
+              type: 'resize',
+              sessionId,
+              cols: terminal.cols,
+              rows: terminal.rows,
+            }),
+          );
+          lastSize = { cols: terminal.cols, rows: terminal.rows };
+        }
+      });
+    };
+    const observer = new ResizeObserver(scheduleResize);
     if (containerRef.current) observer.observe(containerRef.current);
 
     return () => {
@@ -349,6 +365,7 @@ export function TerminalPanel({
       for (const resolve of cwdRequests.values()) resolve(null);
       cwdRequests.clear();
       observer.disconnect();
+      if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
       // Unmounting is presentation lifecycle, not terminal lifecycle. The
       // server retains an unowned session briefly so the same identity can
       // reconnect after a host tab switch, move, or layout navigation.

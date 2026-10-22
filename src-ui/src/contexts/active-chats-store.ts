@@ -640,6 +640,14 @@ export class ActiveChatsStore {
 }
 
 export const activeChatsStore = new ActiveChatsStore();
+conversationsStore.setActiveConversationReader((key) =>
+  Object.values(activeChatsStore.getSnapshot()).some(
+    (chat) =>
+      chat.agentSlug &&
+      chat.conversationId &&
+      key === `messages:${chat.agentSlug}:${chat.conversationId}`,
+  ),
+);
 if (typeof window !== 'undefined' && typeof document !== 'undefined') {
   activeChatsStore.flushOnPageHide(window, document);
 }

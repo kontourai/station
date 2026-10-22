@@ -402,6 +402,53 @@ export function AuthorityQueryProvider({
     if (previous) retireAuthorityClient(previous.queryClient);
   }, [verifiedNamespace, apiBase]);
 
+  // Read-only work may overlap identity verification; only the verified-client
+  // effect below can publish it. Bind every activation to its captured scope.
+  const bootReadRef = useRef<{
+    scope: typeof boundScope;
+    promise: Promise<{
+      boot: typeof import('../../../packages/sdk/src/boot');
+      payload: import('../../../packages/sdk/src/boot').BootPayload;
+      startedAt: number;
+    } | null>;
+  } | null>(null);
+  useEffect(() => {
+    if (!boundScope || profile.isTauri) return;
+    try {
+      if (new URL(boundScope.apiBase).origin !== new URL(localUiApiBase).origin)
+        return;
+    } catch {
+      return;
+    }
+    const scope = boundScope;
+    let cancelled = false;
+    const startedAt = Date.now();
+    const promise = (async () => {
+      try {
+        const [boot, resolution] = await Promise.all([
+          import('../../../packages/sdk/src/boot'),
+          resolveLocalUiSession(localUiApiBase),
+        ]);
+        if (
+          cancelled ||
+          !scope.isCurrent() ||
+          resolution.kind !== 'authenticated'
+        )
+          return null;
+        const payload = await boot.fetchBootPayloadAt(scope.apiBase);
+        if (cancelled || !scope.isCurrent()) return null;
+        return { boot, payload, startedAt };
+      } catch {
+        return null;
+      }
+    })();
+    bootReadRef.current = { scope, promise };
+    return () => {
+      cancelled = true;
+      if (bootReadRef.current?.scope === scope) bootReadRef.current = null;
+    };
+  }, [boundScope, profile.isTauri, localUiApiBase]);
+
   // Boot-payload seed (moved from `main.tsx`): the payload is fetched at the
   // EXACT captured origin — never a module-global resolved after a switch —
   // and the captured scope (currency) plus the destination client (liveness)
@@ -435,8 +482,6 @@ export function AuthorityQueryProvider({
     }
     if (!sameOrigin) return;
     const scopeAtSeed = boundScope;
-    const apiBaseAtSeed = boundScope.apiBase;
-    const startedAtSeed = Date.now();
     const clientAtSeed = active.queryClient;
     const namespaceAtSeed = verifiedNamespace;
     let cancelled = false;
@@ -448,18 +493,14 @@ export function AuthorityQueryProvider({
       activeRef.current?.queryClient === clientAtSeed;
     void (async () => {
       try {
-        // Same lazy seam as `main.tsx`'s boot fast path: the SDK boot
-        // bundle stays out of the entry chunk; no public SDK barrel change.
-        const { fetchBootPayloadAt, seedBootPayloadGuarded } = await import(
-          '../../../packages/sdk/src/boot'
-        );
-        const resolution = await resolveLocalUiSession(localUiApiBase);
-        if (!stillCurrent() || resolution.kind !== 'authenticated') return;
-        const payload = await fetchBootPayloadAt(apiBaseAtSeed);
-        await seedBootPayloadGuarded(
+        const read = bootReadRef.current;
+        if (read?.scope !== scopeAtSeed) return;
+        const result = await read.promise;
+        if (!result || !stillCurrent()) return;
+        await result.boot.seedBootPayloadGuarded(
           clientAtSeed,
-          payload,
-          startedAtSeed,
+          result.payload,
+          result.startedAt,
           stillCurrent,
         );
         if (!stillCurrent()) return;

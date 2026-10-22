@@ -670,14 +670,32 @@ test('profiles mounted smooth reveal on a 120 Hz frame source', () => {
   let next: ((time: number) => void) | null = null;
   const frames: SmoothRevealFrameSource = {
     now: () => now,
-    request: (callback) => { next = callback; return 1; },
-    cancel: () => { next = null; },
+    request: (callback) => {
+      next = callback;
+      return 1;
+    },
+    cancel: () => {
+      next = null;
+    },
   };
-  const mounted = renderHook(() => useSmoothRevealText('x'.repeat(10000), frames));
+  const mounted = renderHook(() =>
+    useSmoothRevealText('x'.repeat(10000), frames),
+  );
   for (let frame = 1; frame <= 240; frame++) {
-    act(() => { now = frame * 1000 / 120; next?.(now); });
+    act(() => {
+      now = (frame * 1000) / 120;
+      next?.(now);
+    });
   }
-  process.stdout.write(`SMOOTH_PROFILE ${JSON.stringify({ updates: mounted.result.current.revision, visible: mounted.result.current.text.length })}\n`);
+  process.stdout.write(
+    `SMOOTH_PROFILE ${JSON.stringify({ updates: mounted.result.current.revision, visible: mounted.result.current.text.length })}\n`,
+  );
   expect(mounted.result.current.text.length).toBeGreaterThan(0);
+  expect(mounted.result.current.revision).toBeLessThanOrEqual(61);
+  act(() => {
+    now = 2500;
+    next?.(now);
+  });
+  expect(mounted.result.current.text).toBe('x'.repeat(10000));
   mounted.unmount();
 });

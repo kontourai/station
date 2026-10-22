@@ -12,6 +12,7 @@
  */
 
 import { act, cleanup, renderHook } from '@testing-library/react';
+import { Profiler } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 // A stable array/object reference across renders, matching real
@@ -25,10 +26,10 @@ vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => STABLE_AGENTS,
 }));
 
-import { handleTextDeltaEvent } from '../hooks/orchestration/streamHandlers';
 import { isTurnInFlight } from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { conversationsStore } from '../contexts/ConversationsContext';
+import { handleTextDeltaEvent } from '../hooks/orchestration/streamHandlers';
 import { useDerivedSessions } from '../hooks/useDerivedSessions';
 import { isTurnStreamLive } from '../utils/execution';
 
@@ -729,20 +730,41 @@ test('profiles derived-session consumer commits during token delivery', () => {
   activeChatsStore.initChat(SESSION_A, { agentSlug: 'agent-one' });
   activeChatsStore.updateChat(SESSION_A, { orchestrationTurnOpen: true });
   let commits = 0;
-  const mounted = renderHook(() => {
-    commits++;
-    return useDerivedSessions('', null);
+  const mounted = renderHook(() => useDerivedSessions('', null), {
+    wrapper: ({ children }) => (
+      <Profiler id="derived" onRender={() => commits++}>
+        {children}
+      </Profiler>
+    ),
   });
   const initial = commits;
   const started = performance.now();
   for (let index = 0; index < 100; index++) {
-    act(() => handleTextDeltaEvent({
-      method: 'content.text-delta', threadId: SESSION_A,
-      delta: 'word ', createdAt: '2026-10-22T00:00:00.000Z',
-    }));
+    act(() =>
+      handleTextDeltaEvent({
+        eventId: 'profile',
+        provider: 'station-agent',
+        method: 'content.text-delta',
+        threadId: SESSION_A,
+        delta: 'word ',
+        createdAt: '2026-10-22T00:00:00.000Z',
+      }),
+    );
   }
-  process.stdout.write(`DERIVED_PROFILE ${JSON.stringify({ updates: commits - initial, cpuMs: performance.now() - started })}\n`);
-  expect(activeChatsStore.getSnapshot()[SESSION_A].streamingMessage?.content).toBe('word '.repeat(100));
+  process.stdout.write(
+    `DERIVED_PROFILE ${JSON.stringify({ updates: commits - initial, cpuMs: performance.now() - started })}\n`,
+  );
+  expect(commits - initial).toBe(0);
+  expect(
+    activeChatsStore.getSnapshot()[SESSION_A].streamingMessage?.content,
+  ).toBe('word '.repeat(100));
+  act(() =>
+    activeChatsStore.updateChat(SESSION_A, {
+      title: 'Updated after streaming',
+    }),
+  );
+  expect(mounted.result.current[0].title).toBe('Updated after streaming');
+  expect(commits - initial).toBe(1);
   mounted.unmount();
   clearChats();
 });

@@ -12,8 +12,12 @@ import type {
   UICardBlock,
   UITableBlock,
 } from '@kontourai/station-contracts/ui-block';
-import { render, screen } from '@testing-library/react';
-import { describe, expect, test } from 'vitest';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, test, vi } from 'vitest';
+
+const { highlightCode } = vi.hoisted(() => ({ highlightCode: vi.fn() }));
+vi.mock('../../../highlight/highlight-client', () => ({ highlightCode }));
+
 import { UIBlockRenderer } from '../UIBlockRenderer';
 
 describe('UIBlockRenderer — attestation badge (station#1399 fix round, H2)', () => {
@@ -100,4 +104,46 @@ describe('UIBlockRenderer — attestation badge (station#1399 fix round, H2)', (
     render(<UIBlockRenderer block={block} />);
     expect(screen.queryByText('Unattested')).toBeNull();
   });
+});
+
+test('code blocks use the async highlight client and discard stale results and failures', async () => {
+  let finish!: (html: string) => void;
+  highlightCode.mockImplementationOnce(
+    () =>
+      new Promise<string>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const mounted = render(
+    <UIBlockRenderer block={{ type: 'code', code: '<old>', language: 'ts' }} />,
+  );
+  expect(screen.getByText('<old>')).toBeTruthy();
+  await waitFor(() =>
+    expect(highlightCode).toHaveBeenCalledWith('<old>', 'ts'),
+  );
+  highlightCode.mockResolvedValueOnce(
+    '<pre><code><span>new highlighted</span></code></pre>',
+  );
+  mounted.rerender(
+    <UIBlockRenderer block={{ type: 'code', code: 'new', language: 'js' }} />,
+  );
+  await screen.findByText('new highlighted');
+  await act(async () => finish('<pre><code>old highlighted</code></pre>'));
+  expect(screen.queryByText('old highlighted')).toBeNull();
+  highlightCode.mockRejectedValueOnce(new Error('worker unavailable'));
+  mounted.rerender(
+    <UIBlockRenderer
+      block={{ type: 'code', code: '<script>current</script>', language: 'ts' }}
+    />,
+  );
+  await waitFor(() =>
+    expect(highlightCode).toHaveBeenLastCalledWith(
+      '<script>current</script>',
+      'ts',
+    ),
+  );
+  expect(screen.getByText('<script>current</script>')).toBeTruthy();
+  expect(mounted.container.querySelector('script')).toBeNull();
+  expect(screen.queryByText('new highlighted')).toBeNull();
+  mounted.unmount();
 });
