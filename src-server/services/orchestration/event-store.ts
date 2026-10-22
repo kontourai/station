@@ -4959,9 +4959,7 @@ export class EventStore {
       `SELECT CASE
          WHEN method = 'turn.started' THEN json_remove(payload, '$.prompt', '$.attachments', '$.metadata')
          WHEN method = 'turn.completed' THEN json_remove(payload, '$.outputText')
-         WHEN method = 'tool.completed' THEN json_object(
-           'eventId', id, 'threadId', thread_id, 'turnId', turn_id,
-           'provider', provider, 'method', method, 'createdAt', created_at)
+         WHEN method = 'tool.completed' THEN json_remove(payload, '$.output', '$.result', '$.images', '$.attachments', '$.metadata')
          WHEN method IN ('session.started', 'session.configured', 'turn.completed', 'token-usage.updated') THEN payload
          ELSE json_object('eventId', id, 'threadId', thread_id,
            'provider', provider, 'method', method, 'createdAt', created_at)
@@ -6152,7 +6150,7 @@ export class EventStore {
          WHERE thread_id = ? AND method = ?
          ORDER BY sequence DESC
          LIMIT 1`,
-    ).get(threadId, method) as any;
+    ).get(threadId, method);
     return row ? this.mapEventRow(row, hydrate) : undefined;
   }
 
@@ -6181,7 +6179,7 @@ export class EventStore {
          WHERE thread_id = ? AND method = ?
          ORDER BY sequence ASC
          LIMIT 1`,
-    ).get(threadId, method) as any;
+    ).get(threadId, method);
     return row ? this.mapEventRow(row, hydrate) : undefined;
   }
 
@@ -6196,7 +6194,7 @@ export class EventStore {
          WHERE thread_id = ?
          ORDER BY sequence DESC
          LIMIT 1`,
-    ).get(threadId) as any;
+    ).get(threadId);
     return row ? this.mapEventRow(row, hydrate) : undefined;
   }
 
@@ -6241,7 +6239,7 @@ export class EventStore {
            AND trim(json_extract(payload, '$.prompt')) != ''
          ORDER BY sequence ASC
          LIMIT 1`,
-    ).get(threadId) as any;
+    ).get(threadId);
     return row ? this.mapEventRow(row, hydrate) : undefined;
   }
 
@@ -6990,7 +6988,7 @@ export class EventStore {
          WHERE thread_id = ? AND turn_id = ? AND method = 'turn.started'
          ORDER BY sequence ASC
          LIMIT 1`,
-    ).get(threadId, turnId) as any;
+    ).get(threadId, turnId);
     return row ? this.mapEventRow(row, hydrate) : undefined;
   }
 
@@ -7188,15 +7186,15 @@ export class EventStore {
     bounded = false,
     hydrate = true,
   ): PersistedRuntimeEvent[] {
-    return (
-      this.readStatement(
-        `SELECT event.id, event.provider, event.thread_id, event.turn_id, event.method, ${this.projectionPayloadSql(bounded, 'event.')}, event.created_at, event.sequence, event.global_sequence
+    return this.readStatement(
+      `SELECT event.id, event.provider, event.thread_id, event.turn_id, event.method, ${this.projectionPayloadSql(bounded, 'event.')}, event.created_at, event.sequence, event.global_sequence
            FROM orchestration_session_projection_facts AS fact
            INNER JOIN orchestration_events AS event ON event.id = fact.event_id
            WHERE fact.thread_id = ?
            ORDER BY event.sequence ASC`,
-      ).all(threadId) as any[]
-    ).map((row: any) => this.mapEventRow(row, hydrate));
+    )
+      .all(threadId)
+      .map((row) => this.mapEventRow(row, hydrate));
   }
 
   /**
