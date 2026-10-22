@@ -162,6 +162,11 @@ The CSS layer also defines safe area variables as a belt-and-suspenders approach
 }
 ```
 
+Release WebView inspection is disabled by default. Nightly explicitly enables
+it; debug builds retain it for mobile debugging. See
+[inspection by channel](native-shell-verification.md#webview-inspection-by-build-channel)
+for the Cargo feature boundary and installed-artifact verification limits.
+
 ## Local Development
 
 ### Prerequisites

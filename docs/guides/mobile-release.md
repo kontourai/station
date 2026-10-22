@@ -30,6 +30,11 @@ candidate source SHA, IPA digest, app ID, build ID, and build number. A new
 upload and an already-existing provider build have different provenance: see
 the receipt boundary at the end of this guide.
 
+Stable and Beta release builds exclude WebView inspection by default; Nightly
+opts into the diagnostic feature. See [inspection by
+channel](native-shell-verification.md#webview-inspection-by-build-channel).
+Feature selection is separate from installed inspector verification.
+
 ## Connection setup
 
 Mobile artifacts contain no default Station backend address. Dev, Nightly,
