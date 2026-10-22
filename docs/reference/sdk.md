@@ -5149,8 +5149,9 @@ or false reuses a completed guide for the current head.
 
 The local source client exports `inspectEnsemble(apiBase, input, options?)` from
 `@kontourai/station-sdk/client`. The root SDK exports `useInspectEnsemble(scope)`,
-an explicit mutation hook with no
-automatic retry and zero retention time. Its scope includes `apiBase`,
+an explicit mutation hook with no automatic retry and `gcTime: 0` for inactive
+mutation-cache entries. The mounted hook retains its result for display until
+reset or replacement; the cache setting does not clear that result. Its scope includes `apiBase`,
 `authorityKey` and `isCurrent`; responses are checked against current authority
 before becoming available. Keep preset paths in the POST body, outside URLs and
 persistent application state.
