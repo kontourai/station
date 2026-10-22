@@ -26,6 +26,7 @@ pub extern "system" fn Java_io_kontourai_station_agentactivity_NativeHttpNetwork
 struct Progress {
     reused: bool,
     send_attempted: bool,
+    network_changed: bool,
 }
 thread_local! {
     static PROGRESS: Cell<Progress> = Cell::new(Progress::default());
@@ -52,6 +53,8 @@ impl<T: Transport> Connector<T> for ObserveConnector {
             inner,
             epoch: network_epoch(),
             used: false,
+            response_epoch: network_epoch(),
+            response_received: false,
         }))
     }
 }
@@ -60,6 +63,8 @@ pub(crate) struct ObservedTransport<T> {
     inner: T,
     epoch: u64,
     used: bool,
+    response_epoch: u64,
+    response_received: bool,
 }
 impl<T: Transport> Transport for ObservedTransport<T> {
     fn buffers(&mut self) -> &mut dyn Buffers {
@@ -70,10 +75,55 @@ impl<T: Transport> Transport for ObservedTransport<T> {
         if amount > 0 {
             observe(|p| p.send_attempted = true);
         }
-        self.inner.transmit_output(amount, timeout)
+        self.inner.transmit_output(amount, timeout)?;
+        // Churn during transmission must not interrupt an upload. Only changes
+        // after the last successful write can invalidate a silent response wait.
+        self.response_epoch = network_epoch();
+        self.response_received = false;
+        Ok(())
     }
     fn await_input(&mut self, timeout: NextTimeout) -> Result<bool, ureq::Error> {
-        self.inner.await_input(timeout)
+        if self.response_received
+            || matches!(
+                timeout.reason,
+                ureq::Timeout::Await100 | ureq::Timeout::SendBody
+            )
+        {
+            return self.inner.await_input(timeout);
+        }
+        let started = Instant::now();
+        loop {
+            if self.response_epoch != network_epoch() {
+                observe(|p| p.network_changed = true);
+                return Err(std::io::Error::new(
+                    std::io::ErrorKind::ConnectionAborted,
+                    "network_changed",
+                )
+                .into());
+            }
+            let remaining = timeout.after.saturating_sub(started.elapsed());
+            if remaining.is_zero() {
+                return Err(ureq::Error::Timeout(timeout.reason));
+            }
+            let slice = Duration::from_millis(100).min(remaining);
+            let result = self.inner.await_input(NextTimeout {
+                after: slice.into(),
+                reason: timeout.reason,
+            });
+            match result {
+                Ok(progress) => {
+                    self.response_received |= !self.inner.buffers().input().is_empty();
+                    return Ok(progress);
+                }
+                Err(ureq::Error::Timeout(_)) => {}
+                Err(ureq::Error::Io(error))
+                    if matches!(
+                        error.kind(),
+                        std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+                    ) => {}
+                Err(error) => return Err(error),
+            }
+        }
     }
     fn is_open(&mut self) -> bool {
         // ureq probes on return AND checkout. The request-local cell is reset
@@ -82,6 +132,7 @@ impl<T: Transport> Transport for ObservedTransport<T> {
             observe(|p| p.reused = true);
         }
         self.used = true;
+        self.response_received = false;
         self.epoch == network_epoch() && self.inner.is_open()
     }
     fn is_tls(&self) -> bool {
@@ -107,9 +158,7 @@ pub(crate) fn run(
             );
             let safe = !progress.send_attempted;
             if !progress.reused || !transport_failure || !safe {
-                return Err(NativeHttpBrokerFailure::transport(
-                    native_request_transport_detail(&error),
-                ));
+                return Err(failure(&error));
             }
             if cancel.load(Ordering::Acquire) {
                 return Err(NativeHttpBrokerFailure::coded("cancelled"));
@@ -131,9 +180,18 @@ pub(crate) fn run(
             );
             revalidate()?;
             // No callback or await may select replacement authority after this check.
-            fresh.run(request).map_err(|error| {
-                NativeHttpBrokerFailure::transport(native_request_transport_detail(&error))
-            })
+            fresh.run(request).map_err(|error| failure(&error))
         }
+    }
+}
+
+fn failure(error: &ureq::Error) -> NativeHttpBrokerFailure {
+    if PROGRESS.with(Cell::get).network_changed {
+        NativeHttpBrokerFailure::transport(NativeHttpTransportDetail {
+            code: "network_changed",
+            detail: "The network changed before Station responded. The request may have arrived; retry to check delivery.".into(),
+        })
+    } else {
+        NativeHttpBrokerFailure::transport(native_request_transport_detail(error))
     }
 }

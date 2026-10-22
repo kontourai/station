@@ -2523,6 +2523,26 @@ struct StationProfileSnapshotCache {
 }
 
 impl StationProfileSnapshotCache {
+    #[cfg(unix)]
+    fn file_version(&self) -> Option<(std::path::PathBuf, StationProfileFileVersion)> {
+        self.snapshot
+            .as_ref()
+            .map(|(path, version, _, _)| (path.clone(), version.clone()))
+    }
+
+    #[cfg(unix)]
+    fn publish_if_unchanged(
+        &mut self,
+        candidate: Self,
+        previous: Option<(std::path::PathBuf, StationProfileFileVersion)>,
+    ) {
+        // Another reader may have installed a renamed inode without a further
+        // writer invalidation. Its file identity fences this older candidate.
+        if self.file_version() == previous {
+            *self = candidate;
+        }
+    }
+
     fn read(
         &mut self,
         path: &std::path::Path,
@@ -2639,6 +2659,8 @@ fn read_native_http_profile_snapshot(
         .clone();
     cache.clear_poison();
     #[cfg(unix)]
+    let previous = local.file_version();
+    #[cfg(unix)]
     if local
         .snapshot
         .as_ref()
@@ -2653,7 +2675,12 @@ fn read_native_http_profile_snapshot(
     let store = local.read(path)?;
     let mut shared = cache.lock().unwrap_or_else(|error| error.into_inner());
     if generation == NATIVE_HTTP_PROFILE_GENERATION.load(Ordering::Acquire) {
-        *shared = local;
+        #[cfg(unix)]
+        shared.publish_if_unchanged(local, previous);
+        #[cfg(not(unix))]
+        {
+            *shared = local;
+        }
     }
     Ok(store)
 }

@@ -278,6 +278,11 @@ describe('translateChatError', () => {
       'Station is unreachable',
     ],
     [
+      'network_changed',
+      'Station refused unexpectedly.',
+      'Connection to this Station was interrupted',
+    ],
+    [
       'transport_reset',
       'Station refused unexpectedly.',
       'Connection to this Station was interrupted',

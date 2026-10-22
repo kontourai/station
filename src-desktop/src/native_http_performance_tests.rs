@@ -827,3 +827,186 @@ fn native_http_recent_metadata_collision_compares_bytes() {
     std::thread::sleep(Duration::from_millis(2100));
     assert_eq!(cache.read(&path).unwrap().revision, 1);
 }
+
+#[cfg(unix)]
+#[test]
+fn native_http_snapshot_late_old_inode_cannot_replace_a_newer_publication() {
+    const WORKER: &str = "STATION_SNAPSHOT_PUBLICATION_WORKER";
+    if std::env::var_os(WORKER).is_none() {
+        assert!(std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "native_http_performance_tests::native_http_snapshot_late_old_inode_cannot_replace_a_newer_publication", "--nocapture"])
+            .env(WORKER, "1").status().unwrap().success());
+        return;
+    }
+    let root = tempfile::tempdir().unwrap();
+    let path = secure_mobile_station_profiles_path(root.path()).unwrap();
+    write_empty_station_profile_store(&path).unwrap();
+    let staged = root.path().join("replacement.json");
+    std::fs::copy(&path, &staged).unwrap();
+    std::fs::write(
+        &staged,
+        EMPTY_STATION_PROFILE_STORE.replace("\"revision\":0", "\"revision\":1"),
+    )
+    .unwrap();
+
+    // Pause the writer after invalidation, before its atomic rename. Reader A
+    // captures that generation and finishes reading the old inode.
+    invalidate_native_http_profile_snapshot().unwrap();
+    let generation = NATIVE_HTTP_PROFILE_GENERATION.load(Ordering::Acquire);
+    let shared = NATIVE_HTTP_PROFILE_SNAPSHOTS.get_or_init(Default::default);
+    let mut older = shared.lock().unwrap().clone();
+    let previous = older.file_version();
+    assert_eq!(older.read(&path).unwrap().revision, 0);
+    std::fs::rename(&staged, &path).unwrap();
+    // Reader B publishes the replacement before A resumes publication.
+    let newer = read_native_http_profile_snapshot(&path, || Ok(())).unwrap();
+    assert_eq!(newer.revision, 1);
+    assert_eq!(
+        NATIVE_HTTP_PROFILE_GENERATION.load(Ordering::Acquire),
+        generation
+    );
+    let mut shared = shared.lock().unwrap();
+    shared.publish_if_unchanged(older, previous);
+    let installed = &shared.snapshot.as_ref().unwrap().3;
+    assert_eq!(installed.revision, 1);
+    assert!(Arc::ptr_eq(installed, &newer));
+}
+
+#[test]
+fn native_http_silent_reused_connection_fails_on_epoch_change_without_replay() {
+    const WORKER: &str = "STATION_SILENT_EPOCH_WORKER";
+    if std::env::var_os(WORKER).is_none() {
+        assert!(std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "native_http_performance_tests::native_http_silent_reused_connection_fails_on_epoch_change_without_replay", "--nocapture"])
+            .env(WORKER, "1").status().unwrap().success());
+        return;
+    }
+    use ureq::unversioned::transport::{
+        Buffers, ConnectionDetails, Connector, DefaultConnector, NextTimeout, Transport,
+    };
+    #[derive(Debug)]
+    struct SignalWait {
+        armed: Arc<AtomicBool>,
+        waiting: std::sync::mpsc::Sender<()>,
+    }
+    #[derive(Debug)]
+    struct WaitingTransport {
+        inner: Box<dyn Transport>,
+        signal: SignalWait,
+    }
+    impl Connector<Box<dyn Transport>> for SignalWait {
+        type Out = WaitingTransport;
+        fn connect(
+            &self,
+            _: &ConnectionDetails,
+            inner: Option<Box<dyn Transport>>,
+        ) -> Result<Option<Self::Out>, ureq::Error> {
+            Ok(inner.map(|inner| WaitingTransport {
+                inner,
+                signal: SignalWait {
+                    armed: Arc::clone(&self.armed),
+                    waiting: self.waiting.clone(),
+                },
+            }))
+        }
+    }
+    impl Transport for WaitingTransport {
+        fn buffers(&mut self) -> &mut dyn Buffers {
+            self.inner.buffers()
+        }
+        fn transmit_output(
+            &mut self,
+            amount: usize,
+            timeout: NextTimeout,
+        ) -> Result<(), ureq::Error> {
+            self.inner.transmit_output(amount, timeout)
+        }
+        fn await_input(&mut self, timeout: NextTimeout) -> Result<bool, ureq::Error> {
+            if self.signal.armed.swap(false, Ordering::AcqRel) {
+                self.signal.waiting.send(()).unwrap();
+            }
+            self.inner.await_input(timeout)
+        }
+        fn is_open(&mut self) -> bool {
+            self.inner.is_open()
+        }
+        fn is_tls(&self) -> bool {
+            self.inner.is_tls()
+        }
+    }
+    for method in ["GET", "POST"] {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let (waiting, wait) = std::sync::mpsc::channel();
+        let (done, finish) = std::sync::mpsc::channel();
+        let armed = Arc::new(AtomicBool::new(false));
+        let connector = DefaultConnector::default()
+            .chain(SignalWait {
+                armed: Arc::clone(&armed),
+                waiting,
+            })
+            .chain(native_http_transport::ObserveConnector);
+        let agent = ureq::Agent::with_parts(
+            native_http_agent_config()
+                .timeout_recv_response(Some(Duration::from_secs(4)))
+                .build(),
+            connector,
+            ureq::unversioned::resolver::DefaultResolver::default(),
+        );
+        let server = std::thread::spawn(move || {
+            let (stream, _) = listener.accept().unwrap();
+            stream
+                .set_read_timeout(Some(Duration::from_secs(6)))
+                .unwrap();
+            let mut reader = BufReader::new(stream);
+            for request in 0..2 {
+                loop {
+                    let mut line = String::new();
+                    assert!(reader.read_line(&mut line).unwrap() > 0);
+                    if line == "\r\n" {
+                        break;
+                    }
+                }
+                if request == 0 {
+                    reader
+                        .get_mut()
+                        .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+                        .unwrap();
+                }
+            }
+            // The observer has already checked the epoch and entered its real
+            // blocking read. Keep the peer silent until the client settles.
+            wait.recv_timeout(Duration::from_secs(3)).unwrap();
+            native_http_transport::network_changed();
+            finish.recv_timeout(Duration::from_secs(6)).unwrap();
+            listener.set_nonblocking(true).unwrap();
+            assert!(
+                matches!(listener.accept(), Err(e) if e.kind() == std::io::ErrorKind::WouldBlock)
+            );
+        });
+        agent
+            .get(&origin)
+            .call()
+            .unwrap()
+            .body_mut()
+            .read_to_string()
+            .unwrap();
+        armed.store(true, Ordering::Release);
+        let request = ureq::http::Request::builder()
+            .method(method)
+            .uri(&origin)
+            .body(Vec::new())
+            .unwrap();
+        let started = Instant::now();
+        let result =
+            native_http_transport::run(&agent, request, &AtomicBool::new(false), None, || {
+                panic!("a written request must never replay")
+            });
+        let elapsed = started.elapsed();
+        done.send(()).unwrap();
+        server.join().unwrap();
+        let error = result.unwrap_err();
+        assert_eq!(error.code, "network_changed", "{method}: {error:?}");
+        assert!(elapsed < Duration::from_secs(2), "{method}: {elapsed:?}");
+    }
+}
