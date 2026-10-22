@@ -1,7 +1,8 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { createServer } from 'node:http';
+import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {
   closeChildWorkload,
@@ -61,6 +62,11 @@ const server = createServer(async (request, response) => {
       return;
     }
     if (url.pathname === '/mcp-handshake') {
+      // Workload scopes do not share the fixture service's PrivateTmp mount.
+      const directory = await mkdtemp(
+        join(process.cwd(), 'node_modules/.station-mcp-proof-'),
+      );
+      const observations = join(directory, 'launches.jsonl');
       const transport = createMCPTransport({
         id: 'resource-negotiation',
         kind: 'mcp',
@@ -68,6 +74,7 @@ const server = createServer(async (request, response) => {
         command: process.execPath,
         args: [
           new URL('./workload-resource-mcp.mjs', import.meta.url).pathname,
+          observations,
         ],
       });
       if (!transport) throw new Error('MCP transport unavailable');
@@ -84,11 +91,19 @@ const server = createServer(async (request, response) => {
         response.end(
           JSON.stringify({
             result,
+            launches: (await readFile(observations, 'utf8'))
+              .trim()
+              .split('\n')
+              .map((line) => JSON.parse(line)),
             workloads: await inspectWorkloadResources(),
           }),
         );
       } finally {
-        await client.close();
+        try {
+          await client.close();
+        } finally {
+          await rm(directory, { recursive: true, force: true });
+        }
       }
       return;
     }

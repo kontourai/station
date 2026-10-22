@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 import { McpServer } from '@modelcontextprotocol/server';
 import { serveStdio } from '@modelcontextprotocol/server/stdio';
 
@@ -10,6 +10,14 @@ const descendant = spawn(process.execPath, ['-e', 'setInterval(()=>{},1000)'], {
   windowsHide: true,
 });
 descendant.unref();
+appendFileSync(
+  process.argv[2],
+  `${JSON.stringify({
+    pid: process.pid,
+    descendant: descendant.pid,
+    cgroup: readFileSync('/proc/self/cgroup', 'utf8'),
+  })}\n`,
+);
 const handle = serveStdio(
   () => {
     const server = new McpServer({ name: 'resource-proof', version: '1' });

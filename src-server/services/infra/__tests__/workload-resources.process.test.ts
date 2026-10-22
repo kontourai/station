@@ -260,9 +260,23 @@ describe.skipIf(!manager)('running server workload containment', () => {
       result: {
         structuredContent: { pid: number; descendant: number; cgroup: string };
       };
+      launches: Array<{ pid: number; descendant: number; cgroup: string }>;
       workloads: Snapshot;
     }>('/mcp-handshake');
     const identity = response.result.structuredContent;
+    expect(response.launches).toHaveLength(2);
+    expect(new Set(response.launches.map((launch) => launch.cgroup)).size).toBe(
+      2,
+    );
+    expect(response.launches.map((launch) => launch.pid)).toContain(
+      identity.pid,
+    );
+    for (const launch of response.launches) {
+      expect(launch.cgroup).toContain(slice);
+      expect(launch.cgroup).not.toContain(unit);
+      await expect.poll(() => gone(launch.pid)).toBe(true);
+      await expect.poll(() => gone(launch.descendant)).toBe(true);
+    }
     expect(identity.cgroup).toContain(slice);
     expect(identity.cgroup).not.toContain(unit);
     await expect.poll(() => gone(identity.descendant)).toBe(true);
