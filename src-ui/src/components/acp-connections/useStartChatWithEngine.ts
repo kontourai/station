@@ -11,7 +11,7 @@ import { useDockProject } from '../../workspace-panes/useDockProject';
 import { GLOBAL_CONTEXT } from '../modals/new-chat-modal-utils';
 
 /** How long to wait for a just-made Agent to reach the Agent list. */
-export const START_CHAT_AGENT_WAIT_MS = 15_000;
+const START_CHAT_AGENT_WAIT_MS = 15_000;
 
 interface PendingStart {
   slug: string;

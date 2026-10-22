@@ -2,14 +2,16 @@ import {
   type ACPConnectionInfo,
   type ACPConnectionRegistryEntry,
   recheckACPConnectionRegistry,
+  refreshACPPublicRegistrySource,
   useACPConnectionProbeStatusesQuery,
   useACPConnectionRegistryQuery,
   useACPConnectionsQuery,
+  useACPPublicRegistrySourceQuery,
   useUnregisteredACPConnectionsQuery,
 } from '@kontourai/station-sdk';
 
 export type { ACPConnectionInfo, ACPConnectionRegistryEntry };
-export { recheckACPConnectionRegistry };
+export { recheckACPConnectionRegistry, refreshACPPublicRegistrySource };
 
 export function useACPConnections() {
   return useACPConnectionsQuery();
@@ -30,4 +32,8 @@ export function useUnregisteredACPConnections() {
 
 export function useACPConnectionRegistry() {
   return useACPConnectionRegistryQuery();
+}
+
+export function useACPPublicRegistrySource() {
+  return useACPPublicRegistrySourceQuery();
 }

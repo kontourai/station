@@ -112,8 +112,13 @@ export function ProviderSettingsView({
       connectionEngineId(connection) !== 'station' &&
       (connection as Partial<AgentConnectionView>).setup?.state === 'available',
   );
+  // Public registry listings are offered only by Add engine, in their own
+  // group and behind the confirm step that shows what they run.
   const commandChoices = acpRegistry.filter(
-    (entry) => !entry.installed && !configuredACPIds.has(entry.id),
+    (entry) =>
+      !entry.installed &&
+      !configuredACPIds.has(entry.id) &&
+      entry.source !== 'registry',
   );
 
   formRef.current = form;

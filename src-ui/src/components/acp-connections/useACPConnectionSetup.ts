@@ -44,6 +44,12 @@ export type ACPConnectionSetupErrorKind = 'mutation' | 'refresh';
 
 export type ACPConnectionSetupAttempt = 'add' | 'recheck' | 'edit';
 
+/** `confirmCommand` is passed for a public registry listing only. */
+export type InstallRegistryEntry = (
+  id: string,
+  confirmCommand?: { command: string; args: string[] },
+) => unknown;
+
 type SetupAction =
   | { type: 'custom' }
   | { type: 'advanced'; open: boolean }
@@ -273,7 +279,7 @@ function useSetupSubmit(
   state: ACPConnectionSetupState,
   dispatch: (action: SetupAction) => void,
   onAdd: (draft: ACPConnectionDraft) => unknown,
-  onInstallRegistryEntry: ((id: string) => unknown) | undefined,
+  onInstallRegistryEntry: InstallRegistryEntry | undefined,
   editConnection: ACPConnectionInfo | undefined,
   onUpdate: ((id: string, draft: ACPConnectionDraft) => unknown) | undefined,
   onCheck: ((id: string) => unknown) | undefined,
@@ -305,13 +311,19 @@ function useSetupSubmit(
           recheck || recheckSaved ? 'recheck' : editConnection ? 'edit' : 'add',
       });
       try {
-        const response = entry
-          ? await onInstallRegistryEntry?.(entry.id)
-          : recheckSaved
-            ? await onCheck(id)
-            : editConnection && onUpdate
-              ? await onUpdate(id, { ...state.draft, id })
-              : await onAdd({ ...state.draft, id });
+        const response =
+          entry?.source === 'registry'
+            ? await onInstallRegistryEntry?.(entry.id, {
+                command: entry.command,
+                args: entry.args ?? [],
+              })
+            : entry
+              ? await onInstallRegistryEntry?.(entry.id)
+              : recheckSaved
+                ? await onCheck(id)
+                : editConnection && onUpdate
+                  ? await onUpdate(id, { ...state.draft, id })
+                  : await onAdd({ ...state.draft, id });
         dispatch({
           type: 'complete',
           connection: addedConnectionFor(response, id),
@@ -389,7 +401,7 @@ export function useACPConnectionSetup({
   /** Re-checks the saved connection (POST /:id/check) while editing. */
   onCheck?: (id: string) => unknown;
   onAdd: (draft: ACPConnectionDraft) => unknown;
-  onInstallRegistryEntry?: (id: string) => unknown;
+  onInstallRegistryEntry?: InstallRegistryEntry;
   onRefreshConnections?: () => unknown;
 }) {
   const [state, dispatch] = useReducer(

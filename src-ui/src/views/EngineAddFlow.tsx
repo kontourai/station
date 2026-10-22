@@ -9,6 +9,10 @@ import { useACPConnectionSetupOwner } from '../components/acp-connections/useACP
 import { useStartChatWithEngine } from '../components/acp-connections/useStartChatWithEngine';
 import { Button } from '../components/Button';
 import { DetailHeader } from '../components/DetailHeader';
+import {
+  PublicRegistryCatalogGroup,
+  PublicRegistryFacts,
+} from '../components/engine-install/PublicRegistry';
 import { RegistryEntryInstallHint } from '../components/engine-install/RegistryEntryInstallHint';
 import { registryEntryDiscovery } from '../components/engine-install/registryEntryDiscovery';
 import { BrandIcon } from '../components/icons/BrandIcon';
@@ -113,7 +117,7 @@ function CatalogRow({
  * not a connect action: connecting is offered once Station finds it, or
  * through Custom engine.
  */
-export function EngineAddCatalog({
+function EngineAddCatalog({
   notConnected,
   connections,
   commandEntries,
@@ -126,6 +130,12 @@ export function EngineAddCatalog({
   error?: string | null;
   onChoose: (choice: EngineAddChoice) => void;
 }) {
+  const stationEntries = commandEntries.filter(
+    (entry) => entry.source !== 'registry',
+  );
+  const publicEntries = commandEntries.filter(
+    (entry) => entry.source === 'registry',
+  );
   const hasCatalogEntries = connections.length > 0 || commandEntries.length > 0;
   return (
     <div className="editor-layout engine-catalog">
@@ -204,7 +214,7 @@ export function EngineAddCatalog({
             />
           );
         })}
-        {commandEntries.map((entry) => {
+        {stationEntries.map((entry) => {
           const presentation = commandPresentation(entry);
           const notInstalled =
             registryEntryDiscovery(entry) === 'not-installed';
@@ -233,6 +243,9 @@ export function EngineAddCatalog({
                 )
               }
             >
+              {entry.publicRegistry ? (
+                <PublicRegistryFacts listing={entry.publicRegistry} />
+              ) : null}
               <RegistryEntryInstallHint entry={entry} />
             </CatalogRow>
           );
@@ -251,6 +264,10 @@ export function EngineAddCatalog({
           }
         />
       </ul>
+      <PublicRegistryCatalogGroup
+        entries={publicEntries}
+        onChoose={(entry) => onChoose({ kind: 'command', entry })}
+      />
     </div>
   );
 }

@@ -3,6 +3,10 @@ import type { ACPConnectionRegistryEntry } from '../../hooks/useACPConnections';
 import { ActionRow, type OverflowAction } from '../ActionRow';
 import { Button } from '../Button';
 import { DetailHeader } from '../DetailHeader';
+import {
+  PublicRegistryFacts,
+  publicRegistryCommandLine,
+} from '../engine-install/PublicRegistry';
 import { RegistryEntryInstallHint } from '../engine-install/RegistryEntryInstallHint';
 import type { ACPConnectionDraft } from './types';
 import type {
@@ -224,6 +228,11 @@ export function ACPConnectionConfirmStage({
    */
   installed: boolean;
 }) {
+  // A public listing is confirmed by its exact command line; the server
+  // refuses the add when the listing no longer matches it.
+  const listing =
+    entry.source === 'registry' ? entry.publicRegistry : undefined;
+  const launch = listing?.hostLaunch;
   if (!installed) {
     return (
       <div className="acp-add-dialog__confirm">
@@ -253,9 +262,33 @@ export function ACPConnectionConfirmStage({
           connects.
         </li>
         <li>
-          Runs <code>{entry.command}</code> to check whether it is ready.
+          Runs{' '}
+          <code>
+            {launch ? publicRegistryCommandLine(launch) : entry.command}
+          </code>{' '}
+          to check whether it is ready.
         </li>
       </ul>
+      {listing ? (
+        <div className="acp-add-dialog__confirm-registry">
+          <p>
+            {entry.name} is listed in the public registry, not by Station.
+            Station runs the copy of <code>{launch?.command}</code> it finds on
+            the computer it runs on and does not download anything.
+          </p>
+          <PublicRegistryFacts listing={listing} />
+          {listing.recommendedEnv ? (
+            <p>
+              The registry also recommends these settings, which Station does
+              not apply:{' '}
+              {Object.entries(listing.recommendedEnv)
+                .map(([name, value]) => `${name}=${value}`)
+                .join(', ')}
+              .
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       <p className="acp-add-dialog__confirm-note">
         You can remove the connection and its agent at any time.
       </p>

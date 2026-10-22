@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  hasUnsafeTextChar,
   installRecipeForPlatform,
   validateACPEngineDescriptor,
 } from '../acp.js';
@@ -28,6 +29,30 @@ describe('validateACPEngineDescriptor', () => {
   test('accepts a complete descriptor and an entry with none of the fields', () => {
     expect(validateACPEngineDescriptor(valid)).toEqual([]);
     expect(validateACPEngineDescriptor({})).toEqual([]);
+  });
+
+  // Characters that render as nothing (Unicode Default_Ignorable_Code_Point)
+  // would let two different names or arguments look the same.
+  test.each([
+    ['soft hyphen', 'Go\u00ADose'],
+    ['combining grapheme joiner', 'Go\u034Fose'],
+    ['Hangul choseong filler', 'Goose\u115F'],
+    ['Hangul filler', 'Goose\u3164'],
+    ['halfwidth Hangul filler', 'Goose\uFFA0'],
+    ['zero-width joiner', 'Go\u200Dose'],
+    ['variation selector', 'Goose\uFE0F'],
+    ['tag character', 'Goose\u{E0041}'],
+    ['Arabic letter mark', 'Goose\u061C'],
+    ['line separator', 'Goose\u2028'],
+  ])('refuses a name hiding a %s', (_, name) => {
+    expect(hasUnsafeTextChar(name)).toBe(true);
+    expect(validateACPEngineDescriptor({ name })).toEqual([
+      'name is not valid',
+    ]);
+  });
+
+  test('accepts ordinary text in other scripts', () => {
+    expect(hasUnsafeTextChar('Kimi Code — 代码助手 é')).toBe(false);
   });
 
   test('refuses a platform it does not know', () => {

@@ -38,6 +38,7 @@ import { ConnectionIcon } from '../components/acp-connections/ConnectionIcon';
 import { Checkbox } from '../components/Checkbox';
 import { ConnectionReadinessNotice } from '../components/connections/ConnectionReadinessNotice';
 import { DetailHeader } from '../components/DetailHeader';
+import { PublicRegistryUpdateNotice } from '../components/engine-install/PublicRegistry';
 import { BrandIcon } from '../components/icons/BrandIcon';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
@@ -622,6 +623,11 @@ export function AgentConnectionView({
                   engine={form.type}
                 />
               )}
+            <PublicRegistryUpdateNotice
+              entry={acpRegistryEntries.find(
+                (entry) => entry.installed && entry.id === form.id,
+              )}
+            />
             {providerPresentation?.readiness !== 'Ready' && (
               <ConnectionReadinessNotice
                 readiness={providerPresentation?.readiness ?? ''}

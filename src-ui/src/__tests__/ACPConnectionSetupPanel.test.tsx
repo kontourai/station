@@ -36,6 +36,26 @@ const kiro = {
   installed: false,
 };
 
+const stakpak = {
+  id: 'stakpak',
+  name: 'Stakpak',
+  command: 'stakpak',
+  args: ['acp'],
+  detected: true,
+  installed: false,
+  source: 'registry' as const,
+  sourceName: 'Public agent registry',
+  publicRegistry: {
+    id: 'stakpak',
+    version: '0.3.88',
+    publishers: ['Stakpak Team'],
+    distributions: ['binary' as const],
+    binaryPlatforms: ['darwin-aarch64'],
+    hostLaunch: { command: 'stakpak', args: ['acp'] },
+    recommendedEnv: { STAKPAK_QUIET: '1' },
+  },
+};
+
 function connection(status: string) {
   return {
     id: 'kiro',
@@ -196,6 +216,60 @@ describe('ACPConnectionSetupPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
     await screen.findByRole('button', { name: 'Retry check' });
     expect(screen.queryByRole('button', { name: /Start a chat/ })).toBeNull();
+  });
+
+  // #3162: a public registry listing names what Station will run, so it is
+  // never one click: it stops at the confirm step with the exact command,
+  // and that command goes with the request for the server to compare.
+  test('a public registry engine is confirmed by its exact command before it is added', () => {
+    const onInstallRegistryEntry = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ACPConnectionSetupPanel
+        entry={stakpak}
+        onAdd={vi.fn()}
+        onInstallRegistryEntry={onInstallRegistryEntry}
+        onDone={vi.fn()}
+      />,
+    );
+
+    expect(onInstallRegistryEntry).not.toHaveBeenCalled();
+    expect(screen.getByText('stakpak acp')).toBeTruthy();
+    expect(screen.getByText('By Stakpak Team · version 0.3.88')).toBeTruthy();
+    expect(screen.getByText(/STAKPAK_QUIET=1/).textContent).toContain(
+      'which Station does not apply',
+    );
+
+    expect(screen.queryByText(/\bACP\b/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Stakpak' }));
+    expect(onInstallRegistryEntry).toHaveBeenCalledWith('stakpak', {
+      command: 'stakpak',
+      args: ['acp'],
+    });
+    expect(screen.queryByText(/\bACP\b/)).toBeNull();
+  });
+
+  test('the confirm step tells one argument with a space from two, and shows an empty one', () => {
+    const render1 = (args: string[]) =>
+      render(
+        <ACPConnectionSetupPanel
+          entry={{
+            ...stakpak,
+            args,
+            publicRegistry: {
+              ...stakpak.publicRegistry,
+              hostLaunch: { command: 'stakpak', args },
+            },
+          }}
+          onAdd={vi.fn()}
+          onInstallRegistryEntry={vi.fn()}
+          onDone={vi.fn()}
+        />,
+      );
+    const one = render1(['acp --x', '']);
+    expect(screen.getByText('stakpak "acp --x" ""')).toBeTruthy();
+    one.unmount();
+    render1(['acp', '--x']);
+    expect(screen.getByText('stakpak acp --x')).toBeTruthy();
   });
 
   test('shows Checking until the refreshed connection result reports Ready', async () => {

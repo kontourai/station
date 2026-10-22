@@ -13,7 +13,10 @@ import {
   ACPConnectionSetupStatus,
 } from './ACPConnectionSetupStages';
 import type { ACPConnectionDraft } from './types';
-import { useACPConnectionSetup } from './useACPConnectionSetup';
+import {
+  type InstallRegistryEntry,
+  useACPConnectionSetup,
+} from './useACPConnectionSetup';
 import { getACPConnectionStatusView } from './utils';
 import './ACPConnections.css';
 
@@ -26,7 +29,7 @@ export interface ACPConnectionSetupPanelProps {
   connectionQueryError?: unknown;
   connectionQueryFetching?: boolean;
   onAdd: (data: ACPConnectionDraft) => unknown;
-  onInstallRegistryEntry?: (id: string) => unknown;
+  onInstallRegistryEntry?: InstallRegistryEntry;
   onRefreshConnections?: () => unknown;
   /** Leaves the setup (Done, Cancel, Close). */
   onDone: () => void;
@@ -209,7 +212,7 @@ export function ACPConnectionSetupPanel({
           confirmLabel={`Connect ${state.selectedEntry?.name ?? engineName}`}
           engineName={engineName}
           onBack={onBack}
-          onConfirm={() => void submit(state.selectedEntry)}
+          onConfirm={() => void submit(liveEntry)}
           onSubmit={() => void submit(null)}
           onRetryMutation={() => void retryMutation()}
           onRetryCheck={() => void retryCheck()}

@@ -91,6 +91,35 @@
   font-size: var(--text-sm);
 }
 
+.acp-add-dialog__group-heading {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.acp-add-dialog__choice:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.acp-add-dialog__confirm-registry {
+  display: grid;
+  gap: 0.375rem;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.acp-add-dialog__confirm-registry > p {
+  margin: 0;
+}
+
+.acp-add-dialog__confirm code {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .acp-add-dialog__confirm-note {
   margin: 0;
   color: var(--text-muted);

@@ -21,6 +21,17 @@ export interface ACPConnectionConfig {
    * passthrough is a follow-up, see connections-onboarding.md §5/§6).
    */
   provideToolServers?: string[];
+  /**
+   * Set when the connection was added from the public agent registry: which
+   * listing it came from, so a later listing change can be reported rather
+   * than applied.
+   */
+  publicRegistry?: ACPPublicRegistryProvenance;
+}
+
+export interface ACPPublicRegistryProvenance {
+  id: string;
+  version: string;
 }
 
 /**
@@ -41,8 +52,15 @@ export interface ACPConnectionRegistryEntry {
   cwd?: string;
   description?: string;
   tags?: string[];
-  source?: 'core' | 'plugin';
+  /** `registry`: listed by the public agent registry, never a built-in. */
+  source?: 'core' | 'plugin' | 'registry';
   sourceName?: string;
+  /**
+   * The public agent registry's listing. On a `registry` entry it is where
+   * the entry came from; on a built-in it is display-only enrichment and
+   * never changes the built-in's command, arguments or environment.
+   */
+  publicRegistry?: ACPPublicRegistryListing;
   /** The provider executable was found on this Station host. */
   detected?: boolean;
   /** A connection for this provider is configured in Station. */
@@ -74,6 +92,74 @@ export interface ACPConnectionRegistryEntry {
    * of a descriptor; producers leave it unset.
    */
   hostInstall?: ACPEngineInstallRecipe;
+}
+
+export const ACP_PUBLIC_REGISTRY_DISTRIBUTIONS = [
+  'binary',
+  'npx',
+  'uvx',
+] as const;
+export type ACPPublicRegistryDistributionKind =
+  (typeof ACP_PUBLIC_REGISTRY_DISTRIBUTIONS)[number];
+
+/** One public agent registry listing, as Station read it. */
+export interface ACPPublicRegistryListing {
+  /** The registry's own id for the agent. */
+  id: string;
+  version: string;
+  /** The registry's `authors`, in its order. */
+  publishers: string[];
+  license?: string;
+  websiteUrl?: string;
+  repositoryUrl?: string;
+  /** The distribution kinds the registry lists, supported or not. */
+  distributions: ACPPublicRegistryDistributionKind[];
+  /** The `os-arch` keys (e.g. `darwin-aarch64`) the binary distribution lists. */
+  binaryPlatforms: string[];
+  /** Packages the registry runs through a package runner. Shown, never run. */
+  packages?: Array<{
+    kind: Exclude<ACPPublicRegistryDistributionKind, 'binary'>;
+    package: string;
+    args: string[];
+  }>;
+  /**
+   * What connecting runs on this host: the program found by name on the
+   * host's PATH, with the registry's arguments. Absent when this host cannot
+   * connect it; `unavailableReason` then says why.
+   */
+  hostLaunch?: { command: string; args: string[] };
+  unavailableReason?: string;
+  /**
+   * Environment the registry lists for this host's distribution. Station
+   * never applies it; it is shown as a recommended setting.
+   */
+  recommendedEnv?: Record<string, string>;
+  /**
+   * On an added connection whose saved command, or the version it was added
+   * at, no longer matches the listing. Information only: the saved
+   * connection is never changed.
+   */
+  update?: { version: string; command?: string; args?: string[] };
+}
+
+/** Where the public agent registry listing currently comes from. */
+export interface ACPPublicRegistrySourceStatus {
+  /** False when this Station does not read the public registry. */
+  enabled: boolean;
+  /**
+   * `network`: fetched by this Station process. `cache`: the copy saved on
+   * disk by an earlier fetch. `none`: no usable listing yet.
+   */
+  origin: 'network' | 'cache' | 'none';
+  /** When the listing in use was downloaded. */
+  fetchedAt: string | null;
+  /** When Station last tried to download it. */
+  checkedAt: string | null;
+  /** Why the last attempt failed or its index was refused, when it was. */
+  lastError: string | null;
+  refreshing: boolean;
+  /** Listings refused one by one, with every reason. */
+  refused: Array<{ id: string; reasons: string[] }>;
 }
 
 export const ACP_ENGINE_INSTALL_PLATFORMS = [
@@ -123,14 +209,30 @@ export const ACP_LAUNCH_ENV_PREFIXES = [
   'DROID_',
   'FACTORY_',
 ] as const;
-/** C0/C1 controls (including line breaks) and bidi embedding/override/isolate marks. */
-function hasUnsafeTextChar(value: string): boolean {
+/**
+ * Characters that render as nothing (Unicode Default_Ignorable_Code_Point:
+ * soft hyphen, zero-width and joiner marks, Hangul fillers, variation
+ * selectors, tag characters and the like).
+ */
+const DEFAULT_IGNORABLE = /\p{Default_Ignorable_Code_Point}/u;
+
+/**
+ * C0/C1 controls (including line breaks), bidi embedding/override/isolate
+ * marks, the Arabic letter mark, line and paragraph separators, and every
+ * character that renders as nothing. Descriptor text is a name, a sentence
+ * or a command argument; none of them needs one, and each can hide a
+ * difference a person is asked to trust. This also refuses emoji built with
+ * a zero-width joiner or a variation selector.
+ */
+export function hasUnsafeTextChar(value: string): boolean {
+  if (DEFAULT_IGNORABLE.test(value)) return true;
   for (const char of value) {
     const code = char.codePointAt(0) ?? 0;
     if (
       code <= 0x1f ||
       (code >= 0x7f && code <= 0x9f) ||
-      (code >= 0x202a && code <= 0x202e) ||
+      code === 0x061c ||
+      (code >= 0x2028 && code <= 0x202e) ||
       (code >= 0x2066 && code <= 0x2069)
     )
       return true;

@@ -56,7 +56,8 @@ export function useACPConnectionSetupOwner(): Pick<
     connectionQueryError: isError ? error : undefined,
     connectionQueryFetching: isFetching,
     onAdd: (draft: ACPConnectionDraft) => create.mutateAsync(draft),
-    onInstallRegistryEntry: (id: string) => install.mutateAsync(id),
+    onInstallRegistryEntry: (id, confirmCommand) =>
+      install.mutateAsync(confirmCommand ? { id, confirmCommand } : id),
     onRefreshConnections: refetch,
     // Edit setup saves through PUT, which re-probes and registers on success.
     onUpdate: (id: string, draft: ACPConnectionDraft) =>
