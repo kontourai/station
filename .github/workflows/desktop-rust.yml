@@ -7,6 +7,11 @@ name: "PR: Desktop Rust"
 on:
   workflow_call:
   workflow_dispatch:
+    inputs:
+      native_review_faults:
+        description: "Exercise native performance regression fault controls"
+        type: boolean
+        default: false
 permissions:
   contents: read
 
@@ -112,3 +117,61 @@ jobs:
       - name: Run bundled-server supervisor Rust tests
         if: ${{ !cancelled() && steps.prerequisites.outcome == 'success' }}
         run: npm run verify:desktop-rust
+
+      - name: Prove native performance regressions catch reverted behavior
+        if: ${{ success() && inputs.native_review_faults }}
+        env:
+          JAVA_HOME: ${{ env.JAVA_HOME_17_X64 }}
+        run: |
+          python3 - <<'PYTHON'
+          import os
+          from pathlib import Path
+          import subprocess
+          import xml.etree.ElementTree as ET
+
+          assert not subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=no"]).strip(), "fault controls require committed, clean sources"
+          originals = {}
+          mutated = {}
+          def change(name, before, after):
+              path = Path(name)
+              source = path.read_text()
+              assert source.count(before) == 1, (name, "ambiguous mutation landmark")
+              originals.setdefault(path, source)
+              mutated[path] = source.replace(before, after)
+              path.write_text(mutated[path])
+          def cargo(filter):
+              result = subprocess.run(["cargo", "test", "--manifest-path", "src-desktop/Cargo.toml", "--lib", filter, "--", "--test-threads=1"], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+              print(result.stdout, flush=True)
+              return result
+          def kotlin():
+              return subprocess.run(["node", "scripts/run-agent-activity-android-unit-tests.mjs", "--no-daemon"])
+          transport = "src-desktop/src/native_http_transport.rs"
+          lib = "src-desktop/src/lib.rs"
+          recovery = "src-desktop/src/mobile_recovery.rs"
+          android = "src-desktop/plugins/agent-activity/android/src/main/java/io/kontourai/station/agentactivity/StationRendererRecovery.kt"
+          try:
+              change(transport, "        // Mark BEFORE calling:", "        if self.epoch != network_epoch() { return Err(ureq::Error::Io(std::io::ErrorKind::NotConnected.into())); }\n        // Mark BEFORE calling:")
+              change(transport, "        self.inner.await_input(timeout)", "        let mut timeout = timeout;\n        if PROGRESS.with(Cell::get).reused && *timeout.after > Duration::from_secs(3) {\n            timeout.after = ureq::unversioned::transport::time::Duration::Exact(Duration::from_secs(3));\n            timeout.reason = ureq::Timeout::RecvResponse;\n        }\n        self.inner.await_input(timeout)")
+              change(lib, "cached_version == &version && version.unambiguous()", "cached_version == &version && false && version.unambiguous()")
+              change(lib, "    let mut local = cache\n        .lock()\n        .unwrap_or_else(|error| error.into_inner())\n        .clone();", "    let mut local = cache.lock().unwrap().clone();")
+              change(recovery, "if self.error_shown {", "if false && self.error_shown {")
+              change(android, "if (foreground) foreground(now, restart, exhausted)", "foreground(now, restart, exhausted)")
+              result = cargo("native_http_performance_tests::")
+              assert result.returncode == 101, "mutated Rust tests must fail with test assertions"
+              for name in ["native_http_network_change_during_upload_does_not_interrupt_or_replay_post", "native_http_slow_reused_get_waits_for_response_without_replay", "native_http_snapshot_hot_reads_do_not_read_profile_bytes_or_repeat_genesis", "native_http_profile_replacement_recovers_a_poisoned_snapshot_cache"]:
+                  assert f"test native_http_performance_tests::{name} ... FAILED" in result.stdout, (name, "did not catch its fault")
+              result = cargo("mobile_recovery::tests::")
+              assert result.returncode == 101 and "test mobile_recovery::tests::renderer_death_defers_in_background_and_stops_after_three_foreground_reloads ... FAILED" in result.stdout
+              assert kotlin().returncode != 0, "background recovery mutation survived"
+              report = Path("src-desktop/plugins/agent-activity/android/build/test-results/testDebugUnitTest/TEST-io.kontourai.station.agentactivity.RendererRecoveryWindowTest.xml")
+              case = ET.parse(report).find(".//testcase[@name='backgroundKillsCoalesceUntilForegroundWithoutSpendingReloads']")
+              assert case is not None and case.find("failure") is not None, "background recovery test did not catch its fault"
+          finally:
+              for path, source in originals.items():
+                  assert path.read_text() == mutated[path], (str(path), "intervening edits; refusing restoration")
+                  path.write_text(source)
+          assert cargo("native_http_performance_tests::").returncode == 0
+          assert cargo("mobile_recovery::tests::").returncode == 0
+          assert kotlin().returncode == 0
+          print("Native performance fault controls: baseline green; six named regressions caught; restored green.")
+          PYTHON
