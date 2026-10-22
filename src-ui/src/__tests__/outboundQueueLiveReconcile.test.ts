@@ -135,6 +135,7 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     const lookup = lookupAnswering('not-received');
     expect(await second.outboundDispatch.reconcile(lookup)).toEqual({
       received: 0,
+      lookupFailed: 0,
     });
     expect(lookup).toHaveBeenCalledTimes(1);
     const [row] = await second.outboundDispatch.snapshot();
@@ -193,7 +194,7 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     const second = await killedMidSend();
     expect(
       await second.outboundDispatch.reconcile(lookupAnswering('received')),
-    ).toEqual({ received: 1 });
+    ).toEqual({ received: 1, lookupFailed: 0 });
     const [row] = await second.outboundDispatch.snapshot();
     expect(row).toMatchObject({
       status: 'invoking',
@@ -236,6 +237,7 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     const lookup = lookupAnswering('not-received');
     expect(await second.outboundDispatch.reconcile(lookup)).toEqual({
       received: 0,
+      lookupFailed: 0,
     });
     expect(lookup).not.toHaveBeenCalled();
     expect((await second.outboundDispatch.snapshot())[0]).toMatchObject({

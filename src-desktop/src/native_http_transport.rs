@@ -16,6 +16,35 @@ struct ResponseWait {
     interrupted: AtomicBool,
 }
 
+struct ResponseWaitRegistration(Option<Arc<ResponseWait>>);
+impl ResponseWaitRegistration {
+    fn new(socket: Arc<TcpStream>, epoch: u64) -> Result<Self, ureq::Error> {
+        let mut waits = RESPONSE_WAITS.lock().unwrap_or_else(|e| e.into_inner());
+        if epoch != network_epoch() {
+            return Err(network_change_error());
+        }
+        let wait = Arc::new(ResponseWait {
+            socket,
+            interrupted: AtomicBool::new(false),
+        });
+        waits.push(Arc::clone(&wait));
+        Ok(Self(Some(wait)))
+    }
+    fn deregister(&mut self) -> bool {
+        let Some(wait) = self.0.take() else {
+            return false;
+        };
+        let mut waits = RESPONSE_WAITS.lock().unwrap_or_else(|e| e.into_inner());
+        waits.retain(|entry| !Arc::ptr_eq(entry, &wait));
+        wait.interrupted.load(Ordering::Acquire)
+    }
+}
+impl Drop for ResponseWaitRegistration {
+    fn drop(&mut self) {
+        self.deregister();
+    }
+}
+
 static NETWORK_EPOCH: AtomicU64 = AtomicU64::new(0);
 pub(crate) fn network_epoch() -> u64 {
     NETWORK_EPOCH.load(Ordering::Acquire)
@@ -264,28 +293,17 @@ impl Transport for SocketTransport {
     fn await_input(&mut self, timeout: NextTimeout) -> Result<bool, ureq::Error> {
         self.socket
             .set_read_timeout(timeout.not_zero().map(|duration| *duration))?;
-        let wait = RESPONSE_EPOCH
+        let mut wait = RESPONSE_EPOCH
             .with(Cell::get)
-            .map(|epoch| {
-                let mut waits = RESPONSE_WAITS.lock().unwrap_or_else(|e| e.into_inner());
-                if epoch != network_epoch() {
-                    return Err(network_change_error());
-                }
-                let wait = Arc::new(ResponseWait {
-                    socket: Arc::clone(&self.socket),
-                    interrupted: AtomicBool::new(false),
-                });
-                waits.push(Arc::clone(&wait));
-                Ok(wait)
-            })
+            .map(|epoch| ResponseWaitRegistration::new(Arc::clone(&self.socket), epoch))
             .transpose()?;
         let result = (&*self.socket).read(self.buffers.input_append_buf());
-        if let Some(wait) = wait {
-            let mut waits = RESPONSE_WAITS.lock().unwrap_or_else(|e| e.into_inner());
-            waits.retain(|entry| !Arc::ptr_eq(entry, &wait));
-            if wait.interrupted.load(Ordering::Acquire) {
-                return Err(network_change_error());
-            }
+        let interrupted = wait
+            .as_mut()
+            .is_some_and(ResponseWaitRegistration::deregister);
+        drop(wait);
+        if interrupted {
+            return Err(network_change_error());
         }
         let amount = result.map_err(|error| socket_error(error, timeout))?;
         self.buffers.input_appended(amount);
@@ -363,5 +381,215 @@ fn failure(error: &ureq::Error) -> NativeHttpBrokerFailure {
         })
     } else {
         NativeHttpBrokerFailure::transport(native_request_transport_detail(error))
+    }
+}
+
+#[cfg(test)]
+mod response_wait_tests {
+    use super::*;
+    use std::io::{BufRead, BufReader};
+    use std::net::TcpListener;
+    use std::process::{Command, Stdio};
+
+    // Epoch changes are process-global; keep these controls out of other tests' sockets.
+    fn isolated(name: &str) -> bool {
+        const WORKER: &str = "STATION_RESPONSE_WAIT_TEST";
+        if std::env::var(WORKER).as_deref() == Ok(name) {
+            return false;
+        }
+        assert!(Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                &format!("native_http_transport::response_wait_tests::{name}"),
+                "--nocapture"
+            ])
+            .env(WORKER, name)
+            .status()
+            .unwrap()
+            .success());
+        true
+    }
+
+    #[test]
+    fn response_wait_registration_deregisters_during_unwind() {
+        if isolated("response_wait_registration_deregisters_during_unwind") {
+            return;
+        }
+        for unwind in [false, true] {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            let socket = Arc::new(TcpStream::connect(listener.local_addr().unwrap()).unwrap());
+            let (mut peer, _) = listener.accept().unwrap();
+            peer.set_read_timeout(Some(Duration::from_secs(1))).unwrap();
+            let result = std::panic::catch_unwind(|| {
+                let _registration =
+                    ResponseWaitRegistration::new(Arc::clone(&socket), network_epoch()).unwrap();
+                if unwind {
+                    panic!("unwind after response-wait registration");
+                }
+            });
+            assert_eq!(result.is_err(), unwind);
+            network_changed();
+            (&*socket)
+                .write_all(b"still open")
+                .expect("a deregistered wait must not be shut down by a later network change");
+            let mut bytes = [0; 10];
+            peer.read_exact(&mut bytes).unwrap();
+            assert_eq!(&bytes, b"still open");
+        }
+    }
+
+    // The hosted Linux image provides python3/OpenSSL. Missing tools fail this
+    // test rather than turning an unexercised TLS path into a passing receipt.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn rustls_response_wait_wakes_on_network_change_without_replay() {
+        if isolated("rustls_response_wait_wakes_on_network_change_without_replay") {
+            return;
+        }
+        let directory = tempfile::tempdir().unwrap();
+        let certificate = directory.path().join("certificate.pem");
+        let key = directory.path().join("key.pem");
+        let output = Command::new("openssl")
+            .args([
+                "req",
+                "-x509",
+                "-newkey",
+                "rsa:2048",
+                "-nodes",
+                "-days",
+                "1",
+                "-subj",
+                "/CN=localhost",
+                "-addext",
+                "subjectAltName=DNS:localhost",
+                "-keyout",
+                key.to_str().unwrap(),
+                "-out",
+                certificate.to_str().unwrap(),
+            ])
+            .output()
+            .expect("OpenSSL is required for the hosted TLS fixture");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let root = ureq::tls::Certificate::from_pem(&std::fs::read(&certificate).unwrap()).unwrap();
+        for method in ["GET", "POST"] {
+            struct Server(std::process::Child);
+            impl Drop for Server {
+                fn drop(&mut self) {
+                    let _ = self.0.kill();
+                    let _ = self.0.wait();
+                }
+            }
+            let mut server = Server(
+                Command::new("python3")
+                    .args([
+                        "-u",
+                        "-c",
+                        r#"
+import socket, ssl, sys
+context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+context.load_cert_chain(sys.argv[1], sys.argv[2])
+listener = socket.socket()
+listener.bind(('127.0.0.1', 0))
+listener.listen()
+listener.settimeout(10)
+print(listener.getsockname()[1], flush=True)
+connection, _ = listener.accept()
+connection.settimeout(10)
+with context.wrap_socket(connection, server_side=True) as tls:
+    request = b''
+    while b'\r\n\r\n' not in request:
+        data = tls.recv(4096)
+        assert data, 'client closed before sending HTTP headers'
+        request += data
+    print('request received', flush=True)
+    sys.stdin.readline()
+listener.setblocking(False)
+try:
+    listener.accept()
+    raise AssertionError('a written request was replayed')
+except BlockingIOError:
+    pass
+"#,
+                        certificate.to_str().unwrap(),
+                        key.to_str().unwrap(),
+                    ])
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .spawn()
+                    .unwrap(),
+            );
+            let mut output = BufReader::new(server.0.stdout.take().unwrap());
+            let mut line = String::new();
+            output.read_line(&mut line).unwrap();
+            let port: u16 = line
+                .trim()
+                .parse()
+                .expect("TLS fixture must publish its bound port");
+            let agent = ureq::Agent::with_parts(
+                native_http_agent_config()
+                    .timeout_recv_response(Some(Duration::from_secs(4)))
+                    .tls_config(
+                        ureq::tls::TlsConfig::builder()
+                            .root_certs([root.clone()].into())
+                            .build(),
+                    )
+                    .build(),
+                SocketConnector.chain(ObserveConnector),
+                ureq::unversioned::resolver::DefaultResolver::default(),
+            );
+            let request = ureq::http::Request::builder()
+                .method(method)
+                .uri(format!("https://localhost:{port}/silent"))
+                .body(Vec::new())
+                .unwrap();
+            let (done, result) = std::sync::mpsc::channel();
+            let worker = std::thread::spawn(move || {
+                done.send(
+                    run(&agent, request, &AtomicBool::new(false), None, || {
+                        panic!("a written TLS request must never replay")
+                    })
+                    .unwrap_err(),
+                )
+                .unwrap();
+            });
+            line.clear();
+            output.read_line(&mut line).unwrap();
+            assert_eq!(
+                line.trim(),
+                "request received",
+                "the rustls handshake and HTTP write must complete"
+            );
+            let deadline = Instant::now() + Duration::from_secs(2);
+            loop {
+                if RESPONSE_WAITS
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|wait| wait.socket.peer_addr().unwrap().port() == port)
+                {
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "TLS response read never registered its socket"
+                );
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            let started = Instant::now();
+            network_changed();
+            let error = result.recv_timeout(Duration::from_secs(6)).unwrap();
+            assert_eq!(error.code, "network_changed", "{method}: {error:?}");
+            assert!(
+                started.elapsed() < Duration::from_secs(2),
+                "shutdown must wake the TLS read before its normal deadline"
+            );
+            worker.join().unwrap();
+            server.0.stdin.take().unwrap().write_all(b"done\n").unwrap();
+            assert!(server.0.wait().unwrap().success());
+        }
     }
 }

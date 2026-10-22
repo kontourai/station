@@ -16,6 +16,10 @@ on:
         description: "Exercise silent-response, response-wait, snapshot-publication and timestamp collision controls"
         type: boolean
         default: false
+      native_round_five_faults:
+        description: "Exercise response-wait unwind and rustls shutdown controls"
+        type: boolean
+        default: false
 permissions:
   contents: read
 
@@ -250,4 +254,40 @@ jobs:
           assert cargo().returncode == 0, "restored native broker suite must pass"
           subprocess.run(["git", "diff", "--exit-code", "--", *map(str, originals)], check=True)
           print("Native broker restored: GREEN; all four named faults caught; exact sources restored.", flush=True)
+          PYTHON
+
+      - name: Prove response-wait unwind and rustls shutdown controls
+        if: ${{ success() && inputs.native_round_five_faults }}
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import subprocess
+
+          assert not subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=no"]).strip(), "fault controls require committed, clean sources"
+          path = Path("src-desktop/src/native_http_transport.rs")
+          original = path.read_text()
+          cases = [
+              ("response_wait_registration_deregisters_during_unwind", "        self.deregister();", "        if !std::thread::panicking() { self.deregister(); }"),
+              ("rustls_response_wait_wakes_on_network_change_without_replay", "        let _ = wait.socket.shutdown(Shutdown::Both);", "        // Fault control: leave the registered TLS socket blocked."),
+          ]
+          def cargo(name):
+              result = subprocess.run(["cargo", "test", "--manifest-path", "src-desktop/Cargo.toml", "--lib", name, "--", "--nocapture", "--test-threads=1"], text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+              print(result.stdout, flush=True)
+              return result
+          for name, before, after in cases:
+              assert cargo(name).returncode == 0, (name, "baseline failed")
+              assert original.count(before) == 1, "ambiguous mutation landmark"
+              mutated = original.replace(before, after)
+              try:
+                  path.write_text(mutated)
+                  result = cargo(name)
+                  assert result.returncode == 101 and "test result: FAILED" in result.stdout, (name, "expected a test assertion failure")
+                  assert f"::{name}" in result.stdout and "panicked at" in result.stdout, (name, "missing named assertion")
+                  print(f"Round five injected: RED caught by {name}", flush=True)
+              finally:
+                  assert path.read_text() == mutated, "intervening edits; refusing restoration"
+                  path.write_text(original)
+              assert cargo(name).returncode == 0, (name, "restored test failed")
+              print(f"Round five restored: GREEN {name}", flush=True)
+          subprocess.run(["git", "diff", "--exit-code", "--", str(path)], check=True)
           PYTHON

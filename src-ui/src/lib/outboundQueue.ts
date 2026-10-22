@@ -270,12 +270,13 @@ export interface OutboundDispatchModule {
    * removed (delivered), `received` → left to ask again later,
    * `indeterminate`/`expired` → may-have-started (never resent). A lookup
    * that fails leaves the row as it is. Returns how many rows Station still
-   * reports as received, so the caller can ask again with backoff.
+   * reports as received and failed lookups still unresolved, so the caller can
+   * ask again with backoff.
    */
   reconcile(
     lookup: OutboundDeliveryLookup,
     options?: { station?: OutboundStationIdentity },
-  ): Promise<{ received: number }>;
+  ): Promise<{ received: number; lookupFailed: number }>;
   /**
    * Makes this renderer's held follow-ups (`heldBy`) exactly `intents`:
    * writes the new, updates the changed, removes the ones no longer held.
@@ -2469,10 +2470,11 @@ async function askStation(
 async function reconcile(
   lookup: OutboundDeliveryLookup,
   options?: { station?: OutboundStationIdentity },
-): Promise<{ received: number }> {
+): Promise<{ received: number; lookupFailed: number }> {
   const now = Date.now();
   const station = options?.station ?? currentStation;
   let received = 0;
+  const failedKeys = new Set<string>();
   for (const row of await readStored()) {
     if (liveOwned.has(row.clientTurnId)) continue;
     // Held copies are never released here: a live queue sends them, or the
@@ -2494,11 +2496,19 @@ async function reconcile(
         continue;
     }
     const outcome = await askStation(row, lookup);
-    if (!outcome) continue;
+    if (!outcome) {
+      failedKeys.add(row.clientTurnId);
+      continue;
+    }
     await applyDeliveryAnswer(row, outcome, 'resend');
     if (outcome === 'received') received += 1;
   }
-  return { received };
+  const lookupFailed = failedKeys.size
+    ? (await readStored()).filter(
+        (row) => row.status === 'invoking' && failedKeys.has(row.clientTurnId),
+      ).length
+    : 0;
+  return { received, lookupFailed };
 }
 
 /**

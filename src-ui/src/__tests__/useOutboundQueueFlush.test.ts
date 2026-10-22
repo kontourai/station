@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 
-import { renderHook, waitFor } from '@testing-library/react';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import {
@@ -29,6 +29,7 @@ vi.mock('../hooks/useActiveChatSessions', () => ({
   useSendMessage: () => sendMessage,
 }));
 
+import { projectOutboundQueueEntries } from '../hooks/outboundQueueProjection';
 import { useOutboundQueueFlush } from '../hooks/useOutboundQueueFlush';
 
 describe('useOutboundQueueFlush', () => {
@@ -846,7 +847,7 @@ describe('useOutboundQueueFlush', () => {
   });
 
   describe('a send the app was closed during', () => {
-    function orphanedLiveRow() {
+    async function orphanedLiveRow() {
       let stored: unknown = {
         version: 2,
         terminalEvidence: [],
@@ -854,6 +855,7 @@ describe('useOutboundQueueFlush', () => {
         turns: [
           {
             clientTurnId: 'key-orphan',
+            station: { apiBase: 'http://api.test' },
             sessionId: 'session-1',
             conversationId: 'session-1',
             agentSlug: 'codex',
@@ -878,10 +880,153 @@ describe('useOutboundQueueFlush', () => {
           stored = updater(stored);
         },
       });
+      projectOutboundQueueEntries(await outboundDispatch.open());
     }
 
+    const settleImports = async () => {
+      await act(async () => {
+        await vi.dynamicImportSettled();
+      });
+    };
+
+    it('recovers a failed delivery lookup without another queue event or resend', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+      await orphanedLiveRow();
+      getTurnDelivery
+        .mockRejectedValueOnce(new Error('lookup timed out'))
+        .mockImplementation(async (_apiBase, conversationId, clientTurnId) => ({
+          outcome: 'started',
+          conversationId,
+          clientTurnId,
+          sessionId: 'session-1',
+          turnId: 'provider-turn-orphan',
+        }));
+      const view = renderHook(() => useOutboundQueueFlush('http://api.test'));
+      try {
+        await settleImports();
+        expect(getTurnDelivery).toHaveBeenCalledTimes(1);
+        expect((await outboundDispatch.snapshot())[0]).toMatchObject({
+          status: 'invoking',
+        });
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(1_999);
+        });
+        expect(getTurnDelivery).toHaveBeenCalledTimes(1);
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(1);
+        });
+        await settleImports();
+        expect(getTurnDelivery).toHaveBeenCalledTimes(2);
+        expect(await outboundDispatch.snapshot()).toEqual([]);
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(120_000);
+        });
+        await settleImports();
+        expect(getTurnDelivery).toHaveBeenCalledTimes(2);
+        expect(sendMessage).not.toHaveBeenCalled();
+      } finally {
+        view.unmount();
+        vi.useRealTimers();
+      }
+    });
+
+    it('backs failed lookups off to 60 seconds and cancels on unmount', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+      await orphanedLiveRow();
+      getTurnDelivery.mockRejectedValue(new Error('lookup unavailable'));
+      const view = renderHook(() => useOutboundQueueFlush('http://api.test'));
+      try {
+        await settleImports();
+        let calls = 1;
+        for (const delay of [
+          2_000, 4_000, 8_000, 16_000, 32_000, 60_000, 60_000,
+        ]) {
+          await act(async () => {
+            await vi.advanceTimersByTimeAsync(delay - 1);
+          });
+          await settleImports();
+          expect(getTurnDelivery).toHaveBeenCalledTimes(calls);
+          await act(async () => {
+            await vi.advanceTimersByTimeAsync(1);
+          });
+          await settleImports();
+          expect(getTurnDelivery).toHaveBeenCalledTimes(++calls);
+        }
+        view.unmount();
+        await vi.advanceTimersByTimeAsync(120_000);
+        await settleImports();
+        expect(getTurnDelivery).toHaveBeenCalledTimes(calls);
+        expect(sendMessage).not.toHaveBeenCalled();
+      } finally {
+        view.unmount();
+        vi.useRealTimers();
+      }
+    });
+
+    it('cancels an armed lookup retry when the Station changes', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+      await orphanedLiveRow();
+      getTurnDelivery.mockRejectedValue(new Error('lookup unavailable'));
+      const view = renderHook(({ apiBase }) => useOutboundQueueFlush(apiBase), {
+        initialProps: { apiBase: 'http://api.test' },
+      });
+      try {
+        await settleImports();
+        expect(getTurnDelivery).toHaveBeenCalledTimes(1);
+        view.rerender({ apiBase: 'http://other-station.test' });
+        await settleImports();
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(120_000);
+        });
+        await settleImports();
+        expect(getTurnDelivery).toHaveBeenCalledTimes(1);
+        expect(sendMessage).not.toHaveBeenCalled();
+      } finally {
+        view.unmount();
+        vi.useRealTimers();
+      }
+    });
+
+    it.each(['unmount', 'authority change'] as const)(
+      'a failed lookup settling after %s cannot rearm its retry',
+      async (change) => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+        await orphanedLiveRow();
+        let rejectLookup!: (error: Error) => void;
+        getTurnDelivery.mockImplementation(
+          () =>
+            new Promise((_resolve, reject) => {
+              rejectLookup = reject;
+            }),
+        );
+        const view = renderHook(
+          ({ apiBase }) => useOutboundQueueFlush(apiBase),
+          {
+            initialProps: { apiBase: 'http://api.test' },
+          },
+        );
+        try {
+          await settleImports();
+          expect(getTurnDelivery).toHaveBeenCalledTimes(1);
+          if (change === 'unmount') view.unmount();
+          else view.rerender({ apiBase: 'http://other-station.test' });
+          rejectLookup(new Error('late lookup failure'));
+          await settleImports();
+          await act(async () => {
+            await vi.advanceTimersByTimeAsync(120_000);
+          });
+          await settleImports();
+          expect(getTurnDelivery).toHaveBeenCalledTimes(1);
+          expect(sendMessage).not.toHaveBeenCalled();
+        } finally {
+          view.unmount();
+          vi.useRealTimers();
+        }
+      },
+    );
+
     it('Station never received it: sent again on launch with the same key, once', async () => {
-      orphanedLiveRow();
+      await orphanedLiveRow();
       getTurnDelivery.mockImplementation(
         async (_apiBase, conversationId, clientTurnId) => ({
           outcome: 'not-received',
@@ -906,7 +1051,7 @@ describe('useOutboundQueueFlush', () => {
     });
 
     it('Station started it: delivered, nothing is sent', async () => {
-      orphanedLiveRow();
+      await orphanedLiveRow();
       getTurnDelivery.mockImplementation(
         async (_apiBase, conversationId, clientTurnId) => ({
           outcome: 'started',

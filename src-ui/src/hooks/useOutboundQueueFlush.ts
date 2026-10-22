@@ -12,7 +12,7 @@
  * owns.
  */
 import { useConnectionStatus } from '@kontourai/station-connect';
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
 import {
   type ChatUIState,
@@ -124,20 +124,20 @@ let flushing = false;
  * instead of the request being dropped.
  */
 let flushRequestedWhileFlushing = false;
-/**
- * Asking Station again about sends it reported `received` (an app closed
- * while its session was starting). Doubles up to the lookup's ceiling; reset
- * once nothing is waiting. Module-level for the same reason as `flushing`.
- */
-let reconcileRetryTimer: ReturnType<typeof setTimeout> | undefined;
-let reconcileRetryDelayMs = 0;
+/** Failed lookups keep sends fenced; retry observation with capped backoff. */
+const LOOKUP_RETRY_FIRST_MS = 2_000;
+const LOOKUP_RETRY_MAX_MS = 60_000;
 
 /** How often a send under way in another window is looked at again. */
 const OWNER_RECHECK_MS = 3_000;
 
 export function useOutboundQueueFlush(apiBase: string): void {
   const sendMessage = useSendMessage(apiBase);
-  const { observation } = useAuthorityPersistence();
+  const {
+    observation,
+    namespace,
+    status: authorityStatus,
+  } = useAuthorityPersistence();
   const environmentId = observation?.environmentId;
   const stationRef = useRef<OutboundStationIdentity>({ apiBase });
   stationRef.current = {
@@ -150,6 +150,25 @@ export function useOutboundQueueFlush(apiBase: string): void {
     pollInterval: 10_000,
   });
   const previousStatusRef = useRef(status);
+  const reconcileRetryTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined,
+  );
+  const reconcileRetryDelayMs = useRef(0);
+  const reconcileScopeRef = useRef<object | undefined>(undefined);
+  const reconcileScope = useMemo(
+    () => ({ apiBase, environmentId, namespace, authorityStatus, status }),
+    [apiBase, environmentId, namespace, authorityStatus, status],
+  );
+  useEffect(() => {
+    reconcileScopeRef.current = reconcileScope;
+    return () => {
+      reconcileScopeRef.current = undefined;
+      if (reconcileRetryTimer.current)
+        clearTimeout(reconcileRetryTimer.current);
+      reconcileRetryTimer.current = undefined;
+      reconcileRetryDelayMs.current = 0;
+    };
+  }, [reconcileScope]);
 
   const triggerFlush = useCallback(
     /**
@@ -160,6 +179,9 @@ export function useOutboundQueueFlush(apiBase: string): void {
      * whose notice would come back here): it only sends.
      */
     (rerunIfBusy = false, mode: 'full' | 'send-only' = 'full') => {
+      const scope = reconcileScopeRef.current;
+      if (!scope) return;
+      const station = stationRef.current;
       if (flushing) {
         // Only a request for a change the running pass cannot have seen (a
         // chat that just became writable). Queue notifications are not: the
@@ -175,6 +197,7 @@ export function useOutboundQueueFlush(apiBase: string): void {
             IN_FLIGHT_FIRST_CHECK_MS,
             DELIVERY_CHECK_MAX_INTERVAL_MS,
           } = await import('../lib/deliveryLookup');
+          if (scope !== reconcileScopeRef.current) return;
           // Sends a closed or crashed app left `invoking`: ask Station what
           // became of each key before anything is sent. Not-received rows
           // become pending and go out below, with their original key.
@@ -183,9 +206,10 @@ export function useOutboundQueueFlush(apiBase: string): void {
           const reconciled =
             mode === 'full'
               ? await outboundDispatch.reconcile(lookupTurnDelivery(apiBase), {
-                  station: stationRef.current,
+                  station,
                 })
               : undefined;
+          if (scope !== reconcileScopeRef.current) return;
           // Then this tab's held follow-ups: a reconcile can release a send
           // that was mid-drain at a reload to pending, and the restored queue
           // must take it back before the flush could send it too (one
@@ -194,24 +218,35 @@ export function useOutboundQueueFlush(apiBase: string): void {
             await outboundDispatch
               .syncHeld(
                 heldOutboundIntents(activeChatsStore.getSnapshot()).map(
-                  (intent) => ({ ...intent, station: stationRef.current }),
+                  (intent) => ({ ...intent, station }),
                 ),
               )
               .catch(() => undefined);
+          if (scope !== reconcileScopeRef.current) return;
           if (reconciled) {
-            if (reconcileRetryTimer) clearTimeout(reconcileRetryTimer);
-            reconcileRetryTimer = undefined;
-            if (reconciled.received > 0) {
-              reconcileRetryDelayMs = Math.min(
-                Math.max(reconcileRetryDelayMs * 2, IN_FLIGHT_FIRST_CHECK_MS),
-                DELIVERY_CHECK_MAX_INTERVAL_MS,
+            if (reconcileRetryTimer.current)
+              clearTimeout(reconcileRetryTimer.current);
+            reconcileRetryTimer.current = undefined;
+            const lookupFailed = reconciled.lookupFailed > 0;
+            if (lookupFailed || reconciled.received > 0) {
+              reconcileRetryDelayMs.current = Math.min(
+                Math.max(
+                  reconcileRetryDelayMs.current * 2,
+                  lookupFailed
+                    ? LOOKUP_RETRY_FIRST_MS
+                    : IN_FLIGHT_FIRST_CHECK_MS,
+                ),
+                lookupFailed
+                  ? LOOKUP_RETRY_MAX_MS
+                  : DELIVERY_CHECK_MAX_INTERVAL_MS,
               );
-              reconcileRetryTimer = setTimeout(() => {
-                reconcileRetryTimer = undefined;
-                triggerFlushRef.current();
-              }, reconcileRetryDelayMs);
+              reconcileRetryTimer.current = setTimeout(() => {
+                reconcileRetryTimer.current = undefined;
+                if (scope === reconcileScopeRef.current)
+                  triggerFlushRef.current(true);
+              }, reconcileRetryDelayMs.current);
             } else {
-              reconcileRetryDelayMs = 0;
+              reconcileRetryDelayMs.current = 0;
             }
           }
           // A chat with a turn running is not sent to: its send would only be
@@ -226,6 +261,8 @@ export function useOutboundQueueFlush(apiBase: string): void {
           );
           const outcome = await outboundDispatch.flush(
             async (turn, claim) => {
+              if (scope !== reconcileScopeRef.current)
+                return { kind: 'deferred' as const };
               const chat = activeChatsStore.getSnapshot()[turn.sessionId];
               if (chat && !conversationCanMutate(chat)) {
                 return {
@@ -271,7 +308,7 @@ export function useOutboundQueueFlush(apiBase: string): void {
                 reason: 'The send gate did not invoke the provider.',
               };
             },
-            { blockedSessionIds, station: stationRef.current },
+            { blockedSessionIds, station },
           );
           if (outcome === 'unavailable') {
             const { reportOutboundQueueUnavailable } = await import(
@@ -491,14 +528,17 @@ export function useOutboundQueueFlush(apiBase: string): void {
   // Rows are written for, and only ever sent to, the Station this renderer
   // talks to now. Learning which Station that is can make rows sendable.
   useEffect(() => {
+    const scope = reconcileScope;
     void import('../lib/outboundQueue').then(({ noteCurrentStation }) => {
+      if (scope !== reconcileScopeRef.current) return;
       noteCurrentStation({
         apiBase,
         ...(environmentId ? { environmentId } : {}),
       });
-      if (environmentId && status === 'connected') triggerFlushRef.current();
+      if (environmentId && status === 'connected')
+        triggerFlushRef.current(true);
     });
-  }, [apiBase, environmentId, status]);
+  }, [apiBase, environmentId, status, reconcileScope]);
 
   // Held follow-ups live in the tab's session storage; their durable copy is
   // kept in the outbox, so closing the app does not lose them. One write at a
