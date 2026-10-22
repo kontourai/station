@@ -3384,94 +3384,10 @@ button:hover {
   color: var(--text-primary);
 }
 
-/* New and its destination project, one split control: New starts a chat,
-   the caret half shows and changes where. Both halves keep the bar's quiet
-   chrome; one shared frame says they belong together. */
-.chat-dock__new-split {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  border: var(--k-border-thin, 1px) solid var(--border-primary);
-  border-radius: var(--radius-md);
-}
-
-.chat-dock__new-split .chat-dock__tab-actions {
-  flex: 0 0 auto;
-}
-
-.chat-dock__header-actions .chat-dock__new-split .chat-dock__new {
-  border: 0;
-  border-radius: var(--radius-md) 0 0 var(--radius-md);
-}
-
-.chat-dock__new-split:not(:has(.chat-dock__project-context)) .chat-dock__new {
-  border-radius: var(--radius-md);
-}
-
-/* The inbox toggle carries the working chats' count, and a dot for unread
-   replies; both facts are also in its name. */
-.chat-dock__inbox-toggle {
-  position: relative;
-}
-
 /* The More menu's wrapper only marks where a working-chat choice is made
    (`data-working-chat-origin`); it takes no box of its own. */
 .chat-dock__more {
   display: contents;
-}
-
-.chat-dock__inbox-working {
-  position: absolute;
-  top: -2px;
-  right: -4px;
-  display: inline-flex;
-  min-width: 15px;
-  height: 15px;
-  align-items: center;
-  justify-content: center;
-  padding: 0 4px;
-  border: var(--k-border-thin, 1px) solid currentColor;
-  border-radius: var(--radius-pill);
-  /* The status hue as text on the raised panel: a pair the design tokens
-     hold to text contrast in every theme. A filled green with the accent's
-     on-colour was not a pair (an accent override changed one side only). */
-  background: var(--k-panel-raised);
-  color: var(--k-positive);
-  font-size: var(--text-2xs);
-  font-weight: 600;
-  line-height: 1;
-  animation: chat-dock-status-arrive var(--motion-base) var(--ease-spring);
-}
-
-.chat-dock__inbox-toggle[data-unread]::after {
-  content: "";
-  position: absolute;
-  bottom: 2px;
-  right: 0;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent-primary);
-}
-
-/* A working chat's row in the More menu: the same green as the badge. */
-.chat-dock__working-glyph {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--success-text);
-}
-
-@keyframes chat-dock-status-arrive {
-  from {
-    opacity: 0;
-    transform: scale(0.5);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
 }
 
 .chat-dock__body {

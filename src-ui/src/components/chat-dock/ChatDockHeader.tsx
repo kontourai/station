@@ -22,6 +22,7 @@ import {
   useSessionInventoryHostRegistered,
   useSessionInventoryOccurrence,
 } from './sessionInventoryOccurrence';
+import './ChatDockHeader.css';
 
 const loadChatDockSessionInventoryHost = () =>
   import('./ChatDockWorkspaceControls').then((module) => ({

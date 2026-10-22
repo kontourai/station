@@ -16,6 +16,7 @@ import { runningCallLabelParts } from './tool-call-labels';
 import type { ToolCallLike, ToolCallRun } from './tool-call-runs';
 import { toolDisplayView } from './tool-display-view';
 import './chat.css';
+import './ToolCallBatch.css';
 
 // The sheet body (ResponsiveDialogSurface + per-row ToolCallDisplay detail)
 // loads on first open rather than riding this chunk's own load — mirrors the
