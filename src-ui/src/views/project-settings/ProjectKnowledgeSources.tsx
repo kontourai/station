@@ -8,6 +8,7 @@ import {
   useDeleteKnowledgeRootMutation,
   useKnowledgeAdaptersQuery,
   useKnowledgeRootsQuery,
+  useKnowledgeSourceCapabilitiesQuery,
   useValidateKnowledgeRootMutation,
 } from '@kontourai/station-sdk';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
@@ -34,6 +35,9 @@ export function ProjectKnowledgeSources({
     requestScope: authority,
     requireRequestScope: true,
   });
+  const capabilities = useKnowledgeSourceCapabilitiesQuery(authority);
+  const canManage =
+    !capabilities.isError && capabilities.data?.canManageSources === true;
   const create = useCreateKnowledgeRootMutation(authority);
   const attach = useAttachKnowledgeRootProjectMutation(authority);
   const validate = useValidateKnowledgeRootMutation(authority);
@@ -121,152 +125,173 @@ export function ProjectKnowledgeSources({
                     <p>{root.adapterId}</p>
                     <code>{root.storeRoot}</code>
                   </div>
-                  <Button
-                    disabled={busy || root.adapterId === 'conversation-store'}
-                    onClick={() => {
-                      setSelected(root);
-                      disconnect.reset();
-                    }}
-                  >
-                    Disconnect
-                  </Button>
+                  {canManage && (
+                    <Button
+                      disabled={busy || root.adapterId === 'conversation-store'}
+                      onClick={() => {
+                        setSelected(root);
+                        disconnect.reset();
+                      }}
+                    >
+                      Disconnect
+                    </Button>
+                  )}
                 </li>
               ))}
             </ul>
           ) : (
             <p>No knowledge stores registered for this project.</p>
           )}
-          {legacyRoots.length > 0 && (
-            <div>
-              <h3>Legacy stores awaiting attachment</h3>
-              <p>
-                These registrations name this Project but have no durable
-                Project identity. Attach a selected store to make it available
-                to this Project. Its files stay in place.
-              </p>
-              <ul className="project-sources__list">
-                {legacyRoots.map((root) => (
-                  <li key={root.id}>
-                    <div>
-                      <strong>{root.displayName}</strong>
-                      <code>{root.storeRoot}</code>
-                    </div>
-                    <Button
-                      disabled={busy}
-                      onClick={() => {
-                        setLegacy(root);
-                        attach.reset();
-                      }}
-                    >
-                      Attach to this Project
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          {legacyRoots.length > 0 &&
+            canManage &&
+            capabilities.data?.canAttachLegacy && (
+              <div>
+                <h3>Legacy stores awaiting attachment</h3>
+                <p>
+                  These registrations name this Project but have no durable
+                  Project identity. Attach a selected store to make it available
+                  to this Project. Its files stay in place.
+                </p>
+                <ul className="project-sources__list">
+                  {legacyRoots.map((root) => (
+                    <li key={root.id}>
+                      <div>
+                        <strong>{root.displayName}</strong>
+                        <code>{root.storeRoot}</code>
+                      </div>
+                      <Button
+                        disabled={busy}
+                        onClick={() => {
+                          setLegacy(root);
+                          attach.reset();
+                        }}
+                      >
+                        Attach to this Project
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           <Button
             disabled={busy || roots.isFetching}
             onClick={() => void roots.refetch()}
           >
             Refresh sources
           </Button>
-          <div className="project-sources__form">
-            <label>
-              Source name (optional)
-              <input
-                value={name}
-                disabled={busy}
-                onChange={(event) => setName(event.target.value)}
-              />
-            </label>
-            {projectRoots.some(
-              (root) => root.adapterId === 'kit-default-store',
-            ) ? (
-              <p>
-                A default-format store is already connected. Use it from Project
-                knowledge, or connect another store path below.
-              </p>
-            ) : (
-              <Button
-                disabled={busy || roots.isFetching}
-                pending={create.isPending}
-                onClick={() => void add(false)}
-              >
-                Create managed store
-              </Button>
-            )}
-            <h3>Connect a store path</h3>
-            {adapters.isError ? (
-              <div role="alert">
-                <p>{userFacingErrorMessage(adapters.error)}</p>
-                <Button onClick={() => void adapters.refetch()}>
-                  Retry store formats
-                </Button>
-              </div>
-            ) : (
+          {canManage && (
+            <div className="project-sources__form">
               <label>
-                Store format
-                <select
-                  value={adapterId}
-                  disabled={busy || adapters.isPending}
+                Source name (optional)
+                <input
+                  value={name}
+                  disabled={busy}
+                  onChange={(event) => setName(event.target.value)}
+                />
+              </label>
+              {projectRoots.some(
+                (root) => root.adapterId === 'kit-default-store',
+              ) ? (
+                <p>
+                  A default-format store is already connected. Use it from
+                  Project knowledge, or connect another store path below.
+                </p>
+              ) : (
+                <Button
+                  disabled={busy || roots.isFetching}
+                  pending={create.isPending}
+                  onClick={() => void add(false)}
+                >
+                  Create managed store
+                </Button>
+              )}
+              <h3>Connect a store path</h3>
+              {adapters.isError ? (
+                <div role="alert">
+                  <p>{userFacingErrorMessage(adapters.error)}</p>
+                  <Button onClick={() => void adapters.refetch()}>
+                    Retry store formats
+                  </Button>
+                </div>
+              ) : (
+                <label>
+                  Store format
+                  <select
+                    value={adapterId}
+                    disabled={busy || adapters.isPending}
+                    onChange={(event) => {
+                      setAdapterId(event.target.value);
+                      setChecked(undefined);
+                    }}
+                  >
+                    {adapters.data
+                      ?.filter((adapter) => adapter.id !== 'conversation-store')
+                      .map((adapter) => (
+                        <option key={adapter.id} value={adapter.id}>
+                          {adapter.displayName}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+              )}
+              <label>
+                Path on the Station host
+                <input
+                  value={path}
+                  disabled={busy}
                   onChange={(event) => {
-                    setAdapterId(event.target.value);
+                    setPath(event.target.value);
                     setChecked(undefined);
                   }}
-                >
-                  {adapters.data
-                    ?.filter((adapter) => adapter.id !== 'conversation-store')
-                    .map((adapter) => (
-                      <option key={adapter.id} value={adapter.id}>
-                        {adapter.displayName}
-                      </option>
-                    ))}
-                </select>
+                />
               </label>
-            )}
-            <label>
-              Path on the Station host
-              <input
-                value={path}
-                disabled={busy}
-                onChange={(event) => {
-                  setPath(event.target.value);
-                  setChecked(undefined);
-                }}
-              />
-            </label>
-            <div className="project-sources__actions">
-              <Button
-                disabled={
-                  busy ||
-                  !path.trim() ||
-                  !adapters.data?.some((adapter) => adapter.id === adapterId)
-                }
-                pending={validate.isPending}
-                onClick={() => void check()}
-              >
-                Check source
-              </Button>
-              <Button
-                disabled={
-                  busy ||
-                  checked?.path !== path ||
-                  checked?.adapterId !== adapterId
-                }
-                onClick={() => void add(true)}
-              >
-                Connect store
-              </Button>
+              <div className="project-sources__actions">
+                <Button
+                  disabled={
+                    busy ||
+                    !capabilities.data?.canCheckHostPaths ||
+                    !path.trim() ||
+                    !adapters.data?.some((adapter) => adapter.id === adapterId)
+                  }
+                  pending={validate.isPending}
+                  onClick={() => void check()}
+                >
+                  Check source
+                </Button>
+                <Button
+                  disabled={
+                    busy ||
+                    checked?.path !== path ||
+                    checked?.adapterId !== adapterId
+                  }
+                  onClick={() => void add(true)}
+                >
+                  Connect store
+                </Button>
+              </div>
+              {checked?.path === path && checked?.adapterId === adapterId && (
+                <p role="status">
+                  Source accepted for registration. This does not confirm that
+                  the path exists or that records can be read.
+                </p>
+              )}
             </div>
-            {checked?.path === path && checked?.adapterId === adapterId && (
-              <p role="status">
-                Source accepted for registration. This does not confirm that the
-                path exists or that records can be read.
-              </p>
-            )}
-          </div>
+          )}
+          {!canManage && !capabilities.isPending && !capabilities.isError && (
+            <p>
+              This connection can read Project stores. Source setup is available
+              to the Station operator.
+            </p>
+          )}
         </>
+      )}
+      {capabilities.isError && (
+        <div role="alert">
+          <p>{userFacingErrorMessage(capabilities.error)}</p>
+          <Button onClick={() => void capabilities.refetch()}>
+            Retry source permissions
+          </Button>
+        </div>
       )}
       {error && <p role="alert">{error}</p>}
       {notice && <p role="status">{notice}</p>}

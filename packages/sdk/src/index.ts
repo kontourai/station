@@ -998,6 +998,7 @@ export {
   useKnowledgeSaveMutation,
   useKnowledgeScanMutation,
   useKnowledgeSearchQuery,
+  useKnowledgeSourceCapabilitiesQuery,
   useKnowledgeStatusQuery,
   useKnowledgeTreeQuery,
   useKnowledgeUpdateMutation,

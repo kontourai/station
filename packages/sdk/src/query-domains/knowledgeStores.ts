@@ -12,6 +12,7 @@ import type {
   KitRecord,
   KitRecordType,
   KnowledgeAdapterDescriptor,
+  KnowledgeSourceCapabilities,
   KnowledgeStoreRoot,
 } from '@kontourai/station-contracts/knowledge-store';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -31,6 +32,7 @@ import {
   getKnowledgeGraph,
   getKnowledgeGraphNeo4j,
   getKnowledgeRecord,
+  getKnowledgeSourceCapabilities,
   type KnowledgeGraph,
   type KnowledgeGraphNeo4jSyncStats,
   type KnowledgeSearchResult,
@@ -567,4 +569,30 @@ export function useAttachKnowledgeRootProjectMutation(
       });
     },
   });
+}
+
+export function useKnowledgeSourceCapabilitiesQuery(
+  requestScope: ApiRequestScope | undefined,
+) {
+  const scope = capturedScope(requestScope);
+  return useApiQuery<KnowledgeSourceCapabilities>(
+    [
+      'knowledge',
+      'source-capabilities',
+      scope?.apiBase ?? 'missing-authority',
+      scope?.authorityKey ?? 'missing-authority',
+    ],
+    async () => {
+      if (!scope) throw new StationRequestAuthorityError();
+      return getKnowledgeSourceCapabilities(scope.apiBase, {
+        requestScope: scope,
+      });
+    },
+    {
+      enabled: Boolean(scope),
+      staleTime: 0,
+      refetchOnMount: 'always',
+      keepPreviousData: false,
+    },
+  );
 }

@@ -2031,6 +2031,28 @@ describe('project guest administration over the production composition', () => {
       category: 'test',
       provenance: { agent: 'fixture' },
     });
+    const capabilities = await h.request(
+      '/api/knowledge/capabilities',
+      guest(),
+    );
+    expect(capabilities.status).toBe(200);
+    expect((await readJson<{ data: unknown }>(capabilities)).data).toEqual({
+      canManageSources: false,
+      canAttachLegacy: false,
+      canCheckHostPaths: false,
+    });
+    const operatorCapabilities = await h.request(
+      '/api/knowledge/capabilities',
+      h.operatorHeaders(),
+    );
+    expect(operatorCapabilities.status).toBe(200);
+    expect(
+      (await readJson<{ data: unknown }>(operatorCapabilities)).data,
+    ).toEqual({
+      canManageSources: true,
+      canAttachLegacy: true,
+      canCheckHostPaths: true,
+    });
     const list = await h.request('/api/knowledge/roots', guest());
     expect(list.status, await list.clone().text()).toBe(200);
     const body = await readJson<{ data: { id: string }[] }>(list);

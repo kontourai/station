@@ -111,6 +111,20 @@ function defaultDisplayName(scope: KnowledgeRootScope): string {
 export function createKnowledgeStoreRoutes(deps: KnowledgeStoreRouteDeps) {
   const app = new Hono();
 
+  app.get('/capabilities', async (c) => {
+    const canManageSources = Boolean(await deps.mayRegisterRoot?.(c.req.raw));
+    return c.json({
+      success: true,
+      data: {
+        canManageSources,
+        canAttachLegacy:
+          canManageSources &&
+          typeof deps.store.attachRootToProject === 'function',
+        canCheckHostPaths: Boolean(deps.mayValidateRoot?.(c.req.raw)),
+      },
+    });
+  });
+
   // GET /roots — every registered root (personal + project), all scopes.
   app.get('/roots', async (c) => {
     try {

@@ -1,3 +1,4 @@
+import type { KnowledgeSourceCapabilities } from '@kontourai/station-contracts/knowledge-store';
 /**
  * K3 knowledge-index management fetchers: the client for the two explicit,
  * user/CLI-triggered index-management verbs
@@ -556,4 +557,14 @@ export async function attachKnowledgeRootProject(
     input,
   );
   return unwrapKnowledgeResponse<KnowledgeStoreRoot>(response);
+}
+
+/** Read current caller management capabilities without granting them. */
+export async function getKnowledgeSourceCapabilities(
+  apiBase: string,
+  opts?: ClientRequestOptions,
+): Promise<KnowledgeSourceCapabilities> {
+  return unwrapKnowledgeResponse<KnowledgeSourceCapabilities>(
+    await getJson(`${apiBase}/api/knowledge/capabilities`, opts),
+  );
 }

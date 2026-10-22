@@ -165,6 +165,14 @@ remote, commit and acquisition time. Clients cannot set or update this record.
 It describes acquisition at creation, rather than granting execution authority
 or asserting that future filesystem contents are unchanged.
 
+## Knowledge source capabilities
+
+`GET /api/knowledge/capabilities` reports `canManageSources`, `canAttachLegacy`
+and `canCheckHostPaths` for the current request. It is a UI observation, not a
+grant; mutation routes enforce their own policy. Account-bound readers may query
+it and receive false for these operator capabilities. Missing or failed reads
+keep management controls unavailable until a successful refresh.
+
 ## Project knowledge source identity
 
 New Project root registrations require `expectedProjectId`, compared with the

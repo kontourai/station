@@ -10,6 +10,7 @@ import {
   useKnowledgeGraphQuery,
   useKnowledgeRecordQuery,
   useKnowledgeRootsQuery,
+  useKnowledgeSourceCapabilitiesQuery,
 } from '../query-domains/knowledgeStores';
 
 const scopeA = { apiBase: 'http://station.test', authorityKey: 'account-a' };
@@ -209,3 +210,54 @@ test.each(['graph', 'record'] as const)(
     expect(fetch).toHaveBeenCalledTimes(2);
   },
 );
+
+test('management capabilities stay inert without scope and do not cross same-host accounts', async () => {
+  let active = scopeA;
+  setClientCredentialResolver(() => ({
+    origin: active.apiBase,
+    requestAuthority: { ...active, isCurrent: () => true },
+  }));
+  const first = {
+    canManageSources: true,
+    canAttachLegacy: true,
+    canCheckHostPaths: true,
+  };
+  const second = {
+    canManageSources: false,
+    canAttachLegacy: false,
+    canCheckHostPaths: false,
+  };
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify({ success: true, data: first })),
+    )
+    .mockResolvedValueOnce(
+      new Response(JSON.stringify({ success: true, data: second })),
+    );
+  vi.stubGlobal('fetch', fetch);
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  client.setQueryData(['knowledge', 'source-capabilities'], first);
+  const initialProps: { scope: typeof scopeA | undefined } = {
+    scope: undefined,
+  };
+  const observer = renderHook(
+    ({ scope }: { scope: typeof scopeA | undefined }) =>
+      useKnowledgeSourceCapabilitiesQuery(scope),
+    { wrapper: wrapper(client), initialProps },
+  );
+  expect(observer.result.current.data).toBeUndefined();
+  await act(async () => {
+    const result = await observer.result.current.refetch();
+    expect(result.error).toBeTruthy();
+  });
+  expect(fetch).not.toHaveBeenCalled();
+  observer.rerender({ scope: scopeA });
+  await waitFor(() => expect(observer.result.current.data).toEqual(first));
+  active = scopeB;
+  observer.rerender({ scope: scopeB });
+  expect(observer.result.current.data).toBeUndefined();
+  await waitFor(() => expect(observer.result.current.data).toEqual(second));
+});

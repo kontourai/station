@@ -33,6 +33,12 @@ export interface KnowledgeStoreRoot {
   createdAt: string; // ISO-8601
 }
 
+export interface KnowledgeSourceCapabilities {
+  canManageSources: boolean;
+  canAttachLegacy: boolean;
+  canCheckHostPaths: boolean;
+}
+
 /** A name match never establishes ownership after Project rename or replacement. */
 export function isProjectKnowledgeRoot(
   root: KnowledgeStoreRoot,

@@ -6,6 +6,7 @@ import { ProjectKnowledgeStores } from '../ProjectKnowledgeStores';
 
 const state = vi.hoisted(() => ({
   roots: [] as KnowledgeStoreRoot[],
+  manage: true,
   error: false,
   graphError: false,
   create: vi.fn(),
@@ -19,6 +20,14 @@ vi.mock('../../../contexts/ApiBaseContext', () => ({
 }));
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
+  useKnowledgeSourceCapabilitiesQuery: () => ({
+    data: {
+      canManageSources: state.manage,
+      canAttachLegacy: state.manage,
+      canCheckHostPaths: state.manage,
+    },
+    refetch: vi.fn(),
+  }),
   useKnowledgeRootsQuery: () => ({
     data: state.roots,
     isLoading: false,
@@ -46,6 +55,7 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
 }));
 beforeEach(() => {
   state.roots = [];
+  state.manage = true;
   state.error = false;
   state.graphError = false;
   state.create.mockClear();
@@ -173,4 +183,11 @@ test('Project identity survives a rename and excludes former or unbound registra
   expect(screen.getByText('Current source')).toBeTruthy();
   expect(screen.queryByText('Former private source')).toBeNull();
   expect(screen.queryByText('Unbound source')).toBeNull();
+});
+
+test('a read-only Project connection does not offer store creation', () => {
+  state.manage = false;
+  render(<ProjectKnowledgeStores slug="demo" projectId="project-demo" />);
+  expect(screen.queryByRole('button', { name: 'Create store' })).toBeNull();
+  expect(state.create).not.toHaveBeenCalled();
 });

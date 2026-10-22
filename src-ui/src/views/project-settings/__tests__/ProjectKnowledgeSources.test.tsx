@@ -6,6 +6,8 @@ import { ProjectKnowledgeSources } from '../ProjectKnowledgeSources';
 
 const state = vi.hoisted(() => ({
   roots: [] as KnowledgeStoreRoot[],
+  manage: true,
+  capabilitiesError: false,
   create: vi.fn(),
   attach: vi.fn(),
   validate: vi.fn(),
@@ -25,6 +27,16 @@ vi.mock('@kontourai/station-sdk', () => ({
     mutateAsync: state.attach,
     reset: vi.fn(),
   }),
+  useKnowledgeSourceCapabilitiesQuery: () => ({
+    isError: state.capabilitiesError,
+    error: new Error('Permissions unavailable'),
+    data: {
+      canManageSources: state.manage,
+      canAttachLegacy: state.manage,
+      canCheckHostPaths: state.manage,
+    },
+    refetch: vi.fn(),
+  }),
   useKnowledgeRootsQuery: () => ({ data: state.roots, refetch: vi.fn() }),
   useKnowledgeAdaptersQuery: () => ({
     data: [{ id: 'kit-default-store', displayName: 'Default store' }],
@@ -41,6 +53,8 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 beforeEach(() => {
   vi.clearAllMocks();
+  state.manage = true;
+  state.capabilitiesError = false;
   state.roots = [root];
   state.validate.mockResolvedValue({ ok: true });
   state.create.mockResolvedValue(root);
@@ -164,4 +178,49 @@ test('legacy attachment confirms member visibility and pins the exact registrati
       projectId: 'project-acme',
     }),
   );
+});
+
+test('a read-only connection can inspect its source without management actions', () => {
+  state.manage = false;
+  render(
+    <ProjectKnowledgeSources
+      slug="acme"
+      projectId="project-acme"
+      authority={authority}
+    />,
+  );
+  expect(screen.getByText('Notes')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Disconnect' })).toBeNull();
+  expect(
+    screen.queryByRole('button', { name: 'Create managed store' }),
+  ).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Check source' })).toBeNull();
+  expect(screen.queryByLabelText('Path on the Station host')).toBeNull();
+  expect(
+    screen.getByText(/Source setup is available to the Station operator/),
+  ).toBeTruthy();
+});
+
+test('failed fresh permissions withhold cached management controls', () => {
+  const view = render(
+    <ProjectKnowledgeSources
+      slug="acme"
+      projectId="project-acme"
+      authority={authority}
+    />,
+  );
+  expect(screen.getByRole('button', { name: 'Disconnect' })).toBeTruthy();
+  state.capabilitiesError = true;
+  view.rerender(
+    <ProjectKnowledgeSources
+      slug="acme"
+      projectId="project-acme"
+      authority={authority}
+    />,
+  );
+  expect(screen.queryByRole('button', { name: 'Disconnect' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Check source' })).toBeNull();
+  expect(
+    screen.getByRole('button', { name: 'Retry source permissions' }),
+  ).toBeTruthy();
 });

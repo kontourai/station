@@ -10,6 +10,7 @@ import {
   useKnowledgeRecallGraph,
   useKnowledgeRecordQuery,
   useKnowledgeRootsQuery,
+  useKnowledgeSourceCapabilitiesQuery,
 } from '@kontourai/station-sdk';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { useState } from 'react';
@@ -118,6 +119,7 @@ function ScopedProjectKnowledgeStores({
     requireRequestScope: true,
   });
   const create = useCreateKnowledgeRootMutation(authority);
+  const capabilities = useKnowledgeSourceCapabilitiesQuery(authority);
   const stores =
     roots.data?.filter((root) => isProjectKnowledgeRoot(root, projectId)) ?? [];
   if (!projectId)
@@ -141,7 +143,11 @@ function ScopedProjectKnowledgeStores({
           </>
         }
         control={
-          !stores.length && !roots.isLoading && !roots.isError ? (
+          !stores.length &&
+          !roots.isLoading &&
+          !roots.isError &&
+          !capabilities.isError &&
+          capabilities.data?.canManageSources ? (
             <Button
               size="sm"
               onClick={() =>

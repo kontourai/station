@@ -357,6 +357,7 @@ export {
   useKnowledgeRecordQuery,
   useKnowledgeRecordsByTypeQuery,
   useKnowledgeRootsQuery,
+  useKnowledgeSourceCapabilitiesQuery,
   useLearningSourceObservationQuery,
   useLinkKnowledgeRecordMutation,
   useMigratePreIndexKnowledgeMutation,

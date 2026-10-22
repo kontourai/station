@@ -387,7 +387,8 @@ confirms member visibility and atomically binds the exact observed registration.
 Attachment keeps its files in place; it is not a copy or migration.
 
 Source registration, host-path checking and HTTP mutations require the Station
-operator. Account-bound people can list and read stores for Projects they may
+operator. Sources reads the current connection's capabilities before offering
+management actions; failed permission reads withhold cached controls. Account-bound people can list and read stores for Projects they may
 view, including graph and canonical-record reads. Personal file stores remain
 operator-only. HTTP member writes stay denied until the registry can bind
 current authority to publication. Project recall captures the active account's
