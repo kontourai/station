@@ -448,3 +448,39 @@ receipt. The resulting source still needs exact-head qualification.
 No unrelated lane is a landing prerequisite. Documentation and independent
 review, live external-client onboarding, native lifecycle, and real two-account
 selection/application remain separate acceptance work. Sign-in remains deferred.
+
+### First native identity learned during a seed turn
+
+The scripted adapters originally assigned native identities at Session start.
+Claude can instead learn its first identity from the SDK init after preparation.
+An added fork probe reproduced a completed seed followed by an incorrectly
+refused ordinary turn (1 failed, 14 passed). A separate real-SDK-message mapper
+probe showed the missing terminal identity observation (1 failed, 92 passed).
+Their logs are /private/tmp/station-continuity-late-identity-before-oct22.log
+and /private/tmp/station-continuity-native-terminal-before-oct22.log.
+
+Claude now derives an opaque terminal identity key from the query's fixed
+configuration binding and the SDK result's Session ID. It never substitutes the
+mutable Session cursor. The EventStore accepts this correlated observation for
+an identity absent at preparation; if both identities exist, they must agree.
+Ordinary continuation still requires its current native binding to match the
+completion witness. Missing or conflicting evidence remains unverified.
+
+The EventStore, mapper, handoff and fork selection passed 357 tests. The final
+adapter/fork selection passed 413 tests, including both early/late identity
+rebind cases and refusal of a conflicting terminal identity. Server-test
+typechecking passes. The model-reset test now checks its actual reportedModel
+contract rather than forbidding unrelated completion metadata. Receipts are
+/private/tmp/station-continuity-late-identity-after-oct22.log,
+/private/tmp/station-continuity-late-identity-adapter-final-oct22.log and
+/private/tmp/station-continuity-late-identity-types-final-oct22.log.
+
+Two documentation batches recorded 35 scoped reviews, including unchanged
+historical inspector captures with their original limits. They are not a
+completed documentation audit; source changed again for this repair and fresh
+review remains necessary. The learning atlas rebuild and MCP source check
+passed before this repair. The MCP reader was subsequently regenerated for the
+new explanation: 117 topics, digest
+`bf8a207eb109cd86ae566afb4ac52d0ff2bcbbc47947e06fb90d8ed8f63cb515`.
+No live provider, native-shell, client-onboarding or two-account
+acceptance was performed. No PR or push has occurred.

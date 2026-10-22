@@ -129,6 +129,7 @@ import {
   type RevisionAttributionAuthority,
   RevisionEvidenceModule,
 } from '../../domain/revision-bound-evidence.js';
+import { NATIVE_TURN_IDENTITY_METADATA_KEY } from '../../providers/adapters/native-resume-binding.js';
 import { PROVIDER_PROVEN_FINISH_REASONS } from '../../providers/finish-reason-authority.js';
 import { appendToolOutputNote } from '../../providers/tool-output-projection.js';
 import type { NativeOutputTerminalAdmission } from '../../runtime/native-output-declaration.js';
@@ -4114,13 +4115,31 @@ export class EventStore {
       !prepared.capture.adapterInput.ambientContext?.includes(context.seed.text)
     )
       return;
-    const nativeIdentityKey =
+    const capturedNativeIdentity =
       prepared.capture.resumeGuard.binding.nativeIdentityKey;
-    const native =
-      typeof nativeIdentityKey === 'string' &&
-      /^[a-f0-9]{64}$/.test(nativeIdentityKey)
-        ? nativeIdentityKey
-        : undefined;
+    const reportedNativeIdentity =
+      event.metadata?.[NATIVE_TURN_IDENTITY_METADATA_KEY];
+    if (
+      capturedNativeIdentity !== undefined &&
+      (typeof capturedNativeIdentity !== 'string' ||
+        !/^[a-f0-9]{64}$/.test(capturedNativeIdentity))
+    )
+      return;
+    if (
+      reportedNativeIdentity !== undefined &&
+      (typeof reportedNativeIdentity !== 'string' ||
+        !/^[a-f0-9]{64}$/.test(reportedNativeIdentity))
+    )
+      return;
+    if (
+      capturedNativeIdentity &&
+      reportedNativeIdentity &&
+      capturedNativeIdentity !== reportedNativeIdentity
+    )
+      return;
+    // A first identity can arrive after preparation. Only its engine terminal
+    // may fill that gap; the mutable carrier binding cannot attest delivery.
+    const native = capturedNativeIdentity ?? reportedNativeIdentity;
     const witness = createConversationSeedWitness({
       kind: context.kind,
       contextId: context.contextId,

@@ -63,6 +63,10 @@ import {
   takeClaudeUsageLimitDetails,
 } from './claude-usage-limit.js';
 import {
+  NATIVE_TURN_IDENTITY_METADATA_KEY,
+  nativeSessionIdentityKey,
+} from './native-resume-binding.js';
+import {
   type ParagraphBoundaryState,
   withParagraphBreak,
 } from './paragraph-boundary.js';
@@ -343,6 +347,8 @@ export interface ClaudeMessageState extends ClaudeUsageLimitState {
   terminalResultObserved?: 'failed' | 'binding-dead';
   /** Captured at query start, never replaced by an init/result session_id. */
   attemptedResumeCursor?: string;
+  /** Captured from this query's configuration home when it starts. */
+  readonly nativeOwnershipBindingKey?: string;
   /**
    * archive#3457: the assistant message currently streaming content blocks,
    * taken from the last `message_start` stream event's `message.id` (the
@@ -1109,6 +1115,14 @@ export function mapClaudeSdkMessage({
         });
       }
       settleClaudeResultTarget(turnContext, target);
+      const nativeIdentityKey =
+        !deferredTurn && record.nativeOwnershipBindingKey && message.session_id
+          ? nativeSessionIdentityKey(
+              provider,
+              record.nativeOwnershipBindingKey,
+              message.session_id,
+            )
+          : undefined;
       publish({
         eventId: crypto.randomUUID(),
         provider,
@@ -1139,11 +1153,14 @@ export function mapClaudeSdkMessage({
         // the assistant's own reply. Absent when no assistant message arrived
         // this turn (e.g. an immediate error). #2324: a provider-triggered
         // turn's terminal carries `trigger`, like its start.
-        ...(reportedModel || resultTurn.kind === 'provider'
+        ...(reportedModel || resultTurn.kind === 'provider' || nativeIdentityKey
           ? {
               metadata: {
                 ...(reportedModel ? reportedModelMetadata(reportedModel) : {}),
                 ...claudeTurnTerminalMetadata(resultTurn),
+                ...(nativeIdentityKey
+                  ? { [NATIVE_TURN_IDENTITY_METADATA_KEY]: nativeIdentityKey }
+                  : {}),
               },
             }
           : {}),

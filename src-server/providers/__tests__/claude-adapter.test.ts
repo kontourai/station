@@ -10528,9 +10528,14 @@ echo '{"loggedIn":true}'
       });
       await iterator.next(); // token-usage.updated
       const firstCompleted = await iterator.next(); // turn.completed
-      expect((firstCompleted.value as any).metadata).toEqual({
-        reportedModel: 'claude-opus-4-5-20260101',
-      });
+      if (
+        firstCompleted.done ||
+        firstCompleted.value.method !== 'turn.completed'
+      )
+        throw new Error('Expected the first turn completion.');
+      expect(firstCompleted.value.metadata?.reportedModel).toBe(
+        'claude-opus-4-5-20260101',
+      );
 
       // Second turn reports nothing (e.g. no assistant message before an
       // early result) — must not surface the first turn's stale value.
@@ -10548,7 +10553,12 @@ echo '{"loggedIn":true}'
       });
       await iterator.next(); // token-usage.updated
       const secondCompleted = await iterator.next(); // turn.completed
-      expect((secondCompleted.value as any).metadata).toBeUndefined();
+      if (
+        secondCompleted.done ||
+        secondCompleted.value.method !== 'turn.completed'
+      )
+        throw new Error('Expected the second turn completion.');
+      expect(secondCompleted.value.metadata?.reportedModel).toBeUndefined();
     });
   });
   // #1551: Station detected the user's installed Claude Code, reported it

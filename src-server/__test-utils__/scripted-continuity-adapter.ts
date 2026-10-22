@@ -8,7 +8,10 @@ import type {
   ProviderAdapterShape,
   ProviderSession,
 } from '../providers/adapter-shape.js';
-import { nativeSessionIdentityKey } from '../providers/adapters/native-resume-binding.js';
+import {
+  NATIVE_TURN_IDENTITY_METADATA_KEY,
+  nativeSessionIdentityKey,
+} from '../providers/adapters/native-resume-binding.js';
 import type { IProviderAdapterRegistry } from '../providers/provider-interfaces.js';
 import { AsyncEventQueue } from '../providers/sessions/async-event-queue.js';
 import type { ExecutionSessionBinding } from '../services/execution-target/execution-target-execution.js';
@@ -23,6 +26,7 @@ export class TerminalHandoffAdapter implements ProviderAdapterShape {
   readonly stopped = new Set<string>();
   failNextNativeReturn = false;
   failNextTranscriptSeed = false;
+  announceNativeIdentityDuringTurn = false;
   private readonly nativeIds = new Map<string, string>();
   private readonly sessions = new Map<string, ProviderSession>();
 
@@ -69,7 +73,7 @@ export class TerminalHandoffAdapter implements ProviderAdapterShape {
         ? cursor.nativeSessionId
         : `${this.provider}:native:${input.threadId}`;
     this.nativeIds.set(input.threadId, nativeId);
-    if (this.nativeReturn)
+    if (this.nativeReturn && !this.announceNativeIdentityDuringTurn)
       this.ownership?.claim(
         nativeSessionIdentityKey(this.provider, 'a'.repeat(64), nativeId),
         input.threadId,
@@ -123,7 +127,9 @@ export class TerminalHandoffAdapter implements ProviderAdapterShape {
       updatedAt: now,
       ...(this.nativeReturn
         ? {
-            resumeCursor: { nativeSessionId: nativeId },
+            ...(!this.announceNativeIdentityDuringTurn
+              ? { resumeCursor: { nativeSessionId: nativeId } }
+              : {}),
             persistSession: input.persistSession ?? true,
           }
         : {}),
@@ -137,6 +143,21 @@ export class TerminalHandoffAdapter implements ProviderAdapterShape {
 
   async sendTurn(input: ProviderSendTurnInput) {
     this.turns.push(input);
+    const session = this.sessions.get(input.threadId);
+    const nativeId = this.nativeIds.get(input.threadId);
+    if (
+      this.nativeReturn &&
+      this.announceNativeIdentityDuringTurn &&
+      session &&
+      session.resumeCursor === undefined &&
+      nativeId
+    ) {
+      this.ownership?.claim(
+        nativeSessionIdentityKey(this.provider, 'a'.repeat(64), nativeId),
+        input.threadId,
+      );
+      session.resumeCursor = { nativeSessionId: nativeId };
+    }
     const ordinal = this.turns.length + this.turnOrdinalOffset;
     const turnId = `${this.provider}-handoff-turn-${ordinal}`;
     const base = {
@@ -184,6 +205,17 @@ export class TerminalHandoffAdapter implements ProviderAdapterShape {
       ...base,
       eventId: `${turnId}:completed`,
       method: 'turn.completed',
+      ...(this.announceNativeIdentityDuringTurn && nativeId
+        ? {
+            metadata: {
+              [NATIVE_TURN_IDENTITY_METADATA_KEY]: nativeSessionIdentityKey(
+                this.provider,
+                'a'.repeat(64),
+                nativeId,
+              ),
+            },
+          }
+        : {}),
       outputText: token
         ? `${this.provider} retained ${token}`
         : `${this.provider} CONTEXT_MISSING`,

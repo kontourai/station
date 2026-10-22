@@ -42,9 +42,12 @@ seed-bearing turn completes with a matched native identity and no omitted or
 shortened text messages. Non-text rows remain counted and excluded by the text
 projection. Failed, pending or uncertain delivery and truncated seeds never
 acknowledge the complete text range. These are Station observations, not proof
-that a provider retains its transcript indefinitely. A witness uses the native
-identity captured in the prepared invocation, rather than a later mutable
-carrier binding. A rebind before completion cannot credit the replacement
+that a provider retains its transcript indefinitely. A known native identity is
+captured in the prepared invocation. If the first identity arrives during the
+turn, the exact correlated engine completion can supply its opaque identity key;
+absent or conflicting observations leave delivery unverified. A witness never
+derives that identity from a later mutable carrier binding. A rebind before
+completion cannot credit the replacement
 identity with context sent to its predecessor. Context-start consumption
 remains a separate boundary; ordinary context replacement and fork delivery are
 not qualified by this native-return receipt.

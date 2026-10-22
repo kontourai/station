@@ -52,8 +52,11 @@ An ordinary follow-up after a native return also requires observed completion
 of its seed-bearing turn. Failed or uncertain catch-up explicitly refuses the
 follow-up instead of silently continuing without that context.
 New history-seeded continuations and saved forks follow the same completion
-fence. The native identity is captured with the prepared invocation; a carrier
-rebind cannot borrow another identity's completion. A context-projection failure
+fence. Known native identities are captured with the prepared invocation. A
+first identity learned during the turn must come from its correlated engine
+completion, never a later mutable carrier binding; a conflicting report cannot
+qualify the seed. A carrier rebind cannot borrow another identity's completion.
+A context-projection failure
 retains the canonical terminal and leaves delivery unverified. Opening an owned
 saved fork reports `fork-ready` before any provider Session exists.
 Provider handoffs retain the Conversation; explicit forks create a new one.
