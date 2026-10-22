@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { ProjectKnowledgeSources } from '../ProjectKnowledgeSources';
 
@@ -8,6 +14,7 @@ const state = vi.hoisted(() => ({
   roots: [] as KnowledgeStoreRoot[],
   manage: true,
   capabilitiesError: false,
+  checkingPermissions: false,
   create: vi.fn(),
   attach: vi.fn(),
   validate: vi.fn(),
@@ -29,6 +36,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   }),
   useKnowledgeSourceCapabilitiesQuery: () => ({
     isError: state.capabilitiesError,
+    isFetching: state.checkingPermissions,
     error: new Error('Permissions unavailable'),
     data: {
       canManageSources: state.manage,
@@ -55,6 +63,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   state.manage = true;
   state.capabilitiesError = false;
+  state.checkingPermissions = false;
   state.roots = [root];
   state.validate.mockResolvedValue({ ok: true });
   state.create.mockResolvedValue(root);
@@ -223,4 +232,92 @@ test('failed fresh permissions withhold cached management controls', () => {
   expect(
     screen.getByRole('button', { name: 'Retry source permissions' }),
   ).toBeTruthy();
+});
+
+test.each([
+  {
+    legacy: false,
+    action: 'Disconnect',
+    title: 'Disconnect knowledge source?',
+    confirm: 'Disconnect',
+  },
+  {
+    legacy: true,
+    action: 'Attach to this Project',
+    title: 'Attach legacy store?',
+    confirm: 'Attach store',
+  },
+])(
+  'an open $confirm confirmation cannot submit after a fresh permission failure',
+  ({ legacy, action, title, confirm }) => {
+    state.roots = [{ ...root, ...(legacy ? { projectId: undefined } : {}) }];
+    const view = render(
+      <ProjectKnowledgeSources
+        slug="acme"
+        projectId="project-acme"
+        authority={authority}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: action }));
+    const dialog = screen.getByRole('dialog', { name: title });
+    state.capabilitiesError = true;
+    view.rerender(
+      <ProjectKnowledgeSources
+        slug="acme"
+        projectId="project-acme"
+        authority={authority}
+      />,
+    );
+    const submit = within(dialog).getByRole('button', { name: confirm });
+    expect(submit.hasAttribute('disabled')).toBe(true);
+    expect(
+      within(dialog).getByText(/no longer available to this connection/),
+    ).toBeTruthy();
+    fireEvent.click(submit);
+    expect(state.attach).not.toHaveBeenCalled();
+    expect(state.disconnect).not.toHaveBeenCalled();
+  },
+);
+
+test('an open confirmation waits for a fresh permission check before becoming actionable', () => {
+  const view = render(
+    <ProjectKnowledgeSources
+      slug="acme"
+      projectId="project-acme"
+      authority={authority}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+  state.checkingPermissions = true;
+  view.rerender(
+    <ProjectKnowledgeSources
+      slug="acme"
+      projectId="project-acme"
+      authority={authority}
+    />,
+  );
+  const dialog = screen.getByRole('dialog', {
+    name: 'Disconnect knowledge source?',
+  });
+  expect(
+    within(dialog)
+      .getByRole('button', { name: 'Disconnect' })
+      .hasAttribute('disabled'),
+  ).toBe(true);
+  expect(
+    within(dialog).getByText('Checking source management permission…'),
+  ).toBeTruthy();
+  state.checkingPermissions = false;
+  view.rerender(
+    <ProjectKnowledgeSources
+      slug="acme"
+      projectId="project-acme"
+      authority={authority}
+    />,
+  );
+  expect(
+    within(dialog)
+      .getByRole('button', { name: 'Disconnect' })
+      .hasAttribute('disabled'),
+  ).toBe(false);
 });

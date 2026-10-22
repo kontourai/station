@@ -147,6 +147,8 @@ function ScopedProjectKnowledgeStores({
           !roots.isLoading &&
           !roots.isError &&
           !capabilities.isError &&
+          !capabilities.isPending &&
+          !capabilities.isFetching &&
           capabilities.data?.canManageSources ? (
             <Button
               size="sm"

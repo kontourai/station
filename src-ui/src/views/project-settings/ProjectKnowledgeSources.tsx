@@ -36,8 +36,11 @@ export function ProjectKnowledgeSources({
     requireRequestScope: true,
   });
   const capabilities = useKnowledgeSourceCapabilitiesQuery(authority);
+  const checkingPermissions = capabilities.isPending || capabilities.isFetching;
   const canManage =
-    !capabilities.isError && capabilities.data?.canManageSources === true;
+    !checkingPermissions &&
+    !capabilities.isError &&
+    capabilities.data?.canManageSources === true;
   const create = useCreateKnowledgeRootMutation(authority);
   const attach = useAttachKnowledgeRootProjectMutation(authority);
   const validate = useValidateKnowledgeRootMutation(authority);
@@ -277,7 +280,7 @@ export function ProjectKnowledgeSources({
               )}
             </div>
           )}
-          {!canManage && !capabilities.isPending && !capabilities.isError && (
+          {!canManage && !checkingPermissions && !capabilities.isError && (
             <p>
               This connection can read Project stores. Source setup is available
               to the Station operator.
@@ -300,13 +303,21 @@ export function ProjectKnowledgeSources({
         title="Attach legacy store?"
         message={`Attach ${legacy?.displayName ?? 'this store'} to this Project's current identity. Project members with view access will be able to read its records. Its files stay in place.`}
         confirmLabel="Attach store"
+        confirmDisabled={!canManage || !capabilities.data?.canAttachLegacy}
         pending={attach.isPending}
         error={
-          attach.isError ? userFacingErrorMessage(attach.error) : undefined
+          checkingPermissions
+            ? 'Checking source management permission…'
+            : !canManage || !capabilities.data?.canAttachLegacy
+              ? 'Source attachment is no longer available to this connection.'
+              : attach.isError
+                ? userFacingErrorMessage(attach.error)
+                : undefined
         }
         onCancel={() => setLegacy(undefined)}
         onConfirm={() => {
-          if (!legacy) return;
+          if (!legacy || !canManage || !capabilities.data?.canAttachLegacy)
+            return;
           void attach
             .mutateAsync({ expectedRoot: legacy, projectSlug: slug, projectId })
             .then(() => setLegacy(undefined))
@@ -318,15 +329,20 @@ export function ProjectKnowledgeSources({
         title="Disconnect knowledge source?"
         message={`Disconnect ${selected?.displayName ?? 'this source'} from Station's registry. Its files remain on the host.`}
         confirmLabel="Disconnect"
+        confirmDisabled={!canManage}
         pending={disconnect.isPending}
         error={
-          disconnect.isError
-            ? userFacingErrorMessage(disconnect.error)
-            : undefined
+          checkingPermissions
+            ? 'Checking source management permission…'
+            : !canManage
+              ? 'Source management is no longer available to this connection.'
+              : disconnect.isError
+                ? userFacingErrorMessage(disconnect.error)
+                : undefined
         }
         onCancel={() => setSelected(undefined)}
         onConfirm={() => {
-          if (!selected) return;
+          if (!selected || !canManage) return;
           void disconnect
             .mutateAsync({ rootId: selected.id, expectedRoot: selected })
             .then(() => setSelected(undefined))
