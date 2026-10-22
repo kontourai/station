@@ -13,6 +13,9 @@ The Station role includes it by default. This small MCP contains
 `list_knowledge_roots`, `list_knowledge_records`, `get_knowledge_record`,
 `add_knowledge_record`, and `search_knowledge`. Search needs an embedding
 connection; listing and reading records do not.
+The default-off [S3 feature](#experimental-read-only-s3-prefixes) adds
+`list_project_s3_sources`, `list_project_s3_objects` and `read_project_s3_object`
+when enabled.
 
 Station Control retains index rebuild and migration controls, plus its existing
 search tool for compatibility. Capture creates a new raw record and never
@@ -466,8 +469,9 @@ not accept custom endpoints or follow region redirects.
 Readers need current Project view access. Attachment, host-profile discovery
 and disconnect require the operator. Agent requests retain their session owner;
 caller revocation and membership changes are rechecked before HTTP dispatch,
-during body reads and before response delivery. Citations include bucket/key,
-observed ETag, optional returned version ID and content SHA-256. An ETag is a
+during body reads and before response delivery. Read results include observed
+ETag, optional returned version ID and content SHA-256. The citation string
+names the bucket/key and pins either the returned version or the ETag. An ETag is a
 conditional object identity, not a claim that it is a SHA-256 digest.
 
 No S3 write/delete, whole-bucket scan, local mount, execution root, import or
@@ -510,7 +514,8 @@ or automatic Project tool delivery can use it.
 
 Project Settings → Tools adds configured MCP servers to Agents working in that
 Project. The default **Use Knowledge** setting adds `station-knowledge` when a
-registered Project store exists; disabling it removes the Project's addition.
+registered Project store or enabled attached S3 source exists; disabling it
+removes the Project's addition.
 An Agent can still carry Knowledge independently in its own configuration.
 All delivery, including automatic Knowledge additions, is subject to the
 Project's [Tool permissions](agent-configuration.md#shared-projects) and operator sharing.

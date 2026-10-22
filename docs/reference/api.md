@@ -31,7 +31,8 @@ restrictions and ordinary Project edit authority. See [configuration](./config.m
 ## Station MCP endpoints
 
 `/mcp/station-control` serves platform controls. `/mcp/station-knowledge`
-serves five read/capture tools described in the [Knowledge guide](../guides/knowledge.md#agent-tools).
+serves five default read/capture tools, plus three S3 read tools when the
+experimental S3 flag is enabled; see the [Knowledge guide](../guides/knowledge.md#agent-tools).
 Both accept only loopback connections with a live, session-scoped credential
 for that exact server. They use MCP authentication rather than a paired Device
 credential. Tokens for one server cannot open the other, and in-process tokens
