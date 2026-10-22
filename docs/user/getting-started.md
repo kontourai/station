@@ -108,8 +108,8 @@ app. Discovery is off by default and shows names and local addresses without
 granting access. Select the intended computer, confirm the exact address and any
 unencrypted HTTP warning, request access, and approve on the computer. Android
 versions before Android 14 offer QR and manual address entry instead. Browser
-clients do not browse the local network. **Other ways to connect** offers manual
-address entry when discovery is unavailable or finds nothing.
+clients do not browse the local network. **Other ways to connect** expands to **Open connection manager**, where you can
+enter an address when discovery is unavailable or finds nothing.
 
 If an exchange loses its response or cannot save approved access, Station holds
 the attempt instead of sending the one-time proof again. Check paired devices on

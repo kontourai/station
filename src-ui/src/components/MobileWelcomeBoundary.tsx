@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { openConnectionsModal } from '../lib/connectionModalEvents';
 import { hasRealSavedConnection } from '../lib/saved-connections';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
+import { ActionRow } from './ActionRow';
 import { Button } from './Button';
 import './MobileWelcomeBoundary.css';
 
@@ -30,20 +31,39 @@ export function MobileWelcomeBoundary({ children }: { children: ReactNode }) {
         >
           Scan pairing QR code
         </Button>
-        <div className="mobile-welcome__alternatives">
-          <Button onClick={() => openConnectionsModal({ mode: 'discover' })}>
-            Find nearby Stations
-          </Button>
-          <Button onClick={() => openConnectionsModal({ mode: 'pair-code' })}>
-            Enter a pairing code
-          </Button>
-          <Button
-            variant="link"
-            onClick={() => openConnectionsModal({ mode: 'list' })}
-          >
-            Other ways to connect
-          </Button>
-        </div>
+        <section
+          className="mobile-welcome__alternatives"
+          aria-label="Other connection options"
+        >
+          <h2>Other connection options</h2>
+          <ActionRow
+            overflowLabel="More connection options"
+            primary={
+              <Button
+                onClick={() => openConnectionsModal({ mode: 'pair-code' })}
+              >
+                Enter a pairing code
+              </Button>
+            }
+            secondary={
+              <Button
+                onClick={() => openConnectionsModal({ mode: 'discover' })}
+              >
+                Find nearby Stations
+              </Button>
+            }
+          />
+          <details>
+            <summary>Other ways to connect</summary>
+            <p>
+              Enter a Station address, manage saved Stations, or set up an
+              advanced connection.
+            </p>
+            <Button onClick={() => openConnectionsModal({ mode: 'list' })}>
+              Open connection manager
+            </Button>
+          </details>
+        </section>
         <section className="mobile-welcome__steps" aria-label="How to connect">
           <h2>Start on your computer</h2>
           <ol>

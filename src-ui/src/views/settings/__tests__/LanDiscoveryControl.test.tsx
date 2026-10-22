@@ -26,6 +26,7 @@ import { LanDiscoveryControl } from '../LanDiscoveryControl';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  state.query.isPending = false;
 });
 it('shows saved opt-in separately from loopback-only runtime status and sends only the intended setting', () => {
   render(<LanDiscoveryControl />);
@@ -41,4 +42,16 @@ it('shows saved opt-in separately from loopback-only runtime status and sends on
   expect(state.update.mutate).toHaveBeenCalledWith({
     lanDiscoveryEnabled: false,
   });
+});
+
+it('keeps discovery disabled while reading the host status', () => {
+  state.query.isPending = true;
+  render(<LanDiscoveryControl />);
+  expect(
+    screen.getByRole('status', { name: 'Reading discovery status' }),
+  ).toBeTruthy();
+  expect(
+    screen.getByRole('switch', { name: 'Discover this Station nearby' }),
+  ).toHaveProperty('disabled', true);
+  expect(state.update.mutate).not.toHaveBeenCalled();
 });

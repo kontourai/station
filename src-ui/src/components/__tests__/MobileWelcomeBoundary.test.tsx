@@ -89,7 +89,7 @@ describe('fresh phone connection entry', () => {
   it.each([
     ['Enter a pairing code', 'pair-code'],
     ['Find nearby Stations', 'discover'],
-    ['Other ways to connect', 'list'],
+    ['Open connection manager', 'list'],
   ])('opens the existing %s fallback directly', (label, mode) => {
     const onOpen = vi.fn();
     window.addEventListener(OPEN_CONNECTIONS_MODAL_EVENT, onOpen);
@@ -99,6 +99,8 @@ describe('fresh phone connection entry', () => {
           <div>Workspace</div>
         </MobileWelcomeBoundary>,
       );
+      if (mode === 'list')
+        fireEvent.click(screen.getByText('Other ways to connect'));
       fireEvent.click(screen.getByRole('button', { name: label }));
       expect((onOpen.mock.calls[0][0] as CustomEvent).detail).toEqual({ mode });
     } finally {

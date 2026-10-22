@@ -4,6 +4,7 @@ import {
   useUpdateConfigMutation,
 } from '@kontourai/station-sdk';
 import { Button } from '../../components/Button';
+import { SkeletonBlock } from '../../components/state';
 import { SettingsToggle } from './feature-toggle';
 import { settingsRow } from './settings-catalog';
 
@@ -36,20 +37,24 @@ export function LanDiscoveryControl() {
           </div>
         </div>
       </SettingsToggle>
-      <p className="settings__section-note" role="status">
-        {query.isError
-          ? 'Discovery status could not be refreshed.'
-          : (status?.message ?? 'Loading discovery status…')}
-        {status?.state === 'published' && (
-          <>
-            {' '}
-            {status.serviceName} ·{' '}
-            {status.addresses
-              ?.map((address) => `${address}:${status.port}`)
-              .join(', ')}
-          </>
-        )}
-      </p>
+      {query.isPending ? (
+        <SkeletonBlock count={1} label="Reading discovery status" />
+      ) : (
+        <p className="settings__section-note" role="status">
+          {query.isError
+            ? 'Discovery status could not be refreshed.'
+            : (status?.message ?? 'Discovery status is unavailable.')}
+          {status?.state === 'published' && (
+            <>
+              {' '}
+              {status.serviceName} ·{' '}
+              {status.addresses
+                ?.map((address) => `${address}:${status.port}`)
+                .join(', ')}
+            </>
+          )}
+        </p>
+      )}
       {update.isError && (
         <p role="alert">
           {update.error instanceof Error
