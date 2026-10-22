@@ -17,7 +17,7 @@ import {
 } from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import { beforeAll, describe, expect, test, vi } from 'vitest';
 
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({
@@ -181,6 +181,11 @@ function buildSession(overrides: Partial<ChatSession>): ChatSession {
     ...overrides,
   };
 }
+
+// These cases assert transcript actions, not cold module loading.
+beforeAll(async () => {
+  await import('../components/chat/ChatMessageList');
+});
 
 const RAW_MESSAGE =
   'No conversation found with session ID: d434e194-cc2e-4edc-8733-d8645c512fab';

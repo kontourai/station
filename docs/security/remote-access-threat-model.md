@@ -784,9 +784,9 @@ Starting, reading or cancelling one, and storing or removing an engine key, are
 `engine:login` leaves with the same operator exception; a request that may be
 an agent's is refused. A terminal sign-in runs the connection's own program
 with arguments taken only from the engine's live handshake, never from the
-request, so a paired device also needs `coding:exec` (and `terminal:operate`
-to attach); its session is closed at a 15-minute deadline and its terminal
-reopens only while it runs (`attachOnly`), never as a fresh shell. Any other
+request, so a paired device also needs both `coding:exec` and
+`terminal:operate` to start it; attaching also needs `terminal:operate`. Its
+session is closed at a 15-minute deadline and its terminal reopens only while it runs (`attachOnly`), never as a fresh shell. Any other
 method goes to ACP `authenticate` on a short-lived process with a five-minute
 deadline; only https links from its stderr are relayed, and the server opens
 none. The attempt read is `engine:login` because it carries those links. A

@@ -238,27 +238,60 @@ describe.runIf(posix)('engine sign-in through a live handshake', () => {
   ] as const)(
     '%s prevents a pending handshake from starting a login or restoring methods',
     async (_how, end) => {
-      const pi = engineProgram('pi-acp', 'pi-acp.json', [
-        '--initialize-delay-ms',
-        '300',
-      ]);
+      const pi = engineProgram('pi-acp', 'pi-acp.json');
       const terminal = recordingTerminal();
-      const service = new EngineSignInService({ terminal: terminal.host });
+      let releaseStart!: () => void;
+      const gate = new Promise<void>((resolve) => {
+        releaseStart = resolve;
+      });
+      let initialized!: () => void;
+      const ready = new Promise<void>((resolve) => {
+        initialized = resolve;
+      });
+      const processes: ACPProcess[] = [];
+      const service = new EngineSignInService({
+        terminal: terminal.host,
+        processFactory: (options) => {
+          const process = new ACPProcess(options);
+          processes.push(process);
+          const start = process.start.bind(process);
+          vi.spyOn(process, 'start').mockImplementation(async () => {
+            const result = await start();
+            initialized();
+            await gate;
+            return result;
+          });
+          return process;
+        },
+      });
       const config = connection('pi', pi.command);
       const started = service.startTerminal(config, 'pi_terminal_login');
-      // Attach the rejection handler before ending the request.
-      const rejected = expect(started).rejects.toThrow(
-        'cancelled or its connection changed',
+      const settled = started.then(
+        () => ({ ok: true }),
+        (error: unknown) => ({ ok: false, error }),
       );
-      await expect
-        .poll(() => pi.record().some((entry) => entry.method === 'initialize'))
-        .toBe(true);
-      end(service);
-      await rejected;
-      expect(terminal.opened).toEqual([]);
-      expect(service.methodsView(config)).toEqual({});
-      expect(service.attempt('pi')).toBeNull();
-      expect((await engineSignInStatus(config)).state).toBe('unknown');
+      try {
+        await ready;
+        end(service);
+        releaseStart();
+        expect(await settled).toMatchObject({
+          ok: false,
+          error: expect.objectContaining({
+            message: expect.stringContaining(
+              'cancelled or its connection changed',
+            ),
+          }),
+        });
+        expect(terminal.opened).toEqual([]);
+        expect(service.methodsView(config)).toEqual({});
+        expect(service.attempt('pi')).toBeNull();
+        expect((await engineSignInStatus(config)).state).toBe('unknown');
+      } finally {
+        releaseStart();
+        service.dispose();
+        await settled;
+        await Promise.all(processes.map((process) => process.destroy()));
+      }
     },
   );
 

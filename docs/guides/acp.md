@@ -273,9 +273,11 @@ token* and then failed downstream in a confusing way.
 
 Station holds `STATION_INTERNAL_API_TOKEN` and model-connection credentials
 in the same process; an external agent is a less-trusted principal. And
-Station holds no credential belonging to an engine at all: **Station does
-not become an engine's auth host.** Answering that request is not a feature
-to be added carefully — it is the thing that cannot be built.
+Station does not read or bridge an engine's own login tokens or answer its
+credential callbacks. **Station does not become an engine's auth host.**
+A person may separately save an API key for a connection; Station stores it
+in its engine credential store and passes it through that connection's process
+environment (see [Sign an engine in](connections.md#sign-an-engine-in)).
 
 After refusing the credential callback on the wire, the adapter attempts at
 most one bounded re-establishment from its own validated resume cursor. It
@@ -611,7 +613,7 @@ GET    /acp/registry                   List catalogue engines, with host detecti
 POST   /acp/registry/recheck           Re-read the login-shell PATH, then list as GET does (orchestration:operate)
 GET    /acp/connections/:id/sign-in    Sign-in status, offered methods and key names (orchestration:read)
 POST   /acp/connections/:id/sign-in/check   Run the status command and a sign-in handshake again (orchestration:operate)
-POST   /acp/connections/:id/sign-in/start   Start a sign-in by method id (engine:login; a terminal method also coding:exec)
+POST   /acp/connections/:id/sign-in/start   Start a sign-in by method id (engine:login; a terminal method also coding:exec and terminal:operate)
 GET    /acp/connections/:id/sign-in/attempt Read the running or last sign-in, with links the engine printed (engine:login)
 DELETE /acp/connections/:id/sign-in/attempt Cancel it (engine:login)
 PUT    /acp/connections/:id/credentials/:name  Store a key for one of the engine's credentialEnvVars (engine:login)

@@ -839,7 +839,8 @@ under the Station home, readable only by its owner), never in
 `config/acp.json`, never in logs, and never sends it back; the panel shows
 only that it is saved. The value is added to that one connection's engine
 processes, overriding the same variable in Station's own environment.
-Removing the connection removes its keys.
+Removing the connection attempts to remove its keys. Station logs a warning
+if that cleanup fails; the connection removal still completes.
 
 **Who may sign in.** Reading the panel needs read access; **Check again**
 needs permission to operate Station. Starting or cancelling a sign-in and
