@@ -179,8 +179,7 @@ function planRuntimePackages(packageNames, projectRoot, outputRoot) {
  * unpruned node_modules, stayed correct. `LICENSE.md` is also `.md`, and MIT
  * text must accompany redistribution.
  */
-export const NON_RUNTIME_ARTIFACT =
-  /(?:\.d\.[cm]?ts|\.map|\.pdb|\.(?:test|spec)\.[cm]?[jt]sx?)$/i;
+export const NON_RUNTIME_ARTIFACT = /(?:\.d\.[cm]?ts|\.map|\.pdb)$/i;
 // `.pdb` is Windows debug-symbol data read only by a debugger, never by the
 // loader: node-pty ships one beside every Windows binary (~27 MB per arch).
 

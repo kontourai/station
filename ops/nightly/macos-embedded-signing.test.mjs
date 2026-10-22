@@ -3,6 +3,7 @@ import {
   mkdirSync,
   mkdtempSync,
   realpathSync,
+  readFileSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -740,11 +741,14 @@ test.skipIf(process.platform === 'win32')(
     });
     mkdirSync(join(root, 'Contents/MacOS'), { recursive: true });
     writeFileSync(join(root, 'Contents/MacOS/station-node'), 'fixture binary');
+    const capture = join(root, 'codesign-calls.txt');
+    writeFileSync(capture, '');
     const bin = join(root, 'bin');
     mkdirSync(bin);
     writeFileSync(
       join(bin, 'codesign'),
       `#!/bin/sh
+printf '%s\\n' "$*" >> "$STATION_SIGNING_FIXTURE_LOG"
 case "$1" in
   -dvv) echo 'TeamIdentifier=U7KHF2QAC4'; echo 'Timestamp=now'; echo 'CodeDirectory flags=0x10000(runtime)' ;;
   -d) echo '<plist><dict><key>com.apple.security.cs.allow-jit</key><true/></dict></plist>' ;;
@@ -761,21 +765,30 @@ esac
       {
         encoding: 'utf8',
         windowsHide: true,
-        env: { ...process.env, PATH: `${bin}:${process.env.PATH}` },
+        env: {
+          ...process.env,
+          PATH: `${bin}:${process.env.PATH}`,
+          STATION_SIGNING_FIXTURE_LOG: capture,
+        },
       },
     );
     expect(output.trim()).toBe('[]');
+    expect(readFileSync(capture, 'utf8')).toContain(
+      '--force --sign Developer ID --options runtime --timestamp --entitlements',
+    );
+    expect(readFileSync(capture, 'utf8')).toContain('Node.entitlements.plist');
   },
 );
 
 test('seals the named Node runtime with only JIT permission and rejects excess entitlements', async () => {
   const calls = [];
   let extra = false;
+  let team = 'U7KHF2QAC4';
   const command = async (_phase, program, args) => {
     calls.push([program, args]);
     if (args[0] === '-dvv')
       return result(
-        'TeamIdentifier=U7KHF2QAC4\nTimestamp=now\nCodeDirectory flags=0x10000(runtime)',
+        `TeamIdentifier=${team}\nTimestamp=now\nCodeDirectory flags=0x10000(runtime)`,
       );
     if (args.includes('--entitlements') && !args.includes('--force'))
       return result(
@@ -807,6 +820,11 @@ test('seals the named Node runtime with only JIT permission and rejects excess e
   await expect(
     sealBundledMacosNode('/app', 'Developer ID', environment),
   ).rejects.toThrow(/only the allow-jit/);
+  extra = false;
+  team = 'HX7739G8FX';
+  await expect(
+    sealBundledMacosNode('/app', 'Developer ID', environment),
+  ).rejects.toThrow(/Kontour hardened-runtime/);
   await expect(
     sealBundledMacosNode('/app', 'Developer ID', {
       ...environment,

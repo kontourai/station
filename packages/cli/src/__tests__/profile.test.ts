@@ -69,6 +69,29 @@ describe('shared saved Station store', () => {
     ).toEqual(['local']);
     expect(readFileSync(join(home, '.DS_Store'), 'utf8')).toBe('OS metadata');
   });
+
+  test('does not mistake a directory named like OS metadata for a regular metadata file', () => {
+    mkdirSync(join(home, '.DS_Store'));
+    expect(() => ensureProfileStoreGenesis(home)).toThrow(
+      /restore profiles.json/,
+    );
+    expect(existsSync(profilesPath(home))).toBe(false);
+  });
+
+  test.skipIf(process.platform === 'win32')(
+    'does not follow an OS metadata symlink during first profile genesis',
+    () => {
+      const target = join(home, 'state', 'outside.json');
+      mkdirSync(dirname(target));
+      writeFileSync(target, 'keep this file');
+      symlinkSync(target, join(home, '.DS_Store'));
+      expect(() => ensureProfileStoreGenesis(home)).toThrow(
+        /restore profiles.json/,
+      );
+      expect(readFileSync(target, 'utf8')).toBe('keep this file');
+      expect(existsSync(profilesPath(home))).toBe(false);
+    },
+  );
   test('is secret-free and versioned', () => {
     upsertProfile({
       name: 'kontour',

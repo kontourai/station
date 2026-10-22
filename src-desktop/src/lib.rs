@@ -336,6 +336,8 @@ fn compile_target_capability_report(identifier: &str) -> NativeCapabilityReport 
 }
 
 const STATION_CREDENTIAL_SERVICE: &str = "io.kontourai.station";
+#[cfg(not(mobile))]
+const NODE_RUNTIME_FAILURE: &str = "Station’s built-in Node component could not start. Reinstall Station; your data was not changed.";
 const EMPTY_STATION_PROFILE_STORE: &str =
     r#"{"schemaVersion":1,"revision":0,"defaultProfile":null,"profiles":[],"projectProfiles":{}}"#;
 /// A root-scoped birth record for the shared profile document.  It is kept
@@ -2175,26 +2177,28 @@ fn profile_store_recovery_files_are_absent(
 fn profile_store_recovery_credentials_are_absent() -> Result<bool, String> {
     initialize_credential_store()?;
     #[cfg(windows)]
-    let queries = vec![std::collections::HashMap::from([(
-        "pattern",
-        "io\\.kontourai\\.station",
-    )])];
+    let pattern = format!("^{}", STATION_CREDENTIAL_SERVICE.replace('.', r"\."));
+    #[cfg(windows)]
+    let query = std::collections::HashMap::from([("pattern", pattern.as_str())]);
     #[cfg(not(windows))]
-    let queries = [
-        STATION_CREDENTIAL_SERVICE,
-        native_device_custody::METADATA_SERVICE,
-        "io.kontourai.station.connection-trust",
-        "io.kontourai.station.native-enrollment-journal",
-        "io.kontourai.station.device-binding-candidate",
-        "io.kontourai.station.account-proof",
-        "io.kontourai.station.device-proof",
-        "io.kontourai.station.relay-proof",
-    ]
-    .into_iter()
-    .map(|service| std::collections::HashMap::from([("service", service)]))
-    .collect::<Vec<_>>();
-    for query in queries {
-        if !keyring_core::Entry::search(&query).map_err(|_| "Station could not inspect saved credential history. Unlock the credential store and retry.".to_string())?.is_empty() { return Ok(false); }
+    let query = std::collections::HashMap::new();
+    let observations = keyring_core::Entry::search(&query)
+        .map(|entries| entries.into_iter().map(|entry| entry.get_specifiers()).collect())
+        .map_err(|_| "Station could not inspect saved credential history. Unlock the credential store and retry.".to_string());
+    profile_store_credential_history_is_absent(observations)
+}
+
+#[cfg(not(mobile))]
+fn profile_store_credential_history_is_absent(
+    observations: Result<Vec<Option<(String, String)>>, String>,
+) -> Result<bool, String> {
+    for ownership in observations? {
+        let (service, _) = ownership.ok_or_else(|| {
+            "Station could not inspect credential ownership metadata.".to_string()
+        })?;
+        if service.starts_with(STATION_CREDENTIAL_SERVICE) {
+            return Ok(false);
+        }
     }
     Ok(true)
 }
@@ -5799,14 +5803,24 @@ fn native_profile_lock_birth(app: &AppHandle, pid: u32) -> Result<Option<String>
                 .resource_dir()
                 .map_err(|error| format!("locate packaged process identity authority: {error}"))?,
         );
-        match profile_lock_birth_bridge(&resource_dir, pid) {
-            Ok(birth) => Ok(Some(birth)),
-            // Missing identity still fences reclamation and fresh lock writes.
-            Err(RegistryBridgeFailure::Invocation) => Err("Station’s built-in Node component could not start. Reinstall the desktop app; changing the data folder will not repair the runtime.".into()),
-            Err(RegistryBridgeFailure::Protocol) => Err("Station’s process identity helper returned an invalid response. Check the desktop log before changing the data folder.".into()),
-            Err(RegistryBridgeFailure::Untrusted | RegistryBridgeFailure::HomeSchema) => Ok(None),
-        }
+        profile_lock_birth_observation(
+            pid == std::process::id(),
+            profile_lock_birth_bridge(&resource_dir, pid),
+        )
     })
+}
+
+#[cfg(not(mobile))]
+fn profile_lock_birth_observation(
+    own_process: bool,
+    result: Result<String, RegistryBridgeFailure>,
+) -> Result<Option<String>, String> {
+    match result {
+        Ok(birth) => Ok(Some(birth)),
+        Err(RegistryBridgeFailure::Invocation) => Err(NODE_RUNTIME_FAILURE.into()),
+        Err(RegistryBridgeFailure::Protocol) if own_process => Err("Station could not verify its own process identity. Check the desktop log before changing the data folder.".into()),
+        Err(_) => Ok(None),
+    }
 }
 
 impl Drop for StationProfileLock {
@@ -9336,6 +9350,9 @@ fn invoke_registry_bridge(
     if status.success() {
         Ok(stdout)
     } else {
+        if stdout.is_empty() {
+            return Err(RegistryBridgeFailure::Invocation);
+        }
         let response: RegistryBridgeReadResponse =
             serde_json::from_slice(&stdout).map_err(|_| RegistryBridgeFailure::Protocol)?;
         Err(registry_bridge_error(&response))
@@ -9514,7 +9531,10 @@ fn desktop_node_executable(app_executable: &Path, development: bool) -> PathBuf 
 
 #[cfg(not(mobile))]
 fn desktop_node_command(shell_path: &str) -> std::io::Result<Command> {
-    let executable = desktop_node_executable(&std::env::current_exe()?, cfg!(debug_assertions));
+    let executable = desktop_node_executable(
+        &std::env::current_exe()?.canonicalize()?,
+        cfg!(debug_assertions),
+    );
     let mut command = Command::new(&executable);
     command.env("PATH", shell_path);
     Ok(command)
@@ -11754,6 +11774,15 @@ where
 /// supervisor exists when this is called, so acknowledging the dialog exits
 /// without starting a backend or changing either home.
 #[cfg(not(mobile))]
+fn desktop_home_preparation_failure_copy(detail: &str) -> (&'static str, &'static str) {
+    if detail.contains(NODE_RUNTIME_FAILURE) {
+        ("Station’s built-in Node component could not start", "Reinstall Station to repair its built-in Node component. Your Station data was not changed.")
+    } else {
+        ("Station could not validate its home folder", "Station could not validate its data folder. Review the detail below, correct the folder problem without deleting data, then launch Station again.")
+    }
+}
+
+#[cfg(not(mobile))]
 fn exit_desktop_home_preparation_failure(
     app: &tauri::App,
     title: &str,
@@ -13735,7 +13764,7 @@ If a stable instance is running, this launch will focus its window and exit.",
                             .map(|_| ())
                             .map_err(|error| match error {
                                 RegistryBridgeFailure::HomeSchema => "This folder contains data without a compatible Station schema. Keep it intact and select a new empty folder or restore a compatible Station home.".to_string(),
-                                RegistryBridgeFailure::Invocation => "Station’s built-in Node component could not start. Reinstall the desktop app; no system Node installation is required.".to_string(),
+                                RegistryBridgeFailure::Invocation => NODE_RUNTIME_FAILURE.to_string(),
                                 _ => "The local storage helper did not return a valid result. Check the desktop logs before changing this folder.".to_string(),
                             })
                     },
@@ -13748,12 +13777,8 @@ If a stable instance is running, this launch will focus its window and exit.",
                             offer_legacy_profile_store_recovery(app.handle(), station_root.clone());
                             return Ok(());
                         }
-                        exit_desktop_home_preparation_failure(
-                            app,
-                            "Station could not validate its home folder",
-                            "Station could not validate its data folder. Review the detail below, correct the folder problem without deleting data, then launch Station again.",
-                            &error,
-                        );
+                        let (title, message) = desktop_home_preparation_failure_copy(&error);
+                        exit_desktop_home_preparation_failure(app, title, message, &error);
                         return Ok(());
                     }
                 };
@@ -21659,7 +21684,7 @@ mod tests {
     fn profile_store_recovery_refuses_history_and_unknown_locks() {
         for evidence in [
             ".station-profile-store-v1",
-            "backups/profile.json",
+            "state/backup/restore.json",
             "config/profiles.json.lock",
             "config/cutover-receipt.json",
             "state/credential-vault.json",
@@ -21673,6 +21698,70 @@ mod tests {
             assert!(
                 !profile_store_recovery_files_are_absent(&root, None).unwrap(),
                 "{evidence}"
+            );
+        }
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_store_credential_history_includes_every_station_namespace_and_holds_unknowns() {
+        assert!(
+            profile_store_credential_history_is_absent(Err("keyring unavailable".into())).is_err()
+        );
+        assert!(profile_store_credential_history_is_absent(Ok(vec![None])).is_err());
+        assert_eq!(
+            profile_store_credential_history_is_absent(Ok(vec![Some((
+                "other.application".into(),
+                "account".into()
+            ))])),
+            Ok(true)
+        );
+        let source = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut checked = std::collections::BTreeSet::new();
+        for file in std::fs::read_dir(source).unwrap() {
+            let file = file.unwrap();
+            if file.path().extension().is_none_or(|ext| ext != "rs") {
+                continue;
+            }
+            let text = std::fs::read_to_string(file.path()).unwrap();
+            for service in text.split('"').filter(|value| {
+                value.starts_with("io.kontourai.station") && !value.chars().any(char::is_whitespace)
+            }) {
+                checked.insert(service.to_string());
+                assert_eq!(
+                    profile_store_credential_history_is_absent(Ok(vec![Some((
+                        service.into(),
+                        "account".into()
+                    ))])),
+                    Ok(false),
+                    "{service}"
+                );
+            }
+        }
+        assert!(checked.contains("io.kontourai.station.native-enrollment-recipient"));
+        assert!(checked.len() >= 9);
+    }
+
+    #[cfg(not(mobile))]
+    #[test]
+    fn profile_lock_birth_distinguishes_runtime_failure_from_a_departed_foreign_owner() {
+        let runtime = profile_lock_birth_observation(true, Err(RegistryBridgeFailure::Invocation))
+            .unwrap_err();
+        let (title, message) = desktop_home_preparation_failure_copy(&runtime);
+        assert_eq!(title, "Station’s built-in Node component could not start");
+        assert!(message.contains("Reinstall Station"));
+        assert!(!message.contains("folder problem"));
+        assert!(
+            profile_lock_birth_observation(true, Err(RegistryBridgeFailure::Protocol)).is_err()
+        );
+        for refusal in [
+            RegistryBridgeFailure::Protocol,
+            RegistryBridgeFailure::Untrusted,
+            RegistryBridgeFailure::HomeSchema,
+        ] {
+            assert_eq!(
+                profile_lock_birth_observation(false, Err(refusal)),
+                Ok(None)
             );
         }
     }

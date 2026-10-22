@@ -1121,6 +1121,8 @@ describe('server build package portability', () => {
         'scripts/hooks/run-hook.js': '',
         'skills/example/SKILL.md': '# skill',
         'kits/builder/skills/deliver/SKILL.md': '# kit skill',
+        'kits/builder/evals/workflow.test.mjs':
+          'export const evaluation = true;',
         'schemas/workflow.schema.json': '{}',
         'context/settings/backlog-provider-settings.json': '{}',
         'dist/codex/build/src/index.js': 'bundle',
@@ -1168,6 +1170,12 @@ describe('server build package portability', () => {
       expect(existsSync(join(staged, kept)), kept).toBe(true);
     }
     expect(existsSync(join(staged, 'node_modules/esbuild'))).toBe(false);
+    expect(
+      readFileSync(
+        join(staged, 'kits/builder/evals/workflow.test.mjs'),
+        'utf8',
+      ),
+    ).toContain('evaluation = true');
     // A stray import from flow-agents still resolves, to Station's copy.
     expect(
       JSON.parse(
