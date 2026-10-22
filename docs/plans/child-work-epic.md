@@ -161,8 +161,13 @@ seat identity, edges show declared prerequisites, and states remain explicitly
 last observed. Fixed grid placement adds no scheduler or inferred execution
 order. Retained preset hash and exact session/turn handles remain available;
 current preset files are not joined by name. Mounted coverage and the UI type
-lane pass; rendered browser qualification and independent delta review remain
-pending. This increment does not supply richer runtime tool/memory/routing
+lane pass. An edge-omission mutation fails the mounted owner assertion, and
+byte-identical restoration passes all five cases. Independent review found
+same-row arrowheads hidden by cards; gutter routing repairs that geometry.
+A controlled browser inventory exercises adjacent, skipped-column and upward
+edges in dark desktop and light 390px layouts, with keyboard-scrollable graph
+and table regions. Narrow preset hashes wrap without page overflow. This is
+component/SDK fixture evidence; independent repair review remains pending. This increment does not supply richer runtime tool/memory/routing
 facts or complete #453/#600.
 
 Published Flow Agents 9.3.0 exports v2 authority/grants, ancestor allocations and

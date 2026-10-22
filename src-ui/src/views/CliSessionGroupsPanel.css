@@ -12,6 +12,7 @@
   border-radius: var(--k-radius-md);
   background: var(--k-panel);
 }
+.cli-session-groups code,
 .cli-session-groups h3,
 .cli-session-groups dd {
   overflow-wrap: anywhere;
@@ -64,7 +65,7 @@
   min-width: 48rem;
   color: var(--k-text-muted);
 }
-.cli-session-groups__graph line {
+.cli-session-groups__graph path[marker-end] {
   stroke: currentColor;
   stroke-width: 2;
 }

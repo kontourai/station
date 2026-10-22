@@ -110,19 +110,26 @@ function GroupTopology({ group }: { group: CliSessionGroupView }) {
               const source = group.members.findIndex(
                 (seat) => seat.seatId === need,
               );
+              const sourceColumn = source % columns;
+              const sourceRow = Math.floor(source / columns);
+              const targetColumn = index % columns;
+              const targetRow = Math.floor(index / columns);
               return (
-                <line
+                <path
                   key={`${need}:${member.seatId}`}
-                  x1={(source % columns) * 300 + 150}
-                  y1={Math.floor(source / columns) * 220 + 180}
-                  x2={(index % columns) * 300 + 150}
-                  y2={Math.floor(index / columns) * 220 + 20}
+                  d={`M ${sourceColumn * 300 + 280} ${sourceRow * 220 + 100}
+                    H ${sourceColumn * 300 + 290}
+                    V ${sourceRow * 220 + 200}
+                    H ${targetColumn * 300 + 10}
+                    V ${targetRow * 220 + 100}
+                    H ${targetColumn * 300 + 20}`}
+                  fill="none"
                   markerEnd={`url(#${arrowId})`}
                 >
                   <title>
                     {need} → {member.seatId}
                   </title>
-                </line>
+                </path>
               );
             }),
           )}
