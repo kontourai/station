@@ -70,10 +70,7 @@ import type {
 } from '../evidence/assignment-claim-service.js';
 import type { WorkflowSidecarService } from '../evidence/workflow-sidecar-service.js';
 import { JsonFileStore } from '../infra/json-store.js';
-import {
-  OrchestrationCommandDispatchError,
-  type OrchestrationService,
-} from '../orchestration/orchestration-service.js';
+import type { OrchestrationService } from '../orchestration/orchestration-service.js';
 import type { SessionOwnerStamp } from '../orchestration/session-owner-attribution.js';
 import type { SessionStartBoundaryClaim } from '../orchestration/session-turn-boundary.js';
 import { createIsolatedTaskSearch } from '../search/isolated-task-search.js';
@@ -350,6 +347,10 @@ async function refuseDefiniteStartRejection<T>(start: Promise<T>): Promise<T> {
   try {
     return await start;
   } catch (error) {
+    // Read-only Task workers import this module without loading execution.
+    const { OrchestrationCommandDispatchError } = await import(
+      '../orchestration/orchestration-service.js'
+    );
     if (
       error instanceof OrchestrationCommandDispatchError &&
       error.receipt.status === 'rejected' &&
