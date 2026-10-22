@@ -343,6 +343,17 @@ export function installAccountBoundDeviceGate(
           path,
         ) &&
           ['GET', 'POST'].includes(method)) ||
+        ((method === 'GET' || method === 'HEAD') &&
+          (path === '/api/knowledge/roots' ||
+            path === '/api/knowledge/adapters' ||
+            /^\/api\/knowledge\/roots\/[^/]+\/(?:graph|records(?:\/[^/]+)?)$/.test(
+              path,
+            ))) ||
+        (method === 'POST' &&
+          (path === '/api/knowledge/roots' ||
+            /^\/api\/knowledge\/roots\/[^/]+\/(?:records|disconnect)$/.test(
+              path,
+            ))) ||
         path === '/' ||
         path.startsWith('/assets/') ||
         // Neutral observations are open only to a verified native Device

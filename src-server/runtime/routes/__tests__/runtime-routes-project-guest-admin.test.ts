@@ -51,6 +51,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { readStreamUntil } from '../../../__test-utils__/sse-helpers.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
+import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
 import { loadDeploymentAuthentication } from '../../../services/identity/deployment-authentication-loader.js';
 import { deploymentAccountPrincipal } from '../../../services/identity/deployment-authentication-service.js';
@@ -256,6 +257,7 @@ describe('project guest administration over the production composition', () => {
     if (!authentication) throw new Error('fixture provider failed to load');
 
     const storage = new FileStorageAdapter(homeDir);
+    const knowledgeStoreProvider = new KnowledgeStoreProvider(storage);
     const manifests = new ProjectManifestStore(homeDir, storage);
     const projectService = new ProjectService(storage, manifests);
     const membership = createProjectMembershipRuntime(
@@ -286,6 +288,7 @@ describe('project guest administration over the production composition', () => {
       localAccounts,
       applicationSessions,
       storageAdapter: storage,
+      knowledgeStoreProvider,
       projectService,
       app,
       port: 4321,
@@ -471,6 +474,7 @@ describe('project guest administration over the production composition', () => {
       authentication,
       operatorCredential,
       projectService,
+      knowledgeStoreProvider,
       membership,
       ownerHeaders,
       operatorHeaders,
@@ -1975,5 +1979,127 @@ describe('project guest administration over the production composition', () => {
       }),
     );
     expect(legacyInvite.status, await legacyInvite.clone().text()).toBe(200);
+  });
+  test('knowledge roots and records enforce the account Project membership through real ingress', async () => {
+    const h = await setup();
+    const { scope, guest } = await h.shareWithGuestAdmin(
+      'knowledge',
+      'Knowledge',
+    );
+    const allowed = await h.knowledgeStoreProvider.createRoot({
+      scope: { kind: 'project', projectSlug: 'knowledge' },
+      adapterId: 'kit-default-store',
+      storeRoot: join(directories[directories.length - 1], 'shared-notes'),
+      displayName: 'Shared notes',
+    });
+    const unrelated = await h.knowledgeStoreProvider.createRoot({
+      scope: { kind: 'project', projectSlug: 'unrelated' },
+      adapterId: 'kit-default-store',
+      storeRoot: join(directories[directories.length - 1], 'private-notes'),
+      displayName: 'Private notes',
+    });
+    const personal = await h.knowledgeStoreProvider.createRoot({
+      scope: { kind: 'personal' },
+      adapterId: 'kit-default-store',
+      storeRoot: join(directories[directories.length - 1], 'personal-notes'),
+      displayName: 'Personal notes',
+    });
+    const adapter = await h.knowledgeStoreProvider.adapterFor(allowed.id);
+    const recordId = await adapter.create({
+      type: 'raw',
+      title: 'Selected source',
+      body: 'Exact shared text',
+      category: 'test',
+      provenance: { agent: 'fixture' },
+    });
+    const list = await h.request('/api/knowledge/roots', guest());
+    expect(list.status, await list.clone().text()).toBe(200);
+    const body = await readJson<{ data: { id: string }[] }>(list);
+    expect(body.data.map((root) => root.id)).toEqual([allowed.id]);
+    const read = await h.request(
+      `/api/knowledge/roots/${encodeURIComponent(allowed.id)}/records/${recordId}`,
+      guest(),
+    );
+    expect(read.status, await read.clone().text()).toBe(200);
+    expect((await readJson<{ data: { body: string } }>(read)).data.body).toBe(
+      'Exact shared text',
+    );
+    for (const root of [unrelated, personal]) {
+      expect(
+        (
+          await h.request(
+            `/api/knowledge/roots/${encodeURIComponent(root.id)}/graph`,
+            guest(),
+          )
+        ).status,
+      ).toBe(403);
+    }
+    const arbitrary = await h.request(
+      '/api/knowledge/roots',
+      guest({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: { kind: 'project', projectSlug: 'knowledge' },
+          adapterId: 'kit-default-store',
+          storeRoot: '/private/host-path',
+        }),
+      }),
+    );
+    expect(arbitrary.status, await arbitrary.clone().text()).toBe(403);
+
+    const createManaged = () =>
+      h.request(
+        '/api/knowledge/roots',
+        guest({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            scope: { kind: 'project', projectSlug: 'knowledge' },
+            adapterId: 'kit-default-store',
+          }),
+        }),
+      );
+    const managed = await createManaged();
+    expect(managed.status, await managed.clone().text()).toBe(201);
+    const guestId = deploymentAccountPrincipal(
+      PROVIDER_ISSUER,
+      GUEST_SUBJECT,
+      'Guest Person',
+    ).id;
+    const members = (
+      await readJson<{
+        data: { members: { principal: { id: string }; revision: number }[] };
+      }>(await h.request('/api/projects/knowledge/access', h.ownerHeaders()))
+    ).data.members;
+    const member = members.find(
+      (candidate) => candidate.principal.id === guestId,
+    )!;
+    const demoted = await h.request(
+      '/api/projects/knowledge/access/members',
+      h.ownerHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope,
+          principalId: guestId,
+          revision: member.revision,
+          role: 'viewer',
+          status: 'active',
+        }),
+      }),
+    );
+    expect(demoted.status, await demoted.clone().text()).toBe(200);
+    expect((await createManaged()).status).toBe(403);
+    const deniedDisconnect = await h.request(
+      `/api/knowledge/roots/${encodeURIComponent(allowed.id)}/disconnect`,
+      guest({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expectedRoot: allowed }),
+      }),
+    );
+    expect(deniedDisconnect.status).toBe(404);
+    expect(await h.knowledgeStoreProvider.getRoot(allowed.id)).toEqual(allowed);
   });
 });

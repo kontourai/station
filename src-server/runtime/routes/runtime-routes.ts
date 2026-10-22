@@ -30,6 +30,7 @@ import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollmen
 import { createRelayManagementRoutes } from '../../routes/system/relay-management-routes.js';
 import { createToolLibraryRoutes } from '../../routes/tool-library.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
+import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
 import {
   classifyOperatorCredentialPosition,
   isHostLocalOperatorCredentialUse,
@@ -6833,20 +6834,60 @@ export function configureRuntimeRoutes(
   // authority around every `/api/knowledge` request so a read sees exactly
   // what that principal may read elsewhere; an unresolvable principal binds
   // nothing and reads no session.
+  context.app.use('/api/knowledge/*', async (c, next) => {
+    roomRequestPrincipals.set(
+      c.req.raw,
+      resolveOrchestrationRequestPrincipal(c),
+    );
+    await next();
+  });
   context.app.use('/api/knowledge/*', bindRequestReadAuthority);
-  const mayUseKnowledgeRoot = (
+  const mayUseProjectKnowledge = async (
+    request: Request,
+    projectSlug: string,
+    action: 'view' | 'edit',
+  ): Promise<boolean> => {
+    try {
+      const member = await memberCallerForRequest(request);
+      if (!member) return agentOwnerIdForRequest(request) !== null;
+      if (member.kind === 'none' || !context.projectMembership) return false;
+      await context.projectMembership.requireProjectRead(
+        projectSlug,
+        projectMembershipAuthority(request),
+      );
+      return context.projectMembership
+        .admissionsForResolvedPrincipal(member.principalId)
+        .some(
+          ({ scope, member }) =>
+            scope.localProjectSlug === projectSlug &&
+            member.status === 'active' &&
+            member.actions.includes(action),
+        );
+    } catch {
+      return false;
+    }
+  };
+  const mayUseKnowledgeRoot = async (
     request: Request,
     root: Awaited<ReturnType<KnowledgeStoreProvider['getRoot']>>,
     action: 'view' | 'edit',
-  ): boolean => {
-    const ownerId = agentOwnerIdForRequest(request);
-    if (ownerId === undefined) return true;
-    if (ownerId === null || !root) return false;
-    if (root.adapterId === CONVERSATION_STORE_ADAPTER_ID)
-      return action === 'view';
+  ): Promise<boolean> => {
+    if (!root) return false;
     if (root.scope.kind === 'project')
-      return agentOwnerMayUseProject(request, root.scope.projectSlug, action);
-    return ownerId === LOCAL_OPERATOR_PRINCIPAL_ID;
+      return mayUseProjectKnowledge(request, root.scope.projectSlug, action);
+    try {
+      const member = await memberCallerForRequest(request);
+      if (member?.kind === 'none') return false;
+      if (root.adapterId === CONVERSATION_STORE_ADAPTER_ID)
+        return action === 'view';
+      const ownerId = agentOwnerIdForRequest(request);
+      return (
+        !member &&
+        (ownerId === undefined || ownerId === LOCAL_OPERATOR_PRINCIPAL_ID)
+      );
+    } catch {
+      return false;
+    }
   };
   // The knowledge index and the Neo4j projection are shared, Station-wide
   // artifacts, built by the Station indexer from ALL sessions (the named
@@ -6904,6 +6945,17 @@ export function configureRuntimeRoutes(
         mayUseKnowledgeRoot(request, root, 'view'),
       mayManageRoot: (request, root) =>
         mayUseKnowledgeRoot(request, root, 'edit'),
+      mayValidateRoot: isOperatorInPersonNotAgent,
+      mayRegisterRoot: async (request, input) => {
+        if (isOperatorInPersonNotAgent(request)) return true;
+        if (
+          input.storeRoot !== undefined ||
+          input.scope.kind !== 'project' ||
+          input.adapterId !== 'kit-default-store'
+        )
+          return false;
+        return mayUseProjectKnowledge(request, input.scope.projectSlug, 'edit');
+      },
     }),
   );
   // K5 record-CRUD routes (`s203-knowledge-meeting-notes` Wave 1 Task 2) — same

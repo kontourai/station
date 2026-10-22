@@ -58,8 +58,19 @@ import { errorMessage } from '../schemas/schemas.js';
 
 interface KnowledgeStoreRouteDeps {
   store: KnowledgeStoreProvider;
-  mayReadRoot?: (request: Request, root: KnowledgeStoreRoot) => boolean;
-  mayManageRoot?: (request: Request, root: KnowledgeStoreRoot) => boolean;
+  mayReadRoot?: (
+    request: Request,
+    root: KnowledgeStoreRoot,
+  ) => boolean | Promise<boolean>;
+  mayManageRoot?: (
+    request: Request,
+    root: KnowledgeStoreRoot,
+  ) => boolean | Promise<boolean>;
+  mayRegisterRoot?: (
+    request: Request,
+    input: { scope: KnowledgeRootScope; storeRoot?: string; adapterId: string },
+  ) => boolean | Promise<boolean>;
+  mayValidateRoot?: (request: Request) => boolean;
   /** Station home dir — same accessor `knowledge-index-routes.ts` already uses
    * (`context.configLoader.getProjectHomeDir()`). */
   dataDir: string;
@@ -101,8 +112,11 @@ export function createKnowledgeStoreRoutes(deps: KnowledgeStoreRouteDeps) {
     try {
       const roots = await deps.store.listRoots();
       const mayReadRoot = deps.mayReadRoot;
-      const visibleRoots = mayReadRoot
-        ? roots.filter((root) => mayReadRoot(c.req.raw, root))
+      const visible = mayReadRoot
+        ? await Promise.all(roots.map((root) => mayReadRoot(c.req.raw, root)))
+        : undefined;
+      const visibleRoots = visible
+        ? roots.filter((_, index) => visible[index])
         : roots;
       return c.json({ success: true, data: visibleRoots });
     } catch (e: unknown) {
@@ -191,6 +205,22 @@ export function createKnowledgeStoreRoutes(deps: KnowledgeStoreRouteDeps) {
           ? body.displayName
           : defaultDisplayName(scope);
 
+      if (
+        deps.mayRegisterRoot &&
+        !(await deps.mayRegisterRoot(c.req.raw, {
+          scope,
+          adapterId,
+          ...(body.storeRoot === undefined ? {} : { storeRoot }),
+        }))
+      )
+        return c.json(
+          {
+            success: false,
+            error: 'Knowledge source registration is not permitted.',
+          },
+          403,
+        );
+
       // Honest-validation guarantee at the API layer (not just the UI flow — K4
       // code-review MEDIUM finding): reject a create for a target the adapter
       // itself would flag before ever calling createRoot. Verbatim passthrough of
@@ -222,6 +252,14 @@ export function createKnowledgeStoreRoutes(deps: KnowledgeStoreRouteDeps) {
   // of the adapter's own `{ ok, reason? }` — see module doc.
   app.post('/roots/validate', async (c) => {
     try {
+      if (deps.mayValidateRoot && !deps.mayValidateRoot(c.req.raw))
+        return c.json(
+          {
+            success: false,
+            error: 'Checking host paths requires the Station operator.',
+          },
+          403,
+        );
       const body = (await c.req.json().catch(() => ({}))) as ValidateRootBody;
 
       if (typeof body.adapterId !== 'string' || body.adapterId.length === 0) {
@@ -285,9 +323,8 @@ export function createKnowledgeStoreRoutes(deps: KnowledgeStoreRouteDeps) {
         );
       }
       if (
-        c.req.method === 'POST' &&
-        ((deps.mayReadRoot && !deps.mayReadRoot(c.req.raw, root)) ||
-          (deps.mayManageRoot && !deps.mayManageRoot(c.req.raw, root)))
+        (deps.mayReadRoot && !(await deps.mayReadRoot(c.req.raw, root))) ||
+        (deps.mayManageRoot && !(await deps.mayManageRoot(c.req.raw, root)))
       )
         return c.json(
           { success: false, error: KNOWLEDGE_ROOT_NOT_FOUND_ERROR },
