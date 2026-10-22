@@ -3,20 +3,45 @@ import {
   KnowledgeRecallBrowser,
   knowledgeRootIncarnationKey,
   useCreateKnowledgeRootMutation,
+  useKnowledgeGraphQuery,
   useKnowledgeRecallGraph,
+  useKnowledgeRecordQuery,
   useKnowledgeRootsQuery,
 } from '@kontourai/station-sdk';
+import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { InfoTip } from '../../components/InfoTip';
 import { PageRow } from '../../components/PageRow';
 import { ErrorState, Skeleton } from '../../components/state';
+import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { errorText } from '../../utils/errorText';
 import './ProjectKnowledgeStores.css';
 
-function StoreRecords({ root }: { root: KnowledgeStoreRoot }) {
+function StoreRecords({
+  root,
+  authority,
+}: {
+  root: KnowledgeStoreRoot;
+  authority: ApiRequestScope;
+}) {
+  function useScopedGraph(rootId: string | undefined) {
+    return useKnowledgeGraphQuery(rootId, {
+      requestScope: authority,
+      requireRequestScope: true,
+    });
+  }
+  function useScopedRecord(
+    rootId: string | undefined,
+    recordId: string | undefined,
+  ) {
+    return useKnowledgeRecordQuery(rootId, recordId, {
+      requestScope: authority,
+      requireRequestScope: true,
+    });
+  }
   const authorityKey = knowledgeRootIncarnationKey(root);
-  const graph = useKnowledgeRecallGraph(root.id, authorityKey);
+  const graph = useKnowledgeRecallGraph(root.id, authorityKey, useScopedGraph);
   if (graph.isAuthorityLoading) return <Skeleton variant="block" />;
   if (graph.isError && !graph.data)
     return (
@@ -32,11 +57,18 @@ function StoreRecords({ root }: { root: KnowledgeStoreRoot }) {
       rootId={root.id}
       authorityKey={authorityKey}
       graph={graph.data}
+      useRecordQuery={useScopedRecord}
     />
   ) : null;
 }
 
-function Store({ root }: { root: KnowledgeStoreRoot }) {
+function Store({
+  root,
+  authority,
+}: {
+  root: KnowledgeStoreRoot;
+  authority: ApiRequestScope;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <details
@@ -44,14 +76,36 @@ function Store({ root }: { root: KnowledgeStoreRoot }) {
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary>{root.displayName}</summary>
-      {open && <StoreRecords root={root} />}
+      {open && <StoreRecords root={root} authority={authority} />}
     </details>
   );
 }
 
 export function ProjectKnowledgeStores({ slug }: { slug: string }) {
-  const roots = useKnowledgeRootsQuery();
-  const create = useCreateKnowledgeRootMutation();
+  const authority = useHostRequestAuthorityScope();
+  return authority ? (
+    <ScopedProjectKnowledgeStores
+      key={`${slug}:${authority.apiBase}:${authority.authorityKey}`}
+      slug={slug}
+      authority={authority}
+    />
+  ) : (
+    <p>Connect to this Station to read project knowledge.</p>
+  );
+}
+
+function ScopedProjectKnowledgeStores({
+  slug,
+  authority,
+}: {
+  slug: string;
+  authority: ApiRequestScope;
+}) {
+  const roots = useKnowledgeRootsQuery({
+    requestScope: authority,
+    requireRequestScope: true,
+  });
+  const create = useCreateKnowledgeRootMutation(authority);
   const stores =
     roots.data?.filter(
       (root) =>
@@ -97,7 +151,11 @@ export function ProjectKnowledgeStores({ slug }: { slug: string }) {
         />
       ) : (
         stores.map((root) => (
-          <Store key={knowledgeRootIncarnationKey(root)} root={root} />
+          <Store
+            key={knowledgeRootIncarnationKey(root)}
+            root={root}
+            authority={authority}
+          />
         ))
       )}
       {create.isError && (

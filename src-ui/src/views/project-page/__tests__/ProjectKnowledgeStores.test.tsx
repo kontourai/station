@@ -10,6 +10,12 @@ const state = vi.hoisted(() => ({
   create: vi.fn(),
   recall: vi.fn(),
 }));
+vi.mock('../../../contexts/ApiBaseContext', () => ({
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://station.test',
+    authorityKey: 'account-a',
+  }),
+}));
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
   useKnowledgeRootsQuery: () => ({

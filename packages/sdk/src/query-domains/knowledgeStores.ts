@@ -311,15 +311,39 @@ export function useKnowledgeRecordsByTypeQuery(
 export function useKnowledgeRecordQuery(
   rootId: string | undefined,
   id: string | undefined,
-  config?: QueryConfig<KitRecord>,
+  config?: KnowledgeStoreQueryConfig<KitRecord>,
 ) {
+  const scope = capturedScope(config?.requestScope);
+  const required = Boolean(
+    config?.requireRequestScope || config?.requestScope !== undefined,
+  );
   return useApiQuery<KitRecord>(
-    [...knowledgeRecordQueryKey(rootId ?? '', id ?? '')],
+    [
+      ...knowledgeRecordQueryKey(rootId ?? '', id ?? ''),
+      ...(scope
+        ? [scope.apiBase, scope.authorityKey]
+        : required
+          ? ['missing-authority']
+          : []),
+    ],
     async () => {
-      const apiBase = await _getApiBase();
-      return getKnowledgeRecord(apiBase, rootId as string, id as string);
+      if (required && !scope) throw new StationRequestAuthorityError();
+      const apiBase = scope?.apiBase ?? (await _getApiBase());
+      return getKnowledgeRecord(
+        apiBase,
+        rootId as string,
+        id as string,
+        scope ? { requestScope: scope } : undefined,
+      );
     },
-    { enabled: Boolean(rootId && id), ...config },
+    {
+      ...config,
+      enabled:
+        Boolean(rootId && id) &&
+        (!required || Boolean(scope)) &&
+        (config?.enabled ?? true),
+      ...(required ? { keepPreviousData: false } : {}),
+    },
   );
 }
 
@@ -327,15 +351,38 @@ export function useKnowledgeRecordQuery(
  * graph pane. */
 export function useKnowledgeGraphQuery(
   rootId: string | undefined,
-  config?: QueryConfig<KnowledgeGraph>,
+  config?: KnowledgeStoreQueryConfig<KnowledgeGraph>,
 ) {
+  const scope = capturedScope(config?.requestScope);
+  const required = Boolean(
+    config?.requireRequestScope || config?.requestScope !== undefined,
+  );
   return useApiQuery<KnowledgeGraph>(
-    [...knowledgeGraphQueryKey(rootId ?? '')],
+    [
+      ...knowledgeGraphQueryKey(rootId ?? ''),
+      ...(scope
+        ? [scope.apiBase, scope.authorityKey]
+        : required
+          ? ['missing-authority']
+          : []),
+    ],
     async () => {
-      const apiBase = await _getApiBase();
-      return getKnowledgeGraph(apiBase, rootId as string);
+      if (required && !scope) throw new StationRequestAuthorityError();
+      const apiBase = scope?.apiBase ?? (await _getApiBase());
+      return getKnowledgeGraph(
+        apiBase,
+        rootId as string,
+        scope ? { requestScope: scope } : undefined,
+      );
     },
-    { enabled: Boolean(rootId), ...config },
+    {
+      ...config,
+      enabled:
+        Boolean(rootId) &&
+        (!required || Boolean(scope)) &&
+        (config?.enabled ?? true),
+      ...(required ? { keepPreviousData: false } : {}),
+    },
   );
 }
 

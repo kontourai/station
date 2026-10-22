@@ -7,6 +7,8 @@ import { setClientCredentialResolver } from '../client/http';
 import {
   useCreateKnowledgeRootMutation,
   useDeleteKnowledgeRootMutation,
+  useKnowledgeGraphQuery,
+  useKnowledgeRecordQuery,
   useKnowledgeRootsQuery,
 } from '../query-domains/knowledgeStores';
 
@@ -130,3 +132,80 @@ test('missing required scope cannot reveal primed legacy roots or dispatch on ma
   });
   expect(fetch).not.toHaveBeenCalled();
 });
+
+test.each(['graph', 'record'] as const)(
+  '%s reads cannot reuse another account cache for colliding source identities',
+  async (kind) => {
+    let active = scopeA;
+    setClientCredentialResolver(() => ({
+      origin: active.apiBase,
+      requestAuthority: { ...active, isCurrent: () => true },
+    }));
+    const dataA =
+      kind === 'graph'
+        ? {
+            nodes: [
+              {
+                id: 'record',
+                type: 'raw',
+                title: 'Private A',
+                category: 'test',
+              },
+            ],
+            edges: [],
+          }
+        : {
+            id: 'record',
+            type: 'raw',
+            title: 'Private A',
+            body: 'Private A',
+            category: 'test',
+            provenance: { agent: 'fixture' },
+            created_at: '2026-10-22T00:00:00Z',
+            updated_at: '2026-10-22T00:00:00Z',
+          };
+    const dataB =
+      kind === 'graph'
+        ? {
+            nodes: [
+              { id: 'record', type: 'raw', title: 'B', category: 'test' },
+            ],
+            edges: [],
+          }
+        : { ...dataA, title: 'B', body: 'B' };
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ success: true, data: dataA })),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ success: true, data: dataB })),
+      );
+    vi.stubGlobal('fetch', fetch);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const useSource =
+      kind === 'graph'
+        ? (scope: typeof scopeA) =>
+            useKnowledgeGraphQuery('same-root', {
+              requestScope: scope,
+              requireRequestScope: true,
+            })
+        : (scope: typeof scopeA) =>
+            useKnowledgeRecordQuery('same-root', 'record', {
+              requestScope: scope,
+              requireRequestScope: true,
+            });
+    const observer = renderHook(({ scope }) => useSource(scope), {
+      wrapper: wrapper(client),
+      initialProps: { scope: scopeA },
+    });
+    await waitFor(() => expect(observer.result.current.data).toEqual(dataA));
+    active = scopeB;
+    observer.rerender({ scope: scopeB });
+    expect(observer.result.current.data).toBeUndefined();
+    await waitFor(() => expect(observer.result.current.data).toEqual(dataB));
+    expect(fetch).toHaveBeenCalledTimes(2);
+  },
+);

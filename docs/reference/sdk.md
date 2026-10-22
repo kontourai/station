@@ -728,7 +728,8 @@ engine connection. Both hooks share the core query cache.
 
 ### Scoped knowledge source management
 
-`useKnowledgeRootsQuery` and `useKnowledgeAdaptersQuery` accept `requestScope`
+`useKnowledgeRootsQuery`, `useKnowledgeAdaptersQuery`, `useKnowledgeGraphQuery`
+and `useKnowledgeRecordQuery` accept `requestScope`
 and `requireRequestScope` in their query configuration. Scoped reads partition
 caches by endpoint and authority and refuse missing required authority, including
 manual refetch. `useProjectResolutionQuery` supports the same options.
