@@ -155,7 +155,7 @@ export function EnsembleInspectionResult({
                 <g key={fact.id} transform={`translate(${x},${y})`}>
                   <a
                     href={`#${identity}-fact-${fact.id}`}
-                    aria-label={`Inspect ${fact.label}`}
+                    aria-label={`Inspect ${fact.memberId ?? fact.category}: ${fact.label}`}
                   >
                     <rect width="220" height="80" rx="4" />
                     <text x="8" y="20">

@@ -188,6 +188,16 @@ test('declared prerequisite arrows link to their own configuration facts across 
         state: 'configured',
         owner: { label: 'Group dependency draft' },
       },
+      ...['lead', 'peer'].map((memberId) => ({
+        id: `workspace:${memberId}`,
+        memberId,
+        category: 'workspace' as const,
+        label: 'Workspace',
+        value: 'Selected directory',
+        origin: 'authored' as const,
+        state: 'configured' as const,
+        owner: { label: 'Group workspace draft' },
+      })),
     ],
   };
   render(
@@ -196,6 +206,18 @@ test('declared prerequisite arrows link to their own configuration facts across 
       <EnsembleInspectionResult result={inspected} />
     </NavigationProvider>,
   );
+  for (const memberId of ['lead', 'peer']) {
+    const nodes = screen.getAllByRole('link', {
+      name: `Inspect ${memberId}: Workspace`,
+    });
+    expect(nodes).toHaveLength(2);
+    for (const node of nodes) {
+      const factId = node.getAttribute('href')?.slice(1);
+      expect(document.getElementById(factId ?? '')?.textContent).toContain(
+        `${memberId}: Workspace`,
+      );
+    }
+  }
   const links = screen.getAllByRole('link', {
     name: 'Inspect declared prerequisite lead → peer',
   });
