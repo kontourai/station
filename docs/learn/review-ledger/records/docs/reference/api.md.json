@@ -494,7 +494,9 @@
 
     "src-server/domain/file-storage-schemas.ts",
 
-    "src-server/services/projects/project-creation-service.ts"
+    "src-server/services/projects/project-creation-service.ts",
+
+    "src-ui/src/hooks/useProjectCreationRecovery.ts"
   ],
 
   "checks": [

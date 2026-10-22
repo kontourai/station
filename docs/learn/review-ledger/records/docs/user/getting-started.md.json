@@ -244,7 +244,11 @@
 
     "src-server/services/projects/repository-acquisition-service.ts",
 
-    "src-ui/src/components/home/HomeActionSection.tsx"
+    "src-ui/src/components/home/HomeActionSection.tsx",
+
+    "src-ui/src/hooks/useProjectCreationRecovery.ts",
+
+    "src-ui/src/hooks/useProjectDraftState.ts"
   ],
 
   "checks": [
