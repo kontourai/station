@@ -21,6 +21,31 @@ is not enough: the moment you are looking at something else, the toast has
 nobody to show itself to, and the thing you are being asked to approve expires
 in five minutes.
 
+## In-app outcomes and durable conditions
+
+[ToastContext](../../src-ui/src/contexts/ToastContext.tsx) owns short client
+outcomes, stable operation IDs, explicit deduplication keys, and async action
+feedback. Updating an ID changes the existing card. Actionable messages group
+only when a caller supplies a deduplication key; the current callbacks replace
+the earlier ones. Reading time pauses while a card is hovered, focused, expanded,
+queued, or the app is hidden. Failed actions stay available to retry.
+
+[NotificationsPage](../../src-ui/src/pages/NotificationsPage.tsx) shows local
+recent messages separately from server attention. Persistence is opt-in through
+caller-approved `recallText`, bounded by count and age, and scoped to the selected
+Station on this device. Raw messages, metadata, details, and actions are not
+persisted as recall. Switching Stations clears active notices and rejects stale
+scoped callbacks. Approval requests retain their separate server-backed lifecycle.
+
+Durable connection, pairing, local-service, and recovery conditions live in
+[Station details](../../src-ui/src/components/notifications/StationConditions.tsx),
+reachable through the existing Station control. Work restrictions also appear in
+the workspace; setup-return guidance stays inline with the setup journey. The
+client no longer mounts a global banner stack. Updates have a separate unified
+[Updates panel](../../src-ui/src/components/updates/UpdatesPanel.tsx), with distinct
+app and connected-server mechanisms. None of these local surfaces replaces
+background push delivery.
+
 ## External transcripts
 
 Threads followed from another app (`controlMode: read-only-attached`) do not

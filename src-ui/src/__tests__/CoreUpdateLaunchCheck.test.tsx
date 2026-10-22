@@ -1,12 +1,11 @@
 /** @vitest-environment jsdom */
-import {
-  act,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  type UpdateNotice,
+  useOpenUpdatesRequest,
+  useUpdateNotices,
+} from '../components/updates/updatesEvents';
 
 let isMobile = false;
 let isDesktop = false;
@@ -22,544 +21,311 @@ let desktopStatus:
       channel?: string;
     }
   | undefined;
-const { useCoreUpdateStatusQuery } = vi.hoisted(() => ({
-  useCoreUpdateStatusQuery: vi.fn(),
-}));
-
-/** The scoped third argument the launch check now forwards (update-ux PR4). */
-const SCOPE_ARGS = [
-  expect.objectContaining({
-    scopeKey: 'scope:station.test\u0000no-boot',
-    assertCurrent: expect.any(Function),
-  }),
-];
-const { useConnectedServerUpdateContext } = vi.hoisted(() => ({
-  useConnectedServerUpdateContext: vi.fn(),
-}));
-const connectedServerContext = vi.hoisted(() => ({
-  current: {
-    scopeKey: 'scope:station.test',
-    apiBase: 'http://station.test',
-    connectionName: 'station',
-    reachability: 'connected',
-    kind: 'remote-server',
-    identity: null,
-    identitySettled: true,
-    identityReady: true,
-    nativeObservationPending: false,
-    claimedOwnerUnresolved: false,
-    isCurrent: () => true,
-  },
-}));
+const { useCoreUpdateStatusQuery, useConnectedServerUpdateContext } =
+  vi.hoisted(() => ({
+    useCoreUpdateStatusQuery: vi.fn(),
+    useConnectedServerUpdateContext: vi.fn(),
+  }));
+const context = {
+  scopeKey: 'scope:station.test',
+  apiBase: 'http://station.test',
+  connectionName: 'station',
+  reachability: 'connected',
+  kind: 'remote-server',
+  identity: null,
+  identitySettled: true,
+  identityReady: true,
+  nativeObservationPending: false,
+  claimedOwnerUnresolved: false,
+  isCurrent: () => true,
+};
 vi.mock('@kontourai/station-sdk', () => ({ useCoreUpdateStatusQuery }));
-vi.mock('../hooks/useConnectedServerUpdateContext', async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import('../hooks/useConnectedServerUpdateContext')
-    >();
-  return { ...actual, useConnectedServerUpdateContext };
-});
+vi.mock('../hooks/useConnectedServerUpdateContext', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../hooks/useConnectedServerUpdateContext')
+  >()),
+  useConnectedServerUpdateContext,
+}));
 vi.mock('../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => ({ isMobile, isDesktop }),
 }));
-
 const { CoreUpdateLaunchCheck } = await import(
   '../components/CoreUpdateLaunchCheck'
 );
-const { BannerHost } = await import('../components/notifications/BannerHost');
-const { BANNER_PRIORITY, bannerStore } = await import(
-  '../contexts/banner-store'
-);
 
-/**
- * Update state is chrome: it must reach the user through the shell's banner
- * slot, never through markup of its own. Rendering the real host here keeps
- * these assertions on what a user sees AND proves the routing.
- */
-function renderWithChrome(node: React.ReactNode) {
+let notices: readonly UpdateNotice[] = [];
+let openRequest: ReturnType<typeof useOpenUpdatesRequest>;
+function UpdatesObserver() {
+  notices = useUpdateNotices();
+  openRequest = useOpenUpdatesRequest();
+  return null;
+}
+function renderCheck(
+  props: React.ComponentProps<typeof CoreUpdateLaunchCheck> = {},
+) {
   return render(
     <>
-      {node}
-      <BannerHost />
+      <CoreUpdateLaunchCheck apiBase="http://station.test" {...props} />
+      <UpdatesObserver />
     </>,
   );
 }
+const feedProps = {
+  feedUrl: 'https://updates.example.test/feed',
+  providerOrigin: 'https://updates.example.test',
+  installedVersion: '1.0.0',
+};
+function feedResponse(
+  version = '2.0.0',
+  releaseUrl = 'https://updates.example.test/app',
+) {
+  return {
+    ok: true,
+    url: feedProps.feedUrl,
+    json: async () => ({ channel: 'stable', version, releaseUrl }),
+  } as Response;
+}
+function expectQueryEnabled(enabled: boolean) {
+  expect(useCoreUpdateStatusQuery).toHaveBeenLastCalledWith(
+    'http://station.test',
+    expect.objectContaining({ enabled }),
+    expect.objectContaining({
+      scopeKey: 'scope:station.test\u0000no-boot',
+      assertCurrent: context.isCurrent,
+    }),
+  );
+}
 
-describe('CoreUpdateLaunchCheck', () => {
-  beforeEach(() => {
-    vi.restoreAllMocks();
-    isMobile = false;
-    isDesktop = false;
-    desktopStatus = undefined;
-    connectedServerContext.current = {
-      ...connectedServerContext.current,
-      reachability: 'connected',
-      kind: 'remote-server',
-      identitySettled: true,
-      identityReady: true,
-      nativeObservationPending: false,
-      claimedOwnerUnresolved: false,
-    };
-    useCoreUpdateStatusQuery.mockClear();
-    useCoreUpdateStatusQuery.mockImplementation(() => ({
-      data: desktopStatus,
-    }));
-    useConnectedServerUpdateContext.mockReset();
-    useConnectedServerUpdateContext.mockImplementation(
-      () => connectedServerContext.current,
-    );
-    bannerStore.clear();
-  });
+beforeEach(() => {
+  isMobile = false;
+  isDesktop = false;
+  desktopStatus = undefined;
+  notices = [];
+  useCoreUpdateStatusQuery.mockReset();
+  useCoreUpdateStatusQuery.mockImplementation(() => ({ data: desktopStatus }));
+  useConnectedServerUpdateContext.mockReset();
+  useConnectedServerUpdateContext.mockReturnValue(context);
+});
+afterEach(() => vi.restoreAllMocks());
 
-  afterEach(() => {
-    bannerStore.clear();
-  });
+describe('CoreUpdateLaunchCheck notices', () => {
+  test.each([1, 3])(
+    'publishes a source comparison of %i commits for review in the unified panel',
+    (behind) => {
+      desktopStatus = {
+        updateAvailable: true,
+        installKind: 'source-checkout',
+        applyMethod: 'git-pull',
+        behind,
+        ahead: 0,
+      };
+      const { container } = renderCheck();
+      expect(container.firstChild).toBeNull();
+      expect(notices).toEqual([
+        expect.objectContaining({
+          target: 'server',
+          message: `Server checkout is ${behind} commit${behind === 1 ? '' : 's'} behind its configured upstream.`,
+          actionLabel: 'Review server update',
+        }),
+      ]);
+      expectQueryEnabled(true);
+      const sequence = openRequest.sequence;
+      act(() => notices[0].onAction?.());
+      expect(openRequest).toMatchObject({
+        target: 'server',
+        sequence: sequence + 1,
+      });
+    },
+  );
 
-  test('stays silent on mobile when the build declares no update channel', async () => {
-    isMobile = true;
-    const fetchSpy = vi.spyOn(globalThis, 'fetch');
-    renderWithChrome(<CoreUpdateLaunchCheck feedUrl="" providerOrigin="" />);
-    // A build without a feed has not failed a check. Reporting that state as
-    // build identity is #2211; it must not raise an alert here.
-    await waitFor(() => expect(fetchSpy).not.toHaveBeenCalled());
-    expect(screen.queryByRole('alert')).toBeNull();
-    expect(screen.queryByRole('status')).toBeNull();
-    expect(bannerStore.getSnapshot()).toHaveLength(0);
-  });
+  test.each([
+    { installKind: 'desktop-bundle' as const, behind: undefined, ahead: 0 },
+    { installKind: 'desktop-bundle' as const, behind: 3, ahead: 0 },
+    { installKind: 'source-checkout' as const, behind: 3, ahead: 2 },
+    { installKind: 'source-checkout' as const, behind: 0, ahead: 0 },
+  ])(
+    'does not turn stamp differences or a diverged/current checkout into an offer: %j',
+    (facts) => {
+      desktopStatus = {
+        updateAvailable: true,
+        applyMethod: 'reinstall',
+        currentHash: 'aaaaaaa',
+        remoteHash: 'bbbbbbb',
+        ...facts,
+      };
+      renderCheck();
+      expect(notices).toEqual([]);
+    },
+  );
 
-  test('presents a source update at launch and routes review to the truthful settings surface', async () => {
-    desktopStatus = {
-      updateAvailable: true,
-      installKind: 'source-checkout',
-      applyMethod: 'git-pull',
-      behind: 3,
-      ahead: 0,
-    };
-
-    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
-
-    expect((await screen.findByRole('status')).textContent).toContain(
-      'Server checkout is 3 commits behind its configured upstream.',
-    );
-    expect(
-      screen.getByRole('link', { name: 'Review update' }).getAttribute('href'),
-    ).toBe('/settings?view=system&highlight=core-app-updates');
-    expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
-      'http://station.test',
-      expect.objectContaining({ enabled: true }),
-      ...SCOPE_ARGS,
-    );
-  });
-
-  test('a SHA-inequality stamp difference can never produce a desktop release banner', async () => {
-    desktopStatus = {
-      updateAvailable: true,
-      installKind: 'desktop-bundle',
-      applyMethod: 'reinstall',
-      channel: 'nightly',
-      currentHash: 'aaaaaaa',
-      remoteHash: 'bbbbbbb',
-    };
-
-    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
-
-    // The query itself runs (source-checkout facts are still legitimate for
-    // this shell), but a build-stamp difference is a build-stamp fact: it
-    // does not establish that an installable release exists.
-    expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
-      'http://station.test',
-      expect.objectContaining({ enabled: true }),
-      ...SCOPE_ARGS,
-    );
-    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
-    expect(bannerStore.getSnapshot()).toHaveLength(0);
-  });
-
-  test('a desktop-bundle behind-count with a differing stamp never becomes a release banner', async () => {
-    // Injection-gap fixture: a bundle that ALSO carries behind>0. The banner
-    // filter keys on the install kind, not on the presence of a behind
-    // count — a stamped build's counts are stamp facts, not release facts.
-    desktopStatus = {
-      updateAvailable: true,
-      installKind: 'desktop-bundle',
-      applyMethod: 'reinstall',
-      channel: 'nightly',
-      currentHash: 'aaaaaaa',
-      remoteHash: 'bbbbbbb',
-      behind: 3,
-      ahead: 0,
-    };
-
-    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
-
-    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
-    expect(screen.queryByText(/commits? behind/)).toBeNull();
-    expect(bannerStore.getSnapshot()).toHaveLength(0);
-  });
-
-  test('a source checkout behind shows the exact source wording and the server-card link, with singular commits', async () => {
-    desktopStatus = {
-      updateAvailable: true,
-      installKind: 'source-checkout',
-      applyMethod: 'git-pull',
-      behind: 1,
-      ahead: 0,
-    };
-
-    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
-
-    expect((await screen.findByRole('status')).textContent).toContain(
-      'Server checkout is 1 commit behind its configured upstream.',
-    );
-    expect(
-      screen.getByRole('link', { name: 'Review update' }).getAttribute('href'),
-    ).toBe('/settings?view=system&highlight=core-app-updates');
-  });
-
-  test('a diverged checkout is manual work, not an offered update', async () => {
-    desktopStatus = {
-      updateAvailable: true,
-      installKind: 'source-checkout',
-      applyMethod: 'git-pull',
-      behind: 3,
-      ahead: 2,
-    };
-
-    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
-    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
-    expect(bannerStore.getSnapshot()).toHaveLength(0);
-  });
-
-  test('does not query the source or raise a banner for an established embedded sidecar', async () => {
+  test.each([
+    ['embedded sidecar', { kind: 'embedded-sidecar' }],
+    ['failed identity', { identityReady: false }],
+    ['pending identity', { identityReady: false, identitySettled: false }],
+    ['pending native observation', { nativeObservationPending: true }],
+    ['unresolved claimed owner', { claimedOwnerUnresolved: true }],
+  ])('withholds the desktop source query for %s', (_label, change) => {
     isDesktop = true;
-    desktopStatus = {
-      updateAvailable: true,
-      installKind: 'source-checkout',
-      applyMethod: 'git-pull',
-      behind: 2,
-    };
-    connectedServerContext.current = {
-      ...connectedServerContext.current,
-      kind: 'embedded-sidecar',
-    };
-
-    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
-
+    useConnectedServerUpdateContext.mockReturnValue({ ...context, ...change });
+    renderCheck();
     expect(useConnectedServerUpdateContext).toHaveBeenCalledWith({
       identityEnabled: true,
     });
-    expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
-      'http://station.test',
-      expect.objectContaining({ enabled: false }),
-      ...SCOPE_ARGS,
-    );
-    await waitFor(() => expect(screen.queryByRole('status')).toBeNull());
-    expect(bannerStore.getSnapshot()).toHaveLength(0);
+    expectQueryEnabled(false);
+    expect(notices).toEqual([]);
   });
 
-  test('does not query the source when identity errored, even with a running observed sidecar', () => {
-    // Desktop shell, an observed running sidecar, but the identity request
-    // FAILED (503): settled but never ready. The gate must read
-    // identityReady — reverting to identitySettled re-enables the source
-    // query against a server the correlation could not name.
-    isDesktop = true;
-    connectedServerContext.current = {
-      ...connectedServerContext.current,
-      kind: 'unresolved',
-      identitySettled: true,
-      identityReady: false,
-      nativeObservationPending: false,
-      claimedOwnerUnresolved: false,
-    };
+  test.each([true, false])(
+    'leaves native identity correlation off when mobile=%s',
+    (mobile) => {
+      isMobile = mobile;
+      renderCheck();
+      expect(useConnectedServerUpdateContext).toHaveBeenCalledWith({
+        identityEnabled: false,
+      });
+      expectQueryEnabled(!mobile);
+    },
+  );
 
-    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
-
-    expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
-      'http://station.test',
-      expect.objectContaining({ enabled: false }),
-      ...SCOPE_ARGS,
-    );
-    expect(bannerStore.getSnapshot()).toHaveLength(0);
-  });
-
-  test('holds the desktop source query while a native observation is still pending', () => {
-    isDesktop = true;
-    connectedServerContext.current = {
-      ...connectedServerContext.current,
-      nativeObservationPending: true,
-    };
-
-    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
-
-    expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
-      'http://station.test',
-      expect.objectContaining({ enabled: false }),
-      ...SCOPE_ARGS,
-    );
-  });
-
-  test('issues no identity request plumbing on launch checks without desktop native ownership', () => {
-    // Mobile shell: the release feed owns updates; no identity, no source query.
-    isMobile = true;
-    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
-    expect(useConnectedServerUpdateContext).toHaveBeenCalledWith({
-      identityEnabled: false,
-    });
-    expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
-      'http://station.test',
-      expect.objectContaining({ enabled: false }),
-      ...SCOPE_ARGS,
-    );
-
-    // Browser shell: identity stays off, while the server-facts source query
-    // keeps its pre-correlation behavior.
-    isMobile = false;
-    desktopStatus = {
-      updateAvailable: true,
-      installKind: 'source-checkout',
-      applyMethod: 'git-pull',
-      behind: 1,
-    };
-    useCoreUpdateStatusQuery.mockClear();
-    useCoreUpdateStatusQuery.mockImplementation(() => ({
-      data: desktopStatus,
-    }));
-    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
-    expect(useConnectedServerUpdateContext).toHaveBeenCalledWith({
-      identityEnabled: false,
-    });
-    expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
-      'http://station.test',
-      expect.objectContaining({ enabled: true }),
-      ...SCOPE_ARGS,
-    );
-  });
-
-  test('holds the desktop source query while identity correlation is pending', () => {
-    isDesktop = true;
-    connectedServerContext.current = {
-      ...connectedServerContext.current,
-      identitySettled: false,
-      identityReady: false,
-    };
-
-    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
-
-    expect(useCoreUpdateStatusQuery).toHaveBeenCalledWith(
-      'http://station.test',
-      expect.objectContaining({ enabled: false }),
-      ...SCOPE_ARGS,
-    );
-    expect(bannerStore.getSnapshot()).toHaveLength(0);
-  });
-
-  test('desktop check stays quiet when the selected Station is current', () => {
+  test('a current selected Station publishes no update notice', () => {
     desktopStatus = { updateAvailable: false };
-    renderWithChrome(<CoreUpdateLaunchCheck apiBase="http://station.test" />);
-    expect(screen.queryByRole('status')).toBeNull();
+    renderCheck();
+    expect(notices).toEqual([]);
   });
 
-  test('presents a genuine check failure through the banner slot', async () => {
+  test('a mobile build without an update channel neither probes nor reports failure', () => {
     isMobile = true;
-    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
-    renderWithChrome(
-      <CoreUpdateLaunchCheck
-        feedUrl="https://updates.example.test/feed"
-        providerOrigin="https://updates.example.test"
-        installedVersion="1.0.0"
-      />,
-    );
-    const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toContain('Update check failed');
-    expect(alert.closest('.banner-host')).not.toBeNull();
-    const [banner] = bannerStore.getSnapshot();
-    // Reaching the host always outranks an update; the band proves it.
-    expect(banner.priority).toBe(BANNER_PRIORITY.info);
-    expect(banner.priority).toBeLessThan(BANNER_PRIORITY.connectionTransient);
-    expect(banner.dismissible).toBe(true);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    renderCheck({ feedUrl: '', providerOrigin: '' });
+    expect(fetchSpy).not.toHaveBeenCalled();
+    expect(notices).toEqual([]);
   });
 
-  test('reads a provenance-pinned native app feed rather than the selected host', async () => {
+  test('publishes a real check failure and retries through its notice action', async () => {
     isMobile = true;
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      url: 'https://updates.example.test/mobile/stable.json',
-      json: async () => ({
-        channel: 'stable',
-        version: '1.2.3',
-        releaseUrl: 'https://updates.example.test/releases/1.2.3',
-      }),
-    } as Response);
-    renderWithChrome(
-      <CoreUpdateLaunchCheck
-        apiBase="https://station-host.example.test"
-        feedUrl="https://updates.example.test/mobile/stable.json"
-        providerOrigin="https://updates.example.test"
-        installedVersion="1.2.3"
-      />,
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValueOnce(feedResponse());
+    renderCheck(feedProps);
+    await waitFor(() =>
+      expect(notices).toEqual([
+        expect.objectContaining({
+          target: 'desktop',
+          detail: 'offline',
+          actionLabel: 'Retry update check',
+        }),
+      ]),
     );
-    await waitFor(() => expect(fetchSpy).toHaveBeenCalledOnce());
-    expect(String(fetchSpy.mock.calls[0][0])).toBe(
-      'https://updates.example.test/mobile/stable.json',
+    act(() => notices[0].onAction?.());
+    await waitFor(() =>
+      expect(notices).toEqual([
+        expect.objectContaining({
+          message: 'Station 2.0.0 is available.',
+          href: 'https://updates.example.test/app',
+        }),
+      ]),
+    );
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  test('reads the provenance-pinned app feed rather than the selected Station', async () => {
+    isMobile = true;
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(feedResponse());
+    renderCheck({ ...feedProps, apiBase: 'https://selected-station.test' });
+    await waitFor(() => expect(notices).toHaveLength(1));
+    expect(String(fetchSpy.mock.calls[0][0])).toBe(feedProps.feedUrl);
+    expect(fetchSpy.mock.calls[0][1]).toEqual(
+      expect.objectContaining({ redirect: 'error' }),
     );
   });
 
-  test('refuses a feed whose release action is not HTTPS', async () => {
-    isMobile = true;
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      url: 'https://updates.example.test/feed',
-      json: async () => ({
-        channel: 'stable',
-        version: '2.0.0',
-        releaseUrl: 'http://downloads.example/app.apk',
-      }),
-    } as Response);
-    renderWithChrome(
-      <CoreUpdateLaunchCheck
-        feedUrl="https://updates.example.test/feed"
-        providerOrigin="https://updates.example.test"
-        installedVersion="1.0.0"
-      />,
-    );
-    expect((await screen.findByRole('alert')).textContent).toContain(
-      'must use HTTPS',
-    );
-    expect(screen.queryByRole('link', { name: 'Update Station' })).toBeNull();
-  });
+  test.each([
+    [
+      'insecure release',
+      'https://updates.example.test/feed',
+      'http://downloads.example/app.apk',
+      /must use HTTPS/,
+    ],
+    [
+      'cross-origin response',
+      'https://cdn.example.test/feed',
+      'https://updates.example.test/app',
+      /not trusted/,
+    ],
+  ])(
+    'rejects %s without publishing an install action',
+    async (_label, url, releaseUrl, detail) => {
+      isMobile = true;
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+        ...feedResponse('2.0.0', releaseUrl),
+        url,
+      });
+      renderCheck(feedProps);
+      await waitFor(() => expect(notices[0]?.detail).toMatch(detail));
+      expect(notices.some((notice) => notice.href)).toBe(false);
+    },
+  );
 
   test.each([
     ['1.2.3', '1.2.3', false],
     ['1.2.3', '1.2.4', true],
     ['1.2.3', '1.2.2', false],
-    // SemVer, not lexical or numeric-prefix, ordering.
     ['1.2.3-preview.2', '1.2.3-preview.10', true],
     ['1.2.3-preview.10', '1.2.3', true],
     ['1.2.3', '1.2.4-preview.1', true],
     ['1.2.3', '1.2.3-preview.1', false],
   ])(
-    'compares installed %s with latest %s',
+    'orders installed %s against feed %s',
     async (installedVersion, version, available) => {
       isMobile = true;
-      let answerFeed: ((feed: unknown) => void) | undefined;
+      let answerFeed!: (value: unknown) => void;
       vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-        ok: true,
-        url: 'https://updates.example.test/mobile/stable.json',
+        ...feedResponse(),
         json: () =>
           new Promise((resolve) => {
             answerFeed = resolve;
           }),
-      } as Response);
-      renderWithChrome(
-        <CoreUpdateLaunchCheck
-          feedUrl="https://updates.example.test/mobile/stable.json"
-          providerOrigin="https://updates.example.test/"
-          installedVersion={installedVersion}
-        />,
-      );
-      // Settle the whole fetch → json → compare path before judging, so a
-      // "no offer" row cannot pass merely because the answer has not landed.
+      });
+      renderCheck({ ...feedProps, installedVersion });
       await waitFor(() => expect(answerFeed).toBeDefined());
-      await act(async () => {
-        answerFeed?.({
+      await act(async () =>
+        answerFeed({
           channel: 'stable',
           version,
-          releaseUrl: 'https://updates.example.test/releases/app',
-        });
-      });
-      expect(screen.queryByRole('alert')).toBeNull();
+          releaseUrl: 'https://updates.example.test/app',
+        }),
+      );
       expect(
-        screen.queryByRole('link', { name: 'Update Station' }) !== null,
+        notices.some(
+          (notice) => notice.href === 'https://updates.example.test/app',
+        ),
       ).toBe(available);
+      expect(notices.some((notice) => notice.detail)).toBe(false);
     },
   );
 
-  test('offers the update as an outbound link, not a scripted window open', async () => {
+  test('publishes an outbound release URL without opening a window or installing automatically', async () => {
     isMobile = true;
     const openSpy = vi.spyOn(window, 'open');
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      url: 'https://updates.example.test/feed',
-      json: async () => ({
-        channel: 'stable',
-        version: '2.0.0',
-        releaseUrl: 'https://updates.example.test/releases/2.0.0',
-      }),
-    } as Response);
-    renderWithChrome(
-      <CoreUpdateLaunchCheck
-        feedUrl="https://updates.example.test/feed"
-        providerOrigin="https://updates.example.test"
-        installedVersion="1.0.0"
-      />,
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(feedResponse());
+    renderCheck(feedProps);
+    await waitFor(() =>
+      expect(notices[0]?.href).toBe('https://updates.example.test/app'),
     );
-    const link = await screen.findByRole('link', { name: 'Update Station' });
-    // An Android WebView may ignore window.open('_blank'), which fails
-    // silently on the one action the banner exists to offer.
-    expect(link.getAttribute('href')).toBe(
-      'https://updates.example.test/releases/2.0.0',
-    );
-    expect(link.getAttribute('rel')).toContain('noopener');
+    expect(notices[0]?.onAction).toBeUndefined();
     expect(openSpy).not.toHaveBeenCalled();
   });
 
-  test('offers a retry after a failed check', async () => {
-    isMobile = true;
-    const fetchSpy = vi
-      .spyOn(globalThis, 'fetch')
-      .mockRejectedValueOnce(new Error('offline'))
-      .mockResolvedValueOnce({
-        ok: true,
-        url: 'https://updates.example.test/feed',
-        json: async () => ({
-          channel: 'stable',
-          version: '2.0.0',
-          releaseUrl: 'https://updates.example.test/app',
-        }),
-      } as Response);
-    renderWithChrome(
-      <CoreUpdateLaunchCheck
-        feedUrl="https://updates.example.test/feed"
-        providerOrigin="https://updates.example.test"
-        installedVersion="1.0.0"
-      />,
-    );
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Retry update check' }),
-    );
-    expect(
-      await screen.findByRole('link', { name: 'Update Station' }),
-    ).toBeTruthy();
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
-  });
-
-  test('rejects redirected or cross-origin provider responses', async () => {
-    isMobile = true;
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      url: 'https://cdn.example.test/feed',
-      json: async () => ({}),
-    } as Response);
-    renderWithChrome(
-      <CoreUpdateLaunchCheck
-        feedUrl="https://updates.example.test/feed"
-        providerOrigin="https://updates.example.test/"
-        installedVersion="1.0.0"
-      />,
-    );
-    expect((await screen.findByRole('alert')).textContent).toContain(
-      'not trusted',
-    );
-  });
-
-  test('does not probe in web or desktop shells', () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch');
-    renderWithChrome(
-      <CoreUpdateLaunchCheck
-        feedUrl="https://updates.example.test/feed"
-        providerOrigin="https://updates.example.test"
-      />,
-    );
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
+  test.each([false, true])(
+    'does not probe the app feed in desktop=%s shells',
+    (desktop) => {
+      isDesktop = desktop;
+      const fetchSpy = vi.spyOn(globalThis, 'fetch');
+      renderCheck(feedProps);
+      expect(fetchSpy).not.toHaveBeenCalled();
+    },
+  );
 });

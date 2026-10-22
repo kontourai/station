@@ -167,7 +167,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const profile = usePlatformProfile();
   const bundledStatus = useBundledServerStatus(profile.supervisesBundledServer);
   const { navigate, pathname, activeChat } = useNavigation();
-  const { showToast } = useToast();
+  const { showToast, upsertToast, dismissToast } = useToast();
   const bootstrapRecoveryError = nativeProfileBootstrapRecoveryError();
   const [showModal, setShowModal] = useState(false);
   const [stationSetup, setStationSetup] =
@@ -232,9 +232,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   // a durable `dismiss` for an unfinished setup. Because the key is the
   // evidence string, selecting another connection or a change in credential
   // state re-arms the banner on its own, with no effect and no cleanup.
-  const [dismissedCredentialNotice, setDismissedCredentialNotice] = useState<
-    string | null
-  >(null);
+
   // A decline is never withheld — a silent refusal is the original archive#3387
   // defect — and it always takes the band's single visible slot, because both
   // banners sit in `connectionBlocking` where the stack shows one and collapses
@@ -280,8 +278,6 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (pairingFailureIsStale) setPairingFailure(null);
   }, [pairingFailureIsStale]);
-  const credentialNoticeDismissed =
-    dismissedCredentialNotice === connectionEvidence;
 
   // The native bootstrap has completed its one credential recovery attempt
   // (a window already shown to the user releases it early when the owned
@@ -302,36 +298,30 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     showToast(bootstrapRecoveryError);
   }, [bootstrapRecoveryError, profile.isDesktop, showToast]);
 
-  // archive#4475 — `restartBundledServer` reports whether the request even
-  // REACHED the host (its own doc comment: "so the recovery screen can tell
-  // the user when it didn't"), but both callers of it here used to discard
-  // that boolean entirely (`void restartBundledServer;`) — the exact
-  // "dead button" mechanism the owner hit on their phone: a dangling proxy
-  // (tailscale serve → a port nothing owns) makes the restart POST fail,
-  // and nothing on screen ever said so. Both the banner's "Restart Station"
-  // action and the Stations sheet row's "Restart" button now go through
-  // this, and it is `useCallback`-stable and self-referencing so the toast's
-  // own "Try again" action can retry the exact same request.
-  //
-  // archive#4512: `duration: 0` — sticky until dismissed, the
-  // same precedent `showToolApproval` already sets for a decision the
-  // reader has to act on rather than merely notice ("No auto-dismiss for
-  // approvals", `ToastContext.tsx`). A restart that could not even reach
-  // the host is exactly that: a 5-second default would vanish this toast,
-  // "Try again" and all, while the reader was still reading the FIRST
-  // sentence of it — which is the same silence-on-failure defect one layer
-  // up from the one this whole fix exists to close.
-  const handleRestartBundledServer = useCallback(() => {
-    void restartBundledServer().then((ok) => {
-      if (ok) return;
-      showToast(
-        "Couldn't restart the local Station. Check the connection, then try again.",
-        undefined,
-        0,
-        [{ label: 'Try again', onClick: () => handleRestartBundledServer() }],
-      );
+  const restartNoticeId = useRef<string | null>(null);
+  const handleRestartBundledServer = useCallback((): Promise<void> => {
+    const priorNoticeId = restartNoticeId.current;
+    return restartBundledServer().then((ok) => {
+      if (ok) {
+        if (priorNoticeId) dismissToast(priorNoticeId);
+        if (restartNoticeId.current === priorNoticeId)
+          restartNoticeId.current = null;
+        return;
+      }
+      const noticeId = upsertToast({
+        dedupeKey: 'local-station-restart',
+        message:
+          "Couldn't restart the local Station. Check the connection, then try again.",
+        tone: 'error',
+        duration: 0,
+        recallText: 'The local Station could not restart.',
+        actions: [
+          { label: 'Try again', onClick: () => handleRestartBundledServer() },
+        ],
+      });
+      if (noticeId) restartNoticeId.current = noticeId;
     });
-  }, [showToast]);
+  }, [upsertToast, dismissToast]);
 
   // Keep banner actions stable while connection probes update the shell. A
   // fresh callback on every retry makes MobileConnectionBanner tear down and
@@ -544,7 +534,6 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
           },
         },
       ],
-      dragRegion: true,
     });
     return () => {
       bannerStore.dismiss(PAIRING_APPROVAL_BANNER_ID);
@@ -559,7 +548,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     effectivePendingExchange?.requestKind,
   ]);
 
-  // archive#1958: credential pairing chrome → BannerHost under Header.
+  // Credential repair remains available in Station details.
   // Plain reachability while the shell is up is ConnectionBannerSource
   // (same slot) — do not dual-mount a second reconnect strip.
   const credentialFailure =
@@ -582,15 +571,8 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   // stack an instruction to begin pairing again underneath it. A terminal
   // pairing failure is the same thing one step later — it carries its own
   // "Request access again" action — and it is not just redundant underneath:
-  // both banners sit in the connectionBlocking band, where the stack shows one
-  // front banner and collapses the rest, and `chrome:onboarding:credential`
-  // wins that band's id tie-break over `chrome:onboarding:pairing-failure`
-  // (archive#3387).
   const showCredentialChrome =
-    !credentialNoticeDismissed &&
-    credentialRequired &&
-    !pendingApproval &&
-    !pairingFailure;
+    credentialRequired && !pendingApproval && !pairingFailure;
 
   useEffect(() => {
     if (showCredentialChrome) {
@@ -598,21 +580,14 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
         id: BANNER_IDS.credential,
         priority: BANNER_PRIORITY.connectionBlocking,
         tone: 'blocked',
-        // The occurrence is the same evidence string the component's own
-        // durable dismissal keys on: connection id + last success + credential
-        // state. Without it the store suppressed on id alone, permanently —
-        // a NEW credential incident on the same connection stayed hidden
-        // behind an old dismissal (archive#2557 finding).
         occurrence: connectionEvidence,
         message: credentialMessage,
         detail: credentialDetail,
-        dragRegion: true,
-        dismissible: true,
-        dismissAriaLabel: 'Dismiss pairing reminder',
-        onDismiss: () => setDismissedCredentialNotice(connectionEvidence),
+        dismissible: false,
         actions: [
           {
             label: 'Request access',
+            opensDialog: true,
             onClick: () => {
               setConnectionModalMode('request-access');
               setShowModal(true);
@@ -654,6 +629,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       actions: [
         {
           label: 'Request access again',
+          opensDialog: true,
           onClick: () => {
             setPairingFailure(null);
             setConnectionModalMode('list');

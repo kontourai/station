@@ -3,6 +3,7 @@ import {
   type ReactNode,
   useCallback,
   useContext,
+  useLayoutEffect,
   useMemo,
   useSyncExternalStore,
 } from 'react';
@@ -23,7 +24,7 @@ export function stripAnsi(input: string): string {
 
 type ToastAction = {
   label: string;
-  onClick: () => void;
+  onClick: () => unknown;
   variant?: 'primary' | 'secondary' | 'danger';
 };
 
@@ -31,6 +32,12 @@ type ToastTone = 'info' | 'success' | 'warning' | 'error';
 
 type Toast = {
   id: string;
+  stationScope?: string;
+  dedupeKey?: string;
+  recallText?: string;
+  occurrences?: number;
+  pendingAction?: number;
+  actionError?: string;
   message: string;
   sessionId?: string;
   duration?: number;
@@ -77,6 +84,32 @@ type Toast = {
   metadata?: Record<string, unknown>;
 };
 
+export type ToastOptions = {
+  id?: string;
+  stationScope?: string;
+  dedupeKey?: string;
+  message: string;
+  tone?: ToastTone;
+  duration?: number;
+  sessionId?: string;
+  actions?: ToastAction[];
+  detail?: string;
+  /** Explicitly safe text for recall; never pass raw diagnostics or credentials. */
+  recallText?: string;
+};
+
+type Expiration = {
+  remaining: number;
+  started?: number;
+  visible: boolean;
+  paused: Set<string>;
+};
+const RECALL_KEY = 'station:toast-recall:v1:';
+const RECALL_LIMIT = 50;
+const RECALL_AGE = 7 * 24 * 60 * 60 * 1000;
+const ordinary = (toast: Toast) =>
+  ['info', 'success', 'warning', 'error'].includes(toast.type ?? 'info');
+
 class ToastStore {
   private toasts: Toast[] = [];
   private history: (Toast & { timestamp: number; dismissed: boolean })[] = [];
@@ -85,7 +118,304 @@ class ToastStore {
   private snapshot = this.toasts;
   private historySnapshot = this.history;
   private timeouts = new Map<string, ReturnType<typeof setTimeout>>();
-  private maxHistory = 100; // Keep last 100 notifications
+  private maxHistory = 100;
+  private expirations = new Map<string, Expiration>();
+  private stationScope =
+    typeof location === 'undefined' ? 'local' : location.origin;
+  private hidden = typeof document !== 'undefined' && document.hidden;
+
+  constructor() {
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        this.hidden = document.hidden;
+        for (const id of this.expirations.keys()) this.schedule(id);
+      });
+    }
+    this.loadRecall();
+    this.historySnapshot = [...this.history];
+  }
+
+  isCurrentScope(scope?: string) {
+    return scope === undefined || scope === this.stationScope;
+  }
+
+  bindScope(scope: string) {
+    if (scope === this.stationScope) return;
+    this.clear();
+    this.history = [];
+    this.stationScope = scope;
+    this.loadRecall();
+    this.notifyHistory();
+  }
+
+  private loadRecall() {
+    try {
+      const raw: unknown = JSON.parse(
+        localStorage.getItem(RECALL_KEY + this.stationScope) ?? '[]',
+      );
+      if (!Array.isArray(raw)) return;
+      this.history = raw.slice(0, RECALL_LIMIT).flatMap((item) => {
+        if (
+          !item ||
+          typeof item !== 'object' ||
+          typeof item.message !== 'string' ||
+          typeof item.id !== 'string' ||
+          typeof item.timestamp !== 'number' ||
+          !Number.isFinite(item.timestamp) ||
+          item.timestamp < Date.now() - RECALL_AGE ||
+          item.timestamp > Date.now() ||
+          !['info', 'success', 'warning', 'error'].includes(item.type)
+        )
+          return [];
+        return [
+          {
+            id: item.id.slice(0, 160),
+            message: item.message.slice(0, 500),
+            recallText: item.message.slice(0, 500),
+            timestamp: item.timestamp,
+            type: item.type as ToastTone,
+            stationScope: this.stationScope,
+            dismissed: true,
+          },
+        ];
+      });
+    } catch {
+      /* Storage can be unavailable or contain invalid data. */
+    }
+  }
+
+  private persistRecall() {
+    try {
+      const entries = this.history
+        .filter(
+          (item) =>
+            ordinary(item) &&
+            item.recallText &&
+            item.timestamp >= Date.now() - RECALL_AGE,
+        )
+        .slice(0, RECALL_LIMIT);
+      localStorage.setItem(
+        RECALL_KEY + this.stationScope,
+        JSON.stringify(
+          entries.map((item) => ({
+            id: item.id.slice(0, 160),
+            message: item.recallText!.slice(0, 500),
+            type: item.type ?? 'info',
+            timestamp: item.timestamp,
+          })),
+        ),
+      );
+    } catch {
+      /* Recall is optional when storage is full or disabled. */
+    }
+  }
+
+  private schedule(id: string) {
+    const timer = this.timeouts.get(id);
+    if (timer) clearTimeout(timer);
+    this.timeouts.delete(id);
+    const expiration = this.expirations.get(id);
+    if (!expiration) return;
+    if (expiration.started !== undefined) {
+      expiration.remaining = Math.max(
+        0,
+        expiration.remaining - (Date.now() - expiration.started),
+      );
+      expiration.started = undefined;
+    }
+    if (
+      !expiration.visible ||
+      expiration.paused.size ||
+      this.hidden ||
+      !Number.isFinite(expiration.remaining)
+    )
+      return;
+    expiration.started = Date.now();
+    this.timeouts.set(
+      id,
+      setTimeout(() => this.dismiss(id), expiration.remaining),
+    );
+  }
+
+  private resetExpiration(toast: Toast) {
+    const previous = this.expirations.get(toast.id);
+    const timer = this.timeouts.get(toast.id);
+    if (timer) clearTimeout(timer);
+    this.timeouts.delete(toast.id);
+    this.expirations.delete(toast.id);
+    const paused = new Set(previous?.paused);
+    paused.delete('action');
+    this.expirations.set(toast.id, {
+      remaining:
+        !toast.duration || toast.duration <= 0
+          ? Infinity
+          : toast.actions?.length ||
+              toast.onNavigate ||
+              toast.metadata?.navigateTo
+            ? Math.max(12000, toast.duration)
+            : toast.duration,
+      visible: previous?.visible ?? false,
+      paused,
+    });
+    this.schedule(toast.id);
+  }
+
+  setVisible(id: string, visible: boolean) {
+    const expiration = this.expirations.get(id);
+    if (!expiration || expiration.visible === visible) return;
+    expiration.visible = visible;
+    this.schedule(id);
+  }
+
+  pause(id: string, reason: string, paused: boolean) {
+    const expiration = this.expirations.get(id);
+    if (!expiration) return;
+    if (paused) expiration.paused.add(reason);
+    else expiration.paused.delete(reason);
+    this.schedule(id);
+  }
+
+  upsert(options: ToastOptions) {
+    const scope = options.stationScope ?? this.stationScope;
+    if (scope !== this.stationScope) return options.id ?? '';
+    const existing = this.toasts.find(
+      (item) =>
+        ordinary(item) &&
+        (options.id
+          ? item.id === options.id
+          : options.dedupeKey &&
+            item.dedupeKey === options.dedupeKey &&
+            item.sessionId === options.sessionId),
+    );
+    const id = existing?.id ?? options.id ?? crypto.randomUUID();
+    const toast: Toast = {
+      id,
+      stationScope: scope,
+      dedupeKey: options.dedupeKey,
+      message: stripAnsi(options.message),
+      type: options.tone ?? 'info',
+      sessionId: options.sessionId,
+      duration: options.duration ?? 5000,
+      actions: options.actions,
+      metadata: options.detail
+        ? { detail: stripAnsi(options.detail) }
+        : undefined,
+      recallText: options.recallText
+        ? stripAnsi(options.recallText).slice(0, 500)
+        : undefined,
+      occurrences: existing
+        ? (existing.occurrences ?? 1) +
+          (!options.id && options.dedupeKey ? 1 : 0)
+        : 1,
+    };
+    if (existing) {
+      this.toasts = this.toasts.map((item) =>
+        item === existing ? toast : item,
+      );
+      this.history = this.history.map((item) =>
+        item.id === id
+          ? { ...toast, timestamp: item.timestamp, dismissed: false }
+          : item,
+      );
+    } else {
+      this.toasts.push(toast);
+      this.history = this.history.filter((item) => item.id !== id);
+      this.history.unshift({
+        ...toast,
+        timestamp: Date.now(),
+        dismissed: false,
+      });
+    }
+    this.resetExpiration(toast);
+    const transients = this.toasts.filter(
+      (item) =>
+        item.type !== 'tool-approval' && item.type !== 'pairing-request',
+    );
+    for (const item of transients.slice(
+      0,
+      Math.max(0, transients.length - this.maxHistory),
+    ))
+      this.dismiss(item.id);
+    this.notify();
+    this.notifyHistory();
+    return id;
+  }
+
+  update(id: string, patch: Partial<Omit<ToastOptions, 'id'>>) {
+    const toast = this.toasts.find((item) => item.id === id && ordinary(item));
+    if (
+      !toast ||
+      (patch.stationScope && patch.stationScope !== this.stationScope)
+    )
+      return;
+    this.upsert({
+      id,
+      stationScope: toast.stationScope,
+      message: toast.message,
+      tone: toast.type as ToastTone,
+      duration: toast.duration,
+      actions: toast.actions,
+      dedupeKey: toast.dedupeKey,
+      sessionId: toast.sessionId,
+      detail:
+        typeof toast.metadata?.detail === 'string'
+          ? toast.metadata.detail
+          : undefined,
+      recallText: toast.recallText,
+      ...patch,
+    });
+  }
+
+  runAction(id: string, index: number) {
+    const toast = this.toasts.find((item) => item.id === id);
+    const action = toast?.actions?.[index];
+    if (
+      !toast ||
+      !action ||
+      toast.pendingAction !== undefined ||
+      (toast.stationScope && toast.stationScope !== this.stationScope)
+    )
+      return;
+    const publish = () => {
+      this.history = this.history.map((item) =>
+        item.id === id ? { ...item, ...toast } : item,
+      );
+      this.notify();
+      this.notifyHistory();
+    };
+    const fail = () => {
+      if (!this.toasts.includes(toast)) return;
+      toast.pendingAction = undefined;
+      toast.actionError = 'Action failed. Try again.';
+      toast.duration = 0;
+      this.resetExpiration(toast);
+      publish();
+    };
+    try {
+      const result = action.onClick();
+      if (!this.toasts.includes(toast)) {
+        if (result) void Promise.resolve(result).catch(() => undefined);
+        return;
+      }
+      if (
+        result instanceof Promise ||
+        (typeof result === 'object' &&
+          result !== null &&
+          'then' in result &&
+          typeof result.then === 'function')
+      ) {
+        toast.pendingAction = index;
+        toast.actionError = undefined;
+        this.pause(id, 'action', true);
+        publish();
+        void Promise.resolve(result).then(() => {
+          if (this.toasts.includes(toast)) this.dismiss(id);
+        }, fail);
+      } else if (this.toasts.includes(toast)) this.dismiss(id);
+    } catch {
+      fail();
+    }
+  }
 
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -111,6 +441,15 @@ class ToastStore {
   };
 
   private notifyHistory = () => {
+    // Active approvals cannot be evicted by transient traffic.
+    const active = this.history.filter((item) => !item.dismissed);
+    const recent = this.history
+      .filter((item) => item.dismissed)
+      .slice(0, this.maxHistory);
+    this.history = [...active, ...recent].sort(
+      (a, b) => b.timestamp - a.timestamp,
+    );
+    this.persistRecall();
     this.historySnapshot = [...this.history];
     this.historyListeners.forEach((listener) => listener());
   };
@@ -124,69 +463,36 @@ class ToastStore {
     tone: ToastTone = 'info',
   ) {
     const clean = stripAnsi(message);
-
-    // Collapse rapid duplicates (a provider error retried in a loop would
-    // otherwise stack identical toasts until they cover the viewport). Refresh
-    // the existing toast's auto-dismiss timer instead of adding another copy.
-    // Actions carry distinct caller-owned intent. Equal copy must not retain
-    // another Pane's callback or attach an old action to an actionless notice.
-    const existing =
-      !actions?.length &&
-      this.toasts.find(
-        (t) =>
-          !t.actions?.length &&
-          t.type === tone &&
-          t.message === clean &&
-          t.sessionId === sessionId,
-      );
-    if (existing) {
-      const prevTimeout = this.timeouts.get(existing.id);
-      if (prevTimeout) clearTimeout(prevTimeout);
-      if (duration > 0) {
-        this.timeouts.set(
-          existing.id,
-          setTimeout(() => this.dismiss(existing.id), duration),
+    const existing = actions?.length
+      ? undefined
+      : this.toasts.find(
+          (toast) =>
+            ordinary(toast) &&
+            !toast.actions?.length &&
+            toast.type === tone &&
+            toast.message === clean &&
+            toast.sessionId === sessionId,
         );
-      }
-      return existing.id;
-    }
-
-    const id = `${Date.now()}-${Math.random()}`;
-    const toast: Toast = {
-      id,
+    const id = this.upsert({
+      id: existing?.id,
       message: clean,
       sessionId,
       duration,
-      type: tone,
       actions,
-      metadata,
-    };
-
-    this.toasts.push(toast);
-    this.history.unshift({ ...toast, timestamp: Date.now(), dismissed: false });
-
-    // Keep history size limited
-    if (this.history.length > this.maxHistory) {
-      this.history = this.history.slice(0, this.maxHistory);
+      tone,
+    });
+    if (metadata) {
+      const toast = this.toasts.find((item) => item.id === id);
+      if (toast) {
+        toast.metadata = metadata;
+        this.history = this.history.map((item) =>
+          item.id === id ? { ...item, metadata } : item,
+        );
+        this.resetExpiration(toast);
+        this.notify();
+        this.notifyHistory();
+      }
     }
-
-    this.notify();
-    this.notifyHistory();
-
-    // archive#4512 — `duration > 0` guards this the same way
-    // the existing-toast refresh path above already does. Before this fix,
-    // `duration: 0` (the "sticky, no auto-dismiss" contract `showToolApproval`
-    // below establishes by never scheduling a timeout at all) instead
-    // scheduled `setTimeout(dismiss, 0)` here — a toast asking for NO
-    // auto-dismiss dismissed itself on the very next macrotask, faster than
-    // the 5-second default it was meant to opt out of.
-    if (duration > 0) {
-      const timeout = setTimeout(() => {
-        this.dismiss(id);
-      }, duration);
-      this.timeouts.set(id, timeout);
-    }
-
     return id;
   }
 
@@ -216,6 +522,7 @@ class ToastStore {
 
     const toast: Toast = {
       id,
+      stationScope: this.stationScope,
       message: `${options.agentName} wants to use ${toolDisplay}`,
       sessionId: options.sessionId,
       type: 'tool-approval',
@@ -231,10 +538,6 @@ class ToastStore {
 
     this.toasts.push(toast);
     this.history.unshift({ ...toast, timestamp: Date.now(), dismissed: false });
-
-    if (this.history.length > this.maxHistory) {
-      this.history = this.history.slice(0, this.maxHistory);
-    }
 
     this.notify();
     this.notifyHistory();
@@ -268,6 +571,7 @@ class ToastStore {
 
     const toast: Toast = {
       id,
+      stationScope: this.stationScope,
       message: `${options.agentName} ${verb} ${options.toolName}`,
       sessionId: options.sessionId,
       type: 'tool-activity',
@@ -288,19 +592,9 @@ class ToastStore {
     this.toasts.push(toast);
     this.history.unshift({ ...toast, timestamp: Date.now(), dismissed: false });
 
-    if (this.history.length > this.maxHistory) {
-      this.history = this.history.slice(0, this.maxHistory);
-    }
-
+    this.resetExpiration(toast);
     this.notify();
     this.notifyHistory();
-
-    if (toast.duration && toast.duration > 0) {
-      const timeout = setTimeout(() => {
-        this.dismiss(id);
-      }, toast.duration);
-      this.timeouts.set(id, timeout);
-    }
 
     return id;
   }
@@ -324,6 +618,7 @@ class ToastStore {
     const duration = options.failed ? 9000 : 7000;
     const toast: Toast = {
       id,
+      stationScope: this.stationScope,
       message: stripAnsi(options.message),
       sessionId: options.sessionId,
       type: 'turn-activity',
@@ -338,20 +633,14 @@ class ToastStore {
 
     this.toasts.push(toast);
     this.history.unshift({ ...toast, timestamp: Date.now(), dismissed: false });
-    if (this.history.length > this.maxHistory) {
-      this.history = this.history.slice(0, this.maxHistory);
-    }
+    this.resetExpiration(toast);
     this.notify();
     this.notifyHistory();
-
-    this.timeouts.set(
-      id,
-      setTimeout(() => this.dismiss(id), duration),
-    );
     return id;
   }
 
   dismiss(id: string) {
+    this.expirations.delete(id);
     const timeout = this.timeouts.get(id);
     if (timeout) {
       clearTimeout(timeout);
@@ -362,6 +651,9 @@ class ToastStore {
     const historyItem = this.history.find((h) => h.id === id);
     if (historyItem) {
       historyItem.dismissed = true;
+      historyItem.actions = undefined;
+      historyItem.onNavigate = undefined;
+      historyItem.metadata = undefined;
       this.notifyHistory();
     }
 
@@ -390,6 +682,7 @@ class ToastStore {
   clear() {
     this.timeouts.forEach((timeout) => clearTimeout(timeout));
     this.timeouts.clear();
+    this.expirations.clear();
     this.toasts = [];
     this.notify();
   }
@@ -400,11 +693,22 @@ class ToastStore {
   dismissAll() {
     this.timeouts.forEach((timeout) => clearTimeout(timeout));
     this.timeouts.clear();
+    this.expirations.clear();
     this.toasts = [];
     for (const item of this.history) {
       if (!item.dismissed) item.dismissed = true;
+      item.actions = undefined;
+      item.onNavigate = undefined;
+      item.metadata = undefined;
     }
     this.notify();
+    this.notifyHistory();
+  }
+
+  clearRecentMessages() {
+    this.history = this.history.filter((item) => !ordinary(item));
+    for (const toast of [...this.toasts])
+      if (ordinary(toast)) this.dismiss(toast.id);
     this.notifyHistory();
   }
 
@@ -417,6 +721,8 @@ class ToastStore {
 export const toastStore = new ToastStore();
 
 const ToastContext = createContext<{
+  upsertToast: (options: ToastOptions) => string;
+  updateToast: (id: string, patch: Partial<Omit<ToastOptions, 'id'>>) => void;
   showToast: (
     message: string,
     sessionId?: string,
@@ -452,7 +758,32 @@ const ToastContext = createContext<{
   clearHistory: () => void;
 } | null>(null);
 
-export function ToastProvider({ children }: { children: ReactNode }) {
+export function ToastProvider({
+  children,
+  stationScope = typeof location === 'undefined' ? 'local' : location.origin,
+}: {
+  children: ReactNode;
+  stationScope?: string;
+}) {
+  useLayoutEffect(() => {
+    toastStore.bindScope(stationScope);
+  }, [stationScope]);
+  const upsertToast = useCallback(
+    (options: ToastOptions) =>
+      toastStore.upsert({
+        ...options,
+        stationScope: options.stationScope ?? stationScope,
+      }),
+    [stationScope],
+  );
+  const updateToast = useCallback(
+    (id: string, patch: Partial<Omit<ToastOptions, 'id'>>) =>
+      toastStore.update(id, {
+        ...patch,
+        stationScope: patch.stationScope ?? stationScope,
+      }),
+    [stationScope],
+  );
   const showToast = useCallback(
     (
       message: string,
@@ -461,6 +792,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       actions?: ToastAction[],
       tone: ToastTone = 'info',
     ) => {
+      if (!toastStore.isCurrentScope(stationScope)) return '';
       return toastStore.show(
         message,
         sessionId,
@@ -470,7 +802,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         tone,
       );
     },
-    [],
+    [stationScope],
   );
 
   const showToolApproval = useCallback(
@@ -484,9 +816,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       actions: ToastAction[];
       onNavigate?: () => void;
     }) => {
+      if (!toastStore.isCurrentScope(stationScope)) return '';
       return toastStore.showToolApproval(options);
     },
-    [],
+    [stationScope],
   );
 
   const showToolActivity = useCallback(
@@ -500,9 +833,10 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       onNavigate?: () => void;
       duration?: number;
     }) => {
+      if (!toastStore.isCurrentScope(stationScope)) return '';
       return toastStore.showToolActivity(options);
     },
-    [],
+    [stationScope],
   );
 
   const dismissToast = useCallback((id: string) => {
@@ -526,6 +860,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   // provider, whatever the render was actually about.
   const value = useMemo(
     () => ({
+      upsertToast,
+      updateToast,
       showToast,
       showToolApproval,
       showToolActivity,
@@ -535,6 +871,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       clearHistory,
     }),
     [
+      upsertToast,
+      updateToast,
       showToast,
       showToolApproval,
       showToolActivity,

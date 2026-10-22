@@ -135,6 +135,7 @@ export function BundledServiceBanner({
           : []),
         {
           label: 'Manage Stations',
+          opensDialog: true,
           variant: 'secondary',
           onClick: onOpenConnections,
         },

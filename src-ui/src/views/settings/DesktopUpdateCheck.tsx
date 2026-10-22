@@ -109,7 +109,11 @@ const ERROR_LEADS = {
  * state, its progress, the automatic-download policy and a manual check.
  * Unlike the chrome control, check failures are shown here.
  */
-export function DesktopUpdateCheck() {
+export function DesktopUpdateCheck({
+  showPolicy = true,
+}: {
+  showPolicy?: boolean;
+}) {
   const { target, isDesktop } = usePlatformProfile();
   const { state, error: readError, retry } = useDesktopUpdateState(isDesktop);
   const impact = useDesktopRestartServerImpact();
@@ -158,6 +162,9 @@ export function DesktopUpdateCheck() {
 
   return (
     <div className="settings__update-check">
+      <p className="settings__field-hint">
+        Installed app: Station {state.currentVersion}
+      </p>
       <StatusLine state={state} />
       {phase.status === 'available' && phase.notes && (
         <details>
@@ -226,7 +233,7 @@ export function DesktopUpdateCheck() {
           }
         />
       )}
-      {phase.status !== 'disabled' && (
+      {showPolicy && phase.status !== 'disabled' && (
         <div className="settings__field">
           <label className="settings__field-label" htmlFor={policyId}>
             Automatic download

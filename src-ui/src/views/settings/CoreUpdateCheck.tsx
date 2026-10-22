@@ -23,7 +23,10 @@ import {
   TechnicalDetails,
   UpdateChannelRow,
 } from './coreUpdatePresentation';
-import { ServerUpdateStageApply } from './ServerUpdateStageApply';
+import {
+  ServerUpdateRestartConfirmation,
+  ServerUpdateStageApply,
+} from './ServerUpdateStageApply';
 
 export const RESTART_STATUS_POLL_INTERVAL_MS = 1_500;
 const SERVICE_UPDATE_POLL_INTERVAL_MS = 2_000;
@@ -70,6 +73,11 @@ export function CoreUpdateCheck({
   context?: ConnectedServerUpdateContext | null;
 }) {
   const scopeKey = coreUpdateScopeFromContext(context);
+  const [confirmApplyScope, setConfirmApplyScope] = useState<string | null>(
+    null,
+  );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Changing the connection or boot invalidates its confirmation.
+  useEffect(() => setConfirmApplyScope(null), [apiBase, scopeKey]);
   // A service update restarts the server, so it outlives the boot-bound
   // scope above: it is followed per connection, and the progress it reads is
   // durable on the server whichever version answers.
@@ -560,8 +568,7 @@ export function CoreUpdateCheck({
             type="button"
             className="settings__update-btn settings__update-btn--apply"
             onClick={() => {
-              applyScopeRef.current = scopeRef.current;
-              updateMutation.mutate();
+              setConfirmApplyScope(scopeKey ?? 'unscoped');
             }}
             disabled={updateMutation.isPending || restarting}
           >
@@ -573,6 +580,22 @@ export function CoreUpdateCheck({
           </button>
         )}
       </div>
+      {confirmApplyScope === (scopeKey ?? 'unscoped') &&
+        canApply &&
+        !stagedFlow && (
+          <ServerUpdateRestartConfirmation
+            apiBase={apiBase}
+            version={status?.latestVersion ?? 'the checked server version'}
+            mode={canApplyServiceUpdate ? 'service-update' : 'checkout'}
+            pending={updateMutation.isPending}
+            onLater={() => setConfirmApplyScope(null)}
+            onRestartNow={() => {
+              applyScopeRef.current = scopeRef.current;
+              updateMutation.mutate();
+              setConfirmApplyScope(null);
+            }}
+          />
+        )}
       {stagedFlow &&
         serverUpdateState?.supported &&
         identityMatches &&
@@ -580,6 +603,7 @@ export function CoreUpdateCheck({
         !trackedServiceUpdate &&
         !awaitingOutcomeRecheck && (
           <ServerUpdateStageApply
+            key={connectionScope}
             apiBase={apiBase}
             state={serverUpdateState}
             latestVersion={status?.latestVersion ?? null}

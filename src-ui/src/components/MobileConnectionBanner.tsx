@@ -14,7 +14,9 @@ export function MobileConnectionBanner({ onOpen }: { onOpen: () => void }) {
       badge: 'No Station connected',
       message:
         'Connect this device to a Station when you are ready. Local settings and cached work remain available.',
-      actions: [{ label: 'Connect to a Station', onClick: onOpen }],
+      actions: [
+        { label: 'Connect to a Station', opensDialog: true, onClick: onOpen },
+      ],
     });
     return () => bannerStore.dismiss(BANNER_IDS.deviceConnection);
   }, [onOpen]);

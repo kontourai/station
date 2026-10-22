@@ -1,11 +1,3 @@
-/**
- * Download, then a confirmed restart, for a launcher-run server that takes
- * separate requests (#3851 slice 4). Deliberately minimal and self-contained:
- * slice 5 replaces it with the shared update control, the restart
- * confirmation and the reconnect overlay. CoreUpdateCheck renders it in
- * place of its one-click "Update server" button when the server says
- * `stagedUpdates`; the progress line stays CoreUpdateCheck's.
- */
 import type { ServerUpdateState } from '@kontourai/station-contracts/system-status';
 import {
   useServerUpdateActionMutation,
@@ -35,7 +27,9 @@ export function ServerUpdateStageApply({
   /** A restart the server accepted, so the caller can follow it. */
   onRequested: (requestId: string) => void;
 }) {
-  const [confirming, setConfirming] = useState(false);
+  const [confirmingVersion, setConfirmingVersion] = useState<string | null>(
+    null,
+  );
   const action = useServerUpdateActionMutation(apiBase);
   const progress = state.progress;
   const staged = progress.state === 'staged' ? progress : null;
@@ -65,7 +59,7 @@ export function ServerUpdateStageApply({
           <button
             type="button"
             className="settings__update-btn settings__update-btn--apply"
-            onClick={() => setConfirming(true)}
+            onClick={() => setConfirmingVersion(staged.version)}
             disabled={action.isPending}
           >
             Restart server to update to {staged.version}
@@ -114,20 +108,20 @@ export function ServerUpdateStageApply({
           {(action.error as Error).message}
         </div>
       )}
-      {confirming && staged && (
-        <RestartConfirmation
+      {staged && confirmingVersion === staged.version && (
+        <ServerUpdateRestartConfirmation
           apiBase={apiBase}
           version={staged.version}
           pending={action.isPending}
-          onLater={() => setConfirming(false)}
+          onLater={() => setConfirmingVersion(null)}
           onWhenIdle={() =>
             run({ action: 'apply-when-idle', version: staged.version }, () =>
-              setConfirming(false),
+              setConfirmingVersion(null),
             )
           }
           onRestartNow={() =>
             run({ action: 'apply', version: staged.version }, () =>
-              setConfirming(false),
+              setConfirmingVersion(null),
             )
           }
         />
@@ -140,28 +134,35 @@ export function ServerUpdateStageApply({
  * Names the agent turns the restart interrupts, as far as this client may
  * read them. Nothing here says a turn resumes: nothing computes that yet.
  */
-function RestartConfirmation({
+export function ServerUpdateRestartConfirmation({
   apiBase,
   version,
   pending,
   onLater,
   onWhenIdle,
   onRestartNow,
+  mode = 'staged',
 }: {
   apiBase: string;
   version: string;
   pending: boolean;
   onLater: () => void;
-  onWhenIdle: () => void;
+  onWhenIdle?: () => void;
   onRestartNow: () => void;
+  mode?: 'staged' | 'checkout' | 'service-update';
 }) {
   const turns = useServerUpdateRunningTurnsQuery(apiBase, { enabled: true });
+  const awaitingTurns = turns.isPending || turns.isFetching;
   const listed = turns.data?.turns ?? [];
   const hidden = turns.data?.hiddenCount ?? 0;
   const total = listed.length + hidden;
   return createPortal(
     <Dialog
-      title={`Restart the server into ${version}?`}
+      title={
+        mode === 'staged'
+          ? `Restart the server into ${version}?`
+          : 'Update and restart the server?'
+      }
       // "Later" is the dialog's own dismissal (its close control and
       // Escape): a row holds at most two labelled actions (#3045).
       closeLabel="Later"
@@ -173,24 +174,36 @@ function RestartConfirmation({
         <ActionRow
           overflowLabel="More restart choices"
           secondary={
-            <Button variant="secondary" onClick={onWhenIdle} disabled={pending}>
-              When idle
-            </Button>
+            onWhenIdle ? (
+              <Button
+                variant="secondary"
+                onClick={onWhenIdle}
+                disabled={pending || awaitingTurns}
+              >
+                When idle
+              </Button>
+            ) : undefined
           }
           primary={
-            <Button variant="primary" onClick={onRestartNow} pending={pending}>
-              Restart now
+            <Button
+              variant="primary"
+              onClick={onRestartNow}
+              pending={pending}
+              disabled={awaitingTurns}
+            >
+              {mode === 'staged' ? 'Restart now' : 'Update and restart'}
             </Button>
           }
         />
       }
     >
       <p className="station-dialog__message">
-        The server stops, tries {version}, and returns to the current version if
-        it does not start. To decide later, close this dialog: nothing restarts
-        until you choose.
+        {mode === 'checkout'
+          ? 'The connected server updates its source checkout and restarts. This disconnects every client using it.'
+          : `The server stops, tries ${version}, and returns to the current version if it does not start.`}{' '}
+        To decide later, close this dialog: nothing restarts until you choose.
       </p>
-      {turns.isPending && (
+      {awaitingTurns && (
         <SkeletonBlock count={1} label="Checking for running agent turns" />
       )}
       {turns.isError && (
@@ -199,10 +212,10 @@ function RestartConfirmation({
           are running.
         </p>
       )}
-      {turns.isSuccess && total === 0 && (
+      {!awaitingTurns && turns.isSuccess && total === 0 && (
         <p className="station-dialog__message">Nothing is running right now.</p>
       )}
-      {turns.isSuccess && total > 0 && (
+      {!awaitingTurns && turns.isSuccess && total > 0 && (
         <>
           <p className="station-dialog__message">
             {total === 1

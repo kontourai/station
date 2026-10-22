@@ -70,6 +70,10 @@ function ServerIdentitySummary({
           Connected to {context.connectionName} · {context.apiBase}
         </p>
       )}
+      <p className="settings__field-hint">
+        Server: {context.identity?.instanceId ?? 'Identity unavailable'} ·{' '}
+        {context.apiBase}
+      </p>
       {context.kind === 'unresolved' &&
         context.identitySettled &&
         !statusResolvesMethod(status) && (
