@@ -1,4 +1,14 @@
 import assert from 'node:assert/strict';
+import {
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { join } from 'node:path';
+import { flowRuntimeRoot, pauseRun, startRun } from '@kontourai/flow';
 import { test } from 'vitest';
 import {
   isRuntimeRequestPrincipalCurrent,
@@ -281,9 +291,6 @@ test('F3 reentrant failed prototype disposal retains its capacity quarantine', a
   );
 });
 
-import { writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-
 test('F2 retained disposed SDK handles contain zero exact source bytes across fourteen distinct large failures', async () => {
   const f = await fixture();
   const retained: Array<{
@@ -445,3 +452,106 @@ test.each(['consume-throw', 'async'] as const)(
     );
   },
 );
+
+test('sealed source supports real generated Flow state without disclosing it or ignoring other files', async () => {
+  const f = await fixture();
+  mkdirSync(join(f.repo, '.flow'));
+  const definitionPath = join(f.repo, '.flow', 'report.json');
+  writeFileSync(
+    definitionPath,
+    JSON.stringify({
+      id: 'report-flow',
+      version: '1',
+      steps: [{ id: 'report', next: null }],
+      gates: {
+        report: {
+          step: 'report',
+          expects: [
+            {
+              id: 'report',
+              kind: 'trust.bundle',
+              required: true,
+              description: 'A separate reviewer owns acceptance.',
+              bundle_claim: {
+                claimType: 'quality.report',
+                accepted_statuses: ['assumed'],
+              },
+            },
+          ],
+        },
+      },
+    }),
+  );
+  writeFileSync(join(f.repo, '.gitignore'), '.kontourai/\n');
+  await f.git('add', '.flow/report.json', '.gitignore');
+  await f.git('commit', '-qm', 'tracked Flow definition');
+  const secret = 'FLOW_RUNTIME_PRIVATE_MARKER_3178';
+  const run = await startRun(definitionPath, {
+    cwd: f.repo,
+    runId: 'source-flow',
+    params: { secret },
+  });
+  assert.ok(readFileSync(join(run.dir, 'state.json'), 'utf8').includes(secret));
+  const before = await f.owner.admitSource(f.context(), subject, selection);
+  await pauseRun(run.runId, {
+    cwd: f.repo,
+    reason: 'Owned lifecycle probe',
+    authority: {
+      kind: 'operator_request',
+      actor: 'owned-fixture',
+      request_ref: 'source-flow-pause',
+      requested_at: new Date().toISOString(),
+    },
+  });
+  const after = await f.owner.admitSource(f.context(), subject, selection);
+  assert.equal(after.source_state_id, before.source_state_id);
+  const a = await setup(
+    'anthropic',
+    () => Promise.resolve(reply('anthropic')),
+    f,
+  );
+  try {
+    assert.ok(a.wire.body.includes('source.txt'));
+    assert.ok(
+      !a.wire.body.includes('.kontourai/flow/runs/source-flow/state.json'),
+    );
+    assert.ok(!a.wire.body.includes(secret));
+  } finally {
+    sdk.disposeSdkSourceWire(a.owner, a.prepared.sdkHandle);
+    await sdk.sdkDisposalPromise(a.owner, a.prepared.sdkHandle);
+  }
+  const other = join(f.repo, '.kontourai', 'unrelated.txt');
+  writeFileSync(other, 'must not disappear from source admission');
+  await assert.rejects(
+    () => f.owner.admitSource(f.context(), subject, selection),
+    { code: 'untracked_source_unsupported' },
+  );
+  rmSync(other);
+  const runtimeRoot = flowRuntimeRoot(f.repo);
+  const retained = join(f.root, 'retained-flow-runtime');
+  renameSync(runtimeRoot, retained);
+  symlinkSync(retained, runtimeRoot, 'dir');
+  try {
+    await assert.rejects(() =>
+      f.owner.admitSource(f.context(), subject, selection),
+    );
+  } finally {
+    rmSync(runtimeRoot);
+    renameSync(retained, runtimeRoot);
+  }
+  await f.git(
+    'add',
+    '-f',
+    '--',
+    '.kontourai/flow/runs/source-flow/definition.json',
+  );
+  await f.git(
+    'commit',
+    '-qm',
+    'tracked runtime file is not generated source exclusion',
+  );
+  await assert.rejects(
+    () => f.owner.admitSource(f.context(), subject, selection),
+    { code: 'tracked_flow_runtime_unsupported' },
+  );
+});

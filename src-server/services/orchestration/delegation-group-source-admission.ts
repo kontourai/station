@@ -13,8 +13,9 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
+import { flowRuntimeRoot } from '@kontourai/flow';
 import type { DelegationExecutionBindingV2 } from '@kontourai/flow-agents/delegation-authority-contract';
 import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { createOrchestrationRequestPrincipalResolver } from '../../runtime/bootstrap/orchestration-request-principal.js';
@@ -284,6 +285,17 @@ async function captureSource(home: string, selection: Selection) {
     git: identity(repository.gitDir),
     common: identity(repository.commonDir),
   };
+  const generatedFlowRoot = relative(top, flowRuntimeRoot(top))
+    .split(sep)
+    .join('/');
+  if (
+    !generatedFlowRoot ||
+    isAbsolute(generatedFlowRoot) ||
+    generatedFlowRoot.split('/').includes('..')
+  )
+    refuse('flow_runtime_confinement_unavailable');
+  const isGeneratedFlow = (path: string) =>
+    path === generatedFlowRoot || path.startsWith(`${generatedFlowRoot}/`);
   const read = await readProjectRepository(root, top, OPTIONS, async (repo) => {
     const run = async (args: string[], input?: Buffer) => {
       requireTime();
@@ -297,19 +309,29 @@ async function captureSource(home: string, selection: Selection) {
       requireTime();
       return result.stdout;
     };
-    const head = (await run(['rev-parse', '--verify', 'HEAD^{commit}'])).trim();
-    if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(head))
-      refuse('unsupported_head');
-    if (
-      (await run([
+    const cleanStatus = async () => {
+      const status = await run([
         'status',
         '--porcelain=v1',
         '-z',
         '--untracked-files=all',
         '--ignored=matching',
-      ])) !== ''
-    )
-      refuse('dirty_source_unsupported');
+      ]);
+      return status
+        .split('\0')
+        .filter(Boolean)
+        .every((record) => {
+          if (!record.startsWith('!! ')) return false;
+          const path = record.slice(3).replace(/\/$/, '');
+          return (
+            isGeneratedFlow(path) || generatedFlowRoot.startsWith(`${path}/`)
+          );
+        });
+    };
+    const head = (await run(['rev-parse', '--verify', 'HEAD^{commit}'])).trim();
+    if (!/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(head))
+      refuse('unsupported_head');
+    if (!(await cleanStatus())) refuse('dirty_source_unsupported');
     const stage = (await run(['ls-files', '--stage', '-z']))
       .split('\0')
       .filter(Boolean);
@@ -342,6 +364,7 @@ async function captureSource(home: string, selection: Selection) {
         /^(100644|100755) ([a-f0-9]{40}|[a-f0-9]{64}) 0\t([^\0]+)$/.exec(entry);
       if (!match) refuse('unsupported_index');
       const [, mode, blob, path] = match;
+      if (isGeneratedFlow(path)) refuse('tracked_flow_runtime_unsupported');
       if (
         !/^[A-Za-z0-9._/-]+$/.test(path) ||
         path
@@ -376,6 +399,7 @@ async function captureSource(home: string, selection: Selection) {
     if (tree !== expectedTree.join('')) refuse('dirty_index_unsupported');
     const filePaths = new Set(files.map((f) => f.path));
     const directories: Array<[string, string]> = [];
+    const generatedDirectories: Array<[string, string]> = [];
     let entries = 0;
     function walk(relative: string) {
       const absolute = join(top, relative);
@@ -392,6 +416,16 @@ async function captureSource(home: string, selection: Selection) {
         if (++entries > 512) refuse('source_bound_exceeded');
         const next = relative ? `${relative}/${name}` : name;
         const stat = lstatSync(join(top, next));
+        if (next === generatedFlowRoot) {
+          if (
+            !stat.isDirectory() ||
+            stat.isSymbolicLink() ||
+            realpathSync(join(top, next)) !== join(top, next)
+          )
+            refuse('unsupported_flow_runtime');
+          generatedDirectories.push([next, identity(join(top, next))]);
+          continue;
+        }
         if (stat.isDirectory() && !stat.isSymbolicLink()) walk(next);
         else if (!filePaths.has(next)) refuse('untracked_source_unsupported');
       }
@@ -399,23 +433,16 @@ async function captureSource(home: string, selection: Selection) {
       directories.push([relative, before]);
     }
     walk('');
-    if (
-      (await run([
-        'status',
-        '--porcelain=v1',
-        '-z',
-        '--untracked-files=all',
-        '--ignored=matching',
-      ])) !== ''
-    )
-      refuse('source_changed');
+    if (!(await cleanStatus())) refuse('source_changed');
     if ((await run(['rev-parse', '--verify', 'HEAD^{commit}'])).trim() !== head)
       refuse('source_changed');
     for (const file of files)
       if (stamp(join(top, file.path)) !== file.stamp) refuse('source_changed');
     for (const [path, s] of directories)
       if (stamp(join(top, path)) !== s) refuse('source_changed');
-    return { head, files, directories, retainedFiles };
+    for (const [path, held] of generatedDirectories)
+      if (identity(join(top, path)) !== held) refuse('source_changed');
+    return { head, files, directories, generatedDirectories, retainedFiles };
   });
   if (!read.ok) refuse(`git_read_${read.state}`);
   requireTime();
@@ -455,6 +482,12 @@ async function captureSource(home: string, selection: Selection) {
       if (stamp(join(top, f.path)) !== f.stamp) refuse('source_changed');
     for (const [p, s] of read.value.directories)
       if (stamp(join(top, p)) !== s) refuse('source_changed');
+    for (const [p, held] of read.value.generatedDirectories)
+      if (
+        identity(join(top, p)) !== held ||
+        realpathSync(join(top, p)) !== join(top, p)
+      )
+        refuse('source_changed');
   };
   assertObservationOwnersCurrentSync();
   return {

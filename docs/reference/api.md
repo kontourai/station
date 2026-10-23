@@ -1878,7 +1878,11 @@ allocations and nullable known usage. They disclose no grant, host path,
 credential witness, prompt or private admission record. Raw results require
 separately authorized canonical task/session reads. Historical reads and exact
 replay survive profile expiry; fresh paid execution still requires a current
-profile. The current narrow Anthropic profile and its exclusions are described
+profile. Source remains a pristine bounded tracked tree; only the published
+generated Flow runtime directory is excluded and identity-witnessed. Other
+ignored/untracked files, runtime-directory links and tracked files placed under
+that generated directory refuse. Flow run/gate authority remains separate from
+this source-only exclusion. The current narrow Anthropic profile and its exclusions are described
 in the [child-work plan](../plans/child-work-epic.md#authenticated-report-group-preparation).
 The [SDK client](sdk.md#qualified-report-groups) exposes these operations with
 strict response and cursor validation; the [CLI](cli.md#qualified-report-groups)

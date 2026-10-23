@@ -942,6 +942,14 @@ model access and same-session ACK acceptance remain separate obligations.
 
 ## Authenticated report-group preparation
 
+The sealed source owner now separates the published Flow runtime root from
+tracked task source. Real generated run state can change without entering the
+provider payload or changing the source identity. The root is identity-witnessed;
+tracked files in it, links and unrelated ignored/untracked entries still refuse.
+A real Flow start/pause plus prepared SDK wire test binds this distinction. This
+removes a source-admission prerequisite for Flow topology; it does not yet bind
+a report group to a Flow run, claim, frontier or join.
+
 Published Flow Agents 9.5.0 is now adopted through the managed lock/install path
 in Station, contracts and SDK. Release PR #1546 merged; npm's published integrity
 matches the lockfile. The existing HTTP/SDK/CLI consumers pass on that artifact.
