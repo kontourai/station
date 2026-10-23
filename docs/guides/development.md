@@ -199,7 +199,13 @@ requests 512 MiB of memory protection and an oomd avoidance preference; these
 do not guarantee survival under host-wide exhaustion or an ancestor policy
 that kills the entire user session.
 
-Boot probes the actual scope launch. If enforcement cannot be configured, the
+Managed Linux service isolation requires systemd 253 or newer for scope OOM
+policy and cause reporting. Older installations must upgrade systemd before
+starting workloads. Scope launches preserve literal arguments; systemd 254 and
+newer receive an explicit option disabling environment expansion.
+
+Boot checks that version and probes the actual scope launch. Probe failures
+retain up to 2 KiB of command stderr. If enforcement cannot be configured, the
 server keeps management available and refuses new workloads with an actionable
 error. macOS, Windows and Linux launches outside a matching user service retain
 their existing process behavior and do not gain these limits. The developer

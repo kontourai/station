@@ -160,6 +160,13 @@ export async function initializeWorkloadResources(): Promise<void> {
     if (!serviceUnit) return;
     state = 'unavailable';
     managerEnv = { ...process.env };
+    const version = Number(
+      /^systemd (\d+)/m.exec(await runManager(['--version']))?.[1],
+    );
+    if (!Number.isSafeInteger(version) || version < 253)
+      throw new Error(
+        'Linux workload isolation requires systemd 253 or newer for scope OOM policy and reporting. Upgrade systemd, then restart Station.',
+      );
     const totalMemoryMaxBytes = memoryBytes(
       'STATION_WORKLOAD_TOTAL_MEMORY_MIB',
       Math.max(1, Math.floor(totalmem() / MIB / 2)),
@@ -242,7 +249,8 @@ export async function initializeWorkloadResources(): Promise<void> {
           '--scope',
           '--quiet',
           '--no-ask-password',
-          '--expand-environment=no',
+          // Before systemd 254, scope launches always preserve literal argv.
+          ...(version >= 254 ? ['--expand-environment=no'] : []),
           `--unit=${unit}`,
           `--slice=${slice}`,
           `--property=BindsTo=${serviceUnit}`,
@@ -272,7 +280,13 @@ export async function initializeWorkloadResources(): Promise<void> {
         close: () => closeScope(entry),
       } satisfies ChildWorkloadLaunch;
     });
-    const probe = spawnChildWorkload('/bin/true', [], { stdio: 'ignore' });
+    const probe = spawnChildWorkload('/bin/true', [], {
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    let probeError = Buffer.alloc(0);
+    probe.stderr?.on('data', (data: Buffer) => {
+      probeError = Buffer.concat([probeError, data]).subarray(-2048);
+    });
     try {
       await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(() => {
@@ -289,7 +303,7 @@ export async function initializeWorkloadResources(): Promise<void> {
           else
             reject(
               new Error(
-                `Workload scope capability probe exited ${code ?? signal}.`,
+                `Workload scope capability probe exited ${code ?? signal}. ${probeError.toString().trim()}`.trim(),
               ),
             );
         });

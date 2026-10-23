@@ -138,11 +138,28 @@ const server = createServer(async (request, response) => {
       return;
     }
     if (url.pathname === '/unavailable') {
+      const oldSystemd = url.searchParams.get('systemd') === '249';
       const child = spawn(
         process.execPath,
-        ['--import', 'tsx', import.meta.filename, 'unavailable-owner'],
+        [
+          '--import',
+          'tsx',
+          ...(oldSystemd
+            ? [
+                '--import',
+                new URL(
+                  './workload-resource-systemd-version.mjs',
+                  import.meta.url,
+                ).href,
+              ]
+            : []),
+          import.meta.filename,
+          'unavailable-owner',
+        ],
         {
-          env: { ...process.env, STATION_WORKLOAD_MEMORY_MIB: 'invalid' },
+          env: oldSystemd
+            ? process.env
+            : { ...process.env, STATION_WORKLOAD_MEMORY_MIB: 'invalid' },
           stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
           windowsHide: true,
         },
