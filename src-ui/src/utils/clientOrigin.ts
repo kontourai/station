@@ -22,8 +22,7 @@ const SURFACE_LABELS: Record<ClientOriginSurface, string> = {
 };
 
 /**
- * Just the client surface ("CLI", "Web browser"), for a meta line that names
- * where work came from without the actor kind. `null` when no origin was
+ * The reported client surface, for a meta line without the actor kind. `null` when no origin was
  * recorded, or the client reported an unknown surface: callers omit the
  * clause rather than print "from Unknown surface".
  */
@@ -31,14 +30,14 @@ export function clientOriginSurfaceLabel(
   origin: ClientOrigin | undefined,
 ): string | null {
   if (!origin || origin.reported.surface === 'unknown') return null;
-  return SURFACE_LABELS[origin.reported.surface] ?? origin.reported.surface;
+  return `${SURFACE_LABELS[origin.reported.surface] ?? origin.reported.surface} (reported)`;
 }
 
 /**
  * #765 D6: the human-readable one-liner for a summary tile. The raw
  * `clientOriginDetail` string leads with a device UUID, which answers
  * nothing at a glance; this names what Station actually derived — the
- * resolved actor kind and the client surface — and nothing more. No paired
+ * resolved actor kind and the reported client surface — and nothing more. No paired
  * device NAME is claimed because none reaches this seam (the origin carries
  * only the resolved device id); the exact detail string stays available for
  * tooltips/detail rows via `clientOriginDetail`.
@@ -53,7 +52,6 @@ export function clientOriginSummary(origin: ClientOrigin | undefined): string {
         : origin.actor.kind === 'internal'
           ? 'Station (internal)'
           : 'Unknown actor';
-  const surface =
-    SURFACE_LABELS[origin.reported.surface] ?? origin.reported.surface;
+  const surface = clientOriginSurfaceLabel(origin) ?? SURFACE_LABELS.unknown;
   return `${actor} · ${surface}`;
 }

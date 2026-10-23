@@ -53,8 +53,8 @@ const SHORT_SURFACE_LABELS: Record<ClientOriginSurface, string | null> = {
 };
 
 /**
- * The row's short origin word ("CLI", "Browser", "Claude Code"), or `null`
- * when nothing was recorded — the row omits the segment rather than printing
+ * The row's short origin label, marked reported for client-supplied surfaces,
+ * or `null` when nothing was recorded — the row omits the segment rather than printing
  * "unknown". No device NAME reaches this seam (the origin carries only a
  * device id), so a paired device reads by its surface.
  */
@@ -63,7 +63,10 @@ export function activityOriginShortLabel(
 ): string | null {
   const origin = session.turnOrigin?.latest;
   if (clientOriginSender(origin)) return 'Agent message';
-  if (origin) return SHORT_SURFACE_LABELS[origin.reported.surface] ?? null;
+  if (origin) {
+    const surface = SHORT_SURFACE_LABELS[origin.reported.surface];
+    return surface ? `${surface} (reported)` : null;
+  }
   if (isAttached(session)) return attachedEngineName(session);
   return null;
 }

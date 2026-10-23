@@ -389,7 +389,7 @@ describe('Activity list', () => {
       'station',
     );
     expect(meta.querySelector('[data-segment="origin"]')?.textContent).toBe(
-      'CLI',
+      'CLI (reported)',
     );
     // The time is on line 1, outside the row button, and still in the row's
     // own text for assistive tech.
@@ -657,7 +657,7 @@ describe('Activity list', () => {
       Array.from(origin.options).map((option) => option.textContent),
     ).toEqual([
       'Anywhere',
-      'Operator · CLI (1)',
+      'Operator · CLI (reported) (1)',
       'Origin not recorded (1)',
       'Started in Claude Code (1)',
     ]);
@@ -845,10 +845,12 @@ describe('Activity list', () => {
     }) as HTMLSelectElement;
     expect(Array.from(startedFrom.options).map((o) => o.textContent)).toEqual([
       'Anywhere',
-      'Operator · CLI (1)',
-      'Operator · Web browser (1)',
+      'Operator · CLI (reported) (1)',
+      'Operator · Web browser (reported) (1)',
     ]);
-    fireEvent.change(startedFrom, { target: { value: 'Operator · CLI' } });
+    fireEvent.change(startedFrom, {
+      target: { value: 'Operator · CLI (reported)' },
+    });
     expect(
       container.querySelectorAll('.split-pane__item-name-text'),
     ).toHaveLength(1);
