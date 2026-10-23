@@ -154,7 +154,7 @@ describe('placement vocabulary (#928)', () => {
       'scripts/test-impact-manifest.mjs',
       'tests/e2e-manifest.mjs',
       'src-ui/src/index.css',
-      'src-ui/src/components/notifications/BannerHost.css',
+      'src-ui/src/components/notifications/NotificationContainer.css',
     ]) {
       expect(files, `enumeration lost ${sentinel}`).toContain(sentinel);
     }

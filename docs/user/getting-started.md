@@ -581,6 +581,29 @@ an unsent next stage. Secret questions and tool approvals use the ordinary
 conversation controls.
 
 
+### Station status, updates, and recent messages
+
+Open the Station control in the toolbar, then **Station details**, for connection
+repair, pairing requests, local-service recovery, and recovered-copy information.
+On the full-screen mobile chat surface, tap the Station indicator to open details.
+These local facts remain readable when the selected Station is unavailable.
+Blocking work restrictions also appear in the workspace. Recovered-copy warnings
+stay available until the underlying condition clears; restoring a copy does not
+transfer execution authority.
+
+The sidebar **Updates** control opens one panel for the app and connected server.
+Their actions remain separate. The desktop app update includes its built-in
+server; a separately installed server keeps its own update and restart steps.
+Update policies remain in Settings.
+
+Toasts report short outcomes. Hovering, focusing, or opening their details pauses
+the reading time, as does leaving the app. Extra messages wait behind **View all**.
+**Notifications** includes recent local messages and a clear action, separately
+from the server-backed attention inbox. Only messages explicitly approved for safe
+recall survive a reload, on this device and for the selected Station. Actions and
+raw error details are never saved in that recall. Approvals keep their existing
+durable request flow.
+
 ### Finish setup and return
 
 When no selected Agent can respond, the composer shows a setup helper alongside
@@ -595,7 +618,7 @@ other integrations retain their own authorization instructions.
 If New Chat offers **Connect**, **Set up**, **Edit agent**, or **Set up
 Connections**, use that action to open the owning setup page. The picker steps
 aside while keeping your chosen workspace, Agent, Model, and selected context.
-Use **Return to New Chat** in the setup banner when finished, **Cancel
+Use **Return to New Chat** in the inline setup notice when finished, **Cancel
 return** to stay, or browser Back to return to the page you left. Station rechecks setup before selection;
 that manual return sends no message. For a written Home goal, readiness of the
 selected agent returns you automatically and resumes the original request after
