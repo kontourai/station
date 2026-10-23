@@ -94,6 +94,14 @@ export class ProjectRoomService {
         timer: setInterval(refresh, 20000),
       };
       this.rooms.set(roomId, room);
+    } else {
+      // Reconnect establishes a fresh durable checkpoint even when another
+      // connection wrote since this Room's last consistency check.
+      const value = this.store.checkpoint(roomId);
+      if (JSON.stringify(value) !== JSON.stringify(room.value)) {
+        room.value = value;
+        for (const listener of room.listeners) listener();
+      }
     }
     room.listeners.add(callback);
     let active = true;

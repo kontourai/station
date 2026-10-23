@@ -678,6 +678,16 @@ test('mounted SSE reconciles another SQLite writer once per Room and heartbeat d
     await vi.advanceTimersByTimeAsync(20000);
     for (const value of await Promise.all(changes))
       expect(value).toContain('"lastSeq":1');
+    writer.append(
+      h.scope,
+      { kind: 'agent', id: 'external', displayName: 'External' },
+      { intentId: randomUUID(), text: 'reconnect gap' },
+      () => {},
+    );
+    const reconnect = await h.request('alice', '/events');
+    const reconnected = reconnect.body!.getReader();
+    expect(await frame(reconnected)).toContain('"lastSeq":2');
+    await reconnected.cancel();
   } finally {
     db.close();
   }
