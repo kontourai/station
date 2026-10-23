@@ -534,7 +534,10 @@ export interface TaskParentMutationInput {
 export interface TaskChildCreateInput {
   operationId: string;
   parent: TaskIdentity;
-  task: TaskCreateInput;
+  task: Pick<
+    TaskCreateInput,
+    'projectId' | 'title' | 'description' | 'priority' | 'skillName' | 'agentId'
+  >;
 }
 
 export interface TaskParentMutationResult {

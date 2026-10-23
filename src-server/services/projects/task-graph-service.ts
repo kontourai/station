@@ -1803,8 +1803,17 @@ export class TaskGraphService {
     if (!validTaskIdentity(input.parent))
       throw new TaskRelationshipError('invalid');
     if (
-      input.task.shapingSource ||
-      input.task.proposalBrief ||
+      Object.keys(input.task).some(
+        (key) =>
+          ![
+            'projectId',
+            'title',
+            'description',
+            'priority',
+            'skillName',
+            'agentId',
+          ].includes(key),
+      ) ||
       validateTaskCreateInput(input.task).length
     )
       throw new TaskRelationshipError('invalid');
