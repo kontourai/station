@@ -75,13 +75,20 @@ function Group({ scope, group }: { scope: Scope; group: ReportGroupView }) {
               >
                 <p>
                   {attempt.accountingTerminal
-                    ? 'Accounting reconciled'
-                    : 'Accounting unresolved; reservation retained'}{' '}
+                    ? attempt.usage
+                      ? 'Accounting reconciled'
+                      : 'Accounting terminal recorded; usage unknown'
+                    : attempt.allocation
+                      ? 'Accounting unresolved; reservation retained'
+                      : 'Accounting unresolved'}{' '}
                   ·{' '}
                   {attempt.terminal
                     ? 'Terminal receipt retained'
                     : 'Termination unconfirmed'}
                 </p>
+                {!attempt.allocation && (
+                  <p>No accounting reservation confirmed.</p>
+                )}
                 {attempt.allocation && (
                   <p>
                     Reserved: {attempt.allocation.inputTokens} input tokens,{' '}

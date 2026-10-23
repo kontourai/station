@@ -149,42 +149,70 @@ test('operator reads paginated reports through scoped SDK queries without promot
   );
 });
 
-test('authority loss aborts raw-report reads and rejects late output from the query cache', async () => {
-  let settle!: (response: Response) => void;
-  let pendingSignal: AbortSignal | undefined;
-  vi.stubGlobal(
-    'fetch',
-    vi.fn((url: string | URL | Request, init?: RequestInit) => {
-      if (String(url).includes('/results/')) {
-        pendingSignal = init?.signal ?? undefined;
-        return new Promise<Response>((resolve) => {
-          settle = resolve;
-        });
-      }
-      return Promise.resolve(
-        envelope({ groups: [group], hasMore: false, nextGroupId: null }),
-      );
-    }),
-  );
-  const view = mount();
-  fireEvent.click(screen.getByRole('button', { name: 'Show report groups' }));
-  await screen.findByText('operator-report');
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Read report for reviewer' }),
-  );
-  await waitFor(() => expect(pendingSignal).toBeDefined());
-  view.revoke();
-  expect(screen.queryByText('operator-report')).toBeNull();
-  await waitFor(() => expect(pendingSignal?.aborted).toBe(true));
-  await act(async () => {
-    settle(envelope(resultPage('PRIVATE_LATE_REPORT', 0, false)));
-  });
-  expect(screen.getByRole('alert').textContent).toContain(
-    'Station authority changed',
-  );
-  expect(screen.queryByText('PRIVATE_LATE_REPORT')).toBeNull();
-  const cached = view.client
-    .getQueryCache()
-    .findAll({ queryKey: ['report-group-result'] });
-  expect(cached.every((query) => query.state.data === undefined)).toBe(true);
-});
+test.each([false, true])(
+  'authority loss hides reports with unconfirmed reservations (accounting terminal %s)',
+  async (accountingTerminal) => {
+    let settle!: (response: Response) => void;
+    let pendingSignal: AbortSignal | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string | URL | Request, init?: RequestInit) => {
+        if (String(url).includes('/results/')) {
+          pendingSignal = init?.signal ?? undefined;
+          return new Promise<Response>((resolve) => {
+            settle = resolve;
+          });
+        }
+        return Promise.resolve(
+          envelope({
+            groups: [
+              {
+                ...group,
+                members: group.members.map((member) => ({
+                  ...member,
+                  attempts: member.attempts.map((attempt) => ({
+                    ...attempt,
+                    allocation: null,
+                    accountingTerminal,
+                  })),
+                })),
+              },
+            ],
+            hasMore: false,
+            nextGroupId: null,
+          }),
+        );
+      }),
+    );
+    const view = mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Show report groups' }));
+    await screen.findByText('operator-report');
+    expect(screen.queryByText(/Accounting reconciled/)).toBeNull();
+    if (accountingTerminal)
+      expect(
+        screen.getByText(/Accounting terminal recorded; usage unknown/),
+      ).toBeTruthy();
+    expect(
+      screen.getByText(/No accounting reservation confirmed/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/reservation retained/)).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Read report for reviewer' }),
+    );
+    await waitFor(() => expect(pendingSignal).toBeDefined());
+    view.revoke();
+    expect(screen.queryByText('operator-report')).toBeNull();
+    await waitFor(() => expect(pendingSignal?.aborted).toBe(true));
+    await act(async () => {
+      settle(envelope(resultPage('PRIVATE_LATE_REPORT', 0, false)));
+    });
+    expect(screen.getByRole('alert').textContent).toContain(
+      'Station authority changed',
+    );
+    expect(screen.queryByText('PRIVATE_LATE_REPORT')).toBeNull();
+    const cached = view.client
+      .getQueryCache()
+      .findAll({ queryKey: ['report-group-result'] });
+    expect(cached.every((query) => query.state.data === undefined)).toBe(true);
+  },
+);

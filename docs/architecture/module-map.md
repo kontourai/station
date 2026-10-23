@@ -1879,8 +1879,13 @@ surface on hosted deployments or failed private-storage admission. Qualification
 is deferred until a new operation needs preparation, so profile expiry does not
 block historical reads or replay. Current operator authority is checked through
 awaits and again before HTTP release. This mode is independent advisory;
-Flow-backed topology, context sync and client adoption remain open. Provider responses in the focused HTTP owner test are controlled fixtures,
-not live acceptance or billing qualification.
+Flow-backed topology and context sync remain open. The Ensemble inspector uses
+[scoped SDK query hooks](../../packages/sdk/src/query-domains/reportGroups.ts) for
+explicit metadata and raw-report reads; closing/revoking the view cancels reads.
+Raw UTF-16 pages are bounded and joined before rendering as text. Unknown
+allocation/usage and unconfirmed termination remain distinct. UI mutation
+controls remain open. Provider responses in the focused HTTP owner test are
+controlled fixtures, not live acceptance or billing qualification.
 
 ## CliSessionGroups
 
