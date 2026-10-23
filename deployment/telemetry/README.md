@@ -17,6 +17,31 @@ Station's normal install enables none of these services or destinations.
 
 ## Artifact and private files
 
+A source-bound **build candidate** can be staged outside the checkout:
+
+```bash
+npm run build:telemetry-broker
+npm run build:telemetry-companion -- /absolute/new-output-directory
+npm run verify:telemetry-companion -- /absolute/new-output-directory/candidate
+```
+
+Run these from a clean checkout. The packager validates the receiver's captured
+build inputs and bundles against that revision, then snapshots the pinned
+deployment files and bundles into a new private directory. It refuses an
+existing output directory. The generated Dockerfile consumes the bundled
+receiver; the packaged Compose profile requires an explicitly selected image
+and cannot build from the caller's checkout. Verification rejects changed
+files, extra payloads, links, and special files. Keep the output outside the
+checkout so it cannot become an input to a later build.
+
+`companion-manifest.json` binds the exact file bytes, image digests and source
+revision. Its `build-only` scope is mandatory: this unsigned integrity record
+is neither publisher authentication nor a release qualification receipt.
+It does not authorize installation, change consent or configure a destination.
+The managed in-Station lifecycle and qualified release descriptor remain
+pending; these commands do not implement that journey.
+
+
 The root Dockerfile's explicit `telemetry-runtime` target bundles the receiver
 with its JavaScript dependencies and an existing Station release provenance
 manifest. The default target remains the normal Station runtime. Source images
