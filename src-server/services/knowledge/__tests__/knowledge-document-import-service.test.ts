@@ -1,13 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  unlinkSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
   KnowledgeDocumentImportInput,
@@ -15,11 +7,13 @@ import type {
 } from '@kontourai/station-contracts/knowledge-store';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { KnowledgeFileTransactions } from '../../../knowledge-store/adapters/shared/file-transactions.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
 import { KnowledgeDocumentImportService } from '../knowledge-document-import-service.js';
 
+const makeTempDir = trackTempDirs();
 let home: string;
 let provider: KnowledgeStoreProvider;
 let root: KnowledgeStoreRoot;
@@ -44,7 +38,7 @@ function request(
   };
 }
 beforeEach(async () => {
-  home = mkdtempSync(join(tmpdir(), 'station-document-import-'));
+  home = makeTempDir('station-document-import-');
   vi.stubEnv('STATION_HOME', home);
   mkdirSync(join(home, 'config'), { recursive: true });
   provider = new KnowledgeStoreProvider(new FileStorageAdapter(home));
@@ -61,7 +55,6 @@ beforeEach(async () => {
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
-  rmSync(home, { recursive: true, force: true });
 });
 
 test('a real import retains exact original bytes and provenance and resumes the same records after restart', async () => {

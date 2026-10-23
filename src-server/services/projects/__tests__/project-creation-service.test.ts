@@ -1,26 +1,15 @@
 import { randomUUID } from 'node:crypto';
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, expect, test } from 'vitest';
+import { expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { ProjectCreationService } from '../project-creation-service.js';
 import { ProjectService } from '../project-service.js';
 
-const roots: string[] = [];
-afterEach(() => {
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 function fixture() {
-  const home = mkdtempSync(join(tmpdir(), 'station-project-creation-'));
-  roots.push(home);
+  const home = makeTempDir('station-project-creation-');
   const workspace = join(home, 'workspace');
   mkdirSync(workspace);
   const storage = new FileStorageAdapter(home);

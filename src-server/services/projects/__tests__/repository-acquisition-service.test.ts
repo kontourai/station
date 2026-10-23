@@ -2,16 +2,15 @@ import { randomUUID } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readFileSync,
   rmSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { afterEach, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import * as gitExec from '../../../utils/git-exec.js';
 import { execGitSync } from '../../../utils/git-exec.js';
@@ -20,16 +19,13 @@ import {
   RepositoryAcquisitionService,
 } from '../repository-acquisition-service.js';
 
-const roots: string[] = [];
+const makeTempDir = trackTempDirs();
 afterEach(() => {
   vi.unstubAllEnvs();
   vi.restoreAllMocks();
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
 });
 function fixture() {
-  const home = mkdtempSync(join(tmpdir(), 'station-acquisition-'));
-  roots.push(home);
+  const home = makeTempDir('station-acquisition-');
   const source = join(home, 'mirror');
   execGitSync(['init', '--initial-branch=main', source]);
   writeFileSync(join(source, 'README.md'), 'first revision');

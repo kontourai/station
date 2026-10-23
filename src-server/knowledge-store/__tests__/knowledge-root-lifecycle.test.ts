@@ -1,29 +1,23 @@
-import {
-  existsSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { createKnowledgeStoreRoutes } from '../../routes/knowledge/knowledge-store-routes.js';
 import { KnowledgeStoreProvider } from '../knowledge-store-provider.js';
 
+const makeTempDir = trackTempDirs();
 describe('knowledge source registry lifecycle on real storage', () => {
   let home: string;
   let persistence: FileStorageAdapter;
   let store: KnowledgeStoreProvider;
   beforeEach(() => {
-    home = mkdtempSync(join(tmpdir(), 'station-source-lifecycle-'));
+    home = makeTempDir('station-source-lifecycle-');
     persistence = new FileStorageAdapter(home);
     store = new KnowledgeStoreProvider(persistence);
   });
   afterEach(() => {
     vi.useRealTimers();
-    rmSync(home, { recursive: true, force: true });
   });
 
   test('concurrent providers preserve both source registrations', async () => {
