@@ -224,7 +224,9 @@
 
     "src-server/services/infra/__tests__/workload-resources.process.test.ts",
 
-    "docs/guides/development.md"
+    "docs/guides/development.md",
+
+    ".github/workflows/ci-throughput-health.yml"
   ],
 
   "checks": [
