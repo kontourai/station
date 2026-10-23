@@ -74,8 +74,7 @@ export function ProjectRepositoryAttachment({
         <NewProjectRepositorySource
           onBusyChange={setBusy}
           onUseCheckout={(path, _name, acquisitionId) => {
-            if (!identity.data || identity.isFetching || attach.isPending)
-              return;
+            if (!identity.data || attach.isPending) return;
             attach.reset();
             setSelection({ path, acquisitionId, expected: identity.data });
           }}

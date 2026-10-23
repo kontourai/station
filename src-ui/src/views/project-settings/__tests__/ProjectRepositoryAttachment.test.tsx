@@ -109,10 +109,19 @@ test('attachment is separately confirmed and a lost response retries the same id
   expect(
     screen.getByRole('button', { name: 'Choose verified repository' }),
   ).toBe(picker);
+  fireEvent.click(picker);
+  expect(
+    await screen.findByRole('button', { name: 'Attach repository' }),
+  ).toHaveProperty('disabled', true);
+  expect(posts).toHaveLength(0);
   pauseIdentity = false;
   resumeIdentity(new Response(JSON.stringify({ success: true, data: view })));
   await refreshing;
-  fireEvent.click(picker);
+  await waitFor(() =>
+    expect(
+      screen.getByRole('button', { name: 'Attach repository' }),
+    ).toHaveProperty('disabled', false),
+  );
   const confirm = await screen.findByRole('button', {
     name: 'Attach repository',
   });
