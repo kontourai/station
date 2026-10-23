@@ -1293,10 +1293,11 @@ function updateRestorePathKey(segments: readonly string[]): string {
   );
 }
 
-/** Refuse saved files/links that would replace directories cleanup retains. */
+/** Refuse saved files/links at retained containers or inside external directories. */
 function assertUpdateRestoreTargets(
   directory: string,
   targets: ReadonlySet<string>,
+  targetAncestors: ReadonlySet<string>,
   parentSegments: string[] = [],
 ): void {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -1304,13 +1305,15 @@ function assertUpdateRestoreTargets(
     const segments = [...parentSegments, entry.name];
     const external = isExternalStationHomePath(segments, true);
     if (!external && !containsExternalStationHomePath(segments)) continue;
-    if (targets.has(updateRestorePathKey(segments)))
+    const key = updateRestorePathKey(segments);
+    if (targets.has(key) || (external && targetAncestors.has(key)))
       fail('backup entry conflicts with a preserved home directory');
     // Only inspect state containers, never descend into a user's checkout.
     if (!external)
       assertUpdateRestoreTargets(
         join(directory, entry.name),
         targets,
+        targetAncestors,
         segments,
       );
   }
@@ -1384,14 +1387,15 @@ export function restoreStationHomeUpdateBackup(
       link,
       path: pathFor(homeDir, link.path),
     }));
-    assertUpdateRestoreTargets(
-      homeDir,
-      new Set(
-        [...restorable, ...links].map((entry) =>
-          updateRestorePathKey(entry.path),
-        ),
-      ),
-    );
+    const targets = new Set<string>();
+    const targetAncestors = new Set<string>();
+    for (const entry of [...restorable, ...links]) {
+      targets.add(updateRestorePathKey(entry.path));
+      // Segment slices keep aliases bounded: checkout-1 never owns checkout-10.
+      for (let length = 1; length < entry.path.length; length += 1)
+        targetAncestors.add(updateRestorePathKey(entry.path.slice(0, length)));
+    }
+    assertUpdateRestoreTargets(homeDir, targets, targetAncestors);
     removeUpdateState(homeDir, []);
     fsyncDirectorySync(homeDir);
     options.afterRemove?.();

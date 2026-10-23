@@ -28,6 +28,13 @@ import {
 } from '../station-home-archive.js';
 import { acquireStationHomeRuntimeLease } from '../station-home-lifecycle.js';
 import {
+  consumeStationHomeRestoreMarker,
+  readStationHomeRestoreMarker,
+  StationHomeRestoreRefusedError,
+  stationHomeRestoreMarkerPath,
+  writeStationHomeRestoreMarker,
+} from '../station-home-restore-marker.js';
+import {
   ensureStationHomeSchemaSync,
   STATION_HOME_SCHEMA_FILE,
 } from '../station-home-schema.js';
@@ -397,6 +404,167 @@ describe('update backup and in-place restore (#2675 D)', () => {
       }
     },
   );
+
+  it.each([
+    ['file', 'absent', false, false],
+    ['file', 'existing', false, false],
+    ['link', 'absent', false, false],
+    ['link', 'existing', false, false],
+    ['file', 'absent', true, false],
+    ['link', 'existing', true, false],
+    ['file', 'absent', true, true],
+    ['link', 'existing', true, true],
+  ] as const)(
+    'refuses a saved %s descendant alias with an %s target (UUID alias: %s, NFC name: %s) before removing state',
+    (kind, destination, parentAlias, unicode) => {
+      const fixture = serviceHome();
+      mkdirSync(join(fixture.root, 'update-backups'));
+      const id = 'abcdefab-cdef-abcd-efab-cdefabcdefab';
+      const root = join(fixture.home, 'repository-acquisitions');
+      const savedRequest = join(root, parentAlias ? id.toUpperCase() : id);
+      const savedCheckout = join(savedRequest, 'CHECKOUT-1');
+      const savedChild = unicode ? 'cafe\u0301' : 'nested';
+      const currentChild = unicode ? 'caf\u00e9' : 'nested';
+      const saved = join(savedCheckout, savedChild, 'old.txt');
+      mkdirSync(join(saved, '..'), { recursive: true });
+      const outside = join(fixture.root, 'outside');
+      mkdirSync(outside);
+      writeFileSync(join(outside, 'work.txt'), 'outside work');
+      if (kind === 'file') writeFileSync(saved, 'saved state');
+      else symlinkSync(outside, saved, 'dir');
+      const { manifest } = createStationHomeUpdateBackup({
+        homeDir: fixture.home,
+        backupDir: fixture.backupDir,
+      });
+      // An admissible update-v1 snapshot: noncanonical CHECKOUT-1 is state.
+      expect(
+        [...manifest.files, ...(manifest.symlinks ?? [])].some(
+          (entry) =>
+            entry.path[2] === 'CHECKOUT-1' && entry.path.at(-1) === 'old.txt',
+        ),
+      ).toBe(true);
+      expect(
+        createStationHomeUpdateBackup({
+          homeDir: fixture.home,
+          backupDir: fixture.backupDir,
+        }).reused,
+      ).toBe(true);
+      rmSync(savedRequest, { recursive: true });
+      const request = join(root, id);
+      const checkout = join(request, 'checkout-1');
+      const current = join(checkout, currentChild, 'old.txt');
+      mkdirSync(join(current, '..'), { recursive: true });
+      if (destination === 'existing')
+        writeFileSync(current, 'trial user bytes');
+      writeFileSync(join(checkout, 'work.txt'), 'new user work');
+      const receipt = join(request, 'operation.json');
+      writeFileSync(receipt, 'trial receipt');
+      const config = join(fixture.home, 'config', 'app.json');
+      writeFileSync(config, 'trial config');
+      const schema = sha(join(fixture.home, STATION_HOME_SCHEMA_FILE));
+      const from = { version: '1.0.0', root: join(fixture.root, 'from') };
+      const target = { version: '1.1.0', root: join(fixture.root, 'target') };
+      mkdirSync(from.root);
+      mkdirSync(target.root);
+      writeStationHomeRestoreMarker(fixture.home, {
+        fromRelease: from,
+        targetRelease: target,
+        backupDir: fixture.backupDir,
+      });
+      const markerPath = stationHomeRestoreMarkerPath(fixture.home);
+      const marker = sha(markerPath);
+      const assertUntouched = () => {
+        expect(
+          readdirSync(join(current, '..')),
+          'saved descendants must not populate the retained user checkout',
+        ).toEqual(destination === 'existing' ? ['old.txt'] : []);
+        if (destination === 'existing') {
+          expect(lstatSync(current).isFile()).toBe(true);
+          expect(readFileSync(current, 'utf8')).toBe('trial user bytes');
+        }
+        expect(readFileSync(join(checkout, 'work.txt'), 'utf8')).toBe(
+          'new user work',
+        );
+        expect(readFileSync(join(outside, 'work.txt'), 'utf8')).toBe(
+          'outside work',
+        );
+        expect(readFileSync(config, 'utf8')).toBe('trial config');
+        expect(readFileSync(receipt, 'utf8')).toBe('trial receipt');
+        expect(sha(join(fixture.home, STATION_HOME_SCHEMA_FILE))).toBe(schema);
+      };
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        let removed = false;
+        try {
+          expect(() =>
+            restoreStationHomeUpdateBackup({
+              homeDir: fixture.home,
+              backupDir: fixture.backupDir,
+              afterRemove: () => {
+                removed = true;
+              },
+            }),
+          ).toThrow(/conflicts with a preserved home directory/);
+        } finally {
+          // Observe destructive effects even if a later copy or verification fails.
+          assertUntouched();
+          expect(
+            removed,
+            'descendant conflict must precede state removal',
+          ).toBe(false);
+          expect(sha(markerPath)).toBe(marker);
+        }
+      }
+      expect(() =>
+        consumeStationHomeRestoreMarker({
+          homeDir: fixture.home,
+          running: () => from,
+        }),
+      ).toThrow(StationHomeRestoreRefusedError);
+      assertUntouched();
+      const failed = readStationHomeRestoreMarker(fixture.home);
+      expect(failed.kind).toBe('present');
+      if (failed.kind !== 'present') throw new Error('restore marker missing');
+      expect(failed.marker.restoreFailed?.error).toMatch(
+        /conflicts with a preserved home directory/,
+      );
+      const failedMarker = sha(markerPath);
+      expect(() =>
+        consumeStationHomeRestoreMarker({
+          homeDir: fixture.home,
+          running: () => from,
+        }),
+      ).toThrow(/not tried again automatically/);
+      expect(sha(markerPath)).toBe(failedMarker);
+      assertUntouched();
+    },
+  );
+
+  it('restores receipt descendants and sibling path segments beside a retained checkout', () => {
+    const fixture = serviceHome();
+    mkdirSync(join(fixture.root, 'update-backups'));
+    const request = join(fixture.home, 'repository-acquisitions', randomUUID());
+    const receipt = join(request, 'receipts', 'operation.json');
+    const sibling = join(request, 'CHECKOUT-10', 'old.txt');
+    for (const file of [receipt, sibling]) {
+      mkdirSync(join(file, '..'), { recursive: true });
+      writeFileSync(file, 'saved state');
+    }
+    createStationHomeUpdateBackup({
+      homeDir: fixture.home,
+      backupDir: fixture.backupDir,
+    });
+    const checkout = join(request, 'checkout-1');
+    mkdirSync(checkout);
+    writeFileSync(join(checkout, 'work.txt'), 'user work');
+    for (const file of [receipt, sibling]) writeFileSync(file, 'trial state');
+    restoreStationHomeUpdateBackup({
+      homeDir: fixture.home,
+      backupDir: fixture.backupDir,
+    });
+    for (const file of [receipt, sibling])
+      expect(readFileSync(file, 'utf8')).toBe('saved state');
+    expect(readFileSync(join(checkout, 'work.txt'), 'utf8')).toBe('user work');
+  });
 
   it.skipIf(process.platform === 'win32').each([
     ['current', 'edited'],
