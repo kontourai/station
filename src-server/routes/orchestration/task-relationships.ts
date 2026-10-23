@@ -49,10 +49,8 @@ const childInput = z
   .strict();
 
 /**
- * UNWIRED(#4027): runtime composition is owned by the production Room lane.
- * The adapter must resolve Conversations through conversation-open-resolver,
- * retain its reader/lineage capability, and recheck it in canReadConversation.
- * canonicalProject must resolve id/slug aliases to the same current incarnation.
+ * Runtime composition mounts this factory at /api/tasks with request-local
+ * canonical Conversation preparation and live lock/delivery authority checks.
  */
 export interface TaskRelationshipRouteAdapters {
   authorityForRequest(

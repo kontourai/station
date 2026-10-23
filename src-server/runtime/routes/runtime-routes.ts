@@ -374,6 +374,7 @@ import { createRunRoutes } from '../../routes/orchestration/runs.js';
 import { createSessionAgentControlRoutes } from '../../routes/orchestration/session-agent-control.js';
 import { createSessionProjectActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
 import { createTaskOutputRoutes } from '../../routes/orchestration/task-outputs.js';
+import { createTaskRelationshipRoutes } from '../../routes/orchestration/task-relationships.js';
 import {
   createTaskRoutes,
   keptRowsForTaskSession,
@@ -822,6 +823,7 @@ import {
   createRuntimeSystemRouteDeps,
 } from './runtime-route-support.js';
 import { createTaskBasisMcpInitialRead } from './task-basis-mcp-initial-read.js';
+import { createTaskRelationshipAuthority } from './task-relationship-authority.js';
 import {
   createRuntimeWorkspacePaneHostActions,
   createWorkspacePaneHostActorFor,
@@ -4120,6 +4122,60 @@ export function configureRuntimeRoutes(
     }),
   );
   context.app.use('/api/tasks/*', primeRoomRequestPrincipal);
+  context.app.route(
+    '/api/tasks',
+    createTaskRelationshipRoutes(
+      context.taskGraphService,
+      createTaskRelationshipAuthority({
+        graph: context.taskGraphService,
+        projects: () =>
+          context.projectService
+            .listProjects()
+            .map((project) => context.storageAdapter.getProject(project.slug)),
+        sessions: context.orchestrationService,
+        events: context.orchestrationEventStore,
+        readAuthority: conversationReadAuthorityForRequest,
+        current: (request) => {
+          if (
+            isHostedTenantExecutionRequired() ||
+            !isRequestPrincipalCurrent(request) ||
+            isPrincipalScopedAgentRequest(request)
+          )
+            return false;
+          // Account admission is asynchronous and current(request) is cached.
+          // Until its owner supplies a synchronous revocation witness, refuse
+          // account callers rather than carry that snapshot into a graph commit.
+          const account =
+            context.deploymentAuthentication?.service.current(request);
+          if (account && account.kind !== 'absent') return false;
+          const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+          if (!principal || principal.kind === 'internal') return false;
+          const binding =
+            principal.authority === 'device-credential'
+              ? context.environmentSecurityService.identifyDevice(
+                  principal.credential,
+                )?.principalBinding
+              : undefined;
+          return !binding || !('kind' in binding && binding.kind === 'account');
+        },
+        mayRead: (request, id) =>
+          runtimeRequestPrincipalMayAccessHttpRoute(
+            request,
+            context.environmentSecurityService,
+            { method: 'GET', path: `/api/tasks/${encodeURIComponent(id)}` },
+          ),
+        mayEdit: (request, id) =>
+          runtimeRequestPrincipalMayAccessHttpRoute(
+            request,
+            context.environmentSecurityService,
+            {
+              method: 'PATCH',
+              path: `/api/tasks/${encodeURIComponent(id)}/status`,
+            },
+          ),
+      }),
+    ),
+  );
   context.app.route(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
