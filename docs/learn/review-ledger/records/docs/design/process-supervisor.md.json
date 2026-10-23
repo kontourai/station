@@ -1,0 +1,25 @@
+{
+  "path": "docs/design/process-supervisor.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Proposal for restart-surviving workload hosts. Reviewed the current managed Linux resource-scope boundary and its distinction from the proposed listener and turn-survival architecture.",
+
+  "limits": "Proposal status retained. No engine reattachment, restart-surviving turn, packaged-service or cross-platform qualification established by this review.",
+
+  "sources": [
+    "src-server/services/infra/workload-resources.ts",
+
+    "packages/shared/src/child-workload.ts",
+
+    "src-server/providers/adapters/claude-code-spawn.ts",
+
+    "src-server/index.ts",
+
+    "docs/guides/development.md"
+  ],
+
+  "checks": []
+}

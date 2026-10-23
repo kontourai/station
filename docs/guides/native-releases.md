@@ -443,11 +443,10 @@ without consuming scarce capacity.
 
 ## Local preparation
 
-Use Node 24 and build only the shared native client before mobile
-initialization:
+Activate Node 24 using your version manager and build only the shared native
+client before mobile initialization:
 
 ```sh
-PATH="$HOME/.local/share/mise/installs/node/24.19.0/bin:$PATH"
 npm run dependencies:ci
 npm run build:native-client
 npm run release:static

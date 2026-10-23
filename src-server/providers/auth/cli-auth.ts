@@ -1,15 +1,13 @@
-import { execFile as execFileCallback } from 'node:child_process';
 import { accessSync, constants, existsSync, statSync } from 'node:fs';
 import { homedir, platform } from 'node:os';
 import { isAbsolute } from 'node:path';
-import { promisify } from 'node:util';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
+import { execFileChildWorkload as execFile } from '@kontourai/station-shared/child-workload';
 import { ensureEngineSpawnTmpDir } from '../../services/infra/engine-spawn-tmpdir.js';
 import { throwIfAborted } from '../../utils/bounded-async.js';
 import { scrubBootInternalSecrets } from '../../utils/child-process-environment.js';
 import { expandTilde } from '../../utils/paths.js';
 
-const execFile = promisify(execFileCallback);
 const CLI_PROBE_TIMEOUT_MS = 10_000;
 const LOGIN_PATH_RESOLVE_TIMEOUT_MS = 5_000;
 
@@ -141,10 +139,9 @@ export async function resolveLoginShellPath(): Promise<string> {
       // settled at ~8s with SIGTERM and at ~1s with SIGKILL. Native-engine
       // adoption now awaits this capture, so the bound has to be real.
       //
-      // Known limit: this kills the shell only. Work its rc files started in
-      // the background outlives it. A group kill needs the shell in its own
-      // process group, which `execFile` cannot give (it does not forward
-      // `detached`), so that is left rather than rebuilt on `spawn` here.
+      // Outside managed Linux service scopes, the deadline kills only the
+      // shell; background work from its rc files can outlive it. The managed
+      // launcher also reaps descendants after the shell exits.
       killSignal: 'SIGKILL',
       windowsHide: true,
     });
@@ -385,8 +382,8 @@ export async function runCliCommand(
   /**
    * A tighter deadline or capture bound than the shared defaults (#3303).
    * `killSignal: 'SIGKILL'` makes the deadline real for a child that ignores
-   * SIGTERM. It kills the direct child only: a grandchild of a wrapper
-   * launcher (mise/npx) can outlive it, as with the login-shell probe below.
+   * SIGTERM. Outside managed Linux service scopes it kills the direct child
+   * only; a grandchild of a wrapper launcher (mise/npx) can outlive it.
    */
   bounds?: {
     timeoutMs?: number;

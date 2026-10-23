@@ -26,10 +26,10 @@
  *     `override_or_bypass`) plus the trust report (stale/recompute queues).
  */
 
-import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { copyFile, mkdir, readFile } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { spawnChildWorkload as spawn } from '@kontourai/station-shared/child-workload';
 import {
   buildTrustReport,
   type TrustBundle,
