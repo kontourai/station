@@ -1,4 +1,5 @@
 import type {
+  TelemetryCompanionPrerequisites,
   TelemetryConnectionProbeStatus,
   TelemetryDeliveryStatus,
 } from '@kontourai/station-contracts/telemetry-delivery';
@@ -10,6 +11,31 @@ import { unlessDeadline } from '../client/request-deadline';
 import { type QueryConfig, useApiQuery } from '../query-core';
 
 const time = z.string().datetime();
+const companionPrerequisites = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('available'),
+      checkedAt: time,
+      containerHost: z.literal('local'),
+      architecture: z.enum(['amd64', 'arm64']),
+      dockerVersion: z.string().min(1).max(64),
+      composeVersion: z.string().min(1).max(64),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('unavailable'),
+      checkedAt: time,
+      reason: z.enum([
+        'container-runtime-missing',
+        'container-daemon-unavailable',
+        'remote-container-context',
+        'container-host-unsupported',
+        'compose-unavailable',
+      ]),
+    })
+    .strict(),
+]);
 const count = z.number().int().nonnegative();
 const failure = z.object({
   at: time,
@@ -171,6 +197,60 @@ export async function fetchTelemetryDeliveryStatus(
   if (!result.success)
     throw new Error('Telemetry delivery status is invalid or unsupported');
   return result.data;
+}
+
+export async function fetchTelemetryCompanionPrerequisites(
+  apiBase: string,
+  options?: ClientRequestOptions,
+): Promise<TelemetryCompanionPrerequisites> {
+  const base = options?.requestScope?.apiBase ?? apiBase;
+  const response = await getJson(
+    `${base}/api/operator/telemetry-companion/prerequisites`,
+    { ...options, maxResponseBytes: 8192 },
+  );
+  const body: unknown = await response.json().catch(unlessDeadline(() => null));
+  if (!response.ok)
+    throw envelopeError(response, body, 'Companion prerequisites unavailable');
+  const parsed = z
+    .object({
+      success: z.literal(true).optional(),
+      data: companionPrerequisites,
+    })
+    .safeParse(body);
+  if (!parsed.success)
+    throw new Error(
+      'Companion prerequisite response is invalid or unsupported',
+    );
+  return parsed.data.data;
+}
+
+export function useTelemetryCompanionPrerequisitesQuery(
+  apiBase: string,
+  config?: QueryConfig<TelemetryCompanionPrerequisites> & {
+    requestScope?: ClientRequestOptions['requestScope'];
+  },
+) {
+  return useApiQuery<TelemetryCompanionPrerequisites>(
+    [
+      'telemetry-companion-prerequisites',
+      config?.requestScope?.apiBase ?? apiBase,
+      config?.requestScope?.authorityKey ?? 'default',
+    ],
+    (signal) =>
+      fetchTelemetryCompanionPrerequisites(apiBase, {
+        signal,
+        requestScope: config?.requestScope,
+      }),
+    {
+      ...config,
+      staleTime: 0,
+      gcTime: 0,
+      refetchOnMount: 'always',
+      refetchOnWindowFocus: false,
+      retry: false,
+      keepPreviousData: false,
+    },
+  );
 }
 
 export async function checkTelemetryConnection(
