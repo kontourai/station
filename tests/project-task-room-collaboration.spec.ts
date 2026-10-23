@@ -710,7 +710,12 @@ test.describe
           .fill('Revocation check.');
         await owner.getByRole('button', { name: 'Send to task room' }).click();
         await expect(
-          peer.getByRole('button', { name: 'Request access', exact: true }),
+          peer
+            .getByRole('status')
+            .filter({ hasText: /^Request access to reconnect to / }),
+        ).toBeVisible();
+        await expect(
+          peer.getByRole('button', { name: 'Review Station', exact: true }),
         ).toBeVisible();
         await expect(
           peer.getByRole('textbox', { name: 'Task brief' }),
