@@ -82,9 +82,11 @@
 
     "src-ui/src/components/BundledServiceBanner.tsx",
 
-    "src-ui/src/components/MobileConnectionBanner.tsx",
+    "src-ui/src/__tests__/ConnectionBannerSource.test.tsx",
 
-    "src-ui/src/__tests__/ConnectionBannerSource.test.tsx"
+    "src-ui/src/components/MobileWelcomeBoundary.tsx",
+
+    "src-ui/src/components/OnboardingGate.tsx"
   ],
 
   "checks": [

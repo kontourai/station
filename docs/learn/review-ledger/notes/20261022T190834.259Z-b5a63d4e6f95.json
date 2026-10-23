@@ -1,0 +1,11 @@
+{
+  "revision": "dc5bbb884cce428acd55de7a8018ef77d81c54a7",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"Scoped fixture repair: NativeRelayEntryBoundary actual-main test now obtains saved relay/direct metadata from real native profile conversion, including broker endpoint kind/revision, before selection returns to operator workspace. It retains no operator/auth/recovery/discovery-provider calls on native member entry and pending intent overlays. Account fixture uses isolated real fake-indexeddb transactions rather than relaxing production strict admission. Four suites35checks passed; one relay check repeated after marking profiles honestly unconfigured, PASS. No native runtime or authority expansion.","inputs":["docs/design/native-capabilities.md"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Scoped fixture repair adds lanDiscoveryEnabled to the literal Station-reset catalog inventory in actual catalog order. Production reset planning/config mutation authority unchanged; fourfocusedfixture suites35checks passed. Existing station/device/account scopes and default-off local-operator discovery contract remain accurate.","inputs":["docs/design/settings-architecture.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed source-causal fixes for shard2: provider-order architecture guard matches JSX line across prop wrapping and checks welcome outside authority; reset inventory includes additive LAN setting; native member/operator test uses real saved profile conversion; AccountEntryView fixtures supply isolated fake-indexeddb plus cleared pending mirror so real durable claim can reach approval/denial/receipt controls. No journal mocks or authority bypass; four suites35checks passed, then final honest relay-profile state control passed.","inputs":["docs/guides/testing.md"]}
+  ]
+}

@@ -68,6 +68,49 @@ const mockLogger = {
 };
 
 describe('Config Routes', () => {
+  test('nearby discovery requires the bound local operator, persists opt-in, and reports listener reality separately', async () => {
+    const loader = createMockConfigLoader();
+    const refused = createConfigRoutes(loader as any, mockLogger);
+    const request = {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lanDiscoveryEnabled: true }),
+    };
+    const denial = await refused.request('/app', request);
+    expect(denial.status).toBe(403);
+    expect(loader.updateAppConfig).not.toHaveBeenCalled();
+    const operator = createConfigRoutes(
+      loader as any,
+      mockLogger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => true,
+    );
+    const saved = await operator.request('/app', request);
+    expect(saved.status).toBe(200);
+    expect((await json(saved)).data.lanDiscoveryEnabled).toBe(true);
+    const read = await json(await operator.request('/app'));
+    expect(read.data.lanDiscoveryStatus.state).toBe('unavailable');
+    const disabled = await operator.request('/app', {
+      ...request,
+      body: JSON.stringify({ lanDiscoveryEnabled: false }),
+    });
+    expect(disabled.status).toBe(200);
+    expect(
+      (await json(await operator.request('/app'))).data.lanDiscoveryStatus
+        .state,
+    ).toBe('disabled');
+    const invalid = await operator.request('/app', {
+      ...request,
+      body: JSON.stringify({ lanDiscoveryEnabled: 'true' }),
+    });
+    expect(invalid.status).toBe(400);
+  });
+
   test('log-level edit requires revision and idempotency, deduplicates replay, and conflicts on stale revision', async () => {
     const loader = createMockConfigLoader();
     const app = createConfigRoutes(loader as any, mockLogger);

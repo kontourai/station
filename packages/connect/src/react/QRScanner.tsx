@@ -18,7 +18,23 @@ export interface QRScannerProps {
  * Opens the device camera and scans QR codes using jsqr.
  * Calls onScan(payload) only for a valid, unexpired Station pairing offer.
  */
-export function QRScanner({ onScan, onCancel, onManualEntry }: QRScannerProps) {
+export function QRScanner(props: QRScannerProps) {
+  const [attempt, setAttempt] = useState(0);
+  return (
+    <CameraScanner
+      key={attempt}
+      {...props}
+      onRetry={() => setAttempt((value) => value + 1)}
+    />
+  );
+}
+
+function CameraScanner({
+  onScan,
+  onCancel,
+  onManualEntry,
+  onRetry,
+}: QRScannerProps & { onRetry: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number>(0);
@@ -71,11 +87,12 @@ export function QRScanner({ onScan, onCancel, onManualEntry }: QRScannerProps) {
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          videoRef.current.play();
+          await videoRef.current.play();
         }
         scan();
       } catch (err: any) {
         if (!cancelled) {
+          stopStream();
           setError(
             err.name === 'NotAllowedError'
               ? 'Camera permission denied. Please allow camera access.'
@@ -160,6 +177,13 @@ export function QRScanner({ onScan, onCancel, onManualEntry }: QRScannerProps) {
           >
             {error}
           </div>
+          <button
+            type="button"
+            onClick={onRetry}
+            style={{ minHeight: 44, padding: '8px 20px', cursor: 'pointer' }}
+          >
+            Try camera again
+          </button>
           {onManualEntry && (
             <button
               type="button"

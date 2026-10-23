@@ -1,0 +1,9 @@
+{
+  "revision": "46d752a55678dc7c78094dc80459c05427d46b1e",
+
+  "notes": [
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Reviewed onboarding task diff from origin/main: vitest-resource-manifest only adds pending-pairing real Chromium test to process-heavy scheduling; existing model-runtime classifications and script verification rules remain unchanged. Scoped to this task delta, not unrelated intervening history or native/provider qualification.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed onboarding task diff from origin/main: vitest-resource-manifest only adds pending-pairing real Chromium test to process-heavy scheduling; existing model-runtime classifications and script verification rules remain unchanged. Scoped to this task delta, not unrelated intervening history or native/provider qualification.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

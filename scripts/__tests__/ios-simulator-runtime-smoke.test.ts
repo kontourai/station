@@ -119,11 +119,11 @@ describe('iOS simulator runtime smoke selection', () => {
     ].length;
     expect(callSites).toBeGreaterThan(0);
     expect(reactivating).toBe(callSites);
-    // The notification sheet can arrive after the shell has exposed Connect,
+    // The notification sheet can arrive after the welcome exposes its actions,
     // so a launch-time dismissal alone is not enough: one reactivating
-    // dismissal must sit between the shell wait and the first WebView tap.
-    const shellWait = swiftSmoke.indexOf('waitForElement(connect');
-    const firstTap = swiftSmoke.indexOf('connect.tap()');
+    // dismissal must sit between the welcome wait and the first WebView tap.
+    const shellWait = swiftSmoke.indexOf('waitForElement(scan');
+    const firstTap = swiftSmoke.indexOf('manual.tap()');
     expect(shellWait).toBeGreaterThanOrEqual(0);
     expect(firstTap).toBeGreaterThan(shellWait);
     expect(swiftSmoke.slice(shellWait, firstTap)).toMatch(
@@ -132,9 +132,7 @@ describe('iOS simulator runtime smoke selection', () => {
     // It can also win the race with that first tap itself (#1174), so a
     // second reactivating dismissal must sit between the first tap and the
     // bounded manager wait. The call-site equality above cannot see its loss.
-    const managerWait = swiftSmoke.indexOf(
-      'tap(connect, until: connectStation',
-    );
+    const managerWait = swiftSmoke.indexOf('tap(manual, until: manualAddress');
     expect(managerWait).toBeGreaterThan(firstTap);
     expect(swiftSmoke.slice(firstTap, managerWait)).toMatch(
       /if dismissSystemAlertIfPresent\(\) \{\s+app\.activate\(\)\s+\}/,
@@ -152,6 +150,8 @@ describe('iOS simulator runtime smoke selection', () => {
     // a surface that never opens (#1174): each tap-opened surface is asserted
     // through the bounded tap-retry helper, never a bare existence wait.
     for (const [source, target] of [
+      ['manual', 'manualAddress'],
+      ['otherWays', 'connect'],
       ['connect', 'connectStation'],
       ['connectStation', 'address'],
     ]) {

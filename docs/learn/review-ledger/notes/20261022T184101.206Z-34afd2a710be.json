@@ -1,0 +1,7 @@
+{
+  "revision": "b56b229d113ce71e1d8bf6a1053cac014713e1e5",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed b56b229d113 exact Dependabot ip-address 10.7.2 to10.7.4 lock/integrity delta without touching Ciao or policy. Named attacker-controlled malformed IPv6 zone/event-loop-stall threat and bounded reachability: actual Address6 public API reproduced ~958ms for40kLF payload before fix; patched four1M terminator variants reject under bounded2s child with positive IPv4/IPv6/zone/mapped controls, installed express-rate-limit net.isIPv6 prefilter blocks malformed input. Frozen managed install/check/verify/locksync and auditpolicy passed. No endpoint exploit or native/production qualification asserted; deprecated exported regex remains upstream. Initial remediation scanner failed on proven dangling unlocked multicast-dns binlink from removed package; only that generated stale link was removed, then audit passed. Existing braces expiry warning remains unrelated.","inputs":["docs/guides/dependency-security.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]}
+  ]
+}

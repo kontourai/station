@@ -19,9 +19,11 @@ describe('application provider order', () => {
     const recoveryOpen = source.indexOf('<RecoveryQueryBoundary>');
     const onboardingBoundary = source.indexOf('id="connection-recovery"');
     const recoveryClose = source.indexOf('</RecoveryQueryBoundary>');
-    // Trailing space: the bare prefix also matches a prose comment
-    // mentioning the provider; the JSX open tag is the one with props.
-    const authorityOpen = source.indexOf('<AuthorityQueryProvider ');
+    // Match the JSX line without coupling the boundary to attribute wrapping.
+    const authorityOpen =
+      source.match(/^\s*<AuthorityQueryProvider\b/m)?.index ?? -1;
+    const welcomeOpen = source.indexOf('<MobileWelcomeBoundary>');
+    const welcomeClose = source.indexOf('</MobileWelcomeBoundary>');
     const authorityClose = source.indexOf('</AuthorityQueryProvider>');
     const app = source.indexOf('<App />');
     const toastClose = source.indexOf('</ScopedToastProvider>');
@@ -32,12 +34,14 @@ describe('application provider order', () => {
     expect(recoveryOpen).toBeGreaterThan(toastOpen);
     expect(onboardingBoundary).toBeGreaterThan(recoveryOpen);
     expect(recoveryClose).toBeGreaterThan(onboardingBoundary);
-    expect(authorityOpen).toBeGreaterThan(recoveryClose);
+    expect(welcomeOpen).toBeGreaterThan(recoveryClose);
+    expect(authorityOpen).toBeGreaterThan(welcomeOpen);
     // Protected data lifetime still owns the application shell.
     expect(app).toBeGreaterThan(authorityOpen);
     expect(authorityClose).toBeGreaterThan(app);
     // One toast provider covers both lifetimes.
-    expect(toastClose).toBeGreaterThan(authorityClose);
+    expect(welcomeClose).toBeGreaterThan(authorityClose);
+    expect(toastClose).toBeGreaterThan(welcomeClose);
     expect(source.indexOf('<ScopedToastProvider>', toastOpen + 1)).toBe(-1);
     expect(source.match(/<ToastProvider(?:\s|>)/g)).toHaveLength(1);
   });

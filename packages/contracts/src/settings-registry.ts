@@ -237,6 +237,16 @@ export const APP_SETTINGS_REGISTRY = [
     defaultValue: 'after-24h',
   }),
   defineSetting({
+    key: 'lanDiscoveryEnabled',
+    scope: 'station',
+    descriptor: { kind: 'boolean' },
+    label: 'Discover this Station nearby',
+    help: 'Make this Station name and local API address visible to nearby devices.',
+    description:
+      'Opt-in DNS-SD publication on reachable local interfaces. Discovery does not grant access; connecting still requires consent and host approval.',
+    defaultValue: false,
+  }),
+  defineSetting({
     key: 'telemetryTier',
     scope: 'station',
     descriptor: { kind: 'composite' },

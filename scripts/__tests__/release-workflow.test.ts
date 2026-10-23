@@ -1107,7 +1107,16 @@ describe('native release workflow topology', () => {
     // main pushes. The Android verification lane must never gain tag/release
     // triggers — pin the full topology exactly.
     expect(workflow(android).on).toEqual({
-      workflow_dispatch: null,
+      workflow_dispatch: {
+        inputs: {
+          isolated_onboarding: {
+            description:
+              'Build a separate onboarding Dev app; non-main refs only',
+            type: 'boolean',
+            default: false,
+          },
+        },
+      },
       push: {
         branches: ['main'],
         paths: [

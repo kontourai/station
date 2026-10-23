@@ -7,6 +7,7 @@ import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { SettingsToggle } from './feature-toggle';
+import { LanDiscoveryControl } from './LanDiscoveryControl';
 import { OwnAccessTokensPanel } from './OwnAccessTokensPanel';
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
@@ -44,6 +45,7 @@ export function PairingSection() {
         </Button>
       }
     >
+      {canInviteDevice && <LanDiscoveryControl />}
       {isMobile && (
         <div {...settingsRow('open-last-station')} tabIndex={-1}>
           <SettingsToggle

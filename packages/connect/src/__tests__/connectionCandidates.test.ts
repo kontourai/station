@@ -154,6 +154,29 @@ describe('connection candidate providers', () => {
     expect(result.candidates).toHaveLength(1);
   });
 
+  test('does not admit an immediately resolved provider after caller cancellation', async () => {
+    register({
+      id: 'native.race',
+      discover: async () => [
+        {
+          candidateVersion: 1,
+          name: 'Late Station',
+          url: 'https://late.example',
+          source: 'lan-dns-sd',
+          discoveredAt: Date.now(),
+        },
+      ],
+    });
+    const controller = new AbortController();
+    const pending = discoverConnectionCandidates({ signal: controller.signal });
+    controller.abort();
+    const result = await pending;
+    expect(result.candidates).toEqual([]);
+    expect(result.providers).toEqual([
+      { providerId: 'native.race', status: 'cancelled' },
+    ]);
+  });
+
   test('bounds providers that ignore the cancellation signal', async () => {
     register({
       id: 'native.stuck',
@@ -164,7 +187,7 @@ describe('connection candidate providers', () => {
 
     expect(result).toEqual({
       candidates: [],
-      providers: [{ providerId: 'native.stuck', status: 'failed' }],
+      providers: [{ providerId: 'native.stuck', status: 'timed-out' }],
     });
   });
 });

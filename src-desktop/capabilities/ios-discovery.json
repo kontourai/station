@@ -1,0 +1,14 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "ios-discovery",
+  "description": "User-invoked foreground Station DNS-SD browsing. Suggestions require the existing access flow.",
+  "windows": [
+    "main"
+  ],
+  "platforms": [
+    "iOS"
+  ],
+  "permissions": [
+    "station-discovery:default"
+  ]
+}

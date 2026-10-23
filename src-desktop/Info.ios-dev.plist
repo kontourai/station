@@ -11,7 +11,8 @@
   <string>Station uses the camera to scan pairing codes from another device.</string>
   <key>NSMicrophoneUsageDescription</key>
   <string>Station uses the microphone for voice conversations with your agents.</string>
-  <key>NSLocalNetworkUsageDescription</key>
+  <key>NSBonjourServices</key><array><string>_station._tcp</string></array>
+<key>NSLocalNetworkUsageDescription</key>
   <string>Station connects to Station hosts on your local network.</string>
   <key>NSAppTransportSecurity</key>
   <dict><key>NSAllowsLocalNetworking</key><true/></dict>

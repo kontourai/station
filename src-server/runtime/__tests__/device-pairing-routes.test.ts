@@ -294,6 +294,7 @@ function createHarness(
           principal.credential === MASTER_CREDENTIAL
         );
       }),
+    resolvePublicIngressOrigin: options.resolvePublicIngressOrigin,
     relayEnrollment,
     operatorPasskeys: options.operatorPasskeys,
   });
@@ -5024,5 +5025,49 @@ describe('operator passkey host routes in the runtime auth boundary (#3257)', ()
     } finally {
       registry.close();
     }
+  });
+});
+
+describe('host HTTPS pairing endpoint suggestions', () => {
+  test('requires authentication, returns daemon mappings only, and reports unavailable as empty', async () => {
+    const resolver = vi.fn(async () => ['https://host.tailnet.ts.net']);
+    const h = createHarness({ resolvePublicIngressOrigin: resolver });
+    const denied = await h.request('/api/pairing/endpoint-suggestions');
+    expect(denied.status).toBe(401);
+    expect(resolver).not.toHaveBeenCalled();
+    const reply = await h.request('/api/pairing/endpoint-suggestions', {
+      ...h.json(undefined, MASTER_CREDENTIAL),
+      method: 'GET',
+    });
+    expect(reply.status).toBe(200);
+    expect(await reply.json()).toEqual({
+      endpoints: ['https://host.tailnet.ts.net'],
+      source: 'tailscale-serve',
+    });
+    const absent = createHarness();
+    const empty = await absent.request('/api/pairing/endpoint-suggestions', {
+      ...absent.json(undefined, MASTER_CREDENTIAL),
+      method: 'GET',
+    });
+    expect(await empty.json()).toEqual({
+      endpoints: [],
+      source: 'tailscale-serve',
+    });
+  });
+  test('refuses a principal revoked while the daemon lookup is in flight', async () => {
+    let current = true;
+    const h = createHarness({
+      isRequestPrincipalCurrent: () => current,
+      resolvePublicIngressOrigin: async () => {
+        current = false;
+        return ['https://host.tailnet.ts.net'];
+      },
+    });
+    const reply = await h.request('/api/pairing/endpoint-suggestions', {
+      ...h.json(undefined, MASTER_CREDENTIAL),
+      method: 'GET',
+    });
+    expect(reply.status).toBe(401);
+    expect(await reply.json()).toEqual({ error: 'unauthorized' });
   });
 });

@@ -1,3 +1,4 @@
+import { IDBFactory } from 'fake-indexeddb';
 /** @vitest-environment jsdom */
 
 import type { CompletePaired } from '@kontourai/station-connect';
@@ -70,6 +71,7 @@ function renderReconciler(
 ) {
   const callbacks = {
     onApprovalWaiting: vi.fn(),
+    onIndeterminate: vi.fn(),
     onCompleted: vi.fn(),
     onConnectionWaiting: vi.fn(),
     onTerminalFailure: vi.fn(),
@@ -93,7 +95,16 @@ async function advance(ms: number) {
 
 describe('PendingPairingReconciler', () => {
   beforeEach(() => {
-    vi.useFakeTimers();
+    vi.stubGlobal('indexedDB', new IDBFactory());
+    vi.useFakeTimers({
+      toFake: [
+        'Date',
+        'setTimeout',
+        'clearTimeout',
+        'setInterval',
+        'clearInterval',
+      ],
+    });
     mocks.connections = [
       target,
       { id: 'other-station', name: 'Other Station' },

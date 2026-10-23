@@ -1,6 +1,7 @@
 import type { PairedDevice } from '@kontourai/station-contracts';
-import { afterEach, describe, expect, test, vi } from 'vitest';
-import type { PendingPairingExchange } from '../core/devicePairing';
+import { IDBFactory } from 'fake-indexeddb';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { type PendingPairingExchange } from '../core/devicePairing';
 import {
   type CompletePaired,
   type CompletePendingPairingOptions,
@@ -11,6 +12,20 @@ import {
   type CompletePendingPairing,
   createPendingPairingCompletionLoader,
 } from '../core/pendingPairingCompletionLoader';
+import { claimPendingPairingExchange } from '../core/pendingPairingExchangeJournal';
+
+beforeEach(() => {
+  vi.stubGlobal('indexedDB', new IDBFactory());
+  const values = new Map<string, string>();
+  vi.stubGlobal('localStorage', {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+    removeItem: (key: string) => values.delete(key),
+  });
+});
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 const endpoint = 'https://station.example.test';
 
@@ -142,7 +157,7 @@ describe('completePendingPairing interface', () => {
       clearPending: vi.fn(),
       exchange,
     });
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
     vi.setSystemTime(0);
 
     const completion = complete(pending(), completionOptions());
@@ -164,7 +179,7 @@ describe('completePendingPairing interface', () => {
     expect(waits).toEqual([500]);
     expect(exchange).toHaveBeenCalledOnce();
     expect(clearPending).toHaveBeenCalledOnce();
-    expect(clearPending).toHaveBeenCalledWith(endpoint, 'direct');
+    expect(clearPending).toHaveBeenCalledWith(endpoint, 'direct', 'request-1');
   });
 
   test('refuses an incomplete restored account-bound request before exchange', async () => {
@@ -180,7 +195,7 @@ describe('completePendingPairing interface', () => {
       ),
     ).resolves.toEqual({ status: 'failed' });
     expect(exchange).not.toHaveBeenCalled();
-    expect(clearPending).toHaveBeenCalledWith(endpoint, 'direct');
+    expect(clearPending).toHaveBeenCalledWith(endpoint, 'direct', 'request-1');
   });
 
   test('runs one completion owner for concurrent subscribers and clears only after it settles', async () => {
@@ -210,7 +225,7 @@ describe('completePendingPairing interface', () => {
     expect(clearPending).toHaveBeenCalledOnce();
   });
 
-  test('reports caller completion failure as total and clears the spent proof', async () => {
+  test('holds the spent proof when durable completion fails', async () => {
     const failure = { kind: 'storage', reason: 'quota' };
     const completePaired = vi.fn(async () => ({
       status: 'failed' as const,
@@ -218,15 +233,16 @@ describe('completePendingPairing interface', () => {
     }));
     const { clearPending, complete } = harness();
 
-    await expect(complete(pending(), { completePaired })).resolves.toEqual({
-      status: 'post-exchange-failed',
-      failure,
+    await expect(
+      complete(pending(), { completePaired }),
+    ).resolves.toMatchObject({
+      status: 'indeterminate',
     });
     expect(completePaired).toHaveBeenCalledOnce();
-    expect(clearPending).toHaveBeenCalledOnce();
+    expect(clearPending).not.toHaveBeenCalled();
   });
 
-  test('clears the spent proof when completion observes the shared abort', async () => {
+  test('holds the spent proof when completion observes the shared abort', async () => {
     const completionStarted = deferred<void>();
     const controller = new AbortController();
     const completePaired = vi.fn(
@@ -251,7 +267,8 @@ describe('completePendingPairing interface', () => {
     controller.abort();
 
     await expect(completion).resolves.toEqual({ status: 'aborted' });
-    await vi.waitFor(() => expect(clearPending).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(completePaired).toHaveReturned());
+    expect(clearPending).not.toHaveBeenCalled();
   });
 
   test('retains a spent flight for a late subscriber while aborted completion settles', async () => {
@@ -282,22 +299,15 @@ describe('completePendingPairing interface', () => {
     expect(completePaired).toHaveBeenCalledOnce();
 
     settleCompletion.resolve({ status: 'failed', failure: 'local abort' });
-    await expect(late).resolves.toEqual({
-      status: 'post-exchange-failed',
-      failure: 'local abort',
-    });
-    expect(clearPending).toHaveBeenCalledOnce();
+    await expect(late).resolves.toMatchObject({ status: 'indeterminate' });
+    expect(clearPending).not.toHaveBeenCalled();
   });
 
-  test('owns approval, transport, and rate-limit retries behind one call', async () => {
-    const transportFailure = Object.assign(new Error('offline'), {
-      transport: true,
-    });
+  test('owns exact unconsumed approval and rate-limit retries behind one call', async () => {
     const exchange = vi
       .fn()
-      .mockRejectedValueOnce({ status: 409 })
-      .mockRejectedValueOnce(transportFailure)
-      .mockRejectedValueOnce({ status: 429 })
+      .mockRejectedValueOnce({ status: 409, code: 'request_not_confirmed' })
+      .mockRejectedValueOnce({ status: 429, code: 'rate_limited' })
       .mockResolvedValueOnce(pairedResult());
     const progress = vi.fn();
     const { clearPending, complete, waits } = harness(exchange);
@@ -306,13 +316,11 @@ describe('completePendingPairing interface', () => {
       complete(pending(), completionOptions({ onProgress: progress })),
     ).resolves.toMatchObject({ status: 'paired' });
 
-    expect(waits).toEqual([500, 1_250, 2_375, 12_375]);
+    expect(waits).toEqual([500, 1_250, 11_250]);
     expect(progress.mock.calls.map(([value]) => value.status)).toEqual([
       'waiting-for-approval',
-      'waiting-for-connection',
-      'waiting-for-approval',
     ]);
-    expect(exchange).toHaveBeenCalledTimes(4);
+    expect(exchange).toHaveBeenCalledTimes(3);
     expect(clearPending).toHaveBeenCalledOnce();
   });
 
@@ -325,20 +333,22 @@ describe('completePendingPairing interface', () => {
       // are in-memory, so a Station restart lands here too). Definitive —
       // the old behavior retried it as "waiting for approval" forever.
       { status: 409, code: 'offer_unavailable' },
-      'unavailable',
+      'indeterminate',
     ],
-    [new Error('malformed response'), 'failed'],
+    [new Error('malformed response'), 'indeterminate'],
   ] as const)(
     'settles terminal exchange failure %# as %s and clears it',
     async (failure, status) => {
       const exchange = vi.fn().mockRejectedValue(failure);
       const { clearPending, complete } = harness(exchange);
 
-      await expect(complete(pending(), completionOptions())).resolves.toEqual({
-        status,
-      });
+      await expect(
+        complete(pending(), completionOptions()),
+      ).resolves.toMatchObject({ status });
       expect(exchange).toHaveBeenCalledOnce();
-      expect(clearPending).toHaveBeenCalledOnce();
+      if (status === 'indeterminate')
+        expect(clearPending).not.toHaveBeenCalled();
+      else expect(clearPending).toHaveBeenCalledOnce();
     },
   );
 
@@ -374,16 +384,16 @@ describe('completePendingPairing interface', () => {
     expect(clearPending).toHaveBeenCalledOnce();
   });
 
-  test('rejects a changed Station identity and clears the spent request', async () => {
+  test('holds a spent request after a changed Station identity', async () => {
     const exchange = vi
       .fn()
       .mockResolvedValue(pairedResult({ environmentId: 'environment-2' }));
     const { clearPending, complete } = harness(exchange);
 
-    await expect(complete(pending(), completionOptions())).resolves.toEqual({
-      status: 'identity-changed',
-    });
-    expect(clearPending).toHaveBeenCalledOnce();
+    await expect(
+      complete(pending(), completionOptions()),
+    ).resolves.toMatchObject({ status: 'indeterminate' });
+    expect(clearPending).not.toHaveBeenCalled();
   });
 
   test('reports abort without exchanging or clearing a live request', async () => {
@@ -464,7 +474,7 @@ describe('completePendingPairing interface', () => {
     expect(clearPending).toHaveBeenCalledOnce();
   });
 
-  test('settles late subscribers as aborted before spend, then allows a fresh flight', async () => {
+  test('holds an aborted exchange for late and fresh subscribers', async () => {
     const firstExchange = deferred<PendingPairingExchangeResult>();
     const exchange = vi
       .fn()
@@ -494,24 +504,24 @@ describe('completePendingPairing interface', () => {
     firstExchange.reject(
       Object.assign(new Error('aborted'), { transport: true }),
     );
-    await expect(late).resolves.toEqual({ status: 'aborted' });
+    await expect(late).resolves.toMatchObject({ status: 'indeterminate' });
     expect(clearPending).not.toHaveBeenCalled();
     expect(firstCompletion).not.toHaveBeenCalled();
     expect(lateCompletion).not.toHaveBeenCalled();
 
     await expect(
       complete({ ...pending() }, { completePaired: freshCompletion }),
-    ).resolves.toMatchObject({ status: 'paired' });
-    expect(exchange).toHaveBeenCalledTimes(2);
-    expect(freshCompletion).toHaveBeenCalledOnce();
-    expect(clearPending).toHaveBeenCalledOnce();
+    ).resolves.toMatchObject({ status: 'indeterminate' });
+    expect(exchange).toHaveBeenCalledOnce();
+    expect(freshCompletion).not.toHaveBeenCalled();
+    expect(clearPending).not.toHaveBeenCalled();
   });
 
   test('shares one retry flight, projects progress to every subscriber, and clears once', async () => {
     const secondAttempt = deferred<PendingPairingExchangeResult>();
     const exchange = vi
       .fn()
-      .mockRejectedValueOnce({ status: 409 })
+      .mockRejectedValueOnce({ status: 409, code: 'request_not_confirmed' })
       .mockImplementationOnce(() => secondAttempt.promise);
     const firstProgress = vi.fn();
     const secondProgress = vi.fn();
@@ -545,7 +555,7 @@ describe('completePendingPairing interface', () => {
     const secondAttempt = deferred<PendingPairingExchangeResult>();
     const exchange = vi
       .fn()
-      .mockRejectedValueOnce({ status: 409 })
+      .mockRejectedValueOnce({ status: 409, code: 'request_not_confirmed' })
       .mockImplementationOnce(() => secondAttempt.promise);
     const firstProgress = vi.fn();
     const lateProgress = vi.fn();
@@ -660,16 +670,14 @@ describe('completePendingPairing interface', () => {
     await vi.waitFor(() => expect(exchangeSignal?.aborted).toBe(true));
 
     exchangeResult.resolve(pairedResult());
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(clearPending).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect(clearPending).toHaveBeenCalledOnce());
   });
 
   test('does not let an observer exception break the shared protocol', async () => {
     const secondAttempt = deferred<PendingPairingExchangeResult>();
     const exchange = vi
       .fn()
-      .mockRejectedValueOnce({ status: 409 })
+      .mockRejectedValueOnce({ status: 409, code: 'request_not_confirmed' })
       .mockImplementationOnce(() => secondAttempt.promise);
     const throwingProgress = vi.fn(() => {
       throw new Error('observer failed');
@@ -695,4 +703,28 @@ describe('completePendingPairing interface', () => {
     await expect(second).resolves.toMatchObject({ status: 'paired' });
     expect(clearPending).toHaveBeenCalledOnce();
   });
+});
+
+test('revalidates cancellation and caller authority after the real journal claim and before sending', async () => {
+  const controller = new AbortController();
+  const exchange = vi.fn();
+  let current = true;
+  const complete = createPendingPairingCompletion({
+    waitUntil: async () => true,
+    now: () => 0,
+    exchange,
+    claimExchange: async (pending, signal) => {
+      const result = await claimPendingPairingExchange(pending, signal);
+      current = false;
+      return result;
+    },
+  });
+  expect(
+    await complete(pending(), {
+      signal: controller.signal,
+      isCurrent: () => current,
+      completePaired,
+    }),
+  ).toMatchObject({ status: 'indeterminate' });
+  expect(exchange).not.toHaveBeenCalled();
 });

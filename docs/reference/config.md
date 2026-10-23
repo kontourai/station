@@ -82,6 +82,23 @@ additional first-run, workspace, approval, contribution, and preview settings.
 | `attachedSessionsOutsideProjects` | boolean | `false` for new homes; legacy absence remains `true` | Whether Activity follows Claude Code, Codex, Grok and OpenCode conversations on this machine whose folder belongs to no project (listed under No project). `false` stops following them from the next two-second poll, including transcripts already listed (their new messages stop arriving); nothing already imported is removed from Activity, from the search index or from paired devices' reach. Seeded off only when `config/app.json` is first created; existing files and explicit choices are preserved. Read every poll by [`attachedSessionsOutsideProjectsEnabled`](../../src-server/services/orchestration/attached-session-follow-service.ts); an unreadable configuration counts as `false`. Transcripts inside a project are followed either way, and a hosted Station never follows these. Settings → Advanced → Conversations outside projects (Host options). |
 | `knowledgeStores` | boolean | `false` | Enables personal conversation-root bootstrap in the Knowledge store path. It does not gate all Knowledge APIs, migrate existing data, or remove roots when turned off. Kept out of the general Settings UI. |
 
+### nearby discovery
+
+`lanDiscoveryEnabled` is a Station boolean, default `false`, saved in
+`config/app.json`. Changing it requires the bound local operator; an ordinary
+remote `access:manage` grant does not suffice. **Settings → Pairing → Discover
+this Station nearby** changes that intent without changing listener binding,
+ports or firewall rules.
+
+The authorized config read also reports `lanDiscoveryStatus`, an observation
+with `state` (`disabled`, `starting`, `published`, `loopback-only` or
+`unavailable`), `message`, and optional `serviceName`, `port` and `addresses`.
+This status is not persisted configuration or authenticated identity. Publication
+uses the actual bound API port and eligible private IPv4 interface; IPv6-only,
+IPv6 wildcard and public-only listeners do not establish a publishable address.
+See [LAN discovery](../guides/connections.md#make-this-host-discoverable-on-the-lan)
+for failure and withdrawal semantics.
+
 ### telemetry destinations
 
 These settings belong to the Station instance. They keep disclosed product

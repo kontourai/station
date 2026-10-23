@@ -424,6 +424,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   ),
 }));
 
+import { MobileWelcomeBoundary } from '../components/MobileWelcomeBoundary';
 import { OnboardingGate } from '../components/OnboardingGate';
 import { resetUsageTelemetryDisclosureDismissal } from '../components/UsageTelemetryDisclosure';
 import { onboardingSetupStore } from '../contexts/onboarding-setup-store';
@@ -1782,7 +1783,7 @@ describe('OnboardingGate', () => {
     expect(screen.getByText('Connection manager: request-access')).toBeTruthy();
   });
 
-  test('keeps the mobile shell available and launches connection management before a real host is saved', async () => {
+  test('withholds the fresh mobile shell and launches QR pairing through the welcome boundary', async () => {
     platformProfile = {
       isTauri: true,
       target: 'ios',
@@ -1794,22 +1795,24 @@ describe('OnboardingGate', () => {
 
     render(
       <OnboardingGate>
-        <div>App</div>
-        <StationDetailsSurface />
+        <MobileWelcomeBoundary>
+          <div>App</div>
+          <StationDetailsSurface />
+        </MobileWelcomeBoundary>
       </OnboardingGate>,
     );
 
-    expect(screen.getByText('App')).toBeTruthy();
-    expect(
-      await screen.findByRole('region', { name: 'No Station connected' }),
-    ).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Connect to a Station' }),
+    expect(screen.queryByText('App')).toBeNull();
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toContain(
+      'Your work',
     );
-    expect(screen.getByText('Connection manager: list')).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Scan pairing QR code' }),
+    );
+    expect(screen.getByText('Connection manager: pair-device')).toBeTruthy();
   });
 
-  test('keeps the mobile connection action stable across shell rerenders', async () => {
+  test('keeps the fresh mobile QR action stable across shell rerenders', async () => {
     platformProfile = {
       isTauri: true,
       target: 'ios',
@@ -1821,12 +1824,14 @@ describe('OnboardingGate', () => {
 
     const view = render(
       <OnboardingGate>
-        <div>App</div>
-        <StationDetailsSurface />
+        <MobileWelcomeBoundary>
+          <div>App</div>
+          <StationDetailsSurface />
+        </MobileWelcomeBoundary>
       </OnboardingGate>,
     );
     const connect = await screen.findByRole('button', {
-      name: 'Connect to a Station',
+      name: 'Scan pairing QR code',
     });
     const presentSpy = vi.spyOn(bannerStore, 'present');
     const dismissSpy = vi.spyOn(bannerStore, 'dismiss');
@@ -1835,12 +1840,14 @@ describe('OnboardingGate', () => {
 
     view.rerender(
       <OnboardingGate>
-        <div>App rerendered</div>
-        <StationDetailsSurface />
+        <MobileWelcomeBoundary>
+          <div>App rerendered</div>
+          <StationDetailsSurface />
+        </MobileWelcomeBoundary>
       </OnboardingGate>,
     );
 
-    expect(screen.getByRole('button', { name: 'Connect to a Station' })).toBe(
+    expect(screen.getByRole('button', { name: 'Scan pairing QR code' })).toBe(
       connect,
     );
     expect(dismissSpy).not.toHaveBeenCalledWith(BANNER_IDS.deviceConnection);
@@ -1848,7 +1855,7 @@ describe('OnboardingGate', () => {
       expect.objectContaining({ id: BANNER_IDS.deviceConnection }),
     );
     fireEvent.click(connect);
-    expect(screen.getByText('Connection manager: list')).toBeTruthy();
+    expect(screen.getByText('Connection manager: pair-device')).toBeTruthy();
   });
 
   test('keeps the mobile shell available for a saved host that is offline before first success', () => {
@@ -1873,8 +1880,10 @@ describe('OnboardingGate', () => {
 
     render(
       <OnboardingGate>
-        <div>App</div>
-        <StationDetailsSurface />
+        <MobileWelcomeBoundary>
+          <div>App</div>
+          <StationDetailsSurface />
+        </MobileWelcomeBoundary>
       </OnboardingGate>,
     );
 
@@ -2409,14 +2418,18 @@ describe('OnboardingGate', () => {
 
     render(
       <OnboardingGate>
-        <div>App</div>
-        <StationDetailsSurface />
+        <MobileWelcomeBoundary>
+          <div>App</div>
+          <StationDetailsSurface />
+        </MobileWelcomeBoundary>
       </OnboardingGate>,
     );
 
-    expect(
-      await screen.findByRole('region', { name: 'No Station connected' }),
-    ).toBeTruthy();
+    expect(screen.queryByText('App')).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Scan pairing QR code' }),
+    );
+    expect(screen.getByText('Connection manager: pair-device')).toBeTruthy();
   });
 
   describe('desktop bundled-server supervision', () => {

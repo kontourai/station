@@ -1,0 +1,7 @@
+{
+  "revision": "0b2eb45ef7b5b079692c468f289ce11eb97ff14f",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed first-session Home guide against HomeSurface, useHomeViewModel and HomeActionSection: successful empty catalog gates guidance, canonical agent runnability chooses agent-list versus engine-setup navigation, Project stays optional, and remote failures retain recovery. Reviewed fresh native-phone welcome against MobileWelcomeBoundary/main composition and OnboardingGate: application subtree waits for a real saved connection while existing manager and pairing reconciliation remain outside; saved offline/auth failure keeps recovery. Focused mounted UI and recovery tests passed; physical pairing and provider execution not verified.","inputs":["docs/user/getting-started.md","src-ui/src/components/MobileWelcomeBoundary.tsx","src-ui/src/views/home/HomeSurface.tsx","src-ui/src/views/home/useHomeViewModel.ts","src-ui/src/components/home/HomeActionSection.tsx"]}
+  ]
+}

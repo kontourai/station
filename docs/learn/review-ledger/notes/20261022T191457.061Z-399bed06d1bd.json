@@ -1,0 +1,15 @@
+{
+  "revision": "77dcbd391310b1eaf756be6865162f3834dabd71",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed latest shard fixes: welcome copy now says connect to a Station, preserving the countable host/product distinction. Notification-only fixture awaits a mocked unrelated lazydiscovery effect; real nativebootstrap tests await actual providerregistration and prove unregister on unmount, with dedicated adapter/cancel checks.116focusedchecks pass with no teardown error; no production lifecycle/authority change and no physical qualification.","inputs":["docs/user/getting-started.md","src-ui/src/components/MobileWelcomeBoundary.tsx"]},
+
+    {"path":"README.md","note":"Scoped no-prose-change review: freshphone intro article corrected from Station to a Station; QR/manual/nearby actions and rootphoneguide remain accurate.116focusedchecks passed, including real bootstrap registration/disposal; no new runtime/physical claim.","inputs":["README.md","src-ui/src/components/MobileWelcomeBoundary.tsx"]},
+
+    {"path":"docs/guides/android-build.md","note":"Reviewed artifactretention test repair: parsed workflow selector emits both normal and isolated artifactnames and routes to one upload owner with explicit positive numeric retention≤14days (actual5). Executable identityadmission cases remain in android-channel-release-generation suite. No workflow/config/packagedidentity behavior changed; CI harness selection passed. Artifactruntime remains independently evidenced.","inputs":["docs/guides/android-build.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Published-scope fixture now includes lan-discovery:station matching registered lanDiscoveryEnabled. Generator and real configroute selection111checks passed, including boundlocaloperator-onlymutation and persisteddefaultoff status separation. Public scope describes document ownership, not an expansion of remote write authority; no prose change needed.","inputs":["docs/reference/settings-deep-links.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Shard1/3/4 source-causal fixtures repaired without ignore/swallow: notificationprime suite mocks and awaits unrelated discovery effect then cleans up before clearingmocks; real nativebootstrap suite waitsproviderregistration and verifiesunregister; artifact retention follows parsedselected upload rather than literal name proximity; publishedsettings authority inventory addsstationLANsetting.116focused boot/discovery/workflow/vocabulary/welcome checks and111generator/configroute checks passed. No claim of fullshard/Windows/nativeprovider qualification.","inputs":["docs/guides/testing.md","scripts/__tests__/ci-workflow-contract.test.ts"]}
+  ]
+}

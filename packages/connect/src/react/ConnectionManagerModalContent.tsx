@@ -65,46 +65,6 @@ type ConnectionManagerModalContentProps = Omit<
 
 const FOCUSABLE =
   'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), summary, [href], [tabindex]:not([tabindex="-1"])';
-const MAX_CANDIDATE_HANDSHAKE_BYTES = 32 * 1024;
-
-async function readCandidateHandshake(response: Response): Promise<{
-  environmentId?: unknown;
-  authentication?: { scheme?: unknown; protocolVersion?: unknown };
-} | null> {
-  const declaredLength = response.headers.get('Content-Length');
-  if (
-    declaredLength &&
-    /^\d+$/.test(declaredLength) &&
-    Number(declaredLength) > MAX_CANDIDATE_HANDSHAKE_BYTES
-  ) {
-    return null;
-  }
-  const reader = response.body?.getReader();
-  if (!reader) return null;
-  const decoder = new TextDecoder();
-  let bytes = 0;
-  let text = '';
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    bytes += value.byteLength;
-    if (bytes > MAX_CANDIDATE_HANDSHAKE_BYTES) {
-      await reader.cancel();
-      return null;
-    }
-    text += decoder.decode(value, { stream: true });
-  }
-  text += decoder.decode();
-  try {
-    return JSON.parse(text) as {
-      environmentId?: unknown;
-      authentication?: { scheme?: unknown; protocolVersion?: unknown };
-    };
-  } catch {
-    return null;
-  }
-}
-
 export function ConnectionManagerModalContent({
   onClose,
   checkHealth,
@@ -124,6 +84,7 @@ export function ConnectionManagerModalContent({
   pairingClientChannel,
   allowManualCredentials = true,
   authenticatedRequest,
+  renderPairingEndpointSuggestions,
   onRestartInjectedConnection,
   localStationOwnerId,
   onReconnectLocalService,
@@ -134,7 +95,6 @@ export function ConnectionManagerModalContent({
   const overlayRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousFocusRef = useRef<HTMLElement[]>([]);
-  const candidateReviewControllerRef = useRef<AbortController | null>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
   const visualViewportStyle = useResponsiveVisualViewport();
@@ -228,6 +188,10 @@ export function ConnectionManagerModalContent({
   // Seeded at mount only (the initializer, not an effect): once the panel is
   // open, a connection switching underneath a live pairing exchange must not
   // retarget it.
+  const [candidateTarget, setCandidateTarget] = useState<{
+    url: string;
+    name: string;
+  } | null>(null);
   const [requestAccessTarget, setRequestAccessTarget] = useState<{
     id: string;
     url: string;
@@ -253,7 +217,13 @@ export function ConnectionManagerModalContent({
     providers: candidateProviders,
     providerCount,
     refresh: refreshCandidates,
+    cancel: cancelCandidates,
   } = useConnectionCandidates();
+  useEffect(() => {
+    if (panel !== 'discover') return;
+    refreshCandidates();
+    return cancelCandidates;
+  }, [panel, refreshCandidates, cancelCandidates]);
 
   useEffect(() => {
     // The trigger and every ancestor, captured while all of them are still
@@ -342,19 +312,6 @@ export function ConnectionManagerModalContent({
     };
   }, [returnFocusTarget]);
 
-  const cancelCandidateReview = useCallback(() => {
-    const controller = candidateReviewControllerRef.current;
-    candidateReviewControllerRef.current = null;
-    controller?.abort();
-  }, []);
-
-  useEffect(
-    () => () => {
-      cancelCandidateReview();
-    },
-    [cancelCandidateReview],
-  );
-
   // `checkOne` outlives this component by design: the pairing paths close the
   // manager (`onCloseRef.current()`) and only then start the health check, so
   // its store writes (handshake reconciliation, success/failure evidence) must
@@ -388,6 +345,8 @@ export function ConnectionManagerModalContent({
         const handshakeUrl = new URL(PUBLIC_STATION_HANDSHAKE_PATH, targetUrl);
         const response = await fetch(handshakeUrl, {
           headers: { Accept: 'application/json' },
+          redirect: 'error',
+          credentials: 'omit',
         });
         if (response.ok) {
           const handshake = (await response.json()) as {
@@ -525,6 +484,8 @@ export function ConnectionManagerModalContent({
       }
       const nonce = createStationProofNonce();
       const proved = await fetch(new URL(PUBLIC_STATION_PROOF_PATH, endpoint), {
+        redirect: 'error',
+        credentials: 'omit',
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -693,41 +654,6 @@ export function ConnectionManagerModalContent({
           ? activeHealth.status
           : undefined,
     });
-
-  const reviewConnectionCandidate = useCallback(
-    async (candidate: { url: string }): Promise<boolean> => {
-      if (candidateReviewControllerRef.current) return false;
-      const controller = new AbortController();
-      candidateReviewControllerRef.current = controller;
-      const timeout = window.setTimeout(() => controller.abort(), 5_000);
-      try {
-        const response = await fetch(
-          new URL(PUBLIC_STATION_HANDSHAKE_PATH, candidate.url),
-          {
-            headers: { Accept: 'application/json' },
-            signal: controller.signal,
-          },
-        );
-        if (!response.ok) return false;
-        const handshake = await readCandidateHandshake(response);
-        return (
-          typeof handshake?.environmentId === 'string' &&
-          handshake.environmentId.length > 0 &&
-          handshake.authentication?.scheme === 'bearer' &&
-          typeof handshake.authentication.protocolVersion === 'number' &&
-          Number.isInteger(handshake.authentication.protocolVersion)
-        );
-      } catch {
-        return false;
-      } finally {
-        window.clearTimeout(timeout);
-        if (candidateReviewControllerRef.current === controller) {
-          candidateReviewControllerRef.current = null;
-        }
-      }
-    },
-    [],
-  );
 
   const handlePaired = useCallback(
     async (result: PairingResult) => {
@@ -994,6 +920,7 @@ export function ConnectionManagerModalContent({
             onRestartInjectedConnection={onRestartInjectedConnection}
             localStationOwnerId={localStationOwnerId}
             onRequestAccess={(connection) => {
+              setCandidateTarget(null);
               if (!connection) {
                 setRequestAccessTarget(null);
                 setPanel('request-access');
@@ -1036,7 +963,6 @@ export function ConnectionManagerModalContent({
             hasLocalStation={hasLocalStation}
             onDiscover={() => {
               setPanel('discover');
-              refreshCandidates();
             }}
           />
         )}
@@ -1064,13 +990,18 @@ export function ConnectionManagerModalContent({
         {panel === 'request-access' && (
           <JoinDevicePairingPanel
             initialMode="direct"
-            directEndpoint={requestAccessTarget?.url}
+            directEndpoint={requestAccessTarget?.url ?? candidateTarget?.url}
             directConnectionId={requestAccessTarget?.id}
-            directLabel={requestAccessTarget?.name || requestAccessTarget?.url}
+            directLabel={
+              requestAccessTarget?.name ||
+              candidateTarget?.name ||
+              requestAccessTarget?.url
+            }
             originIsStation={originIsStation}
             hostAppName={hostAppName}
             onCancel={() => {
               setRequestAccessTarget(null);
+              setCandidateTarget(null);
               setPanel('list');
             }}
             onPaired={(result) =>
@@ -1086,7 +1017,7 @@ export function ConnectionManagerModalContent({
                     targetConnectionLabel:
                       requestAccessTarget.name || requestAccessTarget.url,
                   }
-                : resolvePendingTarget(pending.endpoint);
+                : resolvePendingTarget(pending.endpoint, candidateTarget?.name);
               const persisted = { ...pending, ...target };
               savePendingExchange(persisted);
               onApprovalPending(persisted);
@@ -1164,6 +1095,7 @@ export function ConnectionManagerModalContent({
                 : undefined
             }
             request={authenticatedRequest}
+            renderPairingEndpointSuggestions={renderPairingEndpointSuggestions}
             onReconnect={onReconnectLocalService}
             onCancel={() => setPanel(hostPairingReturnPanel)}
           />
@@ -1177,10 +1109,14 @@ export function ConnectionManagerModalContent({
             providerCount={providerCount}
             existingUrls={new Set(connections.map((c) => c.url))}
             onRefresh={refreshCandidates}
-            onReview={reviewConnectionCandidate}
-            onOpen={(candidate) => window.location.assign(candidate.url)}
+            onSelect={(candidate) => {
+              cancelCandidates();
+              setRequestAccessTarget(null);
+              setCandidateTarget({ url: candidate.url, name: candidate.name });
+              setPanel('request-access');
+            }}
             onBack={() => {
-              cancelCandidateReview();
+              cancelCandidates();
               setPanel('list');
             }}
           />

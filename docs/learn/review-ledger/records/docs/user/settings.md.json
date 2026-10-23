@@ -24,7 +24,9 @@
 
     "src-ui/src/views/settings/DeviceHostsPanel.tsx",
 
-    "src-server/services/devices/hosts/device-host-store.ts"
+    "src-server/services/devices/hosts/device-host-store.ts",
+
+    "src-ui/src/views/settings/LanDiscoveryControl.tsx"
   ],
 
   "checks": [

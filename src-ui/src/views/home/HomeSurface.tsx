@@ -185,7 +185,17 @@ export function HomeSurface({
           Skip to recent work
         </a>
       )}
-      <h1 className="sr-only">Home</h1>
+      {model.firstSession ? (
+        <header className="home-view__welcome">
+          <h1>Start your first conversation</h1>
+          <p>
+            Choose an agent, write what you need, and start. Add a Project when
+            you want to work with files.
+          </p>
+        </header>
+      ) : (
+        <h1 className="sr-only">Home</h1>
+      )}
       {/* A plain wrapper: the form is the one "Start work" landmark. A
           section named the same nested a second landmark with one name. */}
       <div
@@ -203,7 +213,7 @@ export function HomeSurface({
       ) : (
         <>
           {actions}
-          {recentWork}
+          {!model.firstSession && recentWork}
         </>
       )}
     </>

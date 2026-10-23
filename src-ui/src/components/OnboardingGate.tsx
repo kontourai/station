@@ -1,4 +1,5 @@
 import { OPEN_NEW_CHAT_EVENT, readNewChatIntent } from '../lib/newChatIntent';
+import { PairingEndpointSuggestions } from './PairingEndpointSuggestions';
 import { StationExtensionsAccess } from './registry/StationExtensionsAccess';
 /**
  * OnboardingGate keeps the shell available when a Station endpoint is
@@ -13,6 +14,7 @@ import {
   connectionFailureCopy,
   loadPendingExchange,
   type PendingPairingExchange,
+  restoreHeldPairingExchanges,
   retryLocalSelfProvisionAfterRejection,
   useConnectionStatus,
   useConnections,
@@ -85,6 +87,8 @@ import { UsageTelemetryDisclosure } from './UsageTelemetryDisclosure';
 type ConnectionModalMode =
   | 'list'
   | 'pair-device'
+  | 'pair-code'
+  | 'discover'
   | 'request-access'
   | 'devices'
   | 'pair-host';
@@ -137,10 +141,6 @@ const loadPendingPairingReconciler = () =>
   import('./PendingPairingReconciler').then((module) => ({
     default: module.PendingPairingReconciler,
   }));
-const loadMobileConnectionBanner = () =>
-  import('./MobileConnectionBanner').then((module) => ({
-    default: module.MobileConnectionBanner,
-  }));
 const loadBundledServiceBanner = () =>
   import('./BundledServiceBanner').then((module) => ({
     default: module.BundledServiceBanner,
@@ -188,6 +188,21 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const [pendingExchange, setPendingExchange] =
     useState<PendingPairingExchange | null>(null);
   const [waitingForTransport, setWaitingForTransport] = useState(false);
+  useEffect(() => {
+    let disposed = false;
+    void restoreHeldPairingExchanges().then(({ status, held }) => {
+      if (!disposed && status !== 'available')
+        setPairingLinkError(
+          'Previous pairing attempts could not be fully recovered. Check paired devices on the computer before creating another invitation.',
+        );
+      if (!disposed && held[0])
+        setPendingExchange((current) => current ?? held[0]);
+    });
+    return () => {
+      disposed = true;
+    };
+  }, []);
+
   const [ignoredPendingRequestId, setIgnoredPendingRequestId] = useState<
     string | null
   >(null);
@@ -219,7 +234,9 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const firstRunChapterOpen = useFirstRunChapterOpen();
   // Identity-scoped recovery read (not the shared bare-key `useConfig`):
   // under the stable boundary a bare entry would survive its connection.
-  const { data: config } = useRecoveryConfig();
+  const unconfiguredPhone =
+    profile.isMobile && !hasRealSavedConnection(connections);
+  const { data: config } = useRecoveryConfig({ enabled: !unconfiguredPhone });
   const wasInConnections = useRef(pathname.startsWith('/connections'));
   const credentialRequired = activeConnection?.credentialState === 'required';
   const connectionEvidence = `${activeConnection?.id ?? ''}:${activeConnection?.lastSuccessAt ?? ''}:${activeConnection?.credentialState ?? ''}`;
@@ -308,10 +325,8 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     });
   }, [upsertToast, dismissToast]);
 
-  // Keep banner actions stable while connection probes update the shell. A
-  // fresh callback on every retry makes MobileConnectionBanner tear down and
-  // re-present its store item, replacing the actionable button underneath an
-  // in-flight mobile tap.
+  // Service probes must not replace an actionable connection-management callback
+  // while a tap is in flight.
   const openConnectionList = useCallback(() => {
     setConnectionModalMode('list');
     setShowModal(true);
@@ -357,6 +372,8 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       // panel that is correct for every connection state.
       setConnectionModalMode(
         detail?.mode === 'pair-device' ||
+          detail?.mode === 'pair-code' ||
+          detail?.mode === 'discover' ||
           detail?.mode === 'request-access' ||
           detail?.mode === 'devices' ||
           detail?.mode === 'pair-host'
@@ -457,7 +474,8 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const pendingApproval = useMemo(
     () =>
       effectivePendingExchange &&
-      effectivePendingExchange.expiresAt > Date.now()
+      (effectivePendingExchange.exchangeAttempt ||
+        effectivePendingExchange.expiresAt > Date.now())
         ? {
             requestKind: effectivePendingExchange.requestKind,
             expiresAt: effectivePendingExchange.expiresAt,
@@ -476,6 +494,8 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     // "the host" — a noun docs/glossary.md forbids introducing, and the wrong
     // one twice over here, since the sentence before it had just named the
     // Station. Naming it again is what the map does.
+    if (effectivePendingExchange?.exchangeAttempt)
+      return `Pairing with ${serverLabel} needs review. Access may have been granted, but its reply was not saved. On that computer, review paired devices and revoke any access from this attempt before starting again. Station will not resend this request.`;
     const waitMessage = waitingForTransport
       ? `Waiting to reach ${serverLabel} again. The access request is still open and will resume automatically.`
       : pairingStateCopy(
@@ -485,7 +505,12 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
           serverLabel,
         ).message;
     return `Preparing the connection to ${serverLabel}. ${waitMessage}`;
-  }, [pendingApproval, serverLabel, waitingForTransport]);
+  }, [
+    pendingApproval,
+    serverLabel,
+    waitingForTransport,
+    effectivePendingExchange?.exchangeAttempt,
+  ]);
 
   useEffect(() => {
     if (!pendingApprovalMessage) {
@@ -500,9 +525,16 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       message: pendingApprovalMessage,
       actions: [
         {
-          label: 'Cancel request',
+          label: effectivePendingExchange?.exchangeAttempt
+            ? 'Review connection'
+            : 'Cancel request',
           variant: 'secondary',
           onClick: () => {
+            if (effectivePendingExchange?.exchangeAttempt) {
+              setConnectionModalMode('request-access');
+              setShowModal(true);
+              return;
+            }
             clearPendingExchange(
               effectivePendingExchange?.endpoint ??
                 activeConnection?.url ??
@@ -531,6 +563,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     effectivePendingExchange?.endpoint,
     effectivePendingExchange?.requestId,
     effectivePendingExchange?.requestKind,
+    effectivePendingExchange?.exchangeAttempt,
   ]);
 
   // Credential repair remains available in Station details.
@@ -699,37 +732,38 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
       pathname,
       conversationOpen: Boolean(activeChat),
     }) && setupBannerContent;
-  const connectedNotice: ReactNode = setupLauncherVisible ? (
-    <SetupLauncher
-      content={setupBannerContent}
-      firstRun={
-        config?.firstRun?.status === 'pending' ||
-        config?.firstRun?.status === 'skipped'
-      }
-      onOpenTarget={() => {
-        // Going to Connections to *do* the setup is not evidence the setup
-        // worked — defer for this page lifetime instead of recording a
-        // permanent dismissal (archive#794).
-        deferSetupBanner();
-        navigate(
-          setupBannerContent.actionTarget === 'providers'
-            ? getPathForView({ type: 'connections-models' })!
-            : setupBannerContent.actionTarget === 'engine' &&
-                setupBannerContent.engineConnectionId
-              ? getPathForView({
-                  type: 'connections-engine-edit',
-                  id: setupBannerContent.engineConnectionId,
-                })!
-              : getPathForView({ type: 'connections' })!,
-        );
-      }}
-      onOpenHub={() => {
-        deferSetupBanner();
-        navigate(getPathForView({ type: 'connections' })!);
-      }}
-      onDismiss={dismiss}
-    />
-  ) : null;
+  const connectedNotice: ReactNode =
+    !unconfiguredPhone && setupLauncherVisible ? (
+      <SetupLauncher
+        content={setupBannerContent}
+        firstRun={
+          config?.firstRun?.status === 'pending' ||
+          config?.firstRun?.status === 'skipped'
+        }
+        onOpenTarget={() => {
+          // Going to Connections to *do* the setup is not evidence the setup
+          // worked — defer for this page lifetime instead of recording a
+          // permanent dismissal (archive#794).
+          deferSetupBanner();
+          navigate(
+            setupBannerContent.actionTarget === 'providers'
+              ? getPathForView({ type: 'connections-models' })!
+              : setupBannerContent.actionTarget === 'engine' &&
+                  setupBannerContent.engineConnectionId
+                ? getPathForView({
+                    type: 'connections-engine-edit',
+                    id: setupBannerContent.engineConnectionId,
+                  })!
+                : getPathForView({ type: 'connections' })!,
+          );
+        }}
+        onOpenHub={() => {
+          deferSetupBanner();
+          navigate(getPathForView({ type: 'connections' })!);
+        }}
+        onDismiss={dismiss}
+      />
+    ) : null;
 
   // THE THIRD OVERLAY, under the same one-at-a-time rule as the other two.
   // It is mounted after `{children}`, so wherever it renders it renders on
@@ -756,15 +790,6 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
             status: bundledStatus,
             onRestart: handleRestartBundledServer,
             onOpenConnections: openConnectionList,
-          }}
-        />
-      )}
-      {profile.isMobile && !hasRealSavedConnection(connections) && (
-        <LazyBoundary
-          load={loadMobileConnectionBanner}
-          pending={null}
-          componentProps={{
-            onOpen: openConnectionList,
           }}
         />
       )}
@@ -818,12 +843,18 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
             },
             onConnectionWaiting: () => setWaitingForTransport(true),
             onApprovalWaiting: () => setWaitingForTransport(false),
+            onIndeterminate: (held: PendingPairingExchange) => {
+              setWaitingForTransport(false);
+              setPendingExchange((current) =>
+                current?.exchangeAttempt ? current : held,
+              );
+            },
           }}
         />
       )}
       {connectedNotice}
       {children}
-      {usageTelemetryDisclosureMounted ? (
+      {!unconfiguredPhone && usageTelemetryDisclosureMounted ? (
         <UsageTelemetryDisclosure firstRun />
       ) : null}
       {stationSetup ? (
@@ -911,6 +942,9 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
         authenticatedRequest={
           profile.isDesktop ? authenticatedFetch : undefined
         }
+        renderPairingEndpointSuggestions={(input) => (
+          <PairingEndpointSuggestions {...input} />
+        )}
         onReconnectLocalService={
           profile.isDesktop ? reconnectLocalService : undefined
         }

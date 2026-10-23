@@ -47,6 +47,7 @@ interface HomeWorkData {
    */
   agents: ReturnType<typeof useAgents>;
   actionsLoading: boolean;
+  firstSession: boolean;
   workItems: HomeWorkItem[];
   /**
    * Status facts by item id (`buildWorkFacts`), derived beside `workItems`
@@ -150,6 +151,15 @@ function useHomeWorkData(): HomeWorkData {
   return {
     projects,
     agents,
+    firstSession:
+      projectsQuery.isSuccess &&
+      agentsLoaded &&
+      projects.length === 0 &&
+      workItems.length === 0 &&
+      !workLoading &&
+      !workError &&
+      (remoteSessionsResult?.unavailable.length ?? 0) === 0 &&
+      (remoteSessionsResult?.authenticationRequired?.length ?? 0) === 0,
     actionsLoading:
       !agentsLoaded || projectsQuery.isLoading || pickerCatalogLoading,
     workItems,

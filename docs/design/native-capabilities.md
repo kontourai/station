@@ -36,6 +36,7 @@ host.
 | Native share receiver | n/a | disabled | Generic OS share intake remains off; it has a different untrusted-content boundary. |
 | Pairing deep link | unsupported | enabled | Release schemes are `station-stable`, `station-beta`, and `station-nightly`; isolated development configuration uses a generated `station-dev-<suffix>` scheme. The pairing route accepts only `pair?linkVersion=1&clientChannel=<channel>&payload=station-pairing:v1:...`, opens Join for explicit confirmation, and never navigates or fetches a supplied URL. |
 | Native relay link delivery | unsupported | iOS source path; other targets unsupported | Separate `station-relay-<channel>` associations deliver public routing metadata and an opaque pending handle. Build enablement and compilation do not qualify installed cold/warm delivery. |
+| Nearby Station discovery | unsupported | iOS and Android 14+ source integration | Fixed `_station._tcp.local.` DNS-SD browsing returns untrusted private host/port hints. Earlier Android versions retain QR/manual entry. Bounded foreground scans require the existing access review; compilation and physical behavior require separate verification. |
 | Compile-target report | unsupported | enabled | Rust reports target and Station-enabled state. |
 | Haptics | unsupported | enabled on mobile compile targets; unsupported on desktop | Official `tauri-plugin-haptics` (#178). Selection/impact/notification kinds only; preference `hapticsEnabled` (default on). |
 | Remote push wakeup | unsupported | build-dependent | Enabled for Android builds carrying all four Firebase values or iOS builds carrying the Live Activity plugin. iOS also checks push signing before offering registration. User opt-in, server registration and provider delivery remain separate. |
@@ -59,6 +60,31 @@ are deliberately separate from this generic share boundary.
 Both adapters enforce the same 256 KiB text limit before shared content reaches
 React state. Rejected native events and host-listener registration failures are
 reported through the typed adapter error callback and surfaced to the user.
+
+### Nearby Station discovery
+
+The [native adapter](../../src-ui/src/platform/native/connectionDiscovery.ts)
+registers only after the trusted platform profile establishes a mobile Tauri
+host. The [station-discovery plugin](../../src-desktop/plugins/station-discovery/src/lib.rs)
+uses iOS NWBrowser/NetService and Android NsdManager, accepts TXT `v=1` and an
+HTTP(S) transport, and returns validated private host/port hints. Cancellation,
+backgrounding and provider disposal cancel the exact scan; the registry ignores
+late or replaced-provider results. The outer deadline is 18 seconds. iOS declares
+the exact Bonjour service and local-network usage description; this fixed service
+does not require a multicast entitlement. Android resolver cancellation requires
+API 34, while the application's earlier supported versions keep QR/manual paths. Android 17's local-network permission is admitted by a separate
+`prepare` command before a scan is owned. The permission prompt may pause the
+Activity; after returning, the user checks again. `discover` refuses ungranted
+permission, and active scans still cancel on hide or pause.
+
+Host publication is separately opt-in and currently private-IPv4-only. Discovery
+creates no trust, credentials, saved profile, browser navigation or Tailscale
+inventory. Selecting a LAN HTTP result enters exact-origin unencrypted consent
+and host approval. QR invitation creation still requires reachable HTTPS.
+See [native shell verification](../guides/native-shell-verification.md#nearby-station-discovery)
+for installed-shell and physical-network evidence requirements. The source and
+unit checks do not qualify permission prompts, real mobile discovery or background
+recovery.
 
 ### iOS relay URL intake
 

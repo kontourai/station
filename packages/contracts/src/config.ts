@@ -79,6 +79,8 @@ export interface AppConfig {
   /** Default on, but nothing is sent unless an endpoint is configured. */
   /** Per-publisher explicit choices; absent publishers default to Lite. */
   telemetryTier?: TelemetryTierChoices;
+  /** Opt-in local DNS-SD publication; absent is disabled. */
+  lanDiscoveryEnabled?: boolean;
   /** Operator classification of public catalog source keys; absent means none. */
   publicTelemetryRegistries?: string[];
   /** Lower publisher defaults only; never grants Full or replaces user choice. */
@@ -411,4 +413,18 @@ export function templateVariableFormatError(
     }
   }
   return undefined;
+}
+
+/** Runtime observation, never persisted as configuration or used as identity. */
+export interface LanDiscoveryStatus {
+  state:
+    | 'disabled'
+    | 'starting'
+    | 'published'
+    | 'loopback-only'
+    | 'unavailable';
+  message: string;
+  serviceName?: string;
+  port?: number;
+  addresses?: string[];
 }

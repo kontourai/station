@@ -15,7 +15,9 @@ without adding a model API key:
 2. Open **Customize** (the sparkle icon at the bottom of the sidebar) →
    **Connections** → **Engines** → **Codex**. Confirm the account is signed in.
    **Check connection** sends a short message using your model allowance.
-3. On Home, choose **Codex** in the Agent picker, write a request, and choose
+3. An empty Home guides you through choosing an agent and optionally adding
+   files. **View available agents** opens the agent list; **Set up an agent
+   engine** opens Connections when no agent is runnable. On Home, choose **Codex** in the Agent picker, write a request, and choose
    **Start**. You can start without a Project. The detected Codex Agent is
    enough; creating a custom Agent is optional.
 4. Choose **New Project** on Home, enter a name, and choose **Repository or
@@ -104,8 +106,32 @@ replies, continue chats, and review work. Start on your computer:
 2. Open the Station name at the top of the computer’s window and choose
    **Pair phone**. Check the address before creating the invitation.
    **Settings → Pairing → Pair device** opens the same screen.
-3. On your phone, open Station, choose **Pair with a code**, and use the
-   invitation from the computer. Keep the computer running.
+3. On a new phone, open Station and choose **Scan QR code**. Scan the
+   invitation from the computer. **Enter pairing code** is available if the
+   camera cannot be used. Keep the computer running.
+
+Pairing codes require a reachable HTTPS address. The computer can suggest its
+own configured Tailscale Serve address; choose **Use this address** after checking
+it. Both devices still need access to that address.
+
+For local network access, enable **Settings → Pairing → Discover this Station
+nearby** on the computer, then choose **Nearby Stations** on the native phone
+app. Discovery is off by default and shows names and local addresses without
+granting access. Select the intended computer, confirm the exact address and any
+unencrypted HTTP warning, request access, and approve on the computer. Android
+versions before Android 14 offer QR and manual address entry instead. Browser
+clients do not browse the local network. **Other ways to connect** expands to **Open connection manager**, where you can
+enter an address when discovery is unavailable or finds nothing.
+
+If an exchange loses its response or cannot save approved access, Station holds
+the attempt instead of sending the one-time proof again. Check paired devices on
+the computer and revoke any unintended access before retiring the held request
+and creating a fresh invitation.
+
+A new phone shows the connection welcome until you save a real Station.
+A saved Station that is offline or needs access keeps its connection recovery
+controls instead. The welcome does not run workspace queries against an
+unconfigured endpoint.
 
 Station's phone apps are not in public app stores yet. Android builds reach
 testers in a Google Play internal testing group and iOS builds reach invited
@@ -140,10 +166,11 @@ it from a physical phone. Use the reachable address shown in the pairing flow;
 see [Connections](https://github.com/kontourai/station/blob/main/docs/guides/connections.md)
 for remote access. A pairing code grants access; it does not create a network route.
 
-If you have no Station yet, choose **I haven’t set up a Station yet** on your
-phone for the computer setup handoff. **Other ways to connect** contains host
-addresses and broker invitations. You can start with an ordinary chat; custom
-Agents, remote tasks, and layouts are optional.
+If you have no Station yet, install and open it on your computer using the
+options below. The phone's connection manager offers QR scanning, pairing-code
+entry and **Connect a Station** for a host address. Broker route setup is a
+separate advanced option. You can start with an ordinary chat; custom Agents,
+remote tasks, and layouts are optional.
 
 ## Preferences across devices
 

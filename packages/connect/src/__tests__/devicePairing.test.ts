@@ -175,6 +175,7 @@ describe('pairing client-instance identity', () => {
     };
     const requestBodies: Record<string, unknown>[] = [];
     const fetchSpy = vi.fn(async (url: URL | string, init?: RequestInit) => {
+      expect(init?.redirect).toBe('error');
       const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
       requestBodies.push(body);
       expect(body.clientInstanceId).toMatch(

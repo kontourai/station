@@ -7,6 +7,7 @@ import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollou
 import { GrokSessionSource } from '../../providers/sessions/grok-session-source.js';
 import { OpenCodeSessionSource } from '../../providers/sessions/opencode-session-source.js';
 import { engineSignIn } from '../../services/acp/engine-sign-in.js';
+import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 import { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
 import type { RelayInvitationOwner } from '../../services/connections/relay-invitation-owner.js';
 import { createApplicationSessionRuntime } from '../../services/identity/application-session-runtime.js';
@@ -2663,7 +2664,7 @@ export class StationRuntime {
       },
       loadAppConfig: async () => {
         stagedAppConfig = await this.configLoader.loadAppConfig();
-        this.applyPersistedTelemetryConfiguration(stagedAppConfig);
+        this.applyPersistedNetworkConfiguration(stagedAppConfig);
         return stagedAppConfig;
       },
     });
@@ -3228,7 +3229,7 @@ export class StationRuntime {
   async reloadDefaultAgent(): Promise<void> {
     await this.mutateAgentConfiguration(async () => {
       const appConfig = await this.configLoader.loadAppConfig();
-      this.applyPersistedTelemetryConfiguration(appConfig);
+      this.applyPersistedNetworkConfiguration(appConfig);
       const configurationBefore = this.captureAgentConfigurationRevisions();
       this.loadedProviderLaunchabilityRevision = null;
       this.loadedAppConfigLaunchabilityRevision = null;
@@ -3240,7 +3241,8 @@ export class StationRuntime {
     });
   }
 
-  private applyPersistedTelemetryConfiguration(config: AppConfig): void {
+  private applyPersistedNetworkConfiguration(config: AppConfig): void {
+    void lanDiscoveryFor(this.configLoader).configure(config);
     this.usageTelemetry?.reconfigure(config, true);
     reconfigureOtelTelemetryDelivery(config);
   }

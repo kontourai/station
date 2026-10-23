@@ -146,7 +146,9 @@
 
     "scripts/apply-android-channel-icons.mjs",
 
-    "scripts/lib/android-themed-icon.mjs"
+    "scripts/lib/android-themed-icon.mjs",
+
+    "src-desktop/tauri.android.onboarding.conf.json"
   ],
 
   "checks": [

@@ -11,6 +11,10 @@ vi.mock('../../../platform/PlatformProfileContext', () => ({
 
 // #3557: the person's own token panel has its own tests (PeopleSection.test);
 // here it is a marker, so these stay about pairing and still prove it mounts.
+vi.mock('../LanDiscoveryControl', () => ({
+  LanDiscoveryControl: () => <div data-testid="lan-discovery" />,
+}));
+
 vi.mock('../OwnAccessTokensPanel', () => ({
   OwnAccessTokensPanel: () => <div data-testid="own-access-tokens" />,
 }));

@@ -1,0 +1,7 @@
+{
+  "revision": "28adc6886730bcdba5a9ac8321fc3ffc0a9e5750",
+
+  "notes": [
+    {"path":"docs/guides/mobile-release.md","note":"Updated real iOS runtime smoke description after hosted496 artifact compiled/uploaded but failed waiting obsolete Connect to a Station. Exact journey now requires Scan pairing QR welcome,44point/inviewport actions and absent protected navigation, real manual address/code fields and keyboardfocus geometry, managerdismissal then progressive Other ways/Open manager/Connect a Station retaining address/titlefocusbounds. No any-state acceptance or requestsubmission. Swiftfrontendparse and19focusedharnesschecks passed; nativeXCUITest execution is pending and any existing496artifact run must disclose source/dependencyhead difference. Compilation alone does not establish camera/pairing/physical behavior.","inputs":["docs/guides/mobile-release.md"]}
+  ]
+}

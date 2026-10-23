@@ -10,6 +10,7 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { IDBFactory } from 'fake-indexeddb';
 import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { deviceSettingsStore } from '../../../lib/device-settings-store';
@@ -68,6 +69,8 @@ let deviceReady: boolean;
 let projectFailureStatus: number | undefined;
 
 beforeEach(() => {
+  vi.stubGlobal('indexedDB', new IDBFactory());
+  localStorage.clear();
   calls.length = 0;
   signedIn = false;
   signInFails = false;

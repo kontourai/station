@@ -2,8 +2,15 @@ import {
   clearPendingExchange,
   exchangeDevicePairing,
   isTransportFailure,
+  loadPendingExchange,
   type PendingPairingExchange,
 } from './devicePairing';
+import {
+  claimPendingPairingExchange,
+  type ExchangeClaim,
+  pairingExchangeIntentKey,
+  settlePendingPairingExchange,
+} from './pendingPairingExchangeJournal';
 
 const INITIAL_ATTEMPT_DELAY_MS = 500;
 const INITIAL_RETRY_DELAY_MS = 750;
@@ -26,7 +33,9 @@ export type PendingPairingCompletion =
   | { status: 'unavailable' }
   | { status: 'identity-changed' }
   | { status: 'failed' }
-  | { status: 'aborted' };
+  | { status: 'aborted' }
+  | { status: 'indeterminate'; pending: PendingPairingExchange }
+  | { status: 'not-started' };
 
 /**
  * The caller-owned part of a completed pairing: durable local persistence,
@@ -40,6 +49,8 @@ export type CompletePaired = (
 
 export interface CompletePendingPairingOptions {
   signal?: AbortSignal;
+  /** Synchronous caller authority/currentness check, revalidated after durable claim. */
+  isCurrent?: () => boolean;
   onProgress?: (progress: PendingPairingProgress) => void;
   /**
    * The first subscriber for a pending request owns its durable completion.
@@ -54,9 +65,16 @@ type ExchangePendingPairing = (
 ) => Promise<PendingPairingExchangeResult>;
 
 interface PendingPairingCompletionDependencies {
+  claimExchange: (
+    pending: PendingPairingExchange,
+    signal?: AbortSignal,
+  ) => Promise<ExchangeClaim>;
+  settleExchange: typeof settlePendingPairingExchange;
+  readPending: typeof loadPendingExchange;
   clearPending: (
     endpoint: string,
     requestKind: PendingPairingExchange['requestKind'],
+    requestId?: string,
   ) => void;
   exchange: ExchangePendingPairing;
   now: () => number;
@@ -138,7 +156,11 @@ export function createPendingPairingCompletion(
   options: CompletePendingPairingOptions,
 ) => Promise<PendingPairingCompletion> {
   const deps: PendingPairingCompletionDependencies = {
-    clearPending: clearPendingExchange,
+    clearPending: (endpoint, kind, requestId) =>
+      clearPendingExchange(endpoint, kind, undefined, requestId),
+    claimExchange: claimPendingPairingExchange,
+    settleExchange: settlePendingPairingExchange,
+    readPending: loadPendingExchange,
     exchange: exchangeDevicePairing,
     // Keep this late-bound so fake clocks and host clock substitutions apply
     // after the module has loaded too.
@@ -164,10 +186,13 @@ export function createPendingPairingCompletion(
     controller: AbortController;
     completePaired: CompletePaired;
     exchangeSpent: boolean;
+    exchangeClaimed: boolean;
     subscribers: Set<Subscriber>;
     progress: PendingPairingProgress['status'] | undefined;
     settled: boolean;
     clearedTerminalRecord: boolean;
+    requiresPendingRecord: boolean;
+    isCurrent: () => boolean;
   }
 
   const flights = new Map<string, Flight>();
@@ -177,20 +202,7 @@ export function createPendingPairingCompletion(
   // Keeping the validation and delivery fields in the key avoids letting a
   // caller with materially different pairing semantics inherit another
   // caller's result merely because a request id was reused unexpectedly.
-  const flightKey = (pending: PendingPairingExchange) =>
-    JSON.stringify([
-      pending.endpoint,
-      pending.requestKind,
-      pending.offerId,
-      pending.proof,
-      pending.requestId,
-      pending.expectedEnvironmentId,
-      pending.browserSession,
-      pending.clientInstanceId,
-      pending.requiredAccountBinding?.issuer,
-      pending.requiredAccountBinding?.subject,
-      pending.requireAccountBinding,
-    ]);
+  const flightKey = pairingExchangeIntentKey;
 
   const clearTerminalRecord = (flight: Flight) => {
     if (flight.clearedTerminalRecord) return;
@@ -199,7 +211,11 @@ export function createPendingPairingCompletion(
     // observer must not turn an already-classified remote outcome into a
     // rejected completion promise.
     try {
-      deps.clearPending(flight.pending.endpoint, flight.pending.requestKind);
+      deps.clearPending(
+        flight.pending.endpoint,
+        flight.pending.requestKind,
+        flight.pending.requestId,
+      );
     } catch {
       // The remote request is terminal even if local persistence is unavailable.
     }
@@ -270,9 +286,24 @@ export function createPendingPairingCompletion(
   const runFlight = async (
     flight: Flight,
   ): Promise<PendingPairingCompletion> => {
-    const terminal = (
+    const indeterminate = (): PendingPairingCompletion => ({
+      status: 'indeterminate',
+      pending: {
+        ...(deps.readPending(
+          flight.pending.endpoint,
+          flight.pending.requestKind,
+        ) ?? flight.pending),
+        exchangeAttempt: true,
+      },
+    });
+    const terminal = async (
       completion: TerminalCompletion,
-    ): PendingPairingCompletion => {
+    ): Promise<PendingPairingCompletion> => {
+      if (
+        flight.exchangeClaimed &&
+        !(await deps.settleExchange(flight.pending, 'completed'))
+      )
+        return indeterminate();
       clearTerminalRecord(flight);
       return completion;
     };
@@ -296,6 +327,25 @@ export function createPendingPairingCompletion(
               !flight.pending.requiredAccountBinding)
           )
             return terminal({ status: 'failed' });
+          const claim = await deps.claimExchange(
+            flight.pending,
+            flight.controller.signal,
+          );
+          if (claim === 'held') return indeterminate();
+          if (claim !== 'claimed') return { status: 'not-started' };
+          flight.exchangeClaimed = true;
+          const current = deps.readPending(
+            flight.pending.endpoint,
+            flight.pending.requestKind,
+          );
+          if (
+            flight.controller.signal.aborted ||
+            !flight.isCurrent() ||
+            pairingExchangeIntentKey(flight.pending) !== flight.key ||
+            (flight.requiresPendingRecord &&
+              (!current || pairingExchangeIntentKey(current) !== flight.key))
+          )
+            return indeterminate();
           const result = await deps.exchange({
             ...flight.pending,
             signal: flight.controller.signal,
@@ -305,7 +355,7 @@ export function createPendingPairingCompletion(
             flight.pending.expectedEnvironmentId &&
             result.environmentId !== flight.pending.expectedEnvironmentId
           ) {
-            return terminal({ status: 'identity-changed' });
+            return indeterminate();
           }
           // A successful exchange spends the remote proof. From this point on
           // the persisted request is terminal even if the completion owner is
@@ -315,19 +365,13 @@ export function createPendingPairingCompletion(
             const completion = await flight.completePaired(result, {
               signal: flight.controller.signal,
             });
-            return terminal(
-              completion.status === 'completed'
-                ? { status: 'paired', result }
-                : {
-                    status: 'post-exchange-failed',
-                    failure: completion.failure,
-                  },
-            );
+            if (completion.status !== 'completed') return indeterminate();
+            return terminal({ status: 'paired', result });
           } catch {
-            return terminal({ status: 'post-exchange-failed', failure: null });
+            return indeterminate();
           }
         } catch (error) {
-          if (flight.controller.signal.aborted) return { status: 'aborted' };
+          if (flight.controller.signal.aborted) return indeterminate();
 
           const status = errorStatus(error);
           const code = errorCode(error);
@@ -339,23 +383,31 @@ export function createPendingPairingCompletion(
             // also lands here. Retrying cannot revive it: classifying this
             // with the other 409s used to poll a dead offer every few seconds
             // until the record's own expiry let it stop.
-            return terminal({ status: 'unavailable' });
+            return indeterminate();
           }
-          if (status === 409) {
+          if (
+            (status === 409 && code === 'request_not_confirmed') ||
+            (status === 429 && code === 'rate_limited')
+          ) {
+            if (!(await deps.settleExchange(flight.pending, 'unconsumed')))
+              return indeterminate();
+            flight.exchangeClaimed = false;
+          }
+          if (status === 409 && code === 'request_not_confirmed') {
             // request_not_confirmed: the request exists and is approvable but
             // nobody has acted yet — the one 409 retrying can still resolve.
             reportProgress(flight, 'waiting-for-approval');
-          } else if (status === 429) {
+          } else if (status === 429 && code === 'rate_limited') {
             reportProgress(flight, 'waiting-for-approval');
             minimumDelayMs = RATE_LIMITED_RETRY_DELAY_MS;
           } else if (isTransportFailure(error)) {
-            reportProgress(flight, 'waiting-for-connection');
+            return indeterminate();
           } else if (status === 403 && code === 'request_denied') {
             return terminal({ status: 'declined' });
           } else if (status === 410 || code === 'offer_expired') {
             return terminal({ status: 'expired' });
           } else {
-            return terminal({ status: 'failed' });
+            return indeterminate();
           }
 
           const delayMs = Math.max(retryDelayMs, minimumDelayMs);
@@ -377,6 +429,7 @@ export function createPendingPairingCompletion(
     pending: PendingPairingExchange,
     key: string,
     completePaired: CompletePaired,
+    isCurrent: () => boolean,
   ) => {
     const flight: Flight = {
       key,
@@ -384,10 +437,14 @@ export function createPendingPairingCompletion(
       controller: new AbortController(),
       completePaired,
       exchangeSpent: false,
+      exchangeClaimed: false,
       subscribers: new Set(),
       progress: undefined,
       settled: false,
       clearedTerminalRecord: false,
+      isCurrent,
+      requiresPendingRecord:
+        deps.readPending(pending.endpoint, pending.requestKind) !== null,
     };
     flights.set(key, flight);
     void runFlight(flight)
@@ -429,11 +486,31 @@ export function createPendingPairingCompletion(
     }
     const key = flightKey(pending);
     const existing = flights.get(key);
+    if (
+      !existing &&
+      (pending.exchangeAttempt ||
+        deps.readPending(pending.endpoint, pending.requestKind)
+          ?.exchangeAttempt)
+    )
+      return Promise.resolve({
+        status: 'indeterminate',
+        pending: {
+          ...(deps.readPending(pending.endpoint, pending.requestKind) ??
+            pending),
+          exchangeAttempt: true,
+        },
+      });
     // A flight owns its request until its adapter and, if spent, durable
     // completion settle. Callback identity is deliberately not part of the
     // key: the first subscriber owns completion; later callers join it.
     const flight =
-      existing ?? startFlight(pending, key, options.completePaired);
+      existing ??
+      startFlight(
+        pending,
+        key,
+        options.completePaired,
+        options.isCurrent ?? (() => true),
+      );
     return subscribe(flight, options);
   };
 }
@@ -443,10 +520,9 @@ export function createPendingPairingCompletion(
  *
  * The implementation hides exchange polling, the 750 ms exponential retry
  * (capped at 5 seconds), the 10-second rate-limit floor, focus/online wakeups,
- * Station identity validation, and terminal record cleanup. Subscribers to the
+ * Station identity validation, and durable exchange holds. Subscribers to the
  * same pending request share one exchange flight while retaining independent
- * cancellation and progress observers. Abort preserves the pending record only
- * until exchange has not spent the proof; successful exchange makes durable
- * completion and cleanup terminal even if its original subscribers abort.
+ * cancellation and progress observers. A committed claim stays held until
+ * proven unconsumed or until approved access reaches durable local custody.
  */
 export const completePendingPairing = createPendingPairingCompletion();

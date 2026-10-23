@@ -1,0 +1,7 @@
+{
+  "revision": "a3b2e0bbe07034e5e8fad12ab1630402f2802392",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Corrected unsupported phone setup-handoff claims after native simulator review: existing manager offers QR, code, Connect a Station address and broker setup; computer install guidance is plain copy. Reviewed MobileWelcomeBoundary footnote against actual manager and ConnectStationDialog; no new install flow claimed. Source copy correction follows simulator artifact; layout/flow evidence precedes this copy-only correction.","inputs":["docs/user/getting-started.md","src-ui/src/components/MobileWelcomeBoundary.tsx"]}
+  ]
+}

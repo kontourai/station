@@ -240,11 +240,17 @@
 
     "tests/activity-related-review.spec.ts",
 
+    "src-ui/src/components/MobileWelcomeBoundary.tsx",
+
+    "src-ui/src/views/home/HomeSurface.tsx",
+
+    "src-ui/src/views/home/useHomeViewModel.ts",
+
+    "src-ui/src/components/home/HomeActionSection.tsx",
+
     "src-ui/src/components/modals/NewProjectRepositorySource.tsx",
 
     "src-server/services/projects/repository-acquisition-service.ts",
-
-    "src-ui/src/components/home/HomeActionSection.tsx",
 
     "src-ui/src/hooks/useProjectCreationRecovery.ts",
 

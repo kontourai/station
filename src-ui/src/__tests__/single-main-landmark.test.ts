@@ -38,6 +38,9 @@ const PRE_SHELL_MAIN_OWNERS = new Set([
   // NativeRelayEntryBoundary in main.tsx replaces the operator-provider tree
   // with this member shell before those providers mount for a native route.
   'views/native-relay/NativeRelayMemberShell.tsx',
+  // main.tsx places this above AuthorityQueryProvider/App; a fresh phone
+  // renders the welcome instead of its children, so only this main mounts.
+  'components/MobileWelcomeBoundary.tsx',
   // The shell's own landmark.
   'App.tsx',
 ]);

@@ -1,0 +1,7 @@
+{
+  "revision": "9b83bfd2570805fa1cdc917b27ef626db687674d",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated the shipped documentation content from canonical module-map prose after the pairing completion contract update; reviewed the generated body and unchanged topic metadata/static credential-free MCP behavior. Source compilation only, not live Station or native qualification.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}
