@@ -231,8 +231,12 @@ Personal OAuth remains owned by the requesting principal and Project.
 **My access** projects Station authority and current Project roles without
 promoting an account merely because its browser also presents an operator
 credential. These authoring leaves are separately admitted for account-bound
-Devices; legacy Agent mutation and member turn gates remain unchanged. Agent
-execution is still unavailable to members. See
+Devices; the legacy Agent mutation and direct Agent/orchestration HTTP turn
+gates remain unchanged. Project Room Agent requests use a separate admission
+path: current Project `execute` and `view` actions, independent transport and
+host execution permission, and a verified Project execution root. Their captured
+Task evidence includes only summaries already shared to that exact Project;
+authoring or Room participation grants no operator authority. See
 [Shared Projects](../guides/agent-configuration.md#shared-projects),
 [route authority](../../src-server/runtime/routes/tool-library-runtime.ts) and
 [Project transaction owner](../../src-server/services/projects/project-membership-service.ts).
@@ -353,10 +357,11 @@ be resolved from the intersection before the engine starts. Leaving a tool out
 of the prompt does not remove it. An engine that cannot enforce the
 intersection per tool must not run member turns.
 
-Until that path exists, Station refuses member turns rather than running them
-with the operator's authority. This removes one earlier capability: an account
-member's station-control dispatch into a Project where it holds `execute`
-(#2377 slice C2a).
+The direct Agent and orchestration HTTP surfaces listed above continue to
+refuse member turns pending that intersection-authority path. This restriction
+includes an account member's station-control dispatch into a Project where it
+holds `execute` (#2377 slice C2a). It does not describe the separately admitted
+Project Room Agent request path documented above.
 
 ## Revocation and concurrent work
 

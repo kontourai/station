@@ -288,9 +288,14 @@ and unsharing stay operator-only. Protected reads set
 portable Project incarnation. Membership is rechecked before delivery and each
 streamed chunk. The audited administration endpoints below and the scoped
 [Project agent and tool-library routes](../reference/api.md#project-tool-library)
-are the additional Project mutations admitted here. Admins and Owners may author
+are additional Project mutations admitted here. Admins and Owners may author
 constrained agents and request permitted tool sources; only Owners change
-Project tool policy. Member agent execution remains refused. Unrelated personal configuration,
+Project tool policy. Exact Project Room leaves separately admit discussion,
+presence, note edits and explicit Agent requests under their current membership
+actions and transport permission. A Room Agent request also requires Project
+`view`, host execution permission and a verified Project execution root; its Task
+context contains only already-shared summaries, even for an operator. Direct
+Agent/orchestration HTTP member turns remain refused. Unrelated personal configuration,
 plugin, terminal, coding, secret and orchestration surfaces remain denied even
 if the Device scope is broader. Existing unbound local/operator Devices retain
 their prior behavior. Existing Tailnet person bindings remain a separate
