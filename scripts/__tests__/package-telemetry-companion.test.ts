@@ -141,6 +141,28 @@ test.skipIf(process.platform === 'win32')(
   },
 );
 
+test.skipIf(process.platform === 'win32')(
+  'a symlinked CLI rejects an invalid package instead of silently succeeding',
+  async () => {
+    const root = makeTempDir('companion-cli-alias-');
+    const alias = join(root, 'companion.mjs');
+    await symlink(
+      join(process.cwd(), 'scripts/package-telemetry-companion.mjs'),
+      alias,
+    );
+    const result = spawnSyncBounded(process.execPath, [alias, 'verify', root], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 30_000,
+      env: { ...process.env, NODE_OPTIONS: '' },
+    });
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('companion-manifest.json');
+  },
+);
+
 test('rejects a descriptor that disagrees with the packaged receiver or images', async () => {
   const { directory } = await packageTelemetryCompanion(
     join(makeTempDir('companion-descriptor-'), 'output'),
