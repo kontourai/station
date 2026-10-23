@@ -423,6 +423,19 @@ fingerprints, not PEM keys. The applied decision, acquisition receipt, and local
 admission fences are described in [Applied registry trust
 policy](../design/registry-trust-policy.md).
 
+Startup construction is coordinated in
+[initializeRuntime](../../src-server/runtime/bootstrap/runtime-initialize.ts).
+It resolves and, when unchosen, records the built-in engine adoption before
+capturing the agent-construction revision. A reread permits only unchanged
+settings and an unchanged choice or the exact absent-to-resolved adoption;
+a different concurrent setting or choice refuses startup. Provider/package
+changes across resolution and config changes afterward are also fenced.
+The [runtime owner](../../src-server/runtime/bootstrap/station-runtime.ts)
+publishes the loaded generation after construction; applied registry policy is
+published separately after required startup succeeds and its candidate is
+rechecked. This ordering is not atomic startup, proof that every Agent is active,
+exclusive provenance of a same-value write, or provider qualification.
+
 ## SkillExperienceRuntime
 
 [SkillExperienceRuntime](../../src-server/services/orchestration/skill-experience-runtime.ts)

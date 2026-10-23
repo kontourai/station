@@ -332,10 +332,8 @@ test('per chat, delegates are the background-tasks store’s cards — live, as 
   ).toEqual([['Audit the dependencies', 'completed']]);
   expect(screen.getByText('Finished (1)')).toBeTruthy();
   expect(screen.getByText('Completed')).toBeTruthy();
-  // Delegates are not "since this window connected" subagents.
-  expect(
-    screen.queryByText('subagents: since this window connected'),
-  ).toBeNull();
+  // Delegate rows do not need the bounded subagent-history qualifier.
+  expect(screen.queryByText('subagents: recent history')).toBeNull();
 });
 
 test('#2457: a live Claude child with its cell wired shows exactly ONE Stop — its ChildWorkRow, no bridge row, no duplicate', () => {
@@ -462,26 +460,36 @@ test('a settle the chat registry has not caught up with shows the child once, fi
   expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
 });
 
-test('a settled subagent shows under Finished, which says since when', () => {
-  childWorkGlobalStore.ingest(API, {
-    provider: 'codex',
-    threadId: 'exec-x',
-    createdAt: '2026-09-24T00:00:00.000Z',
-    method: 'child-work.updated',
-    delta: {
-      kind: 'settle',
-      producer: 'engine-subagent',
-      reporterThreadId: 'exec-x',
-      childId: 'c-1',
-      status: 'unresolved',
-      identity: { title: 'Lost child' },
+test('a reconnect snapshot shows retained finished subagents without a window-local time claim', () => {
+  childWorkGlobalStore.reconcileSnapshot(API, [
+    {
+      threadId: 'exec-x',
+      childWork: {
+        children: {
+          observability: 'reported',
+          observedAt: '2026-10-23T00:00:00.000Z',
+          running: [],
+          settled: [
+            {
+              producer: 'engine-subagent',
+              reporterThreadId: 'exec-x',
+              childId: 'c-1',
+              status: 'unresolved',
+              title: 'Lost child',
+              endedAt: '2026-09-24T00:00:00.000Z',
+            },
+          ],
+        },
+      },
     },
-  });
+  ]);
   render(<AgentsWorkspacePane />);
   expect(screen.getByText('Finished (1)')).toBeTruthy();
+  expect(screen.getByText('Lost child')).toBeTruthy();
+  expect(screen.getByText('subagents: recent history')).toBeTruthy();
   expect(
-    screen.getByText('subagents: since this window connected'),
-  ).toBeTruthy();
+    screen.queryByText('subagents: since this window connected'),
+  ).toBeNull();
   expect(screen.getByText('No result')).toBeTruthy();
 });
 

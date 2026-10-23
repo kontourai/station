@@ -25,9 +25,9 @@ import type { OrchestrationEvent } from '../hooks/orchestration/types';
  *
  * Settled children are HISTORY: a session's exit turns what it still listed
  * as running into `unresolved` (never completed) and keeps them. What was
- * settled before this window connected is not here — a snapshot view lists
- * running children only — which is why the pane labels its finished list
- * "since this window connected".
+ * settled before this window connected can be restored from a snapshot's
+ * bounded settled history. Neither that history nor this process-local
+ * registry establishes a complete lifetime inventory.
  */
 
 /** Settled children kept across every reporter, oldest-settled evicted first. */

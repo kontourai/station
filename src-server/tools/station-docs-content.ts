@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  '9173099aab308c474d4b75d4a8b45d0209541107e241b1ae8b8997baa83c0cc9';
+  '8b1c24b19e73942f71b2aff36f5668c032e25b44adb71c99039e822475a83e9a';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -1163,7 +1163,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     title: 'Registry trust policy decisions',
     summary:
       'Interface, composition, invariants, and documented evidence for Registry trust policy decisions.',
-    body: 'Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## Registry trust policy decisions\n\n[Registry trust policy](../../src-server/services/plugins/registry-trust-policy.ts) owns\nbounded policy identity and EventStore compare-and-set decision publication.\n`registryTrust` in AppConfig is only candidate configuration; the existing applied\nstartup/reload owner publishes its epoch after successful configuration construction and\nrechecks the candidate under the existing mutation authority. Observations use\n`observeAppConfigFile` without initialization or migration. The journal stores SPKI\nfingerprints, not PEM keys. The applied decision, acquisition receipt, and local\nadmission fences are described in [Applied registry trust\npolicy](../design/registry-trust-policy.md).',
+    body: 'Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## Registry trust policy decisions\n\n[Registry trust policy](../../src-server/services/plugins/registry-trust-policy.ts) owns\nbounded policy identity and EventStore compare-and-set decision publication.\n`registryTrust` in AppConfig is only candidate configuration; the existing applied\nstartup/reload owner publishes its epoch after successful configuration construction and\nrechecks the candidate under the existing mutation authority. Observations use\n`observeAppConfigFile` without initialization or migration. The journal stores SPKI\nfingerprints, not PEM keys. The applied decision, acquisition receipt, and local\nadmission fences are described in [Applied registry trust\npolicy](../design/registry-trust-policy.md).\n\nStartup construction is coordinated in\n[initializeRuntime](../../src-server/runtime/bootstrap/runtime-initialize.ts).\nIt resolves and, when unchosen, records the built-in engine adoption before\ncapturing the agent-construction revision. A reread permits only unchanged\nsettings and an unchanged choice or the exact absent-to-resolved adoption;\na different concurrent setting or choice refuses startup. Provider/package\nchanges across resolution and config changes afterward are also fenced.\nThe [runtime owner](../../src-server/runtime/bootstrap/station-runtime.ts)\npublishes the loaded generation after construction; applied registry policy is\npublished separately after required startup succeeds and its candidate is\nrechecked. This ordering is not atomic startup, proof that every Agent is active,\nexclusive provenance of a same-value write, or provider qualification.',
     tags: ['architecture', 'extensions', 'Registry trust policy decisions'],
     parentId: 'architecture-extensions',
     sourcePath: 'docs/architecture/module-map.md',

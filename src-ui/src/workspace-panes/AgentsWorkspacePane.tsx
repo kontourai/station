@@ -439,7 +439,7 @@ export function AgentsWorkspacePane() {
               <span>Finished ({finishedCount})</span>
               {finishedHasSubagents && (
                 <span className="agents-pane__section-qualifier">
-                  subagents: since this window connected
+                  subagents: recent history
                 </span>
               )}
             </h3>
