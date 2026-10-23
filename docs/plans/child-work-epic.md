@@ -135,9 +135,28 @@ work. Source containment is not final runtime/native/provider acceptance.
 
 ## #91 and folded work
 
-Flow Agents 9.3.0 is published. Upstream PRs #1535 and #1536 merged, and the
+Station now consumes published Flow Agents 9.4.0 at `d835da49916`.
+Upstream implementation PR #1543 and generated release PR #1544 merged;
+the registry artifact and Sigstore provenance name release commit
+`dcbad2e736cc5ffc6e93b6412d4b92239bb292f1`. Archive integrity, 197 included
+source files against Git blobs, two npm signatures under one unexpired registry
+key, and the exact provenance workflow/tag/source joins pass. All 36 typed
+public exports import from inside the extracted artifact. Its declared
+production dependency map matches the prior installed graph; this is not full
+runtime compatibility or generated-code reproducibility evidence.
+
+All four pins and the managed lockfile select 9.4.0. Normal managed installation,
+approved lifecycle/native checks, hook arming and the real PTY handshake pass.
+All 12,415 installed artifact files match the registry archive. The existing
+persistence/runtime/group integration selection passes 29 cases across three
+files. Independent source/artifact review finds no dependency-delta blocker;
+it does not independently rerun those checks. Serving preparation, physical
+transport, AccountingV1 settlement and rounds adoption remain unfinished.
+
+The earlier Flow Agents 9.3.0 adoption is retained as history below.
+Upstream PRs #1535 and #1536 merged, and the
 release artifact identifies `ab2b320aeec4bf1ec98e1ff4ae456877863bd5b7`.
-Station's four workspace pins and managed lockfile select 9.3.0. After authorized
+At that stage, Station's four workspace pins and managed lockfile selected 9.3.0. After authorized
 archival of the failed installer receipt, the normal managed install completed;
 approved lifecycle/native checks and the PTY handshake passed. The installed
 package's 367 inspected artifact files match the verified tarball. Managed
@@ -951,9 +970,9 @@ The earlier rounds review failed without a completed verdict. At `17827e72`,
 the upstream CI registration repair preserves the reviewed production/docs/package
 bytes. The final documentation follow-up at `c4ec9698f58d` passed hosted CI;
 upstream PR #1543 merged as `cc7690a77e40eb8071ef34876650caa3dddb6f0e`.
-Release Please generated PR #1544 for 9.4.0. Publication remains unverified,
-and Station still consumes published 9.3.0. A merged source contract does not
-establish an installed serving path. Existing v2 group journals have no public
+Release Please generated PR #1544 for 9.4.0; its publication and managed adoption
+are qualified above. Installation does not establish a serving path.
+Existing v2 group journals have no public
 rounds import API; retain their controller and charges. New rounds need separate
 authorized custody, and any v3 authority import must transfer the actual locked
 snapshot while revoking the old writer.
