@@ -425,8 +425,9 @@ policy](../design/registry-trust-policy.md).
 
 Startup construction is coordinated in
 [initializeRuntime](../../src-server/runtime/bootstrap/runtime-initialize.ts).
-It resolves and, when unchosen, records the built-in engine adoption before
-capturing the agent-construction revision. A reread permits only unchanged
+It resolves the built-in engine and attempts to record an unchosen adoption
+before capturing the agent-construction revision. A persistence failure is
+logged; startup can retain an implicit binding for that boot. A reread permits only unchanged
 settings and an unchanged choice or the exact absent-to-resolved adoption;
 a different concurrent setting or choice refuses startup. Provider/package
 changes across resolution and config changes afterward are also fenced.
@@ -2614,7 +2615,12 @@ supply its descriptor-based read inside that same lock.
 whole-value write does not reread the target unless a fingerprint check asks
 for that read. Publication serializes JSON, creates a same-directory exclusive
 mode-0600 temporary file, writes and syncs it, then renames it over the target.
-The rename commits the visible value. Directory sync is attempted afterward;
+`beforeCommit` is awaited before temporary-file staging. When supplied,
+`finalizeCommit` must synchronously return `undefined`; publication invokes it
+immediately before synchronous rename, closing the final authority-to-effect
+await gap. Ordinary publication otherwise keeps its asynchronous rename path.
+The caller still owns locking and authority. The rename commits the visible
+value. Directory sync is attempted afterward;
 its failure does not turn already published bytes into a retryable failed write,
 and the directory-sync helper is a no-op on Windows. This is not a tested
 power-loss guarantee for every filesystem.
@@ -2840,7 +2846,7 @@ directories are not overwritten. Known post-publication faults preserve the
 applied result. `project-identity-service.test.ts` exercises visibility, retries,
 faults, input capture and real checkout resolution through the filesystem owner.
 
-**Interface.** `ProjectFileTransactions` is the single lifecycle authority for a Project tree. Callers create a Project, read a `ProjectStoredFileRevision<T>` or `StoredFileRevision<T>`, or request an intent-shaped nested record upsert/delete. A Project revision exposes its validated value and exact `replace`, `remove`, and `createLayout` capabilities. Its server-only `withCurrentRead` runs a callback against a captured Project value under the same revision lock; `replaceManifest` conditionally updates the sidecar. `mutateDocuments(projectSlug, root, operation, body)` and `readDocuments` lend one callback a checked multi-file capability over a Project document root: a knowledge namespace's `metadata.json` and `files/` tree, which may be a configured directory outside the Project tree. These are explicit storage-owner capabilities, not a general filesystem transaction API. HTTP callers receive none of them.
+**Interface.** `ProjectFileTransactions` is the single lifecycle authority for a Project tree. Callers create a Project, read a `ProjectStoredFileRevision<T>` or `StoredFileRevision<T>`, or request an intent-shaped nested record upsert/delete. A Project revision exposes its validated value and exact `replace`, `remove`, and `createLayout` capabilities. Its server-only read-only `assertCurrent` checks the captured fingerprint and file identity around asynchronous [source preparation](../../src-server/services/orchestration/delegation-group-source-admission.ts); it acquires no lifecycle lock and grants neither provider execution nor checkout custody. Its `withCurrentRead` runs a callback against a captured Project value under the same revision lock; `replaceManifest` conditionally updates the sidecar. `mutateDocuments(projectSlug, root, operation, body)` and `readDocuments` lend one callback a checked multi-file capability over a Project document root: a knowledge namespace's `metadata.json` and `files/` tree, which may be a configured directory outside the Project tree. These are explicit storage-owner capabilities, not a general filesystem transaction API. HTTP callers receive none of them.
 
 **Behavior.** One Station-owned, project-keyed lock outside the deletable Project tree orders create, update, delete, Layout, conversation, and document mutations across processes. Reads runtime-validate strict persisted schemas; only `ENOENT` means absent. Every revision snapshots its input, admits one exact transition synchronously, joins a concurrent duplicate intent without publishing twice, and rejects a different intent. Replace and remove compare the exact observed fingerprint after ownership. Layout creation is issued only by the Project revision whose validated agent scope, workspace, and namespace facts produced it, so a concurrent Project change conflicts before any Layout effect. Project deletion atomically renames the entire tree out of service before best-effort trash cleanup, so a nested writer ordered before deletion cannot resurrect it and one ordered after deletion is refused. Publication uses the shared same-directory sync-and-rename Adapter. A [document transaction](../../src-server/domain/project-document-transactions.ts) holds the Project lock, then the document root's own identity lock in the Station home's `coordination/knowledge-file-transactions` directory, so Project deletion is ordered against it and two Projects configured onto one directory never interleave. It stages writes, verifies the file, directory and legacy-source read set, durably writes a prepared journal, then publishes documents, metadata, and removals in that order. Before the callback runs it completes, rolls back, or refuses (as corruption) any journal a crashed writer left in the root. Its journal file, journal shape, and lock name are the ones Station's earlier `KnowledgeFileTransactions` document writer used, so a journal left by an earlier build is recovered and that build is excluded while the lock is held. A post-commit fault is classified by exact readback, and observer or cleanup failure cannot turn a committed effect into a retryable result. Legacy document callbacks are ordered by the Project lock but currently do not refuse a write merely because the Project was already deleted; this remains a compatibility limit of the document path.
 
