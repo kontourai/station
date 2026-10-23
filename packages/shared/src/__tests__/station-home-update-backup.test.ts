@@ -539,6 +539,60 @@ describe('update backup and in-place restore (#2675 D)', () => {
     },
   );
 
+  it.each([true, false])(
+    'refuses receipt restoration through a renamed retained UUID container before cleanup (saved uppercase: %s)',
+    (savedUppercase) => {
+      const fixture = serviceHome();
+      mkdirSync(join(fixture.root, 'update-backups'));
+      const id = 'abcdefab-cdef-abcd-efab-cdefabcdefab';
+      const root = join(fixture.home, 'repository-acquisitions');
+      const savedRequest = join(root, savedUppercase ? id.toUpperCase() : id);
+      const savedReceipt = join(savedRequest, 'receipts', 'operation.json');
+      mkdirSync(join(savedReceipt, '..'), { recursive: true });
+      writeFileSync(savedReceipt, 'saved receipt');
+      createStationHomeUpdateBackup({
+        homeDir: fixture.home,
+        backupDir: fixture.backupDir,
+      });
+      rmSync(savedRequest, { recursive: true });
+      const request = join(root, savedUppercase ? id : id.toUpperCase());
+      const checkout = join(request, 'checkout-1');
+      mkdirSync(checkout, { recursive: true });
+      const work = join(checkout, 'work.txt');
+      writeFileSync(work, 'user work');
+      const receipt = join(request, 'receipts', 'operation.json');
+      mkdirSync(join(receipt, '..'));
+      writeFileSync(receipt, 'trial receipt');
+      const config = join(fixture.home, 'config', 'app.json');
+      writeFileSync(config, 'trial config');
+      const schema = sha(join(fixture.home, STATION_HOME_SCHEMA_FILE));
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        let removed = false;
+        let failure: unknown;
+        try {
+          restoreStationHomeUpdateBackup({
+            homeDir: fixture.home,
+            backupDir: fixture.backupDir,
+            afterRemove: () => {
+              removed = true;
+            },
+          });
+        } catch (error) {
+          failure = error;
+        }
+        expect(
+          removed,
+          'alias conflict must refuse before removing state',
+        ).toBe(false);
+        expect(failure).toBeInstanceOf(StationHomeArchiveError);
+        expect(readFileSync(config, 'utf8')).toBe('trial config');
+        expect(readFileSync(receipt, 'utf8')).toBe('trial receipt');
+        expect(readFileSync(work, 'utf8')).toBe('user work');
+        expect(sha(join(fixture.home, STATION_HOME_SCHEMA_FILE))).toBe(schema);
+      }
+    },
+  );
+
   it('restores receipt descendants and sibling path segments beside a retained checkout', () => {
     const fixture = serviceHome();
     mkdirSync(join(fixture.root, 'update-backups'));

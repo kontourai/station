@@ -1297,7 +1297,7 @@ function updateRestorePathKey(segments: readonly string[]): string {
 function assertUpdateRestoreTargets(
   directory: string,
   targets: ReadonlySet<string>,
-  targetAncestors: ReadonlySet<string>,
+  targetAncestors: ReadonlyMap<string, ReadonlySet<string>>,
   parentSegments: string[] = [],
 ): void {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -1306,7 +1306,16 @@ function assertUpdateRestoreTargets(
     const external = isExternalStationHomePath(segments, true);
     if (!external && !containsExternalStationHomePath(segments)) continue;
     const key = updateRestorePathKey(segments);
-    if (targets.has(key) || (external && targetAncestors.has(key)))
+    const spellings = targetAncestors.get(key);
+    const renamedContainer =
+      !external &&
+      spellings !== undefined &&
+      [...spellings].some((spelling) => spelling !== JSON.stringify(segments));
+    if (
+      targets.has(key) ||
+      (external && spellings !== undefined) ||
+      renamedContainer
+    )
       fail('backup entry conflicts with a preserved home directory');
     // Only inspect state containers, never descend into a user's checkout.
     if (!external)
@@ -1388,12 +1397,17 @@ export function restoreStationHomeUpdateBackup(
       path: pathFor(homeDir, link.path),
     }));
     const targets = new Set<string>();
-    const targetAncestors = new Set<string>();
+    const targetAncestors = new Map<string, Set<string>>();
     for (const entry of [...restorable, ...links]) {
       targets.add(updateRestorePathKey(entry.path));
       // Segment slices keep aliases bounded: checkout-1 never owns checkout-10.
-      for (let length = 1; length < entry.path.length; length += 1)
-        targetAncestors.add(updateRestorePathKey(entry.path.slice(0, length)));
+      for (let length = 1; length < entry.path.length; length += 1) {
+        const ancestor = entry.path.slice(0, length);
+        const key = updateRestorePathKey(ancestor);
+        const spellings = targetAncestors.get(key) ?? new Set<string>();
+        spellings.add(JSON.stringify(ancestor));
+        targetAncestors.set(key, spellings);
+      }
     }
     assertUpdateRestoreTargets(homeDir, targets, targetAncestors);
     removeUpdateState(homeDir, []);
