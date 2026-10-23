@@ -120,14 +120,20 @@ export class ProjectRoomService {
     if (!outcome.ok) throw outcome.error;
     return { data: outcome.data, admission: outcome.admission };
   }
-  open(request: Request, slug: string) {
+  open(request: Request, slug: string, expectedProjectId?: string) {
     return this.run(
       request,
       slug,
       'discuss',
       undefined,
-      (scope, _actor, _caps, assertCurrent) =>
-        this.store.ensureRoom(scope, assertCurrent),
+      (scope, _actor, _caps, assertCurrent) => {
+        if (
+          expectedProjectId !== undefined &&
+          scope.localProjectId !== expectedProjectId
+        )
+          throw new ProjectRoomRefusal('conflict');
+        return this.store.ensureRoom(scope, assertCurrent);
+      },
     );
   }
   discover(request: Request, slug: string) {

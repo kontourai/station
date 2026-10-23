@@ -107,7 +107,7 @@ export function createProjectRoomAccess(
         assertCurrent();
         return {
           ok: true as const,
-          value: operation(
+          value: await operation(
             scope,
             finalActor,
             caps(request, slug, ['view', 'discuss', 'edit', 'execute']),

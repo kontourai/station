@@ -18,6 +18,8 @@ export interface ProjectRoomAgentAuthority {
   executionRoot: string;
   /** Must reject changed incarnation, membership execute, compute grant, or root. Synchronous at SQLite commit. */
   assertCurrent(): void;
+  /** Refresh request/account authority after asynchronous provider work. */
+  refresh?(): Promise<void>;
 }
 export interface ProjectRoomAgentCapture {
   scope: ProjectMembershipScope;
@@ -36,7 +38,11 @@ export interface ProjectRoomAgentExecution {
     agentId: string,
     authority: ProjectRoomAgentAuthority,
   ): Promise<{ label: string }>;
-  launch(capture: ProjectRoomAgentCapture, recheck: () => void): Promise<void>;
+  launch(
+    capture: ProjectRoomAgentCapture,
+    recheck: () => void,
+    refresh?: () => Promise<void>,
+  ): Promise<void>;
   answer(
     capture: ProjectRoomAgentCapture,
   ): Promise<{ turnId: string; text: string } | { failed: true } | null>;
@@ -225,6 +231,7 @@ export class ProjectRoomAgentModule {
       this.failure(request.requestId, 'agent_unavailable');
       return this.inspect(authority, request.requestId);
     }
+    await authority.refresh?.();
     this.check(authority);
 
     const capture: ProjectRoomAgentCapture = {
@@ -273,7 +280,7 @@ export class ProjectRoomAgentModule {
       recheck,
     );
     try {
-      await this.execution.launch(capture, recheck);
+      await this.execution.launch(capture, recheck, authority.refresh);
     } catch {
       this.failure(request.requestId, 'launch_uncertain');
       const current = this.store.getRequest(authority.scope, request.requestId);
@@ -311,6 +318,7 @@ export class ProjectRoomAgentModule {
       )
         throw new Error('Project room agent request unavailable');
     };
+    await authority.refresh?.();
     current();
     if (answer && 'failed' in answer) {
       this.failure(id, 'execution_failed');

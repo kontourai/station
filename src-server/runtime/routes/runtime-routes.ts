@@ -19,6 +19,7 @@ import { createAccountPreferencesRoutes } from '../../routes/me/account-preferen
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createHtmlReplyRoutes } from '../../routes/orchestration/html-replies.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
+import { createProjectRoomRoutes } from '../../routes/projects/project-room-routes.js';
 import { createProjectSharedTaskRoutes } from '../../routes/projects/project-shared-tasks.js';
 import { createApplicationSessionRoutes } from '../../routes/system/application-session-routes.js';
 import { createDeploymentAuthenticationRoutes } from '../../routes/system/deployment-authentication-routes.js';
@@ -130,6 +131,12 @@ import type {
 } from '../../services/projects/project-membership-service.js';
 import { ProjectMembershipRefusal } from '../../services/projects/project-membership-store.js';
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
+import { createProjectRoomAgentRuntime } from '../../services/projects/project-room-agent-module.js';
+import { ProjectRoomService } from '../../services/projects/project-room-service.js';
+import {
+  createProjectRoomRuntime,
+  ProjectRoomRefusal,
+} from '../../services/projects/project-room-store.js';
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
@@ -142,6 +149,7 @@ import {
 } from '../../services/pull-requests/pull-request-review-guide-normalize.js';
 import { PullRequestReviewGuideStore } from '../../services/pull-requests/pull-request-review-guide-store.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { canonicalPath } from '../../utils/path-containment.js';
 import { STATION_KNOWLEDGE_MCP_PATH } from '../mcp/station-control-mcp-token.js';
 import { createRuntimeFrameworkModel } from '../plugins/runtime-provider-resolution.js';
 import {
@@ -150,6 +158,8 @@ import {
   runWithoutRequestReadAuthority,
   runWithRequestReadAuthority,
 } from '../request-read-authority-context.js';
+import { createProjectRoomAccess } from './project-room-access.js';
+import { projectRoomAgentExecution } from './project-room-agent-runtime.js';
 import { runtimeToolLibraryDependencies } from './tool-library-runtime.js';
 
 export {
@@ -1033,6 +1043,7 @@ interface ConfigureRuntimeRoutesResult {
   notificationDeliveryRouter: NotificationDeliveryRouter;
   kitLifecycleReady: Promise<void>;
   projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
+  projectRoomRuntime: { close(): void };
   /**
    * Where live-surface producers register (#90). Undefined on hosted or
    * multi-tenant deployments, where the routes are not mounted at all.
@@ -1261,6 +1272,17 @@ export function isProjectMemberDraftLease(method: string, path: string) {
   return (
     method === 'POST' &&
     /^\/api\/projects\/[^/]+\/plugin-draft\/lease$/.test(path)
+  );
+}
+
+/** Only these leaves delegate membership actions to the Room service. */
+export function isProjectMemberRoomAction(method: string, path: string) {
+  return (
+    (method === 'POST' &&
+      /^\/api\/projects\/[^/]+\/room\/(?:init|messages|presence|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
+        path,
+      )) ||
+    (method === 'PUT' && /^\/api\/projects\/[^/]+\/room\/note$/.test(path))
   );
 }
 
@@ -5868,7 +5890,8 @@ export function configureRuntimeRoutes(
           c.req.method,
           new URL(c.req.raw.url).pathname,
         ) &&
-        !isProjectMemberDraftLease(c.req.method, c.req.path)
+        !isProjectMemberDraftLease(c.req.method, c.req.path) &&
+        !isProjectMemberRoomAction(c.req.method, c.req.path)
       ) {
         return c.json(
           { success: false, error: 'Project mutation is forbidden' },
@@ -5900,6 +5923,192 @@ export function configureRuntimeRoutes(
   };
   context.app.use('/api/projects/:slug', projectReadGuard);
   context.app.use('/api/projects/:slug/*', projectReadGuard);
+  const roomHome = context.configLoader.getProjectHomeDir();
+  const roomStore = createProjectRoomRuntime(roomHome);
+  let roomClosed = false;
+  const roomAccess = createProjectRoomAccess({
+    stationId: context.environmentSecurityService.devicePairing.environmentId(),
+    storage: context.storageAdapter,
+    manifests: contributionResolution.manifests as ProjectManifestStore,
+    membership: context.projectMembership,
+    member: authenticatedProjectMember,
+    authority: projectMembershipAuthority,
+    current: (request) => !roomClosed && isRequestPrincipalCurrent(request),
+    allows: (request, slug, action) => {
+      if (isPrincipalScopedAgentRequest(request)) return false;
+      const account =
+        context.deploymentAuthentication?.service.current(request);
+      if (
+        account &&
+        account.kind !== 'absent' &&
+        account.kind !== 'authenticated'
+      )
+        return false;
+      if (
+        action === 'execute' &&
+        !mayRunCommandsOnHostCurrently(
+          request,
+          context.environmentSecurityService,
+        )
+      )
+        return false;
+      const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+      if (!principal || principal.kind === 'internal') return false;
+      const method =
+        action === 'view' ? 'GET' : action === 'edit' ? 'PUT' : 'POST';
+      const path = `/api/projects/${slug}/room${action === 'view' ? '' : action === 'edit' ? '/note' : action === 'execute' ? '/agents' : '/messages'}`;
+      return runtimeRequestPrincipalMayAccessHttpRoute(
+        request,
+        context.environmentSecurityService,
+        { method, path },
+      );
+    },
+  });
+  const projectRoomService = new ProjectRoomService(
+    roomStore.store,
+    roomAccess,
+  );
+  const roomResolution =
+    contributionResolution.resolver as ProjectResourceResolver;
+  const roomRoot = async (slug: string) => {
+    const root = await roomResolution.resolveProjectExecutionRoot(slug);
+    if (!root) throw new ProjectRoomRefusal('not_found');
+    return canonicalPath(root);
+  };
+  const roomAgentRuntime = createProjectRoomAgentRuntime(
+    roomHome,
+    roomStore.store,
+    projectRoomAgentExecution({
+      agents: context.agentService,
+      sessions: context.orchestrationService,
+      authorityForOwner: readAuthorityForExecution,
+      commandContext: (userId) => ({
+        userId,
+        clientOrigin: UNKNOWN_CLIENT_ORIGIN,
+        fullAccessGrant: null,
+      }),
+      assertExecutionRoot: async (capture) => {
+        if (
+          (await roomRoot(capture.scope.localProjectSlug)) !==
+          capture.executionRoot
+        )
+          throw new ProjectMembershipRefusal('forbidden');
+      },
+      executionTargets: {
+        resolveEnvironmentAccess: async (target) => {
+          if (target.environment.kind !== 'current')
+            throw new ProjectMembershipRefusal('forbidden');
+          return {
+            kind: 'current',
+            apiBase: `http://127.0.0.1:${context.port}`,
+            environmentId:
+              context.environmentSecurityService.devicePairing.environmentId(),
+            environmentName: hostname(),
+          };
+        },
+        getAgent: async (_access, id) => {
+          const spec = await context.agentService.getAgent(id);
+          const unavailable = spec.execution?.agentConnectionId
+            ? null
+            : createStationEngineAvailabilityReader(context)(spec);
+          return {
+            ...spec,
+            ...(unavailable
+              ? { available: false, unavailableReason: unavailable }
+              : {}),
+          };
+        },
+        getConnection: async (_access, id) => {
+          const connection = await context.connectionService.getConnection(id);
+          if (!connection) throw new ProjectMembershipRefusal('unavailable');
+          return connection;
+        },
+        getProject: async (_access, slug) =>
+          context.projectService.getProject(slug),
+        getProviderAdapter: (provider) =>
+          context.orchestrationService.getProviderAdapter(provider),
+      },
+    }),
+  );
+  const projectRoomRuntime = {
+    close() {
+      if (roomClosed) return;
+      roomClosed = true;
+      projectRoomService.close();
+      roomAgentRuntime.close();
+      roomStore.close();
+    },
+  };
+  context.app.route(
+    '/api/projects',
+    createProjectRoomRoutes(projectRoomService, {
+      module: roomAgentRuntime.module,
+      withAuthority: async (request, slug, action, guard, operation) => {
+        const result = await roomAccess.withAction(
+          request,
+          slug,
+          action,
+          guard?.expectedActorId,
+          async (scope, requester, _caps, assertCurrent) => {
+            try {
+              if (
+                guard &&
+                (scope.localProjectId !== guard.expectedProjectId ||
+                  roomStore.store.lookupRoom(scope)?.roomId !==
+                    guard.expectedRoomId)
+              )
+                throw new ProjectRoomRefusal('conflict');
+              const snapshot = () =>
+                JSON.stringify([
+                  context.storageAdapter.getProject(slug),
+                  (
+                    contributionResolution.manifests as ProjectManifestStore
+                  ).readRecord(slug),
+                  (
+                    contributionResolution.bindings as ProjectBindingsStore
+                  ).read(),
+                ]);
+              const before = snapshot();
+              const executionRoot =
+                action === 'execute' ? await roomRoot(slug) : '';
+              const current = () => {
+                assertCurrent();
+                if (
+                  snapshot() !== before ||
+                  (executionRoot &&
+                    canonicalPath(executionRoot) !== executionRoot)
+                )
+                  throw new ProjectMembershipRefusal('forbidden');
+              };
+              current();
+              return {
+                ok: true as const,
+                value: await operation({
+                  scope,
+                  requester,
+                  executionRoot,
+                  assertCurrent: current,
+                  refresh: async () => {
+                    const actor =
+                      await projectMembershipAuthority(request).current();
+                    if (actor.principal.id !== requester.id)
+                      throw new ProjectMembershipRefusal('forbidden');
+                    current();
+                  },
+                }),
+              };
+            } catch (error) {
+              if (error instanceof ProjectRoomRefusal)
+                return { ok: false as const, error };
+              throw error;
+            }
+          },
+        );
+        if (!result.ok) throw result.error;
+        return result.value;
+      },
+    }),
+  );
   // Epic #2323 S3: plugin draft preview. Personal hosts only — the draft runs
   // in-process in a viewer's tab, which is the loopback plugin runtime, and a
   // shared tenant host has no such runtime. Mounted behind the Project read
@@ -8120,6 +8329,7 @@ export function configureRuntimeRoutes(
     notificationDeliveryRouter,
     kitLifecycleReady,
     projectTaskRoomRuntime,
+    projectRoomRuntime,
     liveSurfaceRegistry,
     browserService,
     deviceToolchainService,

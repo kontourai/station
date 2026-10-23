@@ -195,6 +195,22 @@ function isAccountBoundGuestAdminWrite(path: string, method: string): boolean {
   );
 }
 
+/** Closed Room leaves; the mounted service owns each membership action. */
+function isAccountBoundRoomLeaf(path: string, method: string): boolean {
+  if (method === 'GET' || method === 'HEAD')
+    return /^\/api\/projects\/[^/]+\/room(?:\/(?:messages|events|agents\/[^/]+))?$/.test(
+      path,
+    );
+  if (method === 'PUT')
+    return /^\/api\/projects\/[^/]+\/room\/note$/.test(path);
+  return (
+    method === 'POST' &&
+    /^\/api\/projects\/[^/]+\/room\/(?:init|messages|presence|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
+      path,
+    )
+  );
+}
+
 export function installAccountBoundDeviceGate(
   app: {
     use(
@@ -318,7 +334,8 @@ export function installAccountBoundDeviceGate(
         (path === '/api/projects' || path.startsWith('/api/projects/')) &&
         method !== 'GET' &&
         method !== 'HEAD' &&
-        !isAccountBoundGuestAdminWrite(path, method)
+        !isAccountBoundGuestAdminWrite(path, method) &&
+        !isAccountBoundRoomLeaf(path, method)
       ) {
         return c.json(
           { error: { code: 'account_bound_device_route_forbidden' } },
@@ -372,6 +389,7 @@ export function installAccountBoundDeviceGate(
           path,
         ) ||
         isAccountBoundGuestAdminLeaf(path, method) ||
+        isAccountBoundRoomLeaf(path, method) ||
         isAccountBoundOwnTokenLeaf(path, method) ||
         (path === '/api/me/preferences' &&
           (method === 'GET' || method === 'HEAD' || method === 'PATCH')) ||

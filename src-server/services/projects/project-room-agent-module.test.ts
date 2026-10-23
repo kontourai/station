@@ -304,6 +304,7 @@ describe('Project Room explicit agent participation', () => {
         logger: { debug() {}, warn() {} },
       });
       const execution = projectRoomAgentExecution({
+        assertExecutionRoot: async () => {},
         agents: {
           async getAgent() {
             return {

@@ -34,6 +34,7 @@
  * No paid models, no mail: invitations are single-use links (`email:
  * null`), acceptance travels the real `accept-invitation` route.
  */
+import crypto from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -45,11 +46,16 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { S3Client } from '@aws-sdk/client-s3';
+import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  createGateTestRegistry,
+  GateTestAdapter,
+} from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { readStreamUntil } from '../../../__test-utils__/sse-helpers.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
@@ -59,6 +65,9 @@ import { loadDeploymentAuthentication } from '../../../services/identity/deploym
 import { deploymentAccountPrincipal } from '../../../services/identity/deployment-authentication-service.js';
 import { loadLocalAccounts } from '../../../services/identity/local-account-runtime.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
+import { EventStore } from '../../../services/orchestration/event-store.js';
+import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
 import { ProjectManifestStore } from '../../../services/projects/project-manifest-store.js';
 import { createProjectMembershipRuntime } from '../../../services/projects/project-membership-runtime.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
@@ -233,7 +242,11 @@ describe('project guest administration over the production composition', () => {
     process.env.STATION_ROOT = join(owned, 'root');
     process.env.ALLOWED_ORIGINS = ORIGIN;
   });
-  afterEach(() => {
+  const roomClosers: (() => void)[] = [];
+  const agentClosers: (() => Promise<void>)[] = [];
+  afterEach(async () => {
+    for (const close of roomClosers.splice(0)) close();
+    for (const close of agentClosers.splice(0)) await close();
     if (ambientHome === undefined) delete process.env.STATION_HOME;
     else process.env.STATION_HOME = ambientHome;
     if (ambientRoot === undefined) delete process.env.STATION_ROOT;
@@ -245,7 +258,7 @@ describe('project guest administration over the production composition', () => {
       rmSync(directory, { recursive: true, force: true });
   });
 
-  async function setup() {
+  async function setup(withAgent = false) {
     const owned = directories[directories.length - 1];
     const homeDir = join(owned, 'data');
     mkdirSync(join(homeDir, 'security'), { mode: 0o700, recursive: true });
@@ -283,6 +296,63 @@ describe('project guest administration over the production composition', () => {
     const app = new Hono();
     // A real bus, so /events relays through the production gates.
     const eventBus = new EventBus();
+    const adapter = new GateTestAdapter();
+    const start = vi.spyOn(adapter, 'startSession');
+    const send = vi.spyOn(adapter, 'sendTurn');
+    let sessions: OrchestrationService | undefined;
+    if (withAgent) {
+      const events = new EventStore(
+        join(homeDir, 'room-provider-events.sqlite'),
+      );
+      const live = new Set<string>();
+      vi.spyOn(adapter, 'hasSession').mockImplementation(async (id) =>
+        live.has(id),
+      );
+      start.mockImplementation(async (input) => {
+        live.add(input.threadId);
+        const session = {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          metadata: input.metadata,
+          cwd: input.cwd,
+        };
+        adapter.events.push({
+          eventId: crypto.randomUUID(),
+          provider: 'claude',
+          threadId: input.threadId,
+          method: 'session.started',
+          sessionId: input.threadId,
+          createdAt: session.createdAt,
+          metadata: input.metadata,
+        });
+        await vi.waitFor(() =>
+          expect(events.findSessionOwnerUserId(input.threadId)).toBe(
+            input.metadata?.userId,
+          ),
+        );
+        return session;
+      });
+      sessions = new OrchestrationService({
+        adapterRegistry: createGateTestRegistry(adapter),
+        eventBus,
+        eventStore: events,
+        adoptionLedger: events.createAdoptionLedger(),
+        resolveSessionAgent: createSessionAgentResolver({
+          loadAgentSpec: async () => ({ name: 'Room Agent', prompt: '' }),
+          resolveToolServer: async () => null,
+          resolveSkillDir: async () => null,
+        }),
+        logger: { debug() {}, warn() {} },
+      });
+      agentClosers.push(async () => {
+        await sessions!.shutdown();
+        events.close();
+      });
+    }
+
     const context = deepStub({
       projectMembership: membership.service,
       projectSharedTasks: undefined,
@@ -308,7 +378,39 @@ describe('project guest administration over the production composition', () => {
       },
       logger: { debug() {}, info() {}, warn() {}, error() {} },
       activeAgents: new Map(),
-      agentService: { listAgents: () => [] },
+      agentService: {
+        listAgents: () => [],
+        ...(withAgent
+          ? {
+              getAgent: async () => ({
+                name: 'Room Agent',
+                prompt: '',
+                execution: { agentConnectionId: engineConnectionId('claude') },
+              }),
+            }
+          : {}),
+      },
+      ...(sessions
+        ? {
+            orchestrationService: sessions,
+            getLiveAppConfig: () => ({}),
+            providerService: { listProviderConnections: () => [] },
+            connectionService: {
+              checkGatedModelConnectionIds: () => new Map(),
+              getConnection: async () => ({
+                id: 'claude',
+                name: 'Claude',
+                kind: 'agent',
+                type: 'claude',
+                enabled: true,
+                status: 'ready',
+                capabilities: ['agent-runtime'],
+                config: { provider: 'claude' },
+                prerequisites: [],
+              }),
+            },
+          }
+        : {}),
       agentMetadataMap: new Map(),
       agentFixedTokens: new Map(),
       agentTools: new Map(),
@@ -340,6 +442,7 @@ describe('project guest administration over the production composition', () => {
       >[0],
     );
     await result.kitLifecycleReady;
+    roomClosers.push(() => result.projectRoomRuntime.close());
 
     const request = (path: string, init: RequestInit = {}) =>
       app.request(`${ORIGIN}${path}`, init);
@@ -472,6 +575,11 @@ describe('project guest administration over the production composition', () => {
     return {
       app,
       eventBus,
+      homeDir,
+      adapter,
+      start,
+      send,
+      sessions,
       request,
       security,
       authentication,
@@ -486,6 +594,278 @@ describe('project guest administration over the production composition', () => {
       shareWithGuestAdmin,
     };
   }
+
+  test('Project Room production mount requires exact incarnation and independent transport and member actions', async () => {
+    const h = await setup();
+    const { project, scope, guest, credential } = await h.shareWithGuestAdmin(
+      'room-project',
+      'Room Project',
+    );
+    const base = '/api/projects/room-project/room';
+    const post = (value: unknown) =>
+      guest({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(value),
+      });
+    expect((await h.request(base, guest())).status).toBe(404);
+    expect(
+      (
+        await h.request(
+          `${base}/init`,
+          post({ expectedProjectId: 'wrong-incarnation' }),
+        )
+      ).status,
+    ).toBe(409);
+    expect((await h.request(base, guest())).status).toBe(404);
+    const initialized = await h.request(
+      `${base}/init`,
+      post({ expectedProjectId: project.id }),
+    );
+    expect(initialized.status, await initialized.clone().text()).toBe(200);
+    const identity = (
+      await readJson<{
+        data: { scope: ProjectMembershipScope; roomId: string };
+      }>(initialized)
+    ).data;
+    expect(identity.scope).toEqual(scope);
+    const retry = await h.request(
+      `${base}/init`,
+      post({ expectedProjectId: project.id }),
+    );
+    expect((await readJson<{ data: unknown }>(retry)).data).toEqual(identity);
+    const discovered = await h.request(base, guest());
+    expect(discovered.status).toBe(200);
+    const view = (
+      await readJson<{
+        data: { actor: { id: string }; capabilities: { execute: boolean } };
+      }>(discovered)
+    ).data;
+    expect(view.capabilities.execute).toBe(false);
+    const guard = {
+      expectedProjectId: project.id,
+      expectedRoomId: identity.roomId,
+      expectedActorId: view.actor.id,
+    };
+    const appended = await h.request(
+      `${base}/messages`,
+      post({
+        ...guard,
+        intentId: crypto.randomUUID(),
+        text: 'Shared room message',
+      }),
+    );
+    expect(appended.status, await appended.clone().text()).toBe(200);
+    expect(
+      (
+        await h.request(
+          `${base}/agents`,
+          post({
+            ...guard,
+            intentId: crypto.randomUUID(),
+            agentId: 'station',
+            text: 'No compute grant',
+          }),
+        )
+      ).status,
+    ).toBe(403);
+    for (const suffix of [
+      '/init/extra',
+      '/messages/extra',
+      '/note/extra',
+      '/agents/extra/reconcile/extra',
+    ]) {
+      expect(
+        (
+          await h.request(
+            base + suffix,
+            post({ expectedProjectId: project.id }),
+          )
+        ).status,
+      ).toBe(403);
+    }
+    const anonymousMember = h.pairAccountBound('room-outsider', GUEST_GRANT);
+    expect(
+      (
+        await h.request(
+          base,
+          h.guestHeaders(anonymousMember.credential, 'fixture_account=peer')(),
+        )
+      ).status,
+    ).not.toBe(200);
+    const rescope = await h.request(
+      `/api/pairing/devices/${h.security.identifyDevice(credential)!.id}/scope`,
+      h.operatorHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: ['orchestration:read'] }),
+      }),
+    );
+    expect(rescope.status, await rescope.clone().text()).toBe(200);
+    expect((await h.request(base, guest())).status).toBe(200);
+    expect(
+      (
+        await h.request(
+          `${base}/messages`,
+          post({
+            ...guard,
+            intentId: crypto.randomUUID(),
+            text: 'Must not append',
+          }),
+        )
+      ).status,
+    ).toBe(403);
+    const history = await h.request(`${base}/messages`, guest());
+    expect(
+      (await readJson<{ data: { messages: unknown[] } }>(history)).data
+        .messages,
+    ).toHaveLength(1);
+  });
+
+  test('mounted Room Agent uses canonical orchestration, owner reads and selected answer publication without exposing private coordinates', async () => {
+    const h = await setup(true);
+    const { project } = await h.shareWithGuestAdmin('agent-room', 'Agent Room');
+    const root = join(h.homeDir, 'room-workspace');
+    mkdirSync(root);
+    await h.projectService.updateProject('agent-room', {
+      workingDirectory: root,
+    });
+    const compute = h.pairAccountBound('room-compute', GUEST_GRANT);
+    const promoted = await h.request(
+      `/api/pairing/devices/${h.security.devicePairing.identifyDevice(compute.credential)!.id}/scope`,
+      h.operatorHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: [...GUEST_GRANT.split(' '), 'coding:exec'],
+        }),
+      }),
+    );
+    expect(promoted.status, await promoted.clone().text()).toBe(200);
+    const person = deploymentAccountPrincipal(
+      PROVIDER_ISSUER,
+      GUEST_SUBJECT,
+      'Guest Person',
+    );
+    const group = await h.request(
+      `/api/pairing/people/${encodeURIComponent(person.id)}/group`,
+      h.operatorHeaders({
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group: 'admin' }),
+      }),
+    );
+    expect(group.status, await group.clone().text()).toBe(200);
+    expect(h.security.resolveGrantedScope(compute.credential)).toContain(
+      'coding:exec',
+    );
+    const guest = h.guestHeaders(compute.credential);
+    const base = '/api/projects/agent-room/room';
+    const post = (value: unknown) =>
+      guest({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(value),
+      });
+    expect(
+      (await h.request(`${base}/init`, post({ expectedProjectId: project.id })))
+        .status,
+    ).toBe(200);
+    const view = (
+      await readJson<{
+        data: {
+          roomId: string;
+          actor: { id: string };
+          capabilities: { execute: boolean };
+        };
+      }>(await h.request(base, guest()))
+    ).data;
+    expect(view.capabilities.execute).toBe(true);
+    const guard = {
+      expectedProjectId: project.id,
+      expectedRoomId: view.roomId,
+      expectedActorId: view.actor.id,
+    };
+    const input = {
+      ...guard,
+      intentId: crypto.randomUUID(),
+      agentId: 'room-agent',
+      text: 'Answer this room request',
+    };
+    const response = await h.request(`${base}/agents`, post(input));
+    expect(response.status, await response.clone().text()).toBe(200);
+    const handle = (
+      await readJson<{ data: { requestId: string; state: string } }>(response)
+    ).data;
+    expect(handle.state).toBe('started');
+    expect(handle).not.toHaveProperty('sessionId');
+    expect(handle).not.toHaveProperty('executionCorrelationId');
+    expect(h.start).toHaveBeenCalledTimes(1);
+    expect(h.send).toHaveBeenCalledTimes(1);
+    const sessionId = h.start.mock.calls[0][0].threadId;
+    expect(h.start.mock.calls[0][0].metadata?.userId).toBe(view.actor.id);
+    expect(h.send.mock.calls[0][0].input).toContain('Answer this room request');
+    expect((await h.request(`${base}/agents`, post(input))).status).toBe(200);
+    expect(h.start).toHaveBeenCalledTimes(1);
+    const events = {
+      provider: 'claude',
+      threadId: sessionId,
+      invocationId: h.send.mock.calls[0][0].invocationId,
+      createdAt: new Date().toISOString(),
+      turnId: 'turn-1',
+    };
+    h.adapter.events.push({
+      ...events,
+      eventId: crypto.randomUUID(),
+      method: 'turn.started',
+      prompt: 'Room prompt',
+    });
+    h.adapter.events.push({
+      ...events,
+      eventId: crypto.randomUUID(),
+      method: 'content.text-delta',
+      itemId: 'answer',
+      delta: 'Selected shared answer',
+    });
+    h.adapter.events.push({
+      ...events,
+      eventId: crypto.randomUUID(),
+      method: 'turn.completed',
+      finishReason: 'stop',
+      outputText: 'Selected shared answer',
+    });
+    await vi.waitFor(async () => {
+      const reconciled = await h.request(
+        `${base}/agents/${handle.requestId}/reconcile`,
+        post(guard),
+      );
+      expect(reconciled.status, await reconciled.clone().text()).toBe(200);
+      expect(
+        (await readJson<{ data: { state: string } }>(reconciled)).data.state,
+      ).toBe('published');
+    });
+    const history = (
+      await readJson<{ data: { messages: { text: string }[] } }>(
+        await h.request(`${base}/messages`, guest()),
+      )
+    ).data;
+    expect(history.messages.map((m) => m.text)).toEqual([
+      'Selected shared answer',
+    ]);
+    expect(JSON.stringify(history)).not.toContain(sessionId);
+    const other = h.pairAccountBound(
+      'other-room-account',
+      `${GUEST_GRANT} coding:exec`,
+    );
+    expect(
+      (
+        await h.request(
+          `${base}/agents/${handle.requestId}`,
+          h.guestHeaders(other.credential, 'fixture_account=peer')(),
+        )
+      ).status,
+    ).not.toBe(200);
+  });
 
   test('baseline: project read 200, then admin GET access 200 and the four exact POST leaves 200', async () => {
     const h = await setup();

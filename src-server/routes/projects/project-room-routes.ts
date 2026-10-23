@@ -1,4 +1,5 @@
 import {
+  parseProjectRoomAgentRequestInput,
   parseProjectRoomAppendInput,
   parseProjectRoomNoteInput,
 } from '@kontourai/station-contracts/project-room';
@@ -6,6 +7,11 @@ import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import { ProjectMembershipRefusal } from '../../services/projects/project-membership-store.js';
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
+import type {
+  ProjectRoomAgentAuthority,
+  ProjectRoomAgentModule,
+} from '../../services/projects/project-room-agent-module.js';
+import type { ProjectRoomMutationGuard } from '../../services/projects/project-room-service.js';
 import { ProjectRoomService } from '../../services/projects/project-room-service.js';
 import { ProjectRoomRefusal } from '../../services/projects/project-room-store.js';
 import { createLogger } from '../../utils/logger.js';
@@ -30,7 +36,20 @@ function parse<T>(parser: (v: unknown) => T, value: unknown): T {
     throw new InvalidRoomInput();
   }
 }
-export function createProjectRoomRoutes(service: ProjectRoomService) {
+export interface ProjectRoomAgentRoutes {
+  module: ProjectRoomAgentModule;
+  withAuthority<T>(
+    request: Request,
+    slug: string,
+    action: 'view' | 'execute',
+    guard: ProjectRoomMutationGuard | undefined,
+    operation: (authority: ProjectRoomAgentAuthority) => T,
+  ): Promise<T>;
+}
+export function createProjectRoomRoutes(
+  service: ProjectRoomService,
+  agents?: ProjectRoomAgentRoutes,
+) {
   const app = new Hono();
   async function perform(c: Context, run: () => Promise<Response>) {
     c.header('Cache-Control', 'no-store');
@@ -71,6 +90,86 @@ export function createProjectRoomRoutes(service: ProjectRoomService) {
       c.json({ success: true, data: result.data }),
       () => service.current(c.req.raw, result.admission),
     );
+  }
+  app.post('/:slug/room/init', (c) =>
+    perform(c, async () => {
+      const { expectedProjectId } = z
+        .object({ expectedProjectId: z.string().min(1).max(512) })
+        .strict()
+        .parse(await body(c));
+      return deliver(
+        c,
+        await service.open(c.req.raw, c.req.param('slug'), expectedProjectId),
+      );
+    }),
+  );
+  if (agents) {
+    const runAgent = async (
+      c: Context,
+      action: 'view' | 'execute',
+      guard: ProjectRoomMutationGuard | undefined,
+      operation: (authority: ProjectRoomAgentAuthority) => unknown,
+    ) => {
+      const result = await agents.withAuthority(
+        c.req.raw,
+        c.req.param('slug')!,
+        action,
+        guard,
+        async (authority) => {
+          const data = await operation(authority);
+          authority.assertCurrent();
+          return {
+            data,
+            admission: {
+              scope: authority.scope,
+              actorId: authority.requester.id,
+            },
+          };
+        },
+      );
+      return deliver(c, result);
+    };
+    app.post('/:slug/room/agents', (c) =>
+      perform(c, async () => {
+        const { expectedRoomId, expectedProjectId, expectedActorId, ...input } =
+          guards
+            .extend({
+              intentId: z.unknown(),
+              agentId: z.unknown(),
+              text: z.unknown(),
+              replyTo: z.unknown().optional(),
+            })
+            .strict()
+            .parse(await body(c));
+        return runAgent(
+          c,
+          'execute',
+          { expectedRoomId, expectedProjectId, expectedActorId },
+          (authority) =>
+            agents.module.request(
+              authority,
+              parse(parseProjectRoomAgentRequestInput, input),
+            ),
+        );
+      }),
+    );
+    app.get('/:slug/room/agents/:requestId', (c) =>
+      perform(c, () =>
+        runAgent(c, 'view', undefined, (authority) =>
+          agents.module.inspect(authority, c.req.param('requestId')),
+        ),
+      ),
+    );
+    for (const operation of ['cancel', 'reconcile'] as const) {
+      app.post(`/:slug/room/agents/:requestId/${operation}`, (c) =>
+        perform(c, async () => {
+          const guard = guards.strict().parse(await body(c));
+          return runAgent(c, 'execute', guard, (authority) =>
+            agents.module[operation](authority, c.req.param('requestId')!),
+          );
+        }),
+      );
+    }
   }
   app.get('/:slug/room', (c) =>
     perform(c, async () =>
@@ -164,7 +263,7 @@ export function createProjectRoomRoutes(service: ProjectRoomService) {
   );
   app.get('/:slug/room/events', (c) =>
     perform(c, async () => {
-      // Event subscription never creates a Room; only explicit discovery may do so.
+      // Reads never create a Room; initialization is an explicit discuss action.
       const initial = await service.history(
         c.req.raw,
         c.req.param('slug'),

@@ -1011,6 +1011,7 @@ export class StationRuntime {
   });
   private ollamaAdapter = new OllamaAdapter();
   private orchestrationService!: OrchestrationService;
+  private projectRoomRuntime?: { close(): void };
   private resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
   private attachedSessionFollowService?: AttachedSessionFollowService;
   private consoleBridgeService?: ConsoleBridgeService;
@@ -3576,6 +3577,8 @@ export class StationRuntime {
           this.localAccounts = undefined;
         });
         await retire(() => {
+          this.projectRoomRuntime?.close();
+          this.projectRoomRuntime = undefined;
           this.projectMembership?.close();
           this.projectMembership = undefined;
         });
@@ -4420,6 +4423,7 @@ export class StationRuntime {
       notificationService,
       kitLifecycleReady,
       projectTaskRoomRuntime,
+      projectRoomRuntime,
       browserService,
       deviceToolchainService,
       deviceSessions,
@@ -4547,6 +4551,7 @@ export class StationRuntime {
     this.notificationService = notificationService;
     this.kitLifecycleReady = kitLifecycleReady;
     this.projectTaskRoomRuntime = projectTaskRoomRuntime;
+    this.projectRoomRuntime = projectRoomRuntime;
     this.browserService = browserService;
     this.deviceToolchainService = deviceToolchainService;
     this.deviceSessions = deviceSessions;
@@ -5091,6 +5096,8 @@ export class StationRuntime {
       failures.push(error);
     }
     try {
+      this.projectRoomRuntime?.close();
+      this.projectRoomRuntime = undefined;
       this.projectMembership?.close();
       this.projectMembership = undefined;
     } catch (error) {

@@ -3548,6 +3548,24 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // this entry.
     { method: 'POST', path: '/api/projects/:slug/bind' },
     { method: 'GET', path: '/api/projects/:slug/conversations' },
+    // Room actions compose these transport tiers with current Project membership.
+    { method: 'GET', path: '/api/projects/:slug/room' },
+    { method: 'POST', path: '/api/projects/:slug/room/init' },
+    { method: 'GET', path: '/api/projects/:slug/room/messages' },
+    { method: 'POST', path: '/api/projects/:slug/room/messages' },
+    { method: 'PUT', path: '/api/projects/:slug/room/note' },
+    { method: 'POST', path: '/api/projects/:slug/room/presence' },
+    { method: 'GET', path: '/api/projects/:slug/room/events' },
+    { method: 'POST', path: '/api/projects/:slug/room/agents' },
+    { method: 'GET', path: '/api/projects/:slug/room/agents/:requestId' },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/room/agents/:requestId/cancel',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/room/agents/:requestId/reconcile',
+    },
     // Epic #2323 S3: plugin draft preview. Status and a retained revision's
     // bytes are reads of this Project's own draft (read tier). Starting a
     // lease runs builds on this host, so it stays at the family's operate

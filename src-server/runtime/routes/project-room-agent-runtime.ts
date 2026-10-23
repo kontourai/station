@@ -24,6 +24,7 @@ export function projectRoomAgentExecution(deps: {
   >;
   authorityForOwner(ownerId: string): SessionReadAuthority;
   commandContext(ownerId: string): SessionCommandContext;
+  assertExecutionRoot(capture: ProjectRoomAgentCapture): Promise<void>;
 }): ProjectRoomAgentExecution {
   const definition = async (id: string, executionRoot: string) => {
     const spec = await deps.agents.getAgent(id);
@@ -50,15 +51,21 @@ export function projectRoomAgentExecution(deps: {
         label: (await definition(agentId, authority.executionRoot)).spec.name,
       };
     },
-    async launch(capture, recheck) {
+    async launch(capture, recheck, refresh) {
+      await deps.assertExecutionRoot(capture);
       const { target } = await definition(
         capture.agentId,
         capture.executionRoot,
       );
+      await refresh?.();
       checkRoot(capture, recheck);
       const context = deps.commandContext(capture.requester.id);
       const receiverExecutionAdmission = {
-        recheck: async () => checkRoot(capture, recheck),
+        recheck: async () => {
+          await deps.assertExecutionRoot(capture);
+          await refresh?.();
+          checkRoot(capture, recheck);
+        },
       };
       const outcome = await deps.sessions.startSessionInternal(
         {
@@ -116,6 +123,7 @@ export function projectRoomAgentExecution(deps: {
       );
     },
     async answer(capture) {
+      await deps.assertExecutionRoot(capture);
       const authority = deps.authorityForOwner(capture.requester.id);
       const session = await deps.sessions.readSession(
         capture.sessionId,
@@ -157,6 +165,7 @@ export function projectRoomAgentExecution(deps: {
         authority,
       );
       if (answer.status !== 'found') return null;
+      await deps.assertExecutionRoot(capture);
       const text = answer.message.parts
         .flatMap((p) => (p.type === 'text' ? [p.text] : []))
         .join('\n');
