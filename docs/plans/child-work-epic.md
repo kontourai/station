@@ -953,8 +953,10 @@ cancellation request through the scoped SDK mutation. It sends the displayed
 revision once, disables repeat attempts in that mounted view, refuses stale
 authority, and keeps request status separate from physical termination and
 accounting. This surface adds no paid dispatch, Flow topology or provider
-qualification. UI creation, cancellation finalization and the remaining
-Flow/continuation work are still open.
+qualification. The pending-cancellation inspector also offers explicit receipt recovery using
+the original cancellation key and a distinct recovery key. It never resends
+interrupts and keeps pending receipts separate from termination and accounting.
+UI creation and the remaining Flow/continuation work are still open.
 
 ## Authenticated report-group preparation
 

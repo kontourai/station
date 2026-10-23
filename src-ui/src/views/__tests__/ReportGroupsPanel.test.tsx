@@ -294,3 +294,76 @@ test.each(['requested', 'refused', 'authority-loss'] as const)(
     expect(sent).toHaveLength(1);
   },
 );
+
+test.each(['requested', 'pending', 'authority-loss'] as const)(
+  'explicit cancellation receipt recovery retains the original key: %s',
+  async (outcome) => {
+    const sent: { path: string; body: Record<string, unknown> }[] = [];
+    let settle!: (response: Response) => void;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        if (init?.method === 'POST') {
+          sent.push({
+            path: new URL(String(url)).pathname,
+            body: JSON.parse(String(init.body)),
+          });
+          return new Promise<Response>((resolve) => {
+            settle = resolve;
+          });
+        }
+        return envelope({ groups: [group], hasMore: false, nextGroupId: null });
+      }),
+    );
+    const view = mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Show report groups' }));
+    const key = await screen.findByRole('textbox', {
+      name: 'Original cancellation operation key',
+    });
+    fireEvent.change(key, { target: { value: 'cancel:original' } });
+    const check = screen.getByRole('button', {
+      name: 'Check cancellation receipts',
+    });
+    fireEvent.click(check);
+    await waitFor(() => expect(sent).toHaveLength(1));
+    await act(async () => fireEvent.click(check));
+    expect(sent).toEqual([
+      {
+        path: '/api/orchestration/report-groups/group-a/cancel/finalize',
+        body: {
+          cancelOperationKey: 'cancel:original',
+          expectedRevision: 4,
+          operationKey: expect.stringMatching(/^finalize:/),
+        },
+      },
+    ]);
+    if (outcome === 'authority-loss') view.revoke();
+    await act(async () =>
+      settle(
+        envelope({
+          replayed: false,
+          revision: 5,
+          cancellation: outcome === 'pending' ? 'pending' : 'requested',
+        }),
+      ),
+    );
+    if (outcome === 'authority-loss') {
+      expect(
+        screen.queryByText(/Cancellation requested\. Physical termination/),
+      ).toBeNull();
+      expect(screen.queryByText('operator-report')).toBeNull();
+    } else {
+      expect(
+        await screen.findByText(
+          new RegExp(
+            `Cancellation ${outcome}\\. Physical termination and accounting remain separately recorded`,
+          ),
+        ),
+      ).toBeTruthy();
+      await act(async () => fireEvent.click(check));
+      expect(screen.getByText(/Termination unconfirmed/)).toBeTruthy();
+      expect(screen.queryByText(/Accounting reconciled/)).toBeNull();
+    }
+    expect(sent).toHaveLength(1);
+  },
+);

@@ -1438,6 +1438,7 @@ export {
 } from './query-domains/pullRequests';
 export {
   useCancelReportGroup,
+  useFinalizeReportGroupCancel,
   useReportGroupResultQuery,
   useReportGroupsQuery,
 } from './query-domains/reportGroups';

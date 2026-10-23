@@ -1,6 +1,7 @@
 import type { ReportGroupView } from '@kontourai/station-contracts/report-group';
 import {
   useCancelReportGroup,
+  useFinalizeReportGroupCancel,
   useReportGroupResultQuery,
   useReportGroupsQuery,
 } from '@kontourai/station-sdk';
@@ -51,6 +52,8 @@ function Report({
 function Group({ scope, group }: { scope: Scope; group: ReportGroupView }) {
   const [opened, setOpened] = useState<string>();
   const cancel = useCancelReportGroup(scope);
+  const finalize = useFinalizeReportGroupCancel(scope);
+  const [cancelKey, setCancelKey] = useState<string>();
   return (
     <article aria-label={`Report group ${group.groupId}`}>
       <h3>{group.operationId}</h3>
@@ -85,6 +88,62 @@ function Group({ scope, group }: { scope: Scope; group: ReportGroupView }) {
           Cancellation outcome unknown. Read the latest group state before
           making another request.
         </p>
+      )}
+      {group.cancellation === 'pending' && (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (!scope.isCurrent() || !finalize.isIdle || cancel.isPending)
+              return;
+            finalize.mutate({
+              groupId: group.groupId,
+              expectedRevision: group.revision,
+              operationKey: `finalize:${crypto.randomUUID()}`,
+              cancelOperationKey:
+                cancelKey ?? cancel.variables?.operationKey ?? '',
+            });
+          }}
+        >
+          <p>
+            Check the retained cancellation receipts. This does not resend
+            interrupts or confirm physical termination.
+          </p>
+          <label>
+            Original cancellation operation key
+            <input
+              required
+              maxLength={128}
+              pattern="[A-Za-z0-9][A-Za-z0-9._:-]*"
+              value={cancelKey ?? cancel.variables?.operationKey ?? ''}
+              disabled={!finalize.isIdle || cancel.isPending}
+              onChange={(event) => setCancelKey(event.target.value)}
+            />
+          </label>
+          <Button
+            type="submit"
+            variant="secondary"
+            disabled={
+              !scope.isCurrent() || !finalize.isIdle || cancel.isPending
+            }
+          >
+            Check cancellation receipts
+          </Button>
+          {finalize.isPending && (
+            <p role="status">Checking retained cancellation receipts…</p>
+          )}
+          {finalize.isSuccess && (
+            <p role="status">
+              Cancellation {finalize.data.cancellation}. Physical termination
+              and accounting remain separately recorded.
+            </p>
+          )}
+          {finalize.isError && (
+            <p role="alert">
+              Cancellation receipts could not be confirmed. No interrupts were
+              resent.
+            </p>
+          )}
+        </form>
       )}
       {group.authorityRevoked && (
         <p>

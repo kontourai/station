@@ -5605,5 +5605,9 @@ Flow joins and continuation remain open. Cancellation uses
 fresh operation key, disables retries, and invalidates only the current
 authority's group queries on success. A lost/refused response leaves the outcome
 unknown and the action disabled in that mounted view. The displayed cancellation
-result does not confirm termination or accounting. UI creation and cancellation
-finalization remain open.
+result does not confirm termination or accounting. `useFinalizeReportGroupCancel` explicitly checks retained cancellation receipts
+with the original cancel operation key and a distinct recovery key. The
+inspector offers it only for pending cancellation; a still-pending result
+confirms neither interruption nor termination. It never resends interrupts. Both
+mutation hooks check authority before and after the request and disable retries.
+UI creation remains open.

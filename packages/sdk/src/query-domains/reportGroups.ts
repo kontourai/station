@@ -1,6 +1,7 @@
 import type {
   ReportGroupAmounts,
   ReportGroupCancelInput,
+  ReportGroupFinalizeCancelInput,
 } from '@kontourai/station-contracts/report-group';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -9,6 +10,7 @@ import {
 } from '../client/http';
 import {
   cancelReportGroup,
+  finalizeReportGroupCancel,
   listReportGroups,
   readReportGroupResult,
 } from '../client/report-groups';
@@ -115,6 +117,41 @@ export function useCancelReportGroup(scope: Scope) {
       const result = await cancelReportGroup(scope.apiBase, groupId, command, {
         requestScope: scope,
       });
+      if (!scope.isCurrent()) throw new StationRequestAuthorityError();
+      return result;
+    },
+    onSuccess: () => {
+      if (scope.isCurrent())
+        void client.invalidateQueries({
+          queryKey: ['report-groups', scope.apiBase, scope.authorityKey],
+        });
+    },
+    retry: false,
+    networkMode: 'always',
+    gcTime: 0,
+  });
+}
+
+/** Explicit receipt recovery; this endpoint never resends member interrupts. */
+export function useFinalizeReportGroupCancel(scope: Scope) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationKey: [
+      'report-group-cancel-finalize',
+      scope.apiBase,
+      scope.authorityKey,
+    ],
+    mutationFn: async (
+      input: ReportGroupFinalizeCancelInput & { groupId: string },
+    ) => {
+      if (!scope.isCurrent()) throw new StationRequestAuthorityError();
+      const { groupId, ...command } = input;
+      const result = await finalizeReportGroupCancel(
+        scope.apiBase,
+        groupId,
+        command,
+        { requestScope: scope },
+      );
       if (!scope.isCurrent()) throw new StationRequestAuthorityError();
       return result;
     },
