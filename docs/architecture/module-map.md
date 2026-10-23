@@ -2261,7 +2261,14 @@ the entire Station root or an OS keychain. A separate update-backup schema
 serves a launcher-run service's supervised update (#2675 D): it omits the
 store registry's external paths, records symbolic links as links instead of
 refusing them, and has larger default caps. Neither restore accepts the
-other's backup; the traversal and caps below describe `home backup`.
+other's backup; the traversal and caps below describe `home backup`. Update
+snapshots preserve real acquisition checkout directories as external working
+copies, using the service's bounded UUID/attempt layout independently of receipt
+metadata. Adjacent acquisition receipts, import originals, setup outcomes and
+creation requests remain state; Room databases join the SQLite checkpoint list.
+Rollback does not undo later external effects or grant execution authority, and
+cross-home copies can retain machine-local paths. Full home backup still includes
+in-home checkout bytes; update snapshots omit them.
 
 **Ownership and backup.** [StationHomeLifecycle](../../packages/shared/src/station-home-lifecycle.ts)
 tracks runtime owners by PID and birth identity and gives maintenance exclusive

@@ -2213,9 +2213,12 @@ running version, backs up the home once, and starts the new version as a
 trial. The backup holds Station's own state: every entry but the service
 manifests, `instances.json`, logs, monitoring, quarantine, `tmp` and the update
 restore marker `update-restore.json` (which the service and its updates own),
-the default project directories under `workspaces/`,
-and the browser's `browser/chromium` and `browser/profiles`: an update neither
-copies nor rolls them back. For `workspaces/` this is an accepted gap, not a
+the default project directories under `workspaces/`, real acquired working-copy
+directories at `repository-acquisitions/<request UUID>/checkout-N`, and the
+browser's `browser/chromium` and `browser/profiles`: an update neither copies
+nor rolls them back. Acquisition receipts and mutation files remain backed-up
+Station state. Checkout edits and new attempts made during a trial remain in
+place after rollback; a deleted checkout is not recreated. For `workspaces/` this is an accepted gap, not a
 claim that it holds no Station data: Station writes `.station/` stores into
 each project (diff comments, trust bundles, review-evidence receipts,
 survey-review sessions, flow-review evidence), and a rolled-back update leaves
