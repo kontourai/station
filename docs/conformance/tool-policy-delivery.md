@@ -165,8 +165,11 @@ whole-session refusal.
 Engines without a pre-tool interception seam receive the admitted configuration
 at session start. A mid-session policy change cannot revoke a tool call already
 owned by such an engine. This is a delivery limit, not a guarantee of universal
-live revocation. Member execution remains blocked by the existing Agent audience
-gate; the new surface permits scoped authoring and requests only.
+live revocation. Existing direct Agent and orchestration HTTP surfaces retain
+their member-execution gate. Project Room Agent requests use a separate path
+requiring current Project execution authority, transport permission, host
+execution permission and an admitted execution root. Scoped authoring alone
+grants none of these permissions.
 
 ## Explicit per-tool Ask
 
