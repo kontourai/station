@@ -4,6 +4,7 @@ import type {
   SpawnedProcess,
   SpawnOptions,
 } from '@anthropic-ai/claude-agent-sdk';
+import { spawnChildWorkload } from '@kontourai/station-shared/child-workload';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import { terminateProcessTree } from '../../services/infra/process-utils.js';
 import {
@@ -88,7 +89,7 @@ function tailOf(text: string): string {
  * spawn; that applies when SDK debug logging is on.
  */
 export function createClaudeEngineProcess(
-  spawnChild: SpawnChild = nodeSpawn,
+  spawnChild: SpawnChild = spawnChildWorkload,
   wrap?: ClaudeSpawnWrap,
 ): ClaudeEngineProcess {
   const asks = new ClaudePermissionAsks();

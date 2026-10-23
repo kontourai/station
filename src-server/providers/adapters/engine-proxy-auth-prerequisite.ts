@@ -25,14 +25,14 @@ import type { Prerequisite } from '@kontourai/station-contracts/tool';
  */
 
 /** The name the auth cell takes when its basis is the proxy route's key. */
-export const ENGINE_PROXY_AUTH_PREREQUISITE_NAME = 'Proxy key';
+const ENGINE_PROXY_AUTH_PREREQUISITE_NAME = 'Proxy key';
 
 /**
  * The prerequisite id `buildCliRuntimePrerequisites` mints for `command`'s
  * authentication cell. Named here so the substitution below and the builder
  * cannot drift apart on the string.
  */
-export function cliAuthPrerequisiteId(command: string): string {
+function cliAuthPrerequisiteId(command: string): string {
   return `${command}-auth`;
 }
 

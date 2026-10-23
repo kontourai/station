@@ -53,7 +53,7 @@
       "alt": "A request inspector shows the tool scope and Approve once and Deny controls.",
       "caption": "Inspect a request before answering it.",
       "scenario": "Notifications \u2192 Inspect request",
-      "evidence": "Actual UI, request routes and event store with a controlled provider and sample display name. No decision or external effect in this capture. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
+      "evidence": "Actual UI, request routes and event store with a controlled provider and sample display name. No decision or external effect in this capture. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance. Background bulk-dismiss wording predates the current eligible-items labels; this is historical request-inspection illustration, not proof of current bulk-dismiss wording or behavior.",
       "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
       "documents": [
         "docs/guides/starter-work.md",
@@ -68,7 +68,7 @@
       "alt": "Open the request inspector, expand Request identity and close it without deciding.",
       "caption": "Open Inspect request, expand Request identity, then Close. No decision is made.",
       "scenario": "Notifications \u2192 Inspect request",
-      "evidence": "14.20-second silent recording of actual request inspection, identity expansion/collapse and close; isolated Hono/OrchestrationService/SQLite request fixture, sample display name only. No approval/denial or provider effect. Actual Continue Without Setup control used before trim. Temporal trim removes initial loading; raw digest and interval retained. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
+      "evidence": "14.20-second silent recording of actual request inspection, identity expansion/collapse and close; isolated Hono/OrchestrationService/SQLite request fixture, sample display name only. No approval/denial or provider effect. Actual Continue Without Setup control used before trim. Temporal trim removes initial loading; raw digest and interval retained. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance. Background bulk-dismiss wording predates the current eligible-items labels; this is historical request-inspection illustration, not proof of current bulk-dismiss wording or behavior.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
       "documents": [
         "docs/user/getting-started.md",

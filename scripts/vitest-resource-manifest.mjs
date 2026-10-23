@@ -138,6 +138,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/runtime/bootstrap/__tests__/server-compile-cache.process.test.ts',
   'packages/cli/src/__tests__/passive-cli.test.ts',
   'scripts/__tests__/server-scenario.test.ts',
+  // Tiny disposable user-service/scope budgets exercise actual OOM containment.
+  'src-server/services/infra/__tests__/workload-resources.process.test.ts',
   // Real second-process Task/share writers contend with the publication fence.
   'src-server/services/projects/project-room-agent-task-context.test.ts',
   // Reviewed setup launches real bounded commands and verifies durable outcomes.
@@ -196,8 +198,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Builds disposable Git repositories to prove the real-ledger freshness
   // check keeps the job's event mode through the worker env scrub.
   'scripts/__tests__/docs-freshness-job-env.probe.test.ts',
-  // Runs the token helper as a child against a loopback GitHub and a fake `security`.
-  'scripts/__tests__/gh-app-token.test.ts',
   // Disposable Git history and isolated HTTP adapter fixtures for the public example.
   'examples/repository-knowledge-graph/__tests__/repository-knowledge-graph.test.mjs',
   // Runs the real portable-archive smoke against a fake archive whose start fails.

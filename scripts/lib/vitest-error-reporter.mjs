@@ -83,6 +83,17 @@ export function readVitestErrorReport(path) {
         omittedErrors: test.omittedErrors,
         errors: test.errors.map((error) => errorDetails(error)),
       })),
+      suites: Array.isArray(report.suites)
+        ? report.suites.slice(0, FAILURE_LIMIT).map((suite) => ({
+            file: text(suite.file, 512),
+            name: text(suite.name, 512),
+            errors: (suite.errors ?? [])
+              .slice(0, 2)
+              .map((error) => errorDetails(error)),
+            omittedErrors: suite.omittedErrors,
+          }))
+        : [],
+      omittedSuites: report.omittedSuites ?? 0,
     };
   } catch {
     return { omitted: 'Vitest wrote no readable structured error report' };
@@ -100,8 +111,36 @@ export default class VitestErrorReporter {
   onTestRunEnd(modules, unhandledErrors = []) {
     if (!this.path) return;
     const tests = [];
+    const suites = [];
     let failed = 0;
+    let failedSuites = 0;
     const visit = (task, file) => {
+      if (task.type === 'suite' && task.result?.errors?.length) {
+        failedSuites += 1;
+        const ancestors = [];
+        for (let suite = task.suite; suite; suite = suite.suite)
+          ancestors.unshift(suite.name);
+        const entry = {
+          file: text(file, 512),
+          name: text([...ancestors, task.name].filter(Boolean).join(' '), 512),
+          errors: task.result.errors
+            .slice(0, 2)
+            .map((error) => errorDetails(error)),
+          omittedErrors: Math.max(0, task.result.errors.length - 2),
+        };
+        if (
+          suites.length < FAILURE_LIMIT &&
+          Buffer.byteLength(
+            JSON.stringify({ tests, suites: [...suites, entry] }),
+          ) <
+            REPORT_LIMIT - 16384
+        ) {
+          suites.push(entry);
+          process.stderr.write(
+            `[test:changed] suite ${entry.name}: ${entry.errors.map((error) => `${error.message}\n${error.stack}`).join('\n')}\n`,
+          );
+        }
+      }
       if (task.type === 'test' && task.result?.state === 'fail') {
         failed += 1;
         if (tests.length < FAILURE_LIMIT) {
@@ -120,7 +159,9 @@ export default class VitestErrorReporter {
             omittedErrors: Math.max(0, (task.result.errors?.length ?? 0) - 2),
           };
           if (
-            Buffer.byteLength(JSON.stringify([...tests, entry])) <
+            Buffer.byteLength(
+              JSON.stringify({ tests: [...tests, entry], suites }),
+            ) <
             REPORT_LIMIT - 16384
           )
             tests.push(entry);
@@ -136,6 +177,8 @@ export default class VitestErrorReporter {
           schemaVersion: 1,
           tests,
           omittedTests: failed - tests.length,
+          suites,
+          omittedSuites: failedSuites - suites.length,
           unhandledErrors: unhandledErrors
             .slice(0, 1)
             .map((error) => errorDetails(error)),

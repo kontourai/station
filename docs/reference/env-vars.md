@@ -15,6 +15,9 @@ registration health and also starts immediately on watcher errors. It checks
 ctime as well as mtime to recover silent notifications and preserved-mtime
 rewrites. See [configuration and logging](config.md#logging).
 
+The trusted `STATION_WORKLOAD_*` settings configure managed Linux service
+resource limits. See [Linux service workload budgets](../guides/development.md#linux-service-workload-budgets)
+for defaults, platform support and refusal behavior.
 
 | Variable | Default | Description | Source |
 |----------|---------|-------------|--------|
