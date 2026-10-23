@@ -228,6 +228,29 @@ describe('ProjectTasksSection', () => {
     });
   });
 
+  test('opens the exact Task from the flat list without starting an agent', () => {
+    tasks[0] = { ...tasks[0], id: 'task/one ?' };
+    render(<ProjectTasksSection slug="project-alpha" />);
+    const entry = screen.getByRole('link', {
+      name: /Existing task.*Open Task/,
+    });
+    expect(entry.getAttribute('href')).toBe('/tasks/task%2Fone%20%3F');
+    expect(entry.textContent).toContain('Agent: agent-one');
+    expect(screen.queryByRole('button', { name: 'Dispatch' })).toBeNull();
+    fireEvent.click(entry, { metaKey: true });
+    expect(navigate).not.toHaveBeenCalled();
+    fireEvent.click(entry);
+    expect(navigate).toHaveBeenCalledExactlyOnceWith('/tasks/task%2Fone%20%3F');
+    expect(dispatchTask).not.toHaveBeenCalled();
+    expect(createTask).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Details for Existing task' }),
+    );
+    expect(screen.getByRole('button', { name: 'Dispatch' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close details' }));
+    expect(screen.queryByRole('button', { name: 'Dispatch' })).toBeNull();
+  });
+
   test('opens the selected board task and refreshes its canonical records without dispatching', () => {
     render(<ProjectTasksSection slug="project-alpha" presentation="board" />);
     fireEvent.click(
@@ -441,6 +464,9 @@ describe('ProjectTasksSection', () => {
     (agentId) => {
       tasks[0] = { ...tasks[0], agentId };
       render(<ProjectTasksSection slug="project-alpha" />);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Details for Existing task' }),
+      );
 
       const button = screen.getByRole<HTMLButtonElement>('button', {
         name: 'Dispatch',
@@ -473,13 +499,16 @@ describe('ProjectTasksSection', () => {
   test('keeps the linked Session identity inside Details', () => {
     tasks[0] = { ...tasks[0], sessionId: 'session:fixture-linked-run' };
     render(<ProjectTasksSection slug="project-alpha" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Details for Existing task' }),
+    );
     expect(screen.queryByText('Session session:fixture-linked-run')).toBeNull();
     const identity = screen.getByText('session:fixture-linked-run', {
       exact: true,
     });
     const details = identity.closest('details');
     expect(details?.open).toBe(false);
-    fireEvent.click(screen.getByText('Details', { exact: true }));
+    fireEvent.click(details!.querySelector('summary')!);
     expect(details?.open).toBe(true);
     expect(details?.contains(identity)).toBe(true);
   });
@@ -513,6 +542,9 @@ describe('ProjectTasksSection', () => {
       />,
     );
 
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Details for Existing task' }),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Open Task' }));
     expect(navigate).toHaveBeenCalledWith('/tasks/task-1');
 
@@ -907,6 +939,9 @@ describe('ProjectTasksSection', () => {
       };
 
       render(<ProjectTasksSection slug="project-alpha" />);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Details for Existing task' }),
+      );
 
       expect(screen.getByTestId('task-claim-badge').textContent).toContain(
         'flow-agents-cli:cli-session-9',
@@ -924,6 +959,9 @@ describe('ProjectTasksSection', () => {
       taskClaim = { state: 'claimed-by-me' };
 
       render(<ProjectTasksSection slug="project-alpha" />);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Details for Existing task' }),
+      );
 
       expect(screen.getByTestId('task-claim-badge').textContent).toBe(
         'Claimed by you',
@@ -942,6 +980,9 @@ describe('ProjectTasksSection', () => {
       } as any;
 
       render(<ProjectTasksSection slug="project-alpha" />);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Details for Existing task' }),
+      );
 
       expect(screen.queryByTestId('task-claim-badge')).toBeNull();
       expect(
