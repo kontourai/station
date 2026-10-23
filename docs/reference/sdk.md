@@ -5530,7 +5530,7 @@ and reconnect checkpoints. They do not prove mounted routes or live providers.
 ## Qualified report groups
 
 `@kontourai/station-sdk/client` exports `createReportGroup`, `getReportGroup`,
-`listReportGroups`, `cancelReportGroup`, `readReportGroupEvents`,
+`listReportGroups`, `cancelReportGroup`, `finalizeReportGroupCancel`, `readReportGroupEvents`,
 `subscribeReportGroupEvents` and `readReportGroupResult`. Public shapes live at
 `@kontourai/station-contracts/report-group`. This is the personal-host advisory
 report surface, separate from CLI session groups and from Flow-backed topology.
@@ -5555,5 +5555,7 @@ The [API reference](api.md#report-groups) lists inputs, availability and remaini
 qualification. The controlled HTTP owner test exercises real SDK calls, serving,
 canonical task dispatch, SQLite and tariff custody; it is not live-provider or
 billing acceptance. The [CLI report commands](cli.md#qualified-report-groups)
-consume this client. UI adoption, Flow joins, continuation and pending-cancel
-finalization remain open.
+consume this client. `finalizeReportGroupCancel` requires the original cancel
+operation key and a distinct explicit recovery command/revision. It confirms
+retained requests without resending interrupts; missing or mismatched receipts
+remain pending. UI adoption, Flow joins and continuation remain open.

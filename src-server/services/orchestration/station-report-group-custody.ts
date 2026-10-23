@@ -6,6 +6,10 @@ import {
   type DelegationRoundsHost,
 } from '@kontourai/flow-agents/delegation-group-rounds';
 import { canonicalJson } from '@kontourai/relay';
+import type {
+  ReportGroupCancelInput,
+  ReportGroupFinalizeCancelInput,
+} from '@kontourai/station-contracts/report-group';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { createOrchestrationRequestPrincipalResolver } from '../../runtime/bootstrap/orchestration-request-principal.js';
 import { createPersonalRuntimeRequestGuard } from '../../runtime/bootstrap/runtime-tenant-context.js';
@@ -231,21 +235,17 @@ export class StationReportGroupCustody {
     return { ...after, authority: after.authority };
   }
 
-  async cancel(
+  async #cancellationController(
     context: RuntimeSourceRequestContext,
     groupId: string,
-    command: { operationKey: string; expectedRevision: number },
+    requestOperationKey: string | null,
     orchestration: OrchestrationService,
     dispatchLedger: AuthorizationLedger,
   ) {
-    command = Object.freeze({
-      operationKey: command.operationKey,
-      expectedRevision: command.expectedRevision,
-    });
-    id(command.operationKey);
     const authorized = await this.#context(context, 'POST');
     const before = await this.#inspect(authorized, groupId);
     if (!before?.group || !before.authority) refuse();
+    const group = before.group;
     const root = before.admission.root;
     const service = createDelegationAuthorityServiceV3(
       this.owners.persistence.roundsAuthorityStore(authorized.current),
@@ -265,17 +265,61 @@ export class StationReportGroupCustody {
     const host: DelegationRoundsHost = {
       authorize: async ({ action, groupId: candidate, current }) => {
         authorized.current();
-        return ['cancel', 'replay', 'get', 'record'].includes(action) &&
+        const actions =
+          requestOperationKey === null
+            ? ['finalizeCancel', 'replay']
+            : ['cancel', 'replay', 'get', 'record'];
+        return actions.includes(action) &&
           candidate === groupId &&
-          (!current || same(current.spec, before.admission.spec))
+          (!current ||
+            (same(current.spec, before.admission.spec) &&
+              (requestOperationKey !== null || same(current, group))))
           ? root.authenticated_principal_ref
           : null;
+      },
+      confirmCancellation: async (spec, original) => {
+        if (!same(spec, before.admission.spec)) refuse();
+        const receipts = [];
+        // Flow holds the group lock here. Read only the independent signed receipt sidecar.
+        for (const attempt of group.attempts) {
+          authorized.current();
+          if (attempt.terminal) {
+            receipts.push({
+              invocationId: attempt.invocationId,
+              terminal: attempt.terminal,
+            });
+            continue;
+          }
+          const retained = await this.#readMemberInterrupt(
+            authorized,
+            before,
+            attempt.seatId,
+          );
+          if (
+            !retained?.reference ||
+            retained.record.intent.operationId !== original.operationKey
+          )
+            return null;
+          receipts.push({
+            invocationId: attempt.invocationId,
+            request: retained.reference,
+          });
+        }
+        authorized.current();
+        return {
+          domain: 'station.report-cancellation.v1',
+          id: groupId,
+          digest: `sha256:${createHash('sha256')
+            .update(canonicalJson([groupId, original.operationKey, receipts]))
+            .digest('hex')}`,
+        };
       },
       executionHost: () => refuse(),
       prepareRequest: async () => refuse(),
       retainObservation: async () => refuse(),
       confirmTerminal: async () => refuse(),
       requestDescendantCancellation: async (spec) => {
+        if (requestOperationKey === null) refuse();
         const state = await this.#inspect(authorized, groupId);
         if (
           !state?.group ||
@@ -297,7 +341,7 @@ export class StationReportGroupCustody {
             context,
             groupId,
             attempt.seatId,
-            command.operationKey,
+            requestOperationKey,
             orchestration,
           );
           authorized.current();
@@ -312,7 +356,7 @@ export class StationReportGroupCustody {
           domain: 'station.report-cancellation.v1',
           id: groupId,
           digest: `sha256:${createHash('sha256')
-            .update(canonicalJson([groupId, command.operationKey, receipts]))
+            .update(canonicalJson([groupId, requestOperationKey, receipts]))
             .digest('hex')}`,
         };
       },
@@ -323,13 +367,69 @@ export class StationReportGroupCustody {
       dispatchLedger,
       host,
     });
-    const result = await controller.cancel({
+    return {
+      controller,
+      current: authorized.current,
+      identity: before.admission.spec.controller,
+    };
+  }
+
+  async cancel(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    input: ReportGroupCancelInput,
+    orchestration: OrchestrationService,
+    dispatchLedger: AuthorizationLedger,
+  ) {
+    const command = Object.freeze({
+      operationKey: input.operationKey,
+      expectedRevision: input.expectedRevision,
+    });
+    id(command.operationKey);
+    const owner = await this.#cancellationController(
+      context,
+      groupId,
+      command.operationKey,
+      orchestration,
+      dispatchLedger,
+    );
+    const result = await owner.controller.cancel({
       kind: 'cancel',
       groupId,
       ...command,
-      controller: before.admission.spec.controller,
+      controller: owner.identity,
     });
-    authorized.current();
+    owner.current();
+    return result;
+  }
+  async finalizeCancel(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    input: ReportGroupFinalizeCancelInput,
+    orchestration: OrchestrationService,
+    dispatchLedger: AuthorizationLedger,
+  ) {
+    const command = Object.freeze({
+      operationKey: input.operationKey,
+      expectedRevision: input.expectedRevision,
+      cancelOperationKey: input.cancelOperationKey,
+    });
+    id(command.operationKey);
+    id(command.cancelOperationKey);
+    const owner = await this.#cancellationController(
+      context,
+      groupId,
+      null,
+      orchestration,
+      dispatchLedger,
+    );
+    const result = await owner.controller.finalizeCancel({
+      kind: 'finalizeCancel',
+      groupId,
+      ...command,
+      controller: owner.identity,
+    });
+    owner.current();
     return result;
   }
 
@@ -457,6 +557,16 @@ export class StationReportGroupCustody {
     const authorized = await this.#context(context, 'GET');
     const historical = await this.#inspect(authorized, groupId);
     if (!historical) return null;
+    return this.#readMemberInterrupt(authorized, historical, seatId);
+  }
+  async #readMemberInterrupt(
+    authorized: ReadContext,
+    historical: NonNullable<
+      Awaited<ReturnType<StationReportGroupCustody['inspect']>>
+    >,
+    seatId: string,
+  ) {
+    const groupId = historical.admission.spec.groupId;
     const member = historical.admission.members.find(
       (entry) => entry.seatId === seatId,
     );

@@ -945,8 +945,15 @@ model access and same-session ACK acceptance remain separate obligations.
 Published Flow Agents 9.5.0 is now adopted through the managed lock/install path
 in Station, contracts and SDK. Release PR #1546 merged; npm's published integrity
 matches the lockfile. The existing HTTP/SDK/CLI consumers pass on that artifact.
-Its explicit `finalizeCancel` contract is available, but Station's pending-cancel
-confirmation composition still needs implementation and qualification.
+Station now consumes its explicit `finalizeCancel` contract through private
+custody, HTTP, SDK and CLI. Confirmation reads independent signed interrupt
+receipts while Flow holds the group lock; it does not re-enter that lock or
+resend native effects. Controlled proof covers lost acknowledgement (still
+pending), acknowledged request with a lost journal commit (finalized), a validly
+signed wrong-operation receipt (refused), foreign credentials/keys and exact
+replay. The public owner drives SDK finalization and registered CLI replay.
+Accounting and reservations remain unchanged; requested cancellation is not a
+physical-stop, refund or acceptance claim.
 
 Registered `group report-*` CLI commands now consume the strict SDK for
 create/get/list/events/follow/results/cancel. Input file and flag bounds apply
@@ -984,7 +991,7 @@ nonterminal attempts and keeps missing acknowledgements pending. Exact command
 replay performs no effects. Completed attempts retain their terminal receipts,
 usage and reservations; cancellation does not mean acceptance, a refund or a
 new physical-stop claim. Explicit pending-cancellation recovery has a published 9.5.0 contract; its
-Station confirmation composition remains open.
+Station confirmation composition is now wired and covered by controlled tests.
 
 The execution runner composes the actual preparation, signed custody,
 canonical task dispatch, sealed SDK transport and published AccountingV1 rounds.

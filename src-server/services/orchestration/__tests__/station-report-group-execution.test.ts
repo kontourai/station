@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   createReportGroup,
+  finalizeReportGroupCancel,
   getReportGroup,
   listReportGroups,
   readReportGroupEvents,
@@ -21,6 +22,7 @@ import {
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
 import { ApprovalRegistry } from '../../approvals/approval-registry.js';
+import { StationDelegationPersistence } from '../delegation-group-persistence.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -471,18 +473,36 @@ test('report HTTP owner runs configured seats through canonical tasks and retain
       operationKey: 'cancel-completed',
       expectedRevision: result.group.revision,
     };
+    const originalRoundsStore =
+      StationDelegationPersistence.prototype.roundsStore;
+    const journalCommit = vi
+      .spyOn(StationDelegationPersistence.prototype, 'roundsStore')
+      .mockImplementation(function (
+        this: StationDelegationPersistence,
+        current,
+      ) {
+        const store = originalRoundsStore.call(this, current);
+        return {
+          transact: (id, body) =>
+            store.transact(id, async (previous) => {
+              const next = await body(previous);
+              if (
+                next.journal.events[next.journal.events.length - 1]?.kind ===
+                'cancel_requested'
+              )
+                throw Error('controlled cancellation journal commit loss');
+              return next;
+            }),
+        };
+      });
     const cancelResponse = await send(
       'POST',
       `/${groupId}/cancel`,
       command,
       returning.credential,
     );
-    assert.equal(cancelResponse.status, 200);
-    const canceled = (await cancelResponse.json()) as {
-      data: { cancellation: string; replayed: boolean };
-    };
-    assert.equal(canceled.data.cancellation, 'requested');
-    assert.equal(canceled.data.replayed, false);
+    journalCommit.mockRestore();
+    assert.equal(cancelResponse.status, 503);
     const repeated = await send(
       'POST',
       `/${groupId}/cancel`,
@@ -494,6 +514,49 @@ test('report HTTP owner runs configured seats through canonical tasks and retain
         .replayed,
       true,
     );
+    const pending = await getReportGroup(
+      'http://report-control.test',
+      groupId,
+      sdkOptions,
+    );
+    assert.ok(pending);
+    assert.equal(pending.cancellation, 'pending');
+    const recovery = {
+      operationKey: 'finalize-completed',
+      cancelOperationKey: command.operationKey,
+      expectedRevision: pending.revision,
+    };
+    const finalized = await finalizeReportGroupCancel(
+      'http://report-control.test',
+      groupId,
+      recovery,
+      sdkOptions,
+    );
+    assert.equal(finalized.replayed, false);
+    assert.equal(finalized.cancellation, 'requested');
+    const finalCli: string[] = [];
+    const finalLog = vi.spyOn(console, 'log').mockImplementation((value) => {
+      finalCli.push(String(value));
+    });
+    cliIngress = true;
+    try {
+      await runCli([
+        'group',
+        'report-finalize-cancel',
+        groupId,
+        '--api-base=http://127.0.0.1:43979',
+        `--credential=${returning.credential}`,
+        `--operation=${recovery.operationKey}`,
+        `--cancel-operation=${command.operationKey}`,
+        `--revision=${recovery.expectedRevision}`,
+        '--json',
+      ]);
+    } finally {
+      cliIngress = false;
+      finalLog.mockRestore();
+      process.exitCode = priorExitCode;
+    }
+    assert.equal(JSON.parse(finalCli[0]).replayed, true);
     const after = await send(
       'GET',
       `/${groupId}`,

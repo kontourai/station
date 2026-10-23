@@ -1,7 +1,10 @@
 import { lstatSync, mkdirSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
-import type { ReportGroupView } from '@kontourai/station-contracts/report-group';
+import type {
+  ReportGroupFinalizeCancelInput,
+  ReportGroupView,
+} from '@kontourai/station-contracts/report-group';
 import { AnthropicSealedPreparation } from '../../runtime/conversation/anthropic-sealed-preparation.js';
 import {
   captureEnvironmentLocalGrantObservationOwner,
@@ -285,6 +288,24 @@ export class StationReportGroupRuntime {
     };
   }
 
+  async finalizeCancel(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    command: ReportGroupFinalizeCancelInput,
+  ) {
+    const result = await this.#custody.finalizeCancel(
+      context,
+      groupId,
+      command,
+      this.owners.orchestration,
+      this.#dispatch,
+    );
+    return {
+      replayed: result.replayed,
+      revision: result.projection.revision,
+      cancellation: result.projection.cancellation,
+    };
+  }
   async cancel(
     context: RuntimeSourceRequestContext,
     groupId: string,

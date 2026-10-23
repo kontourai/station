@@ -69,6 +69,9 @@ export type ReportGroupCancelInput = {
   operationKey: string;
   expectedRevision: number;
 };
+export type ReportGroupFinalizeCancelInput = ReportGroupCancelInput & {
+  cancelOperationKey: string;
+};
 export type ReportGroupCancelResult = {
   replayed: boolean;
   revision: number;

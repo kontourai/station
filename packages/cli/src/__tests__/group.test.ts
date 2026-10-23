@@ -521,7 +521,7 @@ test('registered report CLI resolves SDK operations with explicit credentials an
     const data =
       path.endsWith('/report-groups') && (init?.method ?? 'GET') === 'GET'
         ? { groups: [reportView()], hasMore: false, nextGroupId: null }
-        : path.endsWith('/cancel')
+        : path.endsWith('/cancel') || path.endsWith('/cancel/finalize')
           ? { replayed: false, revision: 1, cancellation: 'requested' }
           : path.includes('/results/')
             ? {
@@ -560,6 +560,13 @@ test('registered report CLI resolves SDK operations with explicit credentials an
     ['report-events', 'report'],
     ['report-result', 'report', 'one', 'attempt'],
     ['report-cancel', 'report', '--operation=stop', '--revision=0'],
+    [
+      'report-finalize-cancel',
+      'report',
+      '--operation=finish',
+      '--cancel-operation=stop',
+      '--revision=1',
+    ],
   ];
   for (const command of commands)
     await runCli([
@@ -570,12 +577,17 @@ test('registered report CLI resolves SDK operations with explicit credentials an
       '--json',
     ]);
   assert.deepEqual(process.listeners('SIGINT'), listeners);
-  assert.equal(fetch.mock.calls.length, 6);
-  assert.equal(output.length, 6);
+  assert.equal(fetch.mock.calls.length, 7);
+  assert.equal(output.length, 7);
   assert.deepEqual(JSON.parse(String(fetch.mock.calls[0][1]?.body)), input);
   assert.deepEqual(JSON.parse(String(fetch.mock.calls[5][1]?.body)), {
     operationKey: 'stop',
     expectedRevision: 0,
+  });
+  assert.deepEqual(JSON.parse(String(fetch.mock.calls[6][1]?.body)), {
+    operationKey: 'finish',
+    expectedRevision: 1,
+    cancelOperationKey: 'stop',
   });
   for (const [, init] of fetch.mock.calls)
     assert.equal(

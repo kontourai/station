@@ -25,6 +25,8 @@ const cancel = z
   })
   .strict();
 
+const finalizeCancel = cancel.extend({ cancelOperationKey: id }).strict();
+
 export function createReportGroupRoutes(
   runtime: StationReportGroupRuntime | null,
 ) {
@@ -203,6 +205,16 @@ export function createReportGroupRoutes(
       );
     }
   });
+  app.post('/:groupId/cancel/finalize', (c) =>
+    respond(c, async (owner) => {
+      noQuery(c);
+      return owner.finalizeCancel(
+        c,
+        id.parse(c.req.param('groupId')),
+        finalizeCancel.parse(await body(c)),
+      );
+    }),
+  );
   app.post('/:groupId/cancel', (c) =>
     respond(c, async (owner) => {
       noQuery(c);

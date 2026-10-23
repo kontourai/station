@@ -1,6 +1,7 @@
 import {
   cancelReportGroup,
   createReportGroup,
+  finalizeReportGroupCancel,
   getReportGroup,
   listReportGroups,
   parseReportGroupInput,
@@ -19,6 +20,7 @@ const actions: Record<string, string[]> = {
   'report-events': ['after-revision', 'follow'],
   'report-result': ['after-offset'],
   'report-cancel': ['operation', 'revision'],
+  'report-finalize-cancel': ['operation', 'revision', 'cancel-operation'],
 };
 function required(parsed: ParsedCoreArgs, key: string) {
   const value = optionalValueFlag(parsed, key);
@@ -54,7 +56,7 @@ export async function runReportGroupCommand(
       : seatId !== undefined || invocationId !== undefined)
   )
     throw new Error(
-      'Expected group report-create|report-list|report-get|report-events|report-result|report-cancel with its required arguments.',
+      'Expected group report-create|report-list|report-get|report-events|report-result|report-cancel|report-finalize-cancel with its required arguments.',
     );
   for (const flag of Object.keys(parsed.flags)) {
     if (
@@ -69,9 +71,14 @@ export async function runReportGroupCommand(
   const afterRevision = number(parsed, 'after-revision') ?? 0;
   const afterOffset = number(parsed, 'after-offset') ?? 0;
   const revision = number(parsed, 'revision');
-  const operation =
-    action === 'report-cancel' ? required(parsed, 'operation') : undefined;
-  if (action === 'report-cancel' && revision === undefined)
+  const isCancellation =
+    action === 'report-cancel' || action === 'report-finalize-cancel';
+  const operation = isCancellation ? required(parsed, 'operation') : undefined;
+  const cancelOperation =
+    action === 'report-finalize-cancel'
+      ? required(parsed, 'cancel-operation')
+      : undefined;
+  if (isCancellation && revision === undefined)
     throw new Error('--revision=<number> is required.');
   const input =
     action === 'report-create'
@@ -130,6 +137,19 @@ export async function runReportGroupCommand(
           seatId!,
           invocationId!,
           afterOffset,
+          options,
+        ),
+      );
+    else if (action === 'report-finalize-cancel')
+      print(
+        await finalizeReportGroupCancel(
+          apiBase,
+          groupId!,
+          {
+            operationKey: operation!,
+            expectedRevision: revision!,
+            cancelOperationKey: cancelOperation!,
+          },
           options,
         ),
       );

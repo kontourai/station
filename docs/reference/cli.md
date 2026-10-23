@@ -928,6 +928,7 @@ station group report-events <group-id> --after-revision=0 --json
 station group report-events <group-id> --after-revision=0 --follow --json
 station group report-result <group-id> <seat-id> <invocation-id> --after-offset=0 --json
 station group report-cancel <group-id> --operation=<cancel-key> --revision=<revision> --json
+station group report-finalize-cancel <group-id> --operation=<recovery-key> --cancel-operation=<cancel-key> --revision=<revision> --json
 ```
 
 `report-create` reads one regular UTF-8 JSON file of at most 256 KiB. Its fields
@@ -941,8 +942,10 @@ options for a protected request.
 Exact operation replay observes retained state without another paid attempt.
 Ctrl-C aborts the request or closes observation; it does not issue a group cancel,
 prove termination or authorize a resend with a new operation ID. Cancellation is
-an explicit operation/revision command. Unknown delivery/accounting remains
-retained. Follow uses bounded server rotations and the SDK's report-specific
+an explicit operation/revision command. `report-finalize-cancel` is a separate
+recovery command naming the original cancellation and current revision; it
+observes retained receipts without resending interrupts. Missing or mismatched
+receipts refuse. Unknown delivery/accounting remains retained. Follow uses bounded server rotations and the SDK's report-specific
 checkpoint; malformed protocol data terminal-stops instead of reconnecting.
 
 Result pages intentionally expose authorized report text through terminal-safe

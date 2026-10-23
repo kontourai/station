@@ -4,6 +4,7 @@ import {
   type ReportGroupCancelInput,
   type ReportGroupCancelResult,
   type ReportGroupEventPage,
+  type ReportGroupFinalizeCancelInput,
   type ReportGroupInput,
   type ReportGroupListPage,
   type ReportGroupOperation,
@@ -28,6 +29,7 @@ export type {
   ReportGroupCancelInput,
   ReportGroupCancelResult,
   ReportGroupEventPage,
+  ReportGroupFinalizeCancelInput,
   ReportGroupInput,
   ReportGroupListPage,
   ReportGroupOperation,
@@ -277,6 +279,24 @@ export async function cancelReportGroup(
 ): Promise<ReportGroupCancelResult> {
   return canceled.parse(
     await post(`${path(base, groupId)}/cancel`, cancelInput.parse(input), {
+      timeoutMs: null,
+      ...options,
+    }),
+  );
+}
+/** Explicitly confirm a retained cancellation request; this never resends member interrupts. */
+export async function finalizeReportGroupCancel(
+  base: string,
+  groupId: string,
+  input: ReportGroupFinalizeCancelInput,
+  options?: ClientRequestOptions,
+): Promise<ReportGroupCancelResult> {
+  const command = cancelInput
+    .extend({ cancelOperationKey: id })
+    .strict()
+    .parse(input);
+  return canceled.parse(
+    await post(`${path(base, groupId)}/cancel/finalize`, command, {
       timeoutMs: null,
       ...options,
     }),

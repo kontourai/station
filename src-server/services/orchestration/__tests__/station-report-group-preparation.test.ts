@@ -16,6 +16,7 @@ import {
   inspectSdkSourceWire,
   sdkDisposalPromise,
 } from '../delegation-group-sdk-source-wire-owner.js';
+import { signReportInterrupt } from '../station-report-group-cancellation.js';
 import { StationReportGroupCustody } from '../station-report-group-custody.js';
 import {
   type PreparedStationReportGroup,
@@ -706,119 +707,224 @@ test('a returning operator credential can read the same admission but cannot rep
   }
 });
 
-test('lost canonical interrupt acknowledgement stays unknown on fresh-request replay without a second interrupt', async () => {
-  const h = await setup();
-  installControl(h);
-  const handle = await h.owner.prepare(h.f.context(), {
-    ...h.input,
-    maxConcurrent: 1,
-    members: h.input.members.slice(0, 1),
-  });
-  try {
-    const { driver, sdk, prepared } = await taskDriver(h, handle);
-    await driver.run();
-    assert.equal(h.rawFetch.mock.calls.length, 1);
-    await sdkDisposalPromise(sdk.owner, sdk.sdkHandle);
-    h.owner.close(handle);
-    const grant = newGrant(h);
-    const groupId = prepared.spec.groupId;
-    const before = await h.custody.inspect(
-      h.f.context(requestFor(h, 'GET', grant.credential)),
-      groupId,
-    );
-    assert.ok(before?.group && before.authority);
-    const cancelCommand = {
-      operationKey: 'cancel-left',
-      expectedRevision: before.group.revision,
-    };
-    const dispatchLedger = new FileAuthorizationLedger({
-      root: join(h.f.root, 'dispatch'),
+test.each(['lost-ack', 'lost-journal-commit'] as const)(
+  'cancellation recovery observes retained receipts without another interrupt (%s)',
+  async (variant) => {
+    const h = await setup();
+    installControl(h);
+    const handle = await h.owner.prepare(h.f.context(), {
+      ...h.input,
+      maxConcurrent: 1,
+      members: h.input.members.slice(0, 1),
     });
-    const dispatch = driver.orchestration.dispatchWithReceipt.bind(
-      driver.orchestration,
-    );
-    const lost = vi
-      .spyOn(driver.orchestration, 'dispatchWithReceipt')
-      .mockImplementation(async (...args) => {
-        const response = await dispatch(...args);
-        if (args[0].type === 'interruptTurn')
-          throw Error('controlled lost interrupt acknowledgement');
-        return response;
+    try {
+      const { driver, sdk, prepared } = await taskDriver(h, handle);
+      await driver.run();
+      assert.equal(h.rawFetch.mock.calls.length, 1);
+      await sdkDisposalPromise(sdk.owner, sdk.sdkHandle);
+      h.owner.close(handle);
+      const grant = newGrant(h);
+      const groupId = prepared.spec.groupId;
+      const before = await h.custody.inspect(
+        h.f.context(requestFor(h, 'GET', grant.credential)),
+        groupId,
+      );
+      assert.ok(before?.group && before.authority);
+      const cancelCommand = {
+        operationKey: 'cancel-left',
+        expectedRevision: before.group.revision,
+      };
+      const dispatchLedger = new FileAuthorizationLedger({
+        root: join(h.f.root, 'dispatch'),
       });
-    await assert.rejects(
-      () =>
-        h.custody.cancel(
-          h.f.context(requestFor(h, 'POST', grant.credential)),
+      if (variant === 'lost-journal-commit') {
+        const roundsStore = h.custodyOwners.persistence.roundsStore.bind(
+          h.custodyOwners.persistence,
+        );
+        vi.spyOn(h.custodyOwners.persistence, 'roundsStore').mockImplementation(
+          (current) => {
+            const store = roundsStore(current);
+            return {
+              transact: (id, body) =>
+                store.transact(id, async (previous) => {
+                  const next = await body(previous);
+                  if (
+                    next.journal.events[next.journal.events.length - 1]
+                      ?.kind === 'cancel_requested'
+                  )
+                    throw Error('controlled lost cancellation journal commit');
+                  return next;
+                }),
+            };
+          },
+        );
+      }
+      const dispatch = driver.orchestration.dispatchWithReceipt.bind(
+        driver.orchestration,
+      );
+      const lost = vi
+        .spyOn(driver.orchestration, 'dispatchWithReceipt')
+        .mockImplementation(async (...args) => {
+          const response = await dispatch(...args);
+          if (args[0].type === 'interruptTurn' && variant === 'lost-ack')
+            throw Error('controlled lost interrupt acknowledgement');
+          return response;
+        });
+      await assert.rejects(
+        () =>
+          h.custody.cancel(
+            h.f.context(requestFor(h, 'POST', grant.credential)),
+            groupId,
+            cancelCommand,
+            driver.orchestration,
+            dispatchLedger,
+          ),
+        /controlled lost (interrupt acknowledgement|cancellation journal commit)/,
+      );
+      const reader = new StationReportGroupCustody(h.custodyOwners);
+      const replayedCancel = await reader.cancel(
+        h.f.context(requestFor(h, 'POST', grant.credential)),
+        groupId,
+        cancelCommand,
+        driver.orchestration,
+        dispatchLedger,
+      );
+      assert.equal(replayedCancel.replayed, true);
+      assert.equal(replayedCancel.projection.cancellation, 'pending');
+      const replay = await reader.requestMemberInterrupt(
+        h.f.context(requestFor(h, 'POST', grant.credential)),
+        groupId,
+        'left',
+        'cancel-left',
+        driver.orchestration,
+      );
+      assert.equal(replay.replayed, true);
+      assert.equal(
+        replay.record.acknowledgement === null,
+        variant === 'lost-ack',
+      );
+      assert.equal(replay.reference === null, variant === 'lost-ack');
+      const retainedUnknown = await reader.inspectMemberInterrupt(
+        h.f.context(requestFor(h, 'GET', grant.credential)),
+        groupId,
+        'left',
+      );
+      assert.ok(retainedUnknown);
+      assert.equal(
+        retainedUnknown.record.acknowledgement === null,
+        variant === 'lost-ack',
+      );
+      assert.equal(retainedUnknown.reference === null, variant === 'lost-ack');
+      assert.equal(
+        lost.mock.calls.filter(([command]) => command.type === 'interruptTurn')
+          .length,
+        1,
+      );
+      await assert.rejects(
+        () =>
+          reader.requestMemberInterrupt(
+            h.f.context(requestFor(h, 'POST', grant.credential)),
+            groupId,
+            'left',
+            'changed-cancel-key',
+            driver.orchestration,
+          ),
+        { code: 'report_interrupt_identity_conflict' },
+      );
+      assert.equal(
+        lost.mock.calls.filter(([command]) => command.type === 'interruptTurn')
+          .length,
+        1,
+      );
+      const after = await reader.inspect(
+        h.f.context(requestFor(h, 'GET', grant.credential)),
+        groupId,
+      );
+      assert.equal(after?.authority?.cancelled, true);
+      assert.equal(after?.group?.cancellation, 'pending');
+      assert.deepEqual(
+        after?.authority?.invocations,
+        before.authority.invocations,
+      );
+      assert.ok(after?.group);
+      const finalizeCommand = {
+        operationKey: 'finalize-left',
+        cancelOperationKey: 'cancel-left',
+        expectedRevision: after.group.revision,
+      };
+      const finalize = (
+        credential = grant.credential,
+        command = finalizeCommand,
+      ) =>
+        reader.finalizeCancel(
+          h.f.context(requestFor(h, 'POST', credential)),
           groupId,
-          cancelCommand,
+          command,
           driver.orchestration,
           dispatchLedger,
-        ),
-      /controlled lost interrupt acknowledgement/,
-    );
-    const reader = new StationReportGroupCustody(h.custodyOwners);
-    const replayedCancel = await reader.cancel(
-      h.f.context(requestFor(h, 'POST', grant.credential)),
-      groupId,
-      cancelCommand,
-      driver.orchestration,
-      dispatchLedger,
-    );
-    assert.equal(replayedCancel.replayed, true);
-    assert.equal(replayedCancel.projection.cancellation, 'pending');
-    const replay = await reader.requestMemberInterrupt(
-      h.f.context(requestFor(h, 'POST', grant.credential)),
-      groupId,
-      'left',
-      'cancel-left',
-      driver.orchestration,
-    );
-    assert.equal(replay.replayed, true);
-    assert.equal(replay.record.acknowledgement, null);
-    assert.equal(replay.reference, null);
-    const retainedUnknown = await reader.inspectMemberInterrupt(
-      h.f.context(requestFor(h, 'GET', grant.credential)),
-      groupId,
-      'left',
-    );
-    assert.equal(retainedUnknown?.record.acknowledgement, null);
-    assert.equal(retainedUnknown?.reference, null);
-    assert.equal(
-      lost.mock.calls.filter(([command]) => command.type === 'interruptTurn')
-        .length,
-      1,
-    );
-    await assert.rejects(
-      () =>
-        reader.requestMemberInterrupt(
-          h.f.context(requestFor(h, 'POST', grant.credential)),
-          groupId,
-          'left',
-          'changed-cancel-key',
-          driver.orchestration,
-        ),
-      { code: 'report_interrupt_identity_conflict' },
-    );
-    assert.equal(
-      lost.mock.calls.filter(([command]) => command.type === 'interruptTurn')
-        .length,
-      1,
-    );
-    const after = await reader.inspect(
-      h.f.context(requestFor(h, 'GET', grant.credential)),
-      groupId,
-    );
-    assert.equal(after?.authority?.cancelled, true);
-    assert.equal(after?.group?.cancellation, 'pending');
-    assert.deepEqual(
-      after?.authority?.invocations,
-      before.authority.invocations,
-    );
-    assert.equal(h.rawFetch.mock.calls.length, 1);
-  } finally {
-    h.owner.close(handle);
-  }
-});
+        );
+      await assert.rejects(() => finalize('invalid-credential'));
+      await assert.rejects(() =>
+        finalize(grant.credential, {
+          ...finalizeCommand,
+          cancelOperationKey: 'foreign-cancel',
+        }),
+      );
+      if (variant === 'lost-ack') {
+        await assert.rejects(() => finalize(), {
+          code: 'rounds_cancel_confirmation_required',
+        });
+      } else {
+        const file = join(
+          h.f.root,
+          'station-report-interrupts-v1',
+          `${createHash('sha256').update(groupId).digest('hex')}.json`,
+        );
+        const bytes = readFileSync(file);
+        const differentOperation = JSON.parse(bytes.toString());
+        const receipt = differentOperation.entries[0];
+        differentOperation.entries[0] = signReportInterrupt(
+          { ...receipt.intent, operationId: 'another-operation' },
+          receipt.acknowledgement,
+          h.f.environment,
+        );
+        writeFileSync(file, JSON.stringify(differentOperation), {
+          mode: 0o600,
+        });
+        await assert.rejects(() => finalize(), {
+          code: 'rounds_cancel_confirmation_required',
+        });
+        writeFileSync(file, bytes, { mode: 0o600 });
+        const finalized = await finalize();
+        assert.equal(finalized.replayed, false);
+        assert.equal(finalized.projection.cancellation, 'requested');
+        const repeated = await finalize();
+        assert.equal(repeated.replayed, true);
+        assert.deepEqual(repeated.projection, finalized.projection);
+      }
+      assert.equal(
+        lost.mock.calls.filter(([command]) => command.type === 'interruptTurn')
+          .length,
+        1,
+      );
+      const final = await reader.inspect(
+        h.f.context(requestFor(h, 'GET', grant.credential)),
+        groupId,
+      );
+      assert.deepEqual(
+        final?.authority?.invocations,
+        before.authority.invocations,
+      );
+      assert.equal(
+        final?.group?.cancellation,
+        variant === 'lost-ack' ? 'pending' : 'requested',
+      );
+      assert.equal(h.rawFetch.mock.calls.length, 1);
+    } finally {
+      h.owner.close(handle);
+    }
+  },
+);
 
 test('canonical interrupt refuses request currency lost during adapter resolution', async () => {
   const h = await setup();

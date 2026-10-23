@@ -1750,6 +1750,14 @@ Hosted mode and unavailable private storage return `report_groups_unavailable`.
   nonterminal member interrupts. Exact replay is effect-free. A missing
   acknowledgement leaves `pending`; cancellation never implies physical stop,
   an accounting refund or semantic acceptance.
+- `POST /:groupId/cancel/finalize` accepts `operationKey`, `expectedRevision`
+  and the original `cancelOperationKey`. This explicit recovery uses published
+  Flow Agents 9.5.0. It revokes the retained authority idempotently and observes
+  exact, signed member request receipts (or existing terminal references).
+  It never resends interrupts. A different-operation receipt or missing
+  acknowledgement refuses, leaving cancellation pending. Exact finalization
+  replay is effect-free. Requested cancellation remains distinct from stop,
+  reconciled accounting, refunds and acceptance.
 
 Every operation requires current local operator grant authority. Browser
 bootstrap credentials do not suffice. Responses use `Cache-Control: no-store`
@@ -1763,8 +1771,8 @@ profile. The current narrow Anthropic profile and its exclusions are described
 in the [child-work plan](../plans/child-work-epic.md#authenticated-report-group-preparation).
 The [SDK client](sdk.md#qualified-report-groups) exposes these operations with
 strict response and cursor validation; the [CLI](cli.md#qualified-report-groups)
-consumes it. UI adoption, cancellation finalization and live provider qualification
-remain open for this report-group surface.
+consumes it. UI adoption, Flow topology/context continuation and live provider
+qualification remain open for this report-group surface.
 
 ## Connections
 
