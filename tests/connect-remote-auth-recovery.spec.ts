@@ -614,8 +614,23 @@ for (const fixture of [
       .getByRole('button', { name: 'Done', exact: true })
       .click();
     // This keeper recovers a previously held credential, not a new receiver grant.
-    await page
+    await page.getByTestId('app-toolbar-connection').click();
+    await page.getByRole('menuitem', { name: /^Station details/ }).click();
+    const stationDetails = page.getByRole('dialog', {
+      name: 'Station details',
+      exact: true,
+    });
+    await stationDetails
       .getByRole('button', { name: 'Cancel request', exact: true })
+      .click();
+    await expect(
+      stationDetails.getByRole('button', {
+        name: 'Cancel request',
+        exact: true,
+      }),
+    ).toHaveCount(0);
+    await stationDetails
+      .getByRole('button', { name: 'Close Station details', exact: true })
       .click();
     await page.getByTestId('app-toolbar-connection').click();
     await page

@@ -2,8 +2,6 @@
  * @vitest-environment jsdom
  */
 
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
 import {
   ConnectionStore,
   type SavedConnection,
@@ -22,13 +20,22 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
-import { BannerHost } from '../components/notifications/BannerHost';
+import { NotificationContainer } from '../components/notifications/NotificationContainer';
+import { StationDetailsHost } from '../components/notifications/StationConditions';
+import { openStationDetails } from '../components/notifications/stationDetailsEvents';
 import { SHARING_LABELS } from '../components/UsageSharingChoices';
 import { BANNER_IDS, bannerStore } from '../contexts/banner-store';
+import type { ToastOptions } from '../contexts/ToastContext';
 import type { BundledServerStatus } from '../platform/native';
+
+function StationDetailsSurface() {
+  useEffect(() => openStationDetails());
+  return <StationDetailsHost />;
+}
 
 let currentStatus: SystemStatus | null = null;
 let isLoading = false;
@@ -63,7 +70,11 @@ let currentPathname = '/';
 const refetch = vi.fn();
 const forceRefetch = vi.fn();
 const restartBundledServerMock = vi.fn(() => Promise.resolve(true));
-const toastMocks = vi.hoisted(() => ({ showToast: vi.fn() }));
+const toastMocks = vi.hoisted(() => ({
+  showToast: vi.fn(),
+  upsertToast: vi.fn(),
+  dismissToast: vi.fn(),
+}));
 const primeNativeNotificationsMock = vi.hoisted(() => vi.fn());
 const pairingDeepLinkHookMock = vi.hoisted(() => ({
   options: undefined as
@@ -122,8 +133,12 @@ vi.mock('../components/UsageTelemetryDisclosure', async (importOriginal) => {
 // Provider ordering is covered against the real application entrypoint in
 // main-provider-order.test.ts. This component suite isolates onboarding
 // behavior from the toast implementation while retaining the hook contract.
-vi.mock('../contexts/ToastContext', () => ({
-  useToast: () => ({ showToast: toastMocks.showToast }),
+vi.mock('../contexts/ToastContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ToastContext')>()),
+  useToast: () => toastMocks,
+}));
+vi.mock('../contexts/ActiveChatsContext', () => ({
+  useActiveChatIds: () => [],
 }));
 
 // The gate reads config through the identity-scoped recovery hook (never
@@ -290,6 +305,7 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
 });
 
 vi.mock('../contexts/NavigationContext', () => ({
+  useNavigationActions: () => ({ navigate }),
   useNavigation: () => ({
     navigate,
     pathname: currentPathname,
@@ -487,6 +503,8 @@ describe('OnboardingGate', () => {
     restartBundledServerMock.mockReset();
     restartBundledServerMock.mockResolvedValue(true);
     toastMocks.showToast.mockReset();
+    toastMocks.upsertToast.mockReset().mockReturnValue('restart-notice');
+    toastMocks.dismissToast.mockReset();
     pairingDeepLinkHookMock.options = undefined;
     onboardingSetupStore.reset();
     currentPathname = '/';
@@ -1317,13 +1335,14 @@ describe('OnboardingGate', () => {
     render(
       <OnboardingGate>
         <div>App</div>
-        <BannerHost />
+        <StationDetailsSurface />
       </OnboardingGate>,
     );
 
-    expect((await screen.findByRole('alert')).textContent).toMatch(
-      /Request access to reconnect to Tailnet Station/i,
-    );
+    expect(
+      (await screen.findByRole('dialog', { name: 'Station details' }))
+        .textContent,
+    ).toMatch(/Request access to reconnect to Tailnet Station/i);
     fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
     expect(screen.getByText('Connection manager: request-access')).toBeTruthy();
   });
@@ -1333,7 +1352,7 @@ describe('OnboardingGate', () => {
     const { rerender } = render(
       <OnboardingGate>
         <div>App shell</div>
-        <BannerHost />
+        <StationDetailsSurface />
       </OnboardingGate>,
     );
 
@@ -1342,14 +1361,15 @@ describe('OnboardingGate', () => {
     rerender(
       <OnboardingGate>
         <div>App shell</div>
-        <BannerHost />
+        <StationDetailsSurface />
       </OnboardingGate>,
     );
 
     expect(screen.getByText('App shell')).toBeTruthy();
-    expect((await screen.findByRole('alert')).textContent).toMatch(
-      /Request access to reconnect to Tailnet Station/i,
-    );
+    expect(
+      (await screen.findByRole('dialog', { name: 'Station details' }))
+        .textContent,
+    ).toMatch(/Request access to reconnect to Tailnet Station/i);
     expect(screen.queryByText('Pair this device to a Station')).toBeNull();
   });
 
@@ -1461,7 +1481,7 @@ describe('OnboardingGate', () => {
     expect(restartBundledServerMock).toHaveBeenCalledTimes(1);
     // A restart that genuinely reached the host and succeeded has nothing to
     // report — the toast stays quiet.
-    expect(toastMocks.showToast).not.toHaveBeenCalled();
+    expect(toastMocks.upsertToast).not.toHaveBeenCalled();
   });
 
   /**
@@ -1519,14 +1539,19 @@ describe('OnboardingGate', () => {
     const restart = screen.getByTestId('cm-restart-injected');
     fireEvent.click(restart);
 
-    await waitFor(() => expect(toastMocks.showToast).toHaveBeenCalledTimes(1));
-    expect(toastMocks.showToast.mock.calls[0]?.[0]).toMatch(
-      /couldn.t restart/i,
+    await waitFor(() =>
+      expect(toastMocks.upsertToast).toHaveBeenCalledTimes(1),
     );
+    expect(toastMocks.upsertToast.mock.calls[0]?.[0]).toMatchObject({
+      message: expect.stringMatching(/couldn.t restart/i),
+      dedupeKey: 'local-station-restart',
+      tone: 'error',
+      duration: 0,
+      recallText: 'The local Station could not restart.',
+    });
     // archive#4512: sticky until dismissed — a 5s default would
     // vanish this toast, "Try again" and all, while the reader was still
     // reading the first sentence of a restart failure.
-    expect(toastMocks.showToast.mock.calls[0]?.[2]).toBe(0);
     // Re-tappable: nothing about the control (never disabled to begin with)
     // stops a second attempt from reaching the same request again.
     fireEvent.click(restart);
@@ -1542,30 +1567,15 @@ describe('OnboardingGate', () => {
    * This drives the action's `onClick` directly, the way a reader clicking
    * "Try again" IN THE TOAST (not back on the original control) would.
    */
-  test('the failure toast carries a working Try again action that retries the same request', async () => {
-    // archive#4512 — this used to assert the ARGUMENT passed to
-    // the mocked `showToast` (`calls[0][2] === 0`), which proved nothing
-    // about the actual toast: the real store's `duration: 0` new-toast path
-    // scheduled `setTimeout(dismiss, 0)` regardless, dismissing the toast on
-    // the very next macrotask. Delegating the mock to the REAL toastStore
-    // and running its timers is the effect test that catches that — an
-    // argument assertion cannot.
+  test('restart failures retain one actionable notice and a successful retry clears it', async () => {
     const { toastStore: realToastStore } = await vi.importActual<
       typeof import('../contexts/ToastContext')
     >('../contexts/ToastContext');
-    toastMocks.showToast.mockImplementation(
-      (
-        message: string,
-        sessionId?: string,
-        duration?: number,
-        actions?: unknown,
-      ) =>
-        realToastStore.show(
-          message,
-          sessionId,
-          duration,
-          actions as Parameters<typeof realToastStore.show>[3],
-        ),
+    toastMocks.upsertToast.mockImplementation((options: ToastOptions) =>
+      realToastStore.upsert(options),
+    );
+    toastMocks.dismissToast.mockImplementation((id: string) =>
+      realToastStore.dismiss(id),
     );
     realToastStore.dismissAll();
     vi.useFakeTimers({ shouldAdvanceTime: true });
@@ -1612,7 +1622,7 @@ describe('OnboardingGate', () => {
       fireEvent.click(screen.getByTestId('cm-restart-injected'));
 
       await waitFor(() =>
-        expect(toastMocks.showToast).toHaveBeenCalledTimes(1),
+        expect(toastMocks.upsertToast).toHaveBeenCalledTimes(1),
       );
       expect(restartBundledServerMock).toHaveBeenCalledTimes(1);
 
@@ -1638,15 +1648,28 @@ describe('OnboardingGate', () => {
         'the restart-failure toast auto-dismissed despite duration: 0',
       ).toBeTruthy();
 
-      const actions = toastAfter?.actions as
-        | Array<{ label: string; onClick: () => void }>
-        | undefined;
-      expect(actions).toHaveLength(1);
-      expect(actions?.[0]?.label).toBe('Try again');
-
-      // Invoke the action itself — not a re-click of the original control.
-      actions?.[0]?.onClick();
+      expect(toastAfter?.actions).toHaveLength(1);
+      expect(toastAfter?.actions?.[0]?.label).toBe('Try again');
+      act(() => {
+        toastAfter?.actions?.[0]?.onClick();
+      });
+      await waitFor(() =>
+        expect(toastMocks.upsertToast).toHaveBeenCalledTimes(2),
+      );
       expect(restartBundledServerMock).toHaveBeenCalledTimes(2);
+      expect(realToastStore.getSnapshot()).toHaveLength(1);
+      const repeated = realToastStore.getSnapshot()[0];
+      expect(repeated.id).toBe(toastBefore?.id);
+      expect(repeated.occurrences).toBe(2);
+      restartBundledServerMock.mockResolvedValue(true);
+      act(() => {
+        repeated.actions?.[0]?.onClick();
+      });
+      await waitFor(() =>
+        expect(toastMocks.dismissToast).toHaveBeenCalledWith(repeated.id),
+      );
+      expect(restartBundledServerMock).toHaveBeenCalledTimes(3);
+      expect(realToastStore.getSnapshot()).toHaveLength(0);
     } finally {
       vi.useRealTimers();
       realToastStore.dismissAll();
@@ -1717,21 +1740,45 @@ describe('OnboardingGate', () => {
     expect(screen.queryByTestId('cm-restart-injected')).toBeNull();
   });
 
-  test('keeps initial credential repair inside the shell banner', async () => {
+  test('closing Station details preserves the credential repair action until the condition clears', () => {
+    currentStatus = null;
+    credentialState = 'required';
+    render(
+      <OnboardingGate>
+        <div>App</div>
+        <StationDetailsSurface />
+      </OnboardingGate>,
+    );
+    expect(
+      screen.queryByRole('button', { name: /dismiss pairing reminder/i }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Close Station details' }),
+    );
+    expect(
+      screen.queryByRole('dialog', { name: 'Station details' }),
+    ).toBeNull();
+    act(openStationDetails);
+    fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
+    expect(screen.getByText('Connection manager: request-access')).toBeTruthy();
+  });
+
+  test('keeps initial credential repair in Station details while the shell stays mounted', async () => {
     currentStatus = null;
     credentialState = 'required';
 
     render(
       <OnboardingGate>
         <div>App</div>
-        <BannerHost />
+        <StationDetailsSurface />
       </OnboardingGate>,
     );
 
     expect(screen.getByText('App')).toBeTruthy();
-    expect((await screen.findByRole('alert')).textContent).toMatch(
-      /Request access to reconnect to Tailnet Station/,
-    );
+    expect(
+      (await screen.findByRole('dialog', { name: 'Station details' }))
+        .textContent,
+    ).toMatch(/Request access to reconnect to Tailnet Station/);
     fireEvent.click(screen.getByRole('button', { name: 'Request access' }));
     expect(screen.getByText('Connection manager: request-access')).toBeTruthy();
   });
@@ -1750,7 +1797,7 @@ describe('OnboardingGate', () => {
       <OnboardingGate>
         <MobileWelcomeBoundary>
           <div>App</div>
-          <BannerHost />
+          <StationDetailsSurface />
         </MobileWelcomeBoundary>
       </OnboardingGate>,
     );
@@ -1779,7 +1826,7 @@ describe('OnboardingGate', () => {
       <OnboardingGate>
         <MobileWelcomeBoundary>
           <div>App</div>
-          <BannerHost />
+          <StationDetailsSurface />
         </MobileWelcomeBoundary>
       </OnboardingGate>,
     );
@@ -1795,7 +1842,7 @@ describe('OnboardingGate', () => {
       <OnboardingGate>
         <MobileWelcomeBoundary>
           <div>App rerendered</div>
-          <BannerHost />
+          <StationDetailsSurface />
         </MobileWelcomeBoundary>
       </OnboardingGate>,
     );
@@ -1835,7 +1882,7 @@ describe('OnboardingGate', () => {
       <OnboardingGate>
         <MobileWelcomeBoundary>
           <div>App</div>
-          <BannerHost />
+          <StationDetailsSurface />
         </MobileWelcomeBoundary>
       </OnboardingGate>,
     );
@@ -1885,7 +1932,7 @@ describe('OnboardingGate', () => {
     render(
       <OnboardingGate>
         <div>App</div>
-        <BannerHost />
+        <StationDetailsSurface />
       </OnboardingGate>,
     );
 
@@ -1954,13 +2001,13 @@ describe('OnboardingGate', () => {
       };
     }
 
-    test('shows the decline instead of leaving it behind the stack cap', async () => {
+    test('keeps the declined request actionable in Station details', async () => {
       seedPhoneAwaitingApproval();
 
       render(
         <OnboardingGate>
           <div>App</div>
-          <BannerHost />
+          <StationDetailsSurface />
         </OnboardingGate>,
       );
 
@@ -1970,9 +2017,6 @@ describe('OnboardingGate', () => {
       expect(
         screen.getByRole('button', { name: 'Request access again' }),
       ).toBeTruthy();
-      // Not merely present: the front banner. A collapsed stack renders one
-      // banner plus a cap, and the decline used to be the banner behind it.
-      expect(screen.queryByTestId('banner-stack-cap')).toBeNull();
     });
 
     test('withdraws the superseded waiting claim', async () => {
@@ -1981,7 +2025,7 @@ describe('OnboardingGate', () => {
       render(
         <OnboardingGate>
           <div>App</div>
-          <BannerHost />
+          <StationDetailsSurface />
         </OnboardingGate>,
       );
 
@@ -1991,13 +2035,13 @@ describe('OnboardingGate', () => {
       ).toBeNull();
     });
 
-    test('does not stack a second request-access instruction under it', async () => {
+    test('does not publish a second request-access instruction after a decline', async () => {
       seedPhoneAwaitingApproval();
 
       render(
         <OnboardingGate>
           <div>App</div>
-          <BannerHost />
+          <StationDetailsSurface />
         </OnboardingGate>,
       );
 
@@ -2047,7 +2091,7 @@ describe('OnboardingGate', () => {
       render(
         <OnboardingGate>
           <div>App</div>
-          <BannerHost />
+          <StationDetailsSurface />
         </OnboardingGate>,
       );
 
@@ -2065,7 +2109,7 @@ describe('OnboardingGate', () => {
       render(
         <OnboardingGate>
           <div>App</div>
-          <BannerHost />
+          <StationDetailsSurface />
         </OnboardingGate>,
       );
       const banner = await screen.findByText(
@@ -2077,8 +2121,6 @@ describe('OnboardingGate', () => {
       // its subject is what keeps it honest.
       expect(banner.textContent).toContain('Station B');
       expect(banner.textContent).not.toContain('Station A');
-      //.and nothing of A's is left collapsed behind a cap either.
-      expect(screen.queryByTestId('banner-stack-cap')).toBeNull();
     });
 
     test('shows a decline for a target the deep-link path added but never activated', async () => {
@@ -2092,7 +2134,7 @@ describe('OnboardingGate', () => {
       render(
         <OnboardingGate>
           <div>App</div>
-          <BannerHost />
+          <StationDetailsSurface />
         </OnboardingGate>,
       );
 
@@ -2107,7 +2149,7 @@ describe('OnboardingGate', () => {
       const { rerender } = render(
         <OnboardingGate>
           <div>App</div>
-          <BannerHost />
+          <StationDetailsSurface />
         </OnboardingGate>,
       );
       // One Station, and it is the subject: the copy stands unqualified.
@@ -2124,7 +2166,7 @@ describe('OnboardingGate', () => {
       rerender(
         <OnboardingGate>
           <div>App</div>
-          <BannerHost />
+          <StationDetailsSurface />
         </OnboardingGate>,
       );
 
@@ -2141,7 +2183,7 @@ describe('OnboardingGate', () => {
       const { rerender } = render(
         <OnboardingGate>
           <div>App</div>
-          <BannerHost />
+          <StationDetailsSurface />
         </OnboardingGate>,
       );
       await screen.findByText(/Tailnet Station declined this device/);
@@ -2158,7 +2200,7 @@ describe('OnboardingGate', () => {
       rerender(
         <OnboardingGate>
           <div>App</div>
-          <BannerHost />
+          <StationDetailsSurface />
         </OnboardingGate>,
       );
 
@@ -2249,25 +2291,17 @@ describe('OnboardingGate', () => {
     render(
       <OnboardingGate>
         <div>App</div>
-        <BannerHost />
+        <StationDetailsSurface />
       </OnboardingGate>,
     );
 
-    const alert = await screen.findByRole('alert');
+    const alert = await screen.findByRole('dialog', {
+      name: 'Station details',
+    });
     expect(alert.textContent).toMatch(
       /Tailnet Station isn't accepting this device/,
     );
-    // archive#3297: one line. The remedy is a tap away, not a third line of
-    // prose on a phone.
-    // archive#3903 rewrote that second line: it used to say "pair this device
-    // again" beside a button labelled Request access.
-    expect(alert.textContent).not.toMatch(/request access to/i);
-    // archive#4470b: the disclosure toggle's label is the constant "Details"
-    // now (was "More"/"Less").
-    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
-    // station#529: the revealed detail renders outside the live region, so it
-    // is read from the card, not the alert.
-    const card = alert.closest<HTMLElement>('.banner-host__item');
+    const card = alert;
     expect(card?.textContent).toMatch(
       /isn't authorised there\. Request access to Tailnet Station again/i,
     );
@@ -2285,14 +2319,15 @@ describe('OnboardingGate', () => {
     render(
       <OnboardingGate>
         <div>App</div>
-        <BannerHost />
+        <StationDetailsSurface />
       </OnboardingGate>,
     );
 
     expect(screen.getByText('App')).toBeTruthy();
-    expect((await screen.findByRole('alert')).textContent).toMatch(
-      /Request access to reconnect to Tailnet Station/,
-    );
+    expect(
+      (await screen.findByRole('dialog', { name: 'Station details' }))
+        .textContent,
+    ).toMatch(/Request access to reconnect to Tailnet Station/);
   });
 
   test('keeps the web shell and connection manager reachable when the initial endpoint is unavailable', () => {
@@ -2385,7 +2420,7 @@ describe('OnboardingGate', () => {
       <OnboardingGate>
         <MobileWelcomeBoundary>
           <div>App</div>
-          <BannerHost />
+          <StationDetailsSurface />
         </MobileWelcomeBoundary>
       </OnboardingGate>,
     );
@@ -2460,7 +2495,7 @@ describe('OnboardingGate', () => {
         render(
           <OnboardingGate>
             <button type="button">Open Settings</button>
-            <BannerHost />
+            <StationDetailsSurface />
           </OnboardingGate>,
         );
 
@@ -2469,9 +2504,10 @@ describe('OnboardingGate', () => {
         ).toBeTruthy();
         expect(screen.queryByText('Starting Station…')).toBeNull();
         if (bannerCopy) {
-          expect((await screen.findByRole('status')).textContent).toMatch(
-            bannerCopy,
-          );
+          const details = screen.getByRole('dialog', {
+            name: 'Station details',
+          });
+          expect(await within(details).findByText(bannerCopy)).toBeTruthy();
           expect(
             screen.getByRole('button', { name: 'Restart Station' }),
           ).toBeTruthy();
@@ -2480,12 +2516,14 @@ describe('OnboardingGate', () => {
           );
           expect(screen.getByTestId('connection-manager')).toBeTruthy();
         } else {
-          expect(screen.queryByRole('alert')).toBeNull();
+          expect(
+            screen.getByText('No additional Station notices.'),
+          ).toBeTruthy();
         }
       },
     );
 
-    test('keeps local-service failure actionable through the banner', async () => {
+    test('keeps local-service failure actionable in Station details', async () => {
       bundledStatus = bundled({
         phase: 'failed',
         message:
@@ -2494,18 +2532,20 @@ describe('OnboardingGate', () => {
       render(
         <OnboardingGate>
           <div>App</div>
-          <BannerHost />
+          <StationDetailsSurface />
         </OnboardingGate>,
       );
 
       expect(screen.getByText('App')).toBeTruthy();
-      expect((await screen.findByRole('status')).textContent).toMatch(
-        /local Station stopped/i,
-      );
+      const details = screen.getByRole('dialog', { name: 'Station details' });
+      expect(
+        await within(details).findByText(/local Station stopped/i),
+      ).toBeTruthy();
 
       fireEvent.click(screen.getByRole('button', { name: 'Restart Station' }));
       expect(restartBundledServerMock).toHaveBeenCalledTimes(1);
 
+      act(openStationDetails);
       fireEvent.click(
         screen.getByRole('button', {
           name: 'Manage Stations',
@@ -2521,37 +2561,56 @@ describe('OnboardingGate', () => {
      * owner's dangling-tailscale-proxy scenario) left the banner reading
      * exactly as it did before the tap — a dead button, silently.
      */
-    test('surfaces a visible failure when the banner Restart does not reach the host', async () => {
+    test('transfers Restart failure from Station details to a visible, retryable toast', async () => {
+      const { toastStore } = await vi.importActual<
+        typeof import('../contexts/ToastContext')
+      >('../contexts/ToastContext');
+      toastStore.dismissAll();
+      toastMocks.upsertToast.mockImplementation((options: ToastOptions) =>
+        toastStore.upsert(options),
+      );
+      toastMocks.dismissToast.mockImplementation((id: string) =>
+        toastStore.dismiss(id),
+      );
       bundledStatus = bundled({
         phase: 'failed',
         message:
           "Station's local Station stopped. Check its log and restart it.",
       });
-      restartBundledServerMock.mockResolvedValue(false);
-      render(
-        <OnboardingGate>
-          <div>App</div>
-          <BannerHost />
-        </OnboardingGate>,
-      );
-
-      expect((await screen.findByRole('status')).textContent).toMatch(
-        /local Station stopped/i,
-      );
-
-      fireEvent.click(screen.getByRole('button', { name: 'Restart Station' }));
-      expect(restartBundledServerMock).toHaveBeenCalledTimes(1);
-
-      await waitFor(() =>
-        expect(toastMocks.showToast).toHaveBeenCalledTimes(1),
-      );
-      expect(toastMocks.showToast.mock.calls[0]?.[0]).toMatch(
-        /couldn.t restart/i,
-      );
-      // Re-tappable: the banner's own action button is never disabled by
-      // this path, so a second tap reaches the same request again.
-      fireEvent.click(screen.getByRole('button', { name: 'Restart Station' }));
-      expect(restartBundledServerMock).toHaveBeenCalledTimes(2);
+      restartBundledServerMock
+        .mockResolvedValueOnce(false)
+        .mockResolvedValueOnce(true);
+      try {
+        render(
+          <OnboardingGate>
+            <div>App</div>
+            <StationDetailsSurface />
+            <NotificationContainer />
+          </OnboardingGate>,
+        );
+        const details = screen.getByRole('dialog', { name: 'Station details' });
+        await within(details).findByText(/local Station stopped/i);
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Restart Station' }),
+        );
+        expect(
+          screen.queryByRole('dialog', { name: 'Station details' }),
+        ).toBeNull();
+        expect(
+          await screen.findByText(/couldn.t restart the local Station/i),
+        ).toBeTruthy();
+        fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+        await waitFor(() =>
+          expect(restartBundledServerMock).toHaveBeenCalledTimes(2),
+        );
+        await waitFor(() =>
+          expect(
+            screen.queryByText(/couldn.t restart the local Station/i),
+          ).toBeNull(),
+        );
+      } finally {
+        toastStore.dismissAll();
+      }
     });
 
     test('allows a first launch with a healthy desktop-owned sidecar and no service install', () => {
@@ -2584,7 +2643,7 @@ describe('OnboardingGate', () => {
         const view = render(
           <OnboardingGate>
             <button type="button">Open Settings</button>
-            <BannerHost />
+            <StationDetailsSurface />
           </OnboardingGate>,
         );
 
@@ -2593,7 +2652,7 @@ describe('OnboardingGate', () => {
         view.rerender(
           <OnboardingGate>
             <button type="button">Open Settings</button>
-            <BannerHost />
+            <StationDetailsSurface />
           </OnboardingGate>,
         );
 
@@ -2647,103 +2706,6 @@ describe('OnboardingGate', () => {
       );
       expect(screen.queryByText('Starting Station…')).toBeNull();
       expect(screen.getByText('App')).toBeTruthy();
-    });
-  });
-
-  // archive#1007 / archive#1958. Pairing chrome flows through BannerHost under the header
-  // (not a root strip). Pin in-flow layout, drag region, and dismiss.
-  describe('pairing banner does not occlude the window chrome (#1007)', () => {
-    function shell(children?: ReactNode) {
-      return (
-        <OnboardingGate>
-          <header data-testid="app-header">Station</header>
-          <BannerHost />
-          {children}
-        </OnboardingGate>
-      );
-    }
-
-    function showCredentialBanner() {
-      currentStatus = createStatus({ ready: true });
-      lastSuccessAt = Date.now();
-      const view = render(shell());
-      currentStatus = null;
-      credentialState = 'required';
-      view.rerender(shell());
-      return view;
-    }
-
-    test('renders under the header in flow, not as a fixed overlay', async () => {
-      const style = document.createElement('style');
-      style.textContent = readFileSync(
-        join(
-          process.cwd(),
-          'src-ui/src/components/notifications/BannerHost.css',
-        ),
-        'utf8',
-      );
-      document.head.append(style);
-      try {
-        showCredentialBanner();
-        // station#529: the live region is the message cell; the card is
-        // what is positioned.
-        const banner = (await screen.findByRole('alert')).closest(
-          '.banner-host__item',
-        ) as HTMLElement;
-        expect(banner).not.toBeNull();
-
-        const computed = getComputedStyle(banner);
-        expect(
-          computed.position === 'fixed' || computed.position === 'absolute',
-        ).toBe(false);
-
-        const header = screen.getByTestId('app-header');
-        expect(
-          header.compareDocumentPosition(banner) &
-            Node.DOCUMENT_POSITION_FOLLOWING,
-        ).toBeTruthy();
-      } finally {
-        style.remove();
-      }
-    });
-
-    test('marks the strip as a drag region so the overlay title bar still drags', async () => {
-      showCredentialBanner();
-      const banner = (await screen.findByRole('alert')).closest(
-        '.banner-host__item',
-      );
-      expect(banner?.hasAttribute('data-tauri-drag-region')).toBe(true);
-    });
-
-    test('offers a named, keyboard-reachable dismiss that hides the banner', async () => {
-      showCredentialBanner();
-      const dismiss = await screen.findByRole('button', {
-        name: 'Dismiss pairing reminder',
-      });
-      expect(dismiss.tagName).toBe('BUTTON');
-      expect(dismiss.hasAttribute('disabled')).toBe(false);
-
-      fireEvent.click(dismiss);
-      await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
-
-      act(() => {
-        window.dispatchEvent(new Event(OPEN_CONNECTIONS_MODAL_EVENT));
-      });
-      expect(screen.getByTestId('connection-manager')).toBeTruthy();
-    });
-
-    test('re-arms when the connection evidence changes', async () => {
-      const view = showCredentialBanner();
-      fireEvent.click(
-        await screen.findByRole('button', {
-          name: 'Dismiss pairing reminder',
-        }),
-      );
-      await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
-
-      lastSuccessAt = (lastSuccessAt ?? 0) + 1000;
-      view.rerender(shell());
-      expect(await screen.findByRole('alert')).toBeTruthy();
     });
   });
 

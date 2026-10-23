@@ -161,14 +161,7 @@
   outline-color: var(--k-focus) !important;
 }
 
-/*
- * The tone scale, in ONE place (#1582 C4).
- *
- * `BannerHost.css` and `PageCallout.css` both resolve their borders through
- * these, so a banner and a page callout cannot end up disagreeing about what
- * "warning" looks like. Declared against the theme-scoped colour variables
- * rather than literals, so `color-mix` resolves per theme at use.
- */
+/* Shared theme-aware borders for PageCallout and semantic status tones. */
 :root {
   --tone-border-info: color-mix(
     in srgb,
@@ -1492,19 +1485,7 @@ button:hover {
   bottom: 0;
   left: 0;
   right: 0;
-  /* The dock is an active workspace surface and outranks passive notices at
-     this layer. That used to be a statement about paint order for geometry
-     that never actually overlapped; since station#3308 made BannerHost an
-     overlay it decided reachability too, and a dock covering the banner made
-     a blocking pairing/credential notice unclickable. BannerHost.css resolves
-     it with one rule — the overlay steps aside when there is somewhere to
-     step, and outranks the dock when there is not: a DESKTOP SIDE dock leaves
-     a content column and the banner insets into it, keeping this layer; a
-     BOTTOM dock, EVERY dock on mobile, and any MAXIMIZED dock leave no column
-     (and, once resized, no band above them either), so the notice supersedes
-     the dock there. Collapsed, that takes only the notice's own control
-     rectangles — its host and items are transparent to pointer events.
-     Transient notifications use the next named layer and stay above both. */
+  /* Dialogs and transient notifications remain above the active dock. */
   z-index: var(--layer-dock);
   background: var(--bg-secondary);
   border-top: 2px solid var(--accent-primary);
@@ -7764,8 +7745,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
         --region-right-track,
         0
       );
-    /* Toolbar row + content row + bottom-region row. BannerHost is an
-       absolutely-positioned overlay (station#3308) and takes no grid row. */
+    /* Toolbar row, content row and bottom-region row. */
     grid-template-rows: auto minmax(0, 1fr) var(--region-bottom-track, 0);
   }
 
@@ -9799,14 +9779,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
       var(--safe-top)
     );
     z-index: var(--layer-dock);
-  }
-
-  /* This short-window chat fills the work area just like a maximized dock.
-     Passive notices yield to its input; explicit system blockers retain
-     BannerHost's higher layer and their repair controls. */
-  .app__main:has(.chat-dock--bottom:not(.is-collapsed):not(.is-dragging))
-  > .banner-host:not(.banner-host--critical-chrome) {
-    z-index: var(--layer-notice);
   }
 
   .app__main .chat-dock--bottom .chat-input {

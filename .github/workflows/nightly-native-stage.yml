@@ -405,6 +405,16 @@ jobs:
           workspaces: src-desktop
           key: macos-aarch64
           save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Install the hash-pinned macOS DMG layout tool
+        shell: bash
+        run: |
+          set -euo pipefail
+          # dmgbuild writes the installer window layout headlessly. Wheels only,
+          # every hash pinned, no dependency resolution; see native-releases.md.
+          python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else "dmgbuild requires Python 3.10 or newer; found " + sys.version)'
+          python3 -m venv "$RUNNER_TEMP/station-dmgbuild"
+          "$RUNNER_TEMP/station-dmgbuild/bin/python" -m pip install --disable-pip-version-check --no-input --no-cache-dir --require-hashes --only-binary :all: --no-deps -r ops/release/dmg/requirements.txt
+          test -x "$RUNNER_TEMP/station-dmgbuild/bin/dmgbuild"
       - name: Fail closed and build/sign/notarize macOS staging artifacts
         env:
           STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ github.repository == 'kontourai/station' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && github.workflow_ref == 'kontourai/station/.github/workflows/nightly.yml@refs/heads/main' && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
@@ -438,7 +448,7 @@ jobs:
           app=$(find src-desktop/target/aarch64-apple-darwin/release/bundle/macos -maxdepth 1 -type d -name '*.app' -print -quit); test -n "$app"
           test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Info.plist")" = "$bundle_version"
           notary_key="$RUNNER_TEMP/station-notary-api-key.p8"; printf '%s' "$APPLE_API_PRIVATE_KEY" > "$notary_key"; chmod 600 "$notary_key"
-          node ops/release/macos-notarized-artifacts.mjs --app "$app" --identity "$APPLE_DEVELOPER_ID_SIGNING_IDENTITY" --notary-key "$notary_key" --notary-key-id "$APPLE_API_KEY_ID" --notary-issuer "$APPLE_API_ISSUER_ID" --assets-dir cohort-macos --release-tag nightly-desktop --architecture aarch64 --bundle-id io.kontourai.station.nightly --overlap-notarization --deadline-epoch "${{ steps.macos_cohort_deadline.outputs.epoch }}"
+          node ops/release/macos-notarized-artifacts.mjs --app "$app" --identity "$APPLE_DEVELOPER_ID_SIGNING_IDENTITY" --notary-key "$notary_key" --notary-key-id "$APPLE_API_KEY_ID" --notary-issuer "$APPLE_API_ISSUER_ID" --assets-dir cohort-macos --release-tag nightly-desktop --architecture aarch64 --bundle-id io.kontourai.station.nightly --overlap-notarization --deadline-epoch "${{ steps.macos_cohort_deadline.outputs.epoch }}" --dmgbuild "$RUNNER_TEMP/station-dmgbuild/bin/dmgbuild"
           archive=cohort-macos/station-nightly-desktop-macos-aarch64.app.tar.gz
           manifest_path=$(tar -tzf "$archive" | grep '/Contents/Resources/dist-server/station-build.json$')
           test "$(printf '%s\n' "$manifest_path" | sed '/^$/d' | wc -l | tr -d ' ')" = 1

@@ -1,3 +1,4 @@
+import { useConnections } from '@kontourai/station-connect';
 import { ANSWER_SHARE_PERMALINK_PATH } from '@kontourai/station-contracts/answer-share';
 import { setClientOriginResolver } from '@kontourai/station-sdk/client-origin';
 import React, { lazy } from 'react';
@@ -154,6 +155,17 @@ const developmentLocale = resolveDevelopmentLocale(
   import.meta.env.DEV,
 );
 
+function ScopedToastProvider({ children }: { children: React.ReactNode }) {
+  const { activeConnection, apiBase } = useConnections();
+  return (
+    <ToastProvider
+      stationScope={JSON.stringify([activeConnection?.id, apiBase])}
+    >
+      {children}
+    </ToastProvider>
+  );
+}
+
 function ClientOriginProfileBridge() {
   const profile = usePlatformProfile();
   const surface = clientOriginSurfaceForProfile(profile);
@@ -290,11 +302,10 @@ function renderApp(): void {
                   shell keeps component/flow state in `RecoveryQueryBoundary`
                   (own nonpersisted client, switch-scoped cache drop) while
                   protected data stays fully quarantined per authority.
-                  Toasts now survive a connection switch instead of being
-                  cleared by the provider remount; nothing below may rely
-                  on that reset. */}
+                  ScopedToastProvider clears live notices and callbacks when
+                  the selected Station changes. */}
                     <NavigationProvider>
-                      <ToastProvider>
+                      <ScopedToastProvider>
                         <RecoveryQueryBoundary>
                           <DeferredCapabilityBoundary
                             id="connection-recovery"
@@ -372,7 +383,7 @@ function renderApp(): void {
                             </TranscriptAppWorkspaceProvider>
                           </AuthorityQueryProvider>
                         </MobileWelcomeBoundary>
-                      </ToastProvider>
+                      </ScopedToastProvider>
                     </NavigationProvider>
                   </QueryClientProvider>
                 </PlatformSessionGate>
