@@ -644,6 +644,10 @@ export async function publicFenceFixture(
       if (!repeatTaskDispatch) throw Error('canonical task not dispatched');
       return repeatTaskDispatch();
     },
+    get orchestration() {
+      if (!orchestration) throw Error('actual orchestration missing');
+      return orchestration;
+    },
     taskSnapshot: () => {
       if (!orchestration) throw Error('actual orchestration missing');
       return observeDelegatedTask(

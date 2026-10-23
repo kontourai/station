@@ -2012,8 +2012,12 @@ missing. Fresh GET requests require a current personal, in-person local grant
 and orchestration read scope; the original provider/source lease need not remain
 live. Reads verify the signature, principal, host and execution joins before
 disclosing historical admission and actual rounds/v3 state. They do not recover
-a launch capability or extend provider expiry. Public serving and fresh-request
-cancellation remain required.
+a launch capability or extend provider expiry. Its private delivery read also
+joins the seat's actual rounds attempts and authority invocations before asking
+the canonical conversation owner about the reserved task/client-turn key. No
+attempt yields no started-task claim, and an accepted turn on a different
+session refuses. This recovers accepted-turn identity, not terminal evidence or
+a stop receipt. Public serving and fresh-request cancellation remain required.
 
 The [controlled integration](../../src-server/services/orchestration/__tests__/station-report-group-preparation.test.ts)
 consumes an issued root through the published durable v3 authority, rounds

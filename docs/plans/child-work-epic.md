@@ -972,6 +972,11 @@ Operation identity uses host, canonical principal and operation ID rather than
 the returning credential. Retention checks existing execution state before
 accepting admission metadata, so a conflicting reseal cannot replace the original
 root after metadata loss. Missing metadata does not reconstruct a launch capability.
+A fresh private delivery read joins actual attempts/invocations and uses the
+canonical task/client-turn delivery lookup to recover the accepted session/turn;
+it refuses a different session and does not infer started work from reservations.
+It supplies identity for later cancellation composition, not proof of stop or
+provider termination.
 
 Public serving lookup, fresh-request cancellation, Flow-backed frontier/join and
 session ACK remain required before enabling the paid-group capability. The control-plane read responses and provider response in this

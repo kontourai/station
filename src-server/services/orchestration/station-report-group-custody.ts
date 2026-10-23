@@ -1,5 +1,6 @@
 // UNWIRED(#91): private historical custody; public serving and cancellation composition remain required.
 import { canonicalJson } from '@kontourai/relay';
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { createOrchestrationRequestPrincipalResolver } from '../../runtime/bootstrap/orchestration-request-principal.js';
 import { createPersonalRuntimeRequestGuard } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import {
@@ -14,6 +15,7 @@ import {
 import type { EnvironmentSecurityService } from '../ssh/environment-security-service.js';
 import type { StationDelegationPersistence } from './delegation-group-persistence.js';
 import type { RuntimeSourceRequestContext } from './delegation-group-source-admission.js';
+import type { OrchestrationService } from './orchestration-service.js';
 import {
   reportAdmissionData,
   reportAdmissionSignature,
@@ -180,6 +182,67 @@ export class StationReportGroupCustody {
   async inspect(context: RuntimeSourceRequestContext, groupId: string) {
     return this.#inspect(await this.#readContext(context), groupId);
   }
+  async inspectDelivery(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    seatId: string,
+    orchestration: OrchestrationService,
+  ) {
+    id(seatId);
+    const authorized = await this.#readContext(context);
+    const historical = await this.#inspect(authorized, groupId);
+    if (!historical) return null;
+    const member = historical.admission.members.find(
+      (m) => m.seatId === seatId,
+    );
+    if (!member) refuse();
+    const attempts =
+      historical.group?.attempts.filter((a) => a.seatId === seatId) ?? [];
+    if (attempts.length === 0) return null;
+    const authority = historical.authority;
+    const seat = historical.admission.spec.seats.find(
+      (s) => s.seatId === seatId,
+    );
+    if (
+      !authority ||
+      !seat ||
+      !attempts.every((attempt) =>
+        authority.invocations.some(
+          (invocation) =>
+            invocation.invocationId === attempt.invocationId &&
+            invocation.envelopeId === seat.envelope.id,
+        ),
+      )
+    )
+      refuse();
+    authorized.current();
+    const delivery = orchestration.inspectTurnDelivery(
+      member.reservedTaskId,
+      member.reservedClientTurnId,
+      sessionReadAuthorityFromRequest(
+        authorized.principal.id,
+        undefined,
+        undefined,
+      ),
+    );
+    authorized.current();
+    if (!delivery) return null;
+    if (delivery.outcome !== 'started')
+      return {
+        seatId,
+        taskId: member.reservedTaskId,
+        outcome: delivery.outcome,
+      };
+    if (delivery.sessionId !== member.reservedTaskId) refuse();
+    return {
+      seatId,
+      taskId: member.reservedTaskId,
+      outcome: delivery.outcome,
+      sessionId: delivery.sessionId,
+      turnId: delivery.turnId,
+    };
+  }
+
   async findOperation(
     context: RuntimeSourceRequestContext,
     operationId: string,

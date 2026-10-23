@@ -407,6 +407,15 @@ test('issued preparation reaches canonical delegated-task dispatch and retained 
   try {
     const { prepared, sdk, driver } = await taskDriver(h, handle);
     assert.equal(h.rawFetch.mock.calls.length, 0);
+    assert.equal(
+      await h.custody.inspectDelivery(
+        h.f.context(requestFor(h)),
+        groupId,
+        'left',
+        driver.orchestration,
+      ),
+      null,
+    );
     await driver.run();
     assert.equal(
       h.rawFetch.mock.calls.length,
@@ -489,6 +498,37 @@ test('issued preparation reaches canonical delegated-task dispatch and retained 
       costMicros: 42,
     });
     assert.equal(historical.group.attempts.length, 1);
+    const delivery = await reader.inspectDelivery(
+      h.f.context(requestFor(h, 'GET', current.credential)),
+      groupId,
+      'left',
+      driver.orchestration,
+    );
+    assert.deepEqual(delivery, {
+      seatId: 'left',
+      taskId: prepared.members[0].taskId,
+      outcome: 'started',
+      sessionId: driver.task.sessionId,
+      turnId: driver.task.initialTurnId,
+    });
+    const lookup = vi
+      .spyOn(driver.orchestration, 'inspectTurnDelivery')
+      .mockReturnValue({
+        outcome: 'started',
+        sessionId: 'foreign-successor-session',
+        turnId: driver.task.initialTurnId,
+      });
+    await assert.rejects(
+      () =>
+        reader.inspectDelivery(
+          h.f.context(requestFor(h, 'GET', current.credential)),
+          groupId,
+          'left',
+          driver.orchestration,
+        ),
+      { code: 'group_custody_unavailable' },
+    );
+    lookup.mockRestore();
     assert.equal(h.rawFetch.mock.calls.length, 1);
     assert.throws(() => h.owner.read(handle, h.f.req));
   } finally {
