@@ -772,6 +772,10 @@ async function qualifyReceiver(snapshot, buildManifest, activeEntrypoints) {
           incompatible,
         );
         await assert.rejects(store.revokeSource(sourceId), incompatible);
+        await assert.rejects(
+          store.fenceProductSourcesAfterRestore(),
+          incompatible,
+        );
       } finally {
         await pool.query(restore);
       }
@@ -784,7 +788,7 @@ async function qualifyReceiver(snapshot, buildManifest, activeEntrypoints) {
         1,
       );
       checks.push(
-        `${name}: all nine repository entrypoints and HTTP probe refused; restored readiness/data`,
+        `${name}: all ten repository entrypoints and HTTP probe refused; restored readiness/data`,
       );
     }
     assert.equal(await store.revokeSource(sourceId), true);
