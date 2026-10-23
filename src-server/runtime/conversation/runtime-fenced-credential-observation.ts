@@ -1,6 +1,7 @@
 // UNWIRED(#91): private caller composition only; no route, qualification or execution activation.
 import { realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { canonicalJson } from '@kontourai/relay';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import type { CurrentRuntimeRequestPrincipalSecurity } from '../../security/runtime-request-security.js';
@@ -200,10 +201,11 @@ export class RuntimeFencedCredentialObservationOwner {
     if (spec.execution?.agentConnectionId) refuse();
     const appConfig = await owners.configLoader.loadAppConfig();
     assertCurrent();
+    const connections = owners.storageAdapter.listProviderConnections();
+    const inventory = canonicalJson(connections);
     const binding = resolveManagedModelIdentity(spec, {
       appConfig,
-      listProviderConnections: () =>
-        owners.storageAdapter.listProviderConnections(),
+      listProviderConnections: () => connections,
     });
     const provider = binding.providerType;
     if (provider !== 'anthropic' && provider !== 'google') refuse();
@@ -213,6 +215,11 @@ export class RuntimeFencedCredentialObservationOwner {
       provider,
     });
     assertCurrent();
+    if (
+      canonicalJson(owners.storageAdapter.listProviderConnections()) !==
+      inventory
+    )
+      refuse();
     readObservedSdkProviderCredential(credential, provider, request);
     return Object.freeze({
       agentId: id,

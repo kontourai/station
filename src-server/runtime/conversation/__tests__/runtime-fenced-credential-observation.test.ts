@@ -928,3 +928,40 @@ test('participating Agent changes during its read refuse before issuing a creden
     h.cleanup();
   }
 });
+
+test('provider inventory drift between only-candidate selection and credential capture refuses mixed-generation preparation', async () => {
+  const h = await setup();
+  try {
+    await h.adapter.deleteProviderConnection('other');
+    await h.loader.saveAgent('reviewer', {
+      name: 'Reviewer',
+      prompt: 'Report',
+      execution: { modelId: 'claude-sonnet-4-6' },
+    });
+    const capture = h.service.captureSdkCredential.bind(h.service);
+    h.service.captureSdkCredential = async (request, input) => {
+      await h.adapter.saveProviderConnection({
+        id: 'other',
+        name: 'New enabled alternative',
+        type: 'anthropic',
+        enabled: true,
+        capabilities: ['llm'],
+        config: {
+          apiKey: 'synthetic-other-key',
+          baseUrl: 'https://api.anthropic.com/v1',
+        },
+      });
+      return capture(request, input);
+    };
+    await assert.rejects(() =>
+      h.service.captureAgentSdkCredential(h.request, 'reviewer'),
+    );
+    assert.equal(
+      h.records().length,
+      1,
+      'refused disclosure does not claim the inert observation was rolled back',
+    );
+  } finally {
+    h.cleanup();
+  }
+});

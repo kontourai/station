@@ -2019,8 +2019,11 @@ projected Agent through AgentService and uses Station's existing managed-model
 selector for explicit/default/sole-candidate connection and model selection. It
 carries the configured instructions with the private lease, refuses external
 engine bindings and ambiguous or unsupported providers, and checks the original
-fences after each asynchronous read and credential capture. This is configured
-selection, not a provider readiness or entitlement probe.
+fences after each asynchronous read and credential capture. The provider
+inventory used for selection must still match after credential capture, so an
+added alternative cannot preserve an earlier sole-candidate choice. Later SDK
+reads retain the credential owner's full provider-file witness. This is
+configured selection, not a provider readiness or entitlement probe.
 
 This lease authenticates a credential source, not model entitlement or a tariff.
 The existing qualified provider contract remains independently required, and
