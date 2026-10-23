@@ -10,6 +10,7 @@ import {
 } from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
 import { test, vi } from 'vitest';
+import { runCli } from '../../../../packages/cli/src/cli.js';
 import { createGateTestRegistry } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
 import { createReportGroupRoutes } from '../../../routes/orchestration/report-groups.js';
@@ -211,15 +212,30 @@ test('report HTTP owner runs configured seats through canonical tasks and retain
     app = appFor(new StationReportGroupRuntime(owners));
     assert.equal(qualifies.mock.calls.length, 2);
     const controlFetch = globalThis.fetch;
+    let cliIngress = false;
     vi.stubGlobal(
       'fetch',
       vi.fn<typeof fetch>(async (url, init) => {
         if (
           String(url).startsWith(
             'http://report-control.test/api/orchestration/report-groups',
+          ) ||
+          String(url).startsWith(
+            'http://127.0.0.1:43979/api/orchestration/report-groups',
           )
         )
-          return app.request(String(url), init);
+          return app.request(
+            String(url),
+            cliIngress
+              ? {
+                  ...init,
+                  headers: {
+                    ...Object.fromEntries(new Headers(init?.headers)),
+                    'X-Test-Operator': 'yes',
+                  },
+                }
+              : init,
+          );
         return controlFetch(url, init);
       }),
     );
@@ -254,6 +270,27 @@ test('report HTTP owner runs configured seats through canonical tasks and retain
       ).groups,
       [result.group],
     );
+    const cliOutput: string[] = [];
+    const priorExitCode = process.exitCode;
+    const log = vi.spyOn(console, 'log').mockImplementation((value) => {
+      cliOutput.push(String(value));
+    });
+    cliIngress = true;
+    try {
+      await runCli([
+        'group',
+        'report-get',
+        result.group.groupId,
+        '--api-base=http://127.0.0.1:43979',
+        `--credential=${returning.credential}`,
+        '--json',
+      ]);
+    } finally {
+      cliIngress = false;
+      log.mockRestore();
+      process.exitCode = priorExitCode;
+    }
+    assert.deepEqual(JSON.parse(cliOutput[0]), result.group);
     const replayResponse = await send('POST', '', input, returning.credential);
     assert.equal(replayResponse.status, 200);
     const replay = (await replayResponse.json()) as { data: Operation };

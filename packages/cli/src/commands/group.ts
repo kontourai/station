@@ -1,5 +1,3 @@
-import { closeSync, constants, fstatSync, openSync, readSync } from 'node:fs';
-import { resolve } from 'node:path';
 import {
   cancelCliSessionGroup,
   cancelDelegationGroup,
@@ -25,6 +23,8 @@ import {
   syncCliSessionGroup,
 } from '@kontourai/station-sdk/client';
 import { optionalValueFlag, type ParsedCoreArgs } from './core-api.js';
+import { readGroupInput } from './group-input.js';
+import { runReportGroupCommand } from './report-group.js';
 import { terminalSafeJson, terminalSafeText } from './terminal-safe.js';
 
 function cursor(parsed: ParsedCoreArgs, key: string): number | undefined {
@@ -46,6 +46,8 @@ export async function runGroupCommand(
   parsed: ParsedCoreArgs,
 ): Promise<void> {
   const [action, groupId, seatId, ...extra] = parsed.positionals;
+  if (action?.startsWith('report-'))
+    return runReportGroupCommand(apiBase, parsed);
   if (action?.startsWith('session-'))
     return runSessionGroupCommand(apiBase, parsed);
 
@@ -248,39 +250,7 @@ async function runSessionGroupCommand(
     return;
   }
   if (create || sync) {
-    const descriptor = openSync(
-      resolve(required(parsed, 'file')),
-      constants.O_RDONLY | constants.O_NONBLOCK,
-    );
-    let bytes: Buffer;
-    try {
-      const stat = fstatSync(descriptor);
-      if (!stat.isFile() || stat.size > 262_144)
-        throw new Error(
-          'Session group input must be a regular JSON file of at most 256 KiB.',
-        );
-      const buffer = Buffer.alloc(262_145);
-      let length = 0;
-      while (length < buffer.length) {
-        const read = readSync(
-          descriptor,
-          buffer,
-          length,
-          buffer.length - length,
-          null,
-        );
-        if (!read) break;
-        length += read;
-      }
-      if (length > 262_144)
-        throw new Error('Session group input exceeds 256 KiB.');
-      bytes = buffer.subarray(0, length);
-    } finally {
-      closeSync(descriptor);
-    }
-    const input: unknown = JSON.parse(
-      new TextDecoder('utf-8', { fatal: true }).decode(bytes),
-    );
+    const input = readGroupInput(required(parsed, 'file'), 'Session group');
     if (sync) {
       const stop = new AbortController();
       const interrupt = () => stop.abort();

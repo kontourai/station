@@ -5554,5 +5554,6 @@ observation-only. The strict reader/server shapes ship together.
 The [API reference](api.md#report-groups) lists inputs, availability and remaining
 qualification. The controlled HTTP owner test exercises real SDK calls, serving,
 canonical task dispatch, SQLite and tariff custody; it is not live-provider or
-billing acceptance. CLI/UI adoption, Flow joins, continuation and pending-cancel
+billing acceptance. The [CLI report commands](cli.md#qualified-report-groups)
+consume this client. UI adoption, Flow joins, continuation and pending-cancel
 finalization remain open.

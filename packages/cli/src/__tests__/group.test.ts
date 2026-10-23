@@ -143,7 +143,7 @@ test.each([
   },
 );
 
-test.each(['events', 'session-events'])(
+test.each(['events', 'session-events', 'report-events'])(
   'CLI %s follow closes its stream and SIGINT listener after interruption',
   async (action) => {
     const original = globalThis.fetch;
@@ -163,7 +163,7 @@ test.each(['events', 'session-events'])(
           start(controller) {
             controller.enqueue(
               new TextEncoder().encode(
-                `event: ${action === 'events' ? 'group-events' : 'cli-group-events'}\nid: ${action === 'events' ? 'group:g:1' : 'cli-group:g:1'}\ndata: ${JSON.stringify({ groupId: 'g', afterRevision: 0, nextRevision: 1, events: action === 'events' ? [] : [{ revision: 1, members: [], schedule: [] }], hasMore: false, unavailable: [] })}\n\n`,
+                `event: ${action === 'events' ? 'group-events' : action === 'report-events' ? 'report-group-events' : 'cli-group-events'}\nid: ${action === 'events' ? 'group:g:1' : action === 'report-events' ? 'report:g:1' : 'cli-group:g:1'}\ndata: ${JSON.stringify({ groupId: 'g', afterRevision: 0, nextRevision: 1, ...(action === 'report-events' ? { revision: 1 } : {}), events: action === 'events' ? [] : action === 'report-events' ? [{ revision: 1, kind: 'command', commandKind: 'create' }] : [{ revision: 1, members: [], schedule: [] }], hasMore: false, unavailable: [] })}\n\n`,
               ),
             );
           },
@@ -466,4 +466,214 @@ test('registered preset-group creation submits exact receiver bindings and refus
     ),
   );
   assert.equal(fetch.mock.calls.length, 1);
+});
+
+function reportView() {
+  return {
+    version: 'station.report-group/v1',
+    groupId: 'report',
+    operationId: 'op',
+    revision: 0,
+    topology: { kind: 'independent-advisory' },
+    execution: 'idle',
+    cancellation: 'none',
+    authorityRevoked: false,
+    acceptance: 'unassessed',
+    members: [
+      {
+        seatId: 'one',
+        agentId: 'reviewer',
+        taskId: 'task',
+        clientTurnId: 'turn',
+        requestedModelId: 'model',
+        attempts: [],
+      },
+    ],
+  };
+}
+test('registered report CLI resolves SDK operations with explicit credentials and no repeated mutation', async () => {
+  const { writeFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const root = sessionGroupTemp('station-cli-report-');
+  const file = join(root, 'report.json');
+  const input = {
+    operationId: 'op',
+    projectSlug: 'p',
+    deadlineAt: Date.now() + 60000,
+    maxConcurrent: 1,
+    budget: { inputTokens: 100, outputTokens: 10, costMicros: 450 },
+    members: [
+      {
+        seatId: 'one',
+        agentId: 'reviewer',
+        brief: 'Report',
+        maxOutputTokens: 10,
+      },
+    ],
+  };
+  writeFileSync(file, JSON.stringify(input));
+  const output: string[] = [];
+  vi.spyOn(console, 'log').mockImplementation((value) => {
+    output.push(String(value));
+  });
+  const fetch = vi.fn<typeof globalThis.fetch>(async (url, init) => {
+    const path = new URL(String(url)).pathname;
+    const data =
+      path.endsWith('/report-groups') && (init?.method ?? 'GET') === 'GET'
+        ? { groups: [reportView()], hasMore: false, nextGroupId: null }
+        : path.endsWith('/cancel')
+          ? { replayed: false, revision: 1, cancellation: 'requested' }
+          : path.includes('/results/')
+            ? {
+                kind: 'result',
+                groupId: 'report',
+                seatId: 'one',
+                invocationId: 'attempt',
+                modelId: 'model',
+                text: '\u001b[31moutput',
+                afterOffset: 0,
+                nextOffset: 11,
+                hasMore: false,
+                usage: { inputTokens: 1, outputTokens: 1, costMicros: 1 },
+              }
+            : path.endsWith('/events')
+              ? {
+                  groupId: 'report',
+                  afterRevision: 0,
+                  nextRevision: 0,
+                  revision: 0,
+                  events: [],
+                  unavailable: [],
+                  hasMore: false,
+                }
+              : path.endsWith('/report')
+                ? reportView()
+                : { replayed: false, group: reportView() };
+    return new Response(JSON.stringify({ success: true, data }));
+  });
+  vi.stubGlobal('fetch', fetch);
+  const commands = [
+    ['report-create', `--file=${file}`],
+    ['report-list'],
+    ['report-get', 'report'],
+    ['report-events', 'report'],
+    ['report-result', 'report', 'one', 'attempt'],
+    ['report-cancel', 'report', '--operation=stop', '--revision=0'],
+  ];
+  for (const command of commands)
+    await runCli([
+      'group',
+      ...command,
+      '--api-base=https://station.test',
+      '--credential=fixture',
+      '--json',
+    ]);
+  assert.equal(fetch.mock.calls.length, 6);
+  assert.equal(output.length, 6);
+  assert.deepEqual(JSON.parse(String(fetch.mock.calls[0][1]?.body)), input);
+  assert.deepEqual(JSON.parse(String(fetch.mock.calls[5][1]?.body)), {
+    operationKey: 'stop',
+    expectedRevision: 0,
+  });
+  for (const [, init] of fetch.mock.calls)
+    assert.equal(
+      new Headers(init?.headers).get('Authorization'),
+      'Bearer fixture',
+    );
+  assert.ok(output.every((value) => !value.includes('\u001b')));
+});
+test.each([
+  ['report-events', 'report', '--after-revision=-1', '--follow'],
+  ['report-result', 'report', 'one'],
+  ['report-cancel', 'report', '--operation=stop'],
+  ['report-get', 'report', '--file=unexpected'],
+  [
+    'report-cancel',
+    'report',
+    '--operation=stop',
+    '--revision=0',
+    '--revision=1',
+  ],
+])(
+  'report CLI rejects malformed command %j without fetching or retaining SIGINT',
+  async (...args) => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal('fetch', fetch);
+    const listeners = process.listeners('SIGINT');
+    await assert.rejects(
+      runGroupCommand('https://station.test', parseCoreArgs(args)),
+    );
+    assert.equal(fetch.mock.calls.length, 0);
+    assert.deepEqual(process.listeners('SIGINT'), listeners);
+  },
+);
+test('report create refuses non-UTF8 and oversized files before a request', async () => {
+  const { writeFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const file = join(
+    sessionGroupTemp('station-cli-report-invalid-'),
+    'input.json',
+  );
+  const fetch = vi.fn<typeof globalThis.fetch>();
+  vi.stubGlobal('fetch', fetch);
+  for (const bytes of [Buffer.from([0xff]), Buffer.alloc(262145)]) {
+    writeFileSync(file, bytes);
+    await assert.rejects(
+      runGroupCommand(
+        'https://station.test',
+        parseCoreArgs(['report-create', `--file=${file}`]),
+      ),
+    );
+  }
+  assert.equal(fetch.mock.calls.length, 0);
+});
+
+test('report create SIGINT aborts one request without sending cancel or retry and releases its listener', async () => {
+  const { writeFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const file = join(
+    sessionGroupTemp('station-cli-report-abort-'),
+    'input.json',
+  );
+  writeFileSync(
+    file,
+    JSON.stringify({
+      operationId: 'op',
+      projectSlug: 'p',
+      deadlineAt: Date.now() + 60000,
+      maxConcurrent: 1,
+      budget: { inputTokens: 1, outputTokens: 1, costMicros: 1 },
+      members: [
+        { seatId: 'one', agentId: 'a', brief: 'Report', maxOutputTokens: 1 },
+      ],
+    }),
+  );
+  let ready!: () => void;
+  const dispatched = new Promise<void>((resolve) => {
+    ready = resolve;
+  });
+  const fetch = vi.fn<typeof globalThis.fetch>(
+    async (_url, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        const stop = () => reject(new DOMException('Aborted', 'AbortError'));
+        init?.signal?.addEventListener('abort', stop, { once: true });
+        ready();
+      }),
+  );
+  vi.stubGlobal('fetch', fetch);
+  const listeners = process.listenerCount('SIGINT');
+  const running = runGroupCommand(
+    'https://station.test',
+    parseCoreArgs(['report-create', `--file=${file}`]),
+  );
+  const refused = assert.rejects(running, { name: 'AbortError' });
+  await dispatched;
+  process.emit('SIGINT');
+  await refused;
+  assert.equal(fetch.mock.calls.length, 1);
+  assert.equal(
+    String(fetch.mock.calls[0][0]),
+    'https://station.test/api/orchestration/report-groups',
+  );
+  assert.equal(process.listenerCount('SIGINT'), listeners);
 });

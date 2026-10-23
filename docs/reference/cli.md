@@ -914,6 +914,44 @@ station import ~/Library/Application\ Support/Claude/claude_desktop_config.json
 
 ---
 
+## Qualified report groups
+
+These personal-host commands use configured Station Agents and the qualified
+sealed SDK profile. They are separate from CLI session groups' logical start
+allowance and do not establish Flow-backed joins or semantic acceptance.
+
+```bash
+station group report-create --file=report.json --json
+station group report-list --after-group=<last-group-id> --json
+station group report-get <group-id> --json
+station group report-events <group-id> --after-revision=0 --json
+station group report-events <group-id> --after-revision=0 --follow --json
+station group report-result <group-id> <seat-id> <invocation-id> --after-offset=0 --json
+station group report-cancel <group-id> --operation=<cancel-key> --revision=<revision> --json
+```
+
+`report-create` reads one regular UTF-8 JSON file of at most 256 KiB. Its fields
+are the [report-group API input](api.md#report-groups): an immutable operation ID,
+Project/source selection, deadline, concurrency, aggregate token/inference-micro
+budget and bounded member Agent IDs/briefs/output limits. The server resolves
+model/runtime identity; no root authority or provider credentials are accepted
+in that file. Use the existing `--station` or explicit API-base/credential target
+options for a protected request.
+
+Exact operation replay observes retained state without another paid attempt.
+Ctrl-C aborts the request or closes observation; it does not issue a group cancel,
+prove termination or authorize a resend with a new operation ID. Cancellation is
+an explicit operation/revision command. Unknown delivery/accounting remains
+retained. Follow uses bounded server rotations and the SDK's report-specific
+checkpoint; malformed protocol data terminal-stops instead of reconnecting.
+
+Result pages intentionally expose authorized report text through terminal-safe
+JSON. Offsets count UTF-16 code units; concatenate successive pages in order.
+Raw result read admission and digest checks are separate from group metadata.
+The focused CLI tests use controlled transport; actual serving/SDK/canonical-task
+proof remains a separate controlled HTTP owner receipt, not live provider proof.
+
+
 ## Core Workspace
 
 These commands expose the same agent/project/skill surfaces used by

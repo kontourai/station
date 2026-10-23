@@ -942,6 +942,14 @@ model access and same-session ACK acceptance remain separate obligations.
 
 ## Authenticated report-group preparation
 
+Registered `group report-*` CLI commands now consume the strict SDK for
+create/get/list/events/follow/results/cancel. Input file and flag bounds apply
+before request dispatch; terminal output is escaped. SIGINT closes observation
+or aborts one request without implicit cancellation or paid retry. Existing
+session commands share the bounded JSON-file reader. Controlled CLI tests cover
+registration, credentials, parsing and process-listener cleanup; they do not
+establish live-provider acceptance or the remaining UI/Flow/context work.
+
 The public report-group types and SDK client now cover create/get/list/cancel,
 journal GET/SSE and raw-result pages. The primary HTTP owner exercises SDK
 replay/reads on the actual serving and retained accounting path; SDK controls
