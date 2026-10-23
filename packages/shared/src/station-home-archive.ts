@@ -1286,6 +1286,36 @@ function removeUpdateState(directory: string, parentSegments: string[]): void {
   }
 }
 
+function updateRestorePathKey(segments: readonly string[]): string {
+  // Match the manifest's conservative case/NFC alias checks on every volume.
+  return JSON.stringify(
+    segments.map((segment) => segment.normalize('NFC').toLowerCase()),
+  );
+}
+
+/** Refuse saved files/links that would replace directories cleanup retains. */
+function assertUpdateRestoreTargets(
+  directory: string,
+  targets: ReadonlySet<string>,
+  parentSegments: string[] = [],
+): void {
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+    const segments = [...parentSegments, entry.name];
+    const external = isExternalStationHomePath(segments, true);
+    if (!external && !containsExternalStationHomePath(segments)) continue;
+    if (targets.has(updateRestorePathKey(segments)))
+      fail('backup entry conflicts with a preserved home directory');
+    // Only inspect state containers, never descend into a user's checkout.
+    if (!external)
+      assertUpdateRestoreTargets(
+        join(directory, entry.name),
+        targets,
+        segments,
+      );
+  }
+}
+
 function symlinkType(link: StationHomeBackupSymlink) {
   if (process.platform !== 'win32') return undefined;
   if (!link.directory) return 'file' as const;
@@ -1343,20 +1373,35 @@ export function restoreStationHomeUpdateBackup(
     const homeStats = lstatSync(homeDir);
     if (!homeStats.isDirectory() || homeStats.isSymbolicLink())
       fail('Station home must be a regular directory');
+    // Resolve and reconcile the whole plan before removing any Station state.
+    const contentRoot = join(backupDir, 'home');
+    const files = restorable.map((file) => ({
+      file,
+      source: pathFor(contentRoot, file.path),
+      target: pathFor(homeDir, file.path),
+    }));
+    const symlinks = links.map((link) => ({
+      link,
+      path: pathFor(homeDir, link.path),
+    }));
+    assertUpdateRestoreTargets(
+      homeDir,
+      new Set(
+        [...restorable, ...links].map((entry) =>
+          updateRestorePathKey(entry.path),
+        ),
+      ),
+    );
     removeUpdateState(homeDir, []);
     fsyncDirectorySync(homeDir);
     options.afterRemove?.();
-    const contentRoot = join(backupDir, 'home');
-    for (const file of restorable) {
-      const source = pathFor(contentRoot, file.path);
-      const target = pathFor(homeDir, file.path);
+    for (const { file, source, target } of files) {
       mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
       copyFileSync(source, target, constants.COPYFILE_EXCL);
       if (process.platform !== 'win32') chmodSync(target, file.mode);
       syncFile(target);
     }
-    for (const link of links) {
-      const path = pathFor(homeDir, link.path);
+    for (const { link, path } of symlinks) {
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
       symlinkSync(link.target, path, symlinkType(link));
     }

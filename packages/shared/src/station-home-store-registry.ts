@@ -213,7 +213,10 @@ function acquisitionCheckoutParent(segments: readonly string[]): boolean {
   );
 }
 
-/** Whether a home path is, or is inside, an `external` path. */
+/**
+ * Whether a validated home path is, or is inside, an `external` path.
+ * Segments are raw names: the archive validates platform-specific safety.
+ */
 export function isExternalStationHomePath(
   segments: readonly string[],
   isDirectory = false,
@@ -225,11 +228,7 @@ export function isExternalStationHomePath(
     (segments.length >= 3 &&
       acquisitionCheckoutParent(segments) &&
       /^checkout-[1-9][0-9]*$/.test(segments[2]) &&
-      (segments.length > 3 || isDirectory) &&
-      segments.every(
-        (segment) =>
-          segment !== '.' && segment !== '..' && !/[\\/\0]/.test(segment),
-      ))
+      (segments.length > 3 || isDirectory))
   );
 }
 

@@ -328,6 +328,162 @@ describe('update backup and in-place restore (#2675 D)', () => {
     );
   });
 
+  it.each([
+    ['file', 'checkout', false],
+    ['link', 'checkout', false],
+    ['file', 'request', false],
+    ['link', 'request', false],
+    ['file', 'root', false],
+    ['link', 'root', false],
+    ['file', 'request', true],
+    ['link', 'request', true],
+  ] as const)(
+    'refuses a saved %s at the %s boundary (case alias: %s) before removing state when it now holds a checkout',
+    (kind, boundary, caseAlias) => {
+      const fixture = serviceHome();
+      mkdirSync(join(fixture.root, 'update-backups'));
+      const root = join(fixture.home, 'repository-acquisitions');
+      const id = randomUUID();
+      const directory = join(root, id);
+      const checkout = join(directory, 'checkout-1');
+      const collision =
+        boundary === 'root'
+          ? root
+          : boundary === 'request'
+            ? join(root, caseAlias ? id.toUpperCase() : id)
+            : checkout;
+      mkdirSync(join(collision, '..'), { recursive: true });
+      const outside = join(fixture.root, 'outside');
+      mkdirSync(outside);
+      writeFileSync(join(outside, 'work.txt'), 'outside work');
+      if (kind === 'file') writeFileSync(collision, 'saved state');
+      else symlinkSync(outside, collision, 'dir');
+      createStationHomeUpdateBackup({
+        homeDir: fixture.home,
+        backupDir: fixture.backupDir,
+      });
+      rmSync(collision);
+      mkdirSync(checkout, { recursive: true });
+      writeFileSync(join(checkout, 'work.txt'), 'user work');
+      const receipt = join(directory, 'operation.json');
+      writeFileSync(receipt, 'trial receipt');
+      const config = join(fixture.home, 'config', 'app.json');
+      writeFileSync(config, 'trial config');
+      const marker = sha(join(fixture.home, STATION_HOME_SCHEMA_FILE));
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        let removed = false;
+        expect(() =>
+          restoreStationHomeUpdateBackup({
+            homeDir: fixture.home,
+            backupDir: fixture.backupDir,
+            afterRemove: () => {
+              removed = true;
+            },
+          }),
+        ).toThrow(StationHomeArchiveError);
+        expect(removed, 'conflict must be refused before removing state').toBe(
+          false,
+        );
+        expect(readFileSync(config, 'utf8')).toBe('trial config');
+        expect(readFileSync(receipt, 'utf8')).toBe('trial receipt');
+        expect(sha(join(fixture.home, STATION_HOME_SCHEMA_FILE))).toBe(marker);
+        expect(readdirSync(checkout)).toEqual(['work.txt']);
+        expect(readFileSync(join(checkout, 'work.txt'), 'utf8')).toBe(
+          'user work',
+        );
+        expect(readFileSync(join(outside, 'work.txt'), 'utf8')).toBe(
+          'outside work',
+        );
+      }
+    },
+  );
+
+  it.skipIf(process.platform === 'win32').each([
+    ['current', 'edited'],
+    ['current', 'deleted'],
+    ['older', 'edited'],
+    ['older', 'deleted'],
+  ] as const)(
+    'restores receipts from a %s snapshot while leaving %s POSIX raw checkout names alone',
+    (version, change) => {
+      const fixture = serviceHome();
+      mkdirSync(join(fixture.root, 'update-backups'));
+      const directory = join(
+        fixture.home,
+        'repository-acquisitions',
+        randomUUID(),
+      );
+      const checkout = join(directory, 'checkout-1');
+      const names = ['a\\b.txt', join('dir\\name', 'note.txt'), 'ordinary.txt'];
+      for (const name of names) {
+        const file = join(checkout, name);
+        mkdirSync(join(file, '..'), { recursive: true });
+        writeFileSync(file, 'saved user bytes');
+      }
+      const receipt = join(directory, 'operation.json');
+      writeFileSync(receipt, 'saved receipt');
+      if (version === 'older') {
+        // Before checkout exclusion, update v1 held these regular files.
+        // The full backup API produces their bytes/hashes in manifest order;
+        // the update v1 envelope adds its (empty here) symbolic-link list.
+        const { manifest } = createStationHomeBackup({
+          homeDir: fixture.home,
+          outputDir: fixture.backupDir,
+        });
+        writeFileSync(
+          join(fixture.backupDir, STATION_HOME_BACKUP_MANIFEST),
+          JSON.stringify({
+            ...manifest,
+            schemaVersion: STATION_HOME_UPDATE_BACKUP_SCHEMA,
+            symlinks: [],
+          }),
+        );
+      }
+      const backup = createStationHomeUpdateBackup({
+        homeDir: fixture.home,
+        backupDir: fixture.backupDir,
+      });
+      expect(backup.reused).toBe(version === 'older');
+      expect(
+        backup.manifest.files.some((file) => file.path.at(-1) === 'a\\b.txt'),
+      ).toBe(version === 'older');
+      for (const name of names) {
+        const file = join(checkout, name);
+        if (change === 'edited') writeFileSync(file, 'trial user bytes');
+        else rmSync(file);
+      }
+      const newWork = join(checkout, 'new.txt');
+      writeFileSync(newWork, 'new user work');
+      writeFileSync(receipt, 'trial receipt');
+      writeFileSync(join(fixture.home, 'config', 'app.json'), 'trial config');
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          restoreStationHomeUpdateBackup({
+            homeDir: fixture.home,
+            backupDir: fixture.backupDir,
+          });
+        } finally {
+          // Also observe user bytes when restore throws after a partial copy.
+          for (const name of names) {
+            const file = join(checkout, name);
+            if (change === 'edited')
+              expect(readFileSync(file, 'utf8')).toBe('trial user bytes');
+            else
+              expect(
+                existsSync(file),
+                'deleted user file must stay absent',
+              ).toBe(false);
+          }
+        }
+        expect(readFileSync(newWork, 'utf8')).toBe('new user work');
+        expect(readFileSync(receipt, 'utf8')).toBe('saved receipt');
+        expect(
+          readFileSync(join(fixture.home, 'config', 'app.json'), 'utf8'),
+        ).toBe('{"model":"before"}\n');
+      }
+    },
+  );
+
   it('backs up state including the schema marker and leaves live roots out', () => {
     const fixture = serviceHome();
     mkdirSync(join(fixture.root, 'update-backups'));
