@@ -14,6 +14,7 @@ mod desktop_installation;
 #[cfg(not(mobile))]
 mod desktop_update;
 mod ios_background_task;
+mod ios_network_path;
 #[cfg(target_os = "linux")]
 mod linux_webkit;
 #[cfg(not(mobile))]
@@ -13716,6 +13717,7 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(not(mobile))]
     let builder = builder.invoke_handler(tauri::generate_handler![
         native_capability_report,
+        ios_network_path::station_native_network_path,
         native_relay_redemption::station_native_device_binding_candidate,
         native_relay_redemption::station_native_device_binding_self_receipt,
         native_application_peer::station_native_application_peer_prepare,
@@ -13820,6 +13822,7 @@ If a stable instance is running, this launch will focus its window and exit.",
     #[cfg(mobile)]
     let builder = builder.invoke_handler(tauri::generate_handler![
         native_capability_report,
+        ios_network_path::station_native_network_path,
         native_relay_redemption::station_native_device_binding_candidate,
         native_relay_redemption::station_native_device_binding_self_receipt,
         native_application_peer::station_native_application_peer_prepare,
@@ -14124,6 +14127,8 @@ If a stable instance is running, this launch will focus its window and exit.",
                 native_relay_link_intake::receive_opened(app, urls);
             }
             if let tauri::RunEvent::Exit = &event {
+                #[cfg(target_os = "ios")]
+                ios_network_path::stop(app);
                 app.state::<native_relay_link_intake::NativeRelayLinkState>().stop();
             }
             #[cfg(not(mobile))]
@@ -14176,7 +14181,11 @@ If a stable instance is running, this launch will focus its window and exit.",
                     }
                 }
             }
-            #[cfg(mobile)]
+            #[cfg(target_os = "ios")]
+            if let tauri::RunEvent::WindowEvent { event: tauri::WindowEvent::Resumed, .. } = &event {
+                ios_network_path::resumed();
+            }
+            #[cfg(target_os = "android")]
             if let tauri::RunEvent::WindowEvent { event: tauri::WindowEvent::Resumed, .. } = &event {
                 native_http_transport::network_changed();
             }

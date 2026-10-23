@@ -1,4 +1,8 @@
 import { useSyncExternalStore } from 'react';
+import {
+  iosNetworkConstrained,
+  subscribeIosNetworkCost,
+} from './native/iosNetworkCost';
 
 type NetworkInformation = EventTarget & {
   saveData?: boolean;
@@ -11,6 +15,7 @@ function connection(): NetworkInformation | undefined {
 }
 
 function constrained(): boolean {
+  if (iosNetworkConstrained()) return true;
   const info = connection();
   if (info?.saveData === true || info?.metered === true) return true;
   try {
@@ -21,11 +26,13 @@ function constrained(): boolean {
 }
 
 function subscribe(changed: () => void): () => void {
+  const stopIos = subscribeIosNetworkCost(changed);
   const info = connection();
   info?.addEventListener('change', changed);
   window.addEventListener('station-network-cost-change', changed);
   document.addEventListener('visibilitychange', changed);
   return () => {
+    stopIos();
     info?.removeEventListener('change', changed);
     window.removeEventListener('station-network-cost-change', changed);
     document.removeEventListener('visibilitychange', changed);

@@ -76,13 +76,14 @@ pub(crate) fn foreground(app: &AppHandle) {
         .map(|(label, state)| (label.clone(), state.foreground(Instant::now())))
         .collect();
     for (label, action) in actions {
-        if let Some(webview) = app.get_webview(&label) {
-            act(&webview, action);
+        if let Some(webview) = app.get_webview_window(&label) {
+            act(webview.as_ref(), action);
         }
     }
 }
 
 pub(crate) fn install(app: AppHandle) {
+    super::ios_network_path::start(&app);
     use block2::RcBlock;
     use objc2_foundation::{NSNotification, NSNotificationCenter, NSString};
     let callback = RcBlock::new(move |_: std::ptr::NonNull<NSNotification>| {
@@ -99,33 +100,4 @@ pub(crate) fn install(app: AppHandle) {
             &callback,
         )
     };
-    install_path_monitor();
-}
-
-fn install_path_monitor() {
-    use block2::{Block, RcBlock};
-    use dispatch2::DispatchQueue;
-    use std::ffi::c_void;
-    #[link(name = "Network", kind = "framework")]
-    extern "C" {
-        fn nw_path_monitor_create() -> *mut c_void;
-        fn nw_path_monitor_set_update_handler(
-            monitor: *mut c_void,
-            handler: &Block<dyn Fn(*mut c_void)>,
-        );
-        fn nw_path_monitor_set_queue(monitor: *mut c_void, queue: &DispatchQueue);
-        fn nw_path_monitor_start(monitor: *mut c_void);
-    }
-    // One retained monitor for the process. Its callback only advances an atomic.
-    unsafe {
-        let monitor = nw_path_monitor_create();
-        if monitor.is_null() {
-            return;
-        }
-        let changed =
-            RcBlock::new(|_: *mut c_void| super::native_http_transport::network_changed());
-        nw_path_monitor_set_update_handler(monitor, &changed);
-        nw_path_monitor_set_queue(monitor, DispatchQueue::main());
-        nw_path_monitor_start(monitor);
-    }
 }

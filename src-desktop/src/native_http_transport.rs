@@ -45,6 +45,12 @@ impl Drop for ResponseWaitRegistration {
     }
 }
 
+// Checkout-only retirement is independent of the epoch that wakes response waits.
+static IDLE_GENERATION: AtomicU64 = AtomicU64::new(0);
+pub(crate) fn retire_idle_connections() {
+    IDLE_GENERATION.fetch_add(1, Ordering::AcqRel);
+}
+
 static NETWORK_EPOCH: AtomicU64 = AtomicU64::new(0);
 pub(crate) fn network_epoch() -> u64 {
     NETWORK_EPOCH.load(Ordering::Acquire)
@@ -100,6 +106,7 @@ impl<T: Transport> Connector<T> for ObserveConnector {
         Ok(chained.map(|inner| ObservedTransport {
             inner,
             epoch: network_epoch(),
+            idle_generation: IDLE_GENERATION.load(Ordering::Acquire),
             used: false,
             response_epoch: network_epoch(),
             response_received: false,
@@ -110,6 +117,7 @@ impl<T: Transport> Connector<T> for ObserveConnector {
 pub(crate) struct ObservedTransport<T> {
     inner: T,
     epoch: u64,
+    idle_generation: u64,
     used: bool,
     response_epoch: u64,
     response_received: bool,
@@ -164,7 +172,9 @@ impl<T: Transport> Transport for ObservedTransport<T> {
         }
         self.used = true;
         self.response_received = false;
-        self.epoch == network_epoch() && self.inner.is_open()
+        self.epoch == network_epoch()
+            && self.idle_generation == IDLE_GENERATION.load(Ordering::Acquire)
+            && self.inner.is_open()
     }
     fn is_tls(&self) -> bool {
         self.inner.is_tls()
@@ -593,5 +603,65 @@ except BlockingIOError:
             server.0.stdin.take().unwrap().write_all(b"done\n").unwrap();
             assert!(server.0.wait().unwrap().success());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ios_resume_leaves_registered_response_wait_alive_and_never_replays_post() {
+        const WORKER: &str = "STATION_IOS_RESPONSE_WAIT_WORKER";
+        if std::env::var_os(WORKER).is_none() {
+            assert!(std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "native_http_transport::tests::ios_resume_leaves_registered_response_wait_alive_and_never_replays_post", "--nocapture"])
+                .env(WORKER, "1").status().unwrap().success());
+            return;
+        }
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let agent = super::super::native_http_agent();
+        let client = std::thread::spawn(move || {
+            let request = ureq::http::Request::builder()
+                .method("POST")
+                .uri(origin)
+                .body(Vec::new())
+                .unwrap();
+            run(&agent, request, &AtomicBool::new(false), None, || {
+                panic!("resume must never replay a sent POST")
+            })
+            .map(|mut response| response.body_mut().read_to_string().unwrap())
+        });
+        let (mut peer, _) = listener.accept().unwrap();
+        peer.set_write_timeout(Some(Duration::from_secs(3)))
+            .unwrap();
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let waits = loop {
+            let waits = RESPONSE_WAITS.lock().unwrap().clone();
+            if !waits.is_empty() {
+                break waits;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "POST must reach the registered socket response wait"
+            );
+            std::thread::sleep(Duration::from_millis(1));
+        };
+        crate::ios_network_path::resumed();
+        assert!(
+            waits
+                .iter()
+                .all(|wait| !wait.interrupted.load(Ordering::Acquire)),
+            "resume must leave registered response waits uninterrupted"
+        );
+        peer.write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok")
+            .unwrap();
+        assert_eq!(client.join().unwrap().unwrap(), "ok");
+        listener.set_nonblocking(true).unwrap();
+        assert!(
+            matches!(listener.accept(), Err(error) if error.kind() == std::io::ErrorKind::WouldBlock),
+            "sent POST must not open a replay connection"
+        );
     }
 }

@@ -50,9 +50,18 @@ required independently of compilation and state-lifetime unit tests.
 
 SDK stream backoff waits coalesce browser resume signals and spread early
 reconnects by 100–999 ms, bounded by their existing retry deadline. Explicit
-retry and cancellation remain immediate. Android metering and browser data-saving
-signals lengthen optional inbox polling; iOS Low Data Mode has no native signal
-in this change and retains the normal interval when WebKit provides none.
+retry and cancellation remain immediate. Android metering, browser data-saving,
+and iOS constrained or expensive path signals lengthen optional inbox polling.
+The [iOS path observer](../../src-desktop/src/ios_network_path.rs) uses
+Network.framework to report Low Data Mode and path cost through the
+[shared polling policy](../../src-ui/src/platform/networkCost.ts), and retires
+pooled native HTTP connections on path changes. Resume and the first observation
+also retire old connections at checkout, without interrupting in-flight work.
+After resume, cost and identity freshness depend on the next Network.framework
+callback; foreground cost refresh returns the last observed snapshot. This
+accepted gap affects optional polling cadence. It does not wait for connectivity
+or activate cellular/on-demand VPN connections; HTTP still uses ureq and rustls.
+See the [verification limits and physical checks](native-shell-verification.md#ios-network-path-observation).
 The desktop-only notification feed pauses while the document is hidden and
 polls once on return. Its constrained-network interval is 60 seconds, inside
 the existing 90-second host lease; the native desktop consumer still owns

@@ -277,6 +277,64 @@ WebView IPC, packaged-shell, mobile, or physical-device behavior.
 
 ## Resolver recovery and approval uncertainty
 
+### iOS network path observation
+
+The [iOS observer](../../src-desktop/src/ios_network_path.rs) starts one
+Network.framework path monitor for the app process and cancels it at exit.
+The first callback establishes a baseline and conservatively retires connections
+opened before observation. Later changes to path satisfaction or the set of
+interface types that can carry remote traffic (other, Wi-Fi, cellular and wired
+Ethernet) advance the broker's network epoch. Loopback is excluded because it cannot carry traffic to
+a remote Station: a loopback-only change must not abort active response waits.
+The `other` type remains included because VPN/virtual interfaces can change
+routing. Duplicate callbacks and cost-only changes leave the epoch unchanged.
+This type-level identity detects an `other` interface appearing or disappearing,
+but cannot distinguish Wi-Fi access points or VPN routes with the same
+satisfaction and interface types. Existing in-flight requests retain the broker's
+send/revalidation rules; observation does not authorize a retry or replacement
+credential. The monitor sends only revision, constrained and expensive flags,
+with a retained snapshot for a WebView that subscribes after the first callback.
+On iOS `WindowEvent::Resumed` (tao 0.37.1's application/scene
+`willEnterForeground`, rather than `didBecomeActive`), checkout-only retirement
+prevents reuse of old pooled connections even when no path callback has arrived. It neither advances
+the response-wait epoch nor shuts down active requests; uploads and response
+waits can finish. Retirement also applies to previously cloned agents at their
+next connection checkout. The C path-monitor API has no synchronous current-path
+getter. After resume, cost and identity freshness depend on the next
+Network.framework callback: the foreground command returns the last observed
+snapshot. This accepted gap can temporarily retain an older optional-polling
+cadence; it does not permit reuse of a pre-resume connection.
+
+The [UI adapter](../../src-ui/src/platform/native/iosNetworkCost.ts) validates
+these fields and ignores older snapshots. Either cost flag lengthens optional
+polling through the existing browser/Android policy; absent observation keeps
+the normal cadence. Essential sends remain available on expensive networks.
+
+This is passive observation. Native HTTP still uses ureq/rustls and BSD sockets.
+There is no radio-activation probe, `waitsForConnectivity`, or on-demand VPN
+activation guarantee. A URLSession migration would additionally provide
+OS-managed connection establishment, bounded connectivity waiting and per-request
+constrained/expensive-network policy. It would require separate review of
+ephemeral cookie/credential storage, redirects, streaming/cancellation, dispatch
+uncertainty and authority revalidation before replacing the broker transport.
+
+Rust tests cover startup/resume retirement over real pooled sockets, active
+upload and response-wait preservation, loopback-only non-invalidation versus
+`other` interface changes, material-change epoch publication, duplicate/cost-only
+non-invalidation and retained cost; mounted inbox tests cover actual polling
+cadence, validation and late-reply ordering. Neither
+proves delivery from Network.framework through real iOS IPC. Physical-device
+behavior is `NOT_VERIFIED`: install the exact candidate, toggle Low Data Mode
+on Wi-Fi and cellular, verify optional polling slows and restores, then switch
+Wi-Fi/cellular and VPN paths (including unchanged cost), background/resume, and
+confirm requests reconnect without replaying sent writes. With all paths
+unavailable, verify bounded request failure/cancellation; separately test a cold
+cellular and on-demand VPN connection. Retain app identity, source/artifact SHA,
+OS/device version and observations. Compilation and simulator startup do not
+establish those outcomes.
+
+### DNS recovery
+
 Both native authenticated requests and the credential-free public handshake
 retry a host-issued `transport_dns` failure twice, after 250 and 500 ms. The
 native client disables redirects, so this resolver failure precedes HTTP
@@ -297,8 +355,9 @@ physical phone, notification lifecycle or release-provider journey.
 Native authenticated HTTP agents keep mobile connections idle for at most two
 seconds. Android default-network availability/loss and iOS's Network.framework
 path monitor invalidate pooled connections. Capability-only Android callbacks
-still update metering without advancing the epoch; iOS activation alone does
-not advance it. Existing agent clones reject an earlier network epoch at pool
+still update metering without advancing the epoch. Android retains its resume
+invalidation; iOS activation retires idle connections without advancing it.
+Existing agent clones reject an earlier network epoch or idle generation at pool
 checkout. An epoch change never interrupts an upload already underway.
 
 A failed pooled exchange can retry once with a new agent only before any HTTP

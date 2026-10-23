@@ -4,7 +4,7 @@ use std::net::TcpListener;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
-struct KeepAliveStation {
+pub(super) struct KeepAliveStation {
     origin: String,
     connections: Arc<AtomicUsize>,
     stop: Arc<AtomicBool>,
@@ -12,7 +12,7 @@ struct KeepAliveStation {
 }
 
 impl KeepAliveStation {
-    fn start() -> Self {
+    pub(super) fn start() -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();
         let origin = format!("http://{}", listener.local_addr().unwrap());
@@ -95,7 +95,7 @@ impl KeepAliveStation {
         }
     }
 
-    fn get(&self, agent: &ureq::Agent, bearer: &str) -> String {
+    pub(super) fn get(&self, agent: &ureq::Agent, bearer: &str) -> String {
         let request = ureq::http::Request::builder()
             .uri(format!("{}/api/system/status", self.origin))
             .header("Authorization", format!("Bearer {bearer}"))
@@ -635,11 +635,14 @@ fn native_http_network_change_during_upload_does_not_interrupt_or_replay_post() 
         Buffers, ConnectionDetails, Connector, NextTimeout, Transport,
     };
     #[derive(Debug)]
-    struct ChangeDuringUpload;
+    struct ChangeDuringUpload {
+        retire_idle: bool,
+    }
     #[derive(Debug)]
     struct ChangingTransport {
         inner: Box<dyn Transport>,
         writes: usize,
+        retire_idle: bool,
     }
     impl Connector<Box<dyn Transport>> for ChangeDuringUpload {
         type Out = ChangingTransport;
@@ -648,7 +651,11 @@ fn native_http_network_change_during_upload_does_not_interrupt_or_replay_post() 
             _: &ConnectionDetails,
             inner: Option<Box<dyn Transport>>,
         ) -> Result<Option<Self::Out>, ureq::Error> {
-            Ok(inner.map(|inner| ChangingTransport { inner, writes: 0 }))
+            Ok(inner.map(|inner| ChangingTransport {
+                inner,
+                writes: 0,
+                retire_idle: self.retire_idle,
+            }))
         }
     }
     impl Transport for ChangingTransport {
@@ -663,7 +670,11 @@ fn native_http_network_change_during_upload_does_not_interrupt_or_replay_post() 
             self.inner.transmit_output(amount, timeout)?;
             self.writes += 1;
             if self.writes == 3 {
-                native_http_transport::network_changed();
+                if self.retire_idle {
+                    native_http_transport::retire_idle_connections();
+                } else {
+                    native_http_transport::network_changed();
+                }
             }
             Ok(())
         }
@@ -677,37 +688,43 @@ fn native_http_network_change_during_upload_does_not_interrupt_or_replay_post() 
             self.inner.is_tls()
         }
     }
-    let station = KeepAliveStation::start();
-    let connector = native_http_transport::SocketConnector
-        .chain(ChangeDuringUpload)
-        .chain(native_http_transport::ObserveConnector);
-    let agent = ureq::Agent::with_parts(
-        native_http_agent_config().build(),
-        connector,
-        ureq::unversioned::resolver::DefaultResolver::default(),
-    );
-    assert!(station.get(&agent, "first").starts_with("1:"));
-    let request = ureq::http::Request::builder()
-        .method("POST")
-        .uri(&station.origin)
-        .body(vec![42; 10 * 1024 * 1024])
-        .unwrap();
-    let epoch = native_http_transport::network_epoch();
-    let mut revalidated = false;
-    let mut response =
-        native_http_transport::run(&agent, request, &AtomicBool::new(false), None, || {
-            revalidated = true;
-            Ok(())
-        })
-        .unwrap();
-    assert!(response
-        .body_mut()
-        .read_to_string()
-        .unwrap()
-        .starts_with("1:"));
-    assert_ne!(native_http_transport::network_epoch(), epoch);
-    assert!(!revalidated);
-    assert_eq!(station.connections.load(Ordering::SeqCst), 1);
+    for retire_idle in [false, true] {
+        let station = KeepAliveStation::start();
+        let connector = native_http_transport::SocketConnector
+            .chain(ChangeDuringUpload { retire_idle })
+            .chain(native_http_transport::ObserveConnector);
+        let agent = ureq::Agent::with_parts(
+            native_http_agent_config().build(),
+            connector,
+            ureq::unversioned::resolver::DefaultResolver::default(),
+        );
+        assert!(station.get(&agent, "first").starts_with("1:"));
+        let request = ureq::http::Request::builder()
+            .method("POST")
+            .uri(&station.origin)
+            .body(vec![42; 10 * 1024 * 1024])
+            .unwrap();
+        let epoch = native_http_transport::network_epoch();
+        let mut revalidated = false;
+        let mut response =
+            native_http_transport::run(&agent, request, &AtomicBool::new(false), None, || {
+                revalidated = true;
+                Ok(())
+            })
+            .unwrap();
+        assert!(response
+            .body_mut()
+            .read_to_string()
+            .unwrap()
+            .starts_with("1:"));
+        assert_eq!(
+            native_http_transport::network_epoch() != epoch,
+            !retire_idle
+        );
+        assert!(!revalidated);
+        assert_eq!(station.connections.load(Ordering::SeqCst), 1);
+        assert!(station.get(&agent, "after").starts_with("2:"));
+    }
 }
 
 #[test]

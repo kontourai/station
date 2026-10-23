@@ -30,6 +30,23 @@ vi.mock('../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => authority.current,
 }));
 
+const iosPath = vi.hoisted(() => ({
+  handler: undefined as ((value: unknown) => void) | undefined,
+  read: vi.fn<() => Promise<unknown>>(async () => null),
+  unlisten: vi.fn(),
+}));
+vi.mock('../platform/native/tauriInvoke', () => ({
+  invokeTauri: (command: string) => {
+    expect(command).toBe('station_native_network_path');
+    return iosPath.read();
+  },
+  listenTauri: async (event: string, handler: (value: unknown) => void) => {
+    expect(event).toBe('station://network-path');
+    iosPath.handler = handler;
+    return iosPath.unlisten;
+  },
+}));
+
 const clients: QueryClient[] = [];
 afterEach(() => {
   cleanup();
@@ -293,6 +310,100 @@ test.each(['browser', 'android'] as const)(
     }
   },
 );
+
+test.each(['constrained', 'expensive'] as const)(
+  'uses retained iOS %s path cost for actual inbox polling, rejects stale/malformed events, and restores cadence',
+  async (cost) => {
+    vi.useFakeTimers();
+    vi.stubGlobal('__TAURI_INTERNALS__', {});
+    iosPath.read.mockResolvedValue({
+      revision: 1,
+      constrained: cost === 'constrained',
+      expensive: cost === 'expensive',
+    });
+    iosPath.unlisten.mockClear();
+    const fetchMock = vi.fn(async () => response([entry('queued', 'own')]));
+    vi.stubGlobal('fetch', fetchMock);
+    const { unmount } = mount();
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(9_999);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      act(() =>
+        iosPath.handler?.({
+          revision: 2,
+          constrained: false,
+          expensive: false,
+        }),
+      );
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      act(() => {
+        iosPath.handler?.({ revision: 1, constrained: true, expensive: true });
+        iosPath.handler?.({
+          revision: 3,
+          constrained: 'false',
+          expensive: true,
+        });
+      });
+      await vi.advanceTimersByTimeAsync(2_000);
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+      // The native callback may have happened while the WebView was suspended.
+      iosPath.read.mockResolvedValue({
+        revision: 4,
+        constrained: true,
+        expensive: false,
+      });
+      act(() => document.dispatchEvent(new Event('visibilitychange')));
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(9_999);
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetchMock).toHaveBeenCalledTimes(5);
+    } finally {
+      unmount();
+      expect(iosPath.unlisten).toHaveBeenCalledTimes(1);
+      vi.useRealTimers();
+    }
+  },
+);
+
+test('a late iOS initial snapshot cannot overwrite a newer path event or survive disposal', async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal('__TAURI_INTERNALS__', {});
+  let finishRead!: (value: unknown) => void;
+  iosPath.read.mockReturnValueOnce(
+    new Promise((resolve) => {
+      finishRead = resolve;
+    }),
+  );
+  const fetchMock = vi.fn(async () => response([entry('queued', 'own')]));
+  vi.stubGlobal('fetch', fetchMock);
+  const { unmount } = mount();
+  try {
+    await vi.advanceTimersByTimeAsync(0);
+    act(() =>
+      iosPath.handler?.({ revision: 2, constrained: true, expensive: false }),
+    );
+    finishRead({ revision: 1, constrained: false, expensive: false });
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(8_000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    unmount();
+    act(() =>
+      iosPath.handler?.({ revision: 3, constrained: false, expensive: false }),
+    );
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  } finally {
+    unmount();
+    vi.useRealTimers();
+  }
+});
 
 test.each([401, 403, 404])(
   'HTTP %s stops inbox interval reads',
