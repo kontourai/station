@@ -77,33 +77,45 @@ describe('CooperativeStop (unit pins)', () => {
     vi.useRealTimers();
   });
 
-  it('holds the DEFAULT budget open and forces only after it elapses', async () => {
-    const deps = makeDeps();
-    const stop = new CooperativeStop(deps);
-    const adapter = makeAdapter(vi.fn(() => new Promise(() => {})) as never);
-    const outcome = stop.interruptUserTurnCooperatively(
-      adapter,
-      'unit-thread',
-      'turn-a',
-    );
-    // Not before: a NaN/undefined budget (the dropped-default injection)
-    // fires the timer immediately — this is the discriminating half.
-    await vi.advanceTimersByTimeAsync(COOPERATIVE_STOP_BUDGET_MS - 100);
-    expect(adapter.stopSession).not.toHaveBeenCalled();
-    expect(deps.publishEvent).not.toHaveBeenCalledWith(
-      expect.objectContaining({ method: 'session.stop-settled' }),
-    );
-    // After: the default elapses and the forced teardown runs.
-    await vi.advanceTimersByTimeAsync(200);
-    await outcome;
-    expect(deps.publishEvent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        method: 'session.stop-settled',
-        outcome: 'forced',
-      }),
-    );
-    expect(adapter.stopSession).toHaveBeenCalledOnce();
-  });
+  it.each(['pending', 'termination-unconfirmed'] as const)(
+    'holds the DEFAULT budget open and forces only after it elapses (%s)',
+    async (response) => {
+      const deps = makeDeps();
+      const stop = new CooperativeStop(deps);
+      const adapter = makeAdapter(
+        vi.fn(() =>
+          response === 'pending'
+            ? new Promise(() => {})
+            : Promise.resolve({
+                outcome: 'termination-unconfirmed',
+                turnId: 'turn-a',
+              }),
+        ) as never,
+      );
+      const outcome = stop.interruptUserTurnCooperatively(
+        adapter,
+        'unit-thread',
+        'turn-a',
+      );
+      // Not before: a NaN/undefined budget (the dropped-default injection)
+      // fires the timer immediately — this is the discriminating half.
+      await vi.advanceTimersByTimeAsync(COOPERATIVE_STOP_BUDGET_MS - 100);
+      expect(adapter.stopSession).not.toHaveBeenCalled();
+      expect(deps.publishEvent).not.toHaveBeenCalledWith(
+        expect.objectContaining({ method: 'session.stop-settled' }),
+      );
+      // After: the default elapses and the forced teardown runs.
+      await vi.advanceTimersByTimeAsync(200);
+      await outcome;
+      expect(deps.publishEvent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          method: 'session.stop-settled',
+          outcome: 'forced',
+        }),
+      );
+      expect(adapter.stopSession).toHaveBeenCalledOnce();
+    },
+  );
 
   it('marks the warm session resumable in memory on an acknowledged stop, and does not forget it', async () => {
     const deps = makeDeps({ configuredBudgetMs: () => 50 });

@@ -87,6 +87,7 @@ import {
   providerQuotaFactsFromDetails,
 } from '../providers/provider-plan-quota.js';
 import { isHostedTenantExecutionRequired } from '../runtime/bootstrap/runtime-tenant-context.js';
+import type { ReservedStationTurn } from '../runtime/conversation/reserved-station-turn.js';
 import type { FullAccessGrant } from '../security/coding-authority.js';
 import { WORKING_DIRECTORY_NOT_GRANTED_CODE } from '../security/coding-authority.js';
 import { readConfinementRecord } from '../security/confinement/confinement-provider.js';
@@ -395,6 +396,8 @@ interface DelegationEnvironmentSelection {
 }
 
 export interface DelegateTaskInput {
+  /** Server-owned sealed SDK turn; no public delegation schema accepts it. */
+  reservedStationTurn?: ReservedStationTurn;
   /** Trusted group admission, checked synchronously at initial session/turn effects. */
   delegationGroupAdmission?: { assertCurrent(): void; signal: AbortSignal };
   /** Server-minted first-turn join for a durable session group. */
@@ -5201,6 +5204,13 @@ export async function delegateTask(
   remote?: RemoteStationForwarder,
 ): Promise<DelegatedTaskHandle> {
   if (
+    input.reservedStationTurn &&
+    (input.target.environment.kind !== 'current' || input.stagedFiles)
+  )
+    throw new Error(
+      'Reserved Station turns require the current sealed-source runtime.',
+    );
+  if (
     input.taskRoomInvocationAdmission &&
     (input.target.environment.kind !== 'current' ||
       input.target.workspace?.kind !== 'project')
@@ -5774,6 +5784,8 @@ export async function delegateTask(
           path: resolved.workspace.cwd,
         }
       : undefined;
+    if (input.reservedStationTurn && resolved.provider !== 'station-agent')
+      throw new Error('Reserved Station turns require the Station engine.');
     const sessionId = attemptClaim
       ? attemptClaim.taskId
       : input.sessionId || `task:${randomUUID()}`;
@@ -6036,6 +6048,9 @@ export async function delegateTask(
           ...(input.delegationGroupAdmission
             ? { delegationGroupAdmission: input.delegationGroupAdmission }
             : {}),
+          ...(input.reservedStationTurn
+            ? { reservedStationTurn: input.reservedStationTurn }
+            : {}),
           // #3323: stamped beside `delegation` after the reserved-key strip.
           ...(input.delegation && input.delegationProvenance
             ? {
@@ -6155,6 +6170,9 @@ export async function delegateTask(
         resourceAdmissionIntent: 'delegated_background',
         ...(input.delegationGroupAdmission
           ? { delegationGroupAdmission: input.delegationGroupAdmission }
+          : {}),
+        ...(input.reservedStationTurn
+          ? { reservedStationTurn: input.reservedStationTurn }
           : {}),
         ...(input.taskRoomInvocationAdmission
           ? { receiverExecutionAdmission: input.taskRoomInvocationAdmission }

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { RESERVED_SOURCE_EXECUTION_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import { test } from 'vitest';
 import {
   createPreparedSdkSourceWireOwner,
@@ -604,8 +605,34 @@ for (const provider of ['anthropic', 'google'] as const)
       { provider, contract: f.configuration.contract, now: () => 1000 },
     );
     await driver.run();
-    assert.equal(f.starts, 1);
+    assert.equal(f.starts, 1, String(driver.invocationFailure));
     assert.equal(driver.intentCount, 1);
+    assert.equal(driver.relayCalls, 0);
+    const canonical = driver.canonicalEvents();
+    assert.ok(canonical.some((event) => event.method === 'session.started'));
+    assert.ok(canonical.some((event) => event.method === 'turn.started'));
+    const completed = canonical.find(
+      (event) => event.method === 'turn.completed',
+    );
+    assert.ok(completed?.method === 'turn.completed');
+    assert.equal(completed.outputText, 'OK');
+    const delivery =
+      completed.metadata?.[RESERVED_SOURCE_EXECUTION_METADATA_KEY];
+    assert.ok(delivery && typeof delivery === 'object');
+    assert.ok(
+      'mode' in delivery &&
+        'outputDelivery' in delivery &&
+        'providerEvidence' in delivery,
+    );
+    assert.equal(delivery.mode, 'sealed-source-no-tools');
+    assert.equal(delivery.outputDelivery, 'buffered');
+    assert.deepEqual(delivery.providerEvidence, driver.retainedReference());
+    assert.ok(
+      !canonical.some(
+        (event) =>
+          event.method === 'tool.started' || event.method === 'request.opened',
+      ),
+    );
     assert.equal(f.sentBody, wire.body);
     assert.equal(driver.observed.length, 1);
     assert.equal(driver.observed[0].usage.inputTokens, 4);
@@ -636,6 +663,20 @@ for (const provider of ['anthropic', 'google'] as const)
       costMicros: 7,
     });
     assert.equal(ledger.invocations[0].terminal, true);
+    await assert.rejects(
+      () => driver.sendWithoutReservation(),
+      /reserved Station turn/,
+    );
+    await assert.rejects(
+      () => driver.sendWithForgedReservation(),
+      /Reserved Station turn is unavailable/,
+    );
+    await assert.rejects(
+      () => driver.sendAfterAdapterRecoveryWithoutReservation(),
+      /reserved Station turn/,
+    );
+    assert.equal(driver.relayCalls, 0);
+    assert.equal(f.starts, 1);
     await assert.rejects(() => driver.reserveAnother(), {
       code: 'invocation_budget_exhausted',
     });
@@ -763,7 +804,12 @@ test('duplicate reserved source entry cannot terminate its original pending HTTP
     () => undefined,
     (error) => error,
   );
-  await started;
+  await Promise.race([
+    started,
+    original.then(() => {
+      throw Error(`HTTP was not entered: ${String(driver.invocationFailure)}`);
+    }),
+  ]);
   let disposed = false;
   void sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle).then(() => {
     disposed = true;
@@ -778,5 +824,69 @@ test('duplicate reserved source entry cannot terminate its original pending HTTP
     (await sdkResultPromise(f.sdkOwner, prepared.sdkHandle)).text,
     'OK',
   );
+  await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
+});
+
+test('reserved Station interruption reports uncertain termination and keeps unknown accounting held', async () => {
+  let finish!: (response: Response) => void;
+  let entered!: () => void;
+  const started = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const response = new Promise<Response>((resolve) => {
+    finish = resolve;
+  });
+  const f = await sdkFixture('google', '/api/orchestration/chat', () => {
+    entered();
+    return response;
+  });
+  const prepared = await f.owner.prepareSdkSnapshot(
+    f.context(),
+    subject,
+    f.sealed.capability,
+    f.sdkOwner,
+  );
+  const { wire } = inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+  const driver = await publicFenceFixture(
+    f,
+    prepared.source,
+    f.sdkOwner,
+    prepared.sdkHandle,
+    wire,
+    () => {},
+    { provider: 'google', contract: f.configuration.contract, now: () => 1000 },
+  );
+  const running = driver.run();
+  await Promise.race([
+    started,
+    running.then(() => {
+      throw Error(`HTTP was not entered: ${String(driver.invocationFailure)}`);
+    }),
+  ]);
+  const interruption = await driver.interrupt();
+  assert.deepEqual(interruption.result, {
+    outcome: 'termination-unconfirmed',
+    threadId: 'reserved-sdk-session',
+    turnId: driver
+      .canonicalEvents()
+      .find((event) => event.method === 'turn.started')?.turnId,
+  });
+  assert.equal(driver.observed.length, 0);
+  assert.equal(driver.relayCalls, 0);
+  assert.ok(
+    !driver
+      .canonicalEvents()
+      .some((event) => event.method === 'turn.completed'),
+  );
+  finish(mockResponse('google'));
+  await running;
+  assert.equal(f.starts, 1);
+  assert.equal(driver.observed.length, 0);
+  const invocation = (await driver.ledger()).invocations[0];
+  assert.equal(invocation.usage, null);
+  assert.equal(invocation.terminal, false);
+  await assert.rejects(() => driver.reserveAnother(), {
+    code: 'active_slot_exhausted',
+  });
   await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
 });

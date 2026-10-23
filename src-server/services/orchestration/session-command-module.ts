@@ -16,6 +16,7 @@ import type { TenantExecutionContext } from '@kontourai/station-contracts/tenanc
 import type { ProviderAdapterShape } from '../../providers/adapter-shape.js';
 import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
 import { ProviderRefusalError } from '../../providers/provider-failure.js';
+import type { ReservedStationTurn } from '../../runtime/conversation/reserved-station-turn.js';
 import type { FullAccessGrant } from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
@@ -150,6 +151,7 @@ export interface ReceiverExecutionEffectAdmission {
 
 /** Service-only recovery choices. They cannot cross the public command seam. */
 export type SessionCommandInternalOptions = {
+  reservedStationTurn?: ReservedStationTurn;
   /** Borrowed dispatch capability; provider completion cannot release its parent. */
   sessionStartAdmission?: SessionStartBoundaryClaim;
   /** Exact server-owned Task reservation scope; never read from public metadata. */

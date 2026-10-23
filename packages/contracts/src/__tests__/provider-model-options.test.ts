@@ -268,7 +268,11 @@ test('strips every server-derived model evidence key while preserving ordinary o
     RESERVED_ORCHESTRATION_METADATA_KEYS.map((key) => [key, 'forged']),
   );
   expect(
-    stripReservedOrchestrationMetadata({ ...metadata, effort: 'low' }),
+    stripReservedOrchestrationMetadata({
+      ...metadata,
+      reservedSourceExecution: { mode: 'forged' },
+      effort: 'low',
+    }),
   ).toEqual({
     effort: 'low',
   });

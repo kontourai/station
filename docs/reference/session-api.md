@@ -886,6 +886,15 @@ Continue intent and returns the existing continuation with
 `interruptTurn` (`{ type: 'interruptTurn', threadId, turnId? }`, cancel an in-flight turn),
 and `stopSession` (`{ type: 'stopSession', threadId }`).
 
+For an internally reserved sealed-source Station turn, an exact-turn interrupt
+may return `termination-unconfirmed`. Station requests cancellation without
+claiming provider termination, emits no stop-settled marker for that response,
+and retains unknown accounting reservations. This mode is read from the stored
+session-start event; public metadata cannot select it. Other sessions retain
+the cooperative-stop budget and forced logical cleanup behavior. A logical stop
+is not evidence of provider termination or zero usage.
+
+
 External transcript observation does not grant control of the original terminal
 process. The engine capability matrix declares independent continuation support;
 known unsupported and unknown engines keep the conversation's message box

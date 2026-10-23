@@ -82,6 +82,7 @@ import {
   PROVIDER_SESSION_START_FAILED_CODE,
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
+  RESERVED_SOURCE_EXECUTION_METADATA_KEY,
   readApprovalMode,
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
@@ -190,6 +191,11 @@ import {
   createNativeMemoryHistoryCompanion,
   type NativeMemoryHistoryCompanion,
 } from '../../runtime/conversation/native-memory-history.js';
+import {
+  assertReservedStationTurnBinding,
+  type ReservedStationTurn,
+  withReservedStationTurn,
+} from '../../runtime/conversation/reserved-station-turn.js';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import {
   requiredMissingPrerequisites,
@@ -531,6 +537,7 @@ function telemetryEngine(
  * from an HTTP route.
  */
 interface OrchestrationDispatchInternalOptions {
+  reservedStationTurn?: ReservedStationTurn;
   /** Original intent proof; null preserves unknown legacy inbox input. */
   submissionDigest?: string | null;
   skillExperience?: SkillExperienceStartInputV1;
@@ -3259,6 +3266,18 @@ export class OrchestrationService {
       },
     });
     this.cooperativeStop = new CooperativeStop({
+      preserveTerminationUncertainty: (threadId) => {
+        const mode = this.readRecordedReservedSourceMode(threadId);
+        return (
+          mode !== null &&
+          typeof mode === 'object' &&
+          'mode' in mode &&
+          mode.mode === 'sealed-source-no-tools' &&
+          'identity' in mode &&
+          typeof mode.identity === 'string' &&
+          /^sha256:[a-f0-9]{64}$/.test(mode.identity)
+        );
+      },
       // Called, not captured: reads the LIVE options value per stop.
       configuredBudgetMs: () => this.options.cooperativeStopBudgetMs,
       listSessionProjectionEvents: (threadId) =>
@@ -6592,6 +6611,26 @@ export class OrchestrationService {
             postureInput.threadId,
             context.fullAccessGrant,
           );
+          const recordedReservedMode = this.readRecordedReservedSourceMode(
+            postureInput.threadId,
+          );
+          if (recordedReservedMode !== undefined) {
+            try {
+              if (!internal?.reservedStationTurn)
+                throw new Error('Reserved turn required');
+              assertReservedStationTurnBinding(
+                internal.reservedStationTurn,
+                context.userId,
+                postureInput.threadId,
+                recordedReservedMode,
+              );
+            } catch {
+              throw new SessionStartRefusedError(
+                'Reserved Station session binding cannot be changed.',
+                SESSION_REATTACH_CONFLICT_CODE,
+              );
+            }
+          }
           const priorApplied = this.approvalPosture.appliedOf(
             postureInput.threadId,
           );
@@ -6952,6 +6991,23 @@ export class OrchestrationService {
                     input.threadId,
                     () => {
                       internal?.delegationGroupAdmission?.assertCurrent();
+                      if (internal?.reservedStationTurn) {
+                        if (context.tenantExecutionContext)
+                          throw new SessionStartRefusedError(
+                            'Reserved Station source execution is personal-only.',
+                            SESSION_REATTACH_CONFLICT_CODE,
+                          );
+                        if (adapter.provider !== 'station-agent')
+                          throw new Error(
+                            'Reserved Station turn requires the Station engine.',
+                          );
+                        return withReservedStationTurn(
+                          internal.reservedStationTurn,
+                          context.userId,
+                          input.threadId,
+                          () => adapter.startSession(input),
+                        );
+                      }
                       return adapter.startSession(input);
                     },
                     internal?.sessionStartAdmission,
@@ -8154,13 +8210,39 @@ export class OrchestrationService {
                             }
                             assertInputRequestCurrent();
                             this.assertAdapterCurrent(adapter);
+                            if (internal?.reservedStationTurn) {
+                              try {
+                                if (context?.tenantExecutionContext)
+                                  throw new Error(
+                                    'Personal source execution required',
+                                  );
+                                if (adapter.provider !== 'station-agent')
+                                  throw new Error(
+                                    'Reserved Station turn requires the Station engine.',
+                                  );
+                                assertReservedStationTurnBinding(
+                                  internal.reservedStationTurn,
+                                  context?.principal?.id ?? context?.userId,
+                                  turnInput.threadId,
+                                  this.readRecordedReservedSourceMode(
+                                    turnInput.threadId,
+                                  ),
+                                );
+                              } catch {
+                                throw new SendTurnRefusedError(
+                                  'Reserved Station turn is unavailable.',
+                                  'permission_denied',
+                                );
+                              }
+                            }
                             if (boundary.prepareIntent) {
                               const captured = captureTurnIntent(turnInput, {
                                 binding: this.preparedTurnBinding(
                                   turnInput.threadId,
                                 ),
                                 requiresFreshCompanions: Boolean(
-                                  nativeMemory ||
+                                  internal?.reservedStationTurn ||
+                                    nativeMemory ||
                                     nativeOutputRelay ||
                                     nativeForeground ||
                                     experienceReference ||
@@ -8211,13 +8293,28 @@ export class OrchestrationService {
                               turnInput.clientTurnId ?? '',
                             );
                             providerInvoked = true;
+                            const sendTurn = () => {
+                              if (internal?.reservedStationTurn) {
+                                if (adapter.provider !== 'station-agent')
+                                  throw new Error(
+                                    'Reserved Station turn requires the Station engine.',
+                                  );
+                                return withReservedStationTurn(
+                                  internal.reservedStationTurn,
+                                  context?.principal?.id ?? context?.userId,
+                                  turnInput.threadId,
+                                  () => adapter.sendTurn(turnInput),
+                                );
+                              }
+                              return adapter.sendTurn(turnInput);
+                            };
                             const send = () =>
                               nativeForeground
                                 ? runWithNativeForegroundRelay(
                                     nativeForeground,
-                                    () => adapter.sendTurn(turnInput),
+                                    sendTurn,
                                   )
-                                : adapter.sendTurn(turnInput);
+                                : sendTurn();
                             return adapter.provider === 'station-agent' &&
                               turnCorrelation &&
                               experienceContext
@@ -13543,6 +13640,16 @@ export class OrchestrationService {
         });
       },
     });
+  }
+
+  private readRecordedReservedSourceMode(threadId: string): unknown {
+    const event = this.options.eventStore?.latestEventByMethod(
+      threadId,
+      'session.started',
+    )?.payload;
+    return event?.method === 'session.started'
+      ? event.metadata?.[RESERVED_SOURCE_EXECUTION_METADATA_KEY]
+      : undefined;
   }
 
   private readLatestSessionStartMetadata(

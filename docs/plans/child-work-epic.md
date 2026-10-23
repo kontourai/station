@@ -886,6 +886,23 @@ provider credentials or live group execution was exercised. Configuration relati
 edges, shared memory, scheduler/webhook membership, provider entitlement or bounded
 execution; unavailable facts remain visible. This does not complete #453.
 
+## Controlled reserved Station turn integration
+
+The internal reserved-turn port now reaches the real Station adapter through
+session start, turn dispatch and canonical event persistence. It consumes the
+sealed SDK attempt once, bypasses the ordinary chat endpoint, retains evidence
+before publishing usage/completion, and refuses unreserved continuation or
+identity changes. Output is buffered; tools, approvals and continuation are
+unavailable for this mode. The metadata describes a restriction, not a grant.
+Cancellation requests abort without asserting provider termination; unknown
+usage retains its reservation. Ordinary sessions keep their existing logical
+stop deadline and teardown.
+
+This is controlled integration under synthetic provider fixtures. Boot
+preparation, production provider qualification issuance, real Flow AccountingV1
+serving settlement, authenticated ACK and separate rounds custody remain open.
+It does not qualify live provider execution or complete #91.
+
 ## Remaining qualification
 
 Local group transport includes the shared Station contract, SDK HTTP/SSE

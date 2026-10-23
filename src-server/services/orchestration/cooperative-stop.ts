@@ -25,7 +25,7 @@ import { interruptibleTurnIdForEvents } from './session-lifecycle-service.js';
  * Stop control has to outwait it, and a second hand-written copy of the
  * number in the UI would drift.
  */
-type StopSettlement = 'acknowledged' | 'completed' | 'deadline';
+type StopSettlement = 'acknowledged' | 'completed' | 'deadline' | 'unconfirmed';
 
 /**
  * A Stop recorded before its turn existed.
@@ -77,6 +77,8 @@ function interruptTurnResultFor(
 ): InterruptTurnResult {
   if (settlement === 'completed')
     return { outcome: 'turn-completed', threadId, turnId };
+  if (settlement === 'unconfirmed')
+    return { outcome: 'termination-unconfirmed', threadId, turnId };
   return {
     outcome: settlement === 'acknowledged' ? 'cooperative' : 'forced',
     threadId,
@@ -91,6 +93,7 @@ interface CooperativeStopTask {
 }
 
 export interface CooperativeStopDeps {
+  preserveTerminationUncertainty?: (threadId: string) => boolean;
   /** Called, not captured: reads the LIVE `options.cooperativeStopBudgetMs`. */
   configuredBudgetMs: () => number | undefined;
   /**
@@ -445,6 +448,15 @@ export class CooperativeStop {
         .then((result) => {
           if (
             isProviderInterruptTurnResult(result) &&
+            result.outcome === 'termination-unconfirmed' &&
+            result.turnId === state.turnId &&
+            this.deps.preserveTerminationUncertainty?.(threadId) === true
+          ) {
+            settle('unconfirmed');
+            return;
+          }
+          if (
+            isProviderInterruptTurnResult(result) &&
             result.outcome === 'cancelled' &&
             result.turnId === state.turnId
           ) {
@@ -471,6 +483,8 @@ export class CooperativeStop {
         // rejection; its only effect is to leave the budget in charge.
         .catch(() => undefined);
     });
+
+    if (settlement === 'unconfirmed') return settlement;
 
     if (settlement === 'completed') {
       // The engine completed its turn while the request was in flight. Its

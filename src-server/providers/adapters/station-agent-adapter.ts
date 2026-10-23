@@ -8,7 +8,10 @@ import type {
   InputRequestContent,
   InputRequestResponse,
 } from '@kontourai/station-contracts/input-request';
-import { stripReservedOrchestrationMetadata } from '@kontourai/station-contracts/provider';
+import {
+  RESERVED_SOURCE_EXECUTION_METADATA_KEY,
+  stripReservedOrchestrationMetadata,
+} from '@kontourai/station-contracts/provider';
 import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   type ApprovalStatus,
@@ -39,6 +42,12 @@ import {
   currentNativeForegroundRelay,
   INTERNAL_NATIVE_FOREGROUND_HEADER,
 } from '../../runtime/conversation/native-foreground-invocation.js';
+import {
+  assertReservedStationTurnCurrent,
+  currentReservedStationTurn,
+  executeReservedStationTurn,
+  openReservedStationSession,
+} from '../../runtime/conversation/reserved-station-turn.js';
 import {
   extractToolPurpose,
   takeToolPurpose,
@@ -141,6 +150,7 @@ export class StationAgentStreamStallError extends Error {
 }
 
 interface StationAgentResumeCursor {
+  reservedSourceIdentity?: string;
   agentId: string;
   projectSlug?: string;
   userId?: string;
@@ -151,6 +161,7 @@ interface StationAgentResumeCursor {
 type TurnOrigin = Readonly<Pick<ProviderSendTurnInput, 'invocationId'>>;
 
 interface StationAgentSessionRecord {
+  reservedSourceIdentity?: string;
   conversationTitle?: string;
   workspaceRequired: boolean;
   session: ProviderSession;
@@ -361,6 +372,9 @@ function parseResumeCursor(value: unknown): StationAgentResumeCursor | null {
   if (!agentId) return null;
   return {
     agentId,
+    ...(stringField(record.reservedSourceIdentity)
+      ? { reservedSourceIdentity: stringField(record.reservedSourceIdentity) }
+      : {}),
     ...(stringField(record.projectSlug)
       ? { projectSlug: stringField(record.projectSlug) }
       : {}),
@@ -904,6 +918,11 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     ) {
       throw new Error(`Unknown Station agent: ${agentId ?? '(none provided)'}`);
     }
+    const reservedSourceIdentity =
+      openReservedStationSession(
+        input.threadId,
+        recovered?.reservedSourceIdentity,
+      ) ?? recovered?.reservedSourceIdentity;
     const now = this.now().toISOString();
     const projectSlug =
       stringField(input.metadata?.projectSlug) ?? recovered?.projectSlug;
@@ -917,6 +936,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     const tenantExecutionContext = input.tenantExecutionContext;
     const resumeCursor: StationAgentResumeCursor = {
       agentId,
+      ...(reservedSourceIdentity ? { reservedSourceIdentity } : {}),
       ...(projectSlug ? { projectSlug } : {}),
       ...(userId ? { userId } : {}),
       ...(delegation ? { delegation } : {}),
@@ -937,6 +957,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     };
     startNativeKnowledgeSession(input.threadId);
     this.sessions.set(input.threadId, {
+      ...(reservedSourceIdentity ? { reservedSourceIdentity } : {}),
       workspaceRequired:
         input.workspaceIsolation?.mode === 'worktree' ||
         (input.metadata?.workspaceIsolation as { mode?: unknown } | undefined)
@@ -963,7 +984,23 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       method: 'session.started',
       sessionId: input.threadId,
       initialState: 'created',
-      metadata: { ...input.metadata, agentId, cwd: input.cwd },
+      metadata: {
+        ...input.metadata,
+        agentId,
+        cwd: input.cwd,
+        ...(reservedSourceIdentity
+          ? {
+              [RESERVED_SOURCE_EXECUTION_METADATA_KEY]: {
+                identity: reservedSourceIdentity,
+                mode: 'sealed-source-no-tools',
+                outputDelivery: 'buffered',
+                tools: 'unavailable',
+                approvals: 'unavailable',
+                continuation: 'unavailable',
+              },
+            }
+          : {}),
+      },
     });
     this.publish({
       eventId: crypto.randomUUID(),
@@ -993,6 +1030,12 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     const origin: TurnOrigin =
       invocationId === undefined ? {} : { invocationId };
     const record = this.requireSession(input.threadId);
+    const reservedTurn = currentReservedStationTurn();
+    if (Boolean(reservedTurn) !== Boolean(record.reservedSourceIdentity))
+      throw new SendTurnRefusedError(
+        'This session requires its reserved Station turn.',
+        'permission_denied',
+      );
     if (!(await this.options.hasAgent(record.agentId))) {
       throw new Error(`Unknown Station agent: ${record.agentId}`);
     }
@@ -1084,6 +1127,82 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       prompt: input.displayInput ?? input.input,
       metadata: modelMetadata,
     });
+
+    if (reservedTurn) {
+      let result: ReturnType<typeof executeReservedStationTurn>;
+      try {
+        result = executeReservedStationTurn(
+          reservedTurn,
+          { ...input, modelId },
+          record.reservedSourceIdentity,
+          controller.signal,
+        );
+      } catch (error) {
+        this.failTurn(record, turnId, controller, origin);
+        throw error;
+      }
+      void result
+        .then((attempt) => {
+          assertReservedStationTurnCurrent(reservedTurn);
+          if (
+            this.sessions.get(input.threadId) !== record ||
+            record.activeTurnId !== turnId ||
+            record.activeController !== controller
+          )
+            return;
+          const reason = attempt.sdkResult.finishReason;
+          const observedFinish =
+            reason && typeof reason === 'object' && 'unified' in reason
+              ? reason.unified
+              : reason;
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId: input.threadId,
+            turnId,
+            ...origin,
+            createdAt: this.now().toISOString(),
+            method: 'token-usage.updated',
+            promptTokens: attempt.accounting.inputTokens,
+            completionTokens: attempt.accounting.outputTokens,
+          });
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId: input.threadId,
+            turnId,
+            ...origin,
+            createdAt: this.now().toISOString(),
+            method: 'turn.completed',
+            finishReason: controller.signal.aborted
+              ? 'cancelled'
+              : observedFinish === 'stop'
+                ? 'stop'
+                : observedFinish === 'length'
+                  ? 'max-tokens'
+                  : 'other',
+            outputText: attempt.sdkResult.text,
+            metadata: {
+              ...modelMetadata,
+              [RESERVED_SOURCE_EXECUTION_METADATA_KEY]: {
+                identity: record.reservedSourceIdentity,
+                mode: 'sealed-source-no-tools',
+                outputDelivery: 'buffered',
+                providerEvidence: attempt.evidenceReference,
+              },
+            },
+          });
+          this.updateSession(record, 'ready');
+          this.publishState(record, 'running', 'idle');
+          this.clearReservedTurn(record, turnId);
+        })
+        .catch(() => this.failReservedTurn(record, turnId, controller, origin));
+      return {
+        threadId: input.threadId,
+        turnId,
+        resumeCursor: record.session.resumeCursor,
+      };
+    }
 
     let response: Response;
     let rejectionReason: string | undefined;
@@ -1297,6 +1416,13 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     }
     if (turnId && turnId !== activeTurnId) {
       return { outcome: 'target-mismatch', activeTurnId } as const;
+    }
+    if (record.reservedSourceIdentity) {
+      activeController.abort('interrupted');
+      return {
+        outcome: 'termination-unconfirmed',
+        turnId: activeTurnId,
+      } as const;
     }
     this.cancelPendingApprovals(record);
     activeController.abort('interrupted');
@@ -1630,6 +1756,65 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     record.activeTurnId = undefined;
     record.activeController = undefined;
     record.activeOrigin = undefined;
+  }
+
+  private clearReservedTurn(
+    record: StationAgentSessionRecord,
+    turnId: string,
+  ): void {
+    finishNativeKnowledgeTurn(record.session.threadId, turnId);
+    record.activeTurnId = undefined;
+    record.activeController = undefined;
+    record.activeOrigin = undefined;
+  }
+
+  private failReservedTurn(
+    record: StationAgentSessionRecord,
+    turnId: string,
+    controller: AbortController,
+    origin: TurnOrigin,
+  ): void {
+    if (
+      this.sessions.get(record.session.threadId) !== record ||
+      record.activeTurnId !== turnId ||
+      record.activeController !== controller
+    )
+      return;
+    if (controller.signal.aborted) {
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: record.session.threadId,
+        turnId,
+        ...origin,
+        createdAt: this.now().toISOString(),
+        method: 'turn.aborted',
+        reason: 'interrupted',
+        metadata: {
+          physicalTermination: 'unconfirmed',
+          accounting: 'unknown-held',
+        },
+      });
+    } else {
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId: record.session.threadId,
+        turnId,
+        ...origin,
+        createdAt: this.now().toISOString(),
+        method: 'runtime.error',
+        severity: 'error',
+        message: 'Reserved Station turn failed; accounting remains held.',
+        ...providerFailure('provider_error'),
+        code: 'reserved_station_turn_failed',
+        retriable: false,
+        retryable: false,
+      });
+    }
+    this.updateSession(record, 'error');
+    this.publishState(record, 'running', 'errored');
+    this.clearReservedTurn(record, turnId);
   }
 
   private failTurn(

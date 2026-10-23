@@ -467,6 +467,9 @@ export const COOPERATIVE_STOP_BUDGET_MS = 5_000;
  *   its handles and returns without observing a process exit — so a UI that
  *   promised process termination here would be overclaiming for some engines
  *   (UX audit T1 review).
+ * - `termination-unconfirmed` — the adapter accepted a cancellation request but
+ *   cannot prove the provider stopped. Station retains uncertainty instead of
+ *   replacing it with forced teardown or terminal accounting evidence.
  * - `turn-completed` — the engine finished the turn while the cancel was in
  *   flight. There is no stop outcome to report: the turn's own
  *   `turn.completed` is the only terminal fact.
@@ -481,7 +484,7 @@ export const COOPERATIVE_STOP_BUDGET_MS = 5_000;
  */
 export type InterruptTurnResult =
   | {
-      outcome: 'cooperative' | 'forced';
+      outcome: 'cooperative' | 'forced' | 'termination-unconfirmed';
       threadId: string;
       turnId: string;
     }

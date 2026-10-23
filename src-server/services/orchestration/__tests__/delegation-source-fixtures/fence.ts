@@ -18,13 +18,21 @@ import {
   type ModelInvocationResult,
   type ModelRuntime,
 } from '@kontourai/relay';
+import { afterEach, vi } from 'vitest';
+import { createGateTestRegistry } from '../../../../__test-utils__/orchestration-gate-test-harness.js';
+import { StationAgentAdapter } from '../../../../providers/adapters/station-agent-adapter.js';
 import type {
   BoundedApiProvider,
   ResolvedBoundedApiProviderContract,
 } from '../../../../runtime/conversation/bounded-api-provider-contract.js';
 import type { ReservedProviderEvidence } from '../../../../runtime/conversation/reserved-provider-fetch.js';
 import { runReservedSdkSourceAttempt } from '../../../../runtime/conversation/reserved-sdk-source-attempt.js';
+import {
+  prepareReservedStationTurn,
+  reservedStationTurnResult,
+} from '../../../../runtime/conversation/reserved-station-turn.js';
 import { runtimeRequestPrincipalMayAccessHttpRoute } from '../../../../security/runtime-request-security.js';
+import { ApprovalRegistry } from '../../../approvals/approval-registry.js';
 import {
   FinalFetchLaunchFence,
   type FinalWire,
@@ -40,7 +48,16 @@ import {
   FileFinalWireIntentStore,
   wireIdentityDigest,
 } from '../../delegation-group-wire-intent-store.js';
+import { EventBus } from '../../event-bus.js';
+import { EventStore } from '../../event-store.js';
+import { OrchestrationService } from '../../orchestration-service.js';
+import { createSessionAgentResolver } from '../../session-agent-resolution.js';
 import type { fixture } from './source.js';
+
+const adapterCleanup: Array<() => Promise<void>> = [];
+afterEach(async () => {
+  for (const close of adapterCleanup.splice(0).reverse()) await close();
+});
 
 const ref = (id: string) => ({
   id,
@@ -186,6 +203,7 @@ export async function publicFenceFixture(
     confirmReconciliation: async () => current(),
   };
   let intentCount = 0;
+  let invocationFailure: unknown;
   class Intents extends FileFinalWireIntentStore {
     override async consume(
       ...args: Parameters<FileFinalWireIntentStore['consume']>
@@ -213,6 +231,47 @@ export async function publicFenceFixture(
   const observed: ReservedProviderEvidence[] = [];
   const accounting = new Map<string, DelegationRetainedAccountingV1>();
   const evidenceDirectory = join(f.root, 'station-provider-evidence');
+  const sessionId = 'reserved-sdk-session';
+  const eventStore = observation
+    ? new EventStore(join(f.root, 'reserved-events.sqlite'))
+    : undefined;
+  let relayCalls = 0;
+  const bus = new EventBus();
+  const logger = { debug() {}, warn() {} };
+  const adapter = observation
+    ? new StationAgentAdapter({
+        apiBase: 'http://127.0.0.1:43979',
+        hasAgent: () => true,
+        eventBus: bus,
+        approvalRegistry: new ApprovalRegistry(logger, { eventBus: bus }),
+        fetch: async () => {
+          relayCalls++;
+          throw Error('reserved turn must not relay through /chat');
+        },
+      })
+    : undefined;
+  const orchestration =
+    adapter && eventStore
+      ? new OrchestrationService({
+          adapterRegistry: createGateTestRegistry(adapter),
+          eventBus: bus,
+          eventStore,
+          logger,
+          resolveSessionAgent: createSessionAgentResolver({
+            loadAgentSpec: async () => ({
+              name: 'Reserved reviewer',
+              prompt: 'Report only',
+            }),
+            resolveToolServer: async () => null,
+            resolveSkillDir: async () => null,
+          }),
+        })
+      : undefined;
+  if (orchestration && eventStore)
+    adapterCleanup.push(async () => {
+      await orchestration.shutdown();
+      eventStore.close();
+    });
   let repeatAttempt:
     | (() => ReturnType<typeof runReservedSdkSourceAttempt>)
     | undefined;
@@ -266,7 +325,58 @@ export async function publicFenceFixture(
             },
           };
         repeatAttempt = () => runReservedSdkSourceAttempt(attemptInput);
-        const attempt = await repeatAttempt();
+        if (!orchestration || !eventStore)
+          throw Error('real orchestration missing');
+        const port = prepareReservedStationTurn(
+          {
+            principalId: 'fixture-owner',
+            threadId: sessionId,
+            clientTurnId: 'reserved-client-turn',
+            input: 'inspect exactly this source',
+            modelId: 'fixture-model',
+          },
+          attemptInput,
+        );
+        const started = await orchestration.startSessionInternal(
+          {
+            type: 'start-session',
+            input: {
+              threadId: sessionId,
+              provider: 'station-agent',
+              modelId: 'fixture-model',
+              metadata: { agentId: 'reviewer', userId: 'fixture-owner' },
+            },
+          },
+          { userId: 'fixture-owner' },
+          { reservedStationTurn: port },
+        );
+        if (started.status !== 'accepted')
+          throw Error('reserved session not admitted');
+        await orchestration.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: {
+              threadId: sessionId,
+              clientTurnId: 'reserved-client-turn',
+              input: 'inspect exactly this source',
+              modelId: 'fixture-model',
+            },
+          },
+          { userId: 'fixture-owner' },
+          { reservedStationTurn: port },
+        );
+        const attempt = await reservedStationTurnResult(port);
+        await vi.waitFor(
+          () => {
+            if (
+              !eventStore
+                .listEvents(sessionId)
+                .some((event) => event.payload.method === 'turn.completed')
+            )
+              throw Error('reserved completion not persisted');
+          },
+          { timeout: 10000 },
+        );
         observed.push(attempt.evidence);
         retainedAccounting = attempt.accounting;
         result = attempt.sdkResult;
@@ -314,7 +424,9 @@ export async function publicFenceFixture(
           modelReceipt: execution.runtime.model_receipt_ref,
         }),
         invokeFenced: async (_e, id, invoke) => invocation.run(id, invoke),
-        retainFailure: async () => {},
+        retainFailure: async (error) => {
+          invocationFailure = error;
+        },
         retainResult: async (_result, _envelope, invocationId) =>
           observation ? (accounting.get(invocationId) ?? null) : undefined,
         recordScheduleEvent: async () => {
@@ -355,6 +467,98 @@ export async function publicFenceFixture(
   });
   return {
     observed,
+    get invocationFailure() {
+      return invocationFailure;
+    },
+    canonicalEvents: () =>
+      eventStore?.listEvents(sessionId).map((event) => event.payload) ?? [],
+    get relayCalls() {
+      return relayCalls;
+    },
+    sendAfterAdapterRecoveryWithoutReservation: async () => {
+      if (!eventStore) throw Error('real event store missing');
+      const stored = eventStore.readSessionByThread(sessionId);
+      if (!stored?.resumeCursor)
+        throw Error('persisted reserved cursor missing');
+      const recovery = new StationAgentAdapter({
+        apiBase: 'http://127.0.0.1:43979',
+        hasAgent: () => true,
+        eventBus: bus,
+        approvalRegistry: new ApprovalRegistry(logger, { eventBus: bus }),
+        fetch: async () => {
+          relayCalls++;
+          throw Error('recovered reserved session must not relay');
+        },
+      });
+      await recovery.startSession({
+        provider: 'station-agent',
+        threadId: sessionId,
+        modelId: 'fixture-model',
+        resumeCursor: JSON.parse(JSON.stringify(stored.resumeCursor)),
+      });
+      try {
+        return await recovery.sendTurn({
+          threadId: sessionId,
+          input: 'unreserved recovery request',
+          clientTurnId: 'unreserved-recovery',
+        });
+      } finally {
+        await recovery.stopSession(sessionId);
+      }
+    },
+    interrupt: () => {
+      if (!orchestration) throw Error('real orchestration missing');
+      return orchestration.dispatchWithReceipt(
+        { type: 'interruptTurn', threadId: sessionId },
+        { userId: 'fixture-owner' },
+      );
+    },
+    sendWithoutReservation: () => {
+      if (!orchestration) throw Error('real orchestration missing');
+      return orchestration.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: {
+            threadId: sessionId,
+            clientTurnId: 'unreserved-client-turn',
+            input: 'unreserved request',
+            modelId: 'fixture-model',
+          },
+        },
+        { userId: 'fixture-owner' },
+      );
+    },
+    sendWithForgedReservation: () => {
+      if (!orchestration) throw Error('real orchestration missing');
+      return Reflect.apply(orchestration.dispatchWithReceipt, orchestration, [
+        {
+          type: 'sendTurn',
+          input: {
+            threadId: sessionId,
+            clientTurnId: 'forged-client-turn',
+            input: 'inspect exactly this source',
+            modelId: 'fixture-model',
+          },
+        },
+        { userId: 'fixture-owner' },
+        { reservedStationTurn: JSON.parse('{}') },
+      ]);
+    },
+    retainedReference: () => {
+      const files = readdirSync(evidenceDirectory).filter((file) =>
+        file.endsWith('.json'),
+      );
+      if (files.length !== 1)
+        throw Error('expected one retained evidence record');
+      const record = JSON.parse(
+        readFileSync(join(evidenceDirectory, files[0]), 'utf8'),
+      );
+      return {
+        id: files[0].slice(0, -5),
+        domain: 'station.provider-evidence',
+        digest: `sha256:${createHash('sha256').update(canonicalJson(record)).digest('hex')}`,
+      };
+    },
     retainedEvidence: () => {
       const files = readdirSync(evidenceDirectory).filter((file) =>
         file.endsWith('.json'),
