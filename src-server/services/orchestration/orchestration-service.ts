@@ -2921,6 +2921,9 @@ export class OrchestrationService {
         this.internalStops.reportRedispatchFailed(threadId, turnId, provider),
       replayModelOptions: (threadId, provider, modelOptions) =>
         this.replayModelOptionsWithPosture(threadId, provider, modelOptions),
+      assertRetainedWorkspaceAuthorized: async (threadId) => {
+        await this.authorizedConversationWorkspace(threadId);
+      },
       replayConfinement: (threadId) =>
         this.approvalPosture.standingConfinement(
           threadId,
@@ -3503,6 +3506,7 @@ export class OrchestrationService {
       );
       let session: ProviderSession;
       try {
+        await this.authorizedConversationWorkspace(input.threadId);
         // #2873: a respawn re-resolves the recorded folder like any start.
         assertDispatchCwdUnmoved(startInput, startInput.cwd);
         session = await withTenantExecutionContext(tenantExecutionContext, () =>
@@ -12782,6 +12786,9 @@ export class OrchestrationService {
     admission?: SessionCommandInternalOptions['sessionStartAdmission'],
   ): RecoveredSessionStartOptions {
     return {
+      assertRetainedWorkspaceAuthorized: async (threadId) => {
+        await this.authorizedConversationWorkspace(threadId);
+      },
       invokeSessionStart: (threadId, invoke) =>
         this.runEngineSessionStart(threadId, invoke, admission),
       eventStore: this.options.eventStore,
