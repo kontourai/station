@@ -99,6 +99,18 @@ Agent and contributor smoke runs should use unique ports and `--temp-home`
 unless the task explicitly needs the selected channel's default runtime home.
 See [release channel ports](release-channel-ports.md) for the canonical map.
 
+### Handing a running instance to the operator
+
+Starting the app is not the whole handoff. The UI signs in through a
+`station open --print` link whose `#station-ui-bootstrap` token is single-use:
+it pairs the browser profile that opens it, and a plain `localhost` address
+presents no credential afterwards, so the operator lands on the pairing
+screen. Mint the link at handoff time — an earlier link may already be
+consumed or name a boot that has since restarted — and open it in the
+operator's browser rather than asking them to retype a URL. Pairing is stored
+per browser profile in the instance home, so once paired, ordinary stop and
+start on the same home needs no new link.
+
 ### Running a second Station in development mode
 
 To edit Station's own code while a browser workspace shows the change live, run
@@ -326,6 +338,23 @@ it owns dependencies that the root install must provide. Root-managed examples
 use the repository's `pnpm-lock.yaml`; do not add a second lock inside the
 example.
 
+### Verified CI package-manager bootstrap
+
+CI, Windows PR verification, iOS verification, and the paired PR/Nightly
+Gallery workflows use the immutable `setup-verified-pnpm` action. It installs
+exactly `pnpm@11.25.0` from the JavaScript package, after checking npm's
+ECDSA registry signature against a reviewed fixed public key and checking the
+archive against a pinned SHA-512 integrity value. Identity, version, origin,
+signature, archive or extraction failures stop setup; there is no mirror or
+unsigned fallback. Trust-root and package-version changes require source review.
+
+The action installs Node through the pinned Node setup action, preserves the
+existing `.cjs` package-manager discovery path on Windows, and runs no dependency
+lifecycle scripts. `npm run dependencies:ci` remains the reviewed install owner.
+The JavaScript artifact avoids the native platform-package metadata endpoints;
+this does not establish the cause or availability of those network paths.
+Release packaging retains its separately owned bootstrap until migrated.
+
 ### Dependency install deadline
 
 The dependency bootstrap gives the inert pnpm install step a finite
@@ -548,8 +577,11 @@ locally merely because `main` moved.
 
 The reusable hosted workflow `.github/workflows/full-regression.yml` qualifies
 one exact source SHA through every canonical phase and the Android viewport suite.
-`Main: Qualification` runs every six hours or manually, then runs all five
-packaging/platform validation families after successful qualification. Optional
+`Main: Qualification` runs after main pushes (one admitted push and one
+replaceable pending push), every six hours or manually. Scheduled/manual
+requests retain distinct admission groups and cannot be displaced by a push. Push runs qualify
+source only; scheduled/manual success then runs all five packaging/platform
+validation families. Replaced pending revisions have no qualification claim. Optional
 PR delivery families run in sequence after core fast checks, selected by a
 trusted base-owned diff planner; required integration contexts stay unchanged.
 Scheduled main qualification and tagged Preview/Stable require full qualification with bounded exact-source reuse.

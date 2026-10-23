@@ -148,7 +148,13 @@
 
     "src-server/services/acp/opencode-approval-verify.ts",
 
-    "src-server/providers/auth/cli-auth.ts"
+    "src-server/providers/auth/cli-auth.ts",
+
+    ".github/actions/setup-verified-pnpm/action.yml",
+
+    ".github/actions/setup-verified-pnpm/bootstrap.mjs",
+
+    "scripts/__tests__/verified-pnpm-bootstrap.test.ts"
   ],
 
   "checks": [

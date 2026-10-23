@@ -180,37 +180,136 @@ const REPO_SCAN_SKIP = new Set([
 ]);
 
 /**
+ * Discovery stops here: a folder picker needs the first handful of
+ * repositories, not every checkout under a broad root. A workspace such as
+ * `~/dev/github` can hold hundreds of worktrees, and `/repos` used to start
+ * one git process per discovered root all at once — minutes of answer time
+ * and an event loop too starved to serve anything else on the server.
+ */
+export const DISCOVER_MAX_ROOTS = 24;
+/** Defensive stop for a tree that keeps yielding directories without repos. */
+const DISCOVER_MAX_VISITED_DIRS = 4_000;
+/** Distinct git processes repository enrichment may run at once. */
+const ENRICH_CONCURRENCY = 4;
+
+/**
  * Discover the git repos within a workspace. Handles the multi-root case where
  * the folder a user opens is not itself a repo but contains several (e.g.
  * `~/dev/github/org` holding `repo-a`, `repo-b`). Stops descending at a repo
- * boundary and skips heavy directories so the scan stays cheap.
+ * boundary, skips heavy directories, and stops entirely at
+ * {@link DISCOVER_MAX_ROOTS} roots or {@link DISCOVER_MAX_VISITED_DIRS}
+ * visited directories so the scan stays cheap.
  */
 async function discoverRepos(
   workspace: string,
   maxDepth = 4,
 ): Promise<string[]> {
   const roots: string[] = [];
-  async function walk(dir: string, depth: number): Promise<void> {
+  let visited = 0;
+  // Resolves `false` once a bound was reached and the walk must stop.
+  async function walk(dir: string, depth: number): Promise<boolean> {
+    if (roots.length >= DISCOVER_MAX_ROOTS) return false;
+    if (visited >= DISCOVER_MAX_VISITED_DIRS) return false;
+    visited += 1;
     if (existsSync(join(dir, '.git'))) {
       roots.push(dir);
-      return; // a repo owns its whole subtree; don't descend further
+      return roots.length < DISCOVER_MAX_ROOTS;
     }
-    if (depth >= maxDepth) return;
+    if (depth >= maxDepth) return true;
     const entries = await readdir(dir, { withFileTypes: true }).then(
       (e) => e,
       () => null,
     );
-    if (!entries) return;
+    if (!entries) return true;
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
       if (entry.name.startsWith('.') || REPO_SCAN_SKIP.has(entry.name))
         continue;
-      await walk(join(dir, entry.name), depth + 1);
+      if (!(await walk(join(dir, entry.name), depth + 1))) return false;
     }
+    return true;
   }
   await walk(workspace, 0);
   return roots;
 }
+
+/** `fn` over `items`, at most `limit` calls in flight, results in order. */
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (next < items.length) {
+        const index = next;
+        next += 1;
+        results[index] = await fn(items[index] as T);
+      }
+    }),
+  );
+  return results;
+}
+
+/** The `/repos` answer body for one workspace. */
+async function scanWorkspaceRepos(
+  projectRoot: string,
+  workspace: string,
+  worktrees: ProjectRepositoryReadOptions['registeredWorktrees'],
+) {
+  const roots = await discoverRepos(workspace);
+  const repos = await mapWithConcurrency(
+    roots,
+    ENRICH_CONCURRENCY,
+    async (root) => {
+      // A root whose `.git` is not the Project's own still lists (its
+      // status then says why it is not read), but its branch is another
+      // repository's, so it stays ''.
+      const read = await readProjectRepository(
+        projectRoot,
+        root,
+        { registeredWorktrees: worktrees, timeoutMs: GIT_QUICK_TIMEOUT_MS },
+        (repository) =>
+          execGit(
+            [...repository.repoArgs, 'rev-parse', '--abbrev-ref', 'HEAD'],
+            {
+              cwd: repository.top,
+              encoding: 'utf-8',
+              timeout: GIT_QUICK_TIMEOUT_MS,
+            },
+          ).then(
+            ({ stdout }) => stdout.trim(),
+            // Detached HEAD / mid-rebase repos still list; branch stays ''.
+            () => '',
+          ),
+      );
+      return {
+        root,
+        name: basename(root),
+        relativePath: relative(workspace, root) || '.',
+        branch: read.ok ? read.value : '',
+      };
+    },
+  );
+  return {
+    workspace,
+    workspaceIsRepo: existsSync(join(workspace, '.git')),
+    repos,
+  };
+}
+
+/**
+ * Scans currently running for `/repos`. The New Project form asks once per
+ * typed path prefix and a retry lands while the first scan still runs;
+ * concurrent identical asks share one walk instead of multiplying it. Entries
+ * remove themselves as they settle, so the map only ever holds live work.
+ */
+const inFlightRepoScans = new Map<
+  string,
+  ReturnType<typeof scanWorkspaceRepos>
+>();
 
 /** Letters, digits, `.`, `_`, `-` and `/`, not starting with `-` or `.`,
  * and a valid ref by git's own rules (no `..`, no `.lock`, …). */
@@ -1009,46 +1108,22 @@ export function createCodingRoutes(
         projectRoot = location.projectRoot;
         worktrees = () => registeredWorktrees(c, location.projectRoot);
       }
-      const roots = await discoverRepos(workspace);
-      const repos = await Promise.all(
-        roots.map(async (root) => {
-          // A root whose `.git` is not the Project's own still lists (its
-          // status then says why it is not read), but its branch is another
-          // repository's, so it stays ''.
-          const read = await readProjectRepository(
-            projectRoot,
-            root,
-            { registeredWorktrees: worktrees, timeoutMs: GIT_QUICK_TIMEOUT_MS },
-            (repository) =>
-              execGit(
-                [...repository.repoArgs, 'rev-parse', '--abbrev-ref', 'HEAD'],
-                {
-                  cwd: repository.top,
-                  encoding: 'utf-8',
-                  timeout: GIT_QUICK_TIMEOUT_MS,
-                },
-              ).then(
-                ({ stdout }) => stdout.trim(),
-                // Detached HEAD / mid-rebase repos still list; branch stays ''.
-                () => '',
-              ),
-          );
-          return {
-            root,
-            name: basename(root),
-            relativePath: relative(workspace, root) || '.',
-            branch: read.ok ? read.value : '',
-          };
-        }),
-      );
-      return c.json({
-        success: true,
-        data: {
-          workspace,
-          workspaceIsRepo: existsSync(join(workspace, '.git')),
-          repos,
-        },
-      });
+      // Concurrent identical asks (per-prefix typing, double submits) share
+      // one scan; the key carries the Project slug because the form path and
+      // the Project path answer through different authority.
+      const scanKey = `${slug ?? '\u0000form'}\u0000${projectRoot}\u0000${workspace}`;
+      let scan = inFlightRepoScans.get(scanKey);
+      if (!scan) {
+        scan = scanWorkspaceRepos(projectRoot, workspace, worktrees).finally(
+          () => {
+            inFlightRepoScans.delete(scanKey);
+          },
+        );
+        inFlightRepoScans.set(scanKey, scan);
+      }
+      // A rejected shared scan reaches every waiter here, inside the
+      // handler's try, so each request still gets its own gitFailure answer.
+      return c.json({ success: true, data: await scan });
     } catch (e: unknown) {
       return gitFailure(c, e);
     }

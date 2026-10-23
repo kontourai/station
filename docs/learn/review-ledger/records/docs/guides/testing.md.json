@@ -226,7 +226,11 @@
 
     "src-server/services/infra/__tests__/workload-resources.process.test.ts",
 
-    "docs/guides/development.md"
+    "docs/guides/development.md",
+
+    "scripts/merge-queue-regression-decision.mjs",
+
+    "scripts/ci-workflow-governance.mjs"
   ],
 
   "checks": [
