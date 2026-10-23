@@ -279,5 +279,4 @@ and the `#2875` cases in the
 [two-Station live proof](../../tests/portable-receiver-live-proof.spec.ts).
 Not verified: a genuinely older receiver build (only the sender gate and the
 schema reasoning cover it), SSH-forwarded prepared dispatch (refused by the
-portable SSH rule), and writer races beyond the one injected in the unit
-suite.
+portable SSH rule), and writer races beyond the injected cases in the unit suite.
