@@ -99,6 +99,18 @@ Agent and contributor smoke runs should use unique ports and `--temp-home`
 unless the task explicitly needs the selected channel's default runtime home.
 See [release channel ports](release-channel-ports.md) for the canonical map.
 
+### Handing a running instance to the operator
+
+Starting the app is not the whole handoff. The UI signs in through a
+`station open --print` link whose `#station-ui-bootstrap` token is single-use:
+it pairs the browser profile that opens it, and a plain `localhost` address
+presents no credential afterwards, so the operator lands on the pairing
+screen. Mint the link at handoff time — an earlier link may already be
+consumed or name a boot that has since restarted — and open it in the
+operator's browser rather than asking them to retype a URL. Pairing is stored
+per browser profile in the instance home, so once paired, ordinary stop and
+start on the same home needs no new link.
+
 ### Running a second Station in development mode
 
 To edit Station's own code while a browser workspace shows the change live, run

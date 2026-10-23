@@ -2,13 +2,13 @@
 
 This page combines current source contracts with historical provider probes.
 The recorded Claude 2.1.224 / Agent SDK 0.3.224 experiments below were not rerun
-for this review. The reviewed lockfile resolves Agent SDK 0.3.302; its installed
+for this review. The reviewed lockfile resolves Agent SDK 0.3.304; its installed
 `sdk.d.ts` still documents that omitted `settingSources` loads all filesystem
 settings. That dependency contract is not a fresh live test of permission-rule
 precedence, workspace trust, or memory/MCP discovery.
 
 Version-specific observations below retain the SDK and CLI versions actually
-inspected or executed. They are not new provider results for SDK 0.3.302.
+inspected or executed. They are not new provider results for SDK 0.3.304.
 
 `EngineCapabilityMatrix.toolPolicy` declares only whether Station can make a
 pre-tool blocking or grant decision on the actual tool-call path. It does not
@@ -293,7 +293,7 @@ do not already allow, rather than claiming a floor Station does not impose.
 The standing grant covers calls to the tool, never an escalation beyond the
 call (#2915; #2911 set the same rule for Codex). The recorded escalation
 inspection used Agent SDK 0.3.278, which bundled Claude Code 2.1.278.
-This checkout now resolves SDK 0.3.302 as noted above; the historical
+This checkout now resolves SDK 0.3.304 as noted above; the historical
 2.1.261 and 2.1.278 observations below were not freshly rerun against it.
 That inspected engine signals escalations in several shapes. Read, Glob, Grep and LSP ask for a path outside
 the session's working directories without a `blockedPath`. They carry a session
@@ -428,7 +428,7 @@ Claude Code writes why it asks on each `can_use_tool` control request:
 `workingDir`, `safetyCheck`, `classifier`, `other`), `classifier_approvable`,
 `decision_reason_code` and `requires_user_interaction`. The installed Agent
 SDK 0.3.289 was observed forwarding reason type, reason code and interaction
-fields, but not `classifier_approvable`. The current 0.3.302 type contract exposes
+fields, but not `classifier_approvable`. The current 0.3.304 type contract exposes
 `requestId`, `decisionReason` and `matchedAskRule`; Station obtains the structured
 reason fields from its frame tap below. A test runs the real installed SDK against a stand-in
 CLI and verifies the reason values, request identities and classifier facts
