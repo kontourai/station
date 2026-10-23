@@ -536,6 +536,14 @@ is server-private, invitation-gated and returns a still-pending real person.
 Unsupported providers fail closed; it neither invents a principal nor changes
 browser cookie flows.
 
+The server provider may implement `isVerifiedSessionCurrent(session)`, a synchronous
+live witness for a previously verified session. It must re-read session existence, exact
+subject and timestamps, expiry and account policy, and reject pending enrollment. It
+does not authenticate a caller-supplied session ID and is not part of the public
+descriptor. The local-account provider implements it; adapters without it fail closed at
+synchronous authority seams. `captureCurrentSession` also pins the verified identity and
+cookie and refuses continuation-only authority.
+
 The [relay-management contract](../../packages/contracts/src/relay-management.ts)
 exports `RelayInvitationLifetime`, `RelaySetupApproval`, `RelayPendingDevice`
 and `RelayManagementView`. The view contains public route/signing-confirmation
@@ -1318,9 +1326,11 @@ page and bounded retained records. A valid message count can still require
 byte-based continuation. Persisted DTOs are checked against SQLite identity
 columns before delivery or Agent context use. Agent capture identity and digest
 must match its durable request before private Session reads or cancellation.
-An accepted request is not proof of execution or publication. Ambiguous launch
-is not replayed automatically; explicit reconciliation publishes only an
-authorized completed answer. SSE is an interchangeable notification transport,
+An accepted request is not proof of execution or publication. Ambiguous launch is not
+replayed automatically. A bounded runtime completion observer or explicit reconciliation
+may publish the exact completed answer after current requester, Project, execution-root
+and capture checks. Observation credentials are not durable; restart requires fresh
+authorized recovery. SSE is an interchangeable notification transport,
 not the owner of message order, durability, authority or Task hierarchy.
 
 See [Room HTTP operations](api.md#shared-project-room) and the

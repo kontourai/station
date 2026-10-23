@@ -1375,6 +1375,13 @@ Station/account and requires current request authority at every action.
 Other callers keep the existing creation path; this durable flow currently
 requires the operator. Unreadable browser storage prevents dispatch.
 
+Acquisition rechecks current operator and request authority after lock waits and
+asynchronous preparation, immediately before Git launch after credential configuration,
+before publishing its receipt, and before releasing the response. If authority ends
+after work has started, the retained outcome can remain uncertain; a refusal does not
+prove that an already launched Git process stopped. Inspect the saved operation under
+current authority before explicitly retrying.
+
 The receipt records a completed acquisition, not continuing checkout integrity,
 build readiness or a successful Agent turn. Project creation separately rechecks
 the receipt and records historical provenance; later checkout changes still need

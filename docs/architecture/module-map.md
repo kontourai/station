@@ -2709,6 +2709,12 @@ automatically repeated. Completed answers publish through a stable intent;
 oversized publication records a durable failure. Linking or reading a room does
 not expose private Session transcripts or grant connector credentials.
 
+`project-room-agent-publication.ts` observes terminal orchestration events through
+bounded in-memory requester authority, refreshes authorization, and reconciles the exact
+captured request without relaunching it. Request/reconcile routes register the observer;
+restart or lease expiry requires fresh authorized recovery. Room checkpoint changes
+refresh the UI request handle.
+
 The operator and member Project pages mount the scoped Room. Focused store,
 access, SDK and UI tests cover those owners; production mounting, provider-backed
 execution and two-principal browser acceptance require separate runtime evidence.
@@ -2717,7 +2723,10 @@ Custom channels and Task hierarchy are not implied by this Room contract.
 ## ProjectTaskRoom
 
 **Mounted Task path.** [TaskWorkspaceView](../../src-ui/src/views/TaskWorkspaceView.tsx)
-mounts one `ProjectTaskRoomProvider` across Chat, Brief, Results and Details.
+mounts one `ProjectTaskRoomProvider` across Overview, Conversation, Work chats, Plan and
+Details. Overview shows status, completion criteria, subtasks, decisions, blockers and
+kept deliverables; Plan owns the autosaved document, and Work chats opens independently
+authorized canonical Conversations.
 `ProjectTaskRoomProvider` joins and publishes on mount and departs on teardown;
 `TaskRoomEditorPane` stays mounted across tabs and autosaves through edit plans.
 `ProjectTaskRoomConversation` shows named, timed messages and agent threads.
@@ -3948,6 +3957,14 @@ children and Conversations without hidden counts. The
 and [mounted route tests](../../src-server/routes/orchestration/__tests__/task-relationships.routes.test.ts)
 cover local persistence and transport; production and UI integration remain
 separate evidence. See [the API shapes](../reference/api.md#task-deliverables-and-linked-work-chats).
+
+Task relationship routes compose current transport authority with a live local-account
+session or supported account-bound Device standing witness. Account members may read
+only individually shared Task incarnations in a currently readable Project; a shared
+parent does not reveal private children or their count. Work chats additionally require
+current canonical Conversation lineage and reader access. Ordinary account membership
+does not authorize relationship mutations. Linking neither publishes a Task or private
+conversation nor grants execution.
 
 **Close-out on merge (#3161).** A person can opt a Task in to closing when its pull requests merge (`TaskRecord.closeOnMerge`, `PUT /api/tasks/:taskId/close-on-merge`; no Station Control tool reaches that route). [`task-close-out.ts`](../../src-server/services/projects/task-close-out.ts) is a reconciliation, not a loop: when the conversation pull request refresh observes a merged pull request for a viewer holding the operate tier (the scope `PATCH /api/tasks/:taskId/status` needs; never a Station Control tool call), it reads each pull request kept on the Tasks that kept it, at its exact identity and four at a time, and `TaskGraphService.completeTaskOnMerge` moves a Task to `done` only if every kept pull request is `MERGED`, the Task is the same incarnation (`createdAt`) the reads were for, no pull request was kept since (matched by declaration and target, since one turn's declarations share an event), and `canTransitionTaskStatus` allows `done` (never from todo, ready, triage or blocked). A pull request closed without merging never completes a Task. Nothing re-runs it: a merge is noticed when an operate-tier viewer next refreshes that conversation, and nothing reconciles without one. A pull request declared through Station Control waits in memory for its turn's terminal event (a turn-lifetime lease, not the native 60 seconds) and is lost if Station restarts first. The tests in `task-close-out.test.ts` and `runtime-routes-declare-pull-request-engine.test.ts` cover it.
 

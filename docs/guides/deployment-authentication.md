@@ -15,6 +15,22 @@ Independent-person acceptance is tracked separately in [#497](https://github.com
 Optional configured OIDC choices use the same local account/session owner (see below); the official hosted identity service is tracked in [#489](https://github.com/kontourai/station/issues/489).
 Optional provider integration does not make hosted identity a core prerequisite.
 
+The server provider may implement `isVerifiedSessionCurrent(session)`, a synchronous
+live witness for a previously verified session. It must re-read session existence, exact
+subject and timestamps, expiry and account policy, and reject pending enrollment. It
+does not authenticate a caller-supplied session ID and is not part of the public
+descriptor. The local-account provider implements it; adapters without it fail closed at
+synchronous authority seams. `captureCurrentSession` also pins the verified identity and
+cookie and refuses continuation-only authority.
+
+Task relationship routes compose current transport authority with a live local-account
+session or supported account-bound Device standing witness. Account members may read
+only individually shared Task incarnations in a currently readable Project; a shared
+parent does not reveal private children or their count. Work chats additionally require
+current canonical Conversation lineage and reader access. Ordinary account membership
+does not authorize relationship mutations. Linking neither publishes a Task or private
+conversation nor grants execution.
+
 ## Enable local accounts without email
 
 Choose this built-in configuration instead of an authentication module:

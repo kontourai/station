@@ -437,6 +437,16 @@ does not grant connector credentials, a private transcript, or general Project
 mutation. Agent contexts and answers are bounded; oversized publication records
 a durable failure rather than silently omitting or repeatedly retrying it.
 
+After an explicit Agent request, the runtime registers a bounded in-memory completion
+observer for the original requester. It probes once at registration and responds to
+terminal orchestration events, refreshing current authority before reconciling the exact
+captured Session and turn. The observer retains at most 128 requests for ten minutes
+each; expiry, authority loss, failure or restart ends observation. Check answer remains
+explicit recovery and can rearm observation with fresh execution authority. Neither
+observation nor reconciliation launches the Agent again. Inspect request is read-only;
+the UI refreshes it when the Room checkpoint changes. There is no browser answer-polling
+loop or implicit cancellation on unmount.
+
 Messages and shared notes notify after commit. SSE coalesces wakes and does not
 repeat unchanged content while idle. Twenty-second heartbeat comments and a
 shared consistency check are separate from bounded two-second authority checks.
@@ -453,6 +463,14 @@ composition at `/api/tasks`; the factory alone does not enable these endpoints.
 It requires request-derived Task/Project authority and current canonical
 Conversation reader capabilities. The relationship lane's mounted-route tests
 exercise a real TaskGraph store, without qualifying production composition.
+
+Task relationship routes compose current transport authority with a live local-account
+session or supported account-bound Device standing witness. Account members may read
+only individually shared Task incarnations in a currently readable Project; a shared
+parent does not reveal private children or their count. Work chats additionally require
+current canonical Conversation lineage and reader access. Ordinary account membership
+does not authorize relationship mutations. Linking neither publishes a Task or private
+conversation nor grants execution.
 
 | Relative route | Body or query | Success data |
 | --- | --- | --- |

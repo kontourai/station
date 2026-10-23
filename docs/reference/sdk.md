@@ -246,6 +246,9 @@ require a current-authority predicate. Query keys include host, authority, Task
 ID and creation timestamp. Late responses after authority retirement reject the
 waiting caller and do not update relationship caches.
 
+Relationship clients cap the response body at 2 MiB before parsing and reject malformed
+or oversized relationship DTOs.
+
 Preserve operation ID, Task incarnation, expected revision and full payload
 when retrying an uncertain mutation. Detach uses `parent: null`; unlink uses
 `linked: false`. A work-chat listing returns `chats` containing canonical
@@ -289,14 +292,20 @@ comparison. With both discussion and execution capabilities, Bring an Agent
 selects from the current scoped catalog's available Agents. `useProjectRoomAgent`
 and the React-free `projectRoomAgentRequest` client use the same explicit request
 scope. The UI retains the exact guarded Agent intent before requesting execution;
-a lost acknowledgement offers only an explicit exact retry. Once a handle is
-known, Inspect request reads its state, Check answer reconciles and publishes a
-completed answer into shared history, and Cancel Agent request fences publication.
-These actions never relaunch a known handle. Reconciliation is explicit, with no
-browser polling or implicit cancellation on unmount. Handles exclude private
-Session and execution correlation IDs. Authority or capability loss retires the
-retained browser request. Direct Agent conversations remain in the dock; Room
-requests do not create a Task hierarchy.
+a lost acknowledgement offers only an explicit exact retry. Once a handle is known,
+Inspect request reads its state and Check answer explicitly reconciles and publishes a
+completed answer; Cancel Agent request fences later publication. After an explicit Agent
+request, the runtime registers a bounded in-memory completion observer for the original
+requester. It probes once at registration and responds to terminal orchestration events,
+refreshing current authority before reconciling the exact captured Session and turn. The
+observer retains at most 128 requests for ten minutes each; expiry, authority loss,
+failure or restart ends observation. Check answer remains explicit recovery and can
+rearm observation with fresh execution authority. Neither observation nor reconciliation
+launches the Agent again. Inspect request is read-only; the UI refreshes it when the
+Room checkpoint changes. There is no browser answer-polling loop or implicit
+cancellation on unmount. Handles exclude private Session and execution correlation IDs.
+Authority or capability loss retires the retained browser request. Direct Agent
+conversations remain in the dock; Room requests do not create a Task hierarchy.
 
 The client tests exercise fetch responses and rejection bounds; the mounted UI
 tests exercise two independent query contexts, SSE invalidation and revocation,

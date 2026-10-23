@@ -160,6 +160,18 @@ checked in the source owner and again at response release. S3 never grants a
 mount, execution path or object write/delete. Real AWS acceptance remains
 outstanding; see [the experimental source contract](../guides/knowledge.md#experimental-read-only-s3-prefixes).
 
+Task relationship routes compose current transport authority with a live local-account
+session or supported account-bound Device standing witness. Account members may read
+only individually shared Task incarnations in a currently readable Project; a shared
+parent does not reveal private children or their count. Work chats additionally require
+current canonical Conversation lineage and reader access. Ordinary account membership
+does not authorize relationship mutations. Linking neither publishes a Task or private
+conversation nor grants execution.
+
+Previously verified cookie sessions require the provider's synchronous live witness at
+relationship commit/delivery seams; missing support, revoked/expired sessions and
+pending enrollment fail closed. A historical authenticated result alone is insufficient.
+
 The account-authentication exception is specified in the
 [deployment authentication guide](../guides/deployment-authentication.md).
 With authentication unconfigured, that router reports unavailable (`501`),
