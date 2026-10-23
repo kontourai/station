@@ -10,8 +10,9 @@
 > inventory. An identity, binding, or prepared directory does not itself grant
 > membership or execution authority; physical fleet qualification remains separate.
 
-> Current implementation note: new engine starts resolve the primary resource
-> through `project-session-directory.ts` in runtime composition. An explicit
+> Current implementation note: new engine starts resolve the selected execution
+> root, falling back to the primary resource, through `project-session-directory.ts`
+> in runtime composition. An explicit
 > local binding overrides legacy `workingDirectory`; missing, drifted or
 > unverifiable Git checkouts refuse execution. Directory-less local-only
 > Projects retain their organizational/global behavior. Caller-supplied paths
@@ -27,8 +28,9 @@
 > explicit HTTPS or SSH transport, then the durable acquisition service verifies
 > a working copy. A catalog identity does not choose an execution binding or
 > grant credentials. New Project also permits knowledge, connected-tool and
-> blank starts; source attachment does not promote a source to a primary
-> execution resource. See [repository onboarding](../guides/connections.md#start-a-project-from-a-repository).
+> blank starts. Source attachment preserves an existing primary. Attaching the first
+> repository requires an explicit code-work choice and selects that resource for
+> execution. See [repository onboarding](../guides/connections.md#start-a-project-from-a-repository).
 
 
 > Status: **draft for owner review (2026-08-01, revision 2); tracking issue

@@ -14,6 +14,7 @@ type Intent = {
   id: string;
   expectedProjectId: string;
   command: string;
+  timeoutSeconds: number;
   inputPaths: string[];
 };
 
@@ -55,6 +56,14 @@ export function ProjectOperatorSetup({
         id: value.id,
         expectedProjectId: projectId,
         command: value.command,
+        timeoutSeconds:
+          'timeoutSeconds' in value &&
+          typeof value.timeoutSeconds === 'number' &&
+          Number.isInteger(value.timeoutSeconds) &&
+          value.timeoutSeconds >= 1 &&
+          value.timeoutSeconds <= 600
+            ? value.timeoutSeconds
+            : 30,
         inputPaths: value.inputPaths,
       };
     } catch {
@@ -68,6 +77,10 @@ export function ProjectOperatorSetup({
   );
   const [authorized, setAuthorized] = useState(false);
   const [storageError, setStorageError] = useState(false);
+  const [timeoutSeconds, setTimeoutSeconds] = useState(
+    intent?.timeoutSeconds ?? 30,
+  );
+  const timeoutId = useId();
   const commandId = useId(),
     pathsId = useId(),
     authorizeId = useId();
@@ -148,10 +161,20 @@ export function ProjectOperatorSetup({
         disabled={Boolean(intent) || busy}
         onChange={(event) => setPaths(event.target.value)}
       />
+      <label htmlFor={timeoutId}>Deadline in seconds (1–600)</label>
+      <input
+        id={timeoutId}
+        type="number"
+        min={1}
+        max={600}
+        value={timeoutSeconds}
+        disabled={Boolean(intent) || busy}
+        onChange={(event) => setTimeoutSeconds(Number(event.target.value))}
+      />
       <p>
         Include every file that affects this command. Only these files, the
         execution root and Git HEAD are checked for freshness. Environment and
-        remote dependency changes are not tracked. Commands have a 30-second
+        remote dependency changes are not tracked. Commands use the reviewed
         deadline and bounded output; output is not retained. Same-process-group
         background children are stopped when the shell exits. Processes that
         deliberately leave the group are not contained. Another writer can
@@ -160,12 +183,19 @@ export function ProjectOperatorSetup({
       </p>
       {!intent && (
         <Button
-          disabled={!command.trim() || !paths.trim()}
+          disabled={
+            !command.trim() ||
+            !paths.trim() ||
+            !Number.isInteger(timeoutSeconds) ||
+            timeoutSeconds < 1 ||
+            timeoutSeconds > 600
+          }
           onClick={() => {
             const next = {
               id: crypto.randomUUID(),
               expectedProjectId: projectId,
               command: command.trim(),
+              timeoutSeconds,
               inputPaths: paths
                 .split('\n')
                 .map((p) => p.trim())
@@ -203,6 +233,7 @@ export function ProjectOperatorSetup({
                 Commit: <code>{receipt.sourceCommit}</code>
               </p>
               <pre>{receipt.command}</pre>
+              <p>Deadline: {receipt.timeoutSeconds} seconds</p>
               <ul>
                 {receipt.inputs.map((input) => (
                   <li key={input.path}>

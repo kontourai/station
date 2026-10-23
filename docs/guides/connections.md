@@ -1235,6 +1235,46 @@ credentials to an Agent.
 
 See the [API contract](../reference/api.md#repository-acquisition).
 
+## Review local repository setup
+
+Repository acquisition and attachment run no setup. After creating the Project,
+open **Project settings → Sources → Review and run setup**. Enter a command you
+trust, its deadline (1–600 seconds; 30 by default), and the repository-relative
+files that affect it. Include manifests, lockfiles and any invoked scripts.
+**Preview setup** records the exact command, deadline, current execution root,
+Git commit and file hashes; absent declared inputs are recorded too. Nothing
+runs at preview. Check these facts, then select **I authorize this exact command
+on this Station** and **Run reviewed setup**.
+
+This is an operator action using this host account, network and credentials.
+Do not put secrets in command text. It is not a sandbox, collaborator grant or
+portable recipe. Reviewed setup currently requires POSIX process groups;
+Windows operators can use their terminal. Output is bounded to 1 MiB per stream
+and is not retained. On the reviewed deadline, the runner stops the process
+group. When the shell exits it also retires same-group background children.
+Processes that deliberately leave that group are outside this control.
+
+Station retains an operation before starting the command. **Check setup outcome**
+reads it; reload or a lost response does not run it again. A failed command can
+leave partial effects. After an abrupt server exit, the outcome is **uncertain**
+and a command may still be running: inspect the workspace and processes before
+explicitly starting a new preview. The live runner's deadline does not survive
+a forcibly killed server. Station never rolls back files or retries a started
+operation automatically.
+
+Changed declared inputs, Git HEAD or execution root make a preview stale; a
+successful receipt also becomes stale when its observed post-command inputs
+change. Existing Agent edits are preserved. The check does not track environment,
+remote dependencies or undeclared files, and cannot fence a concurrent writer
+after inspection. A successful exit certifies only that command's observed
+outcome, not build/test readiness or protected execution. Each input is a regular
+file of at most 1 MiB, with 32 files and 8 MiB total per preview. Receipts have a
+64 KiB serialized limit, including reserved outcome space; history is limited to
+1,000 operations per Station. The browser retains its setup selection by Station
+and account. Portable preparation and reproducible recipes remain owned by
+[#2875](https://github.com/kontourai/station/issues/2875) and
+[#3759](https://github.com/kontourai/station/issues/3759).
+
 ## Developer services and computers
 
 Connections has one clear home for each relationship:

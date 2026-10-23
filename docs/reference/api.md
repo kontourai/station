@@ -217,6 +217,37 @@ remote, commit and acquisition time. Clients cannot set or update this record.
 It describes acquisition at creation, rather than granting execution authority
 or asserting that future filesystem contents are unchanged.
 
+## Reviewed operator setup
+
+Local-operator-only `POST /api/projects/:slug/operator-setup/preview` accepts
+`{id, expectedProjectId, command, inputPaths, timeoutSeconds?}`. `id` is a UUID;
+`timeoutSeconds` is 1–600 (default 30). It records the command/deadline, exact
+local Project ID, resolved execution directory, Git commit and declared input
+hashes without executing. Inputs are repository-relative regular files (32,
+1 MiB each, 8 MiB total); missing inputs are recorded as absent. A different
+intent cannot reuse an ID. Oversized receipts refuse before persistence with
+room reserved for the eventual outcome. History is capped at 1,000 operations.
+
+`POST /api/projects/:slug/operator-setup/:id/run` requires `{authorize: true}`.
+It checks the current Project/root and declared inputs, durably records a start,
+then launches the reviewed trusted command under its deadline and 1 MiB output
+bounds. Per-Project locking serializes setup operations. Repeating the request
+returns the retained outcome; started commands are never replayed. States are
+`previewed`, `running`, `uncertain`, `succeeded`, `failed` and `stale`.
+`GET /api/projects/:slug/operator-setup/:id` checks the retained outcome and
+freshness. A missing or mismatched operation is409; unavailable storage is503;
+missing authorization body is400. Current operator authority gates admission,
+command launch and response release.
+
+Abrupt owner loss leaves `uncertain` even if the directory later disappears;
+the command may still run. Failed/running outcome reads do not require a healthy
+checkout. No output or credentials are response data, and files are never rolled
+back. POSIX same-group descendants are retired at shell exit/deadline; deliberate
+group escape is not contained and the live deadline cannot survive server SIGKILL.
+Windows preview refuses until descendant ownership is supported. These are local
+operator command receipts, not portable preparation or filesystem isolation.
+See [setup limits](../guides/connections.md#review-local-repository-setup).
+
 ## Knowledge source capabilities
 
 `GET /api/knowledge/capabilities` reports `canManageSources`, `canAttachLegacy`

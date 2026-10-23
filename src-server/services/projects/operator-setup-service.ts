@@ -16,6 +16,7 @@ export const operatorSetupPreviewSchema = z
     id: z.string().uuid(),
     expectedProjectId: z.string().min(1),
     command: z.string().trim().min(1).max(4096),
+    timeoutSeconds: z.number().int().min(1).max(600).default(30),
     inputPaths: z.array(z.string().min(1).max(512)).min(1).max(32),
   })
   .strict();
@@ -27,6 +28,7 @@ const receiptSchema = z
     projectSlug: z.string().min(1),
     cwd: z.string().min(1),
     command: z.string().min(1).max(4096),
+    timeoutSeconds: z.number().int().min(1).max(600),
     inputs: z
       .array(
         z
@@ -54,7 +56,7 @@ const receiptSchema = z
   .strict();
 
 export class OperatorSetupConflict extends Error {}
-type Preview = z.infer<typeof operatorSetupPreviewSchema>;
+type Preview = z.input<typeof operatorSetupPreviewSchema>;
 type Context = { projectId: string; cwd: string };
 const digest = (value: string | Buffer) =>
   createHash('sha256').update(value).digest('hex');
@@ -229,6 +231,7 @@ export class OperatorSetupService {
           existing.projectId !== request.expectedProjectId ||
           existing.projectSlug !== slug ||
           existing.command !== request.command ||
+          existing.timeoutSeconds !== request.timeoutSeconds ||
           existing.inputDigest !== observed.inputDigest
         )
           throw new OperatorSetupConflict(
@@ -250,6 +253,7 @@ export class OperatorSetupService {
         projectId: request.expectedProjectId,
         projectSlug: slug,
         command: request.command,
+        timeoutSeconds: request.timeoutSeconds,
         ...observed,
         phase: 'previewed',
         updatedAt: new Date().toISOString(),
@@ -341,7 +345,7 @@ export class OperatorSetupService {
           {
             cwd: running.cwd,
             env: childProcessEnvironment(),
-            timeout: 30000,
+            timeout: running.timeoutSeconds * 1000,
             maxBuffer: 1024 * 1024,
             retireDescendantsOnExit: true,
           },

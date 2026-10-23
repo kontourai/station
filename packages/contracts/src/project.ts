@@ -489,6 +489,7 @@ export interface OperatorSetupReceipt {
   command: string;
   inputs: Array<{ path: string; sha256: string | null }>;
   sourceCommit: string;
+  timeoutSeconds: number;
   inputDigest: string;
   phase:
     | 'previewed'

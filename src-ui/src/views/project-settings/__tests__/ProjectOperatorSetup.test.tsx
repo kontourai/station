@@ -51,6 +51,7 @@ test('setup previews before separate authorization and recovers a lost run respo
           inputs: [{ path: 'package.json', sha256: 'a'.repeat(64) }],
           sourceCommit: 'b'.repeat(40),
           inputDigest: 'c'.repeat(64),
+          timeoutSeconds: request.timeoutSeconds,
           phase: 'previewed',
           updatedAt: '2026-10-22T00:00:00.000Z',
         };

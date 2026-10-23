@@ -1,18 +1,23 @@
+import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
+import { once } from 'node:events';
 import {
   existsSync,
   mkdirSync,
   readFileSync,
   realpathSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { test as baseTest, expect, vi } from 'vitest';
 
 const test = baseTest.skipIf(process.platform === 'win32');
 
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
+import { childProcessEnvironment } from '../../../utils/child-process-environment.js';
 import { execGitSync } from '../../../utils/git-exec.js';
 import { OperatorSetupService } from '../operator-setup-service.js';
 import { createProjectSessionDirectoryResolver } from '../project-session-directory.js';
@@ -262,4 +267,96 @@ test('serialized UTF-8 admission preserves readable receipts and rejects oversiz
   expect(await f.service.get('setup', good.id, () => {})).toMatchObject({
     phase: 'previewed',
   });
+});
+
+test('an abrupt owner-process exit retains uncertainty without replay even when the checkout becomes unavailable', async () => {
+  const f = await fixture();
+  const request = {
+    ...f.request,
+    command: `exec ${f.command("const fs=require('fs');fs.appendFileSync('effect.txt','partial');fs.writeFileSync('effect-pid',String(process.pid));setInterval(()=>{},1000)")}`,
+  };
+  writeFileSync(join(f.home, 'crash-request.json'), JSON.stringify(request));
+  const child = spawn(
+    process.execPath,
+    [
+      '--import',
+      'tsx',
+      fileURLToPath(
+        new URL('./fixtures/operator-setup-crash-child.ts', import.meta.url),
+      ),
+      f.home,
+    ],
+    { env: childProcessEnvironment(), stdio: 'ignore', windowsHide: true },
+  );
+  const exited = once(child, 'exit');
+  let effectPid: number | undefined;
+  try {
+    await vi.waitFor(
+      () => expect(existsSync(join(f.cwd, 'effect-pid'))).toBe(true),
+      { timeout: 10000 },
+    );
+    effectPid = Number(readFileSync(join(f.cwd, 'effect-pid'), 'utf8'));
+    expect(Number.isSafeInteger(effectPid) && effectPid > 1).toBe(true);
+    expect(
+      JSON.parse(
+        readFileSync(
+          join(f.home, 'operator-setup', `${request.id}.json`),
+          'utf8',
+        ),
+      ).phase,
+    ).toBe('running');
+    child.kill('SIGKILL');
+    await exited;
+    process.kill(-effectPid, 'SIGKILL');
+    effectPid = undefined;
+    rmSync(join(f.cwd, '.git'), { recursive: true });
+    const restarted = new OperatorSetupService(
+      f.home,
+      f.context,
+      () => f.storage.getProject('setup').id,
+    );
+    expect(await restarted.get('setup', request.id, () => {})).toMatchObject({
+      phase: 'uncertain',
+    });
+    expect(await restarted.run('setup', request.id, () => {})).toMatchObject({
+      phase: 'uncertain',
+    });
+    expect(readFileSync(join(f.cwd, 'effect.txt'), 'utf8')).toBe('partial');
+  } finally {
+    if (child.exitCode === null && child.signalCode === null)
+      child.kill('SIGKILL');
+    await exited;
+    if (effectPid) {
+      try {
+        process.kill(-effectPid, 'SIGKILL');
+      } catch {}
+    }
+  }
+}, 15000);
+
+test('the reviewed deadline stops setup and a changed deadline cannot reuse its authorization', async () => {
+  const f = await fixture();
+  const request = {
+    ...f.request,
+    timeoutSeconds: 1,
+    command: f.command(
+      "require('fs').writeFileSync('effect.txt','partial');setInterval(()=>{},1000)",
+    ),
+  };
+  await f.service.preview('setup', request, () => {});
+  await expect(
+    f.service.preview('setup', { ...request, timeoutSeconds: 60 }, () => {}),
+  ).rejects.toThrow('another preview');
+  expect(await f.service.run('setup', request.id, () => {})).toMatchObject({
+    phase: 'failed',
+    exitCode: -1,
+  });
+  expect(
+    await new OperatorSetupService(
+      f.home,
+      f.context,
+      () => f.storage.getProject('setup').id,
+    ).run('setup', request.id, () => {}),
+  ).toMatchObject({ phase: 'failed' });
+  expect(readFileSync(join(f.cwd, 'effect.txt'), 'utf8')).toBe('partial');
 });

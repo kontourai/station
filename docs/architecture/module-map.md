@@ -2368,6 +2368,18 @@ its mutation lock. Binding write, final staged manifest rename and response
 release each check current operator authority. This is no setup or credential
 grant.
 
+Local operator setup is a separate owner in
+`services/projects/operator-setup-service.ts`, mounted by
+`routes/projects/operator-setup-routes.ts`. It resolves execution directories
+through the existing session-directory owner pinned to the same storage adapter.
+It retains reviewed command/deadline/input facts before execution, rejects stale
+previews and never replays a started effect. The shared
+`utils/process-group-exec.ts` owns process tracking/deadlines for Git, forge CLIs
+and setup; Git retains its existing API names, while setup explicitly retires
+same-group descendants at leader exit. Abrupt owner loss remains uncertain and
+is not a surviving process deadline. These receipts do not replace portable
+preparation, attempt claims, membership or recipe authority.
+
 **Code and evidence.** Project routes inject the runtime-pinned stores
 and checkout reader; repository attachment uses that same binding owner rather
 than constructing another store behind the route. The SDK's
