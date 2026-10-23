@@ -2461,6 +2461,15 @@ turn cannot be targeted for interruption: admission closes, its capacity stays
 occupied and no stop is claimed. Missing initial completion evidence remains
 unconfirmed.
 
+Failure and cancellation also require an event naming that exact initial turn:
+`runtime.error` or `turn.aborted`, or a `turn.completed` event with the cancelled
+finish reason. A deferred, retriable Codex error is not terminal. Generic session
+status cannot close the seat. Supervision reads a bounded 20-turn event window;
+a missing terminal or a byte-elided error leaves the outcome unknown and the
+seat occupied. The reader does not infer omitted error fields or recover a
+terminal outside that window. A later visible initial-turn completion can still
+settle the seat while supervision remains active.
+
 Each page has `afterRevision`, `nextRevision`, `events`, `hasMore` and explicit
 `unavailable` entries for oversized rows. Pages hold at most 64 revisions and
 256 KiB; the private group record retains at most 4096 journal revisions within

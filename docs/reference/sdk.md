@@ -5505,7 +5505,10 @@ timeout; pass `signal` or an explicit `timeoutMs` to bound the caller's wait.
 Aborting requests interruption and preserves unknown occupied seats. There is no
 automatic launch retry. Responses validate the unbound-lineage and unavailable-cap
 disclosures; they cannot silently become a hard fiscal authority. Group completion
-is distinct from work acceptance. Historical live session-group receipts are
+is distinct from work acceptance. Terminal outcomes require exact initial-turn
+evidence in the server's bounded event window; a generic terminal session status,
+missing event or byte-elided error leaves the seat occupied. See the
+[terminal observation limits](api.md#cli-session-groups). Historical live session-group receipts are
 bound to the source revisions recorded in the [epic plan](../plans/child-work-epic.md);
 the `a39212fabf0` check includes a live exact-event MCP form answer and later
 authenticated member-event replay. A fresh mixed group at `27fafa8d48b6`
