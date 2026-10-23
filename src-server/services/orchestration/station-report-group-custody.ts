@@ -455,8 +455,24 @@ export class StationReportGroupCustody {
     context: RuntimeSourceRequestContext,
     operationId: string,
   ) {
+    return this.#findOperation(
+      await this.#context(context, 'GET'),
+      operationId,
+    );
+  }
+
+  async findOperationForMutation(
+    context: RuntimeSourceRequestContext,
+    operationId: string,
+  ) {
+    return this.#findOperation(
+      await this.#context(context, 'POST'),
+      operationId,
+    );
+  }
+
+  async #findOperation(authorized: ReadContext, operationId: string) {
     id(operationId);
-    const authorized = await this.#context(context, 'GET');
     const records = await this.owners.persistence.listReportAdmissions(
       authorized.current,
     );

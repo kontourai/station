@@ -97,6 +97,13 @@ const inputSchema = z
   })
   .strict();
 export type StationReportGroupInput = z.input<typeof inputSchema>;
+export function parseStationReportGroupInput(
+  sent: unknown,
+): StationReportGroupInput {
+  const input = inputSchema.parse(structuredClone(sent));
+  if (Buffer.byteLength(canonicalJson(input)) > 256 * 1024) refuse();
+  return input;
+}
 const brand = Symbol('prepared Station report group');
 export type PreparedStationReportGroup = Readonly<{ [brand]: true }>;
 type Member = {
@@ -177,8 +184,7 @@ export class StationReportGroupPreparation {
     context: RuntimeSourceRequestContext,
     sent: StationReportGroupInput,
   ): Promise<PreparedStationReportGroup> {
-    const input = inputSchema.parse(structuredClone(sent));
-    if (Buffer.byteLength(canonicalJson(input)) > 256 * 1024) refuse();
+    const input = parseStationReportGroupInput(sent);
     this.#assertRequest(context.req.raw);
     const authority = await captureEnvironmentLocalGrantObservationOwner(
       context.req.raw,
@@ -640,6 +646,10 @@ export class StationReportGroupPreparation {
       canonicalJson(captured.sourceBinding.source) ===
       canonicalJson(envelope.execution_binding.source)
     );
+  }
+
+  assertCurrent(handle: PreparedStationReportGroup, request: Request): void {
+    this.#state(handle, request);
   }
 
   read(

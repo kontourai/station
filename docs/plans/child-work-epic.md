@@ -942,6 +942,17 @@ model access and same-session ACK acceptance remain separate obligations.
 
 ## Authenticated report-group preparation
 
+A private execution runner now composes the actual preparation, signed custody,
+canonical task dispatch, sealed SDK transport and published AccountingV1 rounds.
+It derives usage from retained raw provider evidence and records bounded private
+observations; terminal proof joins the exact canonical session/turn event to that
+evidence. Historical operation lookup precedes preparation, so exact replay can
+observe an expired-profile group without another source seal or physical attempt.
+The controlled two-seat fixture exercises this owner directly; it is not live
+provider evidence. The mode remains independent advisory, not acceptance, and
+boot/public serving, Flow frontier/join and session-context ACK remain open.
+
+
 The private report-group preparer now derives one controller and its child
 report envelopes from an authenticated local operator intent, actual configured
 Agents, exact qualified SDK quotes and separately sealed copies of one source

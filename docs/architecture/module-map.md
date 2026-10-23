@@ -1979,6 +1979,17 @@ request serving and authenticated context-sync recipients remain unwired.
 
 ### Operator report-group preparation
 
+The private [execution runner](../../src-server/services/orchestration/station-report-group-execution.ts)
+looks up authenticated durable operation identity before preparing another source.
+Exact historical replay returns retained state after provider-profile expiry;
+changed intent refuses. New requests compose the real preparation/custody owners,
+published Flow v3 authority and AccountingV1 rounds, canonical reserved tasks and
+sealed SDK transport. They retain bounded result/failure observations and confirm
+exact canonical turn events against retained provider evidence before recording
+terminal proof. This is independent-advisory execution with acceptance unassessed;
+boot/routes, Flow topology and session-context continuation remain unqualified.
+
+
 The [report-group preparer](../../src-server/services/orchestration/station-report-group-preparation.ts)
 composes the actual runtime credential, configured Agent, sealed-source and
 Anthropic profile owners. It accepts an authenticated local operator's bounded

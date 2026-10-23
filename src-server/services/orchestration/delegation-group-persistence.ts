@@ -44,6 +44,7 @@ import {
 import { canonicalJson } from '@kontourai/relay';
 import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import { z } from 'zod/v3';
 
 import type { ReservedProviderEvidence } from '../../runtime/conversation/reserved-provider-fetch.js';
 import {
@@ -56,6 +57,56 @@ import {
   reportInterruptLedgerSchema,
   reportInterruptRecordSchema,
 } from './station-report-group-cancellation.js';
+
+const reportObservationId = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/);
+const reportEvidenceReference = z
+  .object({
+    id: reportObservationId,
+    domain: z.literal('station.provider-evidence'),
+    digest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+  })
+  .strict();
+const reportObservationSchema = z
+  .object({
+    groupId: reportObservationId,
+    seatId: reportObservationId,
+    invocationId: reportObservationId,
+    observation: z.discriminatedUnion('kind', [
+      z
+        .object({
+          kind: z.literal('result'),
+          evidence: reportEvidenceReference,
+          text: z.string().max(1024 * 1024),
+          modelId: z.string().min(1).max(512),
+          inputTokens: z.number().int().nonnegative().safe(),
+          outputTokens: z.number().int().nonnegative().safe(),
+          costMicros: z.number().int().nonnegative().safe(),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal('failure'),
+          code: z.literal('report_attempt_unavailable'),
+        })
+        .strict(),
+      z
+        .object({
+          kind: z.literal('terminal'),
+          evidence: reportEvidenceReference,
+          taskId: reportObservationId,
+          sessionId: reportObservationId,
+          turnId: reportObservationId,
+          eventId: reportObservationId,
+        })
+        .strict(),
+    ]),
+  })
+  .strict();
+export type StationReportObservation = z.infer<typeof reportObservationSchema>;
 
 export type DelegationPersistenceFinalizer = () => undefined;
 const AUTHORITY_MAX_BYTES = 16 * 1024 * 1024;
@@ -259,6 +310,7 @@ export class StationDelegationPersistence {
   readonly #rounds: PrivateDomain;
   readonly #reportAdmissions: PrivateDomain;
   readonly #reportInterrupts: PrivateDomain;
+  readonly #reportObservations: PrivateDomain;
   constructor(privateRoot: string) {
     const requested = resolve(privateRoot);
     privateDirectory(requested);
@@ -287,10 +339,62 @@ export class StationDelegationPersistence {
       root,
       'station-report-interrupts-v1',
     );
+    this.#reportObservations = new PrivateDomain(
+      root,
+      'station-report-observations-v1',
+    );
     this.#providerEvidence = new PrivateDomain(
       root,
       'station-provider-evidence',
     );
+  }
+
+  async retainReportObservation(
+    value: StationReportObservation,
+    finalizeCurrent: DelegationPersistenceFinalizer,
+  ) {
+    const record = reportObservationSchema.parse(value);
+    const domain = this.#reportObservations;
+    const file = address(
+      `observation:${createHash('sha256')
+        .update(
+          canonicalJson([
+            record.groupId,
+            record.invocationId,
+            record.observation.kind,
+          ]),
+        )
+        .digest('hex')}`,
+    );
+    return domain.locked(finalizeCurrent, async () => {
+      const bytes = readBytes(join(domain.directory, file), 2 * 1024 * 1024);
+      if (bytes !== null)
+        requirePersistence(
+          same(reportObservationSchema.parse(JSON.parse(bytes)), record),
+          'report_observation_conflict',
+        );
+      else {
+        requirePersistence(
+          domain.files().length < MAX_FILES,
+          'report_observation_capacity',
+        );
+        await domain.publish(file, record, 2 * 1024 * 1024, finalizeCurrent);
+      }
+      const confirmed = readBytes(
+        join(domain.directory, file),
+        2 * 1024 * 1024,
+      );
+      requirePersistence(
+        confirmed !== null &&
+          same(reportObservationSchema.parse(JSON.parse(confirmed)), record),
+        'report_observation_unconfirmed',
+      );
+      return {
+        domain: 'station.report-observation.v1',
+        id: file.slice(0, -5),
+        digest: `sha256:${createHash('sha256').update(canonicalJson(record)).digest('hex')}`,
+      };
+    });
   }
 
   async recordReportInterrupt(
