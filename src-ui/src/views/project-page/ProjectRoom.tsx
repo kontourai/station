@@ -690,7 +690,7 @@ function ProjectRoomAgentPanel({
   const available =
     agent.catalog.isSuccess &&
     agent.catalog.data?.catalogState !== 'reconciling'
-      ? (agent.catalog.data?.agents.filter((a) => a.available === true) ?? [])
+      ? (agent.catalog.data?.agents.filter((a) => a.available !== false) ?? [])
       : [];
   async function act(action: 'request' | 'inspect' | 'reconcile' | 'cancel') {
     if (!ready || stopped || busy.current) return;

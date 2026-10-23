@@ -62,7 +62,7 @@ function fixture() {
       const ok = (data: unknown) => Response.json({ success: true, data });
       if (url.pathname === '/api/agents')
         return ok([
-          { slug: 'researcher', name: 'Researcher', available: true },
+          { slug: 'researcher', name: 'Researcher' },
           { slug: 'offline', name: 'Offline', available: false },
         ]);
       if (url.pathname.endsWith('/room/agents')) {
