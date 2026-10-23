@@ -1,0 +1,7 @@
+{
+  "revision": "d4a0ba09135a482b32640245a42f4fa0c976ab94",
+
+  "notes": [
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"Reviewed the integrating-station guide delta against this historical strategy and its current reading routes. The new Full-observation route retains explicit disclosure, provisioning, commit/replay and outage boundaries, distinct from accounting/OTel. The guide now warns that references may be inactive or unpublished and points removed GCP recipe claims at their historical commit. This strategy already separates published manifest/lockfile contracts from sibling sources and classifies old package tables as dated assessments; no prose change needed. No historical benchmarks, cloud recipes, provider/runtime, release or whole integration surface acceptance rerun.","inputs":["docs/strategy/kontour-integration-surface.md","docs/guides/integrating-station.md"]}
+  ]
+}
