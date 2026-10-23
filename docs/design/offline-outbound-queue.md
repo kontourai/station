@@ -63,9 +63,15 @@ A window's own claim reads "Sending" only while its own send is in progress.
 While any send reads "Sending" this way the list looks again every few seconds,
 since a window that closes says nothing.
 If that lookup fails while released rows remain unresolved, the mounted flush
-hook checks again after 2 seconds, doubling to a 60-second cap. Successful
-settlement stops that retry; unmount, authority changes and connection-health
-changes cancel the old schedule. A late lookup cannot rearm that schedule.
+hook checks again after 2 seconds, doubling to a 60-second cap. Only one
+visible, connected renderer owns automatic lookups for a Station in the shared
+queue. Its transactional lease expires after 15 seconds and is renewed every
+3 seconds while lookup work remains. Hiding the window, a browser offline
+event, lost connection health, unmount or an authority change releases ownership
+and cancels its retry. Other visible renderers check ownership every 3 seconds;
+queue changes still refresh their projections. Returning to visible, online and
+connected starts a check immediately with the short backoff restored. Successful
+settlement stops the schedule, and a late lookup cannot rearm a paused schedule.
 The timer only checks delivery: a resend still requires Station's answer that
 it never received the message.
 The lookup settles released rows, and rows whose app was closed, at the next

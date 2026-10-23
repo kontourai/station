@@ -16,6 +16,7 @@ import {
 
 const sendMessage = vi.fn();
 const getTurnDelivery = vi.fn();
+const connection = vi.hoisted(() => ({ status: 'connected' }));
 
 vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk/client')>()),
@@ -23,7 +24,7 @@ vi.mock('@kontourai/station-sdk/client', async (importOriginal) => ({
 }));
 
 vi.mock('@kontourai/station-connect', () => ({
-  useConnectionStatus: () => ({ status: 'connected' }),
+  useConnectionStatus: () => connection,
 }));
 
 vi.mock('../hooks/useActiveChatSessions', () => ({
@@ -36,6 +37,7 @@ import { useOutboundQueueFlush } from '../hooks/useOutboundQueueFlush';
 describe('useOutboundQueueFlush', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    connection.status = 'connected';
     _setOutboundQueueStorage({
       getItem: async () => [],
       setItem: async () => {},
@@ -848,11 +850,12 @@ describe('useOutboundQueueFlush', () => {
   });
 
   describe('a send the app was closed during', () => {
-    async function orphanedLiveRow() {
+    async function orphanedLiveRow(reconciliationLeases: unknown[] = []) {
       let stored: unknown = {
         version: 2,
         terminalEvidence: [],
         completedTerminals: [],
+        reconciliationLeases,
         turns: [
           {
             clientTurnId: 'key-orphan',
@@ -889,6 +892,116 @@ describe('useOutboundQueueFlush', () => {
         await vi.dynamicImportSettled();
       });
     };
+
+    it.each(['hidden', 'browser offline', 'connection unreachable'] as const)(
+      'pauses lookup backoff while %s and resumes immediately at two seconds',
+      async (pause) => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+        let visibility: DocumentVisibilityState = 'visible';
+        let online = true;
+        vi.spyOn(document, 'visibilityState', 'get').mockImplementation(
+          () => visibility,
+        );
+        vi.spyOn(navigator, 'onLine', 'get').mockImplementation(() => online);
+        await orphanedLiveRow();
+        getTurnDelivery.mockRejectedValue(new Error('lookup unavailable'));
+        const view = renderHook(() => useOutboundQueueFlush('http://api.test'));
+        try {
+          await settleImports();
+          await act(async () => {
+            await vi.advanceTimersByTimeAsync(2_000);
+          });
+          await settleImports();
+          expect(getTurnDelivery).toHaveBeenCalledTimes(2);
+          await act(async () => {
+            if (pause === 'hidden') {
+              visibility = 'hidden';
+              document.dispatchEvent(new Event('visibilitychange'));
+            } else if (pause === 'browser offline') {
+              online = false;
+              window.dispatchEvent(new Event('offline'));
+            } else {
+              connection.status = 'error';
+              view.rerender();
+            }
+          });
+          await settleImports();
+          await act(async () => {
+            await vi.advanceTimersByTimeAsync(120_000);
+          });
+          await settleImports();
+          expect(getTurnDelivery).toHaveBeenCalledTimes(2);
+          expect((await outboundDispatch.snapshot())[0]).toMatchObject({
+            status: 'invoking',
+          });
+          await act(async () => {
+            if (pause === 'hidden') {
+              visibility = 'visible';
+              document.dispatchEvent(new Event('visibilitychange'));
+            } else if (pause === 'browser offline') {
+              online = true;
+              window.dispatchEvent(new Event('online'));
+            } else {
+              connection.status = 'connected';
+              view.rerender();
+            }
+          });
+          await settleImports();
+          expect(getTurnDelivery).toHaveBeenCalledTimes(3);
+          await act(async () => {
+            await vi.advanceTimersByTimeAsync(1_999);
+          });
+          expect(getTurnDelivery).toHaveBeenCalledTimes(3);
+          await act(async () => {
+            await vi.advanceTimersByTimeAsync(1);
+          });
+          await settleImports();
+          expect(getTurnDelivery).toHaveBeenCalledTimes(4);
+          expect(sendMessage).not.toHaveBeenCalled();
+        } finally {
+          view.unmount();
+          await settleImports();
+          vi.restoreAllMocks();
+          vi.useRealTimers();
+        }
+      },
+    );
+
+    it('takes over a disappeared renderer after its persisted lease expires', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+      await orphanedLiveRow([
+        {
+          owner: 'renderer-that-disappeared',
+          station: { apiBase: 'http://api.test' },
+          expiresAt: Date.now() + 15_000,
+        },
+      ]);
+      getTurnDelivery.mockRejectedValue(new Error('lookup unavailable'));
+      const view = renderHook(() => useOutboundQueueFlush('http://api.test'));
+      try {
+        await settleImports();
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(14_999);
+        });
+        await settleImports();
+        expect(getTurnDelivery).not.toHaveBeenCalled();
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(1);
+        });
+        await settleImports();
+        expect(getTurnDelivery).toHaveBeenCalledTimes(1);
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(2_000);
+        });
+        await settleImports();
+        expect(getTurnDelivery).toHaveBeenCalledTimes(2);
+        expect(sendMessage).not.toHaveBeenCalled();
+      } finally {
+        view.unmount();
+        await settleImports();
+        vi.useRealTimers();
+      }
+    });
 
     it('recovers a failed delivery lookup without another queue event or resend', async () => {
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });

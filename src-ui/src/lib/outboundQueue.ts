@@ -277,6 +277,12 @@ export interface OutboundDispatchModule {
     lookup: OutboundDeliveryLookup,
     options?: { station?: OutboundStationIdentity },
   ): Promise<{ received: number; lookupFailed: number }>;
+  /** One automatic lookup owner in the shared queue; renewed while waiting. */
+  claimReconciliation(
+    owner: string,
+    station: OutboundStationIdentity,
+  ): Promise<'owner' | 'other' | 'idle'>;
+  releaseReconciliation(owner: string): Promise<void>;
   /**
    * Makes this renderer's held follow-ups (`heldBy`) exactly `intents`:
    * writes the new, updates the changed, removes the ones no longer held.
@@ -491,6 +497,11 @@ interface OutboundQueueState {
   terminalEvidence: TerminalEvidence[];
   /** Bounded exact tombstones ignore a replayed terminal after completion. */
   completedTerminals: TerminalEvidence[];
+  reconciliationLeases?: Array<{
+    owner: string;
+    station: OutboundStationIdentity;
+    expiresAt: number;
+  }>;
   /**
    * Keys whose message is finished with: discarded by the user, or accepted
    * by Station. A held copy is never re-created for one, and no send of one
@@ -831,6 +842,17 @@ function queueState(stored: unknown): OutboundQueueState {
       turns: state.turns.map(normalizeEntry),
       terminalEvidence: state.terminalEvidence,
       completedTerminals: state.completedTerminals ?? [],
+      ...(Array.isArray(state.reconciliationLeases)
+        ? {
+            reconciliationLeases: state.reconciliationLeases.filter(
+              (lease) =>
+                lease &&
+                typeof lease.owner === 'string' &&
+                typeof lease.station?.apiBase === 'string' &&
+                Number.isFinite(lease.expiresAt),
+            ),
+          }
+        : {}),
     };
   }
   throw new OutboundQueueStateError();
@@ -1222,7 +1244,7 @@ async function mutateState<T>(
     changed: boolean;
   },
   /** The caller already holds the queue lock (it is not re-entrant). */
-  options: { locked?: boolean } = {},
+  options: { locked?: boolean; silent?: boolean } = {},
 ): Promise<T> {
   const locked = <R>(run: () => Promise<R>) =>
     options.locked ? run() : withQueueLock(run);
@@ -1276,8 +1298,81 @@ async function mutateState<T>(
       }
     });
   }
-  if (changed) notify();
+  if (changed && !options.silent) notify();
   return result;
+}
+
+// Renewed every three seconds only while the queue has invoking rows. A
+// crashed or suspended renderer cannot hold automatic observation forever.
+const RECONCILIATION_LEASE_MS = 15_000;
+
+async function claimReconciliation(
+  owner: string,
+  station: OutboundStationIdentity,
+): Promise<'owner' | 'other' | 'idle'> {
+  // A read/write fallback without either transactions or Web Locks cannot
+  // establish cross-renderer ownership. Leave the rows fenced in that case.
+  if (!storage.updateItem && !storage.updateWithRetired) return 'other';
+  const candidates = await reconciliationCandidates(station);
+  return mutateState(
+    (state) => {
+      if (
+        !state.turns.some(
+          (row) =>
+            row.status === 'invoking' &&
+            candidates.some(
+              (candidate) =>
+                candidate.clientTurnId === row.clientTurnId &&
+                candidate.dispatchBootId === row.dispatchBootId &&
+                candidate.claimedAt === row.claimedAt,
+            ),
+        )
+      )
+        return { state, result: 'idle' as const, changed: false };
+      const leases = (state.reconciliationLeases ?? []).filter(
+        (lease) => lease.expiresAt > Date.now(),
+      );
+      const conflicts = (lease: (typeof leases)[number]) =>
+        normalizedBase(lease.station.apiBase) ===
+          normalizedBase(station.apiBase) ||
+        (station.environmentId !== undefined &&
+          lease.station.environmentId === station.environmentId);
+      if (leases.some((lease) => lease.owner !== owner && conflicts(lease)))
+        return { state, result: 'other' as const, changed: false };
+      return {
+        state: {
+          ...state,
+          reconciliationLeases: [
+            ...leases.filter((lease) => lease.owner !== owner),
+            { owner, station, expiresAt: Date.now() + RECONCILIATION_LEASE_MS },
+          ],
+        },
+        result: 'owner' as const,
+        changed: true,
+      };
+    },
+    { silent: true },
+  );
+}
+
+async function releaseReconciliation(owner: string): Promise<void> {
+  await mutateState(
+    (state) => {
+      if (!state.reconciliationLeases?.some((lease) => lease.owner === owner))
+        return { state, result: undefined, changed: false };
+      return {
+        state: {
+          ...state,
+          reconciliationLeases: state.reconciliationLeases.filter(
+            (lease) => lease.owner !== owner,
+          ),
+        },
+        result: undefined,
+        changed: true,
+      };
+    },
+    { silent: true },
+  );
 }
 
 async function readState(): Promise<OutboundQueueState> {
@@ -2467,14 +2562,11 @@ async function askStation(
   }
 }
 
-async function reconcile(
-  lookup: OutboundDeliveryLookup,
-  options?: { station?: OutboundStationIdentity },
-): Promise<{ received: number; lookupFailed: number }> {
+async function reconciliationCandidates(
+  station: OutboundStationIdentity | undefined,
+): Promise<QueuedOutboundTurn[]> {
   const now = Date.now();
-  const station = options?.station ?? currentStation;
-  let received = 0;
-  const failedKeys = new Set<string>();
+  const candidates: QueuedOutboundTurn[] = [];
   for (const row of await readStored()) {
     if (liveOwned.has(row.clientTurnId)) continue;
     // Held copies are never released here: a live queue sends them, or the
@@ -2495,6 +2587,20 @@ async function reconcile(
       )
         continue;
     }
+    candidates.push(row);
+  }
+  return candidates;
+}
+
+async function reconcile(
+  lookup: OutboundDeliveryLookup,
+  options?: { station?: OutboundStationIdentity },
+): Promise<{ received: number; lookupFailed: number }> {
+  let received = 0;
+  const failedKeys = new Set<string>();
+  for (const row of await reconciliationCandidates(
+    options?.station ?? currentStation,
+  )) {
     const outcome = await askStation(row, lookup);
     if (!outcome) {
       failedKeys.add(row.clientTurnId);
@@ -2681,6 +2787,8 @@ export const outboundDispatch: OutboundDispatchModule = {
   },
   beginLive,
   reconcile,
+  claimReconciliation,
+  releaseReconciliation,
   syncHeld,
   sendHeld,
   check,
