@@ -1,14 +1,25 @@
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
 import type { RootAuthorityV2 } from '@kontourai/flow-agents/delegation-authority-contract';
 import { createDelegationAuthorityService } from '@kontourai/flow-agents/delegation-authority-service';
+import { createDelegationAuthorityServiceV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
 import {
   type DelegationEnvelopeV2,
   delegationEnvelopeDigestV2,
   rootAuthorityReferenceV2,
 } from '@kontourai/flow-agents/delegation-envelope-v2';
+import {
+  createDelegationRoundsController,
+  type DelegationRoundsSpec,
+} from '@kontourai/flow-agents/delegation-group-rounds';
 import {
   createDelegationGroupControllerV2,
   type DelegationGroupSpecV2,
@@ -234,29 +245,63 @@ test('revocation while waiting for the real host lock prevents the second body f
   expect(secondBodies).toBe(0);
 });
 
-test('revocation after actual temp staging refuses publication at final rename boundary', async () => {
-  const f = fixture();
-  let staged = false;
-  const store = f.persistence.authorityStore(() => {
-    const directory = join(f.root, 'station-delegation-authorities');
-    if (
-      existsSync(directory) &&
-      readdirSync(directory).some((name) => name.endsWith('.tmp'))
-    ) {
-      staged = true;
-      f.revoke();
-    }
-    return f.finalizeCurrent();
-  });
-  await expect(
-    store.transact('authority', async () => ({
-      ledger: f.ledger,
-      result: undefined,
-    })),
-  ).rejects.toThrow('actual-request-revoked');
-  expect(staged).toBe(true);
-  expect(existsSync(f.file)).toBe(false);
-});
+test.each(['legacy', 'rounds'] as const)(
+  'revocation after actual temp staging refuses %s publication at final rename boundary',
+  async (protocol) => {
+    const f = fixture();
+    const directory = join(
+      f.root,
+      protocol === 'legacy'
+        ? 'station-delegation-authorities'
+        : 'station-rounds-authorities-v3',
+    );
+    const file = join(
+      directory,
+      `${createHash('sha256').update('authority').digest('hex')}.json`,
+    );
+    let staged = false;
+    const finalize = (): undefined => {
+      if (
+        existsSync(directory) &&
+        readdirSync(directory).some((name) => name.endsWith('.tmp'))
+      ) {
+        staged = true;
+        f.revoke();
+      }
+      return f.finalizeCurrent();
+    };
+    const publish =
+      protocol === 'legacy'
+        ? () =>
+            f.persistence
+              .authorityStore(finalize)
+              .transact('authority', async () => ({
+                ledger: f.ledger,
+                result: undefined,
+              }))
+        : () =>
+            f.persistence
+              .roundsAuthorityStore(finalize)
+              .transact('authority', async () => ({
+                ledger: {
+                  schemaVersion: '3.0',
+                  revision: 1,
+                  maxRenewals: 0,
+                  importedFromV2: null,
+                  epochs: [
+                    { root: f.authorityRoot, envelopes: [], renewal: null },
+                  ],
+                  cancelled: false,
+                  invocations: [],
+                  origins: [],
+                },
+                result: undefined,
+              }));
+    await expect(publish()).rejects.toThrow('actual-request-revoked');
+    expect(staged).toBe(true);
+    expect(existsSync(file)).toBe(false);
+  },
+);
 
 test('a visible commit does not authorize disclosing its result after revocation', async () => {
   const f = fixture();
@@ -376,4 +421,292 @@ test('public controller can inspect authority under group lock; duplicate root c
       spec: { ...spec, groupId: 'group-2' },
     }),
   ).rejects.toThrow('delegation_group_authority_custody_conflict');
+  let entered = false;
+  await expect(
+    f.persistence
+      .roundsStore(f.finalizeCurrent)
+      .transact('group-1', async () => {
+        entered = true;
+        throw Error('must not enter');
+      }),
+  ).rejects.toThrow('delegation_group_protocol_conflict');
+  expect(entered).toBe(false);
+});
+
+test('new rounds preserve unknown accounting and legacy custody across cancellation and reopen', async () => {
+  const f = fixture();
+  await f.service.issue(f.authorityRoot);
+  await f.service.derive('authority', f.envelope);
+  await f.service.reserveInvocation('authority', 'envelope', 'invoke', {
+    inputTokens: 100,
+    outputTokens: 10,
+    costMicros: 1000,
+  });
+  const legacyBytes = readFileSync(f.file);
+  const root = { ...f.authorityRoot, authority_id: 'rounds-authority' };
+  const envelope = {
+    ...f.envelope,
+    envelope_id: 'rounds-envelope',
+    execution_id: 'rounds-execution',
+    root_authority_ref: rootAuthorityReferenceV2(root),
+  };
+  const compose = () => {
+    const persistence = new StationDelegationPersistence(f.root);
+    const store = persistence.roundsAuthorityStore(f.finalizeCurrent);
+    const service = createDelegationAuthorityServiceV3(
+      store,
+      {
+        now: () => new Date().toISOString(),
+        authorize: async () => true,
+        confirmExecution: async () => true,
+        confirmReconciliation: async () => true,
+        authenticateRenewal: async () => null,
+      },
+      { maxRenewals: 0 },
+    );
+    const controller = createDelegationRoundsController({
+      store: persistence.roundsStore(f.finalizeCurrent),
+      authorityService: service,
+      dispatchLedger: new FileAuthorizationLedger({
+        root: join(f.root, 'rounds-dispatch'),
+      }),
+      host: {
+        accountingProtocol: 'retained-tariff-v1',
+        authorize: async () => reference('authenticated-rounds-fixture'),
+        executionHost: () => {
+          throw Error('no provider in custody fixture');
+        },
+        prepareRequest: async () => {
+          throw Error('no request in custody fixture');
+        },
+        retainObservation: async () => {
+          throw Error('no output in custody fixture');
+        },
+        confirmTerminal: async () => null,
+        requestDescendantCancellation: async () =>
+          reference('cancel-request-only'),
+      },
+    });
+    return {
+      store,
+      service,
+      controller,
+      rounds: persistence.roundsStore(f.finalizeCurrent),
+    };
+  };
+  mkdirSync(join(f.root, 'rounds-dispatch'), { mode: 0o700 });
+  const first = compose();
+  await first.service.issue(root);
+  await first.service.derive(root.authority_id, envelope);
+  await first.service.reserveInvocation(
+    root.authority_id,
+    envelope.envelope_id,
+    'rounds-invoke',
+    {
+      inputTokens: 100,
+      outputTokens: 10,
+      costMicros: 1000,
+    },
+  );
+  await first.service.reconcileInvocation(
+    root.authority_id,
+    'rounds-invoke',
+    null,
+    false,
+  );
+  const spec: DelegationRoundsSpec = {
+    schemaVersion: '1.0',
+    groupId: 'rounds-group',
+    rootAuthorityRef: rootAuthorityReferenceV2(root),
+    controller: { id: 'rounds-controller', generation: 1 },
+    topology: { kind: 'independent-advisory' },
+    policy: {
+      reference: root.revisions.policy,
+      maxRounds: 1,
+      maxAttempts: 1,
+      maxConcurrent: 1,
+    },
+    seats: [
+      {
+        seatId: 'seat',
+        envelope: {
+          id: envelope.envelope_id,
+          generation: 0,
+          digest: delegationEnvelopeDigestV2(envelope),
+        },
+        effect: 'report',
+        allocation: { inputTokens: 100, outputTokens: 10, costMicros: 1000 },
+      },
+    ],
+  };
+  const command = {
+    kind: 'create',
+    groupId: spec.groupId,
+    operationKey: 'create-rounds',
+    expectedRevision: 0,
+    controller: spec.controller,
+    spec,
+  };
+  expect((await first.controller.create(command)).projection.revision).toBe(1);
+  expect((await first.controller.create(command)).replayed).toBe(true);
+  await expect(
+    first.controller.create({
+      ...command,
+      groupId: 'second-rounds',
+      operationKey: 'second-rounds',
+      spec: { ...spec, groupId: 'second-rounds' },
+    }),
+  ).rejects.toThrow('delegation_group_authority_custody_conflict');
+  const legacyController = createDelegationGroupControllerV2({
+    store: f.persistence.groupStore(f.finalizeCurrent),
+    authorityService: first.service,
+    dispatchLedger: new FileAuthorizationLedger({
+      root: join(f.root, 'rounds-dispatch'),
+    }),
+    host: {
+      authorize: async () => reference('fixture-legacy-caller'),
+      executionHost: () => {
+        throw Error('no execution');
+      },
+      retainMemberOutcome: async () => {
+        throw Error('no member');
+      },
+      retainRunObservation: async () => {
+        throw Error('no run');
+      },
+      retainRunFailure: async () => {
+        throw Error('no run');
+      },
+      requestDescendantCancellation: async () => {
+        throw Error('no cancellation');
+      },
+    },
+  });
+  const legacySpec: DelegationGroupSpecV2 = {
+    ...spec,
+    schemaVersion: '2.0',
+    groupId: 'legacy-alias',
+    policy: { reference: root.revisions.policy, maxConcurrent: 1 },
+    seats: spec.seats.map((seat) => ({ ...seat, stepId: null })),
+  };
+  await expect(
+    legacyController.create({
+      kind: 'create',
+      groupId: legacySpec.groupId,
+      operationKey: 'legacy-alias',
+      expectedRevision: 0,
+      controller: spec.controller,
+      spec: legacySpec,
+    }),
+  ).rejects.toThrow('delegation_group_authority_custody_conflict');
+  let crossedGroupBody = false;
+  await expect(
+    f.persistence
+      .groupStore(f.finalizeCurrent)
+      .transact(spec.groupId, async () => {
+        crossedGroupBody = true;
+        throw Error('must not enter');
+      }),
+  ).rejects.toThrow('delegation_group_protocol_conflict');
+  expect(crossedGroupBody).toBe(false);
+  await first.controller.cancel({
+    kind: 'cancel',
+    groupId: spec.groupId,
+    operationKey: 'cancel-rounds',
+    expectedRevision: 1,
+    controller: spec.controller,
+  });
+  const reopened = compose();
+  expect((await reopened.controller.get(spec.groupId)).cancellation).toBe(
+    'requested',
+  );
+  expect((await reopened.controller.get(spec.groupId)).attempts).toEqual([]);
+  const actual = await reopened.service.inspect(root.authority_id);
+  expect(actual.cancelled).toBe(true);
+  expect(actual.invocations).toEqual([
+    {
+      invocationId: 'rounds-invoke',
+      envelopeId: envelope.envelope_id,
+      allocation: { inputTokens: 100, outputTokens: 10, costMicros: 1000 },
+      usage: null,
+      terminal: false,
+    },
+  ]);
+  expect(readFileSync(f.file)).toEqual(legacyBytes);
+  let entered = false;
+  await expect(
+    reopened.store.transact('authority', async () => {
+      entered = true;
+      throw Error('must not enter');
+    }),
+  ).rejects.toThrow('delegation_authority_custody_conflict');
+  expect(entered).toBe(false);
+  await expect(
+    f.store.transact(root.authority_id, async () => {
+      entered = true;
+      throw Error('must not enter');
+    }),
+  ).rejects.toThrow('delegation_authority_custody_conflict');
+  expect(entered).toBe(false);
+  await expect(
+    reopened.rounds.transact(spec.groupId, async (journal) => {
+      if (!journal) throw Error('journal missing');
+      return {
+        journal: { ...journal, events: journal.events.slice(0, 1) },
+        result: undefined,
+      };
+    }),
+  ).rejects.toThrow('delegation_journal_history_changed');
+  await expect(
+    reopened.store.transact(root.authority_id, async (ledger) => {
+      if (!ledger) throw Error('ledger missing');
+      return {
+        ledger: { ...ledger, cancelled: false, revision: ledger.revision + 1 },
+        result: undefined,
+      };
+    }),
+  ).rejects.toThrow('delegation_rounds_authority_history_changed');
+  f.revoke();
+  await expect(reopened.controller.get(spec.groupId)).rejects.toThrow(
+    'actual-request-revoked',
+  );
+  expect(readFileSync(f.file)).toEqual(legacyBytes);
+});
+
+test('v2 and new-rounds authority publication share exclusive custody before either file exists', async () => {
+  const f = fixture();
+  let entered!: () => void, release!: () => void;
+  const entry = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const first = f.store.transact('authority', async () => {
+    entered();
+    await held;
+    return { ledger: f.ledger, result: undefined };
+  });
+  await entry;
+  let crossed = false;
+  const second = f.persistence
+    .roundsAuthorityStore(f.finalizeCurrent)
+    .transact('authority', async () => {
+      crossed = true;
+      throw Error('competing writer entered');
+    });
+  const observed = second.then(
+    () => null,
+    (error) => error,
+  );
+  try {
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(crossed).toBe(false);
+  } finally {
+    release();
+    await first;
+    await observed;
+  }
+  expect((await observed)?.code).toBe('delegation_authority_custody_conflict');
+  expect(crossed).toBe(false);
 });

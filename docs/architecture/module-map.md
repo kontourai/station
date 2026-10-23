@@ -1899,6 +1899,31 @@ token and physical-attempt caps are unavailable; portable Flow lineage is
 unbound and work acceptance is unassessed. The separate reserved direct-API
 source/tariff owners do not establish those guarantees for CLI sessions.
 
+### New-rounds persistence custody
+
+[Station's persistence owner](../../src-server/services/orchestration/delegation-group-persistence.ts)
+provides distinct v3-authority and rounds-journal stores for the published Flow
+rounds controller. Legacy v2 stores keep their existing files and protocol.
+Each authority family shares the host authority lock, and each group family
+shares the host group lock. An identity already owned by the other protocol
+refuses before its mutation callback; cross-protocol scans also refuse duplicate
+current execution identities or authority allocations. Separate directories do
+not create a second budget over an existing authority.
+
+Published Flow validators and capacity functions own ledger validity, rounds
+replay and remaining serialization headroom. Station preserves immutable epochs,
+append-only origins/journal events, known charges, terminal observations and
+cancellation across writes. Its existing private-file publication seam checks
+current request authority at commit, performs readback and fsync, and refuses
+stale disclosure after lock release. These are cooperative host-custody checks;
+they do not isolate hostile processes sharing the host uid.
+
+The new store accepts newly issued v3 authority only. It offers no v2 import or
+transfer operation: legacy journals and charges are not reconstructed or reset.
+Production preparation, provider qualification, new-rounds request serving and
+authenticated context ACK remain separate integration work. Store availability
+alone does not enable the paid group capability.
+
 ### Reserved Station source execution
 
 The [reserved-turn owner](../../src-server/runtime/conversation/reserved-station-turn.ts)

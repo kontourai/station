@@ -19,6 +19,21 @@ import {
   validateDelegationAuthorityLedger,
 } from '@kontourai/flow-agents/delegation-authority-service';
 import {
+  AUTHORITY_V3_MAX_BYTES,
+  authorityCapacityV3,
+  type DelegationAuthorityLedgerV3,
+  type DelegationAuthorityStoreV3,
+  validateDelegationAuthorityLedgerV3,
+} from '@kontourai/flow-agents/delegation-authority-service-v3';
+import {
+  type DelegationRoundsJournal,
+  type DelegationRoundsStore,
+  delegationRoundsCapacity,
+  projectDelegationRounds,
+  ROUNDS_MAX_BYTES,
+  ROUNDS_MAX_EVENTS,
+} from '@kontourai/flow-agents/delegation-group-rounds';
+import {
   type DelegationGroupJournalV2,
   type DelegationGroupStoreV2,
   delegationGroupCapacityV2,
@@ -139,10 +154,10 @@ class PrivateDomain {
   readonly root: string;
   readonly directory: string;
   readonly lock: string;
-  constructor(root: string, name: string) {
+  constructor(root: string, name: string, lockName = name) {
     this.root = root;
     this.directory = join(root, name);
-    this.lock = join(root, `${name}.mutation`);
+    this.lock = join(root, `${lockName}.mutation`);
   }
   check(): void {
     privateDirectory(this.root);
@@ -177,6 +192,14 @@ class PrivateDomain {
     // Replay/read results are disclosed only to the still-current actual request.
     assertCurrent(finalizeCurrent);
     return result;
+  }
+  filesIfPresent(): string[] {
+    try {
+      return this.files();
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw error;
+    }
   }
   files(): string[] {
     this.check();
@@ -222,6 +245,8 @@ export class StationDelegationPersistence {
   readonly #authorities: PrivateDomain;
   readonly #groups: PrivateDomain;
   readonly #providerEvidence: PrivateDomain;
+  readonly #roundsAuthorities: PrivateDomain;
+  readonly #rounds: PrivateDomain;
   constructor(privateRoot: string) {
     const requested = resolve(privateRoot);
     privateDirectory(requested);
@@ -232,6 +257,16 @@ export class StationDelegationPersistence {
       'station-delegation-authorities',
     );
     this.#groups = new PrivateDomain(root, 'station-delegation-groups');
+    this.#roundsAuthorities = new PrivateDomain(
+      root,
+      'station-rounds-authorities-v3',
+      'station-delegation-authorities',
+    );
+    this.#rounds = new PrivateDomain(
+      root,
+      'station-delegation-rounds',
+      'station-delegation-groups',
+    );
     this.#providerEvidence = new PrivateDomain(
       root,
       'station-provider-evidence',
@@ -335,6 +370,13 @@ export class StationDelegationPersistence {
       transact: (authorityId, body) =>
         domain.locked(finalizeCurrent, async () => {
           const file = address(authorityId);
+          requirePersistence(
+            readBytes(
+              join(this.#roundsAuthorities.directory, file),
+              AUTHORITY_V3_MAX_BYTES,
+            ) === null,
+            'delegation_authority_custody_conflict',
+          );
           const previous = read(file);
           const next = await body(previous && structuredClone(previous));
           assertCurrent(finalizeCurrent);
@@ -379,6 +421,22 @@ export class StationDelegationPersistence {
           const identities = new Set(
             ledger.envelopes.map((envelope) => envelope.execution_id),
           );
+          for (const otherFile of this.#roundsAuthorities.filesIfPresent()) {
+            const bytes = readBytes(
+              join(this.#roundsAuthorities.directory, otherFile),
+              AUTHORITY_V3_MAX_BYTES,
+            );
+            requirePersistence(bytes !== null, 'delegation_record_disappeared');
+            const other = validateDelegationAuthorityLedgerV3(
+              JSON.parse(bytes),
+            );
+            requirePersistence(
+              !other.epochs
+                .at(-1)!
+                .envelopes.some((e) => identities.has(e.execution_id)),
+              'delegation_execution_custody_conflict',
+            );
+          }
           for (const otherFile of files) {
             if (otherFile === file) continue;
             const other = read(otherFile);
@@ -416,6 +474,248 @@ export class StationDelegationPersistence {
     };
   }
 
+  /** New rounds only: no v2 import or writer transfer is provided by this store. */
+  roundsAuthorityStore(
+    finalizeCurrent: DelegationPersistenceFinalizer,
+  ): DelegationAuthorityStoreV3 {
+    const domain = this.#roundsAuthorities;
+    const read = (file: string): DelegationAuthorityLedgerV3 | null => {
+      const bytes = readBytes(
+        join(domain.directory, file),
+        AUTHORITY_V3_MAX_BYTES,
+      );
+      if (bytes === null) return null;
+      const ledger = validateDelegationAuthorityLedgerV3(JSON.parse(bytes));
+      requirePersistence(
+        ledger.importedFromV2 === null &&
+          address(ledger.epochs[0].root.authority_id) === file,
+        'delegation_rounds_authority_identity_mismatch',
+      );
+      return ledger;
+    };
+    return {
+      transact: (authorityId, body) =>
+        domain.locked(finalizeCurrent, async () => {
+          const file = address(authorityId);
+          requirePersistence(
+            readBytes(
+              join(this.#authorities.directory, file),
+              AUTHORITY_MAX_BYTES,
+            ) === null,
+            'delegation_authority_custody_conflict',
+          );
+          const previous = read(file);
+          const next = await body(previous && structuredClone(previous));
+          assertCurrent(finalizeCurrent);
+          const ledger = validateDelegationAuthorityLedgerV3(next.ledger);
+          requirePersistence(
+            ledger.importedFromV2 === null &&
+              ledger.epochs[0].root.authority_id === authorityId,
+            'delegation_rounds_authority_identity_mismatch',
+          );
+          if (previous) {
+            requirePersistence(
+              ledger.revision ===
+                previous.revision + (same(previous, ledger) ? 0 : 1) &&
+                ledger.maxRenewals === previous.maxRenewals &&
+                (!previous.cancelled || ledger.cancelled) &&
+                ledger.epochs.length >= previous.epochs.length &&
+                ledger.epochs.length <= previous.epochs.length + 1 &&
+                same(
+                  ledger.origins.slice(0, previous.origins.length),
+                  previous.origins,
+                ),
+              'delegation_rounds_authority_history_changed',
+            );
+            if (ledger.epochs.length > previous.epochs.length)
+              requirePersistence(
+                ledger.epochs.at(-1)?.renewal?.command.expectedRevision ===
+                  previous.revision,
+                'delegation_rounds_authority_history_changed',
+              );
+            for (let i = 0; i < previous.epochs.length; i++) {
+              const before = previous.epochs[i],
+                after = ledger.epochs[i];
+              requirePersistence(
+                same(before.root, after.root) &&
+                  same(before.renewal, after.renewal) &&
+                  (i < previous.epochs.length - 1 ||
+                  ledger.epochs.length > previous.epochs.length
+                    ? same(before.envelopes, after.envelopes)
+                    : after.envelopes.length >= before.envelopes.length &&
+                      same(
+                        after.envelopes.slice(0, before.envelopes.length),
+                        before.envelopes,
+                      )),
+                'delegation_rounds_epoch_history_changed',
+              );
+            }
+            for (const before of previous.invocations) {
+              const after = ledger.invocations.find(
+                (i) => i.invocationId === before.invocationId,
+              );
+              requirePersistence(
+                after &&
+                  after.envelopeId === before.envelopeId &&
+                  same(after.allocation, before.allocation) &&
+                  (!before.terminal || after.terminal) &&
+                  (before.usage === null || same(before.usage, after.usage)),
+                'delegation_invocation_history_changed',
+              );
+            }
+          }
+          const files = domain.files();
+          requirePersistence(
+            previous || files.length < MAX_FILES,
+            'delegation_store_capacity',
+          );
+          const identities = new Set(
+            ledger.epochs.at(-1)!.envelopes.map((e) => e.execution_id),
+          );
+          for (const otherFile of this.#authorities.filesIfPresent()) {
+            const bytes = readBytes(
+              join(this.#authorities.directory, otherFile),
+              AUTHORITY_MAX_BYTES,
+            );
+            requirePersistence(bytes !== null, 'delegation_record_disappeared');
+            const other = validateDelegationAuthorityLedger(JSON.parse(bytes));
+            requirePersistence(
+              !other.envelopes.some((e) => identities.has(e.execution_id)),
+              'delegation_execution_custody_conflict',
+            );
+          }
+          for (const otherFile of files) {
+            if (otherFile === file) continue;
+            const other = read(otherFile);
+            requirePersistence(
+              other &&
+                !other.epochs
+                  .at(-1)!
+                  .envelopes.some((e) => identities.has(e.execution_id)),
+              'delegation_execution_custody_conflict',
+            );
+          }
+          requirePersistence(
+            Buffer.byteLength(`${canonicalJson(ledger)}\n`) +
+              authorityCapacityV3(ledger) <=
+              AUTHORITY_V3_MAX_BYTES,
+            'delegation_settlement_capacity',
+          );
+          if (!previous || !same(previous, ledger))
+            await domain.publish(
+              file,
+              ledger,
+              AUTHORITY_V3_MAX_BYTES,
+              finalizeCurrent,
+            );
+          requirePersistence(
+            same(read(file), ledger),
+            'delegation_commit_unconfirmed',
+          );
+          return next.result;
+        }),
+    };
+  }
+
+  roundsStore(
+    finalizeCurrent: DelegationPersistenceFinalizer,
+  ): DelegationRoundsStore {
+    const domain = this.#rounds;
+    const read = (file: string): DelegationRoundsJournal | null => {
+      const bytes = readBytes(join(domain.directory, file), ROUNDS_MAX_BYTES);
+      if (bytes === null) return null;
+      const journal: DelegationRoundsJournal = JSON.parse(bytes);
+      projectDelegationRounds(journal);
+      requirePersistence(
+        address(journal.groupId) === file,
+        'delegation_group_identity_mismatch',
+      );
+      return journal;
+    };
+    return {
+      transact: (groupId, body) =>
+        domain.locked(finalizeCurrent, async () => {
+          const file = address(groupId),
+            previous = read(file);
+          requirePersistence(
+            readBytes(
+              join(this.#groups.directory, file),
+              GROUP_V2_MAX_BYTES,
+            ) === null,
+            'delegation_group_protocol_conflict',
+          );
+          const next = await body(previous && structuredClone(previous));
+          assertCurrent(finalizeCurrent);
+          const projection = projectDelegationRounds(next.journal);
+          requirePersistence(
+            next.journal.groupId === groupId,
+            'delegation_group_identity_mismatch',
+          );
+          if (previous)
+            requirePersistence(
+              next.journal.events.length >= previous.events.length &&
+                same(
+                  next.journal.events.slice(0, previous.events.length),
+                  previous.events,
+                ),
+              'delegation_journal_history_changed',
+            );
+          else {
+            for (const otherFile of this.#groups.filesIfPresent()) {
+              const bytes = readBytes(
+                join(this.#groups.directory, otherFile),
+                GROUP_V2_MAX_BYTES,
+              );
+              requirePersistence(
+                bytes !== null,
+                'delegation_record_disappeared',
+              );
+              const other = projectDelegationGroupV2(JSON.parse(bytes));
+              requirePersistence(
+                other.spec.rootAuthorityRef.id !==
+                  projection.spec.rootAuthorityRef.id,
+                'delegation_group_authority_custody_conflict',
+              );
+            }
+            const files = domain.files();
+            requirePersistence(
+              files.length < MAX_FILES,
+              'delegation_store_capacity',
+            );
+            for (const otherFile of files) {
+              const other = read(otherFile);
+              requirePersistence(
+                other &&
+                  projectDelegationRounds(other).spec.rootAuthorityRef.id !==
+                    projection.spec.rootAuthorityRef.id,
+                'delegation_group_authority_custody_conflict',
+              );
+            }
+          }
+          const capacity = delegationRoundsCapacity(next.journal);
+          requirePersistence(
+            next.journal.events.length + capacity.events <= ROUNDS_MAX_EVENTS &&
+              Buffer.byteLength(`${canonicalJson(next.journal)}\n`) +
+                capacity.bytes <=
+                ROUNDS_MAX_BYTES,
+            'delegation_group_capacity',
+          );
+          if (!previous || !same(previous, next.journal))
+            await domain.publish(
+              file,
+              next.journal,
+              ROUNDS_MAX_BYTES,
+              finalizeCurrent,
+            );
+          requirePersistence(
+            same(read(file), next.journal),
+            'delegation_commit_unconfirmed',
+          );
+          return next.result;
+        }),
+    };
+  }
+
   groupStore(
     finalizeCurrent: DelegationPersistenceFinalizer,
   ): DelegationGroupStoreV2 {
@@ -442,6 +742,11 @@ export class StationDelegationPersistence {
         domain.locked(finalizeCurrent, async () => {
           const file = address(groupId);
           const previous = read(file);
+          requirePersistence(
+            readBytes(join(this.#rounds.directory, file), ROUNDS_MAX_BYTES) ===
+              null,
+            'delegation_group_protocol_conflict',
+          );
           const next = await body(previous && structuredClone(previous));
           assertCurrent(finalizeCurrent);
           const projection = projectDelegationGroupV2(next.journal);
@@ -459,6 +764,22 @@ export class StationDelegationPersistence {
               'delegation_journal_history_changed',
             );
           else {
+            for (const otherFile of this.#rounds.filesIfPresent()) {
+              const bytes = readBytes(
+                join(this.#rounds.directory, otherFile),
+                ROUNDS_MAX_BYTES,
+              );
+              requirePersistence(
+                bytes !== null,
+                'delegation_record_disappeared',
+              );
+              const other = projectDelegationRounds(JSON.parse(bytes));
+              requirePersistence(
+                other.spec.rootAuthorityRef.id !==
+                  projection.spec.rootAuthorityRef.id,
+                'delegation_group_authority_custody_conflict',
+              );
+            }
             const journals = all();
             requirePersistence(
               journals.length < MAX_FILES,

@@ -886,6 +886,22 @@ provider credentials or live group execution was exercised. Configuration relati
 edges, shared memory, scheduler/webhook membership, provider entitlement or bounded
 execution; unavailable facts remain visible. This does not complete #453.
 
+## New-rounds custody integration
+
+The persistence owner now has separate stores for published Flow rounds and v3
+authority. Shared authority/group locks serialize custody against legacy stores;
+protocol collisions and duplicate current execution/authority ownership refuse.
+New stores cannot import v2 state. Existing v2 journals and charges remain in
+place. Published validators and capacity functions run before durable commit;
+Station retains current-authority commit checks and immutable history.
+
+Controlled persistence tests use the real published rounds controller and v3
+authority service. They cancel/reopen an unknown-held reservation without
+changing the legacy ledger, refuse cross-protocol ownership, and retain
+append-only history. No provider invocation or boot-serving acceptance follows
+from this storage integration. Production preparation, qualified issuance and
+session-bound context ACK are still required.
+
 ## Controlled reserved Station turn integration
 
 The internal reserved-turn port now reaches the real Station adapter through
