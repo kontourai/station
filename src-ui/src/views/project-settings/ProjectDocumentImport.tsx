@@ -10,10 +10,13 @@ import {
   useResumeKnowledgeDocumentImportMutation,
 } from '@kontourai/station-sdk';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useState } from 'react';
 import { z } from 'zod/v3';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
+import { SkeletonBlock } from '../../components/state';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { userFacingErrorMessage } from '../../utils/errorText';
 
@@ -187,7 +190,7 @@ export function ProjectDocumentImport({
     setError(undefined);
     try {
       const pointer: Pointer = {
-        requestId: crypto.randomUUID(),
+        requestId: randomCorrelationId(),
         rootId: target.id,
         registrationId: target.registrationId,
         files: preview.map(({ filename, sha256 }) => ({ filename, sha256 })),
@@ -299,7 +302,7 @@ export function ProjectDocumentImport({
           ) : (
             <>
               {receipt.isPending ? (
-                <p>Checking saved import…</p>
+                <SkeletonBlock count={1} label="Checking saved import" />
               ) : receipt.isError ? (
                 <p role="alert">
                   {userFacingErrorMessage(receipt.error)} No documents are
@@ -317,38 +320,57 @@ export function ProjectDocumentImport({
                   </ul>
                 </>
               )}
-              <Button
-                disabled={busy || receipt.isFetching}
-                onClick={() => void receipt.refetch()}
-              >
-                Check saved import
-              </Button>
-              {receipt.data &&
-                ['pending', 'partial'].includes(receipt.data.phase) && (
+              <ActionRow
+                overflowLabel="More saved import actions"
+                primary={
                   <Button
-                    disabled={
-                      busy ||
-                      !savedRoot ||
-                      receipt.isError ||
-                      receipt.isFetching
-                    }
-                    onClick={() => void continueImport(false)}
+                    disabled={busy || receipt.isFetching}
+                    onClick={() => void receipt.refetch()}
                   >
-                    Continue saved import
+                    Check saved import
                   </Button>
-                )}
-              {receipt.data?.documents.some(
-                (file) => file.phase === 'uncertain',
-              ) && (
-                <Button
-                  disabled={
-                    busy || !savedRoot || receipt.isError || receipt.isFetching
-                  }
-                  onClick={() => setRetry(true)}
-                >
-                  Review uncertain retry
-                </Button>
-              )}
+                }
+                secondary={
+                  receipt.data &&
+                  ['pending', 'partial'].includes(receipt.data.phase) ? (
+                    <Button
+                      disabled={
+                        busy ||
+                        !savedRoot ||
+                        receipt.isError ||
+                        receipt.isFetching
+                      }
+                      onClick={() => void continueImport(false)}
+                    >
+                      Continue saved import
+                    </Button>
+                  ) : undefined
+                }
+                overflow={[
+                  ...(receipt.data?.documents.some(
+                    (file) => file.phase === 'uncertain',
+                  )
+                    ? [
+                        {
+                          key: 'retry',
+                          label: 'Review uncertain retry',
+                          disabled:
+                            busy ||
+                            !savedRoot ||
+                            receipt.isError ||
+                            receipt.isFetching,
+                          onSelect: () => setRetry(true),
+                        },
+                      ]
+                    : []),
+                  {
+                    key: 'aside',
+                    label: 'Set aside',
+                    disabled: busy,
+                    onSelect: setAside,
+                  },
+                ]}
+              />
             </>
           )}
           {!savedRoot && (
@@ -362,9 +384,19 @@ export function ProjectDocumentImport({
             Retained originals and imported records stay on the Station. Keep
             the import ID for recovery.
           </p>
-          <Button disabled={busy} onClick={setAside}>
-            Set aside
-          </Button>
+          {!canManage && (
+            <ActionRow
+              overflowLabel="Saved import actions"
+              overflow={[
+                {
+                  key: 'aside',
+                  label: 'Set aside',
+                  disabled: busy,
+                  onSelect: setAside,
+                },
+              ]}
+            />
+          )}
         </>
       ) : (
         <>

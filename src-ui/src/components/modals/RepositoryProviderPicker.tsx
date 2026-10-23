@@ -7,6 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useId, useState } from 'react';
 import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 
 export function RepositoryProviderPicker({
@@ -20,6 +21,7 @@ export function RepositoryProviderPicker({
   const [page, setPage] = useState(1);
   const [protocol, setProtocol] = useState<'https' | 'ssh'>('https');
   const protocolId = useId();
+  const providerId = useId();
   const catalog = useQuery({
     queryKey: [
       'repository-provider',
@@ -46,26 +48,23 @@ export function RepositoryProviderPicker({
   });
   return (
     <section aria-label="Choose a hosted repository">
-      <div className="project-sources__actions">
-        <Button
-          type="button"
-          onClick={() => {
-            setProvider('github');
-            setPage(1);
-          }}
-        >
-          Choose from GitHub
-        </Button>
-        <Button
-          type="button"
-          onClick={() => {
-            setProvider('gitlab');
-            setPage(1);
-          }}
-        >
-          Choose from GitLab
-        </Button>
-      </div>
+      <label htmlFor={providerId}>Repository provider</label>
+      <select
+        id={providerId}
+        className="editor-input"
+        value={provider ?? ''}
+        onChange={(event) => {
+          const value = event.target.value;
+          setProvider(
+            value === 'github' || value === 'gitlab' ? value : undefined,
+          );
+          setPage(1);
+        }}
+      >
+        <option value="">Choose a provider</option>
+        <option value="github">GitHub</option>
+        <option value="gitlab">GitLab</option>
+      </select>
       {provider && (
         <>
           <p>
@@ -131,31 +130,44 @@ export function RepositoryProviderPicker({
                   repository is outside this account listing.
                 </p>
               )}
-              {catalog.data.hasMore && (
+            </>
+          ) : null}
+          <ActionRow
+            overflowLabel="More repository actions"
+            primary={
+              !catalog.isFetching &&
+              !catalog.isError &&
+              catalog.data?.hasMore ? (
                 <Button
                   type="button"
                   onClick={() => setPage((current) => current + 1)}
                 >
                   Next repositories
                 </Button>
-              )}
-              {page > 1 && (
+              ) : undefined
+            }
+            secondary={
+              !catalog.isFetching &&
+              !catalog.isError &&
+              catalog.data &&
+              page > 1 ? (
                 <Button
                   type="button"
                   onClick={() => setPage((current) => current - 1)}
                 >
                   Previous repositories
                 </Button>
-              )}
-            </>
-          ) : null}
-          <Button
-            type="button"
-            disabled={catalog.isFetching}
-            onClick={() => void catalog.refetch()}
-          >
-            Refresh repositories
-          </Button>
+              ) : undefined
+            }
+            overflow={[
+              {
+                key: 'refresh',
+                label: 'Refresh repositories',
+                disabled: catalog.isFetching,
+                onSelect: () => void catalog.refetch(),
+              },
+            ]}
+          />
         </>
       )}
     </section>

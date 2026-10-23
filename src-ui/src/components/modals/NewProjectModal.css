@@ -21,7 +21,7 @@
 }
 .new-project-modal__intent-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
   gap: var(--k-space-3);
 }
 .new-project-modal__intent {
@@ -48,11 +48,6 @@
 .new-project-modal__intent small {
   margin-top: var(--k-space-1);
   color: var(--k-text-muted);
-}
-@media (max-width: 480px) {
-  .new-project-modal__intent-grid {
-    grid-template-columns: 1fr;
-  }
 }
 
 .new-project-modal {

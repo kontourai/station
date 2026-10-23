@@ -9,6 +9,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useId, useState } from 'react';
 import { Button } from '../../components/Button';
 import { NewProjectRepositorySource } from '../../components/modals/NewProjectRepositorySource';
+import { SkeletonBlock } from '../../components/state';
 import { errorText } from '../../utils/errorText';
 
 export function ProjectRepositoryAttachment({
@@ -72,7 +73,7 @@ export function ProjectRepositoryAttachment({
           <Button onClick={() => void identity.refetch()}>Retry</Button>
         </p>
       ) : identity.isPending ? (
-        <p role="status">Checking current Project identity…</p>
+        <SkeletonBlock count={1} label="Checking current Project identity" />
       ) : (
         <NewProjectRepositorySource
           onBusyChange={setBusy}

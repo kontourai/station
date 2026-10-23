@@ -1,9 +1,10 @@
 /** @vitest-environment jsdom */
 
-import { randomUUID } from 'node:crypto';
+import { randomUUID, webcrypto } from 'node:crypto';
 import { createServer, type ServerResponse } from 'node:http';
 import { DatabaseSync } from 'node:sqlite';
 import {
+  isProjectRoomUuid,
   PROJECT_ROOM_LIMITS,
   type ProjectRoomActor,
   type ProjectRoomAppendInput,
@@ -14,7 +15,7 @@ import {
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { afterEach, beforeEach, expect, test } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { setClientCredentialResolver } from '../client/http';
 import { projectRoomKey, useProjectRoom } from '../query-domains/projectRooms';
 
@@ -51,6 +52,7 @@ let apiBase: string;
 let authority: string;
 let server: ReturnType<typeof createServer>;
 let streams: ServerResponse[];
+let presenceClients: string[];
 let release: (() => void) | undefined;
 let held: Promise<void> | undefined;
 let holdAfter: number | undefined;
@@ -69,6 +71,7 @@ let initializations: unknown[];
 let initializationDenied: boolean;
 
 beforeEach(async () => {
+  presenceClients = [];
   scope = initialScope;
   discoveryFailure = undefined;
   initializations = [];
@@ -121,7 +124,9 @@ beforeEach(async () => {
       return;
     }
     if (url.pathname.endsWith('/presence')) {
-      request.resume();
+      let body = '';
+      for await (const chunk of request) body += chunk;
+      presenceClients.push(JSON.parse(body).clientId);
       ok([]);
       return;
     }
@@ -179,6 +184,7 @@ beforeEach(async () => {
   });
 });
 afterEach(async () => {
+  vi.unstubAllGlobals();
   release?.();
   cleanup();
   for (const client of clients) client.clear();
@@ -496,4 +502,14 @@ test('initialization discuss denial remains observable to its caller and stops t
       queryKey: projectRoomKey({ apiBase, authorityKey: authority }, 'project'),
     }),
   ).toEqual([]);
+});
+
+test('registers Room presence with a valid client UUID when randomUUID is unavailable on HTTP', async () => {
+  vi.stubGlobal('crypto', {
+    getRandomValues: webcrypto.getRandomValues.bind(webcrypto),
+  });
+  const hook = mount();
+  await waitFor(() => expect(presenceClients).toHaveLength(1));
+  expect(isProjectRoomUuid(presenceClients[0])).toBe(true);
+  expect(hook.result.current.discovery.isSuccess).toBe(true);
 });

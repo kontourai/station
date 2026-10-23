@@ -4,6 +4,7 @@ import type {
   ProjectStartIntent,
 } from '@kontourai/station-contracts/project';
 import { getJson, readEnvelopeOrThrow } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { z } from 'zod/v3';
@@ -176,7 +177,7 @@ export function useProjectCreationRecovery(isOpen: boolean, sending: boolean) {
         );
       if (!availability) return null;
       const pending = pendingSchema.parse({
-        requestId: crypto.randomUUID(),
+        requestId: randomCorrelationId(),
         draft,
         starterLayoutId,
         startIntent,

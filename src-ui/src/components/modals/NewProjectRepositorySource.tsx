@@ -7,10 +7,12 @@ import {
   mutateJson,
   readEnvelopeOrThrow,
 } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useId, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import { RepositoryProviderPicker } from './RepositoryProviderPicker';
 
@@ -192,7 +194,7 @@ function RepositorySourceControls({
 
   function begin() {
     cancel.reset();
-    const id = crypto.randomUUID();
+    const id = randomCorrelationId();
     // Retain identity before dispatch so a lost response can be inspected.
     try {
       sessionStorage.setItem(storageKey, id);
@@ -392,50 +394,58 @@ function RepositorySourceControls({
               explicit retry preserves the earlier attempt.
             </p>
           )}
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={acquire.isPending || operation.isFetching}
-            onClick={() => void operation.refetch()}
-          >
-            Check operation
-          </Button>
-          {record &&
-            record.phase !== 'ready' &&
-            record.phase !== 'cancelled' && (
+          <ActionRow
+            overflowLabel="More acquisition actions"
+            primary={
               <Button
                 type="button"
-                disabled={acquire.isPending}
-                onClick={() =>
-                  acquire.mutate({ request: record.request, retry: true })
-                }
+                variant="secondary"
+                disabled={acquire.isPending || operation.isFetching}
+                onClick={() => void operation.refetch()}
               >
-                Retry acquisition
+                Check operation
               </Button>
-            )}
-          {(acquire.isPending ||
-            record?.phase === 'acquiring' ||
-            record?.phase === 'failed') && (
-            <Button
-              type="button"
-              variant="secondary"
-              disabled={cancel.isPending}
-              onClick={() => cancel.mutate()}
-            >
-              Cancel acquisition
-            </Button>
-          )}
+            }
+            overflow={[
+              ...(record &&
+              record.phase !== 'ready' &&
+              record.phase !== 'cancelled'
+                ? [
+                    {
+                      key: 'retry',
+                      label: 'Retry acquisition',
+                      disabled: acquire.isPending,
+                      onSelect: () =>
+                        acquire.mutate({
+                          request: record.request,
+                          retry: true,
+                        }),
+                    },
+                  ]
+                : []),
+              ...(acquire.isPending ||
+              record?.phase === 'acquiring' ||
+              record?.phase === 'failed'
+                ? [
+                    {
+                      key: 'cancel',
+                      label: 'Cancel acquisition',
+                      disabled: cancel.isPending,
+                      onSelect: () => cancel.mutate(),
+                    },
+                  ]
+                : []),
+              {
+                key: 'clear',
+                label: 'Choose another source',
+                disabled: acquire.isPending && record?.phase !== 'cancelled',
+                onSelect: clear,
+              },
+            ]}
+          />
           {cancel.isError && (
             <p role="alert">{userFacingErrorMessage(cancel.error)}</p>
           )}
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={acquire.isPending && record?.phase !== 'cancelled'}
-            onClick={clear}
-          >
-            Choose another source
-          </Button>
         </>
       )}
       {storageError && (

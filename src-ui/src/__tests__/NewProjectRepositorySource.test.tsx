@@ -135,11 +135,9 @@ test.each(['github', 'gitlab'] as const)(
       }),
     );
     mount();
-    fireEvent.click(
-      screen.getByRole('button', {
-        name:
-          provider === 'github' ? 'Choose from GitHub' : 'Choose from GitLab',
-      }),
+    fireEvent.change(
+      screen.getByRole('combobox', { name: 'Repository provider' }),
+      { target: { value: provider } },
     );
     await screen.findByText(/Signed in as operator/);
     expect(acquired).toBeUndefined();
@@ -323,7 +321,10 @@ test('failure exposes an explicit retry under the original request ID', async ()
   enterSource();
   await screen.findByText('Access refused.');
   expect(calls).toHaveLength(1);
-  fireEvent.click(screen.getByRole('button', { name: 'Retry acquisition' }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'More acquisition actions' }),
+  );
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Retry acquisition' }));
   await screen.findByRole('button', { name: 'Use this checkout' });
   fireEvent.click(screen.getByRole('button', { name: 'Use this checkout' }));
   await waitFor(() =>
@@ -365,7 +366,10 @@ test('cancellation during acquisition retains the operation and never offers its
   const view = mount();
   enterSource();
   await screen.findByText('Acquiring and verifying repository…');
-  fireEvent.click(screen.getByRole('button', { name: 'Cancel acquisition' }));
+  fireEvent.click(
+    screen.getByRole('button', { name: 'More acquisition actions' }),
+  );
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Cancel acquisition' }));
   await screen.findByText(
     /Acquisition cancelled. Existing files are preserved/,
   );
@@ -374,12 +378,18 @@ test('cancellation during acquisition retains the operation and never offers its
     screen.queryByRole('button', { name: 'Use this checkout' }),
   ).toBeNull();
   expect(
-    screen.queryByRole('button', { name: 'Retry acquisition' }),
+    screen.queryByRole('menuitem', { name: 'Retry acquisition' }),
   ).toBeNull();
   expect(view.onUseCheckout).not.toHaveBeenCalled();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'More acquisition actions' }),
+  );
   expect(
-    screen.getByRole('button', { name: 'Choose another source' }),
+    screen.getByRole('menuitem', { name: 'Choose another source' }),
   ).not.toHaveProperty('disabled', true);
+  expect(
+    screen.queryByRole('menuitem', { name: 'Retry acquisition' }),
+  ).toBeNull();
   await waitFor(() =>
     expect(view.onBusyChange).toHaveBeenLastCalledWith(false),
   );

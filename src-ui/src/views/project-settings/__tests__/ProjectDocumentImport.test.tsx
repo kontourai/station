@@ -141,7 +141,10 @@ test('uncertain retry needs explicit confirmation and cannot dispatch after perm
   saved();
   const view = render(<ProjectDocumentImport {...props} />);
   fireEvent.click(
-    screen.getByRole('button', { name: 'Review uncertain retry' }),
+    screen.getByRole('button', { name: 'More saved import actions' }),
+  );
+  fireEvent.click(
+    screen.getByRole('menuitem', { name: 'Review uncertain retry' }),
   );
   expect(state.resume).not.toHaveBeenCalled();
   view.rerender(<ProjectDocumentImport {...props} canManage={false} />);
@@ -174,12 +177,15 @@ test('replacement registration cannot resume and setting aside preserves server 
       ]}
     />,
   );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'More saved import actions' }),
+  );
   expect(
     screen
-      .getByRole('button', { name: 'Review uncertain retry' })
+      .getByRole('menuitem', { name: 'Review uncertain retry' })
       .hasAttribute('disabled'),
   ).toBe(true);
-  fireEvent.click(screen.getByRole('button', { name: 'Set aside' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Set aside' }));
   expect(localStorage.getItem(key)).toBeNull();
   expect(state.upload).not.toHaveBeenCalled();
   expect(state.resume).not.toHaveBeenCalled();
@@ -206,8 +212,11 @@ test('stale tabs retain separate import pointers and setting aside cannot delete
   for (const id of ids)
     expect(localStorage.getItem(`${key}:${id}`)).toContain(id);
   fireEvent.click(
-    within(a.container).getByRole('button', { name: 'Set aside' }),
+    within(a.container).getByRole('button', {
+      name: 'More saved import actions',
+    }),
   );
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Set aside' }));
   expect(localStorage.getItem(`${key}:${ids[0]}`)).toBeNull();
   expect(localStorage.getItem(`${key}:${ids[1]}`)).toContain(ids[1]);
 });

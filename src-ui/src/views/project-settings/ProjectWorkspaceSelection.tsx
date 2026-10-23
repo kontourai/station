@@ -8,6 +8,7 @@ import { updateProjectExecutionRoot } from '@kontourai/station-sdk/project-ident
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useId, useState } from 'react';
 import { Button } from '../../components/Button';
+import { SkeletonBlock } from '../../components/state';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { errorText } from '../../utils/errorText';
 
@@ -103,7 +104,7 @@ export function ProjectWorkspaceSelection({
           </Button>
         </p>
       ) : !view ? (
-        <p role="status">Checking workspace…</p>
+        <SkeletonBlock count={1} label="Checking workspace" />
       ) : !view.identity.repos.length ? (
         <p>
           No local workspace is selected. You can use documents and connected

@@ -5,8 +5,10 @@ import {
   readEnvelopeOrThrow,
 } from '@kontourai/station-sdk';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useId, useState } from 'react';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { errorText } from '../../utils/errorText';
 
@@ -197,7 +199,7 @@ export function ProjectOperatorSetup({
             }
             onClick={() => {
               const next = {
-                id: crypto.randomUUID(),
+                id: randomCorrelationId(),
                 expectedProjectId: projectId,
                 command: command.trim(),
                 timeoutSeconds,
@@ -311,31 +313,43 @@ export function ProjectOperatorSetup({
                 Check the retained outcome before retrying.
               </p>
             )}
-            <Button disabled={busy} onClick={() => void status.refetch()}>
-              Check setup outcome
-            </Button>
-            {!receipt && preview.isError && (
-              <Button disabled={busy} onClick={() => preview.mutate(intent)}>
-                Retry preview
-              </Button>
-            )}
-            <Button
-              disabled={busy || receipt?.phase === 'running'}
-              onClick={() => {
-                try {
-                  sessionStorage.removeItem(storageKey);
-                } catch {
-                  setStorageError(true);
-                  return;
-                }
-                setIntent(null);
-                setAuthorized(false);
-                preview.reset();
-                execute.reset();
-              }}
-            >
-              New setup preview
-            </Button>
+            <ActionRow
+              overflowLabel="More setup actions"
+              primary={
+                <Button disabled={busy} onClick={() => void status.refetch()}>
+                  Check setup outcome
+                </Button>
+              }
+              overflow={[
+                ...(!receipt && preview.isError
+                  ? [
+                      {
+                        key: 'retry',
+                        label: 'Retry preview',
+                        disabled: busy,
+                        onSelect: () => preview.mutate(intent),
+                      },
+                    ]
+                  : []),
+                {
+                  key: 'new',
+                  label: 'New setup preview',
+                  disabled: busy || receipt?.phase === 'running',
+                  onSelect: () => {
+                    try {
+                      sessionStorage.removeItem(storageKey);
+                    } catch {
+                      setStorageError(true);
+                      return;
+                    }
+                    setIntent(null);
+                    setAuthorized(false);
+                    preview.reset();
+                    execute.reset();
+                  },
+                },
+              ]}
+            />
           </>
         )}
       </section>

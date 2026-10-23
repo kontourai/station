@@ -16,6 +16,7 @@ import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { PageSection } from '../../components/PageSection';
+import { SkeletonBlock } from '../../components/state';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { ProjectDocumentImport } from './ProjectDocumentImport';
 
@@ -112,7 +113,7 @@ export function ProjectKnowledgeSources({
       description="Keep useful documents with this Project. Agents can read permitted content when you ask; adding a library does not guarantee search or indexing is ready."
     >
       {roots.isPending ? (
-        <p>Loading sources…</p>
+        <SkeletonBlock count={1} label="Loading sources" />
       ) : roots.isError ? (
         <div role="alert">
           <p>{userFacingErrorMessage(roots.error)}</p>

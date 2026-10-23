@@ -50,6 +50,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'operatingState',
   'plugins',
   'projectData',
+  'projectS3Sources',
   'projectTaskRooms',
   'proposedChanges',
   'pullRequests',

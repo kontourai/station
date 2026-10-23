@@ -1,3 +1,4 @@
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import {
   useInfiniteQuery,
   useMutation,
@@ -174,7 +175,7 @@ export function useProjectRoom(
       expectedProjectId: projectId,
       expectedActorId: actorId,
     };
-    const clientId = crypto.randomUUID();
+    const clientId = randomCorrelationId();
     const revoke = () => {
       if (!active) return;
       active = false;

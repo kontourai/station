@@ -9,10 +9,12 @@ import {
   useProjectS3SourcesQuery,
 } from '@kontourai/station-sdk';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { PageSection } from '../../components/PageSection';
+import { SkeletonBlock } from '../../components/state';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { userFacingErrorMessage } from '../../utils/errorText';
 
@@ -63,7 +65,7 @@ function ProjectS3SourceControls({
   const [cursor, setCursor] = useState<string>();
   const [object, setObject] = useState<{ key: string; etag: string }>();
   const [selected, setSelected] = useState<ProjectS3Source>();
-  const [requestId, setRequestId] = useState(() => crypto.randomUUID());
+  const [requestId, setRequestId] = useState(() => randomCorrelationId());
   const [form, setForm] = useState({
     displayName: '',
     profile: '',
@@ -129,7 +131,7 @@ function ProjectS3SourceControls({
         prefix: '',
       });
       setShare(false);
-      setRequestId(crypto.randomUUID());
+      setRequestId(randomCorrelationId());
     } catch (cause) {
       setError(userFacingErrorMessage(cause));
       setUncertain(true);
@@ -150,7 +152,7 @@ function ProjectS3SourceControls({
           prefix: '',
         });
         setShare(false);
-        setRequestId(crypto.randomUUID());
+        setRequestId(randomCorrelationId());
       }
       setError(undefined);
     }
@@ -169,7 +171,7 @@ function ProjectS3SourceControls({
         ) : sources.isError ? (
           <p role="alert">{userFacingErrorMessage(sources.error)}</p>
         ) : sources.isPending ? (
-          <p>Loading S3 sources…</p>
+          <SkeletonBlock count={1} label="Loading S3 sources" />
         ) : (
           <ul className="project-sources__list">
             {sources.data?.map((source) => (
