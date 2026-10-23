@@ -56,7 +56,9 @@ export function ChatDockActiveIdentity({
     ? delegationOriginLabel(inputOrigin)
     : undefined;
   const originTitle = inputOrigin
-    ? delegationOriginDescription(inputOrigin)
+    ? inputOrigin.initiator
+      ? delegationOriginDescription(inputOrigin)
+      : delegatedTaskLabel(inputOrigin)
     : undefined;
 
   const engine = agent
