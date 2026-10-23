@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { copyFileSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -20,7 +19,6 @@ import {
   createRepository,
   createTaskFromProject,
   type LiveStation,
-  pairBrowserDevice,
   publishTaskRoomAgentEdit,
   startStation,
   stopStation,
@@ -327,59 +325,23 @@ test.describe
       );
 
       const operatorCredential = readE2EOperatorCredential(live.home);
-      const paired = await pairBrowserDevice(
-        live,
-        operatorCredential,
-        'Collaboration peer',
-      );
-      const ownerStorage = await owner.context().storageState();
-      const cookieScope = createHash('sha256')
-        .update(paired.environmentId)
-        .digest('hex')
-        .slice(0, 16);
-      const sessionCookie = ownerStorage.cookies.find(
-        (cookie) => cookie.name === `station-device-${cookieScope}`,
-      );
-      if (!sessionCookie)
-        throw new Error('Owner Device session cookie is missing');
-      const peerStorage = {
-        ...ownerStorage,
-        cookies: ownerStorage.cookies.filter(
-          (cookie) => cookie.name !== sessionCookie.name,
-        ),
-        origins: ownerStorage.origins.map((origin) => ({
-          ...origin,
-          localStorage: origin.localStorage
-            .filter(
-              (entry) =>
-                entry.name !== 'station-connect-connections-credentials',
-            )
-            .map((entry) =>
-              entry.name === 'station-connect-connections'
-                ? {
-                    ...entry,
-                    value: JSON.stringify(
-                      (
-                        JSON.parse(entry.value) as Array<
-                          Record<string, unknown>
-                        >
-                      ).map((profile) => ({
-                        ...profile,
-                        credentialState: 'device-session',
-                      })),
-                    ),
-                  }
-                : entry,
-            ),
-        })),
-      };
-      const peerContext = await browser.newContext({
-        storageState: peerStorage,
-      });
-      await peerContext.addCookies([
-        { ...sessionCookie, value: paired.credential },
-      ]);
+      const peerContext = await browser.newContext();
       const peer = await peerContext.newPage();
+      const exchanged = peer.waitForResponse(
+        (response) =>
+          response.url().endsWith('/pairing/ui-bootstrap') &&
+          response.request().method() === 'POST',
+      );
+      await pairBrowser(peer, {
+        root: process.cwd(),
+        instance: live.instance,
+        serverPort: live.serverPort,
+        uiOrigin: live.ui,
+      });
+      const paired = (await (await exchanged).json()) as {
+        device: { id: string };
+      };
+      expect(paired.device.id).toBeTruthy();
       try {
         const taskUrl = `${live.ui}/tasks/${encodeURIComponent(taskId)}`;
         await Promise.all([owner.goto(taskUrl), peer.goto(taskUrl)]);
