@@ -286,8 +286,8 @@ export async function loadStablePreToolPolicySpec(options: {
   return { spec, revision };
 }
 
-import { primeEnginePrerequisites } from './engine-prerequisite-priming.js';
 import { recordAdoptedBuiltinEngine } from './builtin-engine-adoption.js';
+import { primeEnginePrerequisites } from './engine-prerequisite-priming.js';
 import { adoptDetectedNativeEngines } from './native-engine-adoption.js';
 import { isHostedTenantExecutionRequired } from './runtime-tenant-context.js';
 

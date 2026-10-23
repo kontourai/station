@@ -2,19 +2,23 @@
 
 `tests/project-task-room-collaboration.spec.ts` is the retained real-browser acceptance fixture for the personal Station Task room. It starts an isolated production server/UI, creates a Project and Task through shipped HTTP/UI entry points, pairs a second browser as a distinct device, and targets the rendered Task workspace rather than injected pane props.
 
-**Current limitation:** the fixture still expects the retired **Chat** and **Brief** tabs and a Chat-first landing. The mounted Task workspace now opens on **Overview**, with **Conversation** and **Plan** replacing those tabs. Update the fixture's navigation and assertions before using this lane as current-head acceptance evidence; its presence or an earlier passing run does not qualify the current UI.
+The workspace opens on **Overview**. **Conversation**, **Work chats**, **Plan**
+and **Details** remain directly accessible. The selected view is retained in
+the URL through authority re-verification; protected pane state is recreated
+for the current authority and Task incarnation.
 
 When it passes, the lane checks both browsers receive the same server-owned room generation;
 implicit join and durable publication; symmetric named presence; autosave;
 watch/follow fixture commands and local-input stop; exact revision-bound cursor/selection projection; message and
 document convergence over the shared SSE connection; revoked-device access recovery with protected editing and sending controls removed; immutable revision links in Details; and same-home SQLite
-restoration after a full server restart. Reconnect checks the selected Brief tab
+restoration after a full server restart. Reconnect checks the selected Plan tab
 and converged preview before explicitly reopening the editor. It does not claim
 draft or edit-mode continuity across authority re-verification. After restart,
 the fixture waits for the viewer's published presence before issuing heartbeat;
 recovered live snapshots must contain no old cursors or follow panes.
 
-The retained fixture exercises its conversation and document through normal user actions, but its selectors need the update described above. Retained watch/follow
+The retained fixture exercises its conversation and document through normal
+user actions. Retained watch/follow
 protocol setup uses explicitly named real HTTP fixture commands because those
 controls are not on the primary chat surface. The lane is not a claim that a
 human watch/follow picker is currently shipped there.
@@ -42,7 +46,7 @@ room records.
 Run the focused browser proof with:
 
 ```sh
-PLAYWRIGHT_BROWSERS_PATH=0 npx playwright test tests/project-task-room-collaboration.spec.ts --project=chromium --workers=1
+npm run test:e2e:smoke-live -- --spec=tests/project-task-room-collaboration.spec.ts
 ```
 
 The helper starts an isolated Station home and ports with deterministic E2E
