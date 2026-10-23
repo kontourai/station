@@ -6,7 +6,8 @@ import type {
   KnowledgeAdapterDescriptor,
   KnowledgeStoreRoot,
 } from '@kontourai/station-contracts/knowledge-store';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { Hono } from 'hono';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { ReadOnlyStoreError } from '../../../knowledge-store/errors.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
@@ -55,6 +56,7 @@ describe('knowledge-record routes', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     rmSync(storeDir, { recursive: true, force: true });
   });
 
@@ -81,6 +83,50 @@ describe('knowledge-record routes', () => {
     const body = await readJson<{ success: boolean; data: KitRecord }>(res);
     return { res, body };
   }
+
+  test('record authorization does not intercept sibling graph sync', async () => {
+    const authorize = vi.fn(async () => false);
+    const app = new Hono();
+    app.route(
+      '/',
+      createKnowledgeRecordRoutes({ store, mayUseRoot: authorize }),
+    );
+    app.post('/roots/:rootId/graph/neo4j-sync', (c) =>
+      c.json({ success: true }),
+    );
+    const response = await app.request(`/roots/${rootId}/graph/neo4j-sync`, {
+      method: 'POST',
+    });
+    expect(response.status).toBe(200);
+    expect(authorize).not.toHaveBeenCalled();
+    const denied = await app.request(`/roots/${rootId}/graph`);
+    expect(denied.status).toBe(403);
+    expect(authorize).toHaveBeenCalledOnce();
+  });
+
+  test('guarded reads refuse a missing initial root before later registration can bypass delivery checks', async () => {
+    const getRoot = vi.spyOn(store, 'getRoot');
+    getRoot.mockResolvedValueOnce(null);
+    const authorize = vi.fn(async () => true);
+    const guard = vi.fn(
+      async (
+        _request: Request,
+        _roots: readonly KnowledgeStoreRoot[],
+        response: Response,
+      ) => response,
+    );
+    const adapter = vi.spyOn(store, 'adapterFor');
+    const app = createKnowledgeRecordRoutes({
+      store,
+      mayUseRoot: authorize,
+      guardReadResponse: guard,
+    });
+    const response = await app.request(`/roots/${rootId}/graph`);
+    expect(response.status).toBe(404);
+    expect(authorize).not.toHaveBeenCalled();
+    expect(adapter).not.toHaveBeenCalled();
+    expect(guard).not.toHaveBeenCalled();
+  });
 
   describe('create -> get -> link -> listByType round trip', () => {
     test('create writes a raw record, get resolves it, listByType lists it, link connects it to a compiled record', async () => {

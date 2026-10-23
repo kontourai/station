@@ -6,6 +6,15 @@ export {
   usePeerEnrollmentQuery,
   useStartPeerEnrollmentMutation,
 } from './query-domains/peerEnrollments';
+export {
+  useAttachProjectS3SourceMutation,
+  useDisconnectProjectS3SourceMutation,
+  useProjectS3CapabilitiesQuery,
+  useProjectS3ObjectQuery,
+  useProjectS3ObjectsQuery,
+  useProjectS3ProfilesQuery,
+  useProjectS3SourcesQuery,
+} from './query-domains/projectS3Sources';
 /**
  * SDK Query Hooks - Wraps React Query for API calls
  * Plugins use these instead of raw useQuery
@@ -150,6 +159,7 @@ export {
   type RegistryCatalogTab,
   useApplyIntegrationToolsMutation,
   useDeleteIntegrationMutation,
+  useDisconnectIntegrationAccountMutation,
   useFinishIntegrationOAuthMutation,
   useInstalledRegistryItemsQuery,
   useIntegrationAccountQuery,
@@ -363,18 +373,23 @@ export {
   useSurveyFlowReviewsQuery,
 } from './query-domains/flowRuns';
 export {
+  useAttachKnowledgeRootProjectMutation,
   useCreateKnowledgeRecordMutation,
   useCreateKnowledgeRootMutation,
   useDeleteKnowledgeRootMutation,
+  useImportKnowledgeDocumentsMutation,
   useKnowledgeAdaptersQuery,
+  useKnowledgeDocumentImportQuery,
   useKnowledgeGraphNeo4jQuery,
   useKnowledgeGraphQuery,
   useKnowledgeRecordQuery,
   useKnowledgeRecordsByTypeQuery,
   useKnowledgeRootsQuery,
+  useKnowledgeSourceCapabilitiesQuery,
   useLearningSourceObservationQuery,
   useLinkKnowledgeRecordMutation,
   useMigratePreIndexKnowledgeMutation,
+  useResumeKnowledgeDocumentImportMutation,
   useSearchKnowledgeIndexMutation,
   useSyncKnowledgeGraphNeo4jMutation,
   useValidateKnowledgeRootMutation,

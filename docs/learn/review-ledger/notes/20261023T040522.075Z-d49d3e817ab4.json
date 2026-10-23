@@ -1,0 +1,7 @@
+{
+  "revision": "ba80db9cdc89551d2591059b04eacd9633607745",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Scoped review of dedicated Task relationship endpoint table against createTaskRelationshipRoutes, mounted real-store route tests and Task contracts. Paths, request fields, revision/incarnation guards, generic errors and runtime adapter prerequisite checked. Existing imported onboarding endpoints and production composition are outside this lane.","inputs":["docs/reference/api.md","packages/contracts/src/task-graph.ts","src-server/security/coding-authority.ts"]}
+  ]
+}

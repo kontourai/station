@@ -71,6 +71,14 @@ omits that finding rather than treating an unknown inventory as empty.
 
 Projects present themselves as layouts — arrangements of panels for a particular way of working. Layouts can come from Station or from plugins, so a project page can be a chat surface, a review workbench, a readiness console, or a domain-specific vertical.
 
+Open a Project's **Room** for shared discussion, notes, presence and explicit Agent requests. It is separate from a Task's Conversation and private Agent chats. Reading, discussion, note editing and execution require their respective current Project permissions and transport grants; Agent execution also needs host execution permission.
+
+**Recap Project** prepares a prompt to review in the Room. Choose an Agent and
+explicitly **Ask in room** to request a cited recap with freshness and coverage
+limits. Preparing it does not execute work or replace an existing draft.
+
+Use **Sources** to manage repository/folder bindings, Knowledge registrations, document imports and connections. Source registration does not grant execution or expose connector credentials. Project Knowledge registrations bind to the durable Project ID; an older unbound registration needs explicit operator attachment. Experimental S3 sources remain disabled by default pending AWS acceptance. See the [Knowledge guide](../guides/knowledge.md) and [Project membership](../design/project-membership.md).
+
 Project resource resolution and a Task's captured workspace are different
 records. The Task topic below describes the latter. See the
 [system overview](../architecture.md) and [work board](../user/work-board.md)
@@ -194,7 +202,7 @@ are separate integration requirements.
 
 A task carries typed references — to files, artifacts, receipts, sessions, runs, or external work items — and those references preserve exact identity. Similar titles or paths are not treated as correlation.
 
-The task workspace reopens one Task on Chat, with an autosaved Brief and kept Results. Details retains workspace bindings in a disclosure, changed files, on-demand Basis, receipts and exact Session correlation. Keeping a file leaves the confirmation visible in Details and updates the Results count. Opening the Task makes the viewer present; explicit agent requests bring their answers back into that conversation.
+The Task workspace opens on **Overview**, with status, completion criteria, subtasks and kept deliverables. **Conversation** is the shared Task discussion, **Plan** holds the autosaved document, and **Work chats** opens separately authorized Agent conversations. **Details** retains workspace bindings, changed files, on-demand Basis, receipts and exact Session correlation. Opening the Task makes the viewer present. Explicit Agent requests can publish answers into the personal Task conversation; shared-member Task projection includes human messages and the document, not private Agent execution or answers. Linking a child Task or work chat does not publish it, grant access or complete its parent.
 
 A Task's captured workspace is re-evaluated as `available`, `ambiguous`, or
 `unavailable` when reopened. Available bindings permit the relevant local

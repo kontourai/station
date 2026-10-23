@@ -1,0 +1,7 @@
+{
+  "revision": "9cd0a46f8cd9572ca53d1911ba609b79e22c117d",
+
+  "notes": [
+    {"path":"docs/design/project-membership.md","note":"Reviewed action admission against ProjectMembershipService.withProjectAction/currentActionAdmission and the current Room access adapter: exact Project lease, expected actor, action check at commit, and delayed response re-admission. Device/source/compute authority remains independent. Added the current helper boundary and narrowed focused access evidence to contributor/viewer/stale actor/revoked transport; no production two-person or provider qualification claimed.","inputs":["docs/design/project-membership.md","src-server/services/projects/project-membership-service.ts","src-server/runtime/routes/project-room-access.ts","src-server/runtime/routes/__tests__/project-room-access.test.ts"]}
+  ]
+}

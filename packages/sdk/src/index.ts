@@ -112,6 +112,15 @@ export type {
 // Re-export useQueryClient for contexts that need access to cache
 export { useQueryClient } from '@tanstack/react-query';
 export { getAgentDisplayName } from './agentResolver';
+export {
+  useAttachProjectS3SourceMutation,
+  useDisconnectProjectS3SourceMutation,
+  useProjectS3CapabilitiesQuery,
+  useProjectS3ObjectQuery,
+  useProjectS3ObjectsQuery,
+  useProjectS3ProfilesQuery,
+  useProjectS3SourcesQuery,
+} from './query-domains/projectS3Sources';
 // Basis hooks remain opt-in at their subpaths. Root callers get only lazy
 // imperative wrappers, so Thread/Zod and the Basis React-query surface never
 // become first-paint dependencies merely because this SDK is installed.
@@ -883,6 +892,7 @@ export {
   useApplyIntegrationToolsMutation,
   useApplyProjectLayoutMutation,
   useApproveProposedChangeMutation,
+  useAttachKnowledgeRootProjectMutation,
   useAuthStatusQuery,
   useAvailableProjectLayoutsQuery,
   useAwsProfilesQuery,
@@ -951,6 +961,7 @@ export {
   useDeleteWorkflowMutation,
   useDevicePresentation,
   useDiffCommentsQuery,
+  useDisconnectIntegrationAccountMutation,
   useDisconnectSshEnvironmentMutation,
   useDismissNotificationMutation,
   useDismissPluginLifecycleProposalMutation,
@@ -981,6 +992,7 @@ export {
   useGlobalKnowledgeStatusQuery,
   useImportAppHomeSnapshotMutation,
   useImportCredentialProfileSnapshotMutation,
+  useImportKnowledgeDocumentsMutation,
   useImportSkills,
   useInitFlowMutation,
   useInitReadinessMutation,
@@ -1002,6 +1014,7 @@ export {
   useKnowledgeDeleteMutation,
   useKnowledgeDocContentQuery,
   useKnowledgeDocsQuery,
+  useKnowledgeDocumentImportQuery,
   useKnowledgeFilteredQuery,
   useKnowledgeGraphNeo4jQuery,
   useKnowledgeGraphQuery,
@@ -1012,6 +1025,7 @@ export {
   useKnowledgeSaveMutation,
   useKnowledgeScanMutation,
   useKnowledgeSearchQuery,
+  useKnowledgeSourceCapabilitiesQuery,
   useKnowledgeStatusQuery,
   useKnowledgeTreeQuery,
   useKnowledgeUpdateMutation,
@@ -1104,6 +1118,7 @@ export {
   useResolveDiffCommentMutation,
   useResolveIndeterminateJobMonitor,
   useRestartJobMonitor,
+  useResumeKnowledgeDocumentImportMutation,
   useReviewEvidenceQuery,
   useRevokeAnswerShareMutation,
   useRevokeOwnAccessTokenMutation,

@@ -454,3 +454,47 @@ describe('applyHostAlias (§3.3(a))', () => {
     ).toEqual(['github.com/kontourai/station', 'github.com/kontourai/other']);
   });
 });
+
+test('conditional binding publication preserves a newer choice and rechecks authority inside the mutation lock', async () => {
+  const home = createHome();
+  const store = new ProjectBindingsStore(home);
+  const input = {
+    projectId: 'project',
+    resourceId: 'github.com/team/repo',
+    kind: 'git-checkout' as const,
+    path: '/workspace/first',
+    remotes: ['https://github.com/team/repo.git'],
+    verifiedAt: 1,
+    state: 'bound' as const,
+  };
+  const first = await store.upsertProjectBinding(input, {
+    expectedBinding: null,
+    assertCurrent: () => {},
+  });
+  const newer = await store.upsertProjectBinding({
+    ...input,
+    path: '/workspace/newer',
+    verifiedAt: 2,
+  });
+  await expect(
+    store.upsertProjectBinding(input, {
+      expectedBinding: first,
+      assertCurrent: () => {},
+    }),
+  ).rejects.toThrow('binding changed');
+  expect(store.findBinding(input.projectId, input.resourceId)).toEqual(newer);
+  await expect(
+    store.upsertProjectBinding(input, {
+      expectedBinding: newer,
+      assertCurrent: () => {
+        throw new Error('Authority ended');
+      },
+    }),
+  ).rejects.toThrow('Authority ended');
+  expect(
+    new ProjectBindingsStore(home).findBinding(
+      input.projectId,
+      input.resourceId,
+    ),
+  ).toEqual(newer);
+});

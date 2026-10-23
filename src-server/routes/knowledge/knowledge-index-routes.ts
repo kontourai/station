@@ -64,7 +64,10 @@ interface KnowledgeIndexRouteDeps {
    * per-caller, so a station-control agent needs its session owner's access
    * to the root's scope. Absent: every root passes, as before.
    */
-  mayReadHitRoot?: (request: Request, root: KnowledgeStoreRoot) => boolean;
+  mayReadHitRoot?: (
+    request: Request,
+    root: KnowledgeStoreRoot,
+  ) => boolean | Promise<boolean>;
 }
 
 interface RebuildRootReport {
@@ -297,7 +300,7 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
         if (readable === undefined) {
           const root = await deps.store.getRoot(rootId);
           // An unregistered root decides nothing: fail closed.
-          readable = !!root && deps.mayReadHitRoot(c.req.raw, root);
+          readable = !!root && (await deps.mayReadHitRoot(c.req.raw, root));
           rootReadable.set(rootId, readable);
         }
         return readable;

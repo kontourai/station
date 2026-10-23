@@ -1,10 +1,13 @@
 import { hostname } from 'node:os';
+import { isDeepStrictEqual } from 'node:util';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
 import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-room-work';
+import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge-root-identity';
 import { zodSchema } from 'ai';
 import packageJson from '../../../package.json' with { type: 'json' };
+import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
 import { createDeviceAgentRoutes } from '../../routes/device-agent.js';
@@ -17,6 +20,7 @@ import { createAccountPreferencesRoutes } from '../../routes/me/account-preferen
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createHtmlReplyRoutes } from '../../routes/orchestration/html-replies.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
+import { createProjectRoomRoutes } from '../../routes/projects/project-room-routes.js';
 import { createProjectSharedTaskRoutes } from '../../routes/projects/project-shared-tasks.js';
 import { createApplicationSessionRoutes } from '../../routes/system/application-session-routes.js';
 import { createDeploymentAuthenticationRoutes } from '../../routes/system/deployment-authentication-routes.js';
@@ -30,6 +34,10 @@ import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollmen
 import { createRelayManagementRoutes } from '../../routes/system/relay-management-routes.js';
 import { createToolLibraryRoutes } from '../../routes/tool-library.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
+import {
+  isOperatorInPersonNotAgent,
+  mayRunCommandsOnHostCurrently,
+} from '../../security/coding-authority.js';
 import {
   classifyOperatorCredentialPosition,
   isHostLocalOperatorCredentialUse,
@@ -124,6 +132,13 @@ import type {
 } from '../../services/projects/project-membership-service.js';
 import { ProjectMembershipRefusal } from '../../services/projects/project-membership-store.js';
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
+import { createProjectRoomAgentRuntime } from '../../services/projects/project-room-agent-module.js';
+import { createProjectRoomAgentPublication } from '../../services/projects/project-room-agent-publication.js';
+import { ProjectRoomService } from '../../services/projects/project-room-service.js';
+import {
+  createProjectRoomRuntime,
+  ProjectRoomRefusal,
+} from '../../services/projects/project-room-store.js';
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
@@ -136,6 +151,7 @@ import {
 } from '../../services/pull-requests/pull-request-review-guide-normalize.js';
 import { PullRequestReviewGuideStore } from '../../services/pull-requests/pull-request-review-guide-store.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { canonicalPath } from '../../utils/path-containment.js';
 import { STATION_KNOWLEDGE_MCP_PATH } from '../mcp/station-control-mcp-token.js';
 import { createRuntimeFrameworkModel } from '../plugins/runtime-provider-resolution.js';
 import {
@@ -144,6 +160,9 @@ import {
   runWithoutRequestReadAuthority,
   runWithRequestReadAuthority,
 } from '../request-read-authority-context.js';
+import { createProjectRoomAccess } from './project-room-access.js';
+import { projectRoomAgentExecution } from './project-room-agent-runtime.js';
+import { createProjectRoomTaskContext } from './project-room-task-context.js';
 import { runtimeToolLibraryDependencies } from './tool-library-runtime.js';
 
 export {
@@ -238,6 +257,7 @@ import {
 } from '../../domain/agent-registry.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
+import { FileStorageNotFoundError } from '../../domain/project-file-transactions.js';
 import { resolveEffectiveAppSetting } from '../../domain/settings-effective.js';
 import { KnowledgeIndexAdapterRegistry } from '../../knowledge-index/index-adapter-registry.js';
 import { CONVERSATION_STORE_ADAPTER_ID } from '../../knowledge-store/adapters/conversation-store.js';
@@ -309,6 +329,7 @@ import {
   createCrossProjectKnowledgeRoutes,
   createKnowledgeRoutes,
 } from '../../routes/knowledge/knowledge.js';
+import { createKnowledgeDocumentImportRoutes } from '../../routes/knowledge/knowledge-document-import-routes.js';
 import { createKnowledgeIndexRoutes } from '../../routes/knowledge/knowledge-index-routes.js';
 import { createKnowledgeRecordRoutes } from '../../routes/knowledge/knowledge-record-routes.js';
 import { createKnowledgeSourceRoutes } from '../../routes/knowledge/knowledge-source-routes.js';
@@ -359,6 +380,7 @@ import { createRunRoutes } from '../../routes/orchestration/runs.js';
 import { createSessionAgentControlRoutes } from '../../routes/orchestration/session-agent-control.js';
 import { createSessionProjectActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
 import { createTaskOutputRoutes } from '../../routes/orchestration/task-outputs.js';
+import { createTaskRelationshipRoutes } from '../../routes/orchestration/task-relationships.js';
 import {
   createTaskRoutes,
   keptRowsForTaskSession,
@@ -381,6 +403,7 @@ import {
   createProjectContributionRoutes,
   delegationContributionQueryAuthorized,
 } from '../../routes/projects/project-contribution-routes.js';
+import { createProjectS3SourceRoutes } from '../../routes/projects/project-s3-source-routes.js';
 import {
   createProjectCatalogueReader,
   createProjectRoutes,
@@ -549,6 +572,10 @@ import { OperatingStateService } from '../../services/infra/operating-state-serv
 import { createServerLogReader } from '../../services/infra/server-log-reader.js';
 import { StationKitObservabilityHost } from '../../services/kits/kit-observability-host.js';
 import { StationKitObservabilityRegistry } from '../../services/kits/kit-observability-registry.js';
+import {
+  KnowledgeDocumentImportError,
+  KnowledgeDocumentImportService,
+} from '../../services/knowledge/knowledge-document-import-service.js';
 import type { KnowledgeService } from '../../services/knowledge/knowledge-service.js';
 import { ownedLayoutStore } from '../../services/layouts/personal-layout-service.js';
 import type { AgentActivityPublisher } from '../../services/notifications/agent-activity-publisher.js';
@@ -618,6 +645,11 @@ import { ProjectBindingsStore } from '../../services/projects/project-binding-st
 import { ProjectContributionService } from '../../services/projects/project-contribution-service.js';
 import { ProjectManifestStore } from '../../services/projects/project-manifest-store.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
+import {
+  ProjectS3SourceError,
+  ProjectS3Sources,
+  projectS3SourcesEnabled,
+} from '../../services/projects/project-s3-sources.js';
 import type { ProjectService } from '../../services/projects/project-service.js';
 import { resolveProjectWorkspacePath } from '../../services/projects/project-workspace-path.js';
 import type { ProposedChangeService } from '../../services/projects/proposed-change-service.js';
@@ -737,7 +769,10 @@ import {
   createRequestDelegationResolver,
   type RequestDelegationSources,
 } from '../agents/request-delegation.js';
-import { installAccountBoundDeviceGate } from '../bootstrap/account-bound-device-gate.js';
+import {
+  installAccountBoundDeviceGate,
+  isTaskRelationshipHttpLeaf,
+} from '../bootstrap/account-bound-device-gate.js';
 import {
   accountMemberCaller,
   agentAudienceForMemberCaller,
@@ -806,6 +841,7 @@ import {
   createRuntimeSystemRouteDeps,
 } from './runtime-route-support.js';
 import { createTaskBasisMcpInitialRead } from './task-basis-mcp-initial-read.js';
+import { createTaskRelationshipAuthority } from './task-relationship-authority.js';
 import {
   createRuntimeWorkspacePaneHostActions,
   createWorkspacePaneHostActorFor,
@@ -851,6 +887,7 @@ export async function pullRequestSessionForReader<
 }
 
 export interface ConfigureRuntimeRoutesContext {
+  retainProjectRoomRuntime?: (runtime: { close(): Promise<void> }) => void;
   relayInvitationOwner?: RelayInvitationOwner;
   projectMembership?: ProjectMembershipService;
   nativeDeviceProofBindings?: NativeDeviceProofBindingService;
@@ -1027,6 +1064,7 @@ interface ConfigureRuntimeRoutesResult {
   notificationDeliveryRouter: NotificationDeliveryRouter;
   kitLifecycleReady: Promise<void>;
   projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
+  projectRoomRuntime: { close(): Promise<void> };
   /**
    * Where live-surface producers register (#90). Undefined on hosted or
    * multi-tenant deployments, where the routes are not mounted at all.
@@ -1255,6 +1293,17 @@ export function isProjectMemberDraftLease(method: string, path: string) {
   return (
     method === 'POST' &&
     /^\/api\/projects\/[^/]+\/plugin-draft\/lease$/.test(path)
+  );
+}
+
+/** Only these leaves delegate membership actions to the Room service. */
+function isProjectMemberRoomAction(method: string, path: string) {
+  return (
+    (method === 'POST' &&
+      /^\/api\/projects\/[^/]+\/room\/(?:init|messages|presence|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(
+        path,
+      )) ||
+    (method === 'PUT' && /^\/api\/projects\/[^/]+\/room\/note$/.test(path))
   );
 }
 
@@ -1756,9 +1805,25 @@ export function configureRuntimeRoutes(
   // `bootstrap/orchestration-request-principal.ts` so the authority
   // observation (#481 groundwork) and any future consumer resolve through
   // this ONE composition. Same memoization, same failure contract.
+  const currentRelationshipAccountDevice = (
+    request: Request,
+    binding: Extract<
+      import('@kontourai/station-contracts/environment-security').DevicePrincipalBinding,
+      { kind: 'account' }
+    >,
+  ) =>
+    isTaskRelationshipHttpLeaf(request.method, new URL(request.url).pathname) &&
+    context.deploymentAuthentication?.service.current(request)?.kind ===
+      'absent' &&
+    context.localAccounts?.accountDirectory.issuer === binding.issuer &&
+    context.localAccounts.accountDirectory.standing(
+      binding.subject,
+      binding.approvedAt,
+    ) === 'current';
   const resolveOrchestrationRequestPrincipal =
     createOrchestrationRequestPrincipalResolver({
       environmentSecurityService: context.environmentSecurityService,
+      currentRelationshipAccountDevice,
       deploymentAuthentication: context.deploymentAuthentication?.service,
       hostedTenantRegistry,
       ...(resolveNativeDeviceBinding
@@ -1981,6 +2046,7 @@ export function configureRuntimeRoutes(
   // `bootstrap/account-bound-device-gate.ts` so tests exercise the real
   // middleware rather than a copy. Behavior is unchanged.
   installAccountBoundDeviceGate(context.app, {
+    currentRelationshipAccountDevice,
     identifyDevice: (credential) =>
       context.environmentSecurityService.identifyDevice(credential),
     identifyIngress,
@@ -4100,7 +4166,199 @@ export function configureRuntimeRoutes(
       resolveProjectWorkspace: resolveWorkspacePath,
     }),
   );
+  const relationshipRequestWitnesses = new WeakMap<Request, () => boolean>();
+  const relationshipRequestShares = new WeakMap<
+    Request,
+    Map<string, string | undefined>
+  >();
   context.app.use('/api/tasks/*', primeRoomRequestPrincipal);
+  context.app.route(
+    '/api/tasks',
+    createTaskRelationshipRoutes(
+      context.taskGraphService,
+      createTaskRelationshipAuthority({
+        graph: context.taskGraphService,
+        projects: () =>
+          context.projectService
+            .listProjects()
+            .map((project) => context.storageAdapter.getProject(project.slug)),
+        sessions: context.orchestrationService,
+        events: context.orchestrationEventStore,
+        readAuthority: conversationReadAuthorityForRequest,
+        current: (request) => {
+          if (
+            isHostedTenantExecutionRequired() ||
+            !isRequestPrincipalCurrent(request) ||
+            isPrincipalScopedAgentRequest(request)
+          )
+            return false;
+          let witness = relationshipRequestWitnesses.get(request);
+          if (!witness) {
+            const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+            const person = roomRequestPrincipals.get(request);
+            if (!principal || principal.kind === 'internal' || !person)
+              return false;
+            const account =
+              context.deploymentAuthentication?.service.current(request);
+            const device =
+              principal.authority === 'device-credential'
+                ? context.environmentSecurityService.identifyDevice(
+                    principal.credential,
+                  )
+                : undefined;
+            const binding = device?.principalBinding;
+            const boundAccount =
+              binding && 'kind' in binding && binding.kind === 'account'
+                ? binding
+                : undefined;
+            const sessionCurrent =
+              account?.kind === 'authenticated'
+                ? context.deploymentAuthentication!.service.captureCurrentSession(
+                    request,
+                  )
+                : undefined;
+            const directory = context.localAccounts?.accountDirectory;
+            if (
+              account &&
+              account.kind !== 'absent' &&
+              account.kind !== 'authenticated'
+            )
+              return false;
+            if (
+              account?.kind === 'authenticated' &&
+              account.principal.id !== person.id
+            )
+              return false;
+            if (
+              boundAccount &&
+              principalForDeviceBinding(boundAccount).id !== person.id
+            )
+              return false;
+            if (
+              boundAccount &&
+              !sessionCurrent &&
+              (!directory || directory.issuer !== boundAccount.issuer)
+            )
+              return false;
+            const capturedBinding = binding && structuredClone(binding);
+            const capturedTransport = structuredClone(principal);
+            const authorization = request.headers.get('authorization');
+            witness = () => {
+              if (
+                !isDeepStrictEqual(
+                  getRuntimeAuthenticatedRequestPrincipal(request),
+                  capturedTransport,
+                ) ||
+                request.headers.get('authorization') !== authorization
+              )
+                return false;
+              if (
+                roomRequestPrincipals.get(request)?.id !== person.id ||
+                !isRequestPrincipalCurrent(request)
+              )
+                return false;
+              if (sessionCurrent && !sessionCurrent()) return false;
+              if (
+                !sessionCurrent &&
+                context.deploymentAuthentication?.service.current(request)
+                  ?.kind !== account?.kind
+              )
+                return false;
+              const live =
+                principal.authority === 'device-credential'
+                  ? context.environmentSecurityService.identifyDevice(
+                      principal.credential,
+                    )
+                  : undefined;
+              if (!isDeepStrictEqual(live?.principalBinding, capturedBinding))
+                return false;
+              return (
+                !boundAccount ||
+                !!sessionCurrent ||
+                directory?.standing(
+                  boundAccount.subject,
+                  boundAccount.approvedAt,
+                ) === 'current'
+              );
+            };
+            relationshipRequestWitnesses.set(request, witness);
+          }
+          return witness();
+        },
+        mayRead: (request, id) => {
+          if (
+            !runtimeRequestPrincipalMayAccessHttpRoute(
+              request,
+              context.environmentSecurityService,
+              { method: 'GET', path: `/api/tasks/${encodeURIComponent(id)}` },
+            )
+          )
+            return false;
+          const person = roomRequestPrincipals.get(request);
+          if (!person) return false;
+          if (
+            !isDeploymentAccountPrincipalId(person.id) ||
+            isOperatorInPersonNotAgent(request)
+          )
+            return true;
+          const task = context.taskGraphService.readTask(id);
+          const share = context.projectSharedTasks?.admission(id);
+          let shares = relationshipRequestShares.get(request);
+          if (!shares) {
+            shares = new Map();
+            relationshipRequestShares.set(request, shares);
+          }
+          if (!shares.has(id)) shares.set(id, share?.shareId);
+          if (!task || !share || share.taskCreatedAt !== task.createdAt)
+            return false;
+          if (shares.get(id) !== share.shareId) return false;
+          const projects = context.projectService
+            .listProjects()
+            .filter(
+              (p) => p.id === task.projectId || p.slug === task.projectId,
+            );
+          if (
+            projects.length !== 1 ||
+            projects[0]!.id !== share.scope.localProjectId ||
+            projects[0]!.slug !== share.scope.localProjectSlug
+          )
+            return false;
+          const manifest = contributionResolution.manifests.readRecord(
+            share.scope.localProjectSlug,
+          );
+          if (
+            !manifest ||
+            parseProjectPortableIdentity(manifest).id !==
+              share.scope.portableProjectId
+          )
+            return false;
+          return (
+            context.projectMembership
+              ?.admissionsForResolvedPrincipal(person.id)
+              .some(
+                ({ scope, member }) =>
+                  isDeepStrictEqual(scope, share.scope) &&
+                  member.status === 'active' &&
+                  member.actions.includes('view'),
+              ) === true
+          );
+        },
+        mayEdit: (request, id) =>
+          (!isDeploymentAccountPrincipalId(
+            roomRequestPrincipals.get(request)?.id ?? '',
+          ) ||
+            isOperatorInPersonNotAgent(request)) &&
+          runtimeRequestPrincipalMayAccessHttpRoute(
+            request,
+            context.environmentSecurityService,
+            {
+              method: 'PATCH',
+              path: `/api/tasks/${encodeURIComponent(id)}/status`,
+            },
+          ),
+      }),
+    ),
+  );
   context.app.route(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
@@ -5776,22 +6034,22 @@ export function configureRuntimeRoutes(
       },
     ),
   );
-  if (
-    context.projectMembership &&
-    context.projectSharedTasks &&
-    projectTaskRoomRuntime
-  ) {
-    const sharedTasks = new ProjectSharedTaskService({
-      store: context.projectSharedTasks,
-      readTask: (taskId) => context.taskGraphService.readTaskView(taskId),
-      projectCandidates: (identity) =>
-        context.projectService
-          .listProjects()
-          .filter(
-            (project) => project.id === identity || project.slug === identity,
-          )
-          .map((project) => ({ id: project.id, slug: project.slug })),
-    });
+  const sharedTasks = context.projectSharedTasks
+    ? new ProjectSharedTaskService({
+        store: context.projectSharedTasks,
+        withTaskReadFence: (operation) =>
+          context.taskGraphService.withTaskReadFence(operation),
+        readTask: (taskId) => context.taskGraphService.readTaskView(taskId),
+        projectCandidates: (identity) =>
+          context.projectService
+            .listProjects()
+            .filter(
+              (project) => project.id === identity || project.slug === identity,
+            )
+            .map((project) => ({ id: project.id, slug: project.slug })),
+      })
+    : undefined;
+  if (context.projectMembership && sharedTasks && projectTaskRoomRuntime) {
     const sharedAuthority = (request: Request) => {
       const membership = projectMembershipAuthority(request);
       return {
@@ -5927,7 +6185,8 @@ export function configureRuntimeRoutes(
           c.req.method,
           new URL(c.req.raw.url).pathname,
         ) &&
-        !isProjectMemberDraftLease(c.req.method, c.req.path)
+        !isProjectMemberDraftLease(c.req.method, c.req.path) &&
+        !isProjectMemberRoomAction(c.req.method, c.req.path)
       ) {
         return c.json(
           { success: false, error: 'Project mutation is forbidden' },
@@ -5959,6 +6218,258 @@ export function configureRuntimeRoutes(
   };
   context.app.use('/api/projects/:slug', projectReadGuard);
   context.app.use('/api/projects/:slug/*', projectReadGuard);
+  const roomHome = context.configLoader.getProjectHomeDir();
+  const roomStore = createProjectRoomRuntime(roomHome);
+  let roomClosed = false;
+  const roomAccess = createProjectRoomAccess({
+    stationId: context.environmentSecurityService.devicePairing.environmentId(),
+    storage: context.storageAdapter,
+    manifests: contributionResolution.manifests as ProjectManifestStore,
+    membership: context.projectMembership,
+    member: authenticatedProjectMember,
+    authority: projectMembershipAuthority,
+    current: (request) => !roomClosed && isRequestPrincipalCurrent(request),
+    allows: (request, slug, action) => {
+      if (isPrincipalScopedAgentRequest(request)) return false;
+      const account =
+        context.deploymentAuthentication?.service.current(request);
+      if (
+        account &&
+        account.kind !== 'absent' &&
+        account.kind !== 'authenticated'
+      )
+        return false;
+      if (
+        action === 'execute' &&
+        !mayRunCommandsOnHostCurrently(
+          request,
+          context.environmentSecurityService,
+        )
+      )
+        return false;
+      const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+      if (!principal || principal.kind === 'internal') return false;
+      const method =
+        action === 'view' ? 'GET' : action === 'edit' ? 'PUT' : 'POST';
+      const path = `/api/projects/${slug}/room${action === 'view' ? '' : action === 'edit' ? '/note' : action === 'execute' ? '/agents' : '/messages'}`;
+      return runtimeRequestPrincipalMayAccessHttpRoute(
+        request,
+        context.environmentSecurityService,
+        { method, path },
+      );
+    },
+  });
+  const projectRoomService = new ProjectRoomService(
+    roomStore.store,
+    roomAccess,
+  );
+  let roomAgentRuntime:
+    | ReturnType<typeof createProjectRoomAgentRuntime>
+    | undefined;
+  let roomPublication:
+    | ReturnType<typeof createProjectRoomAgentPublication>
+    | undefined;
+  let roomClose: Promise<void> | undefined;
+  const projectRoomRuntime = {
+    close(): Promise<void> {
+      if (roomClose) return roomClose;
+      roomClosed = true;
+      projectRoomService.close();
+      roomClose = (async () => {
+        try {
+          await roomPublication?.close();
+        } finally {
+          try {
+            roomAgentRuntime?.close();
+          } finally {
+            roomStore.close();
+          }
+        }
+      })();
+      return roomClose;
+    },
+  };
+  context.retainProjectRoomRuntime?.(projectRoomRuntime);
+  const roomResolution =
+    contributionResolution.resolver as ProjectResourceResolver;
+  const roomRoot = async (slug: string) => {
+    const root = await roomResolution.resolveProjectExecutionRoot(slug);
+    if (!root) throw new ProjectRoomRefusal('not_found');
+    return canonicalPath(root);
+  };
+  roomAgentRuntime = createProjectRoomAgentRuntime(
+    roomHome,
+    roomStore.store,
+    projectRoomAgentExecution({
+      agents: context.agentService,
+      sessions: context.orchestrationService,
+      authorityForOwner: readAuthorityForExecution,
+      commandContext: (userId) => ({
+        userId,
+        clientOrigin: UNKNOWN_CLIENT_ORIGIN,
+        fullAccessGrant: null,
+      }),
+      assertExecutionRoot: async (capture) => {
+        if (
+          (await roomRoot(capture.scope.localProjectSlug)) !==
+          capture.executionRoot
+        )
+          throw new ProjectMembershipRefusal('forbidden');
+      },
+      executionTargets: {
+        resolveEnvironmentAccess: async (target) => {
+          if (target.environment.kind !== 'current')
+            throw new ProjectMembershipRefusal('forbidden');
+          return {
+            kind: 'current',
+            apiBase: `http://127.0.0.1:${context.port}`,
+            environmentId:
+              context.environmentSecurityService.devicePairing.environmentId(),
+            environmentName: hostname(),
+          };
+        },
+        getAgent: async (_access, id) => {
+          const spec = await context.agentService.getAgent(id);
+          const unavailable = spec.execution?.agentConnectionId
+            ? null
+            : createStationEngineAvailabilityReader(context)(spec);
+          return {
+            ...spec,
+            ...(unavailable
+              ? { available: false, unavailableReason: unavailable }
+              : {}),
+          };
+        },
+        getConnection: async (_access, id) => {
+          const connection = await context.connectionService.getConnection(id);
+          if (!connection) throw new ProjectMembershipRefusal('unavailable');
+          return connection;
+        },
+        getProject: async (_access, slug) =>
+          context.projectService.getProject(slug),
+        getProviderAdapter: (provider) =>
+          context.orchestrationService.getProviderAdapter(provider),
+      },
+    }),
+  );
+  roomPublication = createProjectRoomAgentPublication({
+    eventBus: context.eventBus,
+    module: roomAgentRuntime.module,
+  });
+  context.app.route(
+    '/api/projects',
+    createProjectRoomRoutes(projectRoomService, {
+      module: roomAgentRuntime.module,
+      observe: (authority, handle) =>
+        roomPublication!.watch(authority, handle.requestId),
+      withAuthority: async (request, slug, action, guard, operation) => {
+        const result = await roomAccess.withAction(
+          request,
+          slug,
+          action,
+          guard?.expectedActorId,
+          async (scope, requester, _caps, assertCurrent) => {
+            try {
+              if (
+                guard &&
+                (scope.localProjectId !== guard.expectedProjectId ||
+                  roomStore.store.lookupRoom(scope)?.roomId !==
+                    guard.expectedRoomId)
+              )
+                throw new ProjectRoomRefusal('conflict');
+              const snapshot = () =>
+                JSON.stringify([
+                  context.storageAdapter.getProject(slug),
+                  (
+                    contributionResolution.manifests as ProjectManifestStore
+                  ).readRecord(slug),
+                  (
+                    contributionResolution.bindings as ProjectBindingsStore
+                  ).read(),
+                ]);
+              const before = snapshot();
+              const executionRoot =
+                action === 'execute' ? await roomRoot(slug) : '';
+              const current = () => {
+                assertCurrent();
+                if (
+                  snapshot() !== before ||
+                  (executionRoot &&
+                    canonicalPath(executionRoot) !== executionRoot)
+                )
+                  throw new ProjectMembershipRefusal('forbidden');
+              };
+              current();
+              return {
+                ok: true as const,
+                value: await operation({
+                  scope,
+                  requester,
+                  executionRoot,
+                  assertCurrent: current,
+                  taskContext: createProjectRoomTaskContext({
+                    request,
+                    scope,
+                    requesterId: requester.id,
+                    requireView: async () => {
+                      const member = await authenticatedProjectMember(request);
+                      return () => {
+                        current();
+                        if (
+                          !_caps.view ||
+                          !runtimeRequestPrincipalMayAccessHttpRoute(
+                            request,
+                            context.environmentSecurityService,
+                            {
+                              method: 'GET',
+                              path: `/api/projects/${slug}/room`,
+                            },
+                          )
+                        )
+                          throw new ProjectMembershipRefusal('forbidden');
+                        if (
+                          member &&
+                          !context.projectMembership
+                            ?.admissionsForResolvedPrincipal(requester.id)
+                            .some(
+                              (admission) =>
+                                Object.entries(scope).every(
+                                  ([key, value]) =>
+                                    admission.scope[
+                                      key as keyof typeof scope
+                                    ] === value,
+                                ) && admission.member.actions.includes('view'),
+                            )
+                        )
+                          throw new ProjectMembershipRefusal('forbidden');
+                      };
+                    },
+                    service: sharedTasks,
+                    principalId: async () =>
+                      (await projectMembershipAuthority(request).current())
+                        .principal.id,
+                  }),
+                  refresh: async () => {
+                    const actor =
+                      await projectMembershipAuthority(request).current();
+                    if (actor.principal.id !== requester.id)
+                      throw new ProjectMembershipRefusal('forbidden');
+                    current();
+                  },
+                }),
+              };
+            } catch (error) {
+              if (error instanceof ProjectRoomRefusal)
+                return { ok: false as const, error };
+              throw error;
+            }
+          },
+        );
+        if (!result.ok) throw result.error;
+        return result.value;
+      },
+    }),
+  );
   // Epic #2323 S3: plugin draft preview. Personal hosts only — the draft runs
   // in-process in a viewer's tab, which is the loopback plugin runtime, and a
   // shared tenant host has no such runtime. Mounted behind the Project read
@@ -6087,6 +6598,19 @@ export function configureRuntimeRoutes(
       context.storageAdapter,
       context.configLoader.getProjectHomeDir(),
       {
+        identityMutationCurrent: (request, choosingDirectory) => {
+          return (
+            isRequestPrincipalCurrent(request) &&
+            (!choosingDirectory ||
+              mayRunCommandsOnHostCurrently(
+                request,
+                context.environmentSecurityService,
+              ))
+          );
+        },
+        repositoryDiscoveryCurrent: (request) =>
+          isOperatorInPersonNotAgent(request) &&
+          isRequestPrincipalCurrent(request),
         layoutCatalog,
         kitObservabilityRegistry,
         terminalService: context.terminalService,
@@ -6910,21 +7434,99 @@ export function configureRuntimeRoutes(
   // authority around every `/api/knowledge` request so a read sees exactly
   // what that principal may read elsewhere; an unresolvable principal binds
   // nothing and reads no session.
+  context.app.use('/api/knowledge/*', async (c, next) => {
+    roomRequestPrincipals.set(
+      c.req.raw,
+      resolveOrchestrationRequestPrincipal(c),
+    );
+    await next();
+  });
   context.app.use('/api/knowledge/*', bindRequestReadAuthority);
-  const mayUseKnowledgeRoot = (
+  const mayUseProjectKnowledge = async (
+    request: Request,
+    root: NonNullable<Awaited<ReturnType<KnowledgeStoreProvider['getRoot']>>>,
+    action: 'view' | 'edit',
+  ): Promise<boolean> => {
+    try {
+      const member = await memberCallerForRequest(request);
+      if (!member) return agentOwnerIdForRequest(request) !== null;
+      if (
+        member.kind === 'none' ||
+        action === 'edit' ||
+        !context.projectMembership
+      )
+        return false;
+      if (!root.projectId) return false;
+      const admission = context.projectMembership
+        .admissionsForResolvedPrincipal(member.principalId)
+        .find(
+          ({ scope, member }) =>
+            scope.localProjectId === root.projectId &&
+            member.status === 'active' &&
+            member.actions.includes(action),
+        );
+      if (!admission) return false;
+      await context.projectMembership.requireProjectScopeRead(
+        admission.scope,
+        projectMembershipAuthority(request),
+        member.principalId,
+      );
+      return context.projectMembership
+        .admissionsForResolvedPrincipal(member.principalId)
+        .some(
+          ({ scope, member }) =>
+            scope.localProjectId === root.projectId &&
+            member.status === 'active' &&
+            member.actions.includes(action),
+        );
+    } catch {
+      return false;
+    }
+  };
+  const mayUseKnowledgeRoot = async (
     request: Request,
     root: Awaited<ReturnType<KnowledgeStoreProvider['getRoot']>>,
     action: 'view' | 'edit',
-  ): boolean => {
-    const ownerId = agentOwnerIdForRequest(request);
-    if (ownerId === undefined) return true;
-    if (ownerId === null || !root) return false;
-    if (root.adapterId === CONVERSATION_STORE_ADAPTER_ID)
-      return action === 'view';
+  ): Promise<boolean> => {
+    if (!root) return false;
     if (root.scope.kind === 'project')
-      return agentOwnerMayUseProject(request, root.scope.projectSlug, action);
-    return ownerId === LOCAL_OPERATOR_PRINCIPAL_ID;
+      return mayUseProjectKnowledge(request, root, action);
+    try {
+      const member = await memberCallerForRequest(request);
+      if (member?.kind === 'none') return false;
+      if (root.adapterId === CONVERSATION_STORE_ADAPTER_ID)
+        return action === 'view';
+      const ownerId = agentOwnerIdForRequest(request);
+      return (
+        !member &&
+        (ownerId === undefined || ownerId === LOCAL_OPERATOR_PRINCIPAL_ID)
+      );
+    } catch {
+      return false;
+    }
   };
+  const guardKnowledgeReadResponse = (
+    request: Request,
+    roots: readonly NonNullable<
+      Awaited<ReturnType<KnowledgeStoreProvider['getRoot']>>
+    >[],
+    response: Response,
+  ) =>
+    guardProjectResponse(response, async () => {
+      for (const expected of roots) {
+        const current = await context.knowledgeStoreProvider.getRoot(
+          expected.id,
+        );
+        if (
+          !current ||
+          knowledgeRootIncarnationKey(current) !==
+            knowledgeRootIncarnationKey(expected) ||
+          !(await mayUseKnowledgeRoot(request, current, 'view'))
+        )
+          return false;
+      }
+      return true;
+    });
   // The knowledge index and the Neo4j projection are shared, Station-wide
   // artifacts, built by the Station indexer from ALL sessions (the named
   // internal scope); every read path re-reads each session-backed record as
@@ -6977,8 +7579,183 @@ export function configureRuntimeRoutes(
     createKnowledgeStoreRoutes({
       store: context.knowledgeStoreProvider,
       dataDir: context.configLoader.getProjectHomeDir(),
+      projectIdForSlug: (slug) => {
+        try {
+          return context.storageAdapter.getProject(slug).id;
+        } catch (error) {
+          if (error instanceof FileStorageNotFoundError) return undefined;
+          throw error;
+        }
+      },
       mayReadRoot: (request, root) =>
         mayUseKnowledgeRoot(request, root, 'view'),
+      guardReadResponse: guardKnowledgeReadResponse,
+      mayManageRoot: (request, root) =>
+        mayUseKnowledgeRoot(request, root, 'edit'),
+      mayValidateRoot: isOperatorInPersonNotAgent,
+      mayRegisterRoot: (request) => isOperatorInPersonNotAgent(request),
+    }),
+  );
+  context.app.route(
+    '/api/knowledge',
+    createKnowledgeDocumentImportRoutes({
+      service: new KnowledgeDocumentImportService(
+        context.configLoader.getProjectHomeDir(),
+        context.knowledgeStoreProvider,
+      ),
+      authority: (request) => {
+        const principal = roomRequestPrincipals.get(request);
+        const assertCurrent = () => {
+          if (
+            !principal ||
+            request.signal.aborted ||
+            roomRequestPrincipals.get(request)?.id !== principal.id ||
+            !isOperatorInPersonNotAgent(request) ||
+            !isRuntimeRequestPrincipalCurrent(
+              request,
+              context.environmentSecurityService,
+            )
+          )
+            throw new KnowledgeDocumentImportError(
+              'Document import requires current operator authority.',
+              403,
+            );
+        };
+        assertCurrent();
+        return { actorId: principal!.id, assertCurrent };
+      },
+      mayReadRoot: (request, root) =>
+        mayUseKnowledgeRoot(request, root, 'view'),
+      guardReadResponse: guardKnowledgeReadResponse,
+    }),
+  );
+  const projectS3Sources = new ProjectS3Sources(
+    context.configLoader.getProjectHomeDir(),
+  );
+  const s3Operator = (request: Request) =>
+    isOperatorInPersonNotAgent(request) &&
+    isRuntimeRequestPrincipalCurrent(
+      request,
+      context.environmentSecurityService,
+    );
+  const s3Admission = async (
+    request: Request,
+    slug: string,
+    manage: boolean,
+  ) => {
+    if (!projectS3SourcesEnabled())
+      throw new ProjectS3SourceError(
+        'S3 sources are disabled pending verification.',
+        404,
+      );
+    const project = (() => {
+      try {
+        return context.storageAdapter.getProject(slug);
+      } catch (error) {
+        if (error instanceof FileStorageNotFoundError)
+          throw new ProjectS3SourceError('Project not found.', 404);
+        throw error;
+      }
+    })();
+    const restricted = await requireAuthenticatedProjectRead(
+      request,
+      slug,
+    ).catch((error) => {
+      if (error instanceof ProjectMembershipRefusal)
+        throw new ProjectS3SourceError('Project not found.', 404);
+      throw error;
+    });
+    const principal = roomRequestPrincipals.get(request);
+    const internal =
+      getRuntimeAuthenticatedRequestPrincipal(request)?.kind === 'internal';
+    const caller = internal
+      ? resolveStationControlCallerForRequest(
+          request,
+          resolveStationControlCallerRecord,
+        )
+      : undefined;
+    const assertCurrent = () => {
+      if (
+        !principal ||
+        request.signal.aborted ||
+        !isRuntimeRequestPrincipalCurrent(
+          request,
+          context.environmentSecurityService,
+        ) ||
+        context.storageAdapter.getProject(slug).id !== project.id ||
+        roomRequestPrincipals.get(request)?.id !== principal.id ||
+        (manage && !s3Operator(request))
+      )
+        throw new ProjectS3SourceError(
+          'Current Project source authority is required.',
+          403,
+        );
+      if (internal) {
+        const current = resolveStationControlCallerForRequest(
+          request,
+          resolveStationControlCallerRecord,
+        );
+        if (
+          !caller?.principal ||
+          !current?.principal ||
+          current.sessionId !== caller.sessionId ||
+          current.principal.id !== caller.principal.id ||
+          !agentOwnerMayUseProject(request, project.id, 'view')
+        )
+          throw new ProjectS3SourceError('Agent source authority ended.', 403);
+      }
+      if (
+        restricted &&
+        !context.projectMembership
+          ?.admissionsForResolvedPrincipal(principal.id)
+          .some(
+            ({ scope, member }) =>
+              scope.localProjectId === project.id &&
+              member.status === 'active' &&
+              member.actions.includes('view'),
+          )
+      )
+        throw new ProjectS3SourceError('Project source access ended.', 403);
+      const account =
+        context.deploymentAuthentication?.service.current(request);
+      if (
+        account &&
+        account.kind !== 'absent' &&
+        account.kind !== 'authenticated'
+      )
+        throw new ProjectS3SourceError('Account source authority ended.', 403);
+    };
+    assertCurrent();
+    return {
+      projectId: project.id,
+      actorId: principal!.id,
+      signal: request.signal,
+      assertCurrent,
+    };
+  };
+  context.app.route(
+    '/api/knowledge',
+    createProjectS3SourceRoutes({
+      service: projectS3Sources,
+      canManage: s3Operator,
+      admit: s3Admission,
+      guard: (request, projectId, sources, response) =>
+        guardProjectResponse(response, async () => {
+          try {
+            if (!projectS3SourcesEnabled()) return false;
+            const project = context.projectService
+              .listProjects()
+              .find((candidate) => candidate.id === projectId);
+            if (!project) return false;
+            const authority = await s3Admission(request, project.slug, false);
+            authority.assertCurrent();
+            return sources.every((source) =>
+              isDeepStrictEqual(projectS3Sources.get(source.id), source),
+            );
+          } catch {
+            return false;
+          }
+        }),
     }),
   );
   // K5 record-CRUD routes (`s203-knowledge-meeting-notes` Wave 1 Task 2) — same
@@ -6992,6 +7769,7 @@ export function configureRuntimeRoutes(
     '/api/knowledge',
     createKnowledgeRecordRoutes({
       store: context.knowledgeStoreProvider,
+      guardReadResponse: guardKnowledgeReadResponse,
       mayUseRoot: async (request, rootId, action) =>
         mayUseKnowledgeRoot(
           request,
@@ -7021,6 +7799,23 @@ export function configureRuntimeRoutes(
     '/api/knowledge',
     createNeo4jGraphRoutes({
       store: context.knowledgeStoreProvider,
+      mayUseRoot: async (request, root, action) => {
+        const authority = projectMembershipAuthority(request);
+        await authority.current();
+        if (
+          action === 'sync' &&
+          root.scope.kind !== 'project' &&
+          root.adapterId === CONVERSATION_STORE_ADAPTER_ID
+        ) {
+          await authority.operator();
+          return mayUseKnowledgeRoot(request, root, 'view');
+        }
+        return mayUseKnowledgeRoot(
+          request,
+          root,
+          action === 'sync' ? 'edit' : 'view',
+        );
+      },
       runAsIndexer: runAsKnowledgeIndexer,
       mayBuildSessionBackedRoot,
     }),
@@ -7923,6 +8718,7 @@ export function configureRuntimeRoutes(
     notificationDeliveryRouter,
     kitLifecycleReady,
     projectTaskRoomRuntime,
+    projectRoomRuntime,
     liveSurfaceRegistry,
     browserService,
     deviceToolchainService,

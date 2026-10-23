@@ -1,0 +1,7 @@
+{
+  "revision": "c1736edf8302152c408c6bfd27b37261be55518a",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed integration account hook signatures and public exports, authority-partitioned query keys, captured requestScope dispatch through getJson/mutateJson, callback variable cleanup and authenticated disconnect. Public barrel and focused UI/SDK tests pass. Existing integration discovery and other SDK behavior unchanged.","inputs":["docs/reference/sdk.md","packages/sdk/src/index.ts","packages/sdk/src/query-domains/catalog.ts"]}
+  ]
+}
