@@ -5,6 +5,7 @@ import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-t
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
 import { GrokSessionSource } from '../../providers/sessions/grok-session-source.js';
 import { OpenCodeSessionSource } from '../../providers/sessions/opencode-session-source.js';
+import { engineSignIn } from '../../services/acp/engine-sign-in.js';
 import { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
 import type { RelayInvitationOwner } from '../../services/connections/relay-invitation-owner.js';
 import { createApplicationSessionRuntime } from '../../services/identity/application-session-runtime.js';
@@ -4186,6 +4187,7 @@ export class StationRuntime {
     await attempt(() => this.discordGatewayService.stop());
     await attempt(() => this.pluginDraftService?.dispose());
     this.pluginDraftService = undefined;
+    await attempt(() => engineSignIn()?.dispose());
     // #2443: route composition may have built these before the failure. The
     // same order as shutdown(): browsers, then device sessions (their
     // producers read the hub the toolchain stops), SSH device hosts, the
@@ -5228,6 +5230,12 @@ export class StationRuntime {
     try {
       this.pluginDraftService?.dispose();
       this.pluginDraftService = undefined;
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      // A running engine sign-in owns a child process or a host terminal.
+      engineSignIn()?.dispose();
     } catch (error) {
       failures.push(error);
     }

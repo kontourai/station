@@ -7,7 +7,7 @@ import {
   bannerStore,
 } from '../../contexts/banner-store';
 
-/** Uses the existing host-scoped query and banner host; no separate fetch loop. */
+/** Publishes recovery facts from the existing host-scoped status query. */
 export function HomeRecoveryBannerSource() {
   const { apiBase } = useConnections();
   const query = useSystemStatusForApiBaseQuery(apiBase);

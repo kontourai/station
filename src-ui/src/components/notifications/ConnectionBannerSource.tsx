@@ -1,5 +1,5 @@
 /**
- * Connection chrome source for BannerHost.
+ * Publishes connection conditions for Station details.
  *
  * Keeps `useConnectionStatus` mounted (poll consumers hang off this mount)
  * and projects reachability / version-drift failures into `bannerStore`.
@@ -90,37 +90,15 @@ export function ConnectionBannerSource() {
   // `reason` further down).
   const [removeArmed, setRemoveArmed] = useState(false);
   const disarmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // archive#4470: a destructive confirm has to stay VISIBLE
-  // to be cancellable — a two-step control armed from a COLLAPSED banner
-  // (archive#4470 kept the collapsed card's actions live, not hidden)
-  // would otherwise sit one tap from removing a connection behind a 52px
-  // bar with no way to see, let alone cancel, the pending confirm. Arming
-  // force-expands the card if it was collapsed; this ref remembers whether
-  // THIS confirm did that, so disarming (by any path) restores collapsed
-  // only when arming is what changed it — a card the reader expanded
-  // themselves stays expanded.
-  const forcedExpandRef = useRef(false);
   // archive#4470: timestamp of the arming tap, so a
   // near-simultaneous second tap on the same screen location — now hitting
   // "Confirm" where "Remove" used to be — can be told apart from a
   // deliberate, separate confirming tap. See ARM_DEBOUNCE_MS.
   const armedAtRef = useRef(0);
-  // archive#4470: hoisted so every disarm path — the
-  // reason-change effect below, the armed actions' own onClick/onBlur, and
-  // the collapse-chevron interaction (further down) — shares ONE
-  // definition instead of each restating "clear the timer, restore
-  // collapsed if we forced it, clear armed" and drifting apart. Stable
-  // across renders (only refs and the `setRemoveArmed` dispatch inside),
-  // so it is safe as an effect dependency and as a long-lived callback
-  // handed to `bannerStore.present`.
   const disarm = useCallback(() => {
     if (disarmTimerRef.current !== null) {
       clearTimeout(disarmTimerRef.current);
       disarmTimerRef.current = null;
-    }
-    if (forcedExpandRef.current) {
-      bannerStore.setCollapsed(BANNER_IDS.offline, true);
-      forcedExpandRef.current = false;
     }
     setRemoveArmed(false);
   }, []);
@@ -230,36 +208,6 @@ export function ConnectionBannerSource() {
         : BANNER_PRIORITY.connectionTransient,
       tone: blocked ? 'blocked' : 'warning',
       badge: blocked ? 'Approval needed' : undefined,
-      /**
-       * #1132: this banner is critical chrome, so a maximized region does not
-       * bury it (`BannerHost.css`). Unconditional, not `blocked ? …`: the
-       * `blocked` half already qualified through the `connectionBlocking`
-       * priority band (`requiresCriticalChrome`), and it is the OTHER half —
-       * an unreachable or mismatched host at `connectionTransient` — that the
-       * measurement in #1132 found buried under a maximized dock.
-       *
-       * Scoped to THIS banner, not to this component: the compatibility strip
-       * below (`BANNER_IDS.compat`) is published by the same source and is
-       * deliberately not marked: a version mismatch is not a connection that
-       * is DOWN, so it fails the state test below rather than the action one.
-       * Whether that strip also deserves to cross a maximized dock is a
-       * separate question and out of scope here.
-       *
-       * What makes this one critical is the state, not the actions. Only
-       * `authentication-failed` and `identity-mismatch` are given real
-       * remedies here; the rest fall to a single "Try now", and the loopback
-       * case's actual remedy is a sentence in `detail`. But `showDecision`
-       * above admits this banner only when the connection is DOWN and a person
-       * has to decide something about it (archive#3297 narrowed ordinary
-       * transient reachability out of this strip entirely), and a notice like
-       * that — dismissible or not, however thin its CTA — is the one the reader
-       * has to be able to read and dismiss to get on with anything. Buried
-       * under a maximized dock it is the worst of the three outcomes #1132
-       * lists. Ordinary notices (an available update, a redirect explanation)
-       * stay below the dock, keeping the maximized occupant's own header and
-       * search reachable (#919).
-       */
-      criticalChrome: true,
       message: copy.summary,
       detail: detail || undefined,
       // Every banner that reaches this point names a decision, so none of them
@@ -267,16 +215,7 @@ export function ConnectionBannerSource() {
       // chrome" the old rule was written for. Blocking credential failures
       // stay non-dismissible for the original reason: dismissing one hides
       // the action needed to resume automatic reconnect.
-      dismissible: !blocked,
-      // archive#4470: the collapse chevron is gated only
-      // on the exit animation (BannerHost.tsx), never on this banner's own
-      // armed state — a reader can arm "Remove", then tap the chevron, and
-      // land the SAME overflow this whole feature exists to avoid
-      // (message clipped to 0px, Cancel/dismiss pushed outside the clipped
-      // card) for up to REMOVE_CONFIRM_TIMEOUT_MS. Collapsing while armed
-      // now disarms — a reader collapsing a pending destructive confirm is
-      // read as cancelling it, not as asking to keep it live off screen.
-      onCollapse: disarm,
+      dismissible: false,
       dismissAriaLabel: 'Dismiss connection notice',
       actions:
         reason === 'authentication-failed'
@@ -306,55 +245,7 @@ export function ConnectionBannerSource() {
               // has genuinely changed (a reset/reinstalled host, or a
               // different machine now answering at this address).
               //
-              // A third action ("Try now") does not fit
-              // this banner collapsed at a phone viewport — measured with a
-              // real Chromium page at 390px, three non-shrinkable
-              // `.banner-host__action`s in the collapsed 52px bar clip the
-              // message to 0px width and push the dismiss control off the
-              // clipped card entirely, leaving it unreachable for the rest
-              // of the session. Two actions fit (the same shape
-              // authentication-failed already ships), and retrying is not
-              // the remedy here the way it stayed one for a rejected
-              // credential that might since have been re-approved out of
-              // band — the owner named exactly two remedies for THIS
-              // reason, so retry is dropped rather than demoted.
-              //
-              // "Remove connection"/"Confirm removal" as the UNARMED
-              // labels (the first tried) STILL broke the same collapsed
-              // row even at two actions: `.banner-host__action`s wrap
-              // under `index.css`'s global mobile "legacy action rows" net
-              // (`[class*="__actions"] { flex-wrap: wrap; }`), and the two
-              // buttons' combined natural width didn't fit the ~244px this
-              // row has left once the message/controls columns take their
-              // share — the second button wrapped to a row the fixed 52px
-              // collapsed height then clips away entirely (measured:
-              // message AND the wrapped button both landed outside the
-              // card). "Pair again" is the established width from
-              // authentication-failed; "Remove"/"Confirm" are the short
-              // VISIBLE form that measures back down to a single row with
-              // the message column comfortably visible — `ariaLabel` below
-              // carries the full sentence for anyone not reading the
-              // banner's own message, which already names what is being
-              // removed.
-              //
-              // An armed confirm has to stay reachable
-              // AND cancellable, which a relabeled single button sitting
-              // inside a possibly-collapsed 52px bar was neither — arming
-              // force-expands the card (forcedExpandRef, above) so the
-              // confirm is never hidden, and the armed state renders an
-              // explicit "Cancel" beside "Confirm" rather than only a
-              // relabel, mirroring `PairedDeviceList.tsx`'s
-              // `confirming ? <Confirm/Cancel> : <normal actions>` shape.
-              // Three actions ("Pair again"/"Confirm"/"Cancel") measured
-              // 262.6px of content in the 345px the expanded row has at
-              // 390px (31% headroom) — unlike collapsed 52px bar,
-              // this fits comfortably. That measurement is only ever taken
-              // EXPANDED: arming force-expands a collapsed card, and
-              // closed the other way in — collapsing
-              // the chevron while armed now disarms (`onCollapse: disarm`
-              // above) instead of leaving the three-action row reachable
-              // behind the collapsed 52px bar, so this row is never
-              // rendered collapsed by either path.
+              // Identity changes require pairing or an explicit, cancellable removal.
               (() => {
                 const pairAgain = {
                   label: 'Pair again',
@@ -370,13 +261,6 @@ export function ConnectionBannerSource() {
                       variant: 'danger' as const,
                       onClick: () => {
                         armedAtRef.current = Date.now();
-                        const current = bannerStore
-                          .getSnapshot()
-                          .find((item) => item.id === BANNER_IDS.offline);
-                        if (current?.collapsed) {
-                          bannerStore.setCollapsed(BANNER_IDS.offline, false);
-                          forcedExpandRef.current = true;
-                        }
                         setRemoveArmed(true);
                         disarmTimerRef.current = setTimeout(
                           disarm,

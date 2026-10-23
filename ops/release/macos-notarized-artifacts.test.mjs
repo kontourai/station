@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   existsSync,
@@ -155,6 +156,17 @@ function fixture({
         return { status: 0, stdout: `${appVersion}\n`, stderr: '' };
       return { status: 0, stdout: 'io.kontourai.station', stderr: '' };
     }
+    if (
+      program === 'codesign' &&
+      args.includes('--entitlements') &&
+      args.at(-1).endsWith('/station-node')
+    )
+      return {
+        status: 0,
+        stdout:
+          '<plist><dict><key>com.apple.security.cs.allow-jit</key><true/></dict></plist>',
+        stderr: '',
+      };
     if (program === 'codesign' && args[0] === '-dvv') {
       return {
         status: 0,
@@ -177,7 +189,7 @@ function fixture({
   return {
     calls,
     embeddedMacos: {
-      lstat: () => ({ isSymbolicLink: () => false }),
+      lstat: () => ({ isSymbolicLink: () => false, isFile: () => true }),
       magic: () => false,
       realpath: (file) => file,
     },
@@ -397,6 +409,31 @@ test('uses a visible phase for each injected command and preserves the canonical
     expect.objectContaining({ phase: 'embedded Mach-O inventory file scan' }),
   ]);
   expect(calls.some(([program]) => program === 'node')).toBe(false);
+  const nodeSigning = calls.findIndex(
+    ([program, args]) =>
+      program === 'codesign' &&
+      args.includes('--force') &&
+      args.at(-1) === '/app/Station.app/Contents/MacOS/station-node',
+  );
+  const outerSigning = calls.findIndex(
+    ([program, args]) =>
+      program === 'codesign' &&
+      args.includes('--force') &&
+      args.at(-1) === '/app/Station.app',
+  );
+  expect(nodeSigning).toBeGreaterThanOrEqual(0);
+  expect(outerSigning).toBeGreaterThan(nodeSigning);
+  expect(calls[nodeSigning][1]).toEqual([
+    '--force',
+    '--sign',
+    'Developer ID',
+    '--options',
+    'runtime',
+    '--timestamp',
+    '--entitlements',
+    expect.stringContaining('Node.entitlements.plist'),
+    '/app/Station.app/Contents/MacOS/station-node',
+  ]);
   expect(calls).toContainEqual([
     'codesign',
     ['-d', '--entitlements', '-', '--xml', '/app/Station.app'],
@@ -1371,7 +1408,7 @@ test('retries a bounded embedded timestamp signing failure once without rewrappi
   const baseRun = release.run;
   let embeddedSignAttempts = 0;
   release.embeddedMacos = {
-    lstat: () => ({ isSymbolicLink: () => false }),
+    lstat: () => ({ isSymbolicLink: () => false, isFile: () => true }),
     magic: (candidate) => candidate === file,
     realpath: (candidate) => candidate,
   };
@@ -1990,3 +2027,46 @@ test('a second Apple ticket transport failure still refuses DMG admission', asyn
   ).toBe(false);
   expect(release.removed).toContain('/scratch');
 });
+
+// dmgbuild never checks its ditto copy; the settings hook is the guard. Load
+// the real settings file and run its hook with subprocess.run captured, so a
+// removed hook, a weakened codesign call, or a dropped `check=True` turns red.
+const python3 = spawnSync('python3', ['-I', '-c', 'import sys; print(sys.version_info >= (3, 10))'], {
+  encoding: 'utf8',
+  windowsHide: true,
+});
+test.skipIf(python3.stdout?.trim() !== 'True')(
+  'the dmgbuild settings hook verifies the copied app signature strictly before signing',
+  () => {
+    const settings = fileURLToPath(new URL('./dmg/dmgbuild-settings.py', import.meta.url));
+    const probe = [
+      'import json, subprocess, sys',
+      'calls = []',
+      'subprocess.run = lambda args, **kw: calls.append({"args": args, "check": kw.get("check"), "timeout": kw.get("timeout")})',
+      'scope = {"defines": {"app": "/staged/Station.app", "background": "/art/background.tiff"}}',
+      'exec(compile(open(sys.argv[1]).read(), sys.argv[1], "exec"), scope)',
+      'hook = scope.get("create_hook")',
+      'assert callable(hook), "create_hook missing"',
+      'hook("/Volumes/dmg.mount", {})',
+      'print(json.dumps(calls))',
+    ].join('\n');
+    const result = spawnSync('python3', ['-I', '-c', probe, settings], {
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual([
+      {
+        args: [
+          '/usr/bin/codesign',
+          '--verify',
+          '--deep',
+          '--strict',
+          '/Volumes/dmg.mount/Station.app',
+        ],
+        check: true,
+        timeout: 600,
+      },
+    ]);
+  },
+);

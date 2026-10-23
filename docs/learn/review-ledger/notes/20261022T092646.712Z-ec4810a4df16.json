@@ -1,0 +1,7 @@
+{
+  "revision": "3ddbdae479c7edfe3a3c2839f17d25df7f5a7645",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"Reviewed testing-guide addition for the real Windows Credential Manager fixture. UI native-boundary rules, scoped testing, fixture fidelity and hosted qualification remain unchanged; no UI implementation changed.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

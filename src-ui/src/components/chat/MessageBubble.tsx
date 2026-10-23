@@ -13,7 +13,7 @@ import { absoluteTime, messageTime } from '../../utils/relativeTime';
 import { FlowGateVerdictCard } from '../flow/FlowGateVerdictCard';
 import { FlowRunAttachedMarker } from '../flow/FlowRunAttachedMarker';
 import { AgentIcon } from '../icons/AgentIcon';
-import { CopyGlyph, InboxGlyph, PauseGlyph } from '../icons/Glyph';
+import { CopyGlyph, InboxGlyph, PauseGlyph, TimeGlyph } from '../icons/Glyph';
 import { UserIcon } from '../icons/UserIcon';
 import { LazyBoundary } from '../LazyBoundary';
 import { Skeleton } from '../state';
@@ -40,6 +40,12 @@ import {
   resolveTurnModelIdentity,
   turnCompletedNormally,
 } from './message-bubble/utils';
+import {
+  endedTurnMarker,
+  endedTurnStopDetail,
+  hasAnswerText,
+  useHasVisibleTranscriptContent,
+} from './message-bubble/visibleContent';
 import { TaskProposalCard } from './TaskProposalCard';
 import type { ToolApprovalOutcome } from './ToolCallDisplay';
 import { TranscriptMarker, transcriptMarkerLabel } from './TranscriptMarker';
@@ -285,6 +291,15 @@ function MessageBubbleComponent({
     [onToolApproval, activeSession.id, activeSession.agentSlug],
   );
 
+  // One rule with the streaming row (`visibleContent.ts`): an assistant row
+  // with nothing to draw renders no bubble at all, rather than a header over
+  // an empty card. Hoisted with the hooks above; read after the special rows.
+  const hasVisibleContent = useHasVisibleTranscriptContent(
+    msg.contentParts,
+    textContent,
+    { showReasoning },
+  );
+
   const flowPart = msg.contentParts?.find(
     (part) =>
       part.type === 'flow-gate-verdict' || part.type === 'flow-run-attached',
@@ -323,6 +338,19 @@ function MessageBubbleComponent({
   if (transcriptMarker) {
     return <TranscriptMarker label={transcriptMarker} anchorKey={anchorKey} />;
   }
+
+  // A user row always draws (its bubble carries delivery state even when
+  // empty of text); an assistant row only once it has content, or once its
+  // turn has ended (its provenance is folded only from a terminal event):
+  // a turn that ended with nothing to show still keeps its row, a one-line
+  // marker of how it ended, and the row's footer and anchor.
+  const endedEmpty =
+    msg.role === 'assistant' && !hasVisibleContent
+      ? endedTurnMarker(msg)
+      : undefined;
+  const endedStopDetail = endedEmpty ? endedTurnStopDetail(msg) : undefined;
+  if (msg.role === 'assistant' && !hasVisibleContent && !endedEmpty)
+    return null;
 
   const isLastMessage = idx === activeSession.messageCount - 1;
   const isStreamingMessage = isLastMessage && msg.role === 'assistant';
@@ -423,12 +451,16 @@ function MessageBubbleComponent({
     resolvedRowAgent && turnEngineId
       ? { ...resolvedRowAgent, engineId: turnEngineId }
       : resolvedRowAgent;
+  // A check-back Station sent is nobody's words: not the person's avatar.
+  const stationCheckBack = msg.role === 'user' && msg.stationCheckBack === true;
   const avatarContent = sender ? (
     <span className="agent-incoming__avatar" aria-hidden="true">
       <InboxGlyph />
     </span>
   ) : isAssistant ? (
     <AgentIcon agent={rowAgent ?? FALLBACK_AGENT} size={20} />
+  ) : stationCheckBack ? (
+    <TimeGlyph className="message__station-glyph" />
   ) : (
     <UserIcon size={20} />
   );
@@ -503,24 +535,48 @@ function MessageBubbleComponent({
         <CopyGlyph />
       </button>
     ) : null;
+  // Only a rehydrated, durable authored input has the exact identity needed
+  // for an explicit Task pin. Optimistic/content-reconciled rows deliberately
+  // carry no surrogate action. On desktop it is a row of the bubble's ⋯ menu,
+  // like an answer's "Add to Task"; the phone sheet lists it itself.
+  const userTaskTarget =
+    !replaying &&
+    msg.role === 'user' &&
+    msg.sourceEventId &&
+    msg.sessionId &&
+    msg.turnId
+      ? {
+          sessionId: msg.sessionId,
+          eventId: msg.sourceEventId,
+          excerpt: textContent,
+          projectId: activeSession.projectSlug,
+        }
+      : undefined;
+  const menuTaskTarget = isMobile ? undefined : userTaskTarget;
   // Gated on exactly what the menu can list (TurnActionsMenu's
   // UserMessageActionsMenu): a fork needs its handler, so a fork source alone
   // would draw a ⋯ that opens an empty menu.
-  const userMessageMenu =
-    msg.role === 'user' &&
+  // The text actions need text; adding the input to a Task does not (an
+  // image-only message is still an input a Task can hold).
+  const textMenuActions = Boolean(
     textContent &&
-    ((userForkSource && onForkFromTurn) ||
-      onNewChatFromMessage ||
-      discardUnsent) ? (
+      ((userForkSource && onForkFromTurn) ||
+        onNewChatFromMessage ||
+        discardUnsent),
+  );
+  const userMessageMenu =
+    msg.role === 'user' && (textMenuActions || menuTaskTarget) ? (
       <LazyBoundary
         load={loadUserMessageActionsMenu}
         componentProps={{
-          forkSource: userForkSource,
-          onForkFromTurn,
-          onNewChatFromMessage: onNewChatFromMessage
-            ? () => onNewChatFromMessage(textContent)
-            : undefined,
-          onDiscardUnsent: discardUnsent,
+          forkSource: textContent ? userForkSource : undefined,
+          onForkFromTurn: textContent ? onForkFromTurn : undefined,
+          onNewChatFromMessage:
+            textContent && onNewChatFromMessage
+              ? () => onNewChatFromMessage(textContent)
+              : undefined,
+          onDiscardUnsent: textContent ? discardUnsent : undefined,
+          taskTarget: menuTaskTarget,
           // The phone already opens a sheet for the row: its actions are
           // listed there, not behind a second ⋯ inside it.
           inline: isMobile,
@@ -552,24 +608,13 @@ function MessageBubbleComponent({
         {msg.traceId.slice(-8)}
       </a>
     ) : null;
-  // Only a rehydrated, durable authored input has the exact identity needed
-  // for an explicit Task pin. Optimistic/content-reconciled rows deliberately
-  // carry no surrogate action.
+  // The phone sheet's Task row (desktop lists it in the ⋯ menu instead).
   const userTaskAction =
-    !replaying &&
-    msg.role === 'user' &&
-    msg.sourceEventId &&
-    msg.sessionId &&
-    msg.turnId ? (
+    isMobile && userTaskTarget ? (
       <div className="message__task-input-action">
         <LazyBoundary
           load={loadConnectedAttachUserInputToTaskButton}
-          componentProps={{
-            sessionId: msg.sessionId,
-            eventId: msg.sourceEventId,
-            excerpt: textContent,
-            projectId: activeSession.projectSlug,
-          }}
+          componentProps={userTaskTarget}
           pending={
             <span
               className="task-picker__status"
@@ -691,6 +736,7 @@ function MessageBubbleComponent({
     answerSessionId &&
     msg.answerEligible === true &&
     turnCompletedNormally(msg) &&
+    hasAnswerText(msg) &&
     (!isLastMessage || !activeSession.isThinking) ? (
       <LazyBoundary
         load={loadConnectedAnswerBasisAffordance}
@@ -797,10 +843,16 @@ function MessageBubbleComponent({
       )}
     </>
   );
+  // #926 amendment (owner, 2026-10): Basis stays visible at rest, beside
+  // the hover-revealed row rather than inside it.
+  const turnFooterBar = (
+    <div className="turn-footer__bar">
+      {basisChip}
+      <div className="turn-footer__actions">{footerActions}</div>
+    </div>
+  );
   const metadataAfter = (
     <>
-      {!isMobile && userTaskAction}
-
       {msg.role === 'assistant' && msg.changedFiles && (
         <details className="message__changed-files">
           <summary>
@@ -868,15 +920,8 @@ function MessageBubbleComponent({
             meta affordance — icon-weight, muted, so the answer above stays
             the loudest thing in the column; provenance and reasoning open
             from the overflow as dialogs (#2211). */}
-      {hasTurnFooter && !isMobile && (
-        <div className="turn-footer">
-          {/* #926 amendment (owner, 2026-10): Basis stays visible at rest,
-              beside the hover-revealed row rather than inside it. */}
-          <div className="turn-footer__bar">
-            {basisChip}
-            <div className="turn-footer__actions">{footerActions}</div>
-          </div>
-        </div>
+      {hasTurnFooter && !isMobile && !endedEmpty && (
+        <div className="turn-footer">{turnFooterBar}</div>
       )}
     </>
   );
@@ -1013,7 +1058,12 @@ function MessageBubbleComponent({
               : undefined
             : '70%',
         }}
-        className={`message ${sender ? 'agent-incoming' : msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}${undelivered ? ` message--undelivered message--delivery-${undelivered}` : ''}`}
+        className={`message ${sender ? 'agent-incoming' : msg.role}${msg.role === 'user' && msg.fromPrompt ? ' message--from-prompt' : ''}${stationCheckBack ? ' message--station-check-back' : ''}${
+          // Outlined, not filled, until the agent has the message.
+          undelivered
+            ? ` message--undelivered message--delivery-${undelivered}`
+            : ''
+        }`}
         {...(sender
           ? {
               role: 'group' as const,
@@ -1031,6 +1081,12 @@ function MessageBubbleComponent({
         {sender && !isMobile && <IncomingAgentHeader sender={sender} />}
         {!isMobile && metadataControls}
         {!isMobile && metadataIdentity}
+        {stationCheckBack ? (
+          <div className="message__station-label">
+            {isMobile ? <TimeGlyph className="message__station-glyph" /> : null}
+            Scheduled check-back
+          </div>
+        ) : null}
         <div
           data-quote-source-message={
             msg.role === 'assistant' &&
@@ -1041,6 +1097,24 @@ function MessageBubbleComponent({
               : undefined
           }
         >
+          {endedEmpty ? (
+            // One line for No reply and Stopped alike: the footer's actions
+            // sit at its end instead of in a footer row of their own.
+            <div className="message__turn-outcome">
+              <p className="message__turn-outcome-label">
+                {endedEmpty}
+                {endedStopDetail ? (
+                  <span
+                    className="message__turn-outcome-detail"
+                    title={endedStopDetail.title}
+                  >
+                    {endedStopDetail.text}
+                  </span>
+                ) : null}
+              </p>
+              {hasTurnFooter && !isMobile ? turnFooterBar : null}
+            </div>
+          ) : null}
           <MessageContent
             contentParts={
               taskProposal
@@ -1090,11 +1164,14 @@ function MessageBubbleComponent({
             Sent by stopping the step that was running
           </div>
         )}
-        {undelivered && msg.clientId ? (
+        {/* Delivered is passed too: a note that showed an undelivered state
+            fades its glyph out rather than vanishing (it renders nothing for
+            a message that was already delivered when it mounted). */}
+        {msg.role === 'user' && msg.clientId && deliveryState ? (
           <MessageDeliveryNote
             chatKey={activeSession.id}
             clientTurnId={msg.clientId}
-            state={undelivered}
+            state={deliveryState}
             text={textContent}
             notice={deliveryNotice}
           />

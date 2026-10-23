@@ -65,6 +65,22 @@ describe('resolveTurnEngine (station#1424 review fix M1, wired to its authority 
     ).toEqual({ name: 'Codex' });
   });
 
+  test('names an ACP turn by the connection it recorded, like the chat header does', () => {
+    expect(
+      resolveTurnEngine({
+        provenance: envelope({
+          engine: observed({ provider: 'acp', displayName: 'OpenCode' }),
+        }),
+      }),
+    ).toEqual({ name: 'OpenCode' });
+    // An envelope persisted before the name was recorded stays generic.
+    expect(
+      resolveTurnEngine({
+        provenance: envelope({ engine: observed({ provider: 'acp' }) }),
+      }),
+    ).toEqual({ name: 'Custom engine' });
+  });
+
   test("names Station's own engine 'Station' for every adapter that executes it", () => {
     // `station-agent` relays to Station's own /chat; `bedrock`/`ollama` are
     // Model connections Station's engine runs through. All three are the

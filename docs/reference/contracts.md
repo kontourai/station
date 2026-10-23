@@ -51,7 +51,8 @@ conversation access. Filesystem preparation stays in the server.
 | Module | Owns |
 |---|---|
 | `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota, optional identity/credit/model/spending/breakdown metadata and bounded capture-audit projections, plus provider-owned login; runtime validation stays in SDK consumers |
-| `@kontourai/station-contracts/acp` | ACP connection config, ACP connection status values, and engine catalogue entries with their install/launch/sign-in descriptor and its validator (`validateACPEngineDescriptor`) |
+| `@kontourai/station-contracts/engine-sign-in` | Sign-in for engines run as commands: status with its source, offered methods (id, name, kind, terms note), key names (never values), the running attempt and what the caller may do |
+| `@kontourai/station-contracts/acp` | ACP connection config, ACP connection status values, and engine catalogue entries with their install/launch/sign-in descriptor and its validator (`validateACPEngineDescriptor`), and the public agent registry's listing facts and source status |
 | `@kontourai/station-contracts/engine-capability-matrix` | Per-engine capability and delivery declarations, and for ACP who decides which actions ask (`acpApprovalControl`: `station` for an engine whose approval rules Station sets at launch, today OpenCode, `engine` otherwise) |
 | `@kontourai/station-contracts/agent` | Agent specs, metadata, tools, slash commands, the versioned Agent audience and the member Agent view |
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
@@ -206,9 +207,32 @@ queued follow-ups on it until a turn starts or the user sends one.
 
 `ConnectionRecoveryProjection.outcomeReason` says why a usage-limit stop did
 not resume on its own: `auto-resume-off`, `superseded`, `request-pending`,
-`session-ended`, or `user-canceled` (the user chose Cancel auto-resume). The
-chat banner reads it through the Session API's
+`session-ended`, or `user-canceled` (the user chose Cancel auto-resume). Its
+`autoResumeChoice` (`resume` or `hold`) is the person's choice for that one
+stop, which decides `autoResume` in place of the setting. The chat banner
+reads it through the Session API's
 [usage-limit routes](session-api.md#usage-limit-recovery-sessionsthreadidusage-limit).
+
+`@kontourai/station-contracts/agent-schedule` owns what an agent schedules
+for itself and what it only proposes: `AgentWakeUp`, `AgentJobProposal`,
+`ConversationAgentSchedule`, their bounds (`AGENT_WAKE_UP_MAX_HORIZON_MS`,
+`AGENT_WAKE_UP_MIN_DELAY_MS`, `AGENT_WAKE_UP_MAX_PENDING_PER_CONVERSATION`,
+`AGENT_WAKE_UP_NOTE_MAX_CHARS`, `AGENT_JOB_PROPOSAL_MAX_OPEN_PER_CONVERSATION`,
+and the hourly create limits `AGENT_WAKE_UP_MAX_CREATED_PER_WINDOW` and
+`AGENT_JOB_PROPOSAL_MAX_CREATED_PER_WINDOW` over
+`AGENT_SCHEDULE_RATE_WINDOW_MS`), `jobMatchesProposal`, the comparison the
+scheduler's approval uses, and `isStationCheckBackTurn`, which tells a
+transcript that a turn is a check-back Station sent (its internal origin and
+a send key `parseWakeUpClientTurnId` accepts). A wake-up waiting for a
+person's approval is in state `needs_approval`.
+
+`@kontourai/station-contracts/station-control-refusal` owns the refusal view
+a transcript shows for a station-control tool (`StationControlRefusalView`:
+code, sentence, out-of-scope reason), `parseStationControlRefusal`, which
+reads it only from a station-control tool's whole result, and
+`stationControlToolName`. A history window carries it whole on
+`ToolCompletedEvent.stationControlRefusal`, read before the window cut the
+output to an excerpt; a sentence over its bound is not carried.
 
 `ORCHESTRATION_STREAM_ACTIVITY_EVENT` names an idless SSE frame carrying the
 current conversation activity after a burst of coalesced runtime events. It
@@ -314,6 +338,7 @@ No existing diagnostic code is renamed or removed.
 | `engine-decision-not-sent` | `warning` | `false` |
 | `engine-decision-unacknowledged` | `warning` | `false` |
 | `engine-session-binding-dead` | `session_gone` | `false` |
+| `engine-sign-in-required` | `auth` | `false` |
 | `engine-turn-failed` | `provider_error` | `false` |
 | `execution_engine_changed` | `conflict` | `false` |
 | `foreground_message_indeterminate` | `indeterminate` | `false` |
@@ -570,7 +595,10 @@ builds the Muse adapter with neither `turnIdleTimeoutMs`
 nor `turnTimeoutMs`), so production Muse turns carry no Station-imposed
 bound. A turn that goes silent is surfaced instead: the stall watchdog's
 `progressSilence` (below) shows "No progress from <engine> for 4m" and the stall notice with a
-Stop button, and the user decides. On the exec fallback, Stop signals the
+Stop button, and the user decides. The watchdog's window is not armed while a
+tool call is open (`tool.started` without its `tool.completed`); the last
+call's completion re-arms it, so a long silent tool run is shown as the running
+tool, not as silence. On the exec fallback, Stop signals the
 child's process group and settles the turn `turn.aborted`; the serve transport
 uses its interrupt protocol, described below. The following idle/total timer
 details describe the [exec adapter](../../src-server/providers/adapters/muse-adapter.ts).
@@ -710,6 +738,12 @@ refused again. An ACP session whose requested model the engine's own fresh
 `session/new` options did not offer (`ACP model value unsupported`, or no model
 option at all) is refused by the adapter with `SessionStartRefusedError`,
 carrying `MODEL_NOT_ADVERTISED_CODE` (`model_not_advertised`, from `provider`).
+An engine that answers `session/new` (or `session/load`) with ACP's
+`auth_required` error (code `-32000` with a message beginning "Authentication
+required", as the ACP SDK builds it) is refused the same way, carrying
+`ENGINE_SIGN_IN_REQUIRED_CODE` (`engine-sign-in-required`, kind `auth`, from
+`provider`); the same error on a prompt is that turn's `runtime.error` with the
+same code, and chat renders both as a prompt to sign in to the engine.
 That type is how an adapter tells the start boundary that its start is settled:
 the boundary is released and the receipt is `rejected`, where every other
 adapter failure at start stays an indeterminate start that fences the thread. An

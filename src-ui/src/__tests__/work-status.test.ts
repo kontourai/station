@@ -163,14 +163,14 @@ describe('the status ladder, from real server summaries', () => {
     const summary = folded('silentRun');
     expect(summary.turnProgress?.progressSilence).toMatchObject({
       windowMs: 180_000,
-      silentSinceEventAt: '2026-09-30T10:00:04.000Z',
+      silentSinceEventAt: '2026-09-30T10:00:05.000Z',
     });
-    // Read at an instant the marker exists: it was written at 10:03:04,
-    // after 180s of nothing since the last progress event at 10:00:04.
+    // Read at an instant the marker exists: it was written at 10:03:05,
+    // after 180s of nothing since the last progress event at 10:00:05.
     expect(summary.turnProgress?.progressSilence?.detectedAt).toBe(
-      '2026-09-30T10:03:04.000Z',
+      '2026-09-30T10:03:05.000Z',
     );
-    const sixMinutesSilent = Date.parse('2026-09-30T10:06:04.000Z');
+    const sixMinutesSilent = Date.parse('2026-09-30T10:06:05.000Z');
     const silent = rowFor(summary);
     const status = workStatus(silent.item, sixMinutesSilent, silent.facts);
     expect(status).toMatchObject({
@@ -179,7 +179,7 @@ describe('the status ladder, from real server summaries', () => {
       tone: 'caution',
       // One number: how long it has been quiet (6m), not the turn's age
       // beside a second count baked into the word.
-      line: 'No progress · Bash · 6m',
+      line: 'No progress · 6m',
     });
     // Never drawn as the healthy run it sits beside.
     const healthy = rowFor(RUNNING_TOOL);

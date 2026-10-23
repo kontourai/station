@@ -296,7 +296,8 @@ export class DeviceToolchainService {
       return undefined;
     const state = this.supervisor.state().state;
     // A crash waits for a person; a scheduled restart is already on its way.
-    if (state === 'crashed' || state === 'restarting') return undefined;
+    if (state === 'crashed' || state === 'blocked' || state === 'restarting')
+      return undefined;
     try {
       return await this.supervisor.ensureStarted();
     } catch {

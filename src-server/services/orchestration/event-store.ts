@@ -59,6 +59,7 @@ import {
   parseSessionWorkItemAssociation,
   type SessionWorkItemAssociation,
 } from '@kontourai/station-contracts/session-work-item';
+import { parseStationControlRefusal } from '@kontourai/station-contracts/station-control-refusal';
 import { parseTenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import { htmlReplyReference } from '@kontourai/station-shared/html-reply-document';
@@ -191,6 +192,10 @@ import {
   createAdoptionLedger,
 } from './adoption-ledger.js';
 import {
+  type AgentScheduleStore,
+  createSqliteAgentScheduleStore,
+} from './agent-schedule.js';
+import {
   AttachmentBlobStore,
   attachmentBlobRefFor,
   isAttachmentBlobRef,
@@ -289,10 +294,12 @@ import type {
 } from './session-query-module.js';
 import {
   createSessionTurnBoundaryAuthority,
+  ORCHESTRATION_SHUTDOWN_EXIT_REASON,
   releaseSessionTurnBoundaryOwner,
   SESSION_START_INDETERMINATE_CODE,
   type SessionTurnBoundaryAuthority,
   type SessionTurnBoundaryRecord,
+  SHUTDOWN_RETAINED_BOUNDARIES,
 } from './session-turn-boundary.js';
 import {
   createSessionWorkItemAdmissionRegistry,
@@ -340,6 +347,10 @@ import {
   type TurnDeduplicator,
 } from './turn-deduplicator.js';
 import {
+  createSqliteUsageLimitResumeChoices,
+  type UsageLimitResumeChoices,
+} from './usage-limit-resume-choices.js';
+import {
   createVoiceTurnRuns,
   releaseVoiceTurnOwner,
   type VoiceTurnRuns,
@@ -383,7 +394,22 @@ const SESSION_TURN_TERMINAL_RETIREMENT_PREDICATE = `state NOT IN ('lifecycle', '
                  AND NOT (event.method = 'runtime.error' AND event.provider = 'codex' AND COALESCE(json_extract(event.payload, '$.retriable'), 0) = 1)
                  AND (
                    (
-                     (event.method = 'session.exited'
+                     ((event.method = 'session.exited'
+                       -- Station's own shutdown leaves a turn that may have
+                       -- reached its engine for the next boot's recovery (see
+                       -- the constant); every other row, a session start or a
+                       -- turn that never invoked among them, retires.
+                       AND (COALESCE(json_extract(event.payload, '$.reason'), '')
+                              != '${ORCHESTRATION_SHUTDOWN_EXIT_REASON}'
+                            OR NOT ((${SHUTDOWN_RETAINED_BOUNDARIES.boundaryIdPrefixes
+                              .map(
+                                (prefix) =>
+                                  `substr(orchestration_turn_boundaries.boundary_id, 1, ${prefix.length}) = '${prefix}'`,
+                              )
+                              .join(' OR ')})
+                              AND orchestration_turn_boundaries.state IN (${SHUTDOWN_RETAINED_BOUNDARIES.states
+                                .map((state) => `'${state}'`)
+                                .join(', ')}))))
                       OR (event.method = 'runtime.error' AND event.turn_id IS NULL
                           AND json_extract(event.payload, '$.invocationId') IS NULL
                           AND COALESCE(json_extract(event.payload, '$.code'), '') != ?))
@@ -1738,9 +1764,18 @@ function snapshotEvent(
       )
         ? htmlReplyReference(payload.output)
         : undefined;
+    // A station-control refusal is the tool's whole result, as JSON: the
+    // excerpt below no longer parses, so its code and sentence ride along
+    // whole (bounded), read from the full text before the cut.
+    const toolName =
+      typeof payload.toolName === 'string' ? payload.toolName : undefined;
+    const refusal =
+      parseStationControlRefusal(toolName, payload.error) ??
+      parseStationControlRefusal(toolName, payload.output);
     snapshotPayload = {
       ...payload,
       ...(pageReference ? { htmlReply: pageReference } : {}),
+      ...(refusal ? { stationControlRefusal: refusal } : {}),
       ...(error ? { error: error.text } : {}),
       ...(output ? { output: output.text } : {}),
     };
@@ -2090,6 +2125,8 @@ export class EventStore {
   private delegationResults?: DelegationResultStore;
   private threadInbox?: ThreadInboxStore;
   private taskMemory?: TaskMemoryStore;
+  private agentSchedule?: AgentScheduleStore;
+  private resumeChoices?: UsageLimitResumeChoices;
   private mcpAppResourceResolver?: (toolRef: string) => string | undefined;
 
   /** Bootstrap-owned reader of already-open catalogs; never connects a server. */
@@ -12579,6 +12616,18 @@ export class EventStore {
   taskMemoryStore(): TaskMemoryStore {
     this.taskMemory ??= createSqliteTaskMemoryStore(this.db);
     return this.taskMemory;
+  }
+
+  /** #3157: a person's resume choice per usage-limit stop. */
+  usageLimitResumeChoices(): UsageLimitResumeChoices {
+    this.resumeChoices ??= createSqliteUsageLimitResumeChoices(this.db);
+    return this.resumeChoices;
+  }
+
+  /** Agent wake-ups and job proposals (`agent-schedule.ts`). */
+  agentScheduleStore(): AgentScheduleStore {
+    this.agentSchedule ??= createSqliteAgentScheduleStore(this.db);
+    return this.agentSchedule;
   }
 
   /** A pending steer claim is never reclaimed: its engine may have accepted it. */

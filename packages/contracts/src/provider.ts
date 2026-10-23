@@ -909,6 +909,13 @@ export const PROVIDER_TURN_IN_PROGRESS_CODE = 'provider_turn_in_progress';
 export const PROVIDER_SESSION_STARTING_CODE = 'provider_session_starting';
 
 /**
+ * An engine answered that it needs its user to sign in (the ACP
+ * `auth_required` error) before it would open a session or run a prompt.
+ * Kind `auth`: not retryable until the user signs in with the engine.
+ */
+export const ENGINE_SIGN_IN_REQUIRED_CODE = 'engine-sign-in-required';
+
+/**
  * Refusal code for a send whose session's engine start failed while the send
  * waited for it. Nothing was sent. Kept, not dropped: the client keeps the
  * message queued with the reason and a Retry, and does not retry on its own.

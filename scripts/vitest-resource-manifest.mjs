@@ -45,6 +45,9 @@ export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
 // changes the system under test or turns their correctness bound into a
 // scheduler-contention measurement.
 export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // Disposable Chromium boots retain 15s render/3s policy deadlines; keep
+  // sibling runtime boots out of this lifecycle measurement (#4022).
+  'src-server/services/__tests__/html-reply-preview.process.test.ts',
   // Real 1,026-part WAL/FULL setup and 1,027 one-at-a-time acknowledgements
   // use a 120-second completion guard, not a throughput assertion. Serial
   // ownership keeps ordinary workers from adding filesystem contention.
@@ -132,8 +135,6 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/agent-runtime/src/__tests__/body-process.test.ts',
-  // Disposable Chromium previews, including renderer limits and process cleanup.
-  'src-server/services/__tests__/html-reply-preview.process.test.ts',
   'src-server/runtime/mcp/__tests__/mcp-ui-network.process.test.ts',
   // Real temporary Git repositories; isolated home per case.
   'src-server/services/pull-requests/__tests__/pull-request-review-guide.test.ts',
@@ -643,6 +644,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // starts that REAL hub under the guard and stops it. Installs nothing and
   // never downloads; hub cases report an explicit skip without an install.
   'src-server/services/devices/toolchain/__tests__/device-hub.real.test.ts',
+  // Builds fixture archives with the host tar executable; bounded, private output.
+  'scripts/__tests__/portable-server-archive.test.ts',
+  // Runs copied user Node executables and shell-free npm/hub entry fixtures.
+  'src-server/services/devices/toolchain/__tests__/device-tool-runtime.process.test.ts',
   // station#1649: runs the glyph-coverage ratchet as a real child process
   // against a throwaway git repository, because the thing under test is the
   // gate's EXIT STATUS on a rejection — a guardrail whose failure branch has
@@ -1259,29 +1264,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // station#2928: executes vite.config.ts (including its git child probe)
   // and a real Vite middleware server against a per-suite temporary cache.
   'src-ui/src/__tests__/vite-sdk-client-alias.test.ts',
-  // station#3453: does not import child_process directly, but launches a
-  // real Chromium via `@playwright/test` (`chromium.launch()` spawns the
-  // browser process through `playwright-core`) to measure real cascade-
-  // resolved layout at a phone viewport — same shape as the ACP integration
-  // tests above. A cold browser launch under a full corpus plus a sibling
-  // session is exactly the load-dependent case this pool exists to keep out
-  // of the ordinary four-worker lane.
-  'src-ui/src/components/notifications/__tests__/BannerHost.touch-target.test.tsx',
-  // station#3513: same shape as BannerHost.touch-target.test.tsx above —
+  // station#3513: launches a real Chromium —
   // launches a real Chromium via `@playwright/test` to measure real cascade-
   // resolved layout at phone viewports.
   'src-ui/src/components/notifications/__tests__/NotificationContainer.touch-target.test.tsx',
   // Runs real canvas/React startup handoffs with Chromium's controlled clock.
   'src-ui/src/__tests__/startup-presentation.browser.test.tsx',
-  // station#4470a: same shape again — launches a real Chromium via
-  // `@playwright/test` to measure real cascade-resolved geometry (the
-  // disclosure toggle vs. the message text's own line rects) at a phone
-  // viewport.
-  'src-ui/src/components/notifications/__tests__/BannerHost.disclosure-overlap.test.tsx',
-  // station#1638: same shape again — launches a real Chromium via
-  // `@playwright/test` to hit-test the banner host against an open modal
-  // surface trapped inside the dock's stacking context.
-  'src-ui/src/components/notifications/__tests__/BannerHost.dialog-stacking.test.tsx',
   // station#4474: same shape again — launches a real Chromium via
   // `@playwright/test` to measure real cascade-resolved layout (sibling
   // toolbar control x-offsets across connection states).
@@ -1322,18 +1310,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Chromium via `@playwright/test` to measure real cascade-resolved
   // layout (a marker's y-offset across the isFetching flip).
   'src-ui/src/components/action-operations/__tests__/ActionOperationsSection.reflow.test.tsx',
-  // station#4470 H2 (review round): same shape again — launches a real
-  // Chromium via `@playwright/test` to measure real cascade-resolved
-  // layout (collapsed-card control geometry and hit-testing).
-  'src-ui/src/components/notifications/__tests__/BannerHost.collapsed-controls.test.tsx',
-  // Same shape again: launches a real Chromium to measure the content inset
-  // the published banner height produces, and the collapse tween the
-  // reduced-motion primitive refuses, under the real cascade.
-  'src-ui/src/components/notifications/__tests__/BannerHost.reserve-cascade.test.tsx',
-  // station#4475 (review round): same shape again — launches a real
-  // Chromium via `@playwright/test` to hit-test connections-flow controls
-  // with and without an active banner.
-  'src-ui/src/__tests__/ConnectionsSectionFrame.banner-hittest.test.tsx',
   // #1536 E2: same shape again — launches a real Chromium via
   // `@playwright/test` to measure the dock header's cascade-resolved
   // identity/project-context geometry (unclipped overflow and wrapped

@@ -459,7 +459,9 @@ describe('projectRuntimeEventsToMessages', () => {
     expect(Object.hasOwn(parts[1], 'url')).toBe(false);
   });
 
-  it('marks a failed tool as error and keeps its output', () => {
+  // The error is shown once: an output-less failure used to copy its error
+  // into `result` too, and the row rendered it as both Response and Error.
+  it('marks a failed tool as error and keeps its error out of the result', () => {
     const messages = projectRuntimeEventsToMessages([
       ev({ method: 'turn.started', turnId: 'r1' }),
       ev({
@@ -484,9 +486,9 @@ describe('projectRuntimeEventsToMessages', () => {
       type: 'tool-invocation',
       state: 'error',
       isError: true,
-      result: 'permission denied',
       error: 'permission denied',
     });
+    expect(part.result).toBeUndefined();
   });
 
   // station#3167: mirrors streamHandlers.test.ts's live-side
@@ -3117,5 +3119,237 @@ describe('turn-less content after a session resume', () => {
         ?.parts.filter((p) => p.type === 'text')
         .map((p) => p.text),
     ).toEqual(['second answer']);
+  });
+});
+
+// A started call with no outcome is in flight only while its turn is live —
+// which the event window alone cannot know. The caller supplies liveness
+// (`liveOpenTurn`); without it, or for any other turn, the call stays
+// `'call'` and the row reads "No result recorded".
+describe('projectRuntimeEventsToMessages — calls in a live open turn', () => {
+  const openTurn = (extra: CanonicalRuntimeEvent[] = []) => [
+    ev({ method: 'turn.started', turnId: 'live', prompt: 'go' }),
+    ev({
+      method: 'tool.started',
+      turnId: 'live',
+      toolCallId: 'done',
+      toolName: 'Bash',
+      arguments: { command: 'ls' },
+    }),
+    ev({
+      method: 'tool.completed',
+      turnId: 'live',
+      toolCallId: 'done',
+      toolName: 'Bash',
+      status: 'success',
+      output: 'a b',
+    }),
+    ev({
+      method: 'tool.started',
+      turnId: 'live',
+      toolCallId: 'busy',
+      toolName: 'Bash',
+      arguments: { command: 'npm test' },
+      createdAt: '2026-06-27T00:00:05.000Z',
+    }),
+    ...extra,
+  ];
+  const callState = (
+    messages: ReturnType<typeof projectRuntimeEventsToMessages>,
+    id: string,
+  ) =>
+    messages
+      .flatMap((message) => message.parts)
+      .find((part) => part.toolCallId === id);
+
+  it('projects an outcome-less call in the live open turn as running, with its start', () => {
+    const messages = projectRuntimeEventsToMessages(openTurn(), {
+      liveOpenTurn: { threadId: 't1', turnId: 'live' },
+    });
+    expect(callState(messages, 'busy')).toMatchObject({
+      state: 'running',
+      startedAt: '2026-06-27T00:00:05.000Z',
+    });
+    // A settled sibling keeps its outcome.
+    expect(callState(messages, 'done')?.state).toBe('result');
+  });
+
+  it('keeps the call unproven when the caller reports no live turn', () => {
+    const messages = projectRuntimeEventsToMessages(openTurn());
+    expect(callState(messages, 'busy')?.state).toBe('call');
+  });
+
+  it('keeps the call unproven when the live turn is a different one', () => {
+    const messages = projectRuntimeEventsToMessages(openTurn(), {
+      liveOpenTurn: { threadId: 't1', turnId: 'other' },
+    });
+    expect(callState(messages, 'busy')?.state).toBe('call');
+  });
+
+  it('keeps the call unproven when the live turn belongs to another session', () => {
+    const messages = projectRuntimeEventsToMessages(openTurn(), {
+      liveOpenTurn: { threadId: 't2', turnId: 'live' },
+    });
+    expect(callState(messages, 'busy')?.state).toBe('call');
+  });
+
+  it('keeps the call unproven once its turn ended, even if the caller names it', () => {
+    const messages = projectRuntimeEventsToMessages(
+      openTurn([
+        ev({ method: 'turn.completed', turnId: 'live', finishReason: 'stop' }),
+      ]),
+      { liveOpenTurn: { threadId: 't1', turnId: 'live' } },
+    );
+    expect(callState(messages, 'busy')?.state).toBe('call');
+  });
+
+  it("keeps the call unproven when the open turn's session already exited", () => {
+    const messages = projectRuntimeEventsToMessages(
+      openTurn([ev({ method: 'session.exited' })]),
+      { liveOpenTurn: { threadId: 't1', turnId: 'live' } },
+    );
+    expect(callState(messages, 'busy')?.state).toBe('call');
+  });
+});
+
+describe('a check-back Station sent', () => {
+  const WAKE_UP = 'wake-up:0f8fad5b-d9cb-469f-a165-70867728950e';
+  const userRow = (extra: Record<string, unknown>) =>
+    projectRuntimeEventsToMessages([
+      ev({
+        method: 'turn.started',
+        turnId: 'nudge',
+        prompt: '[Station] The check-back you scheduled is due.',
+        ...extra,
+      }),
+    ]).find((message) => message.role === 'user');
+
+  it('is marked as Station’s: its own origin and a wake-up send key', () => {
+    expect(
+      userRow({
+        clientTurnId: WAKE_UP,
+        clientOrigin: {
+          version: 1,
+          actor: { kind: 'internal' },
+          reported: { surface: 'unknown' },
+        },
+      })?.metadata?.stationCheckBack,
+    ).toBe(true);
+  });
+
+  it('names no other sender: an internal turn reads unattributed, a check-back does not', () => {
+    const internal = {
+      version: 1,
+      actor: { kind: 'internal' },
+      reported: { surface: 'unknown' },
+    };
+    expect(
+      userRow({ clientTurnId: WAKE_UP, clientOrigin: internal })?.metadata
+        ?.sender,
+    ).toBeUndefined();
+    expect(
+      userRow({ clientTurnId: 'wake-up:not-an-id', clientOrigin: internal })
+        ?.metadata?.sender,
+    ).toMatchObject({ kind: 'unattributed' });
+  });
+
+  it('is not marked from a person’s origin, or a key that does not parse', () => {
+    expect(
+      userRow({
+        clientTurnId: WAKE_UP,
+        clientOrigin: {
+          version: 1,
+          actor: { kind: 'operator' },
+          reported: { surface: 'web' },
+        },
+      })?.metadata?.stationCheckBack,
+    ).toBeUndefined();
+    expect(
+      userRow({
+        clientTurnId: 'wake-up:not-an-id',
+        clientOrigin: {
+          version: 1,
+          actor: { kind: 'internal' },
+          reported: { surface: 'unknown' },
+        },
+      })?.metadata?.stationCheckBack,
+    ).toBeUndefined();
+  });
+});
+
+describe('projectRuntimeEventsToMessages — a turn that ended with nothing to show', () => {
+  const silent = (terminal: Record<string, unknown>) => [
+    ev({ method: 'turn.started', turnId: 'q1', prompt: 'Say nothing' }),
+    ev({ turnId: 'q1', ...terminal } as never),
+  ];
+  const assistantRows = (
+    messages: ReturnType<typeof projectRuntimeEventsToMessages>,
+  ) => messages.filter((message) => message.role === 'assistant');
+
+  it('keeps an empty row with its completed envelope when asked', () => {
+    const rows = assistantRows(
+      projectRuntimeEventsToMessages(
+        silent({ method: 'turn.completed', finishReason: 'stop' }),
+        { markEndedTurns: true },
+      ),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.parts).toEqual([]);
+    expect(rows[0]?.metadata).toMatchObject({
+      turnId: 'q1',
+      turnEnded: 'completed',
+      provenance: expect.objectContaining({ outcome: 'completed' }),
+    });
+  });
+
+  it('a stopped empty turn is the same row with an aborted envelope, and no reason text', () => {
+    const rows = assistantRows(
+      projectRuntimeEventsToMessages(
+        silent({ method: 'turn.aborted', reason: 'interrupted' }),
+        { markEndedTurns: true },
+      ),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.parts).toEqual([]);
+    // An aborted turn's envelope is revoked; `turnEnded` still says how.
+    expect(rows[0]?.metadata).toMatchObject({
+      turnId: 'q1',
+      turnEnded: 'aborted',
+    });
+  });
+
+  it('a stopped turn with text keeps its reason after it', () => {
+    const rows = assistantRows(
+      projectRuntimeEventsToMessages(
+        [
+          ev({ method: 'turn.started', turnId: 'q1', prompt: 'Go' }),
+          ev({ method: 'content.text-delta', turnId: 'q1', delta: 'Half' }),
+          ev({ method: 'turn.aborted', turnId: 'q1', reason: 'interrupted' }),
+        ],
+        { markEndedTurns: true },
+      ),
+    );
+    expect(rows[0]?.parts.map((part) => part.text)).toEqual([
+      'Half',
+      '_interrupted_',
+    ]);
+  });
+
+  it('an open turn has no row yet, and without the option an ended one has none', () => {
+    expect(
+      assistantRows(
+        projectRuntimeEventsToMessages(
+          [ev({ method: 'turn.started', turnId: 'q1', prompt: 'Wait' })],
+          { markEndedTurns: true },
+        ),
+      ),
+    ).toEqual([]);
+    expect(
+      assistantRows(
+        projectRuntimeEventsToMessages(
+          silent({ method: 'turn.completed', finishReason: 'stop' }),
+        ),
+      ),
+    ).toEqual([]);
   });
 });

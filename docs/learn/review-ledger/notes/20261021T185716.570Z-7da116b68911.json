@@ -1,0 +1,7 @@
+{
+  "revision": "ab4b69168f506bbd40b0628f26cb01ae4a90e13a",
+
+  "notes": [
+    {"path":"docs/design/acp-chat-architecture.md","note":"L1 round 5: acp.md gained a sentence that the probe failure reason is written for people with the raw error in the log; the historical chat design is unaffected. No prose change.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md"]}
+  ]
+}
