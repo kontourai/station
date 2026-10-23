@@ -624,7 +624,7 @@ async function runPortLeaseChild(
 function assertRealRuntimePrune(release: string) {
   const modules = join(release, 'node_modules');
   const host = `${process.platform}-${process.arch}`;
-  const sameTarget = (entry: string) => entry === host;
+  const sameOs = (entry: string) => entry.startsWith(`${process.platform}-`);
   const sourcePty = join(repoRoot, 'node_modules', 'node-pty');
   const stagedPty = join(modules, 'node-pty');
   const sourcePrebuilds = join(sourcePty, 'prebuilds');
@@ -632,11 +632,11 @@ function assertRealRuntimePrune(release: string) {
   if (existsSync(sourcePrebuilds)) {
     const source = readdirSync(sourcePrebuilds).sort();
     // The rule must have something to remove on this host.
-    expect(source.some((entry) => !sameTarget(entry))).toBe(true);
+    expect(source.some((entry) => !sameOs(entry))).toBe(true);
     const kept = existsSync(stagedPrebuilds)
       ? readdirSync(stagedPrebuilds).sort()
       : [];
-    expect(kept).toEqual(source.filter(sameTarget));
+    expect(kept).toEqual(source.filter(sameOs));
     expect(kept.includes(host)).toBe(source.includes(host));
   }
   // The loader resolves the native module from whatever survived the prune,

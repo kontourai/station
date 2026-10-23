@@ -71,39 +71,42 @@ console.log(JSON.stringify({values: await lastValueFrom(of(1, 2, 3).pipe(map(x =
       expect(existsSync(join(rxjs, omitted))).toBe(false);
   });
 
-  it('stages only the pinned Node target node-pty prebuilds (node-pty-foreign-prebuilds)', () => {
-    const root = makeTempDir('station-runtime-pty-');
-    const project = join(root, 'project');
-    const files: Record<string, string> = {
-      'lib/utils.js': 'module.exports = {};',
-      'build/Release/pty.node': 'source build',
-      LICENSE: 'MIT',
-    };
-    for (const prebuild of [
-      'darwin-arm64',
-      'darwin-x64',
-      'linux-x64',
-      'win32-arm64',
-      'win32-x64',
-    ]) {
-      files[`prebuilds/${prebuild}/pty.node`] = prebuild;
-    }
-    writeFixturePackage(
-      join(project, 'node_modules/node-pty'),
-      { name: 'node-pty', version: '1.1.0' },
-      files,
-    );
-    // A different package with the same layout is not node-pty's to prune.
-    writeFixturePackage(
-      join(project, 'node_modules/other-native'),
-      { name: 'other-native', version: '1.0.0' },
-      { 'prebuilds/darwin-x64/addon.node': 'other' },
-    );
-    for (const [platform, arch] of [
-      ['win32', 'x64'],
-      ['linux', 'x64'],
-      ['darwin', 'arm64'],
-    ] as const) {
+  it.each([
+    ['win32', 'x64'],
+    ['linux', 'x64'],
+    ['linux', 'arm64'],
+    ['darwin', 'arm64'],
+  ] as const)(
+    'keeps every %s node-pty architecture (%s staging) and excludes other operating systems',
+    (platform, arch) => {
+      const root = makeTempDir('station-runtime-pty-');
+      const project = join(root, 'project');
+      const files: Record<string, string> = {
+        'lib/utils.js': 'module.exports = {};',
+        'build/Release/pty.node': 'source build',
+        LICENSE: 'MIT',
+      };
+      for (const prebuild of [
+        'darwin-arm64',
+        'darwin-x64',
+        'linux-arm64',
+        'linux-x64',
+        'win32-arm64',
+        'win32-x64',
+      ]) {
+        files[`prebuilds/${prebuild}/pty.node`] = prebuild;
+      }
+      writeFixturePackage(
+        join(project, 'node_modules/node-pty'),
+        { name: 'node-pty', version: '1.1.0' },
+        files,
+      );
+      // A different package with the same layout is not node-pty's to prune.
+      writeFixturePackage(
+        join(project, 'node_modules/other-native'),
+        { name: 'other-native', version: '1.0.0' },
+        { 'prebuilds/darwin-x64/addon.node': 'other' },
+      );
       const output = join(root, `release-${platform}-${arch}`);
       stageDesktopServerRuntime({
         projectRoot: project,
@@ -113,8 +116,12 @@ console.log(JSON.stringify({values: await lastValueFrom(of(1, 2, 3).pipe(map(x =
         arch,
       });
       const pty = join(output, 'node_modules/node-pty');
-      const kept = readdirSync(join(pty, 'prebuilds'));
-      expect(kept).toEqual([`${platform}-${arch}`]);
+      const kept = readdirSync(join(pty, 'prebuilds')).sort();
+      expect(kept).toEqual([`${platform}-arm64`, `${platform}-x64`]);
+      for (const prebuild of kept)
+        expect(
+          readFileSync(join(pty, 'prebuilds', prebuild, 'pty.node'), 'utf8'),
+        ).toBe(prebuild);
       expect(existsSync(join(pty, 'build/Release/pty.node'))).toBe(true);
       expect(existsSync(join(pty, 'lib/utils.js'))).toBe(true);
       expect(existsSync(join(pty, 'LICENSE'))).toBe(true);
@@ -126,6 +133,6 @@ console.log(JSON.stringify({values: await lastValueFrom(of(1, 2, 3).pipe(map(x =
           ),
         ),
       ).toBe(true);
-    }
-  });
+    },
+  );
 });

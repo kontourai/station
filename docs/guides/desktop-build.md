@@ -99,9 +99,11 @@ maps while retaining them in the original build output for diagnostics. It also
 removes reviewed SDK source/test trees and unused browser Cedar WASM variants.
 RxJS keeps its Node CommonJS exports (also used by Node ESM imports), metadata
 and license; its browser distributions and TypeScript sources are omitted.
-node-pty keeps the prebuilds matching the bundled Node's platform and
-architecture. Desktop and portable packages carry their own pinned Node, so
-alternate host-Node architectures do not need another copy of those bindings.
+node-pty keeps every architecture's prebuilds for the staging operating system
+and omits prebuilds for other operating systems. Release packages use pinned
+Node, but desktop debug builds select Node from the login PATH; its architecture
+can differ from the staging Node (for example x64 Node under Rosetta on an
+arm64 Mac). Keeping same-OS bindings preserves that debug launch path.
 The stager and [pruning tests](../../scripts/__tests__/desktop-runtime-pruning.test.ts)
 own these rules. File-count reductions are packaging evidence; they do not
 measure Windows Defender scans or first-launch time.

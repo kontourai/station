@@ -192,9 +192,10 @@ export const NON_RUNTIME_ARTIFACT = /(?:\.d\.[cm]?ts|\.map|\.pdb)$/i;
  * - node-pty's loader (lib/utils.js `loadNativeModule`) tries `build/Release`,
  *   `build/Debug`, then exactly `prebuilds/${process.platform}-${process.arch}`,
  *   and Station's spawn-helper chmod (src-server/adapters/node-pty-adapter.ts)
- *   probes only that same directory. Desktop and portable packages now ship
- *   pinned Node for their target architecture, so foreign architectures are
- *   unused even on Windows-on-ARM or a Rosetta-capable Mac.
+ *   probes only that same directory. Release packages ship pinned Node, but
+ *   desktop debug builds select Node from the login PATH. Its architecture can
+ *   differ from the staging host's, so keep every prebuild for the target OS
+ *   and omit only other operating systems.
  * - RxJS's published exports choose dist/cjs under Node for both import and
  *   require, including internal/* and testing. Keep that shared identity and
  *   package metadata/licenses; omit browser distributions and TypeScript input.
@@ -241,7 +242,7 @@ export const RUNTIME_PACKAGE_PRUNE_RULES = Object.freeze([
     excludes: (segments, target) =>
       segments[0] === 'prebuilds' &&
       segments.length > 1 &&
-      segments[1] !== `${target.platform}-${target.arch}`,
+      !segments[1].startsWith(`${target.platform}-`),
   }),
   Object.freeze({
     id: 'flow-agents-harness-bundles',
