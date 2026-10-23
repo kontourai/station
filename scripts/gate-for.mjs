@@ -184,6 +184,7 @@ function guidanceLinesForRule(rule) {
 /**
  * The Veritas rules that govern `changedPaths`, as data: each rule once,
  * with the paths it matched.
+ * @returns {(ReturnType<typeof import('@kontourai/veritas').buildExplainGuidance>['rules'][number] & { paths: string[] })[]}
  */
 export function veritasGuidanceRules(changedPaths, rootDir = process.cwd()) {
   if (changedPaths.length === 0) return [];
