@@ -962,8 +962,26 @@ Server-test types and changed-file style checks pass. A compiling mutation that
 skips awaited publication and finalization fails the publication-refusal case
 with 31 controls passing; byte-exact restoration passes all 32 cases.
 Independent source review found no unsafe settlement path before that mutation.
-Private issuance, production retention and settlement callers remain unwired;
-these controlled checks establish no serving, provider or billing acceptance.
+At that stage, private issuance, production retention and settlement callers
+remained unwired; those controlled checks establish no serving, provider or
+billing acceptance.
+
+At `36c4c5cd9a3`, the reserved SDK attempt calls Station's persistence owner
+for raw provider evidence instead of a host-supplied publication callback.
+The retained record includes the exact consumed wire intent. Its root and
+invocation select one private record: exact replay preserves the reference,
+while changed evidence refuses before overwrite. The owner uses its existing
+mutation lock, bounded descriptor readback, request finalizers and explicit
+POSIX directory fsync. Limits are 20 MiB per record and 1,024 records, not a
+20 MiB aggregate store. This is trusted host persistence, not authentication of
+arbitrary provider evidence. The controlled caller obtains evidence from the
+reserved transport's raw-usage observer. Boot issuance, provider qualification,
+serving preparation and the real AccountingV1 settlement caller remain unwired.
+The focused SDK/persistence selection passes 38 cases. A compiling mutation
+that addresses evidence by response content permits conflicting records for
+one invocation: both provider cases fail their refusal assertions, with 36
+controls passing. Byte-exact restoration passes all 38. Independent source
+review finds no introduced unsafe-accounting path; it performs no execution.
 
 Flow rounds/continuation and v3 authority renewal are adopted in the Flow Agents
 worktree at `57f02040`; `36de11b1` joins their independent, paid Flow and
