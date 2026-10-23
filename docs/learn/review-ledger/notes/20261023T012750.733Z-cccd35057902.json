@@ -1,0 +1,9 @@
+{
+  "revision": "10c570cd5e3635a071f1f5c65a09f0ad27603c6f",
+
+  "notes": [
+    {"path":"docs/design/revision-bound-evidence.md","note":"Read complete136line contract and independently reviewed affectedEventStore composition/lifecycle delta at1c4629a1b8c against prior57d777e source note. Revision domain/persistence/bridge unchanged. Corrected material close overstatement: pending/unavailable EventStore close can return before module teardown; retainedreaders notproven fenced until actual moduleclose, which incrementsgeneration/clearscache. Factory still registers before initializePersistence. Retain EventStore dependency. No complete requalification of attribution/import/capacity/SQL/restart validators or domain harness execution; no source behavior change.","inputs":["docs/design/revision-bound-evidence.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/shared-working-state.md","note":"Read complete152line protocol and independently reviewed relevant EventStore/worker adapter composition since57d777e. Convergence domain andworker unchanged; parent adapter changes only bounded unavailable diagnostics andfailurelogging, notrecoverycapabilityactivation orconvergence. EventStore factory/lifecycle delta doesnotreplace workingstate owner. No prose change; retain existing composition dependency. Current schema/revision/recovery/retention claims keep prior owner evidence; this scopednote isnotnewfullconvergence/auth/performance/restart orharnessqualification.","inputs":["docs/design/shared-working-state.md","src-server/services/orchestration/event-store.ts"]}
+  ]
+}
