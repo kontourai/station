@@ -19,7 +19,11 @@ import { publicFenceFixture } from './delegation-source-fixtures/fence.js';
 import { fixture } from './delegation-source-fixtures/source.js';
 
 const NOW = Date.parse('2026-10-23T08:30:00Z');
-afterEach(() => vi.restoreAllMocks());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
+});
 async function setup(kind: 'local-grant' | 'ui-bootstrap' = 'local-grant') {
   vi.spyOn(Date, 'now').mockReturnValue(NOW);
   const f = await fixture(kind);
@@ -115,6 +119,60 @@ async function setup(kind: 'local-grant' | 'ui-bootstrap' = 'local-grant') {
     ],
   };
   return { f, owner, input, rawFetch };
+}
+
+function installControl(
+  h: Awaited<ReturnType<typeof setup>>,
+  environmentId = h.f.record.environmentId,
+) {
+  vi.stubEnv('STATION_API_BASE', 'http://report-control.test');
+  vi.stubEnv('STATION_INTERNAL_API_TOKEN', 'synthetic-control-token');
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      if (url === 'http://report-control.test/.well-known/station/v1')
+        return new Response(JSON.stringify({ environmentId }));
+      if (url === 'http://report-control.test/api/agents/reviewer')
+        return new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              slug: 'reviewer',
+              ...(await h.f.loader.loadAgent('reviewer')),
+            },
+          }),
+        );
+      throw Error('Unexpected control-plane request');
+    }),
+  );
+}
+
+async function taskDriver(
+  h: Awaited<ReturnType<typeof setup>>,
+  handle: PreparedStationReportGroup,
+) {
+  const prepared = h.owner.read(handle, h.f.req);
+  const sdk = h.owner.sdk(handle, h.f.req, 'left');
+  const captured = inspectSdkSourceWire(sdk.owner, sdk.sdkHandle);
+  const driver = await publicFenceFixture(
+    h.f,
+    captured.sourceBinding.source,
+    sdk.owner,
+    sdk.sdkHandle,
+    captured.wire,
+    () => {},
+    {
+      protocol: 'rounds',
+      provider: 'anthropic',
+      modelId: prepared.members[0].modelId,
+      allocation: prepared.spec.seats[0].allocation,
+      contract: captured.contract,
+      now: Date.now,
+      preparedGroup: { owner: h.owner, handle },
+    },
+  );
+  return { prepared, sdk, driver };
 }
 
 test('authenticated preparation issues exact source/task envelopes consumed by the published durable v3 authority', async () => {
@@ -261,8 +319,9 @@ test('current operator revocation invalidates the prepared root and reserved mem
   }
 });
 
-test('issued preparation reaches the reserved Station session and retained accounting without synthetic root grants', async () => {
+test('issued preparation reaches canonical delegated-task dispatch and retained accounting without synthetic root grants', async () => {
   const h = await setup();
+  installControl(h);
   const input = {
     ...h.input,
     maxConcurrent: 1,
@@ -270,26 +329,7 @@ test('issued preparation reaches the reserved Station session and retained accou
   };
   const handle = await h.owner.prepare(h.f.context(), input);
   try {
-    const prepared = h.owner.read(handle, h.f.req);
-    const sdk = h.owner.sdk(handle, h.f.req, 'left');
-    const captured = inspectSdkSourceWire(sdk.owner, sdk.sdkHandle);
-    const driver = await publicFenceFixture(
-      h.f,
-      captured.sourceBinding.source,
-      sdk.owner,
-      sdk.sdkHandle,
-      captured.wire,
-      () => {},
-      {
-        protocol: 'rounds',
-        provider: 'anthropic',
-        modelId: prepared.members[0].modelId,
-        allocation: prepared.spec.seats[0].allocation,
-        contract: captured.contract,
-        now: Date.now,
-        preparedGroup: { owner: h.owner, handle },
-      },
-    );
+    const { prepared, sdk, driver } = await taskDriver(h, handle);
     assert.equal(h.rawFetch.mock.calls.length, 0);
     await driver.run();
     assert.equal(
@@ -298,6 +338,13 @@ test('issued preparation reaches the reserved Station session and retained accou
       String(driver.invocationFailure),
     );
     assert.equal(driver.relayCalls, 0);
+    assert.equal(driver.task?.taskId, prepared.members[0].taskId);
+    assert.ok(driver.task?.initialTurnId);
+    const task = await driver.taskSnapshot();
+    assert.equal(task.taskId, prepared.members[0].taskId);
+    assert.equal(task.status, 'completed');
+    await assert.rejects(() => driver.repeatTaskDispatch());
+    assert.equal(h.rawFetch.mock.calls.length, 1);
     const ledger = await driver.ledger();
     assert.equal(ledger.root.authority_id, prepared.root.authority_id);
     assert.equal(ledger.envelopes[1].execution_id, prepared.members[0].taskId);
@@ -350,3 +397,57 @@ test('removing orchestration operation scope invalidates report preparation auth
     h.owner.close(handle);
   }
 });
+
+for (const defect of ['seat', 'invocation', 'environment'] as const) {
+  test(`a foreign reservation ${defect} is refused before canonical task creation and keeps the reservation unknown-held`, async () => {
+    const h = await setup();
+    installControl(
+      h,
+      defect === 'environment'
+        ? 'different-environment'
+        : h.f.record.environmentId,
+    );
+    const handle = await h.owner.prepare(h.f.context(), {
+      ...h.input,
+      maxConcurrent: 1,
+      members: h.input.members.slice(0, 1),
+    });
+    const dispatch = h.owner.dispatch.bind(h.owner);
+    vi.spyOn(h.owner, 'dispatch').mockImplementation(
+      (handle, context, seat, attempt, service) =>
+        dispatch(
+          handle,
+          context,
+          seat,
+          {
+            ...attempt,
+            transport: {
+              ...attempt.transport,
+              reservation: {
+                ...attempt.transport.reservation,
+                ...(defect === 'seat'
+                  ? { seatId: 'foreign-seat' }
+                  : defect === 'invocation'
+                    ? { invocationId: 'absent-invocation' }
+                    : {}),
+              },
+            },
+          },
+          service,
+        ),
+    );
+    try {
+      const { driver } = await taskDriver(h, handle);
+      await driver.run();
+      assert.equal(h.rawFetch.mock.calls.length, 0);
+      assert.equal(driver.canonicalEvents().length, 0);
+      assert.equal(driver.task, undefined);
+      const ledger = await driver.ledger();
+      assert.equal(ledger.invocations.length, 1);
+      assert.equal(ledger.invocations[0].usage, null);
+      assert.equal(ledger.invocations[0].terminal, false);
+    } finally {
+      h.owner.close(handle);
+    }
+  });
+}

@@ -37,6 +37,10 @@ import {
   reservedStationTurnResult,
 } from '../../../../runtime/conversation/reserved-station-turn.js';
 import { runtimeRequestPrincipalMayAccessHttpRoute } from '../../../../security/runtime-request-security.js';
+import {
+  type DelegatedTaskHandle,
+  observeDelegatedTask,
+} from '../../../../tools/station-control-delegation.js';
 import { ApprovalRegistry } from '../../../approvals/approval-registry.js';
 import {
   FinalFetchLaunchFence,
@@ -355,6 +359,8 @@ export async function publicFenceFixture(
       await orchestration.shutdown();
       eventStore.close();
     });
+  let acceptedTask: DelegatedTaskHandle | undefined;
+  let repeatTaskDispatch: (() => Promise<unknown>) | undefined;
   let reservedResult:
     | (() => ReturnType<typeof reservedStationTurnResult>)
     | undefined;
@@ -422,46 +428,70 @@ export async function publicFenceFixture(
         repeatAttempt = () => runReservedSdkSourceAttempt(attemptInput);
         if (!orchestration || !eventStore)
           throw Error('real orchestration missing');
-        const port = prepareReservedStationTurn(
-          {
-            principalId,
-            threadId: sessionId,
-            clientTurnId,
-            input: brief,
-            modelId,
-          },
-          attemptInput,
-        );
-        reservedResult = () => reservedStationTurnResult(port);
-        const started = await orchestration.startSessionInternal(
-          {
-            type: 'start-session',
-            input: {
-              threadId: sessionId,
-              provider: 'station-agent',
-              modelId,
-              metadata: { agentId: 'reviewer', userId: principalId },
-            },
-          },
-          { userId: principalId },
-          { reservedStationTurn: port },
-        );
-        if (started.status !== 'accepted')
-          throw Error('reserved session not admitted');
-        await orchestration.dispatchWithReceipt(
-          {
-            type: 'sendTurn',
-            input: {
+        let attempt: Awaited<ReturnType<typeof reservedStationTurnResult>>;
+        if (issued) {
+          repeatTaskDispatch = () =>
+            issued.owner.dispatch(
+              issued.handle,
+              f.context(),
+              seat.seatId,
+              attemptInput,
+              orchestration,
+            );
+          const dispatched = await issued.owner.dispatch(
+            issued.handle,
+            f.context(),
+            seat.seatId,
+            attemptInput,
+            orchestration,
+          );
+          acceptedTask = dispatched.task;
+          reservedResult = () => dispatched.result;
+          attempt = await dispatched.result;
+        } else {
+          const port = prepareReservedStationTurn(
+            {
+              principalId,
+              environmentId: f.record.environmentId,
               threadId: sessionId,
               clientTurnId,
               input: brief,
               modelId,
             },
-          },
-          { userId: principalId },
-          { reservedStationTurn: port },
-        );
-        const attempt = await reservedStationTurnResult(port);
+            attemptInput,
+          );
+          reservedResult = () => reservedStationTurnResult(port);
+          const started = await orchestration.startSessionInternal(
+            {
+              type: 'start-session',
+              input: {
+                threadId: sessionId,
+                provider: 'station-agent',
+                modelId,
+                metadata: { agentId: 'reviewer', userId: principalId },
+              },
+            },
+            { userId: principalId },
+            { reservedStationTurn: port },
+          );
+          if (started.status !== 'accepted')
+            throw Error('reserved session not admitted');
+          await orchestration.dispatchWithReceipt(
+            {
+              type: 'sendTurn',
+              input: {
+                threadId: sessionId,
+                clientTurnId,
+                input: brief,
+                modelId,
+              },
+            },
+            { userId: principalId },
+            { reservedStationTurn: port },
+          );
+          attempt = await reservedStationTurnResult(port);
+        }
+
         await vi.waitFor(
           () => {
             if (
@@ -607,6 +637,20 @@ export async function publicFenceFixture(
   });
   return {
     observed,
+    get task() {
+      return acceptedTask;
+    },
+    repeatTaskDispatch: () => {
+      if (!repeatTaskDispatch) throw Error('canonical task not dispatched');
+      return repeatTaskDispatch();
+    },
+    taskSnapshot: () => {
+      if (!orchestration) throw Error('actual orchestration missing');
+      return observeDelegatedTask(
+        { taskId: sessionId, userId: principalId },
+        orchestration,
+      );
+    },
     get invocationFailure() {
       return invocationFailure;
     },

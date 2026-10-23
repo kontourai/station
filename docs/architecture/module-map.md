@@ -2007,16 +2007,33 @@ cancellation after the preparation request or source lease ends.
 The [controlled integration](../../src-server/services/orchestration/__tests__/station-report-group-preparation.test.ts)
 consumes an issued root through the published durable v3 authority, rounds
 reservation, real Station adapter/service/SQLite and retained inference
-accounting under a synthetic response. Canonical task dispatch, boot serving,
-Flow-backed frontier/join and authenticated same-session ACK remain unwired.
-This preparer does not enable the public paid-group capability.
+accounting under a synthetic response. Its private dispatch operation now calls
+the [canonical delegated-task owner](../../src-server/tools/station-control-delegation.ts)
+with the exact reserved task, client-turn, model and brief. Before creating a
+task it checks the immutable seat tuple and the actual latest rounds attempt,
+adopted authority, live reservation and current epoch under the same store locks
+used by physical admission. This preflight neither consumes a wire intent nor
+sends a provider request. The final fetch independently repeats those checks.
+
+The handoff is single-use even if control-plane dispatch fails ambiguously. A
+reservation refusal keeps its unconfirmed accounting held. The resulting task
+retains its canonical binding and initial turn for ordinary authorized status
+reads; task admission alone does not assert a paid request or completion. The
+reserved port also binds its actual source host, and canonical delegation
+refuses a current-Station handshake naming a different environment.
+
+Boot serving, durable post-request recovery/cancel, Flow-backed frontier/join
+and authenticated same-session ACK remain unwired. This preparer does not enable
+the public paid-group capability. Controlled handshake/Agent read responses and
+synthetic provider responses do not establish live HTTP ingress or provider
+acceptance.
 
 ### Reserved Station source execution
 
 The [reserved-turn owner](../../src-server/runtime/conversation/reserved-station-turn.ts)
 issues an in-memory opaque port over an already prepared sealed SDK attempt.
-It binds the current principal, session, client turn, exact input, model and
-options, and consumes the attempt once. The port is server-internal;
+It binds the current principal, source host, session, client turn, exact input,
+model and options, and consumes the attempt once. The port is server-internal;
 [delegation](../../src-server/tools/station-control-delegation.ts) and the
 [orchestration service](../../src-server/services/orchestration/orchestration-service.ts)
 carry it outside public DTOs. Remote execution, staged files, tenant execution

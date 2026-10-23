@@ -14,6 +14,7 @@ type Attempt = Parameters<typeof runReservedSdkSourceAttempt>[0];
 type Result = Awaited<ReturnType<typeof runReservedSdkSourceAttempt>>;
 type Binding = Readonly<{
   principalId: string;
+  environmentId: string;
   threadId: string;
   clientTurnId: string;
   input: string;
@@ -48,7 +49,7 @@ function state(handle: ReservedStationTurn): State {
   return value;
 }
 
-// UNWIRED(#91): boot preparation and provider qualification must issue this private port.
+// UNWIRED(#91): production boot/rounds serving must compose this private port.
 /** This handoff cannot reserve capacity: execution still passes the durable final wire fence. */
 export function prepareReservedStationTurn(
   binding: Binding,
@@ -59,6 +60,7 @@ export function prepareReservedStationTurn(
   if (
     [
       captured.principalId,
+      captured.environmentId,
       captured.threadId,
       captured.clientTurnId,
       captured.modelId,
@@ -69,7 +71,9 @@ export function prepareReservedStationTurn(
     Buffer.byteLength(captured.input) > 65536
   )
     refuse();
-  const wire = inspectSdkSourceWire(attempt.sdkOwner, attempt.sdkHandle).wire;
+  const prepared = inspectSdkSourceWire(attempt.sdkOwner, attempt.sdkHandle);
+  if (prepared.sourceBinding.hostContextId !== captured.environmentId) refuse();
+  const wire = prepared.wire;
   const body = JSON.parse(wire.body);
   const instruction =
     attempt.transport.provider === 'anthropic'
@@ -131,6 +135,14 @@ export function assertReservedStationTurnBinding(
       recordedMode.identity !== value.identity)
   )
     refuse();
+}
+
+/** A canonical current-Station lookup must still name the prepared source host. */
+export function assertReservedStationEnvironment(
+  handle: ReservedStationTurn,
+  environmentId: string,
+): void {
+  if (state(handle).binding.environmentId !== environmentId) refuse();
 }
 
 /** Only internal orchestration options carry this capability; never command JSON or metadata. */

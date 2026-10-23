@@ -109,14 +109,14 @@ export type PreparedReservedFinalFetchOwners =
   | Omit<LegacyFinalFetchOwners, 'fetch'>
   | Omit<RoundsFinalFetchOwners, 'fetch'>;
 
-async function sendReservedWire(
-  owners: LaunchOwners,
+async function admitReservedInvocation(
+  owners: Pick<LaunchOwners, 'host'>,
   current: DelegationAuthorityLedger,
   binding: ReservedWireBinding,
-  wire: FinalWire,
-  signal: AbortSignal,
-): Promise<{ response: Promise<Response>; intent: FinalWireIntentIdentity }> {
-  const digest = wireIdentityDigest(wire);
+): Promise<{
+  envelope: DelegationEnvelopeV2;
+  reservation: DelegationAuthorityLedger['invocations'][number];
+}> {
   const snapshot = canonicalJson(current);
   requireLaunch(
     same(rootAuthorityReferenceV2(current.root), binding.authority),
@@ -151,55 +151,71 @@ async function sendReservedWire(
         reservation.envelopeId === envelope.envelope_id &&
         same(reservation.allocation, binding.allocation),
     );
-    const identity: FinalWireIntentIdentity = {
-      groupId: binding.groupId,
-      controller: structuredClone(binding.controller),
-      seatId: binding.seatId,
-      root: rootAuthorityReferenceV2(current.root),
-      envelope: structuredClone(binding.envelope),
-      executionId: envelope.execution_id,
-      invocationId: binding.invocationId,
-      effect: binding.effect,
-      allocation: structuredClone(reservation.allocation),
-      executionBindingDigest: wireIdentityDigest(envelope.execution_binding),
-      principalDigest: current.root.authenticated_principal_ref.digest,
-      subjectDigest: current.root.authenticated_subject_ref.digest,
-      finalWireDigest: digest,
-    };
-    const finalChecks = (): undefined => {
-      signal.throwIfAborted();
-      const chain: DelegationEnvelopeV2[] = [];
-      let cursor = envelope;
-      for (;;) {
-        chain.unshift(cursor);
-        if (!cursor.parent) break;
-        const parentId = cursor.parent.id;
-        const parent = current.envelopes.find(
-          (value) => value.envelope_id === parentId,
-        );
-        if (!parent || chain.length > current.envelopes.length)
-          throw new WireIntentRefusal('ancestry_unavailable');
-        cursor = parent;
-      }
-      validateDelegationAncestryV2(current.root, chain, owners.host.now());
-      assertSynchronous(owners.finalizeCurrent);
-      return undefined;
-    };
-    await owners.intents.consume(identity, finalChecks);
-    // LAST AWAIT before the actual controlled/native fetch invocation.
-    finalChecks();
-    const response = owners.fetch(wire.url, {
-      method: wire.method,
-      headers: wire.headers.map(([name, value]) => [name, value]),
-      body: wire.body,
-      redirect: 'error',
-      signal,
-    });
-    void Promise.resolve(response).catch(() => {});
-    return { response, intent: identity };
+    return { envelope, reservation };
   } finally {
     active = false;
   }
+}
+
+async function sendReservedWire(
+  owners: LaunchOwners,
+  current: DelegationAuthorityLedger,
+  binding: ReservedWireBinding,
+  wire: FinalWire,
+  signal: AbortSignal,
+): Promise<{ response: Promise<Response>; intent: FinalWireIntentIdentity }> {
+  const digest = wireIdentityDigest(wire);
+  const { envelope, reservation } = await admitReservedInvocation(
+    owners,
+    current,
+    binding,
+  );
+  const identity: FinalWireIntentIdentity = {
+    groupId: binding.groupId,
+    controller: structuredClone(binding.controller),
+    seatId: binding.seatId,
+    root: rootAuthorityReferenceV2(current.root),
+    envelope: structuredClone(binding.envelope),
+    executionId: envelope.execution_id,
+    invocationId: binding.invocationId,
+    effect: binding.effect,
+    allocation: structuredClone(reservation.allocation),
+    executionBindingDigest: wireIdentityDigest(envelope.execution_binding),
+    principalDigest: current.root.authenticated_principal_ref.digest,
+    subjectDigest: current.root.authenticated_subject_ref.digest,
+    finalWireDigest: digest,
+  };
+  const finalChecks = (): undefined => {
+    signal.throwIfAborted();
+    const chain: DelegationEnvelopeV2[] = [];
+    let cursor = envelope;
+    for (;;) {
+      chain.unshift(cursor);
+      if (!cursor.parent) break;
+      const parentId = cursor.parent.id;
+      const parent = current.envelopes.find(
+        (value) => value.envelope_id === parentId,
+      );
+      if (!parent || chain.length > current.envelopes.length)
+        throw new WireIntentRefusal('ancestry_unavailable');
+      cursor = parent;
+    }
+    validateDelegationAncestryV2(current.root, chain, owners.host.now());
+    assertSynchronous(owners.finalizeCurrent);
+    return undefined;
+  };
+  await owners.intents.consume(identity, finalChecks);
+  // LAST AWAIT before the actual controlled/native fetch invocation.
+  finalChecks();
+  const response = owners.fetch(wire.url, {
+    method: wire.method,
+    headers: wire.headers.map(([name, value]) => [name, value]),
+    body: wire.body,
+    redirect: 'error',
+    signal,
+  });
+  void Promise.resolve(response).catch(() => {});
+  return { response, intent: identity };
 }
 
 /**
@@ -305,7 +321,11 @@ export class FinalFetchLaunchFence {
 export class RoundsFinalFetchLaunchFence {
   readonly groups: DelegationRoundsStore;
   readonly authorities: DelegationAuthorityStoreV3;
-  constructor(private readonly owners: RoundsFinalFetchOwners) {
+  constructor(
+    private readonly owners:
+      | RoundsFinalFetchOwners
+      | Omit<RoundsFinalFetchOwners, 'fetch'>,
+  ) {
     this.groups = {
       transact: (id, body) => {
         forbidNestedOwner();
@@ -324,10 +344,38 @@ export class RoundsFinalFetchLaunchFence {
     wireInput: FinalWire,
     signal: AbortSignal,
   ): Promise<{ response: Promise<Response>; intent: FinalWireIntentIdentity }> {
-    forbidNestedOwner();
-    const binding = structuredClone(bindingInput),
-      wire = snapshotFinalWire(wireInput);
+    const owners = this.owners;
+    if (!('fetch' in owners))
+      throw new WireIntentRefusal('wire_transport_unavailable');
+    const binding = structuredClone(bindingInput);
+    const wire = snapshotFinalWire(wireInput);
     requireLaunch(wireIdentityDigest(wire) === binding.expectedWireDigest);
+    return this.#withCurrentReservation(binding, signal, (current) =>
+      sendReservedWire(owners, current, binding, wire, signal),
+    );
+  }
+
+  /** Read-only reservation admission before canonical Task creation. Wire
+   * intent consumption and transport remain exclusive to start(). */
+  async admitTask(
+    binding: ReservedWireBinding,
+    signal: AbortSignal,
+  ): Promise<void> {
+    const captured = structuredClone(binding);
+    await this.#withCurrentReservation(captured, signal, async (current) => {
+      await admitReservedInvocation(this.owners, current, captured);
+      assertSynchronous(this.owners.finalizeCurrent);
+      signal.throwIfAborted();
+    });
+  }
+
+  async #withCurrentReservation<T>(
+    bindingInput: ReservedWireBinding,
+    signal: AbortSignal,
+    work: (current: DelegationAuthorityLedger) => Promise<T>,
+  ): Promise<T> {
+    forbidNestedOwner();
+    const binding = structuredClone(bindingInput);
     signal.throwIfAborted();
     assertSynchronous(this.owners.finalizeCurrent);
     const scope = { active: true };
@@ -397,13 +445,7 @@ export class RoundsFinalFetchLaunchFence {
                 cancelled: ledger.cancelled,
                 invocations: ledger.invocations,
               };
-              const result = await sendReservedWire(
-                this.owners,
-                current,
-                binding,
-                wire,
-                signal,
-              );
+              const result = await work(current);
               return { ledger, result };
             },
           );

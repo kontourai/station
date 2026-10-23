@@ -955,9 +955,19 @@ The controlled test consumes that issued root in the published v3 authority and
 rounds launch path, then reaches the real Station adapter/service/SQLite and
 retained tariff accounting. Its synthetic response is not live provider proof.
 Same-request replay joins; cross-request/restart preparation replay cannot
-reconstruct a launch capability. Durable serving lookup, canonical Task dispatch,
-independent post-request reads/cancel, Flow-backed frontier/join and session ACK
-remain required before enabling the paid-group capability.
+reconstruct a launch capability. The issued member now passes a read-only,
+durable rounds-reservation preflight before the canonical delegated-task owner
+creates its exact reserved task/client turn. Its current-Station handshake must
+match the source host captured by the reserved port. The control-plane task is
+not evidence of paid request admission; the physical fence repeats its joins
+and consumes the wire once. Ordinary canonical task status reads the resulting
+binding, and a second handoff refuses without resending or releasing unknown
+accounting.
+
+Durable serving lookup, independent post-request reads/cancel, Flow-backed
+frontier/join and session ACK remain required before enabling the paid-group
+capability. The control-plane read responses and provider response in this
+qualification are controlled; live ingress/provider acceptance remains open.
 
 ## Controlled reserved Station turn integration
 

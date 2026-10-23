@@ -5255,6 +5255,15 @@ export async function delegateTask(
     remote,
     orchestrationService,
   );
+  if (input.reservedStationTurn) {
+    const { assertReservedStationEnvironment } = await import(
+      '../runtime/conversation/reserved-station-turn.js'
+    );
+    assertReservedStationEnvironment(
+      input.reservedStationTurn,
+      selectedTarget.environmentId,
+    );
+  }
   if (
     input.stagedFiles &&
     (selectedTarget.kind !== 'current' ||

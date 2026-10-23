@@ -19,7 +19,9 @@ import {
   validateDelegationRoundsSpec,
 } from '@kontourai/flow-agents/delegation-group-rounds';
 import { canonicalJson } from '@kontourai/relay';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { z } from 'zod/v3';
+import { createOrchestrationRequestPrincipalResolver } from '../../runtime/bootstrap/orchestration-request-principal.js';
 import { createPersonalRuntimeRequestGuard } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import { AnthropicSealedPreparation } from '../../runtime/conversation/anthropic-sealed-preparation.js';
 import { captureEnvironmentLocalGrantObservationOwner } from '../../runtime/conversation/local-grant-observation-owner.js';
@@ -27,12 +29,25 @@ import {
   type ObservedSdkProviderCredential,
   readObservedSdkProviderCredential,
 } from '../../runtime/conversation/provider-credential-observation.js';
+import type { runReservedSdkSourceAttempt } from '../../runtime/conversation/reserved-sdk-source-attempt.js';
+import {
+  prepareReservedStationTurn,
+  reservedStationTurnResult,
+} from '../../runtime/conversation/reserved-station-turn.js';
 import {
   RuntimeFencedCredentialObservationOwner,
   type RuntimeFencedCredentialObservationOwners,
 } from '../../runtime/conversation/runtime-fenced-credential-observation.js';
 import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
-import { runtimeRequestPrincipalMayAccessHttpRoute } from '../../security/runtime-request-security.js';
+import {
+  resolveClientOriginForRequest,
+  runtimeRequestPrincipalMayAccessHttpRoute,
+} from '../../security/runtime-request-security.js';
+import {
+  type DelegatedTaskHandle,
+  delegateTask,
+} from '../../tools/station-control-delegation.js';
+import { RoundsFinalFetchLaunchFence } from './delegation-group-launch-fence.js';
 import {
   createPreparedSdkSourceWireOwner,
   inspectSdkSourceWire,
@@ -41,6 +56,8 @@ import {
   type LocalSourceAdmissionOwner,
   type RuntimeSourceRequestContext,
 } from './delegation-group-source-admission.js';
+import { assertSynchronous } from './delegation-group-wire-intent-store.js';
+import type { OrchestrationService } from './orchestration-service.js';
 
 const id = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
 const integer = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
@@ -87,6 +104,7 @@ type Member = {
   owner: object;
   sdkHandle: object;
   snapshot: object;
+  dispatched: boolean;
 };
 type RecordValue = {
   root: RootAuthorityV2;
@@ -340,6 +358,7 @@ export class StationReportGroupPreparation {
           owner,
           sdkHandle: prepared.sdkHandle,
           snapshot: sealed.capability,
+          dispatched: false,
         });
         pendingSnapshot = undefined;
       }
@@ -654,6 +673,146 @@ export class StationReportGroupPreparation {
     inspectSdkSourceWire(member.owner, member.sdkHandle);
     return { owner: member.owner, sdkHandle: member.sdkHandle };
   }
+  /** A task start is a control-plane effect; the paid request still requires
+   * the independently persisted rounds reservation at the final wire fence. */
+  async dispatch(
+    handle: PreparedStationReportGroup,
+    context: RuntimeSourceRequestContext,
+    seatId: string,
+    attempt: Omit<
+      Parameters<typeof runReservedSdkSourceAttempt>[0],
+      'sdkOwner' | 'sdkHandle'
+    >,
+    orchestration: OrchestrationService,
+  ): Promise<{
+    task: DelegatedTaskHandle;
+    result: ReturnType<typeof reservedStationTurnResult>;
+  }> {
+    attempt = {
+      ...attempt,
+      transport: {
+        ...attempt.transport,
+        reservation: structuredClone(attempt.transport.reservation),
+        launch: { ...attempt.transport.launch },
+      },
+    };
+    const state = this.#state(handle, context.req.raw);
+    const member = state.members.find((m) => m.seatId === seatId);
+    const seat = state.spec.seats.find((s) => s.seatId === seatId);
+    if (!member || !seat || member.dispatched) refuse();
+    const captured = inspectSdkSourceWire(member.owner, member.sdkHandle);
+    const reserved = attempt.transport.reservation;
+    const invocationId = reserved.invocationId;
+    const reservation = {
+      groupId: reserved.groupId,
+      controller: reserved.controller,
+      seatId: reserved.seatId,
+      authority: reserved.authority,
+      envelope: reserved.envelope,
+      effect: reserved.effect,
+      allocation: reserved.allocation,
+    };
+    if (
+      typeof invocationId !== 'string' ||
+      !invocationId ||
+      attempt.transport.launch.protocol !== 'rounds-v1' ||
+      attempt.transport.provider !== 'anthropic' ||
+      attempt.transport.contract !== captured.contract ||
+      canonicalJson(reservation) !==
+        canonicalJson({
+          groupId: state.spec.groupId,
+          controller: state.spec.controller,
+          seatId,
+          authority: state.spec.rootAuthorityRef,
+          envelope: seat.envelope,
+          effect: seat.effect,
+          allocation: seat.allocation,
+        })
+    )
+      refuse();
+    const principal = createOrchestrationRequestPrincipalResolver({
+      environmentSecurityService:
+        this.owners.runtime.environmentSecurityService,
+    })(context);
+    if (principal.id !== state.root.authenticated_principal_ref.id) refuse();
+    const signal = AbortSignal.any([
+      context.req.raw.signal,
+      attempt.transport.signal,
+    ]);
+    const upstreamFinalize = attempt.transport.launch.finalizeCurrent;
+    const finalizeCurrent = (): undefined => {
+      assertSynchronous(upstreamFinalize);
+      this.#state(handle, context.req.raw);
+      signal.throwIfAborted();
+      return undefined;
+    };
+    finalizeCurrent();
+    const admission = new RoundsFinalFetchLaunchFence({
+      ...attempt.transport.launch,
+      finalizeCurrent,
+    });
+    // Reserve the handoff before any await; an ambiguous failure cannot resend it.
+    member.dispatched = true;
+    await admission.admitTask(
+      {
+        ...attempt.transport.reservation,
+        expectedWireDigest: captured.wireDigest,
+      },
+      signal,
+    );
+    finalizeCurrent();
+    const port = prepareReservedStationTurn(
+      {
+        principalId: principal.id,
+        environmentId: state.root.issuer_host_id,
+        threadId: member.taskId,
+        clientTurnId: member.clientTurnId,
+        input: member.brief,
+        modelId: member.modelId,
+      },
+      {
+        ...attempt,
+        sdkOwner: member.owner,
+        sdkHandle: member.sdkHandle,
+        transport: {
+          ...attempt.transport,
+          signal,
+          now: Date.now,
+          launch: { ...attempt.transport.launch, finalizeCurrent },
+        },
+      },
+    );
+    const task = await delegateTask(
+      {
+        reservedStationTurn: port,
+        delegationGroupAdmission: { assertCurrent: finalizeCurrent, signal },
+        prompt: member.brief,
+        sessionId: member.taskId,
+        initialClientTurnId: member.clientTurnId,
+        userId: principal.id,
+        principal,
+        clientOrigin: resolveClientOriginForRequest(context.req.raw),
+        target: {
+          environment: { kind: 'current' },
+          agent: agentId(member.agentId),
+          expectedEngine: { kind: 'station' },
+          model: { override: member.modelId },
+        },
+      },
+      orchestration,
+    );
+    finalizeCurrent();
+    if (
+      task.taskId !== member.taskId ||
+      task.sessionId !== member.taskId ||
+      !task.initialTurnId
+    )
+      refuse();
+    const result = reservedStationTurnResult(port);
+    void result.catch(() => {});
+    return { task, result };
+  }
+
   close(handle: PreparedStationReportGroup): void {
     const state = this.#states.get(handle);
     if (!state || state.closed) return;
