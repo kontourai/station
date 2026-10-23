@@ -63,6 +63,8 @@ export interface ACPProcessOptions {
   clientCapabilities?: {
     fs?: { readTextFile?: boolean; writeTextFile?: boolean };
     terminal?: boolean;
+    /** Offered only by the sign-in handshake, which can run terminal logins. */
+    auth?: { terminal?: boolean };
   };
   logger: any;
   /**
@@ -78,6 +80,17 @@ export interface ACPProcessOptions {
    * already set wins; `spawnEnv` then runs over the merged result.
    */
   launchEnv?: Readonly<Record<string, string>>;
+  /**
+   * Credentials Station holds for this one connection (engine-credentials.ts),
+   * read at each start. Applied OVER the inherited environment: a key the
+   * person gave Station for this engine is the one it should use.
+   */
+  credentialEnv?: () => Readonly<Record<string, string>> | undefined;
+  /**
+   * Receives the child's stderr instead of it being inherited. Only the
+   * short-lived sign-in process sets it, to show links the engine prints.
+   */
+  onStderr?: (text: string) => void;
   terminateProcess?: (proc: ChildProcess) => Promise<void>;
   resolveCommand?: (command: string) => Promise<string | null>;
   /**
@@ -129,6 +142,20 @@ export type InitializeResult = InitializeResponse & {
   /** Present only when initialize advertised `providers` and list succeeded. */
   providerRouting?: ProviderInfo[];
 };
+
+/** The engine's command could not be found or run; nothing was spawned. */
+export class ACPCommandNotFoundError extends Error {
+  constructor(command: string) {
+    super(
+      // A command with whitespace that is not a path to a program is most
+      // often a program plus its arguments typed into one field.
+      /\s/.test(command.trim())
+        ? `Station could not find a program named "${command}". If that includes arguments, put them in Advanced → Arguments and keep only the program in Command.`
+        : `Station could not start ${command}: it is not installed, or not runnable, on the computer Station runs on. Install it there, then check the engine again.`,
+    );
+    this.name = 'ACPCommandNotFoundError';
+  }
+}
 
 export class ACPProviderRoutingUnsupportedError extends Error {
   constructor() {
@@ -377,10 +404,7 @@ export class ACPProcess extends EventEmitter {
 
     const bin = await this.findCommand();
     if (this.destroyed) throw new Error('ACPProcess already destroyed');
-    if (!bin)
-      throw new Error(
-        `Station could not start ${this.opts.command}: it is not installed, or not runnable, on the computer Station runs on. Install it there, then reconnect the engine.`,
-      );
+    if (!bin) throw new ACPCommandNotFoundError(this.opts.command);
 
     // archive#977: layer the login-shell-resolved PATH onto the spawned
     // process's own env too, not just Station's own binary lookup above --
@@ -388,9 +412,13 @@ export class ACPProcess extends EventEmitter {
     // engine subprocess itself still cannot find nix/mise/homebrew-managed
     // tools it shells out to internally.
     const augmentedEnv = await augmentedSpawnEnv();
-    const baseEnv = this.opts.launchEnv
+    const launchedEnv = this.opts.launchEnv
       ? { ...this.opts.launchEnv, ...augmentedEnv }
       : augmentedEnv;
+    const credentialEnv = this.opts.credentialEnv?.();
+    const baseEnv = credentialEnv
+      ? { ...launchedEnv, ...credentialEnv }
+      : launchedEnv;
     const env = this.opts.spawnEnv ? this.opts.spawnEnv(baseEnv) : baseEnv;
     // archive#1863: spawn through the owned-process primitive so the child is
     // tagged with this Station's identity and recorded in the host-wide
@@ -403,9 +431,15 @@ export class ACPProcess extends EventEmitter {
     const { proc, release } = spawnOwnedChild(bin, this.opts.args || [], {
       cwd: this.opts.cwd,
       env,
-      stdio: ['pipe', 'pipe', 'inherit'],
+      stdio: ['pipe', 'pipe', this.opts.onStderr ? 'pipe' : 'inherit'],
     });
     this.proc = proc;
+    if (this.opts.onStderr) {
+      const onStderr = this.opts.onStderr;
+      proc.stderr?.setEncoding('utf8');
+      proc.stderr?.on('data', (chunk: string) => onStderr(chunk));
+      proc.stderr?.on('error', () => undefined);
+    }
     // Kept independently of `proc`, which destroy() nulls: this is the only
     // thing left to ask the kernel about afterwards (archive#3422).
     this.spawnedPid = proc.pid ?? null;
@@ -521,6 +555,23 @@ export class ACPProcess extends EventEmitter {
     )
       throw new ACPRequiredProviderDisableError(providerId);
     return this.connection.unstable_disableProvider({ providerId });
+  }
+
+  /**
+   * ACP `authenticate` with one of the methods this process advertised. A
+   * terminal method is refused: the protocol says a client runs those itself
+   * and never passes them here.
+   */
+  async authenticate(methodId: string): Promise<void> {
+    if (!this.connection || !this._initResult)
+      throw new Error('ACPProcess not started');
+    const method = (this._initResult.authMethods ?? []).find(
+      (candidate) => candidate.id === methodId,
+    );
+    if (!method) throw new Error('The engine does not offer that sign-in.');
+    if ('type' in method && method.type === 'terminal')
+      throw new Error('That sign-in runs in a terminal.');
+    await this.connection.authenticate({ methodId });
   }
 
   /** Create a new ACP session. */

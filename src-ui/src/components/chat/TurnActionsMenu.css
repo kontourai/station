@@ -45,3 +45,16 @@
 .turn-footer__overflow-menu .turn-footer__overflow-item--danger {
   color: var(--error-text, var(--k-negative));
 }
+
+/* The Task picker's trigger is a row like its neighbours here, not the muted
+   inline button it is elsewhere. */
+.turn-footer__overflow-menu .task-picker,
+.turn-footer__overflow-menu .task-picker__trigger {
+  display: flex;
+  width: 100%;
+}
+.turn-footer__overflow-menu .task-picker__trigger {
+  justify-content: flex-start;
+  color: inherit;
+  font: inherit;
+}

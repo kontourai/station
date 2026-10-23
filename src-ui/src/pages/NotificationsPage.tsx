@@ -17,7 +17,7 @@ import {
 } from '../components/state';
 import { useApiBase } from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
-import { useNotificationHistory } from '../contexts/ToastContext';
+import { toastStore, useNotificationHistory } from '../contexts/ToastContext';
 import { useAttentionInbox } from '../hooks/useAttentionInbox';
 import {
   countPendingAttention,
@@ -479,7 +479,17 @@ function RecentAppMessages() {
       aria-label="Recent app messages"
     >
       <h2>Recent app messages</h2>
-      <p>Messages from this app session, including ones you dismissed.</p>
+      <p>
+        Recent messages for this Station, including dismissed messages. Safe
+        summaries are kept for up to seven days; actions are never saved.
+      </p>
+      <Button
+        variant="secondary"
+        size="sm"
+        onClick={() => toastStore.clearRecentMessages()}
+      >
+        Clear recent messages
+      </Button>
       <ol>
         {messages.map((item) => (
           <li key={item.id}>

@@ -22,13 +22,16 @@ import { registerPlatformTools } from './station-control-platform-tools.js';
 import {
   evaluateStationControlPolicy,
   personOnlyApplies,
+  type StationControlPolicyCaller,
   type StationControlRefusal,
   stationControlRefusal,
   stationControlRefusalBody,
+  stationControlToolListable,
   stationControlToolPolicy,
 } from './station-control-policy.js';
 import { registerProjectActivityTools } from './station-control-project-activity-tools.js';
 import { registerReviewGuideTools } from './station-control-review-guide-tools.js';
+import { registerScheduleTools } from './station-control-schedule-tools.js';
 import { registerSessionInventoryTools } from './station-control-session-inventory-tools.js';
 import { registerSessionSearchTools } from './station-control-session-search-tools.js';
 import { registerSessionTools } from './station-control-session-tools.js';
@@ -97,7 +100,7 @@ function stationControlToolMetadata(name: string) {
     ['Projects', /project|layout|^board_|personal_board/],
     ['Chats', /conversation|session|message/],
     ['Tasks', /task|delegat|ssh_environment|pull_request/],
-    ['Scheduling', /job|schedul/],
+    ['Scheduling', /job|schedul|wake_up/],
     ['Skills', /skill/],
     ['Integrations', /integration|provider|plugin/],
   ];
@@ -140,7 +143,23 @@ export class StationControlToolRegistry {
     ) => void,
     private readonly allowedTools?: readonly string[],
     private readonly apps?: StationControlAppCatalog,
+    /**
+     * The calling session's credential assurance, when the server is built
+     * for one session. A tool whose static requirements that credential can
+     * never meet is not registered, so `tools/list` does not offer it
+     * (`stationControlToolListable`). Absent (the catalog, the stdio child
+     * with no caller): every tool is registered, as before.
+     */
+    private readonly listableFor?: StationControlPolicyCaller['assurance'],
   ) {}
+
+  /** Whether this server offers `name` at all. */
+  private offers(name: string): boolean {
+    if (this.allowedTools && !this.allowedTools.includes(name)) return false;
+    if (this.listableFor === undefined) return true;
+    const policy = stationControlToolPolicy(name);
+    return !policy || stationControlToolListable(policy, this.listableFor);
+  }
 
   tool<Shape extends z.ZodRawShape>(
     name: string,
@@ -148,7 +167,7 @@ export class StationControlToolRegistry {
     shape: Shape,
     callback: ToolCallback<z.ZodObject<Shape>>,
   ) {
-    if (this.allowedTools && !this.allowedTools.includes(name)) return;
+    if (!this.offers(name)) return;
     this.catalog?.(name, description, shape);
     return this.server.registerTool(
       name,
@@ -167,7 +186,7 @@ export class StationControlToolRegistry {
     inputSchema: Schema,
     callback: ToolCallback<Schema>,
   ) {
-    if (this.allowedTools && !this.allowedTools.includes(name)) return;
+    if (!this.offers(name)) return;
     this.catalog?.(name, description);
     return this.server.registerTool(
       name,
@@ -196,7 +215,7 @@ export class StationControlToolRegistry {
     // structural ServerContext types. The helper only calls registerTool;
     // keep the compatibility cast at this one adapter while still using the
     // official metadata normalization rather than reimplementing it.
-    if (this.allowedTools && !this.allowedTools.includes(name)) return;
+    if (!this.offers(name)) return;
     this.catalog?.(name, description);
     this.apps?.tools.push({
       name,
@@ -260,6 +279,8 @@ export function createSelectedStationControlMcpServer(
   allowedTools?: readonly string[],
   catalog?: (name: string, description: string, shape?: z.ZodRawShape) => void,
   profile: 'station-control' | 'station-knowledge' = 'station-control',
+  /** The session credential's assurance; see `StationControlToolRegistry`. */
+  listableFor?: StationControlPolicyCaller['assurance'],
 ): McpServer {
   const server = new McpServer(
     {
@@ -278,6 +299,8 @@ export function createSelectedStationControlMcpServer(
     server,
     catalog,
     allowedTools,
+    undefined,
+    listableFor,
   );
   if (profile === 'station-knowledge') {
     registerKnowledgeDataTools(registry);
@@ -289,6 +312,7 @@ export function createSelectedStationControlMcpServer(
   registerPersonalBoardTools(registry);
   registerCatalogTools(registry);
   registerOperationsTools(registry);
+  registerScheduleTools(registry);
   registerPlatformTools(registry);
   registerBasisTools(registry);
   registerSessionInventoryTools(registry);

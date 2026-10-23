@@ -1,0 +1,7 @@
+{
+  "revision": "b7539d8c48ca49edbe1b10c566616a30ef5789a7",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Round-3 chat polish: the dock title keeps its line (agent and engine wrap off it first); the browser outbox joins the one pending list above the composer, which yields to the draft in a short dock; the context card mounts in the chip's exit commit and fades under the composer; an empty stopped turn shows why when the person did not stop it; check-back timers wait past setTimeout's maximum in steps; check-back Approve answers 503 while delivery is stopped. Re-read the session context card paragraph against sessionContextCardModel.ts: the fit (640px transcript floor plus the card, ResizeObserver on the conversation surface) is unchanged; the card now mounts with a shared lazy chunk, which this guide does not describe. The short-dock 44px list (queued-retry Discard) is unchanged. No prose change.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat/chat.css","src-ui/src/index.css"]}
+  ]
+}

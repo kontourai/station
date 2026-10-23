@@ -16,7 +16,19 @@ interface ACPProbeLike {
   dispose?(): Promise<void>;
   /** Epoch ms of the last probe ATTEMPT (success or failure); `0`/absent when never probed. */
   lastProbeAt?: number;
+  /** Epoch ms of the last successful handshake; `0` when none ever has. */
+  getHandshakeObservedAt?(): number;
+  /** Never handshaked, and the last run ran out of time. */
+  firstContactTimedOut?(): boolean;
 }
+
+/**
+ * Called when a background probe gives a connection its FIRST successful
+ * handshake, with the config that probe ran. Request paths register their
+ * own result; nothing awaits a background probe, so this is how its success
+ * reaches registration.
+ */
+export type ACPFirstHandshakeListener = (config: ACPConnectionConfig) => void;
 
 /**
  * archive#1908: the periodic sweep's default staleness gate. Before this,
@@ -44,11 +56,15 @@ export async function runACPManagerProbes({
   getAvailableConnectionCount,
   now = Date.now,
   staleAfterMs = ACP_PROBE_STALE_AFTER_MS,
+  configs,
+  onFirstHandshake,
 }: {
   sessions: Map<string, unknown>;
   probes: Map<string, ACPProbeLike>;
   eventBus?: EventBus;
   getAvailableConnectionCount: () => number;
+  configs?: Map<string, ACPConnectionConfig>;
+  onFirstHandshake?: ACPFirstHandshakeListener;
   /** Injectable clock for deterministic staleness-gate tests. */
   now?: () => number;
   /** A connection probed more recently than this is skipped this tick. */
@@ -57,11 +73,15 @@ export async function runACPManagerProbes({
   if (sessions.size > 0) return;
 
   const nowMs = now();
-  const dueProbes = Array.from(probes.values()).filter((probe) => {
+  const dueEntries = Array.from(probes.entries()).filter(([, probe]) => {
     const lastProbeAt = probe.lastProbeAt ?? 0;
     return lastProbeAt === 0 || nowMs - lastProbeAt >= staleAfterMs;
   });
-  if (dueProbes.length === 0) return;
+  if (dueEntries.length === 0) return;
+  const dueProbes = dueEntries.map(([, probe]) => probe);
+  const neverHandshaked = dueEntries.filter(
+    ([, probe]) => (probe.getHandshakeObservedAt?.() ?? 0) === 0,
+  );
 
   const before = getAvailableConnectionCount();
   // archive#3404: the sweep is the canonical `'background'` path — no HTTP
@@ -73,6 +93,66 @@ export async function runACPManagerProbes({
   if (getAvailableConnectionCount() !== before) {
     eventBus?.emit(SERVER_EVENTS.AGENTS_CHANGED);
   }
+  for (const [id, probe] of neverHandshaked) {
+    const config = configs?.get(id);
+    if (
+      config &&
+      probes.get(id) === probe &&
+      (probe.getHandshakeObservedAt?.() ?? 0) > 0
+    ) {
+      onFirstHandshake?.(config);
+    }
+  }
+}
+
+/**
+ * The approved continuation of a first add whose request-budget probe ran out
+ * of time: the SAME probe runs again on the cold background budget, detached
+ * from the request (and from the configuration queue the request held).
+ * Returns whether it started. Success reaches registration through
+ * `onFirstHandshake`; a probe replaced or removed meanwhile reports nothing.
+ */
+export function continueACPFirstContact({
+  id,
+  probes,
+  configs,
+  eventBus,
+  logger,
+  onFirstHandshake,
+  continuing,
+}: {
+  id: string;
+  probes: Map<string, ACPProbeLike>;
+  configs: Map<string, ACPConnectionConfig>;
+  eventBus?: EventBus;
+  logger: any;
+  onFirstHandshake?: ACPFirstHandshakeListener;
+  /** Ids whose continuation is in flight; kept until it settles. */
+  continuing?: Set<string>;
+}): boolean {
+  const probe = probes.get(id);
+  const config = configs.get(id);
+  if (!probe || !config || probe.firstContactTimedOut?.() !== true) {
+    return false;
+  }
+  continuing?.add(id);
+  void probe
+    .probe('background')
+    .finally(() => {
+      if (probes.get(id) === probe) continuing?.delete(id);
+    })
+    .then((ok) => {
+      if (!ok || probes.get(id) !== probe) return;
+      eventBus?.emit(SERVER_EVENTS.AGENTS_CHANGED);
+      onFirstHandshake?.(config);
+    })
+    .catch((error) => {
+      logger?.warn?.('ACP first-contact continuation failed', {
+        err: error,
+        id,
+      });
+    });
+  return true;
 }
 
 export async function addACPManagerConnection({

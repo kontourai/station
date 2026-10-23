@@ -8,6 +8,7 @@
  * Real pairing service and runtime auth boundary in front of the real route
  * modules; the services behind them are recorders.
  */
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   DEFAULT_GRANT_PAIRING_SCOPE,
@@ -21,6 +22,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { configureRuntimeHttp } from '../../runtime/bootstrap/runtime-http.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
+import { PublicAgentRegistrySource } from '../../services/acp/public-agent-registry.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import {
   SecretBindingNotFoundError,
@@ -94,6 +96,16 @@ async function fixture() {
         name: 'Existing',
         command: 'engine',
         args: ['--a'],
+        icon: 'x',
+        enabled: true,
+      },
+      // One empty-string argument, as an earlier custom add stored blank
+      // arguments.
+      {
+        id: 'blank-args',
+        name: 'Blank args',
+        command: 'engine',
+        args: [''],
         icon: 'x',
         enabled: true,
       },
@@ -202,7 +214,30 @@ async function fixture() {
       allowedOrigins: [],
     },
   });
-  app.route('/acp', createACPRoutes(acpCtx as never));
+  // A public registry listing names the command it runs; stakpak has a
+  // build for every host the suite runs on.
+  const publicAgentRegistry = new PublicAgentRegistrySource({
+    cacheDir: join(root, 'public-registry'),
+    fetch: (async () =>
+      new Response(
+        readFileSync(
+          join(
+            import.meta.dirname,
+            '..',
+            '..',
+            'services',
+            'acp',
+            '__tests__',
+            'fixtures',
+            'public-agent-registry-20261021.json',
+          ),
+          'utf8',
+        ),
+      )) as unknown as typeof fetch,
+    commandExists: () => true,
+  });
+  await publicAgentRegistry.refresh();
+  app.route('/acp', createACPRoutes(acpCtx as never, { publicAgentRegistry }));
   app.route(
     '/integrations',
     createToolRoutes(mcpService as never, async () => undefined),
@@ -399,6 +434,16 @@ const CHOICES = [
       ] as const,
   },
   {
+    name: 'POST /acp/registry/:id/install for a public registry listing',
+    recorder: 'saveACPConfig',
+    request: () =>
+      [
+        'POST',
+        '/acp/registry/stakpak/install',
+        { confirmCommand: { command: 'stakpak', args: ['acp'] } },
+      ] as const,
+  },
+  {
     name: 'PUT /acp/connections/:id changing the command',
     recorder: 'saveACPConfig',
     request: () =>
@@ -551,6 +596,32 @@ describe('what a device may still do without choosing a command', () => {
     expect(
       (await f.send(device, 'DELETE', '/acp/connections/existing')).status,
     ).toBe(200);
+  });
+
+  // Edit setup sends every field; a rename of a connection saved with
+  // blank arguments must not read as choosing a command.
+  test('renames an ACP connection saved with blank arguments', async () => {
+    const f = await fixture();
+    const device = f.pair('delegation');
+    const rename = await f.send(device, 'PUT', '/acp/connections/blank-args', {
+      name: 'Renamed',
+      command: 'engine',
+      args: [],
+      icon: 'x',
+      cwd: '',
+    });
+    expect(rename.status).toBe(200);
+  });
+
+  test('re-checks an ACP connection: its saved command, none chosen', async () => {
+    const f = await fixture();
+    const device = f.pair('delegation');
+    expect(
+      (await f.send(device, 'POST', '/acp/connections/existing/check')).status,
+    ).toBe(200);
+    expect(f.acpCtx.acpBridge.addConnection).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'existing', command: 'engine' }),
+    );
   });
 
   test('renames an ACP connection or sends its command unchanged', async () => {

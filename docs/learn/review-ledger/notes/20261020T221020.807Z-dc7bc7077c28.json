@@ -1,0 +1,7 @@
+{
+  "revision": "4afc0ff28432173397768ae4691fb03b651a93c8",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"station-docs-content.ts was regenerated from the module-map edit (the new agent check-back and job proposal paragraph); this reference's own claims about the docs server and its scheduled-jobs section are unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

@@ -20,6 +20,18 @@ chosen simulator runtime for iOS, or Android SDK/emulator tooling and an image
 for Android. This inventory is for simulators/emulators; do not infer physical
 phone support from it.
 
+Device tools additionally need a user-installed Node.js 24 or later with npm
+on the device host. Station resolves the first executable `node` from the user's
+PATH, follows version-manager shims to that installation, and runs its own npm
+CLI and the device hub with that absolute Node path. A later PATH entry cannot
+supply npm for a different installation. The user's PATH is preserved exactly.
+The desktop's private Node still runs Station's bundled services.
+
+If Node/npm is missing or Node is too old, setup explains the prerequisite.
+An installed helper stays blocked until **Check again** succeeds; it does not
+enter a crash/restart loop. Restart Station after changing its inherited PATH.
+An independently configured helper keeps its own prerequisites and lifecycle.
+
 The operator can enable Station's managed device helper through the Device
 setup UI. The [toolchain service](../../src-server/services/devices/toolchain/device-toolchain-service.ts)
 records consent, installs its pinned helper and starts a supervised process.
@@ -132,7 +144,8 @@ unwatched session's idle grace. Remote-host agent tools, automatic pane reveal,
 and agent shutdown are not included yet.
 
 Only a credential minted for `sdk-in-process` currently supplies bound assurance.
-Codex's `url-token` and ACP's `http-header-token` paths remain refused as
+Codex's `url-token` and ACP's `http-header-token` sessions are not offered the
+device tools in their tool list, and a call from them is still refused as
 `caller-not-bound`; a stdio connection with no verified caller is refused as
 `caller-required`. Tool visibility grants no authority. The separate toolchain
 **Agent access** setting is the explicit operator opt-in for both managed
