@@ -984,6 +984,16 @@ qualified together:
    same-session no-tools ACKs. Controlled transport evidence remains distinct
    from the required live runtime/model-family and elicitation acceptance.
 
+The private source owner and rounds final-fetch fence now implement the
+source/Project-scope and final active-claim lock boundary described above.
+Controlled source-owner tests cover renewal, removed/rebound claims, paused and
+canceled runs, and releasing the lock before a pending response resolves. A real
+published Flow scheduler/controller test pauses the run after durable wire intent
+consumption: transport does not start, the invocation remains reserved and its
+usage stays unknown. These are local controlled prerequisites. Report serving
+preparation still creates only independent advisory groups; frontier/join,
+continuation, public projection and live acceptance remain unfinished.
+
 The public Flow workspace route is mounted at
 `/api/projects/:slug/flow`; its evaluation operation is
 `POST /runs/:runId/evaluate`. The current source admission's chat-operation

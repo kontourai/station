@@ -1991,11 +1991,18 @@ alone does not enable the paid group capability.
 The [rounds final-fetch fence](../../src-server/services/orchestration/delegation-group-launch-fence.ts)
 checks the latest seat attempt, unreturned round, current adopted grant,
 controller and immutable allocation under the rounds lock. Flow-backed attempts
-also require a retained claimed invocation. Under the authority lock it checks
-that the reservation belongs to the current v3 epoch. It then uses the shared
-source/effect admission, exact wire intent consumption and synchronous final
-check before transport. Nested owner/launch entry refuses; neither lock is held
-while awaiting the provider response.
+also require a retained claimed invocation and a private source-owned Flow launch
+owner. The owner resolves its workspace from the sealed Project/resource source
+and requires current Project Flow mutation scope. Its source, actor, definition,
+run and step must join the group and execution envelope. Under the authority
+lock the fence checks that the reservation belongs to the current v3 epoch.
+After exact wire-intent consumption, the Flow owner takes the published run
+mutation lock, loads the actual active claim, checks lifecycle and current lease,
+and rechecks source/request authority before synchronous transport entry. Renewed
+lease timestamps may change; claim identity and base may not. Nested owner/launch
+entry refuses; no lock is held while awaiting the provider response. Serving
+preparation still issues only independent advisory specifications: this private
+fence does not enable public Flow topology or supply frontier/join semantics.
 
 The [reserved provider transport](../../src-server/runtime/conversation/reserved-provider-fetch.ts)
 selects the rounds fence only through its explicit server-owned protocol; the

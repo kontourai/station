@@ -4,7 +4,11 @@ import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
-import type { RootAuthorityV2 } from '@kontourai/flow-agents/delegation-authority-contract';
+import { flowRunHead, loadRun, pauseRun, startRun } from '@kontourai/flow';
+import type {
+  DelegationExecutionBindingV2,
+  RootAuthorityV2,
+} from '@kontourai/flow-agents/delegation-authority-contract';
 import { createDelegationAuthorityService } from '@kontourai/flow-agents/delegation-authority-service';
 import { createDelegationAuthorityServiceV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
 import {
@@ -14,6 +18,7 @@ import {
 } from '@kontourai/flow-agents/delegation-envelope-v2';
 import {
   createDelegationRoundsController,
+  type DelegationRoundsExecutionHost,
   type DelegationRoundsSpec,
 } from '@kontourai/flow-agents/delegation-group-rounds';
 import {
@@ -35,12 +40,18 @@ import {
   snapshotFinalWire,
 } from '../delegation-group-launch-fence.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
+import type { SourceFlowLaunchOwner } from '../delegation-group-source-admission.js';
 import {
   FileFinalWireIntentStore,
   type FinalWireIntentIdentity,
   type WireFinalizer,
   wireIdentityDigest,
 } from '../delegation-group-wire-intent-store.js';
+import {
+  selection,
+  fixture as sourceFixture,
+  subject,
+} from './delegation-source-fixtures/source.js';
 
 // Real controller/reservation/member linkage; only host observations and fetch are controlled.
 // UNWIRED #91: these fixtures do not establish private issuance or managed provider execution.
@@ -75,7 +86,11 @@ const responseResult: ModelInvocationResult = {
   latencyMs: 0,
 };
 
-async function setup(mode: string, protocol: 'legacy' | 'rounds' = 'legacy') {
+async function setup(
+  mode: string,
+  protocol: 'legacy' | 'rounds' = 'legacy',
+  flow?: { owner: SourceFlowLaunchOwner; cwd: string },
+) {
   const root = realpathSync(makeTempDir('station-group-launch-fence-'));
   const persistence = new StationDelegationPersistence(root);
   let active = true;
@@ -107,38 +122,48 @@ async function setup(mode: string, protocol: 'legacy' | 'rounds' = 'legacy') {
     max_attempts: 1,
     expires_at: '2099-01-01T00:00:00.000Z',
   };
-  const executionBinding = {
+  const executionBinding: DelegationExecutionBindingV2 = {
     runtime: {
       runtime_receipt_ref: reference('runtime'),
       model_receipt_ref: reference('model'),
       required_capabilities: [],
     },
-    source: {
+    source: flow?.owner.source ?? {
       repository_id: 'repository',
       source_state_id: 'revision',
       dirty_state_fingerprint: null,
       execution_worktree_id: 'worktree',
       source_admission_receipt: reference('source'),
     },
-    flow_binding: {
-      status: 'unbound' as const,
-      reason: 'independent-advisory',
-    },
+    flow_binding: flow
+      ? {
+          status: 'bound',
+          flow_run_id: flow.owner.topology.runId,
+          definition: flow.owner.topology.definition,
+          flow_step_id: 'report',
+          gate_attempt: 0,
+        }
+      : {
+          status: 'unbound' as const,
+          reason: 'independent-advisory',
+        },
   };
   const authorityRoot: RootAuthorityV2 = {
     schema_version: '2.0',
     authority_id: 'authority',
     authority_epoch: 1,
     issuer_host_id: 'host',
-    authenticated_principal_ref: reference('principal'),
+    authenticated_principal_ref: reference(
+      flow?.owner.topology.actor.key ?? 'principal',
+    ),
     authenticated_subject_ref: reference('subject'),
     source_origin: {
-      repository_id: 'repository',
-      worktree_id: 'worktree',
-      source_state_id: 'revision',
+      repository_id: executionBinding.source.repository_id,
+      worktree_id: executionBinding.source.execution_worktree_id,
+      source_state_id: executionBinding.source.source_state_id,
       dirty_state_fingerprint: null,
     },
-    execution_worktree_ids: ['worktree'],
+    execution_worktree_ids: [executionBinding.source.execution_worktree_id],
     execution_grants: [
       { ...executionBinding, grant_id: 'grant', authority_ceiling: authority },
     ],
@@ -199,7 +224,9 @@ async function setup(mode: string, protocol: 'legacy' | 'rounds' = 'legacy') {
   const host = {
     now: () => now,
     authorize: async (_action: unknown, root: RootAuthorityV2) =>
-      active && root.authenticated_principal_ref.id === 'principal',
+      active &&
+      root.authenticated_principal_ref.id ===
+        authorityRoot.authenticated_principal_ref.id,
     confirmExecution: async (actual: DelegationEnvelopeV2) =>
       active && actual.selected_grant_id === 'grant',
     confirmReconciliation: async () => active,
@@ -247,6 +274,7 @@ async function setup(mode: string, protocol: 'legacy' | 'rounds' = 'legacy') {
     protocol === 'rounds'
       ? new RoundsFinalFetchLaunchFence({
           protocol: 'rounds-v1',
+          flow: flow?.owner,
           groups: persistence.roundsStore(finalizeCurrent),
           authorities: persistence.roundsAuthorityStore(finalizeCurrent),
           host,
@@ -405,11 +433,36 @@ async function setup(mode: string, protocol: 'legacy' | 'rounds' = 'legacy') {
   const roundsSpec: DelegationRoundsSpec = {
     ...spec,
     schemaVersion: '1.0',
-    policy: { ...spec.policy, maxRounds: 1, maxAttempts: 1 },
-    seats: spec.seats.map(({ stepId: _stepId, ...seat }) => seat),
+    policy: {
+      ...spec.policy,
+      maxRounds: 1,
+      maxAttempts: 1,
+      ...(flow ? { maxEvaluations: 1 } : {}),
+    },
+    topology: flow?.owner.topology ?? spec.topology,
+    seats: spec.seats.map(({ stepId: _stepId, ...seat }) => ({
+      ...seat,
+      ...(flow ? { stepId: 'report' } : {}),
+    })),
+  };
+  const roundsPhysical: DelegationRoundsExecutionHost = {
+    resolveRuntime: async () => ({
+      runtime: model,
+      runtimeReceipt: executionBinding.runtime.runtime_receipt_ref,
+      modelReceipt: executionBinding.runtime.model_receipt_ref,
+    }),
+    invokeFenced: async (_envelope, id, invoke) => invocation.run(id, invoke),
+    retainFailure: async () => {},
+    retainResult: async () => ({
+      inputTokens: 2,
+      outputTokens: 1,
+      costMicros: 1,
+      costBasis: 'tariff-upper-bound',
+    }),
   };
   const roundsController = roundsFence
     ? createDelegationRoundsController({
+        cwd: flow?.cwd,
         store: roundsFence.groups,
         authorityService: service,
         dispatchLedger: new FileAuthorizationLedger({
@@ -419,22 +472,26 @@ async function setup(mode: string, protocol: 'legacy' | 'rounds' = 'legacy') {
           accountingProtocol: 'retained-tariff-v1',
           authorize: async () =>
             active ? reference('actual-fixture-caller') : null,
-          executionHost: () => ({
-            resolveRuntime: async () => ({
-              runtime: model,
-              runtimeReceipt: executionBinding.runtime.runtime_receipt_ref,
-              modelReceipt: executionBinding.runtime.model_receipt_ref,
-            }),
-            invokeFenced: async (_envelope, id, invoke) =>
-              invocation.run(id, invoke),
-            retainFailure: async () => {},
-            retainResult: async () => ({
-              inputTokens: 2,
-              outputTokens: 1,
-              costMicros: 1,
-              costBasis: 'tariff-upper-bound',
-            }),
-          }),
+          executionHost: () => roundsPhysical,
+          ...(flow
+            ? {
+                flow: {
+                  executionHost: () => ({
+                    ...roundsPhysical,
+                    recordScheduleEvent: async () => {},
+                    confirmClaim: async () => true,
+                    prepareRequest: async () => ({
+                      messages: [{ role: 'user' as const, content: 'fixture' }],
+                      maxOutputTokens: 10,
+                    }),
+                    recordMemberOutcome: async () => {},
+                  }),
+                  confirmRetainedResult: async () => false,
+                  retainEvaluation: async () =>
+                    reference('controlled-evaluation'),
+                },
+              }
+            : {}),
           prepareRequest: async () => ({
             messages: [{ role: 'user', content: 'fixture' }],
             maxOutputTokens: 10,
@@ -457,7 +514,10 @@ async function setup(mode: string, protocol: 'legacy' | 'rounds' = 'legacy') {
     spec: roundsController ? roundsSpec : spec,
   });
   let running: Promise<unknown> | undefined;
-  const run = () => {
+  const run = async () => {
+    const flowHead = flow
+      ? flowRunHead((await loadRun(flow.owner.topology.runId, flow.cwd)).state)
+      : undefined;
     running = roundsController
       ? roundsController.release({
           kind: 'release',
@@ -466,7 +526,14 @@ async function setup(mode: string, protocol: 'legacy' | 'rounds' = 'legacy') {
           expectedRevision: 1,
           controller: spec.controller,
           checkpoint: reference('checkpoint'),
-          seats: [{ seatId: 'seat', previousInvocationId: null }],
+          ...(flowHead ? { flowHead } : {}),
+          seats: [
+            {
+              seatId: 'seat',
+              previousInvocationId: null,
+              ...(flow ? { mode: 'invoke', retryRef: null } : {}),
+            },
+          ],
         })
       : legacyController!.run({
           kind: 'run',
@@ -690,4 +757,91 @@ test.each(
       );
     }
   }
+});
+
+test('final fetch revalidates the actual source-owned Flow claim after durable wire intent consumption', async () => {
+  const source = await sourceFixture();
+  const definitionPath = join(source.repo, 'flow.json');
+  writeFileSync(
+    definitionPath,
+    JSON.stringify({
+      id: 'report-flow',
+      version: '1',
+      execution: { mode: 'multi-cursor', claim_contract_version: '1' },
+      steps: [{ id: 'report', next: null, mutable_resources: [] }],
+      gates: {
+        report: {
+          step: 'report',
+          expects: [
+            {
+              id: 'report',
+              kind: 'trust.bundle',
+              required: true,
+              description: 'Independent evidence owns acceptance.',
+              bundle_claim: {
+                claimType: 'quality.report',
+                accepted_statuses: ['assumed'],
+              },
+            },
+          ],
+        },
+      },
+    }),
+  );
+  writeFileSync(join(source.repo, '.gitignore'), '.kontourai/\n');
+  await source.git('add', 'flow.json', '.gitignore');
+  await source.git('commit', '-qm', 'real Flow fence fixture');
+  const run = await startRun(definitionPath, {
+    cwd: source.repo,
+    runId: 'final-fetch-flow',
+  });
+  const sealed = await source.owner.captureSnapshot(
+    source.context(),
+    subject,
+    selection,
+  );
+  const flow = await source.owner.prepareFlowSnapshot(
+    source.context(),
+    subject,
+    sealed.capability,
+    run.runId,
+  );
+  const f = await setup('queued-flow-pause', 'rounds', {
+    owner: flow,
+    cwd: source.repo,
+  });
+  const running = f.run();
+  void running.catch(() => {});
+  await within(
+    Promise.race([
+      f.intentReady.promise,
+      running.then(() => {
+        throw new Error('Flow round returned before physical intent');
+      }),
+    ]),
+    'real Flow never reached durable physical intent',
+  );
+  await pauseRun(run.runId, {
+    cwd: source.repo,
+    reason: 'Pause after wire intent, before fetch',
+    authority: {
+      kind: 'operator_request',
+      actor: flow.topology.actor.key,
+      request_ref: 'final-fetch-pause',
+      requested_at: new Date().toISOString(),
+    },
+  });
+  f.allowResponse.resolve();
+  f.allowIntentReturn.resolve();
+  await assert.rejects(running);
+  assert.equal(f.entered, 1);
+  assert.equal(f.starts, 0);
+  const state = await f.controller.get('group');
+  assert.ok('attempts' in state);
+  assert.equal(state.attempts.length, 1);
+  assert.equal(state.attempts[0].terminal, null);
+  const ledger = await f.service.inspect('authority');
+  assert.equal(ledger.invocations.length, 1);
+  assert.equal(ledger.invocations[0].usage, null);
+  source.owner.releaseSnapshot(sealed.capability);
 });

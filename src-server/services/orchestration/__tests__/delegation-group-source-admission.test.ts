@@ -8,7 +8,17 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
-import { flowRuntimeRoot, pauseRun, startRun } from '@kontourai/flow';
+import {
+  cancelRun,
+  claimReadyStep,
+  flowRuntimeRoot,
+  pauseRun,
+  releaseStepClaim,
+  renewStepClaim,
+  resumeRun,
+  startRun,
+  withRunMutationLock,
+} from '@kontourai/flow';
 import { test } from 'vitest';
 import {
   isRuntimeRequestPrincipalCurrent,
@@ -554,4 +564,137 @@ test('sealed source supports real generated Flow state without disclosing it or 
     () => f.owner.admitSource(f.context(), subject, selection),
     { code: 'tracked_flow_runtime_unsupported' },
   );
+});
+
+test('source-owned Flow launch admits a renewed active claim and refuses removed, rebound and paused claims', async () => {
+  const f = await fixture();
+  mkdirSync(join(f.repo, '.flow'));
+  const definitionPath = join(f.repo, '.flow', 'report.json');
+  writeFileSync(
+    definitionPath,
+    JSON.stringify({
+      id: 'report-flow',
+      version: '1',
+      execution: { mode: 'multi-cursor', claim_contract_version: '1' },
+      steps: [{ id: 'report', next: null, mutable_resources: [] }],
+      gates: {
+        report: {
+          step: 'report',
+          expects: [
+            {
+              id: 'report',
+              kind: 'trust.bundle',
+              required: true,
+              description: 'Separate evidence owns acceptance.',
+              bundle_claim: {
+                claimType: 'quality.report',
+                accepted_statuses: ['assumed'],
+              },
+            },
+          ],
+        },
+      },
+    }),
+  );
+  writeFileSync(join(f.repo, '.gitignore'), '.kontourai/\n');
+  await f.git('add', '.flow/report.json', '.gitignore');
+  await f.git('commit', '-qm', 'real multi-cursor Flow');
+  const run = await startRun(definitionPath, {
+    cwd: f.repo,
+    runId: 'launch-flow',
+  });
+  const sealed = await f.owner.captureSnapshot(f.context(), subject, selection);
+  const flow = await f.owner.prepareFlowSnapshot(
+    f.context(),
+    subject,
+    sealed.capability,
+    run.runId,
+  );
+  const claimed = await claimReadyStep(run.runId, {
+    cwd: f.repo,
+    step_id: 'report',
+    claim_id: 'claim-1',
+    liveness_id: 'live-1',
+    actor: flow.topology.actor,
+    lease_seconds: 30,
+  });
+  await renewStepClaim(run.runId, {
+    cwd: f.repo,
+    claim_id: claimed.claim.claim_id,
+    liveness_id: claimed.claim.liveness_id,
+    actor: flow.topology.actor,
+    lease_seconds: 60,
+  });
+  let launches = 0;
+  const pending = deferred<Response>();
+  const launched = await flow.withCurrentClaim(claimed.claim, () => ({
+    value: { response: pending.promise, count: ++launches },
+  }));
+  assert.equal(launched.value.count, 1);
+  // A pending provider response must not hold the Flow mutation lock.
+  await withRunMutationLock(run.runId, f.repo, async () => undefined);
+  await assert.rejects(
+    flow.withCurrentClaim({ ...claimed.claim, liveness_id: 'foreign' }, () => ({
+      value: ++launches,
+    })),
+  );
+  await releaseStepClaim(run.runId, {
+    cwd: f.repo,
+    claim_id: claimed.claim.claim_id,
+    liveness_id: claimed.claim.liveness_id,
+    actor: flow.topology.actor,
+  });
+  await assert.rejects(
+    flow.withCurrentClaim(claimed.claim, () => ({ value: ++launches })),
+    /flow_active_claim_unavailable/,
+  );
+  const replacement = await claimReadyStep(run.runId, {
+    cwd: f.repo,
+    step_id: 'report',
+    claim_id: 'claim-2',
+    liveness_id: 'live-2',
+    actor: flow.topology.actor,
+  });
+  await pauseRun(run.runId, {
+    cwd: f.repo,
+    reason: 'Owned final-effect control',
+    authority: {
+      kind: 'operator_request',
+      actor: flow.topology.actor.key,
+      request_ref: 'pause-before-effect',
+      requested_at: new Date().toISOString(),
+    },
+  });
+  await assert.rejects(
+    flow.withCurrentClaim(replacement.claim, () => ({ value: ++launches })),
+    /run_paused/,
+  );
+  await resumeRun(run.runId, {
+    cwd: f.repo,
+    reason: 'Owned cancellation control',
+    authority: {
+      kind: 'operator_request',
+      actor: flow.topology.actor.key,
+      request_ref: 'resume-before-cancel',
+      requested_at: new Date().toISOString(),
+    },
+  });
+  await cancelRun(run.runId, {
+    cwd: f.repo,
+    reason: 'Owned final-effect cancellation control',
+    authority: {
+      kind: 'operator_request',
+      actor: flow.topology.actor.key,
+      request_ref: 'cancel-before-effect',
+      requested_at: new Date().toISOString(),
+    },
+  });
+  await assert.rejects(
+    flow.withCurrentClaim(replacement.claim, () => ({ value: ++launches })),
+    /run_canceled/,
+  );
+  assert.equal(launches, 1);
+  pending.resolve(new Response('controlled'));
+  await launched.value.response;
+  f.owner.releaseSnapshot(sealed.capability);
 });

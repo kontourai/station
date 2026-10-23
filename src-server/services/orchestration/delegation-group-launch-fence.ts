@@ -23,6 +23,7 @@ import {
   projectDelegationGroupV2,
 } from '@kontourai/flow-agents/delegation-group-v2';
 import { canonicalJson } from '@kontourai/relay';
+import type { SourceFlowLaunchOwner } from './delegation-group-source-admission.js';
 import {
   assertSynchronous,
   type FileFinalWireIntentStore,
@@ -101,6 +102,7 @@ export type RoundsFinalFetchOwners = LaunchOwners & {
   protocol: 'rounds-v1';
   groups: DelegationRoundsStore;
   authorities: DelegationAuthorityStoreV3;
+  flow?: SourceFlowLaunchOwner;
 };
 export type ReservedFinalFetchOwners =
   | LegacyFinalFetchOwners
@@ -163,6 +165,15 @@ async function sendReservedWire(
   binding: ReservedWireBinding,
   wire: FinalWire,
   signal: AbortSignal,
+  flowLaunch?: (
+    launch: () => {
+      response: Promise<Response>;
+      intent: FinalWireIntentIdentity;
+    },
+  ) => Promise<{
+    response: Promise<Response>;
+    intent: FinalWireIntentIdentity;
+  }>,
 ): Promise<{ response: Promise<Response>; intent: FinalWireIntentIdentity }> {
   const digest = wireIdentityDigest(wire);
   const { envelope, reservation } = await admitReservedInvocation(
@@ -205,17 +216,19 @@ async function sendReservedWire(
     return undefined;
   };
   await owners.intents.consume(identity, finalChecks);
-  // LAST AWAIT before the actual controlled/native fetch invocation.
-  finalChecks();
-  const response = owners.fetch(wire.url, {
-    method: wire.method,
-    headers: wire.headers.map(([name, value]) => [name, value]),
-    body: wire.body,
-    redirect: 'error',
-    signal,
-  });
-  void Promise.resolve(response).catch(() => {});
-  return { response, intent: identity };
+  const launch = () => {
+    finalChecks();
+    const response = owners.fetch(wire.url, {
+      method: wire.method,
+      headers: wire.headers.map(([name, value]) => [name, value]),
+      body: wire.body,
+      redirect: 'error',
+      signal,
+    });
+    void Promise.resolve(response).catch(() => {});
+    return { response, intent: identity };
+  };
+  return flowLaunch ? flowLaunch(launch) : launch();
 }
 
 /**
@@ -350,8 +363,11 @@ export class RoundsFinalFetchLaunchFence {
     const binding = structuredClone(bindingInput);
     const wire = snapshotFinalWire(wireInput);
     requireLaunch(wireIdentityDigest(wire) === binding.expectedWireDigest);
-    return this.#withCurrentReservation(binding, signal, (current) =>
-      sendReservedWire(owners, current, binding, wire, signal),
+    return this.#withCurrentReservation(
+      binding,
+      signal,
+      (current, flowLaunch) =>
+        sendReservedWire(owners, current, binding, wire, signal, flowLaunch),
     );
   }
 
@@ -372,7 +388,10 @@ export class RoundsFinalFetchLaunchFence {
   async #withCurrentReservation<T>(
     bindingInput: ReservedWireBinding,
     signal: AbortSignal,
-    work: (current: DelegationAuthorityLedger) => Promise<T>,
+    work: (
+      current: DelegationAuthorityLedger,
+      flowLaunch?: Parameters<typeof sendReservedWire>[5],
+    ) => Promise<T>,
   ): Promise<T> {
     forbidNestedOwner();
     const binding = structuredClone(bindingInput);
@@ -412,6 +431,7 @@ export class RoundsFinalFetchLaunchFence {
               attempt.terminal === null &&
               group.rounds[attempt.round - 1]?.returned === false,
           );
+          let flowLaunch: Parameters<typeof sendReservedWire>[5];
           if (group.spec.topology.kind === 'flow') {
             const action = group.flowActions.find(
               (a) =>
@@ -425,6 +445,21 @@ export class RoundsFinalFetchLaunchFence {
                 action?.claim !== null &&
                 action?.claim !== undefined,
             );
+            const flow = this.owners.flow;
+            requireLaunch(flow && same(flow.topology, group.spec.topology));
+            const claim = action.claim.value;
+            requireLaunch(
+              claim.run_id === group.spec.topology.runId &&
+                claim.step_id === seat.stepId &&
+                same(claim.definition, group.spec.topology.definition) &&
+                same(claim.actor, group.spec.topology.actor),
+            );
+            flowLaunch = async (launch) => {
+              const result = await flow.withCurrentClaim(claim, () => ({
+                value: launch(),
+              }));
+              return result.value;
+            };
           }
           const result = await this.owners.authorities.transact(
             binding.authority.id,
@@ -445,7 +480,32 @@ export class RoundsFinalFetchLaunchFence {
                 cancelled: ledger.cancelled,
                 invocations: ledger.invocations,
               };
-              const result = await work(current);
+              if (flowLaunch) {
+                const envelope = epoch.envelopes.find(
+                  (value) => value.envelope_id === binding.envelope.id,
+                );
+                requireLaunch(
+                  envelope &&
+                    this.owners.flow &&
+                    current.root.authenticated_principal_ref.id ===
+                      this.owners.flow.topology.actor.key &&
+                    same(
+                      envelope.execution_binding.source,
+                      this.owners.flow.source,
+                    ) &&
+                    envelope.execution_binding.flow_binding.status ===
+                      'bound' &&
+                    envelope.execution_binding.flow_binding.flow_run_id ===
+                      this.owners.flow.topology.runId &&
+                    envelope.execution_binding.flow_binding.flow_step_id ===
+                      seat.stepId &&
+                    same(
+                      envelope.execution_binding.flow_binding.definition,
+                      this.owners.flow.topology.definition,
+                    ),
+                );
+              }
+              const result = await work(current, flowLaunch);
               return { ledger, result };
             },
           );

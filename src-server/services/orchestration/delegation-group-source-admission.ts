@@ -15,7 +15,15 @@ import {
 } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import { flowRuntimeRoot } from '@kontourai/flow';
+import {
+  assertLifecycleEligible,
+  definitionIdentity,
+  type FlowDurableStepClaim,
+  flowRuntimeRoot,
+  loadRun,
+  validateDurableStepClaim,
+  withRunMutationLock,
+} from '@kontourai/flow';
 import type { DelegationExecutionBindingV2 } from '@kontourai/flow-agents/delegation-authority-contract';
 import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { createOrchestrationRequestPrincipalResolver } from '../../runtime/bootstrap/orchestration-request-principal.js';
@@ -511,7 +519,7 @@ type RecordV1 = {
   selection: Selection;
   observed: Snapshot;
 };
-/** Private server composition. No provider, budget, Flow admission, or launch is performed. */
+/** Private source custody. Flow launch admission uses its sealed Project/resource observation. */
 export class LocalSourceAdmissionOwner {
   readonly #snapshots = new Map<object, SealedState>();
   readonly #sdkPrepared = new Map<object, SdkPreparedState>();
@@ -852,6 +860,8 @@ export class LocalSourceAdmissionOwner {
         record,
         source,
         serialization,
+        assertObservationOwnersCurrentSync:
+          capture.assertObservationOwnersCurrentSync,
         receiptPath,
         receiptStamp: stamp(receiptPath),
         phase: 'sealed',
@@ -865,6 +875,104 @@ export class LocalSourceAdmissionOwner {
     } finally {
       this.#pendingSeals--;
     }
+  }
+  /** Private source-owned Flow admission. The workspace never crosses the wire. */
+  async prepareFlowSnapshot(
+    context: RuntimeSourceRequestContext,
+    subject: Subject,
+    capability: object,
+    runIdInput: string,
+  ): Promise<SourceFlowLaunchOwner> {
+    const runId = id(runIdInput);
+    const boundSubject = structuredClone(subject);
+    const authority = await this.#authority(context);
+    const state = this.#snapshots.get(capability);
+    if (!state || state.released || state.phase !== 'sealed')
+      refuse('snapshot_unavailable');
+    const cwd = state.record.provenance.observed.top;
+    const actor = Object.freeze({
+      key: authority.principalId,
+      kind: 'station-operator',
+    });
+    const assertCurrent = () => {
+      if (this.#snapshots.get(capability) !== state || state.released)
+        refuse('snapshot_unavailable');
+      this.#assertSnapshot(state, authority, boundSubject);
+      state.assertObservationOwnersCurrentSync();
+      if (
+        !runtimeRequestPrincipalMayAccessHttpRoute(
+          context.req.raw,
+          this.#environment,
+          {
+            method: 'POST',
+            path: `/api/projects/${encodeURIComponent(state.record.provenance.selection.projectSlug)}/flow/runs/${encodeURIComponent(runId)}/evaluate`,
+          },
+        )
+      )
+        refuse('flow_grant_action_not_authorized');
+      authority.assertCurrent();
+    };
+    assertCurrent();
+    const run = await loadRun(runId, cwd);
+    assertCurrent();
+    assertLifecycleEligible('persist', run.state.status);
+    if (run.definition.execution?.mode !== 'multi-cursor')
+      refuse('flow_multi_cursor_required');
+    const definition = Object.freeze(definitionIdentity(run.definition));
+    const topology = Object.freeze({
+      kind: 'flow' as const,
+      runId,
+      definition,
+      actor,
+    });
+    return Object.freeze({
+      topology,
+      source: state.source,
+      async withCurrentClaim<T>(
+        claimInput: FlowDurableStepClaim,
+        launch: () => { value: T },
+      ): Promise<{ value: T }> {
+        const expected = structuredClone(claimInput);
+        assertCurrent();
+        return withRunMutationLock(runId, cwd, async () => {
+          const current = await loadRun(runId, cwd);
+          assertCurrent();
+          assertLifecycleEligible('persist', current.state.status);
+          const claims: unknown = current.state.multi_cursor?.active_claims;
+          if (!Array.isArray(claims)) refuse('flow_active_claim_unavailable');
+          const stored = claims.find(
+            (value: FlowDurableStepClaim) =>
+              value.claim_id === expected.claim_id,
+          );
+          if (!stored) refuse('flow_active_claim_unavailable');
+          const claim = validateDurableStepClaim(
+            current.definition,
+            current.state,
+            stored,
+            new Date(),
+          );
+          const captured = validateDurableStepClaim(
+            current.definition,
+            current.state,
+            expected,
+          );
+          const identityOf = ({
+            renewed_at: _renewed,
+            expires_at: _expires,
+            ...identity
+          }: FlowDurableStepClaim) => identity;
+          if (
+            claim.run_id !== runId ||
+            !isDeepStrictEqual(claim.actor, actor) ||
+            !isDeepStrictEqual(claim.definition, definition) ||
+            !isDeepStrictEqual(identityOf(claim), identityOf(captured))
+          )
+            refuse('flow_claim_binding_changed');
+          assertCurrent();
+          return launch();
+        });
+      },
+    });
   }
   releaseSnapshot(capability: object): void {
     this.#dropSnapshot(capability);
@@ -1278,7 +1386,21 @@ type SealedRecord = {
   snapshotDigest: string;
   serializedBytes: number;
 };
+export interface SourceFlowLaunchOwner {
+  readonly topology: Readonly<{
+    kind: 'flow';
+    runId: string;
+    definition: ReturnType<typeof definitionIdentity>;
+    actor: { readonly key: string; readonly kind: string };
+  }>;
+  readonly source: Readonly<SourceTuple>;
+  withCurrentClaim<T>(
+    claim: FlowDurableStepClaim,
+    launch: () => { value: T },
+  ): Promise<{ value: T }>;
+}
 type SealedState = {
+  assertObservationOwnersCurrentSync(): void;
   record: SealedRecord;
   source: Readonly<SourceTuple>;
   serialization: string;
