@@ -1,5 +1,5 @@
 import type { TaskIdentity } from '@kontourai/station-contracts/task-graph';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import type { TaskGraphService } from '../../services/projects/task-graph-service.js';
 import {
@@ -197,31 +197,32 @@ export function createTaskRelationshipRoutes(
       data: graph.readTaskWorkChat(task, conversationId, access),
     });
   });
-  for (const method of ['post', 'delete'] as const)
-    app[method]('/:taskId/work-chats', async (c) => {
-      const input = chatInput.safeParse(await c.req.json().catch(() => null));
-      if (!input.success || input.data.task.taskId !== c.req.param('taskId'))
-        throw new TaskRelationshipError('invalid');
-      const access = await authority(c.req.raw, input.data.conversationId);
-      const result = await graph.setTaskWorkChat(
-        { ...input.data, linked: method === 'post' },
-        access,
-      );
-      delivery(c.req.raw);
-      // Repeat the current reader check after the awaited mutation, before delivery.
-      const task = graph.readTask(result.task.taskId);
-      const project = task && access.canonicalProject(task.projectId);
-      if (
-        !task ||
-        task.createdAt !== result.task.taskCreatedAt ||
-        !access.canMutateTask(task) ||
-        !project ||
-        project.id !== access.expectedProject.id ||
-        project.createdAt !== access.expectedProject.createdAt ||
-        !access.canReadConversation(result.conversationId, project)
-      )
-        throw new TaskRelationshipError('unavailable');
-      return c.json({ success: true, data: result });
-    });
+  const mutateWorkChat = (linked: boolean) => async (c: Context) => {
+    const input = chatInput.safeParse(await c.req.json().catch(() => null));
+    if (!input.success || input.data.task.taskId !== c.req.param('taskId'))
+      throw new TaskRelationshipError('invalid');
+    const access = await authority(c.req.raw, input.data.conversationId);
+    const result = await graph.setTaskWorkChat(
+      { ...input.data, linked },
+      access,
+    );
+    delivery(c.req.raw);
+    // Repeat the current reader check after the awaited mutation, before delivery.
+    const task = graph.readTask(result.task.taskId);
+    const project = task && access.canonicalProject(task.projectId);
+    if (
+      !task ||
+      task.createdAt !== result.task.taskCreatedAt ||
+      !access.canMutateTask(task) ||
+      !project ||
+      project.id !== access.expectedProject.id ||
+      project.createdAt !== access.expectedProject.createdAt ||
+      !access.canReadConversation(result.conversationId, project)
+    )
+      throw new TaskRelationshipError('unavailable');
+    return c.json({ success: true, data: result });
+  };
+  app.post('/:taskId/work-chats', mutateWorkChat(true));
+  app.delete('/:taskId/work-chats', mutateWorkChat(false));
   return app;
 }
