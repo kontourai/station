@@ -867,6 +867,7 @@ export async function pullRequestSessionForReader<
 }
 
 export interface ConfigureRuntimeRoutesContext {
+  retainProjectRoomRuntime?: (runtime: { close(): void }) => void;
   relayInvitationOwner?: RelayInvitationOwner;
   projectMembership?: ProjectMembershipService;
   nativeDeviceProofBindings?: NativeDeviceProofBindingService;
@@ -5968,6 +5969,19 @@ export function configureRuntimeRoutes(
     roomStore.store,
     roomAccess,
   );
+  let roomAgentRuntime:
+    | ReturnType<typeof createProjectRoomAgentRuntime>
+    | undefined;
+  const projectRoomRuntime = {
+    close() {
+      if (roomClosed) return;
+      roomClosed = true;
+      projectRoomService.close();
+      roomAgentRuntime?.close();
+      roomStore.close();
+    },
+  };
+  context.retainProjectRoomRuntime?.(projectRoomRuntime);
   const roomResolution =
     contributionResolution.resolver as ProjectResourceResolver;
   const roomRoot = async (slug: string) => {
@@ -5975,7 +5989,7 @@ export function configureRuntimeRoutes(
     if (!root) throw new ProjectRoomRefusal('not_found');
     return canonicalPath(root);
   };
-  const roomAgentRuntime = createProjectRoomAgentRuntime(
+  roomAgentRuntime = createProjectRoomAgentRuntime(
     roomHome,
     roomStore.store,
     projectRoomAgentExecution({
@@ -6030,15 +6044,6 @@ export function configureRuntimeRoutes(
       },
     }),
   );
-  const projectRoomRuntime = {
-    close() {
-      if (roomClosed) return;
-      roomClosed = true;
-      projectRoomService.close();
-      roomAgentRuntime.close();
-      roomStore.close();
-    },
-  };
   context.app.route(
     '/api/projects',
     createProjectRoomRoutes(projectRoomService, {

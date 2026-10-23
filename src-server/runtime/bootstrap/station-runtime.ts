@@ -4434,6 +4434,9 @@ export class StationRuntime {
       notificationDeliveryRouter,
       serverUpdate,
     } = configureRuntimeRoutes({
+      retainProjectRoomRuntime: (runtime) => {
+        this.projectRoomRuntime = runtime;
+      },
       relayInvitationOwner: this.relayInvitationOwner,
       projectMembership: this.projectMembership?.service,
       projectSharedTasks: this.projectMembership?.sharedTasks,

@@ -300,13 +300,14 @@ describe('project guest administration over the production composition', () => {
     const start = vi.spyOn(adapter, 'startSession');
     const send = vi.spyOn(adapter, 'sendTurn');
     let sessions: OrchestrationService | undefined;
+    let beforeSessionResolve: (() => Promise<void>) | undefined;
     if (withAgent) {
       const events = new EventStore(
         join(homeDir, 'room-provider-events.sqlite'),
       );
       const live = new Set<string>();
-      vi.spyOn(adapter, 'hasSession').mockImplementation(async (id) =>
-        live.has(id),
+      vi.spyOn(adapter, 'hasSession').mockImplementation(
+        async (id?: string) => id !== undefined && live.has(id),
       );
       start.mockImplementation(async (input) => {
         live.add(input.threadId);
@@ -340,11 +341,16 @@ describe('project guest administration over the production composition', () => {
         eventBus,
         eventStore: events,
         adoptionLedger: events.createAdoptionLedger(),
-        resolveSessionAgent: createSessionAgentResolver({
-          loadAgentSpec: async () => ({ name: 'Room Agent', prompt: '' }),
-          resolveToolServer: async () => null,
-          resolveSkillDir: async () => null,
-        }),
+        resolveSessionAgent: async (input) => {
+          const before = beforeSessionResolve;
+          beforeSessionResolve = undefined;
+          await before?.();
+          return createSessionAgentResolver({
+            loadAgentSpec: async () => ({ name: 'Room Agent', prompt: '' }),
+            resolveToolServer: async () => null,
+            resolveSkillDir: async () => null,
+          })(input);
+        },
         logger: { debug() {}, warn() {} },
       });
       agentClosers.push(async () => {
@@ -576,6 +582,9 @@ describe('project guest administration over the production composition', () => {
       app,
       eventBus,
       homeDir,
+      beforeSessionResolve: (effect: () => Promise<void>) => {
+        beforeSessionResolve = effect;
+      },
       adapter,
       start,
       send,
@@ -853,6 +862,107 @@ describe('project guest administration over the production composition', () => {
       'Selected shared answer',
     ]);
     expect(JSON.stringify(history)).not.toContain(sessionId);
+    const pending = await h.request(
+      `${base}/agents`,
+      post({ ...input, intentId: crypto.randomUUID() }),
+    );
+    expect(pending.status, await pending.clone().text()).toBe(200);
+    const pendingHandle = (
+      await readJson<{ data: { requestId: string } }>(pending)
+    ).data;
+    const pendingSession = h.start.mock.calls[1][0].threadId;
+    const nextEvents = {
+      ...events,
+      threadId: pendingSession,
+      invocationId: h.send.mock.calls[1][0].invocationId,
+    };
+    h.adapter.events.push({
+      ...nextEvents,
+      eventId: crypto.randomUUID(),
+      method: 'turn.started',
+      prompt: 'Room prompt',
+    });
+    h.adapter.events.push({
+      ...nextEvents,
+      eventId: crypto.randomUUID(),
+      method: 'content.text-delta',
+      itemId: 'answer',
+      delta: 'Must stay private',
+    });
+    h.adapter.events.push({
+      ...nextEvents,
+      eventId: crypto.randomUUID(),
+      method: 'turn.completed',
+      finishReason: 'stop',
+      outputText: 'Must stay private',
+    });
+    const readAnswer = h.sessions!.sessionQueries.readAssistantTurn.bind(
+      h.sessions!.sessionQueries,
+    );
+    const selectedRead = vi
+      .spyOn(h.sessions!.sessionQueries, 'readAssistantTurn')
+      .mockImplementation(async (...args) => {
+        const answer = await readAnswer(...args);
+        if (answer.status === 'found') {
+          const narrowed = await h.request(
+            `/api/pairing/devices/${h.security.devicePairing.identifyDevice(compute.credential)!.id}/scope`,
+            h.operatorHeaders({
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ scope: GUEST_GRANT.split(' ') }),
+            }),
+          );
+          expect(narrowed.status).toBe(200);
+        }
+        return answer;
+      });
+    await vi.waitFor(async () => {
+      const denied = await h.request(
+        `${base}/agents/${pendingHandle.requestId}/reconcile`,
+        post(guard),
+      );
+      expect(denied.status, await denied.clone().text()).toBe(403);
+    });
+    expect(selectedRead).toHaveBeenCalled();
+    selectedRead.mockRestore();
+    const repromoted = await h.request(
+      `/api/pairing/devices/${h.security.devicePairing.identifyDevice(compute.credential)!.id}/scope`,
+      h.operatorHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: [...GUEST_GRANT.split(' '), 'coding:exec'],
+        }),
+      }),
+    );
+    expect(repromoted.status).toBe(200);
+    h.beforeSessionResolve(async () => {
+      const denied = await h.request(
+        `/api/pairing/devices/${h.security.devicePairing.identifyDevice(compute.credential)!.id}/scope`,
+        h.operatorHeaders({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scope: GUEST_GRANT.split(' ') }),
+        }),
+      );
+      expect(denied.status).toBe(200);
+    });
+    const fenced = await h.request(
+      `${base}/agents`,
+      post({ ...input, intentId: crypto.randomUUID() }),
+    );
+    expect(fenced.status, await fenced.clone().text()).toBe(403);
+    expect(h.start).toHaveBeenCalledTimes(2);
+    expect(h.send).toHaveBeenCalledTimes(2);
+
+    const afterRevocation = await h.request(`${base}/messages`, guest());
+    expect(
+      (
+        await readJson<{ data: { messages: { text: string }[] } }>(
+          afterRevocation,
+        )
+      ).data.messages.map((m) => m.text),
+    ).toEqual(['Selected shared answer']);
     const other = h.pairAccountBound(
       'other-room-account',
       `${GUEST_GRANT} coding:exec`,
