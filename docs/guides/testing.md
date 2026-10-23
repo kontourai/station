@@ -400,7 +400,9 @@ The default window is the last 24 hours; `--since` and `--hours` are alternative
 requires the exact same local origin owner/name on GitHub. Default output is
 Markdown; `--json` emits one snapshot object. Recording is explicit: `--record --issue=<n>` appends a
 human summary and fenced JSON snapshot to that issue through REST. There is no
-default issue and no scheduled workflow. `--history --issue=<n>` reads these
+default issue. The [throughput health workflow](../../.github/workflows/ci-throughput-health.yml)
+records six-hour windows on issue #3101 while it remains open; it starts no
+verification builds. `--history --issue=<n>` reads these
 comments into a trend table; `--json` also works for history.
 
 | Measure | Definition |
@@ -414,6 +416,7 @@ comments into a trend table; `--json` also works for history.
 | Jobs waiting >5 / >20 minutes; OS wait | Shares among attributed executed jobs, known unfinished jobs and cancellations before runner assignment, using observed wait or wait so far and strict thresholds. Linux/Windows/macOS waits have median/p90 minutes; labels containing macOS or Windows identify those systems, other labels count as Linux as in the baseline. |
 | Per PR push / per merge group | Executed jobs, summed runner-minutes, and creation-to-last-completion wall minutes, each median/p90. The baseline approximates a PR push by PR number and ten-minute creation bucket, combining `pull_request` and `pull_request_target` workflows. When a run's `pull_requests` list is empty, its PR comes from the PRs whose head is the run's branch, found by commit and then by branch name: among those created before the run, the ones still open at the run own it, otherwise the latest-created one. A run with no such PR sets `incomplete: true` with a reason naming the run, commit and branch. Queue branches group merge workflows. Groups with fewer than five executed jobs or any unfinished run/job are excluded, so an in-progress merge group is never a completed wall-time sample. |
 | Shard setup versus tests | Up to 20 executed jobs per family: `fast-checks shard`, `Ordinary corpus`, `Process-heavy corpus`. Named test/corpus/regression/shard steps count as tests; installation, planning, downloads and uploads do not. Remaining job duration counts as overhead, including teardown and gaps. This is a step-name estimate, not a profiler measurement. |
+| Main qualification and recovery | Every available push, scheduled or manual attempt of `Main: Qualification` (including its historical name) on `main`; non-success conclusions count as failed or incomplete. Restore time runs from the first terminal failure's creation to the next successful attempt's update. An episode with no observed success remains unresolved. Repair-step executions are reported separately and do not establish qualification success. |
 | PR merges touching the review ledger | First-parent `origin/main` commits with a PR number in the subject and changed paths under `docs/learn/review-ledger/`; count, median and maximum changed record/note files. A note archive and the loose notes a baseline advance deleted into it (#3394) are not counted; notes the same merge adds are. |
 
 Runs are selected by creation time in the half-open window, including available
