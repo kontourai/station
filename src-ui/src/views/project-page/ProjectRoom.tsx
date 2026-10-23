@@ -422,6 +422,7 @@ function ProjectRoomSession({
               actorId={view.actor.id}
               storageKey={`${storageKey}:agent`}
               prompt={text}
+              checkpointSeq={view.checkpoint.lastSeq}
               replyTo={replyTo}
               blocked={!!proposal || room.send.isPending}
               refresh={() => {
@@ -601,6 +602,7 @@ function ProjectRoomAgentPanel({
   actorId,
   storageKey,
   prompt,
+  checkpointSeq,
   replyTo,
   blocked,
   refresh,
@@ -612,6 +614,7 @@ function ProjectRoomAgentPanel({
   actorId: string;
   storageKey: string;
   prompt: string;
+  checkpointSeq: number;
   replyTo?: string;
   blocked: boolean;
   refresh(): void;
@@ -745,6 +748,19 @@ function ProjectRoomAgentPanel({
   }
   const terminal =
     handle?.state === 'published' || handle?.state === 'cancelled';
+  const inspectedCheckpoint = useRef('');
+  const requestAction = useRef(act);
+  useLayoutEffect(() => {
+    requestAction.current = act;
+  });
+  useEffect(() => {
+    if (!retained?.requestId || stopped || terminal) return;
+    const key = `${retained.requestId}:${checkpointSeq}`;
+    if (inspectedCheckpoint.current === key) return;
+    inspectedCheckpoint.current = key;
+    void requestAction.current('inspect');
+  }, [retained?.requestId, checkpointSeq, stopped, terminal]);
+
   return (
     <div className="project-room__agent">
       {notice && <p role="status">{notice}</p>}

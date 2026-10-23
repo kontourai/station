@@ -133,6 +133,7 @@ import type {
 import { ProjectMembershipRefusal } from '../../services/projects/project-membership-store.js';
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import { createProjectRoomAgentRuntime } from '../../services/projects/project-room-agent-module.js';
+import { createProjectRoomAgentPublication } from '../../services/projects/project-room-agent-publication.js';
 import { ProjectRoomService } from '../../services/projects/project-room-service.js';
 import {
   createProjectRoomRuntime,
@@ -873,7 +874,7 @@ export async function pullRequestSessionForReader<
 }
 
 export interface ConfigureRuntimeRoutesContext {
-  retainProjectRoomRuntime?: (runtime: { close(): void }) => void;
+  retainProjectRoomRuntime?: (runtime: { close(): Promise<void> }) => void;
   relayInvitationOwner?: RelayInvitationOwner;
   projectMembership?: ProjectMembershipService;
   nativeDeviceProofBindings?: NativeDeviceProofBindingService;
@@ -1050,7 +1051,7 @@ interface ConfigureRuntimeRoutesResult {
   notificationDeliveryRouter: NotificationDeliveryRouter;
   kitLifecycleReady: Promise<void>;
   projectTaskRoomRuntime?: ProjectTaskRoomRuntime;
-  projectRoomRuntime: { close(): void };
+  projectRoomRuntime: { close(): Promise<void> };
   /**
    * Where live-surface producers register (#90). Undefined on hosted or
    * multi-tenant deployments, where the routes are not mounted at all.
@@ -6187,13 +6188,27 @@ export function configureRuntimeRoutes(
   let roomAgentRuntime:
     | ReturnType<typeof createProjectRoomAgentRuntime>
     | undefined;
+  let roomPublication:
+    | ReturnType<typeof createProjectRoomAgentPublication>
+    | undefined;
+  let roomClose: Promise<void> | undefined;
   const projectRoomRuntime = {
-    close() {
-      if (roomClosed) return;
+    close(): Promise<void> {
+      if (roomClose) return roomClose;
       roomClosed = true;
       projectRoomService.close();
-      roomAgentRuntime?.close();
-      roomStore.close();
+      roomClose = (async () => {
+        try {
+          await roomPublication?.close();
+        } finally {
+          try {
+            roomAgentRuntime?.close();
+          } finally {
+            roomStore.close();
+          }
+        }
+      })();
+      return roomClose;
     },
   };
   context.retainProjectRoomRuntime?.(projectRoomRuntime);
@@ -6259,10 +6274,16 @@ export function configureRuntimeRoutes(
       },
     }),
   );
+  roomPublication = createProjectRoomAgentPublication({
+    eventBus: context.eventBus,
+    module: roomAgentRuntime.module,
+  });
   context.app.route(
     '/api/projects',
     createProjectRoomRoutes(projectRoomService, {
       module: roomAgentRuntime.module,
+      observe: (authority, handle) =>
+        roomPublication!.watch(authority, handle.requestId),
       withAuthority: async (request, slug, action, guard, operation) => {
         const result = await roomAccess.withAction(
           request,

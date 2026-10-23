@@ -15,10 +15,22 @@ describe('StationRuntime shutdown', () => {
     const stop = vi.fn(async () => {});
     runtime.agentActivityPublisher = { stop };
     const closed: string[] = [];
-    runtime.projectRoomRuntime = { close: () => closed.push('room') };
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const closeRoom = vi.fn(async () => {
+      await pending;
+      closed.push('room');
+    });
+    runtime.projectRoomRuntime = { close: closeRoom };
     runtime.projectMembership = { close: () => closed.push('membership') };
     runtime.orchestrationEventStore = { close: () => closed.push('sessions') };
-    await runtime.shutdown().catch(() => {});
+    const shutdown = runtime.shutdown().catch(() => {});
+    await vi.waitFor(() => expect(closeRoom).toHaveBeenCalledOnce());
+    expect(closed).toEqual([]);
+    release();
+    await shutdown;
     expect(closed).toEqual(['room', 'membership', 'sessions']);
     expect(runtime.projectRoomRuntime).toBeUndefined();
     expect(stop).toHaveBeenCalledTimes(1);

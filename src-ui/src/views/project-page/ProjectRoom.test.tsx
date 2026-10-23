@@ -608,9 +608,17 @@ test('lost Agent acknowledgement reload retries immutable intent, never automati
     screen.getByRole('menuitem', { name: 'Cancel Agent request' }),
   );
   await screen.findByText('Agent request: cancelled');
-  expect(agentOperations).toEqual(['cancel']);
+  expect(
+    agentOperations.filter((operation) =>
+      ['cancel', 'reconcile'].includes(operation),
+    ),
+  ).toEqual(['cancel']);
   second.unmount();
-  expect(agentOperations).toEqual(['cancel']);
+  expect(
+    agentOperations.filter((operation) =>
+      ['cancel', 'reconcile'].includes(operation),
+    ),
+  ).toEqual(['cancel']);
 });
 test('Agent handles retire on authority loss and permission-only readers cannot invoke', async () => {
   const ui = mount();
@@ -631,4 +639,46 @@ test('Agent handles retire on authority loss and permission-only readers cannot 
   await screen.findByRole('textbox', { name: 'Message the project' });
   expect(screen.queryByRole('button', { name: 'Bring an Agent' })).toBeNull();
   expect(agentWrites).toHaveLength(1);
+});
+
+test('a pushed completed answer updates the Agent handle without a manual reconciliation request', async () => {
+  mount();
+  const composer = await screen.findByRole('textbox', {
+    name: 'Message the project',
+  });
+  fireEvent.change(composer, { target: { value: 'Review the Project' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Bring an Agent' }));
+  fireEvent.change(await screen.findByRole('combobox', { name: 'Agent' }), {
+    target: { value: 'researcher' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Ask in room' }));
+  await screen.findByText('Agent request: started');
+  await waitFor(() => expect(streams.length).toBeGreaterThan(0));
+  const messageId = randomCorrelationId();
+  agentHandle = {
+    ...agentHandle,
+    state: 'published',
+    publishedMessageId: messageId,
+  };
+  messages.push({
+    roomId,
+    messageId,
+    seq: 1,
+    intentId: randomCorrelationId(),
+    text: 'Completed shared answer',
+    actor: { id: 'researcher', kind: 'agent', displayName: 'Researcher' },
+    createdAt: at,
+  });
+  await act(async () => {
+    for (const stream of streams)
+      stream.enqueue(
+        new TextEncoder().encode(
+          `event: changed\ndata: ${JSON.stringify({ roomId, lastSeq: 1 })}\n\n`,
+        ),
+      );
+  });
+  await screen.findByText('Completed shared answer');
+  await screen.findByText('Agent request: published');
+  expect(agentWrites).toHaveLength(1);
+  expect(agentOperations).not.toContain('reconcile');
 });

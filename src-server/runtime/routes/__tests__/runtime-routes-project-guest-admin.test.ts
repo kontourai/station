@@ -245,10 +245,10 @@ describe('project guest administration over the production composition', () => {
     process.env.STATION_ROOT = join(owned, 'root');
     process.env.ALLOWED_ORIGINS = ORIGIN;
   });
-  const roomClosers: (() => void)[] = [];
+  const roomClosers: (() => Promise<void>)[] = [];
   const agentClosers: (() => Promise<void>)[] = [];
   afterEach(async () => {
-    for (const close of roomClosers.splice(0)) close();
+    for (const close of roomClosers.splice(0)) await close();
     for (const close of agentClosers.splice(0)) await close();
     if (ambientHome === undefined) delete process.env.STATION_HOME;
     else process.env.STATION_HOME = ambientHome;

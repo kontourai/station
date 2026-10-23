@@ -1011,7 +1011,7 @@ export class StationRuntime {
   });
   private ollamaAdapter = new OllamaAdapter();
   private orchestrationService!: OrchestrationService;
-  private projectRoomRuntime?: { close(): void };
+  private projectRoomRuntime?: { close(): Promise<void> };
   private resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
   private attachedSessionFollowService?: AttachedSessionFollowService;
   private consoleBridgeService?: ConsoleBridgeService;
@@ -3576,8 +3576,8 @@ export class StationRuntime {
           this.deploymentAuthentication = undefined;
           this.localAccounts = undefined;
         });
-        await retire(() => {
-          this.projectRoomRuntime?.close();
+        await retire(async () => {
+          await this.projectRoomRuntime?.close();
           this.projectRoomRuntime = undefined;
           this.projectMembership?.close();
           this.projectMembership = undefined;
@@ -5099,7 +5099,7 @@ export class StationRuntime {
       failures.push(error);
     }
     try {
-      this.projectRoomRuntime?.close();
+      await this.projectRoomRuntime?.close();
       this.projectRoomRuntime = undefined;
       this.projectMembership?.close();
       this.projectMembership = undefined;
