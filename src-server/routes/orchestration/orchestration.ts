@@ -64,6 +64,7 @@ import {
   PROVIDER_TURN_IN_PROGRESS_CODE,
 } from '@kontourai/station-contracts/provider';
 import {
+  isDeferredRetriableTurnError,
   ORCHESTRATION_STREAM_ACTIVITY_EVENT,
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
   SERVER_EVENTS,
@@ -4421,8 +4422,21 @@ export function createOrchestrationRoutes(
         ({ event }) =>
           event.threadId === handle.sessionId &&
           event.turnId === handle.initialTurnId &&
-          event.method === 'turn.completed',
+          (event.method === 'turn.completed' ||
+            event.method === 'turn.aborted' ||
+            (event.method === 'runtime.error' &&
+              !isDeferredRetriableTurnError(event))),
       );
+      if (terminal && terminal.event.method !== 'turn.completed')
+        return {
+          sessionId: snapshot.sessionId,
+          status:
+            terminal.event.method === 'turn.aborted' ? 'canceled' : 'failed',
+          terminalEvent: {
+            eventId: terminal.event.eventId,
+            turnId: handle.initialTurnId,
+          },
+        };
       if (
         terminal?.event.method === 'turn.completed' &&
         terminal.event.finishReason === 'cancelled'
@@ -4447,7 +4461,7 @@ export function createOrchestrationRoutes(
               turnId: handle.initialTurnId,
             },
           }
-        : snapshot.status === 'completed'
+        : ['completed', 'failed', 'canceled'].includes(snapshot.status)
           ? { ...snapshot, status: 'unknown' }
           : snapshot;
     },

@@ -25,6 +25,7 @@ function fixture(home = temporary('station-cli-group-')) {
   const failures: unknown[] = [];
   const statuses = new Map<string, string>();
   const terminalTurns = new Map<string, string>();
+  const terminalMethods = new Map<string, 'runtime.error' | 'turn.aborted'>();
   const completedInitialTurns = new Set<string>();
   const cancelledInitialTurns = new Set<string>();
   const initialFinishReasons = new Map<
@@ -66,7 +67,8 @@ function fixture(home = temporary('station-cli-group-')) {
           events:
             statuses.get(threadId) &&
             statuses.get(threadId) !== 'completed' &&
-            !completedInitialTurns.has(threadId)
+            !completedInitialTurns.has(threadId) &&
+            !terminalMethods.has(threadId)
               ? []
               : [
                   {
@@ -74,7 +76,7 @@ function fixture(home = temporary('station-cli-group-')) {
                       eventId: `event:${threadId}`,
                       threadId,
                       turnId: terminalTurns.get(threadId) ?? `turn:${threadId}`,
-                      method: 'turn.completed',
+                      method: terminalMethods.get(threadId) ?? 'turn.completed',
                       finishReason: initialFinishReasons.has(threadId)
                         ? initialFinishReasons.get(threadId)
                         : cancelledInitialTurns.has(threadId)
@@ -143,6 +145,7 @@ function fixture(home = temporary('station-cli-group-')) {
     calls,
     statuses,
     terminalTurns,
+    terminalMethods,
     completedInitialTurns,
     cancelledInitialTurns,
     initialFinishReasons,
@@ -657,22 +660,30 @@ test.each(['max-tokens', 'tool-calls'] as const)(
   },
 );
 
-test('failed prerequisites do not release downstream seats', async () => {
-  const f = fixture();
-  f.setBeforeDispatch(async (input) => {
-    f.statuses.set(input.sessionId!, 'failed');
-  });
-  const { group } = await f.create(
-    [member('first'), member('second', ['first'])],
-    1,
-  );
-  await f.request(`/session-groups/${group.groupId}/run`, {});
-  expect(f.calls).toHaveLength(1);
-  expect((await view(f, group.groupId)).members.map((m) => m.state)).toEqual([
-    'terminal',
-    'pending',
-  ]);
-}, 30_000);
+test.each([
+  ['failed', 'runtime.error'],
+  ['canceled', 'turn.aborted'],
+] as const)(
+  '%s initial-turn terminals do not release downstream seats',
+  async (status, method) => {
+    const f = fixture();
+    f.setBeforeDispatch(async (input) => {
+      f.statuses.set(input.sessionId!, status);
+      f.terminalMethods.set(input.sessionId!, method);
+    });
+    const { group } = await f.create(
+      [member('first'), member('second', ['first'])],
+      1,
+    );
+    await f.request(`/session-groups/${group.groupId}/run`, {});
+    expect(f.calls).toHaveLength(1);
+    expect((await view(f, group.groupId)).members.map((m) => m.state)).toEqual([
+      'terminal',
+      'pending',
+    ]);
+  },
+  30_000,
+);
 
 test('operation replay is inert, conflicting intent refuses, and another credential cannot read the group', async () => {
   const f = fixture();
@@ -751,39 +762,44 @@ test('group launch retains the ordinary full-access refusal instead of calling t
   );
 }, 30_000);
 
-test('a completed snapshot from a different provider turn cannot release a dependent seat', async () => {
-  const f = fixture();
-  f.setBeforeDispatch(async (input) => {
-    f.terminalTurns.set(input.sessionId!, 'unrelated-turn');
-  });
-  const { group } = await f.create(
-    [member('first'), member('second', ['first'])],
-    1,
-  );
-  const abort = new AbortController();
-  const running = f.request(
-    `/session-groups/${group.groupId}/run`,
-    {},
-    { signal: abort.signal },
-  );
-  try {
-    await waitFor(() => f.windowReads.length > 0);
-    await delay(300);
-    expect(f.calls).toHaveLength(1);
-    expect((await view(f, group.groupId)).members.map((m) => m.state)).toEqual([
-      'started',
-      'pending',
-    ]);
-    f.terminalTurns.clear();
-    f.setBeforeDispatch(async () => {});
-    await running;
-    expect(f.calls).toHaveLength(2);
-    expect((await view(f, group.groupId)).flow?.status).toBe('completed');
-  } finally {
-    abort.abort();
-    await running;
-  }
-}, 30_000);
+test.each(['completed', 'failed', 'canceled'])(
+  'a %s snapshot without the initial-turn terminal cannot release its seat',
+  async (status) => {
+    const f = fixture();
+    f.setBeforeDispatch(async (input) => {
+      f.terminalTurns.set(input.sessionId!, 'unrelated-turn');
+      f.statuses.set(input.sessionId!, status);
+    });
+    const { group } = await f.create(
+      [member('first'), member('second', ['first'])],
+      1,
+    );
+    const abort = new AbortController();
+    const running = f.request(
+      `/session-groups/${group.groupId}/run`,
+      {},
+      { signal: abort.signal },
+    );
+    try {
+      await waitFor(() => f.windowReads.length > 0);
+      await delay(300);
+      expect(f.calls).toHaveLength(1);
+      expect(
+        (await view(f, group.groupId)).members.map((m) => m.state),
+      ).toEqual(['started', 'pending']);
+      f.terminalTurns.clear();
+      f.statuses.clear();
+      f.setBeforeDispatch(async () => {});
+      await running;
+      expect(f.calls).toHaveLength(2);
+      expect((await view(f, group.groupId)).flow?.status).toBe('completed');
+    } finally {
+      abort.abort();
+      await running;
+    }
+  },
+  30_000,
+);
 
 test('group inventory pages do not lose credential-owned records or expose private briefs', async () => {
   const f = fixture();
