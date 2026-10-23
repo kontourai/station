@@ -854,6 +854,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // single-shot spawn.
   'scripts/__tests__/proof-repo-guardrails-fail-closed.test.ts',
   'scripts/__tests__/release-workflow.test.ts',
+  'scripts/__tests__/release-advisory-gate.test.ts',
   // #2783: runs release-artifacts.mjs assemble and validate as real child
   // processes with release.yml's arguments. Single-shot spawns, no wall-clock
   // assertion.
@@ -1123,6 +1124,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #3290: spawns an OpenCode-shaped ACP engine through the real
   // ACPProcess, so the launch environment is the one actually delivered.
   'src-server/providers/__tests__/acp-approval-mode.process.test.ts',
+  // Launches the profile-driven fake engine through the real ACPProcess,
+  // adapter and probe; the process boundary is the qualification claim.
+  'src-server/providers/__tests__/acp-engine-qualification.process.test.ts',
   // #3924: runs the real `opencode` (when this host has one) with fresh XDG
   // directories against a planted project plugin; skips loudly where no
   // opencode binary resolves.
