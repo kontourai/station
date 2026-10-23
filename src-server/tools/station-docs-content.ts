@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  '11471fda800383e9456a151f12a7de266fce9bc07b12525e5469080e549aad51';
+  '5dcea65484566ae549dab459e61b2bd7cad04f59d4a36b0580a477d4002ff03e';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -634,7 +634,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     title: 'Navigation and work surfaces',
     summary:
       'How people find work and arrange Panes, layouts, editors, and device surfaces without turning presentation into authority.',
-    body: 'How people find work and arrange Panes, layouts, editors, and device surfaces without turning presentation into authority.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which interface owns navigation, and which owns the work behind a view?\n- Can a Pane be unavailable without losing its saved identity?\n- Which UI states are derived from the server versus retained on one Device?\n\nRead module topics with get_station_docs_topic:\n- architecture-destinationregistry: DestinationRegistry\n- architecture-keyboard-shortcuts: Keyboard shortcuts\n- architecture-colorthemes: ColorThemes\n- architecture-unifiedsearchservice: UnifiedSearchService\n- architecture-workspacepanehostcontributions: WorkspacePaneHostContributions\n- architecture-workspacepanehostadmission: WorkspacePaneHostAdmission\n- architecture-workspacepanehostactions: WorkspacePaneHostActions\n- architecture-projecttaskroom: ProjectTaskRoom\n- architecture-mobiledevicehost: MobileDeviceHost\n- architecture-browsersessionservice: BrowserSessionService\n- architecture-shared-live-surface: Shared live surface\n- architecture-personal-work-board: Personal Work Board\n- architecture-personal-board-authoring: Personal Board authoring\n\nCanonical reading:\n- docs/guides/workspace-pane-authoring.md\n- docs/design/pane-host-contract.md\n- docs/guides/commands.md\n- docs/guides/responsive-ui.md\n- docs/user/work-board.md\n- docs/user/personal-boards.md',
+    body: 'How people find work and arrange Panes, layouts, editors, and device surfaces without turning presentation into authority.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which interface owns navigation, and which owns the work behind a view?\n- Can a Pane be unavailable without losing its saved identity?\n- Which UI states are derived from the server versus retained on one Device?\n\nRead module topics with get_station_docs_topic:\n- architecture-destinationregistry: DestinationRegistry\n- architecture-keyboard-shortcuts: Keyboard shortcuts\n- architecture-colorthemes: ColorThemes\n- architecture-unifiedsearchservice: UnifiedSearchService\n- architecture-workspacepanehostcontributions: WorkspacePaneHostContributions\n- architecture-workspacepanehostadmission: WorkspacePaneHostAdmission\n- architecture-workspacepanehostactions: WorkspacePaneHostActions\n- architecture-projectroom: ProjectRoom\n- architecture-projecttaskroom: ProjectTaskRoom\n- architecture-mobiledevicehost: MobileDeviceHost\n- architecture-browsersessionservice: BrowserSessionService\n- architecture-shared-live-surface: Shared live surface\n- architecture-personal-work-board: Personal Work Board\n- architecture-personal-board-authoring: Personal Board authoring\n\nCanonical reading:\n- docs/guides/workspace-pane-authoring.md\n- docs/design/pane-host-contract.md\n- docs/guides/commands.md\n- docs/guides/responsive-ui.md\n- docs/user/work-board.md\n- docs/user/personal-boards.md',
     tags: ['architecture', 'surfaces'],
     parentId: 'architecture',
     sourcePath: 'docs/learn/atlas.json',
@@ -716,6 +716,17 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     parentId: 'architecture-surfaces',
     sourcePath: 'docs/architecture/module-map.md',
     sourceAnchor: 'workspacepanehostactions',
+  },
+  {
+    id: 'architecture-projectroom',
+    title: 'ProjectRoom',
+    summary:
+      'Interface, composition, invariants, and documented evidence for ProjectRoom.',
+    body: "Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## ProjectRoom\n\n[ProjectRoomService](../../src-server/services/projects/project-room-service.ts)\nowns Project discussion independently of Task rooms and private conversations.\nIts scope binds the Station, portable Project identity, local Project incarnation,\nand room. [ProjectRoomStore](../../src-server/services/projects/project-room-store.ts)\nretains sequenced messages, actor-scoped duplicate-send receipts, revisioned notes,\nand Agent-request records in private SQLite. Persisted records are validated\nagainst their row identities before use. History reads use a deferred transaction;\ndiscovery is lookup-only. Explicit opening requires current discussion authority.\n\nThe [access adapter](../../src-server/runtime/routes/project-room-access.ts)\ncomposes Project membership with current transport grants and checks again at\nmutation commit and delivery. Reading, discussion, note editing and Agent execution\nare separate actions. Presence expires and is not restored as live after restart.\nThe [routes](../../src-server/routes/projects/project-room-routes.ts) expose bounded\nhistory and guarded live delivery. The [SDK](../reference/sdk.md#shared-project-room)\nretains exact send intents and retires protected content when authority changes.\n\n[ProjectRoomAgentModule](../../src-server/services/projects/project-room-agent-module.ts)\njournals explicit requests before canonical Session launch. It captures a bounded\nshared context and selected execution directory; membership, compute and workspace\nadmission remain the production caller's responsibility. Ambiguous launch is not\nautomatically repeated. Completed answers publish through a stable intent;\noversized publication records a durable failure. Linking or reading a room does\nnot expose private Session transcripts or grant connector credentials.\n\nThe operator and member Project pages mount the scoped Room. Focused store,\naccess, SDK and UI tests cover those owners; production mounting, provider-backed\nexecution and two-principal browser acceptance require separate runtime evidence.\nCustom channels and Task hierarchy are not implied by this Room contract.",
+    tags: ['architecture', 'surfaces', 'ProjectRoom'],
+    parentId: 'architecture-surfaces',
+    sourcePath: 'docs/architecture/module-map.md',
+    sourceAnchor: 'projectroom',
   },
   {
     id: 'architecture-projecttaskroom',
