@@ -19,8 +19,8 @@ matters: work can exist before an engine is ready to execute it.
 
 ![A Project with a saved Task and workspace details.](media/project-with-task.png)
 
-The Task's shared brief and conversation keep revisions and discussion with
-that work. The capture below is replaced with the chat-first Task's Brief tab;
+The Task's shared plan and conversation keep revisions and discussion with
+that work. The historical capture below shows the earlier Brief tab;
 the document was saved through the real autosave path. In this example a person saved a document; the room history records
 revision evidence. This does not demonstrate an external Agent editing alongside
 them. The current editor uses the available width and gives a multi-paragraph
@@ -31,7 +31,7 @@ establish that every part of that issue is resolved.
 ![A saved shared Task document and its revision history.](media/shared-task-document.png)
 
 The Project capture retains its original revision and appearance.
-It predates the inline start composer now shown above Project activity; use
+It predates the Overview-first Project space and shared Project Room; use
 [the getting-started guide](../user/getting-started.md) for the current controls.
 The Task
 document capture was replaced after actual single-user save/send/reopen checks.

@@ -64,14 +64,18 @@ never creates another Task.
 The Project’s **Tasks** list shows each local Task’s title, recorded status,
 and assigned Agent when known. Select its title or **Open Task** to enter its
 Task Room. **Details** opens inspection and dispatch controls; the optional board
-continues to group Tasks by status. **Refresh tasks** reads current Task records.
+continues to group Tasks by status. The list separates **Now** (ready, active,
+blocked or awaiting review), **Backlog**, and **History**. These views do not
+change status. **Refresh tasks** reads current Task records.
 Status is not a percentage complete or proof that an Agent is running. Connected
 provider items retain their separate read-only behavior.
-The Task workspace opens on **Chat** and makes the viewer present. **Brief** is
-the autosaved shared plan; its Goal and checklist appear beside desktop Chat.
-**Results** collects kept answers, file outputs and pull requests. **Details**
+The Task workspace opens on **Overview** with status, completion criteria,
+subtasks, decisions, blockers and kept deliverables. **Conversation** opens its
+shared discussion. **Plan** edits the autosaved document that supplies the goal
+and checklist. **Work chats** links canonical conversations that can open in
+the chat inbox; a link grants no transcript or execution access. **Details**
 contains identity, local workspace metadata, Basis, references and inspection.
-On narrow screens **About** holds the desktop rail context.
+Subtask completion does not automatically complete its parent.
 
 If the workspace is not ready, Station keeps the relevant Connections action
 visible. Run `station doctor` for a local diagnosis.
