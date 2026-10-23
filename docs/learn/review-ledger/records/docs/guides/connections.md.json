@@ -388,7 +388,9 @@
 
     "src-server/services/projects/project-identity-service.ts",
 
-    "src-ui/src/components/modals/NewProjectModalContent.tsx"
+    "src-ui/src/components/modals/NewProjectModalContent.tsx",
+
+    "src-ui/src/lib/project-onboarding-recovery.ts"
   ],
 
   "checks": [

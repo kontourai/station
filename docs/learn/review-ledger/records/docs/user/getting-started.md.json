@@ -256,7 +256,9 @@
 
     "src-ui/src/hooks/useNewProjectSubmit.ts",
 
-    "src-ui/src/components/modals/RepositoryProviderPicker.tsx"
+    "src-ui/src/components/modals/RepositoryProviderPicker.tsx",
+
+    "src-ui/src/lib/project-onboarding-recovery.ts"
   ],
 
   "checks": [

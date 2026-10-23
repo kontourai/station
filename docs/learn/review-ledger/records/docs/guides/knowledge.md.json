@@ -130,7 +130,9 @@
 
     "packages/sdk/src/query-domains/projectS3Sources.ts",
 
-    "src-ui/src/views/project-settings/ProjectS3Sources.tsx"
+    "src-ui/src/views/project-settings/ProjectS3Sources.tsx",
+
+    "src-ui/src/lib/project-onboarding-recovery.ts"
   ],
 
   "checks": [

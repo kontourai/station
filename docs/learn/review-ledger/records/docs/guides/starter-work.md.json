@@ -138,7 +138,9 @@
 
     "src-ui/src/views/task-workspace/TaskRoomPage.tsx",
 
-    "src-server/services/projects/task-graph-service.ts"
+    "src-server/services/projects/task-graph-service.ts",
+
+    "src-ui/src/lib/project-onboarding-recovery.ts"
   ],
 
   "checks": [

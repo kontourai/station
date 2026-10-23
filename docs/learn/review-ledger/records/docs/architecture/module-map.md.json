@@ -1216,7 +1216,9 @@
 
     "src-server/services/devices/toolchain/__tests__/device-tool-runtime.process.test.ts",
 
-    "src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx"
+    "src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx",
+
+    "src-ui/src/lib/project-onboarding-recovery.ts"
   ],
 
   "checks": [

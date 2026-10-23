@@ -534,7 +534,9 @@
 
     "src-server/routes/projects/project-room-routes.ts",
 
-    "src-ui/src/views/project-page/ProjectRoom.tsx"
+    "src-ui/src/views/project-page/ProjectRoom.tsx",
+
+    "src-ui/src/lib/project-onboarding-recovery.ts"
   ],
 
   "checks": [

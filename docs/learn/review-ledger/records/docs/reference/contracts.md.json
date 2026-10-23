@@ -270,7 +270,9 @@
 
     "src-server/runtime/routes/runtime-routes.ts",
 
-    "src-ui/src/views/project-page/ProjectRoom.tsx"
+    "src-ui/src/views/project-page/ProjectRoom.tsx",
+
+    "src-ui/src/lib/project-onboarding-recovery.ts"
   ],
 
   "checks": [
