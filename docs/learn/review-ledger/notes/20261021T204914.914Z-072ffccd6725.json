@@ -1,0 +1,9 @@
+{
+  "revision": "95b5e98343216b3133a54dd1474c7a8e3616322f",
+
+  "notes": [
+    {"path":"docs/design/settings-launch-triage.md","note":"Reviewed the generic panel preference delta after integrating current main: layoutPanels replaces codingPanels, the v3 envelope removes only the obsolete panel value, and update reads fresh persisted state before transforming a key. Existing developerFeatures, appearance, account exclusions, connection identity and credentials are preserved. These guides do not promise preservation of obsolete Coding panel sizes; their Settings scope and connection guidance remain accurate. No device, provider or authentication qualification is claimed.","inputs":["docs/design/settings-launch-triage.md","packages/contracts/src/device-settings.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the generic panel preference delta after integrating current main: layoutPanels replaces codingPanels, the v3 envelope removes only the obsolete panel value, and update reads fresh persisted state before transforming a key. Existing developerFeatures, appearance, account exclusions, connection identity and credentials are preserved. These guides do not promise preservation of obsolete Coding panel sizes; their Settings scope and connection guidance remain accurate. No device, provider or authentication qualification is claimed.","inputs":["docs/guides/connections.md","src-ui/src/lib/device-settings-store.ts"]}
+  ]
+}

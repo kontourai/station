@@ -18,6 +18,7 @@ import {
   readWorkflowDocuments,
   SECRET_SCAN_REUSABLE_WORKFLOW,
   SETUP_NODE_ACTION,
+  VERIFIED_PNPM_SETUP_ACTION,
   WINDOWS_PR_EVIDENCE_UPLOAD_ACTION,
 } from '../actionlint-gate.mjs';
 
@@ -4161,7 +4162,9 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
     const uses = (prefix: string) =>
       untrustedSteps.filter((step) => String(step.uses).startsWith(prefix));
     expect(uses('actions/setup-node@').length).toBeGreaterThan(0);
-    expect(uses('pnpm/setup@').length).toBeGreaterThan(0);
+    expect(
+      uses('kontourai/station/.github/actions/setup-verified-pnpm@').length,
+    ).toBeGreaterThan(0);
     expect(uses('github/codeql-action/init@')).toHaveLength(1);
     expect(uses('actions/cache/restore@')).toHaveLength(1);
     // The one live untrusted -> reusable-workflow edge, and the cache it would
@@ -4598,6 +4601,28 @@ describe('untrusted-workflow cache policy follows callees and allowlists actions
       [
         'an unreviewed cache-capable action',
         { uses: `astral-sh/setup-uv@${SHA}` },
+        [UNREVIEWED],
+      ],
+      [
+        'reviewed signed pnpm JS bootstrap',
+        { name: 'Setup pinned pnpm', uses: VERIFIED_PNPM_SETUP_ACTION },
+        [],
+      ],
+      [
+        'signed pnpm bootstrap at a different source',
+        {
+          name: 'Setup pinned pnpm',
+          uses: VERIFIED_PNPM_SETUP_ACTION.replace(/@.*/, `@${SHA}`),
+        },
+        [UNREVIEWED],
+      ],
+      [
+        'signed pnpm bootstrap with candidate environment',
+        {
+          name: 'Setup pinned pnpm',
+          uses: VERIFIED_PNPM_SETUP_ACTION,
+          env: { NODE_OPTIONS: '--require=./candidate.js' },
+        },
         [UNREVIEWED],
       ],
       ['a local action', { uses: './.github/actions/anything' }, [UNREVIEWED]],

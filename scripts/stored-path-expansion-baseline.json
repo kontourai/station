@@ -81,9 +81,9 @@
       "reason": "Reads the candidate layout's own value, only to compare it by equality against the derived working directory in refuseConflictingWorkingDirectory(). This module makes no filesystem call at all."
     },
     {
-      "entry": "src-server/routes/projects/project-layout-admission.ts :: workingDirectory :: error: `A coding layout's config.workingDirectory is derived from its project and cannot be set independently. Project '${projectSlug}' resolves to ${derivedWorkingDirectory ? `'${derivedWorkingDirectory}'` : 'no working directory'}; change the project's working directory instead.`,",
+      "entry": "src-server/routes/projects/project-layout-admission.ts :: workingDirectory :: error: `A ${layout.type === 'coding' ? 'coding' : 'repository-bound'} layout's config.workingDirectory is derived from its project and cannot be set independently. Project '${projectSlug}' resolves to ${derivedWorkingDirectory ? `'${derivedWorkingDirectory}'` : 'no working directory'}; change the project's working directory instead.`,",
       "category": 1,
-      "reason": "Error-message template text. Never reaches the filesystem."
+      "reason": "Diagnostic-message template for repository-bound layout admission. It describes the retained config key and Project-derived value; it never passes either value to filesystem operations."
     },
     {
       "entry": "src-server/routes/projects/projects.ts :: workingDirectory :: const supplied = body.config?.workingDirectory;",
@@ -96,9 +96,9 @@
       "reason": "Expanded 7 lines later in the same function, projectWorkspacePaneContext: `const workspacePath = resolve(expandTilde(workingDirectory));` (line 299), then used in existsSync/findGitEntryOnPath. Outside the guard’s ±2/+3 line window."
     },
     {
-      "entry": "src-server/routes/projects/projects.ts :: workingDirectory :: return `A coding layout's config.workingDirectory is derived from its project and cannot be set independently. Project '${projectSlug}' resolves to ${derived ? `'${derived}'` : 'no working directory'}; change the project's working directory instead.`;",
+      "entry": "src-server/routes/projects/projects.ts :: workingDirectory :: return `A ${layout.type === 'coding' ? 'coding' : 'repository-bound'} layout's config.workingDirectory is derived from its project and cannot be set independently. Project '${projectSlug}' resolves to ${derived ? `'${derived}'` : 'no working directory'}; change the project's working directory instead.`;",
       "category": 1,
-      "reason": "Error-message template text. Never reaches the filesystem."
+      "reason": "Diagnostic-message template for repository-bound layout admission. It describes the retained config key and Project-derived value; it never passes either value to filesystem operations."
     },
     {
       "entry": "src-server/routes/projects/projects.ts :: workingDirectory :: return project?.workingDirectory ?? projectWorkingDirectory(slug);",

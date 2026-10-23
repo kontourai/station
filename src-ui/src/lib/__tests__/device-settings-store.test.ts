@@ -3,7 +3,7 @@
  */
 
 import {
-  DEFAULT_CODING_PANELS_RECORD,
+  DEFAULT_LAYOUT_PANELS_RECORD,
   DEFAULT_NOTIFICATION_SOUND_PREFERENCES,
   DEFAULT_REGION_ARRANGEMENT_RECORD,
 } from '@kontourai/station-contracts/device-settings';
@@ -303,7 +303,7 @@ describe('device-settings-store', () => {
       const { deviceSettingsStore } = await freshStore();
 
       const envelope = deviceSettingsStore.getEnvelope();
-      expect(envelope.version).toBe(2);
+      expect(envelope.version).toBe(3);
       expect(deviceSettingsStore.get('shortcutOverrides')).toEqual({
         'app.settings': { key: 's', modifiers: ['cmd'] },
       });
@@ -319,7 +319,7 @@ describe('device-settings-store', () => {
       const persisted = JSON.parse(
         localStorage.getItem(ENVELOPE_KEY) as string,
       );
-      expect(persisted.version).toBe(2);
+      expect(persisted.version).toBe(3);
       expect(persisted.values.shortcutOverrides).toEqual({
         'app.settings': { key: 's', modifiers: ['cmd'] },
       });
@@ -333,7 +333,7 @@ describe('device-settings-store', () => {
 
       const { deviceSettingsStore } = await freshStore();
 
-      expect(deviceSettingsStore.getEnvelope().version).toBe(2);
+      expect(deviceSettingsStore.getEnvelope().version).toBe(3);
       expect(deviceSettingsStore.get('theme')).toBe('light');
       expect(deviceSettingsStore.get('shortcutOverrides')).toEqual({});
       expect(deviceSettingsStore.get('modelPickerPreferences')).toEqual({
@@ -461,12 +461,12 @@ describe('device-settings-store', () => {
     // the dedicated "v1 -> v2 backfill migration" describe block above.
     localStorage.setItem(
       ENVELOPE_KEY,
-      JSON.stringify({ version: 2, values: { theme: 'light' } }),
+      JSON.stringify({ version: 3, values: { theme: 'light' } }),
     );
     const { deviceSettingsStore } = await freshStore();
 
     expect(deviceSettingsStore.getEnvelope()).toEqual({
-      version: 2,
+      version: 3,
       values: { theme: 'light' },
     });
     expect(deviceSettingsStore.get('theme')).toBe('light');
@@ -477,7 +477,7 @@ describe('device-settings-store', () => {
     const { deviceSettingsStore } = await freshStore();
 
     expect(deviceSettingsStore.getEnvelope()).toEqual({
-      version: 2,
+      version: 3,
       values: {},
     });
   });
@@ -678,12 +678,10 @@ describe('device-settings-store', () => {
       const { deviceSettingsStore, DeviceSettingsImportVersionError } =
         await freshStore();
 
-      // CURRENT_ENVELOPE_VERSION is 2 (archive#settings-revamp
-      //) — version 3 is the one genuinely newer than this
-      // app understands.
+      // Version 4 is newer than the generic panel-state envelope.
       expect(() =>
         deviceSettingsStore.importEnvelope({
-          version: 3,
+          version: 4,
           values: { theme: 'light' },
         }),
       ).toThrow(DeviceSettingsImportVersionError);
@@ -788,43 +786,82 @@ describe('device-settings-store', () => {
       expect(rebooted.get('regionArrangement')).toBe('not a record');
     });
 
-    // #3051: the per-session panels record is validated by its own parser
-    // on import, the way `regionArrangement` is.
-    test('drops an unrecognisable codingPanels record and keeps a readable one with its malformed entries dropped', async () => {
-      const { deviceSettingsStore } = await freshStore();
-
-      const dropped = deviceSettingsStore.importEnvelope({
-        version: 1,
-        values: { codingPanels: { version: 7, sessions: {} } },
-      });
-      expect(dropped.droppedKeys).toEqual(['codingPanels']);
-      expect(deviceSettingsStore.get('codingPanels')).toEqual(
-        DEFAULT_CODING_PANELS_RECORD,
+    test('old pre-release panel preferences reset while unrelated preferences survive', async () => {
+      localStorage.setItem(
+        ENVELOPE_KEY,
+        JSON.stringify({
+          version: 2,
+          values: {
+            theme: 'light',
+            codingPanels: {
+              version: 1,
+              sessions: {
+                'conversation-a': {
+                  side: 'diff',
+                  terminalOpen: true,
+                  terminalHeight: 300,
+                  at: 3,
+                },
+              },
+            },
+          },
+        }),
       );
+      const { deviceSettingsStore } = await freshStore();
+      expect(deviceSettingsStore.get('theme')).toBe('light');
+      expect(deviceSettingsStore.get('layoutPanels')).toEqual(
+        DEFAULT_LAYOUT_PANELS_RECORD,
+      );
+      expect(deviceSettingsStore.getEnvelope().values).not.toHaveProperty(
+        'codingPanels',
+      );
+      expect(JSON.parse(localStorage.getItem(ENVELOPE_KEY)!)).toEqual({
+        version: 3,
+        values: { theme: 'light' },
+      });
+    });
 
-      const readable = deviceSettingsStore.importEnvelope({
-        version: 1,
+    test('generic panel imports validate session entries and retain Layout identity', async () => {
+      const { deviceSettingsStore } = await freshStore();
+      const dropped = deviceSettingsStore.importEnvelope({
+        version: 3,
+        values: { layoutPanels: { version: 7, layouts: {} } },
+      });
+      expect(dropped.droppedKeys).toEqual(['layoutPanels']);
+      expect(deviceSettingsStore.get('layoutPanels')).toEqual(
+        DEFAULT_LAYOUT_PANELS_RECORD,
+      );
+      const imported = deviceSettingsStore.importEnvelope({
+        version: 3,
         values: {
-          codingPanels: {
+          layoutPanels: {
             version: 1,
-            sessions: {
-              'conv-a': { side: 'diff', sideWidth: 500, at: 3 },
-              'conv-b': { side: 12 },
+            layouts: {
+              research: {
+                sessions: {
+                  'conversation-a': { side: 'sources', sideWidth: 500, at: 3 },
+                  bad: { side: 12 },
+                },
+              },
             },
           },
         },
       });
-      expect(readable.droppedKeys).toEqual([]);
-      expect(deviceSettingsStore.get('codingPanels')).toEqual({
+      expect(imported.droppedKeys).toEqual([]);
+      expect(deviceSettingsStore.get('layoutPanels')).toEqual({
         version: 1,
-        sessions: {
-          'conv-a': {
-            side: 'diff',
-            sideWidth: 500,
-            terminalOpen: false,
-            terminalHeight: null,
-            inbox: null,
-            at: 3,
+        layouts: {
+          research: {
+            sessions: {
+              'conversation-a': {
+                side: 'sources',
+                sideWidth: 500,
+                lowerOpen: false,
+                lowerHeight: null,
+                inbox: null,
+                at: 3,
+              },
+            },
           },
         },
       });

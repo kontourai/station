@@ -4,6 +4,11 @@ Canonical cross-package contract ownership for Station.
 
 Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shared across `src-server`, `packages/sdk`, `packages/cli`, plugins, or tests. New code should import these modules directly instead of reaching through `@kontourai/station-shared`.
 
+`LayoutPanelsRecord` holds device-local side/lower-panel state by layout host
+scope and conversation. `LAYOUT_PANELS_LAYOUT_BOUND` and
+`LAYOUT_PANELS_SESSION_BOUND` bound retention. The v3 device envelope retires the
+pre-release Coding-only panel preference; it does not preserve those old sizes.
+
 ## Ownership rules
 
 - This package owns stable cross-package types and constants. Existing domain
@@ -93,7 +98,7 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header, input events, control lease, stream params, their strict wire parsers and the length-prefixed binary record envelope |
 | `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state referencing a server-owned browser session, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads |
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
-| `@kontourai/station-contracts/layout` | Layout definitions, tabs, skills, templates; a catalog contribution's optional, server-issued `lifecycleGeneration` (identity only, never a permission), which a reinstall or an enablement change replaces and which never repeats; `null` is history the server cannot vouch for, under which a host admits nothing |
+| `@kontourai/station-contracts/layout` | Layout definitions, tabs, skills, templates, and repository workspace binding (`workspaceBinding: 'repository'`); legacy Coding records retain their repository binding. A catalog contribution's optional, server-issued `lifecycleGeneration` is identity only, never a permission; a reinstall or an enablement change replaces it and it never repeats. `null` is history the server cannot vouch for, under which a host admits nothing |
 | `@kontourai/station-contracts/personal-board` | Declarative dashboard sections, saved/proposed Board document and revisioned authoring inputs |
 | `@kontourai/station-contracts/local-accounts` | Operator-only account projections, sign-in/session actions and one-time recovery results |
 | `@kontourai/station-contracts/notification` | Notification payloads and actions |
