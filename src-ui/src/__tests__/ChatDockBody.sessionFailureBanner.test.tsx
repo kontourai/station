@@ -1476,7 +1476,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
     // ...and it is the recovery notice's, which is the surface that also
     // explains WHY, and offers the Retry this state can actually use. A
     // failed open is a failed check, so it does not claim "read-only" (#2424).
-    expect(screen.getByText(/couldn't confirm/)).toBeTruthy();
+    expect(screen.getByText("Couldn't check this chat.")).toBeTruthy();
     expect(screen.queryByText(/is read-only/)).toBeNull();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();
   });
@@ -1561,11 +1561,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       }),
     });
 
-    expect(
-      await screen.findByText(
-        "Station couldn't confirm A healthy session being reloaded can continue.",
-      ),
-    ).toBeTruthy();
+    expect(await screen.findByText("Couldn't check this chat.")).toBeTruthy();
     expect(screen.queryByText(/is read-only/)).toBeNull();
     expect(screen.queryByLabelText('Loading chat')).toBeNull();
     expect(chatInputPropsMock.current?.disabled).toBe(true);
@@ -1645,11 +1641,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       }),
     });
 
-    expect(
-      await screen.findByText(
-        "Station couldn't confirm Rechecked chat can continue.",
-      ),
-    ).toBeTruthy();
+    expect(await screen.findByText("Couldn't check this chat.")).toBeTruthy();
     expect(screen.queryByText(/is read-only/)).toBeNull();
     expect(chatInputPropsMock.current?.disabled).toBe(true);
   });
@@ -1685,7 +1677,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       }),
     });
 
-    expect(await screen.findByText('Denied chat is read-only.')).toBeTruthy();
+    expect(await screen.findByText('This chat is read-only.')).toBeTruthy();
     expect(screen.queryByText(/couldn't confirm/)).toBeNull();
   });
 

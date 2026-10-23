@@ -1249,6 +1249,11 @@ Reads the Agent catalog under `['agents']`. `data` projects its Agent array;
 `catalogState` and `catalogAsOf` retain whether it is a current or older
 observation. A displayed cached row is not by itself current launch admission.
 
+The Agent catalog and `useModelPickerCatalogQuery` revalidate invalidated data
+when mounted, including persisted picker data restored before an engine's
+availability changes. Untouched cached data retains the cache-first mount policy;
+callers can override `refetchOnMount` or disable the query.
+
 ### `useAgentToolsQuery(agentSlug: string | undefined, config?)`
 
 Fetches tools for an agent. Disabled when `agentSlug` is undefined.

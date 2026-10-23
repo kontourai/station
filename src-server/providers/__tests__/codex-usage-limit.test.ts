@@ -50,6 +50,7 @@ function buildRecord(threadId: string): CodexSessionRecord {
     session,
     rpcRequestCounter: 0,
     pendingRpcRequests: new Map(),
+    turnInvocationIds: new Map(),
     pendingApprovals: new Map(),
     approvedTools: new Set(),
     lastSessionState: 'running',
