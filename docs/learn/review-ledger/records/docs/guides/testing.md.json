@@ -222,6 +222,12 @@
 
     ".github/workflows/ci-throughput-health.yml",
 
+    "src-server/services/infra/workload-resources.ts",
+
+    "src-server/services/infra/__tests__/workload-resources.process.test.ts",
+
+    "docs/guides/development.md",
+
     "scripts/merge-queue-regression-decision.mjs",
 
     "scripts/ci-workflow-governance.mjs"

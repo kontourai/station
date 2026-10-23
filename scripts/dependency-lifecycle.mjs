@@ -34,6 +34,7 @@ import {
   validateAllowlist,
   verifyArtifact,
 } from './lib/dependency-lifecycle-policy.mjs';
+import { assertVerificationHost } from './lib/live-service-verification.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { resolveNpmCli } from './lib/npm-cli.mjs';
 import {
@@ -672,6 +673,9 @@ export function install(
     generateBuildInputs,
   },
 ) {
+  assertVerificationHost(
+    developer ? 'dependencies:install' : 'dependencies:ci',
+  );
   const nodeDriver = prepareDependencyInstallDrivers({
     root: execution.root,
     nodePath: execution.nodePath,

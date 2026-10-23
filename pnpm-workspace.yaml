@@ -83,6 +83,7 @@ overrides:
   socks>ip-address: ^10.5.1
   "@kontourai/bearing>csv-parse": ^7.0.2
 patchedDependencies:
+  "@modelcontextprotocol/client@2.3.1": patches/modelcontextprotocol-client-2.3.1.patch
   "http-cache-semantics@4.3.0": patches/http-cache-semantics-4.3.0.patch
   "node-forge@1.4.0": patches/node-forge-1.4.0.patch
   "js-yaml@3.15.2": patches/js-yaml-3.15.2-argparse2-cli.patch

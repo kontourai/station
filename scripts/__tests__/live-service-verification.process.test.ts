@@ -7,9 +7,13 @@ import { CI_FAST_INFRASTRUCTURE_EXIT_CODE } from '../run-ci-fast.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const tempDir = trackTempDirs();
-const entrypoints = ['run-ci-fast.mjs', 'typecheck-aggregate.mjs'];
+const entrypoints = [
+  'run-ci-fast.mjs',
+  'typecheck-aggregate.mjs',
+  'dependency-lifecycle.mjs',
+];
 
-function run(script: string, membership: string | null) {
+function run(script: string, membership: string | null, operation = 'ci') {
   const dir = tempDir('station-live-verification-');
   const marker = join(dir, 'subprocess-started');
   const preload = join(dir, 'membership.mjs');
@@ -19,6 +23,7 @@ function run(script: string, membership: string | null) {
 import childProcess from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
 const read = fs.readFileSync;
+const write = fs.writeFileSync;
 fs.readFileSync = function(file, ...args) {
   if (file === '/proc/self/cgroup') {
     const membership = ${JSON.stringify(membership)};
@@ -28,17 +33,26 @@ fs.readFileSync = function(file, ...args) {
   return read.call(this, file, ...args);
 };
 function reachedSubprocess() {
-  fs.writeFileSync(${JSON.stringify(marker)}, 'started');
+  write(${JSON.stringify(marker)}, 'started');
   throw new Error('subprocess admission probe');
 }
 childProcess.spawn = reachedSubprocess;
 childProcess.spawnSync = reachedSubprocess;
+childProcess.execFileSync = reachedSubprocess;
+for (const name of ['mkdirSync', 'cpSync', 'copyFileSync', 'renameSync', 'rmSync', 'unlinkSync', 'writeFileSync']) {
+  fs[name] = reachedSubprocess;
+}
 syncBuiltinESMExports();
 `,
   );
   const result = spawnSyncBounded(
     process.execPath,
-    ['--import', preload, join(root, 'scripts', script)],
+    [
+      '--import',
+      preload,
+      join(root, 'scripts', script),
+      ...(script === 'dependency-lifecycle.mjs' ? [operation] : []),
+    ],
     { cwd: root, encoding: 'utf8', windowsHide: true, timeout: 15_000 },
   );
   return { result, started: existsSync(marker) };
@@ -47,6 +61,21 @@ syncBuiltinESMExports();
 describe.skipIf(process.platform !== 'linux')(
   'live Station verification admission',
   () => {
+    test.each(['install', 'ci'])(
+      'dependencies:%s refuses before driver or install-tree mutation',
+      (operation) => {
+        const { result, started } = run(
+          'dependency-lifecycle.mjs',
+          '0::/user.slice/user-1002.slice/user@1002.service/app.slice/station-default.service\n',
+          operation,
+        );
+        expect(result.status).toBe(1);
+        expect(result.stderr).toContain(
+          `dependencies:${operation} cannot run inside live Station service`,
+        );
+        expect(started).toBe(false);
+      },
+    );
     test.each(entrypoints)(
       '%s refuses a live Station service before launching work',
       (script) => {

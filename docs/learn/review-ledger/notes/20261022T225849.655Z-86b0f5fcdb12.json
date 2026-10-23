@@ -1,0 +1,23 @@
+{
+  "revision": "a465ae2bbed0a699b0f9a60ccac567fef23665a9",
+
+  "notes": [
+    {"path":"README.md","note":"Reviewed the installation/architecture entry points against the dependencies-stage Docker COPY repair: the added live-service-verification module completes dependency-lifecycle imports; no image target, startup command, published artifact or deployment qualification changed.","inputs":["README.md","Dockerfile"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"Reviewed the prepared-image requirement, unchanged service command and explicit unqualified ingress/terminal/voice boundaries against the Docker dependency bootstrap repair. No Caddy, network, enrollment or port behavior changes and no Docker smoke executed.","inputs":["deploy/public-ingress/README.md","Dockerfile"]},
+
+    {"path":"deployment/telemetry/README.md","note":"Reviewed the explicit telemetry-runtime target, normal default target and qualified-source caveats against the added dependency-stage COPY. Receiver bundling, runtime users, secrets and deployment profiles remain unchanged; no new container qualification.","inputs":["deployment/telemetry/README.md","Dockerfile"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed RuntimeResourcePostureController fixture claims against the delta: module-anchored fixture URL resolves the same child; setup error logging still throws; no OOM, descriptor, PTY or cleanup assertions changed. All 14 systemd process tests passed locally, not packaged or hosted qualification.","inputs":["docs/architecture/module-map.md","docs/guides/development.md","src-server/services/infra/__tests__/workload-resources.process.test.ts"]},
+
+    {"path":"docs/design/private-cloud-environment.md","note":"Reviewed the retained proposal status, container/image deployment assumptions and resource qualification limits against the dependency-stage COPY closure repair. No provisioning, resource policy or cloud deployment behavior changed; proposal remains unqualified.","inputs":["docs/design/private-cloud-environment.md","Dockerfile"]},
+
+    {"path":"docs/guides/deployment.md","note":"Reviewed container build/start guidance and authentication/ingress boundaries against the dependency bootstrap import closure. The added file is consumed during managed installation; targets, commands, listeners and runtime behavior are unchanged. Source review plus container-source contract tests, not an image build.","inputs":["docs/guides/deployment.md","Dockerfile"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed Linux service workload budget and fixture evidence limits against identical fixture-path resolution and failure-preserving setup diagnostics. Budget implementation and prerequisites are unchanged. Local 14-test containment suite passed; hosted setup failure remains undiagnosed and no new platform/provider qualification is claimed.","inputs":["docs/guides/development.md","src-server/services/infra/__tests__/workload-resources.process.test.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed broker container build target and deployment/security boundaries against the Docker dependency COPY addition. No broker configuration, credentials, admission or runtime packaging target changes; no live broker or container qualification.","inputs":["docs/guides/self-hosted-broker.md","Dockerfile"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed focused verification and separate scope/OOM-domain guidance against fixture discovery and setup-diagnostic changes. Commands, test assertions and admission policy are unchanged. Three focused files passed 130 tests; no broad readiness/full typecheck or hosted setup pass is inferred.","inputs":["docs/guides/testing.md","docs/guides/development.md","src-server/services/infra/__tests__/workload-resources.process.test.ts"]}
+  ]
+}
