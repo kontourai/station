@@ -1207,7 +1207,7 @@ describe('lifecycle instance state', () => {
   });
 
   it.each(['stop', 'forced restart'] as const)(
-    'fails %s without signaling a reused PID or arbitrary port owner',
+    'fails %s without signaling a reused PID or rotating its runtime log',
     async (operation) => {
       ensureDir(TEST_CWD);
       ensureBuildOutputs('reused');
