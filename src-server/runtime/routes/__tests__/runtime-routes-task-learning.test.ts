@@ -428,6 +428,7 @@ describe("a done Task's lessons are promoted by a person, never by an agent", ()
     const createProjectStore = async (storeRoot?: string) => {
       const created = await asOperator('POST', '/api/knowledge/roots', {
         scope: { kind: 'project', projectSlug: PROJECT },
+        expectedProjectId: projectService.getProject(PROJECT).id,
         adapterId: 'kit-default-store',
         ...(storeRoot ? { storeRoot } : {}),
       });
