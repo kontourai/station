@@ -3,6 +3,7 @@
  */
 
 import { act, cleanup, render } from '@testing-library/react';
+import { useLayoutEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { useExitTransition } from '../hooks/useExitTransition';
 
@@ -55,7 +56,30 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+/** Every committed frame's `mounted`, in order. */
+const commits: boolean[] = [];
+function RecordingProbe({ open }: { open: boolean }) {
+  const { mounted } = useExitTransition(open, 200);
+  useLayoutEffect(() => {
+    commits.push(mounted);
+  });
+  return null;
+}
+
 describe('useExitTransition', () => {
+  test('closing never commits a frame with the surface out of the tree before its exit', () => {
+    commits.length = 0;
+    const { rerender } = render(<RecordingProbe open={true} />);
+    rerender(<RecordingProbe open={false} />);
+    // Every frame from the close to the end of the budget keeps it mounted:
+    // an exit started from an effect commits one unmounted frame first.
+    expect(commits).toEqual([true, true]);
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(commits.at(-1)).toBe(false);
+  });
+
   test('keeps the surface mounted for the exit budget, then drops it', () => {
     const { rerender } = render(<Probe open={true} />);
     expect(state()).toEqual({ mounted: 'true', exiting: 'false' });

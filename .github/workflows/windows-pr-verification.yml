@@ -105,11 +105,30 @@ jobs:
       - name: Compile desktop Rust tests
         if: ${{ steps.rust_relevance.outputs.relevant != 'false' }}
         shell: pwsh
+        # This base-controlled step compiles candidate code. A candidate that
+        # ships the private Node sidecar stages it (and the runtime resource
+        # directories) through its own prerequisite script; older candidates
+        # keep the empty resource directories they need.
         run: |
-          New-Item -ItemType Directory -Force dist-server | Out-Null
-          New-Item -ItemType Directory -Force dist-desktop-runtime/node_modules | Out-Null
-          New-Item -ItemType Directory -Force dist-desktop-runtime/examples | Out-Null
+          if (Test-Path scripts/prepare-desktop-rust-resources.mjs) {
+            node scripts/prepare-desktop-rust-resources.mjs
+            if ($LASTEXITCODE -ne 0) { throw "Desktop runtime staging failed" }
+          } else {
+            New-Item -ItemType Directory -Force dist-server | Out-Null
+            New-Item -ItemType Directory -Force dist-desktop-runtime/node_modules | Out-Null
+            New-Item -ItemType Directory -Force dist-desktop-runtime/examples | Out-Null
+          }
           cargo test --manifest-path src-desktop/Cargo.toml --no-run
+
+      - name: Verify recovery against Windows Credential Manager
+        if: ${{ steps.rust_relevance.outputs.relevant != 'false' }}
+        shell: pwsh
+        run: |
+          $output = cargo test --manifest-path src-desktop/Cargo.toml tests::profile_store_windows_finds_real_dotted_credential_history -- --exact --nocapture 2>&1
+          $testExit = $LASTEXITCODE
+          $output | Write-Output
+          if ($testExit -ne 0) { throw "Credential Manager recovery test failed ($testExit)" }
+          if (($output -join "`n") -notmatch 'test result: ok\. 1 passed; 0 failed; 0 ignored;') { throw "Credential Manager recovery test did not execute exactly once" }
 
       # No `npm run typecheck` here. tsc's verdict does not depend on the host
       # OS: forceConsistentCasingInFileNames (the TypeScript default, and set

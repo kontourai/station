@@ -26,7 +26,7 @@ export function builtinStationApiServerId(
     toolId === BUILTIN_STATION_KNOWLEDGE_TOOL_SERVER_ID &&
     (toolDef.transport === undefined || toolDef.transport === 'stdio') &&
     toolDef.endpoint === undefined &&
-    toolDef.command === 'node' &&
+    (toolDef.command === 'node' || toolDef.command === process.execPath) &&
     typeof serverPath === 'string' &&
     resolve(serverPath) === builtinStationKnowledgeServerPath()
   )
@@ -82,7 +82,7 @@ export function isBuiltinStationDocs(
   const serverPath = toolDef.args?.[0];
   return (
     toolId === BUILTIN_STATION_DOCS_TOOL_SERVER_ID &&
-    toolDef.command === 'node' &&
+    (toolDef.command === 'node' || toolDef.command === process.execPath) &&
     typeof serverPath === 'string' &&
     resolve(serverPath) === builtinStationDocsServerPath()
   );
@@ -130,7 +130,7 @@ export function isBuiltinStationControl(
     // that endpoint, not by the built-in, so it is not the built-in.
     (toolDef.transport === undefined || toolDef.transport === 'stdio') &&
     toolDef.endpoint === undefined &&
-    toolDef.command === 'node' &&
+    (toolDef.command === 'node' || toolDef.command === process.execPath) &&
     typeof serverPath === 'string' &&
     resolve(serverPath) === builtinStationControlServerPath()
   );
@@ -243,7 +243,7 @@ export function stationKnowledgeRuntimeIdentity(
  * same truth the runtime overlay spawns with, instead of re-hardcoding
  * strings.
  */
-const BUILTIN_INTEGRATION_SPAWN_COMMAND = 'node';
+const BUILTIN_INTEGRATION_SPAWN_COMMAND = process.execPath;
 
 /**
  * The canonical id of the built-in station-control server — the exact string

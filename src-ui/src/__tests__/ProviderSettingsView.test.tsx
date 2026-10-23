@@ -66,9 +66,10 @@ vi.mock('@kontourai/station-sdk', () => ({
   }),
 }));
 
+let acpRegistryData: unknown[] = [];
 vi.mock('../hooks/useACPConnections', () => ({
   useACPConnections: () => ({ data: [] }),
-  useACPConnectionRegistry: () => ({ data: [] }),
+  useACPConnectionRegistry: () => ({ data: acpRegistryData }),
 }));
 
 vi.mock('../contexts/NavigationContext', () => {
@@ -105,6 +106,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     saveMutationState = { isPending: false };
     saveMutationOptions = {};
     modelConnections = [];
+    acpRegistryData = [];
     modelConnectionsError = null;
     refetchModelConnections.mockReset();
     window.localStorage.clear();
@@ -443,6 +445,26 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
   // remounts a route subtree when the route's identity changes, and the id is
   // part of that identity. In the product that navigation threw the draft
   // away and left a blank pane with no Create button.
+  // Public registry listings belong to Add engine's own group, behind its
+  // confirm step; the model picker offers only Station's own engines.
+  test('Add model connection does not offer public registry engines', () => {
+    acpRegistryData = [
+      { id: 'kiro', name: 'Kiro CLI', command: 'kiro-cli', source: 'core' },
+      {
+        id: 'stakpak',
+        name: 'Stakpak',
+        command: 'stakpak',
+        source: 'registry',
+        detected: true,
+      },
+    ];
+    render(
+      <ProviderSettingsView selectedProviderId="new" onNavigate={onNavigate} />,
+    );
+    expect(screen.getByRole('button', { name: /Kiro CLI/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Stakpak/ })).toBeNull();
+  });
+
   test('continues the deep-linked new selection into a resumable setup draft', async () => {
     render(
       <ProviderSettingsView selectedProviderId="new" onNavigate={onNavigate} />,

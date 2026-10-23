@@ -13,16 +13,20 @@ export function SessionContextChip({
   triggerRef,
   expanded,
   onOpen,
+  exiting = false,
   onUnmountWhileFocused,
 }: {
   status: { word: string; text: string; tone: WorkStatusTone } | null;
   triggerRef: RefObject<HTMLButtonElement | null>;
   expanded: boolean;
   onOpen: () => void;
+  /** Leaving for the card; see `.session-context-chip--exiting`. */
+  exiting?: boolean;
   /**
    * The chip is going away (the card it stands in for has room again) while
-   * it holds focus; the caller hands focus on. Checked in the layout
-   * cleanup, while the button is still in the document.
+   * it holds focus; the caller hands focus on. Checked when its exit starts,
+   * since an exiting chip is hidden and out of the tab order, and again in
+   * the layout cleanup, while the button is still in the document.
    */
   onUnmountWhileFocused?: () => void;
 }) {
@@ -35,11 +39,24 @@ export function SessionContextChip({
         unmountWhileFocusedRef.current?.();
     };
   }, [triggerRef]);
+  // An exiting chip stays mounted for its fade but is `aria-hidden` and out
+  // of the tab order, so focus must not stay on it until it unmounts: drop it
+  // here and let the caller hand it on.
+  useLayoutEffect(() => {
+    if (!exiting) return;
+    const button = triggerRef.current;
+    if (button && document.activeElement === button) {
+      button.blur();
+      unmountWhileFocusedRef.current?.();
+    }
+  }, [exiting, triggerRef]);
   return (
     <button
       ref={triggerRef}
       type="button"
-      className="session-context-chip"
+      className={`session-context-chip${exiting ? ' session-context-chip--exiting' : ''}`}
+      aria-hidden={exiting || undefined}
+      tabIndex={exiting ? -1 : undefined}
       aria-haspopup="dialog"
       aria-expanded={expanded}
       aria-label={status ? `This chat — ${status.text}` : 'This chat'}

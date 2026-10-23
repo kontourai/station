@@ -3,8 +3,33 @@
  */
 
 import { DEFAULT_NOTIFICATION_SOUND_PREFERENCES } from '@kontourai/station-contracts/device-settings';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, renderHook } from '@testing-library/react';
+import { createElement, type ReactNode } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+
+const host = vi.hoisted(() => ({ current: true }));
+const streams = vi.hoisted(
+  () =>
+    [] as Array<{
+      onMessage: (message: { event: string; data: string }) => void;
+    }>,
+);
+vi.mock('@kontourai/station-sdk', () => ({
+  fetchSSE: vi.fn((_url: string, options: (typeof streams)[number]) => {
+    streams.push(options);
+    return { close: vi.fn() };
+  }),
+}));
+vi.mock('../contexts/ApiBaseContext', () => ({
+  useApiBase: () => ({ apiBase: 'https://station.test' }),
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'https://station.test',
+    authorityKey: host.current ? 'a:1' : 'b:1',
+    isCurrent: host.current ? () => host.current : () => !host.current,
+  }),
+}));
 
 const { show } = vi.hoisted(() => ({ show: vi.fn() }));
 const { playDeliveredNotificationSound } = vi.hoisted(() => ({
@@ -22,6 +47,7 @@ vi.mock('../lib/notification-sounds', () => ({
 import {
   handleNotificationDeliveredToast,
   NOTIFICATION_TOAST_DISPLAY_MS,
+  useServerEvents,
 } from '../hooks/useServerEvents';
 
 describe('handleNotificationDeliveredToast (station#1100 review fix, HIGH)', () => {
@@ -181,4 +207,43 @@ describe('handleNotificationDeliveredToast for an enveloped delivery (#2587)', (
     ]);
     expect(metadata.detail).toBe('from builder · session session-1');
   });
+});
+
+test('a deferred envelope success cannot show an A delivery after the SSE authority switches to B', async () => {
+  show.mockClear();
+  host.current = true;
+  streams.length = 0;
+  const client = new QueryClient();
+  const hook = renderHook(() => useServerEvents(), {
+    wrapper: ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client }, children),
+  });
+  const deliver = (index: number, title: string) =>
+    streams[index]!.onMessage({
+      event: 'notification:delivered',
+      data: JSON.stringify({ title, metadata: { envelope: { v: 1 } } }),
+    });
+  try {
+    act(() => {
+      deliver(0, 'Private A result');
+      host.current = false;
+    });
+    hook.rerender();
+    await act(async () => deliver(1, 'Current B result'));
+    await vi.waitFor(() =>
+      expect(show).toHaveBeenCalledWith(
+        'Current B result',
+        undefined,
+        NOTIFICATION_TOAST_DISPLAY_MS,
+        undefined,
+        { envelope: { v: 1 } },
+      ),
+    );
+    expect(show.mock.calls.map(([message]) => message)).toEqual([
+      'Current B result',
+    ]);
+  } finally {
+    hook.unmount();
+    client.clear();
+  }
 });

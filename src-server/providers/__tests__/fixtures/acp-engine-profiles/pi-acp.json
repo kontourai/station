@@ -1,0 +1,34 @@
+{
+  "engine": "pi-acp",
+  "registry": {
+    "id": "pi-acp",
+    "version": "0.0.34",
+    "distribution": "npx",
+    "package": "pi-acp@0.0.34",
+    "args": []
+  },
+  "initialize": {
+    "protocolVersion": 1,
+    "agentInfo": {
+      "name": "pi-acp",
+      "title": "pi ACP",
+      "version": "0.0.34"
+    },
+    "agentCapabilities": {
+      "loadSession": true,
+      "promptCapabilities": {
+        "image": true
+      }
+    },
+    "authMethods": [
+      {
+        "id": "pi_terminal_login",
+        "name": "Launch pi in the terminal",
+        "description": "Start pi in an interactive terminal to configure API keys or login",
+        "type": "terminal",
+        "args": ["--terminal-login"],
+        "env": {}
+      }
+    ]
+  }
+}

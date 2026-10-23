@@ -110,6 +110,33 @@ describe('outboundQueueProjection (station#1224 restart hydration)', () => {
     ).toEqual(['held-away', 'later']);
   });
 
+  it('marks a held copy whose window is proven closed, and only that one', () => {
+    activeChatsStore.initChat('session-closed', {
+      agentSlug: 'assistant',
+      agentName: 'Assistant',
+      title: 'Chat',
+    });
+    projectOutboundQueueEntries([
+      {
+        ...turn('open-window', 'session-closed', 'held by a running window'),
+        heldBy: { bootId: 'running', heldAt: 1 },
+      },
+      {
+        ...turn('closed-window', 'session-closed', 'held by a closed one'),
+        heldBy: { bootId: 'closed', heldAt: 1 },
+        holderGone: true,
+      },
+    ]);
+    const rows =
+      activeChatsStore.getSnapshot()['session-closed']?.outboundQueuedTurns;
+    expect(rows?.find((row) => row.clientTurnId === 'open-window')).toEqual(
+      expect.not.objectContaining({ heldByClosedWindow: true }),
+    );
+    expect(
+      rows?.find((row) => row.clientTurnId === 'closed-window'),
+    ).toMatchObject({ heldElsewhere: true, heldByClosedWindow: true });
+  });
+
   it('restores the Project a chat was sending in when only its row survived', () => {
     projectOutboundQueueEntries([
       {

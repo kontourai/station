@@ -712,7 +712,9 @@
 
     "packages/sdk/src/task-user-input-references.ts",
 
-    "packages/sdk/src/__tests__/taskGraph-invalidation.test.tsx"
+    "packages/sdk/src/__tests__/taskGraph-invalidation.test.tsx",
+
+    "packages/sdk/src/engine-sign-in.ts"
   ],
 
   "checks": [

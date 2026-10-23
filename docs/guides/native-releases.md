@@ -221,8 +221,8 @@ rebuilds for the same reason. The ledger is read from `origin/main`, not the
 checkout, because rows land on `main` after the ship: the checkout at the
 source SHA can never contain the row for its own marker. A missing ref or
 malformed ledger fails the plan closed rather than reading as "no rows".
-A TestFlight failure reddens the Nightly run and opens the `main-health`
-tracker, but never blocks Android/macOS finality, the ledger, or the marker.
+A required TestFlight upload or internal-delivery failure reddens the Nightly
+run and opens the `main-health` tracker, but never blocks Android/macOS finality, the ledger, or the marker.
 The iOS matrix cell keeps `NOT_VERIFIED` evidence until a processed TestFlight
 channel receipt exists (#1016).
 
@@ -285,6 +285,80 @@ Android, macOS, and Windows matrix cells carry `requiredForPromotion: true` and 
 edit cannot silently demote a required platform, not properties the cohort derives at
 run time. This is only an available configured subset, and fleet/CLI
 completion remains `NOT_VERIFIED`.
+
+## macOS installer disk image
+
+Preview, Stable, and Nightly disk images open as an installer window: fixed
+660×400 icon view, toolbar, sidebar, path bar and status bar hidden, 128-point
+icons, the application on the left at (170, 210), and an `Applications` link on
+the right at (490, 210) over background art with a drag arrow. The
+[packager](../../ops/release/macos-notarized-artifacts.mjs) creates the image
+with one `dmgbuild` command (phase `DMG creation`). That command copies the
+sealed application with `ditto`, adds the link and background, writes the
+window layout into `.DS_Store`, and compresses to UDZO. Finder is never
+scripted, because Finder automation is unreliable on hosted runners.
+[`dmgbuild-settings.py`](../../ops/release/dmg/dmgbuild-settings.py) owns the
+layout. The packager passes `--no-hidpi` so the shipped background stays the
+committed two-resolution TIFF byte for byte.
+
+A nonzero `dmgbuild` exit gets the same bounded creation retry `hdiutil` had
+(three attempts, 5 s and 15 s backoff). `dmgbuild` drives `hdiutil` internally,
+so runner contention still surfaces as that exit. Timeouts, output overflow,
+and failures from any other program are never retried. One ten-minute
+large-artifact budget covers the copy and the compression. The older
+`ditto`-then-`hdiutil` path gave each step its own ten minutes.
+
+After notarization and stapling, the packager mounts the image read-only and
+admits the root only if it contains exactly four entries. `.DS_Store` must be a
+regular file. `.background.tiff` must be a regular file with the same SHA-256
+as the committed `ops/release/dmg/background.tiff`. `Applications` must be a
+symbolic link whose target is exactly `/Applications`. The application must be
+a real directory. Any extra, missing or differently typed entry fails the
+release before the mounted signature, bundle identity and Gatekeeper checks
+run. `dmgbuild` ignores the exit status of its internal `ditto` copy, so the
+settings file's `create_hook` runs `codesign --verify --deep --strict` on the
+copied application inside the still-writable image. A failed or partial copy
+makes `dmgbuild` detach the image and exit nonzero before signing or
+notarization; the later mounted checks still run.
+This check proves the image's structure, not how Finder draws it: window
+geometry stays outside its scope. In a mounted image on macOS 26 with the system in
+Dark Mode, Finder still painted the application and Applications names
+near-black on this background, and Light Mode uses dark names too, so the art
+paints a light plate behind each name. Recheck a real Finder window after
+changing the art or icon geometry.
+
+To change the art, edit
+[`render-background.swift`](../../ops/release/dmg/render-background.swift)
+(its geometry must match the settings file), then regenerate and commit the
+TIFF:
+
+```sh
+out="$(mktemp -d)"
+swift ops/release/dmg/render-background.swift "$out"
+tiffutil -cathidpicheck "$out/background.png" "$out/background@2x.png" \
+  -out ops/release/dmg/background.tiff
+```
+
+The mounted check reads the committed TIFF's digest at run time, so a
+regenerated background needs no separate pin.
+
+### DMG layout tool supply chain
+
+`dmgbuild` is the repository's only pip-installed tool. It is used only by the
+macOS jobs in `release.yml` and `nightly-native-stage.yml`, and is never
+shipped or imported by Station. Station has no Python dependency policy or
+Dependabot ecosystem for it. The boundary is instead fixed in
+[`requirements.txt`](../../ops/release/dmg/requirements.txt): `dmgbuild` and
+its two runtime dependencies, `ds-store` and `mac-alias`, at exact versions
+with each wheel's SHA-256. A secret-free step before signing creates a venv in
+`$RUNNER_TEMP` with the runner's `python3`, refuses Python older than 3.10, and
+runs `pip install --require-hashes --only-binary :all: --no-deps`. pip
+therefore installs only those three reviewed wheels, never builds an sdist
+and never resolves another package. A hash mismatch fails the job. `dmgbuild`
+itself then runs inside the signing step, with that step's environment and
+unlocked keychain, so the pinned wheel digests are the integrity control.
+Upgrading means reviewing the new wheels and replacing the versions and hashes
+together. Nothing re-pins automatically.
 
 ## Prebuilt portable server qualification
 
@@ -421,9 +495,13 @@ callers. Package-layout checks alone therefore do not establish a working
 AppImage startup; this source mismatch needs repair and an actual Linux launch.
 
 The staged server and `node_modules` are adjacent for ordinary Node module
-resolution once the correct entrypoint is selected. The host resolves `node`
-from its login-shell PATH; the dependency tree is bundled, not the Node
-executable. The [staging helper](../../scripts/lib/desktop-server-runtime.mjs)
+resolution once the correct entrypoint is selected. Desktop releases also ship
+the pinned `station-node` executable through Tauri's `externalBin`; `.deb` and
+`.rpm` place it under `usr/bin/station-node`, without claiming `/usr/bin/node`.
+The host uses the executable beside its own binary and preserves the user's
+PATH. See [packaged runtime](desktop-build.md#packaged-runtime) for the pinned
+archive, license and separate macOS Node signature. The
+[staging helper](../../scripts/lib/desktop-server-runtime.mjs)
 refuses missing or over-budget runtime inputs. That is packaging evidence,
 not proof that the current AppImage can start or execute a staged Agent.
 
@@ -569,7 +647,12 @@ candidate source SHA and IPA digest. A new upload records their association
 with the upload operation; a reconciled pre-existing build instead records
 `providerSourceSha: NOT_VERIFIED` and no provider IPA digest. Never attribute
 a newly rebuilt candidate to that existing provider binary. Group membership
-has its own readback receipt; physical installation remains separate.
+has its own readback receipt; physical installation remains separate. Ordinary
+Nightly additionally opts into external-group assignment, automatic tester
+notifications and TestFlight beta-review submission. This external step is
+non-blocking and retains its own warning/summary and provider receipt; missing
+setup or an Apple rejection does not fail required internal delivery. Internal
+cohort authority tags never opt in. See [Nightly external setup](mobile-release.md#nightly-external-testflight-distribution).
 
 ## Stage, inspect, publish, and roll back
 

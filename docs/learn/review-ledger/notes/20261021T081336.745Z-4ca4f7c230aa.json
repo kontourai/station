@@ -1,0 +1,7 @@
+{
+  "revision": "b7539d8c48ca49edbe1b10c566616a30ef5789a7",
+
+  "notes": [
+    {"path":"docs/design/session-tape-replay.md","note":"Round-3 chat polish: the dock title keeps its line (agent and engine wrap off it first); the browser outbox joins the one pending list above the composer, which yields to the draft in a short dock; the context card mounts in the chip's exit commit and fades under the composer; an empty stopped turn shows why when the person did not stop it; check-back timers wait past setTimeout's maximum in steps; check-back Approve answers 503 while delivery is stopped. Searched this document for dock header identity, pending/outbox queue, session context card, end-of-turn marker, composer reservation and check-back claims; it makes none that these change. No prose change.","inputs":["docs/design/session-tape-replay.md","src-ui/src/index.css"]}
+  ]
+}

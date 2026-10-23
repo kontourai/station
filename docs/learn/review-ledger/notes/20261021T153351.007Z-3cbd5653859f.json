@@ -1,0 +1,11 @@
+{
+  "revision": "027d62e45713a745f15d56570978a2c2184bd2c4",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Added 'Qualify a new engine'. Checked against acp-engine-qualification.process.test.ts and its harness (the probe, the turn, permission options, auth_required at probe, start and prompt, exit-on-start, slow initialize), connection-service runtimeConnectionFingerprint (the full ACP connection config) and withReadinessEvidence (receipt fingerprint match), and the 24h CONNECTION_SMOKE_FRESH_MS. The receipt has no engine version field. No live smoke was run.","inputs":["docs/reference/agent-smoke-confidence.md"]},
+
+    {"path":"docs/guides/testing.md","note":"vitest-resource-manifest.mjs gained one entry in the existing bounded spawn group (acp-engine-qualification.process.test.ts). The guide's claims about manifest groups and scheduling are unchanged and still accurate.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs","tests/screenshots.spec.ts"]},
+
+    {"path":"scripts/AGENTS.md","note":"vitest-resource-manifest.mjs gained one classified child-process test, which is the rule this file states. No claim changed.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

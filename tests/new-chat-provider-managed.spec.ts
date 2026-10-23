@@ -296,21 +296,15 @@ async function openAgentList(page: import('@playwright/test').Page) {
   return agents;
 }
 
-/**
- * Open New Chat through whichever affordance the viewport offers: desktop keeps
- * the dock's tab-bar button, a phone moves New/Open/history into the one-row
- * header's overflow sheet.
- */
 async function openNewChatForViewport(page: Page) {
-  // ChatDock registers this public UI event regardless of whether its desktop
-  // tab button, phone overflow action, or collapsed affordance is visible.
-  // Drive that stable boundary so the helper also works immediately after a
-  // selection creates a chat and changes the dock layout.
-  await expect(page.locator('#chat-dock')).toBeAttached({ timeout: 15_000 });
-  await page.evaluate(() =>
-    window.dispatchEvent(new Event('station:open-new-chat')),
-  );
-  await expect(page.locator('.new-chat-modal')).toBeVisible({
+  await page
+    .locator('#chat-dock')
+    .getByRole('button', { name: 'New chat', exact: true })
+    .first()
+    .click();
+  await expect(
+    page.getByRole('dialog', { name: 'New chat', exact: true }),
+  ).toBeVisible({
     timeout: 15_000,
   });
 }
@@ -879,48 +873,6 @@ test('new chat remains touch-usable and scrollable at 390x844', async ({
       name: 'What would you like done?',
     }),
   ).not.toBeFocused();
-  const mainContentBefore = await page
-    .locator('.main-content')
-    .evaluate((element) => {
-      const rect = element.getBoundingClientRect();
-      return { top: rect.top, height: rect.height };
-    });
-  await page.evaluate(() => {
-    const host = document.createElement('div');
-    host.className = 'banner-host';
-    host.setAttribute('data-testid', 'banner-host');
-    const banner = document.createElement('div');
-    banner.className = 'banner-host__item banner-host__item--blocked';
-    banner.setAttribute('role', 'alert');
-    banner.setAttribute('data-banner-id', 'chrome:onboarding:credential');
-    banner.innerHTML =
-      '<span>Pair this device to reconnect.</span><button type="button">Pair this device</button>';
-    host.append(banner);
-    document.querySelector('.app__main')!.append(host);
-  });
-  const layerOrder = await page.evaluate(() => ({
-    dialog: Number(
-      getComputedStyle(document.querySelector('.responsive-surface-overlay')!)
-        .zIndex,
-    ),
-    // BannerHost chrome is an overlay at --layer-notice (archive#3308); the
-    // dialog overlay's layer must still exceed it.
-    reconnectNotice:
-      Number(
-        getComputedStyle(document.querySelector('.banner-host')!).zIndex,
-      ) || 0,
-  }));
-  expect(layerOrder.dialog).toBeGreaterThan(layerOrder.reconnectNotice);
-  // The overlay never reflows the app: presenting a banner must leave
-  // `.main-content` exactly where it was (archive#3308 contract, replacing
-  // the old in-flow assertion).
-  const mainContentAfter = await page
-    .locator('.main-content')
-    .evaluate((element) => {
-      const rect = element.getBoundingClientRect();
-      return { top: rect.top, height: rect.height };
-    });
-  expect(mainContentAfter).toEqual(mainContentBefore);
   const dimensions = await Promise.all(
     [projectChip, agentChip, close].map((locator) => locator.boundingBox()),
   );

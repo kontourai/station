@@ -421,7 +421,7 @@ describe('promotion full-regression workflow', () => {
   test('gates every tagged release producer before artifact work starts', () => {
     const release = workflow('release.yml');
     const full = release.jobs?.['full-regression'] ?? {};
-    expect(full.needs).toEqual(['preflight']);
+    expect(full.needs).toEqual(['preflight', 'advisory']);
     expect(full.uses).toBe('./.github/workflows/full-regression.yml');
     expect(full.with?.source_sha).toBe(
       githubExpression('needs.preflight.outputs.sha'),

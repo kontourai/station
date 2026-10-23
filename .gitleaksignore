@@ -81,3 +81,8 @@ b78eecc87b8c0ac3c0ef4b864c9f73855b659e30:tests/input-request.spec.ts:generic-api
 # protects against malicious registry archives and grants no credential authority.
 # One historical noncredential match only; no file, rule or future-match exemption.
 2ff3dcfaff17eea0197f260fa06781a7d0071b41:.github/actions/setup-verified-pnpm/bootstrap.mjs:generic-api-key:25
+
+# Brian approved this exact historical synthetic fixture on 2026-10-22.
+# No provider-issued credential; current fixture is explicit noncredential text.
+# Approval: T3 63d2c37c-00d8-45df-b608-dbcdba53de1f, 2026-10-22T17:14:27.137Z.
+f5e4ad873375a1ffbb0123c1c56f24ffb0cd070b:src-server/routes/connections/__tests__/acp-sign-in.routes.test.ts:generic-api-key:57

@@ -20,7 +20,7 @@ export type DeviceToolInstallPhase =
   | 'publishing';
 
 export type DeviceToolFailure =
-  /** No npm Station can run was found beside its Node runtime or on PATH. */
+  /** A supported user Node installation with its own npm is unavailable. */
   | 'package-manager-unavailable'
   /** The package manager exited non-zero or timed out. */
   | 'install-failed'
@@ -71,7 +71,9 @@ export type DeviceHubProcessState =
   | { state: 'running'; version: string; startedAt: string }
   | { state: 'restarting'; attempt: number; retryAt: string }
   /** Restarts stopped after repeated failures; a person must start it again. */
-  | { state: 'crashed'; attempts: number; detail: string };
+  | { state: 'crashed'; attempts: number; detail: string }
+  /** A user-installed Node/npm prerequisite must be repaired before retrying. */
+  | { state: 'blocked'; detail: string };
 
 /** Where the device routes get their hub from. */
 export type DeviceHubSource =

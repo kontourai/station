@@ -71,6 +71,18 @@ export interface SessionTurnBoundaryRecord {
 export const SESSION_TURN_ACCEPTED_CAPACITY = 64;
 
 /**
+ * `session.exited.reason` for the sessions Station closes as it shuts down.
+ * That exit does not end a turn still in flight: its boundary row stays for
+ * the next boot, whose interrupted-turn recovery settles the turn exactly as
+ * after a crash. Retiring it here left the turn with no terminal at all.
+ * Only turn rows that recovery settles are kept
+ * ({@link SHUTDOWN_RETAINED_BOUNDARIES}): a session start left unresolved, or
+ * a turn that never invoked its engine, still retires on the exit, or it
+ * would hold the thread busy forever.
+ */
+export const ORCHESTRATION_SHUTDOWN_EXIT_REASON = 'orchestration_shutdown';
+
+/**
  * #2324: the boundary id prefix of a turn the ENGINE opened on its own
  * (`isProviderTriggeredTurn`). Such a turn has no send, so no claim ever
  * prepares or invokes it; its row is recorded straight into `accepted` when
@@ -79,6 +91,27 @@ export const SESSION_TURN_ACCEPTED_CAPACITY = 64;
  * (like `session-start-boundary:`), never by caller metadata.
  */
 const PROVIDER_TURN_BOUNDARY_PREFIX = 'provider-turn-boundary:';
+
+/** The id kind `preparedRecord` mints for a sent turn's row. */
+const TURN_BOUNDARY_KIND = 'turn-boundary';
+const TURN_BOUNDARY_PREFIX = `${TURN_BOUNDARY_KIND}:`;
+
+/**
+ * The turn rows a shutdown exit keeps for the next boot's interrupted-turn
+ * recovery: a sent turn and one the engine opened itself, in a state that
+ * recovery settles as interrupted (`decideTurnBoundaryReconcile`): it may
+ * have reached the engine. A `reserved` or `prepared` row never invoked
+ * one, and boot recovery only sets a prepared one aside, so those retire on
+ * the exit as on any other. The same lists are the SQL clause of
+ * `SESSION_TURN_TERMINAL_RETIREMENT_PREDICATE`.
+ */
+export const SHUTDOWN_RETAINED_BOUNDARIES = {
+  boundaryIdPrefixes: [TURN_BOUNDARY_PREFIX, PROVIDER_TURN_BOUNDARY_PREFIX],
+  states: ['invoking', 'accepted', 'indeterminate'],
+} as const satisfies {
+  boundaryIdPrefixes: readonly string[];
+  states: readonly BoundaryState[];
+};
 
 export function isProviderTurnBoundary(record: {
   boundaryId: string;
@@ -173,6 +206,11 @@ export interface SessionTurnBoundaryCoordinator {
     terminalCreatedAt: string;
     /** Session terminals use their persisted sequence; turn terminals retain timestamp ordering. */
     terminalEventId?: string;
+    /** Rows matching a prefix and a state are kept; the rest retire. */
+    retain?: {
+      boundaryIdPrefixes: readonly string[];
+      states: readonly BoundaryState[];
+    };
   }): SessionTurnBoundaryTransition;
   readInvocationTerminal?(
     threadId: string,
@@ -674,7 +712,7 @@ export function createSessionTurnBoundaryAuthority(options: {
     },
   ): ReturnType<SessionTurnBoundaryAuthority['claim']> => {
     const freshRecord = {
-      ...preparedRecord(threadId, now, 'turn-boundary'),
+      ...preparedRecord(threadId, now, TURN_BOUNDARY_KIND),
       state:
         reserve && options.coordinator.prepareIntent
           ? ('reserved' as const)
@@ -1181,6 +1219,12 @@ export function createSessionTurnBoundaryAuthority(options: {
             event.invocationId === undefined),
         terminalCreatedAt: event.createdAt,
         terminalEventId: event.eventId,
+        // Station's own shutdown closes the session, not the turn in it: the
+        // next boot's recovery needs the turn row (see the constant).
+        ...(event.method === 'session.exited' &&
+        event.reason === ORCHESTRATION_SHUTDOWN_EXIT_REASON
+          ? { retain: SHUTDOWN_RETAINED_BOUNDARIES }
+          : {}),
       });
     },
     prepareProviderTurn,
