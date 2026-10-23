@@ -6038,8 +6038,11 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/operator/telemetry-companion',
     createTelemetryCompanionRoutes({
-      requireOperator: (request) =>
-        projectMembershipAuthority(request).operator(),
+      requireOperator: async (request) => {
+        if (!isOperatorInPersonNotAgent(request))
+          throw new ProjectMembershipRefusal('forbidden');
+        await projectMembershipAuthority(request).operator();
+      },
       prerequisites: readTelemetryCompanionPrerequisites,
     }),
   );

@@ -48,8 +48,9 @@ pending; these commands do not implement that journey.
 
 ### Station host prerequisite API
 
-`GET /api/operator/telemetry-companion/prerequisites` is an operator-only,
-uncached read of the selected local container host. Paired callers additionally
+`GET /api/operator/telemetry-companion/prerequisites` is an uncached read for
+the operator in person, excluding agent-originated and internal-token callers.
+It probes the selected local container host. Paired callers additionally
 need `home:control`; that scope does not replace operator authorization. The
 route checks current operator authority before probing and before returning its
 result. It does not start Docker, pull images, create services or enable export.
