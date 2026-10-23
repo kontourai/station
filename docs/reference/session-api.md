@@ -139,7 +139,10 @@ read as the calling Session's owner within the caller's Project.
 The response is a foreground handle containing `conversationId`, `sessionId`,
 `providerTurnId`, the
 resolved Agent target, and an `ExecutionResolutionReceipt` describing the Environment,
-Agent, engine kind, provider, and honest model launch plan.
+Agent, engine kind, provider, and honest model launch plan. A validated continuation
+reports its server-read bound directory rather than the Project's current default.
+Changing that default affects new Sessions; continuing a qualified Session still
+requires current authorization for its recorded directory.
 
 A delegation's dispatch response (`POST /api/orchestration/delegations`) also
 carries `resolution.confinement` once its session has started (#2494). It is

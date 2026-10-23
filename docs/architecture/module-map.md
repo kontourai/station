@@ -2772,10 +2772,13 @@ the applicable page header. An already-visible strip
 and focused tab cause no extra reveal scroll. The host retains its tabbed
 presentation; the Basis renderer uses chromeless presentation to omit duplicate
 portable MCP App controls. Identity and workspace fields are collapsed by default.
-Task tab selection survives a temporary catalog loading boundary only for the
-same Station API and Task incarnation. Explicit Basis reveal refreshes the
-current authority-scoped Task Basis reads, including an already-mounted pane.
-Neither behavior preserves unsaved text across unmount or supplies effect authority.
+The nonsecret `taskView` URL parameter selects the Task view; absent or invalid
+values open Overview. It survives authority re-verification and is cleared when
+navigation changes the route. The protected Room provider is recreated for the
+current Station API, authority and Task incarnation. Explicit Basis reveal
+refreshes current authority-scoped Task Basis reads, including an already-mounted
+pane. Neither behavior preserves unsaved text across unmount or supplies effect
+authority.
 [ProjectTaskRoomRuntime](../../src-server/services/orchestration/project-task-room-runtime.ts)
 owns server edit planning, request/principal checks, per-subscriber projection,
 ephemeral cursor limits, working-state settlement and history composition.
