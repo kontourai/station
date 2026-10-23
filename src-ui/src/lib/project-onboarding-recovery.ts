@@ -36,7 +36,7 @@ export function removeProjectCreationRecovery(
   localStorage.removeItem(projectCreationRecoveryIdentity(scope));
 }
 
-export function documentImportRecoveryIdentity(
+function documentImportRecoveryIdentity(
   scope: ProjectRecoveryScope,
   projectId: string,
 ): string {

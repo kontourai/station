@@ -364,7 +364,7 @@ function ProjectRoomSession({
           )}
           {room.history.isError ? (
             <p role="alert">
-              Conversation history could not be loaded.{' '}
+              History could not be loaded.{' '}
               <Button
                 onClick={() => {
                   void room.history.refetch();
@@ -374,12 +374,12 @@ function ProjectRoomSession({
               </Button>
             </p>
           ) : room.history.isPending ? (
-            <SkeletonBlock count={2} label="Loading conversation" />
+            <SkeletonBlock count={2} label="Loading chat" />
           ) : (
             !messages.length && (
               <Empty
                 variant="compact"
-                label="Start a conversation with your project team."
+                label="Start a chat with your project team."
               />
             )
           )}
