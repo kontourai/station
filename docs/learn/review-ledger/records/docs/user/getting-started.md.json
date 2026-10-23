@@ -258,7 +258,11 @@
 
     "src-ui/src/components/modals/RepositoryProviderPicker.tsx",
 
-    "src-ui/src/lib/project-onboarding-recovery.ts"
+    "src-ui/src/lib/project-onboarding-recovery.ts",
+
+    "src-ui/src/workspace-panes/TaskRoomComposer.tsx",
+
+    "src-ui/src/workspace-panes/ProjectTaskRoomConversation.tsx"
   ],
 
   "checks": [

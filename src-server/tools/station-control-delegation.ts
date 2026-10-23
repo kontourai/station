@@ -8,6 +8,7 @@ import {
   parseEngineId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { AttentionRequestReference } from '@kontourai/station-contracts/attention';
+import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import {
   AGENT_PROFILE_CAPABILITIES,
@@ -407,6 +408,8 @@ export interface DelegateTaskInput {
   sessionId?: string;
   /** Task-owned authority checked inside provider start/turn effects; never public JSON. */
   taskRoomInvocationAdmission?: TaskRoomInvocationAdmission;
+  /** Runtime-resolved Task assets; never accepted as public inline bytes. */
+  taskRoomAttachments?: ChatAttachmentInput[];
   parentTaskId?: string;
   delegation?: AgentDelegationContext;
   /** #3323: see `AuthorityBearingForegroundMessageInput.delegationProvenance`. */
@@ -721,6 +724,8 @@ export interface DelegatedTaskEventsInput extends DelegatedTaskReferenceInput {
 export interface ContinueDelegatedTaskInput
   extends DelegatedTaskReferenceInput {
   taskRoomInvocationAdmission?: TaskRoomInvocationAdmission;
+  /** Runtime-resolved Task assets; never accepted as public inline bytes. */
+  taskRoomAttachments?: ChatAttachmentInput[];
   message: string;
   /**
    * `delegatedInputAnswers`: deliver `message` only as the answer to this
@@ -4890,6 +4895,8 @@ export async function continueDelegatedTask(
   if (!input.message.trim()) {
     throw new Error('Task follow-up message is required');
   }
+  if (input.taskRoomAttachments?.length && !input.taskRoomInvocationAdmission)
+    throw new Error('Task attachments require Task room invocation admission.');
   // A bound answer goes to the request's own Session. A model change can
   // start a successor Session before the turn's binding check runs, moving
   // the task off the question it answers, so the two are never combined.
@@ -4906,7 +4913,10 @@ export async function continueDelegatedTask(
     readAuthority,
     orchestrationService,
   );
-  if (input.taskRoomInvocationAdmission && selectedTarget.kind !== 'current')
+  if (
+    (input.taskRoomInvocationAdmission || input.taskRoomAttachments?.length) &&
+    selectedTarget.kind !== 'current'
+  )
     throw new ReceiverExecutionRefusal(
       'receiver_execution_authority_changed',
       'A Task room thread must continue on its original Station.',
@@ -4995,6 +5005,9 @@ export async function continueDelegatedTask(
     {
       conversationId: snapshot.conversationId,
       message: input.message,
+      ...(input.taskRoomAttachments?.length
+        ? { attachments: input.taskRoomAttachments }
+        : {}),
       ...(input.clientOrigin ? { clientOrigin: input.clientOrigin } : {}),
       ...(input.principal ? { principal: input.principal } : {}),
       ...(input.taskRoomInvocationAdmission?.clientTurnId
@@ -5357,6 +5370,8 @@ export async function delegateTask(
   orchestrationService?: OrchestrationService,
   remote?: RemoteStationForwarder,
 ): Promise<DelegatedTaskHandle> {
+  if (input.taskRoomAttachments?.length && !input.taskRoomInvocationAdmission)
+    throw new Error('Task attachments require Task room invocation admission.');
   if (
     input.taskRoomInvocationAdmission &&
     (input.target.environment.kind !== 'current' ||
@@ -6246,6 +6261,9 @@ export async function delegateTask(
         input: {
           threadId: sessionId,
           input: delegatePrompt,
+          ...(input.taskRoomAttachments?.length
+            ? { attachments: input.taskRoomAttachments }
+            : {}),
           // See the foreground sendTurn: the Agent's declared model is a
           // start-time selection, not a per-turn override.
           ...(input.target.model?.override
