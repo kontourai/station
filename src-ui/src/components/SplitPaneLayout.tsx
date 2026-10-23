@@ -1625,12 +1625,36 @@ export function SplitPaneCompanion({
   children,
   companion,
   sheet,
+  inspection,
+  className,
 }: {
-  children: React.ReactNode;
+  children?: React.ReactNode;
   companion?: React.ReactNode;
   sheet?: { label: string; onDismiss(): void };
+  className?: string;
+  /** A local supporting inspection slot; its content marks itself with data-companion-content. */
+  inspection?: {
+    containerFit: boolean;
+    rootRef?: React.Ref<HTMLDivElement>;
+    supportRef?: React.Ref<HTMLDivElement>;
+  };
 }) {
   const mobile = useIsMobile();
+  if (inspection)
+    return (
+      <div
+        ref={inspection.rootRef}
+        className={`split-pane-companion split-pane-companion--inspection${inspection.containerFit ? ' split-pane-companion--container-fit' : ''}${className ? ` ${className}` : ''}`}
+      >
+        <div
+          className="split-pane-companion__support"
+          ref={inspection.supportRef}
+        >
+          {companion}
+        </div>
+        <div className="split-pane-companion__main">{children}</div>
+      </div>
+    );
   return (
     <div
       className={`split-pane-companion${sheet ? ' split-pane-companion--detail' : ''}`}

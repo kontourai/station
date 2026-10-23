@@ -1,0 +1,7 @@
+{
+  "revision": "ba80db9cdc89551d2591059b04eacd9633607745",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Scoped review of new Task relationship SDK section: explicit authority scope, incarnation keys, old/new parent invalidation and late-result rejection match taskRelationships.ts and task-relationships client. SDK tests passed. Existing imported onboarding SDK material and production runtime/UI are outside this lane.","inputs":["docs/reference/sdk.md","packages/sdk/package.json","packages/sdk/package.json#/exports","src-server/services/projects/task-graph-service.ts","src-ui/src/views/project-page/MemberProjectPage.tsx","src-server/services/projects/project-membership-service.ts","packages/sdk/src/__tests__/publicBarrel.test.ts","packages/sdk/src/client/project-rooms.ts","packages/sdk/src/query-domains/projectRooms.ts","src-ui/src/views/project-page/ProjectRoom.tsx"]}
+  ]
+}

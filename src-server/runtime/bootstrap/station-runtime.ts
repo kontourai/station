@@ -1,10 +1,12 @@
 import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-contracts/deployment-authentication';
+import { isProjectKnowledgeRoot } from '@kontourai/station-contracts/knowledge-store';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { getBrandingProvider } from '../../providers/registries/registry.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
 import { GrokSessionSource } from '../../providers/sessions/grok-session-source.js';
 import { OpenCodeSessionSource } from '../../providers/sessions/opencode-session-source.js';
+import { engineSignIn } from '../../services/acp/engine-sign-in.js';
 import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 import { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
 import type { RelayInvitationOwner } from '../../services/connections/relay-invitation-owner.js';
@@ -43,6 +45,7 @@ import { ToolLibraryService } from '../../services/plugins/tool-library-service.
 import { deriveWorkspaceHomeRoleStatus } from '../../services/plugins/workspace-home-role-service.js';
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
 import { createProjectNativeToolLoader } from '../../services/projects/project-native-tools.js';
+import { hasProjectS3Sources } from '../../services/projects/project-s3-sources.js';
 import { projectMcpServers } from '../../services/projects/project-tools.js';
 import { NativeRelayEnrollmentJournal } from '../../services/relay/native-relay-enrollment-journal.js';
 import { ConnectionSigningKeyStore } from '../../services/ssh/connection-signing-key-store.js';
@@ -284,6 +287,7 @@ export async function loadStablePreToolPolicySpec(options: {
   return { spec, revision };
 }
 
+import { recordAdoptedBuiltinEngine } from './builtin-engine-adoption.js';
 import { primeEnginePrerequisites } from './engine-prerequisite-priming.js';
 import { adoptDetectedNativeEngines } from './native-engine-adoption.js';
 import { isHostedTenantExecutionRequired } from './runtime-tenant-context.js';
@@ -1010,6 +1014,7 @@ export class StationRuntime {
   });
   private ollamaAdapter = new OllamaAdapter();
   private orchestrationService!: OrchestrationService;
+  private projectRoomRuntime?: { close(): Promise<void> };
   private resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
   private attachedSessionFollowService?: AttachedSessionFollowService;
   private consoleBridgeService?: ConsoleBridgeService;
@@ -1769,11 +1774,22 @@ export class StationRuntime {
       ) !== null;
 
     const explicitConnectionId = appConfig.builtinAgentEngineConnectionId;
-    return resolveBuiltinAgentEngineBinding({
+    const binding = resolveBuiltinAgentEngineBinding({
       explicitConnectionId,
       stationChatReady,
       readyExternalEngines,
     });
+    // Record an adoption so the choice stops being a per-boot guess. Reading
+    // readiness again must never take back an engine that is already the
+    // built-in agent's — see the recorder's docblock for the failure this
+    // closes.
+    await recordAdoptedBuiltinEngine({
+      configLoader: this.configLoader,
+      explicitConnectionId,
+      binding,
+      logger: this.logger,
+    });
+    return binding;
   }
 
   /**
@@ -3575,7 +3591,9 @@ export class StationRuntime {
           this.deploymentAuthentication = undefined;
           this.localAccounts = undefined;
         });
-        await retire(() => {
+        await retire(async () => {
+          await this.projectRoomRuntime?.close();
+          this.projectRoomRuntime = undefined;
           this.projectMembership?.close();
           this.projectMembership = undefined;
         });
@@ -3847,11 +3865,11 @@ export class StationRuntime {
             const roots = await this.knowledgeStoreProvider.listRoots();
             return projectMcpServers(
               project,
-              roots.some(
-                (root) =>
-                  root.scope.kind === 'project' &&
-                  root.scope.projectSlug === slug,
-              ),
+              roots.some((root) => isProjectKnowledgeRoot(root, project.id)) ||
+                hasProjectS3Sources(
+                  this.configLoader.getProjectHomeDir(),
+                  project.id,
+                ),
             );
           },
           skillService: this.skillService,
@@ -4119,6 +4137,7 @@ export class StationRuntime {
     await attempt(() => this.discordGatewayService.stop());
     await attempt(() => this.pluginDraftService?.dispose());
     this.pluginDraftService = undefined;
+    await attempt(() => engineSignIn()?.dispose());
     // #2443: route composition may have built these before the failure. The
     // same order as shutdown(): browsers, then device sessions (their
     // producers read the hub the toolchain stops), SSH device hosts, the
@@ -4420,6 +4439,7 @@ export class StationRuntime {
       notificationService,
       kitLifecycleReady,
       projectTaskRoomRuntime,
+      projectRoomRuntime,
       browserService,
       deviceToolchainService,
       deviceSessions,
@@ -4430,6 +4450,9 @@ export class StationRuntime {
       notificationDeliveryRouter,
       serverUpdate,
     } = configureRuntimeRoutes({
+      retainProjectRoomRuntime: (runtime) => {
+        this.projectRoomRuntime = runtime;
+      },
       relayInvitationOwner: this.relayInvitationOwner,
       projectMembership: this.projectMembership?.service,
       projectSharedTasks: this.projectMembership?.sharedTasks,
@@ -4547,6 +4570,7 @@ export class StationRuntime {
     this.notificationService = notificationService;
     this.kitLifecycleReady = kitLifecycleReady;
     this.projectTaskRoomRuntime = projectTaskRoomRuntime;
+    this.projectRoomRuntime = projectRoomRuntime;
     this.browserService = browserService;
     this.deviceToolchainService = deviceToolchainService;
     this.deviceSessions = deviceSessions;
@@ -4575,6 +4599,8 @@ export class StationRuntime {
         agentSpecs: this.agentSpecs,
         getProject: (slug) => this.projectService.getProject(slug),
         listRoots: () => this.knowledgeStoreProvider.listRoots(),
+        hasAdditionalKnowledgeSources: (projectId) =>
+          hasProjectS3Sources(this.configLoader.getProjectHomeDir(), projectId),
         loadTools: (slug, spec) =>
           this.framework.loadTools(slug, spec, {
             configLoader: this.configLoader,
@@ -4601,6 +4627,10 @@ export class StationRuntime {
       agentHooksMap: this.agentHooksMap,
       approvalRegistry: this.approvalRegistry,
       configLoader: this.configLoader,
+      // The projected read seam: the reserved Station identity's engine
+      // binding lives in the runtime, not in its stored record (§7.1.1), so
+      // every reader — including the tool-catalog route — must see it.
+      loadProjectedAgent: (slug) => this.agentService.getAgent(slug),
       get appConfig() {
         return runtime.appConfig;
       },
@@ -5089,6 +5119,8 @@ export class StationRuntime {
       failures.push(error);
     }
     try {
+      await this.projectRoomRuntime?.close();
+      this.projectRoomRuntime = undefined;
       this.projectMembership?.close();
       this.projectMembership = undefined;
     } catch (error) {
@@ -5160,6 +5192,12 @@ export class StationRuntime {
     try {
       this.pluginDraftService?.dispose();
       this.pluginDraftService = undefined;
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      // A running engine sign-in owns a child process or a host terminal.
+      engineSignIn()?.dispose();
     } catch (error) {
       failures.push(error);
     }

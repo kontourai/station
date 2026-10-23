@@ -532,6 +532,50 @@ first-app setup before an authorized upload.
 These steps are provider/account prerequisites, not a reason to infer
 anti-abuse intent or claim that this review provisioned them.
 
+## Nightly external TestFlight distribution
+
+Ordinary Nightly publication opts into external testing after the required
+upload, processing and internal-group readback succeed. Stable, Beta, staging,
+and the dispatch-only internal TestFlight cohort do not opt in.
+
+Create an external tester group for the Nightly app, invite its testers, and
+set its ID as `TESTFLIGHT_EXTERNAL_GROUP_ID`, or its exact name as
+`TESTFLIGHT_EXTERNAL_GROUP_NAME`, in the `ios-nightly` GitHub Environment.
+Name lookup requires exactly one external group for that app; absent or
+ambiguous matches warn without distributing. When both are set, the ID is
+used and the name must match. The pipeline verifies that both the group and the exact uploaded
+build belong to the expected app; it never selects an arbitrary latest build
+or creates a group. Configure the app's beta description, feedback email,
+review contact and any required reviewer access in App Store Connect first.
+Apple validates these prerequisites when the build is submitted. See Apple's
+[external tester instructions](https://developer.apple.com/help/app-store-connect/test-a-beta-version/invite-external-testers/).
+
+The uploader's `distribute-external` command enables automatic tester
+notifications and verifies the setting, submits a build that is ready for beta
+submission, then adds it to the configured external group and reads membership
+back. A repeat run preserves an existing pending or approved review. It only
+adds access to the selected build; older builds are not expired or removed.
+Apple controls review timing and approval. This is TestFlight beta review,
+not submission of an App Store version for public release.
+
+External distribution is **non-blocking**. Missing configuration, missing
+review information, compliance holds, rejection or API failures produce a
+workflow warning and summary without failing an otherwise successful Nightly.
+The optional step has a five-minute timeout; interrupted attempts can retain
+an incomplete checkpoint rather than a confirmed provider outcome.
+The existing required upload and internal-group checks still fail delivery
+when they fail. Inspect `testflight-external-distribution.json` in the normal
+TestFlight artifact for the exact build/group, last attempted phase, observed
+external state, submission state when returned, and any error. A submitted or
+pending review is not approval; verified group membership is not installation.
+The workflow does not wait for a review decision or automatically retry a
+rejected build. After resolving a failure, inspect Apple state before rerunning;
+the command reconciles current state before creating a submission.
+
+Testers can enable **Automatic Updates** for Station Nightly in TestFlight.
+That device setting is separate from the pipeline's automatic notification
+setting and cannot be forced by CI. See [Apple's TestFlight instructions](https://testflight.apple.com/).
+
 ## Cutting a release and verifying store upload landed
 
 Follow [release-rings.md](./release-rings.md#publish-a-preview) to tag and

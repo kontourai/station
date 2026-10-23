@@ -6,7 +6,9 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 
 /**
- * The activity dropdown's per-session keycaps (#1649).
+ * The working chats' per-session keycaps (#1649). The rows were the bar's
+ * "N chats working" dropdown; they are the first rows of the dock's one More
+ * menu now, and the count rides the inbox toggle or that menu's trigger.
  *
  * These rows used to render a literal `⌘{n}`. `dock.session1`…`dock.session9`
  * are Cmd-N on macOS and Ctrl-N everywhere else, so on Windows and Linux the
@@ -51,14 +53,17 @@ const active = (id: string, title: string) => ({
   status: 'sending',
 });
 
-describe('activity dropdown per-session chords (#1649)', () => {
+const openMore = () =>
+  fireEvent.click(screen.getByRole('button', { name: /^More dock actions/ }));
+
+describe('working chat rows show per-session chords (#1649)', () => {
   test('each row shows the chord the registry reports, not a Mac keycap', () => {
     const { container } = renderHeader([
       active('a', 'First'),
       active('b', 'Second'),
     ]);
 
-    fireEvent.click(screen.getByRole('button', { name: '2 chats working' }));
+    openMore();
     const badges = Array.from(
       document.querySelectorAll('[role=menuitem] .action-overflow__shortcut'),
     ).map((node) => node.textContent);
@@ -80,7 +85,7 @@ describe('activity dropdown per-session chords (#1649)', () => {
       active('c', 'Third'),
     ]);
 
-    fireEvent.click(screen.getByRole('button', { name: '3 chats working' }));
+    openMore();
     const badges = Array.from(
       document.querySelectorAll('[role=menuitem] .action-overflow__shortcut'),
     ).map((node) => node.textContent);
@@ -93,7 +98,7 @@ describe('activity dropdown per-session chords (#1649)', () => {
     ).toBeNull();
   });
 
-  test('a background-only session appears in the activity badge and list', () => {
+  test('a background-only session counts as working and gets a row', () => {
     renderHeader([
       {
         id: 'background',
@@ -106,13 +111,14 @@ describe('activity dropdown per-session chords (#1649)', () => {
         },
       },
     ]);
+    // No inbox toggle in this harness (no workspace controls), so the count
+    // rides the More trigger.
     expect(
-      screen.getByRole('button', { name: '1 chat working' }),
+      screen.getByRole('button', {
+        name: 'More dock actions — 1 chat working',
+      }),
     ).not.toBeNull();
-    expect(
-      screen.getByRole('button', { name: '1 chat working' })?.textContent,
-    ).toContain('1');
-    fireEvent.click(screen.getByRole('button', { name: '1 chat working' }));
+    openMore();
     expect(
       screen.getByRole('menuitem', { name: 'Background research' }),
     ).toBeTruthy();

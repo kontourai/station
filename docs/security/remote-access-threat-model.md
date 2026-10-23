@@ -164,6 +164,39 @@ malformed identity never produce verified provenance.
 | Terminal or voice `WS /__station/health` | Identity-only; no business session | Identity-only; no business session | Identity-only; no business session |
 | Other terminal or voice WebSocket paths | Existing local flow | Closed before session allocation | Requires the first-frame protocol below |
 
+Account-bound Knowledge access is limited to GET/HEAD source capabilities,
+root and adapter listings, record listings/details, graph reads and exact
+import-original downloads. Originals require current durable Project membership
+and the original source registration; receipt observation remains operator-only.
+The runtime resolves the same current
+account and Project membership used by Project reads before admitting a root.
+Personal file roots are withheld; the conversation projection retains its
+per-caller session reader. Registry/path management and HTTP member writes
+remain denied. No additional index, migration or host-path capability follows
+from this read allowlist.
+
+When the default-off experimental S3 flag is enabled, separate Knowledge leaves
+admit current Project readers to source metadata, a bounded selected-prefix page
+and one ETag-pinned object. A source is an explicit operator grant to use a named
+host AWS profile for that Project's prefix; it is not a fallback to another
+person's connected account. Profile discovery, attachment and disconnect remain
+operator-only. Bucket owner/prefix/size/time limits and current authority are
+checked in the source owner and again at response release. S3 never grants a
+mount, execution path or object write/delete. Real AWS acceptance remains
+outstanding; see [the experimental source contract](../guides/knowledge.md#experimental-read-only-s3-prefixes).
+
+Task relationship routes compose current transport authority with a live local-account
+session or supported account-bound Device standing witness. Account members may read
+only individually shared Task incarnations in a currently readable Project; a shared
+parent does not reveal private children or their count. Work chats additionally require
+current canonical Conversation lineage and reader access. Ordinary account membership
+does not authorize relationship mutations. Linking neither publishes a Task or private
+conversation nor grants execution.
+
+Previously verified cookie sessions require the provider's synchronous live witness at
+relationship commit/delivery seams; missing support, revoked/expired sessions and
+pending enrollment fail closed. A historical authenticated result alone is insufficient.
+
 The account-authentication exception is specified in the
 [deployment authentication guide](../guides/deployment-authentication.md).
 With authentication unconfigured, that router reports unavailable (`501`),
@@ -802,6 +835,26 @@ raw CLI output is private. Saved Claude profiles override both the config root
 and secure-store root so an ambient Keychain namespace cannot select another
 profile's account.
 
+Engines run as commands (the `/acp/connections/:id/sign-in*` and
+`/credentials/:name` leaves, [acp-sign-in.ts](../../src-server/routes/connections/acp-sign-in.ts))
+have no profiles: their sign-in acts on the engine's own login on the host.
+Starting, reading or cancelling one, and storing or removing an engine key, are
+`engine:login` leaves with the same operator exception; a request that may be
+an agent's is refused. A terminal sign-in runs the connection's own program
+with arguments taken only from the engine's live handshake, never from the
+request, so a paired device also needs both `coding:exec` and
+`terminal:operate` to start it; attaching also needs `terminal:operate`. Its
+session is closed at a 15-minute deadline and its terminal reopens only while
+it runs (`attachOnly`), never as a fresh shell. Any other
+method goes to ACP `authenticate` on a short-lived process with a five-minute
+deadline; only https links from its stderr are relayed, and the server opens
+none. The attempt read is `engine:login` because it carries those links. A
+stored key lives in `security/engine-credentials.json` (0600, its own document,
+not the tool-server store), is accepted only for a variable the built-in
+descriptor lists, is never returned or logged, and is added only to that
+connection's engine processes and status command. Station still answers no
+engine's credential callback (ADR 0013).
+
 Quota reads remain `access:manage`: they borrow a selected account's stored token
 for an outbound provider request. An engine-login grant alone admits neither
 quota reads nor account creation or manual enrolment metadata. Activity uses the existing management-scoped rollup API even for local-only
@@ -1083,8 +1136,12 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   code, `command-not-granted`, and nothing saved or run. It covers exactly:
   - `POST /acp/connections`, and `PUT /acp/connections/:id` when `command`,
     `args` or `cwd` change (an empty `args` or `cwd` is the same as none;
-    renaming, toggling, listing, removing and reconnecting are unchanged;
-    reconnect re-probes the stored command and cannot change it);
+    renaming, toggling, listing, removing, reconnecting and checking are
+    unchanged; reconnect and `POST /acp/connections/:id/check` re-probe the
+    stored command and cannot change it);
+  - `POST /acp/registry/:id/install` for a public agent registry listing,
+    whose program name and arguments come from the registry rather than from
+    Station's own catalogue (adding a built-in engine is unchanged);
   - `POST /integrations` and `PUT /integrations/:id` when `command` or `args`
     are set or change, when a record that holds a command but did not launch it
     (a URL transport) is changed to launch it, and when any value is submitted

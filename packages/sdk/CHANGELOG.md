@@ -1,5 +1,16 @@
 # @kontourai/station-sdk
 
+## 0.12.1
+
+### Patch Changes
+
+- c871100: Type the configuration, model and tool-approval host contracts. Station's
+  in-process plugin adapter now binds core configuration, model catalog,
+  Dock-entry state, command dispatch and approvals, and forwards conversation
+  list Agent selection. Host support depends on the Station application version.
+- @kontourai/station-contracts@0.12.1
+  - @kontourai/station-shared@0.12.1
+
 ## 0.12.0
 
 ### Minor Changes

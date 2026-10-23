@@ -2281,3 +2281,9 @@ mod tests {
         assert_eq!(receipt.status, StationTrustStatus::Revoked);
     }
 }
+
+#[cfg(all(test, not(mobile)))]
+#[test]
+fn keyring_service_is_registered() {
+    crate::native_secure_entry::assert_registered_service(TRUST_KEYRING_SERVICE);
+}

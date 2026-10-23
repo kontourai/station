@@ -1,0 +1,7 @@
+{
+  "revision": "d74a676547da0b7b7f9c48823ddab97fb63ecfa2",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.webm","note":"index.css change since this capture's last review is a CSS comment only (the motion comment no longer lists the context meter); no rule changed, so the captured rendering is unaffected.","inputs":["docs/learn/media/inspect-request.webm","src-ui/src/index.css"]}
+  ]
+}

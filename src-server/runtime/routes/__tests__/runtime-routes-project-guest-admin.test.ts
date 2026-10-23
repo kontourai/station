@@ -34,6 +34,7 @@
  * No paid models, no mail: invitations are single-use links (`email:
  * null`), acceptance travels the real `accept-invitation` route.
  */
+import crypto from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -44,21 +45,35 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
+import { S3Client } from '@aws-sdk/client-s3';
+import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
+import { humanPrincipal } from '@kontourai/station-contracts/principal';
+import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  createGateTestRegistry,
+  GateTestAdapter,
+} from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { readStreamUntil } from '../../../__test-utils__/sse-helpers.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
+import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
 import { loadDeploymentAuthentication } from '../../../services/identity/deployment-authentication-loader.js';
 import { deploymentAccountPrincipal } from '../../../services/identity/deployment-authentication-service.js';
 import { loadLocalAccounts } from '../../../services/identity/local-account-runtime.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
+import { EventStore } from '../../../services/orchestration/event-store.js';
+import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
 import { ProjectManifestStore } from '../../../services/projects/project-manifest-store.js';
 import { createProjectMembershipRuntime } from '../../../services/projects/project-membership-runtime.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
+import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
 import { DevicePairingError } from '../../../services/ssh/device-pairing-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import {
@@ -230,7 +245,11 @@ describe('project guest administration over the production composition', () => {
     process.env.STATION_ROOT = join(owned, 'root');
     process.env.ALLOWED_ORIGINS = ORIGIN;
   });
-  afterEach(() => {
+  const roomClosers: (() => Promise<void>)[] = [];
+  const agentClosers: (() => Promise<void>)[] = [];
+  afterEach(async () => {
+    for (const close of roomClosers.splice(0)) await close();
+    for (const close of agentClosers.splice(0)) await close();
     if (ambientHome === undefined) delete process.env.STATION_HOME;
     else process.env.STATION_HOME = ambientHome;
     if (ambientRoot === undefined) delete process.env.STATION_ROOT;
@@ -242,7 +261,7 @@ describe('project guest administration over the production composition', () => {
       rmSync(directory, { recursive: true, force: true });
   });
 
-  async function setup() {
+  async function setup(withAgent = false, useLocalAccounts = false) {
     const owned = directories[directories.length - 1];
     const homeDir = join(owned, 'data');
     mkdirSync(join(homeDir, 'security'), { mode: 0o700, recursive: true });
@@ -256,6 +275,7 @@ describe('project guest administration over the production composition', () => {
     if (!authentication) throw new Error('fixture provider failed to load');
 
     const storage = new FileStorageAdapter(homeDir);
+    const knowledgeStoreProvider = new KnowledgeStoreProvider(storage);
     const manifests = new ProjectManifestStore(homeDir, storage);
     const projectService = new ProjectService(storage, manifests);
     const membership = createProjectMembershipRuntime(
@@ -264,7 +284,7 @@ describe('project guest administration over the production composition', () => {
       storage,
     );
     const localAccounts = await loadLocalAccounts(
-      { publicOrigin: 'http://localhost:4321' },
+      { publicOrigin: useLocalAccounts ? ORIGIN : 'http://localhost:4321' },
       { stationId: STATION_ID, homeDirectory: homeDir },
       membership.service,
     );
@@ -279,13 +299,83 @@ describe('project guest administration over the production composition', () => {
     const app = new Hono();
     // A real bus, so /events relays through the production gates.
     const eventBus = new EventBus();
+    const adapter = new GateTestAdapter();
+    const start = vi.spyOn(adapter, 'startSession');
+    const send = vi.spyOn(adapter, 'sendTurn');
+    let sessions: OrchestrationService | undefined;
+    let beforeSessionResolve: (() => Promise<void>) | undefined;
+    if (withAgent) {
+      const events = new EventStore(
+        join(homeDir, 'room-provider-events.sqlite'),
+      );
+      const live = new Set<string>();
+      vi.spyOn(adapter, 'hasSession').mockImplementation(
+        async (id?: string) => id !== undefined && live.has(id),
+      );
+      start.mockImplementation(async (input) => {
+        live.add(input.threadId);
+        const session = {
+          provider: 'claude' as const,
+          threadId: input.threadId,
+          status: 'ready' as const,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          metadata: input.metadata,
+          cwd: input.cwd,
+        };
+        adapter.events.push({
+          eventId: crypto.randomUUID(),
+          provider: 'claude',
+          threadId: input.threadId,
+          method: 'session.started',
+          sessionId: input.threadId,
+          createdAt: session.createdAt,
+          metadata: input.metadata,
+        });
+        await vi.waitFor(() =>
+          expect(events.findSessionOwnerUserId(input.threadId)).toBe(
+            input.metadata?.userId,
+          ),
+        );
+        return session;
+      });
+      sessions = new OrchestrationService({
+        adapterRegistry: createGateTestRegistry(adapter),
+        eventBus,
+        eventStore: events,
+        adoptionLedger: events.createAdoptionLedger(),
+        resolveSessionAgent: async (input) => {
+          const before = beforeSessionResolve;
+          beforeSessionResolve = undefined;
+          await before?.();
+          return createSessionAgentResolver({
+            loadAgentSpec: async () => ({ name: 'Room Agent', prompt: '' }),
+            resolveToolServer: async () => null,
+            resolveSkillDir: async () => null,
+          })(input);
+        },
+        logger: { debug() {}, warn() {} },
+      });
+      agentClosers.push(async () => {
+        await sessions!.shutdown();
+        events.close();
+      });
+    }
+
+    const graph = new TaskGraphService(homeDir, {
+      resolveProjectWorkspace: () => undefined,
+    });
     const context = deepStub({
       projectMembership: membership.service,
-      projectSharedTasks: undefined,
-      deploymentAuthentication: authentication,
+      projectSharedTasks:
+        useLocalAccounts || withAgent ? membership.sharedTasks : undefined,
+      deploymentAuthentication: useLocalAccounts
+        ? localAccounts
+        : authentication,
       localAccounts,
       applicationSessions,
       storageAdapter: storage,
+      knowledgeStoreProvider,
       projectService,
       app,
       port: 4321,
@@ -303,7 +393,39 @@ describe('project guest administration over the production composition', () => {
       },
       logger: { debug() {}, info() {}, warn() {}, error() {} },
       activeAgents: new Map(),
-      agentService: { listAgents: () => [] },
+      agentService: {
+        listAgents: () => [],
+        ...(withAgent
+          ? {
+              getAgent: async () => ({
+                name: 'Room Agent',
+                prompt: '',
+                execution: { agentConnectionId: engineConnectionId('claude') },
+              }),
+            }
+          : {}),
+      },
+      ...(sessions
+        ? {
+            orchestrationService: sessions,
+            getLiveAppConfig: () => ({}),
+            providerService: { listProviderConnections: () => [] },
+            connectionService: {
+              checkGatedModelConnectionIds: () => new Map(),
+              getConnection: async () => ({
+                id: 'claude',
+                name: 'Claude',
+                kind: 'agent',
+                type: 'claude',
+                enabled: true,
+                status: 'ready',
+                capabilities: ['agent-runtime'],
+                config: { provider: 'claude' },
+                prerequisites: [],
+              }),
+            },
+          }
+        : {}),
       agentMetadataMap: new Map(),
       agentFixedTokens: new Map(),
       agentTools: new Map(),
@@ -327,7 +449,7 @@ describe('project guest administration over the production composition', () => {
       ),
       environmentSecurityService: security,
       eventBus,
-      taskGraphService: { listTasks: () => [] },
+      taskGraphService: graph,
     });
     const result = configureRuntimeRoutesProduction(
       context as unknown as Parameters<
@@ -335,6 +457,7 @@ describe('project guest administration over the production composition', () => {
       >[0],
     );
     await result.kitLifecycleReady;
+    roomClosers.push(() => result.projectRoomRuntime.close());
 
     const request = (path: string, init: RequestInit = {}) =>
       app.request(`${ORIGIN}${path}`, init);
@@ -369,7 +492,9 @@ describe('project guest administration over the production composition', () => {
         requesterPosition: 'unproven',
         source: 'same-origin',
         accountCandidate: {
-          issuer: PROVIDER_ISSUER,
+          issuer: useLocalAccounts
+            ? localAccounts.service.describe().issuer
+            : PROVIDER_ISSUER,
           subject,
           displayName: 'Guest Person',
         },
@@ -381,7 +506,9 @@ describe('project guest administration over the production composition', () => {
         { ...operatorApproval },
         {
           principalId: deploymentAccountPrincipal(
-            PROVIDER_ISSUER,
+            useLocalAccounts
+              ? localAccounts.service.describe().issuer
+              : PROVIDER_ISSUER,
             subject,
             'Guest Person',
           ).id,
@@ -431,8 +558,9 @@ describe('project guest administration over the production composition', () => {
         }),
       );
       expect(enabled.status, await enabled.clone().text()).toBe(200);
-      const scope = (await readJson<{ data: { scope: unknown } }>(enabled)).data
-        .scope;
+      const scope = (
+        await readJson<{ data: { scope: ProjectMembershipScope } }>(enabled)
+      ).data.scope;
       const invited = await request(
         `/api/projects/${slug}/access/invitations`,
         ownerHeaders({
@@ -465,13 +593,25 @@ describe('project guest administration over the production composition', () => {
 
     return {
       app,
+      graph,
       eventBus,
+      homeDir,
+      beforeSessionResolve: (effect: () => Promise<void>) => {
+        beforeSessionResolve = effect;
+      },
+      adapter,
+      start,
+      send,
+      sessions,
       request,
       security,
       authentication,
       operatorCredential,
       projectService,
+      knowledgeStoreProvider,
       membership,
+      localAccounts,
+      storage,
       ownerHeaders,
       operatorHeaders,
       pairAccountBound,
@@ -479,6 +619,755 @@ describe('project guest administration over the production composition', () => {
       shareWithGuestAdmin,
     };
   }
+
+  test('real local accounts read only individually shared children through exact Device leaves', async () => {
+    const h = await setup(false, true);
+    const project = await h.projectService.createProject({
+      name: 'Local relationships',
+      slug: 'local-relationships',
+    });
+    const bootstrap = {
+      current: async () => ({
+        principal: humanPrincipal('fixture', 'operator', 'Operator'),
+        verifiedEmails: [],
+      }),
+      operator: async () => {},
+    };
+    const enabled = await h.membership.service.enable(
+      project.slug,
+      project.id,
+      bootstrap,
+    );
+    const people: {
+      cookie: string;
+      paired: ReturnType<typeof h.pairAccountBound>;
+      authenticated: Extract<
+        Awaited<ReturnType<typeof h.localAccounts.service.authenticate>>,
+        { kind: 'authenticated' }
+      >;
+    }[] = [];
+    for (const username of ['relationalice', 'relationbob']) {
+      const invitation = await h.membership.service.invite(
+        enabled.scope,
+        {
+          email: null,
+          role: 'viewer',
+          expiresAt: new Date(Date.now() + 3600000).toISOString(),
+        },
+        bootstrap,
+      );
+      const response = await h.localAccounts.service.handle(
+        new Request(`${ORIGIN}/api/account-auth/sign-up/username`, {
+          method: 'POST',
+          headers: {
+            Origin: ORIGIN,
+            'Content-Type': 'application/json',
+            'x-station-invitation': invitation.token,
+          },
+          body: JSON.stringify({
+            username,
+            password: 'Relationship password 12345',
+            name: username,
+          }),
+        }),
+        '/sign-up/username',
+      );
+      expect(response.status, await response.clone().text()).toBe(200);
+      const login = await h.localAccounts.service.handle(
+        new Request(`${ORIGIN}/api/account-auth/sign-in/username`, {
+          method: 'POST',
+          headers: { Origin: ORIGIN, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username,
+            password: 'Relationship password 12345',
+          }),
+        }),
+        '/sign-in/username',
+      );
+      expect(login.status, await login.clone().text()).toBe(200);
+      const cookie = login.headers
+        .getSetCookie()
+        .map((value) => value.split(';')[0])
+        .join('; ');
+      const authenticated = await h.localAccounts.service.authenticate(
+        new Request(ORIGIN, { headers: { Cookie: cookie } }),
+      );
+      if (authenticated.kind !== 'authenticated')
+        throw new Error(`real local login failed: ${authenticated.kind}`);
+      expect(
+        h.localAccounts.service.captureCurrentSession(new Request(ORIGIN))(),
+      ).toBe(false);
+      const verifiedRequest = new Request(ORIGIN, {
+        headers: { Cookie: cookie },
+      });
+      await h.localAccounts.service.authenticate(verifiedRequest);
+      expect(
+        h.localAccounts.service.captureCurrentSession(verifiedRequest)(),
+        JSON.stringify(authenticated.session),
+      ).toBe(true);
+      await h.membership.service.accept(invitation.token, {
+        current: async () => ({
+          principal: authenticated.principal,
+          verifiedEmails: [],
+        }),
+        operator: async () => {},
+      });
+      const paired = h.pairAccountBound(
+        username,
+        GUEST_GRANT,
+        authenticated.session.subject,
+      );
+      people.push({ cookie, authenticated, paired });
+    }
+    const parent = await h.graph.createTask({
+      projectId: project.id,
+      title: 'Shared parent',
+    });
+    const child = await h.graph.createTask({
+      projectId: project.id,
+      title: 'Private child title',
+    });
+    const access = {
+      expectedProject: { id: project.id, createdAt: project.createdAt },
+      canonicalProject: () => project,
+      canReadTask: () => true,
+      canMutateTask: () => true,
+      canReadConversation: () => false,
+    };
+    await h.graph.setTaskParent(
+      {
+        operationId: 'seed-parent',
+        child: { taskId: child.id, taskCreatedAt: child.createdAt },
+        parent: { taskId: parent.id, taskCreatedAt: parent.createdAt },
+        expectedRevision: 0,
+      },
+      access,
+    );
+    const share = (task: typeof parent) =>
+      h.membership.sharedTasks.share({
+        scope: enabled.scope,
+        taskId: task.id,
+        taskCreatedAt: task.createdAt,
+        sharedBy: humanPrincipal('fixture', 'operator', 'Operator').id,
+      });
+    share(parent);
+    const url = `/api/tasks/${parent.id}/children?taskCreatedAt=${encodeURIComponent(parent.createdAt)}`;
+    const read = (index: number, withCookie = true) =>
+      h.request(url, {
+        headers: {
+          Authorization: `Bearer ${people[index]!.paired.credential}`,
+          ...(withCookie ? { Cookie: people[index]!.cookie } : {}),
+        },
+      });
+    for (const index of [0, 1]) {
+      const response = await read(index);
+      expect(response.status, await response.clone().text()).toBe(200);
+      expect(
+        (await readJson<{ data: { children: unknown[] } }>(response)).data
+          .children,
+      ).toEqual([]);
+    }
+    share(child);
+    expect(
+      (
+        await readJson<{ data: { children: { title: string }[] } }>(
+          await read(0),
+        )
+      ).data.children.map((t) => t.title),
+    ).toEqual(['Private child title']);
+    const listChildren = h.graph.listTaskChildren.bind(h.graph);
+    vi.spyOn(h.graph, 'listTaskChildren').mockImplementationOnce((...args) => {
+      const children = listChildren(...args);
+      const previous = h.membership.sharedTasks.admission(child.id)!;
+      h.membership.sharedTasks.unshare(child.id, previous.shareId);
+      share(child);
+      return children;
+    });
+    const turnover = await read(0);
+    expect(turnover.status).toBe(200);
+    expect(
+      (await readJson<{ data: { children: unknown[] } }>(turnover)).data
+        .children,
+    ).toEqual([]);
+    expect(
+      (await readJson<{ data: { children: unknown[] } }>(await read(0))).data
+        .children,
+    ).toHaveLength(1);
+    // A Device without a cookie composes its exact approved account and live standing.
+    expect((await read(1, false)).status).toBe(200);
+    const mismatch = await h.request(url, {
+      headers: {
+        Authorization: `Bearer ${people[0]!.paired.credential}`,
+        Cookie: people[1]!.cookie,
+      },
+    });
+    expect(mismatch.status).toBe(401);
+    const denied = await h.request(`/api/tasks/${parent.id}/children`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${people[0]!.paired.credential}`,
+        Cookie: people[0]!.cookie,
+        Origin: ORIGIN,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        operationId: 'member-cannot-edit',
+        parent: { taskId: parent.id, taskCreatedAt: parent.createdAt },
+        task: { projectId: project.id, title: 'Denied child' },
+      }),
+    });
+    expect(denied.status).toBe(404);
+    expect(
+      (
+        await h.request(`/api/tasks/${parent.id}/dispatch`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${people[0]!.paired.credential}`,
+            Cookie: people[0]!.cookie,
+            Origin: ORIGIN,
+          },
+        })
+      ).status,
+    ).toBe(403);
+    const operatorAccountEdit = await h.request(
+      `/api/tasks/${parent.id}/children`,
+      h.operatorHeaders({
+        method: 'POST',
+        headers: {
+          Cookie: people[0]!.cookie,
+          Origin: ORIGIN,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          operationId: 'account-with-independent-operator',
+          parent: { taskId: parent.id, taskCreatedAt: parent.createdAt },
+          task: { projectId: project.id, title: 'Operator-authorized child' },
+        }),
+      }),
+    );
+    expect(
+      operatorAccountEdit.status,
+      await operatorAccountEdit.clone().text(),
+    ).toBe(200);
+    h.localAccounts.administration.setDisabled(
+      people[1]!.authenticated.session.subject,
+      true,
+    );
+    expect((await read(1, false)).status).not.toBe(200);
+    const originalProject = h.storage.getProject(project.slug);
+    vi.spyOn(h.graph, 'listTaskChildren').mockImplementationOnce((...args) => {
+      const children = listChildren(...args);
+      vi.spyOn(h.storage, 'getProject').mockImplementation((slug) =>
+        slug === project.slug
+          ? { ...originalProject, createdAt: '2001-01-01T00:00:00.000Z' }
+          : originalProject,
+      );
+      return children;
+    });
+    expect((await read(0)).status).toBe(404);
+    vi.restoreAllMocks();
+    const graphPath = join(h.homeDir, 'task-graph.json');
+    const beforeLockWait = readFileSync(graphPath, 'utf8');
+    const release = await acquireFileMutationLockAsync(`${graphPath}.mutation`);
+    let prepared = false;
+    const createChild = h.graph.createChildTask.bind(h.graph);
+    vi.spyOn(h.graph, 'createChildTask').mockImplementationOnce((...args) => {
+      prepared = true;
+      return createChild(...args);
+    });
+    const pending = h.request(
+      `/api/tasks/${parent.id}/children`,
+      h.operatorHeaders({
+        method: 'POST',
+        headers: {
+          Cookie: people[0]!.cookie,
+          Origin: ORIGIN,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          operationId: 'revoked-during-runtime-lock-wait',
+          parent: { taskId: parent.id, taskCreatedAt: parent.createdAt },
+          task: { projectId: project.id, title: 'Must never commit' },
+        }),
+      }),
+    );
+    try {
+      await vi.waitFor(() => expect(prepared).toBe(true));
+      await h.localAccounts.service.revokeSessionReference(
+        people[0]!.authenticated.session.sessionId,
+        new AbortController().signal,
+      );
+    } finally {
+      await release();
+    }
+    expect((await pending).status).toBe(404);
+    expect(readFileSync(graphPath, 'utf8')).toBe(beforeLockWait);
+    expect((await read(0)).status).not.toBe(200);
+  });
+
+  test('production Task relationship mount writes with ordinary operator authority and refuses account snapshots', async () => {
+    const h = await setup();
+    const project = await h.projectService.createProject({
+      name: 'Relationships',
+      slug: 'relationships',
+    });
+    const parent = await h.graph.createTask({
+      projectId: project.id,
+      title: 'Outcome',
+    });
+    const path = `/api/tasks/${parent.id}/children`;
+    const input = {
+      operationId: 'production-child',
+      parent: { taskId: parent.id, taskCreatedAt: parent.createdAt },
+      task: { projectId: project.slug, title: 'Deliverable' },
+    };
+    const post = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    };
+    const created = await h.request(path, h.operatorHeaders(post));
+    expect(created.status, await created.clone().text()).toBe(200);
+    const body = await readJson<{ data: { task: { id: string } } }>(created);
+    expect(h.graph.readTask(body.data.task.id)?.parent?.taskId).toBe(parent.id);
+    const list = await h.request(
+      `${path}?taskCreatedAt=${encodeURIComponent(parent.createdAt)}`,
+      h.operatorHeaders(),
+    );
+    expect(list.status).toBe(200);
+    expect(
+      (
+        await readJson<{ data: { children: { id: string }[] } }>(list)
+      ).data.children.map((task) => task.id),
+    ).toEqual([body.data.task.id]);
+    const before = readFileSync(join(h.homeDir, 'task-graph.json'), 'utf8');
+    expect(
+      (
+        await h.request(
+          path,
+          h.ownerHeaders({
+            ...post,
+            body: JSON.stringify({ ...input, operationId: 'denied-account' }),
+          }),
+        )
+      ).status,
+    ).toBe(404);
+    expect(readFileSync(join(h.homeDir, 'task-graph.json'), 'utf8')).toBe(
+      before,
+    );
+  });
+
+  test('Project Room production mount requires exact incarnation and independent transport and member actions', async () => {
+    const h = await setup();
+    const { project, scope, guest, credential } = await h.shareWithGuestAdmin(
+      'room-project',
+      'Room Project',
+    );
+    const base = '/api/projects/room-project/room';
+    const post = (value: unknown) =>
+      guest({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(value),
+      });
+    expect((await h.request(base, guest())).status).toBe(404);
+    expect(
+      (
+        await h.request(
+          `${base}/init`,
+          post({ expectedProjectId: 'wrong-incarnation' }),
+        )
+      ).status,
+    ).toBe(409);
+    expect((await h.request(base, guest())).status).toBe(404);
+    const initialized = await h.request(
+      `${base}/init`,
+      post({ expectedProjectId: project.id }),
+    );
+    expect(initialized.status, await initialized.clone().text()).toBe(200);
+    const identity = (
+      await readJson<{
+        data: { scope: ProjectMembershipScope; roomId: string };
+      }>(initialized)
+    ).data;
+    expect(identity.scope).toEqual(scope);
+    const retry = await h.request(
+      `${base}/init`,
+      post({ expectedProjectId: project.id }),
+    );
+    expect((await readJson<{ data: unknown }>(retry)).data).toEqual(identity);
+    const discovered = await h.request(base, guest());
+    expect(discovered.status).toBe(200);
+    const view = (
+      await readJson<{
+        data: { actor: { id: string }; capabilities: { execute: boolean } };
+      }>(discovered)
+    ).data;
+    expect(view.capabilities.execute).toBe(false);
+    const guard = {
+      expectedProjectId: project.id,
+      expectedRoomId: identity.roomId,
+      expectedActorId: view.actor.id,
+    };
+    const appended = await h.request(
+      `${base}/messages`,
+      post({
+        ...guard,
+        intentId: crypto.randomUUID(),
+        text: 'Shared room message',
+      }),
+    );
+    expect(appended.status, await appended.clone().text()).toBe(200);
+    expect(
+      (
+        await h.request(
+          `${base}/agents`,
+          post({
+            ...guard,
+            intentId: crypto.randomUUID(),
+            agentId: 'station',
+            text: 'No compute grant',
+          }),
+        )
+      ).status,
+    ).toBe(403);
+    for (const suffix of [
+      '/init/extra',
+      '/messages/extra',
+      '/note/extra',
+      '/agents/extra/reconcile/extra',
+    ]) {
+      expect(
+        (
+          await h.request(
+            base + suffix,
+            post({ expectedProjectId: project.id }),
+          )
+        ).status,
+      ).toBe(403);
+    }
+    const anonymousMember = h.pairAccountBound('room-outsider', GUEST_GRANT);
+    expect(
+      (
+        await h.request(
+          base,
+          h.guestHeaders(anonymousMember.credential, 'fixture_account=peer')(),
+        )
+      ).status,
+    ).not.toBe(200);
+    const rescope = await h.request(
+      `/api/pairing/devices/${h.security.identifyDevice(credential)!.id}/scope`,
+      h.operatorHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: ['orchestration:read'] }),
+      }),
+    );
+    expect(rescope.status, await rescope.clone().text()).toBe(200);
+    expect((await h.request(base, guest())).status).toBe(200);
+    expect(
+      (
+        await h.request(
+          `${base}/messages`,
+          post({
+            ...guard,
+            intentId: crypto.randomUUID(),
+            text: 'Must not append',
+          }),
+        )
+      ).status,
+    ).toBe(403);
+    const history = await h.request(`${base}/messages`, guest());
+    expect(
+      (await readJson<{ data: { messages: unknown[] } }>(history)).data
+        .messages,
+    ).toHaveLength(1);
+  });
+
+  test('mounted Room Agent uses canonical orchestration, owner reads and selected answer publication without exposing private coordinates', async () => {
+    const h = await setup(true);
+    const { project } = await h.shareWithGuestAdmin('agent-room', 'Agent Room');
+    const shared = await h.graph.createTask({
+      projectId: project.id,
+      title: 'Explicit shared recap Task',
+      description: 'PRIVATE DESCRIPTION',
+    });
+    await h.graph.createTask({
+      projectId: project.id,
+      title: 'PRIVATE RECAP TASK SENTINEL',
+    });
+    const portable = new ProjectManifestStore(h.homeDir, h.storage).readRecord(
+      project.slug,
+    )!;
+    const taskShare = h.membership.sharedTasks.share({
+      scope: {
+        stationId: STATION_ID,
+        localProjectId: project.id,
+        localProjectSlug: project.slug,
+        portableProjectId: portable.id,
+      },
+      taskId: shared.id,
+      taskCreatedAt: shared.createdAt,
+      sharedBy: 'operator',
+    });
+    const root = join(h.homeDir, 'room-workspace');
+    mkdirSync(root);
+    await h.projectService.updateProject('agent-room', {
+      workingDirectory: root,
+    });
+    const compute = h.pairAccountBound('room-compute', GUEST_GRANT);
+    const promoted = await h.request(
+      `/api/pairing/devices/${h.security.devicePairing.identifyDevice(compute.credential)!.id}/scope`,
+      h.operatorHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: [...GUEST_GRANT.split(' '), 'coding:exec'],
+        }),
+      }),
+    );
+    expect(promoted.status, await promoted.clone().text()).toBe(200);
+    const person = deploymentAccountPrincipal(
+      PROVIDER_ISSUER,
+      GUEST_SUBJECT,
+      'Guest Person',
+    );
+    const group = await h.request(
+      `/api/pairing/people/${encodeURIComponent(person.id)}/group`,
+      h.operatorHeaders({
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ group: 'admin' }),
+      }),
+    );
+    expect(group.status, await group.clone().text()).toBe(200);
+    expect(h.security.resolveGrantedScope(compute.credential)).toContain(
+      'coding:exec',
+    );
+    const guest = h.guestHeaders(compute.credential);
+    const base = '/api/projects/agent-room/room';
+    const post = (value: unknown) =>
+      guest({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(value),
+      });
+    expect(
+      (await h.request(`${base}/init`, post({ expectedProjectId: project.id })))
+        .status,
+    ).toBe(200);
+    const view = (
+      await readJson<{
+        data: {
+          roomId: string;
+          actor: { id: string };
+          capabilities: { execute: boolean };
+        };
+      }>(await h.request(base, guest()))
+    ).data;
+    expect(view.capabilities.execute).toBe(true);
+    const guard = {
+      expectedProjectId: project.id,
+      expectedRoomId: view.roomId,
+      expectedActorId: view.actor.id,
+    };
+    const input = {
+      ...guard,
+      intentId: crypto.randomUUID(),
+      agentId: 'room-agent',
+      text: 'Answer this room request',
+    };
+    const response = await h.request(`${base}/agents`, post(input));
+    expect(response.status, await response.clone().text()).toBe(200);
+    const handle = (
+      await readJson<{ data: { requestId: string; state: string } }>(response)
+    ).data;
+    expect(handle.state).toBe('started');
+    expect(handle).not.toHaveProperty('sessionId');
+    expect(handle).not.toHaveProperty('executionCorrelationId');
+    expect(h.start).toHaveBeenCalledTimes(1);
+    expect(h.send).toHaveBeenCalledTimes(1);
+    const sessionId = h.start.mock.calls[0][0].threadId;
+    expect(h.start.mock.calls[0][0].metadata?.userId).toBe(view.actor.id);
+    expect(h.send.mock.calls[0][0].input).toContain('Answer this room request');
+    const context = String(h.send.mock.calls[0][0].input);
+    const taskEvidence = JSON.parse(context.split('\n')[0]!).tasks;
+    expect(taskEvidence).toMatchObject({
+      coverage: 'shared_subset',
+      items: [
+        {
+          taskId: shared.id,
+          taskCreatedAt: shared.createdAt,
+          shareId: taskShare.shareId,
+          title: shared.title,
+          status: 'todo',
+        },
+      ],
+    });
+    expect(context).not.toMatch(/PRIVATE|childCount/);
+
+    expect((await h.request(`${base}/agents`, post(input))).status).toBe(200);
+    expect(h.start).toHaveBeenCalledTimes(1);
+    const events = {
+      provider: 'claude',
+      threadId: sessionId,
+      invocationId: h.send.mock.calls[0][0].invocationId,
+      createdAt: new Date().toISOString(),
+      turnId: 'turn-1',
+    };
+    h.adapter.events.push({
+      ...events,
+      eventId: crypto.randomUUID(),
+      method: 'turn.started',
+      prompt: 'Room prompt',
+    });
+    h.adapter.events.push({
+      ...events,
+      eventId: crypto.randomUUID(),
+      method: 'content.text-delta',
+      itemId: 'answer',
+      delta: 'Selected shared answer',
+    });
+    h.adapter.events.push({
+      ...events,
+      eventId: crypto.randomUUID(),
+      method: 'turn.completed',
+      finishReason: 'stop',
+      outputText: 'Selected shared answer',
+    });
+    await vi.waitFor(async () => {
+      const reconciled = await h.request(
+        `${base}/agents/${handle.requestId}/reconcile`,
+        post(guard),
+      );
+      expect(reconciled.status, await reconciled.clone().text()).toBe(200);
+      expect(
+        (await readJson<{ data: { state: string } }>(reconciled)).data.state,
+      ).toBe('published');
+    });
+    const history = (
+      await readJson<{ data: { messages: { text: string }[] } }>(
+        await h.request(`${base}/messages`, guest()),
+      )
+    ).data;
+    expect(history.messages.map((m) => m.text)).toEqual([
+      'Selected shared answer',
+    ]);
+    expect(JSON.stringify(history)).not.toContain(sessionId);
+    const pending = await h.request(
+      `${base}/agents`,
+      post({ ...input, intentId: crypto.randomUUID() }),
+    );
+    expect(pending.status, await pending.clone().text()).toBe(200);
+    const pendingHandle = (
+      await readJson<{ data: { requestId: string } }>(pending)
+    ).data;
+    const pendingSession = h.start.mock.calls[1][0].threadId;
+    const nextEvents = {
+      ...events,
+      threadId: pendingSession,
+      invocationId: h.send.mock.calls[1][0].invocationId,
+    };
+    h.adapter.events.push({
+      ...nextEvents,
+      eventId: crypto.randomUUID(),
+      method: 'turn.started',
+      prompt: 'Room prompt',
+    });
+    h.adapter.events.push({
+      ...nextEvents,
+      eventId: crypto.randomUUID(),
+      method: 'content.text-delta',
+      itemId: 'answer',
+      delta: 'Must stay private',
+    });
+    h.adapter.events.push({
+      ...nextEvents,
+      eventId: crypto.randomUUID(),
+      method: 'turn.completed',
+      finishReason: 'stop',
+      outputText: 'Must stay private',
+    });
+    const readAnswer = h.sessions!.sessionQueries.readAssistantTurn.bind(
+      h.sessions!.sessionQueries,
+    );
+    const selectedRead = vi
+      .spyOn(h.sessions!.sessionQueries, 'readAssistantTurn')
+      .mockImplementation(async (...args) => {
+        const answer = await readAnswer(...args);
+        if (answer.status === 'found') {
+          const narrowed = await h.request(
+            `/api/pairing/devices/${h.security.devicePairing.identifyDevice(compute.credential)!.id}/scope`,
+            h.operatorHeaders({
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ scope: GUEST_GRANT.split(' ') }),
+            }),
+          );
+          expect(narrowed.status).toBe(200);
+        }
+        return answer;
+      });
+    await vi.waitFor(async () => {
+      const denied = await h.request(
+        `${base}/agents/${pendingHandle.requestId}/reconcile`,
+        post(guard),
+      );
+      expect(denied.status, await denied.clone().text()).toBe(403);
+    });
+    expect(selectedRead).toHaveBeenCalled();
+    selectedRead.mockRestore();
+    const repromoted = await h.request(
+      `/api/pairing/devices/${h.security.devicePairing.identifyDevice(compute.credential)!.id}/scope`,
+      h.operatorHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: [...GUEST_GRANT.split(' '), 'coding:exec'],
+        }),
+      }),
+    );
+    expect(repromoted.status).toBe(200);
+    h.beforeSessionResolve(async () => {
+      const denied = await h.request(
+        `/api/pairing/devices/${h.security.devicePairing.identifyDevice(compute.credential)!.id}/scope`,
+        h.operatorHeaders({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ scope: GUEST_GRANT.split(' ') }),
+        }),
+      );
+      expect(denied.status).toBe(200);
+    });
+    const fenced = await h.request(
+      `${base}/agents`,
+      post({ ...input, intentId: crypto.randomUUID() }),
+    );
+    expect(fenced.status, await fenced.clone().text()).toBe(403);
+    expect(h.start).toHaveBeenCalledTimes(2);
+    expect(h.send).toHaveBeenCalledTimes(2);
+
+    const afterRevocation = await h.request(`${base}/messages`, guest());
+    expect(
+      (
+        await readJson<{ data: { messages: { text: string }[] } }>(
+          afterRevocation,
+        )
+      ).data.messages.map((m) => m.text),
+    ).toEqual(['Selected shared answer']);
+    const other = h.pairAccountBound(
+      'other-room-account',
+      `${GUEST_GRANT} coding:exec`,
+    );
+    expect(
+      (
+        await h.request(
+          `${base}/agents/${handle.requestId}`,
+          h.guestHeaders(other.credential, 'fixture_account=peer')(),
+        )
+      ).status,
+    ).not.toBe(200);
+  });
 
   test('baseline: project read 200, then admin GET access 200 and the four exact POST leaves 200', async () => {
     const h = await setup();
@@ -1975,5 +2864,363 @@ describe('project guest administration over the production composition', () => {
       }),
     );
     expect(legacyInvite.status, await legacyInvite.clone().text()).toBe(200);
+  });
+  test('S3 source reads use Project membership while profile selection and attachment remain operator-only', async () => {
+    vi.stubEnv('STATION_EXPERIMENTAL_S3_SOURCES', '1');
+    try {
+      const h = await setup();
+      const { scope, guest } = await h.shareWithGuestAdmin(
+        'archive',
+        'Archive',
+      );
+      const privateProject = await h.projectService.createProject({
+        name: 'Private archive',
+        slug: 'private-archive',
+      });
+      const rootPath = '/api/knowledge/s3-sources/projects/archive';
+      const input = {
+        id: crypto.randomUUID(),
+        expectedProjectId: scope.localProjectId,
+        displayName: 'Archive fixture',
+        accountId: '123456789012',
+        region: 'us-west-2',
+        bucket: 'fixture-archive',
+        prefix: 'selected/',
+        profile: 'fixture-only',
+        shareWithProject: true,
+      };
+      const attach = (
+        path: string,
+        value: unknown,
+        headers: typeof h.operatorHeaders,
+      ) =>
+        h.request(
+          path,
+          headers({
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(value),
+          }),
+        );
+      const created = await attach(rootPath, input, h.operatorHeaders);
+      expect(created.status, await created.clone().text()).toBe(200);
+      const source = (
+        await readJson<{ data: { id: string; projectId: string } }>(created)
+      ).data;
+      const listing = await h.request(rootPath, guest());
+      expect(listing.status, await listing.clone().text()).toBe(200);
+      expect(await listing.text()).not.toContain('fixture-only');
+      expect(
+        (await h.request('/api/knowledge/s3-sources/profiles', guest())).status,
+      ).toBe(403);
+      expect(
+        (await attach(rootPath, { ...input, id: crypto.randomUUID() }, guest))
+          .status,
+      ).toBe(403);
+      expect(
+        (
+          await attach(
+            '/api/knowledge/s3-sources/projects/private-archive',
+            {
+              ...input,
+              id: crypto.randomUUID(),
+              expectedProjectId: privateProject.id,
+            },
+            h.operatorHeaders,
+          )
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await h.request(
+            '/api/knowledge/s3-sources/projects/private-archive',
+            guest(),
+          )
+        ).status,
+      ).toBe(404);
+      const send = vi
+        .spyOn(S3Client.prototype, 'send')
+        .mockImplementation(async () => ({
+          Contents: [{ Key: 'selected/note.md', ETag: '"etag"', Size: 5 }],
+          IsTruncated: false,
+        }));
+      const page = await h.request(`${rootPath}/${source.id}/objects`, guest());
+      expect(page.status, await page.clone().text()).toBe(200);
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(
+        (
+          await attach(
+            `${rootPath}/${source.id}/disconnect`,
+            { expectedSource: source },
+            guest,
+          )
+        ).status,
+      ).toBe(403);
+      vi.stubEnv('STATION_EXPERIMENTAL_S3_SOURCES', '');
+      expect(
+        (await h.request(`${rootPath}/${source.id}/objects`, guest())).status,
+      ).toBe(404);
+      expect(send).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+  test('knowledge roots and records enforce the account Project membership through real ingress', async () => {
+    const h = await setup();
+    const { scope, guest } = await h.shareWithGuestAdmin(
+      'knowledge',
+      'Knowledge',
+    );
+    const allowed = await h.knowledgeStoreProvider.createRoot({
+      scope: { kind: 'project', projectSlug: 'knowledge' },
+      adapterId: 'kit-default-store',
+      storeRoot: join(directories[directories.length - 1], 'shared-notes'),
+      displayName: 'Shared notes',
+      projectId: scope.localProjectId,
+    });
+    const unrelated = await h.knowledgeStoreProvider.createRoot({
+      scope: { kind: 'project', projectSlug: 'unrelated' },
+      adapterId: 'kit-default-store',
+      storeRoot: join(directories[directories.length - 1], 'private-notes'),
+      displayName: 'Private notes',
+    });
+    const personal = await h.knowledgeStoreProvider.createRoot({
+      scope: { kind: 'personal' },
+      adapterId: 'kit-default-store',
+      storeRoot: join(directories[directories.length - 1], 'personal-notes'),
+      displayName: 'Personal notes',
+    });
+    const obsolete = await h.knowledgeStoreProvider.createRoot({
+      scope: { kind: 'project', projectSlug: 'knowledge' },
+      projectId: '11111111-1111-4111-8111-111111111111',
+      adapterId: 'kit-default-store',
+      storeRoot: join(
+        directories[directories.length - 1],
+        'former-project-notes',
+      ),
+      displayName: 'Former Project notes',
+    });
+    const unbound = await h.knowledgeStoreProvider.createRoot({
+      scope: { kind: 'project', projectSlug: 'knowledge' },
+      adapterId: 'kit-default-store',
+      storeRoot: join(directories[directories.length - 1], 'unbound-notes'),
+      displayName: 'Unbound notes',
+    });
+    const adapter = await h.knowledgeStoreProvider.adapterFor(allowed.id);
+    const recordId = await adapter.create({
+      type: 'raw',
+      title: 'Selected source',
+      body: 'Exact shared text',
+      category: 'test',
+      provenance: { agent: 'fixture' },
+    });
+    const capabilities = await h.request(
+      '/api/knowledge/capabilities',
+      guest(),
+    );
+    expect(capabilities.status).toBe(200);
+    expect((await readJson<{ data: unknown }>(capabilities)).data).toEqual({
+      canManageSources: false,
+      canAttachLegacy: false,
+      canCheckHostPaths: false,
+    });
+    const operatorCapabilities = await h.request(
+      '/api/knowledge/capabilities',
+      h.operatorHeaders(),
+    );
+    expect(operatorCapabilities.status).toBe(200);
+    expect(
+      (await readJson<{ data: unknown }>(operatorCapabilities)).data,
+    ).toEqual({
+      canManageSources: true,
+      canAttachLegacy: true,
+      canCheckHostPaths: true,
+    });
+    const list = await h.request('/api/knowledge/roots', guest());
+    expect(list.status, await list.clone().text()).toBe(200);
+    const body = await readJson<{ data: { id: string }[] }>(list);
+    expect(body.data.map((root) => root.id)).toEqual([allowed.id]);
+    const importId = crypto.randomUUID();
+    const originalText = '\ufeff\nExact shared original\r\n';
+    const imported = await h.request(
+      '/api/knowledge/document-imports',
+      h.operatorHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          requestId: importId,
+          expectedRoot: allowed,
+          documents: [
+            {
+              filename: 'shared.md',
+              contentBase64: Buffer.from(originalText).toString('base64'),
+            },
+          ],
+        }),
+      }),
+    );
+    expect(imported.status, await imported.clone().text()).toBe(200);
+    const importPath = `/api/knowledge/roots/${encodeURIComponent(allowed.id)}/document-imports/${importId}`;
+    expect((await h.request(importPath, guest())).status).toBe(403);
+    const original = await h.request(`${importPath}/originals/0`, guest());
+    expect(original.status, await original.clone().text()).toBe(200);
+    expect(Buffer.from(await original.arrayBuffer())).toEqual(
+      Buffer.from(originalText),
+    );
+    expect(
+      (
+        await h.request(
+          `/api/knowledge/roots/${encodeURIComponent(unrelated.id)}/document-imports/${importId}/originals/0`,
+          guest(),
+        )
+      ).status,
+    ).toBe(404);
+    const read = await h.request(
+      `/api/knowledge/roots/${encodeURIComponent(allowed.id)}/records/${recordId}`,
+      guest(),
+    );
+    expect(read.status, await read.clone().text()).toBe(200);
+    expect((await readJson<{ data: { body: string } }>(read)).data.body).toBe(
+      'Exact shared text',
+    );
+    for (const root of [unrelated, personal, obsolete, unbound]) {
+      expect(
+        (
+          await h.request(
+            `/api/knowledge/roots/${encodeURIComponent(root.id)}/graph`,
+            guest(),
+          )
+        ).status,
+      ).toBe(403);
+    }
+    const arbitrary = await h.request(
+      '/api/knowledge/roots',
+      guest({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: { kind: 'project', projectSlug: 'knowledge' },
+          adapterId: 'kit-default-store',
+          storeRoot: '/private/host-path',
+        }),
+      }),
+    );
+    expect(arbitrary.status, await arbitrary.clone().text()).toBe(403);
+
+    const operatorManaged = await h.request(
+      '/api/knowledge/roots',
+      h.operatorHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope: { kind: 'project', projectSlug: 'knowledge' },
+          expectedProjectId: scope.localProjectId,
+          adapterId: 'kit-default-store',
+        }),
+      }),
+    );
+    expect(operatorManaged.status, await operatorManaged.clone().text()).toBe(
+      201,
+    );
+    const bound = (
+      await readJson<{ data: { projectId: string; storeRoot: string } }>(
+        operatorManaged,
+      )
+    ).data;
+    expect(bound.projectId).toBe(scope.localProjectId);
+    expect(bound.storeRoot).toContain(
+      join('knowledge', 'projects', scope.localProjectId, 'store'),
+    );
+    const createManaged = () =>
+      h.request(
+        '/api/knowledge/roots',
+        guest({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            scope: { kind: 'project', projectSlug: 'knowledge' },
+            adapterId: 'kit-default-store',
+          }),
+        }),
+      );
+    const managed = await createManaged();
+    expect(managed.status, await managed.clone().text()).toBe(403);
+    const guestId = deploymentAccountPrincipal(
+      PROVIDER_ISSUER,
+      GUEST_SUBJECT,
+      'Guest Person',
+    ).id;
+    const members = (
+      await readJson<{
+        data: { members: { principal: { id: string }; revision: number }[] };
+      }>(await h.request('/api/projects/knowledge/access', h.ownerHeaders()))
+    ).data.members;
+    const member = members.find(
+      (candidate) => candidate.principal.id === guestId,
+    )!;
+    const demoted = await h.request(
+      '/api/projects/knowledge/access/members',
+      h.ownerHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope,
+          principalId: guestId,
+          revision: member.revision,
+          role: 'viewer',
+          status: 'active',
+        }),
+      }),
+    );
+    expect(demoted.status, await demoted.clone().text()).toBe(200);
+    expect((await createManaged()).status).toBe(403);
+    const deniedDisconnect = await h.request(
+      `/api/knowledge/roots/${encodeURIComponent(allowed.id)}/disconnect`,
+      guest({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ expectedRoot: allowed }),
+      }),
+    );
+    expect(deniedDisconnect.status).toBe(403);
+    expect(await h.knowledgeStoreProvider.getRoot(allowed.id)).toEqual(allowed);
+    let entered!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const listRecords = adapter.listByType.bind(adapter);
+    vi.spyOn(adapter, 'listByType').mockImplementationOnce(async (...args) => {
+      entered();
+      await held;
+      return listRecords(...args);
+    });
+    const pendingGraph = h.request(
+      `/api/knowledge/roots/${encodeURIComponent(allowed.id)}/graph`,
+      guest(),
+    );
+    await started;
+    const revoked = await h.request(
+      '/api/projects/knowledge/access/members',
+      h.ownerHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          scope,
+          principalId: guestId,
+          revision: member.revision + 1,
+          role: 'viewer',
+          status: 'revoked',
+        }),
+      }),
+    );
+    release();
+    expect(revoked.status, await revoked.clone().text()).toBe(200);
+    const afterRevocation = await pendingGraph;
+    expect(afterRevocation.status).toBe(404);
+    expect(await afterRevocation.text()).not.toContain('Selected source');
   });
 });

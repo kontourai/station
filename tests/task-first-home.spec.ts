@@ -30,6 +30,7 @@ import {
   installMockOrchestrationSse,
   waitForMockOrchestrationSse,
 } from './helpers/orchestration';
+import { chooseChatRegionRow } from './helpers/region-placement';
 import { fulfillStationShellRead } from './helpers/station-shell-fixtures';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 import { installVisualViewportFixture } from './helpers/visual-viewport';
@@ -1134,12 +1135,9 @@ test.describe('Task-first Home (#332, mocked)', () => {
     // help-menu line #1552 D1 had to retarget, and that retarget could not be
     // verified until this was current. The control is the same one; only its
     // name moved to the region vocabulary.
-    const maximize = page.getByRole('button', {
-      name: 'Expand dock region to workspace',
-    });
-    const restore = page.getByRole('button', {
-      name: 'Restore dock region size',
-    });
+    // Chat's region commands are rows of its More menu (`RegionMenu`).
+    const maximize = { click: () => chooseChatRegionRow(page, 'Maximize') };
+    const restore = { click: () => chooseChatRegionRow(page, 'Restore size') };
     await maximize.click();
     await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
     expect(new URL(page.url()).searchParams.get('maximize')).toBe('true');
@@ -1153,7 +1151,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     // #1552 D1: "Ask Station for help" is a row of the account menu (the
     // sidebar footer's account control), not a toolbar button. It opens the
     // header's help menu, whose prompt list is unchanged.
-    await page.getByRole('button', { name: 'Profile and settings' }).click();
+    await page.getByRole('button', { name: /^Profile and settings:/ }).click();
     await page.getByRole('menuitem', { name: 'Ask Station for help' }).click();
     await page.getByRole('button', { name: 'What can you do?' }).click();
 

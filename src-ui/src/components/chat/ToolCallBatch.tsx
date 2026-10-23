@@ -10,9 +10,13 @@ import { PlugGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import type { ToolCallBatchSheetProps } from './ToolCallBatchSheet';
 import { KIND_GLYPH } from './ToolCallDisplay';
-import { classifyToolCallRun } from './tool-call-groups';
+import { ToolCallElapsed } from './ToolCallElapsed';
+import { classifyToolCallRun, type ToolCallGroup } from './tool-call-groups';
+import { runningCallLabelParts } from './tool-call-labels';
 import type { ToolCallLike, ToolCallRun } from './tool-call-runs';
+import { toolDisplayView } from './tool-display-view';
 import './chat.css';
+import './ToolCallBatch.css';
 
 // The sheet body (ResponsiveDialogSurface + per-row ToolCallDisplay detail)
 // loads on first open rather than riding this chunk's own load — mirrors the
@@ -98,15 +102,7 @@ export function ToolCallBatch<P extends ToolCallLike>({
         <span className="tool-call__glyph" aria-hidden="true">
           <Glyph />
         </span>
-        {group.inProgress && (
-          <span className="tool-call-batch__pulse" aria-hidden="true" />
-        )}
         <span className="tool-call-batch__label">{group.summary}</span>
-        {group.inProgress && (
-          <span className="tool-call-batch__count">
-            {group.calls.length} tools
-          </span>
-        )}
         {/* A collapsed batch must disclose failure without being opened
             (station#2652 redesign) — the summary alone would bury it. */}
         {group.failedCount > 0 && (
@@ -158,15 +154,7 @@ export function ToolCallBatch<P extends ToolCallLike>({
           ›
         </span>
       </button>
-      {group.progressMessage && (
-        <div
-          className="tool-call-batch__progress"
-          role="status"
-          aria-live="polite"
-        >
-          {group.progressMessage}
-        </div>
-      )}
+      <LiveCallRows group={group} />
       {!isOpen &&
         group.calls
           .filter(
@@ -191,6 +179,197 @@ export function ToolCallBatch<P extends ToolCallLike>({
           onClose={() => setIsOpen(false)}
         />
       )}
+    </div>
+  );
+}
+
+type LiveCall = ToolCallGroup['calls'][number];
+
+/** Live child rows shown under a running batch's summary before overflow. */
+export const MAX_LIVE_CALL_ROWS = 2;
+
+const liveCallKey = (call: LiveCall) =>
+  call.part.toolCallId ?? `call:${call.index}`;
+
+/**
+ * The calls a running batch is executing right now, each on its own row
+ * under the stable summary: at most {@link MAX_LIVE_CALL_ROWS}, then
+ * "+N more". Empty (and collapsed to no height) once nothing runs.
+ * A call awaiting a grant elsewhere in the batch already renders its running
+ * siblings in full below, so they are not repeated here.
+ */
+function LiveCallRows({ group }: { group: ToolCallGroup }) {
+  const live = group.awaitingApprovalCount > 0 ? [] : group.activeCalls;
+  const overflow = Math.max(0, live.length - MAX_LIVE_CALL_ROWS);
+  return (
+    <div className="tool-call-batch__live">
+      {Array.from({ length: MAX_LIVE_CALL_ROWS }, (_, slot) => (
+        // Slots are positional on purpose: a slot whose call finishes and is
+        // followed by the next one crossfades in place instead of the row
+        // leaving and another arriving.
+        <LiveCallSlot key={slot} call={live[slot]} />
+      ))}
+      <OverflowSlot count={overflow} />
+    </div>
+  );
+}
+
+function LiveCallSlot({ call }: { call?: LiveCall }) {
+  const key = call ? liveCallKey(call) : undefined;
+  // What the slot shows while it closes (its last call) and the row fading
+  // out beneath a successor. Adjusted during render only when the key
+  // changes, the documented React pattern for state derived from props.
+  const [shown, setShown] = useState<{ key?: string; call?: LiveCall }>({
+    key,
+    call,
+  });
+  const [leaving, setLeaving] = useState<
+    { key: string; call: LiveCall } | undefined
+  >();
+  if (key !== shown.key) {
+    if (key !== undefined && shown.key !== undefined && shown.call) {
+      setLeaving({ key: shown.key, call: shown.call });
+    } else if (key === undefined && leaving) {
+      // Closing before an outgoing row's fade ended: that row is no longer
+      // rendered, so its animationend never comes. Dropped now, it cannot
+      // reappear as a ghost under the slot's next call.
+      setLeaving(undefined);
+    }
+    setShown({ key, call: call ?? shown.call });
+  }
+  const open = call !== undefined;
+  const current = call ?? shown.call;
+  return (
+    <div
+      className="tool-call-batch__slot"
+      data-open={open ? 'true' : 'false'}
+      aria-hidden={open ? undefined : true}
+    >
+      <div className="tool-call-batch__slot-inner">
+        {open && leaving && (
+          <LiveCallRow
+            key={`leaving:${leaving.key}`}
+            call={leaving.call}
+            live={false}
+            className="tool-call-batch__child--leaving"
+            onAnimationEnd={() => setLeaving(undefined)}
+          />
+        )}
+        {current && (
+          <LiveCallRow
+            key={liveCallKey(current)}
+            call={current}
+            live={open}
+            className={
+              open && leaving ? 'tool-call-batch__child--entering' : undefined
+            }
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LiveCallRow({
+  call,
+  live,
+  className,
+  onAnimationEnd,
+}: {
+  call: LiveCall;
+  /** False for a retained snapshot (a closing slot, an outgoing row): it
+   * neither animates nor keeps a clock running. */
+  live: boolean;
+  className?: string;
+  onAnimationEnd?: () => void;
+}) {
+  const Glyph = KIND_GLYPH[call.kind];
+  const active = live && call.inProgress;
+  const leaving = onAnimationEnd !== undefined;
+  const progress =
+    typeof call.part.progressMessage === 'string'
+      ? call.part.progressMessage.trim()
+      : '';
+  // The pulse already says it is running, so the row spends its width on
+  // what is running; the verb stays for screen readers and the tooltip.
+  const parts = call.inProgress
+    ? runningCallLabelParts(
+        call.kind,
+        toolDisplayView(call.part).args,
+        call.label,
+      )
+    : undefined;
+  return (
+    <div
+      className={
+        className
+          ? `tool-call-batch__child ${className}`
+          : 'tool-call-batch__child'
+      }
+      data-tool-call-id={call.part.toolCallId}
+      aria-hidden={leaving ? true : undefined}
+      onAnimationEnd={
+        onAnimationEnd
+          ? (event) => {
+              if (event.target === event.currentTarget) onAnimationEnd();
+            }
+          : undefined
+      }
+    >
+      <span className="tool-call__glyph" aria-hidden="true">
+        <Glyph />
+      </span>
+      <span
+        className={
+          active
+            ? 'tool-call__label tool-call__label--active'
+            : 'tool-call__label'
+        }
+        title={call.label}
+      >
+        {parts ? (
+          <>
+            <span className="sr-only">{parts.verb} </span>
+            {parts.target}
+          </>
+        ) : (
+          call.label
+        )}
+      </span>
+      {progress && (
+        <span className="tool-call-batch__child-progress">{progress}</span>
+      )}
+      {active && (
+        <ToolCallElapsed
+          startedAt={
+            typeof call.part.startedAt === 'string'
+              ? call.part.startedAt
+              : undefined
+          }
+        />
+      )}
+    </div>
+  );
+}
+
+function OverflowSlot({ count }: { count: number }) {
+  // The last non-zero count stays on screen while the slot closes.
+  const [lastCount, setLastCount] = useState(count);
+  if (count > 0 && count !== lastCount) setLastCount(count);
+  const open = count > 0;
+  return (
+    <div
+      className="tool-call-batch__slot"
+      data-open={open ? 'true' : 'false'}
+      aria-hidden={open ? undefined : true}
+    >
+      <div className="tool-call-batch__slot-inner">
+        {lastCount > 0 && (
+          <div className="tool-call-batch__child tool-call-batch__child--more">
+            {`+${lastCount} more`}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

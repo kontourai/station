@@ -4,12 +4,12 @@
     {
       "path": "docs/learn/media/project-with-task.png",
       "kind": "image",
-      "digest": "c169e2cb89311c0edbd78e567b3c8b7c41e070e3d08222eda904f99ae93ed7ba",
-      "alt": "A Project with one saved Task and its workspace details.",
-      "caption": "A saved Project and Task.",
+      "digest": "96ed08bbc062d90bd46cca90dfecb0b61164656cf753781781906fb942004548",
+      "alt": "A Project Tasks view with one saved Task in Backlog.",
+      "caption": "A saved Task in the Project backlog.",
       "scenario": "Create durable work",
-      "evidence": "Running isolated Station with sample data and a sample display name. No Agent dispatched. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
-      "capturedRevision": "e50107efd7a687b41e383d5503f576bd4651d1e0",
+      "evidence": "Actual isolated production server/UI built from clean 5bd968d773dafdec23f9bd7223b1505c11d435c3. Sample Project and Task created through shipped HTTP APIs; browser selected Backlog. Screenshot inspected at 1440px, dark theme; a separate 390px check had no horizontal overflow. No Agent dispatched for this sample. Other sidebar entries are synthetic isolated-home fixtures. This frame proves the pictured saved Task and navigation only; no provider, native, hosted or release qualification.",
+      "capturedRevision": "5bd968d773dafdec23f9bd7223b1505c11d435c3",
       "documents": [
         "docs/guides/starter-work.md",
         "docs/learn/walkthroughs.md",
@@ -19,12 +19,12 @@
     {
       "path": "docs/learn/media/shared-task-document.png",
       "kind": "image",
-      "digest": "da9619093072eff21f93bdc16c0ff9b2c16865466dcd8181ac9fc20bf1cf2823",
-      "alt": "A Task Brief tab displaying an automatically saved shared plan.",
-      "caption": "The Brief tab displays the shared plan after autosave.",
+      "digest": "00ee5b4ead68558eef9e0621aeddbd7e32e0e79bdfd6ff1b02ba0c3caf600458",
+      "alt": "A Task Plan tab displaying a saved shared plan.",
+      "caption": "The Plan tab displays the shared document after autosave and reload.",
       "scenario": "Autosave a shared brief",
-      "evidence": "Actual production server and UI built from clean source 3804112230b15c60b52c6f0cafa0c5ec2745eec9, isolated OS and Station homes, instance polish2, ports 3632/5732. Sample Project and Tasks were seeded through public APIs; this structured Brief was typed in the UI and saved through the live plan/batch protocol, then reopened after rebuilds. Screenshot at 1440x900, dark theme, DPR 1. The same Brief was inspected at 1024x975 and 390x844 in both themes. Related room/thread/shaping and invited local-account human-history fixtures used a deterministic local fake Ollama model; they are separate evidence from this frame. No real provider, native, hosted or release qualification is claimed. The optional setup reminder was dismissed through Continue Without Setup before the final unobstructed capture. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the Brief feature, not current sidebar/header appearance.",
-      "capturedRevision": "3804112230b15c60b52c6f0cafa0c5ec2745eec9",
+      "evidence": "Actual isolated production server/UI built from clean 5bd968d773dafdec23f9bd7223b1505c11d435c3. Sample Task plan typed through the live UI, awaited Saved, then reloaded and reopened on Plan. Screenshot inspected at 1440px, dark theme. Other sidebar entries are synthetic isolated-home fixtures. This frame does not qualify concurrent editing, membership revocation, provider execution, native, hosted or release behavior.",
+      "capturedRevision": "5bd968d773dafdec23f9bd7223b1505c11d435c3",
       "documents": [
         "docs/guides/starter-work.md",
         "docs/learn/walkthroughs.md",
@@ -38,7 +38,7 @@
       "alt": "The Models page shows the settings for an example local model connection.",
       "caption": "Inspect a model connection.",
       "scenario": "Connections \u2192 Models",
-      "evidence": "Actual UI with sample API responses and display name. Ready is fixture data; no connection or model test ran. Historical capture: predates current intent-first labels and the credential/charge disclosure before Create; see the current Connections guide. Capture identity retained. It does not show the guided engine proxy controls or Check connection action added later. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
+      "evidence": "Actual UI with sample API responses and display name. Ready is fixture data; no connection or model test ran. Historical capture: predates current intent-first labels and the credential/charge disclosure before Create; see the current Connections guide. Capture identity retained. It does not show the guided engine proxy controls or Check connection action added later. It also predates the inset Connections tab frame and in-pane Add engine journey; it is retained as historical, not current-appearance evidence. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
       "capturedRevision": "bb07a2df88272a983e6e1c94dd27ca2480faef51",
       "documents": [
         "docs/guides/connections.md",
@@ -82,7 +82,7 @@
       "alt": "Browse the example model and engine settings.",
       "caption": "Browse Models and Engines without testing or invoking a provider.",
       "scenario": "Connections \u2192 Models and Engines",
-      "evidence": "13.76-second silent recording of actual Models/Engines navigation, with controlled connection GET fixtures and sample display name only. Pauses on configuration/setup states; no provider test/login/inference. Temporal trim removes initial loading; raw capture digest and interval retained. Historical capture: predates current intent-first labels and the credential/charge disclosure before Create; see the current Connections guide. Capture identity retained. It does not show the guided engine proxy controls or Check connection action added later. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
+      "evidence": "13.76-second silent recording of actual Models/Engines navigation, with controlled connection GET fixtures and sample display name only. Pauses on configuration/setup states; no provider test/login/inference. Temporal trim removes initial loading; raw capture digest and interval retained. Historical capture: predates current intent-first labels and the credential/charge disclosure before Create; see the current Connections guide. Capture identity retained. It does not show the guided engine proxy controls or Check connection action added later. It also predates the inset Connections tab frame and in-pane Add engine journey; it is retained as historical, not current-appearance evidence. Historical navigation chrome: captured before the Quiet tree workspace map. This illustrates the stated central feature, not current sidebar/header appearance.",
       "capturedRevision": "f56c28a44bb777b192e033a82c5474ceb54482ad",
       "documents": [
         "docs/guides/connections.md"

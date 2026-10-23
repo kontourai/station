@@ -1,5 +1,6 @@
 import { readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
 import {
   type LayoutConfig,
@@ -15,6 +16,7 @@ import type {
 } from '@kontourai/station-contracts/project';
 import type { ProjectPortableIdentity } from '@kontourai/station-contracts/project-identity';
 import type { ProviderConnectionConfig } from '@kontourai/station-contracts/tool';
+import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import {
   assertObservationTreeBudget,
   KnowledgeObservationRefusal,
@@ -180,12 +182,16 @@ export class FileStorageAdapter implements IStorageAdapter {
       value: stored.value,
       withCurrentRead: <R>(operation: (value: ProjectConfig) => Promise<R>) =>
         stored.withCurrentRead!(operation),
-      replaceManifest: (expected: unknown, next: unknown) => {
+      replaceManifest: (
+        expected: unknown,
+        next: unknown,
+        assertCurrent?: () => void,
+      ) => {
         if (!stored.replaceManifest)
           throw new FileStorageUnavailableError(
             'Project manifest mutation is unavailable',
           );
-        return stored.replaceManifest(expected, next);
+        return stored.replaceManifest(expected, next, assertCurrent);
       },
       replace: async (next: ProjectConfig) => {
         const parsed = parseProjectConfig(next);
@@ -769,22 +775,77 @@ export class FileStorageAdapter implements IStorageAdapter {
     return { roots, digest: file.digest };
   }
 
-  async saveKnowledgeStoreRoot(root: KnowledgeStoreRoot): Promise<void> {
-    parseKnowledgeStoreRoots([root]);
+  async withKnowledgeStoreRoot<T>(
+    expected: KnowledgeStoreRoot,
+    operation: (root: KnowledgeStoreRoot) => Promise<T>,
+  ): Promise<T> {
+    const pinned = { ...expected, scope: { ...expected.scope } };
+    parseKnowledgeStoreRoots([pinned]);
+    const release = await acquireFileMutationLockAsync(
+      `${this.knowledgeStoreRootsPath}.mutation`,
+    );
+    try {
+      const root = this.listKnowledgeStoreRoots().find(
+        (candidate) => candidate.id === pinned.id,
+      );
+      if (!root || !isDeepStrictEqual(root, pinned))
+        throw new FileStorageConflictError(
+          'Knowledge registration changed before the operation.',
+        );
+      return await operation(root);
+    } finally {
+      await release();
+    }
+  }
+
+  async saveKnowledgeStoreRoot(
+    root: KnowledgeStoreRoot,
+    options?: { createOnly?: boolean; expectedRoot?: KnowledgeStoreRoot },
+  ): Promise<void> {
+    const captured = { ...root, scope: { ...root.scope } };
+    parseKnowledgeStoreRoots([captured]);
+    const expected = options?.expectedRoot
+      ? parseKnowledgeStoreRoots([options.expectedRoot])[0]
+      : undefined;
+    const createOnly = options?.createOnly;
     await mutateJsonFile<unknown>(this.knowledgeStoreRootsPath, [], (value) => {
       const roots = parseKnowledgeStoreRoots(value);
-      const index = roots.findIndex((candidate) => candidate.id === root.id);
-      if (index >= 0) roots[index] = root;
-      else roots.push(root);
+      const index = roots.findIndex(
+        (candidate) => candidate.id === captured.id,
+      );
+      if (createOnly && index >= 0)
+        throw new FileStorageConflictError(
+          'Knowledge source ID is already registered.',
+        );
+      if (expected && (index < 0 || !isDeepStrictEqual(roots[index], expected)))
+        throw new FileStorageConflictError(
+          'Knowledge source changed before attachment.',
+        );
+      if (index >= 0) roots[index] = captured;
+      else roots.push(captured);
       return roots;
     });
   }
 
-  async removeKnowledgeStoreRoot(id: string): Promise<void> {
+  async removeKnowledgeStoreRoot(
+    id: string,
+    expected?: KnowledgeStoreRoot,
+  ): Promise<void> {
+    const pinned = expected
+      ? parseKnowledgeStoreRoots([expected])[0]
+      : undefined;
     await mutateJsonFile<unknown>(this.knowledgeStoreRootsPath, [], (value) => {
       const roots = parseKnowledgeStoreRoots(value);
       const index = roots.findIndex((root) => root.id === id);
+      if (pinned && index < 0)
+        throw new FileStorageConflictError(
+          'Knowledge source changed before disconnect.',
+        );
       if (index < 0) throw new Error(`Knowledge store root '${id}' not found`);
+      if (pinned && !isDeepStrictEqual(roots[index], pinned))
+        throw new FileStorageConflictError(
+          'Knowledge source changed before disconnect.',
+        );
       roots.splice(index, 1);
       return roots;
     });

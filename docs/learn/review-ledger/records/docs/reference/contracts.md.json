@@ -244,7 +244,35 @@
 
     "packages/sdk/src/client/plugin-telemetry.ts",
 
-    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts"
+    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts",
+
+    "packages/contracts/src/project.ts",
+
+    "packages/contracts/src/knowledge-store.ts",
+
+    "packages/contracts/src/engine-sign-in.ts",
+
+    "packages/contracts/src/project-room.ts",
+
+    "packages/contracts/src/project-room-browser.ts",
+
+    "packages/contracts/src/task-graph.ts",
+
+    "src-server/services/projects/task-relationship-state.ts",
+
+    "src-server/services/projects/task-graph-service.ts",
+
+    "src-server/services/projects/project-room-agent-module.ts",
+
+    "src-server/services/projects/project-room-agent-publication.ts",
+
+    "src-server/routes/projects/project-room-routes.ts",
+
+    "src-server/runtime/routes/runtime-routes.ts",
+
+    "src-ui/src/views/project-page/ProjectRoom.tsx",
+
+    "src-ui/src/lib/project-onboarding-recovery.ts"
   ],
 
   "checks": [

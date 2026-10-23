@@ -143,3 +143,30 @@ describe('json file storage reads and optimistic writes', () => {
     ).toThrow();
   });
 });
+
+test('final publication admission observes the fully staged file and refuses rename without changing prior bytes', async () => {
+  const dir = root();
+  const path = join(dir, 'state.json');
+  await publishJsonFileWithOwnedLock(path, { version: 'before' });
+  let checked = false;
+  await expect(
+    publishJsonFileWithOwnedLock(
+      path,
+      { version: 'after' },
+      {
+        assertCurrent: () => {
+          const staged = readdirSync(dir).find((name) => name.endsWith('.tmp'));
+          expect(staged).toBeDefined();
+          expect(JSON.parse(readFileSync(join(dir, staged!), 'utf8'))).toEqual({
+            version: 'after',
+          });
+          checked = true;
+          throw new Error('Authority ended');
+        },
+      },
+    ),
+  ).rejects.toThrow('Authority ended');
+  expect(checked).toBe(true);
+  expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ version: 'before' });
+  expect(readdirSync(dir)).toEqual(['state.json']);
+});

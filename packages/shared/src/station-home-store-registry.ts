@@ -65,6 +65,9 @@ export const STATION_HOME_ROOTS: Readonly<
   // #2494: Seatbelt-confined engine config homes and any credential enrolled
   // for confined use; like app-homes, product state.
   'confined-homes': 'state',
+  // Copies Station can download again (the public agent registry index,
+  // public-agent-registry.ts): small, so restored like any state.
+  cache: 'state',
   'connection-smoke.json': 'state',
   'conversation-acknowledgements.json': 'state',
   'conversation-intent-summaries': 'state',
@@ -79,20 +82,29 @@ export const STATION_HOME_ROOTS: Readonly<
   integrations: 'state',
   kits: 'state',
   knowledge: 'state',
+  // Import originals and per-document uncertain outcomes, not a derived index.
+  'knowledge-document-imports': 'state',
   'knowledge-index': 'state',
   'knowledge-stores': 'state',
   layouts: 'state',
   'mcp-ui-render-grants.json': 'state',
   'notifications.json': 'state',
+  // Reviewed commands and started-effect receipts must survive maintenance.
+  'operator-setup': 'state',
   'plugin-grants.json': 'state',
   'plugin-install-publication.mutation': 'state',
   plugins: 'state',
   pricing: 'state',
+  'project-creation-requests': 'state',
   'project-resource-shadow.json': 'state',
+  // Private source selections and AWS profile names; credentials stay with AWS.
+  'project-s3-sources.json': 'state',
   projects: 'state',
   prompts: 'state',
   'proposed-changes.json': 'state',
   'pull-request-guides': 'state',
+  // Durable receipts are state; nested working copies are external below.
+  'repository-acquisitions': 'state',
   runtime: 'state',
   'runtime-auth-health.json': 'state',
   scheduler: 'state',
@@ -163,6 +175,10 @@ export function isLiveStationHomeRoot(name: string): boolean {
  *   (browser-session-registry.ts), in Chromium's format, which hold its
  *   `Singleton*` symbolic links and can grow to gigabytes.
  *
+ * Acquisition working copies under `repository-acquisitions/<uuid>/checkout-N`
+ * follow the same policy dynamically; their receipts remain state. Only real
+ * checkout directories qualify at the walk, never a file or a symbolic link.
+ *
  * The rest of `browser/` (sessions.json, local-targets.json,
  * project-settings.json) is Station's and stays `state`.
  */
@@ -185,12 +201,34 @@ function startsWith(
   );
 }
 
-/** Whether a home path is, or is inside, an `external` path. */
+// Matches RepositoryAcquisitionService's UUID request IDs and checkout-${attempt}
+// layout, independently of receipts: missing receipts must not expose user work.
+function acquisitionCheckoutParent(segments: readonly string[]): boolean {
+  return (
+    segments[0] === 'repository-acquisitions' &&
+    (segments.length === 1 ||
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        segments[1],
+      ))
+  );
+}
+
+/**
+ * Whether a validated home path is, or is inside, an `external` path.
+ * Segments are raw names: the archive validates platform-specific safety.
+ */
 export function isExternalStationHomePath(
   segments: readonly string[],
+  isDirectory = false,
 ): boolean {
-  return STATION_HOME_EXTERNAL_PATHS.some((external) =>
-    startsWith(segments, external),
+  return (
+    STATION_HOME_EXTERNAL_PATHS.some((external) =>
+      startsWith(segments, external),
+    ) ||
+    (segments.length >= 3 &&
+      acquisitionCheckoutParent(segments) &&
+      /^checkout-[1-9][0-9]*$/.test(segments[2]) &&
+      (segments.length > 3 || isDirectory))
   );
 }
 
@@ -198,9 +236,14 @@ export function isExternalStationHomePath(
 export function containsExternalStationHomePath(
   segments: readonly string[],
 ): boolean {
-  return STATION_HOME_EXTERNAL_PATHS.some(
-    (external) =>
-      external.length > segments.length && startsWith(external, segments),
+  return (
+    STATION_HOME_EXTERNAL_PATHS.some(
+      (external) =>
+        external.length > segments.length && startsWith(external, segments),
+    ) ||
+    (segments.length > 0 &&
+      segments.length < 3 &&
+      acquisitionCheckoutParent(segments))
   );
 }
 
@@ -224,6 +267,8 @@ export const STATION_HOME_SQLITE_STORES: readonly (readonly string[])[] =
     // #3257: operator passkey public keys. Created at the first enrollment.
     ['authentication', 'operator-passkeys.sqlite'],
     ['security', 'project-membership.sqlite'],
+    ['security', 'project-room-agent.sqlite'],
+    ['security', 'project-rooms.sqlite'],
     ['security', 'native-surfaces.sqlite'],
     ['security', 'native-device-proof-replay.sqlite'],
     // sqlite-vec knowledge index; a `.db`, not a `.sqlite`.

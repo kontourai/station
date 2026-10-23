@@ -1,0 +1,19 @@
+{
+  "revision": "cbe0cdf672f70280e8c7742cbb1290f439413a1a",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"L1 round 4: config-loader-storage drops empty-string ACP arguments at load; acp.ts PUT normalizes arguments on both sides of the command-change check and answers the status view for an unchanged edit. Ownership and boundaries unchanged. No prose change.","inputs":["docs/architecture/module-map.md","src-server/domain/config-loader-storage.ts","src-server/routes/connections/acp.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"L1 round 4: pairing-route-scopes test gained an explicit tier assertion for the ACP re-check and unregistered read; no MCP UI host claim affected. No prose change.","inputs":["docs/design/mcp-ui-host.md","src-server/security/__tests__/pairing-route-scopes.test.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"L1 round 4: setup dialog's Retry check now re-checks the saved engine while editing; agents guide does not describe the dialog. No prose change.","inputs":["docs/guides/agents.md","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"L1 round 4: Edit setup and Retry check behaviour as described (Retry check re-checks; edits can clear folder/icon); the guide's claims remain accurate. No prose change.","inputs":["docs/guides/connections.md","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"L1 round 4: unaffected. No prose change.","inputs":["docs/guides/self-configuring-agent.md","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]},
+
+    {"path":"docs/reference/agent-plugins.md","note":"L1 round 4: config-loader-storage change is limited to ACP connection arguments at load (empty strings dropped); plugin loading and storage claims unaffected. No prose change.","inputs":["docs/reference/agent-plugins.md","src-server/domain/config-loader-storage.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"L1 round 4: unaffected. No prose change.","inputs":["examples/self-configuring-agent/README.md","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]}
+  ]
+}

@@ -361,9 +361,10 @@ disconnected or unusable third-party connections return no UI tools without star
 process. Station Control uses its shipped in-process tool registrations and App
 resources, so inventory and Basis previews also work when the default Agent is
 bound to Codex and no Station-engine MCP connection exists. This qualifies
-frame mounting. The current runtime inventory App-read composition deliberately
-turns found projections into unavailable outcomes; this lane leaves that
-publication guard intact. Saved-result fixtures qualify the rendered inventory
+frame mounting. The runtime inventory App-read composition now passes through found projections
+and pages. The App-read owner still requires current principal, Session and Task
+authority, an enabled integration, and a stable bounded projection. This is a
+source-wiring observation; saved-result fixtures qualify the rendered inventory
 view, not successful production inventory tool execution.
 
 Candidates remain in ordinary batches until membership is confirmed. The

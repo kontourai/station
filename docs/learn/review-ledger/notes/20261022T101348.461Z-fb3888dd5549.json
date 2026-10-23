@@ -1,0 +1,7 @@
+{
+  "revision": "1aacb81b14befcf31cb4c6ad32b5ec63cfbbff8f",
+
+  "notes": [
+    {"path":"src-ui/AGENTS.md","note":"Reviewed testing-guide narrowing of native Credential Manager assertion to history observation, with exact one-test output and native command negative controls. UI adapter and browser/native proof distinctions unchanged.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

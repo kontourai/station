@@ -344,7 +344,12 @@ describe('desktop build manifest', () => {
       );
       // The manifest ships only because dist-server itself is a bundled
       // resource; drop that mapping and the packaged app loses provenance.
-      expect(config.bundle.resources['../dist-server']).toBe('dist-server');
+      // Desktop bundles the staged copy (source maps omitted), which carries
+      // the manifest written before staging, never the raw build output.
+      expect(
+        config.bundle.resources['../dist-desktop-runtime/dist-server'],
+      ).toBe('dist-server');
+      expect(config.bundle.resources).not.toHaveProperty('../dist-server');
     }
   });
 

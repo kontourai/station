@@ -1,0 +1,7 @@
+{
+  "revision": "c1736edf8302152c408c6bfd27b37261be55518a",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed personal integration account controls against IntegrationAccountSection, scoped SDK account hooks, tools OAuth/account routes and MCPService ownership/disconnect. The guide describes the authenticated manual callback flow and preserves hosted/unattended/membership-revocation limits. Focused UI/SDK transport tests pass; no live provider or native sign-in qualification.","inputs":["docs/guides/connections.md"]}
+  ]
+}

@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   existsSync,
@@ -15,7 +16,9 @@ import {
 } from '../../packages/cli/src/commands/lifecycle.js';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { STATION_DOCS_INPUT_PATHS } from '../generate-station-docs.mjs';
+import { stageDesktopNodeRuntime } from '../lib/desktop-node-runtime.mjs';
 import {
+  archiveTool,
   assertBuildSourceIsCheckout,
   buildPortableServerArchive,
   bundleStationCli,
@@ -39,6 +42,85 @@ const SUPPORTED_TARGETS = [
   'linux-x64',
   'win32-x64',
 ];
+
+describe('private desktop Node staging', () => {
+  it('rejects a cross-target request before touching staged binaries', async () => {
+    const root = makeTempDir('desktop-node-target-');
+    mkdirSync(join(root, 'config'));
+    writeFileSync(
+      join(root, 'config/portable-server-node-runtime.json'),
+      JSON.stringify(readPortableNodeRuntime()),
+    );
+    vi.stubEnv('STATION_DESKTOP_TARGET_TRIPLE', 'another-platform-triple');
+    try {
+      await expect(
+        stageDesktopNodeRuntime(root, join(root, 'output')),
+      ).rejects.toThrow(/requires a another-platform-triple build host/);
+      expect(existsSync(join(root, 'src-desktop/binaries'))).toBe(false);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('replaces stale target binaries with digest-verified bytes and retains the Node license', async () => {
+    const root = makeTempDir('desktop-node-stage-');
+    const runtime = readPortableNodeRuntime();
+    const id = `${process.platform}-${process.arch}`;
+    const name = 'node-fixture';
+    const extension = process.platform === 'win32' ? 'zip' : 'tar.gz';
+    const file = `${name}.${extension}`;
+    const target = resolvePortableServerTarget(process.platform, process.arch);
+    const input = join(root, 'input');
+    mkdirSync(dirname(join(input, name, target.node.binary)), {
+      recursive: true,
+    });
+    writeFileSync(
+      join(input, name, target.node.binary),
+      'pinned executable bytes',
+    );
+    writeFileSync(join(input, name, 'LICENSE'), 'Node fixture license');
+    const cache = join(root, 'node_modules/.cache/station-node');
+    mkdirSync(cache, { recursive: true });
+    execFileSync(
+      archiveTool(),
+      ['-acf', join(cache, file), '-C', input, name],
+      { windowsHide: true },
+    );
+    mkdirSync(join(root, 'config'));
+    writeFileSync(
+      join(root, 'config/portable-server-node-runtime.json'),
+      JSON.stringify({
+        ...runtime,
+        distributions: {
+          ...runtime.distributions,
+          [id]: { file, sha256: sha256(readFileSync(join(cache, file))) },
+        },
+      }),
+    );
+    const binaries = join(root, 'src-desktop/binaries');
+    mkdirSync(binaries, { recursive: true });
+    writeFileSync(
+      join(binaries, 'station-node-stale-target'),
+      'obsolete bytes',
+    );
+    writeFileSync(join(binaries, 'other-helper'), 'keep');
+    await stageDesktopNodeRuntime(root, join(root, 'output'));
+    const staged = readdirSync(binaries).filter((name) =>
+      name.startsWith('station-node-'),
+    );
+    expect(staged).toHaveLength(1);
+    expect(readFileSync(join(binaries, staged[0]), 'utf8')).toBe(
+      'pinned executable bytes',
+    );
+    expect(readFileSync(join(binaries, 'other-helper'), 'utf8')).toBe('keep');
+    expect(
+      readFileSync(
+        join(root, 'output/dist-server/third-party/node/LICENSE'),
+        'utf8',
+      ),
+    ).toBe('Node fixture license');
+  });
+});
 
 function sha256(bytes: Buffer | string) {
   return createHash('sha256').update(bytes).digest('hex');

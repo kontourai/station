@@ -24,6 +24,10 @@ import {
   THREE_NEW_FILES,
 } from './fixtures/coding-diff-process';
 
+vi.mock('../views/task-workspace/TaskRelationships', () => ({
+  TaskRelationships: () => null,
+}));
+
 const makeDiffTempDir = trackTempDirs();
 let realDiffFixture: ReturnType<typeof codingDiffFixture> | undefined;
 let realDiffLocation: { workingDir?: string; projectSlug?: string } | undefined;
@@ -201,62 +205,72 @@ vi.mock('../contexts/ApiBaseContext', async (importOriginal) => {
     useHostRequestAuthorityScope: () => taskWorkspaceAuthorityScope,
   };
 });
-vi.mock('@kontourai/station-sdk/project-task-rooms', () => ({
-  TaskRoomWorkNotSentError: class extends Error {},
-  useAppendProjectTaskRoomOutputFeedbackMutation: () => ({
-    isPending: false,
-    mutateAsync: appendOutputFeedback,
-  }),
-  useTaskRoomAgentOptionsQuery: () => ({
-    data: { targets: [{ id: 'researcher', name: 'Researcher', ready: true }] },
-    isLoading: false,
-    isError: false,
-  }),
-  useTaskRoomAgentRequestsQuery: () => ({
-    data: { records: [] },
-    isError: false,
-    isFetching: false,
-    refetch: vi.fn(async () => ({
+vi.mock(
+  '@kontourai/station-sdk/project-task-rooms',
+  async (importOriginal) => ({
+    projectTaskRoomQueries: (
+      await importOriginal<
+        typeof import('@kontourai/station-sdk/project-task-rooms')
+      >()
+    ).projectTaskRoomQueries,
+    TaskRoomWorkNotSentError: class extends Error {},
+    useAppendProjectTaskRoomOutputFeedbackMutation: () => ({
+      isPending: false,
+      mutateAsync: appendOutputFeedback,
+    }),
+    useTaskRoomAgentOptionsQuery: () => ({
       data: {
-        context: {
-          version: 'station.task-room-context/v1',
-          digest: 'a'.repeat(64),
-          title: 'Task',
-          description: '',
-          documentRevision: 'r1',
-          text: '',
-        },
+        targets: [{ id: 'researcher', name: 'Researcher', ready: true }],
       },
-    })),
+      isLoading: false,
+      isError: false,
+    }),
+    useTaskRoomAgentRequestsQuery: () => ({
+      data: { records: [] },
+      isError: false,
+      isFetching: false,
+      refetch: vi.fn(async () => ({
+        data: {
+          context: {
+            version: 'station.task-room-context/v1',
+            digest: 'a'.repeat(64),
+            title: 'Task',
+            description: '',
+            documentRevision: 'r1',
+            text: '',
+          },
+        },
+      })),
+    }),
+    useSubmitTaskRoomAgentRequestMutation: (...args: unknown[]) => {
+      roomAgentBinding(...args);
+      return { isPending: false, mutateAsync: roomAgentSend };
+    },
+    useProjectTaskRoomDiscoveryQuery: () => roomDiscoveryResult,
+    useProjectTaskRoomDocumentQuery: () => roomDocumentResult,
+    useProjectTaskRoomHistoryQuery: () => ({
+      data: { pages: [] },
+      isError: false,
+    }),
+    useProjectTaskRoomStream: () => vi.fn(),
+    useCommandProjectTaskRoomLiveMutation: () => ({
+      isPending: false,
+      mutateAsync: roomCommand,
+    }),
+    usePlanProjectTaskRoomEditMutation: () => ({
+      isPending: false,
+      mutateAsync: vi.fn(),
+    }),
+    useSubmitProjectTaskRoomBatchMutation: () => ({
+      isPending: false,
+      mutateAsync: vi.fn(),
+    }),
+    useAppendProjectTaskRoomHumanMessageMutation: () => ({
+      isPending: false,
+      mutateAsync: vi.fn(),
+    }),
   }),
-  useSubmitTaskRoomAgentRequestMutation: (...args: unknown[]) => {
-    roomAgentBinding(...args);
-    return { isPending: false, mutateAsync: roomAgentSend };
-  },
-  useProjectTaskRoomDiscoveryQuery: () => roomDiscoveryResult,
-  useProjectTaskRoomDocumentQuery: () => roomDocumentResult,
-  useProjectTaskRoomHistoryQuery: () => ({
-    data: { pages: [] },
-    isError: false,
-  }),
-  useProjectTaskRoomStream: () => vi.fn(),
-  useCommandProjectTaskRoomLiveMutation: () => ({
-    isPending: false,
-    mutateAsync: roomCommand,
-  }),
-  usePlanProjectTaskRoomEditMutation: () => ({
-    isPending: false,
-    mutateAsync: vi.fn(),
-  }),
-  useSubmitProjectTaskRoomBatchMutation: () => ({
-    isPending: false,
-    mutateAsync: vi.fn(),
-  }),
-  useAppendProjectTaskRoomHumanMessageMutation: () => ({
-    isPending: false,
-    mutateAsync: vi.fn(),
-  }),
-}));
+);
 vi.mock('../components/DetailHeader', () => ({
   DetailHeader: ({ title }: { title: string }) => <h1>{title}</h1>,
 }));
@@ -297,7 +311,10 @@ vi.mock('../workspace-panes/BasisWorkspacePane', () => ({
   ),
 }));
 
-import { NavigationProvider } from '../contexts/NavigationContext';
+import {
+  NavigationProvider,
+  navigationStore,
+} from '../contexts/NavigationContext';
 import {
   relativeWorkspacePath,
   TaskWorkspaceView,
@@ -307,26 +324,29 @@ import type { WorkspacePaneHostLockManager } from '../workspace-panes/workspaceP
 
 function render(
   ui: Parameters<typeof rtlRender>[0],
-  options?: Parameters<typeof rtlRender>[1],
+  options?: Parameters<typeof rtlRender>[1] & { openDetails?: boolean },
 ) {
+  const { openDetails = true, ...renderOptions } = options ?? {};
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   const view = rtlRender(ui, {
     wrapper: ({ children }) => (
-      <QueryClientProvider client={client}>
-        <PageFrame
-          spec={{ title: 'Task', body: 'fill', flush: true }}
-          routeIdentity="task:test"
-        >
-          {children}
-        </PageFrame>
-      </QueryClientProvider>
+      <NavigationProvider>
+        <QueryClientProvider client={client}>
+          <PageFrame
+            spec={{ title: 'Task', body: 'fill', flush: true }}
+            routeIdentity="task:test"
+          >
+            {children}
+          </PageFrame>
+        </QueryClientProvider>
+      </NavigationProvider>
     ),
-    ...options,
+    ...renderOptions,
   });
   const details = screen.queryByRole('tab', { name: 'Details' });
-  if (details) fireEvent.click(details);
+  if (openDetails && details) fireEvent.click(details);
   return view;
 }
 
@@ -455,6 +475,11 @@ function bindDownloadedVersion(bytes: Uint8Array) {
 
 describe('TaskWorkspaceView', () => {
   beforeEach(() => {
+    navigationStore.navigate('/projects/project-alpha/tasks/task-alpha', {
+      taskView: null,
+      starter: null,
+      starterLink: null,
+    });
     queryResult = {
       data: graph(),
       isLoading: false,
@@ -507,7 +532,7 @@ describe('TaskWorkspaceView', () => {
     };
   });
 
-  test('opens on Chat and keeps the live brief draft while switching between the four Task views', () => {
+  test('opens on Overview and preserves the live plan draft across Task views', () => {
     roomDocumentResult.data = {
       kind: 'snapshot',
       revision: 'r1',
@@ -526,25 +551,23 @@ describe('TaskWorkspaceView', () => {
       },
       isLoading: false,
     };
-    rtlRender(
-      <QueryClientProvider client={new QueryClient()}>
-        <TaskWorkspaceView taskId="task-alpha" />
-      </QueryClientProvider>,
-    );
+    render(<TaskWorkspaceView taskId="task-alpha" />, { openDetails: false });
     expect(
-      screen.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected'),
+      screen
+        .getByRole('tab', { name: 'Overview' })
+        .getAttribute('aria-selected'),
     ).toBe('true');
-    expect(screen.getByRole('tab', { name: 'Chat' }).tabIndex).toBe(0);
-    expect(screen.getByRole('tab', { name: 'Brief' }).tabIndex).toBe(-1);
+    expect(screen.getByRole('tab', { name: 'Overview' }).tabIndex).toBe(0);
+    expect(screen.getByRole('tab', { name: 'Plan' }).tabIndex).toBe(-1);
     expect(screen.queryByRole('textbox', { name: 'Task brief' })).toBeNull();
-    fireEvent.click(screen.getByRole('tab', { name: 'Brief' }));
-    expect(screen.getByRole('tab', { name: 'Chat' }).tabIndex).toBe(-1);
-    expect(screen.getByRole('tab', { name: 'Brief' }).tabIndex).toBe(0);
+    fireEvent.click(screen.getByRole('tab', { name: 'Plan' }));
+    expect(screen.getByRole('tab', { name: 'Conversation' }).tabIndex).toBe(-1);
+    expect(screen.getByRole('tab', { name: 'Plan' }).tabIndex).toBe(0);
     fireEvent.click(screen.getByRole('button', { name: 'Edit brief' }));
     const editor = screen.getByRole('textbox', { name: 'Task brief' });
     fireEvent.change(editor, { target: { value: '# Goal\nA revised room' } });
-    fireEvent.click(screen.getByRole('tab', { name: 'Chat' }));
-    fireEvent.click(screen.getByRole('tab', { name: 'Brief' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Conversation' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Plan' }));
     expect(
       (
         screen.getByRole('textbox', {
@@ -552,7 +575,18 @@ describe('TaskWorkspaceView', () => {
         }) as HTMLTextAreaElement
       ).value,
     ).toBe('# Goal\nA revised room');
-    fireEvent.click(screen.getByRole('tab', { name: 'Results' }));
+    expect(screen.getByRole('textbox', { name: 'Task brief' })).toBe(editor);
+    expect(new URLSearchParams(window.location.search).get('taskView')).toBe(
+      'plan',
+    );
+    act(() =>
+      navigationStore.navigate('/projects/project-beta/tasks/task-beta'),
+    );
+    expect(window.location.pathname).toBe(
+      '/projects/project-alpha/tasks/task-alpha',
+    );
+    expect(screen.getByRole('textbox', { name: 'Task brief' })).toBe(editor);
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
     expect(screen.getByRole('list', { name: 'Kept results' })).toBeTruthy();
     fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
     expect(screen.getByText('Raw room history')).toBeTruthy();
@@ -631,7 +665,7 @@ describe('TaskWorkspaceView', () => {
     expect(
       screen.queryByRole('region', { name: 'Task room workspace' }),
     ).toBeNull();
-    fireEvent.click(screen.getByRole('tab', { name: 'Brief' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Plan' }));
     expect(screen.getByDisplayValue('Retained async context')).toBeTruthy();
     expect(screen.getByText(/Task room is unavailable/i)).toBeTruthy();
   });
@@ -664,7 +698,7 @@ describe('TaskWorkspaceView', () => {
         <TaskWorkspaceView taskId="task-alpha" />
       </QueryClientProvider>,
     );
-    fireEvent.click(await screen.findByRole('tab', { name: 'Chat' }));
+    fireEvent.click(await screen.findByRole('tab', { name: 'Conversation' }));
     fireEvent.click(
       await screen.findByRole('button', { name: 'Ask an agent' }),
     );
@@ -1849,35 +1883,102 @@ describe('TaskWorkspaceView', () => {
     });
   });
 
-  test('retains the selected tab across a Project reload only for the same Task incarnation', () => {
-    const view = render(<TaskWorkspaceView taskId="task-alpha" />);
-    fireEvent.click(screen.getByRole('tab', { name: 'Brief' }));
-    const settledProjects = projectsResult;
-    projectsResult = { data: undefined, isLoading: true, refetch: vi.fn() };
-    view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
+  test('restores the explicit Task view after a protected-tree remount and graph reload', () => {
+    const view = render(<TaskWorkspaceView taskId="task-alpha" />, {
+      openDetails: false,
+    });
+    fireEvent.click(screen.getByRole('tab', { name: 'Plan' }));
+    view.unmount();
+    const settledGraph = queryResult;
+    queryResult = { data: undefined, isLoading: true, refetch: vi.fn() };
+    const next = render(<TaskWorkspaceView taskId="task-alpha" />, {
+      openDetails: false,
+    });
     expect(
       screen.getByRole('status', { name: 'Loading task workspace' }),
     ).toBeTruthy();
-    projectsResult = settledProjects;
-    view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
+    expect(screen.queryByRole('tab')).toBeNull();
+    queryResult = settledGraph;
+    next.rerender(<TaskWorkspaceView taskId="task-alpha" />);
     expect(
-      screen.getByRole('tab', { name: 'Brief' }).getAttribute('aria-selected'),
+      screen.getByRole('tab', { name: 'Plan' }).getAttribute('aria-selected'),
     ).toBe('true');
-    queryResult = {
-      ...queryResult,
-      data: {
-        ...queryResult.data,
-        task: {
-          ...queryResult.data.task,
-          createdAt: '2026-10-21T00:00:00.000Z',
-        },
-      },
-    };
+    expect(screen.getByRole('tabpanel', { name: 'Plan' })).toBeTruthy();
+  });
+
+  test('reads Task view deep links and browser Back without carrying the view to a different Task', async () => {
+    navigationStore.navigate(
+      '/projects/project-alpha/tasks/task-alpha?taskView=conversation',
+    );
+    const view = render(<TaskWorkspaceView taskId="task-alpha" />, {
+      openDetails: false,
+    });
+    expect(
+      screen
+        .getByRole('tab', { name: 'Conversation' })
+        .getAttribute('aria-selected'),
+    ).toBe('true');
+    fireEvent.click(screen.getByRole('tab', { name: 'Plan' }));
+    act(() =>
+      navigationStore.navigate('/projects/project-alpha/tasks/task-beta'),
+    );
+    queryResult.data = graph({ id: 'task-beta' });
+    view.rerender(<TaskWorkspaceView taskId="task-beta" />);
+    expect(new URLSearchParams(window.location.search).has('taskView')).toBe(
+      false,
+    );
+    expect(
+      screen
+        .getByRole('tab', { name: 'Overview' })
+        .getAttribute('aria-selected'),
+    ).toBe('true');
+    await act(async () => {
+      window.history.back();
+      await waitFor(() =>
+        expect(window.location.pathname).toBe(
+          '/projects/project-alpha/tasks/task-alpha',
+        ),
+      );
+    });
+    queryResult.data = graph();
     view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
     expect(
-      screen.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected'),
+      screen.getByRole('tab', { name: 'Plan' }).getAttribute('aria-selected'),
+    ).toBe('true');
+    act(() => navigationStore.updateParams({ taskView: 'unknown' }));
+    expect(
+      screen
+        .getByRole('tab', { name: 'Overview' })
+        .getAttribute('aria-selected'),
     ).toBe('true');
   });
+
+  test.each(['incarnation', 'authority'])(
+    'keeps only the nonsecret view on a new Task %s',
+    (change) => {
+      const originalAuthority = taskWorkspaceAuthorityScope.authorityKey;
+      const view = render(<TaskWorkspaceView taskId="task-alpha" />);
+      fireEvent.click(
+        screen.getByRole('button', { name: /reports\/result\.md/i }),
+      );
+      expect(screen.getByTestId('file-content')).toBeTruthy();
+      if (change === 'incarnation')
+        queryResult.data = graph({ createdAt: '2026-10-21T00:00:00.000Z' });
+      else taskWorkspaceAuthorityScope.authorityKey = 'replacement-authority';
+      try {
+        view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
+        expect(
+          screen
+            .getByRole('tab', { name: 'Details' })
+            .getAttribute('aria-selected'),
+        ).toBe('true');
+        expect(screen.queryByTestId('file-content')).toBeNull();
+        expect(screen.getByText('Select a reference to inspect')).toBeTruthy();
+      } finally {
+        taskWorkspaceAuthorityScope.authorityKey = originalAuthority;
+      }
+    },
+  );
 
   test('renders loading, error, and Task 404 states', () => {
     queryResult = { data: undefined, isLoading: true, refetch: vi.fn() };

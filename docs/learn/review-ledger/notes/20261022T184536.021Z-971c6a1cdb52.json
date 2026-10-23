@@ -1,0 +1,7 @@
+{
+  "revision": "674470d53b1b3aa589ac7009cb2b37d1397d7076",
+
+  "notes": [
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"Inspected retained narrow capture: root selector, stacked derived graph and canonical-record card. Sources changes do not alter KnowledgeRecall rendering or its captured record data. Preserve original capture revision and historical scope; current Sources narrow browser proof is separate. No recapture, native or provider qualification claimed.","inputs":["docs/learn/media/repository-knowledge-narrow.png","packages/sdk/src/client/knowledge.ts","packages/sdk/src/query-domains/knowledgeStores.ts","src-server/knowledge-store/knowledge-store-provider.ts"]}
+  ]
+}

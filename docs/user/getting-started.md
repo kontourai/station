@@ -20,9 +20,21 @@ without adding a model API key:
    engine** opens Connections when no agent is runnable. On Home, choose **Codex** in the Agent picker, write a request, and choose
    **Start**. You can start without a Project. The detected Codex Agent is
    enough; creating a custom Agent is optional.
-4. When you want to work with files, choose **Open local project** on Home and
-   select the folder. Station recommends **Coding** for a Git repository.
-   Choose **Create** to open it directly.
+4. Choose **New Project** on Home, enter a name, and choose **Repository or
+   folder**, **Documents and knowledge**, **Connected tools**, or **Blank
+   Project**. Documents opens Files & connections after creation; connected tools opens
+   the Project's Tools section. Neither asks for a folder or repository.
+   Blank also permits an optional installed layout. For a repository, open
+   **Start from a Git repository**, paste its HTTPS/SSH URL or choose **GitHub** or **GitLab**
+   under **Repository provider**, using an account signed in on the Station host. Choose
+   **Acquire repository**, then **Use this checkout**. Creating the Project rechecks
+   that working copy and retains its source and exact commit. Acquisition currently
+   requires the Station operator and uses that host's Git credentials.
+   Station recommends **Coding** for a Git repository; you can choose another
+   layout or none. Choose **Create** to open
+   the Project. Operator setup is saved across reloads; reopen **New Project** to
+   check and continue the same Project, intent and starter. See [repository setup and recovery](https://github.com/kontourai/station/blob/main/docs/guides/connections.md#start-a-project-from-a-repository)
+   and [document import](https://github.com/kontourai/station/blob/main/docs/guides/knowledge.md#import-documents-from-your-computer).
 5. To talk to the built-in **Station** assistant using the same Codex account,
    open **Settings → General → Built-in agent engine → Change…**, choose
    **Codex**, choose **Use this engine**, then **Save**. Select **Station** in
@@ -349,7 +361,10 @@ runs its own agent loop.
 2. On the **Models** tab choose a detected service or **Add model connection**;
    on the **Engines** tab choose a detected engine or **Add engine**. During
    first run, a detected Engine can be ticked to connect it and create its
-   External agent in the same confirmed action.
+   External agent in the same confirmed action. An engine that is starting for
+   the first time can be reported as still starting rather than failed: its
+   Agent is added if it connects while Station is running; otherwise set it up
+   again later.
 3. Follow its setup action until it reports **Ready**.
 
 For OpenAI's model service, supply its API key. A custom server may use another
@@ -382,7 +397,7 @@ Choose the simplest path for what you want to do:
 
 ## Start Your First Chat
 
-Home, the chat dock and operator Project pages use the same start composer. Write
+Home and the chat dock use the same start composer. Write
 what you want done and choose **Start**. You do not need to choose anything
 first; the controls show what **Start** will use:
 
@@ -421,12 +436,13 @@ Cancel returns to your message, including edits made in the task chooser.
 Follow a started task in Activity. A foreground chat stays on its existing
 Station; choosing a remote task destination does not move that chat.
 
-An operator's Project page has the same composer in a compact form above its
-activity. Its Project is fixed, so starting there uses that Project even when
-the chat dock is bound elsewhere. A missing Project blocks starting and keeps
-the message. This does not change Home's remembered Project. To inspect or
-change this Station's local folder, open **Settings** on the Project page;
-the folder is workspace configuration rather than the Project's identity.
+The Project page opens on **Overview**. **Project room** is shared discussion
+with people in that Project; use **Bring an Agent** for an explicit request
+whose answer returns to the room. Direct Agent conversations stay in the chat
+dock. **Tasks** separates current work, backlog and history; **Files & connections**
+holds the Project's context. To change where new Agent work starts, open the
+workspace controls under Files & connections. A local folder is execution
+configuration rather than the Project's identity.
 
 Choosing on a chip starts nothing, and Station remembers it. The Agent is
 remembered for each project and for **No project** on this browser and
@@ -551,9 +567,11 @@ Sidebar utilities. Conversations and composer drafts stay in the chat dock and
 its inbox (⌘D).
 
 Selecting a project in the sidebar opens its workspace and makes it the default
-for new chats. An existing chat stays with its original project. The chat bar's
-**New chats** value lets you choose another default without leaving the workspace.
-On a phone with a long chat title, that control shows only a folder icon.
+for new chats. An existing chat stays with its original project. On a computer,
+the project beside **New** in the dock header shows that default; choose it to
+pick another without leaving the workspace. On a phone, the chat bar's **New
+chats** value does the same, and with a long chat title it shows only a folder
+icon.
 The next sidebar project selection updates that default again.
 
 To give a project an icon, open its settings and choose the icon beside its
@@ -695,20 +713,27 @@ until Station answers instead.
 Once Station confirms a turn started, a late network error does not queue that
 message again.
 
-Until the agent has a message, its bubble is outlined rather than filled, with a
-short label:
+Until the agent has a message, its bubble is outlined rather than filled. On
+the way there it shows no text, only a small mark beside the bubble (hover it,
+or use a screen reader, for its words):
 
-- **Sending…**, also while another open window of the app is sending it
-- **Received**, which adds **safe to close** when Station keeps running without
-  the app, or **keep the app open** when the app's own Station stops with it
-- **Saved on this device · sends when connected**
-- **No answer yet · sends once Station confirms it never arrived**, after a send
-  that got no answer: when Station can be reached it is asked about the message,
-  which is sent once only if it never arrived
-- **Waiting behind an unsent message**: messages in a chat go in order, so a
+- a turning ring while it is **Sending**, also while another open window of the
+  app is sending it; the outline is dimmed
+- a check once Station has **Received** it. The mark's label adds **Safe to
+  close the app** when Station keeps running without the app, or **Keep the app
+  open** when the app's own Station stops with it. The composer's status pill
+  says **Starting** at the same time.
+- once the agent has it, the bubble fills and the check fades out
+
+When something needs your attention instead, the bubble opens one short line:
+
+- **Sends when connected**: kept on this device until Station can be reached
+- **No answer yet. Resends only if it never arrived.**, after a send that got no
+  answer: when Station can be reached it is asked about the message, which is
+  sent once only if it never arrived
+- **Waits for the unsent message above**: messages in a chat go in order, so a
   message waits until an earlier one that was not sent is retried or discarded
-- **Saved on this device · waits for its Station**, for a message written for
-  another Station
+- **Waits for its own Station**, for a message written for another Station
 - **Not sent**, with **Retry** (the same message again, never a second copy) and
   **Edit** (the text goes back to the composer); **Discard unsent message** is in
   the message's **⋯** menu (on a phone, listed in its sheet)
@@ -719,8 +744,8 @@ short label:
 
 A message that may have reached the agent, or got no answer, is never discarded
 automatically:
-**Discard…**, on the message, in the queued-message notice or in the outbox
-list, states the risk and removes it only after **I checked, discard it**, in
+**Discard…**, on the message, in the queued-message notice or in the pending
+list above the composer, states the risk and removes it only after **I checked, discard it**, in
 every open window. It does not hold back the messages written after
 it.
 

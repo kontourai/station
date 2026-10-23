@@ -68,7 +68,13 @@ export type HostActionId =
    * already posts to the host today -- so the affordance stays and only the
    * machine that will hold the key is named.
    */
-  | 'connection-api-key';
+  | 'connection-api-key'
+  /** The sign-in panel's lede: where the engine's sign-in is kept. */
+  | 'engine-sign-in'
+  /** A sign-in the engine runs in a terminal, opened by Station on the host. */
+  | 'engine-sign-in-terminal'
+  /** A sign-in the engine runs itself, which may open a browser on the host. */
+  | 'engine-sign-in-browser';
 
 interface HostActionCopyEntry {
   reach: HostActionReach;
@@ -166,6 +172,26 @@ export const HOST_ACTION_COPY: Record<HostActionId, HostActionCopyEntry> = {
     host: '',
     paired: (hostName) =>
       `The key is saved on ${hostName}, the computer Station runs on. It is never sent back to this device.`,
+  },
+  'engine-sign-in': {
+    // The engine signs in on the host and keeps its credentials there;
+    // Station only starts the sign-in, from any device allowed to.
+    reach: 'remote-safe',
+    host: 'The engine keeps its own sign-in on this computer.',
+    paired: (hostName) =>
+      `Signing in here signs the engine in on ${hostName}, the computer Station runs on. The engine keeps its sign-in there.`,
+  },
+  'engine-sign-in-terminal': {
+    reach: 'remote-safe',
+    host: "Opens the engine's own sign-in in a terminal on this computer.",
+    paired: (hostName) =>
+      `Opens the engine's own sign-in in a terminal on ${hostName}. You can use that terminal from this device.`,
+  },
+  'engine-sign-in-browser': {
+    reach: 'remote-safe',
+    host: 'The engine may open a browser on this computer. If it shows a link, you can open it here.',
+    paired: (hostName) =>
+      `The engine may open a browser on ${hostName}. If it shows a link, you can open it on this device.`,
   },
   'agent-engine-setup': {
     // Setting up an engine sends you to Connections, which a paired device

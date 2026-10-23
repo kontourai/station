@@ -1,12 +1,47 @@
-/* The stacked caption/name each keep one line when the header is squeezed.
-   The button's title retains the full project name and path. */
-.chat-dock__project-badge .chat-dock__project-badge-lines {
-  align-items: stretch;
-  text-align: left;
+/* The New split button's destination half (ChatDockProjectContext.tsx): the
+   project name, truncated, and a caret. The full name and path are the
+   button's title. Joined to New by `.chat-dock__new-split` (index.css). */
+.chat-dock__new-split .chat-dock__project-context {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
 }
 
-.chat-dock__project-badge-caption {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.chat-dock__header-actions .chat-dock__new-split .chat-dock__project-badge {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 32px;
+  align-items: center;
+  gap: var(--k-space-1);
+  padding: 0 var(--k-space-2);
+  border: 0;
+  border-left: var(--k-border-thin, 1px) solid var(--border-primary);
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  transition:
+    background-color var(--motion-fast) var(--ease-standard),
+    color var(--motion-fast) var(--ease-standard);
+}
+
+.chat-dock__header-actions
+  .chat-dock__new-split
+  .chat-dock__project-badge:is(:hover, :focus-visible, [aria-expanded="true"]) {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.chat-dock__new-split .chat-dock__project-badge-name {
+  max-inline-size: 14ch;
+}
+
+.chat-dock__new-split .chat-dock__project-badge .choice-caret {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
 }
