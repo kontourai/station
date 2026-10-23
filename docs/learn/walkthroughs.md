@@ -1,9 +1,9 @@
 # See Station in use
 
-These recordings retain their original capture revisions and predate the current
-dock chrome and onboarding controls. They illustrate the named inspection and
-connection journeys; they were not replayed or recaptured for this change.
-Current onboarding comparisons live in the [October improvement round](../plans/onboarding-improvement-rounds.md).
+These captures illustrate the named inspection and connection journeys at the
+revisions recorded in the media manifest. Some show earlier controls; each
+caption retains its evidence limits. Onboarding comparisons live in the
+[October improvement round](../plans/onboarding-improvement-rounds.md).
 
 These captures put the architecture next to the application. They use isolated
 Station instances and sample data. Each caption distinguishes persisted behavior
@@ -17,7 +17,7 @@ A Project gives work a workspace and a durable identity. Here, the Project
 contains a saved Task even though no Agent Session has started. That distinction
 matters: work can exist before an engine is ready to execute it.
 
-![A Project with a saved Task and workspace details.](media/project-with-task.png)
+![A Project Tasks view with one saved Task in Backlog.](media/project-with-task.png)
 
 The Task's shared plan and conversation keep revisions and discussion with
 that work. The historical capture below shows the earlier Brief tab;
@@ -30,9 +30,11 @@ establish that every part of that issue is resolved.
 
 ![A saved shared Task document and its revision history.](media/shared-task-document.png)
 
-The Project capture retains its original revision and appearance.
-It predates the Overview-first Project space and shared Project Room; use
-[the getting-started guide](../user/getting-started.md) for the current controls.
+The Project capture shows a saved Task in Backlog with Overview, Project room,
+Tasks, and Files & connections in its navigation. It retains the revision and
+evidence limits recorded in the media manifest; it does not verify Room
+interaction or Agent execution. Use [the getting-started guide](../user/getting-started.md)
+for the current controls.
 The Task
 document capture was replaced after actual single-user save/send/reopen checks.
 The current Task workspace opens on **Overview**. **Conversation** opens the
