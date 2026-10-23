@@ -26,7 +26,10 @@ export function createProjectRoomTaskContext(deps: {
       (await deps.principalId()) !== deps.requesterId
     )
       throw new ProjectMembershipRefusal('forbidden');
-    viewCurrent = await deps.requireView();
+    const guard = await deps.requireView();
+    if ((await deps.principalId()) !== deps.requesterId)
+      throw new ProjectMembershipRefusal('forbidden');
+    viewCurrent = guard;
     viewCurrent();
   };
   const authority = {

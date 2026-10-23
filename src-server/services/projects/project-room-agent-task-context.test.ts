@@ -328,6 +328,27 @@ it('refuses revocation at capture insertion and inside the actual Room append gu
   expect(f.room.store.history(f.authority.scope).messages).toEqual([]);
 });
 
+it('keeps cancellation usable when revocation arrives while releasing the capture fence', async () => {
+  const f = await fixture();
+  const fence = f.shared.withCurrentSummaries.bind(f.shared);
+  vi.spyOn(f.shared, 'withCurrentSummaries').mockImplementationOnce(
+    async (summaries, operation) => {
+      const result = await fence(summaries, operation);
+      f.revoke();
+      return result;
+    },
+  );
+  const handle = await f.request();
+  expect(handle).toMatchObject({
+    state: 'uncertain',
+    failure: 'launch_uncertain',
+  });
+  expect(f.execution.launch).not.toHaveBeenCalled();
+  expect((await f.module.cancel(f.authority, handle.requestId)).state).toBe(
+    'cancelled',
+  );
+});
+
 it('rechecks captured refs in the dispatch callbacks after a late unshare', async () => {
   const f = await fixture();
   vi.mocked(f.execution.launch).mockImplementationOnce(

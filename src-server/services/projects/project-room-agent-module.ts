@@ -445,14 +445,6 @@ export class ProjectRoomAgentModule {
     captureSchema.parse(capture);
     // The unique capture is a durable launch fence. A crash before markStarted
     // leaves a reserved handle requiring operator reconciliation, never automatic replay.
-    const inserted = await this.withEvidence(authority, capture, () =>
-      this.db
-        .prepare(
-          'INSERT OR IGNORE INTO project_room_agent_captures VALUES (?, ?)',
-        )
-        .run(request.requestId, JSON.stringify(capture)),
-    );
-    if (!inserted.changes) return this.inspect(authority, request.requestId);
     const recheck = () => {
       this.check(authority, capture);
       this.evidence(authority, capture);
@@ -460,15 +452,25 @@ export class ProjectRoomAgentModule {
       if (current.state !== 'started' && current.state !== 'uncertain')
         throw new Error('Project room agent request unavailable');
     };
-    this.store.markStarted(authority.scope, request.requestId, () =>
-      this.check(authority, capture),
-    );
-    this.store.bindSession(
-      authority.scope,
-      request.requestId,
-      capture.sessionId,
-      recheck,
-    );
+    const inserted = await this.withEvidence(authority, capture, () => {
+      const inserted = this.db
+        .prepare(
+          'INSERT OR IGNORE INTO project_room_agent_captures VALUES (?, ?)',
+        )
+        .run(request.requestId, JSON.stringify(capture));
+      if (!inserted.changes) return false;
+      this.store.markStarted(authority.scope, request.requestId, () =>
+        this.check(authority, capture),
+      );
+      this.store.bindSession(
+        authority.scope,
+        request.requestId,
+        capture.sessionId,
+        recheck,
+      );
+      return true;
+    });
+    if (!inserted) return this.inspect(authority, request.requestId);
     try {
       await this.refreshEvidence(authority, capture);
       recheck();
