@@ -67,7 +67,6 @@ class RecoveryAdapter extends GateTestAdapter {
       sessionId: input.threadId,
       createdAt: new Date().toISOString(),
       method: 'session.started',
-      cwd: input.cwd,
       metadata: input.metadata,
     });
     return session;
@@ -88,14 +87,20 @@ class RecoveryAdapter extends GateTestAdapter {
 }
 
 function pause() {
-  const entered = Promise.withResolvers<void>();
-  const released = Promise.withResolvers<void>();
+  let enter!: () => void;
+  let release!: () => void;
+  const entered = new Promise<void>((resolve) => {
+    enter = resolve;
+  });
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   return {
-    entered: entered.promise,
-    release: () => released.resolve(),
+    entered,
+    release,
     wait: async () => {
-      entered.resolve();
-      await released.promise;
+      enter();
+      await released;
     },
   };
 }
