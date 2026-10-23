@@ -1,0 +1,7 @@
+{
+  "revision": "26efa31a101df8087607641fa4daa432416c115d",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed 36c4c5cd9a3 host-owned raw provider retention: consumed intent joined to private invocation record; canonical lock/readback/fsync and synchronous finalizers precede accounting return; exact replay versus changed evidence refusal. 38 baseline/restored controls and compiling address-by-response mutant two intended failures/36 controls. Source-only independent review confirms no unsafe settlement finding, retaining trusted caller, per-record/record-count and POSIX-only limits. Preparation/provider qualification/boot serving and real settlement caller remain unwired.","inputs":["docs/plans/child-work-epic.md","src-server/runtime/conversation/reserved-provider-fetch.ts","src-server/runtime/conversation/reserved-sdk-source-attempt.ts","src-server/services/orchestration/delegation-group-persistence.ts","src-server/services/orchestration/__tests__/delegation-group-sdk-source-wire-owner.test.ts"]}
+  ]
+}

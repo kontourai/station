@@ -14,7 +14,15 @@
 
     "src-ui/src/views/CliSessionGroupsPanel.css",
 
-    "src-ui/src/views/__tests__/CliSessionGroupsPanel.test.tsx"
+    "src-ui/src/views/__tests__/CliSessionGroupsPanel.test.tsx",
+
+    "src-server/runtime/conversation/reserved-provider-fetch.ts",
+
+    "src-server/runtime/conversation/reserved-sdk-source-attempt.ts",
+
+    "src-server/services/orchestration/delegation-group-persistence.ts",
+
+    "src-server/services/orchestration/__tests__/delegation-group-sdk-source-wire-owner.test.ts"
   ],
 
   "checks": [
