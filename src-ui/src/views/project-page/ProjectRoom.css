@@ -54,6 +54,14 @@
 .project-room__text {
   padding-block: var(--k-space-2);
 }
+.project-room__answer {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding-block: var(--k-space-2);
+}
+.project-room__answer > :not(:first-child) {
+  margin-block-start: var(--k-space-3);
+}
 .project-room__composer,
 .project-room__notes {
   display: flex;

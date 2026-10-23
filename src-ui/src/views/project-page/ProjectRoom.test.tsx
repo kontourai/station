@@ -488,6 +488,8 @@ test('loads older history and explicitly requests an available Agent with actual
     createdAt: at,
     text: `Update ${index + 1}`,
   }));
+  messages[29]!.text +=
+    '\n\n[Read policy](/api/knowledge/roots/project/records/policy)';
   const client = new QueryClient();
   render(
     <QueryClientProvider client={client}>
@@ -498,7 +500,12 @@ test('loads older history and explicitly requests an available Agent with actual
       />
     </QueryClientProvider>,
   );
-  await screen.findByText('Update 30');
+  await screen.findByText(/Update 30/);
+  expect(
+    (await screen.findByRole('link', { name: 'Read policy' })).getAttribute(
+      'href',
+    ),
+  ).toBe('/api/knowledge/roots/project/records/policy');
   expect(screen.queryByText('Update 1')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Load older messages' }));
   await screen.findByText('Update 1');
