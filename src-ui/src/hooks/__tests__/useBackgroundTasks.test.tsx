@@ -232,9 +232,8 @@ test('repeated real chat closures bound retained live and uncertain history with
     }
     expect(result.current).toBe(selected);
     expect(
-      Object.keys(backgroundTasksStore.getSnapshot().limitedToolChats ?? {})
-        .length,
-    ).toBeLessThanOrEqual(50);
+      Object.keys(backgroundTasksStore.getSnapshot().limitedToolChats ?? {}),
+    ).toHaveLength(50);
     // Missing sessions are uncertainty, never a fabricated stop or success.
     backgroundTasksStore.reconcileSnapshot({ sessions: [] });
   });
