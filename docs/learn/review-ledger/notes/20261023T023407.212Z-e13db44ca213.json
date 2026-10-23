@@ -1,0 +1,7 @@
+{
+  "revision": "5403d554a4cd5e2b6186d3f023b86591c9fcb267",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed the runtime-routes delta against this bounded-context vocabulary and owner table. Traced lazy UsageTelemetryService lookup for telemetry health, producer admission for OTLP, and authenticated canonical usage-receipt export. Product observations, local health and canonical accounting remain separate as the text states. ServerUpdateCoordinator is event/boot-driven and is not claimed here as a scheduled job. Notification/scheduler/knowledge/voice/terminal owner mappings remain unchanged; unrelated group, pairing and device routes add no new glossary claim. No prose change required. Source/dependency review only: no delivery, OS alert, provider, platform or complete operations runtime qualification.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}
