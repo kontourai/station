@@ -1,0 +1,11 @@
+{
+  "revision": "26c29263a51e2503f96d86da886d7005c714ef56",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed suite-hook diagnostics against scripts/lib/vitest-error-reporter.mjs, scripts/run-changed-verification.mjs and the real-child changed-verification regression. The reporter retains bounded redacted suites separately, prints retained primary messages/stacks, and the caller copies suite diagnostics without changing JSON verdicts or assertion counts. Focused suite: 212 passed after final implementation; pre-fix regression failed for missing suites. Original hosted containment setup cause remains unknown; local containment passes do not qualify hosted CI.","inputs":["docs/guides/testing.md","scripts/__tests__/changed-verification.test.ts","scripts/lib/vitest-error-reporter.mjs","scripts/run-changed-verification.mjs"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Reviewed changed-verification reconciliation claims against the additive structuredErrorReport suites/omittedSuites fields. Suite diagnostics do not enter assertion counts, terminal recovered failure identities or canonical receipt status derivation. Existing distinctions between canonical receipts, diagnostics and hosted qualification remain accurate. Source inspection plus 212 focused changed-verification tests; no new hosted pass claimed.","inputs":["docs/reference/verification-receipts.md","scripts/run-changed-verification.mjs"]},
+
+    {"path":"scripts/__tests__/fixtures/changed-verification/README.md","note":"Reviewed representative demo and CLI timing claims against the changed-verification test delta and runner. New real-child beforeAll failure fixture is generated in a temporary directory; narrow-diff.json demo, CLI 120-second liveness bound and elapsedMs semantics are unchanged. Focused changed-verification suite passed 212 tests. No latency target or hosted setup qualification inferred.","inputs":["scripts/__tests__/fixtures/changed-verification/README.md","scripts/__tests__/changed-verification.test.ts","scripts/run-changed-verification.mjs"]}
+  ]
+}
