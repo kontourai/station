@@ -17,6 +17,7 @@ import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
+import { Empty, SkeletonList } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { openChatsStore } from '../../contexts/open-chats-store';
@@ -74,7 +75,9 @@ function Subtasks({
   return (
     <section className="task-relationships" aria-label="Subtasks">
       <h2>Subtasks</h2>
-      {children.isLoading && <p>Loading subtasks…</p>}
+      {children.isLoading && (
+        <SkeletonList count={2} label="Loading subtasks" />
+      )}
       {children.error ? (
         <p role="alert">
           Subtasks unavailable.{' '}
@@ -96,7 +99,9 @@ function Subtasks({
           ))}
         </ul>
       )}
-      {children.data?.children.length === 0 && <p>No subtasks yet.</p>}
+      {children.data?.children.length === 0 && (
+        <Empty label="Nothing added yet" />
+      )}
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -221,7 +226,7 @@ function WorkChats({
   return (
     <section className="task-relationships" aria-label="Work chats">
       <h2>Work chats</h2>
-      {chats.isLoading && <p>Loading work chats…</p>}
+      {chats.isLoading && <SkeletonList count={2} label="Loading work chats" />}
       {chats.error && (
         <p role="alert">
           Work chats unavailable.{' '}
@@ -253,7 +258,7 @@ function WorkChats({
           </li>
         ))}
       </ul>
-      {chats.data?.chats.length === 0 && <p>No linked work chats.</p>}
+      {chats.data?.chats.length === 0 && <Empty label="Nothing linked yet" />}
       <label>
         Link a chat{' '}
         <select
