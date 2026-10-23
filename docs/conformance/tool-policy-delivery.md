@@ -1,11 +1,12 @@
 # Pre-tool blocking and grant delivery boundary
 
 This page combines current source contracts with historical provider probes.
-The recorded Claude 2.1.224 / Agent SDK 0.3.224 experiments below were not rerun
-for this review. The reviewed lockfile resolves Agent SDK 0.3.304; its installed
-`sdk.d.ts` still documents that omitted `settingSources` loads all filesystem
-settings. That dependency contract is not a fresh live test of permission-rule
-precedence, workspace trust, or memory/MCP discovery.
+The recorded Claude 2.1.224 / Agent SDK 0.3.224 experiments below were not rerun.
+The earlier dependency review inspected Agent SDK 0.3.302. The current lockfile
+selects 0.3.304; source inspection of its installed `sdk.d.ts` still finds that
+omitted `settingSources` loads all filesystem settings. That type declaration
+is not a fresh live test of permission-rule precedence, workspace trust, or
+memory/MCP discovery.
 
 Version-specific observations below retain the SDK and CLI versions actually
 inspected or executed. They are not new provider results for SDK 0.3.304.
@@ -165,8 +166,11 @@ whole-session refusal.
 Engines without a pre-tool interception seam receive the admitted configuration
 at session start. A mid-session policy change cannot revoke a tool call already
 owned by such an engine. This is a delivery limit, not a guarantee of universal
-live revocation. Member execution remains blocked by the existing Agent audience
-gate; the new surface permits scoped authoring and requests only.
+live revocation. Existing direct Agent and orchestration HTTP surfaces retain
+their member-execution gate. Project Room Agent requests use a separate path
+requiring current Project execution authority, transport permission, host
+execution permission and an admitted execution root. Scoped authoring alone
+grants none of these permissions.
 
 ## Explicit per-tool Ask
 

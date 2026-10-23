@@ -51,6 +51,19 @@ const projectSchema = z
     icon: optionalString,
     description: optionalString,
     workingDirectory: optionalString,
+    repositorySource: z
+      .object({
+        acquisitionId: z.string().uuid(),
+        attempt: z.number().int().positive(),
+        sourceUrl: nonEmptyString,
+        sourceRef: optionalString,
+        subdirectory: optionalString,
+        canonicalRemote: nonEmptyString,
+        resolvedCommit: z.string().regex(/^[a-f0-9]{40,64}$/),
+        acquiredAt: timestamp,
+      })
+      .strict()
+      .optional(),
     defaultWorkspaceIsolation: z.enum(['shared', 'worktree']).optional(),
     defaultEnvironment: z
       .discriminatedUnion('kind', [
@@ -214,6 +227,8 @@ const knowledgeRootSchema = z
         .object({ kind: z.literal('project'), projectSlug: nonEmptyString })
         .strict(),
     ]),
+    projectId: z.string().uuid().optional(),
+    registrationId: z.string().uuid().optional(),
     adapterId: nonEmptyString,
     storeRoot: nonEmptyString,
     displayName: nonEmptyString,

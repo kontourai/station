@@ -50,6 +50,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'operatingState',
   'plugins',
   'projectData',
+  'projectS3Sources',
   'projectTaskRooms',
   'proposedChanges',
   'pullRequests',
@@ -80,6 +81,12 @@ const PUBLIC_QUERY_DOMAINS = [
  * inline reason.
  */
 const INTERNAL_QUERY_DOMAINS: Record<string, string> = {
+  projectRoomAgents:
+    'Agent request hooks are published through projectRooms on the documented project-rooms subpath, outside the eager root entry.',
+  taskRelationships:
+    'Task deliverable and canonical work-chat hooks are published from the documented task-relationships subpath; keep scoped relationship queries outside the eager root entry.',
+  projectRooms:
+    'shared Project room hooks are published only from the documented project-rooms subpath; keep the room stream and strict parsers outside the eager root entry.',
   sessionStructuralSharing:
     'shared cache-identity policy for session query hooks; not a public query or mutation.',
   catalogRequests:

@@ -90,7 +90,7 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/workspace-isolation` | Shared/worktree policy and owned worktree Session metadata, including the original base ref and optional resolved `baseCommit`; see [source identity](../design/isolated-agent-runs.md#current-project-worktree-source-identity). A recorded starting commit is not a current-workspace or execution-isolation guarantee. |
 | `@kontourai/station-contracts/execution-confinement` | Confinement levels, observed postures, workspace access, policy basis, the content-free session confinement record and the server-only confinement plan (#2494); see [confinement providers](../design/approval-posture-server-ordered.md#410-confinement-providers-2494). The record's posture is what the started engine reported applying, never the configuration Station sent, and describes the session start. Its refusal codes reach callers from a server-side `SessionStartRefusedError` raised before the engine is announced, so a refused start is settled (`rejected`), not fenced as indeterminate |
 | `@kontourai/station-contracts/execution-preparation` | Version requirement, typed refusal codes and path-free receipt for version-matched portable execution; see [remote execution preparation](../design/remote-execution-preparation.md) |
-| `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including profile-preserving receiver-owned engine overrides and exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers). The resolution receipt's optional `confinement` is the started session's recorded confinement, attached after the start |
+| `@kontourai/station-contracts/execution-target` | Environment, Agent and workspace intent, including profile-preserving receiver-owned engine overrides and exact portable Project/resource execution; see [receiver execution offers](../design/portable-project-identity.md#receiver-execution-offers). A validated continuation without an owned-worktree binding reports its server-read bound workspace; owned worktrees retain the existing repository-root receipt form; the optional `confinement` is the started session's recorded confinement, attached after the start |
 | `@kontourai/station-contracts/harness-questions` | Deprecated since 0.9.0; retained in 0.10.0 for stored events and legacy `answers` callers. Use the `input-request` shapes for new callers |
 | `@kontourai/station-contracts/input-request` | `station.input-request/v1`: the envelope, `form` and `decision` bodies, accept/decline/cancel response, and the transcript record of a harness question, a tool server's elicitation or an approval; reading and validation live in shared |
 | `@kontourai/station-contracts/mcp-prompts` | An agent's MCP server prompts offered as slash commands (named string arguments), the listing with unreadable servers, and a prompt run's inserted text |
@@ -552,6 +552,14 @@ is server-private, invitation-gated and returns a still-pending real person.
 Unsupported providers fail closed; it neither invents a principal nor changes
 browser cookie flows.
 
+The server provider may implement `isVerifiedSessionCurrent(session)`, a synchronous
+live witness for a previously verified session. It must re-read session existence, exact
+subject and timestamps, expiry and account policy, and reject pending enrollment. It
+does not authenticate a caller-supplied session ID and is not part of the public
+descriptor. The local-account provider implements it; adapters without it fail closed at
+synchronous authority seams. `captureCurrentSession` also pins the verified identity and
+cookie and refuses continuation-only authority.
+
 The [relay-management contract](../../packages/contracts/src/relay-management.ts)
 exports `RelayInvitationLifetime`, `RelaySetupApproval`, `RelayPendingDevice`
 and `RelayManagementView`. The view contains public route/signing-confirmation
@@ -983,6 +991,39 @@ a Task store that carries it is refused by Station builds that predate it.
 
 Server-only provider interfaces now live directly in `src-server/providers/provider-interfaces.ts`, `src-server/providers/provider-contracts.ts`, and `src-server/providers/llm/model-provider-types.ts`. The old `src-server/providers/types.ts` barrel was removed during convergence.
 
+### Task deliverable and work-chat relationships
+
+`task-graph` exports `TaskIdentity` (`taskId`, `taskCreatedAt`),
+`TaskParentMutationInput`, `TaskChildCreateInput`, and
+`TaskWorkChatMutationInput`. A child stores one optional `TaskRecord.parent`
+and a monotonic `relationshipRevision`; children are found by reverse lookup.
+These relationships do not roll up status or start execution.
+
+The dedicated `createTaskRelationshipRoutes` factory exposes child creation
+and listing, parent attach/reparent/detach, and work-chat link/list/unlink.
+Runtime mounting and current authority adapters are integration prerequisites.
+Each mutation uses an operation ID, exact incarnation, and expected revision
+(except atomic child creation). TaskGraph reloads and validates under its
+existing cross-process lock. Receipts retain the exact request fingerprint
+and original result. Replaying an old attach after detach returns its receipt
+without restoring the relationship; changing its payload conflicts.
+
+The injected authority binds the expected canonical Project incarnation,
+normalizes Project IDs/slugs, and checks current mutation/read capabilities.
+Ancestor corruption, missing incarnations, cycles and cross-Project references
+fail closed. Child listings contain only currently readable children, with no
+hidden-child count or unavailable sentinel.
+
+Work chats persist the Task incarnation and canonical `conversationId` with a
+revision and linked state. They never replace `TaskRecord.sessionId`, create a
+`spawned_session` link, grant access, or publish private followups. Runtime must
+use `conversation-open-resolver` to establish current Conversation lineage and
+reader capability; a Session ID or inventory row alone is insufficient.
+Work-chat listings expose only currently readable canonical IDs and revisions.
+`ProjectSharedTaskService` remains the separate default-private publication
+owner. See the real-store relationship and mounted-route tests for the local
+persistence/transport boundary; these do not qualify production composition.
+
 ### Conversation measurements
 
 Per-model rows in `ConversationStatsResponse.modelStats` use optional token,
@@ -1285,3 +1326,82 @@ canonical inventory fingerprints and the independent plugin data revision.
 `parsePluginDailyPing(payload, declaration, namespacedPublisher)` requires exact declared event/property
 histograms and rejects identifying/undeclared fields. Broker acceptance is deferred.
 See [Publisher analytics](../guides/plugins.md#publisher-analytics).
+
+## Project Room contracts
+
+`@kontourai/station-contracts/project-room` owns Room identity, messages,
+checkpoints, note revisions and explicit Agent request records. Its scope is
+the existing `ProjectMembershipScope`, without a synthetic Task ID. Browser
+views and strict wire parsers live in the `project-room-browser` subpath.
+Actor attribution comes from authenticated server authority, not message text.
+Message intent IDs are scoped to the Room and author; exact retries retain one
+result and changed payloads conflict. Notes use expected-revision comparison.
+
+The limits distinguish a 16 KiB message/request, an 8 KiB note, a 512 KiB history
+page and bounded retained records. A valid message count can still require
+byte-based continuation. Persisted DTOs are checked against SQLite identity
+columns before delivery or Agent context use. Agent capture identity and digest
+must match its durable request before private Session reads or cancellation.
+An accepted request is not proof of execution or publication. Ambiguous launch is not
+replayed automatically. A bounded runtime completion observer or explicit reconciliation
+may publish the exact completed answer after current requester, Project, execution-root
+and capture checks. Observation credentials are not durable; restart requires fresh
+authorized recovery. SSE is an interchangeable notification transport,
+not the owner of message order, durability, authority or Task hierarchy.
+
+Explicit Room Agent requests capture only Task summaries already shared to the
+Project, even for an operator. The immutable snapshot includes Task/share
+identities, title, status and observation time, with shared-subset coverage;
+it includes no private Task counts, descriptions or inferred goals. At most
+16 summaries and 4 KiB of Task evidence fit within the existing context budget.
+Unavailable or omitted evidence is labeled rather than treated as an empty
+Project. Exact share and Task incarnations are checked before dispatch and
+publication. Short owner fences coordinate TaskGraph, sharing and Room writes;
+no such lock spans provider execution. Unsharing can withhold a pending answer,
+but does not retroactively redact text already published in the Room.
+
+See [Room HTTP operations](api.md#shared-project-room) and the
+[SDK](sdk.md#shared-project-room).
+
+## Project knowledge registration ownership
+
+`ProjectStartIntent` names initial `workspace | knowledge | connections | blank`
+setup guidance. It grants no source or execution authority. The browser's
+optional creation-recovery intent is separate from the server Project draft and
+is retained across reload; older pointers default to workspace behavior.
+`RepositoryProviderPage` and `RepositoryProviderSelection` describe a bounded
+observed forge account page, including explicit clone transports. They are
+discovery metadata, not acquisition or credential availability receipts.
+
+The `project` subpath also owns `ProjectS3Source`,
+`ProjectS3ObjectReference`, `ProjectS3ObjectPage` and `ProjectS3ObjectRead`.
+A source has an immutable UUID and durable Project ID plus bucket-owner account,
+region, bucket and prefix. Public projections omit the host credential-profile
+name and actor. Object pages expose continuation/truncation, while reads retain
+ETag, optional returned version, SHA-256, observation time and citation. These
+shapes describe bounded live reads; they confer no write, execution or indexing
+authority. The implementation remains default-off pending AWS acceptance.
+
+`KnowledgeStoreRoot.projectId` is an optional durable Project binding. Older
+registrations omit it; member access never infers it from `scope.projectSlug`.
+The pure `isProjectKnowledgeRoot(root, projectId)` helper owns matching for
+Project recall and tool delivery. `knowledgeRootIncarnationKey` includes the
+binding, while remaining a metadata precondition rather than a generation proof.
+The provider's optional `attachRootToProject` capability binds only an exact,
+unbound legacy registration after explicit operator selection; older providers
+remain source-compatible and report the missing capability.
+
+`KnowledgeDocumentImportInput` names a UUID, exact `expectedRoot` and up to
+eight filename/base64 document pairs. `KnowledgeDocumentImportReceipt` reports
+per-file SHA-256, byte count, stable canonical record identity, original
+availability and publication phase. Limits are exported as
+`KNOWLEDGE_DOCUMENT_MAX_BYTES` (256 KiB),
+`KNOWLEDGE_DOCUMENT_BATCH_MAX_BYTES` (1 MiB) and
+`KNOWLEDGE_DOCUMENT_BATCH_MAX_FILES` (8).
+
+The optional provider `withRootRevision(expectedRoot, operation)` runs bounded
+work while the persistence owner holds the exact registration revision. Older
+providers may omit it; document import refuses when registration locking is
+unavailable. This lease preserves source identity, while the server's scoped
+write authority separately checks the current request at physical file effects.
+It is not a grant to import or a file-content version.

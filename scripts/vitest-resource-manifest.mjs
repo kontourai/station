@@ -136,6 +136,13 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Tiny disposable user-service/scope budgets exercise actual OOM containment.
   'src-server/services/infra/__tests__/workload-resources.process.test.ts',
+  // Real second-process Task/share writers contend with the publication fence.
+  'src-server/services/projects/project-room-agent-task-context.test.ts',
+  // Reviewed setup launches real bounded commands and verifies durable outcomes.
+  'src-server/services/projects/__tests__/operator-setup-service.test.ts',
+  // Repository acquisition drives real hardened Git clone and checkout processes.
+  'src-server/services/projects/__tests__/repository-acquisition-service.test.ts',
+  'src-server/routes/projects/__tests__/project-working-directory-authority.test.ts',
   'packages/agent-runtime/src/__tests__/body-process.test.ts',
   'src-server/runtime/mcp/__tests__/mcp-ui-network.process.test.ts',
   // Real temporary Git repositories; isolated home per case.

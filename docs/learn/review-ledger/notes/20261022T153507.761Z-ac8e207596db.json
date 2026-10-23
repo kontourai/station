@@ -1,0 +1,33 @@
+{
+  "revision": "c1736edf8302152c408c6bfd27b37261be55518a",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Reviewed SDK public-surface paragraph against additive disconnect hook export and authority-scoped account hooks. Package ownership, host setup and architecture unchanged; no prose change needed.","inputs":["docs/architecture.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"Reviewed recall ownership and host-externalized SDK contract against additive account export. No recall component, CSS or knowledge query changed; design remains accurate. No new plugin-build claim.","inputs":["docs/design/knowledge-recall-ui.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"Reviewed pane host methods and published visual primitives against additive integration account hook export. No pane contract, occurrence authority or adapter changed; no prose change needed.","inputs":["docs/design/pane-host-contract.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed project MCP/tool library and account distinction against catalog account query changes. Agent defaults and tool admission unchanged; account controls use existing personal-account routes. Provider runtime remains unqualified.","inputs":["docs/guides/agent-configuration.md","packages/sdk/src/query-domains/catalog.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed SDK integration guidance and linked SDK account reference. Added captured request scope and disconnect documentation does not change deployment, plugin or host prerequisites.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed Connections relationship owners and account/device authority distinctions against new manual personal MCP account controls. No machine enrollment or token grants changed; canonical Connections guide describes the new controls.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed shared UI/SDK adoption and dialog responsibilities against additive account hook export. No responsive primitive or geometry changed. New account controls still require actual browser qualification; this note makes no accessibility pass claim.","inputs":["docs/guides/responsive-ui.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed SDK public-surface change against theme/token ownership and cascade claims. No stylesheet, primitive or theme export changed; no prose change needed.","inputs":["docs/guides/theming.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed request/authority and public SDK boundaries against account transport using getJson/mutateJson with captured requestScope. No server policy or backend composition changed; focused SDK transport tests exercise stale authority refusal.","inputs":["docs/patterns/backend.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed query-domain/barrel organization and React Query policy against account hooks. New hook remains in catalog domain and exports through queries/index; captured scope partitions account state. No pattern change needed.","inputs":["docs/patterns/frontend.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed integration and endpoint authority claims against account client changes. No route shape or server authorization changed; authenticated existing authorize/callback/account routes remain the owners.","inputs":["docs/reference/api.md","packages/sdk/src/queries.ts"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"Reviewed SDK imports and example prerequisites against additive account hook export. Transcription example imports and call behavior unchanged; this is source review, not a new live transcription run.","inputs":["examples/meeting-transcription/README.md","packages/sdk/src/index.ts"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed stable public export and canonical reference requirements against new disconnect hook and captured requestScope inputs. SDK reference updated; focused consumer and public barrel tests passed. Instructions remain accurate.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/README.md","note":"Reviewed public hook usage and host setup guidance against additive account export. Canonical SDK reference owns account signatures; no standalone runtime or changed host context is implied.","inputs":["packages/sdk/README.md","packages/sdk/src/index.ts"]}
+  ]
+}

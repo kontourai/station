@@ -238,7 +238,27 @@
 
     "src-ui/src/views/activity/openActivityReview.ts",
 
-    "tests/activity-related-review.spec.ts"
+    "tests/activity-related-review.spec.ts",
+
+    "src-ui/src/components/modals/NewProjectRepositorySource.tsx",
+
+    "src-server/services/projects/repository-acquisition-service.ts",
+
+    "src-ui/src/components/home/HomeActionSection.tsx",
+
+    "src-ui/src/hooks/useProjectCreationRecovery.ts",
+
+    "src-ui/src/hooks/useProjectDraftState.ts",
+
+    "src-ui/src/components/modals/NewProjectModalContent.tsx",
+
+    "src-ui/src/hooks/useNewProjectModalState.ts",
+
+    "src-ui/src/hooks/useNewProjectSubmit.ts",
+
+    "src-ui/src/components/modals/RepositoryProviderPicker.tsx",
+
+    "src-ui/src/lib/project-onboarding-recovery.ts"
   ],
 
   "checks": [

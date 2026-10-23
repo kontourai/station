@@ -13,6 +13,9 @@ The Station role includes it by default. This small MCP contains
 `list_knowledge_roots`, `list_knowledge_records`, `get_knowledge_record`,
 `add_knowledge_record`, and `search_knowledge`. Search needs an embedding
 connection; listing and reading records do not.
+The default-off [S3 feature](#experimental-read-only-s3-prefixes) adds
+`list_project_s3_sources`, `list_project_s3_objects` and `read_project_s3_object`
+when enabled.
 
 Station Control retains index rebuild and migration controls, plus its existing
 search tool for compatibility. Capture creates a new raw record and never
@@ -359,25 +362,160 @@ not be implied by a registry switch.
 Note the noun: the thing Station manages is a **knowledge store**; "vault" is reserved for the
 Obsidian-specific folder structure you're pointing it at.
 
-### Project settings → Knowledge store
+### Project settings → Sources
 
-Each project's Settings has its own "Knowledge store" subsection (alongside the earlier per-project
-document-upload panel), for that project's **project-scoped** knowledge store:
+**Settings → Sources** brings repository resolution and knowledge registrations
+into one section. Create a managed store without selecting a folder, or choose a
+supported store format, enter its path on the Station host, check it, and
+connect it. Changing the path or format requires another check. The server
+also applies the adapter's check when registering the store. An adapter without
+a validation hook, including the default adapter, accepts a path without
+confirming that it exists or contains readable records. A connected default-format
+store replaces the managed-create action so repeated clicks do not add aliases
+of the same managed directory.
 
-- **Create a project knowledge store** — same one-click pattern as the personal store: no path to
-  type, the server defaults the location to `{dataDir}/projects/<slug>/knowledge-store` using the Kit
-  default-store adapter.
-- **Migrate this project's existing knowledge** — shown only when the project has knowledge from
-  before knowledge stores existed (the earlier per-project document upload panel has files in it).
-  This button runs the [migration described above](#the-non-destructive-guarantee).
-  It does not cut over or clean up the source corpus, but source reading can
-  recover an interrupted earlier transaction before records are copied.
+Refresh rereads the registry. Registration does not prove successful indexing,
+live reads, or Agent access. **Disconnect** confirms the exact observed source
+and removes its registry entry while retaining files. If the source changed,
+refresh and review it before disconnecting again.
+
+New Project registrations carry the durable `projectId`. Member access, Project
+recall and automatic Knowledge-tool delivery match that identity, so a rename
+retains the store and a replacement Project with the same name does not inherit
+it. New managed stores live at
+`{dataDir}/knowledge/projects/<projectId>/store`; older paths remain unchanged.
+Legacy registrations without a Project ID stay unavailable to members. The
+operator can review their displayed path and **Attach to this Project**, which
+confirms member visibility and atomically binds the exact observed registration.
+Attachment keeps its files in place; it is not a copy or migration.
+
+Source registration, host-path checking and HTTP mutations require the Station
+operator. Sources reads the current connection's capabilities before offering
+management actions; failed permission reads withhold cached controls. Account-bound people can list and read stores for Projects they may
+view, including graph and canonical-record reads. Personal file stores remain
+operator-only. HTTP member writes stay denied until the registry can bind
+current authority to publication. Project recall captures the active account's
+request scope and withholds retained data when a fresh read fails. Root listings
+and canonical record/graph reads recheck registration metadata and current access
+before response delivery. The provider also replaces its cached adapter when a
+root's registered target changes. Newly created and explicitly attached registrations
+receive a server-issued `registrationId`, so reconnecting is a distinct generation
+even under the same clock and path. Legacy registrations can omit it. This is not
+a record-content version or an execution grant; restoring metadata can retain
+its identifier.
+
+### Import documents from your computer
+
+In **Settings → Sources → Import documents**, choose a registered default-format
+Project store and select Markdown (`.md`, `.markdown`) or plain-text (`.txt`)
+files. Preview text, byte counts and SHA-256 hashes before importing. A selection
+admits up to eight nonempty UTF-8 files, 256 KiB per file and 1 MiB in total.
+It needs no repository, host folder or embedding connection.
+
+The operator imports files into canonical raw records. Station retains exact
+original bytes and provenance under its home, independently of the generated
+record body. Importing does not rebuild the retrieval index. Agents with
+authorized Knowledge tools can list and read the records without embeddings;
+registration and import alone do not establish a successful Agent answer.
+
+Before sending, the browser saves a recovery pointer scoped to the Station,
+account and durable Project. It contains request/source identities and file
+hashes, without document content. Separate imports retain separate pointers
+across tabs. A lost response or reload checks the saved receipt without resending
+documents. Pending work can be continued explicitly; uncertain publication needs
+a separate retry confirmation. A confirmed record that later disappears is
+unavailable and is never recreated by recovery. A replaced source registration
+cannot inherit a saved import.
+
+**Set aside** removes only the selected browser pointer. Retained originals and
+records remain on the Station; keep the displayed import ID for recovery.
+Receipt observation is operator-only and may repair existing store indexes or
+record a publication witness. These effects recheck current authority after
+lock waits. Original downloads require current root visibility and registration
+identity. No original download is a public URL.
+
+The [import service](../../src-server/services/knowledge/knowledge-document-import-service.ts),
+[HTTP routes](../../src-server/routes/knowledge/knowledge-document-import-routes.ts)
+and [Sources UI](../../src-ui/src/views/project-settings/ProjectDocumentImport.tsx)
+own this journey. Focused service and UI tests cover bounded input, restart,
+lost acknowledgement, revocation at real file locks and separate tab pointers;
+they do not establish browser rendering or a live model's cited answer.
+
+### Experimental read-only S3 prefixes
+
+S3 sources are **disabled by default pending real AWS acceptance**. An operator
+may set `STATION_EXPERIMENTAL_S3_SOURCES=1` before starting Station to expose
+**Settings → Sources → S3 prefixes** and the three S3 Knowledge tools. Local
+SDK/transport fixtures do not establish real AWS verification.
+
+Choose a named AWS profile already configured on the Station host, the expected
+12-digit bucket-owner account ID, region, bucket and a nonempty prefix ending
+in `/`. Confirm that this Project's members and Agents may read that prefix
+using the host profile. This is an explicit shared source grant, separate from
+a person's connected-tool account; Station never falls back to another profile
+or the AWS default credential chain. Profile names are shown to the operator;
+secret values stay with the AWS credential provider. An attachment records the
+selection and does not claim successful AWS access.
+
+**Browse prefix** requests one page of at most 50 objects. Continue pagination
+explicitly. **Read** fetches one selected nonempty Markdown/plain-text object,
+at most 256 KiB, conditional on its listed ETag. Each operation allows one SDK
+attempt and a 20-second deadline, including a bounded object body. Only valid
+UTF-8 text is returned. Changed/deleted objects, permission failures and expired
+credentials are errors; a failed refresh withholds cached text. The source
+enforces the prefix and expected bucket owner at the AWS request seam. It does
+not accept custom endpoints or follow region redirects.
+
+Readers need current Project view access. Attachment, host-profile discovery
+and disconnect require the operator. Agent requests retain their session owner;
+caller revocation and membership changes are rechecked before HTTP dispatch,
+during body reads and before response delivery. Read results include observed
+ETag, optional returned version ID and content SHA-256. The citation string
+names the bucket/key and pins either the returned version or the ETag. An ETag is a
+conditional object identity, not a claim that it is a SHA-256 digest.
+
+No S3 write/delete, whole-bucket scan, local mount, execution root, import or
+index follows from attachment. **Disconnect** invalidates the registration and
+retains its tombstone, so retrying an old attachment UUID cannot reconnect it.
+S3 originals and any copies saved elsewhere remain intact. The registry admits
+at most 1,000 retained registrations and 2 MiB serialized bytes; a capacity
+rejection preserves existing sources. Prepare a new registration explicitly
+if reconnecting is intended.
+
+For least privilege, the selected profile needs `s3:ListBucket` on the bucket
+restricted by `s3:prefix`, plus `s3:GetObject` on the selected prefix's objects.
+It needs no S3 write permission; encrypted objects may also require the bucket's
+configured KMS decrypt permissions. Configure any required profile sign-in outside
+Station, then use the Sources listing/read to check current access. For a
+non-production acceptance run, use a dedicated bucket/prefix containing small
+UTF-8 `.md`/`.txt` objects, verify pagination and ETag changes, then disconnect
+and confirm reads stop. This procedure remains unexecuted against real AWS.
+
+The [service](../../src-server/services/projects/project-s3-sources.ts),
+[route boundary](../../src-server/routes/projects/project-s3-source-routes.ts)
+and [Sources UI](../../src-ui/src/views/project-settings/ProjectS3Sources.tsx)
+own this feature. These sources can coexist with repository and canonical
+document sources; their readiness and permission checks remain independent.
+
+### Project settings → Older documents and migration
+
+The Project knowledge section keeps the older document upload, indexing and
+migration controls. Store creation and attachment now have one owner:
+**Settings → Sources**. **Manage sources** navigates there through the ordinary
+unsaved-changes guard.
+
+**Migrate this project's existing knowledge** appears when earlier document
+storage contains files. It runs the [migration described above](#the-non-destructive-guarantee),
+keeps the source corpus, and does not cut over or clean it up. An unbound
+migration registration still needs explicit operator attachment before members
+or automatic Project tool delivery can use it.
 
 ### Project tools and automatic store detection
 
 Project Settings → Tools adds configured MCP servers to Agents working in that
 Project. The default **Use Knowledge** setting adds `station-knowledge` when a
-registered Project store exists; disabling it removes the Project's addition.
+registered Project store or enabled attached S3 source exists; disabling it
+removes the Project's addition.
 An Agent can still carry Knowledge independently in its own configuration.
 All delivery, including automatic Knowledge additions, is subject to the
 Project's [Tool permissions](agent-configuration.md#shared-projects) and operator sharing.
@@ -403,6 +541,15 @@ Knowledge MCP access retains the session owner's store permissions. Adding it
 because a Project store exists does not restrict it exclusively to that Project;
 other stores remain accessible only if the owner is allowed to use them. Project
 MCP choices are delivery defaults, not new approval or credential grants.
+`list_knowledge_roots` returns each Project store's durable Project ID and, when
+the verified session has a recorded Project identity, marks matching stores
+with `isCurrentProject`. The current Project ID and slug accompany that marker.
+For a question about this Project, use its marked store rather than a similarly
+named policy from another accessible Project. This is source orientation, not
+read confinement. Legacy sessions without a recorded Project ID receive no
+current-Project hint. A caller revoked during hint resolution receives a refusal
+instead of the already-read roots.
+
 
 ## Knowledge Library: general, read-only recall
 
@@ -516,8 +663,16 @@ alongside the file-based graph by default) and a "Sync now" button triggers
 Kit-CLI access to the same routes remains equally valid — the toggle is a UI convenience over the
 same API, not a replacement for it.
 
-**What "Neo4j graph view isn't configured" means.** Every one of those Neo4j routes answers an
-honest `503` with that reason whenever no connection is registered — which is the default, out of
+Neo4j reads require current view access to the selected root. Synchronization
+requires edit access for writable roots; non-Project conversation roots require
+current view access and the operator. The server checks the same registered
+root incarnation, rechecks authority after driver setup before sync, and guards
+graph, shortest-path and sync-stat delivery. Conversation projections still
+filter nodes and paths to the caller's readable Sessions. These checks cannot
+recall bytes already delivered or undo an admitted sync.
+
+**What "Neo4j graph view isn't configured" means.** For an authorized request to a current root, those Neo4j routes return
+`503` with that reason when no connection is registered — which is the default, out of
 the box, on every Station install. Nothing about knowledge stores, capture, or the file-based
 Library graph requires Neo4j; it is purely optional. "Not configured" specifically means no process
 has called `registerNeo4jGraphViewConnection(...)` (`src-server/knowledge-store/neo4j-connection.ts`)

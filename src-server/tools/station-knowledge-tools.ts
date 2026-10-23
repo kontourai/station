@@ -3,9 +3,13 @@ import {
   getKnowledgeRecord,
   listKnowledgeRecordsByType,
   listKnowledgeRoots,
+  listProjectS3Objects,
+  listProjectS3Sources,
+  readProjectS3Object,
   searchKnowledgeIndex,
 } from '@kontourai/station-sdk/client';
 import { z } from 'zod';
+import { projectS3SourcesEnabled } from '../services/projects/project-s3-sources.js';
 import type { StationControlToolRegistry } from './station-control-mcp-server.js';
 import {
   controlRequestOptions,
@@ -43,9 +47,68 @@ function registerKnowledgeSearchTool(server: StationControlToolRegistry) {
 }
 
 export function registerKnowledgeDataTools(server: StationControlToolRegistry) {
+  if (projectS3SourcesEnabled()) {
+    const projectSlug = z.string().min(1).max(200);
+    const sourceId = z.string().uuid();
+    server.tool(
+      'list_project_s3_sources',
+      'List read-only S3 prefixes explicitly attached to an accessible Project.',
+      { projectSlug },
+      async ({ projectSlug }) =>
+        jsonToolResult(
+          await toToolEnvelope(
+            listProjectS3Sources(
+              resolveControlApiBase(),
+              projectSlug,
+              controlRequestOptions(),
+            ),
+          ),
+        ),
+    );
+    server.tool(
+      'list_project_s3_objects',
+      'Read one bounded S3 listing page within an attached prefix. A page is not complete bucket coverage. Follow continuation explicitly.',
+      { projectSlug, sourceId, cursor: z.string().max(4096).optional() },
+      async ({ projectSlug, sourceId, cursor }) =>
+        jsonToolResult(
+          await toToolEnvelope(
+            listProjectS3Objects(
+              resolveControlApiBase(),
+              projectSlug,
+              sourceId,
+              cursor,
+              controlRequestOptions(),
+            ),
+          ),
+        ),
+    );
+    server.tool(
+      'read_project_s3_object',
+      'Read one listed Markdown/text S3 object (at most 256 KiB), pinned to its ETag. Cite the returned object/version identity. Never writes to S3.',
+      {
+        projectSlug,
+        sourceId,
+        key: z.string().min(1).max(1024),
+        etag: z.string().min(1).max(200),
+      },
+      async ({ projectSlug, sourceId, key, etag }) =>
+        jsonToolResult(
+          await toToolEnvelope(
+            readProjectS3Object(
+              resolveControlApiBase(),
+              projectSlug,
+              sourceId,
+              key,
+              etag,
+              controlRequestOptions(),
+            ),
+          ),
+        ),
+    );
+  }
   server.tool(
     'list_knowledge_roots',
-    'List accessible Knowledge stores.',
+    'List accessible Knowledge stores. isCurrentProject marks the calling session’s recorded Project when available. For questions about this Project, select that store rather than a similarly named record from another Project; the marker is orientation, not an access grant.',
     {},
     async () =>
       jsonToolResult(
@@ -53,14 +116,36 @@ export function registerKnowledgeDataTools(server: StationControlToolRegistry) {
           listKnowledgeRoots(
             resolveControlApiBase(),
             controlRequestOptions(),
-          ).then((roots) =>
-            roots.map(({ id, displayName, scope, adapterId }) => ({
-              id,
-              displayName,
-              scope,
-              adapterId,
-            })),
-          ),
+          ).then(async (roots) => {
+            const caller = await getStationControlCaller();
+            if (!caller) throw new StationControlCallerRequiredError();
+            const projectId =
+              caller.projectIdSource === 'session-record'
+                ? caller.localProjectId
+                : undefined;
+            return roots.map(
+              ({
+                id,
+                displayName,
+                scope,
+                adapterId,
+                projectId: rootProjectId,
+              }) => ({
+                id,
+                displayName,
+                scope,
+                adapterId,
+                ...(rootProjectId ? { projectId: rootProjectId } : {}),
+                ...(projectId
+                  ? {
+                      isCurrentProject: rootProjectId === projectId,
+                      currentProjectId: projectId,
+                      currentProjectSlug: caller.projectSlug,
+                    }
+                  : {}),
+              }),
+            );
+          }),
         ),
       ),
   );

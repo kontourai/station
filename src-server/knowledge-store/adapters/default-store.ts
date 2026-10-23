@@ -32,6 +32,7 @@ import {
   KnowledgeStoreCorruptionError,
   MissingEvidenceError,
 } from '../errors.js';
+import { assertKnowledgeWriteAuthority } from '../knowledge-write-authority.js';
 import { isValidCategory } from './shared/category.js';
 import { KnowledgeFileTransactions } from './shared/file-transactions.js';
 import { freshnessPatch } from './shared/freshness.js';
@@ -86,6 +87,7 @@ export class KitDefaultStoreAdapter implements KnowledgeStoreAdapter {
     this.recordsDir = join(this.root, 'records');
     this.graphPath = join(this.root, 'graph-index.json');
     this.aliasPath = join(this.root, 'alias-index.json');
+    assertKnowledgeWriteAuthority(this.root);
     mkdirSync(this.recordsDir, { recursive: true });
     this.files = new KnowledgeFileTransactions(this.root);
   }

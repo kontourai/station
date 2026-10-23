@@ -78,6 +78,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [SharedWorkingState](#sharedworkingstate) | Converge one authorized text document through versioned causal operations and bounded resync. | `src-server/domain/shared-working-state.ts` |
 | [LiveWorkSession](#liveworksession) | Project bounded, separately authorized ephemeral work presence for one exact Project/Task/surface/session. | `src-server/domain/live-work-session.ts` |
 | [ProjectTaskRoom](#projecttaskroom) | Present one Task's shared text document, presence, and cursors through the server-owned task room. | `src-server/services/orchestration/project-task-room-runtime.ts` |
+| [ProjectRoom](#projectroom) | Own Project discussion, shared notes, presence, and explicit Agent requests independently of Tasks. | `src-server/services/projects/project-room-service.ts` |
 | [SharedWorkingStateEditingCapability](#sharedworkingstateeditingcapability) | Plan exact text-edit operation batches from #2889 atom snapshots and prove preview/operation identity. | `src-server/domain/shared-working-state-editing.ts` |
 | [RevisionEvidenceModule](#revisionevidencemodule) | Freeze immutable shared-state revisions and resolve Station-local evidence references. | `src-server/domain/revision-bound-evidence.ts` |
 | [ActionOperationModule](#actionoperationmodule) | Retain one authorized platform mutation's reconnect-safe execution status without owning its domain lifecycle. | `src-server/services/operations/action-operation-service.ts` |
@@ -1400,7 +1401,9 @@ not the check before the engine starts. The
 drives both dispatch routes into a real `OrchestrationService` with a recording
 engine double, and the
 [runtime wiring test](../../src-server/runtime/bootstrap/__tests__/runtime-initialize-connection-default-cwd.test.ts)
-covers the connection reader; the credential-profile restart has no test.
+covers the connection reader. The retained-workspace recovery suite exercises
+credential restart, direct replay and cold materialization with a recording
+provider; it does not qualify a real provider or remote device.
 Their presence is not a new executed or remote-device receipt. See
 [agent configuration](../guides/self-configuring-agent.md#dispatch-authority) for tool-level
 restrictions and caller binding.
@@ -2258,7 +2261,18 @@ the entire Station root or an OS keychain. A separate update-backup schema
 serves a launcher-run service's supervised update (#2675 D): it omits the
 store registry's external paths, records symbolic links as links instead of
 refusing them, and has larger default caps. Neither restore accepts the
-other's backup; the traversal and caps below describe `home backup`.
+other's backup; the traversal and caps below describe `home backup`. Update
+snapshots preserve real acquisition checkout directories as external working
+copies, using the service's bounded UUID/attempt layout independently of receipt
+metadata. Adjacent acquisition receipts, import originals, setup outcomes and
+creation requests remain state; Room databases join the SQLite checkpoint list.
+Rollback does not undo later external effects or grant execution authority, and
+cross-home copies can retain machine-local paths. Full home backup still includes
+in-home checkout bytes; update snapshots omit them. Restore checks saved file/link
+collisions at or beneath preserved external directories and raw-spelling aliases
+of retained state containers before removing state; a conflict requires operator
+reconciliation. Older admissible POSIX snapshots keep raw filename
+segments when excluding checkout descendants, including literal backslashes.
 
 **Ownership and backup.** [StationHomeLifecycle](../../packages/shared/src/station-home-lifecycle.ts)
 tracks runtime owners by PID and birth identity and gives maintenance exclusive
@@ -2383,15 +2397,40 @@ identity and receiver-local Project ID under the current Project revision;
 an exact replay writes nothing, and clearing removes only that selection.
 
 **Behavior.** Reads do not backfill. Explicit preparation uses the current
-Project-revision admission and creates only a missing sidecar. Attachment
-validates its snapshot and any selected local directory, then requires atomic
-Project/manifest creation from the storage adapter. Existing mismatched identity
+Project-revision admission and creates only a missing sidecar. Attaching a
+portable Project validates its snapshot and any selected local directory, then
+requires atomic Project/manifest creation from the storage adapter. Existing mismatched identity
 or configuration is a conflict; unknown versions/fields, unavailable stores and
 unverifiable directories are named refusals. A same remote or slug is not
 membership, execution consent, a room locator or a history-merge instruction.
 
+Adding a retained repository to an existing Project is a separate operation.
+`attachRepository` verifies the pinned acquisition, compares the expected
+portable identity and local Project ID, conditionally publishes its binding,
+then conditionally publishes the manifest. Existing resources and primary
+selection remain; an explicit code-work choice selects the execution root. An
+empty resource list requires that choice to avoid an implicit fallback. The
+binding may be recorded before an interrupted manifest publication; exact
+intent retries recover it without cloning. Recovery rechecks the binding under
+its mutation lock. Binding write, final staged manifest rename and response
+release each check current operator authority. This is no setup or credential
+grant.
+
+Local operator setup is a separate owner in
+`services/projects/operator-setup-service.ts`, mounted by
+`routes/projects/operator-setup-routes.ts`. It resolves execution directories
+through the existing session-directory owner pinned to the same storage adapter.
+It retains reviewed command/deadline/input facts before execution, rejects stale
+previews and never replays a started effect. The shared
+`utils/process-group-exec.ts` owns process tracking/deadlines for Git, forge CLIs
+and setup; Git retains its existing API names, while setup explicitly retires
+same-group descendants at leader exit. Abrupt owner loss remains uncertain and
+is not a surviving process deadline. These receipts do not replace portable
+preparation, attempt claims, membership or recipe authority.
+
 **Code and evidence.** Project routes inject the runtime-pinned stores
-and checkout reader; no second store is constructed behind a route. The SDK's
+and checkout reader; repository attachment uses that same binding owner rather
+than constructing another store behind the route. The SDK's
 React-free client methods validate responses and capture the original attachment
 request before asynchronous work. `project-identity-service.test.ts` covers
 real Git checkouts, real filesystem publication/faults, conflicts and the HTTP
@@ -2418,6 +2457,29 @@ the store. See the [Knowledge guide](../guides/knowledge.md#agent-tools) and
 
 ## KnowledgeStoreProvider
 
+Experimental S3 sources use the separate
+[ProjectS3Sources service](../../src-server/services/projects/project-s3-sources.ts),
+not a fabricated file-store root. It owns immutable Project-bound registrations,
+bounded read-only AWS calls and object provenance. The runtime binds current
+Project/principal authority; the AWS HTTP handler checks it after credential
+resolution and the response guard checks it at release. Project tool detection
+adds Knowledge tools when an enabled S3 source exists, preserving Agent tool
+restrictions. S3 data tools are omitted when the default-off server flag is
+unset. [Routes](../../src-server/routes/projects/project-s3-source-routes.ts)
+and [Sources UI](../../src-ui/src/views/project-settings/ProjectS3Sources.tsx)
+own selection and live object reads. Local SDK fixtures do not qualify AWS.
+
+The [document import service](../../src-server/services/knowledge/knowledge-document-import-service.ts)
+uses the provider's optional registration lease for bounded canonical imports.
+It retains exact originals and intent before publication, observes stable record
+identities after lost acknowledgements, and requires explicit uncertain retry.
+The [routes](../../src-server/routes/knowledge/knowledge-document-import-routes.ts)
+bind current operator authority; shared file transactions recheck that scope
+after lock waits and before publication, including receipt-read repairs. The
+[Sources UI](../../src-ui/src/views/project-settings/ProjectDocumentImport.tsx)
+previews files and retains per-request browser recovery pointers scoped to the
+endpoint, account and Project. No import implicitly rebuilds the retrieval index.
+
 **Purpose and interface.** `KnowledgeStoreProvider` registers roots and their adapters,
 resolves a root by ID, and exposes the adapter that owns its records. It also publishes
 notifications after mutations through its wrapped adapters. There is currently no
@@ -2431,8 +2493,27 @@ contract; the conversation adapter is a read-only projection of Session history.
 Personal and Project are scope tags, not a universal uniqueness or authorization proof:
 the registry can allocate suffixed personal IDs, and the conversation root also has
 personal scope. The Settings card currently selects the first personal root. Root
-removal clears the cached adapter, but there is no atomic replacement operation exposed
-by this interface.
+removal clears the cached adapter. File storage registers newly allocated root IDs
+with create-only conflict checks; concurrent providers cannot overwrite a registered
+root. Exact disconnect compares the observed root inside the registry mutation and
+refuses a changed incarnation. Neither removal form deletes source files. There is
+no atomic replacement operation exposed by this interface. Project Settings Sources
+composes repository repair and knowledge registration through scoped SDK requests. New Project
+roots carry the server-resolved Project ID; member reads and automatic tool
+delivery match that ID. Legacy unbound roots require an explicit operator
+attachment, guarded by exact registry comparison, before joining that Project.
+New managed paths use Project IDs so a replacement slug cannot reuse its
+predecessor's default storage. Legacy upload/migration stays in Project knowledge;
+Sources owns registration and attachment.
+
+The separate [Neo4j graph routes](../../src-server/routes/knowledge/neo4j-graph-routes.ts)
+require current access to the exact registered root. Graph and shortest-path
+reads require view access. Sync requires edit access for writable roots;
+non-Project conversation roots require current view access and the operator.
+The routes recheck registration identity and authority after driver setup before
+sync, and guard graph, path and sync-stat responses at transport release.
+Conversation graph reads retain per-caller node and path filtering. Sync is not
+atomic with later revocation, and delivered bytes cannot be recalled.
 
 **Follow the code.** [The
 provider](../../src-server/knowledge-store/knowledge-store-provider.ts) is constructed
@@ -2632,10 +2713,66 @@ are the focused contract evidence. **Do not reintroduce:**
 an API/database/UI here, a second message/presence log, caller-authored actor/work
 facts, insertion-order IDs, authority inferred from replay, or restored liveness.
 
+## ProjectRoom
+
+[ProjectRoomService](../../src-server/services/projects/project-room-service.ts)
+owns Project discussion independently of Task rooms and private conversations.
+Its scope binds the Station, portable Project identity, local Project incarnation,
+and room. [ProjectRoomStore](../../src-server/services/projects/project-room-store.ts)
+retains sequenced messages, actor-scoped duplicate-send receipts, revisioned notes,
+and Agent-request records in private SQLite. Persisted records are validated
+against their row identities before use. History reads use a deferred transaction;
+discovery is lookup-only. Explicit opening requires current discussion authority.
+
+The [access adapter](../../src-server/runtime/routes/project-room-access.ts)
+composes Project membership with current transport grants and checks again at
+mutation commit and delivery. Reading, discussion, note editing and Agent execution
+are separate actions. Presence expires and is not restored as live after restart.
+The [routes](../../src-server/routes/projects/project-room-routes.ts) expose bounded
+history and guarded live delivery. The [SDK](../reference/sdk.md#shared-project-room)
+retains exact send intents and retires protected content when authority changes.
+
+[ProjectRoomAgentModule](../../src-server/services/projects/project-room-agent-module.ts)
+journals explicit requests before canonical Session launch. It captures a bounded
+shared context and selected execution directory; membership, compute and workspace
+admission remain the production caller's responsibility. Ambiguous launch is not
+automatically repeated. Completed answers publish through a stable intent;
+oversized publication records a durable failure. Linking or reading a room does
+not expose private Session transcripts or grant connector credentials.
+
+`project-room-agent-publication.ts` observes terminal orchestration events through
+bounded in-memory requester authority, refreshes authorization, and reconciles the exact
+captured request without relaunching it. Request/reconcile routes register the observer;
+restart or lease expiry requires fresh authorized recovery. Room checkpoint changes
+refresh the UI request handle.
+
+The Room's **Recap Project** action prepares an editable scoped prompt without
+dispatch. The normal Agent picker and explicit request remain the execution
+owner; the prompt asks for citations, observed freshness, coverage and gaps.
+
+Explicit Room Agent requests capture only Task summaries already shared to the
+Project, even for an operator. The immutable snapshot includes Task/share
+identities, title, status and observation time, with shared-subset coverage;
+it includes no private Task counts, descriptions or inferred goals. At most
+16 summaries and 4 KiB of Task evidence fit within the existing context budget.
+Unavailable or omitted evidence is labeled rather than treated as an empty
+Project. Exact share and Task incarnations are checked before dispatch and
+publication. Short owner fences coordinate TaskGraph, sharing and Room writes;
+no such lock spans provider execution. Unsharing can withhold a pending answer,
+but does not retroactively redact text already published in the Room.
+
+The operator and member Project pages mount the scoped Room. Focused store,
+access, SDK and UI tests cover those owners; production mounting, provider-backed
+execution and two-principal browser acceptance require separate runtime evidence.
+Custom channels and Task hierarchy are not implied by this Room contract.
+
 ## ProjectTaskRoom
 
 **Mounted Task path.** [TaskWorkspaceView](../../src-ui/src/views/TaskWorkspaceView.tsx)
-mounts one `ProjectTaskRoomProvider` across Chat, Brief, Results and Details.
+mounts one `ProjectTaskRoomProvider` across Overview, Conversation, Work chats, Plan and
+Details. Overview shows status, completion criteria, subtasks, decisions, blockers and
+kept deliverables; Plan owns the autosaved document, and Work chats opens independently
+authorized canonical Conversations.
 `ProjectTaskRoomProvider` joins and publishes on mount and departs on teardown;
 `TaskRoomEditorPane` stays mounted across tabs and autosaves through edit plans.
 `ProjectTaskRoomConversation` shows named, timed messages and agent threads.
@@ -2655,10 +2792,13 @@ the applicable page header. An already-visible strip
 and focused tab cause no extra reveal scroll. The host retains its tabbed
 presentation; the Basis renderer uses chromeless presentation to omit duplicate
 portable MCP App controls. Identity and workspace fields are collapsed by default.
-Task tab selection survives a temporary catalog loading boundary only for the
-same Station API and Task incarnation. Explicit Basis reveal refreshes the
-current authority-scoped Task Basis reads, including an already-mounted pane.
-Neither behavior preserves unsaved text across unmount or supplies effect authority.
+The nonsecret `taskView` URL parameter selects the Task view; absent or invalid
+values open Overview. It survives authority re-verification and is cleared when
+navigation changes the route. The protected Room provider is recreated for the
+current Station API, authority and Task incarnation. Explicit Basis reveal
+refreshes current authority-scoped Task Basis reads, including an already-mounted
+pane. Neither behavior preserves unsaved text across unmount or supplies effect
+authority.
 [ProjectTaskRoomRuntime](../../src-server/services/orchestration/project-task-room-runtime.ts)
 owns server edit planning, request/principal checks, per-subscriber projection,
 ephemeral cursor limits, working-state settlement and history composition.
@@ -3863,6 +4003,29 @@ needed for that adapter.
 
 **Code and evidence.** `StationRuntime` composes `TaskGraphService` after concrete project and workflow dependencies exist, then publishes `composeTaskDispatcher(taskGraph, adapters)` to runtime routes and capabilities. The dispatcher Implementation owns private task-graph Adapter contributions. Evidence includes `src-server/services/projects/__tests__/task-dispatcher.test.ts`, `task-dispatch-composition.test.ts`, `task-graph-service.dispatch-claim.test.ts`, task route tests, and cold-start/runtime tests. See [Task dispatch](../design/task-dispatcher.md). **Do not reintroduce:** `TaskGraphService.dispatchTask`, post-construction project/workflow setters, or a route that reaches graph execution details directly.
 
+**Deliverable hierarchy and work chats.**
+[Dedicated relationship routes](../../src-server/routes/orchestration/task-relationships.ts)
+use TaskGraph's existing cross-process lock for atomic child creation,
+parent attach/reparent/detach and canonical Conversation association receipts.
+[Relationship state](../../src-server/services/projects/task-relationship-state.ts)
+validates persisted identities and provides the injected current Task/Project/
+Conversation authority contract. Runtime composition owns mounting and canonical
+Conversation open capabilities. These associations do not dispatch, roll up
+status, or publish private Tasks/chats. Per-target reads omit inaccessible
+children and Conversations without hidden counts. The
+[real-store relationship tests](../../src-server/services/projects/__tests__/task-relationships.test.ts)
+and [mounted route tests](../../src-server/routes/orchestration/__tests__/task-relationships.routes.test.ts)
+cover local persistence and transport; production and UI integration remain
+separate evidence. See [the API shapes](../reference/api.md#task-deliverables-and-linked-work-chats).
+
+Task relationship routes compose current transport authority with a live local-account
+session or supported account-bound Device standing witness. Account members may read
+only individually shared Task incarnations in a currently readable Project; a shared
+parent does not reveal private children or their count. Work chats additionally require
+current canonical Conversation lineage and reader access. Ordinary account membership
+does not authorize relationship mutations. Linking neither publishes a Task or private
+conversation nor grants execution.
+
 **Close-out on merge (#3161).** A person can opt a Task in to closing when its pull requests merge (`TaskRecord.closeOnMerge`, `PUT /api/tasks/:taskId/close-on-merge`; no Station Control tool reaches that route). [`task-close-out.ts`](../../src-server/services/projects/task-close-out.ts) is a reconciliation, not a loop: when the conversation pull request refresh observes a merged pull request for a viewer holding the operate tier (the scope `PATCH /api/tasks/:taskId/status` needs; never a Station Control tool call), it reads each pull request kept on the Tasks that kept it, at its exact identity and four at a time, and `TaskGraphService.completeTaskOnMerge` moves a Task to `done` only if every kept pull request is `MERGED`, the Task is the same incarnation (`createdAt`) the reads were for, no pull request was kept since (matched by declaration and target, since one turn's declarations share an event), and `canTransitionTaskStatus` allows `done` (never from todo, ready, triage or blocked). A pull request closed without merging never completes a Task. Nothing re-runs it: a merge is noticed when an operate-tier viewer next refreshes that conversation, and nothing reconciles without one. A pull request declared through Station Control waits in memory for its turn's terminal event (a turn-lifetime lease, not the native 60 seconds) and is lost if Station restarts first. The tests in `task-close-out.test.ts` and `runtime-routes-declare-pull-request-engine.test.ts` cover it.
 
 The Task dispatcher additionally composes a server-owned room execution
@@ -4369,14 +4532,21 @@ Before starting an engine, Station must resolve what a Project means on this com
 
 `createProjectSessionDirectoryResolver` in
 `src-server/services/projects/project-session-directory.ts` composes the
-existing manifest and live resource resolver for new engine starts. Runtime
-initialization installs it in OrchestrationService; recovery awaits it only
-when the recorded session has no cwd. Bound resources return their local path;
-only a directory-less organizational Project may default without a checkout.
-Missing, drifted, ambiguous and unverifiable resources stop before engine
-invocation. The caller retains path containment and owned-worktree admission.
-Real Git/binding-to-engine tests live in `orchestration-service.test.ts`.
-Resolution is an observation, not a filesystem lease or a compute grant.
+existing manifest and live resource resolver for new engine starts and retained
+qualified Sessions. New Sessions use the selected execution root. A continuation
+keeps its recorded canonical cwd only when its persisted local Project ID still
+matches and that directory remains inside a currently verified attached resource.
+Read-binding, successor-start and send-turn admission recheck this authority.
+Credential-profile restart and cold materialization recheck after recovery
+preparation, before provider start; direct credential replay rechecks before
+sending the turn. Changing the Project default does not move an existing Session. An unstamped or
+explicitly refused Project incarnation is never inferred from a matching slug.
+Missing, unbound, drifted, ambiguous or replaced resources and changed symlink
+coordinates stop before engine invocation. Only a directory-less organizational
+Project may start without a checkout. The caller retains current compute,
+transport, path-containment and owned-worktree admission. Mounted continuation
+and real Git/binding-to-engine tests cover these owners; provider acceptance is
+separate. Resolution is an observation, not a filesystem lease or a compute grant.
 
 ## Workspace checkpoints
 

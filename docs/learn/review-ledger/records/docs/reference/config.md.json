@@ -180,7 +180,9 @@
 
     "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts",
 
-    "schemas/app.schema.json"
+    "schemas/app.schema.json",
+
+    "src-server/services/projects/project-s3-sources.ts"
   ],
 
   "checks": [

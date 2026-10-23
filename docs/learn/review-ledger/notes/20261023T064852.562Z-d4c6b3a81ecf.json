@@ -1,0 +1,7 @@
+{
+  "revision": "89f9e94a6cc62b1e41fbcd3ba9c61a44178485bd",
+
+  "notes": [
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Inspected current fixture adaptation against domain and rendered UI: Overview default with Conversation/Plan, workspace disclosure via normal action, peer uses a separately approved Device and environment-scoped cookie without copied profile or launcher replacement. Heartbeat returns updated; local input clears watch/follow, while target departure pauses. Latest live lane reached actual two-device presence, shared edits, concurrent insert/delete and duplicate-safe exact batch retry, but stopped on obsolete confirmation wording (current UI says Saved). The fixture owner is repairing current assertions and must run the entire convergence/revocation/restart lane before claiming current-head acceptance. Prior historical receipts are not renewed.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","tests/project-task-room-collaboration.spec.ts"]}
+  ]
+}

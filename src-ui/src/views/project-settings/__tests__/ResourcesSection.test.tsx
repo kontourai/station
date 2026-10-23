@@ -19,6 +19,27 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('../../../components/modals/NewProjectRepositorySource', () => ({
+  NewProjectRepositorySource: ({
+    onUseCheckout,
+  }: {
+    onUseCheckout: (path: string, name: string, id: string) => void;
+  }) => (
+    <button
+      type="button"
+      onClick={() =>
+        onUseCheckout(
+          '/host/verified-acquisition',
+          'Repository',
+          'operation-id',
+        )
+      }
+    >
+      Select acquired working copy
+    </button>
+  ),
+}));
+
 const refetch = vi.fn();
 const bindMutate = vi.fn();
 let queryState: Record<string, unknown> = {};
@@ -897,5 +918,25 @@ describe('a partially-bound multi-repo project is LEGIBLE', () => {
   it('renders NOTHING extra when the primary is named', () => {
     const { container } = renderView(backing([API_BOUND, WEB_BOUND]));
     expect(container.textContent ?? '').not.toContain('primary');
+  });
+});
+
+it('an acquired working copy fills repair without silently binding or choosing another resource', () => {
+  renderView(backing([UNBOUND]));
+  expect(
+    screen
+      .getByRole('button', { name: 'Select acquired working copy' })
+      .closest('form'),
+  ).toBeNull();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Select acquired working copy' }),
+  );
+  expect(bindMutate).not.toHaveBeenCalled();
+  const input = screen.getByLabelText('Point at an existing checkout');
+  expect(input).toHaveProperty('value', '/host/verified-acquisition');
+  fireEvent.submit(input.closest('form')!);
+  expect(bindMutate).toHaveBeenCalledWith({
+    path: '/host/verified-acquisition',
+    resourceId: UNBOUND.resourceId,
   });
 });

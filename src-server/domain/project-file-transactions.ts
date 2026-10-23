@@ -103,7 +103,11 @@ export interface ProjectStoredFileRevision<T> extends StoredFileRevision<T> {
   /** Server-only read admission under the existing Project mutation owner. */
   withCurrentRead?<R>(operation: (value: T) => Promise<R>): Promise<R>;
   /** Atomically replace this Project's manifest under this exact Project revision. */
-  replaceManifest?(expected: unknown, next: unknown): Promise<void>;
+  replaceManifest?(
+    expected: unknown,
+    next: unknown,
+    assertCurrent?: () => void,
+  ): Promise<void>;
 }
 
 export interface ProjectFileTransactionFaults {
@@ -433,7 +437,11 @@ export class ProjectFileTransactions {
                 }
                 return operation(structuredClone(admissionValue as T));
               }),
-            replaceManifest: (expectedManifest: unknown, next: unknown) => {
+            replaceManifest: (
+              expectedManifest: unknown,
+              next: unknown,
+              assertCurrent?: () => void,
+            ) => {
               const manifestPath = join(
                 this.projectDirectory(projectSlug),
                 'manifest.json',
@@ -475,8 +483,9 @@ export class ProjectFileTransactions {
                         'Project identity changed before the manifest could publish',
                       );
                     }
+                    assertCurrent?.();
                     if (isDeepStrictEqual(current, ownedNext)) return;
-                    await this.#publish(manifestPath, ownedNext);
+                    await this.#publish(manifestPath, ownedNext, assertCurrent);
                   }),
               );
             },
@@ -607,11 +616,26 @@ export class ProjectFileTransactions {
     }
   }
 
-  async #publish(path: string, value: unknown): Promise<void> {
+  async #publish(
+    path: string,
+    value: unknown,
+    assertCurrent?: () => void,
+  ): Promise<void> {
+    let admissionRefused = false;
     try {
-      await publishJsonFileWithOwnedLock(path, value);
+      await publishJsonFileWithOwnedLock(path, value, {
+        assertCurrent: () => {
+          try {
+            assertCurrent?.();
+          } catch (error) {
+            admissionRefused = true;
+            throw error;
+          }
+        },
+      });
       this.faults.afterPublish?.(path);
     } catch (error) {
+      if (admissionRefused) throw error;
       // A rename may have committed before a later durability/fault seam
       // reported failure. Exact bytes are authoritative for this capability.
       const expected = `${JSON.stringify(value, null, 2)}`;
