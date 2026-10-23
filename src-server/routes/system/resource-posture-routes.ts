@@ -10,6 +10,7 @@ import { freemem, totalmem } from 'node:os';
 import type { HostResourceSnapshot } from '@kontourai/station-contracts/system-status';
 import { Hono } from 'hono';
 import type { RuntimeResourcePostureProbe } from '../../services/infra/resource-posture.js';
+import { inspectWorkloadResources } from '../../services/infra/workload-resources.js';
 import { systemOps } from '../../telemetry/metrics.js';
 import { errorMessage } from '../schemas/schemas.js';
 
@@ -42,7 +43,14 @@ export function createResourcePostureRoutes(deps: ResourcePostureRouteDeps) {
         },
       };
       systemOps.add(1, { op: 'get_resource_posture' });
-      return c.json({ success: true, data: { ...posture, resources } });
+      return c.json({
+        success: true,
+        data: {
+          ...posture,
+          resources,
+          workloads: await inspectWorkloadResources(),
+        },
+      });
     } catch (error) {
       return c.json({ success: false, error: errorMessage(error) }, 500);
     }

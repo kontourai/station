@@ -1,0 +1,11 @@
+{
+  "revision": "891c4baa24affb13c073afaeb58d18d9d6f05739",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed RuntimeResourcePostureController evidence claims against the full-client MCP fixture: both physical launches now report independent pid/cgroup/descendant observations, with assertions for two distinct workload scopes and cleanup of both trees. Managed file-lifetime temp tracking runs after service teardown. Actual14-test containment baseline passed; forcing legacy mode caused only the handshake assertion to fail (two launches expected, one observed), then restored14passed. Scope budgets and runtime ownership are unchanged; no new provider/platform qualification.","inputs":["docs/architecture/module-map.md","src-server/services/infra/__tests__/workload-resources.process.test.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed Linux workload budgeting, MCP physical launch ownership and fixture qualification limits against strengthened negotiation proof. The test now observes both real probe/session cgroups and descendants, requires distinct external scopes, and tracks shared observation files through suite teardown despite PrivateTmp. Budget values, admission, graceful cancellation and restart caveats remain unchanged. Baseline14passed, auto-to-legacy mutation failed the intended handshake assertion with13passed, restored14passed; not a hosted/native/provider qualification.","inputs":["docs/guides/development.md","src-server/services/infra/__tests__/workload-resources.process.test.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed fixture-fidelity, mutation, temporary-directory and OOM-domain guidance against the physical MCP proof. Test observations come from both real SDK-spawned processes; forcing legacy mode yields the intended two-versus-one assertion failure. Temp files are owned by trackTempDirs(file lifetime) outside service PrivateTmp and removed after service shutdown. No policy exceptions or production seams added. Existing command, prerequisite and separate hosted qualification guidance remain accurate.","inputs":["docs/guides/testing.md","src-server/services/infra/__tests__/workload-resources.process.test.ts"]}
+  ]
+}

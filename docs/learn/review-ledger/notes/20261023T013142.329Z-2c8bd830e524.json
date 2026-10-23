@@ -1,0 +1,17 @@
+{
+  "revision": "26c29263a51e2503f96d86da886d7005c714ef56",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Verification-lane scope, generated-report evidence and the route to the testing guide remain accurate: new suite diagnostics do not qualify skipped assertions or hosted completion. Source/prose review of the seven-line testing-guide addition; no independent browser, device or hosted qualification claimed.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed local/hosted lane distinctions, normal push gates and diagnostic failure handling. The testing-guide addition describes retained suite errors only; no selection, verdict, timeout, hook or qualification policy changed. Source/prose review of the seven-line testing-guide addition; no independent browser, device or hosted qualification claimed.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed deterministic fail-closed gates, process ownership, test-effectiveness routing and exit-status requirements. Suite-hook reporting preserves standard JSON verdicts and does not weaken the linked testing policy. Source/prose review of the seven-line testing-guide addition; no independent browser, device or hosted qualification claimed.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed the testing-guide dependency for targeted mutations and caller-boundary evidence. Suite-hook diagnostics do not alter server conventions, required caller coverage or performance claims. Source/prose review of the seven-line testing-guide addition; no independent browser, device or hosted qualification claimed.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed the testing-guide dependency for mounted behavior, profiling and evidence boundaries. Suite-hook diagnostics do not establish layout, hit testing, writability or product performance. Source/prose review of the seven-line testing-guide addition; no independent browser, device or hosted qualification claimed.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed hermetic fixtures, resource classification and test-effectiveness links. The new real-child setup-failure regression retains skipped status and a nonzero exit; richer diagnostics do not turn missing prerequisites into success. Source/prose review of the seven-line testing-guide addition; no independent browser, device or hosted qualification claimed.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

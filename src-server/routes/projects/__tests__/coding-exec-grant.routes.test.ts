@@ -18,6 +18,7 @@ import {
   PAIRING_SCOPE_PRESETS,
   pairingScopePresetString,
 } from '@kontourai/station-contracts/environment-security';
+import * as childWorkload from '@kontourai/station-shared/child-workload';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
@@ -234,4 +235,19 @@ test('the operator in person needs no grant: the desktop app, minted by proving 
 
   expect(res.status).toBe(200);
   expect(res.ran).toBe(true);
+});
+
+test('an authorized project command does not run when workload admission refuses it', async () => {
+  const f = await fixture();
+  const admission = vi
+    .spyOn(childWorkload, 'execFileChildWorkload')
+    .mockRejectedValue(new Error('workload enforcement unavailable'));
+  try {
+    const refused = await f.exec(f.operator.credential);
+    expect(refused.body.success).toBe(false);
+    expect(refused.ran).toBe(false);
+    expect(admission).toHaveBeenCalled();
+  } finally {
+    admission.mockRestore();
+  }
 });

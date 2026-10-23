@@ -330,10 +330,10 @@ not run both against the same install.
 
 ## Install or refresh
 
-Use Node 24 from a clean checkout with the intended `origin` remote:
+Activate Node 24 using your version manager, then use a clean checkout with the
+intended `origin` remote:
 
 ```sh
-export PATH="$HOME/.local/share/mise/installs/node/24.19.0/bin:$PATH"
 ./ops/nightly/install-macos.zsh
 ```
 

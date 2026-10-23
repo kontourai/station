@@ -1280,6 +1280,8 @@ async function runVitest(
               ? { omitted: structuredReport.omitted }
               : {
                   omittedTests: structuredReport.omittedTests,
+                  suites: structuredReport.suites,
+                  omittedSuites: structuredReport.omittedSuites,
                   unhandledErrors: structuredReport.unhandledErrors,
                   omittedUnhandledErrors:
                     structuredReport.omittedUnhandledErrors,

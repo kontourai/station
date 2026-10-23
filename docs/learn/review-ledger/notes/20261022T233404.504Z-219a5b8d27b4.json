@@ -1,0 +1,9 @@
+{
+  "revision": "696619d30b97295714b3fa3cb88d39e6e9d222ac",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Reviewed OpenCode resolved-rule verification and refusal claims against the stdout/stderr typing repair: the real probe still uses explicit piped streams through workload admission, with unchanged parsing, limits, timeout and failure handling. Non-null assertions reflect the configured Node stdio contract; focused approval verification tests passed, without a live OpenCode qualification.","inputs":["docs/guides/acp.md","src-server/services/acp/opencode-approval-verify.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed managed-Linux probe admission, MCP negotiation ownership, fixture and platform qualification claims against this typing delta. OpenCode streams remain explicitly piped; the full-client fixture now opts into actual SDK auto negotiation with {mode:auto}, and fails explicitly if cwd inspection is unavailable. All14 containment tests passed with that configuration; no running service restart, live provider or cross-platform qualification is claimed. The fixture helper is test support for the already cited process suite, with no additional product documentation contract.","inputs":["docs/guides/development.md","src-server/services/acp/opencode-approval-verify.ts"]}
+  ]
+}

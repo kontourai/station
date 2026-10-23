@@ -11,6 +11,10 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  closeChildWorkload,
+  spawnChildWorkload,
+} from '@kontourai/station-shared/child-workload';
+import {
   type ExactProcessIdentityProbe,
   lookupProcessBirthFingerprint,
   lookupProcessBirthFingerprintCached,
@@ -159,6 +163,17 @@ async function waitForProcessTreeExit(
 export async function terminateProcessTree(
   proc: TerminableProcess,
   options: ProcessTreeTerminationOptions = {},
+): Promise<void> {
+  try {
+    await terminateNativeProcessTree(proc, options);
+  } finally {
+    await closeChildWorkload(proc.pid);
+  }
+}
+
+async function terminateNativeProcessTree(
+  proc: TerminableProcess,
+  options: ProcessTreeTerminationOptions,
 ): Promise<void> {
   const processGroup = options.processGroup ?? true;
   const platform = options.platform ?? process.platform;
@@ -913,7 +928,7 @@ export function spawnOwnedChild(
     [STATION_SPAWN_OWNER_INSTANCE_ENV]: owner.instanceId,
     [STATION_SPAWN_OWNER_BOOT_ENV]: owner.bootId,
   };
-  const proc = spawn(command, args, {
+  const proc = spawnChildWorkload(command, args, {
     cwd: options.cwd,
     env: childEnv,
     stdio: options.stdio ?? 'pipe',

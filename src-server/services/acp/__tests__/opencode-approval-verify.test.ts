@@ -1,7 +1,9 @@
-import { describe, expect, test } from 'vitest';
+import * as childWorkload from '@kontourai/station-shared/child-workload';
+import { describe, expect, test, vi } from 'vitest';
 import {
   type OpenCodeResolvedAgent,
   type OpenCodeRule,
+  openCodeAgentReader,
   verifyOpenCodeApprovalFloor,
 } from '../opencode-approval-verify.js';
 
@@ -460,4 +462,29 @@ describe('verifyOpenCodeApprovalFloor (#3290)', () => {
       expect(result).toEqual({ ok: true });
     });
   });
+});
+
+test('OpenCode approval verification refuses its engine probe when workload admission fails', async () => {
+  const admission = vi
+    .spyOn(childWorkload, 'spawnChildWorkload')
+    .mockImplementation(() => {
+      throw new Error('workload enforcement unavailable');
+    });
+  try {
+    const result = await verifyOpenCodeApprovalFloor(
+      'confined',
+      openCodeAgentReader({
+        command: 'opencode',
+        cwd: process.cwd(),
+        env: {},
+      }),
+    );
+    expect(result.ok).toBe(false);
+    expect(result).toMatchObject({
+      reason: expect.stringContaining('workload enforcement unavailable'),
+    });
+    expect(admission).toHaveBeenCalled();
+  } finally {
+    admission.mockRestore();
+  }
 });

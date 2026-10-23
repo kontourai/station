@@ -152,3 +152,10 @@ The Node-only `@kontourai/station-shared/plugin-telemetry` subpath validates
 publisher declarations and declared `plugin_daily` histograms. See the
 [shared reference](../../docs/reference/shared.md#plugin-publisher-telemetry).
 Broker acceptance and distribution manifest loading are separate work.
+
+The Node-only `/child-workload` leaf lets Station install a process launcher
+before admitting engine, MCP and tool workloads. Its spawn helper preserves
+Node child-process streams and PID ownership, and cleans descendants after leader
+exit. Standalone SDK consumers that install no launcher keep ordinary Node
+process behavior. Resource budgets belong to the server; see
+[Linux service workload budgets](../../docs/guides/development.md#linux-service-workload-budgets).

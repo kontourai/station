@@ -1,0 +1,11 @@
+{
+  "revision": "73be5385dd827452137a814d5c7a4d91f0e7fce0",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"Reviewed complete compact contributor instruction and exactmaincdf8 delta: removes only the local automation-App-token instruction, consistent with this feature retiring the local GitHub credential helper/setup. Normal auto-merge/no-method/one-confirmation, owner custody, manageddependencies/hooks, no reruns and exact evidence distinctions remain. Canonical Veritas1.11.4 block unchanged; no hosted App workflow permission or queue/security guard is changed. This is instruction/source review, not hosted/provider qualification.","inputs":["AGENTS.md"]},
+
+    {"path":"CLAUDE.md","note":"Read complete @AGENTS.md import plus canonical Veritas block. Reviewed imported AGENTS exactlocalautomationtoken sentence removal against retiredhelper/developmentsetup; import and canonical governed block remain correct and unchanged. No localcredentialsetup or hostedApppermission claim added; no new runtime/CI PASS inferred.","inputs":["CLAUDE.md","AGENTS.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Read the hook/push requirements and compared cited AGENTS exactone-sentence localautomationtoken removal with .githooks/pre-push, managedinstaller and developmentguide. The six checks, scopedtransferbaseline, puremerge rule, hostedtype/readiness ownership, strict budget/ratchet/normalqueue rules remain accurate. This source-only instruction change does not alter hooks, runtime, scopes, allowlists or hostedApppermissions; no broad quality/hostedqualification claimed.","inputs":["docs/guides/code-quality.md","AGENTS.md"]}
+  ]
+}

@@ -21,6 +21,12 @@ Status: Proposal â€” unscheduled; no tracking issue as of 2026-10-20 (phases 2â€
 
 ## Why
 
+Current Linux user-service [workload budgets](../guides/development.md#linux-service-workload-budgets)
+separate owned child scopes from the control server's resource failure domain.
+They retain generation-owned cleanup: a replacement server reaps dead owners.
+They do not implement the workload hosts, journals or reattachment proposed
+below, and do not make running turns survive a core restart.
+
 Every way Station restarts interrupts running work.
 
 - The server owns its listeners, agent engines, and terminals, so stopping it
@@ -31,8 +37,10 @@ Every way Station restarts interrupts running work.
   - `station upgrade` allows five seconds and refuses to run under a service.
   - The archive launcher stops the old version before starting the new one.
 - Boot kills engines left by the previous server
-  (`sweepOrphanedOwnedProcesses`) and marks their turns interrupted. Claude
-  Code is not even an owned child; it dies with its stdin pipe.
+  (`sweepOrphanedOwnedProcesses`) and marks their turns interrupted. Managed
+  Linux service scopes additionally own Claude Code and its descendants and
+  reclaim scopes from dead server generations. Other launch modes retain their
+  existing cleanup paths. This ownership does not make turns survive a restart.
 - No engine can be reattached mid-turn. Claude Code, Codex, ACP agents, and
   Muse all speak over the stdio of the process that spawned them, so only a
   new turn can resume their session.

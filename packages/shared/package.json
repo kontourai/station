@@ -38,6 +38,7 @@
     "./build": "./src/build.ts",
     "./build-provenance": "./src/build-provenance.ts",
     "./checkpoints": "./src/checkpoints.ts",
+    "./child-workload": "./src/child-workload.ts",
     "./delegation-files": "./src/delegation-files.ts",
     "./display-reveal": "./src/display-reveal.ts",
     "./display-text": "./src/display-text.ts",

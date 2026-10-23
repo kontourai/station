@@ -317,12 +317,11 @@ The owners are
 [`browser-preview-packaged-fixture.mjs`](../../scripts/browser-preview-packaged-fixture.mjs),
 its [filesystem helper](../../scripts/lib/browser-preview-packaged-fixture.mjs),
 and Desktop home preparation in [`lib.rs`](../../src-desktop/src/lib.rs).
-The command below identifies the existing opt-in entry point, not a successful
-run or an instruction to bypass admission:
+Activate Node 24 using your version manager. The command below identifies the
+existing opt-in entry point, not a successful run or an instruction to bypass admission:
 
 ```sh
-PATH="$HOME/.local/share/mise/installs/node/24.19.0/bin:$PATH" \
-  npm run fixture:browser-preview:macos
+npm run fixture:browser-preview:macos
 ```
 
 The intended fixture builds a package, owns one temporary root and numeric-loopback

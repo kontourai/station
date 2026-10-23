@@ -38,6 +38,7 @@ import type {
   WorkItemProviderIdentity,
   WorkItemProviderListResult,
 } from '@kontourai/station-contracts/work-item-provider';
+import { spawnChildWorkload } from '@kontourai/station-shared/child-workload';
 import type {
   IWorkItemProvider,
   WorkItemProjectContext,
@@ -166,7 +167,7 @@ export function createDefaultFlowAgentsCliRunner(
   return (binPath, args, options) =>
     new Promise<FlowAgentsCliResult>((resolvePromise) => {
       const detached = process.platform !== 'win32';
-      const child = spawn(process.execPath, [binPath, ...args], {
+      const child = spawnChildWorkload(process.execPath, [binPath, ...args], {
         cwd: options.cwd,
         windowsHide: true,
         stdio: ['pipe', 'pipe', 'pipe'],

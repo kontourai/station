@@ -1,5 +1,9 @@
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import {
+  ownWorkloadTransport,
+  prepareChildWorkload,
+} from '@kontourai/station-shared/child-workload';
+import {
   type MCPLocalClaim,
   MCPLocalCustodyError,
   type MCPPreparedConnection,
@@ -121,7 +125,24 @@ export function createCustodiedStrandsClient(
   claim.attach(resource, definition); // Before either constructor, including partial failure.
   try {
     assertCurrent();
-    transport = new StdioClientTransport(parameters);
+    const launch = prepareChildWorkload(
+      parameters.command,
+      parameters.args ?? [],
+      parameters.env,
+    );
+    transport = ownWorkloadTransport(
+      new StdioClientTransport({
+        ...parameters,
+        ...(launch
+          ? {
+              command: launch.command,
+              args: launch.args,
+              env: launch.env as Record<string, string>,
+            }
+          : {}),
+      }),
+      launch,
+    );
     physicalClose = transport.close.bind(transport);
     transport.close = closeTransport;
     client = new McpClient({ transport });

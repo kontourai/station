@@ -1,0 +1,9 @@
+{
+  "revision": "a465ae2bbed0a699b0f9a60ccac567fef23665a9",
+
+  "notes": [
+    {"path":"docs/design/process-supervisor.md","note":"Reviewed proposal/current workload ownership distinction against the merged development guide advisory policy paragraph. Advisory scans moved to release publication and do not change resource scopes, lifecycle cleanup or restart-survival limitations. No supervisor behavior or adoption claim changed.","inputs":["docs/design/process-supervisor.md","docs/guides/development.md"]},
+
+    {"path":"packages/shared/README.md","note":"Reviewed child-workload entry point and Linux budget guide link against the merged dependency advisory policy paragraph in development.md. Node/source export, launcher ownership, per-process MCP patch behavior and platform limits remain unchanged; no new external-consumer or platform qualification.","inputs":["packages/shared/README.md","docs/guides/development.md"]}
+  ]
+}

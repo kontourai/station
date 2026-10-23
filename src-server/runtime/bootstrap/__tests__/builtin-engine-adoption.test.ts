@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
-import { resolveEngineCapabilityMatrix } from '@kontourai/station-contracts/engine-capability-matrix';
+import {
+  type BuiltinAgentEngineBinding,
+  resolveEngineCapabilityMatrix,
+} from '@kontourai/station-contracts/engine-capability-matrix';
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
@@ -23,9 +26,9 @@ async function fixture() {
   await loader.loadAppConfig();
   return { loader, home, file: join(home, 'config', 'app.json') };
 }
-const binding = {
+const binding: BuiltinAgentEngineBinding = {
   connectionId: engineConnectionId('opencode'),
-  matrix: resolveEngineCapabilityMatrix('opencode'),
+  matrix: resolveEngineCapabilityMatrix('opencode', { engineId: 'opencode' }),
 };
 
 test('records an undecided home once through the real config owner', async () => {

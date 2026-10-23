@@ -48,7 +48,13 @@
 
     "packages/sdk/src/client/plugin-telemetry.ts",
 
-    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts"
+    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts",
+
+    "packages/shared/src/child-workload.ts",
+
+    "src-server/services/infra/workload-resources.ts",
+
+    "docs/guides/development.md"
   ],
 
   "checks": [

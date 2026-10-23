@@ -1,0 +1,9 @@
+{
+  "revision": "8da7d94eff46f59cf90873ca86291ae5727ccbbe",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed API dependency delta: additive workload posture diagnostics now route to the Linux service budget guide. The integration guide links the canonical API/authentication contracts, and its tenant-isolated hosted target remains a proposal; process resource scopes do not establish tenant filesystem/network isolation. Existing guide claims remain accurate. Source review of changed API dependency only, no hosted tenant or platform execution qualification.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed the testing guide correction distinguishing unisolated Station service commands from bounded Linux workload scopes and guarding managed installs. This instruction file routes to that guide and keeps hermetic fixtures, declared process-resource classification, focused evidence and real browser action rules; it does not duplicate the old OOM-domain claim. No instruction changes needed; source review only.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

@@ -1,4 +1,3 @@
-import { spawn } from 'node:child_process';
 import { readFile, stat, writeFile } from 'node:fs/promises';
 import * as pathModule from 'node:path';
 import {
@@ -19,6 +18,7 @@ import {
   type WaitForTerminalExitResponse,
   type WriteTextFileRequest,
 } from '@agentclientprotocol/sdk';
+import { spawnChildWorkload as spawn } from '@kontourai/station-shared/child-workload';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
 import { ApprovalRegistry } from '../approvals/approval-registry.js';
 import type {

@@ -1,0 +1,17 @@
+{
+  "revision": "0ba2b9b53b48e1c9f552543d106d091bc2497374",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed Linux workload launcher, bounded scopes, resource-posture accounting and platform-limits route. The launcher now requires systemd253 scope OOM semantics, preserves literal argv on253, and retains bounded probe stderr; the development guide owns this minimum. Ownership and observation boundaries remain accurate.","inputs":["docs/architecture/module-map.md","docs/guides/development.md","src-server/services/infra/__tests__/workload-resources.process.test.ts","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"Reviewed the managed-Linux scope exception and proposal status against the systemd253 admission floor and probe diagnostics. Scope ownership does not provide turn survival or reattachment; the design remains a proposal, with current platform requirements routed through development.","inputs":["docs/design/process-supervisor.md","docs/guides/development.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the new systemd253 minimum against upstream scope OOM policy/result implementation and the real admission caller. Systemd249 CLI rejects both expand-environment and scope OOMPolicy; actual253 CLIs passed15 containment assertions against this host259 manager. Native259 baseline15pass; lowering admission floor249 failed only the refusal case (14pass), restored15pass. Probe stderr is retained to2048bytes. No full253manager or hosted24 qualification claimed.","inputs":["docs/guides/development.md","src-server/services/infra/__tests__/workload-resources.process.test.ts","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the workload-isolation verification and missing-prerequisite claims against the new old-version refusal case, same real server/caller and extended existing process test. Fifteen tests passed; lowering the floor caused the intended assertion failure and exact restoration passed15. Actual253CLI evidence is separate from native259 and hosted qualification; no skipped enforcement is a pass.","inputs":["docs/guides/testing.md","docs/guides/development.md","src-server/services/infra/__tests__/workload-resources.process.test.ts","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"packages/shared/README.md","note":"Reviewed Node-only child-workload leaf, inherited descriptors/environment and unmanaged consumer behavior against systemd admission changes. Versionfloor/argv option belong to the managedLinux server launcher; shared contracts and ordinary standalone launches are unchanged. Development link now states minimum253.","inputs":["packages/shared/README.md","docs/guides/development.md","src-server/services/infra/workload-resources.ts"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed lifecycle/security/testing routes into development and the process-launch convention. Minimum253 refusal and bounded probe diagnostics preserve fail-closed workload admission; platform qualification remains distinct from ordinary focused tests.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

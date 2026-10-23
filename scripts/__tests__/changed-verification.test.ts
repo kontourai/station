@@ -3039,6 +3039,53 @@ describe('primary error fixture', () => {
       }
     },
   );
+  test('retains real suite setup errors when every assertion is skipped', async () => {
+    const root = makeTempDir('station-vitest-suite-error-');
+    const report = join(root, 'result.json');
+    writeFileSync(
+      join(root, 'setup-failure.test.mjs'),
+      `import { beforeAll, describe, test } from ${JSON.stringify(import.meta.resolve('vitest'))};
+describe('service prerequisite', () => {
+  beforeAll(() => { throw new Error('fixture setup failed; Authorization: Bearer secret-fixture-token'); });
+  test('requires the service', () => { throw new Error('assertion must not run'); });
+});\n`,
+    );
+    writeFileSync(join(root, 'vitest.config.mjs'), 'export default {};\n');
+    const child = await runOwnedChangedCommand(
+      process.execPath,
+      [
+        join(process.cwd(), 'node_modules/vitest/vitest.mjs'),
+        'run',
+        '--maxWorkers=1',
+        '--reporter=json',
+        `--reporter=${fileURLToPath(new URL('../lib/vitest-error-reporter.mjs', import.meta.url))}`,
+        `--outputFile=${report}`,
+      ],
+      { cwd: root, processLabel: 'suite failure reporter fixture' },
+    );
+    expect(child.status).toBe(1);
+    expect(JSON.parse(readFileSync(report, 'utf8'))).toMatchObject({
+      numFailedTests: 0,
+      numPendingTests: 1,
+      success: false,
+    });
+    const details = readFileSync(`${report}.errors.json`, 'utf8');
+    expect(JSON.parse(details)).toMatchObject({
+      tests: [],
+      suites: [
+        {
+          name: expect.stringContaining('service prerequisite'),
+          errors: [
+            { message: expect.stringContaining('fixture setup failed') },
+          ],
+        },
+      ],
+      omittedSuites: 0,
+    });
+    expect(child.stderr).toContain('fixture setup failed');
+    expect(details).not.toContain('secret-fixture-token');
+    expect(child.stderr).not.toContain('secret-fixture-token');
+  });
   test('escalates a deleted related path to test-full without spawning', async () => {
     const run = vi.fn();
     const result = await runChangedVerification(['--base=origin/main'], {

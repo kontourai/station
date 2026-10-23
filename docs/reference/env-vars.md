@@ -9,6 +9,10 @@ the process; a shell change does not reconfigure an already running service.
 
 ## Server
 
+The trusted `STATION_WORKLOAD_*` settings configure managed Linux service
+resource limits. See [Linux service workload budgets](../guides/development.md#linux-service-workload-budgets)
+for defaults, platform support and refusal behavior.
+
 | Variable | Default | Description | Source |
 |----------|---------|-------------|--------|
 | `PORT` | _(the channel's `serverPort` — `39140` development, `18141` stable, `28141` beta, `38141` nightly)_ | Server listen port. When unset, `resolveRuntimePort` resolves the running channel's contract from `config/channel-ports.json` rather than any fixed number; `PORT=0` or `STATION_PORT_MODE=auto` self-allocates a contiguous block for the HTTP, terminal (`+1`), voice (`+2`), and consent (`+3`) listeners. Not to be confused with `DEFAULT_SERVER_PORT` (`3141`) in `packages/shared/src/ports.ts`, which is the historic source-checkout constant `STATION_PORT` falls back to below | `src-server/index.ts`, `src-server/runtime/bootstrap/runtime-port.ts` |
