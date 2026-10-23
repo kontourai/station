@@ -1,3 +1,8 @@
+import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
+import {
+  type BuiltinAgentEngineBinding,
+  resolveEngineCapabilityMatrix,
+} from '@kontourai/station-contracts/engine-capability-matrix';
 import { describe, expect, test, vi } from 'vitest';
 import { recordAdoptedBuiltinEngine } from '../builtin-engine-adoption.js';
 
@@ -10,8 +15,13 @@ import { recordAdoptedBuiltinEngine } from '../builtin-engine-adoption.js';
  * repaired.
  */
 
-function bindingFor(connectionId: string) {
-  return { connectionId, matrix: {} } as never;
+function bindingFor(connectionId: string): BuiltinAgentEngineBinding {
+  return {
+    connectionId: engineConnectionId(connectionId),
+    matrix: resolveEngineCapabilityMatrix(connectionId, {
+      engineId: 'opencode',
+    }),
+  };
 }
 
 function createRecorder() {
@@ -42,7 +52,7 @@ describe('recordAdoptedBuiltinEngine', () => {
 
     await recordAdoptedBuiltinEngine({
       configLoader,
-      explicitConnectionId: 'claude',
+      explicitConnectionId: engineConnectionId('claude'),
       binding: bindingFor('opencode'),
     });
 
