@@ -12,6 +12,10 @@ requests still have the server's expiry bound. The App replaces bounded pages ra
 accumulating protected data. Missing, stale, revoked, malformed, or failed
 state is generic unavailable, never an inferred empty or partial collection.
 
+Immutable Task Outputs join an answer's outcomes only through their recorded
+producing Session and turn. Names, paths and matching bytes do not establish
+that association. Manual Outputs and other-turn Outputs remain unassociated.
+
 Station owns task collection chrome and selected-answer identity. Surface owns
 all selected answer Basis semantics. Whole Task has no aggregate standing.
 Pages carry separate bounded streams for answers, retained task records, kept

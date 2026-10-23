@@ -14,7 +14,7 @@ const SHA = /^[a-f0-9]{40}$/;
  */
 export const FAST_CHECKS_PROVISIONAL_STEP = 'Mark fast-checks provisional';
 const PROVISIONAL_NOTE =
-  ' (provisional: ci-fast/test-full deferred to Merge-queue regression)';
+  ' (provisional: ci-fast/test-full deferred to full qualification)';
 const pending = (description) => ({ state: 'pending', description });
 const failure = (description) => ({ state: 'failure', description });
 
