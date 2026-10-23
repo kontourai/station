@@ -35,6 +35,7 @@ const member = humanPrincipal('deployment', 'bob', 'Bob');
 const cleanup: (() => void)[] = [];
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
   for (const close of cleanup.splice(0).reverse()) close();
 });
 async function data(response: Response): Promise<unknown> {
@@ -392,6 +393,9 @@ test('SSE checkpoints are guarded at queued delivery and terminate with revoked 
 
 test('presence capacity is enforced per Room and globally and leave frees a slot', async () => {
   const h = await harness();
+  // Capacity and TTL are independent contracts: keep these live leases fresh
+  // even when the host takes longer than their real 30-second TTL to fill.
+  vi.spyOn(Date, 'now').mockReturnValue(Date.now());
   const views: Awaited<ReturnType<typeof h.discover>>[] = [];
   for (let i = 0; i < 11; i++) {
     const slug = i === 0 ? 'example' : `room-${i}`;
@@ -525,4 +529,17 @@ test('a miswired asynchronous final admission guard cannot authorize Room writes
     ),
   ).rejects.toMatchObject({ code: 'invalid' });
   expect(h.runtime.store.history(h.scope).messages).toEqual([]);
+});
+
+test('an unconsumed SSE response stops on its bounded write deadline without queued polling work', async () => {
+  const h = await harness();
+  await h.discover('alice');
+  vi.useFakeTimers();
+  const response = await h.request('alice', '/events');
+  // No reader drains Hono's first frame: the writer must stop itself.
+  await vi.advanceTimersByTimeAsync(2001);
+  expect(vi.getTimerCount()).toBe(0);
+  await response.body?.cancel();
+  h.service.close();
+  expect(vi.getTimerCount()).toBe(0);
 });

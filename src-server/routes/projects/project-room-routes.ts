@@ -201,10 +201,10 @@ export function createProjectRoomRoutes(service: ProjectRoomService) {
               stream.writeSSE({ event, data: JSON.stringify(data) }),
               new Promise<never>((_, reject) => {
                 rejectWrite = reject;
-                writeTimer = setTimeout(
-                  () => reject(new Error('Room stream stalled')),
-                  2000,
-                );
+                writeTimer = setTimeout(() => {
+                  stop();
+                  reject(new Error('Room stream stalled'));
+                }, 2000);
               }),
             ]);
           } finally {
