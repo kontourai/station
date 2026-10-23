@@ -24,6 +24,10 @@ import {
   THREE_NEW_FILES,
 } from './fixtures/coding-diff-process';
 
+vi.mock('../views/task-workspace/TaskRelationships', () => ({
+  TaskRelationships: () => null,
+}));
+
 const makeDiffTempDir = trackTempDirs();
 let realDiffFixture: ReturnType<typeof codingDiffFixture> | undefined;
 let realDiffLocation: { workingDir?: string; projectSlug?: string } | undefined;
@@ -507,7 +511,7 @@ describe('TaskWorkspaceView', () => {
     };
   });
 
-  test('opens on Chat and keeps the live brief draft while switching between the four Task views', () => {
+  test('opens on Overview and preserves the live plan draft across Task views', () => {
     roomDocumentResult.data = {
       kind: 'snapshot',
       revision: 'r1',
@@ -532,19 +536,21 @@ describe('TaskWorkspaceView', () => {
       </QueryClientProvider>,
     );
     expect(
-      screen.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected'),
+      screen
+        .getByRole('tab', { name: 'Overview' })
+        .getAttribute('aria-selected'),
     ).toBe('true');
-    expect(screen.getByRole('tab', { name: 'Chat' }).tabIndex).toBe(0);
-    expect(screen.getByRole('tab', { name: 'Brief' }).tabIndex).toBe(-1);
+    expect(screen.getByRole('tab', { name: 'Overview' }).tabIndex).toBe(0);
+    expect(screen.getByRole('tab', { name: 'Plan' }).tabIndex).toBe(-1);
     expect(screen.queryByRole('textbox', { name: 'Task brief' })).toBeNull();
-    fireEvent.click(screen.getByRole('tab', { name: 'Brief' }));
-    expect(screen.getByRole('tab', { name: 'Chat' }).tabIndex).toBe(-1);
-    expect(screen.getByRole('tab', { name: 'Brief' }).tabIndex).toBe(0);
+    fireEvent.click(screen.getByRole('tab', { name: 'Plan' }));
+    expect(screen.getByRole('tab', { name: 'Conversation' }).tabIndex).toBe(-1);
+    expect(screen.getByRole('tab', { name: 'Plan' }).tabIndex).toBe(0);
     fireEvent.click(screen.getByRole('button', { name: 'Edit brief' }));
     const editor = screen.getByRole('textbox', { name: 'Task brief' });
     fireEvent.change(editor, { target: { value: '# Goal\nA revised room' } });
-    fireEvent.click(screen.getByRole('tab', { name: 'Chat' }));
-    fireEvent.click(screen.getByRole('tab', { name: 'Brief' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Conversation' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Plan' }));
     expect(
       (
         screen.getByRole('textbox', {
@@ -552,7 +558,7 @@ describe('TaskWorkspaceView', () => {
         }) as HTMLTextAreaElement
       ).value,
     ).toBe('# Goal\nA revised room');
-    fireEvent.click(screen.getByRole('tab', { name: 'Results' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Overview' }));
     expect(screen.getByRole('list', { name: 'Kept results' })).toBeTruthy();
     fireEvent.click(screen.getByRole('tab', { name: 'Details' }));
     expect(screen.getByText('Raw room history')).toBeTruthy();
@@ -631,7 +637,7 @@ describe('TaskWorkspaceView', () => {
     expect(
       screen.queryByRole('region', { name: 'Task room workspace' }),
     ).toBeNull();
-    fireEvent.click(screen.getByRole('tab', { name: 'Brief' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Plan' }));
     expect(screen.getByDisplayValue('Retained async context')).toBeTruthy();
     expect(screen.getByText(/Task room is unavailable/i)).toBeTruthy();
   });
@@ -664,7 +670,7 @@ describe('TaskWorkspaceView', () => {
         <TaskWorkspaceView taskId="task-alpha" />
       </QueryClientProvider>,
     );
-    fireEvent.click(await screen.findByRole('tab', { name: 'Chat' }));
+    fireEvent.click(await screen.findByRole('tab', { name: 'Conversation' }));
     fireEvent.click(
       await screen.findByRole('button', { name: 'Ask an agent' }),
     );
@@ -1851,7 +1857,7 @@ describe('TaskWorkspaceView', () => {
 
   test('retains the selected tab across a Project reload only for the same Task incarnation', () => {
     const view = render(<TaskWorkspaceView taskId="task-alpha" />);
-    fireEvent.click(screen.getByRole('tab', { name: 'Brief' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Plan' }));
     const settledProjects = projectsResult;
     projectsResult = { data: undefined, isLoading: true, refetch: vi.fn() };
     view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
@@ -1861,7 +1867,7 @@ describe('TaskWorkspaceView', () => {
     projectsResult = settledProjects;
     view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
     expect(
-      screen.getByRole('tab', { name: 'Brief' }).getAttribute('aria-selected'),
+      screen.getByRole('tab', { name: 'Plan' }).getAttribute('aria-selected'),
     ).toBe('true');
     queryResult = {
       ...queryResult,
@@ -1875,7 +1881,9 @@ describe('TaskWorkspaceView', () => {
     };
     view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
     expect(
-      screen.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected'),
+      screen
+        .getByRole('tab', { name: 'Overview' })
+        .getAttribute('aria-selected'),
     ).toBe('true');
   });
 

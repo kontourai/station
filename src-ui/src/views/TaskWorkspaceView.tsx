@@ -32,7 +32,6 @@ import { Button } from '../components/Button';
 import { DiffPanel } from '../components/coding-layout/DiffPanel';
 import { FileContentViewer } from '../components/coding-layout/FileContentViewer';
 import { usePageHeader } from '../components/page-frame';
-import { SplitPaneCompanion } from '../components/SplitPaneLayout';
 import {
   Empty,
   ErrorState,
@@ -69,10 +68,10 @@ import {
   type TaskOutputPromotion,
   TaskOutputsSection,
 } from './task-workspace/TaskOutputsSection';
+import { TaskRelationships } from './task-workspace/TaskRelationships';
 import {
   TaskRoomHeader,
   TaskRoomRail,
-  TaskRoomResultCount,
   TaskRoomResults,
 } from './task-workspace/TaskRoomPage';
 import { TaskTurnReferenceView } from './task-workspace/TaskTurnReferenceView';
@@ -239,7 +238,8 @@ export function TaskWorkspaceView({ taskId }: { taskId: string }) {
       />
     );
   }
-  const tab = selectedTab?.identity === tabIdentity ? selectedTab.tab : 'Chat';
+  const tab =
+    selectedTab?.identity === tabIdentity ? selectedTab.tab : 'Overview';
   const taskProject = projectsQuery.data.find(
     (project) =>
       project.id === graph.task.projectId ||
@@ -501,103 +501,99 @@ function TaskWorkspaceContent({
         role="tablist"
         aria-label="Task views"
       >
-        {['Chat', 'Brief', 'Results', 'Details', 'About'].map((name) => (
-          <Button
-            key={name}
-            role="tab"
-            tabIndex={tab === name ? 0 : -1}
-            aria-selected={tab === name}
-            aria-controls={`task-panel-${name}`}
-            id={`task-tab-${name}`}
-            className={`page__tab${name === 'About' ? ' split-pane__mobile-tab' : ''}`}
-            onClick={() => setTab(name)}
-            onKeyDown={(event) => {
-              if (
-                !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)
-              )
-                return;
-              const tabs = Array.from(
-                event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
-                  '[role="tab"]',
-                ) ?? [],
-              ).filter((button) => button.offsetParent !== null);
-              const index = tabs.indexOf(event.currentTarget);
-              const next =
-                event.key === 'Home'
-                  ? 0
-                  : event.key === 'End'
-                    ? tabs.length - 1
-                    : (index +
-                        (event.key === 'ArrowRight' ? 1 : -1) +
-                        tabs.length) %
-                      tabs.length;
-              event.preventDefault();
-              tabs[next]?.focus();
-              tabs[next]?.click();
-            }}
-          >
-            {name}
-            {name === 'Results' && <TaskRoomResultCount task={graph.task} />}
-          </Button>
-        ))}
+        {['Overview', 'Conversation', 'Work chats', 'Plan', 'Details'].map(
+          (name) => (
+            <Button
+              key={name}
+              role="tab"
+              tabIndex={tab === name ? 0 : -1}
+              aria-selected={tab === name}
+              aria-controls={`task-panel-${name.replaceAll(' ', '-')}`}
+              id={`task-tab-${name.replaceAll(' ', '-')}`}
+              className="page__tab"
+              onClick={() => setTab(name)}
+              onKeyDown={(event) => {
+                if (
+                  !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(
+                    event.key,
+                  )
+                )
+                  return;
+                const tabs = Array.from(
+                  event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+                    '[role="tab"]',
+                  ) ?? [],
+                ).filter((button) => button.offsetParent !== null);
+                const index = tabs.indexOf(event.currentTarget);
+                const next =
+                  event.key === 'Home'
+                    ? 0
+                    : event.key === 'End'
+                      ? tabs.length - 1
+                      : (index +
+                          (event.key === 'ArrowRight' ? 1 : -1) +
+                          tabs.length) %
+                        tabs.length;
+                event.preventDefault();
+                tabs[next]?.focus();
+                tabs[next]?.click();
+              }}
+            >
+              {name}
+            </Button>
+          ),
+        )}
       </div>
       <div
         className="task-room-main"
-        hidden={tab !== 'Chat'}
+        hidden={tab !== 'Conversation'}
         role="tabpanel"
-        id="task-panel-Chat"
-        aria-labelledby="task-tab-Chat"
+        id="task-panel-Conversation"
+        aria-labelledby="task-tab-Conversation"
       >
-        <SplitPaneCompanion
-          companion={
-            <aside className="task-room-rail">
-              <TaskRoomRail
-                task={graph.task}
-                projectSlug={projectSlug}
-                onBrief={() => setTab('Brief')}
-                onResults={() => setTab('Results')}
-              />
-            </aside>
-          }
-        >
-          <ProjectTaskRoomConversation
-            taskId={taskId}
-            projectSlug={projectSlug}
-            taskCreatedAt={graph.task.createdAt}
-          />
-        </SplitPaneCompanion>
+        <ProjectTaskRoomConversation
+          taskId={taskId}
+          projectSlug={projectSlug}
+          taskCreatedAt={graph.task.createdAt}
+        />
       </div>
       <div
         className="task-room-panel"
-        hidden={tab !== 'Brief'}
+        hidden={tab !== 'Plan'}
         role="tabpanel"
-        id="task-panel-Brief"
-        aria-labelledby="task-tab-Brief"
+        id="task-panel-Plan"
+        aria-labelledby="task-tab-Plan"
       >
         <TaskRoomEditorPane taskId={taskId} startInPreview />
       </div>
       <div
-        className="task-room-panel"
-        hidden={tab !== 'Results'}
+        className="task-room-panel task-overview"
+        hidden={tab !== 'Overview'}
         role="tabpanel"
-        id="task-panel-Results"
-        aria-labelledby="task-tab-Results"
-      >
-        <TaskRoomResults task={graph.task} />
-      </div>
-      <div
-        className="task-room-panel"
-        hidden={tab !== 'About'}
-        role="tabpanel"
-        id="task-panel-About"
-        aria-labelledby="task-tab-About"
+        id="task-panel-Overview"
+        aria-labelledby="task-tab-Overview"
       >
         <TaskRoomRail
           task={graph.task}
           projectSlug={projectSlug}
-          onBrief={() => setTab('Brief')}
-          onResults={() => setTab('Results')}
+          onBrief={() => setTab('Plan')}
+          onResults={() =>
+            document.getElementById('task-deliverables')?.scrollIntoView()
+          }
         />
+        <TaskRelationships task={graph.task} kind="children" />
+        <div id="task-deliverables">
+          <TaskRoomResults task={graph.task} />
+        </div>
+      </div>
+      <div
+        className="task-room-panel"
+        hidden={tab !== 'Work chats'}
+        role="tabpanel"
+        id="task-panel-Work-chats"
+        aria-labelledby="task-tab-Work-chats"
+      >
+        <TaskRelationships task={graph.task} kind="work-chats" />
       </div>
       <div
         className="task-workspace__body"

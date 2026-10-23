@@ -177,7 +177,7 @@ test('rail derives the goal and completion checklist from the saved shared docum
   expect(screen.getByText('Chat comes first')).toBeTruthy();
   expect(screen.getByLabelText('Checked')).toBeTruthy();
   expect(screen.getByText('Answers return here')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Edit brief' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Edit plan' }));
   expect(brief).toHaveBeenCalledOnce();
 });
 test('results presents kept answers, file outputs and pull requests in a single list', async () => {

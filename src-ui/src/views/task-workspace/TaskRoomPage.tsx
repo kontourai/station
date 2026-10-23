@@ -269,11 +269,8 @@ export function TaskRoomResults({ task }: { task: TaskRecord }) {
   };
   return (
     <section aria-label="Task results" className="task-room-results">
-      <h2>Results</h2>
+      <h2>Ready to review</h2>
       {runNotice && <p role="alert">{runNotice}</p>}
-      <p className="task-room-hint">
-        Answers, files, and pull requests kept for this Task.
-      </p>
       {unavailable && (
         <p role="alert">
           Some results could not be loaded.{' '}
@@ -356,7 +353,7 @@ export function TaskRoomResults({ task }: { task: TaskRecord }) {
         !outputs.isLoading &&
         !prs.isLoading &&
         !(answers.data?.length || outputs.data?.length || prs.data?.length) && (
-          <p>Keep an agent answer or a file to collect results here.</p>
+          <Empty label="Nothing kept yet" />
         )}
     </section>
   );
@@ -395,7 +392,7 @@ export function TaskRoomRail({
       .trim();
   };
   const goalSection = section('Goal');
-  const doneSection = section('Done when');
+  const doneSection = section('Done when') ?? section('Checklist');
   const firstHeading = lines.findIndex((line) => /^#{1,6}\s/.test(line));
   const prose = lines
     .slice(0, firstHeading < 0 ? undefined : firstHeading)
@@ -417,6 +414,7 @@ export function TaskRoomRail({
   return (
     <div className="task-room-rail-content">
       <section>
+        <h2>{taskStatusLabel(task.status)}</h2>
         <h3>Goal</h3>
         {goal ? (
           <div className="task-room-goal">
@@ -429,10 +427,10 @@ export function TaskRoomRail({
         ) : document.isLoading ? (
           <SkeletonBlock label="Loading brief" />
         ) : (
-          <p>Add the goal to the shared brief.</p>
+          <p>Add the goal to the plan.</p>
         )}
         <Button onClick={onBrief} size="sm">
-          Edit brief
+          Edit plan
         </Button>
       </section>
       <section>
@@ -471,11 +469,11 @@ export function TaskRoomRail({
             {doneSection}
           </LazyMarkdown>
         ) : (
-          <p>Add a checklist in the brief.</p>
+          <p>Add a checklist in the plan.</p>
         )}
       </section>
       <section>
-        <h3>Results</h3>
+        <h3>Deliverables</h3>
         {!loading && !unavailable && count === 0 ? (
           <Empty label="No results yet" />
         ) : (
@@ -524,7 +522,16 @@ export function TaskRoomRail({
           ))}
         </ul>
       )}
-      <ProjectTaskRoomPresence taskId={task.id} />
+      {['Decisions', 'Blockers'].map((name) => (
+        <section key={name}>
+          <h3>{name}</h3>
+          {section(name) ? (
+            <LazyMarkdown>{section(name)!}</LazyMarkdown>
+          ) : (
+            <p>None recorded.</p>
+          )}
+        </section>
+      ))}
       <footer>
         <span>{projectSlug}</span>
         <span>{task.workspaceBinding?.branch ?? 'Branch not recorded'}</span>
