@@ -194,8 +194,10 @@ class ToastStore {
             item.timestamp >= Date.now() - RECALL_AGE,
         )
         .slice(0, RECALL_LIMIT);
+      const key = RECALL_KEY + this.stationScope;
+      if (entries.length === 0 && localStorage.getItem(key) === null) return;
       localStorage.setItem(
-        RECALL_KEY + this.stationScope,
+        key,
         JSON.stringify(
           entries.map((item) => ({
             id: item.id.slice(0, 160),

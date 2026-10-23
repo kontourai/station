@@ -215,6 +215,9 @@ test('operation updates and explicit groups replace actions; old completions can
 });
 
 test('recall persists only bounded safe text, scoped to its Station, with no replayable actions', () => {
+  toastStore.upsert({ message: 'Private transient diagnostic', duration: 0 });
+  mount();
+  expect(localStorage.length).toBe(0);
   const action = vi.fn();
   for (let index = 0; index < 55; index++)
     toastStore.upsert({
