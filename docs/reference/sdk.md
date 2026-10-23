@@ -1483,7 +1483,10 @@ Discovers the git repositories under a folder through `/api/coding/repos` and
 returns `ReposResult`: `{ workspace, workspaceIsRepo, repos }`, where each
 `DiscoveredRepo` carries its symlink-resolved `root`, `name`, `relativePath`
 and current `branch` (`''` for a detached HEAD or a repository the Project does
-not own). `location` is a `ReposLocation`, `{ projectSlug?, workingDir }`: the
+not own). Discovery is bounded: the walk stops at 24 repositories and skips
+heavy directories, so an over-broad folder is sampled rather than exhaustively
+enumerated, and identical concurrent asks share one scan. `location` is a
+`ReposLocation`, `{ projectSlug?, workingDir }`: the
 same shape as the git reads, except that `projectSlug` is optional because a
 folder may not be a Project yet. With a Project the server confines the folder
 to it; without one only the operator in person gets an answer. Disabled
