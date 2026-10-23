@@ -1,0 +1,9 @@
+{
+  "revision": "fdf5dea197016978383bbfb151ae46d1d8003878",
+
+  "notes": [
+    {"path":"docs/guides/native-releases.md","note":"Reviewed the macOS installer disk image section after adding a dmgbuild create_hook: the doc now states that the hook runs codesign --verify --deep --strict on the copied app inside the writable image and that a failure detaches it and exits nonzero before signing; executed proof was a real dmgbuild run that built a good app and refused one with an unreadable file ('a sealed resource is missing or invalid').","inputs":["docs/guides/native-releases.md","ops/release/macos-notarized-artifacts.test.mjs"]},
+
+    {"path":"docs/guides/nightly.md","note":"Checked against the macos-notarized-artifacts test change (a new test that loads dmgbuild-settings.py and runs its create_hook): nightly.md's macOS rows (notarized app, DMG and updater archive names, workflow anchor, feed) are unchanged by it.","inputs":["docs/guides/nightly.md","ops/release/macos-notarized-artifacts.test.mjs"]}
+  ]
+}

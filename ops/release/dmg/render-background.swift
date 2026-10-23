@@ -53,7 +53,7 @@ func render(scale: CGFloat, to url: URL) throws {
   // and 13pt ink under these 128pt icons sat at content y 288.5–299.5. Light
   // Mode uses dark names as well, so a light plate under each name is the
   // contrast surface for both. The floor width covers the widest name seen
-  // with filename extensions shown (Station MacProof.app, 130.6pt), plus padding.
+  // with filename extensions shown (130.6pt), plus padding.
   let labelFont = NSFont.systemFont(ofSize: 13)
   let labelWidth = ["Station Nightly.app", "Station Beta.app", "Station.app", "Applications"]
     .map { ($0 as NSString).size(withAttributes: [.font: labelFont]).width }.max()!
