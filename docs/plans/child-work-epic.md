@@ -956,7 +956,12 @@ accounting. This surface adds no paid dispatch, Flow topology or provider
 qualification. The pending-cancellation inspector also offers explicit receipt recovery using
 the original cancellation key and a distinct recovery key. It never resends
 interrupts and keeps pending receipts separate from termination and accounting.
-UI creation and the remaining Flow/continuation work are still open.
+The inspector now also submits paid independent report groups through the scoped
+SDK create mutation. It requires explicit source selectors, Agent IDs, member
+briefs and budgets, retains one operation ID, disables repeat dispatch, protects
+unsent drafts, and aborts waiting on unmount/authority change. Controlled
+mounted tests exercise the SDK path; rendered browser and live-provider
+qualification remain open. Flow topology and continuation work are still open.
 
 ## Authenticated report-group preparation
 

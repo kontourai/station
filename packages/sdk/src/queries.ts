@@ -582,6 +582,7 @@ export {
 } from './query-domains/proposedChanges';
 export {
   useCancelReportGroup,
+  useCreateReportGroup,
   useFinalizeReportGroupCancel,
   useReportGroupResultQuery,
   useReportGroupsQuery,

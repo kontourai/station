@@ -2,14 +2,17 @@ import type {
   ReportGroupAmounts,
   ReportGroupCancelInput,
   ReportGroupFinalizeCancelInput,
+  ReportGroupInput,
 } from '@kontourai/station-contracts/report-group';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useRef } from 'react';
 import {
   type ApiRequestScope,
   StationRequestAuthorityError,
 } from '../client/http';
 import {
   cancelReportGroup,
+  createReportGroup,
   finalizeReportGroupCancel,
   listReportGroups,
   readReportGroupResult,
@@ -154,6 +157,46 @@ export function useFinalizeReportGroupCancel(scope: Scope) {
       );
       if (!scope.isCurrent()) throw new StationRequestAuthorityError();
       return result;
+    },
+    onSuccess: () => {
+      if (scope.isCurrent())
+        void client.invalidateQueries({
+          queryKey: ['report-groups', scope.apiBase, scope.authorityKey],
+        });
+    },
+    retry: false,
+    networkMode: 'always',
+    gcTime: 0,
+  });
+}
+
+export function useCreateReportGroup(scope: Scope) {
+  const client = useQueryClient();
+  const active = useRef<AbortController | undefined>(undefined);
+  const current = scope.isCurrent();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Each authority tuple owns its in-flight request.
+  useEffect(
+    () => () => active.current?.abort(),
+    [scope.apiBase, scope.authorityKey, current],
+  );
+  return useMutation({
+    mutationKey: ['report-group-create', scope.apiBase, scope.authorityKey],
+    mutationFn: async (input: ReportGroupInput) => {
+      if (!scope.isCurrent()) throw new StationRequestAuthorityError();
+      if (active.current)
+        throw new Error('A report request is already active.');
+      const stop = new AbortController();
+      active.current = stop;
+      try {
+        const result = await createReportGroup(scope.apiBase, input, {
+          requestScope: scope,
+          signal: stop.signal,
+        });
+        if (!scope.isCurrent()) throw new StationRequestAuthorityError();
+        return result;
+      } finally {
+        if (active.current === stop) active.current = undefined;
+      }
     },
     onSuccess: () => {
       if (scope.isCurrent())

@@ -367,3 +367,105 @@ test.each(['requested', 'pending', 'authority-loss'] as const)(
     expect(sent).toHaveLength(1);
   },
 );
+
+test.each(['returned', 'refused', 'authority-loss', 'unmount'] as const)(
+  'paid report creation preserves explicit intent and never resends after %s',
+  async (outcome) => {
+    const sent: Record<string, unknown>[] = [];
+    let settle!: (response: Response) => void;
+    let signal: AbortSignal | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        if (init?.method === 'POST') {
+          expect(new URL(String(url)).pathname).toBe(
+            '/api/orchestration/report-groups',
+          );
+          sent.push(JSON.parse(String(init.body)));
+          signal = init.signal ?? undefined;
+          return new Promise<Response>((resolve) => {
+            settle = resolve;
+          });
+        }
+        return envelope({ groups: [], hasMore: false, nextGroupId: null });
+      }),
+    );
+    const view = mount();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Run an advisory report group' }),
+    );
+    const fill = (name: string, value: string) =>
+      fireEvent.change(screen.getByLabelText(name), { target: { value } });
+    fill('Project ID', 'project-one');
+    fill('Resource ID (optional)', 'resource-one');
+    fill('Aggregate input token limit', '10000');
+    fill('Aggregate output token limit', '1000');
+    fill('Aggregate inference cost limit (microdollars)', '50000');
+    fill('Agent ID', 'review-agent');
+    fill('Member brief', 'Inspect only the selected source.');
+    fill('Member output token limit', '500');
+    const leave = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(leave);
+    expect(leave.defaultPrevented).toBe(true);
+    const start = screen.getByRole('button', { name: 'Start paid reports' });
+    const submittedAt = Date.now();
+    fireEvent.submit(start.closest('form')!);
+    await waitFor(() => expect(sent).toHaveLength(1));
+    await act(async () => fireEvent.click(start));
+    expect(sent).toEqual([
+      {
+        operationId: expect.any(String),
+        projectSlug: 'project-one',
+        resourceId: 'resource-one',
+        deadlineAt: expect.any(Number),
+        maxConcurrent: 1,
+        budget: { inputTokens: 10000, outputTokens: 1000, costMicros: 50000 },
+        members: [
+          {
+            seatId: 'seat-1',
+            agentId: 'review-agent',
+            brief: 'Inspect only the selected source.',
+            maxOutputTokens: 500,
+          },
+        ],
+      },
+    ]);
+    expect(Number(sent[0].deadlineAt) - submittedAt).toBeGreaterThanOrEqual(
+      300000,
+    );
+    expect(Number(sent[0].deadlineAt) - Date.now()).toBeLessThanOrEqual(300000);
+    const afterSubmit = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(afterSubmit);
+    expect(afterSubmit.defaultPrevented).toBe(false);
+    if (outcome === 'authority-loss') view.revoke();
+    if (outcome === 'unmount') view.unmount();
+    if (outcome === 'authority-loss' || outcome === 'unmount')
+      expect(signal?.aborted).toBe(true);
+    await act(async () =>
+      settle(
+        outcome === 'refused'
+          ? new Response('{}', {
+              status: 409,
+              headers: { 'content-type': 'application/json' },
+            })
+          : envelope({
+              replayed: false,
+              group: { ...group, operationId: sent[0].operationId },
+            }),
+      ),
+    );
+    if (outcome === 'returned') {
+      expect(
+        await screen.findByText(
+          /Report group group-a: returned\. Acceptance remains unassessed/,
+        ),
+      ).toBeTruthy();
+    } else if (outcome === 'refused') {
+      expect(await screen.findByText(/Report outcome unknown/)).toBeTruthy();
+      await act(async () => fireEvent.click(start));
+    } else {
+      expect(screen.queryByText(/Report group group-a: returned/)).toBeNull();
+    }
+    expect(sent).toHaveLength(1);
+  },
+);

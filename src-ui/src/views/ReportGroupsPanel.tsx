@@ -8,6 +8,7 @@ import {
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { useState } from 'react';
 import { Button } from '../components/Button';
+import { ReportGroupCreateForm } from './ReportGroupCreateForm';
 import './CliSessionGroupsPanel.css';
 import './ReportGroupsPanel.css';
 
@@ -241,6 +242,7 @@ export function ReportGroupsPanel({ scope }: { scope: Scope }) {
       aria-label="Report groups"
     >
       <h2>Report groups</h2>
+      <ReportGroupCreateForm scope={scope} />
       <p>
         Observe retained advisory reports and inference accounting. These groups
         require a locally granted operator on a personal Station. Execution

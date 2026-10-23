@@ -5610,4 +5610,11 @@ with the original cancel operation key and a distinct recovery key. The
 inspector offers it only for pending cancellation; a still-pending result
 confirms neither interruption nor termination. It never resends interrupts. Both
 mutation hooks check authority before and after the request and disable retries.
-UI creation remains open.
+`useCreateReportGroup` drives the inspector’s explicit paid-report form. The
+operator supplies Project/resource selectors, configured Agent IDs, separate
+briefs, per-member output limits and aggregate token/inference-cost budgets. A
+single operation ID is retained for that mounted form. Submission disables edits
+and repeat dispatch; unknown outcomes never cause automatic resend. Drafts use
+the canonical unsaved-changes guard. Unmount or authority change aborts the
+request without claiming physical termination. Creation results remain
+unassessed.
