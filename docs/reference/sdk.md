@@ -5571,7 +5571,11 @@ and reconnect checkpoints. They do not prove mounted routes or live providers.
 `listReportGroups`, `cancelReportGroup`, `finalizeReportGroupCancel`, `readReportGroupEvents`,
 `subscribeReportGroupEvents` and `readReportGroupResult`. Public shapes live at
 `@kontourai/station-contracts/report-group`. This is the personal-host advisory
-report surface, separate from CLI session groups and from Flow-backed topology.
+report surface, separate from CLI session groups. Optional create `flow` selectors
+bind a run ID and exact seat-to-step map; workspace and grants remain server-owned.
+Views distinguish independent advisory and retained Flow topology. Flow owns
+frontier, claims, joins and gates; reports grant no gate acceptance. See the
+[Flow selector and continuation limits](api.md#report-groups).
 
 Create accepts configured Agent IDs, immutable operator intent and explicit
 aggregate token/inference-micro budgets. The server resolves runtime/model

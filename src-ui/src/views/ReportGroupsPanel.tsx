@@ -59,8 +59,11 @@ function Group({ scope, group }: { scope: Scope; group: ReportGroupView }) {
     <article aria-label={`Report group ${group.groupId}`}>
       <h3>{group.operationId}</h3>
       <p>
-        Independent advisory · Revision {group.revision} · Execution{' '}
-        {group.execution} · Cancellation {group.cancellation}
+        {group.topology.kind === 'flow'
+          ? `Flow ${group.topology.runId}`
+          : 'Independent advisory'}{' '}
+        · Revision {group.revision} · Execution {group.execution} · Cancellation{' '}
+        {group.cancellation}
       </p>
       <Button
         variant="secondary"

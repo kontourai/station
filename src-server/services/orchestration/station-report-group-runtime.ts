@@ -58,7 +58,10 @@ function view(value: Historical): ReportGroupView {
     groupId: admission.spec.groupId,
     operationId: admission.root.revisions.policy.id,
     revision: group?.revision ?? 0,
-    topology: { kind: 'independent-advisory' as const },
+    topology:
+      admission.spec.topology.kind === 'flow'
+        ? { kind: 'flow', runId: admission.spec.topology.runId }
+        : { kind: 'independent-advisory' },
     execution: !group
       ? ('not-created' as const)
       : group.rounds.length === 0

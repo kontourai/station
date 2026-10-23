@@ -309,7 +309,100 @@ export class StationReportGroupExecution {
           );
         },
       };
+      const flow = preparation.flow(handle, context.req.raw);
+      const schedule = flow ? await flow.readSchedule() : undefined;
+      current();
+      const flowHost: NonNullable<DelegationRoundsHost['flow']> = {
+        executionHost: () => ({
+          ...physical,
+          recordScheduleEvent: async (event) => {
+            current();
+            await persistence.retainReportFlowObservation(
+              groupId,
+              'schedule',
+              event,
+              current,
+            );
+          },
+          confirmClaim: async (claim, envelope) => {
+            const { member } = memberFor(envelope);
+            const owner = preparation.flow(
+              handle,
+              context.req.raw,
+              member.seatId,
+            );
+            if (
+              !owner ||
+              claim.step_id !==
+                prepared.spec.seats.find(
+                  (seat) => seat.seatId === member.seatId,
+                )?.stepId
+            )
+              return false;
+            await owner.withCurrentClaim(claim, () => ({ value: undefined }));
+            current();
+            return true;
+          },
+          prepareRequest: async (_claim, envelope) => {
+            const { member, seat } = memberFor(envelope);
+            return {
+              messages: [{ role: 'user', content: member.brief }],
+              maxOutputTokens: seat.allocation.outputTokens,
+            };
+          },
+          recordMemberOutcome: async (claim, envelope, outcome) => {
+            const { seat } = memberFor(envelope);
+            await persistence.retainReportFlowObservation(
+              groupId,
+              'member',
+              {
+                claim,
+                seatId: seat.seatId,
+                envelope: seat.envelope,
+                outcome: outcome.outcome,
+              },
+              current,
+            );
+          },
+        }),
+        confirmRetainedResult: async (_spec, attempt, reference) => {
+          current();
+          const value = retained.get(attempt.invocationId);
+          if (!value) return false;
+          const observation = await persistence.readReportObservation(
+            groupId,
+            attempt.invocationId,
+            reference,
+            current,
+          );
+          if (
+            observation.seatId !== attempt.seatId ||
+            observation.observation.kind !== 'result' ||
+            !same(
+              observation.observation.evidence,
+              value.attempt.evidenceReference,
+            )
+          )
+            return false;
+          await persistence.assertProviderEvidenceRetained(
+            value.attempt.evidence,
+            value.attempt.evidenceReference,
+            current,
+          );
+          return true;
+        },
+        retainEvaluation: async (_spec, action, receipt) => {
+          current();
+          return persistence.retainReportFlowObservation(
+            groupId,
+            'evaluation',
+            { action, receipt },
+            current,
+          );
+        },
+      };
       const roundsHost: DelegationRoundsHost = {
+        ...(flow ? { flow: flowHost } : {}),
         accountingProtocol: 'retained-tariff-v1',
         authorize: async ({ current: projection, groupId: candidate }) => {
           current();
@@ -407,6 +500,7 @@ export class StationReportGroupExecution {
         authorityService: service,
         dispatchLedger: this.owners.dispatchLedger,
         host: roundsHost,
+        ...(schedule ? { cwd: schedule.cwd } : {}),
       });
       const created = await controller.create({
         kind: 'create',
@@ -416,27 +510,55 @@ export class StationReportGroupExecution {
         controller: prepared.spec.controller,
         spec: prepared.spec,
       });
-      const released = await controller.release({
-        kind: 'release',
-        groupId,
-        operationKey: 'initial',
-        expectedRevision: created.projection.revision,
-        controller: prepared.spec.controller,
-        checkpoint: prepared.root.revisions.policy,
-        seats: prepared.spec.seats.map((seat) => ({
-          seatId: seat.seatId,
-          previousInvocationId: null,
-        })),
-      });
-      for (const attempt of released.projection.attempts)
-        await controller.recordTerminal({
-          kind: 'terminal',
+      let projection = created.projection;
+      for (let round = 0; round < prepared.spec.policy.maxRounds; round++) {
+        if (projection.attempts.length === prepared.members.length) break;
+        const currentSchedule = flow ? await flow.readSchedule() : undefined;
+        current();
+        const seats = prepared.spec.seats.filter(
+          (seat) =>
+            !projection.attempts.some(
+              (attempt) => attempt.seatId === seat.seatId,
+            ) &&
+            (!currentSchedule ||
+              (seat.stepId !== undefined &&
+                currentSchedule.readySteps.includes(seat.stepId))),
+        );
+        if (seats.length === 0) break;
+        const released = await controller.release({
+          kind: 'release',
           groupId,
-          operationKey: `terminal:${attempt.invocationId}`,
-          expectedRevision: (await controller.get(groupId)).revision,
+          operationKey: `initial:${round}`,
+          expectedRevision: projection.revision,
           controller: prepared.spec.controller,
-          invocationId: attempt.invocationId,
+          checkpoint: prepared.root.revisions.policy,
+          ...(currentSchedule ? { flowHead: currentSchedule.runHead } : {}),
+          seats: seats.map((seat) => ({
+            seatId: seat.seatId,
+            previousInvocationId: null,
+            ...(flow ? { mode: 'invoke' as const, retryRef: null } : {}),
+          })),
         });
+        for (const attempt of released.projection.attempts.filter(
+          (attempt) =>
+            !attempt.terminal && attempt.admission !== 'not_admitted',
+        ))
+          await controller.recordTerminal({
+            kind: 'terminal',
+            groupId,
+            operationKey: `terminal:${attempt.invocationId}`,
+            expectedRevision: (await controller.get(groupId)).revision,
+            controller: prepared.spec.controller,
+            invocationId: attempt.invocationId,
+          });
+        projection = await controller.get(groupId);
+        if (
+          projection.attempts.some(
+            (attempt) => attempt.admission === 'not_admitted',
+          )
+        )
+          break;
+      }
       return {
         replayed: false,
         group: await custody.findOperationForMutation(

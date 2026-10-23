@@ -20,6 +20,7 @@ export type ReportGroupInput = {
   operationId: string;
   projectSlug: string;
   resourceId?: string;
+  flow?: { runId: string; steps: Record<string, string> };
   deadlineAt: number;
   maxConcurrent: number;
   budget: ReportGroupAmounts;
@@ -35,7 +36,7 @@ export type ReportGroupView = {
   groupId: string;
   operationId: string;
   revision: number;
-  topology: { kind: 'independent-advisory' };
+  topology: { kind: 'independent-advisory' } | { kind: 'flow'; runId: string };
   execution: 'not-created' | 'idle' | 'returned' | 'unknown';
   cancellation: 'none' | 'pending' | 'requested';
   authorityRevoked: boolean;

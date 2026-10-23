@@ -1926,8 +1926,10 @@ read authority. Boot mounts an unavailable
 surface on hosted deployments or failed private-storage admission. Qualification
 is deferred until a new operation needs preparation, so profile expiry does not
 block historical reads or replay. Current operator authority is checked through
-awaits and again before HTTP release. This mode is independent advisory;
-Flow-backed topology and context sync remain open. The Ensemble inspector uses
+awaits and again before HTTP release. Independent advisory and explicitly selected
+Flow-run topology share this custody. The source owner privately supplies the
+workspace, definition and actor; published Flow rounds own readiness, claims,
+joins and evaluation. Same-session context continuation remains open. The Ensemble inspector uses
 [scoped SDK query hooks](../../packages/sdk/src/query-domains/reportGroups.ts) for
 explicit metadata and raw-report reads; closing/revoking the view cancels reads.
 Raw UTF-16 pages are bounded and joined before rendering as text. Unknown
@@ -2041,8 +2043,9 @@ they do not isolate hostile processes sharing the host uid.
 The new store accepts newly issued v3 authority only. It offers no v2 import or
 transfer operation: legacy journals and charges are not reconstructed or reset.
 Personal-host report serving composes this store with preparation and the
-reviewed narrow provider profile. Flow-backed frontier/join and authenticated
-context ACK remain separate integration work. Store availability alone does
+reviewed narrow provider profile. The execution runner supplies the published
+Flow callbacks with retained schedule, member and evaluation observations;
+authenticated context ACK remains separate integration work. Store availability alone does
 not enable the full group capability.
 
 The [rounds final-fetch fence](../../src-server/services/orchestration/delegation-group-launch-fence.ts)
@@ -2116,9 +2119,11 @@ changed intent refuses. New requests compose the real preparation/custody owners
 published Flow v3 authority and AccountingV1 rounds, canonical reserved tasks and
 sealed SDK transport. They retain bounded result/failure observations and confirm
 exact canonical turn events against retained provider evidence before recording
-terminal proof. This is independent-advisory execution with acceptance unassessed;
-personal-host boot/routes are composed, while Flow topology, session-context
-continuation and live provider/billing qualification remain open.
+terminal proof. Optional Flow selectors bind exact selected steps through the
+sealed source owner before SDK preparation consumes the snapshot. The runner
+releases fresh Flow-ready subsets and supplies that private owner to final fetch
+admission. Acceptance remains unassessed. Session-context continuation and live
+provider/billing qualification remain open.
 
 
 The [report-group preparer](../../src-server/services/orchestration/station-report-group-preparation.ts)
@@ -2206,8 +2211,8 @@ refuses a current-Station handshake naming a different environment.
 
 The personal-host report runtime mounts this preparation with durable operation
 replay, cancellation and explicit cancellation-receipt finalization. Flow-backed
-frontier/join and authenticated same-session ACK remain unwired. This does not
-enable the full group capability. Controlled handshake/Agent reads and
+topology uses the published rounds controller; authenticated same-session ACK and
+continuation remain unwired. This does not enable the full group capability. Controlled handshake/Agent reads and
 synthetic provider responses do not establish live-provider or billing acceptance.
 
 ### Reserved Station source execution

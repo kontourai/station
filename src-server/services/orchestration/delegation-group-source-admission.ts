@@ -17,8 +17,10 @@ import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import {
   assertLifecycleEligible,
+  claimableMultiCursorSteps,
   definitionIdentity,
   type FlowDurableStepClaim,
+  flowRunHead,
   flowRuntimeRoot,
   loadRun,
   validateDurableStepClaim,
@@ -928,6 +930,31 @@ export class LocalSourceAdmissionOwner {
     return Object.freeze({
       topology,
       source: state.source,
+      assertCurrent,
+      async readSchedule() {
+        assertCurrent();
+        const current = await loadRun(runId, cwd);
+        assertCurrent();
+        assertLifecycleEligible('persist', current.state.status);
+        if (
+          !isDeepStrictEqual(definitionIdentity(current.definition), definition)
+        )
+          refuse('flow_definition_changed');
+        return {
+          cwd,
+          runHead: flowRunHead(current.state),
+          readySteps: claimableMultiCursorSteps(
+            current.definition,
+            current.state,
+          ),
+          reportSteps: current.definition.steps
+            .filter(
+              (step: { id: string; mutable_resources?: readonly unknown[] }) =>
+                (step.mutable_resources ?? []).length === 0,
+            )
+            .map((step: { id: string }) => step.id),
+        };
+      },
       async withCurrentClaim<T>(
         claimInput: FlowDurableStepClaim,
         launch: () => { value: T },
@@ -1394,6 +1421,13 @@ export interface SourceFlowLaunchOwner {
     actor: { readonly key: string; readonly kind: string };
   }>;
   readonly source: Readonly<SourceTuple>;
+  assertCurrent(): void;
+  readSchedule(): Promise<{
+    cwd: string;
+    runHead: string;
+    readySteps: string[];
+    reportSteps: string[];
+  }>;
   withCurrentClaim<T>(
     claim: FlowDurableStepClaim,
     launch: () => { value: T },

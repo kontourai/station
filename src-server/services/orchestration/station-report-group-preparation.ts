@@ -56,6 +56,7 @@ import {
 import {
   type LocalSourceAdmissionOwner,
   type RuntimeSourceRequestContext,
+  type SourceFlowLaunchOwner,
 } from './delegation-group-source-admission.js';
 import { assertSynchronous } from './delegation-group-wire-intent-store.js';
 import type { OrchestrationService } from './orchestration-service.js';
@@ -72,6 +73,10 @@ const inputSchema = z
     operationId: id,
     projectSlug: id,
     resourceId: id.optional(),
+    flow: z
+      .object({ runId: id, steps: z.record(id, id) })
+      .strict()
+      .optional(),
     deadlineAt: integer,
     maxConcurrent: z.number().int().min(1).max(16),
     budget: z
@@ -102,6 +107,16 @@ export function parseStationReportGroupInput(
 ): StationReportGroupInput {
   const input = inputSchema.parse(structuredClone(sent));
   if (Buffer.byteLength(canonicalJson(input)) > 256 * 1024) refuse();
+  if (input.flow) {
+    const seats = input.members.map((member) => member.seatId);
+    const bindings = Object.entries(input.flow.steps);
+    if (
+      bindings.length !== seats.length ||
+      bindings.some(([seat]) => !seats.includes(seat)) ||
+      new Set(bindings.map(([, step]) => step)).size !== seats.length
+    )
+      refuse();
+  }
   return input;
 }
 const brand = Symbol('prepared Station report group');
@@ -118,6 +133,7 @@ type Member = {
   sdkHandle: object;
   snapshot: object;
   dispatched: boolean;
+  flow?: SourceFlowLaunchOwner;
 };
 type RecordValue = {
   root: RootAuthorityV2;
@@ -290,6 +306,27 @@ export class StationReportGroupPreparation {
         );
         pendingSnapshot = sealed.capability;
         current();
+        const flow = input.flow
+          ? await this.owners.sources.prepareFlowSnapshot(
+              context,
+              subject,
+              sealed.capability,
+              input.flow.runId,
+            )
+          : undefined;
+        if (flow) {
+          const schedule = await flow.readSchedule();
+          current();
+          if (!schedule.reportSteps.includes(input.flow!.steps[member.seatId]))
+            refuse();
+          const previousFlow = members[0]?.flow;
+          if (
+            previousFlow &&
+            canonicalJson(previousFlow.topology) !==
+              canonicalJson(flow.topology)
+          )
+            refuse();
+        }
         const owner = createPreparedSdkSourceWireOwner({
           provider: selected.provider,
           modelId: selected.modelId,
@@ -356,10 +393,14 @@ export class StationReportGroupPreparation {
             required_capabilities: [],
           },
           source: binding.source,
-          flow_binding: {
-            status: 'unbound',
-            reason: 'operator-independent-advisory',
-          },
+          flow_binding: flow
+            ? {
+                status: 'bound',
+                flow_run_id: flow.topology.runId,
+                definition: flow.topology.definition,
+                flow_step_id: input.flow!.steps[member.seatId],
+              }
+            : { status: 'unbound', reason: 'operator-independent-advisory' },
           authority_ceiling: authority,
         });
         members.push({
@@ -374,6 +415,7 @@ export class StationReportGroupPreparation {
           sdkHandle: prepared.sdkHandle,
           snapshot: sealed.capability,
           dispatched: false,
+          ...(flow ? { flow } : {}),
         });
         pendingSnapshot = undefined;
       }
@@ -528,10 +570,11 @@ export class StationReportGroupPreparation {
         groupId,
         rootAuthorityRef: rootAuthorityReferenceV2(root),
         controller: { id: `controller:${randomUUID()}`, generation: 1 },
-        topology: { kind: 'independent-advisory' },
+        topology: members[0].flow?.topology ?? { kind: 'independent-advisory' },
         policy: {
           reference: policy,
-          maxRounds: 1,
+          maxRounds: input.flow ? members.length : 1,
+          ...(input.flow ? { maxEvaluations: 0 } : {}),
           maxAttempts: members.length,
           maxConcurrent: input.maxConcurrent,
         },
@@ -543,6 +586,7 @@ export class StationReportGroupPreparation {
           ).quote;
           return {
             seatId: member.seatId,
+            ...(input.flow ? { stepId: input.flow.steps[member.seatId] } : {}),
             envelope: {
               id: envelope.envelope_id,
               generation: envelope.generation,
@@ -603,12 +647,14 @@ export class StationReportGroupPreparation {
       refuse();
     this.#assertRequest(request);
     this.owners.qualification.assertCurrent();
-    for (const member of state.members)
+    for (const member of state.members) {
+      member.flow?.assertCurrent();
       readObservedSdkProviderCredential(
         member.credential,
         'anthropic',
         request,
       );
+    }
     this.#assertRequest(request);
     return state;
   }
@@ -680,6 +726,18 @@ export class StationReportGroupPreparation {
       ),
     });
   }
+  flow(
+    handle: PreparedStationReportGroup,
+    request: Request,
+    seatId?: string,
+  ): SourceFlowLaunchOwner | undefined {
+    const state = this.#state(handle, request);
+    return (
+      seatId === undefined
+        ? state.members[0]
+        : state.members.find((member) => member.seatId === seatId)
+    )?.flow;
+  }
   sdk(
     handle: PreparedStationReportGroup,
     request: Request,
@@ -719,6 +777,10 @@ export class StationReportGroupPreparation {
     const member = state.members.find((m) => m.seatId === seatId);
     const seat = state.spec.seats.find((s) => s.seatId === seatId);
     if (!member || !seat || member.dispatched) refuse();
+    if (member.flow) {
+      if (attempt.transport.launch.protocol !== 'rounds-v1') refuse();
+      attempt.transport.launch.flow = member.flow;
+    }
     const captured = inspectSdkSourceWire(member.owner, member.sdkHandle);
     const reserved = attempt.transport.reservation;
     const invocationId = reserved.invocationId;

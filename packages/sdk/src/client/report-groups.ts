@@ -55,6 +55,10 @@ const inputSchema = z
     operationId: id,
     projectSlug: id,
     resourceId: id.optional(),
+    flow: z
+      .object({ runId: id, steps: z.record(id, id) })
+      .strict()
+      .optional(),
     deadlineAt: integer,
     maxConcurrent: z.number().int().min(1).max(16),
     budget: amounts,
@@ -79,7 +83,10 @@ const viewSchema = z
     groupId: id,
     operationId: id,
     revision,
-    topology: z.object({ kind: z.literal('independent-advisory') }).strict(),
+    topology: z.discriminatedUnion('kind', [
+      z.object({ kind: z.literal('independent-advisory') }).strict(),
+      z.object({ kind: z.literal('flow'), runId: id }).strict(),
+    ]),
     execution: z.enum(['not-created', 'idle', 'returned', 'unknown']),
     cancellation: z.enum(['none', 'pending', 'requested']),
     authorityRevoked: z.boolean(),

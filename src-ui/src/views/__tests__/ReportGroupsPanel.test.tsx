@@ -101,54 +101,71 @@ afterEach(() => {
   setClientCredentialResolver(undefined);
 });
 
-test('operator reads paginated reports through scoped SDK queries without promoting unknown accounting or executing work', async () => {
-  const requests: string[] = [];
-  const fetch = vi.fn(
-    async (url: string | URL | Request, init?: RequestInit) => {
-      expect(init?.method ?? 'GET').toBe('GET');
-      const target = new URL(String(url));
-      requests.push(target.pathname + target.search);
-      if (target.pathname.endsWith('/results/invocation-one'))
-        return envelope(
-          target.searchParams.get('afterOffset') === '0'
-            ? resultPage('\ud83d', 0, true)
-            : resultPage('\ude80<script>untrusted</script>', 1, false),
-        );
-      return envelope({
-        groups: target.searchParams.has('afterGroupId') ? [] : [group],
-        hasMore: !target.searchParams.has('afterGroupId'),
-        nextGroupId: target.searchParams.has('afterGroupId')
-          ? null
-          : group.groupId,
-      });
-    },
-  );
-  vi.stubGlobal('fetch', fetch);
-  const view = mount();
-  expect(fetch).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Show report groups' }));
-  await screen.findByText('operator-report');
-  expect(
-    screen.getByText(/Accounting unresolved; reservation retained/),
-  ).toBeTruthy();
-  expect(screen.getByText(/Termination unconfirmed/)).toBeTruthy();
-  expect(screen.queryByText(/untrusted/)).toBeNull();
-  fireEvent.click(
-    screen.getByRole('button', { name: 'Read report for reviewer' }),
-  );
-  expect(await screen.findByText('🚀<script>untrusted</script>')).toBeTruthy();
-  expect(view.container.querySelector('script')).toBeNull();
-  expect(screen.getByText(/Reported model: reported-model/)).toBeTruthy();
-  expect(requests.filter((path) => path.includes('/results/'))).toEqual([
-    '/api/orchestration/report-groups/group-a/members/reviewer/results/invocation-one?afterOffset=0',
-    '/api/orchestration/report-groups/group-a/members/reviewer/results/invocation-one?afterOffset=1',
-  ]);
-  fireEvent.click(screen.getByRole('button', { name: 'Next report groups' }));
-  await screen.findByText('No retained report groups.');
-  expect(requests.at(-1)).toBe(
-    '/api/orchestration/report-groups?afterGroupId=group-a',
-  );
-});
+test.each(['independent', 'flow'] as const)(
+  'operator reads %s reports through scoped SDK queries without promoting unknown accounting or executing work',
+  async (mode) => {
+    const displayedGroup: ReportGroupView = {
+      ...group,
+      topology:
+        mode === 'flow'
+          ? { kind: 'flow', runId: 'run-one' }
+          : { kind: 'independent-advisory' },
+    };
+    const requests: string[] = [];
+    const fetch = vi.fn(
+      async (url: string | URL | Request, init?: RequestInit) => {
+        expect(init?.method ?? 'GET').toBe('GET');
+        const target = new URL(String(url));
+        requests.push(target.pathname + target.search);
+        if (target.pathname.endsWith('/results/invocation-one'))
+          return envelope(
+            target.searchParams.get('afterOffset') === '0'
+              ? resultPage('\ud83d', 0, true)
+              : resultPage('\ude80<script>untrusted</script>', 1, false),
+          );
+        return envelope({
+          groups: target.searchParams.has('afterGroupId')
+            ? []
+            : [displayedGroup],
+          hasMore: !target.searchParams.has('afterGroupId'),
+          nextGroupId: target.searchParams.has('afterGroupId')
+            ? null
+            : group.groupId,
+        });
+      },
+    );
+    vi.stubGlobal('fetch', fetch);
+    const view = mount();
+    expect(fetch).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Show report groups' }));
+    await screen.findByText(
+      mode === 'flow' ? /Flow run-one/ : /Independent advisory/,
+    );
+    await screen.findByText('operator-report');
+    expect(
+      screen.getByText(/Accounting unresolved; reservation retained/),
+    ).toBeTruthy();
+    expect(screen.getByText(/Termination unconfirmed/)).toBeTruthy();
+    expect(screen.queryByText(/untrusted/)).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Read report for reviewer' }),
+    );
+    expect(
+      await screen.findByText('🚀<script>untrusted</script>'),
+    ).toBeTruthy();
+    expect(view.container.querySelector('script')).toBeNull();
+    expect(screen.getByText(/Reported model: reported-model/)).toBeTruthy();
+    expect(requests.filter((path) => path.includes('/results/'))).toEqual([
+      '/api/orchestration/report-groups/group-a/members/reviewer/results/invocation-one?afterOffset=0',
+      '/api/orchestration/report-groups/group-a/members/reviewer/results/invocation-one?afterOffset=1',
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Next report groups' }));
+    await screen.findByText('No retained report groups.');
+    expect(requests.at(-1)).toBe(
+      '/api/orchestration/report-groups?afterGroupId=group-a',
+    );
+  },
+);
 
 test.each([false, true])(
   'authority loss hides reports with unconfirmed reservations (accounting terminal %s)',

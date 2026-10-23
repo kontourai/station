@@ -1826,10 +1826,11 @@ owns the protocol, saved authority and failure limits.
 
 ## Report groups
 
-The personal host mounts `/api/orchestration/report-groups` for bounded,
-independent advisory reports using configured Station Agents and the qualified
-sealed SDK profile. This is separate from CLI session groups' logical start
-allowance. It does not establish Flow-backed joins, context ACKs or acceptance.
+The personal host mounts `/api/orchestration/report-groups` for bounded reports
+using configured Station Agents and the qualified sealed SDK profile. Requests
+can be independent advisory reports or explicitly bound to a Project Flow run.
+This is separate from CLI session groups' logical start allowance. A returned
+report does not establish context ACKs or work acceptance.
 Hosted mode and unavailable private storage return `report_groups_unavailable`.
 
 - `POST /` accepts `operationId`, `projectSlug`, optional `resourceId`,
@@ -1876,6 +1877,24 @@ Hosted mode and unavailable private storage return `report_groups_unavailable`.
   replay is effect-free. Requested cancellation remains distinct from stop,
   reconciled accounting, refunds and acceptance.
 
+An optional create `flow` selector supplies `runId` and a `steps` object mapping
+every member seat ID to one distinct Flow step ID. The server resolves the
+workspace, definition and actor through the authenticated sealed Project/resource
+owner, and requires Project Flow mutation scope. Callers cannot supply a cwd,
+claim, authority or gate counter. Selected steps must declare no mutable resources.
+
+The published Flow controller owns ready-frontier admission, durable claims,
+lease handling, dependency joins and gate evaluation. Station releases only
+currently ready, previously unattempted selected seats, in at most one round per
+member. Schedule, member-outcome and evaluation observations are retained before
+callbacks return. A final fetch requires the actual active claim under the Flow
+mutation lock. Reports are not converted into gate evidence; a required external
+gate can remain blocked. Views retain `{kind: "flow", runId}` rather than
+reconstructing topology from current files. Returned rounds do not imply that
+the whole Flow run completed. Exact operation replay remains read-only; this
+initial pass offers no evaluation-only retry, route-back continuation or context
+ACK operation. Inspect the Project Flow state for current gates and frontier.
+
 Every operation requires current local operator grant authority. Browser
 bootstrap credentials do not suffice. Responses use `Cache-Control: no-store`
 and `{success, data}` or a bounded error code. Views allowlist group/member and
@@ -1901,8 +1920,9 @@ cancellation requests, and pending-cancellation receipt checks. Each mounted
 form allows one attempt, uses scoped authority, and never retries automatically.
 Receipt checks retain the original cancellation key and never resend interrupts.
 An unknown response remains unknown; cancellation is separate from physical
-termination and accounting. Flow topology/context continuation and live-provider
-qualification remain open for this report-group surface.
+termination and accounting. The browser create form submits independent reports;
+Flow selectors are available through the API/SDK. Context continuation and
+live-provider qualification remain open for this report-group surface.
 
 ## Connections
 

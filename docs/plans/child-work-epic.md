@@ -1449,3 +1449,17 @@ pinned commit. SDK version is recorded, but installed SDK bytes are not
 independently hashed. Service shutdown, listener closure and zero remaining
 adapter sessions are recorded; network/write counters retain the declaration
 limit above.
+
+### Flow-bound report serving increment
+
+Report create now accepts an optional run and exact seat-to-step map. Private
+sealed-source admission resolves the authenticated workspace, definition and
+actor before SDK preparation, checks selected read-only steps and retains a
+per-member final-claim owner. The execution runner supplies published Flow
+callbacks, durable schedule/member/evaluation observations and fresh ready
+subsets across bounded initial rounds. No caller cwd or gate counter is accepted.
+Report views retain the selected topology; raw reports remain distinct from
+Flow gate evidence and acceptance. The full group capability remains disabled.
+Same-session Flow continuation, renewal, evaluation-only retry and final live
+qualification remain open. Focused serving validation is in progress; this
+source increment is not a provider, hosted or whole-epic acceptance receipt.

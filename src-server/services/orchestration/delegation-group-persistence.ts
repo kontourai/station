@@ -311,6 +311,7 @@ export class StationDelegationPersistence {
   readonly #reportAdmissions: PrivateDomain;
   readonly #reportInterrupts: PrivateDomain;
   readonly #reportObservations: PrivateDomain;
+  readonly #flowObservations: PrivateDomain;
   constructor(privateRoot: string) {
     const requested = resolve(privateRoot);
     privateDirectory(requested);
@@ -343,10 +344,57 @@ export class StationDelegationPersistence {
       root,
       'station-report-observations-v1',
     );
+    this.#flowObservations = new PrivateDomain(
+      root,
+      'station-report-flow-observations-v1',
+    );
     this.#providerEvidence = new PrivateDomain(
       root,
       'station-provider-evidence',
     );
+  }
+
+  async retainReportFlowObservation(
+    groupId: string,
+    kind: 'schedule' | 'member' | 'evaluation',
+    value: unknown,
+    finalizeCurrent: DelegationPersistenceFinalizer,
+  ) {
+    delegationIdV2(groupId);
+    const record = { version: 1, groupId, kind, value: structuredClone(value) };
+    const serialized = canonicalJson(record);
+    requirePersistence(
+      Buffer.byteLength(serialized) <= 128 * 1024,
+      'report_flow_observation_too_large',
+    );
+    const digest = createHash('sha256').update(serialized).digest('hex');
+    const domain = this.#flowObservations;
+    const file = `${digest}.json`;
+    return domain.locked(finalizeCurrent, async () => {
+      const bytes = readBytes(join(domain.directory, file), 128 * 1024);
+      if (bytes !== null)
+        requirePersistence(
+          same(JSON.parse(bytes), record),
+          'report_flow_observation_conflict',
+        );
+      else {
+        requirePersistence(
+          domain.files().length < MAX_FILES,
+          'report_flow_observation_capacity',
+        );
+        await domain.publish(file, record, 128 * 1024, finalizeCurrent);
+      }
+      const confirmed = readBytes(join(domain.directory, file), 128 * 1024);
+      requirePersistence(
+        confirmed !== null && same(JSON.parse(confirmed), record),
+        'report_flow_observation_unconfirmed',
+      );
+      return {
+        id: digest,
+        domain: 'station.report-flow-observation.v1',
+        digest: `sha256:${digest}`,
+      };
+    });
   }
 
   async retainReportObservation(
