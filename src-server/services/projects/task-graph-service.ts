@@ -49,6 +49,10 @@ import type {
   TaskWorkChatMutationInput,
   TaskWorkChatMutationResult,
 } from '@kontourai/station-contracts/task-graph';
+import {
+  canonicalGitHubWorkItemRef,
+  workItemRefKey,
+} from '@kontourai/station-contracts/work-item-provider';
 import { looksLikeWorkflowTaskSlugRef } from '@kontourai/station-contracts/workflow';
 import {
   acquireFileMutationLockAsync,
@@ -84,7 +88,11 @@ import {
   resolveProjectWorkspaceOutcome,
   type WorkspacePathResolver,
 } from './project-workspace-path.js';
-import type { TaskDispatchExecutionAuthority } from './task-dispatcher.js';
+import type { TaskBriefSource } from './task-brief-source.js';
+import type {
+  TaskDispatchAgentStart,
+  TaskDispatchExecutionAuthority,
+} from './task-dispatcher.js';
 import {
   type TaskDispatchReservation as DispatcherReservation,
   type DispatchIntent,
@@ -92,6 +100,7 @@ import {
   type TaskDispatchClaims,
   type TaskDispatchGraphState,
   type TaskDispatchRemoteSessions,
+  TaskDispatchStartRefusedError,
   type TaskDispatchTelemetry,
 } from './task-dispatcher.js';
 import {
@@ -256,6 +265,11 @@ type TaskDispatchOrchestration = Pick<
 interface TaskGraphServiceDeps {
   orchestrationService?: TaskDispatchOrchestration;
   projectService?: Pick<ProjectService, 'getProject'>;
+  /**
+   * The opaque id of the Project an id or slug names (`localProjectIdFor`).
+   * Absent: Projects compare as exact strings.
+   */
+  localProjectIdFor?: (identity: string) => string | undefined;
   execGit?: typeof execGit;
   /** AssignmentProvider claim/release/status backend (roadmap archive#584). When
    * absent (e.g. most tests), dispatch of a workItemRef-bearing task simply
@@ -295,6 +309,33 @@ export interface TaskDispatchAdapterDeps {
     'claim' | 'release' | 'status'
   >;
   resolveProjectWorkspace?: WorkspacePathResolver;
+  /**
+   * Epic #4003: builds the Task brief an engine-started Session receives with
+   * its first turn. Absent (most tests, the seeded `task-dispatch` path)
+   * attaches no brief.
+   */
+  taskBrief?: Pick<TaskBriefSource, 'forDispatch'>;
+  /**
+   * #4005: resolves the Agent an engine-started Task Session runs as, through
+   * the same resolver a foreground `/chat` start uses
+   * (`resolveTaskDispatchAgentStart`). A dispatch that names no provider
+   * starts the Agent's own engine. Absent, a dispatch that would start an
+   * engine is refused: an engine Session with no Agent binding can never
+   * take a turn. The seeded `task-dispatch` path does not need it.
+   */
+  /**
+   * #4005: whether this Station has the Agent a seeded (`task-dispatch`)
+   * dispatch records; throws when it does not. Absent, a seeded dispatch
+   * records the Agent unchecked.
+   */
+  assertAgentExists?: (agentId: string) => Promise<void>;
+  resolveAgentStart?: (input: {
+    agentId: string;
+    projectSlug: string;
+    cwd?: string;
+    modelId?: string;
+    modelOptions?: Readonly<Record<string, unknown>>;
+  }) => Promise<TaskDispatchAgentStart>;
 }
 
 /**
@@ -304,6 +345,46 @@ export interface TaskDispatchAdapterDeps {
  * has no cross-provider meaning and must never be treated as a claimable
  * subject.
  */
+/** `value` when it is an ISO instant in `toISOString` form, else undefined. */
+function canonicalInstant(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const ms = Date.parse(value);
+  return Number.isNaN(ms) || new Date(ms).toISOString() !== value
+    ? undefined
+    : value;
+}
+
+/** The engine a dispatch names, if it names one. */
+function requestedDispatchProvider(
+  input: TaskDispatchInput,
+): EngineId | undefined {
+  return input.runtimeConfig?.provider ?? input.provider ?? undefined;
+}
+
+/**
+ * #4005: a start the session service rejected before any provider effect
+ * (`receipt.status: 'rejected'`, not indeterminate) is a definite refusal,
+ * so the Dispatcher restores the Task rather than stranding it
+ * indeterminate. Every other failure keeps its possible-start meaning.
+ */
+async function refuseDefiniteStartRejection<T>(start: Promise<T>): Promise<T> {
+  try {
+    return await start;
+  } catch (error) {
+    // Read-only Task workers import this module without loading execution.
+    const { OrchestrationCommandDispatchError } = await import(
+      '../orchestration/orchestration-service.js'
+    );
+    if (
+      error instanceof OrchestrationCommandDispatchError &&
+      error.receipt.status === 'rejected' &&
+      error.outcome !== 'indeterminate'
+    )
+      throw new TaskDispatchStartRefusedError(error.message);
+    throw error;
+  }
+}
+
 function isNamespacedWorkItemRef(ref: string): boolean {
   return ref.includes(':');
 }
@@ -326,6 +407,55 @@ function resultBucket(count: number): string {
 
 function normalizeText(value: string | undefined): string {
   return value?.trim() ?? '';
+}
+
+/**
+ * Cardinality (#4003): the one Task, not done or canceled, whose primary
+ * work item is `workItemRef`. Refs compare by `workItemRefKey` (a GitHub
+ * ref's lowercase spelling, anything else exactly).
+ *
+ * Only a ref the Project's board offered (a canonical GitHub ref with
+ * `workItemProvenance: 'project-board'`) is unique across Projects, and only
+ * against other board-checked Tasks: Station has checked that both name one
+ * real item. Every other ref (`linear:ENG-1`, a Flow slug, an unchecked
+ * `github:` ref) is unique only within its Project, so a caller cannot use
+ * a typed ref to find, or squat on, another Project's Task (review round 2,
+ * P2-1). Projects compare by `sameProject`, an id or slug resolved to one
+ * Project (P3-1).
+ */
+function openTaskForWorkItem(
+  tasks: readonly TaskRecord[],
+  workItemRef: string,
+  where: {
+    readonly projectId: string;
+    readonly boardChecked: boolean;
+    readonly sameProject: (a: string, b: string) => boolean;
+  },
+): TaskRecord | undefined {
+  const key = workItemRefKey(workItemRef);
+  const global =
+    where.boardChecked && canonicalGitHubWorkItemRef(workItemRef) !== null;
+  return tasks.find(
+    (task) =>
+      task.workItemRef !== undefined &&
+      workItemRefKey(task.workItemRef) === key &&
+      ((global && task.workItemProvenance === 'project-board') ||
+        where.sameProject(task.projectId, where.projectId)) &&
+      task.status !== 'done' &&
+      task.status !== 'canceled',
+  );
+}
+
+/**
+ * A create naming a work item that already has an open Task (review F5).
+ * Carries only the open Task's id and Project: the caller may not be able
+ * to read a Task in another Project.
+ */
+export class TaskWorkItemTakenError extends Error {
+  constructor(readonly existing: { id: string; projectId: string }) {
+    super('This work item already has an open Task.');
+    this.name = 'TaskWorkItemTakenError';
+  }
 }
 
 function metricSourceSurface(value: unknown): string {
@@ -511,6 +641,8 @@ const TASK_RECORD_KEYS = [
   'workspaceBinding',
   'sourceProvider',
   'workItemRef',
+  'workItemObservedAt',
+  'workItemProvenance',
   'closeOnMerge',
   'dispatchReservation',
 ] as const;
@@ -839,6 +971,19 @@ function validateTaskGraphStoreData(
     validateOptionalText(task.sessionId, `${at}.sessionId`, problems);
     validateOptionalText(task.sourceProvider, `${at}.sourceProvider`, problems);
     validateOptionalText(task.workItemRef, `${at}.workItemRef`, problems);
+    if (task.workItemObservedAt !== undefined)
+      validateCanonicalTimestamp(
+        task.workItemObservedAt,
+        `${at}.workItemObservedAt`,
+        problems,
+      );
+    if (
+      task.workItemProvenance !== undefined &&
+      task.workItemProvenance !== 'project-board'
+    )
+      problems.push(
+        `${at}.workItemProvenance: must be 'project-board' when present`,
+      );
     if (task.closeOnMerge !== undefined && task.closeOnMerge !== true)
       problems.push(`${at}.closeOnMerge: must be true when present`);
     if (task.workspaceBinding === undefined) {
@@ -1507,6 +1652,7 @@ export class TaskGraphService {
   private readonly store: JsonFileStore<TaskGraphStoreData>;
   private readonly acquireMutationLock: FileMutationLock;
   private readonly projectService?: Pick<ProjectService, 'getProject'>;
+  private readonly localProjectIdFor?: (identity: string) => string | undefined;
   /**
    * archive#1501, seam S4. Captured with `projectService` at this
    * Module's construction seam, so the two can never answer differently about
@@ -1528,6 +1674,7 @@ export class TaskGraphService {
   constructor(projectHomeDir: string, deps: TaskGraphServiceDeps = {}) {
     this.orchestrationService = deps.orchestrationService;
     this.projectService = deps.projectService;
+    this.localProjectIdFor = deps.localProjectIdFor;
     this.projectResourceResolver = deps.projectService
       ? buildProjectResourceResolver(projectHomeDir, deps.projectService)
       : undefined;
@@ -1756,6 +1903,100 @@ export class TaskGraphService {
       ...task,
       workspaceBinding: await this.resolveWorkspaceForOpen(task),
     };
+  }
+
+  /**
+   * A create that names a work item already the primary item of an open
+   * Task (see `openTaskForWorkItem`) throws `TaskWorkItemTakenError`,
+   * decided under the store's mutation lock. `workItemProvenance` is the
+   * caller's statement that it checked the Project's board offered the ref
+   * (`TaskRecord.workItemProvenance`).
+   */
+  async createTask(
+    input: TaskCreateInput,
+    clientOrigin?: ClientOrigin,
+    taskId: string = crypto.randomUUID(),
+    authorize?: () => boolean,
+    options: { workItemProvenance?: 'project-board' } = {},
+  ): Promise<TaskRecord> {
+    const created = await this.createTaskRecord(
+      input,
+      clientOrigin,
+      taskId,
+      authorize,
+      options.workItemProvenance
+        ? { provenance: options.workItemProvenance, onTaken: 'refuse' }
+        : { onTaken: 'refuse' },
+    );
+    return created.task;
+  }
+
+  /**
+   * Start Task on a tracker item (#4003). A work item is the primary item of
+   * at most one Task that is not done or canceled, in any Project
+   * (docs/design/tracker-backed-tasks.md "Cardinality"): when such a Task
+   * exists it is returned with `existing: true` and nothing is written. The
+   * check runs under the store's mutation lock, so two concurrent starts
+   * create one Task.
+   */
+  async createTaskForWorkItem(
+    input: TaskCreateInput & { workItemRef: string },
+    workItemObservedAt: string,
+    clientOrigin?: ClientOrigin,
+  ): Promise<{ task: TaskRecord; existing: boolean }> {
+    if (!normalizeText(input.workItemRef))
+      throw new Error('workItemRef is required');
+    // Start Task observed only a ref the Project's board offered.
+    return this.createTaskRecord(
+      input,
+      clientOrigin,
+      crypto.randomUUID(),
+      undefined,
+      {
+        workItemObservedAt,
+        provenance: 'project-board',
+        onTaken: 'return-existing',
+      },
+    );
+  }
+
+  /**
+   * The open Task whose primary work item is `workItemRef` as seen from
+   * `projectId`: any Project's board-checked Task when `boardChecked`, else
+   * only that Project's (see `openTaskForWorkItem`).
+   */
+  findOpenTaskForWorkItem(
+    workItemRef: string,
+    where: { projectId: string; boardChecked: boolean },
+  ): TaskRecord | null {
+    return (
+      openTaskForWorkItem(this.readStore().tasks, workItemRef, {
+        ...where,
+        sameProject: (a, b) => this.sameProject(a, b),
+      }) ?? null
+    );
+  }
+
+  /**
+   * The slug of the Project a Task names. A Task's `projectId` is the slug it
+   * was created with; a Project that cannot be read keeps that value, and the
+   * Agent resolution then refuses it.
+   */
+  private projectSlugFor(projectId: string): string {
+    try {
+      return this.projectService?.getProject(projectId)?.slug || projectId;
+    } catch {
+      return projectId;
+    }
+  }
+
+  /** Whether two Project identities (ids or slugs) name one Project. */
+  sameProject(a: string, b: string): boolean {
+    if (a === b) return true;
+    const resolve = this.localProjectIdFor;
+    if (!resolve) return false;
+    const left = resolve(a);
+    return left !== undefined && left === resolve(b);
   }
 
   /** All relationship state shares the cross-process TaskGraph lock and receipts. */
@@ -2042,14 +2283,32 @@ export class TaskGraphService {
     return { task, workspaceBinding, sourceSurface };
   }
 
-  async createTask(
+  private async createTaskRecord(
     input: TaskCreateInput,
-    clientOrigin?: ClientOrigin,
-    taskId: string = crypto.randomUUID(),
-    authorize?: () => boolean,
-  ): Promise<TaskRecord> {
-    const { task, workspaceBinding, sourceSurface } =
-      await this.prepareTaskRecord(input, clientOrigin, taskId);
+    clientOrigin: ClientOrigin | undefined,
+    taskId: string,
+    authorize: (() => boolean) | undefined,
+    workItem: {
+      workItemObservedAt?: string;
+      provenance?: 'project-board';
+      /** An open Task for the ref: return it, or throw `TaskWorkItemTakenError`. */
+      onTaken: 'return-existing' | 'refuse';
+    },
+  ): Promise<{ task: TaskRecord; existing: boolean }> {
+    const {
+      task: preparedTask,
+      workspaceBinding,
+      sourceSurface,
+    } = await this.prepareTaskRecord(input, clientOrigin, taskId);
+    const task: TaskRecord = {
+      ...preparedTask,
+      ...(workItem.workItemObservedAt
+        ? { workItemObservedAt: workItem.workItemObservedAt }
+        : {}),
+      ...(workItem.provenance && normalizeText(input.workItemRef)
+        ? { workItemProvenance: workItem.provenance }
+        : {}),
+    };
 
     const persisted = await this.mutateStore((data) => {
       const source = input.shapingSource;
@@ -2073,10 +2332,27 @@ export class TaskGraphService {
           throw new Error(
             'This proposal was already accepted in another Project',
           );
-        return { data, result: prior };
+        return { data, result: { task: prior, existing: true } };
       }
       if (prior) {
         throw new Error(`Task '${task.id}' already exists`);
+      }
+      // At most one open Task per work item, for every create that names
+      // one (review F5), decided here under the mutation lock.
+      const open = task.workItemRef
+        ? openTaskForWorkItem(data.tasks, task.workItemRef, {
+            projectId: task.projectId,
+            boardChecked: task.workItemProvenance === 'project-board',
+            sameProject: (a, b) => this.sameProject(a, b),
+          })
+        : undefined;
+      if (open) {
+        if (workItem.onTaken === 'return-existing')
+          return { data, result: { task: open, existing: true } };
+        throw new TaskWorkItemTakenError({
+          id: open.id,
+          projectId: open.projectId,
+        });
       }
       return {
         data: {
@@ -2101,7 +2377,7 @@ export class TaskGraphService {
               ]
             : data.links,
         },
-        result: task,
+        result: { task, existing: false },
       };
     });
     taskWorkspaceBindingTotal.add(1, {
@@ -2241,11 +2517,12 @@ export class TaskGraphService {
   /**
    * Task-lifecycle boundary release (review finding #2, following the S4
    * ship): `session.exited` (`releaseClaimForSession`) only ever fires for
-   * a REAL orchestrated session — the default `'task-dispatch'` seeded
-   * path (`OrchestrationService.seedSessionRecord`, verified against
-   * `orchestration-service.ts`) is a pure record write that emits NO
-   * session-level event at all, so a task dispatched through the default
-   * UI path would otherwise never release its claim until Station restarts
+   * a REAL orchestrated session — the seeded `'task-dispatch'` path (a
+   * dispatch with no Agent, or one that asks for `task-dispatch`, such as an
+   * external monitor; `OrchestrationService.seedSessionRecord`, verified
+   * against `orchestration-service.ts`) is a pure record write that emits NO
+   * session-level event at all, so a task dispatched that way
+   * would otherwise never release its claim until Station restarts
    * into a reconciliation sweep, and its own next dispatch would self-block
    * on the leaked claim. A task reaching `done`/`canceled` is a real,
    * always-reachable terminus for BOTH dispatch shapes, so every transition
@@ -3328,6 +3605,19 @@ export class TaskGraphService {
     };
   }
 
+  /** Every Session dispatched for a Task, oldest first (epic #4003 brief). */
+  listTaskDispatchSessions(
+    taskId: string,
+  ): { sessionId: string; provider: string; createdAt: string }[] {
+    return this.readStore()
+      .dispatches.filter((dispatch) => dispatch.taskId === taskId)
+      .map((dispatch) => ({
+        sessionId: dispatch.sessionId,
+        provider: dispatch.provider,
+        createdAt: dispatch.createdAt,
+      }));
+  }
+
   readSessionRelations(sessionId: string): SessionRelations {
     const links = this.readStore().links.filter(
       (link) =>
@@ -3359,12 +3649,19 @@ export class TaskGraphService {
       deps.assignmentClaimService ?? this.assignmentClaimService;
     const resolveProjectWorkspace =
       deps.resolveProjectWorkspace ?? this.resolveProjectWorkspace;
+    const taskBrief = deps.taskBrief;
+    const resolveAgentStart = deps.resolveAgentStart;
+    const assertAgentExists = deps.assertAgentExists;
     const graph: TaskDispatchGraphState = {
-      reserve: async (taskId, input) => {
+      reserve: async (taskId, input, agentStart) => {
         try {
           return {
             kind: 'reserved',
-            reservation: await this.reserveTaskDispatch(taskId, input),
+            reservation: await this.reserveTaskDispatch(
+              taskId,
+              input,
+              agentStart,
+            ),
           };
         } catch (error) {
           if (error instanceof TaskDispatchAdmissionError) {
@@ -3425,67 +3722,197 @@ export class TaskGraphService {
       mayHaveStarted: (reservation: DispatcherReservation) =>
         reservation.provider !== 'task-dispatch' &&
         orchestrationService !== undefined,
+      // #4005: the dispatch runs as the Task's Agent: the dispatch's
+      // `agentId`, else the Agent the Task records (the same fallback the
+      // association writes). Resolved before the reservation, any claim or
+      // any provider effect, so an unknown Agent, an engine that is not
+      // ready, a model that cannot launch, or a provider other than the
+      // Agent's refuses definitely and leaves the Task as it was, instead of
+      // starting a Session no turn can reach or stranding the Task
+      // indeterminate. A dispatch that names no provider starts the Agent's
+      // own engine (the UI's Dispatch sends only `agentId`); only a dispatch
+      // with no Agent at all, or one that asks for `task-dispatch`, seeds.
+      prepare: async (taskId: string, input: DispatchIntent) => {
+        const task = this.readTaskView(taskId);
+        // A missing Task is answered by the reservation (`not-found`).
+        if (!task) return { kind: 'ready' as const };
+        const agentId = normalizeText(input.agentId) || task.agentId;
+        const explicitProvider = requestedDispatchProvider(input);
+        if (
+          explicitProvider === 'task-dispatch' ||
+          (!explicitProvider && !agentId)
+        ) {
+          if (agentId && assertAgentExists) {
+            try {
+              await assertAgentExists(agentId);
+            } catch (error) {
+              return {
+                kind: 'refused' as const,
+                reason: `Agent '${agentId}' cannot be recorded on this Task: ${errorMessage(error)}`,
+              };
+            }
+          }
+          return { kind: 'ready' as const };
+        }
+        if (!agentId)
+          return {
+            kind: 'refused' as const,
+            reason:
+              'A Task dispatch that starts an engine needs an Agent: name agentId, or assign an Agent to the Task',
+          };
+        // An explicit engine with no orchestration yet is the retryable
+        // `unavailable` the readiness check answers after the reservation.
+        if (!orchestrationService && explicitProvider)
+          return { kind: 'ready' as const };
+        if (!orchestrationService || !resolveAgentStart)
+          return {
+            kind: 'refused' as const,
+            reason: 'Agent execution is unavailable for Task dispatch',
+          };
+        let agentStart: TaskDispatchAgentStart;
+        try {
+          agentStart = await resolveAgentStart({
+            agentId,
+            projectSlug: this.projectSlugFor(task.projectId),
+            ...(input.runtimeConfig?.cwd !== undefined
+              ? { cwd: input.runtimeConfig.cwd }
+              : {}),
+            ...(input.runtimeConfig?.modelId
+              ? { modelId: input.runtimeConfig.modelId }
+              : {}),
+            ...(input.runtimeConfig?.modelOptions
+              ? { modelOptions: input.runtimeConfig.modelOptions }
+              : {}),
+          });
+        } catch (error) {
+          return {
+            kind: 'refused' as const,
+            reason: `Agent '${agentId}' cannot start this Task: ${errorMessage(error)}`,
+          };
+        }
+        if (explicitProvider && agentStart.provider !== explicitProvider)
+          return {
+            kind: 'refused' as const,
+            reason: `Agent '${agentId}' runs on ${agentStart.provider}, not ${explicitProvider}`,
+          };
+        return { kind: 'ready' as const, agentStart };
+      },
       startOrSeed: async (
         reservation: DispatcherReservation,
         input: DispatchIntent,
         admission?: SessionStartBoundaryClaim,
+        agentStart?: TaskDispatchAgentStart,
       ) => {
         if (reservation.provider !== 'task-dispatch' && orchestrationService) {
+          // `prepare` resolved the Agent for every engine start; without it
+          // the Session would have no binding, so never start one.
+          if (!agentStart)
+            throw new Error('Task dispatch has no resolved Agent to start');
           const taskSlug = this.resolveDispatchTaskSlug(
             reservation.task,
             input.runtimeConfig?.cwd,
           );
+          // Epic #4003: the Task brief, built before the provider start so
+          // the start records exactly what the first turn will carry. A
+          // brief that cannot be built never fails the dispatch: its parts
+          // already degrade to a stated gap, so a throw here is a defect,
+          // logged, and the Session starts without one.
+          let brief: { digest: string; text: string } | undefined;
+          let workItemObservedAt: string | undefined;
+          if (taskBrief) {
+            try {
+              const built = await taskBrief.forDispatch(
+                reservation.task,
+                reservation.sessionId,
+                input.ownerUserId,
+              );
+              brief = { digest: built.brief.digest, text: built.brief.text };
+              workItemObservedAt = built.workItemObservedAt;
+            } catch (error) {
+              this.logger?.warn('Task brief could not be built for dispatch', {
+                taskId: reservation.task.id,
+                error: error instanceof Error ? error.message : String(error),
+              });
+            }
+          }
           await this.assertDispatchReservationProviderStarting(
             reservation as TaskDispatchReservation,
           );
-          const session = (await orchestrationService.dispatch(
-            {
-              type: 'startSession',
-              input: {
-                threadId: reservation.sessionId,
-                provider: reservation.provider,
-                cwd: input.runtimeConfig?.cwd,
-                modelId: reservation.modelId,
-                modelOptions: input.runtimeConfig?.modelOptions,
-                metadata: {
-                  userId: input.ownerUserId,
-                  ...(taskSlug ? { taskSlug } : {}),
+          const session = (await refuseDefiniteStartRejection(
+            orchestrationService.dispatch(
+              {
+                type: 'startSession',
+                input: {
+                  threadId: reservation.sessionId,
+                  provider: reservation.provider,
+                  cwd: agentStart.cwd,
+                  ...(agentStart.modelId
+                    ? { modelId: agentStart.modelId }
+                    : {}),
+                  ...(agentStart.modelOptions
+                    ? { modelOptions: { ...agentStart.modelOptions } }
+                    : {}),
+                  workspaceIsolation: { mode: 'shared' },
+                  // #765 A1, as a foreground start: the Session is a durable
+                  // conversation whose later turns may resume its native
+                  // transcript, so the engine must keep it.
+                  persistSession: true,
+                  metadata: {
+                    // #4005: the Environment + Agent binding a continuation
+                    // verifies, and the Agent whose prompt, skills and tools
+                    // the start applies. The service strips and re-stamps
+                    // `environmentId`/`conversationId` from
+                    // `conversationIdentity` below.
+                    ...agentStart.metadata,
+                    userId: input.ownerUserId,
+                    ...(taskSlug ? { taskSlug } : {}),
+                  },
                 },
               },
-            },
-            // #2493: the dispatching request's grant, or none (a monitor, the
-            // board intent): the session runs `host` only with it. The owner
-            // attribution marks an unverified agent's or external sender's
-            // session to act for no one, at the service's start choke point.
-            // #1796: and the dispatching request's origin, so the start's
-            // receipt records who asked (the grant names its own grantor).
-            input.fullAccessGrant ||
-              input.ownerAttribution ||
-              input.clientOrigin
-              ? {
-                  ...(input.fullAccessGrant
-                    ? { fullAccessGrant: input.fullAccessGrant }
-                    : {}),
-                  ...(input.ownerAttribution
-                    ? { ownerAttribution: input.ownerAttribution }
-                    : {}),
-                  ...(input.clientOrigin
-                    ? { clientOrigin: input.clientOrigin }
-                    : {}),
-                }
-              : undefined,
-            {
-              roomExecutionBinding: {
-                projectId: reservation.task.projectId,
-                taskId: reservation.task.id,
+              // #2493: the dispatching request's grant, or none (a monitor, the
+              // board intent): the session runs `host` only with it. The owner
+              // attribution marks an unverified agent's or external sender's
+              // session to act for no one, at the service's start choke point.
+              // #1796: and the dispatching request's origin, so the start's
+              // receipt records who asked (the grant names its own grantor).
+              input.fullAccessGrant ||
+                input.ownerAttribution ||
+                input.clientOrigin
+                ? {
+                    ...(input.fullAccessGrant
+                      ? { fullAccessGrant: input.fullAccessGrant }
+                      : {}),
+                    ...(input.ownerAttribution
+                      ? { ownerAttribution: input.ownerAttribution }
+                      : {}),
+                    ...(input.clientOrigin
+                      ? { clientOrigin: input.clientOrigin }
+                      : {}),
+                  }
+                : undefined,
+              {
+                roomExecutionBinding: {
+                  projectId: reservation.task.projectId,
+                  taskId: reservation.task.id,
+                },
+                ...(brief ? { taskBrief: brief } : {}),
+                // The dispatched Session is the root of its own conversation.
+                conversationIdentity: {
+                  conversationId: reservation.sessionId,
+                  environmentId: agentStart.environmentId,
+                },
+                ...(admission ? { sessionStartAdmission: admission } : {}),
+                ...(taskSlug
+                  ? { workflowSidecarAttachMode: 'read-only-join' as const }
+                  : {}),
               },
-              ...(admission ? { sessionStartAdmission: admission } : {}),
-              ...(taskSlug
-                ? { workflowSidecarAttachMode: 'read-only-join' as const }
-                : {}),
-            },
+            ),
           )) as ProviderSession;
-          return { session, outcome: 'started' as const };
+          return {
+            session,
+            outcome: 'started' as const,
+            ...(workItemObservedAt ? { workItemObservedAt } : {}),
+          };
         }
         return {
           session: this.seedSession(
@@ -3565,6 +3992,7 @@ export class TaskGraphService {
   private async reserveTaskDispatch(
     taskId: string,
     input: TaskDispatchInput,
+    agentStart?: TaskDispatchAgentStart,
   ): Promise<TaskDispatchReservation> {
     return await this.mutateStore((data) => {
       const task = data.tasks.find((item) => item.id === taskId);
@@ -3594,10 +4022,25 @@ export class TaskGraphService {
         data.dispatches.filter((dispatch) => dispatch.taskId === taskId)
           .length + 1;
       const sessionId = createTaskSessionId(taskId, dispatchIndex);
+      // #4005: the Agent `prepare` resolved must still be the Task's Agent
+      // under this lock, or the start would run as an Agent nobody chose.
+      if (
+        agentStart &&
+        (normalizeText(input.agentId) || task.agentId) !== agentStart.agentId
+      ) {
+        throw new TaskDispatchAdmissionError(
+          'contended',
+          "The Task's Agent changed while it was being dispatched; dispatch it again",
+        );
+      }
       const provider =
-        input.runtimeConfig?.provider ?? input.provider ?? 'task-dispatch';
+        requestedDispatchProvider(input) ??
+        agentStart?.provider ??
+        'task-dispatch';
       const sourceSurface = normalizeText(input.sourceSurface) || 'api';
-      const modelId = input.runtimeConfig?.modelId;
+      const modelId = agentStart
+        ? agentStart.modelId
+        : input.runtimeConfig?.modelId;
       const reservedAt = new Date().toISOString();
       const reservation: PersistedTaskDispatchReservation = {
         generation: crypto.randomUUID(),
@@ -3664,8 +4107,18 @@ export class TaskGraphService {
       const now = new Date().toISOString();
       const { dispatchReservation: _persistedReservation, ...unreserved } =
         currentTask;
+      // Epic #4003: the dispatch's tracker read becomes the Task's "comments
+      // since" mark only now that the Session exists, so a failed start
+      // cannot hide comments from the next dispatch. Never moves backwards,
+      // and only a canonical instant is stored (the store validates it).
+      const observedAt = canonicalInstant(association.workItemObservedAt);
+      const advanceObservation =
+        observedAt !== undefined &&
+        (unreserved.workItemObservedAt === undefined ||
+          Date.parse(observedAt) > Date.parse(unreserved.workItemObservedAt));
       const updatedTask: TaskRecord = {
         ...unreserved,
+        ...(advanceObservation ? { workItemObservedAt: observedAt } : {}),
         agentId: normalizeText(input.agentId) || unreserved.agentId,
         skillName: normalizeText(input.skillName) || unreserved.skillName,
         status: association.outcome === 'started' ? 'in_progress' : 'ready',
@@ -4186,7 +4639,7 @@ export class TaskGraphService {
   /**
    * Releases a task's AssignmentProvider claim on orchestration session end
    * or cancel (roadmap archive#584) — fires only for a REAL orchestrated session
-   * (`session.exited`); the default `'task-dispatch'` seeded path never
+   * (`session.exited`); the seeded `'task-dispatch'` path never
    * reaches this trigger at all (see `updateTaskStatus`'s doc comment) and
    * relies on `releaseClaimForTask` instead. Never throws; idempotent since
    * `session.exited` can fire more than once for the same thread.
@@ -4293,75 +4746,87 @@ export class TaskGraphService {
     try {
       if (!this.assignmentClaimService) return { releasedSubjects: released };
       const data = this.readStore();
+      // One group per work item, however its ref is spelled (review round
+      // 2, P3-7): an open Task on `github:A/b#1` keeps the claim a done Task
+      // made on `github:a/b#1`. Each spelling is still released as the
+      // subject its dispatch claimed.
       const tasksBySubject = new Map<string, TaskRecord[]>();
       for (const task of data.tasks) {
         const subjectId = task.workItemRef;
         if (!subjectId || !isNamespacedWorkItemRef(subjectId)) continue;
-        const list = tasksBySubject.get(subjectId) ?? [];
+        const key = workItemRefKey(subjectId);
+        const list = tasksBySubject.get(key) ?? [];
         list.push(task);
-        tasksBySubject.set(subjectId, list);
+        tasksBySubject.set(key, list);
       }
 
-      for (const [subjectId, tasksForSubject] of tasksBySubject) {
+      for (const [subjectKey, tasksForSubject] of tasksBySubject) {
         const isTerminal = (task: TaskRecord) =>
           task.status === 'done' || task.status === 'canceled';
         if (tasksForSubject.some((task) => !isTerminal(task))) continue;
-
-        let artifactRoot: string | undefined;
-        for (const task of tasksForSubject) {
-          const workspace = await this.resolveProjectWorkspace?.(
-            task.projectId,
-          );
-          if (workspace) {
-            artifactRoot = this.assignmentArtifactRoot(workspace);
-            break;
+        for (const subjectId of new Set(
+          tasksForSubject.map((task) => task.workItemRef!),
+        )) {
+          let artifactRoot: string | undefined;
+          for (const task of tasksForSubject) {
+            const workspace = await this.resolveProjectWorkspace?.(
+              task.projectId,
+            );
+            if (workspace) {
+              artifactRoot = this.assignmentArtifactRoot(workspace);
+              break;
+            }
           }
-        }
-        if (!artifactRoot) continue;
+          if (!artifactRoot) continue;
 
-        const status = await this.assignmentClaimService.status({
-          artifactRoot,
-          subjectId,
-        });
-        if (status.outcome !== 'claimed') continue;
-        if (status.actor.runtime !== 'station') continue;
+          const status = await this.assignmentClaimService.status({
+            artifactRoot,
+            subjectId,
+          });
+          if (status.outcome !== 'claimed') continue;
+          if (status.actor.runtime !== 'station') continue;
 
-        // Ownership proof: a dispatch record THIS instance persisted for a
-        // task sharing this subject, whose session_id matches the CLI's
-        // reported holder EXACTLY. `runtime === 'station'` alone proves
-        // nothing about WHICH Station instance/task made the claim.
-        const provingDispatch = data.dispatches.find(
-          (dispatch) =>
-            dispatch.claim?.outcome === 'claimed' &&
-            dispatch.claim.subjectId === subjectId &&
-            dispatch.sessionId === status.actor.session_id &&
-            tasksForSubject.some((task) => task.id === dispatch.taskId),
-        );
-        if (!provingDispatch) continue; // ambiguous — never guess
-
-        // Narrow the race against a new task being created and dispatched
-        // onto this subject while the sweep is still running.
-        const stillAllTerminal = this.readStore()
-          .tasks.filter((task) => task.workItemRef === subjectId)
-          .every(isTerminal);
-        if (!stillAllTerminal) continue;
-
-        const result = await this.releaseDispatchClaim(
-          provingDispatch,
-          provingDispatch.taskId,
-          'startup reconciliation: task reached a terminal status without a claim release',
-        );
-        taskAssignmentClaimTotal.add(1, {
-          operation: 'reconcile',
-          outcome: result,
-        });
-        if (result === 'released' || result === 'skipped') {
-          released.push(subjectId);
-        } else if (result === 'failed' || result === 'unavailable') {
-          this.logger?.warn(
-            'Startup reconciliation failed to release a stale assignment claim',
-            { taskId: provingDispatch.taskId, subjectId, outcome: result },
+          // Ownership proof: a dispatch record THIS instance persisted for a
+          // task sharing this subject, whose session_id matches the CLI's
+          // reported holder EXACTLY. `runtime === 'station'` alone proves
+          // nothing about WHICH Station instance/task made the claim.
+          const provingDispatch = data.dispatches.find(
+            (dispatch) =>
+              dispatch.claim?.outcome === 'claimed' &&
+              dispatch.claim.subjectId === subjectId &&
+              dispatch.sessionId === status.actor.session_id &&
+              tasksForSubject.some((task) => task.id === dispatch.taskId),
           );
+          if (!provingDispatch) continue; // ambiguous — never guess
+
+          // Narrow the race against a new task being created and dispatched
+          // onto this subject while the sweep is still running.
+          const stillAllTerminal = this.readStore()
+            .tasks.filter(
+              (task) =>
+                task.workItemRef !== undefined &&
+                workItemRefKey(task.workItemRef) === subjectKey,
+            )
+            .every(isTerminal);
+          if (!stillAllTerminal) continue;
+
+          const result = await this.releaseDispatchClaim(
+            provingDispatch,
+            provingDispatch.taskId,
+            'startup reconciliation: task reached a terminal status without a claim release',
+          );
+          taskAssignmentClaimTotal.add(1, {
+            operation: 'reconcile',
+            outcome: result,
+          });
+          if (result === 'released' || result === 'skipped') {
+            released.push(subjectId);
+          } else if (result === 'failed' || result === 'unavailable') {
+            this.logger?.warn(
+              'Startup reconciliation failed to release a stale assignment claim',
+              { taskId: provingDispatch.taskId, subjectId, outcome: result },
+            );
+          }
         }
       }
     } catch (error) {

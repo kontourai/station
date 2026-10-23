@@ -1,0 +1,23 @@
+{
+  "revision": "9f9eb98b9f05f92e0c93a01dcc04bce41c8ef91d",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-reviewed for the #4007 micro round because a cited source changed (tasks.ts proposal acceptance re-accept handling and refusal details; TaskProposalCard Open Task after a refused brief). Scanned for claims about proposal acceptance refusals and Task document capacity; none are made here, so no prose change.","inputs":["docs/architecture/module-map.md","src-server/routes/orchestration/tasks.ts","src-ui/src/components/chat/TaskProposalCard.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Re-reviewed for the #4007 micro round: after a 507 naming the created Task, TaskProposalCard sets the accepted id so the card offers Open Task; checked TaskProposalCard and its DOM test.","inputs":["docs/design/chat-composer.md","src-server/routes/orchestration/tasks.ts","src-ui/src/components/chat/TaskProposalCard.tsx"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Re-reviewed for the #4007 micro round because a cited source changed (tasks.ts proposal acceptance re-accept handling and refusal details; TaskProposalCard Open Task after a refused brief). Scanned for claims about proposal acceptance refusals and Task document capacity; none are made here, so no prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/reference/api.md","note":"Re-reviewed for the #4007 micro round: proposal acceptance 507 after creation names the Task in details.taskId, and re-accepting an already-accepted source skips the pre-creation history check and returns the existing Task; checked tasks.ts alreadyAccepted/proposalBriefRefusalResponse and the re-accept regression test.","inputs":["docs/reference/api.md","src-server/routes/orchestration/tasks.ts","src-ui/src/components/chat/TaskProposalCard.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Re-reviewed for the #4007 micro round because a cited source changed (tasks.ts proposal acceptance re-accept handling and refusal details; TaskProposalCard Open Task after a refused brief). Scanned for claims about proposal acceptance refusals and Task document capacity; none are made here, so no prose change.","inputs":["docs/reference/sdk.md","src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Re-reviewed for the #4007 micro round because a cited source changed (tasks.ts proposal acceptance re-accept handling and refusal details; TaskProposalCard Open Task after a refused brief). Scanned for claims about proposal acceptance refusals and Task document capacity; none are made here, so no prose change.","inputs":["docs/reference/station-docs.md","src-ui/src/components/chat/TaskProposalCard.tsx"]},
+
+    {"path":"docs/reference/task-basis-mcp-app.md","note":"Re-reviewed for the #4007 micro round because a cited source changed (tasks.ts proposal acceptance re-accept handling and refusal details; TaskProposalCard Open Task after a refused brief). Scanned for claims about proposal acceptance refusals and Task document capacity; none are made here, so no prose change.","inputs":["docs/reference/task-basis-mcp-app.md","src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Re-reviewed for the #4007 micro round because a cited source changed (tasks.ts proposal acceptance re-accept handling and refusal details; TaskProposalCard Open Task after a refused brief). Scanned for claims about proposal acceptance refusals and Task document capacity; none are made here, so no prose change.","inputs":["docs/user/getting-started.md","src-server/routes/orchestration/tasks.ts","src-ui/src/components/chat/TaskProposalCard.tsx"]},
+
+    {"path":"packages/sdk/README.md","note":"Re-reviewed for the #4007 micro round because a cited source changed (tasks.ts proposal acceptance re-accept handling and refusal details; TaskProposalCard Open Task after a refused brief). Scanned for claims about proposal acceptance refusals and Task document capacity; none are made here, so no prose change.","inputs":["packages/sdk/README.md","src-server/routes/orchestration/tasks.ts"]}
+  ]
+}

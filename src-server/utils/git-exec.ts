@@ -688,7 +688,7 @@ export async function execGit(
 export async function execGitContextCommand(
   command: string,
   args: string[],
-  opts: Omit<GitRunOptions, 'cwd' | 'input'> = {},
+  opts: Omit<GitRunOptions, 'cwd' | 'input'> & { signal?: AbortSignal } = {},
 ): Promise<{ stdout: string; stderr: string }> {
   const neutral = await mkdtemp(join(tmpdir(), 'station-git-tool-'));
   try {
@@ -696,6 +696,7 @@ export async function execGitContextCommand(
       cwd: neutral,
       timeout: opts.timeout,
       maxBuffer: opts.maxBuffer,
+      ...(opts.signal ? { signal: opts.signal } : {}),
       env: appendConfigPairs(
         hardenedGitEnv(opts.env),
         hardeningSettings({}, true),

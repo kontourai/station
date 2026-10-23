@@ -776,7 +776,9 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
             secret,
             false,
           ]);
-        // A claim is Part B: the field is not there, not even empty.
+        // No Session here has claimed anything (claims are tested in
+        // runtime-routes-station-control-work-claims.test.ts): the field is
+        // not there, not even empty.
         expect(text).not.toMatch(/claim/i);
       }
     });
