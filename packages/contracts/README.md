@@ -51,23 +51,31 @@ The `/child-work` contract's optional `latestTool` carries only a reported child
 tool name, independently of its progress summary. Reducers retain it across
 updates and settlement; no tool arguments or inferred activity are added.
 
-Child-work result text may carry `source`: `provider-summary`, `child-message`,
-or `provider-error`. This identifies the observed report, not verification of
-a returned artifact or successful task acceptance. Older reports omit it;
-readers must preserve that uncertainty. Claude task notifications and Muse
-workflow summaries are provider summaries; Codex child-turn messages are child
-messages, including its last-message fallback. Completion status remains an
-independent provider observation. Child transcript access is read-only and
-uses the persisted, authorized child identity; a transcript handle is not a
-produced artifact or permission to read an arbitrary path.
+Child-work result text may carry `source`: `tool-return`, `provider-summary`,
+`child-message`, or `provider-error`. A structured Claude Agent/Task return is
+`tool-return`: it replaces an earlier summary while preserving its recovery
+handle, and later summaries cannot overwrite it. A handle without result text
+does not acquire that provenance or replace an existing report. Claude task
+notifications and Muse workflow summaries are provider summaries; Codex
+child-turn messages are child messages, including its last-message fallback.
+Older reports omit provenance; readers must preserve that uncertainty.
+
+These sources identify an observed report, not verification of a returned
+artifact or successful task acceptance. Completion status remains an independent
+provider observation. Child transcript access is read-only and uses the
+persisted, authorized child identity; a transcript handle is not a produced
+artifact or permission to read an arbitrary path.
 
 ## Subpaths without a reference section
 
 The local `/delegation-group` export owns Station group transport metadata,
 command inputs, bounded pages, explicit unavailable items and raw JSON output
-references. It does not copy Flow's authority schema or issue a grant. The
-corresponding server routes and paid execution remain unactivated; an exported
-type does not establish runtime support or package publication. See
+references. It also carries the separate CLI session-group views and logical
+reserved-start allowance; those views explicitly mark fiscal and physical-attempt
+caps unavailable. It does not copy Flow's authority schema or issue a grant.
+The Flow-authorized API group routes and paid execution remain unactivated;
+the CLI session-group path is a separate controlled consumer. An exported type
+does not establish runtime support or package publication. See
 [SDK group transport](../../docs/reference/sdk.md#delegation-group-transport).
 
 The [contracts reference](../../docs/reference/contracts.md) documents most
