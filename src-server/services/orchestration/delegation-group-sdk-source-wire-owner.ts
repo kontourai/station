@@ -162,10 +162,12 @@ function boundedWire(wire: FinalWire) {
   };
 }
 function assertCredentialWire(o: Options, wire: FinalWire): void {
+  const now = o.now();
   const credential = readObservedSdkProviderCredential(
     o.credential,
     o.provider,
   );
+  assertBoundedApiCredentialBinding(o.contract, credential, now);
   const name = o.provider === 'anthropic' ? 'x-api-key' : 'x-goog-api-key';
   if (
     new Headers(wire.headers.map(([key, value]) => [key, value])).get(name) !==
@@ -399,8 +401,7 @@ export function assertSdkSourceWireCurrentSync(owner: object, handle: object) {
   claimSdkSourceLease(s.lease).assertCurrentSync();
   return undefined;
 }
-/** Called ONLY as the public FinalFetchLaunchFence's innermost fetch. Source consumption
- * is the last authorization operation, followed immediately by this owner's boot raw fetch. */
+/** Innermost reserved transport: consume source, recheck its credential, then call boot raw fetch. */
 export function enterFinalFetch(
   owner: object,
   handle: object,
@@ -449,6 +450,7 @@ export function enterFinalFetch(
     s.started = true;
     ownsStart = true;
     lease.consumeExactSync(owner, handle, digest);
+    assertCredentialWire(o, wire);
     const response = rawFetch(url, requestInit);
     s.rawResponse = Promise.resolve(response).then(
       (value) => {

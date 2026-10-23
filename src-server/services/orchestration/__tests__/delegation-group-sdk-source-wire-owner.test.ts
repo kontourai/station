@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { RESERVED_SOURCE_EXECUTION_METADATA_KEY } from '@kontourai/station-contracts/provider';
-import { test } from 'vitest';
+import { test, vi } from 'vitest';
 import {
   createPreparedSdkSourceWireOwner,
   deliverSdkResponse,
@@ -14,6 +14,7 @@ import {
   sdkResultPromise,
   takeResponsePromise,
 } from '../delegation-group-sdk-source-wire-owner.js';
+import * as sourceAdmission from '../delegation-group-source-admission.js';
 import { fixture as qualification } from './delegation-source-fixtures/qualification.js';
 import {
   code,
@@ -769,6 +770,84 @@ for (const provider of ['anthropic', 'google'] as const)
     });
     await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
   });
+
+test.each(['credential', 'qualification'] as const)(
+  'SDK refuses %s revoked by source consumption and cannot resend the consumed snapshot',
+  async (kind) => {
+    const f = await sdkFixture();
+    const prepared = await f.owner.prepareSdkSnapshot(
+      f.context(),
+      subject,
+      f.sealed.capability,
+      f.sdkOwner,
+    );
+    const { wire } = inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+    const claim = sourceAdmission.claimSdkSourceLease;
+    let consumed = false;
+    // Inject only the race after REAL source consumption, not an alternate source grant.
+    const probe = vi
+      .spyOn(sourceAdmission, 'claimSdkSourceLease')
+      .mockImplementation((token) => {
+        const lease = claim(token);
+        return {
+          ...lease,
+          consumeExactSync(owner, handle, digest) {
+            const value = lease.consumeExactSync(owner, handle, digest);
+            consumed = true;
+            if (kind === 'credential') {
+              const path = join(f.home, 'config', 'providers.json');
+              const rows = JSON.parse(readFileSync(path, 'utf8'));
+              rows.find(
+                (row: { id: string }) => row.id === 'connection-1',
+              ).config.apiKey = 'rotated-during-consumption';
+              writeFileSync(path, JSON.stringify(rows));
+            } else f.q.revoke();
+            return value;
+          },
+        };
+      });
+    const driver = await publicFenceFixture(
+      f,
+      prepared.source,
+      f.sdkOwner,
+      prepared.sdkHandle,
+      wire,
+      () => {},
+      {
+        provider: 'anthropic',
+        protocol: 'rounds',
+        contract: f.configuration.contract,
+        now: () => 1000,
+      },
+    );
+    try {
+      await driver.run();
+      assert.equal(consumed, true);
+      assert.equal(driver.intentCount, 1);
+      assert.equal(f.starts, 0);
+      assert.equal(driver.observed.length, 0);
+      const ledger = await driver.ledger();
+      assert.equal(ledger.invocations[0].usage, null);
+      assert.equal(ledger.invocations[0].terminal, false);
+      await assert.rejects(() => driver.reserveAnother(), {
+        code: 'active_slot_exhausted',
+      });
+      await assert.rejects(
+        () =>
+          f.owner.prepareSdkSnapshot(
+            f.context(),
+            subject,
+            f.sealed.capability,
+            f.sdkOwner,
+          ),
+        { code: 'snapshot_unavailable' },
+      );
+      await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
+    } finally {
+      probe.mockRestore();
+    }
+  },
+);
 
 test('SDK preparation refuses serialized credentials, wrong providers and qualified credential mismatches', async () => {
   const f = await sdkFixture();

@@ -1963,8 +1963,9 @@ can mint an opaque private SDK credential lease from the actual local-grant
 request and witnessed provider record. The SDK owner accepts that lease instead
 of a caller key, rechecks current authority/configuration before use, and joins
 its provider/connection/credential revisions to the resolved provider contract.
-The captured wire must carry the same key immediately before source consumption
-and raw fetch. Serialization of a lease or private credential view discloses no
+The captured wire must carry the same key before source consumption and again
+immediately after consumption, before raw fetch. A refusal after consumption
+retains uncertainty and cannot resend the snapshot. Serialization of a lease or private credential view discloses no
 key; a copied observation or JSON object cannot reconstruct the capability.
 Custom endpoint overrides refuse this official-endpoint mode.
 
