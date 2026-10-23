@@ -7381,8 +7381,9 @@ describe('OrchestrationService', () => {
         expect(raw.clientOrigin).toBeUndefined();
       } else expect(raw).toMatchObject({ principal, clientOrigin: origin });
       expect(raw.invocationId).toBeUndefined();
-      expect('clientTurnId' in raw).toBe(false);
       if (raw.method !== 'turn.started') throw new Error('start prerequisite');
+      if (timing === 'cancelled') expect('clientTurnId' in raw).toBe(false);
+      else expect(raw.clientTurnId).toBe('B-key');
       expect(raw.metadata?.stationSkillExperience).toBeUndefined();
       expect(old.principal).toBeUndefined();
       expect(old.clientOrigin).toBeUndefined();
