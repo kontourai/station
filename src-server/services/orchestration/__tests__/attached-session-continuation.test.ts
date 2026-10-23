@@ -261,11 +261,15 @@ describe('a conversation in a worktree outside the project folder (#3386)', () =
     );
     expect(workspace).toBe(lane);
     const files = new FileTreeService();
-    expect(files.readFileWithin(workspace!, 'inside.txt')).toBe(
+    await expect(files.readFileWithin(workspace!, 'inside.txt')).resolves.toBe(
       'in the worktree',
     );
-    expect(() => files.readFileWithin(workspace!, '../outside.txt')).toThrow();
-    expect(() => files.readFileWithin(workspace!, 'escape.txt')).toThrow();
+    await expect(
+      files.readFileWithin(workspace!, '../outside.txt'),
+    ).rejects.toThrow('Path escapes workspace');
+    await expect(
+      files.readFileWithin(workspace!, 'escape.txt'),
+    ).rejects.toThrow('Symlink target is not allowed');
     expect(() =>
       files.writeTextFileWithin(workspace!, '../planted.txt', 'x'),
     ).toThrow();
@@ -482,9 +486,9 @@ describe('a conversation no project claims (#3386)', () => {
     const child = await childSummary(result.threadId);
     expect(child.cwd).toBe(folder);
     expect(child.projectSlug).toBeUndefined();
-    expect(() =>
+    await expect(
       new FileTreeService().readFileWithin(folder, '../secret.txt'),
-    ).toThrow();
+    ).rejects.toThrow('Path escapes workspace');
   });
 
   test('picking a project the folder does not belong to is refused, never moved there', async () => {
