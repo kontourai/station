@@ -240,8 +240,7 @@ describe('StationFixtureOwner', () => {
         join(release, 'dist-server-phone/command-station.js'),
       );
       const request = owner.writeRuntimeRecoveryStationShim(release, 'phone');
-      if (!request)
-        throw new Error('Missing runtime recovery launch request');
+      if (!request) throw new Error('Missing runtime recovery launch request');
       const requestPath = join(
         release,
         `.station-fixture-${request.scopeNonce}.json`,
