@@ -1614,11 +1614,12 @@ function isWithinDirectory(root: string, candidate: string): boolean {
  * strings, and symlinks inside the root are not followed. A symlink under
  * the Project root that points elsewhere still counts as inside.
  */
-function withSessionLocalProjectId(
+async function withSessionLocalProjectId(
   input: ProviderSessionStartInput,
   listProjects?: () => AttachedProjectRoot[],
   admittedWorkspace?: { threadId: string; projectSlug?: string; cwd: string },
-): ProviderSessionStartInput {
+  resolveProjectDirectory?: (slug: string) => Promise<string | undefined>,
+): Promise<ProviderSessionStartInput> {
   const metadata = input.metadata;
   if (!metadata) return input;
   const { [SESSION_LOCAL_PROJECT_ID_METADATA_KEY]: _untrusted, ...rest } =
@@ -1631,16 +1632,22 @@ function withSessionLocalProjectId(
     ? listProjects?.().find((entry) => entry.slug === slug)
     : undefined;
   const cwd = input.cwd ? resolve(expandTilde(input.cwd)) : undefined;
-  const root = project?.workingDirectory
-    ? resolve(expandTilde(project.workingDirectory))
+  const resolvedRoot =
+    slug && resolveProjectDirectory
+      ? await resolveProjectDirectory(slug)
+      : project?.workingDirectory;
+  const currentProject = slug
+    ? listProjects?.().find((entry) => entry.slug === slug)
     : undefined;
+  const root = resolvedRoot ? resolve(expandTilde(resolvedRoot)) : undefined;
   const cwdVerified =
     cwd !== undefined &&
     ((root !== undefined && isWithinDirectory(root, cwd)) ||
       (admittedWorkspace?.threadId === input.threadId &&
         admittedWorkspace.projectSlug === slug &&
         admittedWorkspace.cwd === cwd));
-  const id = cwdVerified ? project?.id : undefined;
+  const id =
+    cwdVerified && currentProject?.id === project?.id ? project?.id : undefined;
   if (typeof id === 'string' && id)
     return {
       ...input,
@@ -6435,10 +6442,11 @@ export class OrchestrationService {
           );
           // Station #90 lane D (D5): record the Project's local id beside its
           // slug, from this Station's own project list, never from input.
-          startInput = withSessionLocalProjectId(
+          startInput = await withSessionLocalProjectId(
             startInput,
             this.options.listProjects,
             admittedStartWorkspace,
+            this.options.resolveProjectSessionDirectory,
           );
           startInput = withSessionConfinementRoot(
             startInput,

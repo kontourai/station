@@ -18387,22 +18387,23 @@ describe('OrchestrationService', () => {
       return { engine, start, boundPath, oldPath, storage, project };
     }
 
-    test('uses the current binding instead of the legacy workingDirectory', async () => {
-      const { engine, start, boundPath } = await fixture();
+    test('uses the current binding and stamps its Project identity instead of the legacy workingDirectory', async () => {
+      const { engine, start, boundPath, project } = await fixture();
       await start();
       expect(engine.startSession).toHaveBeenCalledWith(
-        expect.objectContaining({ cwd: boundPath }),
+        expect.objectContaining({ cwd: boundPath, metadata: expect.objectContaining({ localProjectId: project.id }) }),
       );
+      expect(engine.startSession.mock.calls[0][0].metadata).not.toHaveProperty('localProjectIdRefused');
     });
 
     test('starts the engine in the portable repo-relative directory on the destination binding', async () => {
       const relativeRoot = join('apps', 'web');
-      const { engine, start, boundPath } = await fixture(true, relativeRoot);
+      const { engine, start, boundPath, project } = await fixture(true, relativeRoot);
       const expected = join(boundPath, relativeRoot);
       mkdirSync(expected, { recursive: true });
       await start();
       expect(engine.startSession).toHaveBeenCalledWith(
-        expect.objectContaining({ cwd: realpathSync(expected) }),
+        expect.objectContaining({ cwd: realpathSync(expected), metadata: expect.objectContaining({ localProjectId: project.id }) }),
       );
     });
 
