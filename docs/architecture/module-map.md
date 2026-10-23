@@ -2001,8 +2001,19 @@ not claim a task started. The same Request and unchanged intent join one
 preparation; changed intent, another Request or a serialized capability refuses.
 A restarted owner cannot reconstruct the capability from its references. A
 serving layer must perform its durable group lookup rather than reseal/resend an
-existing operation. It also needs independently authorized historical reads and
-cancellation after the preparation request or source lease ends.
+existing operation. The operation namespace binds the canonical principal,
+host and operation ID; credential rotation does not choose a new group.
+
+The private [custody owner](../../src-server/services/orchestration/station-report-group-custody.ts)
+retains [host-signed admission facts](../../src-server/services/orchestration/station-report-group-admission.ts)
+before task dispatch. It checks existing rounds/authority state before retaining
+metadata and rejects a conflicting reseal even when the earlier metadata is
+missing. Fresh GET requests require a current personal, in-person local grant
+and orchestration read scope; the original provider/source lease need not remain
+live. Reads verify the signature, principal, host and execution joins before
+disclosing historical admission and actual rounds/v3 state. They do not recover
+a launch capability or extend provider expiry. Public serving and fresh-request
+cancellation remain required.
 
 The [controlled integration](../../src-server/services/orchestration/__tests__/station-report-group-preparation.test.ts)
 consumes an issued root through the published durable v3 authority, rounds

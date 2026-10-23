@@ -40,15 +40,52 @@ function sameSignature(a: string, b: string): boolean {
  * Request, and cannot be reused for another Request with identical headers.
  * Host signing proves current host custody only, not authorization/entitlement.
  */
-export async function captureEnvironmentLocalGrantObservationOwner(
+export function captureEnvironmentLocalGrantObservationOwner(
   boundRequest: Request,
   environment: EnvironmentSecurityService,
   security: CurrentRuntimeRequestPrincipalSecurity,
 ): Promise<EnvironmentLocalGrantObservationOwner> {
+  return captureExistingLocalGrant(boundRequest, environment, security, 'POST');
+}
+
+/** Read custody only. This interface cannot issue an SDK credential/source lease. */
+export async function captureEnvironmentLocalGrantReadOwner(
+  request: Request,
+  environment: EnvironmentSecurityService,
+  security: CurrentRuntimeRequestPrincipalSecurity,
+): Promise<
+  Readonly<{
+    hostContextId: string;
+    assertCurrent(): void;
+  }>
+> {
+  const owner = await captureExistingLocalGrant(
+    request,
+    environment,
+    security,
+    'GET',
+  );
+  const lease = owner.requireCurrentLocalGrant(request);
+  const read = {
+    hostContextId: lease.hostContextId,
+    assertCurrent: () => {
+      request.signal.throwIfAborted();
+      lease.assertCurrent();
+    },
+  };
+  return Object.freeze(read);
+}
+
+async function captureExistingLocalGrant(
+  boundRequest: Request,
+  environment: EnvironmentSecurityService,
+  security: CurrentRuntimeRequestPrincipalSecurity,
+  method: 'POST' | 'GET',
+): Promise<EnvironmentLocalGrantObservationOwner> {
   try {
     if (
       !(environment instanceof EnvironmentSecurityService) ||
-      boundRequest.method !== 'POST'
+      boundRequest.method !== method
     )
       refuse();
     const principal = getRuntimeAuthenticatedRequestPrincipal(boundRequest);

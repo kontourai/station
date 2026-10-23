@@ -1,9 +1,19 @@
 import assert from 'node:assert/strict';
-import { unlinkSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createDelegationAuthorityServiceV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
 import { afterEach, test, vi } from 'vitest';
 import { AnthropicSealedPreparation } from '../../../runtime/conversation/anthropic-sealed-preparation.js';
+import {
+  captureEnvironmentLocalGrantObservationOwner,
+  captureEnvironmentLocalGrantReadOwner,
+} from '../../../runtime/conversation/local-grant-observation-owner.js';
+import {
+  bindRuntimeLocalOperator,
+  getRuntimeAuthenticatedRequestPrincipal,
+  setRuntimeAuthenticatedRequestPrincipal,
+} from '../../../security/runtime-request-security.js';
 import { createLogger } from '../../../utils/logger.js';
 import { AgentService } from '../../agents/agent-service.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
@@ -11,6 +21,7 @@ import {
   inspectSdkSourceWire,
   sdkDisposalPromise,
 } from '../delegation-group-sdk-source-wire-owner.js';
+import { StationReportGroupCustody } from '../station-report-group-custody.js';
 import {
   type PreparedStationReportGroup,
   StationReportGroupPreparation,
@@ -76,7 +87,9 @@ async function setup(kind: 'local-grant' | 'ui-bootstrap' = 'local-grant') {
         { headers: { 'content-type': 'application/json' } },
       ),
   );
-  const owner = new StationReportGroupPreparation({
+  const preparationOwners: ConstructorParameters<
+    typeof StationReportGroupPreparation
+  >[0] = {
     runtime: {
       configLoader: f.loader,
       storageAdapter: f.storage,
@@ -91,7 +104,15 @@ async function setup(kind: 'local-grant' | 'ui-bootstrap' = 'local-grant') {
     sources: f.owner,
     qualification: await AnthropicSealedPreparation.create(),
     rawFetch,
-  });
+  };
+  const owner = new StationReportGroupPreparation(preparationOwners);
+  const persistence = new StationDelegationPersistence(f.root);
+  const custodyOwners = {
+    persistence,
+    environment: f.environment,
+    security: f.environment,
+  };
+  const custody = new StationReportGroupCustody(custodyOwners);
   const input = {
     operationId: 'prepare-1',
     projectSlug: 'source',
@@ -118,7 +139,53 @@ async function setup(kind: 'local-grant' | 'ui-bootstrap' = 'local-grant') {
       },
     ],
   };
-  return { f, owner, input, rawFetch };
+  return {
+    f,
+    owner,
+    input,
+    rawFetch,
+    preparationOwners,
+    custody,
+    custodyOwners,
+  };
+}
+
+function requestFor(
+  h: Awaited<ReturnType<typeof setup>>,
+  method: 'GET' | 'POST' = 'GET',
+  credential?: string,
+) {
+  const request = new Request(h.f.req.url, { method });
+  const principal = getRuntimeAuthenticatedRequestPrincipal(h.f.req);
+  if (!principal || principal.kind === 'internal')
+    throw Error('controlled credential stamp missing');
+  setRuntimeAuthenticatedRequestPrincipal(request, {
+    ...principal,
+    credential: credential ?? principal.credential,
+  });
+  bindRuntimeLocalOperator(request);
+  return request;
+}
+function newGrant(h: Awaited<ReturnType<typeof setup>>) {
+  const offer = h.f.environment.devicePairing.createOffer({
+    endpoint: new URL(h.f.req.url).origin,
+  });
+  const request = h.f.environment.devicePairing.requestPairing({
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    deviceName: 'Current operator reader',
+    requesterPosition: 'unproven',
+  });
+  h.f.environment.devicePairing.confirmRequest(request.requestId, {
+    kind: 'presented-credential',
+  });
+  return h.f.environment.devicePairing.exchange({
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    requestId: request.requestId,
+    locality: 'home-possession',
+    mintKind: 'local-grant',
+  });
 }
 
 function installControl(
@@ -152,6 +219,7 @@ async function taskDriver(
   h: Awaited<ReturnType<typeof setup>>,
   handle: PreparedStationReportGroup,
 ) {
+  await h.custody.retain(h.f.context(), h.owner, handle);
   const prepared = h.owner.read(handle, h.f.req);
   const sdk = h.owner.sdk(handle, h.f.req, 'left');
   const captured = inspectSdkSourceWire(sdk.owner, sdk.sdkHandle);
@@ -328,6 +396,14 @@ test('issued preparation reaches canonical delegated-task dispatch and retained 
     members: h.input.members.slice(0, 1),
   };
   const handle = await h.owner.prepare(h.f.context(), input);
+  const groupId = await h.custody.retain(h.f.context(), h.owner, handle);
+  const before = await h.custody.findOperation(
+    h.f.context(requestFor(h)),
+    input.operationId,
+  );
+  assert.ok(before);
+  assert.equal(before.group, null);
+  assert.equal(before.authority, null);
   try {
     const { prepared, sdk, driver } = await taskDriver(h, handle);
     assert.equal(h.rawFetch.mock.calls.length, 0);
@@ -357,6 +433,64 @@ test('issued preparation reaches canonical delegated-task dispatch and retained 
       driver.canonicalEvents().some((e) => e.method === 'turn.completed'),
     );
     await sdkDisposalPromise(sdk.owner, sdk.sdkHandle);
+    h.owner.close(handle);
+    const admissionFile = join(
+      h.f.root,
+      'station-report-admissions-v1',
+      `${createHash('sha256').update(groupId).digest('hex')}.json`,
+    );
+    const admissionBytes = readFileSync(admissionFile);
+    unlinkSync(admissionFile);
+    const resealer = new StationReportGroupPreparation(h.preparationOwners);
+    const returning = newGrant(h);
+    const retryContext = h.f.context(
+      requestFor(h, 'POST', returning.credential),
+    );
+    const retry = await resealer.prepare(retryContext, input);
+    try {
+      assert.equal(
+        resealer.read(retry, retryContext.req.raw).spec.groupId,
+        groupId,
+      );
+      await assert.rejects(
+        () => h.custody.retain(retryContext, resealer, retry),
+        {
+          code: 'report_admission_execution_conflict',
+        },
+      );
+      assert.equal(h.rawFetch.mock.calls.length, 1);
+    } finally {
+      resealer.close(retry);
+      writeFileSync(admissionFile, admissionBytes, { mode: 0o600 });
+    }
+    vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-24T01:04:42Z'));
+    await assert.rejects(() => AnthropicSealedPreparation.create(), {
+      code: 'stale_contract',
+    });
+    const current = newGrant(h);
+    const reader = new StationReportGroupCustody(h.custodyOwners);
+    const historical = await reader.findOperation(
+      h.f.context(requestFor(h, 'GET', current.credential)),
+      input.operationId,
+    );
+    assert.ok(historical?.group && historical.authority);
+    assert.equal(historical.admission.spec.groupId, groupId);
+    assert.equal(
+      historical.admission.members[0].reservedTaskId,
+      prepared.members[0].taskId,
+    );
+    assert.equal(
+      historical.admission.members[0].requestedModelId,
+      prepared.members[0].modelId,
+    );
+    assert.deepEqual(historical.authority.invocations[0].usage, {
+      inputTokens: 4,
+      outputTokens: 2,
+      costMicros: 42,
+    });
+    assert.equal(historical.group.attempts.length, 1);
+    assert.equal(h.rawFetch.mock.calls.length, 1);
+    assert.throws(() => h.owner.read(handle, h.f.req));
   } finally {
     h.owner.close(handle);
   }
@@ -398,7 +532,12 @@ test('removing orchestration operation scope invalidates report preparation auth
   }
 });
 
-for (const defect of ['seat', 'invocation', 'environment'] as const) {
+for (const defect of [
+  'seat',
+  'invocation',
+  'environment',
+  'admission',
+] as const) {
   test(`a foreign reservation ${defect} is refused before canonical task creation and keeps the reservation unknown-held`, async () => {
     const h = await setup();
     installControl(
@@ -414,8 +553,18 @@ for (const defect of ['seat', 'invocation', 'environment'] as const) {
     });
     const dispatch = h.owner.dispatch.bind(h.owner);
     vi.spyOn(h.owner, 'dispatch').mockImplementation(
-      (handle, context, seat, attempt, service) =>
-        dispatch(
+      (handle, context, seat, attempt, service) => {
+        if (defect === 'admission') {
+          const groupId = h.owner.read(handle, h.f.req).spec.groupId;
+          unlinkSync(
+            join(
+              h.f.root,
+              'station-report-admissions-v1',
+              `${createHash('sha256').update(groupId).digest('hex')}.json`,
+            ),
+          );
+        }
+        return dispatch(
           handle,
           context,
           seat,
@@ -434,7 +583,8 @@ for (const defect of ['seat', 'invocation', 'environment'] as const) {
             },
           },
           service,
-        ),
+        );
+      },
     );
     try {
       const { driver } = await taskDriver(h, handle);
@@ -451,3 +601,120 @@ for (const defect of ['seat', 'invocation', 'environment'] as const) {
     }
   });
 }
+
+test('historical metadata GET authorization cannot issue POST source authority or disclose its credential', async () => {
+  const h = await setup();
+  const request = requestFor(h);
+  const read = await captureEnvironmentLocalGrantReadOwner(
+    request,
+    h.f.environment,
+    h.f.environment,
+  );
+  read.assertCurrent();
+  assert.equal('principalCredential' in read, false);
+  assert.ok(!JSON.stringify(read).includes(h.f.paired.credential));
+  await assert.rejects(() =>
+    captureEnvironmentLocalGrantObservationOwner(
+      request,
+      h.f.environment,
+      h.f.environment,
+    ),
+  );
+  await assert.rejects(() =>
+    captureEnvironmentLocalGrantReadOwner(
+      h.f.req,
+      h.f.environment,
+      h.f.environment,
+    ),
+  );
+  await assert.rejects(() => h.owner.prepare(h.f.context(request), h.input));
+  assert.equal(h.rawFetch.mock.calls.length, 0);
+});
+
+test('signed admission refuses a well-shaped metadata substitution and restored bytes recover the historical read', async () => {
+  const h = await setup();
+  const handle = await h.owner.prepare(h.f.context(), h.input);
+  try {
+    const groupId = await h.custody.retain(h.f.context(), h.owner, handle);
+    const context = h.f.context(requestFor(h));
+    assert.ok(await h.custody.inspect(context, groupId));
+    const file = join(
+      h.f.root,
+      'station-report-admissions-v1',
+      `${createHash('sha256').update(groupId).digest('hex')}.json`,
+    );
+    const original = readFileSync(file, 'utf8');
+    const changed = JSON.parse(original);
+    changed.data.members[0].requestedModelId = 'different-historical-model';
+    writeFileSync(file, JSON.stringify(changed), { mode: 0o600 });
+    await assert.rejects(() => h.custody.inspect(context, groupId), {
+      code: 'group_custody_unavailable',
+    });
+    writeFileSync(file, original, { mode: 0o600 });
+    const restored = await h.custody.inspect(context, groupId);
+    assert.equal(
+      restored?.admission.members[0].requestedModelId,
+      'claude-sonnet-4-6',
+    );
+    assert.ok(!original.includes('Review correctness'));
+    assert.ok(!original.includes('synthetic-not-a-live-key'));
+    assert.equal(h.rawFetch.mock.calls.length, 0);
+  } finally {
+    h.owner.close(handle);
+  }
+});
+
+test('a returning operator credential can read the same admission but cannot replace its operation with a resealed root', async () => {
+  const h = await setup();
+  const handle = await h.owner.prepare(h.f.context(), h.input);
+  let second: PreparedStationReportGroup | undefined;
+  const renewed = new StationReportGroupPreparation(h.preparationOwners);
+  try {
+    const groupId = await h.custody.retain(h.f.context(), h.owner, handle);
+    const grant = newGrant(h);
+    const get = h.f.context(requestFor(h, 'GET', grant.credential));
+    assert.equal(
+      (await h.custody.findOperation(get, h.input.operationId))?.admission.spec
+        .groupId,
+      groupId,
+    );
+    const post = h.f.context(requestFor(h, 'POST', grant.credential));
+    second = await renewed.prepare(post, h.input);
+    assert.equal(renewed.read(second, post.req.raw).spec.groupId, groupId);
+    await assert.rejects(() => h.custody.retain(post, renewed, second!), {
+      code: 'report_admission_conflict',
+    });
+    assert.equal(
+      (await h.custody.findOperation(get, h.input.operationId))?.admission.spec
+        .groupId,
+      groupId,
+    );
+    h.f.environment.devicePairing.setDeviceScope(
+      grant.device.id,
+      ['orchestration:read'],
+      { kind: 'presented-credential' },
+    );
+    assert.ok(await h.custody.inspect(get, groupId));
+    h.f.environment.devicePairing.setDeviceScope(
+      grant.device.id,
+      ['orchestration:operate'],
+      { kind: 'presented-credential' },
+    );
+    await assert.rejects(() => h.custody.inspect(get, groupId));
+    h.f.environment.devicePairing.setDeviceScope(
+      grant.device.id,
+      ['orchestration:read'],
+      { kind: 'presented-credential' },
+    );
+    assert.ok(await h.custody.inspect(get, groupId));
+    h.f.environment.devicePairing.revokeDevice(
+      grant.device.id,
+      'operator-credential',
+    );
+    await assert.rejects(() => h.custody.inspect(get, groupId));
+    assert.equal(h.rawFetch.mock.calls.length, 0);
+  } finally {
+    h.owner.close(handle);
+    if (second) renewed.close(second);
+  }
+});

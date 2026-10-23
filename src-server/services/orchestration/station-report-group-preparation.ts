@@ -40,6 +40,7 @@ import {
 } from '../../runtime/conversation/runtime-fenced-credential-observation.js';
 import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
 import {
+  getRuntimeAuthenticatedRequestPrincipal,
   resolveClientOriginForRequest,
   runtimeRequestPrincipalMayAccessHttpRoute,
 } from '../../security/runtime-request-security.js';
@@ -58,6 +59,11 @@ import {
 } from './delegation-group-source-admission.js';
 import { assertSynchronous } from './delegation-group-wire-intent-store.js';
 import type { OrchestrationService } from './orchestration-service.js';
+import {
+  reportAdmissionData,
+  reportAdmissionSignatureMatches,
+  reportCredentialDigest,
+} from './station-report-group-admission.js';
 
 const id = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
 const integer = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
@@ -181,13 +187,14 @@ export class StationReportGroupPreparation {
     );
     const lease = authority.requireCurrentLocalGrant(context.req.raw);
     lease.assertCurrent();
+    const principal = createOrchestrationRequestPrincipalResolver({
+      environmentSecurityService:
+        this.owners.runtime.environmentSecurityService,
+    })(context);
+    lease.assertCurrent();
     const groupId = `group:${createHash('sha256')
       .update(
-        canonicalJson([
-          lease.hostContextId,
-          lease.principalCredential,
-          input.operationId,
-        ]),
+        canonicalJson([lease.hostContextId, principal.id, input.operationId]),
       )
       .digest('hex')}`;
     const intent = canonicalJson(input);
@@ -200,7 +207,7 @@ export class StationReportGroupPreparation {
       return prepared;
     }
     if (this.#operations.size >= 128) refuse();
-    const promise = this.#prepare(context, input, groupId);
+    const promise = this.#prepare(context, input, groupId, principal.id);
     this.#operations.set(groupId, {
       intent,
       request: context.req.raw,
@@ -213,6 +220,7 @@ export class StationReportGroupPreparation {
     context: RuntimeSourceRequestContext,
     input: StationReportGroupInput,
     groupId: string,
+    expectedPrincipalId: string,
   ): Promise<PreparedStationReportGroup> {
     const now = Date.now();
     if (
@@ -300,6 +308,7 @@ export class StationReportGroupPreparation {
         current();
         if (
           binding.request !== context.req.raw ||
+          binding.principalId !== expectedPrincipalId ||
           binding.expiresAtMs < input.deadlineAt ||
           (principalId !== undefined && principalId !== binding.principalId) ||
           (hostId !== undefined && hostId !== binding.hostContextId)
@@ -753,6 +762,32 @@ export class StationReportGroupPreparation {
     });
     // Reserve the handoff before any await; an ambiguous failure cannot resend it.
     member.dispatched = true;
+    const stored = await attempt.persistence.readReportAdmission(
+      state.spec.groupId,
+      finalizeCurrent,
+    );
+    finalizeCurrent();
+    const authenticated = getRuntimeAuthenticatedRequestPrincipal(
+      context.req.raw,
+    );
+    if (
+      !stored ||
+      !authenticated ||
+      authenticated.kind === 'internal' ||
+      !reportAdmissionSignatureMatches(
+        stored,
+        this.owners.runtime.environmentSecurityService,
+      ) ||
+      canonicalJson(stored.data) !==
+        canonicalJson(
+          reportAdmissionData(
+            this.read(handle, context.req.raw),
+            reportCredentialDigest(authenticated.credential),
+          ),
+        )
+    )
+      refuse();
+    finalizeCurrent();
     await admission.admitTask(
       {
         ...attempt.transport.reservation,

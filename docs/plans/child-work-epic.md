@@ -964,9 +964,17 @@ and consumes the wire once. Ordinary canonical task status reads the resulting
 binding, and a second handoff refuses without resending or releasing unknown
 accounting.
 
-Durable serving lookup, independent post-request reads/cancel, Flow-backed
-frontier/join and session ACK remain required before enabling the paid-group
-capability. The control-plane read responses and provider response in this
+Private historical custody retains host-signed admission facts before canonical
+task dispatch. Fresh authorized local-operator GET requests can inspect retained
+admission and actual rounds/v3 state after the original preparation closes or
+its provider profile expires; this read does not renew provider authority.
+Operation identity uses host, canonical principal and operation ID rather than
+the returning credential. Retention checks existing execution state before
+accepting admission metadata, so a conflicting reseal cannot replace the original
+root after metadata loss. Missing metadata does not reconstruct a launch capability.
+
+Public serving lookup, fresh-request cancellation, Flow-backed frontier/join and
+session ACK remain required before enabling the paid-group capability. The control-plane read responses and provider response in this
 qualification are controlled; live ingress/provider acceptance remains open.
 
 ## Controlled reserved Station turn integration

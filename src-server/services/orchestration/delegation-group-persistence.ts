@@ -46,6 +46,10 @@ import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-fil
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 
 import type { ReservedProviderEvidence } from '../../runtime/conversation/reserved-provider-fetch.js';
+import {
+  type StationReportAdmission,
+  validateStationReportAdmission,
+} from './station-report-group-admission.js';
 
 export type DelegationPersistenceFinalizer = () => undefined;
 const AUTHORITY_MAX_BYTES = 16 * 1024 * 1024;
@@ -247,6 +251,7 @@ export class StationDelegationPersistence {
   readonly #providerEvidence: PrivateDomain;
   readonly #roundsAuthorities: PrivateDomain;
   readonly #rounds: PrivateDomain;
+  readonly #reportAdmissions: PrivateDomain;
   constructor(privateRoot: string) {
     const requested = resolve(privateRoot);
     privateDirectory(requested);
@@ -267,9 +272,151 @@ export class StationDelegationPersistence {
       'station-delegation-rounds',
       'station-delegation-groups',
     );
+    this.#reportAdmissions = new PrivateDomain(
+      root,
+      'station-report-admissions-v1',
+    );
     this.#providerEvidence = new PrivateDomain(
       root,
       'station-provider-evidence',
+    );
+  }
+
+  async retainReportAdmission(
+    value: StationReportAdmission,
+    finalizeCurrent: DelegationPersistenceFinalizer,
+  ): Promise<void> {
+    const record = validateStationReportAdmission(value);
+    const domain = this.#reportAdmissions;
+    const file = address(record.data.spec.groupId);
+    await domain.locked(finalizeCurrent, async () => {
+      const execution = await this.readReportExecution(
+        record.data.spec.groupId,
+        record.data.root.authority_id,
+        finalizeCurrent,
+      );
+      requirePersistence(
+        (!execution.group || same(execution.group.spec, record.data.spec)) &&
+          (!execution.authority ||
+            (same(execution.authority.epochs[0].root, record.data.root) &&
+              execution.authority.importedFromV2 === null)),
+        'report_admission_execution_conflict',
+      );
+      const previous = readBytes(join(domain.directory, file), 1024 * 1024);
+      if (previous !== null) {
+        requirePersistence(
+          same(validateStationReportAdmission(JSON.parse(previous)), record),
+          'report_admission_conflict',
+        );
+      } else {
+        const files = domain.files();
+        requirePersistence(files.length < 128, 'report_admission_capacity');
+        for (const otherFile of files) {
+          const bytes = readBytes(
+            join(domain.directory, otherFile),
+            1024 * 1024,
+          );
+          requirePersistence(bytes !== null, 'report_admission_disappeared');
+          const other = validateStationReportAdmission(JSON.parse(bytes));
+          requirePersistence(
+            other.data.root.issuer_host_id !==
+              record.data.root.issuer_host_id ||
+              other.data.root.authenticated_principal_ref.id !==
+                record.data.root.authenticated_principal_ref.id ||
+              other.data.root.revisions.policy.id !==
+                record.data.root.revisions.policy.id,
+            'report_operation_already_admitted',
+          );
+        }
+        await domain.publish(file, record, 1024 * 1024, finalizeCurrent);
+      }
+      const persisted = readBytes(join(domain.directory, file), 1024 * 1024);
+      requirePersistence(
+        persisted !== null &&
+          same(validateStationReportAdmission(JSON.parse(persisted)), record),
+        'report_admission_commit_unconfirmed',
+      );
+    });
+  }
+
+  async readReportAdmission(
+    groupId: string,
+    finalizeCurrent: DelegationPersistenceFinalizer,
+  ): Promise<StationReportAdmission | null> {
+    const domain = this.#reportAdmissions;
+    const file = address(groupId);
+    return domain.locked(finalizeCurrent, async () => {
+      const bytes = readBytes(join(domain.directory, file), 1024 * 1024);
+      if (bytes === null) return null;
+      const record = validateStationReportAdmission(JSON.parse(bytes));
+      requirePersistence(
+        record.data.spec.groupId === groupId,
+        'report_admission_identity_mismatch',
+      );
+      return record;
+    });
+  }
+
+  async listReportAdmissions(
+    finalizeCurrent: DelegationPersistenceFinalizer,
+  ): Promise<StationReportAdmission[]> {
+    const domain = this.#reportAdmissions;
+    return domain.locked(finalizeCurrent, async () => {
+      const files = domain.files();
+      requirePersistence(files.length <= 128, 'report_admission_capacity');
+      return files.map((file) => {
+        const bytes = readBytes(join(domain.directory, file), 1024 * 1024);
+        requirePersistence(bytes !== null, 'report_admission_disappeared');
+        return validateStationReportAdmission(JSON.parse(bytes));
+      });
+    });
+  }
+
+  /** Exact locked snapshots only; missing execution remains missing. */
+  async readReportExecution(
+    groupId: string,
+    authorityId: string,
+    finalizeCurrent: DelegationPersistenceFinalizer,
+  ) {
+    const groupFile = address(groupId),
+      authorityFile = address(authorityId);
+    return this.#rounds.locked(finalizeCurrent, () =>
+      this.#roundsAuthorities.locked(finalizeCurrent, async () => {
+        requirePersistence(
+          readBytes(
+            join(this.#groups.directory, groupFile),
+            GROUP_V2_MAX_BYTES,
+          ) === null &&
+            readBytes(
+              join(this.#authorities.directory, authorityFile),
+              AUTHORITY_MAX_BYTES,
+            ) === null,
+          'report_execution_protocol_conflict',
+        );
+        const groupBytes = readBytes(
+          join(this.#rounds.directory, groupFile),
+          ROUNDS_MAX_BYTES,
+        );
+        const authorityBytes = readBytes(
+          join(this.#roundsAuthorities.directory, authorityFile),
+          AUTHORITY_V3_MAX_BYTES,
+        );
+        const group =
+          groupBytes === null
+            ? null
+            : projectDelegationRounds(JSON.parse(groupBytes));
+        const authority =
+          authorityBytes === null
+            ? null
+            : validateDelegationAuthorityLedgerV3(JSON.parse(authorityBytes));
+        requirePersistence(
+          (!group || group.spec.groupId === groupId) &&
+            (!authority ||
+              authority.epochs[0].root.authority_id === authorityId),
+          'report_execution_identity_mismatch',
+        );
+        return { group, authority };
+      }),
     );
   }
 
