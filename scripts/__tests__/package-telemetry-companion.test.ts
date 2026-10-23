@@ -55,10 +55,15 @@ test('packages the real receiver and standalone pinned deployment without claimi
   const compose = load(
     await readFile(join(result.directory, 'deployment/compose.yaml'), 'utf8'),
   ) as {
-    services: { receiver: { image: string; build?: unknown } };
+    services: {
+      receiver: { image: string; build?: unknown; read_only?: boolean };
+      postgres: { restart?: string };
+    };
   };
   expect(compose.services.receiver.build).toBeUndefined();
   expect(compose.services.receiver.image).toContain('TELEMETRY_RECEIVER_IMAGE');
+  expect(compose.services.receiver.read_only).toBe(true);
+  expect(compose.services.postgres.restart).toBe('unless-stopped');
   expect(
     await readFile(join(result.directory, 'Dockerfile'), 'utf8'),
   ).toContain('USER node');
