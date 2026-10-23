@@ -462,6 +462,8 @@ mod response_wait_tests {
                 "/CN=localhost",
                 "-addext",
                 "subjectAltName=DNS:localhost",
+                "-addext",
+                "basicConstraints=critical,CA:FALSE",
                 "-keyout",
                 key.to_str().unwrap(),
                 "-out",
