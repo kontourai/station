@@ -541,6 +541,15 @@ Knowledge MCP access retains the session owner's store permissions. Adding it
 because a Project store exists does not restrict it exclusively to that Project;
 other stores remain accessible only if the owner is allowed to use them. Project
 MCP choices are delivery defaults, not new approval or credential grants.
+`list_knowledge_roots` returns each Project store's durable Project ID and, when
+the verified session has a recorded Project identity, marks matching stores
+with `isCurrentProject`. The current Project ID and slug accompany that marker.
+For a question about this Project, use its marked store rather than a similarly
+named policy from another accessible Project. This is source orientation, not
+read confinement. Legacy sessions without a recorded Project ID receive no
+current-Project hint. A caller revoked during hint resolution receives a refusal
+instead of the already-read roots.
+
 
 ## Knowledge Library: general, read-only recall
 

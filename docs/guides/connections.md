@@ -1267,6 +1267,12 @@ Connections has one clear home for each relationship:
   materialized only while a fresh child is established; Station-control and
   non-stdio transports reject authored bindings. A stored legacy credential is
   removed only after a fresh bound child succeeds.
+  Native foreground invocations select Project-narrowed credentials using the
+  trusted invocation's active Project, including for a global Agent whose tools
+  were already loaded. The authored Agent's Project ownership is unchanged.
+  Calls without that foreground context retain the authored-Project fallback;
+  global background/scheduled Project credential context is not established by
+  this path. Disconnect is checked again by subsequent retained-tool calls.
 
 ## Pairing scopes on this computer
 
