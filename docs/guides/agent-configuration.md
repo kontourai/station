@@ -103,6 +103,17 @@ do not by themselves qualify provider execution. The engine picker includes
 managed **Station** alongside installed engines. Station Agents keep no external
 engine binding; editing and saving preserves that choice and its tool approvals.
 
+Explicit Room Agent requests capture only Task summaries already shared to the
+Project, even for an operator. The immutable snapshot includes Task/share
+identities, title, status and observation time, with shared-subset coverage;
+it includes no private Task counts, descriptions or inferred goals. At most
+16 summaries and 4 KiB of Task evidence fit within the existing context budget.
+Unavailable or omitted evidence is labeled rather than treated as an empty
+Project. Exact share and Task incarnations are checked before dispatch and
+publication. Short owner fences coordinate TaskGraph, sharing and Room writes;
+no such lock spans provider execution. Unsharing can withhold a pending answer,
+but does not retroactively redact text already published in the Room.
+
 New and recovered sessions both recheck authored tools against current Project
 permissions. Missing Agent definitions or unreadable Project policy refuse
 engine startup; the conversation stays recoverable after the cause is fixed.

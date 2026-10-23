@@ -1402,6 +1402,14 @@ checkbox explicitly selects its verified repository-relative execution root;
 it is unchecked initially and does not promote or remove an existing primary resource.
 An identity with no existing resources requires an explicit code-work choice,
 because its first repository would otherwise become the execution fallback.
+Changing where Agent work starts affects new Sessions. An existing qualified
+Session keeps its original directory while that directory remains a verified
+resource of the same Project incarnation. Detaching or changing that resource,
+replacing its directory with a symlink, or replacing the Project can prevent
+continuation; Station does not silently move the chat to the new default.
+Older Sessions without verified Project identity cannot gain that authority
+from the current slug.
+
 Attachment checks the expected portable identity and immutable local Project ID.
 A changed Project or binding is refused instead of overwriting it. If the
 response is lost, **Retry saved attachment** repeats the same selection. A

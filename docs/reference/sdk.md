@@ -312,6 +312,17 @@ choose an Agent, then select **Ask in room** to execute. Preparation sends nothi
 and preserves an existing draft. The prompt asks for permitted evidence, citations,
 freshness, coverage and gaps; it does not grant access or promote memory.
 
+Explicit Room Agent requests capture only Task summaries already shared to the
+Project, even for an operator. The immutable snapshot includes Task/share
+identities, title, status and observation time, with shared-subset coverage;
+it includes no private Task counts, descriptions or inferred goals. At most
+16 summaries and 4 KiB of Task evidence fit within the existing context budget.
+Unavailable or omitted evidence is labeled rather than treated as an empty
+Project. Exact share and Task incarnations are checked before dispatch and
+publication. Short owner fences coordinate TaskGraph, sharing and Room writes;
+no such lock spans provider execution. Unsharing can withhold a pending answer,
+but does not retroactively redact text already published in the Room.
+
 The client tests exercise fetch responses and rejection bounds; the mounted UI
 tests exercise two independent query contexts, SSE invalidation and revocation,
 reload retry, authority retirement, note conflicts, and unsaved navigation.

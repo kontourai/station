@@ -2719,6 +2719,17 @@ The Room's **Recap Project** action prepares an editable scoped prompt without
 dispatch. The normal Agent picker and explicit request remain the execution
 owner; the prompt asks for citations, observed freshness, coverage and gaps.
 
+Explicit Room Agent requests capture only Task summaries already shared to the
+Project, even for an operator. The immutable snapshot includes Task/share
+identities, title, status and observation time, with shared-subset coverage;
+it includes no private Task counts, descriptions or inferred goals. At most
+16 summaries and 4 KiB of Task evidence fit within the existing context budget.
+Unavailable or omitted evidence is labeled rather than treated as an empty
+Project. Exact share and Task incarnations are checked before dispatch and
+publication. Short owner fences coordinate TaskGraph, sharing and Room writes;
+no such lock spans provider execution. Unsharing can withhold a pending answer,
+but does not retroactively redact text already published in the Room.
+
 The operator and member Project pages mount the scoped Room. Focused store,
 access, SDK and UI tests cover those owners; production mounting, provider-backed
 execution and two-principal browser acceptance require separate runtime evidence.
@@ -4472,14 +4483,19 @@ Before starting an engine, Station must resolve what a Project means on this com
 
 `createProjectSessionDirectoryResolver` in
 `src-server/services/projects/project-session-directory.ts` composes the
-existing manifest and live resource resolver for new engine starts. Runtime
-initialization installs it in OrchestrationService; recovery awaits it only
-when the recorded session has no cwd. Bound resources return their local path;
-only a directory-less organizational Project may default without a checkout.
-Missing, drifted, ambiguous and unverifiable resources stop before engine
-invocation. The caller retains path containment and owned-worktree admission.
-Real Git/binding-to-engine tests live in `orchestration-service.test.ts`.
-Resolution is an observation, not a filesystem lease or a compute grant.
+existing manifest and live resource resolver for new engine starts and retained
+qualified Sessions. New Sessions use the selected execution root. A continuation
+keeps its recorded canonical cwd only when its persisted local Project ID still
+matches and that directory remains inside a currently verified attached resource.
+Read-binding, successor-start and send-turn admission recheck this authority;
+changing the Project default does not move an existing Session. An unstamped or
+explicitly refused Project incarnation is never inferred from a matching slug.
+Missing, unbound, drifted, ambiguous or replaced resources and changed symlink
+coordinates stop before engine invocation. Only a directory-less organizational
+Project may start without a checkout. The caller retains current compute,
+transport, path-containment and owned-worktree admission. Mounted continuation
+and real Git/binding-to-engine tests cover these owners; provider acceptance is
+separate. Resolution is an observation, not a filesystem lease or a compute grant.
 
 ## Workspace checkpoints
 
