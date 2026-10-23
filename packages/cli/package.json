@@ -47,7 +47,7 @@
     "typescript-api": "npm:typescript@5.9.3"
   },
   "dependencies": {
-    "@napi-rs/keyring": "2.1.1",
+    "@napi-rs/keyring": "2.1.2",
     "qrcode": "^1.5.4"
   }
 }

@@ -21,6 +21,7 @@ import {
   createTaskFromProject,
   type LiveStation,
   pairBrowserDevice,
+  prepareLiveStationBuild,
   publishTaskRoomAgentEdit,
   startStation,
   stopStation,
@@ -124,8 +125,12 @@ async function rawHistory(page: Page) {
   const disclosure = page
     .locator('details')
     .filter({ has: page.getByText('Raw room history', { exact: true }) });
-  await disclosure.locator('summary').click();
-  return disclosure.locator('pre');
+  const summary = disclosure.locator('summary');
+  if ((await disclosure.getAttribute('open')) !== null) await summary.click();
+  await summary.click();
+  const history = disclosure.locator('pre');
+  await expect(history).toBeVisible();
+  return history;
 }
 async function expectAgentPresence(
   page: Page,
@@ -150,6 +155,7 @@ async function expectAgentPresence(
   await expect(
     page.locator(`.task-room-rail [data-actor-id="${agent.actor.actorId}"]`),
   ).toContainText(agent.actor.label);
+  return live;
 }
 
 test.describe
@@ -172,7 +178,8 @@ test.describe
         'station-room-acceptance-home-',
         'room-acceptance',
       );
-      await startStation(live, true, {
+      await prepareLiveStationBuild(live);
+      await startStation(live, false, {
         taskRoomControlSocket,
         logFile: testInfo.outputPath(`${live.instance}.log`),
       });
@@ -609,6 +616,17 @@ test.describe
           revision: expect.stringMatching(/^swsr-v1:[0-9a-f]{64}$/),
           text: converged,
         });
+        for (const context of [owner, peer]) {
+          await expect(
+            context.getByRole('tab', { name: 'Brief', exact: true }),
+          ).toHaveAttribute('aria-selected', 'true', { timeout: 15_000 });
+          await expect(
+            context.getByRole('region', { name: 'Task room editor' }),
+          ).toContainText(converged);
+          await context
+            .getByRole('button', { name: 'Edit brief', exact: true })
+            .click();
+        }
         await expect(ownerDocument).toHaveValue(converged);
         await expect(peerDocument).toHaveValue(converged);
         expect(sharedBase).not.toBe(converged);
@@ -663,9 +681,7 @@ test.describe
           .fill('Revocation check.');
         await owner.getByRole('button', { name: 'Send to task room' }).click();
         await expect(
-          peer.getByText(
-            'Task room authorization ended. The last readable document remains read-only.',
-          ),
+          peer.getByRole('button', { name: 'Request access', exact: true }),
         ).toBeVisible();
         await expect(
           peer.getByRole('textbox', { name: 'Task brief' }),
@@ -678,7 +694,7 @@ test.describe
           .click();
         await expect(
           peer.getByRole('textbox', { name: 'Message the Task' }),
-        ).toBeDisabled();
+        ).toHaveCount(0);
 
         await owner.screenshot({
           path: testInfo.outputPath('project-task-room-owner.png'),
@@ -702,7 +718,7 @@ test.describe
           throw new Error(
             `restarted room endpoint ${restartedRoomProbe.status}: ${restartedRoomProbe.body}`,
           );
-        await expectAgentPresence(
+        const restartedPresence = await expectAgentPresence(
           owner,
           taskId,
           agentEdit.sessionId,

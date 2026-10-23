@@ -355,7 +355,6 @@ const sourceNames = [
   'diff',
   'fast-checks shard 2',
   'fast-checks shard 1',
-  'merge-integration-full-regression',
   'fast-checks',
   'Publish source admission / reconcile',
   'Merge-queue regression',
@@ -367,7 +366,6 @@ const skippedNames = new Set([
   'Fork pull-request smoke',
   'Exact full-diff classification',
   'diff',
-  'merge-integration-full-regression',
   'Merge-queue regression',
   'full-regression',
   'manual-completion-diagnostics',
@@ -507,7 +505,7 @@ async function exerciseMerged(world = mergedWorld()) {
 }
 
 describe('merged optional-tail retirement through the real GitHub HTTP boundary', () => {
-  it('requests retirement of the retained queued-parent holder only after all source evidence completed successfully', async () => {
+  it('retires the new-topology optional holder without a fabricated deleted corpus job', async () => {
     const result = await exerciseMerged();
     expect(result.code).toBe(0);
     expect(result.cancelled).toEqual([holder.id]);
@@ -516,6 +514,21 @@ describe('merged optional-tail retirement through the real GitHub HTTP boundary'
       'terminal cancellation is not yet verified',
     );
   });
+  it.each(['skipped', 'success', 'failure', 'cancelled'])(
+    'a legacy corpus row with %s authorizes retirement only when skipped',
+    async (conclusion) => {
+      const world = mergedWorld();
+      world.jobs.push({
+        ...world.jobs[0],
+        id: 1000,
+        name: 'merge-integration-full-regression',
+        conclusion,
+      });
+      expect((await exerciseMerged(world)).cancelled).toEqual(
+        conclusion === 'skipped' ? [holder.id] : [],
+      );
+    },
+  );
   it('can retire a known optional callee waiting before any child rows materialize', async () => {
     const world = mergedWorld();
     world.jobs = world.jobs.filter(

@@ -1,16 +1,23 @@
+import { encodeTaskTurnReference } from '@kontourai/station-contracts/task-graph';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   AnswerBasisRequestError,
   getAnswerBasis,
 } from '../client/answer-basis.js';
+
+import { setClientCredentialResolver } from '../client/http.js';
 import {
   getTaskBasis,
+  keepAnswerInTask,
   parseStationTaskBasisCollection,
   parseTaskBasisProjection,
   TaskBasisRequestError,
 } from '../client/task-basis.js';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  setClientCredentialResolver(undefined);
+  vi.unstubAllGlobals();
+});
 
 const projection = {
   version: 'surface.basis-projection/v1',
@@ -52,6 +59,82 @@ const projection = {
 };
 
 describe('Surface Basis SDK boundary', () => {
+  test('Keep answer uses the captured connection and validates its exact reference receipt', async () => {
+    const scope = { apiBase: 'http://station.test', authorityKey: 'epoch-a' };
+    let currentScope = scope;
+    setClientCredentialResolver(() => ({
+      origin: scope.apiBase,
+      requestAuthority: {
+        ...currentScope,
+        isCurrent: () => currentScope === scope,
+      },
+    }));
+    const input = {
+      sessionId: 'station:1792425046978',
+      turnId: 'turn-a',
+      kind: 'artifact',
+      targetId: 'must-not-cross',
+    };
+    let targetId = encodeTaskTurnReference(input.sessionId, input.turnId);
+    const fetch = vi.fn<typeof globalThis.fetch>(
+      async () =>
+        new Response(
+          JSON.stringify({
+            success: true,
+            data: {
+              id: 'kept-a',
+              sourceType: 'task',
+              sourceId: 'task-a',
+              targetType: 'turn',
+              relationType: 'references_turn',
+              targetId,
+            },
+          }),
+          { headers: { 'Content-Type': 'application/json' } },
+        ),
+    );
+    vi.stubGlobal('fetch', fetch);
+    await expect(keepAnswerInTask('task-a', input, scope)).resolves.toEqual({
+      referenceId: 'kept-a',
+    });
+    expect(fetch.mock.calls[0]?.[1]).toMatchObject({
+      method: 'POST',
+      body: JSON.stringify({
+        kind: 'turn',
+        sessionId: input.sessionId,
+        turnId: input.turnId,
+        sourceSurface: 'nativeBasis',
+      }),
+    });
+    targetId = encodeTaskTurnReference(input.sessionId, 'another-turn');
+    await expect(
+      keepAnswerInTask('task-a', input, scope),
+    ).rejects.toBeInstanceOf(TaskBasisRequestError);
+    fetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Protected route detail',
+          code: 'task_reference_not_ready',
+        }),
+        { status: 429, headers: { 'Retry-After': '2' } },
+      ),
+    );
+    await expect(
+      keepAnswerInTask('task-a', input, scope),
+    ).rejects.toMatchObject({
+      message: 'Task basis unavailable',
+      status: 429,
+      code: 'task_reference_not_ready',
+      retryAfterMs: 2000,
+    });
+    currentScope = { ...scope, authorityKey: 'epoch-b' };
+    await expect(
+      keepAnswerInTask('task-a', input, scope),
+    ).rejects.toBeInstanceOf(TaskBasisRequestError);
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
   test('uses Surface parser for exact answers', async () => {
     expect(parseTaskBasisProjection(projection)).toEqual(projection);
     vi.stubGlobal(

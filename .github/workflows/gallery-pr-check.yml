@@ -119,8 +119,7 @@ jobs:
           package-manager-cache: false
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
-        with: { install: false }
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
 
       - name: Install the native build toolchain node-pty needs
         env:

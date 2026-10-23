@@ -987,6 +987,15 @@ main WebView has committed its React mount. The ticket binds generation,
 instance ID, child boot ID and API base. A native page-start callback permits
 identity proof but is not proof that the renderer mounted.
 
+**Packaged runtime.** Desktop's registry helper and owned backend use the private
+`station-node` executable beside the app, without changing the user's PATH.
+Before claiming a home, Desktop validates the shared saved-connection list.
+An unmarked legacy runtime root can offer explicit empty-list creation only
+when filesystem and credential inspection find no saved-connection history;
+confirmation revalidates under shared locks. Missing metadata after prior
+initialization stays a restore-backup refusal. See [desktop build](../guides/desktop-build.md#packaged-runtime)
+and [missing saved connections](../user/native-recovery.md#missing-saved-connections).
+
 **Identity and reveal.** [Tauri composition](../../src-desktop/src/lib.rs) owns
 the current ticket, credential-bearing profile selected for the exact channel
 home, OS-held credential and authenticated `/api/system/identity` check.
@@ -3866,7 +3875,7 @@ provider effect just to obtain a clean log.
 
 ## Whole Task Basis collection
 
-Whole Task Basis shows the answers, tool results, and Process receipts deliberately kept with a Task. It does not combine them into one trust score. The [collection view](../../packages/basis-pane/src/task-basis-collection-view.ts) supplies Station’s navigation and labels; Surface supplies each answer’s meaning.
+Whole Task Basis shows the answers, tool results, and Process receipts deliberately kept with a Task. Immutable Task Outputs with recorded declaration provenance appear in the exact producing answer's outcomes. The private Output owner supplies that Session/turn join; matching names, paths or digests never establish it. Manual Outputs and Outputs from other turns remain in the unassociated kept collection. The public Output record keeps its existing shape. It does not combine them into one trust score. The [collection view](../../packages/basis-pane/src/task-basis-collection-view.ts) supplies Station’s navigation and labels; Surface supplies each answer’s meaning.
 
 **Interface.** `buildStationTaskBasisCollectionView` in the first-party
 Basis Pane package accepts an explicitly declared full authorized collection or
@@ -4427,8 +4436,12 @@ identities and bounded responses.
 for a configured local endpoint, an already-consented managed helper, or an
 operator-managed SSH host. Hosted tenant execution does not mount this path.
 Resolving a connection may start a consented helper; helper installation and
-process ownership remain with the toolchain/host services. There is no peer
-Station device transport merely because the resolver is extensible.
+process ownership remain with the toolchain/host services. Managed device tools
+resolve a user-installed Node.js 24 or later and its matching npm through
+[device-tool-runtime.ts](../../src-server/services/devices/toolchain/device-tool-runtime.ts).
+Missing prerequisites block device setup with guidance; the desktop's private
+Node continues to run bundled Station services. There is no peer Station device
+transport merely because the resolver is extensible.
 
 [Mobile-device routes](../../src-server/routes/mobile-device.ts) check current
 request authority and device access before calling the helper, then recheck

@@ -166,7 +166,7 @@ describe('station#1195 e2e: resolver → Codex adapter delivers the REAL station
         id: 'station-control',
         displayName: 'Station Control',
         transport: 'stdio',
-        command: 'node',
+        command: process.execPath,
         args: [builtinStationControlServerPath()],
         endpoint: undefined,
       },

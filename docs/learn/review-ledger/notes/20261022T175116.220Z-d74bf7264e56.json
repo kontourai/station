@@ -1,0 +1,7 @@
+{
+  "revision": "4ac175408fd49f645168c18d471c5e617ab3d61e",
+
+  "notes": [
+    {"path":"packages/basis-pane/README.md","note":"Bounded behavior-neutral delta review through 4ac175408fd: owner gap collection now uses a single flatMap returning [] for Attention, otherwise the same group.gaps. Preserves non-Attention group order, gap order, flatten depth and Set deduplication, downstream Attention merge, count/selection/provenance/authority and stated inventory order. Removes only the intermediate filtered array. Existing-owner source review found no semantic blocker. Package-boundary and view-model suites pass14; combined browser gzip4065 fits unchanged4067 cap after baseline4069 failure; UI types pass. No hosted successor/native/provider proof inferred.","inputs":["packages/basis-pane/README.md","packages/basis-pane/src/session-inventory-view.ts"]}
+  ]
+}

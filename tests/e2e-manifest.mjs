@@ -1729,6 +1729,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/basis-answer-lifecycle.spec.ts',
+    bucket: 'extended',
+    surface: 'Basis / exact answer retention',
+    tierTarget: 'full',
+    primary: false,
+    rationale:
+      'An isolated real Station, local model fixture, exact answer inspection before Keep, authenticated Task retention, Surface producer publication, process restart, and assessment revocation without rewriting the retained answer. No paid provider or protected route mocks.',
+    exceptions: [],
+  },
+  {
     path: 'tests/chat-inventory-layout.spec.ts',
     bucket: 'extended',
     surface: 'Chat / Session context',
