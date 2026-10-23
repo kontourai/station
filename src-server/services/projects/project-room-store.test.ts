@@ -3,7 +3,11 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createProjectRoomRuntime } from './project-room-store.js';
+import { openPrivateSqlite } from '../../utils/private-sqlite.js';
+import {
+  createProjectRoomRuntime,
+  ProjectRoomStore,
+} from './project-room-store.js';
 
 const scope = {
   stationId: 'station',
@@ -150,6 +154,36 @@ describe('ProjectRoomStore durable boundaries', () => {
     expect(b.store.history(scope, page.nextAfter!).messages.at(-1)?.seq).toBe(
       40,
     );
+  });
+  it('refuses a competing connection during final admission and rolls back the losing admission', () => {
+    const db = openPrivateSqlite(
+      join(home, 'security', 'project-rooms.sqlite'),
+      'Project rooms',
+    );
+    const competing = new ProjectRoomStore(db);
+    db.exec('PRAGMA busy_timeout=0');
+    const input = { intentId: randomUUID(), text: 'competing writer' };
+    try {
+      expect(() =>
+        a.store.append(
+          scope,
+          actor,
+          { intentId: randomUUID(), text: 'revoked writer' },
+          () => {
+            expect(() =>
+              competing.append(scope, actor, input, current),
+            ).toThrow(/locked/);
+            throw new Error('revoked at admission');
+          },
+        ),
+      ).toThrow('revoked at admission');
+      expect(competing.append(scope, actor, input, current).seq).toBe(1);
+      expect(
+        b.store.history(scope).messages.map((message) => message.text),
+      ).toEqual(['competing writer']);
+    } finally {
+      db.close();
+    }
   });
   it('retains started effects as ambiguous across restart and never silently replays them', () => {
     const input = {
