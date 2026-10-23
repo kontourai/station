@@ -61,7 +61,9 @@ function object(value: unknown, keys: string[]): Row {
     corrupt();
   return value as Row;
 }
-function scopeValue(value: unknown): ProjectMembershipScope {
+function assertScopeValue(
+  value: unknown,
+): asserts value is ProjectMembershipScope {
   const v = object(value, [
     'stationId',
     'localProjectId',
@@ -80,7 +82,10 @@ function scopeValue(value: unknown): ProjectMembershipScope {
       Buffer.byteLength(v[k]) > 512
     )
       corrupt();
-  return v as unknown as ProjectMembershipScope;
+}
+function scopeValue(value: unknown): ProjectMembershipScope {
+  assertScopeValue(value);
+  return value;
 }
 function decode<T>(row: Row, parse: (value: unknown) => T): T {
   try {
@@ -89,7 +94,9 @@ function decode<T>(row: Row, parse: (value: unknown) => T): T {
     return corrupt();
   }
 }
-function requestValue(value: unknown): ProjectRoomAgentRequest {
+function assertRequestValue(
+  value: unknown,
+): asserts value is ProjectRoomAgentRequest {
   const v = object(value, [
     'intentId',
     'text',
@@ -138,7 +145,10 @@ function requestValue(value: unknown): ProjectRoomAgentRequest {
     (v.state === 'published') !== (v.publishedMessageId !== undefined)
   )
     corrupt();
-  return v as unknown as ProjectRoomAgentRequest;
+}
+function requestValue(value: unknown): ProjectRoomAgentRequest {
+  assertRequestValue(value);
+  return value;
 }
 export class ProjectRoomStore {
   private listeners = new Map<string, Set<() => void>>();
@@ -357,7 +367,7 @@ export class ProjectRoomStore {
   history(
     scope: ProjectMembershipScope,
     after = 0,
-    limit = LIMITS.defaultPageSize as number,
+    limit: number = LIMITS.defaultPageSize,
   ): ProjectRoomHistory {
     if (
       !Number.isSafeInteger(after) ||

@@ -120,7 +120,7 @@ export function registerKnowledgeDataTools(server: StationControlToolRegistry) {
             const caller = await getStationControlCaller();
             if (!caller) throw new StationControlCallerRequiredError();
             const projectId =
-              caller?.projectIdSource === 'session-record'
+              caller.projectIdSource === 'session-record'
                 ? caller.localProjectId
                 : undefined;
             return roots.map(
@@ -140,7 +140,7 @@ export function registerKnowledgeDataTools(server: StationControlToolRegistry) {
                   ? {
                       isCurrentProject: rootProjectId === projectId,
                       currentProjectId: projectId,
-                      currentProjectSlug: caller?.projectSlug,
+                      currentProjectSlug: caller.projectSlug,
                     }
                   : {}),
               }),

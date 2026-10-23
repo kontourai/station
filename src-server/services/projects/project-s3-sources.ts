@@ -287,7 +287,7 @@ export class ProjectS3Sources {
         return super.handle(...args);
       }
     }
-    const client = new S3Client({
+    return new S3Client({
       region: entry.region,
       credentials: fromIni({ profile: entry.profile }),
       maxAttempts: 1,
@@ -298,7 +298,6 @@ export class ProjectS3Sources {
         requestTimeout: 20000,
       }),
     });
-    return client;
   }
   private refusal(error: unknown): never {
     if (error instanceof ProjectS3SourceError) throw error;
