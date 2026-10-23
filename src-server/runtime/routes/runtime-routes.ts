@@ -1296,7 +1296,7 @@ export function isProjectMemberDraftLease(method: string, path: string) {
 }
 
 /** Only these leaves delegate membership actions to the Room service. */
-export function isProjectMemberRoomAction(method: string, path: string) {
+function isProjectMemberRoomAction(method: string, path: string) {
   return (
     (method === 'POST' &&
       /^\/api\/projects\/[^/]+\/room\/(?:init|messages|presence|agents|agents\/[^/]+\/(?:cancel|reconcile))$/.test(

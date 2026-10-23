@@ -2715,6 +2715,10 @@ captured request without relaunching it. Request/reconcile routes register the o
 restart or lease expiry requires fresh authorized recovery. Room checkpoint changes
 refresh the UI request handle.
 
+The Room's **Recap Project** action prepares an editable scoped prompt without
+dispatch. The normal Agent picker and explicit request remain the execution
+owner; the prompt asks for citations, observed freshness, coverage and gaps.
+
 The operator and member Project pages mount the scoped Room. Focused store,
 access, SDK and UI tests cover those owners; production mounting, provider-backed
 execution and two-principal browser acceptance require separate runtime evidence.

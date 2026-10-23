@@ -307,6 +307,11 @@ cancellation on unmount. Handles exclude private Session and execution correlati
 Authority or capability loss retires the retained browser request. Direct Agent
 conversations remain in the dock; Room requests do not create a Task hierarchy.
 
+**Recap Project** prepares an editable prompt for the current Project. Review it,
+choose an Agent, then select **Ask in room** to execute. Preparation sends nothing
+and preserves an existing draft. The prompt asks for permitted evidence, citations,
+freshness, coverage and gaps; it does not grant access or promote memory.
+
 The client tests exercise fetch responses and rejection bounds; the mounted UI
 tests exercise two independent query contexts, SSE invalidation and revocation,
 reload retry, authority retirement, note conflicts, and unsaved navigation.

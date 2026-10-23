@@ -73,6 +73,10 @@ Projects present themselves as layouts — arrangements of panels for a particul
 
 Open a Project's **Room** for shared discussion, notes, presence and explicit Agent requests. It is separate from a Task's Conversation and private Agent chats. Reading, discussion, note editing and execution require their respective current Project permissions and transport grants; Agent execution also needs host execution permission.
 
+**Recap Project** prepares a prompt to review in the Room. Choose an Agent and
+explicitly **Ask in room** to request a cited recap with freshness and coverage
+limits. Preparing it does not execute work or replace an existing draft.
+
 Use **Sources** to manage repository/folder bindings, Knowledge registrations, document imports and connections. Source registration does not grant execution or expose connector credentials. Project Knowledge registrations bind to the durable Project ID; an older unbound registration needs explicit operator attachment. Experimental S3 sources remain disabled by default pending AWS acceptance. See the [Knowledge guide](../guides/knowledge.md) and [Project membership](../design/project-membership.md).
 
 Project resource resolution and a Task's captured workspace are different

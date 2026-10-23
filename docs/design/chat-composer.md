@@ -95,10 +95,9 @@ chat now stays in Home/the dock; Project Room speech is shared discussion and
 only an explicit Agent request starts Agent work. Files & connections contains
 source and workspace controls, with specialist management still in Settings.
 
-New chat opens the shared start composer. Home renders it inline, and an
-operator's Project page renders a compact version above its activity with
-the Project fixed. The duplicate project chat callout has been removed; the
-composer is the Project’s entry to a new chat. Project and Station controls sit above the text box;
+New chat opens the shared start composer in Home or the chat dock. The Project
+page opens on Overview and keeps its shared Project Room separate from direct
+Agent conversations. Project and Station controls sit above the text box;
 separate Agent and Engine & model controls sit inside it beside Start and the overflow
 for visual skills. The Agent list retains each Agent's repair action: a row that cannot start is
 dimmed and disabled with its one fixing button, and shows a state badge only
@@ -159,8 +158,8 @@ submit or dismiss the underlying foreground composer. Prepared visual skills
 and coding-context drafts keep their existing chat-only path.
 
 The Project header leads with its name, description and observed Git branch.
-The local working-directory path and editor live in Project Settings, alongside
-resource bindings. A branch badge does not claim a GitHub integration or whole
+Files & connections holds source controls and the **Where Agent work starts**
+workspace selector; specialist management remains in Project Settings. A branch badge does not claim a GitHub integration or whole
 Project synchronization: portable Project identity and per-Station resource
 bindings remain separate from Git content synchronization.
 
@@ -171,9 +170,9 @@ Choosing an Agent stages the text without sending it. The Agent uses the
 Personal Board proposal tools, and the person previews and applies the result
 in the Board. See [Personal Boards](../user/personal-boards.md).
 
-A Project page start hands the dock its fixed Project without changing the
-ambient dock binding. An unavailable fixed Project blocks starting and keeps
-the message. Returned drafts are scoped to that Project and Station authority.
+The Project page’s **New Task** action opens task shaping in the chat dock for
+that Project. Project Room messages remain shared discussion; only an explicit
+**Bring an Agent** request starts Agent work from the Room.
 A project with no folder can still be chosen and runs where the server puts it:
 the home folder, or for an ACP engine its connection folder or a private
 Station-managed workspace. The Project control draws its chosen icon, or a
