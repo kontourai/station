@@ -6,6 +6,7 @@ import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import type { CurrentRuntimeRequestPrincipalSecurity } from '../../security/runtime-request-security.js';
 import type { AgentService } from '../../services/agents/agent-service.js';
 import type { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
+import { resolveManagedModelIdentity } from '../plugins/runtime-provider-resolution.js';
 import type { RuntimeContext } from '../types.js';
 import { captureEnvironmentLocalGrantObservationOwner } from './local-grant-observation-owner.js';
 import {
@@ -151,6 +152,75 @@ export class RuntimeFencedCredentialObservationOwner {
       realpathSync(resolve(owners.agentService.getProjectHomeDir())) !== home
     )
       refuse();
+  }
+
+  /** Select the participating Station Agent's actual managed binding. No caller
+   * model/connection/key or implicit engine conversion is accepted here. */
+  async captureAgentSdkCredential(
+    request: Request,
+    agentId: string,
+  ): Promise<
+    Readonly<{
+      agentId: string;
+      provider: 'anthropic' | 'google';
+      modelId: string;
+      instructions: string;
+      credential: ObservedSdkProviderCredential;
+    }>
+  > {
+    const owners = this.#owners;
+    const id = text(agentId);
+    const revision = owners.runtime.getAgentConfigurationRevision();
+    const configuration =
+      owners.configLoader.capturePreparationConfigurationFence([id]);
+    const runtime = owners.agentService.capturePreparationConfigurationFence(
+      [id],
+      () => owners.runtime.getAgentConfigurationRevision(),
+    );
+    const authority = await captureEnvironmentLocalGrantObservationOwner(
+      request,
+      owners.environmentSecurityService,
+      owners.requestSecurity,
+    );
+    const assertCurrent = () => {
+      if (
+        revision === null ||
+        request.signal.aborted ||
+        owners.runtime.getAgentConfigurationRevision() !== revision
+      )
+        refuse();
+      this.#requireSameHome();
+      configuration();
+      runtime();
+      authority.requireCurrentLocalGrant(request).assertCurrent();
+    };
+    assertCurrent();
+    const spec = await owners.agentService.getAgent(id);
+    assertCurrent();
+    if (spec.execution?.agentConnectionId) refuse();
+    const appConfig = await owners.configLoader.loadAppConfig();
+    assertCurrent();
+    const binding = resolveManagedModelIdentity(spec, {
+      appConfig,
+      listProviderConnections: () =>
+        owners.storageAdapter.listProviderConnections(),
+    });
+    const provider = binding.providerType;
+    if (provider !== 'anthropic' && provider !== 'google') refuse();
+    const credential = await this.captureSdkCredential(request, {
+      agentIds: [id],
+      connectionId: binding.providerConnection.id,
+      provider,
+    });
+    assertCurrent();
+    readObservedSdkProviderCredential(credential, provider, request);
+    return Object.freeze({
+      agentId: id,
+      provider,
+      modelId: binding.modelId,
+      instructions: spec.prompt,
+      credential,
+    });
   }
 
   /** Private SDK handoff under the actual boot/configuration read lease. The

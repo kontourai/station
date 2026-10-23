@@ -34,11 +34,11 @@ async function prepare(observed = { starts: 0 }) {
   let body = '';
   const configuration = {
     provider: 'anthropic' as const,
-    modelId: 'claude-sonnet-4-6',
+    modelId: credentials.selection.modelId,
     credential: credentials.credential,
     preparation,
     brief: 'inspect exactly this source',
-    instructions: 'report only',
+    instructions: credentials.selection.instructions,
     maxOutputTokens: 10,
     remaining,
     now: Date.now,

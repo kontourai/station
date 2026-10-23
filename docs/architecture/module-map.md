@@ -2014,7 +2014,13 @@ boot revision, home identity and authenticated Request. It stays readable after
 the read callback returns, while abort, revocation, credential replacement or
 configuration/runtime drift refuses subsequent SDK use. A timed-out queued
 callback cannot create an observation later. The ordinary observation operation
-still returns only its bounded DTO.
+still returns only its bounded DTO. Its participating-Agent operation reads the
+projected Agent through AgentService and uses Station's existing managed-model
+selector for explicit/default/sole-candidate connection and model selection. It
+carries the configured instructions with the private lease, refuses external
+engine bindings and ambiguous or unsupported providers, and checks the original
+fences after each asynchronous read and credential capture. This is configured
+selection, not a provider readiness or entitlement probe.
 
 This lease authenticates a credential source, not model entitlement or a tariff.
 The existing qualified provider contract remains independently required, and

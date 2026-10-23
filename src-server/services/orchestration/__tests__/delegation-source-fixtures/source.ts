@@ -151,6 +151,11 @@ export async function sdkCredentialFixture(
 ): Promise<{
   credential: ObservedSdkProviderCredential;
   observed: ReturnType<typeof readObservedSdkProviderCredential>;
+  selection: Awaited<
+    ReturnType<
+      RuntimeFencedCredentialObservationOwner['captureAgentSdkCredential']
+    >
+  >;
 }> {
   await f.storage.saveProviderConnection({
     id: 'connection-1',
@@ -164,6 +169,15 @@ export async function sdkCredentialFixture(
         provider === 'anthropic'
           ? 'https://api.anthropic.com/v1'
           : 'https://generativelanguage.googleapis.com/v1beta',
+    },
+  });
+  await f.loader.loadAppConfig();
+  await f.loader.saveAgent('worker', {
+    name: 'SDK report worker',
+    prompt: 'Use the configured report-only instructions',
+    execution: {
+      modelConnectionId: 'connection-1',
+      modelId: provider === 'anthropic' ? 'claude-sonnet-4-6' : 'fixture-model',
     },
   });
   const agentService = new AgentService(
@@ -186,11 +200,8 @@ export async function sdkCredentialFixture(
       commitAgentConfigurationRead: async (_expected, callback) => callback(),
     },
   });
-  const credential = await owner.captureSdkCredential(f.req, {
-    agentIds: ['worker'],
-    connectionId: 'connection-1',
-    provider,
-  });
+  const selection = await owner.captureAgentSdkCredential(f.req, 'worker');
+  const credential = selection.credential;
   const observed = readObservedSdkProviderCredential(credential, provider);
-  return { credential, observed };
+  return { credential, observed, selection };
 }

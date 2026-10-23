@@ -10,6 +10,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import { test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
@@ -47,6 +48,7 @@ async function setup() {
     enforceHomeSchema: true,
   });
   await loader.ensureHomeSchema();
+  await loader.loadAppConfig();
   const environment = new EnvironmentSecurityService({ homeDir: home });
   await environment.initialize();
   const offer = environment.devicePairing.createOffer({
@@ -815,6 +817,112 @@ test('SDK capture refuses a timed-out queued callback before any credential pers
     );
     assert.ok(late);
     await refused(async () => late!());
+    assert.equal(h.records().length, 0);
+  } finally {
+    h.cleanup();
+  }
+});
+
+test('participating Agent preparation selects its configured managed connection, model and instructions', async () => {
+  const h = await setup();
+  try {
+    await h.loader.saveAgent('reviewer', {
+      name: 'Reviewer',
+      prompt: 'Use the configured report-only instructions',
+      execution: {
+        modelConnectionId: 'selected',
+        modelId: 'claude-sonnet-4-6',
+      },
+    });
+    const prepared = await h.service.captureAgentSdkCredential(
+      h.request,
+      'reviewer',
+    );
+    assert.equal(prepared.agentId, 'reviewer');
+    assert.equal(prepared.modelId, 'claude-sonnet-4-6');
+    assert.equal(
+      prepared.instructions,
+      'Use the configured report-only instructions',
+    );
+    const observed = readObservedSdkProviderCredential(
+      prepared.credential,
+      'anthropic',
+      h.request,
+    );
+    assert.equal(observed.connectionId, 'selected');
+    assert.equal(observed.apiKey, 'synthetic-selected-key');
+    assert.ok(!JSON.stringify(prepared).includes('synthetic-selected-key'));
+    await h.loader.saveAgent('reviewer', {
+      name: 'Reviewer',
+      prompt: 'Later changed instructions',
+      execution: { modelConnectionId: 'other', modelId: 'changed-model' },
+    });
+    assert.throws(() =>
+      readObservedSdkProviderCredential(
+        prepared.credential,
+        'anthropic',
+        h.request,
+      ),
+    );
+  } finally {
+    h.cleanup();
+  }
+});
+
+test('native and ambiguous participating Agents cannot be converted into a paid SDK binding', async () => {
+  const h = await setup();
+  try {
+    await h.loader.saveAgent('reviewer', {
+      name: 'Reviewer',
+      prompt: 'Report',
+      execution: { modelId: 'claude-sonnet-4-6' },
+    });
+    await assert.rejects(() =>
+      h.service.captureAgentSdkCredential(h.request, 'reviewer'),
+    );
+    assert.equal(h.records().length, 0);
+    await h.loader.saveAgent('reviewer', {
+      name: 'Reviewer',
+      prompt: 'Report',
+      execution: {
+        agentConnectionId: engineConnectionId('claude'),
+        modelConnectionId: 'selected',
+        modelId: 'claude-sonnet-4-6',
+      },
+    });
+    await assert.rejects(() =>
+      h.service.captureAgentSdkCredential(h.request, 'reviewer'),
+    );
+    assert.equal(h.records().length, 0);
+  } finally {
+    h.cleanup();
+  }
+});
+
+test('participating Agent changes during its read refuse before issuing a credential', async () => {
+  const h = await setup();
+  try {
+    const original = {
+      name: 'Reviewer',
+      prompt: 'First instructions',
+      execution: {
+        modelConnectionId: 'selected',
+        modelId: 'claude-sonnet-4-6',
+      },
+    };
+    await h.loader.saveAgent('reviewer', original);
+    const getAgent = h.owners.agentService.getAgent.bind(h.owners.agentService);
+    h.owners.agentService.getAgent = async (id) => {
+      const observed = await getAgent(id);
+      await h.loader.saveAgent('reviewer', {
+        ...original,
+        prompt: 'Changed while reading',
+      });
+      return observed;
+    };
+    await assert.rejects(() =>
+      h.service.captureAgentSdkCredential(h.request, 'reviewer'),
+    );
     assert.equal(h.records().length, 0);
   } finally {
     h.cleanup();
