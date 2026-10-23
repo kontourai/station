@@ -1,3 +1,8 @@
+import { agentId } from '@kontourai/station-contracts/agent-identity';
+import {
+  createNativeForegroundRelay,
+  runWithNativeForegroundRelay,
+} from '../../../runtime/conversation/native-foreground-invocation.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 /**
  * #3279: two people connect the same OAuth MCP server with their own
@@ -661,7 +666,49 @@ test('two principals each reach the MCP server with their own token and cannot u
       authorization: 'Bearer token-dave-sales',
       value: 'dave-sales',
     });
+    const callGlobalAgentInProject = async (
+      projectSlug: string,
+      value: string,
+    ) => {
+      const relay = createNativeForegroundRelay(
+        {
+          agentId: agentId('mail-agent'),
+          agentSpec: {
+            name: 'Global mail',
+            prompt: '',
+            tools: { mcpServers: [SERVER], available: ['*'] },
+          },
+          project: {
+            id: `project-${projectSlug}`,
+            slug: projectSlug,
+            name: projectSlug,
+            createdAt: '2026-10-22T00:00:00.000Z',
+            updatedAt: '2026-10-22T00:00:00.000Z',
+          },
+          workspaceIsolationMode: 'shared',
+          message: value,
+          invoke: async (_phase, _actual, effect) => effect(),
+        },
+        { threadId: `session-${value}`, userId: DAVE },
+      );
+      try {
+        return await runWithNativeForegroundRelay(relay, () =>
+          callAs(DAVE, value),
+        );
+      } finally {
+        relay.close();
+      }
+    };
+    await callGlobalAgentInProject('sales', 'dave-global-agent-sales');
+    expect(fixture.toolCalls.at(-1)).toEqual({
+      authorization: 'Bearer token-dave-sales',
+      value: 'dave-global-agent-sales',
+    });
     const beforeDeniedProject = fixture.toolCalls.length;
+    await expect(
+      callGlobalAgentInProject('engineering', 'dave-global-wrong-project'),
+    ).rejects.toThrow('Connect your account');
+
     await expect(
       callDaveProject('engineering', 'dave-wrong-project'),
     ).rejects.toThrow('Connect your account');
@@ -679,6 +726,9 @@ test('two principals each reach the MCP server with their own token and cannot u
     expect(daveDisconnected.status).toBe(200);
     await expect(
       callDaveProject('sales', 'dave-retained-after-disconnect'),
+    ).rejects.toThrow('Connect your account');
+    await expect(
+      callGlobalAgentInProject('sales', 'dave-global-after-disconnect'),
     ).rejects.toThrow('Connect your account');
     expect(fixture.toolCalls).toHaveLength(beforeDeniedProject);
 
