@@ -1,0 +1,7 @@
+{
+  "revision": "b51abc7935abe58128f47f6cd4ae4da1aefac32a",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Read the full guide as public-interface routing plus explicit prospective hosted/cloud/commercial requirements. Independent report-only mapping review agrees four whole references are navigation destinations, not authorities for restated endpoint/schema/command details; remove only their semantic dependencies, leaving links intact and without claiming those references fully audited. Added explicit inactive/unpublished availability caveat. Replace broad CLI reference dependency for current service-run ownership claim with direct service-run/service-liveness owners: atomic claim before startup and contention wait. Root checked current hosted pre/post-schema private filesystem gates before ConfigLoader/EventStore, which do not supply Postgres tenancy; workspace-copy text preserves separate Project/sign-in/execution steps. Retain deployment/auth/plugin/workspace and runtime owners. Historical prices, AWS/Marketplace delivery, tenant isolation and complete auth/provider/runtime qualification are not renewed.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/cli.md","docs/reference/contracts.md","docs/reference/sdk.md","packages/cli/src/commands/service-run.ts","packages/cli/src/commands/service-liveness.ts"]}
+  ]
+}

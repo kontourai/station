@@ -1,0 +1,7 @@
+{
+  "revision": "b51abc7935abe58128f47f6cd4ae4da1aefac32a",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Read complete141line design as dated June proposal/phased implementation, with current form-draft/reentry paragraph and explicit obsolete ui-state/per-Agent route warning. Reconciled affected ChatMessageList and StreamingMessage claims at32cb7e3: submitForm still begins token-bound draft, formats payload through normal useSendMessage and handles accepted/not-invoked/indeterminate plus claimRetry; provider wraps transcript; live and persisted ui-block branches still pass stable uiBlockIdentity to UIBlockRenderer. Identity/store owners retain connection/chat/conversation scope, result-event+ordinal fallback and close cleanup. Child cards, scroll/virtualization, app-tool wrappers and mobile posture changes do not replace that form path. No prose change needed. This is affected-source review, not fresh rendered UI, submission transport/provider/e2e or historical shipped-phase proof.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/chat/StreamingMessage.tsx"]}
+  ]
+}
