@@ -974,6 +974,7 @@ describe('external TestFlight distribution command', () => {
   function provider(
     options: {
       state?: string;
+      namedGroups?: number;
       groupApp?: string;
       buildApp?: string;
       buildVersion?: string;
@@ -995,12 +996,24 @@ describe('external TestFlight distribution command', () => {
       const method = init?.method ?? 'GET';
       if (method !== 'GET') mutations.push(`${method} ${path}`);
       const body = init?.body ? JSON.parse(String(init.body)) : null;
+      if (method === 'GET' && path === '/v1/betaGroups') {
+        const query = new URL(String(input)).searchParams;
+        expect(query.get('filter[app]')).toBe('app-1');
+        expect(query.get('filter[name]')).toBe('Friends & Family');
+        return response(
+          Array.from({ length: options.namedGroups ?? 1 }, (_, i) => ({
+            type: 'betaGroups',
+            id: i === 0 ? 'external-1' : 'external-2',
+            attributes: { name: 'Friends & Family', isInternalGroup: false },
+          })),
+        );
+      }
       if (method === 'GET' && path === '/v1/betaGroups/external-1')
         return response({
           type: 'betaGroups',
           id: 'external-1',
           attributes: {
-            name: 'Nightly Testers',
+            name: 'Friends & Family',
             isInternalGroup: options.internal ?? false,
           },
         });
@@ -1082,7 +1095,10 @@ describe('external TestFlight distribution command', () => {
     return mutations;
   }
   const outputPath = () => join(makeTempDir('asc-external-'), 'receipt.json');
-  const run = (output: string, environment = env) =>
+  const run = (
+    output: string,
+    environment: typeof env & { TESTFLIGHT_EXTERNAL_GROUP_NAME?: string } = env,
+  ) =>
     main(
       [
         'distribute-external',
@@ -1168,6 +1184,33 @@ describe('external TestFlight distribution command', () => {
         status: 'failed',
         phase: 'preflight',
       });
+    },
+  );
+
+  test.each([0, 1, 2])(
+    'resolves a named group only when exactly one external match exists (%i)',
+    async (namedGroups) => {
+      const mutations = provider({ namedGroups });
+      const output = outputPath();
+      const result = run(output, {
+        ...env,
+        TESTFLIGHT_EXTERNAL_GROUP_ID: '',
+        TESTFLIGHT_EXTERNAL_GROUP_NAME: 'Friends & Family',
+      });
+      if (namedGroups === 1) {
+        await result;
+        expect(receipt(output)).toMatchObject({
+          status: 'submitted',
+          groupId: 'external-1',
+          groupName: 'Friends & Family',
+          membershipVerified: true,
+        });
+      } else {
+        await expect(result).rejects.toThrow(
+          /Expected exactly one external tester group/,
+        );
+        expect(mutations).toEqual([]);
+      }
     },
   );
 

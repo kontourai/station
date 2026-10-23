@@ -758,6 +758,7 @@ jobs:
         timeout-minutes: 5
         env:
           TESTFLIGHT_EXTERNAL_GROUP_ID: ${{ vars.TESTFLIGHT_EXTERNAL_GROUP_ID }}
+          TESTFLIGHT_EXTERNAL_GROUP_NAME: ${{ vars.TESTFLIGHT_EXTERNAL_GROUP_NAME }}
         run: |
           build_id=$(node -p 'JSON.parse(require("node:fs").readFileSync("provider-receipts/testflight-build-receipt.json", "utf8")).buildId')
           node scripts/app-store-connect-receipt.mjs distribute-external --app-id '${{ steps.app_store.outputs.app_id }}' --build-id "$build_id" --bundle-version '${{ inputs.bundle_version }}' --output provider-receipts/testflight-external-distribution.json

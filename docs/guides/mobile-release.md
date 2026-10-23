@@ -532,8 +532,11 @@ upload, processing and internal-group readback succeed. Stable, Beta, staging,
 and the dispatch-only internal TestFlight cohort do not opt in.
 
 Create an external tester group for the Nightly app, invite its testers, and
-set its ID as `TESTFLIGHT_EXTERNAL_GROUP_ID` in the `ios-nightly` GitHub
-Environment. The pipeline verifies that both the group and the exact uploaded
+set its ID as `TESTFLIGHT_EXTERNAL_GROUP_ID`, or its exact name as
+`TESTFLIGHT_EXTERNAL_GROUP_NAME`, in the `ios-nightly` GitHub Environment.
+Name lookup requires exactly one external group for that app; absent or
+ambiguous matches warn without distributing. When both are set, the ID is
+used and the name must match. The pipeline verifies that both the group and the exact uploaded
 build belong to the expected app; it never selects an arbitrary latest build
 or creates a group. Configure the app's beta description, feedback email,
 review contact and any required reviewer access in App Store Connect first.

@@ -155,7 +155,8 @@ done
 
 # Ordinary Nightly only: existing external tester group for the Nightly app.
 # Missing configuration warns without failing internal TestFlight delivery.
-gh variable set TESTFLIGHT_EXTERNAL_GROUP_ID --repo kontourai/station --env ios-nightly
+gh variable set TESTFLIGHT_EXTERNAL_GROUP_NAME --repo kontourai/station --env ios-nightly --body "External Testers"
+# Alternatively, set TESTFLIGHT_EXTERNAL_GROUP_ID to pin the existing group by ID.
 ```
 
 Complete the [external TestFlight setup](mobile-release.md#nightly-external-testflight-distribution)

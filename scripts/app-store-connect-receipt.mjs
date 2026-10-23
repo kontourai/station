@@ -714,7 +714,8 @@ async function distributeExternal(argv, env) {
     appId: requiredOption(argv, '--app-id'),
     buildId: requiredOption(argv, '--build-id'),
     bundleVersion: requiredOption(argv, '--bundle-version'),
-    groupId: env.TESTFLIGHT_EXTERNAL_GROUP_ID ?? null,
+    groupId: env.TESTFLIGHT_EXTERNAL_GROUP_ID || null,
+    groupName: env.TESTFLIGHT_EXTERNAL_GROUP_NAME || null,
   };
   const checkpoint = () =>
     writeReceipt(output, {
@@ -723,12 +724,38 @@ async function distributeExternal(argv, env) {
     });
   checkpoint();
   try {
-    const { appId, buildId, bundleVersion, groupId } = receipt;
+    const { appId, buildId, bundleVersion } = receipt;
+    const credentials = credentialsFromEnvironment(env);
+    if (!receipt.groupId && receipt.groupName) {
+      const query = new URLSearchParams({
+        'filter[app]': appId,
+        'filter[name]': receipt.groupName,
+        limit: '2',
+      });
+      const payload = await appStoreConnectRequest(
+        `/v1/betaGroups?${query}`,
+        credentials,
+      );
+      const matches = Array.isArray(payload?.data)
+        ? payload.data.filter(
+            (group) =>
+              group?.type === 'betaGroups' &&
+              group.attributes?.name === receipt.groupName &&
+              group.attributes?.isInternalGroup === false,
+          )
+        : [];
+      if (matches.length !== 1 || payload?.links?.next)
+        throw new Error(
+          'Expected exactly one external tester group with the configured name for this app; configure TESTFLIGHT_EXTERNAL_GROUP_ID to resolve ambiguity',
+        );
+      receipt.groupId = matches[0].id;
+      checkpoint();
+    }
+    const { groupId } = receipt;
     if (!/^[A-Za-z0-9-]+$/.test(groupId ?? ''))
       throw new Error(
-        'Set TESTFLIGHT_EXTERNAL_GROUP_ID in the ios-nightly environment to an existing external tester group ID',
+        'Set TESTFLIGHT_EXTERNAL_GROUP_ID or TESTFLIGHT_EXTERNAL_GROUP_NAME in the ios-nightly environment to an existing external tester group',
       );
-    const credentials = credentialsFromEnvironment(env);
     const groupPath = `/v1/betaGroups/${encodeURIComponent(groupId)}`;
     const buildPath = `/v1/builds/${encodeURIComponent(buildId)}`;
     const group = (await appStoreConnectRequest(groupPath, credentials)).data;
@@ -743,6 +770,7 @@ async function distributeExternal(argv, env) {
       group?.type !== 'betaGroups' ||
       group.id !== groupId ||
       group.attributes?.isInternalGroup !== false ||
+      (receipt.groupName && group.attributes?.name !== receipt.groupName) ||
       groupApp?.type !== 'apps' ||
       groupApp.id !== appId
     )
