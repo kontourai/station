@@ -4419,12 +4419,13 @@ export function createOrchestrationRoutes(
       );
       assertCurrent();
       const terminal = window?.events.find(
-        ({ event }) =>
+        ({ event, elided }) =>
           event.threadId === handle.sessionId &&
           event.turnId === handle.initialTurnId &&
           (event.method === 'turn.completed' ||
             event.method === 'turn.aborted' ||
             (event.method === 'runtime.error' &&
+              elided !== 'byte_limit' &&
               !isDeferredRetriableTurnError(event))),
       );
       if (terminal && terminal.event.method !== 'turn.completed')

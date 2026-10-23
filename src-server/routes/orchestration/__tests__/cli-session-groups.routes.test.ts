@@ -32,6 +32,7 @@ function fixture(home = temporary('station-cli-group-')) {
     string,
     TurnCompletedEvent['finishReason']
   >();
+  const elidedRetryErrors = new Set<string>();
   const windowReads: string[] = [];
   let beforeDispatch: (input: DispatchInput) => Promise<void> = async () => {};
   let current = true;
@@ -64,8 +65,22 @@ function fixture(home = temporary('station-cli-group-')) {
       readSessionEventWindow: async (threadId: string) => {
         windowReads.push(threadId);
         return {
-          events:
-            statuses.get(threadId) &&
+          events: [
+            ...(elidedRetryErrors.has(threadId)
+              ? [
+                  {
+                    elided: 'byte_limit',
+                    event: {
+                      eventId: `retry:${threadId}`,
+                      provider: 'codex',
+                      threadId,
+                      turnId: `turn:${threadId}`,
+                      method: 'runtime.error',
+                    },
+                  },
+                ]
+              : []),
+            ...(statuses.get(threadId) &&
             statuses.get(threadId) !== 'completed' &&
             !completedInitialTurns.has(threadId) &&
             !terminalMethods.has(threadId)
@@ -84,7 +99,8 @@ function fixture(home = temporary('station-cli-group-')) {
                           : 'stop',
                     },
                   },
-                ],
+                ]),
+          ],
         };
       },
     } as never,
@@ -150,6 +166,7 @@ function fixture(home = temporary('station-cli-group-')) {
     cancelledInitialTurns,
     initialFinishReasons,
     windowReads,
+    elidedRetryErrors,
     delegateTask,
     observeDelegatedTask,
     interruptDelegatedTask,
@@ -768,6 +785,7 @@ test.each(['completed', 'failed', 'canceled'])(
     const f = fixture();
     f.setBeforeDispatch(async (input) => {
       f.terminalTurns.set(input.sessionId!, 'unrelated-turn');
+      f.elidedRetryErrors.add(input.sessionId!);
       f.statuses.set(input.sessionId!, status);
     });
     const { group } = await f.create(
