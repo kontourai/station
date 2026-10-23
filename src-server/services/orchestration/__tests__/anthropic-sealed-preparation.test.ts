@@ -265,3 +265,35 @@ test('production preparation cannot mix credential and source leases from differ
   p.f.owner.releaseSnapshot(p.sealed.capability);
   await sdkDisposalPromise(p.owner, p.prepared.sdkHandle);
 });
+
+test('shared issuer keeps fresh identical-source preparations independent of expired older leases', async () => {
+  const p = await prepare();
+  const first = inspectSdkSourceWire(p.owner, p.prepared.sdkHandle);
+  vi.mocked(Date.now).mockReturnValue(NOW + 1000);
+  const sealed = await p.f.owner.captureSnapshot(
+    p.f.context(),
+    subject,
+    selection,
+  );
+  const owner = createPreparedSdkSourceWireOwner(p.configuration);
+  const prepared = await p.f.owner.prepareSdkSnapshot(
+    p.f.context(),
+    subject,
+    sealed.capability,
+    owner,
+  );
+  const second = inspectSdkSourceWire(owner, prepared.sdkHandle);
+  assert.equal(
+    prepared.source.source_state_id,
+    p.prepared.source.source_state_id,
+  );
+  assert.notEqual(second.contract.id, first.contract.id);
+  p.f.owner.releaseSnapshot(p.sealed.capability);
+  vi.mocked(Date.now).mockReturnValue(NOW + 300_000);
+  assert.throws(() => p.preparation.read(first.contract.id));
+  assert.ok(p.preparation.read(second.contract.id));
+  assert.equal(p.starts, 0);
+  p.f.owner.releaseSnapshot(sealed.capability);
+  await sdkDisposalPromise(p.owner, p.prepared.sdkHandle);
+  await sdkDisposalPromise(owner, prepared.sdkHandle);
+});
