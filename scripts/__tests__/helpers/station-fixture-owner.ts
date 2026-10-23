@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
+import { lookupProcessBirthFingerprint } from '@kontourai/station-shared/process-identity';
 import {
   inspectProcessFingerprint,
   killProcessTree,
@@ -138,11 +139,39 @@ function isWithinRoot(path: string, root: string): boolean {
   return child === '' || (!child.startsWith('..') && !isAbsolute(child));
 }
 
+type CwdProcessObservation = {
+  platform: NodeJS.Platform;
+  birth: (pid: number) => string | null;
+};
+
+function predatesFixtureWorker(
+  pid: number,
+  workerBirth: string | null,
+  observation: CwdProcessObservation,
+): boolean {
+  if (observation.platform !== 'linux') return false;
+  const before = observation.birth(pid);
+  const worker = /^linux:([^:]+):(\d+)$/.exec(workerBirth ?? '');
+  const candidate = /^linux:([^:]+):(\d+)$/.exec(before ?? '');
+  return Boolean(
+    worker &&
+      candidate &&
+      candidate[1] === worker[1] &&
+      BigInt(candidate[2]) < BigInt(worker[2]) &&
+      observation.birth(pid) === before,
+  );
+}
+
 export function observeFixtureCwds(
   roots: readonly string[],
   runLsof: () => LsofResult = runFixtureCwdLsof,
+  processObservation?: CwdProcessObservation,
 ): CwdObservation {
   const canonicalRoots = roots.map(canonicalExistingPath);
+  const workerBirth =
+    processObservation?.platform === 'linux'
+      ? processObservation.birth(process.pid)
+      : null;
   const result = runLsof();
   if (result.error || result.signal || result.status !== 0) {
     const code =
@@ -181,10 +210,20 @@ export function observeFixtureCwds(
       return { source: 'none', reason: 'lsof-malformed-output' };
     }
     const reportedCwd = line.slice(1).replace(/ \(deleted\)$/, '');
-    if (
-      !isAbsolute(reportedCwd) ||
-      / \(readlink: [^\n]*\)$/.test(reportedCwd)
-    ) {
+    if (/ \(readlink: [^\n]*\)$/.test(reportedCwd)) {
+      // Fixture descendants cannot predate the worker that launched them.
+      // Unavailable, reused or contemporaneous identities remain unknown.
+      if (
+        !processObservation ||
+        !reportedCwd.endsWith(' (readlink: Permission denied)') ||
+        !predatesFixtureWorker(pid, workerBirth, processObservation)
+      )
+        return { source: 'none', reason: 'lsof-malformed-output' };
+      pid = undefined;
+      state = 'pid';
+      continue;
+    }
+    if (!isAbsolute(reportedCwd)) {
       return { source: 'none', reason: 'lsof-malformed-output' };
     }
     const cwd = canonicalExistingPath(reportedCwd);
@@ -221,7 +260,13 @@ export class StationFixtureOwner {
   constructor(options: FixtureOwnerOptions = {}) {
     this.#inspectProcess = options.inspectProcess ?? inspectProcessFingerprint;
     this.#killTree = options.killTree ?? killProcessTree;
-    this.#observeFixtureCwds = options.observeFixtureCwds ?? observeFixtureCwds;
+    this.#observeFixtureCwds =
+      options.observeFixtureCwds ??
+      ((roots) =>
+        observeFixtureCwds(roots, runFixtureCwdLsof, {
+          platform: process.platform,
+          birth: lookupProcessBirthFingerprint,
+        }));
   }
 
   registerStatePath(statePath: string): void {

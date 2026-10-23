@@ -154,6 +154,75 @@ describe('StationFixtureOwner', () => {
   });
 
   it.each([
+    ['stable older process', 'linux:boot:1', 'linux:boot:1', 'lsof'],
+    ['same tick as worker', 'linux:boot:2', 'linux:boot:2', 'none'],
+    ['newer descendant', 'linux:boot:3', 'linux:boot:3', 'none'],
+    ['PID reused during observation', 'linux:boot:1', 'linux:boot:3', 'none'],
+    ['different boot', 'linux:other:1', 'linux:other:1', 'none'],
+    ['unavailable birth', null, null, 'none'],
+    ['malformed birth', 'linux:boot:invalid', 'linux:boot:invalid', 'none'],
+  ])('bounds an unreadable cwd by %s', (_case, before, after, expected) => {
+    let reads = 0;
+    const observed = observeFixtureCwds(
+      [tmpdir()],
+      () => ({
+        signal: null,
+        status: 0,
+        stdout: `p${process.pid}\nfcwd\nn${realpathSync(tmpdir())}\np1\nfcwd\nn/proc/1/cwd (readlink: Permission denied)\n`,
+      }),
+      {
+        platform: 'linux',
+        birth: (pid) => {
+          if (pid === process.pid) return 'linux:boot:2';
+          return ++reads === 1 ? before : after;
+        },
+      },
+    );
+    expect(observed.source).toBe(expected);
+    if (observed.source === 'lsof')
+      expect(observed.owners.get(realpathSync(tmpdir()))).toEqual(
+        new Set([process.pid]),
+      );
+  });
+
+  it('keeps direct cwd observations strict without fixture birth scope', () => {
+    const observed = observeFixtureCwds([tmpdir()], () => ({
+      signal: null,
+      status: 0,
+      stdout: `p${process.pid}\nfcwd\nn${realpathSync(tmpdir())}\np${process.ppid}\nfcwd\nn/proc/${process.ppid}/cwd (readlink: Permission denied)\n`,
+    }));
+    expect(observed).toEqual({
+      source: 'none',
+      reason: 'lsof-malformed-output',
+    });
+  });
+
+  it.each([
+    [null, 'Permission denied'],
+    ['linux:boot:2', 'No such file or directory'],
+  ])(
+    'refuses incomplete worker identity or other readlink errors',
+    (workerBirth, error) => {
+      const observed = observeFixtureCwds(
+        [tmpdir()],
+        () => ({
+          signal: null,
+          status: 0,
+          stdout: `p${process.pid}\nfcwd\nn${realpathSync(tmpdir())}\np1\nfcwd\nn/proc/1/cwd (readlink: ${error})\n`,
+        }),
+        {
+          platform: 'linux',
+          birth: (pid) => (pid === process.pid ? workerBirth : 'linux:boot:1'),
+        },
+      );
+      expect(observed).toEqual({
+        source: 'none',
+        reason: 'lsof-malformed-output',
+      });
+    },
+  );
+
+  it.each([
     ['empty output', ''],
     ['missing cwd name', 'p123\nfcwd\n'],
     ['name before cwd descriptor', 'p123\nn/tmp\n'],
