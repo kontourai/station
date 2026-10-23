@@ -544,19 +544,37 @@ test.describe
             response.request().method() === 'POST' &&
             new URL(response.url()).pathname.endsWith('/room/batches'),
         );
+        const retryDocument = owner.waitForResponse(
+          (response) =>
+            response.request().method() === 'GET' &&
+            new URL(response.url()).pathname.endsWith('/room/document') &&
+            response.status() === 200,
+        );
         await owner
           .getByRole('button', { name: 'Retry identical batch' })
           .click();
         expect((await duplicateRequest).postData()).toBe(heldOwnerBatch.body);
-        const duplicateEnvelope = (await duplicateResponse).json() as Promise<{
+        const duplicateReceipt = await duplicateResponse;
+        expect(duplicateReceipt.status()).toBe(200);
+        const duplicateEnvelope = duplicateReceipt.json() as Promise<{
           data?: { kind?: string };
         }>;
         await expect(duplicateEnvelope).resolves.toMatchObject({
           data: { kind: 'duplicate' },
         });
+        const retryAuthoritative = await documentReceipt(await retryDocument);
+        expect(retryAuthoritative.text).toBe(converged);
         await expect(
-          owner.getByText('This exact edit was already saved.'),
-        ).toBeVisible();
+          owner
+            .getByRole('region', { name: 'Task room editor' })
+            .getByRole('status'),
+        ).toHaveText('Saved');
+        await expect(ownerDocument).toHaveValue(retryAuthoritative.text);
+        await expect(ownerDocument).toHaveAttribute(
+          'data-station-working-revision',
+          retryAuthoritative.revision,
+        );
+        await expect(peerDocument).toHaveValue(retryAuthoritative.text);
 
         // Drop both real browser networks so the existing SSE clients must
         // reconnect. Their reconnect snapshots drive document queries; no
@@ -597,6 +615,8 @@ test.describe
 
         const agentText =
           'The Station agent settled this authoritative shared edit.';
+        // Controlled fake-agent publication through the dispatcher fixture;
+        // this does not exercise a real provider turn.
         const agentEdit = await publishTaskRoomAgentEdit(
           taskRoomControlSocket,
           {
@@ -697,7 +717,7 @@ test.describe
         ).toHaveValue(agentText);
         await expect(
           owner.getByRole('complementary', { name: 'Remote selections' }),
-        ).toContainText('Remote selections appear here.');
+        ).toHaveCount(0);
         await expect(
           owner.getByRole('button', { name: 'Stop watching' }),
         ).toHaveCount(0);
