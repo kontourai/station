@@ -172,6 +172,28 @@ describe('useConnectionStatus', () => {
     expect(checkHealth).toHaveBeenCalledOnce();
   });
 
+  it('shares the live health snapshot with a consumer mounted after Strict Mode replay', async () => {
+    const checkHealth = vi.fn().mockResolvedValue(true);
+    const store = storeWithUrl('http://late-shared-server:3141');
+    const options = { checkHealth, pollInterval: 60_000 };
+    const first = renderHook(() => useConnectionStatus(options), {
+      wrapper: wrapper(store),
+      reactStrictMode: true,
+    });
+    await waitFor(() => expect(first.result.current.status).toBe('connected'));
+    const checksBeforeMount = checkHealth.mock.calls.length;
+    const later = renderHook(() => useConnectionStatus(options), {
+      wrapper: wrapper(store),
+      reactStrictMode: true,
+    });
+    await waitFor(() => expect(later.result.current.status).toBe('connected'));
+    expect(checkHealth).toHaveBeenCalledTimes(checksBeforeMount);
+    first.unmount();
+    await act(async () => later.result.current.recheck());
+    await waitFor(() => expect(later.result.current.checking).toBe(false));
+    expect(checkHealth).toHaveBeenCalledTimes(checksBeforeMount + 1);
+  });
+
   it('starts as connecting, resolves to connected when health check passes', async () => {
     const checkHealth = vi.fn().mockResolvedValue(true);
     const store = storeWithUrl('http://ok-server:3141');
