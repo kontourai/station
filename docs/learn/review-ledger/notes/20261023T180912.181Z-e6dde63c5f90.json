@@ -1,0 +1,19 @@
+{
+  "revision": "1eb65328b7fb60eb011621629141c6e72c0202e2",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed CI health history against ci-health qualificationMetrics, collectHealth and the deployed ci-throughput-health workflow. Main qualification includes push, schedule and workflow_dispatch attempts only on main; first terminal failure to later success is an observed recovery interval, not a throughput or release proof. Existing recovery test extended with all three events and off-main/unrelated/unsupported-event exclusions: original push case fails, repaired suite 41 PASS. Schedule records six-hour windows while3101 open and starts no builds; no new collector or hosted evidence claimed.","inputs":["docs/guides/testing.md","scripts/__tests__/ci-health.test.ts","scripts/ci-health.mjs"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed verification-lane/full-gate/report definitions against the narrow testing-guide health-history delta. Qualification attempt reporting now includes main pushes; no verification lane, full qualification receipt, scheduling runtime or telemetry semantics changed. A rendered report still does not prove completeness or correctness; local41 health tests are diagnostic only.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed local CI/push-monitor evidence guidance against the testing-guide health metrics and schedule correction. Push hooks and scoped gates, hosted fast-checks and exact-source completion authorities unchanged; main-push qualification is counted in reporting and does not become local/full proof. No gate or publication bypass introduced.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed deterministic/fail-closed evidence and focused-mutation instructions against health-report event inclusion and testing-guide explanation. Only main qualification push attempts join existing scheduled/manual reporting. Resource classification, subprocess policy, lint/readiness routes and mutation requirements unchanged.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed server guidance link to testing evidence against health-history-only guide delta: no server API, launch, logger, batching, integrity or runtime behavior changed. Qualification reporting includes main push attempts; helper/focused evidence remains distinct from actual caller and hosted proof.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed UI guidance link to testing evidence against health-history-only guide delta: no UI store, selector, React Query, focus, layout or style behavior changed. Reporting main-push qualifications does not establish mounted journey or device/browser proof.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed fixture/hermetic-resource and test-effectiveness instructions against health-report event inclusion. Existing ci-health recovery assertion now covers push/schedule/manual and off-main/unrelated/unsupported-event exclusions; no browser fixture, journey, runtime deadline or test resource classification changed. Focused41 tests are not full hosted or platform proof.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

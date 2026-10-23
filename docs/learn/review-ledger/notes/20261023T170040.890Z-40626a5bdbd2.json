@@ -1,0 +1,7 @@
+{
+  "revision": "48c3c3716b69063b1f04a0c898fc8ab189f9aa1b",
+
+  "notes": [
+    {"path":"docs/guides/documentation.md","note":"Reviewed the current attestation HEAD change against the guide authority and evidence distinctions. The new policy record binds the additive hygiene activation to owner authorization; it does not replace semantic review, resolve reference-only approval independently, or turn local tests into hosted/device proof. Existing documentation workflow and classification remain accurate.","inputs":["docs/guides/documentation.md",".veritas/attestations/HEAD"]}
+  ]
+}

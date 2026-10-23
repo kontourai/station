@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { relative, resolve, sep } from 'node:path';
+import { loadRepoStandards } from '@kontourai/veritas';
 import { loadAll } from 'js-yaml';
 import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 import { npmInvocation } from './lib/npm-cli.mjs';
@@ -244,11 +245,16 @@ function validate(repoRoot) {
     '.veritas/repo-map.json',
     errors,
   );
-  const standards = readJson(
-    resolve(repoRoot, '.veritas/repo-standards/default.repo-standards.json'),
-    '.veritas/repo-standards/default.repo-standards.json',
-    errors,
-  );
+  let standards;
+  try {
+    standards = loadRepoStandards(
+      resolve(repoRoot, '.veritas/repo-standards/default.repo-standards.json'),
+    );
+  } catch (error) {
+    errors.push(
+      `Repo Standards must be readable valid policy: ${error.message}`,
+    );
+  }
   const mapping = readJson(
     resolve(repoRoot, 'scripts/evidence-check-execution.json'),
     'scripts/evidence-check-execution.json',

@@ -784,7 +784,7 @@ export function qualificationMetrics(runs, jobs) {
       (run) =>
         ['Main qualification', 'Main: Qualification'].includes(run.name) &&
         run.head_branch === 'main' &&
-        ['schedule', 'workflow_dispatch'].includes(run.event),
+        ['push', 'schedule', 'workflow_dispatch'].includes(run.event),
     )
     .sort((a, b) => time(a.created_at) - time(b.created_at));
   const restored = [];

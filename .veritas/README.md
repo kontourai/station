@@ -8,11 +8,14 @@ Durable configuration stays under `.veritas/`; generated evidence, feedback,
 and recommendations go under `.kontourai/veritas/`. The
 [0.3-to-0.5 migration record](../docs/strategy/veritas/migration-0.5-record.md)
 is retained as history. Use the current configuration files above for the
-active contract.
+active contract. Repo Standards use the `RepoStandards` resource envelope
+(`metadata.name`, `spec.requirements`); the public Veritas loader normalizes them
+for evaluation and the native `plan` CLI supplies pre-edit guidance.
 
 ## Gate
 
 ```bash
+npm run veritas:plan -- <paths...> # native read-only policy/check plan
 npm run veritas:shadow          # alias: readiness --working-tree
 npm run veritas:readiness       # same, explicit name
 npm run veritas:readiness:diff  # readiness --changed-from main --changed-to HEAD
@@ -33,6 +36,7 @@ own runtime locations. Neither path is protected policy source.
 
 ## Evidence Checks
 
+- `code-hygiene` (required, default): runs the published Veritas Oxlint plugin through `npm run lint:hygiene`; explained suppressions across source/tests and deterministic timing in pure contract tests. Comment findings remain a separate advisory scan. See [Code hygiene](../docs/guides/code-hygiene.md).
 - `style-standard` (required, default): runs `npm run lint:check`.
 - `repo-governance` (required, default): Veritas artifacts, AI instruction wiring, CI/report wiring, pinned workflow actions.
 - `documentation-truth` (required, default): runs `npm run docs:truth:gate`, including recorded document/source freshness scoped to the change (see [keep reviews fresh](../docs/guides/documentation-review-ledger.md#keep-reviews-fresh)). Unknown dependencies and semantic accuracy still need review.
@@ -94,8 +98,8 @@ The dispatcher uses the shared Git directory, so it covers Station worktrees and
 stays silent in unrelated repositories. The required governance artifact rule
 rejects missing project files; `proof:repo-governance` checks their structure.
 A Conduit receipt proves installed bytes, while a normal Codex edit proves host
-execution. Run readiness for edits outside the hook's coverage. The currently pinned
-Veritas 1.7.4 handles `apply_patch` Add File under routed content rules; the plan records the
+execution. Run readiness for edits outside the hook's coverage. The earlier published
+Veritas 1.7.4 probe exercised `apply_patch` Add File under routed content rules; the plan records the
 published-package host probe. That recorded probe is not proof that every
 agent host or edit mechanism executes the hook today. Installation/trust and
 host execution are separate observations; these instructions do not grant
