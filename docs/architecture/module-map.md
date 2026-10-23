@@ -2506,6 +2506,15 @@ New managed paths use Project IDs so a replacement slug cannot reuse its
 predecessor's default storage. Legacy upload/migration stays in Project knowledge;
 Sources owns registration and attachment.
 
+The separate [Neo4j graph routes](../../src-server/routes/knowledge/neo4j-graph-routes.ts)
+require current access to the exact registered root. Graph and shortest-path
+reads require view access. Sync requires edit access for writable roots;
+non-Project conversation roots require current view access and the operator.
+The routes recheck registration identity and authority after driver setup before
+sync, and guard graph, path and sync-stat responses at transport release.
+Conversation graph reads retain per-caller node and path filtering. Sync is not
+atomic with later revocation, and delivered bytes cannot be recalled.
+
 **Follow the code.** [The
 provider](../../src-server/knowledge-store/knowledge-store-provider.ts) is constructed
 by [service bootstrap](../../src-server/runtime/bootstrap/runtime-service-bootstrap.ts)

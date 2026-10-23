@@ -663,8 +663,16 @@ alongside the file-based graph by default) and a "Sync now" button triggers
 Kit-CLI access to the same routes remains equally valid — the toggle is a UI convenience over the
 same API, not a replacement for it.
 
-**What "Neo4j graph view isn't configured" means.** Every one of those Neo4j routes answers an
-honest `503` with that reason whenever no connection is registered — which is the default, out of
+Neo4j reads require current view access to the selected root. Synchronization
+requires edit access for writable roots; non-Project conversation roots require
+current view access and the operator. The server checks the same registered
+root incarnation, rechecks authority after driver setup before sync, and guards
+graph, shortest-path and sync-stat delivery. Conversation projections still
+filter nodes and paths to the caller's readable Sessions. These checks cannot
+recall bytes already delivered or undo an admitted sync.
+
+**What "Neo4j graph view isn't configured" means.** For an authorized request to a current root, those Neo4j routes return
+`503` with that reason when no connection is registered — which is the default, out of
 the box, on every Station install. Nothing about knowledge stores, capture, or the file-based
 Library graph requires Neo4j; it is purely optional. "Not configured" specifically means no process
 has called `registerNeo4jGraphViewConnection(...)` (`src-server/knowledge-store/neo4j-connection.ts`)
