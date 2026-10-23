@@ -311,11 +311,14 @@ A session spawned before this change has nothing recorded.
 - **Codex** takes the knobs on every `turn/start`. The server resolves a
   concrete pair whenever anything is recorded, so a Default pick is no longer
   a no-op.
-- **ACP, Ollama, Bedrock, Muse and the Station agent** have no knob.
-  - The command is refused on them with "This engine has no approval control".
-  - A carried pick is not recorded for them.
-  - After a handoff to such an engine, a recorded posture is not sent to it.
-  - ACP's session `mode` is a separate control.
+- **Ollama, Bedrock, Muse and the Station agent** have no approval knob.
+  The command refuses, a carried pick is not recorded, and a recorded posture
+  is not sent after handoff to such an engine.
+- **ACP support depends on the connection.** Station applies posture when
+  `acpApprovalControl` is `station`; otherwise the command refuses and posture
+  is not applied. ACP session `mode` remains a separate control. OpenCode may
+  refuse a requested posture when its resolved governance rules prevent
+  Station from applying it; see the [Session API](../reference/session-api.md).
 
 ### 4.6 Offline and early picks, and compare-and-set (MEDIUM-1)
 
