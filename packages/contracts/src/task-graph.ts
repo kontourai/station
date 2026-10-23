@@ -518,6 +518,58 @@ export function parseTaskGateEvaluationReference(
   }
 }
 
+/** Exact Task incarnation; IDs alone never authorize a relationship. */
+export interface TaskIdentity {
+  taskId: string;
+  taskCreatedAt: string;
+}
+
+export interface TaskParentMutationInput {
+  operationId: string;
+  child: TaskIdentity;
+  expectedRevision: number;
+  parent: TaskIdentity | null;
+}
+
+export interface TaskChildCreateInput {
+  operationId: string;
+  parent: TaskIdentity;
+  task: TaskCreateInput;
+}
+
+export interface TaskParentMutationResult {
+  child: TaskIdentity;
+  parent: TaskIdentity | null;
+  previousParent: TaskIdentity | null;
+  revision: number;
+}
+
+export interface TaskWorkChatMutationInput {
+  operationId: string;
+  task: TaskIdentity;
+  conversationId: string;
+  expectedRevision: number;
+  linked: boolean;
+}
+
+export interface TaskWorkChatMutationResult {
+  task: TaskIdentity;
+  conversationId: string;
+  linked: boolean;
+  revision: number;
+}
+
+/** Only currently readable children appear; no hidden count or sentinel. */
+export interface TaskChildrenResult {
+  task: TaskIdentity;
+  children: TaskRecord[];
+}
+
+export interface TaskWorkChatsResult {
+  task: TaskIdentity;
+  conversationIds: string[];
+}
+
 export interface TaskRecord {
   id: string;
   projectId: string;
@@ -552,6 +604,9 @@ export interface TaskRecord {
    * Absent means off.
    */
   closeOnMerge?: boolean;
+  /** Deliverable hierarchy, independent of execution Sessions and status. */
+  parent?: TaskIdentity;
+  relationshipRevision?: number;
 }
 
 export interface TaskCreateInput {
