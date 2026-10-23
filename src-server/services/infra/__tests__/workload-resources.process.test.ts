@@ -126,6 +126,9 @@ describe.skipIf(!manager)('running server workload containment', () => {
         process.execPath,
         '--import',
         'tsx',
+        ...(process.env.STATION_RESOURCE_PROOF_SYSTEMD_PRELOAD
+          ? ['--import', process.env.STATION_RESOURCE_PROOF_SYSTEMD_PRELOAD]
+          : []),
         fileURLToPath(
           new URL('./helpers/workload-resource-server.ts', import.meta.url),
         ),
@@ -332,19 +335,26 @@ describe.skipIf(!manager)('running server workload containment', () => {
     expect(await gone(sibling.pid)).toBe(false);
   });
 
-  test('unavailable enforcement keeps management available and refuses new workloads', async () => {
-    const result = await request<{
-      blocked: boolean;
-      error: string;
-      workloads: Snapshot;
-    }>('/unavailable');
-    expect(result.blocked).toBe(true);
-    expect(result.workloads.state).toBe('unavailable');
-    expect(result.error).toContain('cannot start this workload');
-    expect(
-      (await request<{ workloads: Snapshot }>('/status')).workloads.state,
-    ).toBe('ready');
-  });
+  test.each([
+    ['', 'STATION_WORKLOAD_MEMORY_MIB'],
+    ['?systemd=249', 'requires systemd 253 or newer'],
+  ])(
+    'unavailable enforcement keeps management available and refuses new workloads (%s)',
+    async (query, reason) => {
+      const result = await request<{
+        blocked: boolean;
+        error: string;
+        workloads: Snapshot;
+      }>(`/unavailable${query}`);
+      expect(result.blocked).toBe(true);
+      expect(result.workloads.state).toBe('unavailable');
+      expect(result.error).toContain('cannot start this workload');
+      expect(result.error).toContain(reason);
+      expect(
+        (await request<{ workloads: Snapshot }>('/status')).workloads.state,
+      ).toBe('ready');
+    },
+  );
 
   test('aggregate memory exhaustion is contained outside the answering server', async () => {
     await request('/aggregate');
