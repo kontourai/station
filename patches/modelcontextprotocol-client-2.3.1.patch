@@ -16,11 +16,15 @@
 +			}, cross_spawn.default);
 --- a/dist/stdio.d.mts
 +++ b/dist/stdio.d.mts
-@@ -6,0 +7,2 @@
+@@ -6 +6,3 @@
+-type StdioServerParameters = {
++type StdioServerParameters = {
 +  /** Station-owned spawn boundary, retained by negotiation siblings. */
 +  spawnProcess?: (command: string, args: string[], options: import("node:child_process").SpawnOptions, defaultSpawn: typeof import("node:child_process").spawn) => import("node:child_process").ChildProcess;
 --- a/dist/stdio.d.cts
 +++ b/dist/stdio.d.cts
-@@ -6,0 +7,2 @@
+@@ -6 +6,3 @@
+-type StdioServerParameters = {
++type StdioServerParameters = {
 +  /** Station-owned spawn boundary, retained by negotiation siblings. */
 +  spawnProcess?: (command: string, args: string[], options: import("node:child_process").SpawnOptions, defaultSpawn: typeof import("node:child_process").spawn) => import("node:child_process").ChildProcess;
