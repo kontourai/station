@@ -1,22 +1,31 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
+import {
+  closeSync,
+  constants,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
 import type { RootAuthorityV2 } from '@kontourai/flow-agents/delegation-authority-contract';
 import { createDelegationAuthorityService } from '@kontourai/flow-agents/delegation-authority-service';
+import type { DelegationRetainedAccountingV1 } from '@kontourai/flow-agents/delegation-dispatch';
 import type { DelegationEnvelopeV2 } from '@kontourai/flow-agents/delegation-envelope-v2';
 import {
   delegationEnvelopeDigestV2,
   rootAuthorityReferenceV2,
 } from '@kontourai/flow-agents/delegation-envelope-v2';
 import type { DelegationGroupSpecV2 } from '@kontourai/flow-agents/delegation-group-v2';
-import { createDelegationGroupControllerV2 } from '@kontourai/flow-agents/delegation-group-v2';
+import { createDelegationGroupControllerAccountingV1 } from '@kontourai/flow-agents/delegation-group-v2';
 import {
   canonicalJson,
   type ModelInvocationResult,
   type ModelRuntime,
 } from '@kontourai/relay';
+import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
 import type {
   BoundedApiProvider,
   ResolvedBoundedApiProviderContract,
@@ -210,6 +219,8 @@ export async function publicFenceFixture(
   await service.derive(root.authority_id, envelope);
   const invocation = new AsyncLocalStorage<string>();
   const observed: ReservedProviderEvidence[] = [];
+  const accounting = new Map<string, DelegationRetainedAccountingV1>();
+  const evidencePath = join(f.root, 'retained-provider-evidence.json');
   let repeatAttempt:
     | (() => ReturnType<typeof runReservedSdkSourceAttempt>)
     | undefined;
@@ -239,11 +250,30 @@ export async function publicFenceFixture(
         expectedWireDigest: wireIdentityDigest(wire),
       };
       let result: Awaited<ReturnType<typeof sdkResultPromise>>;
+      let retainedAccounting: DelegationRetainedAccountingV1 | undefined;
       if (observation) {
         const attemptInput: Parameters<typeof runReservedSdkSourceAttempt>[0] =
           {
             sdkOwner,
             sdkHandle: handle,
+            retainEvidence: async (evidence) => {
+              await publishJsonFileWithOwnedLock(evidencePath, evidence, {
+                maxBytes: 2 * 1024 * 1024,
+                finalizeCommit: finalize,
+              });
+              const directory = openSync(
+                f.root,
+                constants.O_RDONLY |
+                  constants.O_DIRECTORY |
+                  constants.O_NOFOLLOW,
+              );
+              try {
+                fsyncSync(directory);
+              } finally {
+                closeSync(directory);
+              }
+              return finalize;
+            },
             transport: {
               launch: {
                 groups: persistence.groupStore(finalize),
@@ -263,6 +293,7 @@ export async function publicFenceFixture(
         repeatAttempt = () => runReservedSdkSourceAttempt(attemptInput);
         const attempt = await repeatAttempt();
         observed.push(attempt.evidence);
+        retainedAccounting = attempt.accounting;
         result = attempt.sdkResult;
       } else {
         const begun = await fence.start(
@@ -273,7 +304,7 @@ export async function publicFenceFixture(
         deliverSdkResponse(sdkOwner, handle, await begun.response);
         result = await sdkResultPromise(sdkOwner, handle);
       }
-      return {
+      const invocationResult: ModelInvocationResult = {
         provider: 'synthetic-no-billable-http',
         model: 'fixture-model',
         modelSource: 'provider-reported',
@@ -286,11 +317,13 @@ export async function publicFenceFixture(
           ...(observation ? {} : { costUsd: 0 }),
         },
         latencyMs: 0,
-      } satisfies ModelInvocationResult;
+      };
+      if (retainedAccounting) accounting.set(id, retainedAccounting);
+      return invocationResult;
     },
   };
   mkdirSync(join(f.root, 'dispatch'), { mode: 0o700 });
-  const controller = createDelegationGroupControllerV2({
+  const controller = createDelegationGroupControllerAccountingV1({
     store: fence.groups,
     authorityService: service,
     dispatchLedger: new FileAuthorizationLedger({
@@ -299,6 +332,7 @@ export async function publicFenceFixture(
     host: {
       authorize: async () => (current() ? ref('caller') : null),
       executionHost: () => ({
+        accountingProtocol: 'retained-tariff-v1',
         resolveRuntime: async () => ({
           runtime: model,
           runtimeReceipt: execution.runtime.runtime_receipt_ref,
@@ -306,7 +340,8 @@ export async function publicFenceFixture(
         }),
         invokeFenced: async (_e, id, invoke) => invocation.run(id, invoke),
         retainFailure: async () => {},
-        retainResult: async () => {},
+        retainResult: async (_result, _envelope, invocationId) =>
+          observation ? (accounting.get(invocationId) ?? null) : undefined,
         recordScheduleEvent: async () => {
           throw Error('not Flow');
         },
@@ -345,6 +380,8 @@ export async function publicFenceFixture(
   });
   return {
     observed,
+    retainedEvidence: () => JSON.parse(readFileSync(evidencePath, 'utf8')),
+    blockEvidencePublication: () => mkdirSync(evidencePath),
     repeatAttempt: () => {
       if (!repeatAttempt) throw Error('source attempt not started');
       return repeatAttempt();

@@ -585,7 +585,7 @@ test('SDK brief and instructions are immutable before SDK serialization and chec
 });
 
 for (const provider of ['anthropic', 'google'] as const)
-  test(`reserved raw observer ${provider} prices sealed wire while legacy settlement remains held`, async () => {
+  test(`reserved raw observer ${provider} settles retained tariff usage through published AccountingV1`, async () => {
     const f = await sdkFixture(provider);
     const prepared = await f.owner.prepareSdkSnapshot(
       f.context(),
@@ -603,16 +603,7 @@ for (const provider of ['anthropic', 'google'] as const)
       () => assert.equal(f.starts, 0),
       { provider, contract: f.configuration.contract, now: () => 1000 },
     );
-    await assert.rejects(
-      () => driver.run(),
-      (error: unknown) =>
-        error instanceof AggregateError &&
-        error.errors.some(
-          (e) =>
-            e.code === 'AUTHORIZATION_PERSISTENCE_FAILED' &&
-            e.phase === 'settle',
-        ),
-    );
+    await driver.run();
     assert.equal(f.starts, 1);
     assert.equal(driver.intentCount, 1);
     assert.equal(f.sentBody, wire.body);
@@ -621,14 +612,55 @@ for (const provider of ['anthropic', 'google'] as const)
     assert.equal(driver.observed[0].usage.outputTokens, 2);
     assert.equal(driver.observed[0].usage.costMicros, 7);
     assert.equal(driver.observed[0].usage.costBasis, 'tariff-upper-bound');
+    assert.deepEqual(driver.retainedEvidence(), driver.observed[0]);
     const ledger = await driver.ledger();
-    assert.equal(ledger.invocations[0].usage, null);
+    assert.deepEqual(ledger.invocations[0].usage, {
+      inputTokens: 4,
+      outputTokens: 2,
+      costMicros: 7,
+    });
     assert.equal(ledger.invocations[0].terminal, true);
     await assert.rejects(() => driver.reserveAnother(), {
-      code: 'active_slot_exhausted',
+      code: 'invocation_budget_exhausted',
     });
     await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
   });
+
+test('failed durable provider evidence publication retains the unknown reservation', async () => {
+  const f = await sdkFixture('anthropic');
+  const prepared = await f.owner.prepareSdkSnapshot(
+    f.context(),
+    subject,
+    f.sealed.capability,
+    f.sdkOwner,
+  );
+  const { wire } = inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+  const driver = await publicFenceFixture(
+    f,
+    prepared.source,
+    f.sdkOwner,
+    prepared.sdkHandle,
+    wire,
+    () => {},
+    {
+      provider: 'anthropic',
+      contract: f.configuration.contract,
+      now: () => 1000,
+    },
+  );
+  driver.blockEvidencePublication();
+  await driver.run();
+  assert.equal(f.starts, 1);
+  assert.equal(driver.observed.length, 0);
+  const ledger = await driver.ledger();
+  assert.equal(ledger.invocations.length, 1);
+  assert.equal(ledger.invocations[0].usage, null);
+  assert.equal(ledger.invocations[0].terminal, false);
+  await assert.rejects(() => driver.reserveAnother(), {
+    code: 'active_slot_exhausted',
+  });
+  await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
+});
 
 test('reserved Google response with empty final counters refuses settlement and releases the completed SDK waiter', async () => {
   const f = await sdkFixture(
@@ -724,7 +756,7 @@ test('duplicate reserved source entry cannot terminate its original pending HTTP
   assert.equal(disposed, false);
   assert.equal(f.starts, 1);
   finish(mockResponse('google'));
-  assert.ok((await original) instanceof AggregateError);
+  assert.equal(await original, undefined);
   assert.equal(driver.observed.length, 1);
   assert.equal(
     (await sdkResultPromise(f.sdkOwner, prepared.sdkHandle)).text,

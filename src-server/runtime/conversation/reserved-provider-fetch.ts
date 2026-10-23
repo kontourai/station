@@ -25,6 +25,7 @@ export interface ReservedProviderEvidence {
   readonly usage: Usage;
   readonly quote: BoundedApiAttemptQuote;
   readonly rawBodySha256: string;
+  readonly rawResponseJson: string;
 }
 export class ReservedProviderUnavailable extends Error {
   readonly code = 'usage_unknown';
@@ -74,13 +75,14 @@ export class ReservedProviderFetch {
       raw: unknown,
       rawBodySha256: string,
     ) => {
+      const rawResponseJson = JSON.stringify(raw);
       const usage = priceBoundedApiProviderRawUsage(
         owners.contract,
         quote,
-        JSON.stringify(raw),
+        rawResponseJson,
         owners.now(),
       );
-      resolve(Object.freeze({ usage, quote, rawBodySha256 }));
+      resolve(Object.freeze({ usage, quote, rawBodySha256, rawResponseJson }));
     };
     this.fetch = async (input, init) => {
       try {
