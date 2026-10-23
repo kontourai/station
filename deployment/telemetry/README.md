@@ -418,8 +418,16 @@ not present missing samples, dropped streams or exporter refusal as zero.
 
 Trace processing projects the declared operational attributes, replaces span
 names, removes status text/events/links, and propagates transformation failures.
-No OTLP log pipeline is enabled. Exact pinned-binary validation and injected
-private-content refusal remain pending. Grafana provisions `dashboards/station.json`;
+No OTLP log pipeline is enabled. Local synthetic checks of the packaged profile
+at `79e77a7f28b` exercised authenticated DELTA samples queried as cumulative
+2 then 5 in Prometheus, and a Tempo trace retaining its allowed operation while
+removing injected private fields, events, links and trace state. Historical
+samples and the same projected trace survived a stopped-process restart without
+resending either payload. The run also checked private dashboard credentials,
+credential refusals, loopback bindings and backend network membership. These
+checks do not qualify real Station export, cardinality/expiry behavior, all
+privacy/error paths, fresh restore, other hosts or release installation.
+Grafana provisions `dashboards/station.json`;
 a panel or trace ID does not prove delivery or accurate aggregation.
 
 Product storage retains its existing 90-day policy, row/storage caps, schema
