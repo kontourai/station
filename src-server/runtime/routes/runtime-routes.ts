@@ -4147,7 +4147,8 @@ export function configureRuntimeRoutes(
           // account callers rather than carry that snapshot into a graph commit.
           const account =
             context.deploymentAuthentication?.service.current(request);
-          if (account && account.kind !== 'absent') return false;
+          if (context.deploymentAuthentication && account?.kind !== 'absent')
+            return false;
           const principal = getRuntimeAuthenticatedRequestPrincipal(request);
           if (!principal || principal.kind === 'internal') return false;
           const binding =

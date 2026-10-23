@@ -90,8 +90,7 @@ export function createTaskRelationshipAuthority(deps: {
       for (const id of candidates) {
         const opened = await deps.sessions.resolveConversationOpen(id, reader);
         if (
-          !opened ||
-          opened.status !== 'resolved' ||
+          opened?.status !== 'resolved' ||
           opened.conversation.id !== id ||
           opened.conversation.source !== 'runtime'
         )
@@ -123,7 +122,21 @@ export function createTaskRelationshipAuthority(deps: {
               'session.started',
               'session.configured',
             ]);
-            const metadata = event?.payload.metadata;
+            const payload = event?.payload;
+            if (
+              !payload ||
+              (payload.method !== 'session.started' &&
+                payload.method !== 'session.configured')
+            )
+              return false;
+            const metadata = payload.metadata;
+            if (Date.parse(payload.createdAt) < Date.parse(project.createdAt))
+              return false;
+            if (
+              metadata?.localProjectId !== undefined &&
+              metadata.localProjectId !== project.id
+            )
+              return false;
             const ref = metadata?.projectSlug;
             const owner = typeof ref === 'string' ? canonical(ref) : undefined;
             return (

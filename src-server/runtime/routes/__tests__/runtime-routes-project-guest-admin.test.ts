@@ -71,6 +71,7 @@ import { createSessionAgentResolver } from '../../../services/orchestration/sess
 import { ProjectManifestStore } from '../../../services/projects/project-manifest-store.js';
 import { createProjectMembershipRuntime } from '../../../services/projects/project-membership-runtime.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
+import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
 import { DevicePairingError } from '../../../services/ssh/device-pairing-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import {
@@ -359,6 +360,9 @@ describe('project guest administration over the production composition', () => {
       });
     }
 
+    const graph = new TaskGraphService(homeDir, {
+      resolveProjectWorkspace: () => undefined,
+    });
     const context = deepStub({
       projectMembership: membership.service,
       projectSharedTasks: undefined,
@@ -440,7 +444,7 @@ describe('project guest administration over the production composition', () => {
       ),
       environmentSecurityService: security,
       eventBus,
-      taskGraphService: { listTasks: () => [] },
+      taskGraphService: graph,
     });
     const result = configureRuntimeRoutesProduction(
       context as unknown as Parameters<
@@ -580,6 +584,7 @@ describe('project guest administration over the production composition', () => {
 
     return {
       app,
+      graph,
       eventBus,
       homeDir,
       beforeSessionResolve: (effect: () => Promise<void>) => {
@@ -603,6 +608,57 @@ describe('project guest administration over the production composition', () => {
       shareWithGuestAdmin,
     };
   }
+
+  test('production Task relationship mount writes with ordinary operator authority and refuses account snapshots', async () => {
+    const h = await setup();
+    const project = await h.projectService.createProject({
+      name: 'Relationships',
+    });
+    const parent = await h.graph.createTask({
+      projectId: project.id,
+      title: 'Outcome',
+    });
+    const path = `/api/tasks/${parent.id}/children`;
+    const input = {
+      operationId: 'production-child',
+      parent: { taskId: parent.id, taskCreatedAt: parent.createdAt },
+      task: { projectId: project.slug, title: 'Deliverable' },
+    };
+    const post = {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    };
+    const created = await h.request(path, h.operatorHeaders(post));
+    expect(created.status, await created.clone().text()).toBe(200);
+    const body = await readJson<{ data: { task: { id: string } } }>(created);
+    expect(h.graph.readTask(body.data.task.id)?.parent?.taskId).toBe(parent.id);
+    const list = await h.request(
+      `${path}?taskCreatedAt=${encodeURIComponent(parent.createdAt)}`,
+      h.operatorHeaders(),
+    );
+    expect(list.status).toBe(200);
+    expect(
+      (
+        await readJson<{ data: { children: { id: string }[] } }>(list)
+      ).data.children.map((task) => task.id),
+    ).toEqual([body.data.task.id]);
+    const before = readFileSync(join(h.homeDir, 'task-graph.json'), 'utf8');
+    expect(
+      (
+        await h.request(
+          path,
+          h.ownerHeaders({
+            ...post,
+            body: JSON.stringify({ ...input, operationId: 'denied-account' }),
+          }),
+        )
+      ).status,
+    ).toBe(404);
+    expect(readFileSync(join(h.homeDir, 'task-graph.json'), 'utf8')).toBe(
+      before,
+    );
+  });
 
   test('Project Room production mount requires exact incarnation and independent transport and member actions', async () => {
     const h = await setup();
