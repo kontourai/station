@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { test, vi } from 'vitest';
@@ -33,6 +34,41 @@ test('report HTTP owner runs configured seats through canonical tasks and retain
   const startedAt = wallNow();
   vi.mocked(Date.now).mockImplementation(() => NOW + wallNow() - startedAt);
   installControl(h);
+  const reportText = 'Controlled report '.repeat(1200);
+  h.rawFetch.mockImplementation(
+    async () =>
+      new Response(
+        JSON.stringify({
+          id: 'msg-controlled',
+          type: 'message',
+          role: 'assistant',
+          model: 'claude-sonnet-4-6',
+          content: [{ type: 'text', text: reportText }],
+          stop_reason: 'end_turn',
+          stop_sequence: null,
+          usage: {
+            input_tokens: 4,
+            output_tokens: 8000,
+            cache_read_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+          },
+        }),
+        { headers: { 'content-type': 'application/json' } },
+      ),
+  );
+  const input = {
+    ...h.input,
+    budget: {
+      ...h.input.budget,
+      outputTokens: 16000,
+      costMicros: 2 * (1048576 * 3 + 8000 * 15),
+    },
+    members: h.input.members.map((member) => ({
+      ...member,
+      maxOutputTokens: 8000,
+    })),
+  };
+
   const bus = new EventBus();
   const eventStore = new EventStore(join(h.f.root, 'report-execution.sqlite'));
   const logger = { debug() {}, warn() {} };
@@ -93,6 +129,7 @@ test('report HTTP owner runs configured seats through canonical tasks and retain
     body?: unknown,
     credential = h.f.paired.credential,
     operator = true,
+    extraHeaders: Record<string, string> = {},
   ) =>
     app.request(
       `http://report-control.test/api/orchestration/report-groups${path}`,
@@ -103,6 +140,7 @@ test('report HTTP owner runs configured seats through canonical tasks and retain
           Authorization: `Bearer ${credential}`,
           'Content-Type': 'application/json',
           ...(operator ? { 'X-Test-Operator': 'yes' } : {}),
+          ...extraHeaders,
         },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       },
@@ -110,12 +148,9 @@ test('report HTTP owner runs configured seats through canonical tasks and retain
   let watchdog: ReturnType<typeof setTimeout> | undefined;
   try {
     assert.equal(qualifies.mock.calls.length, 0);
-    assert.equal(
-      (await send('POST', '', h.input, undefined, false)).status,
-      503,
-    );
+    assert.equal((await send('POST', '', input, undefined, false)).status, 503);
     const response = await Promise.race([
-      send('POST', '', h.input),
+      send('POST', '', input),
       new Promise<never>((_resolve, reject) => {
         watchdog = setTimeout(() => {
           abort.abort();
@@ -141,8 +176,8 @@ test('report HTTP owner runs configured seats through canonical tasks and retain
       assert.equal(member.attempts.length, 1);
       assert.deepEqual(member.attempts[0].usage, {
         inputTokens: 4,
-        outputTokens: 2,
-        costMicros: 42,
+        outputTokens: 8000,
+        costMicros: 120012,
       });
       assert.equal(member.attempts[0].accountingTerminal, true);
       assert.ok(member.attempts[0].terminal);
@@ -168,12 +203,7 @@ test('report HTTP owner runs configured seats through canonical tasks and retain
     );
     app = appFor(new StationReportGroupRuntime(owners));
     assert.equal(qualifies.mock.calls.length, 2);
-    const replayResponse = await send(
-      'POST',
-      '',
-      h.input,
-      returning.credential,
-    );
+    const replayResponse = await send('POST', '', input, returning.credential);
     assert.equal(replayResponse.status, 200);
     const replay = (await replayResponse.json()) as { data: Operation };
     assert.equal(replay.data.replayed, true);
@@ -182,7 +212,7 @@ test('report HTTP owner runs configured seats through canonical tasks and retain
     const changed = await send(
       'POST',
       '',
-      { ...h.input, maxConcurrent: 1 },
+      { ...input, maxConcurrent: 1 },
       returning.credential,
     );
     assert.equal(changed.status, 503);
@@ -204,6 +234,130 @@ test('report HTTP owner runs configured seats through canonical tasks and retain
       ((await list.json()) as { data: { groups: View[] } }).data.groups,
       [result.group],
     );
+    const eventsResponse = await send(
+      'GET',
+      `/${groupId}/events`,
+      undefined,
+      returning.credential,
+    );
+    assert.equal(eventsResponse.status, 200);
+    const eventsPage = (
+      (await eventsResponse.json()) as {
+        data: {
+          events: { revision: number; kind: string }[];
+          nextRevision: number;
+          hasMore: boolean;
+        };
+      }
+    ).data;
+    assert.deepEqual(
+      eventsPage.events.map((e) => e.revision),
+      Array.from({ length: result.group.revision }, (_, i) => i + 1),
+    );
+    assert.equal(eventsPage.nextRevision, result.group.revision);
+    assert.equal(eventsPage.hasMore, false);
+    const resumed = await send(
+      'GET',
+      `/${groupId}/events?afterRevision=${eventsPage.nextRevision}`,
+      undefined,
+      returning.credential,
+    );
+    assert.deepEqual(
+      ((await resumed.json()) as { data: { events: unknown[] } }).data.events,
+      [],
+    );
+    const streamResponse = await send(
+      'GET',
+      `/${groupId}/events/stream`,
+      undefined,
+      returning.credential,
+    );
+    assert.equal(streamResponse.status, 200);
+    const reader = streamResponse.body!.getReader();
+    try {
+      const first = await reader.read();
+      const frame = new TextDecoder().decode(first.value);
+      assert.ok(frame.includes('event: report-group-events'));
+      assert.ok(frame.includes(`id: report:${encodeURIComponent(groupId)}:`));
+      assert.ok(!frame.includes('authenticated_principal_ref'));
+    } finally {
+      await reader.cancel();
+    }
+    const foreignCursor = await send(
+      'GET',
+      `/${groupId}/events/stream`,
+      undefined,
+      returning.credential,
+      true,
+      { 'Last-Event-ID': `group:${encodeURIComponent(groupId)}:0` },
+    );
+    assert.equal(foreignCursor.status, 400);
+    const member = result.group.members[0];
+    const attempt = member.attempts[0];
+    const resultPath = `/${groupId}/members/${member.seatId}/results/${attempt.invocationId}`;
+    const rawResponse = await send(
+      'GET',
+      resultPath,
+      undefined,
+      returning.credential,
+    );
+    assert.equal(rawResponse.status, 200);
+    const raw = (
+      (await rawResponse.json()) as {
+        data: {
+          kind: string;
+          text: string;
+          nextOffset: number;
+          hasMore: boolean;
+        };
+      }
+    ).data;
+    assert.equal(raw.kind, 'result');
+    assert.equal(raw.text, reportText.slice(0, 16_384));
+    assert.equal(raw.hasMore, true);
+    const eof = await send(
+      'GET',
+      `${resultPath}?afterOffset=${raw.nextOffset}`,
+      undefined,
+      returning.credential,
+    );
+    const rest = (
+      (await eof.json()) as {
+        data: { text: string; hasMore: boolean; nextOffset: number };
+      }
+    ).data;
+    assert.equal(raw.text + rest.text, reportText);
+    assert.equal(rest.hasMore, false);
+    assert.ok(attempt.observation);
+    const observationFile = join(
+      h.f.home,
+      'report-groups',
+      'station-report-observations-v1',
+      `${attempt.observation.id}.json`,
+    );
+    const retainedBytes = readFileSync(observationFile);
+    const substituted = JSON.parse(retainedBytes.toString());
+    substituted.observation.text = 'Altered raw result';
+    writeFileSync(observationFile, JSON.stringify(substituted), {
+      mode: 0o600,
+    });
+    assert.equal(
+      (await send('GET', resultPath, undefined, returning.credential)).status,
+      503,
+    );
+    writeFileSync(observationFile, retainedBytes, { mode: 0o600 });
+    assert.equal(
+      (await send('GET', resultPath, undefined, returning.credential)).status,
+      200,
+    );
+    const memberRead = vi
+      .spyOn(orchestration, 'inspectTurnDelivery')
+      .mockReturnValueOnce(null);
+    assert.equal(
+      (await send('GET', resultPath, undefined, returning.credential)).status,
+      503,
+    );
+    memberRead.mockRestore();
     const interrupt = vi.spyOn(orchestration, 'dispatchWithReceipt');
     const command = {
       operationKey: 'cancel-completed',

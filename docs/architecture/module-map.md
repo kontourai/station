@@ -1827,13 +1827,14 @@ does not redact engine history or establish engine acknowledgement.
 composes one private personal-host custody root with signed admissions, published
 AccountingV1 rounds/V3 authority, canonical reserved task dispatch and sealed SDK
 transport. [Report routes](../../src-server/routes/orchestration/report-groups.ts)
-serve allowlisted create/get/list/cancel projections; boot mounts an unavailable
+serve allowlisted create/get/list/cancel and journal pages/streams; raw result
+pages require the exact retained observation digest and canonical member-session
+read authority. Boot mounts an unavailable
 surface on hosted deployments or failed private-storage admission. Qualification
 is deferred until a new operation needs preparation, so profile expiry does not
 block historical reads or replay. Current operator authority is checked through
 awaits and again before HTTP release. This mode is independent advisory;
-Flow-backed topology, context sync, event transport and client adoption remain
-open. Provider responses in the focused HTTP owner test are controlled fixtures,
+Flow-backed topology, context sync and client adoption remain open. Provider responses in the focused HTTP owner test are controlled fixtures,
 not live acceptance or billing qualification.
 
 ## CliSessionGroups

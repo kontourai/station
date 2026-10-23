@@ -397,6 +397,37 @@ export class StationDelegationPersistence {
     });
   }
 
+  async readReportObservation(
+    groupId: string,
+    invocationId: string,
+    reference: { id: string; domain: string; digest: string },
+    finalizeCurrent: DelegationPersistenceFinalizer,
+  ) {
+    requirePersistence(
+      reference.domain === 'station.report-observation.v1' &&
+        /^[a-f0-9]{64}$/.test(reference.id),
+      'report_observation_reference_invalid',
+    );
+    const domain = this.#reportObservations;
+    return domain.locked(finalizeCurrent, async () => {
+      const bytes = readBytes(
+        join(domain.directory, `${reference.id}.json`),
+        2 * 1024 * 1024,
+      );
+      requirePersistence(bytes !== null, 'report_observation_missing');
+      const record = reportObservationSchema.parse(JSON.parse(bytes));
+      requirePersistence(
+        record.groupId === groupId &&
+          record.invocationId === invocationId &&
+          reference.digest ===
+            `sha256:${createHash('sha256').update(canonicalJson(record)).digest('hex')}`,
+        'report_observation_reference_mismatch',
+      );
+      assertCurrent(finalizeCurrent);
+      return record;
+    });
+  }
+
   async recordReportInterrupt(
     value: ReportInterruptRecord,
     finalizeCurrent: DelegationPersistenceFinalizer,
@@ -631,10 +662,9 @@ export class StationDelegationPersistence {
           join(this.#roundsAuthorities.directory, authorityFile),
           AUTHORITY_V3_MAX_BYTES,
         );
-        const group =
-          groupBytes === null
-            ? null
-            : projectDelegationRounds(JSON.parse(groupBytes));
+        const journal: DelegationRoundsJournal | null =
+          groupBytes === null ? null : JSON.parse(groupBytes);
+        const group = journal ? projectDelegationRounds(journal) : null;
         const authority =
           authorityBytes === null
             ? null
@@ -645,7 +675,7 @@ export class StationDelegationPersistence {
               authority.epochs[0].root.authority_id === authorityId),
           'report_execution_identity_mismatch',
         );
-        return { group, authority };
+        return { group, authority, events: journal?.events ?? [] };
       }),
     );
   }

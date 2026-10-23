@@ -1731,6 +1731,20 @@ Hosted mode and unavailable private storage return `report_groups_unavailable`.
 - `GET /` returns up to eight `groups`, `hasMore` and nullable `nextGroupId`.
   Supply `afterGroupId` for the next page. `GET /:groupId` returns the retained
   projection, or `null` when absent.
+- `GET /:groupId/events?afterRevision=0` pages the retained journal (at most
+  64 events/page), with `nextRevision`, `revision`, `hasMore` and explicit
+  byte-bound omissions. It projects event kind, revision and applicable
+  member/invocation IDs, never a command payload or authority record.
+  `GET /:groupId/events/stream` sends `report-group-events` SSE pages for at
+  most 60 seconds. Resume with the same query or `Last-Event-ID`; report,
+  group and member cursor domains cannot be interchanged. Each read/write
+  rechecks authority. Observation never resumes execution.
+- `GET /:groupId/members/:seatId/results/:invocationId?afterOffset=0` reads
+  a retained report or failure after canonical member-session read admission.
+  Result pages carry at most 16,384 UTF-16 code units, `nextOffset`, `hasMore`,
+  the reported model and retained integer usage. The reader verifies the exact
+  journal reference/digest and member/invocation join. This endpoint intentionally
+  reveals report text; the ordinary group projection does not.
 - `POST /:groupId/cancel` accepts `operationKey` and `expectedRevision`.
   Cancellation closes admission, revokes the retained root and requests exact
   nonterminal member interrupts. Exact replay is effect-free. A missing
@@ -1747,8 +1761,8 @@ separately authorized canonical task/session reads. Historical reads and exact
 replay survive profile expiry; fresh paid execution still requires a current
 profile. The current narrow Anthropic profile and its exclusions are described
 in the [child-work plan](../plans/child-work-epic.md#authenticated-report-group-preparation).
-Events/streams, SDK/CLI/UI adoption, cancellation finalization and live provider
-qualification remain open for this report-group surface.
+SDK/CLI/UI adoption, cancellation finalization and live provider qualification
+remain open for this report-group surface.
 
 ## Connections
 

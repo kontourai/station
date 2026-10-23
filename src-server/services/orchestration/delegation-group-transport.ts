@@ -190,16 +190,16 @@ export function watchGroupPages<T>(options: {
 }
 
 export type GroupStreamCursorDomain =
-  | { kind: 'group'; groupId: string }
+  | { kind: 'group' | 'report'; groupId: string }
   | { kind: 'member'; groupId: string; seatId: string };
 
 export function encodeGroupStreamCursor(
   domain: GroupStreamCursorDomain,
   cursor: number,
 ): string {
-  return domain.kind === 'group'
-    ? `group:${encodeURIComponent(domain.groupId)}:${cursor}`
-    : `member:${encodeURIComponent(domain.groupId)}:${encodeURIComponent(domain.seatId)}:${cursor}`;
+  return domain.kind === 'member'
+    ? `member:${encodeURIComponent(domain.groupId)}:${encodeURIComponent(domain.seatId)}:${cursor}`
+    : `${domain.kind}:${encodeURIComponent(domain.groupId)}:${cursor}`;
 }
 
 /** A newer Last-Event-ID supersedes the initial URL cursor only in this exact domain. */
@@ -208,7 +208,12 @@ export function readGroupStreamCursor(
   initial: number | undefined,
   lastEventId: string | undefined,
 ): number {
-  const max = domain.kind === 'group' ? 512 : Number.MAX_SAFE_INTEGER;
+  const max =
+    domain.kind === 'group'
+      ? 512
+      : domain.kind === 'report'
+        ? 1024
+        : Number.MAX_SAFE_INTEGER;
   if (
     initial !== undefined &&
     (!Number.isSafeInteger(initial) || initial < 0 || initial > max)

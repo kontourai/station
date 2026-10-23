@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  '28fef6807216b03f51e65a4d5f152a6143d2220c5162e7cc3aadf420693a312a';
+  'be5a951c1aaef5e18a63e35c24bb5804da1d5d3c99c299809d6a6d98a226cf4a';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -497,7 +497,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     title: 'StationReportGroupRuntime',
     summary:
       'Interface, composition, invariants, and documented evidence for StationReportGroupRuntime.',
-    body: 'Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## StationReportGroupRuntime\n\n[StationReportGroupRuntime](../../src-server/services/orchestration/station-report-group-runtime.ts)\ncomposes one private personal-host custody root with signed admissions, published\nAccountingV1 rounds/V3 authority, canonical reserved task dispatch and sealed SDK\ntransport. [Report routes](../../src-server/routes/orchestration/report-groups.ts)\nserve allowlisted create/get/list/cancel projections; boot mounts an unavailable\nsurface on hosted deployments or failed private-storage admission. Qualification\nis deferred until a new operation needs preparation, so profile expiry does not\nblock historical reads or replay. Current operator authority is checked through\nawaits and again before HTTP release. This mode is independent advisory;\nFlow-backed topology, context sync, event transport and client adoption remain\nopen. Provider responses in the focused HTTP owner test are controlled fixtures,\nnot live acceptance or billing qualification.',
+    body: 'Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## StationReportGroupRuntime\n\n[StationReportGroupRuntime](../../src-server/services/orchestration/station-report-group-runtime.ts)\ncomposes one private personal-host custody root with signed admissions, published\nAccountingV1 rounds/V3 authority, canonical reserved task dispatch and sealed SDK\ntransport. [Report routes](../../src-server/routes/orchestration/report-groups.ts)\nserve allowlisted create/get/list/cancel and journal pages/streams; raw result\npages require the exact retained observation digest and canonical member-session\nread authority. Boot mounts an unavailable\nsurface on hosted deployments or failed private-storage admission. Qualification\nis deferred until a new operation needs preparation, so profile expiry does not\nblock historical reads or replay. Current operator authority is checked through\nawaits and again before HTTP release. This mode is independent advisory;\nFlow-backed topology, context sync and client adoption remain open. Provider responses in the focused HTTP owner test are controlled fixtures,\nnot live acceptance or billing qualification.',
     tags: ['architecture', 'execution', 'StationReportGroupRuntime'],
     parentId: 'architecture-execution',
     sourcePath: 'docs/architecture/module-map.md',

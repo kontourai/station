@@ -3426,6 +3426,15 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/orchestration/report-groups' },
     { method: 'POST', path: '/api/orchestration/report-groups' },
     { method: 'GET', path: '/api/orchestration/report-groups/:groupId' },
+    { method: 'GET', path: '/api/orchestration/report-groups/:groupId/events' },
+    {
+      method: 'GET',
+      path: '/api/orchestration/report-groups/:groupId/events/stream',
+    },
+    {
+      method: 'GET',
+      path: '/api/orchestration/report-groups/:groupId/members/:seatId/results/:invocationId',
+    },
     {
       method: 'POST',
       path: '/api/orchestration/report-groups/:groupId/cancel',

@@ -942,13 +942,20 @@ model access and same-session ACK acceptance remain separate obligations.
 
 ## Authenticated report-group preparation
 
+Report journal GET/SSE pages now project only revision/kind/member/invocation
+metadata. Report-specific resume cursors cannot cross into other group domains;
+streams bound their lifetime and recheck the captured response lease before
+writes. Raw result pages separately recheck canonical member delivery/read
+admission and the retained observation digest. Controlled HTTP proof reconstructs
+multi-page text exactly, rejects a substituted observation, and refuses an
+unreadable member. It remains fixture evidence, not live-provider acceptance.
+
 Personal-host boot now mounts an allowlisted report-group create/get/list/cancel
 surface with one private custody root. The primary execution proof runs through
 HTTP and runtime construction, including fresh runtime replay after profile
 expiry, response privacy and current credential rotation. Ingress stamps and
 provider responses are controlled; no live acceptance is inferred. Provider
-qualification is lazy and cannot block historical reads. Events, client adoption,
-Flow topology and same-session continuation remain open.
+qualification is lazy and cannot block historical reads. Client adoption, Flow topology and same-session continuation remain open.
 
 Private custody now composes a fresh operator cancellation with the published
 rounds journal and V3 authority. It retains exact member interrupt receipts for

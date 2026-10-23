@@ -333,6 +333,47 @@ export class StationReportGroupCustody {
     return result;
   }
 
+  async readResult(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    seatId: string,
+    invocationId: string,
+    orchestration: OrchestrationService,
+  ) {
+    id(seatId);
+    id(invocationId);
+    const authorized = await this.#context(context, 'GET');
+    const historical = await this.#inspect(authorized, groupId);
+    const attempt = historical?.group?.attempts.find(
+      (a) => a.seatId === seatId && a.invocationId === invocationId,
+    );
+    if (!historical || !attempt?.observation) refuse();
+    const delivery = await this.#delivery(
+      authorized,
+      groupId,
+      seatId,
+      orchestration,
+    );
+    if (delivery?.outcome !== 'started') refuse();
+    const record = await this.owners.persistence.readReportObservation(
+      groupId,
+      invocationId,
+      attempt.observation,
+      authorized.current,
+    );
+    if (record.seatId !== seatId || record.observation.kind === 'terminal')
+      refuse();
+    const still = await this.#delivery(
+      authorized,
+      groupId,
+      seatId,
+      orchestration,
+    );
+    if (!same(still, delivery)) refuse();
+    authorized.current();
+    return record.observation;
+  }
+
   async inspectDelivery(
     context: RuntimeSourceRequestContext,
     groupId: string,

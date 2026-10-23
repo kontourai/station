@@ -17,6 +17,7 @@ import {
   LocalSourceAdmissionOwner,
   type RuntimeSourceRequestContext,
 } from './delegation-group-source-admission.js';
+import { pageByBytes } from './delegation-group-transport.js';
 import { FileFinalWireIntentStore } from './delegation-group-wire-intent-store.js';
 import type { OrchestrationService } from './orchestration-service.js';
 import {
@@ -204,6 +205,85 @@ export class StationReportGroupRuntime {
           : null,
     };
   }
+  async events(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    afterRevision: number,
+  ) {
+    const historical = await this.#custody.inspect(context, groupId);
+    if (!historical || afterRevision > (historical.group?.revision ?? 0))
+      throw new StationReportCustodyUnavailable();
+    const rows = historical.events
+      .filter((event) => event.revision > afterRevision)
+      .map((event) => ({
+        cursor: event.revision,
+        value: {
+          revision: event.revision,
+          kind: event.kind,
+          ...(event.kind === 'command'
+            ? { commandKind: event.command.kind }
+            : {}),
+          ...('seatId' in event ? { seatId: event.seatId } : {}),
+          ...('invocationId' in event
+            ? { invocationId: event.invocationId }
+            : {}),
+        },
+      }));
+    return pageByBytes({
+      rows,
+      after: afterRevision,
+      hasMore: false,
+      maxItems: 64,
+      maxBytes: 262_000,
+      format: (events, unavailable, nextRevision, hasMore) => ({
+        groupId,
+        afterRevision,
+        nextRevision,
+        revision: historical.group?.revision ?? 0,
+        events,
+        unavailable,
+        hasMore,
+      }),
+    });
+  }
+  async result(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    seatId: string,
+    invocationId: string,
+    afterOffset: number,
+  ) {
+    const result = await this.#custody.readResult(
+      context,
+      groupId,
+      seatId,
+      invocationId,
+      this.owners.orchestration,
+    );
+    if (result.kind === 'failure')
+      return { kind: result.kind, code: result.code };
+    if (afterOffset > result.text.length)
+      throw new StationReportCustodyUnavailable();
+    const text = result.text.slice(afterOffset, afterOffset + 16_384);
+    const nextOffset = afterOffset + text.length;
+    return {
+      kind: result.kind,
+      groupId,
+      seatId,
+      invocationId,
+      modelId: result.modelId,
+      text,
+      afterOffset,
+      nextOffset,
+      hasMore: nextOffset < result.text.length,
+      usage: {
+        inputTokens: result.inputTokens,
+        outputTokens: result.outputTokens,
+        costMicros: result.costMicros,
+      },
+    };
+  }
+
   async cancel(
     context: RuntimeSourceRequestContext,
     groupId: string,
