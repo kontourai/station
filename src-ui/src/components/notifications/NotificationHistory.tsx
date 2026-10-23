@@ -23,6 +23,7 @@ import { useNotificationAnswerability } from '../../hooks/useNotificationAnswera
 import {
   attentionCountLabel,
   pendingAttentionItems,
+  suppressMirroredNotifications,
 } from '../../utils/attention';
 import { sortNotifications } from '../../utils/notifications';
 import { AttentionHistoryItem } from '../attention/AttentionHistoryItem';
@@ -100,16 +101,14 @@ export function NotificationHistory({
   // archive#1780: the row the attention projection correctly dropped lands
   // in "Recent activity" below. It is annotated here, never filtered again.
   const answerabilityFor = useNotificationAnswerability();
-  const recentNotifications = useMemo(() => {
-    const projected = new Set(
-      (attention?.items ?? []).flatMap((item) =>
-        item.kind === 'approval' ? [item.source.notificationId] : [],
-      ),
-    );
-    return sortNotifications(notifications)
-      .filter((notification) => !projected.has(notification.id))
-      .slice(0, SECTION_ROW_LIMIT);
-  }, [attention?.items, notifications]);
+  const recentNotifications = useMemo(
+    () =>
+      suppressMirroredNotifications(
+        sortNotifications(notifications),
+        attention?.items ?? [],
+      ).slice(0, SECTION_ROW_LIMIT),
+    [attention?.items, notifications],
+  );
   /**
    * archive#3222 / archive#3227 A5. `AttentionProjection.items` keeps
    * acknowledged items on purpose — acknowledgement is history, not deletion
