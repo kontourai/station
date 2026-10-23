@@ -28,6 +28,10 @@ scrubEventScopedEnvironment(process.env);
 delete process.env.STATION_LIVENESS_SCALE;
 delete process.env.STATION_LIVENESS_SCALE_RESOLVED;
 
+// A runtime built by a test must not download the public agent registry; its
+// tests construct the source with an injected fetch instead.
+process.env.STATION_PUBLIC_AGENT_REGISTRY = 'off';
+
 installNodeHttpCompatibility();
 
 /**

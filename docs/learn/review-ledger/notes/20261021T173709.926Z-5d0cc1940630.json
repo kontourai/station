@@ -1,0 +1,93 @@
+{
+  "revision": "7a1afa9f5fde89039c7064a23c8c539687be92a3",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"L1 round 3: SDK index gained additive ACP exports (checkACPConnection, fetchUnregisteredACPConnections, splitACPArgs and their hooks). No architecture claim affected. No prose change.","inputs":["docs/architecture.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"L1 round 3: acp.ts gained the unregistered read and the check route (route seam; probing stays in the ACP service). pairing-route-scopes.ts only added two ACP leaves (GET /acp/connections/unregistered, POST /acp/connections/:id/check) to the family-inherited inventory, at the same tier as their /acp siblings; no scope, tier, or authentication rule changed. NewChatModal keeps a still-starting notice beside a failure. Ownership unchanged. No prose change.","inputs":["docs/architecture/module-map.md","src-server/routes/connections/acp.ts","src-server/security/pairing-route-scopes.ts","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"L1 round 3: acp.md changes concern onboarding (unregistered read, check route, edit status); historical chat phases unaffected. No prose change.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md"]},
+
+    {"path":"docs/design/agent-engine-unification.md","note":"L1 round 3: 7.1 now names every path that probes a never-registered connection after a restart (re-add, re-check, registry reload). Matches startRuntimeACPConnections and the routes.","inputs":["docs/design/agent-engine-unification.md"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"L1 round 3: pairing-route-scopes.ts only added two ACP leaves (GET /acp/connections/unregistered, POST /acp/connections/:id/check) to the family-inherited inventory, at the same tier as their /acp siblings; no scope, tier, or authentication rule changed. No prose change.","inputs":["docs/design/answer-share-permalinks.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"L1 round 3: NewChatModal combines a still-starting notice with a failure; composer design unaffected. No prose change.","inputs":["docs/design/chat-composer.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/connection-broker.md","note":"L1 round 3: pairing-route-scopes.ts only added two ACP leaves (GET /acp/connections/unregistered, POST /acp/connections/:id/check) to the family-inherited inventory, at the same tier as their /acp siblings; no scope, tier, or authentication rule changed. No prose change.","inputs":["docs/design/connection-broker.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"L1 round 3: add-flow result states now list Setup required (the card and Engines page share it); acp-process.ts now throws ACPCommandNotFoundError, attributed to the spawn phase. AutomaticEnginePreparation/NewChatModal still-starting handling and the Engines page Retry check are consistent with the one-next-action principle.","inputs":["docs/design/connections-onboarding.md","src-server/services/acp/acp-process.ts","src-ui/src/components/modals/AutomaticEnginePreparation.tsx","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/design/inference-fleet.md","note":"L1 round 3: pairing-route-scopes.ts only added two ACP leaves (GET /acp/connections/unregistered, POST /acp/connections/:id/check) to the family-inherited inventory, at the same tier as their /acp siblings; no scope, tier, or authentication rule changed. No prose change.","inputs":["docs/design/inference-fleet.md","pnpm-lock.yaml#/packages","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"L1 round 3: SDK index gained additive ACP exports (checkACPConnection, fetchUnregisteredACPConnections, splitACPArgs and their hooks). No prose change.","inputs":["docs/design/knowledge-recall-ui.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"L1 round 3: pairing-route-scopes.ts only added two ACP leaves (GET /acp/connections/unregistered, POST /acp/connections/:id/check) to the family-inherited inventory, at the same tier as their /acp siblings; no scope, tier, or authentication rule changed. No prose change.","inputs":["docs/design/mcp-ui-host.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"L1 round 3: pairing-route-scopes.ts only added two ACP leaves (GET /acp/connections/unregistered, POST /acp/connections/:id/check) to the family-inherited inventory, at the same tier as their /acp siblings; no scope, tier, or authentication rule changed. No prose change.","inputs":["docs/design/native-capabilities.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-relay-enrollment.md","note":"L1 round 3: pairing-route-scopes.ts only added two ACP leaves (GET /acp/connections/unregistered, POST /acp/connections/:id/check) to the family-inherited inventory, at the same tier as their /acp siblings; no scope, tier, or authentication rule changed. No prose change.","inputs":["docs/design/native-relay-enrollment.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"L1 round 3: SDK index gained additive ACP exports (checkACPConnection, fetchUnregisteredACPConnections, splitACPArgs and their hooks). No prose change.","inputs":["docs/design/pane-host-contract.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"L1 round 3: added the unregistered read, the check route (works after a restart, registers on success) and that PUT re-probes and registers. acp-probe.ts now attributes a command that never launched to the spawn phase.","inputs":["docs/guides/acp.md","src-server/services/acp/acp-probe.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"L1 round 3: setup dialog gained Checking actions and edit mode; the agents guide does not describe it. No prose change.","inputs":["docs/guides/agents.md","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"L1 round 3: Setup required + Retry check on both card and engine page; Not connected yet cards with Retry check, Remove and (custom) Edit setup; restart wording names Retry check. Matches ACPConnectionCard, ACPConnectionsSection and AgentConnectionView. pairing-route-scopes.ts only added two ACP leaves (GET /acp/connections/unregistered, POST /acp/connections/:id/check) to the family-inherited inventory, at the same tier as their /acp siblings; no scope, tier, or authentication rule changed.","inputs":["docs/guides/connections.md","src-server/security/pairing-route-scopes.ts","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"L1 round 3: pairing-route-scopes.ts only added two ACP leaves (GET /acp/connections/unregistered, POST /acp/connections/:id/check) to the family-inherited inventory, at the same tier as their /acp siblings; no scope, tier, or authentication rule changed. No prose change.","inputs":["docs/guides/deployment-authentication.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"L1 round 3: connections.md changes are confined to the engine add/repair section. No prose change.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"L1 round 3: pairing-route-scopes.ts only added two ACP leaves (GET /acp/connections/unregistered, POST /acp/connections/:id/check) to the family-inherited inventory, at the same tier as their /acp siblings; no scope, tier, or authentication rule changed. No prose change.","inputs":["docs/guides/native-shell-verification.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"L1 round 3: SDK index gained additive ACP exports (checkACPConnection, fetchUnregisteredACPConnections, splitACPArgs and their hooks). pairing-route-scopes.ts only added two ACP leaves (GET /acp/connections/unregistered, POST /acp/connections/:id/check) to the family-inherited inventory, at the same tier as their /acp siblings; no scope, tier, or authentication rule changed. No prose change.","inputs":["docs/guides/responsive-ui.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"L1 round 3: unaffected. No prose change.","inputs":["docs/guides/self-configuring-agent.md","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"L1 round 3: pairing-route-scopes.ts only added two ACP leaves (GET /acp/connections/unregistered, POST /acp/connections/:id/check) to the family-inherited inventory, at the same tier as their /acp siblings; no scope, tier, or authentication rule changed. No prose change.","inputs":["docs/guides/self-hosted-broker.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"L1 round 3: SDK index gained additive ACP exports (checkACPConnection, fetchUnregisteredACPConnections, splitACPArgs and their hooks). pairing-route-scopes.ts only added two ACP leaves (GET /acp/connections/unregistered, POST /acp/connections/:id/check) to the family-inherited inventory, at the same tier as their /acp siblings; no scope, tier, or authentication rule changed. No prose change.","inputs":["docs/guides/theming.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"L1 round 3: AgentConnectionView's ACP action now reads Retry check; walkthrough steps make no claim about that label. No prose change.","inputs":["docs/learn/walkthroughs.md","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/patterns/backend.md","note":"L1 round 3: SDK index gained additive ACP exports (checkACPConnection, fetchUnregisteredACPConnections, splitACPArgs and their hooks). pairing-route-scopes.ts only added two ACP leaves (GET /acp/connections/unregistered, POST /acp/connections/:id/check) to the family-inherited inventory, at the same tier as their /acp siblings; no scope, tier, or authentication rule changed. New routes follow the route-seam pattern. No prose change.","inputs":["docs/patterns/backend.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"L1 round 3: SDK index gained additive ACP exports (checkACPConnection, fetchUnregisteredACPConnections, splitACPArgs and their hooks). pairing-route-scopes.ts only added two ACP leaves (GET /acp/connections/unregistered, POST /acp/connections/:id/check) to the family-inherited inventory, at the same tier as their /acp siblings; no scope, tier, or authentication rule changed. Unregistered list and check use React Query hooks owned by the section. No prose change.","inputs":["docs/patterns/frontend.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"L1 round 3: AgentConnectionView label change only (Retry check); smoke semantics unchanged. No prose change.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"L1 round 3: no exhaustive ACP route list here; the command-not-granted coverage line for POST/PUT /acp/connections remains exact (check chooses no command). pairing-route-scopes.ts only added two ACP leaves (GET /acp/connections/unregistered, POST /acp/connections/:id/check) to the family-inherited inventory, at the same tier as their /acp siblings; no scope, tier, or authentication rule changed. No prose change.","inputs":["docs/reference/api.md","packages/sdk/src/queries.ts","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"L1 round 3: pairing-route-scopes.ts only added two ACP leaves (GET /acp/connections/unregistered, POST /acp/connections/:id/check) to the family-inherited inventory, at the same tier as their /acp siblings; no scope, tier, or authentication rule changed. No prose change.","inputs":["docs/reference/config.md","pnpm-lock.yaml#/packages","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"L1 round 3: pairing-route-scopes.ts only added two ACP leaves (GET /acp/connections/unregistered, POST /acp/connections/:id/check) to the family-inherited inventory, at the same tier as their /acp siblings; no scope, tier, or authentication rule changed. No prose change.","inputs":["docs/reference/connect.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"L1 round 3: pairing-route-scopes.ts only added two ACP leaves (GET /acp/connections/unregistered, POST /acp/connections/:id/check) to the family-inherited inventory, at the same tier as their /acp siblings; no scope, tier, or authentication rule changed. No contract change. No prose change.","inputs":["docs/reference/contracts.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"L1 round 3: SDK index gained additive ACP exports (checkACPConnection, fetchUnregisteredACPConnections, splitACPArgs and their hooks). The reference does not enumerate ACP workspace helpers; convention kept. No prose change.","inputs":["docs/reference/sdk.md","packages/sdk/src/index.ts","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"L1 round 3: command-not-granted coverage now notes POST /acp/connections/:id/check re-probes the stored command and cannot change it; pairing-route-scopes.ts only added two ACP leaves (GET /acp/connections/unregistered, POST /acp/connections/:id/check) to the family-inherited inventory, at the same tier as their /acp siblings; no scope, tier, or authentication rule changed.","inputs":["docs/security/remote-access-threat-model.md","pnpm-lock.yaml#/packages","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"L1 round 3: still-starting wording unchanged; NewChatModal now keeps a still-starting notice beside another app's failure. No prose change.","inputs":["docs/user/getting-started.md","src-ui/src/components/modals/AutomaticEnginePreparation.tsx","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"L1 round 3: SDK index gained additive ACP exports (checkACPConnection, fetchUnregisteredACPConnections, splitACPArgs and their hooks). No prose change.","inputs":["examples/meeting-transcription/README.md","packages/sdk/src/index.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"L1 round 3: unaffected. No prose change.","inputs":["examples/self-configuring-agent/README.md","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]},
+
+    {"path":"packages/connect/README.md","note":"L1 round 3: pairing-route-scopes.ts only added two ACP leaves (GET /acp/connections/unregistered, POST /acp/connections/:id/check) to the family-inherited inventory, at the same tier as their /acp siblings; no scope, tier, or authentication rule changed. No prose change.","inputs":["packages/connect/README.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"L1 round 3: SDK index gained additive ACP exports (checkACPConnection, fetchUnregisteredACPConnections, splitACPArgs and their hooks). No prose change.","inputs":["packages/sdk/README.md","packages/sdk/src/index.ts"]},
+
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"L1 round 3: pairing-route-scopes.ts only added two ACP leaves (GET /acp/connections/unregistered, POST /acp/connections/:id/check) to the family-inherited inventory, at the same tier as their /acp siblings; no scope, tier, or authentication rule changed. No prose change.","inputs":["tests/tauri-shell/native-fresh-relay-fixture.md","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"L1 round 3: viewed earlier this lane: Models tab only; the Engines page Retry check label is not depicted. Capture remains accurate.","inputs":["docs/learn/media/connections-models.png","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"L1 round 3: contact sheet viewed earlier this lane: Models tab and Codex detail with no ACP-managed engine, so the Retry check button is not shown. Capture remains accurate.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"L1 round 3: viewed: agent selected; neither the still-starting state nor the combined failure text is depicted. Capture remains accurate.","inputs":["docs/learn/media/new-chat-start-before.png","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"L1 round 3: viewed: agent selected; still-starting and combined failure states not depicted. Capture remains accurate.","inputs":["docs/learn/media/new-chat-start-after.png","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

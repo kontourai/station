@@ -78,6 +78,7 @@ export class TerminalService {
     const sessionId = `${input.projectSlug}:${input.terminalId}`;
     const existing = this.sessions.get(sessionId);
     if (existing?.status === 'running') return this.snapshot(existing);
+    if (input.attachOnly) throw new Error('This terminal session has ended.');
     this.clearPendingKill(sessionId);
     terminalOps.add(1, { operation: 'open' });
 

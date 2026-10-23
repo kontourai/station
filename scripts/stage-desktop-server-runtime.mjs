@@ -1,6 +1,8 @@
 import { resolve } from 'node:path';
 import { stageBundledRegistry } from './lib/bundled-registry.mjs';
+import { stageDesktopNodeRuntime } from './lib/desktop-node-runtime.mjs';
 import {
+  stageDesktopServerBundle,
   stageDesktopServerRuntime,
   WINDOWS_DESKTOP_RUNTIME_RESOURCE_DIR,
 } from './lib/desktop-server-runtime.mjs';
@@ -18,4 +20,6 @@ const outputRoot = stageDesktopServerRuntime({
     : {}),
 });
 stageBundledRegistry({ projectRoot, outputRoot });
+stageDesktopServerBundle(projectRoot, outputRoot);
+await stageDesktopNodeRuntime(projectRoot, outputRoot);
 console.log(`Staged desktop server runtime dependencies in ${outputRoot}`);

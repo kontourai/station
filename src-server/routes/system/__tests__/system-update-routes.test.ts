@@ -1072,7 +1072,7 @@ describe('performGitPullRestart (station#1903)', () => {
 
     expect(spawnFn).toHaveBeenNthCalledWith(
       1,
-      'node',
+      process.execPath,
       ['dist-server/command-station.js'],
       expect.objectContaining({
         cwd: '/repo',

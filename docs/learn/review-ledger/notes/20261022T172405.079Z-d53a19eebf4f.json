@@ -1,0 +1,9 @@
+{
+  "revision": "b531b4b2cbbd7283287ebed33a76058397813441",
+
+  "notes": [
+    {"path":".veritas/init-plans/documentation-maintenance.md","note":"Reviewed the new attestation HEAD against the full immutable policy-change record and explicit Brian approval in T3 thread63d2c37c-00d8-45df-b608-dbcdba53de1f at2026-10-22T17:14:27.137Z. Only the exact historical synthetic-fixture fingerprint is approved; protected Repo Map/Standards/Authority bytes, documentation check requirements and authority rules are unchanged. Existing maintenance/activation explanation remains accurate; this records a new exact scanner disposition, not a new policy activation or provider qualification.","inputs":[".veritas/init-plans/documentation-maintenance.md",".veritas/attestations/HEAD"]},
+
+    {"path":"docs/guides/documentation.md","note":"Reviewed the new attestation HEAD against the full immutable policy-change record and explicit Brian approval in T3 thread63d2c37c-00d8-45df-b608-dbcdba53de1f at2026-10-22T17:14:27.137Z. Only the exact historical synthetic-fixture fingerprint is approved; protected Repo Map/Standards/Authority bytes, documentation check requirements and authority rules are unchanged. Existing maintenance/activation explanation remains accurate; this records a new exact scanner disposition, not a new policy activation or provider qualification.","inputs":["docs/guides/documentation.md",".veritas/attestations/HEAD"]}
+  ]
+}

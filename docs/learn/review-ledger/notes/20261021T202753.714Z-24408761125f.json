@@ -1,0 +1,27 @@
+{
+  "revision": "986b978dbb8c02737e01161c8773842346d63b5b",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Checked against this change: station-home-store-registry.ts gained one top-level home root, cache (the public agent registry's saved index), classified state, so it is backed up and restored like other state; no class, live/external set or rollback rule changed. No distribution or channel claim depends on it.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Checked against this change: acp.md's public agent registry section now states the reviewed-listing guarantee (REVIEWED_REGISTRY_LISTINGS, program and exact arguments, argument grammar, never downloaded, confirm step); catalogue-level only, no chat process or turn claim here changed.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md"]},
+
+    {"path":"docs/guides/acp.md","note":"Reviewed and updated in this change: the program denylist and path rules are replaced by the reviewed list (cortex-code, crow-cli, stakpak, vtcode with citations), program-name equality (.exe/.cmd/.bat dropped, case ignored only on Windows), at most 4 grammar-checked arguments equal to the reviewed ones, and the never-downloaded/confirm-step guarantee; checked against public-agent-registry-catalog.ts and its tests.","inputs":["docs/guides/acp.md"]},
+
+    {"path":"docs/guides/agents.md","note":"Checked against this change: ACPConnectionSetupStages.tsx changed only the add dialog's disabled registry choice text, from \"Not available on this computer.\" to \"Station cannot connect it.\" (true on a paired device too); built-in and custom setup are unchanged.","inputs":["docs/guides/agents.md","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed and updated in this change: Found/Not installed now means reviewed against the publisher's documentation and runs only the reviewed program with the reviewed arguments after the confirm step; Unavailable names \"Not yet reviewed by Station\" first. Also checked: ACPConnectionSetupStages.tsx changed only the add dialog's disabled registry choice text, from \"Not available on this computer.\" to \"Station cannot connect it.\" (true on a paired device too); built-in and custom setup are unchanged.","inputs":["docs/guides/connections.md","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked against this change: plugins.md gained the refusal of default-ignorable characters in catalogue entry text; no integration contract here changed.","inputs":["docs/guides/integrating-station.md","docs/guides/plugins.md"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked against this change: connections.md's registry section now states the reviewed-listing guarantee; installs still belong on the computer Station runs on.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]},
+
+    {"path":"docs/guides/plugins.md","note":"Reviewed and updated in this change: an entry whose name, description or sourceName contains a default-ignorable code point (including emoji with a zero-width joiner or variation selector) is refused, per hasUnsafeTextChar in packages/contracts/src/acp.ts, which validateACPEngineDescriptor applies; icon is not validated, so the advice to put a symbol there holds.","inputs":["docs/guides/plugins.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked against this change: ACPConnectionSetupStages.tsx changed only the add dialog's disabled registry choice text, from \"Not available on this computer.\" to \"Station cannot connect it.\" (true on a paired device too); built-in and custom setup are unchanged.","inputs":["docs/guides/self-configuring-agent.md","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]},
+
+    {"path":"docs/reference/cli.md","note":"Checked against this change: station-home-store-registry.ts gained one top-level home root, cache (the public agent registry's saved index), classified state, so it is backed up and restored like other state; no class, live/external set or rollback rule changed. The backup and rollback commands it documents behave as described.","inputs":["docs/reference/cli.md","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked against this change: ACPConnectionSetupStages.tsx changed only the add dialog's disabled registry choice text, from \"Not available on this computer.\" to \"Station cannot connect it.\" (true on a paired device too); built-in and custom setup are unchanged.","inputs":["examples/self-configuring-agent/README.md","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]}
+  ]
+}

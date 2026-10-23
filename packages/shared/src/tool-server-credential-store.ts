@@ -63,7 +63,25 @@ const FILE = 'tool-server-credentials.json';
  */
 const PRINCIPAL_FILE = 'tool-server-principal-credentials.json';
 
-export type ToolServerCredentialStoreScope = 'instance' | 'principal';
+/**
+ * Engine sign-in keys (an API key a person enters for one engine connection)
+ * are a third trust domain: same file posture, their own document, so
+ * removing a tool server can never touch them and the reverse.
+ */
+const ENGINE_FILE = 'engine-credentials.json';
+
+export type ToolServerCredentialStoreScope =
+  | 'instance'
+  | 'principal'
+  | 'engine';
+
+function credentialFileFor(scope: ToolServerCredentialStoreScope): string {
+  return scope === 'principal'
+    ? PRINCIPAL_FILE
+    : scope === 'engine'
+      ? ENGINE_FILE
+      : FILE;
+}
 
 /** The non-instance owner shapes a person-owned bucket can name. */
 export type ToolServerPrincipalCredentialOwner =
@@ -140,11 +158,7 @@ export function toolServerCredentialStoreMutationLockPath(
   homeDir: string,
   scope: ToolServerCredentialStoreScope = 'instance',
 ): string {
-  return join(
-    homeDir,
-    'security',
-    `${scope === 'principal' ? PRINCIPAL_FILE : FILE}.mutation`,
-  );
+  return join(homeDir, 'security', `${credentialFileFor(scope)}.mutation`);
 }
 
 function validate(value: unknown): Document {
@@ -196,10 +210,7 @@ export class ToolServerCredentialStore {
   ) {
     this.#scope = scope;
     this.#directory = join(homeDir, 'security');
-    this.#file = join(
-      this.#directory,
-      scope === 'principal' ? PRINCIPAL_FILE : FILE,
-    );
+    this.#file = join(this.#directory, credentialFileFor(scope));
     mkdirSync(this.#directory, { recursive: true, mode: DIRECTORY_MODE });
     const directory = lstatSync(this.#directory);
     if (

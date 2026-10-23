@@ -443,7 +443,8 @@ owns `src-desktop/target/`, because both
 `verify:desktop-rust` (`cd src-desktop && cargo test`) and the mobile compiler
 run Cargo with `src-desktop` as their working directory, where Cargo creates
 `target/`; it preserves `dist-server/` and `dist-desktop-runtime/` for the
-desktop script's setup output. The `verify-e2e-full`
+desktop script's setup output. It also owns `src-desktop/binaries/`, where
+the prerequisite script stages the pinned private Node executable before Cargo. The `verify-e2e-full`
 lane owns the instance-named `dist-server-e2e-*/` and `dist-ui-e2e-*/`
 directories its runner creates per invocation (the same
 `dist-(server|ui)-e2e-*` prefixes the runner's own sweep reclaims), expressed

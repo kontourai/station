@@ -88,6 +88,40 @@ An HTTP-successful release feed or a fixture-driven test does not prove
 download, installation and restart of a packaged app; retain that runtime
 verification separately.
 
+## Packaged runtime
+
+Desktop releases include a private `station-node` executable beside the app
+executable, declared through Tauri's `externalBin`. The builder reuses the
+portable server's pinned Node distribution and verifies its digest from
+`config/portable-server-node-runtime.json`; only Node and its license are
+extracted. Core desktop startup does not require a system Node installation.
+Development/debug shells continue to use the developer's Node.
+
+The native registry bridge and desktop-owned backend use that absolute private
+executable. Built-in tool servers and server restart children use
+`process.execPath`. The user's PATH stays unchanged, including in terminals and
+agent commands. Optional device tools use an explicitly resolved user-installed
+Node.js 24 or later and npm from that same installation, because their external
+native add-ons are outside the app's signed bundle. Missing prerequisites block
+only device setup with guidance; see
+[device setup](mobile-device-workspace.md#configure-a-device-host). On macOS, the
+release signer seals `station-node` with Kontour's Developer ID and only the JIT
+entitlement; the outer app stays entitlement-free.
+
+The frontend remains a production Vite build embedded in Tauri. The backend
+ships compiled JavaScript plus its external runtime dependencies, native
+libraries, schemas, skills, and licenses. Desktop staging omits backend source
+maps while retaining them in the original build output for diagnostics. It also
+removes reviewed SDK source/test trees and unused browser Cedar WASM variants.
+Claude's SDK executable remains available as the existing runtime fallback.
+
+A service and a desktop-owned backend use the same backend implementation but
+have different process owners. Desktop starts a backend only after winning the
+selected home's ownership claim. A live installed service owning that same home
+prevents a second backend; a service for a different channel/home does not own it.
+Installing a desktop update replaces its bundled runtime, not an independently
+installed service's code or user data.
+
 ## Prerequisites
 
 - Node 24, as declared by `.nvmrc` and `package.json`

@@ -1,0 +1,84 @@
+.engine-sign-in {
+  display: grid;
+  gap: var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  padding: clamp(0.75rem, 2vw, 1rem);
+  margin: 1rem 0;
+  color: var(--k-text);
+  background: var(--k-panel);
+  font-family: var(--k-font-ui);
+  font-size: var(--k-text-md);
+  line-height: 1.5;
+}
+.engine-sign-in h3 {
+  margin: 0;
+  font-size: var(--k-text-md);
+  font-weight: 600;
+}
+.engine-sign-in small {
+  display: block;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.engine-sign-in__status,
+.engine-sign-in__key,
+.engine-sign-in__link {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.engine-sign-in__status strong[data-state="authenticated"] {
+  color: var(--k-positive);
+}
+.engine-sign-in__status strong[data-state="unauthenticated"] {
+  color: var(--k-negative);
+}
+.engine-sign-in__methods {
+  display: grid;
+  gap: var(--k-space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.engine-sign-in__methods li {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  border-top: 1px solid var(--k-line);
+  padding-top: var(--k-space-2);
+}
+.engine-sign-in__keys {
+  display: grid;
+  gap: var(--k-space-2);
+}
+.engine-sign-in__key input {
+  min-width: 14rem;
+  flex: 1;
+  font: inherit;
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-bg);
+  color: inherit;
+}
+.engine-sign-in__attempt {
+  display: grid;
+  gap: var(--k-space-2);
+  margin: 0;
+}
+.engine-sign-in__terminal {
+  height: 18rem;
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  overflow: hidden;
+}
+.engine-sign-in__link code {
+  overflow-wrap: anywhere;
+}
+.engine-sign-in__error {
+  margin: 0;
+  color: var(--k-negative);
+}

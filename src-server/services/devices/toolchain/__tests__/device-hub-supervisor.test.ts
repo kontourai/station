@@ -116,7 +116,7 @@ function harness(
       rmSync(helper.stateFile, { force: true });
     },
     spawn,
-    nodePath: '/usr/bin/node',
+    resolveRuntime: async () => ({ nodePath: '/usr/bin/node' }),
     probeReady: async () => true,
     now: () => clock,
     setTimer: (fn, ms) => {
@@ -161,6 +161,32 @@ function harness(
 }
 
 describe('device hub supervisor', () => {
+  test('a missing user runtime blocks setup without spawning or scheduling retries', async () => {
+    const spawn = vi.fn();
+    const timer = vi.fn();
+    const supervisor = new DeviceHubSupervisor({
+      resolveLaunch: () => ({
+        entry: '/installed/hub.js',
+        cwd: '/installed',
+        version: '0.10.1',
+        runDir: '/unused',
+      }),
+      env: { PATH: '' },
+      spawn,
+      setTimer: timer,
+    });
+    await expect(supervisor.ensureStarted()).rejects.toThrow(
+      'Install Node.js 24 or later with npm',
+    );
+    expect(supervisor.state()).toMatchObject({
+      state: 'blocked',
+      detail: expect.stringContaining('Install Node.js 24'),
+    });
+    expect(spawn).not.toHaveBeenCalled();
+    expect(timer).not.toHaveBeenCalled();
+    await supervisor.stop();
+  });
+
   test('starts on loopback port 0, reads the bound port, and exposes a connection', async () => {
     const h = harness();
     const connection = await h.supervisor.ensureStarted();

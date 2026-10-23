@@ -120,6 +120,12 @@ function hubStatusLine(status: DeviceToolchainStatus): Line | undefined {
         tone: 'progress',
         text: 'The device hub stopped; Station is restarting it…',
       };
+    case 'blocked':
+      return {
+        tone: 'problem',
+        text: status.hubProcess.detail,
+        action: { label: 'Check again', run: { kind: 'start-hub' } },
+      };
     case 'crashed':
       return {
         tone: 'problem',
@@ -141,7 +147,8 @@ function hubReady(status: DeviceToolchainStatus): boolean {
     status.hubSource === 'configured' ||
     (status.hubEnabled &&
       status.hub.state === 'installed' &&
-      status.hubProcess.state !== 'crashed')
+      status.hubProcess.state !== 'crashed' &&
+      status.hubProcess.state !== 'blocked')
   );
 }
 

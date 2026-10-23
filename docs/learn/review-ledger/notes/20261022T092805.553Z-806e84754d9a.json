@@ -1,0 +1,7 @@
+{
+  "revision": "3ddbdae479c7edfe3a3c2839f17d25df7f5a7645",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"Reviewed testing-guide addition: real Windows credential fixtures use unique accounts, assert their actual target names, and delete only their entries. Server scope instructions, managed dependencies, focused tests and native proof boundaries are unchanged.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

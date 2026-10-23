@@ -482,13 +482,17 @@ export function performGitPullRestart(input: GitPullRestartInput): void {
   // not its parent, and correctness during an in-place update wins over this
   // watchdog backstop.
   delete serverEnv.STATION_SUPERVISOR_PID;
-  const child = input.spawnFn('node', ['dist-server/command-station.js'], {
-    cwd: input.gitRoot,
-    stdio: 'ignore',
-    detached: true,
-    env: serverEnv,
-    windowsHide: true,
-  });
+  const child = input.spawnFn(
+    process.execPath,
+    ['dist-server/command-station.js'],
+    {
+      cwd: input.gitRoot,
+      stdio: 'ignore',
+      detached: true,
+      env: serverEnv,
+      windowsHide: true,
+    },
+  );
   child.unref();
 
   if (

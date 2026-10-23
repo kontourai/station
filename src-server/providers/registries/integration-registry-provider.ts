@@ -1,5 +1,11 @@
 import { execFileSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import {
+  accessSync,
+  existsSync,
+  constants as fsConstants,
+  readdirSync,
+  readFileSync,
+} from 'node:fs';
 import { join } from 'node:path';
 import type { RegistryItem } from '@kontourai/station-contracts/catalog';
 import type { ToolOrigin } from '@kontourai/station-contracts/tool';
@@ -30,24 +36,32 @@ export async function readDiskIntegrations(
       // binary presence from the same command the overlay actually spawns
       // with, so station-control/station-docs don't list as 'missing binary'
       // in the registry the moment the stripped schema lands on disk.
-      const command =
-        def.command ??
-        builtinIntegrationRuntimeSpawnCommand(String(def.id ?? entry.name));
+      const runtimeCommand = builtinIntegrationRuntimeSpawnCommand(
+        String(def.id ?? entry.name),
+      );
+      const command = def.command ?? runtimeCommand;
       let commandExists = false;
       if (command) {
         try {
-          if (!isExecutableToken(command)) {
-            throw new Error('Integration command must be one executable token');
+          if (command === process.execPath && command === runtimeCommand) {
+            accessSync(command, fsConstants.X_OK);
+            commandExists = true;
+          } else {
+            if (!isExecutableToken(command)) {
+              throw new Error(
+                'Integration command must be one executable token',
+              );
+            }
+            execFileSync(
+              process.platform === 'win32' ? 'where' : 'which',
+              [command],
+              {
+                stdio: 'pipe',
+                windowsHide: true,
+              },
+            );
+            commandExists = true;
           }
-          execFileSync(
-            process.platform === 'win32' ? 'where' : 'which',
-            [command],
-            {
-              stdio: 'pipe',
-              windowsHide: true,
-            },
-          );
-          commandExists = true;
         } catch (error) {
           logger.debug('Command not found for integration', { error });
         }

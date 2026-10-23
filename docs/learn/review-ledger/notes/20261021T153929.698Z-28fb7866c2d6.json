@@ -1,0 +1,45 @@
+{
+  "revision": "731c9542b2c30a76270c2976554dab5d9b5af976",
+
+  "notes": [
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"L1 engine-onboarding-honesty: acp-adapter.ts changed only getPrerequisites' login row (sign-in now reported unverified and optional for command-backed engines, #1940). The ADR's extension-binding decision and vendor survey make no auth-prerequisite claim; no prose change.","inputs":["docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"L1: acp.ts routes now answer POST /acp/connections and /acp/registry/:id/install with the GET /connections config+status projection, and the registry projections await the login-shell PATH capture before detection. Module boundaries, owners and the route/service split are unchanged; the map makes no claim about these response bodies or detection timing. No prose change.","inputs":["docs/architecture/module-map.md","src-server/routes/connections/acp.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"L1: acp-adapter.ts change is limited to getPrerequisites' login row (unverified, optional). Tool-policy delivery, requestPermission and preview claims are untouched; no prose change.","inputs":["docs/conformance/tool-policy-delivery.md","pnpm-lock.yaml#/packages","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"L1: historical ACP chat proposal; the acp-adapter.ts delta (login prerequisite now unverified/optional) and the new acp.md sign-in troubleshooting section do not touch its retained phases or status tables. No prose change.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/agent-engine-unification.md","note":"L1: corrected 7.1 to match code: a command-backed connection registers its identity and default Agent only after its probe handshakes (acp.ts registerPersistedACPConnection gated on connectNewACPConnection); a failed first add keeps config, answers with status/lastError, and a repeated add re-probes and registers. Readiness never removes a registered default.","inputs":["docs/design/agent-engine-unification.md"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"L1: AgentConnectionView's native Add catalogue button now reads 'Add and set up' when the row's readiness is not Ready/Found, not connected; the add still enables and opens the engine. The design's Found, not connected / Setup required vocabulary and suggestion semantics are unchanged; Claude auth-unknown paragraph is Claude-specific and unaffected. No prose change.","inputs":["docs/design/connections-onboarding.md","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/guides/acp.md","note":"L1: rewrote 'Agent not appearing' to state probe-gated registration and Retry check (matches acp.ts); added 'Sign-in shows as not checked' describing the optional unverified login row from acp-adapter.ts getPrerequisites and the detectAuthState seam in cli-auth.ts.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"L1: setup dialog gained Retry check on a failed result and reads the add response; acp-adapter login row unverified. The agents guide describes Agent authoring and does not describe the engine setup dialog or login prerequisites; no prose change.","inputs":["docs/guides/agents.md","src-server/providers/adapters/acp-adapter.ts","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"L1: Add an engine steps now name Retry check, the failed phase/reason, Agent added only on success, Setup needed card Retry check, native 'Add and set up', and that command-backed engine sign-in is not checked and does not block. 'Detected = command on PATH' remains accurate (detection now awaits the login-shell PATH capture).","inputs":["docs/guides/connections.md","src-server/providers/adapters/acp-adapter.ts","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"L1: acp-adapter login row and setup dialog Retry check do not intersect this guide's self-configuration tools, limits or page semantics; no prose change.","inputs":["docs/guides/self-configuring-agent.md","src-server/providers/adapters/acp-adapter.ts","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"L1: AgentConnectionView changed only the native Add catalogue button label for rows needing setup. The walkthrough's connection steps (prerequisites and billable check before creating a connection) remain accurate; no prose change.","inputs":["docs/learn/walkthroughs.md","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"L1: 'Prerequisites ready' counts required prerequisites (requiredMissingPrerequisites). The command-backed engine login row is now optional and unverified, so it neither passes nor blocks smoke; the doc's statement about required binaries/auth checks stays accurate. No prose change.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"L1: checked ACP route claims: the command-not-granted coverage for POST/PUT /acp/connections is unchanged. The reference does not document the create/install response body, which now carries status/lastError beside the config; no prose change required.","inputs":["docs/reference/api.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"L1: acp-adapter login row change does not alter CLI commands, station auth status, or detection output documented here; no prose change.","inputs":["docs/reference/cli.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"L1: no contract module changed (Prerequisite shape unchanged; the login row uses existing status 'error' with category 'optional'). No prose change.","inputs":["docs/reference/contracts.md","packages/contracts/package.json","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"L1: acp-adapter.ts change is confined to getPrerequisites' login row; session commands, receipts and continuation semantics are untouched. No prose change.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"L1: manual topics on engines/connections stay accurate: discovery vs readiness remain distinct, and nothing claims command-backed engine sign-in is verified. No prose change.","inputs":["docs/reference/station-docs.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"L1: example's tool definitions and UI caller are unaffected by the login-row and setup-dialog Retry check changes; no prose change.","inputs":["examples/self-configuring-agent/README.md","src-server/providers/adapters/acp-adapter.ts","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"L1: viewed the capture: Models tab only. The AgentConnectionView change (native Add catalogue label) is not visible in it; capture remains accurate.","inputs":["docs/learn/media/connections-models.png","src-ui/src/views/AgentConnectionView.tsx"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"L1: extracted a 1fps contact sheet of the 13.8s tour: Models tab and the Codex engine detail; the Add engine catalogue never appears, so the 'Add and set up' label change is not depicted. Capture remains accurate.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/views/AgentConnectionView.tsx"]}
+  ]
+}

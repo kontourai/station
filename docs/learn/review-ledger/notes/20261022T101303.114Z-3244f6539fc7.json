@@ -1,0 +1,7 @@
+{
+  "revision": "1aacb81b14befcf31cb4c6ad32b5ec63cfbbff8f",
+
+  "notes": [
+    {"path":"docs/design/native-relay-enrollment.md","note":"Reviewed final1aacb81 NativeSecureEntry constructor against enrollment secret and attempt-journal custody. Both existing enrollment services remain in the canonical list; all native writers now reject unregistered services before OS storage. Mobile iOS device-only accessibility, commit-error propagation, secret lifetime and ceremony authority unchanged. Local constructor refusal test executed; this is not new physical mobile or end-to-end enrollment evidence.","inputs":["docs/design/native-relay-enrollment.md","src-desktop/src/native_secure_entry.rs"]}
+  ]
+}

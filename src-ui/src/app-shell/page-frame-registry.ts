@@ -52,23 +52,9 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   'connections-model-edit': SPLIT_PANE,
   'connections-engines': SPLIT_PANE,
   'connections-engine-edit': SPLIT_PANE,
-  // The Engines section (CONNECTION_SECTIONS): the frame names the section,
-  // so this default must agree with it rather than introduce a second title
-  // for the same destination.
-  //
-  // The eyebrow is the PARENT only ('Connections'), not the retired
-  // 'Connections / Engines' breadcrumb-as-eyebrow — the title already says
-  // 'Engines' as its own `<h1>`. `ConnectionsSectionFrame` publishes the
-  // live (linked) version of this once it mounts; this is only the brief
-  // fallback shown before that chunk arrives. (#592 slice 2: the sibling
-  // 'connections-acp' route this comment used to justify agreeing with is
-  // retired — this is now the only frame naming Engines this way.)
-  'connections-engine-new': {
-    eyebrow: 'Connections',
-    title: 'Engines',
-    subtitle: 'AI apps and other engines that run your agents.',
-    width: 'narrow',
-  },
+  // A deep link into Add engine renders the same split pane as the rest of
+  // the Engines section, so it shares its frame.
+  'connections-engine-new': SPLIT_PANE,
   'connections-tools': SPLIT_PANE,
   'connections-tool-edit': SPLIT_PANE,
   'connections-knowledge': {

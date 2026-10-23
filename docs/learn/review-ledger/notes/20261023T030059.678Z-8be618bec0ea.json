@@ -1,0 +1,19 @@
+{
+  "revision": "c3566bfa0d9cea678df4d4d6fe902f7e66977c05",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed its verification-lane, static-gate, full-verification and evidence-tier statements against the testing-guide delta. Moving the preview process suite from two-worker to exclusive one-worker execution changes scheduling only; selected-evidence and promotion distinctions remain accurate. No operations product behavior changes.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed pre-push, local-feedback, source-verification and documentation-gate claims against the testing-guide delta and current routing owners. The preview scheduling exception changes no hook, source-proof authority, product deadline or assertion; the guide still correctly delegates resource scheduling to testing.md.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Reviewed the manifest delta against the package evidence owners. Only html-reply-preview.process.test.ts moves from process-heavy to process-exclusive. Agent-runtime outbox and other package assignments, public contracts and evidence-tier statements remain unchanged; no package prose correction is required.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed the instruction file against the testing-guide and manifest deltas. Preview now uses the existing exclusive runner with one worker and no file parallelism. The instructions about declared resource classification, bounded process ownership, diagnosing contention before changing deadlines, and separate hosted qualification remain accurate.","inputs":["scripts/AGENTS.md","docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed the instruction file against the testing-guide delta. No server route, service, logging, process-launch or authority contract changes. Preview test startup is isolated using the existing resource owner; targeted test and real-boundary requirements remain accurate.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed the instruction file against the testing-guide delta. The new preview scheduling paragraph changes no UI component, state, identity, geometry, browser-interaction or design-system contract. Its fixture/mutation guidance remains accurate.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed the instruction file against the testing-guide delta. Existing hermetic-fixture, explicit process classification, real browser-action, readiness and mutation requirements remain intact. Preview retains all real egress assertions and its product deadlines while moving to the existing exclusive resource group.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

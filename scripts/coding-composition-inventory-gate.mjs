@@ -58,6 +58,12 @@ const expectedDependencies = new Map(
     // beside the toolbar that calls it: it runs git in the Project's own
     // repository and refuses what Station will not commit or push.
     'src-server/services/projects/coding-git-actions.ts': 'git-review',
+    // Engine sign-in: shows the host terminal session the server started for
+    // an engine's own login (`attachOnly`, so it never becomes a shell) with
+    // the existing terminal renderer as a leaf. The client names only the
+    // sign-in method; the server chose the program and its arguments.
+    'src-ui/src/components/engine-sign-in/EngineSignInPanel.tsx':
+      'terminal-process',
     'src-server/routes/projects/projects.ts': 'project-route',
     'src-server/runtime/routes/runtime-routes.ts': 'route-registration',
     'src-server/security/pairing-route-scopes.ts': 'route-authorization',

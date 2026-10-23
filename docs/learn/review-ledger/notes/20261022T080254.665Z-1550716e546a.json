@@ -1,0 +1,7 @@
+{
+  "revision": "20c07e31369eef541ced83674df604ee7ba90250",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed changed DesktopStartupReadiness composition: private release Node selection and pre-supervisor guarded missing-profile recovery. Identity tickets, renderer mount admission and unrelated module contracts unchanged; source recovery and resolver tests executed, OS interaction evidence separate.","inputs":["docs/architecture/module-map.md","src-desktop/src/lib.rs"]}
+  ]
+}

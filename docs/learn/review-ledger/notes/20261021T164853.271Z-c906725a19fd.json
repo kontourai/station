@@ -1,0 +1,7 @@
+{
+  "revision": "15891026dbb8cd599d07d30e28255b30f2da473d",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"L1 fix round: acp.ts registerFirstHandshakeACPConnection became module-private (no behaviour change); module ownership unchanged. No prose change.","inputs":["docs/architecture/module-map.md","src-server/routes/connections/acp.ts"]}
+  ]
+}

@@ -1,8 +1,9 @@
 import { createSocket } from 'node:dgram';
 import { createServer } from 'node:http';
 import { networkInterfaces } from 'node:os';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { ChromiumServerHost } from '../browser/hosts/chromium-server-host.js';
 import { HtmlReplyPreview } from '../html-reply-preview.js';
 
 const makeTempDir = trackTempDirs();
@@ -170,28 +171,71 @@ test('preview blocks ICE UDP in nested srcdoc and declarative closed shadow fram
     }
     const iceServers = JSON.stringify(destinations.map((urls) => ({ urls })));
     const child = (label: string) =>
-      `<script>try{const pc=new RTCPeerConnection({iceServers:${iceServers}});pc.createDataChannel('probe');pc.createOffer().then(o=>pc.setLocalDescription(o));parent.postMessage({rtcProbe:'${label}',value:'OPEN'},'*')}catch{parent.postMessage({rtcProbe:'${label}',value:typeof RTCPeerConnection},'*')}</script>`;
+      `<script>setTimeout(()=>{try{const pc=new RTCPeerConnection({iceServers:${iceServers}});pc.createDataChannel('probe');pc.createOffer().then(o=>pc.setLocalDescription(o));parent.postMessage({rtcProbe:'${label}',value:'OPEN'},'*')}catch{parent.postMessage({rtcProbe:'${label}',value:typeof RTCPeerConnection},'*')}},500)</script>`;
     const attr = (value: string) =>
       value.replaceAll('&', '&amp;').replaceAll('"', '&quot;');
     const html = `<script>addEventListener('message',e=>{if(e.data?.rtcProbe)console.log('rtc-probe',e.data.rtcProbe,e.data.value)});const f=document.createElement('iframe');f.srcdoc=${JSON.stringify(child('nested')).replaceAll('<', '\\u003c')};document.body.append(f);</script><div><template shadowrootmode="closed"><iframe srcdoc="${attr(child('closed-shadow'))}"></iframe></template></div>`;
-    const service = new HtmlReplyPreview(makeTempDir('html-preview-rtc-'));
-    const result = await service.render({ html, height: 400 }, 800, 'dark');
-    expect(result.contentHeight).toBeGreaterThan(0);
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    expect(
-      packets,
-      'preview must emit no ICE packets to loopback or the host LAN interface',
-    ).toEqual([0, 0]);
-    for (const label of ['nested', 'closed-shadow'])
+    let sessionId: string | undefined;
+    const openTarget = ChromiumServerHost.prototype.openTarget;
+    const shutdown = ChromiumServerHost.prototype.shutdown;
+    const openSpy = vi
+      .spyOn(ChromiumServerHost.prototype, 'openTarget')
+      .mockImplementation(async function (this: ChromiumServerHost, options) {
+        const target = await openTarget.call(this, options);
+        sessionId = target.cdpSessionId;
+        await this.cdp().send(
+          'Runtime.evaluate',
+          {
+            expression: `globalThis.rtcWitnesses=[];addEventListener('message',event=>{const text=event.data?.text;if(text==='rtc-probe nested OPEN'||text==='rtc-probe closed-shadow OPEN')rtcWitnesses.push(text)});`,
+          },
+          sessionId,
+        );
+        return target;
+      });
+    // Keep the real preview process alive for its probes and UDP observation.
+    const shutdownSpy = vi
+      .spyOn(ChromiumServerHost.prototype, 'shutdown')
+      .mockImplementation(async function (this: ChromiumServerHost) {
+        try {
+          if (!sessionId) throw new Error('Preview target was not opened');
+          await expect
+            .poll(
+              async () => {
+                const response = await this.cdp().send<{
+                  result: { value: string[] };
+                }>(
+                  'Runtime.evaluate',
+                  {
+                    expression: 'rtcWitnesses.slice().sort()',
+                    returnByValue: true,
+                  },
+                  sessionId,
+                );
+                return response.result.value;
+              },
+              { timeout: 5_000, interval: 50 },
+            )
+            .toEqual(['rtc-probe closed-shadow OPEN', 'rtc-probe nested OPEN']);
+          await new Promise((resolve) => setTimeout(resolve, 400));
+        } finally {
+          await shutdown.call(this);
+        }
+      });
+    try {
+      const service = new HtmlReplyPreview(makeTempDir('html-preview-rtc-'));
+      const result = await service.render({ html, height: 400 }, 800, 'dark');
+      expect(result.contentHeight).toBeGreaterThan(0);
       expect(
-        result.console.some(
-          (entry) => entry.text === `rtc-probe ${label} OPEN`,
-        ),
-        `${label} executed its RTC attempt in a fresh realm`,
-      ).toBe(true);
-    process.stdout.write(
-      `Preview ICE listener results: loopback=${packets[0]}, LAN=${packets[1]} (${lan}); nested + closed-shadow RTC attempts executed\n`,
-    );
+        packets,
+        'preview must emit no ICE packets to loopback or the host LAN interface',
+      ).toEqual([0, 0]);
+      process.stdout.write(
+        `Preview ICE listener results: loopback=${packets[0]}, LAN=${packets[1]} (${lan}); nested + closed-shadow RTC attempts executed\n`,
+      );
+    } finally {
+      openSpy.mockRestore();
+      shutdownSpy.mockRestore();
+    }
   } finally {
     for (const socket of sockets) socket.close();
   }

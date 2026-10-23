@@ -1,0 +1,1044 @@
+/**
+ * @vitest-environment jsdom
+ */
+
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from '@testing-library/react';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { ACPConnectionSetupPanel } from '../components/acp-connections/ACPConnectionSetupPanel';
+import { FIRST_CONTACT_WAIT_MS } from '../components/acp-connections/useACPConnectionSetup';
+
+vi.mock('../hooks/useDevicePresentation', () => ({
+  useDevicePresentation: () => undefined,
+}));
+
+const registry = vi.hoisted(() => ({ entries: [] as unknown[] }));
+vi.mock('../hooks/useACPConnections', () => ({
+  useACPConnectionRegistry: () => ({
+    data: registry.entries,
+    refetch: vi.fn(),
+    isFetching: false,
+  }),
+  recheckACPConnectionRegistry: vi.fn(),
+}));
+
+const kiro = {
+  id: 'kiro',
+  name: 'Kiro CLI',
+  command: 'kiro',
+  args: ['--acp'],
+  detected: true,
+  installed: false,
+};
+
+const stakpak = {
+  id: 'stakpak',
+  name: 'Stakpak',
+  command: 'stakpak',
+  args: ['acp'],
+  detected: true,
+  installed: false,
+  source: 'registry' as const,
+  sourceName: 'Public agent registry',
+  publicRegistry: {
+    id: 'stakpak',
+    version: '0.3.88',
+    publishers: ['Stakpak Team'],
+    distributions: ['binary' as const],
+    binaryPlatforms: ['darwin-aarch64'],
+    hostLaunch: { command: 'stakpak', args: ['acp'] },
+    recommendedEnv: { STAKPAK_QUIET: '1' },
+  },
+};
+
+function connection(status: string) {
+  return {
+    id: 'kiro',
+    name: 'Kiro CLI',
+    command: 'kiro',
+    args: ['--acp'],
+    enabled: true,
+    status,
+    modes: [],
+    sessionId: null,
+    mcpServers: [],
+    currentModel: null,
+    source: 'user' as const,
+  };
+}
+
+/**
+ * What POST /api/acp/registry/kiro/install answers when the engine's first
+ * probe fails: the shape is pinned at the producer by acp.routes.test.ts
+ * ("answers a failed first add with the probe status and reason"). The
+ * connection is never listed by GET /connections, because a failed first add
+ * registers no identity, so `connections` stays empty in these tests.
+ */
+const failedFirstAddResponse = {
+  id: 'kiro',
+  name: 'Kiro CLI',
+  command: 'kiro',
+  args: ['--acp'],
+  icon: '🔌',
+  enabled: true,
+  status: 'unavailable',
+  modes: [],
+  sessionId: null,
+  mcpServers: [],
+  configOptions: [],
+  currentModel: null,
+  advertisedModels: [],
+  providerRoutingCurrent: true,
+  lastError: { phase: 'initialize', message: 'Timed out after 10000ms' },
+};
+
+describe('ACPConnectionSetupPanel', () => {
+  afterEach(() => {
+    registry.entries = [];
+  });
+
+  // CI-R8: every catalogue choice stops on a confirm step that says what
+  // connecting writes; nothing is installed or probed until it is accepted.
+  test('a catalogue choice opens on its confirm step and writes nothing yet', () => {
+    const onInstallRegistryEntry = vi.fn();
+    render(
+      <ACPConnectionSetupPanel
+        entry={kiro}
+        onAdd={vi.fn()}
+        onInstallRegistryEntry={onInstallRegistryEntry}
+        onDone={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole('heading', { name: 'Connect Kiro CLI' }),
+    ).toBeTruthy();
+    expect(screen.getByText(/Saves a connection to Kiro CLI/)).toBeTruthy();
+    expect(onInstallRegistryEntry).not.toHaveBeenCalled();
+    expect(screen.queryByText(/\bACP\b/i)).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
+    expect(onInstallRegistryEntry).toHaveBeenCalledWith('kiro');
+  });
+
+  // An engine the host lookup did not find cannot be connected yet: the step
+  // offers how to install it, and Connect once a re-check finds it.
+  test('a not-installed choice offers its install command, not Connect, until a re-check finds it', () => {
+    const missing = {
+      ...kiro,
+      detected: false,
+      hostInstall: { command: 'npm i -g kiro-cli' },
+    };
+    registry.entries = [missing];
+    const view = render(
+      <ACPConnectionSetupPanel
+        entry={missing}
+        onAdd={vi.fn()}
+        onInstallRegistryEntry={vi.fn()}
+        onDone={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(/is not installed on the computer/)).toBeTruthy();
+    expect(screen.getByText('npm i -g kiro-cli')).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Check again for Kiro CLI' }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('button', { name: 'Connect Kiro CLI' }),
+    ).toBeNull();
+
+    // The live lookup now finds it.
+    registry.entries = [{ ...missing, detected: true }];
+    view.rerender(
+      <ACPConnectionSetupPanel
+        entry={missing}
+        onAdd={vi.fn()}
+        onInstallRegistryEntry={vi.fn()}
+        onDone={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole('button', { name: 'Connect Kiro CLI' }),
+    ).toBeTruthy();
+    expect(screen.queryByText('npm i -g kiro-cli')).toBeNull();
+  });
+
+  test('a Ready result offers a chat with the engine, and Done', async () => {
+    const onStartChat = vi.fn();
+    const onDone = vi.fn();
+    render(
+      <ACPConnectionSetupPanel
+        entry={kiro}
+        connections={[]}
+        onAdd={vi.fn()}
+        onInstallRegistryEntry={vi.fn().mockResolvedValue({
+          ...failedFirstAddResponse,
+          status: 'available',
+          lastError: undefined,
+        })}
+        onDone={onDone}
+        onStartChat={onStartChat}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Start a chat with Kiro CLI' }),
+    );
+    expect(onStartChat).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'kiro', status: 'available' }),
+    );
+    expect(screen.queryByRole('button', { name: 'Retry check' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    expect(onDone).toHaveBeenCalledTimes(1);
+  });
+
+  test('a result that is not Ready offers no chat', async () => {
+    render(
+      <ACPConnectionSetupPanel
+        entry={kiro}
+        connections={[]}
+        onAdd={vi.fn()}
+        onInstallRegistryEntry={vi
+          .fn()
+          .mockResolvedValue(failedFirstAddResponse)}
+        onDone={vi.fn()}
+        onStartChat={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
+    await screen.findByRole('button', { name: 'Retry check' });
+    expect(
+      screen.getByRole('button', { name: 'Sign in to Kiro CLI' }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Start a chat/ })).toBeNull();
+  });
+
+  // #3162: a public registry listing names what Station will run, so it is
+  // never one click: it stops at the confirm step with the exact command,
+  // and that command goes with the request for the server to compare.
+  test('a public registry engine is confirmed by its exact command before it is added', () => {
+    const onInstallRegistryEntry = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ACPConnectionSetupPanel
+        entry={stakpak}
+        onAdd={vi.fn()}
+        onInstallRegistryEntry={onInstallRegistryEntry}
+        onDone={vi.fn()}
+      />,
+    );
+
+    expect(onInstallRegistryEntry).not.toHaveBeenCalled();
+    expect(screen.getByText('stakpak acp')).toBeTruthy();
+    expect(screen.getByText('By Stakpak Team · version 0.3.88')).toBeTruthy();
+    expect(screen.getByText(/STAKPAK_QUIET=1/).textContent).toContain(
+      'which Station does not apply',
+    );
+
+    expect(screen.queryByText(/\bACP\b/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Stakpak' }));
+    expect(onInstallRegistryEntry).toHaveBeenCalledWith('stakpak', {
+      command: 'stakpak',
+      args: ['acp'],
+    });
+    expect(screen.queryByText(/\bACP\b/)).toBeNull();
+  });
+
+  test('the confirm step tells one argument with a space from two, and shows an empty one', () => {
+    const render1 = (args: string[]) =>
+      render(
+        <ACPConnectionSetupPanel
+          entry={{
+            ...stakpak,
+            args,
+            publicRegistry: {
+              ...stakpak.publicRegistry,
+              hostLaunch: { command: 'stakpak', args },
+            },
+          }}
+          onAdd={vi.fn()}
+          onInstallRegistryEntry={vi.fn()}
+          onDone={vi.fn()}
+        />,
+      );
+    const one = render1(['acp --x', '']);
+    expect(screen.getByText('stakpak "acp --x" ""')).toBeTruthy();
+    one.unmount();
+    render1(['acp', '--x']);
+    expect(screen.getByText('stakpak acp --x')).toBeTruthy();
+  });
+
+  test('shows Checking until the refreshed connection result reports Ready', async () => {
+    const onInstallRegistryEntry = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(
+      <ACPConnectionSetupPanel
+        entry={kiro}
+        onAdd={vi.fn()}
+        onInstallRegistryEntry={onInstallRegistryEntry}
+        onDone={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
+    expect(screen.getByRole('status').textContent).toContain('Checking');
+    expect(onInstallRegistryEntry).toHaveBeenCalledWith('kiro');
+
+    rerender(
+      <ACPConnectionSetupPanel
+        entry={kiro}
+        connections={[connection('available')]}
+        onAdd={vi.fn()}
+        onInstallRegistryEntry={onInstallRegistryEntry}
+        onDone={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('status').textContent).toContain('Ready');
+    });
+    expect(screen.queryByText('Checking')).toBeNull();
+  });
+
+  test('renders a finite non-ready query result and never upgrades it to Ready', async () => {
+    const onInstallRegistryEntry = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(
+      <ACPConnectionSetupPanel
+        entry={kiro}
+        onAdd={vi.fn()}
+        onInstallRegistryEntry={onInstallRegistryEntry}
+        onDone={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
+    rerender(
+      <ACPConnectionSetupPanel
+        entry={kiro}
+        connections={[connection('unavailable')]}
+        onAdd={vi.fn()}
+        onInstallRegistryEntry={onInstallRegistryEntry}
+        onDone={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('status').textContent).toContain(
+        'Setup required',
+      );
+    });
+    expect(screen.queryByText('Ready')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Done' })).toBeTruthy();
+  });
+
+  // CI-R8 — the result panel said only "This provider needs more setup before
+  // it can run work" and offered two buttons that both walk away. The probe's
+  // own failure is on the connection; the panel now reads it.
+  test('a non-ready result names the observed failure and the action that fixes it', async () => {
+    const onInstallRegistryEntry = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(
+      <ACPConnectionSetupPanel
+        entry={kiro}
+        onAdd={vi.fn()}
+        onInstallRegistryEntry={onInstallRegistryEntry}
+        onDone={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
+    rerender(
+      <ACPConnectionSetupPanel
+        entry={kiro}
+        connections={[
+          {
+            ...connection('unavailable'),
+            // What the probe records for a command it cannot find.
+            lastError: {
+              phase: 'spawn',
+              message:
+                'Station could not start kiro: it is not installed, or not runnable, on the computer Station runs on. Install it there, then check the engine again.',
+            },
+          },
+        ]}
+        onAdd={vi.fn()}
+        onInstallRegistryEntry={onInstallRegistryEntry}
+        onDone={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('status').textContent).toContain(
+        'Setup required',
+      );
+    });
+    const status = screen.getByRole('status');
+    expect(status.textContent).toContain(
+      'Station could not start kiro: it is not installed',
+    );
+    // No raw phase name, and the remedy is said once, not twice.
+    expect(status.textContent).not.toContain('spawn:');
+    expect(status.textContent?.match(/Install it/g)).toHaveLength(1);
+  });
+
+  // The action is derived from the phase: after `initialize` the command IS
+  // running, so telling the operator to install it would be wrong advice
+  // (observed live against a real cursor-agent auth refusal).
+  test('a post-spawn failure points at the provider, not at installing it', async () => {
+    const onInstallRegistryEntry = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(
+      <ACPConnectionSetupPanel
+        entry={kiro}
+        onAdd={vi.fn()}
+        onInstallRegistryEntry={onInstallRegistryEntry}
+        onDone={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
+    rerender(
+      <ACPConnectionSetupPanel
+        entry={kiro}
+        connections={[
+          {
+            ...connection('unavailable'),
+            lastError: {
+              phase: 'session creation',
+              message: 'Authentication required',
+            },
+          },
+        ]}
+        onAdd={vi.fn()}
+        onInstallRegistryEntry={onInstallRegistryEntry}
+        onDone={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('status').textContent).toContain(
+        'Setup required',
+      );
+    });
+    const status = screen.getByRole('status');
+    expect(status.textContent).toContain('Authentication required');
+    expect(status.textContent).not.toContain('session creation:');
+    expect(status.textContent).toContain('did not finish connecting');
+    expect(status.textContent).not.toContain('Install it');
+  });
+
+  test('a ready result carries no failure line', async () => {
+    const onInstallRegistryEntry = vi.fn().mockResolvedValue(undefined);
+    const { rerender } = render(
+      <ACPConnectionSetupPanel
+        entry={kiro}
+        onAdd={vi.fn()}
+        onInstallRegistryEntry={onInstallRegistryEntry}
+        onDone={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
+    rerender(
+      <ACPConnectionSetupPanel
+        entry={kiro}
+        connections={[
+          {
+            ...connection('available'),
+            lastError: { phase: 'spawn', message: 'a stale earlier failure' },
+          },
+        ]}
+        onAdd={vi.fn()}
+        onInstallRegistryEntry={onInstallRegistryEntry}
+        onDone={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole('status').textContent).toContain('Ready');
+    });
+    expect(screen.getByRole('status').textContent).not.toContain(
+      'a stale earlier failure',
+    );
+  });
+
+  test('a failed first add lands on Setup required from the add response, and Retry check re-runs it', async () => {
+    const { lastError: _failure, ...connected } = failedFirstAddResponse;
+    const onInstallRegistryEntry = vi
+      .fn()
+      .mockResolvedValueOnce(failedFirstAddResponse)
+      .mockResolvedValueOnce({ ...connected, status: 'available' });
+    render(
+      <ACPConnectionSetupPanel
+        entry={kiro}
+        connections={[]}
+        onAdd={vi.fn()}
+        onInstallRegistryEntry={onInstallRegistryEntry}
+        onDone={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
+    await waitFor(() => {
+      expect(screen.getByRole('status').textContent).toContain(
+        'Setup required',
+      );
+    });
+    expect(screen.queryByText('Checking')).toBeNull();
+    expect(screen.getByRole('status').textContent).toContain(
+      'Timed out after 10000ms',
+    );
+    expect(screen.getByRole('button', { name: 'Done' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry check' }));
+    await waitFor(() => {
+      expect(screen.getByRole('status').textContent).toContain('Ready');
+    });
+    expect(onInstallRegistryEntry).toHaveBeenNthCalledWith(2, 'kiro');
+    expect(screen.queryByRole('button', { name: 'Retry check' })).toBeNull();
+  });
+
+  test('a failed first custom add offers Retry check and Edit setup', async () => {
+    const onAdd = vi.fn().mockResolvedValue({
+      ...failedFirstAddResponse,
+      id: 'gemini',
+      name: 'Gemini CLI',
+      command: 'gemini',
+      args: [],
+      lastError: { phase: 'spawn', message: 'spawn gemini ENOENT' },
+    });
+    render(
+      <ACPConnectionSetupPanel
+        connections={[]}
+        onAdd={onAdd}
+        onDone={vi.fn()}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Gemini CLI' },
+    });
+    fireEvent.change(screen.getByLabelText('Command'), {
+      target: { value: 'gemini' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Check engine' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('status').textContent).toContain(
+        'Setup required',
+      );
+    });
+    expect(screen.getByRole('status').textContent).toContain(
+      'spawn gemini ENOENT',
+    );
+    expect(screen.getByRole('button', { name: 'Retry check' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit setup' }));
+    expect(screen.getByDisplayValue('Gemini CLI')).toBeTruthy();
+  });
+
+  // A first add whose request-budget probe timed out on a never-connected
+  // engine answers `probing` (acp-first-contact.routes.test.ts): the cold
+  // start continues on the server, and the setup follows it.
+  describe('a first start that continues in the background', () => {
+    const probingResponse = {
+      ...failedFirstAddResponse,
+      status: 'probing',
+      lastError: undefined,
+    };
+
+    function renderProbing(
+      props: Partial<Parameters<typeof ACPConnectionSetupPanel>[0]> = {},
+    ) {
+      const onFirstContactPendingChange = vi.fn();
+      const onRefreshConnections = vi.fn();
+      const base = {
+        entry: kiro,
+        connections: [] as ReturnType<typeof connection>[],
+        onAdd: vi.fn(),
+        onInstallRegistryEntry: vi.fn().mockResolvedValue(probingResponse),
+        onRefreshConnections,
+        onFirstContactPendingChange,
+        onDone: vi.fn(),
+      };
+      const view = render(<ACPConnectionSetupPanel {...base} {...props} />);
+      const rerender = (next: Partial<typeof base> & Record<string, unknown>) =>
+        view.rerender(<ACPConnectionSetupPanel {...base} {...next} />);
+      return { rerender, onFirstContactPendingChange, onRefreshConnections };
+    }
+
+    test('stays on Checking with first-start copy, then lands on Setup required from the polled status', async () => {
+      const { rerender, onFirstContactPendingChange } = renderProbing();
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
+
+      await waitFor(() =>
+        expect(onFirstContactPendingChange).toHaveBeenLastCalledWith(true),
+      );
+      expect(screen.getByRole('status').textContent).toContain(
+        'Starting Kiro CLI for the first time. A first start can take up to a minute.',
+      );
+
+      rerender({
+        probeStatusesUpdatedAt: Date.now(),
+        probeStatuses: [
+          {
+            id: 'kiro',
+            status: 'unavailable',
+            lastError: {
+              phase: 'initialize',
+              message: 'Timed out after 60000ms',
+            },
+          },
+        ],
+      });
+
+      await waitFor(() =>
+        expect(screen.getByRole('status').textContent).toContain(
+          'Setup required',
+        ),
+      );
+      expect(screen.getByRole('status').textContent).toContain(
+        'Timed out after 60000ms',
+      );
+      expect(onFirstContactPendingChange).toHaveBeenLastCalledWith(false);
+    });
+
+    // The setup is not a trap while a first start runs: it can be closed,
+    // and saying what happens next is the action's own label.
+    test('a first start can be left to finish in the background', async () => {
+      const onDone = vi.fn();
+      renderProbing({ onDone });
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
+      await waitFor(() =>
+        expect(screen.getByRole('status').textContent).toContain('first time'),
+      );
+
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Keep checking in background' }),
+      );
+      expect(onDone).toHaveBeenCalledTimes(1);
+    });
+
+    test('the short check before an answer can be closed too', async () => {
+      const onDone = vi.fn();
+      render(
+        <ACPConnectionSetupPanel
+          entry={kiro}
+          connections={[]}
+          onAdd={vi.fn()}
+          onInstallRegistryEntry={() => new Promise(() => {})}
+          onDone={onDone}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
+      expect(screen.getByRole('status').textContent).toContain('Checking');
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      expect(onDone).toHaveBeenCalledTimes(1);
+    });
+
+    // Retry check after a Setup required result: the section still holds the
+    // last poll, which says `unavailable` for this id. That answer is about
+    // the previous attempt and must not end the new wait.
+    test('a poll from before this add does not end its first-start wait', async () => {
+      const { rerender } = renderProbing({
+        probeStatusesUpdatedAt: Date.now() - 60_000,
+        probeStatuses: [
+          {
+            id: 'kiro',
+            status: 'unavailable',
+            lastError: { phase: 'initialize', message: 'the OLD failure' },
+          },
+        ],
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
+      await waitFor(() =>
+        expect(screen.getByRole('status').textContent).toContain('first time'),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(screen.getByRole('status').textContent).toContain('Checking');
+      expect(screen.queryByText(/the OLD failure/)).toBeNull();
+
+      rerender({
+        probeStatusesUpdatedAt: Date.now(),
+        probeStatuses: [
+          {
+            id: 'kiro',
+            status: 'unavailable',
+            lastError: { phase: 'initialize', message: 'the NEW failure' },
+          },
+        ],
+      });
+      await waitFor(() =>
+        expect(screen.getByRole('status').textContent).toContain(
+          'the NEW failure',
+        ),
+      );
+    });
+
+    test('a connected first start waits for the registered engine, then lands on Ready', async () => {
+      const { rerender, onRefreshConnections } = renderProbing();
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
+      await waitFor(() =>
+        expect(screen.getByRole('status').textContent).toContain('first start'),
+      );
+
+      rerender({
+        probeStatusesUpdatedAt: Date.now(),
+        probeStatuses: [{ id: 'kiro', status: 'available' }],
+      });
+      await waitFor(() => expect(onRefreshConnections).toHaveBeenCalled());
+      expect(screen.getByRole('status').textContent).toContain('Checking');
+
+      rerender({
+        probeStatusesUpdatedAt: Date.now(),
+        probeStatuses: [{ id: 'kiro', status: 'available' }],
+        connections: [connection('available')],
+      });
+      await waitFor(() =>
+        expect(screen.getByRole('status').textContent).toContain('Ready'),
+      );
+    });
+
+    test('never stays on Checking past the first-start bound', async () => {
+      vi.useFakeTimers();
+      try {
+        renderProbing();
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Connect Kiro CLI' }),
+        );
+        await vi.waitFor(() =>
+          expect(screen.getByRole('status').textContent).toContain(
+            'first start',
+          ),
+        );
+
+        await act(async () => {
+          vi.advanceTimersByTime(FIRST_CONTACT_WAIT_MS);
+        });
+
+        expect(screen.getByRole('alert').textContent).toContain(
+          'Station keeps checking it while Station is running; if Station restarts first, add it again.',
+        );
+        expect(screen.queryByText('Checking')).toBeNull();
+        expect(
+          screen.getByRole('button', { name: 'Retry refresh' }),
+        ).toBeTruthy();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  test('recovers a successful mutation when its connection refresh fails', async () => {
+    const onInstallRegistryEntry = vi.fn().mockResolvedValue(undefined);
+    const onRefreshConnections = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ACPConnectionSetupPanel
+        entry={kiro}
+        connectionQueryError={new Error('Connection refresh failed')}
+        onAdd={vi.fn()}
+        onInstallRegistryEntry={onInstallRegistryEntry}
+        onRefreshConnections={onRefreshConnections}
+        onDone={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain(
+        'Could not refresh this engine’s status.',
+      );
+    });
+    expect(screen.queryByText('Checking')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Done' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry refresh' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Retry refresh' }));
+    await waitFor(() => expect(onRefreshConnections).toHaveBeenCalledTimes(1));
+  });
+
+  test('keeps custom setup simple until Advanced and derives the draft id', async () => {
+    const onAdd = vi.fn().mockResolvedValue(undefined);
+    render(<ACPConnectionSetupPanel onAdd={onAdd} onDone={vi.fn()} />);
+
+    expect(screen.getByText('Advanced').parentElement).not.toHaveProperty(
+      'open',
+      true,
+    );
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Gemini CLI' },
+    });
+    fireEvent.change(screen.getByLabelText('Command'), {
+      target: { value: 'gemini' },
+    });
+    fireEvent.click(screen.getByText('Advanced'));
+    expect(screen.getByLabelText('ID')).toBeTruthy();
+    expect(screen.getByLabelText('Arguments')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Check engine' }));
+
+    await waitFor(() => {
+      expect(onAdd).toHaveBeenCalledWith({
+        id: 'gemini',
+        name: 'Gemini CLI',
+        command: 'gemini',
+        args: '',
+        icon: '',
+        cwd: '',
+      });
+    });
+    expect(screen.getByRole('status').textContent).toContain('Checking');
+  });
+
+  // Edit setup on a custom engine that never registered: the same form,
+  // filled with what was saved, saving through the update (its id is fixed).
+  test('edits a saved custom engine through the update and shows its result', async () => {
+    const saved = {
+      ...failedFirstAddResponse,
+      id: 'stub',
+      name: 'Stub Engine',
+      command: 'stub-acp',
+      args: ['--acp'],
+      cwd: '/srv/stub',
+    };
+    const onUpdate = vi.fn().mockResolvedValue({
+      ...saved,
+      command: 'stub-acp-fixed',
+      status: 'available',
+      lastError: undefined,
+    });
+    const onAdd = vi.fn();
+    render(
+      <ACPConnectionSetupPanel
+        entry={kiro}
+        connections={[]}
+        editConnection={saved}
+        onAdd={onAdd}
+        onUpdate={onUpdate}
+        onDone={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByDisplayValue('Stub Engine')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Command'), {
+      target: { value: 'stub-acp-fixed' },
+    });
+    fireEvent.click(screen.getByText('Advanced'));
+    expect((screen.getByLabelText('ID') as HTMLInputElement).disabled).toBe(
+      true,
+    );
+    expect(screen.getByDisplayValue('--acp')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Check engine' }));
+
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toContain('Ready'),
+    );
+    expect(onUpdate).toHaveBeenCalledWith('stub', {
+      id: 'stub',
+      name: 'Stub Engine',
+      command: 'stub-acp-fixed',
+      args: '--acp',
+      icon: '🔌',
+      cwd: '/srv/stub',
+    });
+    expect(onAdd).not.toHaveBeenCalled();
+  });
+
+  // Retry check and Edit setup do not add anything, and a re-check of an
+  // engine that never connected is still its first start, said without
+  // "for the first time" being claimed for a second try.
+  describe('wording for re-checks and edits', () => {
+    test('Retry check says it is checking again, not adding', async () => {
+      const onInstallRegistryEntry = vi
+        .fn()
+        .mockResolvedValueOnce(failedFirstAddResponse)
+        .mockReturnValueOnce(new Promise(() => {}));
+      render(
+        <ACPConnectionSetupPanel
+          entry={kiro}
+          connections={[]}
+          onAdd={vi.fn()}
+          onInstallRegistryEntry={onInstallRegistryEntry}
+          onDone={vi.fn()}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Retry check' }),
+      );
+
+      await waitFor(() =>
+        expect(screen.getByRole('status').textContent).toContain(
+          'Checking Kiro CLI again.',
+        ),
+      );
+      expect(screen.getByRole('status').textContent).not.toContain('Adding');
+    });
+
+    test('a re-check that continues a first start does not call it the first time', async () => {
+      const onInstallRegistryEntry = vi
+        .fn()
+        .mockResolvedValueOnce(failedFirstAddResponse)
+        .mockResolvedValueOnce({
+          ...failedFirstAddResponse,
+          status: 'probing',
+          lastError: undefined,
+        });
+      render(
+        <ACPConnectionSetupPanel
+          entry={kiro}
+          connections={[]}
+          onAdd={vi.fn()}
+          onInstallRegistryEntry={onInstallRegistryEntry}
+          onDone={vi.fn()}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Connect Kiro CLI' }));
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Retry check' }),
+      );
+
+      await waitFor(() =>
+        expect(screen.getByRole('status').textContent).toContain(
+          'Starting Kiro CLI. A first start can take up to a minute.',
+        ),
+      );
+      expect(screen.getByRole('status').textContent).not.toContain(
+        'for the first time',
+      );
+    });
+
+    test('Edit setup speaks of changing and saving, not choosing or adding', async () => {
+      render(
+        <ACPConnectionSetupPanel
+          entry={kiro}
+          connections={[]}
+          editConnection={{
+            ...failedFirstAddResponse,
+            id: 'stub',
+            name: 'Stub Engine',
+            command: 'stub-acp',
+          }}
+          onAdd={vi.fn()}
+          onUpdate={() => new Promise(() => {})}
+          onDone={vi.fn()}
+        />,
+      );
+      expect(
+        screen.getByText("Change this engine's setup, then check it."),
+      ).toBeTruthy();
+      expect(screen.queryByText(/Choose an engine to set up/)).toBeNull();
+      fireEvent.change(screen.getByLabelText('Command'), {
+        target: { value: 'stub-acp-fixed' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Check engine' }));
+
+      expect(screen.getByRole('status').textContent).toContain(
+        'Saving your changes and checking Stub Engine.',
+      );
+    });
+  });
+
+  // Saved arguments are shown as one line; one containing a space is quoted
+  // so saving the form unchanged sends the same arguments back.
+  test('Edit setup quotes a saved argument that contains a space', () => {
+    render(
+      <ACPConnectionSetupPanel
+        connections={[]}
+        editConnection={{
+          ...failedFirstAddResponse,
+          id: 'stub',
+          name: 'Stub Engine',
+          command: 'stub-acp',
+          args: ['--prompt', 'a b'],
+        }}
+        onAdd={vi.fn()}
+        onUpdate={vi.fn()}
+        onDone={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByText('Advanced'));
+    expect(screen.getByDisplayValue('--prompt "a b"')).toBeTruthy();
+  });
+
+  // `node /tmp/x.mjs` typed into Command is a program and its argument; the
+  // engine would be reported "not installed" under that whole name.
+  test('a command with arguments in it says where arguments go', () => {
+    render(<ACPConnectionSetupPanel onAdd={vi.fn()} onDone={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Command'), {
+      target: { value: 'node /tmp/x.mjs' },
+    });
+    expect(
+      screen.getByText(
+        'This looks like a program and its arguments. Put arguments in Advanced → Arguments and keep only the program here.',
+      ),
+    ).toBeTruthy();
+
+    // A path to a program can contain spaces.
+    fireEvent.change(screen.getByLabelText('Command'), {
+      target: { value: '/Applications/My App/bin/engine' },
+    });
+    expect(screen.queryByText(/Put arguments in Advanced/)).toBeNull();
+  });
+
+  // The choice that opened the setup leaves the page, so focus moves to the
+  // setup rather than dropping to the document.
+  test('takes focus when it opens', () => {
+    render(<ACPConnectionSetupPanel onAdd={vi.fn()} onDone={vi.fn()} />);
+    expect(document.activeElement).toBe(
+      screen.getByRole('region', { name: 'Engine setup' }),
+    );
+  });
+
+  test('preserves safe custom input after a mutation error and retries the original mutation', async () => {
+    const onAdd = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Command could not start'))
+      .mockResolvedValueOnce(undefined);
+    render(<ACPConnectionSetupPanel onAdd={onAdd} onDone={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Gemini CLI' },
+    });
+    fireEvent.change(screen.getByLabelText('Command'), {
+      target: { value: 'gemini' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Check engine' }));
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toContain(
+        'Command could not start',
+      );
+    });
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry refresh' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(onAdd).toHaveBeenCalledTimes(2));
+    expect(screen.getByRole('status').textContent).toContain('Checking');
+  });
+
+  test('preserves the custom draft when a mutation error is edited', async () => {
+    const onAdd = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Command could not start'));
+    render(<ACPConnectionSetupPanel onAdd={onAdd} onDone={vi.fn()} />);
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Gemini CLI' },
+    });
+    fireEvent.change(screen.getByLabelText('Command'), {
+      target: { value: 'gemini' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Check engine' }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Edit setup' }));
+    expect(screen.getByDisplayValue('Gemini CLI')).toBeTruthy();
+    expect(screen.getByDisplayValue('gemini')).toBeTruthy();
+  });
+});

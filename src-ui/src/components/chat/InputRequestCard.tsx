@@ -112,8 +112,9 @@ function inputType(field: InputRequestField): string {
   }
 }
 
-function sourceLabel(form: InputRequestForm): string {
-  return form.source.startsWith('mcp:') ? 'Tool server request' : 'Question';
+function sourceLabel(form: InputRequestForm, planReview: boolean): string {
+  if (form.source.startsWith('mcp:')) return 'Tool server request';
+  return planReview ? 'Plan review' : 'Question';
 }
 
 /**
@@ -131,9 +132,15 @@ function sourceLabel(form: InputRequestForm): string {
 export function InputRequestCard({
   form,
   draftKey,
+  planReview = false,
   onRespond,
 }: {
   form: InputRequestForm;
+  /**
+   * The request asks the person to review a plan the engine proposes
+   * (`toolRequestIsPlanReview`), not to answer a question.
+   */
+  planReview?: boolean;
   /**
    * Saves the non-secret answers on this device under this key while the
    * request is open. Absent: nothing is saved.
@@ -571,7 +578,7 @@ export function InputRequestCard({
         {sheet.open && (
           <RequestSheet
             title={title}
-            subtitle={sourceLabel(form)}
+            subtitle={sourceLabel(form, planReview)}
             onDismiss={sheet.dismiss}
             returnFocusTarget={sheet.triggerRef.current}
             actions={actions}
@@ -602,7 +609,7 @@ export function InputRequestCard({
     >
       <div className="input-request-card__heading">
         <strong>{title}</strong>
-        <span>{sourceLabel(form)}</span>
+        <span>{sourceLabel(form, planReview)}</span>
       </div>
       {body}
       <div className="input-request-card__footer">

@@ -244,6 +244,11 @@ function profileStoreGenesisAdmissible(home: string): boolean {
   if (!root.isDirectory() || root.isSymbolicLink()) return false;
   return readdirSync(home).every((entry) => {
     const candidate = lstatSync(join(home, entry));
+    if (
+      candidate.isFile() &&
+      ['.DS_Store', 'Thumbs.db', 'desktop.ini'].includes(entry)
+    )
+      return true;
     if (!candidate.isDirectory() || candidate.isSymbolicLink()) return false;
     // CLI setup creates an empty config parent before first metadata
     // publication. It is not history by itself; any content is.

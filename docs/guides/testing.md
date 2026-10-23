@@ -545,6 +545,9 @@ event sets the variables it needs explicitly. The one deliberate exception is
 the real-ledger documentation freshness checks: `vitest.setup.ts` keeps the
 removed variables on the process object, and their `JOB_ENV` adds them back,
 so a pull request stays scoped and the merge queue stays advisory.
+It also sets `STATION_PUBLIC_AGENT_REGISTRY=off`, so a runtime a test builds
+never downloads the public agent registry; tests of that source construct it
+with an injected `fetch`.
 The subset uses the same resource groups and worker limits as `test:full`:
 ordinary files use four workers, process-heavy files use two, and exclusive
 or shared-output groups run serially. Groups run in sequence. Deferred lanes
@@ -880,12 +883,17 @@ pulls in (listed as `desktop-rust` in `scripts/classify-ci-change.mjs`). The
 classifier is taken from the base commit, and every failure to classify
 compiles. The job, and so the required check, runs either way. TypeScript is
 not re-checked on Windows; `ci:fast`'s typecheck aggregate owns that verdict.
+After a relevant compile, the same job runs the real Credential Manager
+recovery test. It creates uniquely named Station entries, verifies their raw
+`account.service` targets are included in the history search, checks that
+the credential-history observation reports those entries, and deletes only its own entries.
 
 The floor also runs the [Windows resource-staging keeper](../../scripts/__tests__/windows-resource-staging.test.ts) before Cargo. It
 executes the workflow's PowerShell staging body in a temporary directory and
-checks the configured resource-source directories at the Cargo boundary,
-including bundled examples. This proves directory staging, not Rust compilation
-or bundled file contents. The same focused step runs the
+checks the configured resource-source directories and private Node sidecar at
+the Cargo boundary, including bundled examples. The fixture uses a cached,
+digest-pinned test distribution to execute the production preparation script.
+This proves staging, not Rust compilation or installed-app execution. The same focused step runs the
 [Tauri context caller tests](../../scripts/__tests__/tauri-context.test.ts),
 checking real installed npm/local Tauri versions and explicit missing
 prerequisites on Windows. The report caller tests have an 80-second harness
@@ -1580,6 +1588,10 @@ asserts durable completion and readiness, not a 30-second performance target. Ne
 direct child-process users fail the manifest gate until deliberately
 classified. Tests that write shared repo paths belong in shared-output and
 their paths must be declared by the enclosing verification lane.
+
+The HTML preview process suite also runs in the exclusive group so other Vitest
+files in that invocation do not compete with its disposable Chromium startup.
+It retains the 15-second render deadline and 3-second effective-policy check.
 
 Pre-push and coverage remain one-worker evidence lanes. Coverage merging has a
 different correctness contract, and pre-push is already short while its

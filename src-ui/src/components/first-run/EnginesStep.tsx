@@ -45,6 +45,7 @@ import {
   useAgentsLoaded,
   useAgentsSettled,
 } from '../../contexts/AgentsContext';
+import { recheckACPConnectionRegistry } from '../../hooks/useACPConnections';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { useSystemStatus } from '../../hooks/useSystemStatus';
 import { Button } from '../Button';
@@ -153,6 +154,14 @@ interface EnginesStepProps {
    *  — the user is going on without what they asked for.
    */
   onGiveUp: () => void;
+  /**
+   * Re-run the host lookup after installing an engine, so it can be picked
+   * here without leaving the chapter. Absent: no Check again is offered.
+   */
+  onCheckAgain?: () => void;
+  checkingAgain?: boolean;
+  /** Why the last Check again could not re-check, when it could not. */
+  checkAgainNotice?: string;
 }
 
 export function EnginesStep({
@@ -168,6 +177,9 @@ export function EnginesStep({
   onAcknowledge,
   onRetry,
   onGiveUp,
+  onCheckAgain,
+  checkingAgain = false,
+  checkAgainNotice,
 }: EnginesStepProps) {
   const busy = runningBatchSize !== null && runningBatchSize !== undefined;
   const listed = options.filter((option) => option.state !== 'undetected');
@@ -350,7 +362,12 @@ export function EnginesStep({
             // Secondary and collapsed: naming what Station also supports is
             // worth one line, but an unchecked list of things the user does
             // not have must never compete with the ones they do.
-            <details className="first-run-engines__more">
+            // Open when nothing else is listed: the install hints are then
+            // the only way forward, so they are not folded away.
+            <details
+              className="first-run-engines__more"
+              open={listed.length === 0 || undefined}
+            >
               <summary>Station also works with</summary>
               <ul className="first-run-engines__list">
                 {undetected.map((option) => (
@@ -372,6 +389,9 @@ export function EnginesStep({
                         name={option.name}
                         recipe={option.install}
                         devicePresentation={devicePresentation}
+                        onCheckAgain={onCheckAgain}
+                        checking={checkingAgain}
+                        checkAgainNotice={checkAgainNotice}
                       />
                     ) : null}
                   </li>
@@ -440,6 +460,21 @@ export function FirstRunEnginesChapter({
 }) {
   const materializeEngineAgent = useMaterializeEngineAgentMutation();
   const connectAndMaterializeEngine = useConnectAndMaterializeEngineMutation();
+  const { refetch: refetchStatus } = useSystemStatus() as {
+    refetch?: () => unknown;
+  };
+  const [checkingAgain, setCheckingAgain] = useState(false);
+  const [recheckRefused, setRecheckRefused] = useState(false);
+  // The same re-read the Add engine catalogue's Check again makes: the host
+  // re-reads its search PATH, then the engine list is read again.
+  const checkAgain = () => {
+    setCheckingAgain(true);
+    void recheckACPConnectionRegistry()
+      .then((result) => setRecheckRefused(result.status === 'not-permitted'))
+      .catch(() => undefined)
+      .then(() => refetchStatus?.())
+      .finally(() => setCheckingAgain(false));
+  };
   // The same status query `useFirstRunEngineOptions` already reads — one
   // request, one derivation, and the row notes and the chapter's own
   // sentences therefore cannot name two different machines.
@@ -590,6 +625,13 @@ export function FirstRunEnginesChapter({
       onAcknowledge={onDone}
       onRetry={retryFailed}
       onGiveUp={onGiveUp}
+      onCheckAgain={checkAgain}
+      checkingAgain={checkingAgain}
+      checkAgainNotice={
+        recheckRefused
+          ? hostActionCopy('engine-recheck-not-permitted', devicePresentation)
+          : undefined
+      }
     />
   );
 }

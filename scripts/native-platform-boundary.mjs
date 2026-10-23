@@ -32,18 +32,18 @@ export const TAURI_MOBILE_CONFIGS = [
   'src-desktop/tauri.ios.conf.json',
 ];
 export const EXPECTED_DESKTOP_RESOURCES = {
-  '../dist-server': 'dist-server',
+  '../dist-desktop-runtime/dist-server': 'dist-server',
   '../dist-desktop-runtime/node_modules': 'node_modules',
   '../schemas': 'schemas',
   '../dist-desktop-runtime/examples': 'examples',
 };
 export const EXPECTED_APPIMAGE_RUNTIME_FILES = {
-  'usr/share/Station/dist-server': '../dist-server',
+  'usr/share/Station/dist-server': '../dist-desktop-runtime/dist-server',
   'usr/share/Station/node_modules': '../dist-desktop-runtime/node_modules',
   'usr/share/Station/examples': '../dist-desktop-runtime/examples',
 };
 export const EXPECTED_APPIMAGE_REMOVED_RESOURCES = {
-  '../dist-server': null,
+  '../dist-desktop-runtime/dist-server': null,
   '../dist-desktop-runtime/node_modules': null,
   '../dist-desktop-runtime/examples': null,
 };
@@ -386,6 +386,13 @@ export function findTauriResourceBoundaryViolations(
       JSON.stringify(EXPECTED_DESKTOP_RESOURCES)
     )
       violations.push(`${file} must bundle the exact desktop resources`);
+    if (
+      JSON.stringify(config?.bundle?.externalBin) !==
+      JSON.stringify(['binaries/station-node'])
+    )
+      violations.push(
+        `${file} must bundle the private Station Node executable`,
+      );
     if (config?.build?.beforeBuildCommand !== 'npm run build:desktop:resources')
       violations.push(`${file} must build the embedded desktop runtime`);
   }

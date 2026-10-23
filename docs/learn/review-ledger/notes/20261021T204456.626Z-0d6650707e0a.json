@@ -1,0 +1,7 @@
+{
+  "revision": "dd1cb7943df0b67af172c5e4e0565f9a2c7fc338",
+
+  "notes": [
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Integration review: the vitest resource manifest change adds src-server's acp-engine-qualification.process test to the process-heavy pool (alongside main's opencode process tests); this context names only agent-runtime test owners, none of which moved. No prose change.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

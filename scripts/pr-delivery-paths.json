@@ -70,13 +70,19 @@
     "scripts/lib/portable-server-archive.mjs",
     "scripts/lib/portable-smoke-diagnostics.mjs",
     "scripts/lib/server-build-config.mjs",
-    "scripts/lib/station-stop-hint.mjs"
+    "scripts/lib/station-stop-hint.mjs",
+    "scripts/lib/desktop-node-runtime.mjs",
+    "scripts/prepare-desktop-rust-resources.mjs"
   ],
   "native": [
     ".github/workflows/desktop-rust.yml",
     "src-desktop/**",
     "packages/contracts/src/native-push.ts",
-    "scripts/run-agent-activity-android-unit-tests.mjs"
+    "scripts/run-agent-activity-android-unit-tests.mjs",
+    "scripts/lib/desktop-node-runtime.mjs",
+    "scripts/lib/portable-server-archive.mjs",
+    "scripts/prepare-desktop-rust-resources.mjs",
+    "config/portable-server-node-runtime.json"
   ],
   "desktop": [
     ".github/workflows/desktop-clean-checkout.yml",
@@ -101,7 +107,9 @@
     "scripts/lib/windows-nightly.mjs",
     "scripts/lib/nightly-build-identity.mjs",
     "scripts/lib/native-release-config.mjs",
-    "esbuild.config.mjs"
+    "esbuild.config.mjs",
+    "scripts/lib/desktop-node-runtime.mjs",
+    "scripts/prepare-desktop-rust-resources.mjs"
   ],
   "ecosystem": [
     "install.sh",

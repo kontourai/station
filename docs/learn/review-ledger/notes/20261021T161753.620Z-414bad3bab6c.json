@@ -1,0 +1,45 @@
+{
+  "revision": "f6d3e8fb87e5cfd2151a2b1cbc08e0b996d9f3a9",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"L1 item 2: SDK index gained fetchACPConnectionProbeStatuses/useACPConnectionProbeStatusesQuery (a read of the existing GET /acp/status). The architecture overview names no SDK export list or ACP status read; no prose change.","inputs":["docs/architecture.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"L1 item 2: acp.ts now starts a detached cold first-contact continuation (ACPManager.continueFirstContact) after a timed-out first add and registers background first handshakes through the configuration queue with a saved-config match. Route/service ownership is unchanged: the manager owns probing, the route module owns registration. No prose change.","inputs":["docs/architecture/module-map.md","src-server/routes/connections/acp.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"L1 item 2: historical proposal; acp.md's new first-start continuation paragraph concerns connection onboarding, not the chat phases this design records. No prose change.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md"]},
+
+    {"path":"docs/design/agent-engine-unification.md","note":"L1 item 2: 7.1 now states the probing first add, the cold background continuation outside the configuration queue, and that a background first handshake (continuation or sweep) registers only when the saved config still matches the probed config. Matches registerFirstHandshakeACPConnection and continueACPFirstContact.","inputs":["docs/design/agent-engine-unification.md"]},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"L1 item 2: SDK index gained an ACP probe-status read; this design's knowledge recall surfaces and exports are unaffected. No prose change.","inputs":["docs/design/knowledge-recall-ui.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"L1 item 2: additive ACP probe-status SDK export; pane host contract unaffected. No prose change.","inputs":["docs/design/pane-host-contract.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"L1 item 2: 'Agent not appearing' now describes the probing response, the cold background continuation outside the configuration queue, GET /api/acp/status for progress, and registration by a background first handshake only on a saved-config match. acp-probe.ts gained firstContactTimedOut (deadline-only), which is what gates the continuation.","inputs":["docs/guides/acp.md","src-server/services/acp/acp-probe.ts"]},
+
+    {"path":"docs/guides/agents.md","note":"L1 item 2: setup dialog gained first-start copy and a bounded wait; the agents guide does not describe the engine setup dialog. No prose change.","inputs":["docs/guides/agents.md","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"L1 item 2: step 3 now says a first start can take up to a minute, the dialog keeps checking, and stops waiting after about 90 seconds while Station keeps checking (FIRST_CONTACT_WAIT_MS = 90_000).","inputs":["docs/guides/connections.md","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"L1 item 2: depends on connections.md whose change is limited to the Add engine step 3 wait copy; no machine-relationship claim affected. No prose change.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"L1 item 2: additive SDK ACP probe-status read; responsive UI rules unaffected. No prose change.","inputs":["docs/guides/responsive-ui.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts","pnpm-lock.yaml#/packages"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"L1 item 2: unaffected by the setup dialog's first-start copy. No prose change.","inputs":["docs/guides/self-configuring-agent.md","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"L1 item 2: additive SDK export; theming unaffected. No prose change.","inputs":["docs/guides/theming.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"L1 item 2: additive SDK export; the new server work follows the existing pattern (route validation at the route seam, probing in the ACP service, detached work logged via the context logger). No prose change.","inputs":["docs/patterns/backend.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts","pnpm-lock.yaml#/packages"]},
+
+    {"path":"docs/patterns/frontend.md","note":"L1 item 2: the dialog's polling uses a React Query hook (useACPConnectionProbeStatusesQuery with refetchInterval) owned by the section, consistent with the frontend pattern. No prose change.","inputs":["docs/patterns/frontend.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts","pnpm-lock.yaml#/packages"]},
+
+    {"path":"docs/reference/api.md","note":"L1 item 2: no route was added; GET /acp/status already existed and the reference does not document ACP status bodies. The command-not-granted coverage line for POST/PUT /acp/connections is unchanged. No prose change.","inputs":["docs/reference/api.md","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"L1 item 2: the SDK reference documents tutorial-level surfaces and does not enumerate the ACP workspace query helpers (useACPConnectionsQuery etc. are absent too); the additive probe-status read follows that convention. No prose change.","inputs":["docs/reference/sdk.md","packages/sdk/src/index.ts"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"L1 item 2: additive SDK export; example unaffected. No prose change.","inputs":["examples/meeting-transcription/README.md","packages/sdk/src/index.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"L1 item 2: unaffected by the setup dialog's first-start copy. No prose change.","inputs":["examples/self-configuring-agent/README.md","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]},
+
+    {"path":"packages/sdk/README.md","note":"L1 item 2: additive ACP probe-status export; the README's package overview and usage claims are unaffected. No prose change.","inputs":["packages/sdk/README.md","packages/sdk/src/index.ts"]}
+  ]
+}

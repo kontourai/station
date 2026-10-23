@@ -1,0 +1,7 @@
+{
+  "revision": "dd1cb7943df0b67af172c5e4e0565f9a2c7fc338",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Integration review: module-map changes add Cursor's cursor/ask_question and the acp.cursor.todos binding; this reference makes no claim about harness questions or vendor extension bindings. docs:mcp:check passes on the combined tree. No prose change.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md"]}
+  ]
+}

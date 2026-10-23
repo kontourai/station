@@ -1,0 +1,7 @@
+{
+  "revision": "1aacb81b14befcf31cb4c6ad32b5ec63cfbbff8f",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"Reviewed testing-guide narrowing: real Windows test observes saved credential history; it does not exercise the recovery dialog or connection-list creation. Server scope instructions and focused/native evidence boundaries unchanged.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

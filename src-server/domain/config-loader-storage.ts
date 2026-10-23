@@ -1,7 +1,10 @@
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { ACPConfig } from '@kontourai/station-contracts/acp';
+import {
+  type ACPConfig,
+  normalizeACPArgs,
+} from '@kontourai/station-contracts/acp';
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import type {
   SkillCommand,
@@ -510,7 +513,14 @@ export async function loadACPConfigFile(
   if (!existsSync(path)) return { connections: [] };
   const parsed = JSON.parse(await readFile(path, 'utf-8')) as unknown;
   assertACPConfig(parsed);
-  return parsed;
+  return {
+    ...parsed,
+    connections: parsed.connections.map((connection) =>
+      connection.args
+        ? { ...connection, args: normalizeACPArgs(connection.args) }
+        : connection,
+    ),
+  };
 }
 
 function assertACPConfig(value: unknown): asserts value is ACPConfig {

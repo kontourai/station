@@ -75,6 +75,10 @@ const DESKTOP_RUST_FILES = new Set([
   'scripts/classify-ci-change.mjs',
   'package.json',
   'packages/cli/src/commands/profile-store.ts',
+  'scripts/prepare-desktop-rust-resources.mjs',
+  'scripts/lib/desktop-node-runtime.mjs',
+  'scripts/lib/portable-server-archive.mjs',
+  'config/portable-server-node-runtime.json',
 ]);
 const DESKTOP_RUST_PREFIXES = Object.freeze([
   'src-desktop/',

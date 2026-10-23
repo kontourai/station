@@ -134,6 +134,17 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
     ).toBe('home:transfer');
   });
 
+  // Retry check re-probes and registers an engine: the same operate tier as
+  // reconnecting it, and its unregistered list reads like the installed one.
+  test('the engine re-check needs operate and its unregistered list needs read', () => {
+    expect(requiredPairingScope('POST', '/acp/connections/stub/check')).toBe(
+      'orchestration:operate',
+    );
+    expect(requiredPairingScope('GET', '/acp/connections/unregistered')).toBe(
+      'orchestration:read',
+    );
+  });
+
   test('a standard paired chat tier admits every attachment staging control leaf', () => {
     const standard = pairingScopePresetString('standard');
     const chatScope = requiredPairingScope('POST', '/api/orchestration/chat');
@@ -1074,6 +1085,26 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     expect(requiredPairingScope('GET', '/acp/registry')).toBe(
       'orchestration:read',
     );
+  });
+
+  // Downloading the public agent registry reaches out to the network on
+  // request; reading its status is a plain catalogue read.
+  test('gives the public registry refresh the operate tier and its status the read tier', () => {
+    expect(
+      matchPairingScopeRule('POST', '/acp/registry/source/refresh'),
+    ).toMatchObject({
+      origin: 'explicit',
+      prefix: '/acp/registry/source/refresh',
+      exact: true,
+      scope: 'orchestration:operate',
+    });
+    expect(isLeafScopeDeclared('POST', '/acp/registry/source/refresh')).toBe(
+      true,
+    );
+    expect(requiredPairingScope('GET', '/acp/registry/source')).toBe(
+      'orchestration:read',
+    );
+    expect(isLeafScopeDeclared('GET', '/acp/registry/source')).toBe(true);
   });
 
   test('does not let an exact ACP provider override classify a trailing descendant', () => {

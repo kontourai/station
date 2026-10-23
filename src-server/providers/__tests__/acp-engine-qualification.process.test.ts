@@ -257,7 +257,8 @@ describe.skipIf(process.platform === 'win32')(
         await h.adapter.stopSession('auth-prompt');
         expect(failure).toMatchObject({
           severity: 'error',
-          message: 'Authentication required: Sign in to goose first',
+          message:
+            'Engine under test needs you to sign in before it can answer. Authentication required: Sign in to goose first',
         });
         expect(
           h.events.some(
@@ -282,7 +283,10 @@ describe.skipIf(process.platform === 'win32')(
         try {
           expect(await requested.probe('request')).toBe(false);
           expect(requested.lastError?.phase).toBe('initialize');
-          expect(requested.lastError?.message).toContain('500ms');
+          // The 500ms request budget, in the engine-facing wording.
+          expect(requested.lastError?.message).toBe(
+            "Engine under test didn't answer within 1 second.",
+          );
           expect(await background.probe('background')).toBe(true);
           expect(background.lastError).toBeNull();
         } finally {

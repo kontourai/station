@@ -462,6 +462,10 @@ describe('desktop Rust relevance for the Windows PR floor', () => {
     'schemas/station-config.schema.json',
     '.github/workflows/windows-pr-verification.yml',
     'scripts/classify-ci-change.mjs',
+    'scripts/prepare-desktop-rust-resources.mjs',
+    'scripts/lib/desktop-node-runtime.mjs',
+    'scripts/lib/portable-server-archive.mjs',
+    'config/portable-server-node-runtime.json',
   ])('compiles for %s', (changedPath) => {
     expect(classifyDesktopRustChangedPaths([changedPath]).relevant).toBe(true);
   });

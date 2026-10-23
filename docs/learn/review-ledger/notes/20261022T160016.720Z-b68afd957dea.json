@@ -1,0 +1,7 @@
+{
+  "revision": "67ea955ef93137c229bf03b062be78e5e623a9c5",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reviewed EngineSignInPanel and its AgentConnectionView caller after the scoped-state repair in 67ea955ef93. The panel now remounts all ephemeral discovery, attempt, mutation, terminal and credential draft state for the tuple of API base, authority key and engine connection; absent authority unmounts it. Existing guide claims about per-engine sign-in methods, credential fields and scope permissions remain accurate, so no prose change is needed. Focused panel and owning view tests passed 57/57; removing the identity key caused three intended draft-isolation failures, and exact source restoration passed 10/10 panel tests. This is local UI evidence using fixture keys and transport, not real provider sign-in proof.","inputs":["docs/guides/connections.md","src-ui/src/components/engine-sign-in/EngineSignInPanel.tsx"]}
+  ]
+}

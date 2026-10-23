@@ -4,8 +4,9 @@
     "beforeBuildCommand": "npm run build:desktop:resources"
   },
   "bundle": {
+    "externalBin": ["binaries/station-node"],
     "resources": {
-      "../dist-server": "dist-server",
+      "../dist-desktop-runtime/dist-server": "dist-server",
       "../dist-desktop-runtime/node_modules": "node_modules",
       "../schemas": "schemas",
       "../dist-desktop-runtime/examples": "examples"

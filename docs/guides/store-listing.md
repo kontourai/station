@@ -86,10 +86,14 @@ change admits a reviewed capture set. The repository ignores most PNG files,
 with named icon, brand and screenshot-baseline exceptions; ignore rules are
 not publication permission.
 
-## Reviewer notes (internal testers only)
+## Reviewer access for external testing
 
 Internal Play and TestFlight groups do not need these notes. External
 TestFlight and App Store review need an actionable review journey. The
 [historical unpaired first-launch finding](https://github.com/kontourai/station-archive/issues/1772)
 records the original gap. Verify a reachable, authorized host or demo path for
 the submitted build; this audit did not qualify one.
+
+Ordinary Nightly can submit builds for external TestFlight review automatically;
+see [setup and non-blocking failure reporting](mobile-release.md#nightly-external-testflight-distribution).
+The API submission does not provision or prove reviewer access.

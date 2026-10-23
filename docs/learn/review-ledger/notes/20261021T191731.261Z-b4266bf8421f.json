@@ -1,0 +1,25 @@
+{
+  "revision": "59c8df7a2ce1c0d8fe866ce52086470f2ca49ca4",
+
+  "notes": [
+    {"path":"docs/learn/media/connections-models.png","note":"Historical capture of the Models page; this change only removes public registry listings from Add model connection's engine choices, which the capture predates and does not show. Capture identity retained.","inputs":["docs/learn/media/connections-models.png","src-ui/src/views/ProviderSettingsView.tsx"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Historical capture of Models/Engines navigation; it predates and does not show public registry listings anywhere. Capture identity retained.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/views/ProviderSettingsView.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked against this change: routes/connections/acp.ts PUT now drops a connection's publicRegistry record when its command or args change; the module ownership the map describes is unchanged.","inputs":["docs/architecture/module-map.md","src-server/routes/connections/acp.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Checked against this change: acp.md's public agent registry section gained the listing refusals (runner programs, paths, redirects, reserved names, link credentials) and the PUT record drop; these are catalogue-level and touch no chat process or turn lifecycle this design describes.","inputs":["docs/design/acp-chat-architecture.md","docs/guides/acp.md"]},
+
+    {"path":"docs/guides/acp.md","note":"Reviewed and updated in this change: invisible characters in descriptor validation (hasUnsafeTextChar), redirect refusal and answer-address check, https links with credentials refused, Station/Kontour names refused, runner/shell/interpreter/fetcher and path cmd refusals, PUT dropping publicRegistry, future-dated copy stale, off/0/false/no; checked against packages/contracts/src/acp.ts, public-agent-registry.ts, public-agent-registry-catalog.ts and routes/connections/acp.ts.","inputs":["docs/guides/acp.md"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed and updated in this change: runner/path listings Unavailable, quoted arguments on the confirm step, a command change ends the update comparison, the off switch values, and registry engines offered only in Add engine (not Add model connection, ProviderSettingsView.tsx now leaves public registry listings out of Add model connection's engine choices; Station's own engines are still offered there); checked against public-agent-registry-catalog.ts, PublicRegistry.tsx, ProviderSettingsView.tsx and routes/connections/acp.ts.","inputs":["docs/guides/connections.md","src-ui/src/views/ProviderSettingsView.tsx"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Checked against this change: connections.md's registry section gained listing refusals and the off-switch values; installs are still placed on the computer Station runs on, as described here.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked against this change: ProviderSettingsView.tsx now leaves public registry listings out of Add model connection's engine choices; Station's own engines are still offered there; no walkthrough step shows registry listings.","inputs":["docs/learn/walkthroughs.md","src-ui/src/views/ProviderSettingsView.tsx"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked against this change: ProviderSettingsView.tsx now leaves public registry listings out of Add model connection's engine choices; Station's own engines are still offered there; smoke selection and verdicts are unaffected.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/views/ProviderSettingsView.tsx"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed and updated in this change: STATION_PUBLIC_AGENT_REGISTRY accepts off, 0, false or no in any case, as createPublicAgentRegistrySource reads it.","inputs":["docs/reference/env-vars.md"]}
+  ]
+}

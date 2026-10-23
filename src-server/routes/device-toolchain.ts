@@ -132,7 +132,8 @@ function redactStatus(
     hub: tool(status.hub),
     agentDevice: tool(status.agentDevice),
     hubProcess:
-      status.hubProcess.state === 'crashed'
+      status.hubProcess.state === 'crashed' ||
+      status.hubProcess.state === 'blocked'
         ? { ...status.hubProcess, detail: '' }
         : status.hubProcess,
     platforms: [],

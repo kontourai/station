@@ -95,7 +95,8 @@ that take a path are not covered by it.
 Choosing a command for Station to run takes the same authority, decided by the
 same check, and answers `403` with `code: 'command-not-granted'` and nothing saved
 or run. It covers exactly: `POST /acp/connections`, and `PUT /acp/connections/:id`
-when `command`, `args` or `cwd` change; `POST /integrations`, and
+when `command`, `args` or `cwd` change; `POST /acp/registry/:id/install` for a
+public agent registry listing; `POST /integrations`, and
 `PUT /integrations/:id`, when `command` or `args` are set or change; `POST
 /api/projects/:slug/flow/runs/:runId/evidence/command`; and `PUT /config/app`
 when `terminalShell` changes (an agent's station-control call may not change it

@@ -1,282 +1,18 @@
-.acp-connections-view {
-  min-width: 0;
+/*
+ * Add engine, in the Engines detail pane: one engine's confirm step, the
+ * custom form, Checking and the result (`ACPConnectionSetupPanel`, and the
+ * native engine setup and not-connected page beside it). The `acp-add-dialog`
+ * class names are the setup's content blocks, kept from when it was a dialog.
+ */
+.engine-setup__actions {
+  justify-content: flex-end;
 }
 
-.acp-connection-card {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 0.75rem;
-  padding: 1.25rem;
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-card, 0.75rem);
-  background: var(--bg-secondary);
-  cursor: pointer;
-  transition:
-    border-color var(--motion-base) var(--ease-standard),
-    opacity var(--motion-base) var(--ease-standard);
-}
-
-.acp-connection-card:hover {
-  border-color: var(--accent-primary);
-}
-
-.acp-connection-card__open {
-  width: 100%;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  text-align: left;
-}
-
-.acp-connection-card__open:focus-visible {
-  border-radius: var(--radius-sm, 0.25rem);
-  outline: 2px solid var(--accent-primary);
-  outline-offset: 4px;
-}
-
-.acp-connection-card--checking {
-  border-color: var(--accent-primary);
-}
-
-.acp-connection-card--setup-needed,
-.acp-connection-card--unavailable,
-.acp-connection-card--off {
-  opacity: 0.72;
-}
-
-.acp-connection-card__header,
-.acp-connection-card__identity,
-.acp-connection-card__name-row,
-.acp-connection-card__agent-list,
-.acp-connection-card__actions,
-.acp-connection-card__status {
-  display: flex;
-  align-items: center;
-}
-
-.acp-connection-card__header {
-  justify-content: space-between;
-  gap: 0.75rem;
-}
-
-.acp-connection-card__identity {
-  min-width: 0;
-  gap: 0.625rem;
-}
-
-.acp-connection-card__name-group {
-  min-width: 0;
-}
-
-.acp-connection-card__name-row {
-  flex-wrap: wrap;
-  gap: 0.375rem;
-}
-
-.acp-connection-card__name {
-  color: var(--text-primary);
-  font-size: var(--text-lg);
-  font-weight: 600;
-}
-
-.acp-connection-card__summary,
-.acp-connection-card__advanced-field > span,
-.acp-connection-card__agent-more {
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-}
-
-.acp-connection-card__plugin-badge {
-  padding: 0.125rem 0.3125rem;
-  border-radius: var(--radius-sm, 0.25rem);
-  background: color-mix(in srgb, var(--text-muted) 15%, transparent);
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-}
-
-.acp-connection-card__status {
-  flex-shrink: 0;
-  gap: 0.375rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: var(--radius-sm, 0.25rem);
-  background: var(--bg-tertiary);
-  color: var(--text-muted);
-  font-size: var(--text-sm);
-  font-weight: 600;
-}
-
-.acp-connection-card__status--ready {
-  background: color-mix(in srgb, var(--success-text) 12%, transparent);
-  color: var(--success-text);
-}
-
-.acp-connection-card__status--checking {
-  background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
-  color: var(--accent-primary);
-}
-
-.acp-connection-card__status--setup-needed {
-  background: color-mix(in srgb, var(--warning-text) 12%, transparent);
-  color: var(--warning-text);
-}
-
-.acp-connection-card__status--unavailable {
-  background: color-mix(in srgb, var(--error-text) 12%, transparent);
-  color: var(--error-text);
-}
-
-.acp-connection-card__status-dot {
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.acp-connection-card__status-dot--pulse {
-  animation: acp-connection-card-pulse var(--motion-status-pulse)
-    var(--ease-standard) infinite;
-}
-
-@keyframes acp-connection-card-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 0.45;
-  }
-}
-
-.acp-connection-card__advanced {
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-}
-
-.acp-connection-card__advanced > summary {
-  width: fit-content;
-  cursor: pointer;
-  color: var(--accent-primary);
-}
-
-.acp-connection-card__advanced-content,
-.acp-connection-card__advanced-field {
-  display: grid;
-  gap: 0.375rem;
-}
-
-.acp-connection-card__advanced-content {
-  margin-top: 0.625rem;
-}
-
-.acp-connection-card__advanced-field code {
-  overflow-wrap: anywhere;
-  padding: 0.5rem 0.625rem;
-  border-radius: var(--radius-sm, 0.25rem);
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-}
-
-.acp-connection-card__agents-label {
-  margin-bottom: 0.375rem;
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.acp-connection-card__agent-list {
-  flex-wrap: wrap;
-  gap: 0.25rem;
-}
-
-.acp-connection-card__agent {
-  padding: 0.125rem 0.375rem;
-  border: 1px solid color-mix(in srgb, var(--accent-primary) 25%, transparent);
-  border-radius: var(--radius-sm, 0.25rem);
-  background: color-mix(in srgb, var(--accent-primary) 12%, transparent);
-  color: var(--accent-primary);
-  font-size: var(--text-xs);
-}
-
-.acp-connection-card__actions {
-  gap: 0.5rem;
-  margin-top: auto;
-}
-
-.acp-connections-section__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
-  gap: 1rem;
-}
-
-/* #1130: `overlayClassName="acp-add-dialog__overlay"` (ACPAddConnectionModal)
-   had no matching rule here, so the overlay fell back to
-   `.responsive-surface-overlay` alone (index.css), which sets no `position` —
-   the panel below rendered in normal flow instead of centered over a fixed
-   backdrop, overflowing the viewport bottom on a phone. Follows the sibling
-   dialog pattern (NewProjectModal.css, FolderBrowserModal.css): fixed,
-   inset:0, flex-centered, own scrim. */
-.acp-add-dialog__overlay {
-  position: fixed;
-  inset: 0;
-  z-index: var(--layer-dialog);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 1rem;
-  background: var(--overlay-modal);
-  backdrop-filter: blur(6px);
-}
-
-.acp-add-dialog {
-  width: min(100% - 2rem, 34rem);
-  max-height: min(
-    46rem,
-    calc(var(--responsive-visual-viewport-height, 100vh) - 2rem)
-  );
-  overflow: auto;
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-overlay);
-  background: var(--bg-secondary);
-  box-shadow: var(--elevation-overlay);
-}
-
-.acp-add-dialog__header,
-.acp-add-dialog__actions {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 1rem 1.25rem;
-}
-
-.acp-add-dialog__header {
-  justify-content: space-between;
-  border-bottom: 1px solid var(--border-primary);
-}
-
-.acp-add-dialog__header h3 {
+.engine-setup__notice {
   margin: 0;
-  color: var(--text-primary);
-  font-size: var(--text-xl);
+  padding: 0 var(--space-12);
 }
 
-.acp-add-dialog__subtitle {
-  margin: 0.25rem 0 0;
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-}
-
-.acp-add-dialog__body {
-  padding: 1.25rem;
-}
-
-.acp-add-dialog__catalog,
 .acp-add-dialog__form,
 .acp-add-dialog__advanced,
 .acp-add-dialog__result {
@@ -284,38 +20,9 @@
   gap: 0.75rem;
 }
 
-.acp-add-dialog__choice {
-  display: grid;
-  gap: 0.25rem;
-  width: 100%;
-  min-height: 3.5rem;
-  padding: 0.75rem;
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-card, 0.75rem);
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  cursor: pointer;
-  text-align: left;
-}
-
-.acp-add-dialog__choice:hover,
-.acp-add-dialog__choice:focus-visible {
-  border-color: var(--accent-primary);
-}
-
-.acp-add-dialog__choice-name {
-  font-weight: 600;
-}
-
-.acp-add-dialog__choice-detail,
 .acp-add-dialog__result > span {
   color: var(--text-secondary);
   font-size: var(--text-sm);
-}
-
-.acp-add-dialog__divider {
-  height: 1px;
-  background: var(--border-primary);
 }
 
 .acp-add-dialog__form > label,
@@ -326,7 +33,7 @@
   font-size: var(--text-sm);
 }
 
-.acp-add-dialog input {
+.engine-setup input {
   width: 100%;
   min-height: 2.5rem;
   box-sizing: border-box;
@@ -384,57 +91,48 @@
   font-size: var(--text-sm);
 }
 
+.acp-add-dialog__group-heading {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: 600;
+}
+
+.acp-add-dialog__choice:disabled {
+  cursor: default;
+  opacity: 0.75;
+}
+
+.acp-add-dialog__confirm-registry {
+  display: grid;
+  gap: 0.375rem;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.acp-add-dialog__confirm-registry > p {
+  margin: 0;
+}
+
+.acp-add-dialog__confirm code {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .acp-add-dialog__confirm-note {
   margin: 0;
   color: var(--text-muted);
   font-size: var(--text-sm);
 }
 
+.acp-add-dialog__field-note {
+  margin: 0;
+  color: var(--warning-text);
+  font-size: var(--text-sm);
+}
+
 .acp-add-dialog__result-reason {
   overflow-wrap: anywhere;
   color: var(--text-primary);
-}
-
-.acp-add-dialog__actions {
-  justify-content: flex-end;
-  border-top: 1px solid var(--border-primary);
-}
-
-@media (max-width: 640px) {
-  .acp-add-dialog {
-    width: 100%;
-    max-height: var(--responsive-visual-viewport-height, 100vh);
-    border-right: 0;
-    border-bottom: 0;
-    border-left: 0;
-    border-radius: var(--radius-overlay) var(--radius-overlay) 0 0;
-  }
-
-  .acp-add-dialog__header,
-  .acp-add-dialog__body,
-  .acp-add-dialog__actions {
-    padding-right: 1rem;
-    padding-left: 1rem;
-  }
-
-  .acp-connection-card__header {
-    align-items: flex-start;
-  }
-
-  .acp-connection-card__identity {
-    align-items: flex-start;
-  }
-
-  .acp-connection-card__actions {
-    flex-wrap: wrap;
-  }
-
-  .acp-connection-card__actions > .button {
-    min-height: 44px;
-  }
-
-  .acp-add-dialog__actions > .button {
-    flex: 1 1 9rem;
-    min-height: 44px;
-  }
 }

@@ -102,6 +102,7 @@ function ConnectionsSectionFrameInner({
       <PageCreateAction label={section.addLabel} onClick={add} />
       <Tabs
         id={TABS_ID}
+        className="page__tabs--frame-inset"
         aria-label="Connection sections"
         // Manual activation (archive#4463): each
         // tab's onSelect pushes a ROUTE (`navigate`), so automatic

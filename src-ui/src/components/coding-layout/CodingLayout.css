@@ -683,8 +683,11 @@
   letter-spacing: 0.08em;
 }
 
+/* `auto`, not `0`: where the panel's host gives it no height (the Coding
+   inspector), a zero basis collapsed the steps list to its padding. A host
+   that does bound the panel still shrinks this region, which then scrolls. */
 .workflow-plan-panel__body {
-  flex: 1 1 0;
+  flex: 1 1 auto;
   min-height: 0;
   overflow: auto;
   padding: 16px;

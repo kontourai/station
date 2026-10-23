@@ -30,7 +30,7 @@ Provenance labels:
 | `agentCapabilities.loadSession`, `promptCapabilities.image` | researched-initialize ("all probed agents advertise loadSession and image prompts"), except opencode (recorded) and kiro (assumed) |
 | Other `agentCapabilities` (for example `mcpCapabilities`) | left out because they were not observed, except opencode (recorded) |
 | `agentInfo` name, title, version | assumed (version is set to the registry pin; `0.0.0-assumed` where there is no pin), except opencode (recorded) and grok-build (left out: Grok Build sends no `agentInfo`, repo-observed in `services/acp/__tests__/acp-probe-session-reuse.test.ts`) |
-| `authMethods[].name` and `description` | assumed. Some descriptions paraphrase a researched fact, such as the login command |
+| `authMethods[].name` and `description` | assumed, except pi-acp (source, see its row). Some descriptions paraphrase a researched fact, such as the login command |
 | `sessionNew` | left out (the probe sees no modes or config options) unless the row says otherwise |
 | `permissionOptions` | the fake's default (`allow` / `reject`, assumed) unless the row says otherwise |
 | Prompt script (the fake's default turn: text, plan, gated `execute` tool call, vendor notifications, `STATION_SMOKE_OK`) | assumed |
@@ -44,7 +44,7 @@ Provenance labels:
 | factory-droid | `factory-droid` 0.245.1, npx `droid exec --output-format acp-daemon`, env from the registry | `device-pairing`, `factory-api-key` (researched-initialize) | none |
 | hermes | not in the registry | `openai-codex`, `hermes-setup` (researched-initialize) | none |
 | antigravity | `antigravity-acp` 1.4.1, `agy_acp_server.par` (`args: []` is the darwin entry; the registry's linux entries pass `--uid=`, and its windows entries run `agy_acp_server.exe`) | `oauth-personal`, `oauth-business`, `gemini-api-key`, `agent-platform` (researched-initialize) | none |
-| pi-acp | `pi-acp` 0.0.34, npx | `pi_terminal_login` (researched-initialize) | none |
+| pi-acp | `pi-acp` 0.0.34, npx | `pi_terminal_login` (researched-initialize). Its whole entry (name, description, `type: "terminal"`, `args: ["--terminal-login"]`, `env: {}`) is source: `src/acp/auth.ts` in the published pi-acp 0.0.34 package, which sends that shape whatever the client advertises | none |
 | kimi | `kimi` 1.52.0, `kimi acp` (no darwin-x86_64 build) | `login` is **assumed**. The research found only "terminal `kimi login`" | none |
 | devin | `devin` 3000.11.92, `devin acp` | `browser-login` is **assumed**. The research found only "browser login" | none |
 | cline | `cline` 3.0.73, npx `cline --acp` | `openai-codex` (researched-initialize). The research says the list *includes* it, so the full list is unknown | none |
@@ -55,10 +55,11 @@ Provenance labels:
 
 ## Fake handlers no test drives yet
 
-The fake answers `authenticate`, `session/set_mode` and
-`session/set_config_option`, but the qualification test does not call them
-yet. They are kept for the sign-in and mode/model lanes. Treat their
-behavior as unverified until a test drives them. The fake does not implement
+The fake answers `session/set_mode` and `session/set_config_option`, but
+the qualification test does not call them yet. They are kept for the
+mode/model lanes. Treat their behavior as unverified until a test drives
+them. `authenticate` is driven by the engine sign-in tests
+(`services/acp/__tests__/engine-sign-in.process.test.ts`). The fake does not implement
 `session/load` or `session/cancel`.
 
 Every profile also runs the same fixed turn script (see the shared-fields

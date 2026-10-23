@@ -79,6 +79,10 @@ try {
   if ($manifests.Count -ne 1) { throw 'Expected one packaged build identity' }
   $expectedHash = (Get-FileHash src-desktop/station-client-build.json -Algorithm SHA256).Hash
   if ((Get-FileHash $manifests[0].FullName -Algorithm SHA256).Hash -ne $expectedHash) { throw 'Packaged build identity differs from staged source' }
+  $packagedNode = @(Get-ChildItem $extracted -Depth 2 -File -Filter station-node.exe)
+  if ($packagedNode.Count -ne 1) { throw 'Expected one packaged private Node executable' }
+  $nodeHash = (Get-FileHash src-desktop/binaries/station-node-x86_64-pc-windows-msvc.exe -Algorithm SHA256).Hash
+  if ((Get-FileHash $packagedNode[0].FullName -Algorithm SHA256).Hash -ne $nodeHash) { throw 'Packaged private Node differs from the pinned staged executable' }
   if ($updaterSigned) {
     node scripts/verify-windows-updater.mjs $installerPath ($installerPath + '.sig')
     if ($LASTEXITCODE -ne 0) { throw 'Tauri updater signature verification failed' }

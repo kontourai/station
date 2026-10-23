@@ -40,12 +40,15 @@ export function TerminalPanel({
   shell,
   shellArgs,
   isActive = false,
+  attachOnly = false,
 }: {
   projectSlug: string;
   workingDir: string;
   terminalId?: string;
   shell?: string;
   shellArgs?: string[];
+  /** Join a session the server started; never start a shell in its place. */
+  attachOnly?: boolean;
   /** True when this is the visible terminal tab; only then does it accept
    * externally-injected input (e.g. "Send to terminal" from the file tree). */
   isActive?: boolean;
@@ -187,6 +190,7 @@ export function TerminalPanel({
             cwd: workingDir,
             ...(shell && { shell }),
             ...(shellArgs && { shellArgs }),
+            ...(attachOnly && { attachOnly: true }),
             cols: terminal.cols,
             rows: terminal.rows,
           }),

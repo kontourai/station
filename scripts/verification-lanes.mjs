@@ -445,12 +445,13 @@ export const LANES = Object.freeze([
       'packages/connect/dist',
       'packages/cli/dist/',
       'src-desktop/target/',
+      'src-desktop/binaries/',
     ]),
     manifest: MANIFEST_NONE,
     trigger: 'diagnostic native / local',
     scope: 'verify:static + desktop Rust + mobile Cargo compile',
     description:
-      'Local/native escalation (trigger: diagnostic/local). Scope: the private verify:local:raw adapter explicitly invokes verify:static:raw, then verify:desktop-rust and mobile Cargo checks under src-desktop (creating dist-server/, dist-desktop-runtime/, packages/cli/dist/, and src-desktop/target/). Evidence: diagnostic. Invalidation: command-only.',
+      'Local/native escalation (trigger: diagnostic/local). Scope: the private verify:local:raw adapter explicitly invokes verify:static:raw, then verify:desktop-rust and mobile Cargo checks under src-desktop (creating dist-server/, dist-desktop-runtime/, packages/cli/dist/, src-desktop/target/, and src-desktop/binaries/). Evidence: diagnostic. Invalidation: command-only.',
   }),
   Object.freeze({
     id: 'verify-e2e-full',

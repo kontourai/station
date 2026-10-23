@@ -43,4 +43,10 @@ export interface TerminalOpenInput {
   env?: Record<string, string>;
   shell?: string;
   shellArgs?: string[];
+  /**
+   * Join a running session only. A session the server started (an engine's
+   * sign-in) must never be replaced by a fresh shell under the same id once
+   * it has ended.
+   */
+  attachOnly?: boolean;
 }

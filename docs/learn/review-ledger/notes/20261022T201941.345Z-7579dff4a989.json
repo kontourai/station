@@ -1,0 +1,7 @@
+{
+  "revision": "c686ab37b5dd83e88c501874f7ba63c73d9ad092",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the Windows floor resource-staging description (lines 852-867) against windows-resource-staging.test.ts and the base-controlled workflow. The fixture now resolves Test-Path to the same real preparation script already used by its redirected Node invocation, so the temporary checkout reaches the candidate staging branch. Resource-directory and sidecar assertions remain at the Cargo boundary; the cached digest-pinned test archive, Credential Manager step and staging-versus-compilation/runtime evidence limits are unchanged. No prose change is needed. Local workflow-contract checks passed with the two Windows-only tests skipped; Windows execution is tracked separately.","inputs":["docs/guides/testing.md","scripts/__tests__/windows-resource-staging.test.ts"]}
+  ]
+}

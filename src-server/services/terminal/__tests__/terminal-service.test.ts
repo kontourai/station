@@ -77,6 +77,25 @@ describe('TerminalService', () => {
     await svc.dispose();
   });
 
+  test('an attach-only open joins a running session and never starts a shell in its place', async () => {
+    const base = {
+      projectSlug: '.engine-sign-in',
+      terminalId: 'pi-1',
+      cwd: homedir(),
+      cols: 80,
+      rows: 24,
+    };
+    await expect(svc.open({ ...base, attachOnly: true })).rejects.toThrow(
+      'ended',
+    );
+    expect(pty.spawn).not.toHaveBeenCalled();
+
+    await svc.open({ ...base, shell: '/bin/echo', shellArgs: ['login'] });
+    const attached = await svc.open({ ...base, attachOnly: true });
+    expect(attached.sessionId).toBe('.engine-sign-in:pi-1');
+    expect(pty.spawn).toHaveBeenCalledTimes(1);
+  });
+
   test('open refuses an empty working directory instead of letting node-pty pick one', async () => {
     // archive#1497 — node-pty's unixTerminal resolves `opt.cwd || process.cwd()`,
     // so a blank cwd spawns the user's shell in whatever directory

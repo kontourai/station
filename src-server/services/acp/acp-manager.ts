@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import type { SetProviderRequest } from '@agentclientprotocol/sdk';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import {
@@ -6,7 +7,9 @@ import {
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { ServerEventName } from '@kontourai/station-contracts/runtime-events';
 import {
+  type ACPFirstHandshakeListener,
   addACPManagerConnection,
+  continueACPFirstContact,
   reconnectACPManagerConnection,
   removeACPManagerConnection,
   runACPManagerProbes,
@@ -25,6 +28,9 @@ export class ACPManager {
   private probes = new Map<string, ACPProbe>();
   private configs = new Map<string, ACPConnectionConfig>();
   private probeTimer: ReturnType<typeof setInterval> | null = null;
+  private firstHandshakeListener?: ACPFirstHandshakeListener;
+  /** Connections whose cold first-contact continuation is still running. */
+  private continuing = new Set<string>();
 
   // Chat sessions moved to the orchestration adapter (archive#149), so the
   // manager needs only what probing and connection management use.
@@ -34,6 +40,10 @@ export class ACPManager {
     private eventBus?: {
       emit: (event: ServerEventName, data?: Record<string, unknown>) => void;
     },
+    /** Replaces the engine probe; tests drive the manager without spawning. */
+    private readonly createProbe?: Parameters<
+      typeof addACPManagerConnection
+    >[0]['createProbe'],
   ) {}
 
   /**
@@ -56,10 +66,38 @@ export class ACPManager {
     this.probeTimer = setInterval(() => void this.runProbes(), 60_000);
   }
 
+  /**
+   * Who registers a saved connection once a background probe gives it its
+   * first handshake (the ACP routes). One listener; a later call replaces it.
+   */
+  onFirstHandshake(listener: ACPFirstHandshakeListener): void {
+    this.firstHandshakeListener = listener;
+  }
+
+  /** Runs one staleness sweep now (the 60s timer's body). */
+  async sweep(): Promise<void> {
+    await this.runProbes();
+  }
+
+  /** See `continueACPFirstContact`. Returns whether a cold retry started. */
+  continueFirstContact(id: string): boolean {
+    return continueACPFirstContact({
+      id,
+      probes: this.probes,
+      configs: this.configs,
+      eventBus: this.eventBus,
+      logger: this.logger,
+      onFirstHandshake: (config) => this.firstHandshakeListener?.(config),
+      continuing: this.continuing,
+    });
+  }
+
   private async runProbes(): Promise<void> {
     await runACPManagerProbes({
       sessions: new Map(),
       probes: this.probes,
+      configs: this.configs,
+      onFirstHandshake: (config) => this.firstHandshakeListener?.(config),
       eventBus: this.eventBus,
       getAvailableConnectionCount: () =>
         Array.from(this.probes.values()).filter((probe) => probe.isAvailable())
@@ -71,12 +109,23 @@ export class ACPManager {
     config: ACPConnectionConfig,
     initiator: ACPProbeInitiator = 'request',
   ): Promise<boolean> {
+    // A registry reload re-adds every saved connection. Replacing a probe
+    // whose first start is still running would dispose it mid-start and its
+    // success could never register; the same config keeps that probe.
+    if (
+      this.continuing.has(config.id) &&
+      isDeepStrictEqual(this.configs.get(config.id), config)
+    ) {
+      return false;
+    }
+    this.continuing.delete(config.id);
     return addACPManagerConnection({
       config,
       initiator,
       probes: this.probes,
       configs: this.configs,
       logger: this.logger,
+      ...(this.createProbe ? { createProbe: this.createProbe } : {}),
       managedWorkspaceHomeDir: this.managedWorkspaceHomeDir,
       eventBus: this.eventBus,
       removeConnection: (id) => this.removeConnection(id),
@@ -84,6 +133,7 @@ export class ACPManager {
   }
 
   async removeConnection(id: string): Promise<void> {
+    this.continuing.delete(id);
     await removeACPManagerConnection({
       id,
       probes: this.probes,

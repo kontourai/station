@@ -23,8 +23,11 @@
     "authMethods": [
       {
         "id": "pi_terminal_login",
-        "name": "Log in to pi",
-        "description": "Run with `--terminal-login` in a terminal"
+        "name": "Launch pi in the terminal",
+        "description": "Start pi in an interactive terminal to configure API keys or login",
+        "type": "terminal",
+        "args": ["--terminal-login"],
+        "env": {}
       }
     ]
   }

@@ -1940,11 +1940,17 @@ if (!acpConnectionsHook.includes('useACPConnectionsQuery')) {
   );
 }
 
-const acpConnectionsSection = readRequiredSource(
-  '../src-ui/src/components/acp-connections/ACPConnectionsSection.tsx',
-);
-if (acpConnectionsSection.includes('fetch(')) {
-  errors.push('ACPConnectionsSection must not issue raw fetch() calls.');
+// The engine setup owner and the not-connected page carry the ACP writes the
+// retired card grid used to; both go through the shared SDK helpers.
+const acpSetupSources = [
+  '../src-ui/src/components/acp-connections/useACPConnectionSetupOwner.ts',
+  '../src-ui/src/views/NotConnectedEngineDetail.tsx',
+  '../src-ui/src/views/AgentConnectionView.tsx',
+].map((path) => [path, readRequiredSource(path)]);
+for (const [path, source] of acpSetupSources) {
+  if (/(?<![\w.])fetch\(/.test(source)) {
+    errors.push(`${path} must not issue raw fetch() calls.`);
+  }
 }
 for (const requiredHelper of [
   'useCreateACPConnectionMutation',
@@ -1952,10 +1958,8 @@ for (const requiredHelper of [
   'useDeleteACPConnectionMutation',
   'useReconnectACPConnectionMutation',
 ]) {
-  if (!acpConnectionsSection.includes(requiredHelper)) {
-    errors.push(
-      `ACPConnectionsSection must use shared ACP helper ${requiredHelper}.`,
-    );
+  if (!acpSetupSources.some(([, source]) => source.includes(requiredHelper))) {
+    errors.push(`Engine setup must use shared ACP helper ${requiredHelper}.`);
   }
 }
 

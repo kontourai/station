@@ -37,6 +37,15 @@ export const REVIEWED_DIRECT_ROUTE_MESSAGE_EGRESS = new Set([
   // `assertSafeLayoutPathSegment` call out of this handler, or widening the
   // `instanceof` narrowing to a supertype that could carry a caught message.
   'src-server/routes/me/personal-layouts.ts :: route POST /layouts :: error.message :: 1',
+  // Engine sign-in refusals. Occurrence 1 is `EngineSignInError`, whose
+  // messages are authored in `services/acp/engine-sign-in.ts`; the only
+  // interpolations are the saved connection's own command (already served by
+  // GET /acp/connections), a timeout in seconds, and a handshake failure that
+  // `errorText` bounds to 300 characters, strips of control characters and
+  // passes through `redactSecrets`. Occurrence 2 is
+  // `EngineCredentialRefusedError`: two fixed sentences, never the key.
+  'src-server/routes/connections/acp-sign-in.ts :: function failure :: error.message :: 1',
+  'src-server/routes/connections/acp-sign-in.ts :: function failure :: error.message :: 2',
   'src-server/routes/plugins/plugin-config-routes.ts :: route GET /:name/settings :: error.message :: 1',
   'src-server/routes/plugins/plugin-config-routes.ts :: route GET /:name/providers :: error.message :: 1',
   'src-server/routes/plugins/plugin-install-routes.ts :: route POST /preview :: error.message :: 1',

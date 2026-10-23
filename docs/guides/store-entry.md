@@ -152,7 +152,16 @@ for env in native-release ios-beta ios-nightly; do
   gh secret set APPLE_API_PRIVATE_KEY --repo kontourai/station --env "$env"
   gh variable set TESTFLIGHT_INTERNAL_GROUP_ID --repo kontourai/station --env "$env"
 done
+
+# Ordinary Nightly only: existing external tester group for the Nightly app.
+# Missing configuration warns without failing internal TestFlight delivery.
+gh variable set TESTFLIGHT_EXTERNAL_GROUP_NAME --repo kontourai/station --env ios-nightly --body "External Testers"
+# Alternatively, set TESTFLIGHT_EXTERNAL_GROUP_ID to pin the existing group by ID.
 ```
+
+Complete the [external TestFlight setup](mobile-release.md#nightly-external-testflight-distribution)
+for beta review information, reviewer access and tester automatic updates.
+Internal cohort dispatches remain internal-only.
 
 Desktop Developer ID, Authenticode, and Tauri updater keys are a separate
 product. Skip them if this month is mobile beta only; those desktop jobs will

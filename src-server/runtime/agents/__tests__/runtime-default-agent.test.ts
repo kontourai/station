@@ -49,7 +49,7 @@ describe('createRuntimeSelfIntegration', () => {
   test('station#3063: the runtime identity overlay carries the spawn fields the file no longer does', () => {
     const identity = stationControlRuntimeIdentity(4111);
 
-    expect(identity.command).toBe('node');
+    expect(identity.command).toBe(process.execPath);
     expect(identity.args?.[0]).toContain('station-control.js');
     expect(identity.env).toEqual({
       STATION_API_BASE: 'http://127.0.0.1:4111',
@@ -112,7 +112,7 @@ describe('createRuntimeDocsIntegration', () => {
   test('station#3063: the docs runtime identity overlay carries command/args and passes the built-in identity check', () => {
     const identity = stationDocsRuntimeIdentity();
 
-    expect(identity.command).toBe('node');
+    expect(identity.command).toBe(process.execPath);
     expect(identity.args?.[0]).toContain('station-docs.js');
     const loaded = {
       ...createRuntimeDocsIntegration().docsIntegration,

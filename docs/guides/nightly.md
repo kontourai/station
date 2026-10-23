@@ -76,6 +76,14 @@ iOS uses `ios-nightly`. Whether those environments currently require manual
 approval is live GitHub configuration, not determined by the schedule trigger.
 Their provider credentials and permissions have distinct scopes.
 
+After required TestFlight upload and internal delivery, Nightly attempts
+external-group assignment and beta-review submission. This step is non-blocking:
+failures appear in the workflow summary and external-distribution receipt.
+Set `TESTFLIGHT_EXTERNAL_GROUP_ID` or the exact `TESTFLIGHT_EXTERNAL_GROUP_NAME`
+in `ios-nightly` and complete Apple's beta
+review information first. See [external TestFlight distribution](mobile-release.md#nightly-external-testflight-distribution)
+for setup, review states and tester automatic updates.
+
 The rolling `nightly` marker moves only after Android is verified and recorded.
 Desktop has its own `nightly-desktop` publication marker. Partial or ambiguous
 provider outcomes retain their own status; a failed overall run can already have
@@ -439,7 +447,10 @@ The same `setup.exe` serves as the initial installer and update payload; its
 `.sig` is generated and checked with the Tauri updater key. The app installs
 per user and uses the separate `io.kontourai.station.nightly` identity and
 `station-nightly.exe` process name, so NSIS does not close Stable during an update.
-Station's desktop server currently requires Node 24 on the user's PATH.
+Desktop releases carry the pinned `station-node` executable; the installed app
+does not require system Node. Development builds still use the developer's
+Node. See [packaged runtime](desktop-build.md#packaged-runtime) for staging and
+macOS signing requirements.
 
 `nightly-native-stage.yml` builds Windows from the same source SHA and reserved
 version as macOS and Android. `scripts/build-windows-nightly.ps1` uses

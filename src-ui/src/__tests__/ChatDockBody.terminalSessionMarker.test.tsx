@@ -11,10 +11,13 @@
  * button and disclosure text are asserted for real.
  */
 
-import { agentId } from '@kontourai/station-contracts/agent-identity';
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { describe, expect, test, vi } from 'vitest';
+import { beforeAll, describe, expect, test, vi } from 'vitest';
 
 vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({
@@ -37,11 +40,12 @@ vi.mock('../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: vi.fn() }),
 }));
 
+const navigateSpy = vi.hoisted(() => vi.fn());
 vi.mock('../contexts/NavigationContext', () => {
   // NavigationContext publishes two read hooks: `useNavigation` (subscribes to
   // the store, optionally through a selector) and `useNavigationActions` (the
   // memoized actions, no subscription). This mock answers both from one value.
-  const navigation = () => ({ navigate: vi.fn() });
+  const navigation = () => ({ navigate: navigateSpy });
   return {
     useNavigation: (
       selector?: (state: ReturnType<typeof navigation>) => unknown,
@@ -178,6 +182,11 @@ function buildSession(overrides: Partial<ChatSession>): ChatSession {
   };
 }
 
+// These cases assert transcript actions, not cold module loading.
+beforeAll(async () => {
+  await import('../components/chat/ChatMessageList');
+});
+
 const RAW_MESSAGE =
   'No conversation found with session ID: d434e194-cc2e-4edc-8733-d8645c512fab';
 const LAZY_TRANSCRIPT_TIMEOUT_MS = 5_000;
@@ -293,6 +302,36 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
       ),
     );
     expect(chatInput.handleSend).toHaveBeenCalledTimes(1);
+    expect(onNewChat).not.toHaveBeenCalled();
+  });
+
+  test("an engine's sign-in refusal offers Sign in, which opens that engine's page", async () => {
+    const onNewChat = vi.fn();
+    const session = buildSession({
+      agentConnectionId: engineConnectionId('factory-droid'),
+      messages: [
+        { role: 'user', content: 'hello', timestamp: 1 } as any,
+        {
+          role: 'user',
+          content:
+            '[SYSTEM_EVENT] [CHAT_ERROR:engine-sign-in-required] Factory Droid needs you to sign in before it can answer.',
+          timestamp: 2,
+        } as any,
+      ],
+    });
+
+    renderDock(session, onNewChat);
+
+    const action = await screen.findByRole(
+      'button',
+      { name: 'Sign in' },
+      { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+    );
+    expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
+    fireEvent.click(action);
+    expect(navigateSpy).toHaveBeenCalledWith(
+      '/connections/engines/factory-droid',
+    );
     expect(onNewChat).not.toHaveBeenCalled();
   });
 

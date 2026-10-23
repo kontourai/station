@@ -1734,3 +1734,9 @@ mod activation_receipt_time_tests {
         ));
     }
 }
+
+#[cfg(all(test, not(mobile)))]
+#[test]
+fn keyring_service_is_registered() {
+    crate::native_secure_entry::assert_registered_service(SERVICE);
+}
