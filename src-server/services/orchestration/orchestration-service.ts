@@ -93,6 +93,8 @@ import {
   STATION_CONFINEMENT_GRANTOR_METADATA_KEY,
   STATION_CONFINEMENT_METADATA_KEY,
   stripReservedOrchestrationMetadata,
+  TASK_BRIEF_COMPOSED_METADATA_KEY,
+  TASK_BRIEF_METADATA_KEY,
   unsupportedModelOptionError,
   unsupportedModelOptionKeys,
   WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
@@ -279,6 +281,10 @@ import {
   type CwdShadowSample,
   dispatchCwdShadow,
 } from '../projects/project-resource-shadow.js';
+import {
+  TASK_BRIEF_MAX_CHARS,
+  TASK_BRIEF_VERSION,
+} from '../projects/task-brief.js';
 import { TurnIdempotencySettledError } from '../turn-idempotency.js';
 import type { UsageTelemetryProperties } from '../usage-telemetry-inventory.js';
 import { AdapterRetirement } from './adapter-retirement.js';
@@ -533,6 +539,8 @@ interface OrchestrationDispatchInternalOptions {
   sessionStartAdmission?: SessionCommandInternalOptions['sessionStartAdmission'];
   /** Exact server-owned Task reservation scope; never read from public metadata. */
   roomExecutionBinding?: SessionCommandInternalOptions['roomExecutionBinding'];
+  /** Epic #4003: see `SessionCommandInternalOptions.taskBrief`. */
+  taskBrief?: SessionCommandInternalOptions['taskBrief'];
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
   /**
    * #484 phase A: receiver-owned portable-execution recheck, awaited inside
@@ -1374,6 +1382,52 @@ function pendingFirstTurnInstructions(
     }
   }
   return firstTurnInstructions;
+}
+
+function taskBriefStartRecord(brief: { digest: string; text: string }) {
+  return {
+    version: TASK_BRIEF_VERSION,
+    digest: brief.digest,
+    text: brief.text,
+  };
+}
+
+/**
+ * Epic #4003: the Task brief the start recorded (`TASK_BRIEF_METADATA_KEY`),
+ * while the session has had no turn yet. Same first-turn rule as
+ * `pendingFirstTurnInstructions` above; a record of any other shape, or a
+ * text past the brief's own bound, composes nothing.
+ */
+function pendingTaskBrief(
+  events: readonly { method?: unknown; metadata?: unknown }[],
+): { digest: string; text: string } | undefined {
+  if (events.some((event) => event.method === 'turn.started')) {
+    return undefined;
+  }
+  let brief: { digest: string; text: string } | undefined;
+  for (const event of events) {
+    if (
+      event.method !== 'session.started' &&
+      event.method !== 'session.configured'
+    ) {
+      continue;
+    }
+    const record =
+      event.metadata && typeof event.metadata === 'object'
+        ? (event.metadata as Record<string, unknown>)[TASK_BRIEF_METADATA_KEY]
+        : undefined;
+    if (!record || typeof record !== 'object') continue;
+    const { version, digest, text } = record as Record<string, unknown>;
+    if (
+      version === TASK_BRIEF_VERSION &&
+      typeof digest === 'string' &&
+      typeof text === 'string' &&
+      text.length > 0 &&
+      text.length <= TASK_BRIEF_MAX_CHARS
+    )
+      brief = { digest, text };
+  }
+  return brief;
 }
 
 /**
@@ -6608,6 +6662,20 @@ export class OrchestrationService {
               },
             };
           }
+          // Epic #4003: the dispatch-built Task brief, stamped after the
+          // reserved-key strip removed any caller-supplied value, for the
+          // first turn to compose (`pendingTaskBrief`).
+          if (internal?.taskBrief) {
+            startInput = {
+              ...startInput,
+              metadata: {
+                ...startInput.metadata,
+                [TASK_BRIEF_METADATA_KEY]: taskBriefStartRecord(
+                  internal.taskBrief,
+                ),
+              },
+            };
+          }
           // #484 phase A: re-stamp the server-minted portable consent
           // marker after the reserved-key strip (which removed any
           // caller-forged value) so the persisted session binding carries
@@ -7347,14 +7415,26 @@ export class OrchestrationService {
           const pendingPrompt = current
             ? pendingFirstTurnInstructions(current.events)
             : undefined;
-          const turnInputWithFirstTurnPrompt = pendingPrompt
-            ? {
-                ...publicTurnInput,
-                ambientContext: publicTurnInput.ambientContext?.trim()
-                  ? `${pendingPrompt}\n${publicTurnInput.ambientContext}`
-                  : pendingPrompt,
-              }
-            : publicTurnInput;
+          // Epic #4003: a Session dispatched for a Task gets its Task brief
+          // the same way, on the same genuine first turn, on every engine:
+          // after any authored prompt, before ordinary ambient context.
+          const pendingBrief = current
+            ? pendingTaskBrief(current.events)
+            : undefined;
+          const firstTurnContext = [
+            pendingPrompt,
+            pendingBrief?.text,
+            publicTurnInput.ambientContext?.trim()
+              ? publicTurnInput.ambientContext
+              : undefined,
+          ].filter((part): part is string => part !== undefined);
+          const turnInputWithFirstTurnPrompt =
+            pendingPrompt || pendingBrief
+              ? {
+                  ...publicTurnInput,
+                  ambientContext: firstTurnContext.join('\n'),
+                }
+              : publicTurnInput;
           // #3290: what a governance refusal of this turn needs to say
           // what Default would do, and to put back what the engine still runs.
           let turnGovernance:
@@ -7409,6 +7489,9 @@ export class OrchestrationService {
               // not merely from a turn having started.
               ...(pendingPrompt
                 ? { [FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY]: true }
+                : {}),
+              ...(pendingBrief
+                ? { [TASK_BRIEF_COMPOSED_METADATA_KEY]: pendingBrief.digest }
                 : {}),
             },
           };

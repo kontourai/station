@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import { resolve as resolveFilesystemPath } from 'node:path';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import {
@@ -103,6 +104,7 @@ import {
   ForegroundMessageTurnIdentityUnavailableError,
 } from '../services/execution-target/execution-target-execution.js';
 import {
+  agentExecutionBindingMetadata,
   type EnvironmentAccess,
   type ExecutionTargetAgentView,
   matchVerifiedRemoteProjectPath,
@@ -149,6 +151,7 @@ import {
   ReceiverExecutionRefusal,
   receiverAdmittedCwd,
 } from '../services/projects/project-contribution-service.js';
+import type { TaskDispatchAgentStart } from '../services/projects/task-dispatcher.js';
 import type { TaskRoomInvocationAdmission } from '../services/projects/task-room-work-module.js';
 import {
   fetchRemoteStation,
@@ -2594,6 +2597,166 @@ async function resolveTarget(
       timeoutMs: target.requestOptions.timeoutMs,
     },
   };
+}
+
+/**
+ * The resolver reads every execution path uses for a selected target: the
+ * Agent, its engine connection and the Project are read from that Station,
+ * and only this Station answers its own default workspace isolation (#2144
+ * slice 2), since naming a remote Environment's project with the local
+ * default would attribute one host's setting to another's project.
+ */
+function executionResolverDependencies(
+  selectedTarget: DelegationTarget,
+  orchestrationService: OrchestrationService,
+) {
+  return {
+    resolveEnvironmentAccess: async (_executionTarget: ExecutionTarget) =>
+      ({
+        apiBase: selectedTarget.apiBase,
+        environmentId: selectedTarget.environmentId,
+        environmentName: selectedTarget.environmentName,
+        kind: selectedTarget.kind,
+        ...(selectedTarget.projectPath
+          ? { verifiedProjectPath: selectedTarget.projectPath }
+          : {}),
+        ...(selectedTarget.remoteHome
+          ? { remoteHome: selectedTarget.remoteHome }
+          : {}),
+        ...(selectedTarget.requestOptions
+          ? { requestOptions: selectedTarget.requestOptions }
+          : {}),
+      }) satisfies EnvironmentAccess,
+    getAgent: (access: EnvironmentAccess, id: AgentId) =>
+      readTargetAgent(access, id),
+    getConnection: async (access: EnvironmentAccess, id: string) =>
+      readConnection(access as DelegationTarget, id),
+    getProject: (access: EnvironmentAccess, slug: string) =>
+      readExecutionProject(access, slug, orchestrationService),
+    getStationDefaultWorkspaceIsolation: async (access: EnvironmentAccess) =>
+      access.kind === 'current'
+        ? await orchestrationService.resolveStationDefaultWorkspaceIsolation?.()
+        : undefined,
+    getProviderAdapter: (provider: EngineId) =>
+      orchestrationService.getProviderAdapter(provider),
+  } satisfies Parameters<typeof resolveExecutionTarget>[1];
+}
+
+/**
+ * #4005: how a Task dispatch starts its Session as the Task's Agent on this
+ * Station. It resolves the Agent through the same resolver and reads as a
+ * foreground `/chat` start, so the Session gets the same provider, model and
+ * the same Environment + Agent binding a continuation later verifies. The
+ * Session runs in the Project's working directory, in the shared checkout:
+ * Task dispatch provisions no worktree, so it records `shared` rather than
+ * the Project's default isolation. Throws, before any effect, when the Agent
+ * is unknown or unavailable, its engine is not ready, or the model is not
+ * launchable.
+ */
+export async function resolveTaskDispatchAgentStart(
+  input: {
+    agentId: string;
+    projectSlug: string;
+    cwd?: string;
+    modelId?: string;
+    modelOptions?: Readonly<Record<string, unknown>>;
+  },
+  orchestrationService: OrchestrationService,
+): Promise<TaskDispatchAgentStart> {
+  const selectedTarget = await resolveTarget(
+    {},
+    undefined,
+    orchestrationService,
+  );
+  const resolved = await resolveExecutionTarget(
+    {
+      environment: { kind: 'current' },
+      agent: agentId(input.agentId),
+      workspace: {
+        kind: 'project',
+        projectSlug: input.projectSlug,
+        workspaceIsolation: { mode: 'shared' },
+      },
+      ...(input.modelId?.trim() || input.modelOptions
+        ? {
+            model: {
+              ...(input.modelId?.trim()
+                ? { override: input.modelId.trim() }
+                : {}),
+              ...(input.modelOptions
+                ? { options: { ...input.modelOptions } }
+                : {}),
+            },
+          }
+        : {}),
+    },
+    executionResolverDependencies(selectedTarget, orchestrationService),
+  );
+  const projectCwd =
+    resolved.workspace?.kind === 'project' ? resolved.workspace.cwd : undefined;
+  if (!projectCwd)
+    throw new Error(
+      `Project '${input.projectSlug}' has no working directory to run the Agent in`,
+    );
+  // A continuation re-resolves the Project and requires the Session to be in
+  // exactly its directory, so a Session started elsewhere could never take a
+  // turn. Refuse it here rather than start it.
+  if (input.cwd !== undefined && !sameDirectory(input.cwd, projectCwd))
+    throw new Error(
+      "A Task dispatched to an Agent runs in its Project's working directory; the requested directory differs",
+    );
+  return {
+    agentId: resolved.agentId,
+    provider: resolved.provider,
+    ...(resolved.modelId ? { modelId: resolved.modelId } : {}),
+    ...(resolved.modelOptions
+      ? { modelOptions: { ...resolved.modelOptions } }
+      : {}),
+    cwd: projectCwd,
+    environmentId: resolved.access.environmentId,
+    metadata: {
+      ...agentExecutionBindingMetadata(resolved),
+      projectSlug: input.projectSlug,
+      workspaceIsolation: { mode: 'shared' },
+    },
+  };
+}
+
+/**
+ * #4005: refuses an Agent this Station does not have, for a seeded Task
+ * dispatch that records the Agent without starting it. The same Agent read
+ * `/chat` resolution uses; a missing Agent throws its "not found" refusal.
+ */
+export async function assertTaskDispatchAgentExists(
+  id: string,
+  orchestrationService: OrchestrationService,
+): Promise<void> {
+  const selectedTarget = await resolveTarget(
+    {},
+    undefined,
+    orchestrationService,
+  );
+  const access = executionResolverDependencies(
+    selectedTarget,
+    orchestrationService,
+  );
+  const agent = await access.getAgent(
+    await access.resolveEnvironmentAccess({
+      environment: { kind: 'current' },
+      agent: agentId(id),
+    }),
+    agentId(id),
+  );
+  if (agent.slug !== undefined && agent.slug !== id)
+    throw new Error(`Agent '${id}' is not this Station's Agent`);
+}
+
+function sameDirectory(left: string, right: string): boolean {
+  try {
+    return realpathSync(left) === realpathSync(right);
+  } catch {
+    return resolveFilesystemPath(left) === resolveFilesystemPath(right);
+  }
 }
 
 /** #2377 slice C2b: the Environment a forwarded body names at its target. */
@@ -5643,38 +5806,7 @@ export async function delegateTask(
       );
     }
     const resolverDependencies = {
-      resolveEnvironmentAccess: async (_executionTarget: ExecutionTarget) => {
-        const target = selectedTarget;
-        return {
-          apiBase: target.apiBase,
-          environmentId: target.environmentId,
-          environmentName: target.environmentName,
-          kind: target.kind,
-          ...(target.projectPath
-            ? { verifiedProjectPath: target.projectPath }
-            : {}),
-          ...(target.remoteHome ? { remoteHome: target.remoteHome } : {}),
-          ...(target.requestOptions
-            ? { requestOptions: target.requestOptions }
-            : {}),
-        } satisfies EnvironmentAccess;
-      },
-      getAgent: (access, id) => readTargetAgent(access, id),
-      getConnection: async (access, id) =>
-        readConnection(access as DelegationTarget, id),
-      getProject: (access, slug) =>
-        readExecutionProject(access, slug, orchestrationService),
-      // #2144 slice 2. Only the CURRENT Station answers: `getProject` above
-      // reads the selected Station, and this Station's config describes this
-      // host. Naming a remote Environment's project with the local default
-      // would attribute one host's setting to another's project, so a remote
-      // Environment keeps today's behavior — its project record, else shared.
-      getStationDefaultWorkspaceIsolation: async (access: EnvironmentAccess) =>
-        access.kind === 'current'
-          ? await orchestrationService.resolveStationDefaultWorkspaceIsolation?.()
-          : undefined,
-      getProviderAdapter: (provider) =>
-        orchestrationService.getProviderAdapter(provider),
+      ...executionResolverDependencies(selectedTarget, orchestrationService),
       // #484 phase A: the portable intent resolves its workspace through the
       // receiver-owned admission — the ADMITTED project, never a caller-named
       // slug or path. Absent admission never reaches here (refused or minted

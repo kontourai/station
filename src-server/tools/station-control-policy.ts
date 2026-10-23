@@ -748,6 +748,34 @@ export const STATION_CONTROL_TOOL_POLICY = {
     routes: [get('/api/orchestration/session-activity/:sessionId/digest')],
   },
 
+  // ── operations: work claims (#3413 part B) ─────────────────────────────
+  // A Session's own declaration of what it is on. Any verified caller with a
+  // recorded owner; the routes take the claimant from the verified caller and
+  // read another Session's claim as absent. Each writes a durable record, so
+  // mutating (as `declare_pull_request`), not a bounded write. Each owns its
+  // leaf and shares none.
+  claim_work: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/work-claims')],
+  },
+  renew_claim: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/work-claims/:claimId/renew')],
+  },
+  release_claim: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'mutating',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/work-claims/:claimId/release')],
+  },
+
   // ── operations: SSH environments ───────────────────────────────────────
   create_ssh_environment: {
     ...OPERATOR_MUTATION,
@@ -991,6 +1019,33 @@ export const STATION_CONTROL_TOOL_POLICY = {
     toolClass: 'mutating',
     personOnly: 'never',
     routes: [post('/api/orchestration/station-control/declare-pull-request')],
+  },
+  // Epic #4003: the brief for the caller's OWN Task. The route reads the
+  // session from the verified caller and the Task from that session's
+  // immutable room execution binding; the tool takes no arguments.
+  get_task_brief: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/station-control/task-brief')],
+  },
+  // #4003: write the Task memory of the caller's OWN Session's Task: one
+  // summary revision, or one keyed record version. The routes read the
+  // Session from the verified caller and the Task from its immutable room
+  // execution binding, never the body, and hold it to the one scope rule.
+  // Bounded writes: every bound is a refusal, every earlier revision or
+  // version is kept, and neither reaches the room document or Task status.
+  task_summary_update: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'bounded-write',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/station-control/task-summary')],
+  },
+  task_record: {
+    assurance: 'any',
+    role: 'self',
+    toolClass: 'bounded-write',
+    personOnly: 'never',
+    routes: [post('/api/orchestration/station-control/task-record')],
   },
 
   // ── notify ─────────────────────────────────────────────────────────────

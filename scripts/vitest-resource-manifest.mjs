@@ -1167,6 +1167,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2363: plants repo-local git config and runs plain git beside Station's
   // hardened runner against real temp repositories.
   'src-server/utils/__tests__/git-exec.hardening.test.ts',
+  // #4003: runs the GitHub work-item observer against a fake `gh`
+  // executable, through the real process-group runner.
+  'src-server/services/work-item-providers/__tests__/github-work-item-observer.test.ts',
+  // #4003: get_task_brief's production route composition re-reads the
+  // tracker through the real observer and a fake `gh` executable.
+  'src-server/runtime/routes/__tests__/runtime-routes-station-control-task-brief.test.ts',
   // #2363: the coding git routes over real repositories, a real bare remote
   // and plain git as the control for every planted config.
   'src-server/routes/projects/__tests__/coding-git-security.routes.test.ts',
