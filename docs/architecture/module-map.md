@@ -46,6 +46,8 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [Native relay account and requests](#native-relay-account-and-requests) | Compose selected Device transport with separate person sessions and bounded member reads. | `src-ui/src/platform/native/nativeRelayConnectionOwner.ts` |
 | [NativeApplicationSignaling](#nativeapplicationsignaling) | Own a native peer transcript and one bounded Device request proof for the opt-in application transport. | `src-desktop/src/native_application_peer.rs` |
 | [PendingPairingCompletion](#pendingpairingcompletion) | Complete one accepted device-pairing request once, with shared subscribers and bounded retry. | `packages/connect/src/core/pendingPairingCompletion.ts` |
+| [ChildWork](#childwork) | Fold bounded child observations and result provenance without granting execution or transcript authority. | `packages/contracts/src/child-work.ts` |
+| [StationReportGroupRuntime](#stationreportgroupruntime) | Compose personal-host advisory reports with retained accounting and explicit cancellation observations. | `src-server/services/orchestration/station-report-group-runtime.ts` |
 | [SessionQueryModule](#sessionquerymodule) | Authorize and project one conversation from one ordered event stream. | `src-server/services/orchestration/session-query-module.ts` |
 | [ConversationSessionLineage](#conversationsessionlineage) | Establish and inspect durable conversation-to-execution-session lineage. | `src-server/services/orchestration/conversation-session-lineage.ts` |
 | [SessionCommandModule](#sessioncommandmodule) | Execute the closed session-command vocabulary and return an outcome with explicit receipt certainty. | `src-server/services/orchestration/session-command-module.ts` |
@@ -1866,6 +1868,38 @@ with no tool row, taking its outcome from `request.resolved`. This boundary
 does not redact engine history or establish engine acknowledgement.
 
 
+## ChildWork
+
+The [child-work contract](../../packages/contracts/src/child-work.ts) owns the
+shared child identity, delta vocabulary, bounded reducer, result provenance and
+Station-delegate projection. A structured `tool-return` can replace descriptive
+summary text while retaining recovery information. Missing provenance remains
+unknown; completion and reported output do not establish semantic acceptance.
+
+[Claude](../../src-server/providers/adapters/claude-adapter-child-work.ts),
+[Codex](../../src-server/providers/adapters/codex-adapter-child-work.ts) and
+[Muse](../../src-server/providers/adapters/muse-serve-child-work.ts) adapters map
+their supported observations into `child-work.updated`. Muse's exec fallback
+explicitly reports unavailable child observability. An engine capability
+statement is not proof that every engine emits equivalent observations.
+
+[OrchestrationService](../../src-server/services/orchestration/orchestration-service.ts)
+composes the process-local [projection](../../src-server/services/orchestration/child-work-projection.ts)
+and [terminal-history replay](../../src-server/services/orchestration/child-work-history.ts).
+Cold reads can seed bounded settled facts from persisted history under its
+session-epoch and exit rules; they do not revive pre-restart running children.
+Session summaries carry the resulting children and delegated `asChild` view.
+The [UI event/snapshot owner](../../src-ui/src/hooks/orchestration/childWorkHandlers.ts)
+uses the same reducer for tracked chats, including late result corrections.
+The [background-task store](../../src-ui/src/contexts/background-tasks-store.ts)
+separately bounds card/recovery retention and preserves snapshot uncertainty.
+
+The [transcript module](../../src-server/services/orchestration/child-work-transcript.ts)
+authorizes the session before resolving a child's persisted transcript identity.
+The bounded [Claude transcript reader](../../src-server/providers/adapters/claude-subagent-transcript.ts)
+uses that identity, not a caller-supplied file path. Neither a child reference,
+recovery handle nor read access grants execution or authority to answer a request.
+
 ## StationReportGroupRuntime
 
 [StationReportGroupRuntime](../../src-server/services/orchestration/station-report-group-runtime.ts)
@@ -1883,8 +1917,11 @@ Flow-backed topology and context sync remain open. The Ensemble inspector uses
 [scoped SDK query hooks](../../packages/sdk/src/query-domains/reportGroups.ts) for
 explicit metadata and raw-report reads; closing/revoking the view cancels reads.
 Raw UTF-16 pages are bounded and joined before rendering as text. Unknown
-allocation/usage and unconfirmed termination remain distinct. UI mutation
-controls remain open. Provider responses in the focused HTTP owner test are
+allocation/usage and unconfirmed termination remain distinct. Scoped create,
+cancel and pending-cancellation receipt checks are available through the
+inspector; each mounted form disables repeat attempts and automatic retries.
+A cancellation request or receipt does not establish physical stop or refunds.
+Provider responses in the focused HTTP owner test are
 controlled fixtures, not live acceptance or billing qualification.
 
 ## CliSessionGroups
@@ -1989,9 +2026,10 @@ they do not isolate hostile processes sharing the host uid.
 
 The new store accepts newly issued v3 authority only. It offers no v2 import or
 transfer operation: legacy journals and charges are not reconstructed or reset.
-Production preparation, provider qualification, new-rounds request serving and
-authenticated context ACK remain separate integration work. Store availability
-alone does not enable the paid group capability.
+Personal-host report serving composes this store with preparation and the
+reviewed narrow provider profile. Flow-backed frontier/join and authenticated
+context ACK remain separate integration work. Store availability alone does
+not enable the full group capability.
 
 The [rounds final-fetch fence](../../src-server/services/orchestration/delegation-group-launch-fence.ts)
 checks the latest seat attempt, unreturned round, current adopted grant,
@@ -2050,8 +2088,10 @@ The authority comes from retained official [model](https://platform.claude.com/d
 [geography](https://platform.claude.com/docs/en/manage-claude/data-residency),
 [versioning](https://platform.claude.com/docs/en/api/versioning), and
 [migration](https://platform.claude.com/docs/en/api/migration-2026-10-21) snapshots;
-the issuer records their hashes. It does not prove model entitlement. Production
-request serving and authenticated context-sync recipients remain unwired.
+the issuer records their hashes. It does not prove model entitlement. The
+personal-host report runtime uses this profile for new preparation; expiry or
+unsupported configuration refuses it. Authenticated Flow context-sync
+recipients remain unwired.
 
 ### Operator report-group preparation
 
@@ -2063,7 +2103,8 @@ published Flow v3 authority and AccountingV1 rounds, canonical reserved tasks an
 sealed SDK transport. They retain bounded result/failure observations and confirm
 exact canonical turn events against retained provider evidence before recording
 terminal proof. This is independent-advisory execution with acceptance unassessed;
-boot/routes, Flow topology and session-context continuation remain unqualified.
+personal-host boot/routes are composed, while Flow topology, session-context
+continuation and live provider/billing qualification remain open.
 
 
 The [report-group preparer](../../src-server/services/orchestration/station-report-group-preparation.ts)
@@ -2147,11 +2188,11 @@ reads; task admission alone does not assert a paid request or completion. The
 reserved port also binds its actual source host, and canonical delegation
 refuses a current-Station handshake naming a different environment.
 
-Boot serving, durable post-request recovery/cancel, Flow-backed frontier/join
-and authenticated same-session ACK remain unwired. This preparer does not enable
-the public paid-group capability. Controlled handshake/Agent read responses and
-synthetic provider responses do not establish live HTTP ingress or provider
-acceptance.
+The personal-host report runtime mounts this preparation with durable operation
+replay, cancellation and explicit cancellation-receipt finalization. Flow-backed
+frontier/join and authenticated same-session ACK remain unwired. This does not
+enable the full group capability. Controlled handshake/Agent reads and
+synthetic provider responses do not establish live-provider or billing acceptance.
 
 ### Reserved Station source execution
 
@@ -2203,7 +2244,8 @@ configured selection, not a provider readiness or entitlement probe.
 
 This lease authenticates a credential source, not model entitlement or a tariff.
 The existing qualified provider contract remains independently required, and
-production request preparation still has to compose both owners.
+personal-host report preparation composes both owners for its narrow supported
+profile. Neither owner alone admits execution.
 
 The [reserved SDK attempt](../../src-server/runtime/conversation/reserved-sdk-source-attempt.ts)
 passes through the durable physical launch fence and awaits
@@ -2222,11 +2264,11 @@ unknown paid reservation.
 
 The [controlled owner test](../../src-server/services/orchestration/__tests__/delegation-group-sdk-source-wire-owner.test.ts)
 composes published Flow accounting, the real adapter, orchestration service and
-SQLite event store under synthetic provider responses. Production preparation,
-provider qualification issuance and rounds serving remain unwired. Existing v2
-journals retain their controller and charges; new rounds require separate
-custody. This integration does not enable the public paid group capability or
-establish live provider, billing or whole-epic acceptance.
+SQLite event store under synthetic provider responses. Personal-host report
+serving now composes preparation, narrow provider qualification and separate
+rounds custody. Existing v2 journals retain their controller and charges. This
+integration does not enable the full Flow-backed group capability or establish
+live provider, billing or whole-epic acceptance.
 
 ## SessionLifecycleModule
 

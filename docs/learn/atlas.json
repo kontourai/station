@@ -40,6 +40,7 @@
         "docs/user/workspace-checkpoints.md"
       ],
       "modules": [
+        "ChildWork",
         "SessionQueryModule",
         "ConversationSessionLineage",
         "SessionCommandModule",
