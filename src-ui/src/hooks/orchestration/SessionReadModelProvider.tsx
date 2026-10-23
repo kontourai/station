@@ -25,8 +25,13 @@ export function SessionReadModelProvider({
   const scope = useHostRequestAuthorityScope();
   const queryClient = useQueryClient();
   useEffect(
-    () => registerOrchestrationStreamQueryClient(apiBase, queryClient),
-    [apiBase, queryClient],
+    () =>
+      registerOrchestrationStreamQueryClient(
+        apiBase,
+        queryClient,
+        scope?.authorityKey,
+      ),
+    [apiBase, queryClient, scope?.authorityKey],
   );
   const state = useSyncExternalStore(subscribeStreamConnectionState, () =>
     getStreamConnectionState(apiBase),

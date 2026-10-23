@@ -1,7 +1,7 @@
 //! Observe plaintext HTTP progress outside TLS. A failed write is ambiguous:
 //! ureq's transport API cannot report how many bytes reached the socket.
 use super::*;
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::io::{Read, Write};
 use std::net::{Shutdown, TcpStream};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -43,6 +43,69 @@ impl Drop for ResponseWaitRegistration {
     fn drop(&mut self) {
         self.deregister();
     }
+}
+
+// Cancellation and registration share a lock so a cancel immediately before
+// the socket read cannot be missed. Only the owning request's read is shut down.
+static BODY_READS: Mutex<Vec<Arc<BodyRead>>> = Mutex::new(Vec::new());
+#[derive(Debug)]
+struct BodyRead {
+    socket: Arc<TcpStream>,
+    cancel: Arc<AtomicBool>,
+}
+struct BodyReadRegistration(Arc<BodyRead>);
+impl BodyReadRegistration {
+    fn new(socket: Arc<TcpStream>, cancel: Arc<AtomicBool>) -> Result<Self, ureq::Error> {
+        let mut reads = BODY_READS.lock().unwrap_or_else(|e| e.into_inner());
+        if cancel.load(Ordering::Acquire) {
+            return Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "cancelled").into());
+        }
+        let read = Arc::new(BodyRead { socket, cancel });
+        reads.push(Arc::clone(&read));
+        Ok(Self(read))
+    }
+}
+impl Drop for BodyReadRegistration {
+    fn drop(&mut self) {
+        BODY_READS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .retain(|entry| !Arc::ptr_eq(entry, &self.0));
+    }
+}
+thread_local! {
+    static BODY_CANCEL: RefCell<Option<Arc<AtomicBool>>> = const { RefCell::new(None) };
+}
+pub(crate) fn cancel_body_read(cancel: &Arc<AtomicBool>) {
+    let reads = BODY_READS.lock().unwrap_or_else(|e| e.into_inner());
+    cancel.store(true, Ordering::Release);
+    for read in reads
+        .iter()
+        .filter(|read| Arc::ptr_eq(&read.cancel, cancel))
+    {
+        let _ = read.socket.shutdown(Shutdown::Both);
+    }
+}
+pub(crate) fn read_body(
+    cancel: Arc<AtomicBool>,
+    reader: &mut impl Read,
+    buffer: &mut [u8],
+) -> std::io::Result<usize> {
+    struct Scope(Option<Arc<AtomicBool>>);
+    impl Drop for Scope {
+        fn drop(&mut self) {
+            BODY_CANCEL.with(|cell| cell.replace(self.0.take()));
+        }
+    }
+    let _scope = Scope(BODY_CANCEL.with(|cell| cell.replace(Some(Arc::clone(&cancel)))));
+    let result = reader.read(buffer);
+    if cancel.load(Ordering::Acquire) {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Interrupted,
+            "cancelled",
+        ));
+    }
+    result
 }
 
 // Checkout-only retirement is independent of the epoch that wakes response waits.
@@ -307,7 +370,12 @@ impl Transport for SocketTransport {
             .with(Cell::get)
             .map(|epoch| ResponseWaitRegistration::new(Arc::clone(&self.socket), epoch))
             .transpose()?;
+        let body_read = BODY_CANCEL
+            .with(|cell| cell.borrow().clone())
+            .map(|cancel| BodyReadRegistration::new(Arc::clone(&self.socket), cancel))
+            .transpose()?;
         let result = (&*self.socket).read(self.buffers.input_append_buf());
+        drop(body_read);
         let interrupted = wait
             .as_mut()
             .is_some_and(ResponseWaitRegistration::deregister);
@@ -609,6 +677,100 @@ except BlockingIOError:
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cancelled_silent_sse_body_releases_stream_slot() {
+        let cancellations = NativeHttpCancellation::default();
+        for index in 0..16 {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let origin = format!("http://{}", listener.local_addr().unwrap());
+            let cancel = Arc::new(AtomicBool::new(false));
+            let request_id = format!("silent-sse-{index}");
+            let slot = reserve_native_http_request(
+                &cancellations,
+                &request_id,
+                &origin,
+                true,
+                Arc::clone(&cancel),
+                None,
+            )
+            .unwrap();
+            let worker_cancel = Arc::clone(&cancel);
+            let (first_tx, first_rx) = std::sync::mpsc::channel();
+            let (done_tx, done_rx) = std::sync::mpsc::channel();
+            let worker = std::thread::spawn(move || {
+                let result = run_admitted_native_http_exchange(
+                    slot,
+                    &worker_cancel,
+                    move || native_http_agent().get(&origin).call(),
+                    |response| {
+                        let mut response = response.unwrap();
+                        let mut reader = response.body_mut().as_reader();
+                        let mut bytes = [0; 13];
+                        reader.read_exact(&mut bytes).unwrap();
+                        assert_eq!(&bytes, b"data: ready\n\n");
+                        first_tx.send(()).unwrap();
+                        let result = read_body(Arc::clone(&worker_cancel), &mut reader, &mut bytes);
+                        assert!(
+                            result.is_err(),
+                            "cancelled body must not report a successful EOF"
+                        );
+                        Err(NativeHttpBrokerFailure::coded("cancelled"))
+                    },
+                );
+                done_tx.send(result).unwrap();
+            });
+            let (mut peer, _) = listener.accept().unwrap();
+            peer.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+            let mut request = Vec::new();
+            while !request.ends_with(b"\r\n\r\n") {
+                let mut byte = [0];
+                peer.read_exact(&mut byte).unwrap();
+                request.push(byte[0]);
+            }
+            peer.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\ndata: ready\n\n").unwrap();
+            first_rx.recv_timeout(Duration::from_secs(3)).unwrap();
+            let deadline = Instant::now() + Duration::from_secs(2);
+            loop {
+                if BODY_READS
+                    .lock()
+                    .unwrap()
+                    .iter()
+                    .any(|read| Arc::ptr_eq(&read.cancel, &cancel))
+                {
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "silent SSE body must register its socket"
+                );
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            let started = Instant::now();
+            cancel_native_http_request(&cancellations, &request_id).unwrap();
+            let result = done_rx
+                .recv_timeout(Duration::from_secs(2))
+                .expect("cancel must interrupt the silent SSE body read promptly");
+            assert_eq!(result.unwrap_err().code, "cancelled");
+            assert!(started.elapsed() < Duration::from_secs(2));
+            worker.join().unwrap();
+            let state = cancellations.0 .0.lock().unwrap();
+            assert!(
+                state.active.is_empty(),
+                "cancelled SSE stream slot must be released"
+            );
+            assert!(
+                state.orphaned_calls.is_empty(),
+                "body cancellation must not accumulate orphan workers"
+            );
+            assert_eq!(state.slot_releases, index + 1);
+            assert!(!BODY_READS
+                .lock()
+                .unwrap()
+                .iter()
+                .any(|read| Arc::ptr_eq(&read.cancel, &cancel)));
+        }
+    }
 
     #[test]
     fn ios_resume_leaves_registered_response_wait_alive_and_never_replays_post() {

@@ -20,6 +20,10 @@ on:
         description: "Exercise silent-response, response-wait, snapshot-publication and timestamp collision controls"
         type: boolean
         default: false
+      final_review_faults:
+        description: "Prove silent SSE body cancellation and slot release with a socket-shutdown fault"
+        type: boolean
+        default: false
       native_round_five_faults:
         description: "Exercise response-wait unwind and rustls shutdown controls"
         type: boolean
@@ -361,4 +365,37 @@ jobs:
               assert cargo(name).returncode == 0, (name, "restored must pass")
               subprocess.run(["git", "diff", "--exit-code", "--", source], check=True)
           print("iOS network controls: baseline GREEN, five injected regressions RED, exact sources restored GREEN.", flush=True)
+          PYTHON
+
+      - name: Prove silent SSE body cancellation and restore socket shutdown
+        if: ${{ success() && inputs.final_review_faults }}
+        run: |
+          python3 - <<'PYTHON'
+          from pathlib import Path
+          import subprocess
+
+          assert not subprocess.check_output(["git", "status", "--porcelain", "--untracked-files=no"]).strip(), "fault controls require clean committed sources"
+          path = Path("src-desktop/src/native_http_transport.rs")
+          original = path.read_text()
+          before = "        let _ = read.socket.shutdown(Shutdown::Both);"
+          assert original.count(before) == 1, "ambiguous socket-shutdown mutation"
+          mutated = original.replace(before, "        // Injected: leave the cancelled SSE body read blocked.")
+          command = ["cargo", "test", "--manifest-path", "src-desktop/Cargo.toml", "--lib", "native_http_transport::tests::cancelled_silent_sse_body_releases_stream_slot", "--", "--exact", "--nocapture"]
+          def check():
+              result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+              print(result.stdout, flush=True)
+              return result
+          assert check().returncode == 0, "baseline must pass"
+          print("Silent SSE baseline: GREEN", flush=True)
+          try:
+              path.write_text(mutated)
+              result = check()
+              assert result.returncode == 101 and "cancel must interrupt the silent SSE body read promptly" in result.stdout, "fault must fail the intended assertion, not compilation or setup"
+              print("Silent SSE injected: RED; blocked body read caught", flush=True)
+          finally:
+              assert path.read_text() == mutated, "intervening edits; refusing restoration"
+              path.write_text(original)
+          assert check().returncode == 0, "restored must pass"
+          subprocess.run(["git", "diff", "--exit-code", "--", str(path)], check=True)
+          print("Silent SSE restored: GREEN; exact source bytes restored", flush=True)
           PYTHON

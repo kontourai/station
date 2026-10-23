@@ -6,6 +6,7 @@ import { pairingScopePresetString } from '@kontourai/station-contracts';
 import {
   authenticatedFetch,
   ChatHttpError,
+  fetchSSE,
   sendExecutionMessage,
   setClientCredentialResolver,
 } from '@kontourai/station-sdk/client';
@@ -426,6 +427,62 @@ describe('native authenticated transport', () => {
     expect(JSON.stringify(bridge.invoke.mock.calls)).not.toMatch(
       /authorization|bearer|credential/i,
     );
+  });
+
+  test('repeated SDK stall cancels keep the native bridge in-use count bounded', async () => {
+    vi.useFakeTimers();
+    const origin = 'https://native-stall.example.test';
+    const active = new Set<string>();
+    let highWater = 0;
+    let attempts = 0;
+    setClientCredentialResolver(() => ({
+      origin,
+      transport: nativeAuthenticatedTransport,
+    }));
+    bridge.invoke.mockImplementation(
+      async (
+        command: string,
+        args: { request?: { requestId: string }; requestId?: string },
+      ) => {
+        if (command === 'station_native_http_cancel') {
+          active.delete(args.requestId!);
+        } else if (command === 'station_native_http_request') {
+          active.add(args.request!.requestId);
+          highWater = Math.max(highWater, active.size);
+          attempts += 1;
+          queueMicrotask(() => {
+            emit({
+              type: 'response',
+              status: 200,
+              headers: { 'Content-Type': 'text/event-stream' },
+            });
+            emit(new TextEncoder().encode('data: ready\n\n').buffer);
+          });
+        }
+      },
+    );
+    const messages = vi.fn();
+    const stream = fetchSSE(`${origin}/api/events`, {
+      authentication: 'required',
+      retryDelayMs: 1,
+      maxRetryDelayMs: 1,
+      onMessage: messages,
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(0);
+      for (let index = 0; index < 16; index += 1) {
+        await vi.advanceTimersByTimeAsync(75_010);
+        expect(attempts).toBe(index + 2);
+        expect(active.size).toBe(1);
+      }
+      expect(messages).toHaveBeenCalledTimes(17);
+      expect(highWater).toBe(1);
+    } finally {
+      stream.close();
+      await stream.completed;
+      setClientCredentialResolver();
+    }
+    expect(active.size).toBe(0);
   });
 
   test('aborts a quiet stream after response headers and cancels native I/O', async () => {

@@ -204,7 +204,9 @@ can still block briefly on slow storage. Day rollover, sink replacement, close,
 the fatal handler's `flushSync()`, and process exit drain pending lines.
 Failed writes/reopens retain unwritten buffered bytes for a later drain; new
 lines are best effort while storage remains unavailable. An abrupt kill can
-lose the pending batch; event-loop delays can extend its age beyond 10 ms.
+lose the pending batch. On Windows, desktop quit can use `taskkill`, bypassing
+Node's exit drain and losing that pending log batch (normally up to 10 ms).
+Event-loop delays can extend its age beyond 10 ms.
 Completed writes reach the OS page cache, with no power-loss/fsync guarantee.
 Stdout and the local store serialize separate redacted and unredacted records;
 they cannot safely share the same serialized bytes.

@@ -108,8 +108,9 @@ configuration-mutation protocol: agent, connection, plugin, and system edits
 have different authority and concurrency rules, and the current write routes
 do not accept an idempotency key or a revision precondition. Treating those
 writes as "safe" client-side would allow a stale offline edit to overwrite a
-newer server value. The cached offline UI therefore remains read-only for
-configuration. The one bounded exception is the non-secret app log-level
+newer server value. The separate offline reader is read-only for configuration. Workspace
+mutations retain the behavior on main; cached reads do not add a reachability
+veto to their dispatch. The one bounded exception is the non-secret app log-level
 setting. Every log-level save, online or offline, first writes a dedicated
 envelope and then uses `GET/PUT /api/config/app/log-level`; it never passes
 through the broad app-config mutation. The endpoint exposes a field revision and
