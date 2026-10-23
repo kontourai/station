@@ -78,6 +78,7 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [SharedWorkingState](#sharedworkingstate) | Converge one authorized text document through versioned causal operations and bounded resync. | `src-server/domain/shared-working-state.ts` |
 | [LiveWorkSession](#liveworksession) | Project bounded, separately authorized ephemeral work presence for one exact Project/Task/surface/session. | `src-server/domain/live-work-session.ts` |
 | [ProjectTaskRoom](#projecttaskroom) | Present one Task's shared text document, presence, and cursors through the server-owned task room. | `src-server/services/orchestration/project-task-room-runtime.ts` |
+| [ProjectRoom](#projectroom) | Own Project discussion, shared notes, presence, and explicit Agent requests independently of Tasks. | `src-server/services/projects/project-room-service.ts` |
 | [SharedWorkingStateEditingCapability](#sharedworkingstateeditingcapability) | Plan exact text-edit operation batches from #2889 atom snapshots and prove preview/operation identity. | `src-server/domain/shared-working-state-editing.ts` |
 | [RevisionEvidenceModule](#revisionevidencemodule) | Freeze immutable shared-state revisions and resolve Station-local evidence references. | `src-server/domain/revision-bound-evidence.ts` |
 | [ActionOperationModule](#actionoperationmodule) | Retain one authorized platform mutation's reconnect-safe execution status without owning its domain lifecycle. | `src-server/services/operations/action-operation-service.ts` |
@@ -2655,6 +2656,38 @@ transport. `src-server/domain/__tests__/live-work-session.test.ts` and
 are the focused contract evidence. **Do not reintroduce:**
 an API/database/UI here, a second message/presence log, caller-authored actor/work
 facts, insertion-order IDs, authority inferred from replay, or restored liveness.
+
+## ProjectRoom
+
+[ProjectRoomService](../../src-server/services/projects/project-room-service.ts)
+owns Project discussion independently of Task rooms and private conversations.
+Its scope binds the Station, portable Project identity, local Project incarnation,
+and room. [ProjectRoomStore](../../src-server/services/projects/project-room-store.ts)
+retains sequenced messages, actor-scoped duplicate-send receipts, revisioned notes,
+and Agent-request records in private SQLite. Persisted records are validated
+against their row identities before use. History reads use a deferred transaction;
+discovery is lookup-only. Explicit opening requires current discussion authority.
+
+The [access adapter](../../src-server/runtime/routes/project-room-access.ts)
+composes Project membership with current transport grants and checks again at
+mutation commit and delivery. Reading, discussion, note editing and Agent execution
+are separate actions. Presence expires and is not restored as live after restart.
+The [routes](../../src-server/routes/projects/project-room-routes.ts) expose bounded
+history and guarded live delivery. The [SDK](../reference/sdk.md#shared-project-room)
+retains exact send intents and retires protected content when authority changes.
+
+[ProjectRoomAgentModule](../../src-server/services/projects/project-room-agent-module.ts)
+journals explicit requests before canonical Session launch. It captures a bounded
+shared context and selected execution directory; membership, compute and workspace
+admission remain the production caller's responsibility. Ambiguous launch is not
+automatically repeated. Completed answers publish through a stable intent;
+oversized publication records a durable failure. Linking or reading a room does
+not expose private Session transcripts or grant connector credentials.
+
+The operator and member Project pages mount the scoped Room. Focused store,
+access, SDK and UI tests cover those owners; production mounting, provider-backed
+execution and two-principal browser acceptance require separate runtime evidence.
+Custom channels and Task hierarchy are not implied by this Room contract.
 
 ## ProjectTaskRoom
 

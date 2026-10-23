@@ -209,6 +209,16 @@ Missing, stale and unavailable authorization fail closed with distinguishable
 outcomes. Recheck after asynchronous preparation and immediately before the
 commit or external effect; record the actual membership/grant revision used.
 
+The service's `withProjectAction` leases the exact Project incarnation,
+checks the expected actor and requested action, and supplies a synchronous
+currentness check to the domain mutation. `currentActionAdmission` repeats
+that admission for delayed responses and stream delivery. These helpers do
+not grant device, source, or compute access. Their caller must compose those
+independent checks; the Room access adapter does so through its runtime ports.
+The focused access test exercises contributor writes, viewer reads with writes
+refused, stale-actor refusal, and revoked transport. It does not establish a
+production two-person browser journey.
+
 ## Project agent authoring and tool acquisition
 
 The scoped `/api/tool-library` surface permits current Admins and Owners to

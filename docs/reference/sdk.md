@@ -243,10 +243,14 @@ requires an explicit `ApiRequestScope`; discovery also requires the local
 Project ID. These calls use the SDK's authenticated HTTP and fetch-SSE
 transport. They never select an ambient operator connection.
 
-Discovery returns the shared room, authenticated actor, capabilities, note,
-and presence. Message and note writes pin the discovered room, Project, and
-actor with server guards. History is ordered by sequence and bounded to 25
-messages per page; the hook retains up to 20 pages. Named `changed` events
+Discovery reads an existing shared room, authenticated actor, capabilities,
+note, and presence. It does not create a room. `room.unprovisioned` identifies
+only the specific room-not-found response; `room.initialize.mutate()` explicitly
+opens the room using the expected local Project ID. Access denial remains a
+separate state. Message and note writes pin the discovered room, Project, and
+actor with server guards. History is ordered by sequence in 25-message windows.
+The hook follows forward continuations when the server's byte limit splits a
+window, then loads older windows; it retains up to 20 windows. Named `changed` events
 invalidate queries, `presence` updates participants, and `revoked` or terminal
 401/403 stops the stream and clears retained query content. Cache identities
 include the API authority, local Project ID, and room ID for history.
