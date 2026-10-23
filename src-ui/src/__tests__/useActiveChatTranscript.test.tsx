@@ -1172,8 +1172,7 @@ describe('useActiveChatTranscript', () => {
           interruptedTurnBoundary: { boundaryId: 'boundary-5' },
           reason: TURN_INTERRUPTED_MESSAGE,
         }),
-        // A cut-off turn that drew something ends its row with the same
-        // sentence, so its notice goes too.
+        // A partial answer stays intact; the separate notice explains the restart.
         event('e13x', 'turn.started', { turnId: 'turn-5c', prompt: 'crash 3' }),
         event('e13y', 'content.text-delta', {
           turnId: 'turn-5c',
@@ -1214,7 +1213,7 @@ describe('useActiveChatTranscript', () => {
     const { result } = renderHook(() =>
       useActiveChatTranscript('http://station.test', baseSession),
     );
-    await waitFor(() => expect(result.current.messages).toHaveLength(18));
+    await waitFor(() => expect(result.current.messages).toHaveLength(19));
     const { endedTurnMarker, endedTurnStopDetail } = await import(
       '../components/chat/message-bubble/visibleContent'
     );
@@ -1239,21 +1238,29 @@ describe('useActiveChatTranscript', () => {
         { text: 'No progress for too long', title: stallText },
       ],
       ['turn-5', 0, 'Stopped', { text: 'Station restarted mid-turn' }],
-      ['turn-5c', 2, 'Stopped', undefined],
+      ['turn-5c', 1, 'Stopped', undefined],
       ['turn-5b', 0, 'Stopped', { text: 'Station restarted mid-turn' }],
       ['turn-6', 0, 'Stopped', { text: 'The agent exited before starting' }],
     ]);
     expect(
       result.current.messages.filter((message) => message.role === 'user'),
-    ).toHaveLength(10);
-    // The restart is said once per turn: the empty row's line, or the notice.
+    ).toHaveLength(11);
+    expect(
+      result.current.messages.find(
+        (message) => message.role === 'assistant' && message.turnId === 'turn-5c',
+      )?.content,
+    ).toBe('partial answer');
+    // Empty rows explain their restart; partial answers keep a separate notice.
     const notices = result.current.messages.filter((message) =>
       message.content?.includes('[TURN_INTERRUPTED]'),
     );
-    expect(notices).toHaveLength(1);
-    const after =
-      result.current.messages[result.current.messages.indexOf(notices[0]!) - 1];
-    expect(after?.turnId).toBe('turn-6');
+    expect(
+      notices.map(
+        (notice) =>
+          result.current.messages[result.current.messages.indexOf(notice) - 1]
+            ?.turnId,
+      ),
+    ).toEqual(['turn-5c', 'turn-6']);
   });
 
   test('station#3415: a durable mid-turn compaction reaches the dock as a system row after its one-row turn', async () => {
