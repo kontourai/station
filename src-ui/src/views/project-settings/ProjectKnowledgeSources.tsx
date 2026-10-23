@@ -327,7 +327,7 @@ export function ProjectKnowledgeSources({
         </>
       )}
       {checkingPermissions && (
-        <p role="status">Checking source management permission…</p>
+        <SkeletonBlock count={1} label="Checking source management permission" />
       )}
       {capabilities.isError && (
         <div role="alert">

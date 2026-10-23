@@ -17,7 +17,7 @@ import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { InfoTip } from '../../components/InfoTip';
 import { PageRow } from '../../components/PageRow';
-import { ErrorState, Skeleton } from '../../components/state';
+import { ErrorState, Skeleton, SkeletonBlock } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { errorText } from '../../utils/errorText';
 import './ProjectKnowledgeStores.css';
@@ -171,7 +171,7 @@ function ScopedProjectKnowledgeStores({
         }
       />
       {capabilities.isPlaceholderData && (
-        <p role="status">Checking store permissions…</p>
+        <SkeletonBlock count={1} label="Checking store permissions" />
       )}
       {roots.isLoading ? (
         <Skeleton variant="line" />

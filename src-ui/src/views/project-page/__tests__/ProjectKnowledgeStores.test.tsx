@@ -201,9 +201,9 @@ test('held permissions cannot authorize store creation', () => {
     <ProjectKnowledgeStores slug="demo" projectId="project-demo" />,
   );
   expect(screen.queryByRole('button', { name: 'Create store' })).toBeNull();
-  expect(screen.getByRole('status').textContent).toContain(
-    'Checking store permissions',
-  );
+  expect(
+    screen.getByRole('status', { name: 'Checking store permissions' }),
+  ).toBeTruthy();
   expect(state.create).not.toHaveBeenCalled();
   state.placeholderPermissions = false;
   view.rerender(
