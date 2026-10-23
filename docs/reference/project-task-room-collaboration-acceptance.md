@@ -9,9 +9,12 @@ workspace rather than injected pane props.
 When it passes, the lane checks both browsers receive the same server-owned room generation;
 implicit join and durable publication; symmetric named presence; autosave;
 watch/follow fixture commands and local-input stop; exact revision-bound cursor/selection projection; message and
-document convergence over the shared SSE connection; revoked-device cached
-read-only behavior; immutable revision links in Details; and same-home SQLite
-restoration after a full server restart.
+document convergence over the shared SSE connection; revoked-device access recovery with protected editing and sending controls removed; immutable revision links in Details; and same-home SQLite
+restoration after a full server restart. Reconnect checks the selected Brief tab
+and converged preview before explicitly reopening the editor. It does not claim
+draft or edit-mode continuity across authority re-verification. After restart,
+the fixture waits for the viewer's published presence before issuing heartbeat;
+recovered live snapshots must contain no old cursors or follow panes.
 
 Chat and Brief are exercised through normal user actions. Retained watch/follow
 protocol setup uses explicitly named real HTTP fixture commands because those

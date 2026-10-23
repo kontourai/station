@@ -285,6 +285,10 @@
   background: var(--k-panel-raised);
 }
 
+.sidebar__project-icon-slot .project-icon--initials .brand-icon__initials {
+  color: var(--k-text);
+}
+
 .sidebar__project-btn:hover {
   background: var(--bg-hover);
 }

@@ -2,7 +2,7 @@
 
 Read [the module map](../docs/architecture/module-map.md) and the relevant design document before changing a surface. Keep UI state and navigation contract-driven; use canonical state primitives and the unsaved-changes guard where a view owns dirty state. Do not introduce a product claim the backing runtime cannot prove.
 
-Use React Query for remote data fetching; do not add bespoke fetch lifecycle state. Project layout navigation must flow through canonical `setLayout`; a Project entry without a layout uses canonical `setProject`. Do not mutate local routes to bypass either seam. `useUnsavedGuard` registers dirty state with the navigation store: call canonical `navigate` directly for route changes, and reserve its explicit `guard` callback for local state changes. Wrapping a registered route in that same guard asks twice and can lose the pending action.
+Use React Query for remote data fetching through the existing SDK query hooks; do not add bespoke fetch lifecycle state. Before deriving a count, status, eligibility rule or label, reuse its contract field or shared selector, and name any filtered or actionable subset explicitly. Project layout navigation must flow through canonical `setLayout`; a Project entry without a layout uses canonical `setProject`. Do not mutate local routes to bypass either seam. `useUnsavedGuard` registers dirty state with the navigation store: call canonical `navigate` directly for route changes, and reserve its explicit `guard` callback for local state changes. Wrapping a registered route in that same guard asks twice and can lose the pending action.
 
 Cover changed user-visible behavior at the narrowest appropriate layer.
 

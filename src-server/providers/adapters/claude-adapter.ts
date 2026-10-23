@@ -239,6 +239,7 @@ import {
   skillOverlayDirFor,
   sweepStaleSkillOverlays,
 } from './claude-skills-overlay.js';
+import { applyEngineProxyAuthPrerequisite } from './engine-proxy-auth-prerequisite.js';
 import { externalPreToolPolicyIdentity } from './external-pre-tool-policy-identity.js';
 import { claudeAnswers, claudeInputRequest } from './harness-questions.js';
 import {
@@ -3209,19 +3210,42 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     });
     const sentence = claudeExecutableSentence(executable);
     const confined = await this.confinedCredentialPrerequisite();
-    return [
-      ...prerequisites.map((prerequisite) =>
-        prerequisite.id === CLAUDE_CLI_PREREQUISITE_ID
-          ? {
-              ...prerequisite,
-              description: prerequisite.description
-                ? `${prerequisite.description} ${sentence}`
-                : sentence,
-            }
-          : prerequisite,
-      ),
-      ...(confined ? [confined] : []),
-    ];
+    // A proxy-routed connection authenticates with the ROUTE's key, not the
+    // CLI's login (the `detectAuthState` above already reads the route's
+    // `ANTHROPIC_AUTH_TOKEN`; this names the basis). The runtime inventory used
+    // to perform this same substitution — one fact derived twice, which is how
+    // Codex ended up "ready" in the inventory and unlaunchable at the gate.
+    return applyEngineProxyAuthPrerequisite(
+      [
+        ...prerequisites.map((prerequisite) =>
+          prerequisite.id === CLAUDE_CLI_PREREQUISITE_ID
+            ? {
+                ...prerequisite,
+                description: prerequisite.description
+                  ? `${prerequisite.description} ${sentence}`
+                  : sentence,
+              }
+            : prerequisite,
+        ),
+        ...(confined ? [confined] : []),
+      ],
+      CLAUDE_CLI_COMMAND,
+      await this.connectionProxyRouteLabel(),
+    );
+  }
+
+  /**
+   * The selected model connection this engine is routed through, when the
+   * launch resolves one. Best effort: an unresolvable route is setup/launch's
+   * error to report, not readiness's — the auth cell then keeps the CLI's own
+   * answer instead of claiming a key this read could not find.
+   */
+  private async connectionProxyRouteLabel(): Promise<string | undefined> {
+    try {
+      return (await this.options.getConnectionLaunch?.())?.route?.label;
+    } catch {
+      return undefined;
+    }
   }
 
   /**

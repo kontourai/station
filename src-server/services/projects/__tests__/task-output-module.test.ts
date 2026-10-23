@@ -107,6 +107,11 @@ describe('TaskOutputModule', () => {
     expect(kept.output.schemaVersion).toBe(1);
     expect(kept.output).not.toHaveProperty('taskCreatedAt');
     expect(kept.output).not.toHaveProperty('declaredBy');
+    expect(await module().listForBasis('task-a')).toMatchObject([
+      { id: kept.output.id, declaredBy },
+    ]);
+    expect((await module().list('task-a'))[0]).not.toHaveProperty('declaredBy');
+
     const store = JSON.parse(
       readFileSync(join(home, 'task-outputs', 'index.json'), 'utf8'),
     );

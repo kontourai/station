@@ -72,6 +72,7 @@ type SessionOutputKeepOutcome =
 export interface SessionOutputsModule {
   list(input: {
     sessionId: string;
+    turnId?: string;
     cursor?: string;
     limit?: number;
     authority: SessionReadAuthority;
@@ -399,6 +400,7 @@ export function createSessionOutputsModule(input: {
         (request.cursor && !cursor) ||
         (cursor &&
           (cursor.sessionId !== request.sessionId ||
+            cursor.turnId !== request.turnId ||
             cursor.authority !== key ||
             !bounded(cursor.declarationId, 1024)))
       )
@@ -406,6 +408,7 @@ export function createSessionOutputsModule(input: {
       try {
         const page = input.eventStore.listDeclaredOutputDescriptors({
           threadId: request.sessionId,
+          turnId: request.turnId,
           highWater: cursor?.highWater,
           after: cursor
             ? { sequence: cursor.sequence, declarationId: cursor.declarationId }
@@ -433,6 +436,7 @@ export function createSessionOutputsModule(input: {
           const candidateItems = [...items, candidate];
           const candidateCursor = input.eventStore.issueDeclaredOutputCursor({
             sessionId: request.sessionId,
+            ...(request.turnId ? { turnId: request.turnId } : {}),
             authority: key,
             highWater: page.highWater,
             sequence: row.sequence,
@@ -460,6 +464,7 @@ export function createSessionOutputsModule(input: {
           hasMore && last
             ? input.eventStore.issueDeclaredOutputCursor({
                 sessionId: request.sessionId,
+                ...(request.turnId ? { turnId: request.turnId } : {}),
                 authority: key,
                 highWater: page.highWater,
                 sequence: last.sequence,

@@ -7,10 +7,6 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 const expectedDependencies = new Map(
   Object.entries({
     'packages/contracts/src/diff-comment.ts': 'contract',
-    // #3051: the device-settings registry carries the `codingPanels` record
-    // (the Coding layout's panels, per session). A shape and a default; it
-    // renders, grants and executes nothing.
-    'packages/contracts/src/device-settings.ts': 'contract',
     // #2412: the pairing scope vocabulary names `/api/coding/exec` because
     // its `coding:exec` token is the per-device grant that route requires.
     // `route-authorization`, like the route-scope table beside it: it is a
@@ -43,7 +39,6 @@ const expectedDependencies = new Map(
     'packages/sdk/src/query-domains/chatRuntime.ts': 'sdk-export',
     'packages/sdk/src/query-domains/projectData.ts': 'sdk-route-adapter',
     'src-server/routes/projects/coding.ts': 'privileged-route',
-    'src-server/routes/projects/layout-working-directory.ts': 'persistence',
     // #2062: the admission `POST /api/projects/:slug/layouts` applies before
     // writing, extracted so promote (`/api/me/layouts/:slug/promote`) derives
     // the same answer instead of carrying a second copy that drifts. The scan
@@ -132,12 +127,8 @@ const expectedDependencies = new Map(
     // of the built-in host like the stack page: it places, grants and
     // executes nothing.
     'src-ui/src/components/coding-layout/codingPanels.ts': 'aggregate-host',
-    // The per-session panels record (`codingPanels` device setting): pure
-    // read/write/evict/parse, the device store's import validation for it.
-    'src-ui/src/lib/coding-panels-record.ts': 'persistence',
-    // The device store validates an imported `codingPanels` value with that
-    // record's parser (its one Coding-specific line); everything else in it
-    // is generic per-device persistence.
+    // The v3 envelope deletes the retired Coding-only key; no panel reader
+    // or compatibility branch remains in the store.
     'src-ui/src/lib/device-settings-store.ts': 'persistence',
     'src-ui/src/components/coding-layout/BranchToolbar.css': 'presentation',
     'src-ui/src/components/coding-layout/BranchToolbar.tsx': 'git-review',
