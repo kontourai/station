@@ -54,7 +54,13 @@
 
     "scripts/package-telemetry-companion.mjs",
 
-    "scripts/__tests__/package-telemetry-companion.test.ts"
+    "scripts/__tests__/package-telemetry-companion.test.ts",
+
+    "src-server/routes/system/telemetry-companion-routes.ts",
+
+    "src-server/services/telemetry-companion.ts",
+
+    "packages/contracts/src/telemetry-delivery.ts"
   ],
 
   "checks": [

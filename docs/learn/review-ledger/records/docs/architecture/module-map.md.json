@@ -1232,7 +1232,13 @@
 
     "tests/helpers/fixture-audit.ts",
 
-    "tests/helpers/journey-profile.ts"
+    "tests/helpers/journey-profile.ts",
+
+    "src-server/routes/system/telemetry-companion-routes.ts",
+
+    "src-server/services/telemetry-companion.ts",
+
+    "packages/contracts/src/telemetry-delivery.ts"
   ],
 
   "checks": [
