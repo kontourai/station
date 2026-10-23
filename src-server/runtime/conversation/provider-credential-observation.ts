@@ -80,18 +80,21 @@ type SdkCredentialValue = Readonly<{
 }>;
 const sdkCredentials = new WeakMap<
   ObservedSdkProviderCredential,
-  () => SdkCredentialValue
+  { request: Request; read: () => SdkCredentialValue }
 >();
 
 /** Private preparation/SDK seam; a serialized observation or caller-supplied key cannot enter it. */
 export function readObservedSdkProviderCredential(
   credential: ObservedSdkProviderCredential,
   expectedProvider: 'anthropic' | 'google',
+  expectedRequest?: Request,
 ): SdkCredentialValue {
-  const read = sdkCredentials.get(credential);
-  if (!read) fail('observation_unavailable');
+  const state = sdkCredentials.get(credential);
+  if (!state) fail('observation_unavailable');
+  if (expectedRequest !== undefined && state.request !== expectedRequest)
+    fail('authorization_unavailable');
   try {
-    const value = read();
+    const value = state.read();
     if (value.provider !== expectedProvider) fail('unsupported_source');
     return value;
   } catch (error) {
@@ -718,7 +721,7 @@ export class ProviderCredentialObservationStore {
     const credential: ObservedSdkProviderCredential = Object.freeze({
       [sdkCredentialBrand]: true,
     });
-    sdkCredentials.set(credential, read);
+    sdkCredentials.set(credential, { request, read });
     return credential;
   }
 

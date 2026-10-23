@@ -887,6 +887,15 @@ export class LocalSourceAdmissionOwner {
           assertSourceCurrent();
           return state.serialization;
         },
+        get binding() {
+          assertSourceCurrent();
+          return Object.freeze({
+            request: authority.request,
+            principalId: authority.principalId,
+            hostContextId: authority.lease.hostContextId,
+            source: structuredClone(state.source),
+          });
+        },
         assertDisclosureCurrentSync: () => {
           authority.assertCurrent();
           const p = state.record.provenance;
@@ -1377,6 +1386,12 @@ type SdkPreparedState = {
 };
 export interface SdkSourceLease {
   readonly serialization: string;
+  readonly binding: Readonly<{
+    request: Request;
+    principalId: string;
+    hostContextId: string;
+    source: SourceTuple;
+  }>;
   assertDisclosureCurrentSync(): undefined;
   assertCurrentSync(): undefined;
   consumeExactSync(owner: object, handle: object, digest: string): undefined;

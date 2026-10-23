@@ -80,6 +80,12 @@ export async function publicFenceFixture(
   beforeInner: () => void = () => {},
   observation?: {
     protocol?: 'legacy' | 'rounds';
+    modelId?: string;
+    allocation?: {
+      inputTokens: number;
+      outputTokens: number;
+      costMicros: number;
+    };
     provider: BoundedApiProvider;
     contract: ResolvedBoundedApiProviderContract;
     now(): number;
@@ -95,6 +101,12 @@ export async function publicFenceFixture(
     return undefined;
   };
   const persistence = new StationDelegationPersistence(f.root);
+  const modelId = observation?.modelId ?? 'fixture-model';
+  const allocation = observation?.allocation ?? {
+    inputTokens: 1000,
+    outputTokens: 1000,
+    costMicros: 100000,
+  };
   const authority = {
     allowed_tools: [],
     allowed_effects: ['report'],
@@ -110,9 +122,9 @@ export async function publicFenceFixture(
     max_total_envelopes: 1,
     max_concurrent_children: 1,
     max_runtime_ms: 60000,
-    max_input_tokens: 1000,
-    max_output_tokens: 1000,
-    max_cost_micros: 100000,
+    max_input_tokens: allocation.inputTokens,
+    max_output_tokens: allocation.outputTokens,
+    max_cost_micros: allocation.costMicros,
     max_attempts: 1,
     expires_at: '2099-01-01T00:00:00.000Z',
   };
@@ -193,11 +205,7 @@ export async function publicFenceFixture(
         },
         stepId: null,
         effect: 'report',
-        allocation: {
-          inputTokens: 1000,
-          outputTokens: 1000,
-          costMicros: 100000,
-        },
+        allocation,
       },
     ],
   };
@@ -372,7 +380,7 @@ export async function publicFenceFixture(
             threadId: sessionId,
             clientTurnId: 'reserved-client-turn',
             input: 'inspect exactly this source',
-            modelId: 'fixture-model',
+            modelId,
           },
           attemptInput,
         );
@@ -383,7 +391,7 @@ export async function publicFenceFixture(
             input: {
               threadId: sessionId,
               provider: 'station-agent',
-              modelId: 'fixture-model',
+              modelId,
               metadata: { agentId: 'reviewer', userId: 'fixture-owner' },
             },
           },
@@ -399,7 +407,7 @@ export async function publicFenceFixture(
               threadId: sessionId,
               clientTurnId: 'reserved-client-turn',
               input: 'inspect exactly this source',
-              modelId: 'fixture-model',
+              modelId,
             },
           },
           { userId: 'fixture-owner' },
@@ -432,7 +440,7 @@ export async function publicFenceFixture(
       }
       const invocationResult: ModelInvocationResult = {
         provider: 'synthetic-no-billable-http',
-        model: 'fixture-model',
+        model: modelId,
         modelSource: 'provider-reported',
         outputText: result.text,
         toolCalls: [],
@@ -577,7 +585,7 @@ export async function publicFenceFixture(
       await recovery.startSession({
         provider: 'station-agent',
         threadId: sessionId,
-        modelId: 'fixture-model',
+        modelId,
         resumeCursor: JSON.parse(JSON.stringify(stored.resumeCursor)),
       });
       try {
@@ -606,7 +614,7 @@ export async function publicFenceFixture(
             threadId: sessionId,
             clientTurnId: 'unreserved-client-turn',
             input: 'unreserved request',
-            modelId: 'fixture-model',
+            modelId,
           },
         },
         { userId: 'fixture-owner' },
@@ -621,7 +629,7 @@ export async function publicFenceFixture(
             threadId: sessionId,
             clientTurnId: 'forged-client-turn',
             input: 'inspect exactly this source',
-            modelId: 'fixture-model',
+            modelId,
           },
         },
         { userId: 'fixture-owner' },

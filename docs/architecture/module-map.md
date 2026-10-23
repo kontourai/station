@@ -1939,6 +1939,44 @@ legacy group fence remains separate. This member-invocation fence does not
 admit context-sync attempts, issue provider qualification or authenticate a
 recipient. Those require their own current session/ACK admission.
 
+### Narrow Anthropic source preparation
+
+[AnthropicSealedPreparation](../../src-server/runtime/conversation/anthropic-sealed-preparation.ts)
+is the private reviewed-facts issuer used by sealed SDK preparation. It derives
+principal, personal-host tenancy, source-receipt and credential revisions from
+actual nominal leases. Credential and source leases must belong to the same
+Request object and host context. Caller strings cannot choose those bindings.
+The resulting contract pins the actual final-wire options hash.
+
+The profile selects `claude-sonnet-4-6` on the official Messages endpoint using
+API version `2026-10-21`, standard/global inference, one user message with two
+text blocks, omitted thinking, and no cache/tool/premium/output configuration.
+The SDK capture applies the selected version before qualification. Exact profile
+checks reject additional fields before any raw HTTP; the ordinary shared wire
+validator remains independently required.
+
+The listed inference tariff is 3 input and 15 output micros per token with zero
+listed fixed inference fee for that feature-free request. This excludes taxes,
+account charges and invoice guarantees. Its conservative input reservation upper
+bound is 1,048,576 tokens, not an advertised provider limit; the explicit output
+cap must be at most 128,000. Missing/inconsistent usage remains unknown-held.
+The installed SDK entry and manifest must match reviewed hashes. Facts expire
+at a fixed snapshot-derived deadline; startup cannot extend it. A changed SDK
+or expired profile requires new evidence and review, not a configuration flag.
+
+The authority comes from retained official [model](https://platform.claude.com/docs/en/models/sonnet-4-6/overview),
+[model-version](https://platform.claude.com/docs/en/about-claude/models/model-ids-and-versions),
+[context](https://platform.claude.com/docs/en/build-with-claude/context-windows),
+[Messages](https://platform.claude.com/docs/en/api/messages/create),
+[pricing](https://platform.claude.com/docs/en/about-claude/pricing),
+[billing](https://support.claude.com/en/articles/8977456-how-do-i-pay-for-my-claude-api-usage),
+[thinking](https://platform.claude.com/docs/en/build-with-claude/thinking),
+[geography](https://platform.claude.com/docs/en/manage-claude/data-residency),
+[versioning](https://platform.claude.com/docs/en/api/versioning), and
+[migration](https://platform.claude.com/docs/en/api/migration-2026-10-21) snapshots;
+the issuer records their hashes. It does not prove model entitlement. Production
+request serving and authenticated context-sync recipients remain unwired.
+
 ### Reserved Station source execution
 
 The [reserved-turn owner](../../src-server/runtime/conversation/reserved-station-turn.ts)

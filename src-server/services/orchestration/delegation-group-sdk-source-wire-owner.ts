@@ -3,6 +3,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { AnthropicSealedPreparation } from '../../runtime/conversation/anthropic-sealed-preparation.js';
 import {
   assertBoundedApiCredentialBinding,
   type BoundedApiAttemptQuote,
@@ -44,19 +45,23 @@ function deferred<T>() {
   void promise.catch(() => {});
   return { promise, resolve, reject };
 }
-type Options = Readonly<{
+type OptionsBase = Readonly<{
   provider: BoundedApiProvider;
   modelId: string;
   credential: ObservedSdkProviderCredential;
   brief: string;
   instructions: string;
   maxOutputTokens: number;
-  contract: ResolvedBoundedApiProviderContract;
   remaining: BoundedApiRemainingEnvelope;
   now(): number;
   rawFetch: typeof fetch;
   signal: AbortSignal;
 }>;
+type Options = OptionsBase &
+  (
+    | { contract: ResolvedBoundedApiProviderContract; preparation?: never }
+    | { preparation: AnthropicSealedPreparation; contract?: never }
+  );
 type SdkResult = Readonly<{
   text: string;
   usage: unknown;
@@ -72,6 +77,7 @@ type State = {
   controller: AbortController;
   wire?: Readonly<FinalWire>;
   quote?: BoundedApiAttemptQuote;
+  contract?: ResolvedBoundedApiProviderContract;
   result: Promise<SdkResult>;
   rawResponse?: Promise<Response>;
   taken: boolean;
@@ -112,7 +118,6 @@ function finishDisposal(s: State) {
 export function createPreparedSdkSourceWireOwner(input: Options): object {
   const expected = [
     'brief',
-    'contract',
     'credential',
     'instructions',
     'maxOutputTokens',
@@ -123,6 +128,8 @@ export function createPreparedSdkSourceWireOwner(input: Options): object {
     'remaining',
     'signal',
   ];
+  expected.push('preparation' in input ? 'preparation' : 'contract');
+  expected.sort();
   if (
     Object.keys(input).sort().join(',') !== expected.join(',') ||
     !['anthropic', 'google'].includes(input.provider) ||
@@ -138,11 +145,18 @@ export function createPreparedSdkSourceWireOwner(input: Options): object {
     input.maxOutputTokens < 1
   )
     fail('sdk_configuration_unsupported');
-  assertBoundedApiCredentialBinding(
-    input.contract,
-    readObservedSdkProviderCredential(input.credential, input.provider),
-    input.now(),
-  );
+  if (input.preparation) {
+    if (!AnthropicSealedPreparation.isOwner(input.preparation))
+      fail('sdk_configuration_unsupported');
+    input.preparation.assertSelection(input.provider, input.modelId);
+    readObservedSdkProviderCredential(input.credential, input.provider);
+  } else {
+    assertBoundedApiCredentialBinding(
+      input.contract,
+      readObservedSdkProviderCredential(input.credential, input.provider),
+      input.now(),
+    );
+  }
   const owner = Object.freeze({});
   owners.set(
     owner,
@@ -161,13 +175,17 @@ function boundedWire(wire: FinalWire) {
     requestOrdinal: 1,
   };
 }
-function assertCredentialWire(o: Options, wire: FinalWire): void {
+function assertCredentialWire(
+  o: Options,
+  wire: FinalWire,
+  contract: ResolvedBoundedApiProviderContract,
+): void {
   const now = o.now();
   const credential = readObservedSdkProviderCredential(
     o.credential,
     o.provider,
   );
-  assertBoundedApiCredentialBinding(o.contract, credential, now);
+  assertBoundedApiCredentialBinding(contract, credential, now);
   const name = o.provider === 'anthropic' ? 'x-api-key' : 'x-goog-api-key';
   if (
     new Headers(wire.headers.map(([key, value]) => [key, value])).get(name) !==
@@ -259,15 +277,26 @@ export function beginSdkSourceWire(owner: object, leaseToken: object): object {
         body.inference_geo = 'global';
         body.service_tier = 'standard_only';
       } else body.serviceTier = 'standard';
+      const headers = new Headers(init.headers);
+      if (o.preparation)
+        headers.set('anthropic-version', o.preparation.apiVersion);
       const wire = snapshotFinalWire({
         url: String(input),
         method: 'POST',
-        headers: [...new Headers(init.headers).entries()],
+        headers: [...headers.entries()],
         body: JSON.stringify(body),
       });
-      assertCredentialWire(o, wire);
+      const contract =
+        o.contract ??
+        o.preparation.qualifySourceWire(
+          leaseToken,
+          o.credential,
+          boundedWire(wire),
+        );
+      s.contract = contract;
+      assertCredentialWire(o, wire, contract);
       s.quote = quoteBoundedApiProviderAttempt(
-        o.contract,
+        contract,
         boundedWire(wire),
         o.remaining,
         o.now(),
@@ -329,8 +358,8 @@ export function beginSdkSourceWire(owner: object, leaseToken: object): object {
       (result) => {
         if (result.content.some((part) => part.type !== 'text'))
           fail('sdk_non_text_output');
-        if (!s.wire) fail('sdk_wire_unavailable');
-        assertCredentialWire(o, s.wire);
+        if (!s.wire || !s.contract) fail('sdk_wire_unavailable');
+        assertCredentialWire(o, s.wire, s.contract);
         lease.assertCurrentSync();
         return Object.freeze({
           text: result.content
@@ -376,22 +405,24 @@ export async function capturedSdkSourceWire(owner: object, handle: object) {
 }
 export function inspectSdkSourceWire(owner: object, handle: object) {
   const s = stateFor(owner, handle);
-  if (s.abandoned || !s.wire || !s.quote) fail('sdk_wire_unavailable');
-  assertCredentialWire(optionsFor(owner), s.wire);
+  if (s.abandoned || !s.wire || !s.quote || !s.contract)
+    fail('sdk_wire_unavailable');
+  assertCredentialWire(optionsFor(owner), s.wire, s.contract);
   claimSdkSourceLease(s.lease).assertCurrentSync();
   return Object.freeze({
     wire: s.wire,
     wireDigest: wireIdentityDigest(s.wire),
     quote: s.quote,
+    contract: s.contract,
   });
 }
 export function assertSdkSourceWireCurrentSync(owner: object, handle: object) {
   const s = stateFor(owner, handle),
     o = optionsFor(owner);
-  if (s.abandoned || s.started || !s.wire || !s.quote)
+  if (s.abandoned || s.started || !s.wire || !s.quote || !s.contract)
     fail('sdk_wire_unavailable');
   const current = quoteBoundedApiProviderAttempt(
-    o.contract,
+    s.contract,
     boundedWire(s.wire),
     o.remaining,
     o.now(),
@@ -435,6 +466,8 @@ export function enterFinalFetch(
       !isDeepStrictEqual(wire, s.wire)
     )
       fail('sdk_final_wire_changed');
+    if (!s.contract) fail('sdk_wire_unavailable');
+    const contract = s.contract;
     const lease = claimSdkSourceLease(s.lease),
       digest = wireIdentityDigest(wire);
     const rawFetch = o.rawFetch,
@@ -446,11 +479,11 @@ export function enterFinalFetch(
       redirect: 'error',
       signal: init.signal,
     };
-    assertCredentialWire(o, wire);
+    assertCredentialWire(o, wire, contract);
     s.started = true;
     ownsStart = true;
     lease.consumeExactSync(owner, handle, digest);
-    assertCredentialWire(o, wire);
+    assertCredentialWire(o, wire, contract);
     const response = rawFetch(url, requestInit);
     s.rawResponse = Promise.resolve(response).then(
       (value) => {

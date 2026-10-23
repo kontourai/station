@@ -920,6 +920,16 @@ the consumed source. This supplies a credential-source handoff, not provider
 entitlement, tariff approval or a production serving issuer. Raw keys are not
 returned in observation DTOs or lease serialization.
 
+The narrow Anthropic preparation issuer now derives its contract from the actual
+source/credential leases and captured final SDK wire. It selects the documented
+`2026-10-21` version explicitly and refuses extra thinking/cache/tool/premium
+fields. Caller-produced principal/source/tariff bindings are not accepted. The
+reviewed profile reserves a conservative 1,048,576-token input upper bound and
+uses the listed 3/15 inference-micro tariffs, excluding invoice/tax guarantees.
+Its fixed evidence expiry and installed-SDK hashes fail closed; startup does not
+refresh them. Google remains unqualified by this profile. Boot request serving,
+model access and same-session ACK acceptance remain separate obligations.
+
 ## Controlled reserved Station turn integration
 
 The internal reserved-turn port now reaches the real Station adapter through
