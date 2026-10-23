@@ -10,6 +10,11 @@ import type {
   TaskWorkChatsResult,
 } from '@kontourai/station-contracts/task-graph';
 import {
+  TASK_PRIORITIES,
+  TASK_STATUSES,
+} from '@kontourai/station-contracts/task-graph';
+import { z } from 'zod';
+import {
   type ApiRequestScope,
   type ClientRequestOptions,
   getJson,
@@ -18,11 +23,61 @@ import {
 
 type ScopedOptions = ClientRequestOptions & { requestScope: ApiRequestScope };
 
-async function unwrap<T>(response: Response): Promise<T> {
-  const body = (await response.json()) as { success?: boolean; data?: T };
-  if (!response.ok || body.success !== true || body.data === undefined)
+const text = z.string().min(1).max(4096);
+const identity = z.strictObject({
+  taskId: text,
+  taskCreatedAt: z.iso.datetime(),
+});
+const revision = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+const record = z
+  .object({
+    id: text,
+    projectId: text,
+    title: z.string().min(1).max(512),
+    description: z.string().max(12000),
+    priority: z.enum(TASK_PRIORITIES),
+    status: z.enum(TASK_STATUSES),
+    createdBy: text,
+    createdAt: z.iso.datetime(),
+    updatedAt: z.iso.datetime(),
+    parent: identity.optional(),
+    relationshipRevision: revision.optional(),
+    agentId: text.optional(),
+    skillName: text.optional(),
+  })
+  .passthrough();
+const parentResult = z.strictObject({
+  child: identity,
+  parent: identity.nullable(),
+  previousParent: identity.nullable(),
+  revision,
+});
+const chatResult = z.strictObject({
+  task: identity,
+  conversationId: text,
+  linked: z.boolean(),
+  revision,
+});
+const childrenResult = z.strictObject({
+  task: identity,
+  children: z.array(record).max(10000),
+});
+const chatsResult = z.strictObject({
+  task: identity,
+  chats: z.array(z.strictObject({ conversationId: text, revision })).max(10000),
+});
+async function unwrap<T>(response: Response, schema: z.ZodType<T>): Promise<T> {
+  const wire: unknown = await response.json();
+  const body = z
+    .object({ success: z.literal(true), data: schema })
+    .safeParse(wire);
+  if (
+    !response.ok ||
+    !body.success ||
+    JSON.stringify(wire).length > 2 * 1024 * 1024
+  )
     throw new Error('Task relationship unavailable');
-  return body.data;
+  return body.data.data;
 }
 const path = (taskId: string) => `/api/tasks/${encodeURIComponent(taskId)}`;
 export function fetchTaskChildren(
@@ -33,7 +88,7 @@ export function fetchTaskChildren(
   return getJson(
     `${apiBase}${path(task.taskId)}/children?taskCreatedAt=${encodeURIComponent(task.taskCreatedAt)}`,
     options,
-  ).then(unwrap<TaskChildrenResult>);
+  ).then((response) => unwrap(response, childrenResult));
 }
 export function createTaskChild(
   apiBase: string,
@@ -45,7 +100,12 @@ export function createTaskChild(
     'POST',
     options,
     input,
-  ).then(unwrap<{ task: TaskRecord; relationship: TaskParentMutationResult }>);
+  ).then((response) =>
+    unwrap(
+      response,
+      z.strictObject({ task: record, relationship: parentResult }),
+    ),
+  );
 }
 export function setTaskParent(
   apiBase: string,
@@ -57,7 +117,7 @@ export function setTaskParent(
     'PUT',
     options,
     input,
-  ).then(unwrap<TaskParentMutationResult>);
+  ).then((response) => unwrap(response, parentResult));
 }
 export function fetchTaskWorkChats(
   apiBase: string,
@@ -67,7 +127,7 @@ export function fetchTaskWorkChats(
   return getJson(
     `${apiBase}${path(task.taskId)}/work-chats?taskCreatedAt=${encodeURIComponent(task.taskCreatedAt)}`,
     options,
-  ).then(unwrap<TaskWorkChatsResult>);
+  ).then((response) => unwrap(response, chatsResult));
 }
 export function setTaskWorkChat(
   apiBase: string,
@@ -80,7 +140,7 @@ export function setTaskWorkChat(
     linked ? 'POST' : 'DELETE',
     options,
     body,
-  ).then(unwrap<TaskWorkChatMutationResult>);
+  ).then((response) => unwrap(response, chatResult));
 }
 
 /** A known candidate's current revision, including a prior unlink tombstone. */
@@ -93,5 +153,5 @@ export function fetchTaskWorkChat(
   return getJson(
     `${apiBase}${path(task.taskId)}/work-chats/${encodeURIComponent(conversationId)}?taskCreatedAt=${encodeURIComponent(task.taskCreatedAt)}`,
     options,
-  ).then(unwrap<TaskWorkChatMutationResult>);
+  ).then((response) => unwrap(response, chatResult));
 }

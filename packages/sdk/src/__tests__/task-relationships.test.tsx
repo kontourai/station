@@ -123,9 +123,25 @@ test('lost authority rejects the waiting mutation and keeps the canonical relati
 });
 
 test('dedicated client sends exact canonical conversation identity, revision and incarnation using encoded paths', async () => {
-  const fetch = vi.fn<typeof globalThis.fetch>(async () =>
-    Response.json({ success: true, data: { task: child, chats: [] } }),
-  );
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValueOnce(
+      Response.json({
+        success: true,
+        data: { task: { ...child, taskId: 'child/slash' }, children: [] },
+      }),
+    )
+    .mockResolvedValueOnce(
+      Response.json({
+        success: true,
+        data: {
+          task: child,
+          conversationId: 'conversation-not-session',
+          linked: false,
+          revision: 4,
+        },
+      }),
+    );
   vi.stubGlobal('fetch', fetch);
   await fetchTaskChildren(
     scope.apiBase,
@@ -156,3 +172,20 @@ test('dedicated client sends exact canonical conversation identity, revision and
     }),
   });
 });
+
+test.each([
+  { task: child, chats: [] },
+  { task: child, children: [{ id: 'malformed' }] },
+  { task: { taskId: child.taskId, taskCreatedAt: 'not-a-date' }, children: [] },
+])(
+  'rejects malformed relationship response before exposing child data (%j)',
+  async (data) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ success: true, data })),
+    );
+    await expect(
+      fetchTaskChildren(scope.apiBase, child, { requestScope: scope }),
+    ).rejects.toThrow('Task relationship unavailable');
+  },
+);
