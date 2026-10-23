@@ -12,7 +12,8 @@ import {
 import { beforeEach, expect, test, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
-  authority: 'owner',
+  authority: 'owner-live-1',
+  recoveryKey: 'owner',
   current: true,
   linked: true,
   create: vi.fn(),
@@ -21,11 +22,15 @@ const state = vi.hoisted(() => ({
   open: vi.fn(),
 }));
 vi.mock('../../contexts/ApiBaseContext', () => ({
-  useHostRequestAuthorityScope: () => ({
-    apiBase: 'http://station',
-    authorityKey: state.authority,
-    isCurrent: () => state.current,
-  }),
+  useHostRequestAuthorityScope: () => {
+    const authority = state.authority;
+    return {
+      apiBase: 'http://station',
+      authorityKey: authority,
+      draftRecoveryKey: state.recoveryKey,
+      isCurrent: () => state.current && authority === state.authority,
+    };
+  },
 }));
 vi.mock('../../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate: state.navigate }),
@@ -84,11 +89,12 @@ beforeEach(() => {
   sessionStorage.clear();
   state.update.mockReset();
   state.create.mockReset();
-  state.authority = 'owner';
+  state.authority = 'owner-live-1';
+  state.recoveryKey = 'owner';
   state.current = true;
   state.linked = true;
 });
-test('retries the exact atomic creation and opens the returned Task', async () => {
+test('restores exact creation across a new live activation and opens the returned Task', async () => {
   state.create
     .mockRejectedValueOnce(new Error('lost acknowledgement'))
     .mockResolvedValueOnce({ task: { id: 'created-child' } });
@@ -100,9 +106,14 @@ test('retries the exact atomic creation and opens the returned Task', async () =
   await screen.findByRole('button', { name: 'Retry creation' });
   expect(state.navigate).not.toHaveBeenCalled();
   mounted.unmount();
+  state.authority = 'owner-live-after-reload';
   render(view());
   await screen.findByRole('button', { name: 'Retry creation' });
   expect(state.create).toHaveBeenCalledTimes(1);
+  state.current = false;
+  fireEvent.click(screen.getByRole('button', { name: 'Retry creation' }));
+  expect(state.create).toHaveBeenCalledTimes(1);
+  state.current = true;
   fireEvent.click(screen.getByRole('button', { name: 'Retry creation' }));
   await waitFor(() =>
     expect(state.navigate).toHaveBeenCalledWith('/tasks/created-child'),
@@ -113,22 +124,6 @@ test('retries the exact atomic creation and opens the returned Task', async () =
     task: { projectId: 'project', title: 'Verify import' },
     operationId: expect.any(String),
   });
-});
-test('clears retained creation on authority change without replay', async () => {
-  state.create.mockRejectedValue(new Error('unavailable'));
-  const mounted = render(view());
-  fireEvent.change(screen.getByLabelText('Subtask title'), {
-    target: { value: 'Private draft' },
-  });
-  fireEvent.click(screen.getByRole('button', { name: 'Add subtask' }));
-  await screen.findByRole('button', { name: 'Retry creation' });
-  state.authority = 'other';
-  mounted.rerender(view());
-  expect(screen.queryByRole('button', { name: 'Retry creation' })).toBeNull();
-  expect(
-    (screen.getByLabelText('Subtask title') as HTMLInputElement).value,
-  ).toBe('');
-  expect(state.create).toHaveBeenCalledTimes(1);
 });
 test('opens canonical linked conversation through the inbox', async () => {
   state.open.mockResolvedValue(true);
@@ -188,11 +183,15 @@ test.each([true, false])(
       fireEvent.click(await screen.findByRole('button', { name: 'Unlink' }));
     await screen.findByRole('button', { name: 'Retry update' });
     mounted.unmount();
+    state.authority = 'owner-live-after-reload';
     render(view('work-chats'));
+    const retry = await screen.findByRole('button', { name: 'Retry update' });
     expect(state.update).toHaveBeenCalledTimes(1);
-    fireEvent.click(
-      await screen.findByRole('button', { name: 'Retry update' }),
-    );
+    state.current = false;
+    fireEvent.click(retry);
+    expect(state.update).toHaveBeenCalledTimes(1);
+    state.current = true;
+    fireEvent.click(screen.getByRole('button', { name: 'Retry update' }));
     await waitFor(() => expect(state.update).toHaveBeenCalledTimes(2));
     expect(state.update.mock.calls[1][0]).toEqual(
       state.update.mock.calls[0][0],
@@ -205,21 +204,77 @@ test.each([true, false])(
   },
 );
 
-test('retired authority cannot resurrect a saved creation when switched back', async () => {
-  state.create.mockRejectedValue(new Error('lost acknowledgement'));
-  const mounted = render(view());
-  fireEvent.change(screen.getByLabelText('Subtask title'), {
-    target: { value: 'Private work' },
-  });
-  fireEvent.click(screen.getByRole('button', { name: 'Add subtask' }));
-  await screen.findByRole('button', { name: 'Retry creation' });
-  state.authority = 'another';
-  mounted.rerender(view());
-  state.authority = 'owner';
-  mounted.rerender(view());
-  expect(screen.queryByRole('button', { name: 'Retry creation' })).toBeNull();
-  expect(state.create).toHaveBeenCalledTimes(1);
-});
+test.each(['children', 'work-chats'] as const)(
+  'a late %s success from the previous activation cannot settle its restored retry',
+  async (kind) => {
+    let complete!: (result: { task: { id: string } }) => void;
+    const mutation = kind === 'children' ? state.create : state.update;
+    mutation.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    );
+    const mounted = render(view(kind));
+    if (kind === 'children') {
+      fireEvent.change(screen.getByLabelText('Subtask title'), {
+        target: { value: 'Pending work' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Add subtask' }));
+    } else
+      fireEvent.click(await screen.findByRole('button', { name: 'Unlink' }));
+    await waitFor(() => expect(mutation).toHaveBeenCalledTimes(1));
+    state.authority = 'owner-live-next';
+    mounted.rerender(view(kind));
+    const retry = kind === 'children' ? 'Retry creation' : 'Retry update';
+    await screen.findByRole('button', { name: retry });
+    await act(async () => complete({ task: { id: 'created-child' } }));
+    expect(screen.getByRole('button', { name: retry })).toBeTruthy();
+    expect(state.navigate).not.toHaveBeenCalled();
+    mounted.unmount();
+    render(view(kind));
+    expect(screen.getByRole('button', { name: retry })).toBeTruthy();
+    expect(mutation).toHaveBeenCalledTimes(1);
+  },
+);
+
+test.each([
+  ['credential', 'children'],
+  ['account', 'children'],
+  ['credential', 'work-chats'],
+  ['account', 'work-chats'],
+] as const)(
+  'a changed %s retires the saved %s intent even when switched back',
+  async (change, kind) => {
+    state.create.mockRejectedValue(new Error('lost acknowledgement'));
+    state.update.mockRejectedValue(new Error('lost acknowledgement'));
+    const mounted = render(view(kind));
+    const retry = kind === 'children' ? 'Retry creation' : 'Retry update';
+    if (kind === 'children') {
+      fireEvent.change(screen.getByLabelText('Subtask title'), {
+        target: { value: 'Private work' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Add subtask' }));
+    } else
+      fireEvent.click(await screen.findByRole('button', { name: 'Unlink' }));
+    await screen.findByRole('button', { name: retry });
+    state.authority = `${change}-live`;
+    state.recoveryKey = `${change}-recovery`;
+    mounted.rerender(view(kind));
+    expect(screen.queryByRole('button', { name: retry })).toBeNull();
+    if (kind === 'children')
+      expect(
+        (screen.getByLabelText('Subtask title') as HTMLInputElement).value,
+      ).toBe('');
+    mounted.unmount();
+    state.authority = 'owner-live-after-return';
+    state.recoveryKey = 'owner';
+    render(view(kind));
+    expect(screen.queryByRole('button', { name: retry })).toBeNull();
+    expect(state.create).toHaveBeenCalledTimes(kind === 'children' ? 1 : 0);
+    expect(state.update).toHaveBeenCalledTimes(kind === 'work-chats' ? 1 : 0);
+  },
+);
 
 test('title drafts guard real navigation and reject overlong submissions', async () => {
   navigationStore.navigate('/tasks/parent');

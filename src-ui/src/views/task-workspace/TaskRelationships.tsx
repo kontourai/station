@@ -39,16 +39,21 @@ export function TaskRelationships({
   kind: 'children' | 'work-chats';
 }) {
   const scope = useHostRequestAuthorityScope();
-  const key = JSON.stringify([
+  const recoveryKey = JSON.stringify([
     scope?.apiBase,
-    scope?.authorityKey,
+    scope?.draftRecoveryKey ?? scope?.authorityKey,
     task.id,
     task.createdAt,
     task.projectId,
   ]);
+  // Live activation changes still retire mounted work, but not saved retry intent.
+  const key = JSON.stringify([recoveryKey, scope?.authorityKey]);
   useLayoutEffect(() => {
     try {
-      if (sessionStorage.getItem('station-task-relationship:scope') === key)
+      if (
+        sessionStorage.getItem('station-task-relationship:scope') ===
+        recoveryKey
+      )
         return;
       for (const panel of ['children', 'work-chats']) {
         try {
@@ -57,16 +62,16 @@ export function TaskRelationships({
           /* New scope cannot restore the old envelope. */
         }
       }
-      sessionStorage.setItem('station-task-relationship:scope', key);
+      sessionStorage.setItem('station-task-relationship:scope', recoveryKey);
     } catch {
       /* Sending still requires successful storage. */
     }
-  }, [key]);
+  }, [recoveryKey]);
   if (!scope) return <p>Task relationships unavailable.</p>;
   return kind === 'children' ? (
-    <Subtasks key={key} task={task} scope={scope} scopeKey={key} />
+    <Subtasks key={key} task={task} scope={scope} scopeKey={recoveryKey} />
   ) : (
-    <WorkChats key={key} task={task} scope={scope} scopeKey={key} />
+    <WorkChats key={key} task={task} scope={scope} scopeKey={recoveryKey} />
   );
 }
 const identity = (task: TaskRecord) => ({
