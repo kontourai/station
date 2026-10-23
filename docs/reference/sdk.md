@@ -234,6 +234,39 @@ Task's record, graph and claim. Reference mutations refresh those surfaces and
 the Task's answer and user-input references. Other Tasks' detail caches and
 unrelated domains remain unchanged; a failed mutation does not invalidate them.
 
+
+## Shared Project room
+
+`@kontourai/station-sdk/project-rooms` provides `useProjectRoom` and the
+React-free clients in `packages/sdk/src/client/project-rooms.ts`. Every call
+requires an explicit `ApiRequestScope`; discovery also requires the local
+Project ID. These calls use the SDK's authenticated HTTP and fetch-SSE
+transport. They never select an ambient operator connection.
+
+Discovery returns the shared room, authenticated actor, capabilities, note,
+and presence. Message and note writes pin the discovered room, Project, and
+actor with server guards. History is ordered by sequence and bounded to 25
+messages per page; the hook retains up to 20 pages. Named `changed` events
+invalidate queries, `presence` updates participants, and `revoked` or terminal
+401/403 stops the stream and clears retained query content. Cache identities
+include the API authority, local Project ID, and room ID for history.
+
+The embeddable `ProjectRoom` UI retains an immutable message intent in browser
+session storage before sending. A lost acknowledgement or reload offers an
+explicit retry of that exact payload and UUID; it never automatically resends.
+Changing authority, Project, or discovered actor retires the prior draft.
+Shared notes use revision compare-and-swap and preserve a conflicting draft for
+comparison. Agent requests appear only when the host supplies an actual
+`onRequestAgent({ prompt, replyTo? })` callback. The host owns Agent selection,
+execution, and posting the result; the room does not fabricate a private chat
+or a Task hierarchy.
+
+The client tests exercise fetch responses and rejection bounds; the mounted UI
+tests exercise two independent query contexts, SSE invalidation and revocation,
+reload retry, authority retirement, note conflicts, and unsaved navigation.
+These fixtures do not qualify the integrated server, real browser layout, or
+Agent execution. The parent integration owns those checks and mounts.
+
 ### Immutable output review
 
 `@kontourai/station-sdk/project-task-rooms` exports
