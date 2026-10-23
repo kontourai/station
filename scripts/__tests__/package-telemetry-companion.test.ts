@@ -1,9 +1,20 @@
-import { readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  readFile,
+  rename,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { join } from 'node:path';
 import { load } from 'js-yaml';
 import { beforeAll, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
+import {
+  archiveTool,
+  PORTABLE_ARCHIVE_ROOT,
+} from '../lib/portable-server-archive.mjs';
 import {
   packageTelemetryCompanion,
   verifyTelemetryCompanion,
@@ -157,3 +168,64 @@ test('rejects a descriptor that disagrees with the packaged receiver or images',
     'build-only',
   );
 });
+
+test.each(['corrupt', 'foreign-source'] as const)(
+  'the real archive consumer refuses a %s companion before server launch',
+  async (fault) => {
+    const root = makeTempDir('companion-archive-consumer-');
+    const candidate = await packageTelemetryCompanion(join(root, 'output'));
+    const stage = join(root, PORTABLE_ARCHIVE_ROOT);
+    await mkdir(stage);
+    await rename(candidate.directory, join(stage, 'telemetry-companion'));
+    await writeFile(
+      join(stage, '.station-release.json'),
+      JSON.stringify({
+        schemaVersion: 2,
+        sha:
+          fault === 'foreign-source'
+            ? '0'.repeat(40)
+            : candidate.manifest.source,
+        ref: 'v0.1.11',
+        createdAt: '2026-10-23T00:00:00.000Z',
+        channel: 'stable',
+        releaseChannel: 'stable',
+        prerelease: false,
+      }),
+    );
+    if (fault === 'corrupt')
+      await writeFile(
+        join(stage, 'telemetry-companion/dist/main.mjs'),
+        'changed bundle',
+      );
+    const archive = join(root, 'server.tar.gz');
+    const packed = spawnSyncBounded(
+      archiveTool(),
+      ['-czf', archive, '-C', root, PORTABLE_ARCHIVE_ROOT],
+      { encoding: 'utf8', windowsHide: true, timeout: 30_000 },
+    );
+    expect(packed.error).toBeUndefined();
+    expect(packed.status, packed.stderr).toBe(0);
+    const result = spawnSyncBounded(
+      process.execPath,
+      [
+        'scripts/smoke-portable-server-archive.mjs',
+        '--archive',
+        archive,
+        '--require-telemetry-companion',
+      ],
+      {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 30_000,
+      },
+    );
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      fault === 'corrupt'
+        ? 'Companion package digest mismatch'
+        : 'companion payload source differs from the archive release',
+    );
+  },
+);
