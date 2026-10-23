@@ -189,3 +189,34 @@ test.each([
     ).rejects.toThrow('Task relationship unavailable');
   },
 );
+
+test('cancels an oversized UTF-8 relationship stream before consuming the full response', async () => {
+  const chunk = new TextEncoder().encode('界'.repeat(16384));
+  const cancel = vi.fn();
+  let pulls = 0;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(
+      async () =>
+        new Response(
+          new ReadableStream({
+            pull(controller) {
+              pulls++;
+              if (pulls === 1)
+                controller.enqueue(
+                  new TextEncoder().encode('{"success":true,"data":{"task":'),
+                );
+              else if (pulls < 100) controller.enqueue(chunk);
+              else controller.close();
+            },
+            cancel,
+          }),
+        ),
+    ),
+  );
+  await expect(
+    fetchTaskChildren(scope.apiBase, child, { requestScope: scope }),
+  ).rejects.toThrow();
+  expect(cancel).toHaveBeenCalledOnce();
+  expect(pulls).toBeLessThan(50);
+});

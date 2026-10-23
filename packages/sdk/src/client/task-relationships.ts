@@ -1,17 +1,15 @@
-import type {
-  TaskChildCreateInput,
-  TaskChildrenResult,
-  TaskIdentity,
-  TaskParentMutationInput,
-  TaskParentMutationResult,
-  TaskRecord,
-  TaskWorkChatMutationInput,
-  TaskWorkChatMutationResult,
-  TaskWorkChatsResult,
-} from '@kontourai/station-contracts/task-graph';
 import {
   TASK_PRIORITIES,
   TASK_STATUSES,
+  type TaskChildCreateInput,
+  type TaskChildrenResult,
+  type TaskIdentity,
+  type TaskParentMutationInput,
+  type TaskParentMutationResult,
+  type TaskRecord,
+  type TaskWorkChatMutationInput,
+  type TaskWorkChatMutationResult,
+  type TaskWorkChatsResult,
 } from '@kontourai/station-contracts/task-graph';
 import { z } from 'zod';
 import {
@@ -71,14 +69,17 @@ async function unwrap<T>(response: Response, schema: z.ZodType<T>): Promise<T> {
   const body = z
     .object({ success: z.literal(true), data: schema })
     .safeParse(wire);
-  if (
-    !response.ok ||
-    !body.success ||
-    JSON.stringify(wire).length > 2 * 1024 * 1024
-  )
+  if (!response.ok || !body.success)
     throw new Error('Task relationship unavailable');
   return body.data.data;
 }
+const bounded = (options: ScopedOptions): ScopedOptions => ({
+  ...options,
+  maxResponseBytes: Math.min(
+    options.maxResponseBytes ?? 2 * 1024 * 1024,
+    2 * 1024 * 1024,
+  ),
+});
 const path = (taskId: string) => `/api/tasks/${encodeURIComponent(taskId)}`;
 export function fetchTaskChildren(
   apiBase: string,
@@ -87,7 +88,7 @@ export function fetchTaskChildren(
 ): Promise<TaskChildrenResult> {
   return getJson(
     `${apiBase}${path(task.taskId)}/children?taskCreatedAt=${encodeURIComponent(task.taskCreatedAt)}`,
-    options,
+    bounded(options),
   ).then((response) => unwrap(response, childrenResult));
 }
 export function createTaskChild(
@@ -98,7 +99,7 @@ export function createTaskChild(
   return mutateJson(
     `${apiBase}${path(input.parent.taskId)}/children`,
     'POST',
-    options,
+    bounded(options),
     input,
   ).then((response) =>
     unwrap(
@@ -115,7 +116,7 @@ export function setTaskParent(
   return mutateJson(
     `${apiBase}${path(input.child.taskId)}/parent`,
     'PUT',
-    options,
+    bounded(options),
     input,
   ).then((response) => unwrap(response, parentResult));
 }
@@ -126,7 +127,7 @@ export function fetchTaskWorkChats(
 ): Promise<TaskWorkChatsResult> {
   return getJson(
     `${apiBase}${path(task.taskId)}/work-chats?taskCreatedAt=${encodeURIComponent(task.taskCreatedAt)}`,
-    options,
+    bounded(options),
   ).then((response) => unwrap(response, chatsResult));
 }
 export function setTaskWorkChat(
@@ -138,7 +139,7 @@ export function setTaskWorkChat(
   return mutateJson(
     `${apiBase}${path(input.task.taskId)}/work-chats`,
     linked ? 'POST' : 'DELETE',
-    options,
+    bounded(options),
     body,
   ).then((response) => unwrap(response, chatResult));
 }
@@ -152,6 +153,6 @@ export function fetchTaskWorkChat(
 ): Promise<TaskWorkChatMutationResult> {
   return getJson(
     `${apiBase}${path(task.taskId)}/work-chats/${encodeURIComponent(conversationId)}?taskCreatedAt=${encodeURIComponent(task.taskCreatedAt)}`,
-    options,
+    bounded(options),
   ).then((response) => unwrap(response, chatResult));
 }
