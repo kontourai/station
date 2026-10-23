@@ -486,6 +486,7 @@ export class RepositoryAcquisitionService {
         args.push('--', request.sourceUrl, checkoutPath);
         assertCurrent();
         await execGit(args, {
+          assertCurrent,
           cwd: directory,
           timeout: 120000,
           hardening: { allowFileProtocol: isLocalGitSource(request.sourceUrl) },
@@ -508,6 +509,7 @@ export class RepositoryAcquisitionService {
         }
         const commit = (
           await execGit(['rev-parse', '--verify', 'HEAD^{commit}'], {
+            assertCurrent,
             cwd: checkoutPath,
             timeout: 10000,
           })
@@ -519,6 +521,7 @@ export class RepositoryAcquisitionService {
         assertCurrent();
         if (!config.ok) throw new Error('Checkout configuration was refused.');
         await execGit(['checkout', '--detach', commit, '--'], {
+          assertCurrent,
           cwd: checkoutPath,
           timeout: 30000,
           // Acquisition materializes bytes; installed filters require separate setup consent.

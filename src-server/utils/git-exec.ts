@@ -628,6 +628,8 @@ type Hardened<T> = T & { hardening?: GitHardeningOptions };
  * (only `execGit` accepts it); without it stdin is the null device.
  */
 export interface GitRunOptions {
+  /** Current caller authority, checked before setup and again at process launch. */
+  assertCurrent?: () => void;
   cwd?: string | URL;
   env?: NodeJS.ProcessEnv;
   timeout?: number;
@@ -650,9 +652,11 @@ export async function execGit(
   opts: Hardened<GitRunOptions> = {},
 ): Promise<{ stdout: string; stderr: string }> {
   const [execOptions, hardening] = splitHardening(opts);
+  execOptions.assertCurrent?.();
   const operator = needsOperatorSettings(args)
     ? await readOperatorSettings(args, execOptions.cwd)
     : null;
+  execOptions.assertCurrent?.();
   return runInProcessGroup('git', hardenedArgs(args, hardening), {
     cwd: execOptions.cwd,
     timeout: execOptions.timeout,

@@ -8,6 +8,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import * as mutationLocks from '@kontourai/station-shared/lifecycle-events';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
@@ -16,6 +17,7 @@ import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { createRepositoryAcquisitionRoutes } from '../../../routes/projects/repository-acquisition-routes.js';
 import * as gitExec from '../../../utils/git-exec.js';
 import { execGitSync } from '../../../utils/git-exec.js';
+import * as processGroup from '../../../utils/process-group-exec.js';
 import {
   RepositoryAcquisitionInputError,
   RepositoryAcquisitionService,
@@ -469,10 +471,15 @@ test.each(['operation', 'publication'])(
     const admission = new Promise<void>((resolve) => {
       admitted = resolve;
     });
-    const route = mounted(f, () => {
-      admitted();
-      return allowed;
-    });
+    const originalLock = mutationLocks.acquireFileMutationLockAsync;
+    vi.spyOn(mutationLocks, 'acquireFileMutationLockAsync').mockImplementation(
+      (path, ...options) => {
+        const pending = originalLock(path, ...options);
+        if (path === join(directory, `${lock}.mutation`)) admitted();
+        return pending;
+      },
+    );
+    const route = mounted(f, () => allowed);
     const git = vi.spyOn(gitExec, 'execGit');
     const pending = route.acquire(request);
     await admission;
@@ -584,3 +591,44 @@ test.each(['create', 'inspect', 'cancel', 'retry'])(
     await expect(response.text()).rejects.toThrow('authorization ended');
   },
 );
+
+test('mounted acquisition revocation during real Git credential setup prevents clone launch', async () => {
+  const f = fixture();
+  const request = { requestId: randomUUID(), sourceUrl: f.source };
+  let allowed = true;
+  const route = mounted(f, () => allowed);
+  const original = processGroup.runInProcessGroup;
+  let setup!: () => void;
+  let resume!: () => void;
+  const observed = new Promise<void>((resolve) => {
+    setup = resolve;
+  });
+  const hold = new Promise<void>((resolve) => {
+    resume = resolve;
+  });
+  const processes = vi
+    .spyOn(processGroup, 'runInProcessGroup')
+    .mockImplementation(async (file, args, options) => {
+      try {
+        return await original(file, args, options);
+      } finally {
+        if (args.includes('--get-regexp')) {
+          setup();
+          await hold;
+        }
+      }
+    });
+  const pending = route.acquire(request);
+  await observed;
+  allowed = false;
+  resume();
+  const response = await pending;
+  expect(response.status).toBe(403);
+  expect(await response.text()).not.toContain(f.home);
+  expect(processes.mock.calls.some(([, args]) => args.includes('clone'))).toBe(
+    false,
+  );
+  const record = f.service.get(request.requestId)!;
+  expect(record.phase).toBe('acquiring');
+  expect(existsSync(record.checkoutPath)).toBe(false);
+});
