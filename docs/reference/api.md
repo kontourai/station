@@ -2225,9 +2225,6 @@ normal request authentication runs first. See the
 
 ## Ensemble configuration inspection
 
-> Local source at `21de0f40`; independent review and browser qualification are
-> pending. This diagnostic does not establish group execution or launch readiness.
-
 `POST /api/orchestration/ensembles/inspect` observes receiver configuration without
 model discovery, login probes or provider turns. It uses `orchestration:operate`
 and requires a current in-person operator on a personal Station. Hosted, Agent
