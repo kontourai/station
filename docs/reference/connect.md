@@ -1010,7 +1010,11 @@ permission-required, permission-denied, unavailable, timed-out, cancelled and fa
 Native iOS and Android 14+ shells register the system DNS-SD provider for
 `_station._tcp.local.`. It validates TXT version/transport and resolved private
 host/port hints, cancels on background or disposal, and sends no HTTP probes.
-Earlier Android versions keep QR/manual connection paths. The host publishes only
+Android 17 first runs native permission admission, without creating a scan.
+Returning from its local-network prompt leaves an explicit **Check again**;
+permission completion cannot publish candidates or begin browsing. Missing
+permission is refused by `discover` itself. Hide/pause cancellation remains
+mandatory for an actual scan. Earlier Android versions keep QR/manual connection paths. The host publishes only
 when its local operator enables discovery; current publication uses the bound API
 port and private IPv4 interface. Selecting a result enters the existing access
 review, including explicit exact-origin consent for LAN HTTP and host approval.

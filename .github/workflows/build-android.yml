@@ -71,13 +71,17 @@ jobs:
               echo "::error::An isolated onboarding app requires a non-main manual dispatch."
               exit 1
             fi
-            echo 'config=tauri.android.onboarding.conf.json' >> "$GITHUB_OUTPUT"
-            echo 'package_id=io.kontourai.station.onboarding.debug' >> "$GITHUB_OUTPUT"
-            echo 'artifact_name=station-android-onboarding-debug' >> "$GITHUB_OUTPUT"
+            {
+              echo 'config=tauri.android.onboarding.conf.json'
+              echo 'package_id=io.kontourai.station.onboarding.debug'
+              echo 'artifact_name=station-android-onboarding-debug'
+            } >> "$GITHUB_OUTPUT"
           elif [ "$ISOLATED_ONBOARDING" = false ]; then
-            echo 'config=tauri.android.dev.conf.json' >> "$GITHUB_OUTPUT"
-            echo 'package_id=io.kontourai.station.debug' >> "$GITHUB_OUTPUT"
-            echo 'artifact_name=station-android-debug' >> "$GITHUB_OUTPUT"
+            {
+              echo 'config=tauri.android.dev.conf.json'
+              echo 'package_id=io.kontourai.station.debug'
+              echo 'artifact_name=station-android-debug'
+            } >> "$GITHUB_OUTPUT"
           else
             echo '::error::Invalid isolated_onboarding value.'
             exit 1
