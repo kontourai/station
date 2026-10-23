@@ -264,6 +264,23 @@ it owns dependencies that the root install must provide. Root-managed examples
 use the repository's `pnpm-lock.yaml`; do not add a second lock inside the
 example.
 
+### Verified CI package-manager bootstrap
+
+CI, Windows PR verification, iOS verification, and the paired PR/Nightly
+Gallery workflows use the immutable `setup-verified-pnpm` action. It installs
+exactly `pnpm@11.25.0` from the JavaScript package, after checking npm's
+ECDSA registry signature against a reviewed fixed public key and checking the
+archive against a pinned SHA-512 integrity value. Identity, version, origin,
+signature, archive or extraction failures stop setup; there is no mirror or
+unsigned fallback. Trust-root and package-version changes require source review.
+
+The action installs Node through the pinned Node setup action, preserves the
+existing `.cjs` package-manager discovery path on Windows, and runs no dependency
+lifecycle scripts. `npm run dependencies:ci` remains the reviewed install owner.
+The JavaScript artifact avoids the native platform-package metadata endpoints;
+this does not establish the cause or availability of those network paths.
+Release packaging retains its separately owned bootstrap until migrated.
+
 ### Dependency install deadline
 
 The dependency bootstrap gives the inert pnpm install step a finite

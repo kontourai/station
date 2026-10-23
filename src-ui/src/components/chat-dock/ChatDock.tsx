@@ -139,6 +139,7 @@ import { ShareIntakeController } from '../chat/ShareIntakeController';
 import { LazyBoundary } from '../LazyBoundary';
 import { GLOBAL_CONTEXT } from '../modals/new-chat-modal-utils';
 import { SkillShortcutRegistrar } from '../SkillShortcutRegistrar';
+import { SplitPaneCompanion } from '../SplitPaneLayout';
 import { SkeletonBlock } from '../state';
 import {
   ActiveWorkContextFrame,
@@ -191,6 +192,7 @@ import {
 import {
   toggleSessionInventoryOccurrence,
   useSessionInventoryHostRegistered,
+  useSessionInventoryHostRegistration,
 } from './sessionInventoryOccurrence';
 import { useChatDockActiveChatSync } from './useChatDockActiveChatSync';
 import { useChatDockOverlays } from './useChatDockOverlays';
@@ -2570,14 +2572,8 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const sessionContextCardRenderedProps = sessionContextCardPresence.exiting
     ? lastSessionContextCardPropsRef.current
     : sessionContextCardProps;
-  /**
-   * The inventory's host registration, ONE per dock: the desktop header
-   * mounts it, and on a phone the dock mounts it beside the mobile header
-   * (the phone's header has no host of its own). Both the More menu's row and
-   * the session context card's footer press the same host, and so does the
-   * per-answer Basis chip — `openSessionInventoryOccurrence` admits an
-   * occurrence only when exactly one host is registered for the chat.
-   */
+  // The pane owns one host across desktop/mobile header replacement. Header
+  // remounts must not retire an exact-answer inspection during streaming.
   const sessionInventoryControls =
     sessionInventoryOffered && inventoryExecutionId
       ? {
@@ -2593,6 +2589,12 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
           isMobile,
         }
       : undefined;
+  useSessionInventoryHostRegistration(
+    sessionInventoryHostId,
+    requestAuthority?.authorityKey,
+    sessionInventoryControls?.chatStoreId,
+    sessionInventoryControls?.executionId,
+  );
   const codingLayoutSlug = sessionCodingLayout?.slug ?? null;
   const conversationProjectDirectory = conversationProjectSlug
     ? (projects.find((project) => project.slug === conversationProjectSlug)
@@ -2723,10 +2725,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
               grip) is `DockShell`'s job now for a docked placement —
               rendered once outside every occupant (station#4460). A
               full-screen placement never had one. */}
-          {/* A phone's inventory host: the desktop header mounts its own
-              (`ChatDockHeader`), the mobile header has none. Exactly one is
-              mounted per dock either way. */}
-          {isMobile && sessionInventoryControls ? (
+          {sessionInventoryControls ? (
             <LazyBoundary
               load={loadChatDockSessionInventoryHost}
               pending={null}
@@ -3103,14 +3102,17 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       }
                     />
                   )}
-                <div
+                <SplitPaneCompanion
                   className="chat-dock__conversation-surface"
-                  ref={conversationSurfaceRef}
+                  inspection={{
+                    rootRef: conversationSurfaceRef,
+                    supportRef: sessionInventoryMountRef,
+                    containerFit:
+                      !isFullscreenPlacement &&
+                      (effectiveDockSlotPlacement === 'left' ||
+                        effectiveDockSlotPlacement === 'right'),
+                  }}
                 >
-                  <div
-                    ref={sessionInventoryMountRef}
-                    className="chat-dock__inventory-mount"
-                  />
                   {conversationOpenRecovery && !importedSessionId ? (
                     <LazyBoundary
                       load={loadConversationOpenRecoveryNotice}
@@ -3282,7 +3284,7 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       onOpenBackgroundTasks={showBackgroundTasks}
                     />
                   ) : null}
-                </div>
+                </SplitPaneCompanion>
                 {sessionContextCardPresence.mounted &&
                 sessionContextCardRenderedProps ? (
                   <LazyBoundary

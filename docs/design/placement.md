@@ -1740,14 +1740,18 @@ per conversation.** Below the fold nothing above changes.
   drill-in from below it, a reload on one) opens it below and clears the
   side. It is mounted on first open and hidden (collapsed to no height,
   inert) after, and unmounted below the fold where the pane host owns it.
-- **Per-session memory is one device setting** (`codingPanels`,
+- **Panel memory is a generic device setting** (`layoutPanels`,
   [device-settings.ts](../../packages/contracts/src/device-settings.ts);
-  record logic in [coding-panels-record.ts](../../src-ui/src/lib/coding-panels-record.ts)):
-  `{ version: 1, sessions: { [conversation]: { side, sideWidth, terminalOpen,
-  terminalHeight, at } } }`, keyed by `activeChat` (`~` with none), bounded
-  to 32 sessions by evicting the entry touched longest ago, validated on
-  import by its own parser as `regionArrangement` is, and classified as
-  direct manipulation (not restored by "Restore device defaults"). Arrival
+  record logic in [layout-panels-record.ts](../../src-ui/src/lib/layout-panels-record.ts),
+  consumed through [the shared layout hook](../../src-ui/src/hooks/useLayoutSessionPanels.ts)):
+  `{ version: 1, layouts: { [hostScope]: { sessions: { [conversation]:
+  { side, sideWidth, lowerOpen, lowerHeight, inbox, at } } } } }`.
+  Host scope includes Project and Layout identity; `activeChat` is the session
+  key (`~` with none). Retention is bounded to 32 layouts and 32 sessions per
+  layout, evicting the entries touched longest ago. Import uses the same parser
+  as the reader. It remains direct manipulation (excluded from "Restore device
+  defaults"). The v3 envelope retires old Coding-only visibility/size preferences;
+  those reset to the generic defaults, as the owner chose on 2026-10-21. Arrival
   past the fold takes the URL as the fact when it names a tool and remembers
   it, else restores the session's memory; a change of session (the inbox's
   replace) restores that session's own panels and a session with no entry
