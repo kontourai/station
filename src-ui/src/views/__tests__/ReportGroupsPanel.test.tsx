@@ -253,7 +253,7 @@ test.each(['requested', 'refused', 'authority-loss'] as const)(
     expect(sent).toEqual([]);
     fireEvent.click(button);
     await waitFor(() => expect(sent).toHaveLength(1));
-    fireEvent.click(button);
+    await act(async () => fireEvent.click(button));
     expect(sent).toEqual([
       { expectedRevision: 4, operationKey: expect.stringMatching(/^cancel:/) },
     ]);
