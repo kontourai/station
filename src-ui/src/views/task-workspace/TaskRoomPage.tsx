@@ -475,7 +475,7 @@ export function TaskRoomRail({
       <section>
         <h3>Deliverables</h3>
         {!loading && !unavailable && count === 0 ? (
-          <Empty label="No results yet" />
+          <Empty label="Nothing kept yet" />
         ) : (
           <Button onClick={onResults} size="sm">
             {loading
