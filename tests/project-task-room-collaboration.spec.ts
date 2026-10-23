@@ -252,6 +252,9 @@ test.describe
           repository,
           'room-refusal',
         );
+        await page
+          .getByRole('tab', { name: 'Conversation', exact: true })
+          .click();
 
         const alert = page
           .getByRole('region', { name: 'Task room conversation' })

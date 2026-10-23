@@ -362,6 +362,9 @@ export async function createTaskFromProject(
     success: true,
     data: { isRepo: true, branch },
   });
+  const workspace = page.locator('details.project-page__workspace');
+  if ((await workspace.getAttribute('open')) === null)
+    await workspace.locator('summary').click();
   const branchLabel = page.locator(
     '.project-page__git-section .project-page__section-label',
   );
