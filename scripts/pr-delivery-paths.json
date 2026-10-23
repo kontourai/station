@@ -72,7 +72,13 @@
     "scripts/lib/server-build-config.mjs",
     "scripts/lib/station-stop-hint.mjs",
     "scripts/lib/desktop-node-runtime.mjs",
-    "scripts/prepare-desktop-rust-resources.mjs"
+    "scripts/prepare-desktop-rust-resources.mjs",
+    "scripts/package-telemetry-companion.mjs",
+    "packages/telemetry-broker/**",
+    "packages/contracts/src/product-telemetry.ts",
+    "packages/shared/src/product-telemetry.ts",
+    "deployment/telemetry/**",
+    "Dockerfile"
   ],
   "native": [
     ".github/workflows/desktop-rust.yml",

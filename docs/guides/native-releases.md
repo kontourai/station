@@ -377,6 +377,14 @@ The workflow's smoke checks that archive through an isolated long-path home,
 without relying on a host Node executable. A declared matrix is not a current
 pass or published release.
 
+The workflow also builds and embeds the source-bound telemetry companion at
+`telemetry-companion/`. Its required smoke checks the extracted payload's
+inventory, digests and source SHA before launching the server. The existing
+signed archive authenticates those bytes without another signing key. The
+payload remains `build-only`: server archive qualification does not qualify
+companion installation, containers, credentials, storage recovery or telemetry
+delivery. See the [companion boundary](../../deployment/telemetry/README.md#artifact-and-private-files).
+
 The platform-array release manifest now selects these archives through
 `install.sh`'s explicit signed-public-manifest path. The installer verifies the
 host target, launcher protocol, signed size/hash and release identity, stages

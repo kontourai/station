@@ -37,8 +37,8 @@ processors:
           - set(name, "station.operation")
           - set(status.message, "")
           - set(trace_state, "")
-          - set(events, [])
-          - set(links, [])
+          - set(events, nil)
+          - set(links, nil)
           - truncate_all(attributes, 128)
   deltatocumulative:
     max_streams: 10000
