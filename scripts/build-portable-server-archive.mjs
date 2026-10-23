@@ -7,6 +7,7 @@
 //   node scripts/build-portable-server-archive.mjs --ref v0.0.0 \
 //     [--ring stable|preview|nightly] [--sha <40-hex>] [--created-at <ISO>] [--output-dir dist-portable-server] \
 //     [--node-distribution <path to the pinned node-v*.tar.gz|zip>] [--keep-stage]
+//     [--with-telemetry-companion]
 //
 // The build refuses a --sha other than HEAD, and a dirty working tree.
 // --allow-unverified-source lifts that for tests and local experiments only;

@@ -12,7 +12,7 @@
 // started (same instance id, same lifecycle state outside both) and stop it.
 //
 //   node scripts/smoke-portable-server-archive.mjs --archive <path> \
-//     [--work-dir <dir>] [--long-path] [--keep]
+//     [--work-dir <dir>] [--long-path] [--keep] [--require-telemetry-companion]
 //
 // --long-path extracts beneath a deliberately long directory so the deepest
 // node_modules file crosses Windows' 260-character MAX_PATH (#2484).

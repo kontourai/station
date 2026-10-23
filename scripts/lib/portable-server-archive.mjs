@@ -416,6 +416,7 @@ function treeFootprint(root) {
  *                           plus the station-build.json `station start` reads
  *   dist-ui/                the built UI, served by every instance
  *   schemas/                the server's data schemas
+ *   telemetry-companion/    optional build-only receiver/deployment payload; not installed
  *   node_modules/           the desktop stager's pruned runtime closure
  *
  * The runtime dependency closure is staged by the same function that stages
