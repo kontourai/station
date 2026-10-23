@@ -86,7 +86,6 @@ import {
 } from '../app-home/app-home-profiles.js';
 import {
   buildCliRuntimePrerequisites,
-  type CliAuthState,
   type CliCommandResult,
   parseCliAuthState,
   runCliCommand,
@@ -888,24 +887,6 @@ export class CodexAdapter implements ProviderAdapterShape {
       displayName: 'Codex',
       versionArgs: ['--version'],
       authArgs: ['login', 'status'],
-      // A connection routed through a selected model connection
-      // (`config.proxyConnectionId`) authenticates with THAT connection's key:
-      // `engineProxyLaunch` passes it as `STATION_ENGINE_PROXY_KEY` and as
-      // `model_provider` overrides on every `codex app-server` spawn, and never
-      // asks the CLI to log in. `codex login status` therefore answered "Not
-      // logged in" (exit 1) for a connection that runs fine — `codex exec`
-      // over the same proxy answered with no login at all on 2026-10-22 — and
-      // that single wrong answer marked the engine "Setup required" in the
-      // inventory AND made the launch gate
-      // (`orchestration-service.assertAdapterReady`) refuse to start it:
-      // `POST /api/connections/codex/smoke` reported `codex prerequisites
-      // missing: Codex login`. Route present ⇒ the CLI's login is not the
-      // credential, so it is not probed.
-      ...(launch.route
-        ? {
-            detectAuthState: async (): Promise<CliAuthState> => 'authenticated',
-          }
-        : {}),
       runCommand: (command, args, signal) =>
         runCommand(command, args, signal, connectionEnv),
       // Readiness judges the credentials a fresh session would launch with,
