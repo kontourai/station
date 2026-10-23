@@ -355,7 +355,6 @@ const sourceNames = [
   'diff',
   'fast-checks shard 2',
   'fast-checks shard 1',
-  'merge-integration-full-regression',
   'fast-checks',
   'Publish source admission / reconcile',
   'Merge-queue regression',
@@ -367,7 +366,6 @@ const skippedNames = new Set([
   'Fork pull-request smoke',
   'Exact full-diff classification',
   'diff',
-  'merge-integration-full-regression',
   'Merge-queue regression',
   'full-regression',
   'manual-completion-diagnostics',
@@ -507,7 +505,7 @@ async function exerciseMerged(world = mergedWorld()) {
 }
 
 describe('merged optional-tail retirement through the real GitHub HTTP boundary', () => {
-  it('requests retirement of the retained queued-parent holder only after all source evidence completed successfully', async () => {
+  it('retires the new-topology optional holder without a fabricated deleted corpus job', async () => {
     const result = await exerciseMerged();
     expect(result.code).toBe(0);
     expect(result.cancelled).toEqual([holder.id]);
@@ -516,6 +514,21 @@ describe('merged optional-tail retirement through the real GitHub HTTP boundary'
       'terminal cancellation is not yet verified',
     );
   });
+  it.each(['skipped', 'success', 'failure', 'cancelled'])(
+    'a legacy corpus row with %s authorizes retirement only when skipped',
+    async (conclusion) => {
+      const world = mergedWorld();
+      world.jobs.push({
+        ...world.jobs[0],
+        id: 1000,
+        name: 'merge-integration-full-regression',
+        conclusion,
+      });
+      expect((await exerciseMerged(world)).cancelled).toEqual(
+        conclusion === 'skipped' ? [holder.id] : [],
+      );
+    },
+  );
   it('can retire a known optional callee waiting before any child rows materialize', async () => {
     const world = mergedWorld();
     world.jobs = world.jobs.filter(
@@ -630,10 +643,22 @@ async function replacedGroup(
     badJobs?: boolean;
     refError?: boolean;
     attemptMoved?: boolean;
-    contains?: boolean;
+    queueHeadMismatch?: boolean;
+    queueOwnerMismatch?: boolean;
+    queueBaseMismatch?: boolean;
+    queueMoved?: boolean;
+    queueMissing?: boolean;
+    queueError?: boolean;
+    queueHttpStatus?: number;
+    queueRepositoryMismatch?: boolean;
+    queueNumberMismatch?: boolean;
+    queueUnmergeable?: boolean;
+    oldRefDisplaced?: boolean;
   } = {},
 ) {
-  const branch = (base: string) => `gh-readonly-queue/main/pr-7-${base}`;
+  const candidateBase = 'e'.repeat(40);
+  const branch = (sha: string) =>
+    `gh-readonly-queue/main/pr-7-${sha === head ? candidateBase : old}`;
   const candidate = (id: number, sha: string) =>
     run(id, {
       event: 'merge_group',
@@ -648,11 +673,80 @@ async function replacedGroup(
   const cancelled: number[] = [];
   let ownerReads = 0;
   let runReads = 0;
+  let queueReads = 0;
+  let displacedResponses = 0;
   const server = createServer((req, res) => {
     res.setHeader('content-type', 'application/json');
     const url = new URL(req.url ?? '', 'http://localhost');
     const path = url.pathname.replace('/repos/kontourai/station/', '');
     let data: unknown;
+    if (url.pathname === '/graphql') {
+      expect(req.method).toBe('POST');
+      if (options.queueHttpStatus) {
+        res.writeHead(options.queueHttpStatus);
+        res.end('{}');
+        return;
+      }
+      queueReads++;
+      let body = '';
+      req.on('data', (chunk) => {
+        body += chunk;
+      });
+      req.on('end', () => {
+        const request = JSON.parse(body);
+        expect(request.variables).toEqual({
+          owner: 'kontourai',
+          name: 'station',
+          number: 7,
+        });
+        res.end(
+          JSON.stringify(
+            options.queueError
+              ? { errors: [{ message: 'denied' }] }
+              : {
+                  data: {
+                    repository: {
+                      pullRequest: {
+                        mergeQueueEntry: options.queueMissing
+                          ? null
+                          : {
+                              id:
+                                options.queueMoved && queueReads > 1
+                                  ? 'changed-entry'
+                                  : 'entry-7',
+                              state: options.queueUnmergeable
+                                ? 'UNMERGEABLE'
+                                : 'AWAITING_CHECKS',
+                              headCommit: {
+                                oid: options.queueHeadMismatch ? old : head,
+                              },
+                              baseCommit: {
+                                oid: options.queueBaseMismatch
+                                  ? head
+                                  : candidateBase,
+                              },
+                              pullRequest: {
+                                number: options.queueNumberMismatch ? 8 : 7,
+                                headRefOid: options.queueOwnerMismatch
+                                  ? old
+                                  : ownerHead,
+                                baseRefName: 'main',
+                                headRepository: {
+                                  nameWithOwner: options.queueRepositoryMismatch
+                                    ? 'someone/station'
+                                    : repository,
+                                },
+                              },
+                            },
+                      },
+                    },
+                  },
+                },
+          ),
+        );
+      });
+      return;
+    }
     if (path === 'actions/workflows/ci.yml')
       data = { id: 50, path: '.github/workflows/ci.yml', name: 'PR: CI' };
     else if (path === 'pulls/7') {
@@ -667,10 +761,9 @@ async function replacedGroup(
       };
     } else if (path === `compare/${ownerHead}...${head}`)
       data = {
-        status: 'ahead',
-        merge_base_commit: {
-          sha: options.contains === false ? old : ownerHead,
-        },
+        // Real queue squash candidates do not retain the raw PR head as an ancestor.
+        status: 'diverged',
+        merge_base_commit: { sha: 'd'.repeat(40) },
       };
     else if (path === 'actions/workflows/50/runs')
       data = {
@@ -723,7 +816,11 @@ async function replacedGroup(
         res.end('{}');
         return;
       }
-      data = { ref: `refs/heads/${branch(old)}`, object: { sha: old } };
+      if (options.oldRefDisplaced) displacedResponses++;
+      data = {
+        ref: `refs/heads/${branch(old)}`,
+        object: { sha: options.oldRefDisplaced ? head : old },
+      };
     } else if (path === 'actions/runs/1/cancel') {
       expect(req.method).toBe('POST');
       cancelled.push(1);
@@ -758,30 +855,45 @@ async function replacedGroup(
       server.close((error) => (error ? reject(error) : ok())),
     );
   }
+  if (options.oldRefDisplaced && cancelled.length)
+    expect(displacedResponses).toBeGreaterThan(0);
   return { code, cancelled };
 }
 
 describe('replaced merge candidate retirement through the GitHub API', () => {
-  it('normally cancels destroyed obsolete candidate work, including an assigned runner, while preserving the replacement', async () => {
-    expect(await replacedGroup()).toEqual({ code: 0, cancelled: [1] });
-  });
+  it.each([{}, { oldRef: true, oldRefDisplaced: true }])(
+    'normally cancels obsolete queue-bound squash work with destroyed/displaced ref: %j',
+    async (options) => {
+      expect(await replacedGroup(options)).toEqual({ code: 0, cancelled: [1] });
+    },
+  );
   it.each([
     { oldRef: true },
     { replacementMissing: true },
     { badRun: true },
     { movedOwner: true },
     { attemptMoved: true },
-    { contains: false },
+    { queueHeadMismatch: true },
+    { queueOwnerMismatch: true },
+    { queueBaseMismatch: true },
+    { queueMoved: true },
+    { queueMissing: true },
+    { queueRepositoryMismatch: true },
+    { queueNumberMismatch: true },
+    { queueUnmergeable: true },
   ])(
     'preserves work when replacement or obsolete identity is not proven: %j',
     async (options) => {
       expect(await replacedGroup(options)).toEqual({ code: 0, cancelled: [] });
     },
   );
-  it.each([{ badJobs: true }, { refError: true }])(
-    'fails closed on ambiguous evidence: %j',
-    async (options) => {
-      expect(await replacedGroup(options)).toEqual({ code: 1, cancelled: [] });
-    },
-  );
+  it.each([
+    { badJobs: true },
+    { refError: true },
+    { queueError: true },
+    { queueHttpStatus: 403 },
+    { queueHttpStatus: 503 },
+  ])('fails closed on ambiguous evidence: %j', async (options) => {
+    expect(await replacedGroup(options)).toEqual({ code: 1, cancelled: [] });
+  });
 });

@@ -76,6 +76,14 @@ iOS uses `ios-nightly`. Whether those environments currently require manual
 approval is live GitHub configuration, not determined by the schedule trigger.
 Their provider credentials and permissions have distinct scopes.
 
+After required TestFlight upload and internal delivery, Nightly attempts
+external-group assignment and beta-review submission. This step is non-blocking:
+failures appear in the workflow summary and external-distribution receipt.
+Set `TESTFLIGHT_EXTERNAL_GROUP_ID` or the exact `TESTFLIGHT_EXTERNAL_GROUP_NAME`
+in `ios-nightly` and complete Apple's beta
+review information first. See [external TestFlight distribution](mobile-release.md#nightly-external-testflight-distribution)
+for setup, review states and tester automatic updates.
+
 The rolling `nightly` marker moves only after Android is verified and recorded.
 Desktop has its own `nightly-desktop` publication marker. Partial or ambiguous
 provider outcomes retain their own status; a failed overall run can already have
@@ -226,8 +234,12 @@ does not acquire that publication or notarization receipt.
 
 ## Update checks in Settings: source check vs release check
 
-Two distinct mechanisms answer "is there an update?", and Settings keeps them
-separate:
+The sidebar's **Updates** control opens one panel for the desktop app and the
+connected server, also available from a collapsed rail or mobile drawer.
+Browser and mobile devices can review server updates there; mobile app release
+links use its app section. Settings retains the same update controls and owns
+automatic-download policies and further details. The shared presentation
+keeps two independent mechanisms and separately labelled actions:
 
 - **Desktop release check.** Tauri's configured signed update feed owns
   desktop release availability and installation. The packaged server code
@@ -242,17 +254,31 @@ separate:
   signed public manifest its install records, verifies it against the pinned
   keys for its ring, and reports the running and newest versions. A manifest
   older than the newest release that install already accepted is not offered
-  (it would be a stale or replayed one). Settings can
+  (it would be a stale or replayed one). The panel and Settings can
   apply that update only when the service's fixed launcher runs the server.
   Such a server downloads and verifies the release without restarting (when
   asked, or by itself under the `serverUpdateDownloadPolicy` setting). Only
-  Restart or Update when idle switches it to the new version; see the
+  a confirmed restart or **When idle** switches it to the new version; see the
   [CLI `service` reference](../reference/cli.md#service). Any other archive
   names `station upgrade` on the host, or a reinstall.
 
 An established built-in (embedded sidecar) server never runs the ordinary
-source check at all; its update path is the desktop app itself, and its card
-says so.
+source check at all; its update path is the desktop app itself, including the
+built-in server in that app update and its restart confirmation. The server
+section says so and keeps the advanced source disclosure reachable. An
+installed local service or remote server updates separately. Opening the panel
+never applies an update; there is no shared "Update both" operation, and app
+and server versions need not be equal.
+
+For a staged service update, **Download …** leaves the running version in
+place. **Restart server to update to …** opens a confirmation that lists the
+running agent turns the caller may see and counts hidden turns. It offers
+**Restart now** or **When idle**; closing the confirmation changes nothing.
+Older servers and source checkouts that expose a direct update action require
+**Update and restart** confirmation. Closing the Updates panel keeps its
+existing server observer mounted so it can follow an accepted restart and
+recheck its outcome. Source-installation/manual host instructions remain in
+the server section, and **Update policies and details** opens System settings.
 
 ### When the server is older than the app
 
@@ -268,17 +294,27 @@ stamped with the cohort's full Nightly version, or a Beta's full release
 version, instead. A bare `X.Y.Z` client never counts as newer than a
 prerelease of the same `X.Y.Z`; that also keeps a stable `0.1.12` client quiet
 against a `0.1.12-preview.N` server, which tracks another ring and cannot
-update itself to the stable release. When the server is older, a dismissible
-banner says the server is older and names both versions in one readable form,
+update itself to the stable release. When the server is older, the Updates
+panel says so and names both versions in one readable form,
 a Nightly by its build date
 ([`ServerOlderLaunchCheck`](../../src-ui/src/components/ServerOlderLaunchCheck.tsx)).
 If the service's launcher runs the server and its verified manifest names a
-newer release, the banner offers **Update server to …**. That queues the same
-service update Settings applies and follows its progress through the restart.
-Any other server gets the way to update it on its host instead. The banner
-never appears for a dev or locally built app, equal versions, a server that
+newer release, **Review server update** focuses the panel's server section.
+Its existing server controls own download, restart confirmation, and progress;
+the launch comparison never applies the update itself. Any other server keeps
+its manual host guidance. This older-server notice never appears for a dev or
+locally built app, equal versions, a server that
 reports no version (source checkouts and desktop bundles), the server's own
 web UI, or a built-in server.
+
+The presentation owners are
+[`UpdatesControl`](../../src-ui/src/components/updates/UpdatesControl.tsx) and
+[`UpdatesPanel`](../../src-ui/src/components/updates/UpdatesPanel.tsx).
+[`DesktopUpdateCheck`](../../src-ui/src/views/settings/DesktopUpdateCheck.tsx)
+keeps the native updater adapter; the connected-server section reuses
+[`ConnectedServerUpdates`](../../src-ui/src/views/settings/ConnectedServerUpdates.tsx),
+[`CoreUpdateCheck`](../../src-ui/src/views/settings/CoreUpdateCheck.tsx), and
+[`ServerUpdateStageApply`](../../src-ui/src/views/settings/ServerUpdateStageApply.tsx).
 
 ### Advanced source installer boundary
 

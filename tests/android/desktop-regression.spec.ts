@@ -21,7 +21,7 @@ test.describe('Desktop Regression', () => {
     // present" (#1322). Reaching Settings through the menu is covered by
     // `openHeaderSettings` in tests/helpers/orchestration.
     await expect(
-      page.getByRole('button', { name: 'Profile and settings' }),
+      page.getByRole('button', { name: /^Profile and settings:/ }),
     ).toBeVisible({ timeout: 10_000 });
     expect(
       await page.evaluate(

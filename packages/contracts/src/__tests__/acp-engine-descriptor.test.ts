@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  hasUnsafeTextChar,
   installRecipeForPlatform,
   validateACPEngineDescriptor,
 } from '../acp.js';
@@ -28,6 +29,30 @@ describe('validateACPEngineDescriptor', () => {
   test('accepts a complete descriptor and an entry with none of the fields', () => {
     expect(validateACPEngineDescriptor(valid)).toEqual([]);
     expect(validateACPEngineDescriptor({})).toEqual([]);
+  });
+
+  // Characters that render as nothing (Unicode Default_Ignorable_Code_Point)
+  // would let two different names or arguments look the same.
+  test.each([
+    ['soft hyphen', 'Go\u00ADose'],
+    ['combining grapheme joiner', 'Go\u034Fose'],
+    ['Hangul choseong filler', 'Goose\u115F'],
+    ['Hangul filler', 'Goose\u3164'],
+    ['halfwidth Hangul filler', 'Goose\uFFA0'],
+    ['zero-width joiner', 'Go\u200Dose'],
+    ['variation selector', 'Goose\uFE0F'],
+    ['tag character', 'Goose\u{E0041}'],
+    ['Arabic letter mark', 'Goose\u061C'],
+    ['line separator', 'Goose\u2028'],
+  ])('refuses a name hiding a %s', (_, name) => {
+    expect(hasUnsafeTextChar(name)).toBe(true);
+    expect(validateACPEngineDescriptor({ name })).toEqual([
+      'name is not valid',
+    ]);
+  });
+
+  test('accepts ordinary text in other scripts', () => {
+    expect(hasUnsafeTextChar('Kimi Code — 代码助手 é')).toBe(false);
   });
 
   test('refuses a platform it does not know', () => {
@@ -212,6 +237,58 @@ describe('validateACPEngineDescriptor', () => {
       'launchEnv.GOOSE-NOT-A-NAME: not a variable name',
       'auth.statusCommand must be a list of 1-16 entries',
       'auth.credentialEnvVars[0] is not valid',
+    ]);
+  });
+
+  test('accepts a status rule and terms notice, and refuses a rule that reads nothing', () => {
+    expect(
+      validateACPEngineDescriptor({
+        auth: {
+          statusCommand: ['engine', 'status', '--json'],
+          statusRule: {
+            signedInJsonField: 'isAuthenticated',
+            signedOutText: ['Not logged in'],
+            signedOutExitCodes: [3],
+          },
+          subscriptionTermsNotices: [
+            {
+              provider: 'Anthropic',
+              termsUrl: 'https://example.com/terms',
+              authMethodIds: ['login'],
+            },
+          ],
+        },
+      }),
+    ).toEqual([]);
+    expect(
+      validateACPEngineDescriptor({
+        auth: { statusCommand: ['engine', 'status'], statusRule: {} },
+      }),
+    ).toEqual(['auth.statusRule reads nothing']);
+  });
+
+  test('refuses a rule without a command, a bad field or exit code, and a non-https terms link', () => {
+    expect(
+      validateACPEngineDescriptor({
+        auth: {
+          statusRule: {
+            signedInJsonField: 'a.b',
+            signedOutExitCodes: [0],
+            exitZeroMeansSignedIn: 'yes' as never,
+            extra: true,
+          } as never,
+          subscriptionTermsNotices: [
+            { provider: 'Anthropic', termsUrl: 'http://example.com/terms' },
+          ],
+        },
+      }),
+    ).toEqual([
+      'auth.statusRule needs auth.statusCommand',
+      'auth.statusRule: unknown field extra',
+      'auth.statusRule.signedInJsonField must be a field name',
+      'auth.statusRule.signedOutExitCodes must be exit codes 1-255',
+      'auth.statusRule.exitZeroMeansSignedIn must be a boolean',
+      'auth.subscriptionTermsNotices[0].termsUrl must be an https URL',
     ]);
   });
 });

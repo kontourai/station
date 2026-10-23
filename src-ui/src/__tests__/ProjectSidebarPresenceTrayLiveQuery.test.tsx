@@ -138,7 +138,7 @@ test('a server that stops answering replaces the roster, it does not keep it', a
 
   await waitFor(() =>
     expect(
-      screen.getByRole('button', { name: 'Who is here: 1 participant' }),
+      screen.getByRole('button', { name: /^Who is here: 1 participant/ }),
     ).toBeTruthy(),
   );
   fireEvent.click(trigger());
@@ -153,7 +153,7 @@ test('a server that stops answering replaces the roster, it does not keep it', a
   await waitFor(() =>
     expect(
       screen.getByRole('button', {
-        name: 'Who is here: Station is not answering',
+        name: /^Who is here: Station is not answering/,
       }),
     ).toBeTruthy(),
   );
@@ -179,7 +179,7 @@ test('a 503 on the first read says Station is not answering, not unavailable', a
   await waitFor(() =>
     expect(
       screen.getByRole('button', {
-        name: 'Who is here: Station is not answering',
+        name: /^Who is here: Station is not answering/,
       }),
     ).toBeTruthy(),
   );
@@ -200,7 +200,7 @@ test('a 404 says this Station does not publish live work, not that it is failing
   await waitFor(() =>
     expect(
       screen.getByRole('button', {
-        name: 'Who is here: not published by this Station',
+        name: /^Who is here: not published by this Station/,
       }),
     ).toBeTruthy(),
   );
@@ -228,8 +228,8 @@ test('a 404 and a 503 are different states, and neither is described as the othe
     expect(trigger().getAttribute('aria-label')).toBeTruthy(),
   );
   await waitFor(() =>
-    expect(trigger().getAttribute('aria-label')).toBe(
-      'Who is here: not published by this Station',
+    expect(trigger().getAttribute('aria-label')).toMatch(
+      /^Who is here: not published by this Station/,
     ),
   );
   const absentName = trigger().getAttribute('aria-label');
@@ -238,14 +238,14 @@ test('a 404 and a 503 are different states, and neither is described as the othe
   installPresenceFetch(async () => jsonResponse({ error: 'down' }, 503));
   renderTray();
   await waitFor(() =>
-    expect(trigger().getAttribute('aria-label')).toBe(
-      'Who is here: Station is not answering',
+    expect(trigger().getAttribute('aria-label')).toMatch(
+      /^Who is here: Station is not answering/,
     ),
   );
   const failingName = trigger().getAttribute('aria-label');
 
-  expect(absentName).toBe('Who is here: not published by this Station');
-  expect(failingName).toBe('Who is here: Station is not answering');
+  expect(absentName).toMatch(/^Who is here: not published by this Station/);
+  expect(failingName).toMatch(/^Who is here: Station is not answering/);
   expect(absentName).not.toBe(failingName);
 });
 
@@ -305,8 +305,8 @@ test('ordinary running and attention sessions are visible and Follow carries the
   );
   const { container } = renderTray();
   await waitFor(() =>
-    expect(trigger().getAttribute('aria-label')).toBe(
-      'Who is here: 2 active sessions',
+    expect(trigger().getAttribute('aria-label')).toMatch(
+      /^Who is here: 2 active sessions/,
     ),
   );
   expect(
@@ -365,8 +365,8 @@ test('task-room agents share one session row and completion removes their active
   );
   const { client, container } = renderTray();
   await waitFor(() =>
-    expect(trigger().getAttribute('aria-label')).toBe(
-      'Who is here: 1 participant; 1 active session',
+    expect(trigger().getAttribute('aria-label')).toMatch(
+      /^Who is here: 1 participant; 1 active session/,
     ),
   );
   fireEvent.click(trigger());
@@ -402,8 +402,8 @@ test('presence and session failures hide only their own stale rows', async () =>
   );
   const { client, container } = renderTray();
   await waitFor(() =>
-    expect(trigger().getAttribute('aria-label')).toBe(
-      'Who is here: 1 participant; 1 active session',
+    expect(trigger().getAttribute('aria-label')).toMatch(
+      /^Who is here: 1 participant; 1 active session/,
     ),
   );
   fireEvent.click(trigger());
@@ -442,8 +442,8 @@ test('pending sessions stay unknown while task-room participants are available',
   );
   const { container } = renderTray();
   await waitFor(() =>
-    expect(trigger().getAttribute('aria-label')).toBe(
-      'Who is here: 1 participant; activity not read yet',
+    expect(trigger().getAttribute('aria-label')).toMatch(
+      /^Who is here: 1 participant; activity not read yet/,
     ),
   );
   fireEvent.click(trigger());

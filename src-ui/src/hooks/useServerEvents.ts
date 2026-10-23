@@ -71,7 +71,9 @@ const TURN_COMPLETION_SOURCE = TURN_COMPLETION_NOTIFICATION_SOURCE;
  */
 export function handleNotificationDeliveredToast(
   data: Record<string, unknown>,
+  isCurrent: () => boolean = () => true,
 ): void {
+  if (!isCurrent()) return;
   const category = data.category;
   if (typeof category === 'string') {
     playDeliveredNotificationSound(
@@ -89,7 +91,8 @@ export function handleNotificationDeliveredToast(
   if (!title) return;
   const body = data.body as string | undefined;
   const metadata = data.metadata as Record<string, unknown> | undefined;
-  const showPlainToast = () =>
+  const showPlainToast = () => {
+    if (!isCurrent()) return;
     toastStore.show(
       title + (body ? ` — ${body}` : ''),
       undefined,
@@ -97,6 +100,7 @@ export function handleNotificationDeliveredToast(
       undefined,
       metadata,
     );
+  };
   if (metadata?.envelope) {
     // #2587: attribution + Open, loaded on first enveloped delivery. A chunk
     // that fails to load (offline, a deploy replaced it) must not cost the
@@ -106,6 +110,7 @@ export function handleNotificationDeliveredToast(
         module.showEnvelopeNotificationToast(
           data,
           NOTIFICATION_TOAST_DISPLAY_MS,
+          isCurrent,
         ),
       )
       .catch(showPlainToast);
@@ -123,7 +128,10 @@ export function handleUiNavigate(data: Record<string, unknown>): void {
 }
 
 /** Handlers that receive event data (for side-effects beyond query invalidation) */
-const DATA_HANDLERS: Record<string, (data: Record<string, unknown>) => void> = {
+const DATA_HANDLERS: Record<
+  string,
+  (data: Record<string, unknown>, isCurrent?: () => boolean) => void
+> = {
   [SERVER_EVENTS.NOTIFICATION_DELIVERED]: handleNotificationDeliveredToast,
   [SERVER_EVENTS.PLUGINS_UPDATES_AVAILABLE]: (data) => {
     const count = data.count as number | undefined;
@@ -345,7 +353,10 @@ export function useServerEvents(handlers?: Record<string, EventHandler>) {
           // Also run data handler if one exists for this event
           if (DATA_HANDLERS[event]) {
             try {
-              DATA_HANDLERS[event](JSON.parse(message.data));
+              DATA_HANDLERS[event](
+                JSON.parse(message.data),
+                subscriptionAuthority.isCurrent,
+              );
             } catch {
               /* ignore parse errors */
             }

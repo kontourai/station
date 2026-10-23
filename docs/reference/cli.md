@@ -2269,8 +2269,10 @@ and reports the outcome. It refuses to touch an install whose update is
 unfinished until the service has been started to finish it, or one that needs
 an operator until the restore has succeeded.
 
-A client connected to such a server can start the same update: Settings →
-Connected Station server → **Check for server updates** fetches the signed
+A device connected to such a server can start the same update: open the
+sidebar's **Updates** panel → **Connected server** → **Check for server
+updates**, or the same control in Settings → System → Connected Station
+server. This fetches the signed
 public manifest the install records (`manifestUrl` in
 `.station-release-state.json`) and verifies it against the pinned signing
 keys for the install's ring before it offers a newer version. A manifest older
@@ -2290,6 +2292,16 @@ host; an install that records no public manifest cannot be checked from a
 client. An update that needs an operator is not visible from a client: in that
 state the service runs no Station to answer, so the card keeps waiting and
 names `station service status --instance=<name>` on the host.
+
+The Updates panel keeps app and server actions separate. A desktop app's
+built-in server updates with that app; a separately running service uses the
+server actions above. Browser and mobile devices can use the server section
+too. A staged service offers **Download …**, then **Restart server to update
+to …**, which opens a confirmation naming affected running turns and offers
+**Restart now** or **When idle**. Older direct-update servers require
+**Update and restart** confirmation. Closing the panel does not stop its
+observer from following an accepted update. Automatic-download policies remain
+in Settings and never authorize an automatic restart.
 
 A request can also do half of that (#3851). A **stage** request (`mode:
 "stage"`) is staged the same way and ends as `staged` in

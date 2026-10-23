@@ -146,6 +146,12 @@ export type OutboundDispatchTurn = Omit<
    * this renderer's that no pass holds) never finished writing back.
    */
   sendUnderWay?: true;
+  /**
+   * A held copy (`heldBy`) whose window is proven closed (its Web Lock is no
+   * longer held): no queue will send it, so it waits on the user. Unknown
+   * liveness is not closed.
+   */
+  holderGone?: true;
 };
 
 export interface OutboundDispatchIntent
@@ -976,6 +982,7 @@ function publicTurn(
   entry: QueuedOutboundTurn,
   underWay: ReadonlySet<string> = new Set(),
   ownerGone: ReadonlySet<string> = new Set(),
+  holderGone: ReadonlySet<string> = new Set(),
 ): OutboundDispatchTurn {
   const {
     dispatchBootId: _dispatchBootId,
@@ -996,6 +1003,9 @@ function publicTurn(
     ...(underWay.has(entry.clientTurnId)
       ? { sendUnderWay: true as const }
       : {}),
+    ...(holderGone.has(entry.clientTurnId)
+      ? { holderGone: true as const }
+      : {}),
   });
 }
 
@@ -1004,14 +1014,21 @@ function publicTurn(
  * way is read now. This renderer's own claim counts only while a flush pass
  * of its holds it (one whose write-back failed is not "sending" for ever).
  * Another renderer's counts while it is proven running; one proven gone is
- * released like an unanswered send; an unknown one is neither.
+ * released like an unanswered send; an unknown one is neither. A copy held by
+ * another renderer is marked once that renderer is proven gone.
  */
 async function publicTurns(): Promise<OutboundDispatchTurn[]> {
   const rows = await readStored();
   const self = await rendererBootId();
   const underWay = new Set<string>();
   const ownerGone = new Set<string>();
+  const holderGone = new Set<string>();
   for (const row of rows) {
+    if (row.heldBy && row.heldBy.bootId !== self) {
+      if ((await ownerLiveness(row.heldBy.bootId)) === false)
+        holderGone.add(row.clientTurnId);
+      continue;
+    }
     if (
       row.status !== 'invoking' ||
       row.dispatchBootId === undefined ||
@@ -1026,7 +1043,7 @@ async function publicTurns(): Promise<OutboundDispatchTurn[]> {
     if (live === true) underWay.add(row.clientTurnId);
     else if (live === false) ownerGone.add(row.clientTurnId);
   }
-  return rows.map((row) => publicTurn(row, underWay, ownerGone));
+  return rows.map((row) => publicTurn(row, underWay, ownerGone, holderGone));
 }
 
 /** An `invoking` row no renderer holds a claim on: released for the lookup. */

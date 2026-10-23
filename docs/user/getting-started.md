@@ -354,7 +354,10 @@ runs its own agent loop.
 2. On the **Models** tab choose a detected service or **Add model connection**;
    on the **Engines** tab choose a detected engine or **Add engine**. During
    first run, a detected Engine can be ticked to connect it and create its
-   External agent in the same confirmed action.
+   External agent in the same confirmed action. An engine that is starting for
+   the first time can be reported as still starting rather than failed: its
+   Agent is added if it connects while Station is running; otherwise set it up
+   again later.
 3. Follow its setup action until it reports **Ready**.
 
 For OpenAI's model service, supply its API key. A custom server may use another
@@ -556,9 +559,11 @@ Sidebar utilities. Conversations and composer drafts stay in the chat dock and
 its inbox (⌘D).
 
 Selecting a project in the sidebar opens its workspace and makes it the default
-for new chats. An existing chat stays with its original project. The chat bar's
-**New chats** value lets you choose another default without leaving the workspace.
-On a phone with a long chat title, that control shows only a folder icon.
+for new chats. An existing chat stays with its original project. On a computer,
+the project beside **New** in the dock header shows that default; choose it to
+pick another without leaving the workspace. On a phone, the chat bar's **New
+chats** value does the same, and with a long chat title it shows only a folder
+icon.
 The next sidebar project selection updates that default again.
 
 To give a project an icon, open its settings and choose the icon beside its
@@ -613,6 +618,29 @@ an unsent next stage. Secret questions and tool approvals use the ordinary
 conversation controls.
 
 
+### Station status, updates, and recent messages
+
+Open the Station control in the toolbar, then **Station details**, for connection
+repair, pairing requests, local-service recovery, and recovered-copy information.
+On the full-screen mobile chat surface, tap the Station indicator to open details.
+These local facts remain readable when the selected Station is unavailable.
+Blocking work restrictions also appear in the workspace. Recovered-copy warnings
+stay available until the underlying condition clears; restoring a copy does not
+transfer execution authority.
+
+The sidebar **Updates** control opens one panel for the app and connected server.
+Their actions remain separate. The desktop app update includes its built-in
+server; a separately installed server keeps its own update and restart steps.
+Update policies remain in Settings.
+
+Toasts report short outcomes. Hovering, focusing, or opening their details pauses
+the reading time, as does leaving the app. Extra messages wait behind **View all**.
+**Notifications** includes recent local messages and a clear action, separately
+from the server-backed attention inbox. Only messages explicitly approved for safe
+recall survive a reload, on this device and for the selected Station. Actions and
+raw error details are never saved in that recall. Approvals keep their existing
+durable request flow.
+
 ### Finish setup and return
 
 When no selected Agent can respond, the composer shows a setup helper alongside
@@ -627,7 +655,7 @@ other integrations retain their own authorization instructions.
 If New Chat offers **Connect**, **Set up**, **Edit agent**, or **Set up
 Connections**, use that action to open the owning setup page. The picker steps
 aside while keeping your chosen workspace, Agent, Model, and selected context.
-Use **Return to New Chat** in the setup banner when finished, **Cancel
+Use **Return to New Chat** in the inline setup notice when finished, **Cancel
 return** to stay, or browser Back to return to the page you left. Station rechecks setup before selection;
 that manual return sends no message. For a written Home goal, readiness of the
 selected agent returns you automatically and resumes the original request after
@@ -677,20 +705,27 @@ until Station answers instead.
 Once Station confirms a turn started, a late network error does not queue that
 message again.
 
-Until the agent has a message, its bubble is outlined rather than filled, with a
-short label:
+Until the agent has a message, its bubble is outlined rather than filled. On
+the way there it shows no text, only a small mark beside the bubble (hover it,
+or use a screen reader, for its words):
 
-- **Sending…**, also while another open window of the app is sending it
-- **Received**, which adds **safe to close** when Station keeps running without
-  the app, or **keep the app open** when the app's own Station stops with it
-- **Saved on this device · sends when connected**
-- **No answer yet · sends once Station confirms it never arrived**, after a send
-  that got no answer: when Station can be reached it is asked about the message,
-  which is sent once only if it never arrived
-- **Waiting behind an unsent message**: messages in a chat go in order, so a
+- a turning ring while it is **Sending**, also while another open window of the
+  app is sending it; the outline is dimmed
+- a check once Station has **Received** it. The mark's label adds **Safe to
+  close the app** when Station keeps running without the app, or **Keep the app
+  open** when the app's own Station stops with it. The composer's status pill
+  says **Starting** at the same time.
+- once the agent has it, the bubble fills and the check fades out
+
+When something needs your attention instead, the bubble opens one short line:
+
+- **Sends when connected**: kept on this device until Station can be reached
+- **No answer yet. Resends only if it never arrived.**, after a send that got no
+  answer: when Station can be reached it is asked about the message, which is
+  sent once only if it never arrived
+- **Waits for the unsent message above**: messages in a chat go in order, so a
   message waits until an earlier one that was not sent is retried or discarded
-- **Saved on this device · waits for its Station**, for a message written for
-  another Station
+- **Waits for its own Station**, for a message written for another Station
 - **Not sent**, with **Retry** (the same message again, never a second copy) and
   **Edit** (the text goes back to the composer); **Discard unsent message** is in
   the message's **⋯** menu (on a phone, listed in its sheet)
@@ -701,8 +736,8 @@ short label:
 
 A message that may have reached the agent, or got no answer, is never discarded
 automatically:
-**Discard…**, on the message, in the queued-message notice or in the outbox
-list, states the risk and removes it only after **I checked, discard it**, in
+**Discard…**, on the message, in the queued-message notice or in the pending
+list above the composer, states the risk and removes it only after **I checked, discard it**, in
 every open window. It does not hold back the messages written after
 it.
 

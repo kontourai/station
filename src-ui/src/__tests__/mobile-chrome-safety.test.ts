@@ -26,7 +26,6 @@ function read(relativePath: string): string {
 const SHELL_MOBILE_QUERY =
   '@media (max-width: 768px), (max-height: 540px) and (pointer: coarse)';
 
-const BANNER_CSS = 'components/notifications/BannerHost.css';
 const NOTIFICATION_CSS = 'components/notifications/NotificationContainer.css';
 
 function ruleBodies(css: string, selector: string): string[] {
@@ -39,76 +38,7 @@ function ruleBodies(css: string, selector: string): string[] {
   return bodies;
 }
 
-describe('the connection banner slot bounds without reserving', () => {
-  it('overlays below the toolbar instead of occupying a layout row (station#3308)', () => {
-    // Contract change from the in-flow rail: the host is absolutely
-    // positioned, so presenting a banner never reflows `.main-content`, and
-    // its top offset starts below the toolbar's interactive controls
-    // (`--app-toolbar-total-height` carries the safe-area inset and drops to
-    // it when the toolbar is hidden), so collapsed banners cannot cover them
-    // (#2343).
-    const [host] = ruleBodies(read(BANNER_CSS), '.banner-host');
-    expect(host).toMatch(/position:\s*absolute/);
-    expect(host).toMatch(/top:\s*var\(--app-toolbar-total-height/);
-    expect(host).toMatch(/z-index:\s*var\(--layer-notice\)/);
-    expect(host).toMatch(/pointer-events:\s*none/);
-  });
-
-  it('keeps the overlay out of the chat dock in every side-dock state', () => {
-    // The overlay and `.chat-dock` are siblings in one stacking context and
-    // the dock owns the higher named layer, so a full-width overlay put its
-    // own controls underneath it. Browser proof lives in
-    // tests/connect-reconnect-banner.spec.ts; this only guards deletion.
-    const css = read(BANNER_CSS);
-    for (const rule of [
-      '.app__main:has(> [data-region="right"]) > .banner-host',
-      '.app__main:has(> [data-region="right"].is-collapsed) > .banner-host',
-      '.app__main:has(> [data-region="left"]) > .banner-host',
-      '.app__main:has(> [data-region="left"].is-collapsed) > .banner-host',
-    ]) {
-      const [body] = ruleBodies(css, rule);
-      expect(body, `missing rule: ${rule}`).toBeDefined();
-      expect(body).toMatch(
-        /(left|right):\s*(var\(--region-(left|right)-size|36px)/,
-      );
-    }
-    // Maximized is the active full work surface. Its occupant header/search
-    // must remain reachable, so ordinary notices return below the dock.
-    const [maximized] = ruleBodies(
-      css,
-      '.app__main:has(> .chat-dock.is-maximized) > .banner-host',
-    );
-    expect(maximized).toBeDefined();
-    expect(maximized).toMatch(/z-index:\s*var\(--layer-notice\)/);
-    expect(maximized).not.toMatch(/var\(--layer-dock\)/);
-    expect(maximized).toMatch(/left:\s*0/);
-    expect(maximized).toMatch(/right:\s*0/);
-
-    // Critical chrome is the narrow exception: blocking pairing/credential
-    // states and explicitly critical sources must remain discoverable while
-    // the dock is maximized. Ordinary hosts do not match this selector.
-    const [critical] = ruleBodiesFor(
-      css,
-      '.app__main:has(> .chat-dock.is-maximized) > .banner-host.banner-host--critical-chrome',
-    );
-    expect(critical).toBeDefined();
-    expect(critical).toMatch(/z-index:\s*auto/);
-    const [criticalCard] = ruleBodiesFor(
-      css,
-      '.app__main:has(> .chat-dock.is-maximized) > .banner-host--critical-chrome .banner-host__item--critical-chrome',
-    );
-    expect(criticalCard).toBeDefined();
-    // #1132: the card moved a tier up when the cap joined it above the dock,
-    // so the cap can stay tucked BEHIND the card it hangs off while both
-    // clear the dock. Equal tiers would have painted the cap's border and
-    // background over the card's bottom edge (the cap is a later sibling).
-    // The cap's own half of this contract is pinned in
-    // `critical-chrome-over-maximized-region.test.tsx`.
-    expect(criticalCard).toMatch(
-      /z-index:\s*calc\(var\(--layer-dock\)\s*\+\s*2\)/,
-    );
-  });
-
+describe('the maximized bottom dock fills the available row', () => {
   it('gives a maximized bottom dock one full remaining viewport row', () => {
     const css = read('index.css');
     const [main] = ruleBodies(
@@ -126,177 +56,10 @@ describe('the connection banner slot bounds without reserving', () => {
     expect(dock).toMatch(/grid-row:\s*2\s*;/);
     expect(dock).not.toMatch(/grid-row:\s*2\s*\/\s*-1/);
   });
-
-  it('outranks a bottom-sheet dock, where no column exists to inset into', () => {
-    // The side-dock insets have nothing to bite on when the dock spans the
-    // full width under the content — a bottom dock on desktop, and EVERY dock
-    // mode on mobile — and the resize handle leaves no reliable band above it
-    // either (854px of 900, measured live). Browser proof for the desktop half
-    // lives in tests/connect-reconnect-banner.spec.ts; this guards deletion.
-    const css = read(BANNER_CSS);
-    for (const rule of [
-      '.app__main:has(> [data-region="bottom"]) > .banner-host',
-      '.app__main > .banner-host',
-    ]) {
-      const [body] = ruleBodies(css, rule);
-      expect(body, `missing rule: ${rule}`).toBeDefined();
-      expect(body).toMatch(/z-index:\s*calc\(var\(--layer-dock\)\s*\+\s*1\)/);
-    }
-    // The escalation stays paired with a size cap, or "outranks the dock"
-    // becomes "owns the screen". archive#3432: the cap bounds the inner
-    // `.banner-host__stack` (the scrollable card list), not the host's box;
-    // the next test pins it for the expanded stack and "keeps a viewport cap"
-    // pins it for the connection slot.
-  });
-
-  it("declares the expanded stack's bound/scroll CSS (real scrolling is proven in tests/banner-stack-bound.spec.ts)", () => {
-    // jsdom performs no layout, so this can only confirm the CSS TEXT
-    // declares a bound and `overflow-y: auto` — never that `scrollHeight`
-    // actually exceeds `clientHeight` or that a wheel event moves
-    // `scrollTop`. archive#3432 shipped with exactly this gap: `.banner-host`
-    // is a flex column, so a bound declared on the ANCESTOR made flex
-    // children shrink to fit it instead of overflowing, and this assertion
-    // (then scoped to `.banner-host--expanded` itself) stayed green
-    // throughout — it was never false, just never sufficient. The bound now
-    // lives on `.banner-host__stack`, a dedicated inner wrapper, with
-    // `.banner-host__item` pinned to `flex-shrink: 0` so overflow is real;
-    // tests/banner-stack-bound.spec.ts is what actually proves it scrolls, in
-    // a real browser, for both this state and the collapsed band.
-    const [expanded] = ruleBodies(
-      read(BANNER_CSS),
-      '.banner-host--expanded .banner-host__stack',
-    );
-    expect(expanded).toMatch(/max-height:\s*min\(\d+dvh/);
-    expect(expanded).toMatch(/overflow-y:\s*auto/);
-  });
-
-  it('grants pointer-events only to a genuinely scrollable stack, and never to the host itself (station#3432 round 2)', () => {
-    // The mode rules above (`--connection-slot`/`--expanded`) declare the
-    // bound but must NOT declare `pointer-events` themselves — that opt-in is
-    // conditional in `BannerHost.tsx`, derived from a real
-    // `scrollHeight`/`clientHeight` comparison, because a bounded stack with
-    // nothing to scroll (the common case) must stay click-through. A prior
-    // build made this unconditional here and swallowed clicks over the whole
-    // card area even when there was nothing to scroll (a real regression of
-    // #3308's "transparent unless there's a real control" property).
-    const css = read(BANNER_CSS);
-    for (const rule of [
-      '.banner-host--connection-slot .banner-host__stack',
-      '.banner-host--expanded .banner-host__stack',
-    ]) {
-      const [body] = ruleBodies(css, rule);
-      expect(body, `missing rule: ${rule}`).toBeDefined();
-      expect(body).not.toMatch(/pointer-events:/);
-    }
-    const [scrollable] = ruleBodies(css, '.banner-host__stack--scrollable');
-    expect(scrollable).toMatch(/pointer-events:\s*auto/);
-
-    // And the host's OWN box must never take pointer events, in any mode —
-    // matching `BannerHost.tsx`'s docblock ("the host stays pointer-events:
-    // none... in every state"). A rule "targets the host's own box" when
-    // its rightmost simple selector (after any combinator — `> .banner-host`
-    // inside the dock `:has` rules counts) is `.banner-host` or
-    // `.banner-host--<modifier>`; `.banner-host--connection-slot
-    // .banner-host__stack` does NOT (its rightmost selector is the inner
-    // `__stack`, a genuine descendant), so it is correctly excluded.
-    const ruleBlockPattern = /([^{}]+)\{([^{}]*)\}/g;
-    const hostOnlyPattern = /^\.banner-host(?:--[\w-]+)?$/;
-    let matched = 0;
-    for (const match of css.matchAll(ruleBlockPattern)) {
-      const [, rawSelectors, body] = match;
-      for (const selector of rawSelectors.split(',')) {
-        const rightmost = selector.trim().split(/\s+/).filter(Boolean).pop();
-        if (!rightmost || !hostOnlyPattern.test(rightmost)) continue;
-        matched += 1;
-        expect(
-          body,
-          `${selector.trim()} must never grant pointer-events: auto on the host's own box`,
-        ).not.toMatch(/pointer-events:\s*auto/);
-      }
-    }
-    expect(matched).toBeGreaterThan(0);
-  });
-
-  it('keeps the stack cap tappable with a severity tint per tone', () => {
-    const css = read(BANNER_CSS);
-    const [cap] = ruleBodies(css, '.banner-host__cap');
-    expect(cap).toMatch(/pointer-events:\s*auto/);
-    expect(cap).toMatch(/min-height:\s*44px/);
-    // Theme-token colors only: the cap must read in both themes.
-    expect(cap).toMatch(/background:\s*var\(--bg-secondary\)/);
-    expect(cap).toMatch(/color:\s*var\(--text-secondary\)/);
-    for (const tone of ['warning', 'error', 'blocked', 'info']) {
-      expect(css).toContain(`.banner-host__cap--${tone}`);
-    }
-  });
-
-  it('declares no height floor of any kind', () => {
-    // A floor is indistinguishable from a blank rail when the store is empty,
-    // which pushed content down by 104px on mobile (archive#2268). Both a
-    // fixed `height` and a `min-height` reintroduce that.
-    const bodies = ruleBodies(
-      read(BANNER_CSS),
-      '.banner-host--connection-slot .banner-host__stack',
-    );
-    expect(bodies.length).toBeGreaterThan(0);
-    for (const body of bodies) {
-      expect(body).not.toMatch(/(^|[;{\s])height:/);
-      expect(body).not.toMatch(/min-height:/);
-    }
-  });
-
-  it('keeps a viewport cap so a pile-up cannot own the screen', () => {
-    const [base] = ruleBodies(
-      read(BANNER_CSS),
-      '.banner-host--connection-slot .banner-host__stack',
-    );
-    expect(base).toMatch(/max-height:\s*\d+vh/);
-    expect(base).toMatch(/overflow-y:\s*auto/);
-  });
-
-  it('renders separated severity cards in the priority-ordered stack', () => {
-    const css = read(BANNER_CSS);
-    const [host] = ruleBodies(css, '.banner-host');
-    const [item] = ruleBodies(css, '.banner-host__item');
-    expect(host).toMatch(/gap:\s*\d+px/);
-    expect(item).toMatch(/border-left-width:\s*\d+px/);
-    expect(item).toMatch(/border-radius:\s*\d+px/);
-    expect(item).toMatch(/pointer-events:\s*none/);
-    const [passiveDescendants] = ruleBodies(css, '.banner-host__item-inner *');
-    expect(passiveDescendants).toMatch(/pointer-events:\s*none/);
-    for (const selector of [
-      '.banner-host__action',
-      '.banner-host__dismiss',
-      // The per-banner collapse control is a real control in the same
-      // `pointer-events: none` subtree, so it is held to the same rule.
-      '.banner-host__collapse',
-    ]) {
-      const [control] = ruleBodies(css, selector);
-      expect(control).toMatch(/pointer-events:\s*auto/);
-    }
-    for (const tone of ['warning', 'error', 'blocked', 'info']) {
-      expect(css).toContain(`.banner-host__item--${tone}`);
-    }
-  });
-
-  it('keeps vertical scrolling available while dismissible notices track horizontal touch', () => {
-    const [dismissible] = ruleBodies(
-      read(BANNER_CSS),
-      '.banner-host__item--dismissible',
-    );
-    expect(dismissible).toMatch(/touch-action:\s*pan-y/);
-  });
-
-  it('slides notices in without fading readable text through low contrast', () => {
-    const css = read(BANNER_CSS);
-    const keyframes = css.slice(css.indexOf('@keyframes banner-host-enter'));
-    expect(keyframes).toContain('transform: translateY(-8px)');
-    expect(keyframes).not.toContain('opacity:');
-  });
 });
 
 describe('overlapping chrome has an explicit interaction order', () => {
-  it('keeps banners below the chat dock and notifications above it', () => {
+  it('keeps notifications above the chat dock', () => {
     // The token order itself is owned by layer-tokens.test.ts ("keeps the
     // declared layer order true"); this pins which layer each surface uses.
     const index = read('index.css');
@@ -321,16 +84,6 @@ describe('overlapping chrome has an explicit interaction order', () => {
 });
 
 describe('shell chrome shares one mobile breakpoint', () => {
-  it('adapts the banner host at the shell breakpoint, not its own', () => {
-    const css = read(BANNER_CSS);
-    const queries = [...css.matchAll(/@media[^{]+/g)].map((m) =>
-      m[0].trim().replace(/\s+/g, ' '),
-    );
-    const widthQueries = queries.filter((q) => q.includes('max-width'));
-    expect(widthQueries.length).toBeGreaterThan(0);
-    for (const query of widthQueries) expect(query).toBe(SHELL_MOBILE_QUERY);
-  });
-
   it('matches the breakpoint index.css actually defines', () => {
     expect(read('index.css').replace(/\s+/g, ' ')).toContain(
       SHELL_MOBILE_QUERY,

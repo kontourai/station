@@ -508,11 +508,23 @@ generations, or identity-ledger records. A persisted default Agent is not an ord
 custom Agent: it cannot be renamed, rebound, imported over, or directly deleted.
 
 - A fresh compatible home contains the non-deletable `station` Agent.
-- Every configured external agent-runtime connection owns exactly one persisted
+- Every registered external agent-runtime connection owns exactly one persisted
   same-text default Agent, including command-backed engines. Model-only connections
   own none.
-- Default existence never depends on readiness. Availability is derived separately
-  and returned with an actionable typed reason.
+- A command-backed connection registers its identity and default Agent only once its
+  probe has handshaked. Adding, installing, or editing a connection saves its config
+  first; when the probe fails, the config stays and nothing is registered. The add
+  and install responses carry the probe's status and `lastError` reason, and
+  repeating the same add re-probes and registers it. A first add whose probe ran
+  out of time on a never-connected engine answers `probing` and continues on the
+  cold first-contact budget in the background, outside the configuration queue; a
+  background probe that first handshakes a saved, unregistered connection (that
+  continuation, or the periodic sweep) registers it through the queue only if the
+  saved config still matches the config it probed. Startup probes only registered
+  connections, so after a restart a never-registered connection is checked again
+  only once it is re-added, re-checked, or re-read by a registry reload. After registration, readiness
+  never removes the default: availability is derived separately and returned with
+  an actionable typed reason.
 - A namespace/owner collision fails before mutation. Station never suffixes, adopts,
   or manufactures an alternative ID.
 - Deleting an engine connection removes only its owned default. Custom dependents
@@ -526,13 +538,29 @@ here because leaving it implicit is what produced archive#3662:
 - **`AppConfig.builtinAgentEngineConnectionId` is the authority** for which engine
   runs the reserved `station` identity. It is a Settings field with its own editor
   (`BuiltinEngineRow`), not an Agent field.
+- **An unchosen home records its adoption once.** When nothing has ever been
+  chosen and readiness resolves to exactly one capable engine, that adoption is
+  written to `builtinAgentEngineConnectionId` (`recordAdoptedBuiltinEngine`,
+  `src-server/runtime/bootstrap/builtin-engine-adoption.ts`). Without it the
+  "sensible default" was recomputed on every boot and every reload, so the
+  moment a *second* capable engine became ready the ambiguity rule below
+  withdrew the first: on 2026-10-22 the built-in assistant stopped running on
+  OpenCode because Claude Code's credentials had been repaired. The write is
+  existence-gated — it runs only while the key is absent, and writing removes
+  its own condition — so it converges after one pass and cannot become the
+  reload-writes-its-own-inputs loop archive#3063/#1588 exist to prevent. A home
+  the process cannot write keeps the previous behavior: the adoption stays
+  implicit for that boot.
 - **It is resolved per boot, not persisted onto the Agent.**
   `resolveBuiltinAgentEngineBinding` weighs live readiness, control-plane capability
   and per-connection runtime observation, and fails safe to Station's own engine *for
   that resolution only*. Writing the resolution into `agents/station/agent.json` would
   let one boot with an unready engine destroy the user's stored choice, and would
   freeze out the recovery where the same stored choice starts resolving again the
-  moment evidence arrives (archive#1549).
+  moment evidence arrives (archive#1549). That is why the recorded choice lives in
+  `AppConfig`, where a resolution can never rewrite it, and why an engine that is
+  merely unready or ambiguous resolves to Station for THIS boot without the stored
+  choice being touched.
 - **The persisted record therefore never carries `execution.agentConnectionId`**, and
   that is enforced twice, not merely asserted:
   - **A submitted binding is REFUSED at the service seam.** `AgentService`'s

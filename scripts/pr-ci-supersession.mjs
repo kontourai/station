@@ -128,7 +128,6 @@ function qualifiedOptionalTail(jobs, run) {
     'Fork pull-request smoke',
     'Exact full-diff classification',
     'diff',
-    'merge-integration-full-regression',
     'Merge-queue regression',
     'full-regression',
     'manual-completion-diagnostics',
@@ -141,6 +140,16 @@ function qualifiedOptionalTail(jobs, run) {
           job.status === 'completed' &&
           job.conclusion === 'skipped',
       ),
+    )
+  )
+    return false;
+  // The bounded queue topology omits this old job. If a legacy run has it,
+  // it must still be completed/skipped: an executed corpus is not optional.
+  if (
+    jobs.some(
+      (job) =>
+        job.name === 'merge-integration-full-regression' &&
+        (job.status !== 'completed' || job.conclusion !== 'skipped'),
     )
   )
     return false;
@@ -469,6 +478,76 @@ function sameGroupRun(live, run, workflow, repository) {
   );
 }
 
+// Queue squash commits intentionally do not retain the original PR head ancestry.
+// GitHub's live entry binds the current PR head to its synthetic commit instead.
+async function queueSourceBinding(number, source, run, repository) {
+  const endpoint =
+    process.env.GITHUB_GRAPHQL_URL ||
+    `${process.env.GITHUB_API_URL || 'https://api.github.com'}/graphql`;
+  const url = new URL(endpoint);
+  if (
+    url.protocol !== 'https:' &&
+    !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+  )
+    throw new Error('GitHub GraphQL must use HTTPS');
+  const [owner, name] = repository.split('/');
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    redirect: 'error',
+    signal: AbortSignal.timeout(30_000),
+    headers: {
+      'Content-Type': 'application/json',
+      ...(process.env.GH_TOKEN
+        ? { Authorization: `Bearer ${process.env.GH_TOKEN}` }
+        : {}),
+    },
+    body: JSON.stringify({
+      query: `query($owner:String!,$name:String!,$number:Int!) {
+      repository(owner:$owner,name:$name) { pullRequest(number:$number) {
+        mergeQueueEntry { id state headCommit { oid } baseCommit { oid }
+          pullRequest { number headRefOid baseRefName headRepository { nameWithOwner } }
+        }
+      } }
+    }`,
+      variables: { owner, name, number },
+    }),
+  });
+  if (!response.ok)
+    throw new Error(`GitHub queue authority: HTTP ${response.status}`);
+  const result = await response.json();
+  if (result.errors?.length)
+    throw new Error('GitHub queue authority query failed');
+  const pr = result.data?.repository?.pullRequest;
+  if (pr === null) return null;
+  if (!pr || !Object.hasOwn(pr, 'mergeQueueEntry'))
+    throw new Error('Incomplete GitHub queue authority response');
+  const entry = pr.mergeQueueEntry;
+  const base = run.head_branch.slice(-40);
+  if (
+    !entry ||
+    typeof entry.id !== 'string' ||
+    !entry.id ||
+    !['QUEUED', 'AWAITING_CHECKS', 'MERGEABLE', 'LOCKED'].includes(
+      entry.state,
+    ) ||
+    entry.headCommit?.oid !== run.head_sha ||
+    entry.baseCommit?.oid !== base ||
+    entry.pullRequest?.number !== number ||
+    entry.pullRequest.headRefOid !== source ||
+    entry.pullRequest.baseRefName !== 'main' ||
+    entry.pullRequest.headRepository?.nameWithOwner !== repository
+  )
+    return null;
+  return JSON.stringify([
+    entry.id,
+    run.head_sha,
+    base,
+    number,
+    source,
+    repository,
+  ]);
+}
+
 async function retireReplacedGroups(trigger, repository) {
   const workflow = await github('actions/workflows/ci.yml');
   if (
@@ -477,7 +556,12 @@ async function retireReplacedGroups(trigger, repository) {
   )
     throw new Error('Untrusted merge-candidate workflow');
   const replacement = await github(`actions/runs/${trigger.id}`);
-  if (!sameGroupRun(replacement, trigger, workflow, repository)) return;
+  if (!sameGroupRun(replacement, trigger, workflow, repository)) {
+    console.log(
+      'Merge retirement skipped: trigger no longer matches its live run attempt',
+    );
+    return;
+  }
   const number = Number(GROUP_BRANCH.exec(replacement.head_branch)[1]);
   const owner = await github(`pulls/${number}`);
   if (
@@ -487,16 +571,25 @@ async function retireReplacedGroups(trigger, repository) {
     !SHA.test(owner.head?.sha ?? '')
   )
     return;
-  if ((await groupRef(replacement.head_branch)) !== replacement.head_sha)
+  if ((await groupRef(replacement.head_branch)) !== replacement.head_sha) {
+    console.log(
+      'Merge retirement skipped: replacement queue ref is absent or changed',
+    );
     return;
-  const contains = await github(
-    `compare/${owner.head.sha}...${replacement.head_sha}`,
+  }
+  const authority = await queueSourceBinding(
+    number,
+    owner.head.sha,
+    replacement,
+    repository,
   );
-  if (
-    !['ahead', 'identical'].includes(contains.status) ||
-    contains.merge_base_commit?.sha !== owner.head.sha
-  )
+  if (!authority) {
+    console.log(
+      `Merge retirement skipped for #${number}: no live queue entry binds this candidate to the current PR head`,
+    );
     return;
+  }
+  let requested = 0;
   const runs = [];
   for (const status of ['queued', 'pending', 'in_progress']) {
     runs.push(
@@ -555,10 +648,20 @@ async function retireReplacedGroups(trigger, repository) {
       (await groupRef(run.head_branch)) === run.head_sha
     )
       continue;
+    if (
+      (await queueSourceBinding(number, owner.head.sha, latest, repository)) !==
+      authority
+    ) {
+      console.log(
+        `Merge retirement skipped for #${number}: queue entry changed during reconciliation`,
+      );
+      return;
+    }
     await github(`actions/runs/${run.id}/cancel`, {
       method: 'POST',
       responseBody: 'none',
     });
+    requested++;
     const settled = await github(`actions/runs/${run.id}`);
     const terminal =
       sameGroupRun(settled, run, workflow, repository) &&
@@ -567,6 +670,9 @@ async function retireReplacedGroups(trigger, repository) {
       `Replaced merge candidate #${number}: run ${run.id}/${run.run_attempt}, ${run.head_sha}; replacement ${replacement.id}/${replacement.run_attempt}, ${replacement.head_sha}; normal cancellation ${terminal ? `terminal ${settled.conclusion}` : 'requested, terminal state not verified'}`,
     );
   }
+  console.log(
+    `Merge retirement #${number}: ${requested} normal cancellation request(s); candidates with live refs or mismatched identities were preserved`,
+  );
 }
 
 async function main() {

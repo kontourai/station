@@ -60,6 +60,7 @@ import {
   parseSessionWorkItemAssociation,
   type SessionWorkItemAssociation,
 } from '@kontourai/station-contracts/session-work-item';
+import { parseStationControlRefusal } from '@kontourai/station-contracts/station-control-refusal';
 import { parseTenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import { htmlReplyReference } from '@kontourai/station-shared/html-reply-document';
@@ -189,6 +190,10 @@ import {
   createAdoptionLedger,
 } from './adoption-ledger.js';
 import {
+  type AgentScheduleStore,
+  createSqliteAgentScheduleStore,
+} from './agent-schedule.js';
+import {
   AttachmentBlobStore,
   attachmentBlobRefFor,
   isAttachmentBlobRef,
@@ -287,10 +292,12 @@ import type {
 } from './session-query-module.js';
 import {
   createSessionTurnBoundaryAuthority,
+  ORCHESTRATION_SHUTDOWN_EXIT_REASON,
   releaseSessionTurnBoundaryOwner,
   SESSION_START_INDETERMINATE_CODE,
   type SessionTurnBoundaryAuthority,
   type SessionTurnBoundaryRecord,
+  SHUTDOWN_RETAINED_BOUNDARIES,
 } from './session-turn-boundary.js';
 import {
   createSessionWorkItemAdmissionRegistry,
@@ -334,6 +341,10 @@ import {
   type TurnDeduplicator,
 } from './turn-deduplicator.js';
 import {
+  createSqliteUsageLimitResumeChoices,
+  type UsageLimitResumeChoices,
+} from './usage-limit-resume-choices.js';
+import {
   createVoiceTurnRuns,
   releaseVoiceTurnOwner,
   type VoiceTurnRuns,
@@ -372,7 +383,22 @@ const SESSION_TURN_TERMINAL_RETIREMENT_PREDICATE = `state NOT IN ('lifecycle', '
                  AND NOT (event.method = 'runtime.error' AND event.provider = 'codex' AND COALESCE(json_extract(event.payload, '$.retriable'), 0) = 1)
                  AND (
                    (
-                     (event.method = 'session.exited'
+                     ((event.method = 'session.exited'
+                       -- Station's own shutdown leaves a turn that may have
+                       -- reached its engine for the next boot's recovery (see
+                       -- the constant); every other row, a session start or a
+                       -- turn that never invoked among them, retires.
+                       AND (COALESCE(json_extract(event.payload, '$.reason'), '')
+                              != '${ORCHESTRATION_SHUTDOWN_EXIT_REASON}'
+                            OR NOT ((${SHUTDOWN_RETAINED_BOUNDARIES.boundaryIdPrefixes
+                              .map(
+                                (prefix) =>
+                                  `substr(orchestration_turn_boundaries.boundary_id, 1, ${prefix.length}) = '${prefix}'`,
+                              )
+                              .join(' OR ')})
+                              AND orchestration_turn_boundaries.state IN (${SHUTDOWN_RETAINED_BOUNDARIES.states
+                                .map((state) => `'${state}'`)
+                                .join(', ')}))))
                       OR (event.method = 'runtime.error' AND event.turn_id IS NULL
                           AND json_extract(event.payload, '$.invocationId') IS NULL
                           AND COALESCE(json_extract(event.payload, '$.code'), '') != ?))
@@ -464,11 +490,29 @@ export type DeclaredOutputDescriptorPage = {
 /** Store-authenticated continuation state for the metadata-only outputs view. */
 export type DeclaredOutputCursor = {
   sessionId: string;
+  turnId?: string;
   authority: string;
   highWater: number;
   sequence: number;
   declarationId: string;
 };
+
+export type AnswerInventoryLineageRead =
+  | {
+      status: 'found';
+      decisions: readonly {
+        eventId: string;
+        requestId: string;
+        status: 'accepted' | 'declined' | 'cancelled' | 'pending';
+      }[];
+      delegations: readonly {
+        eventId: string;
+        toolCallId: string;
+        childSessionId: string;
+      }[];
+      partialDelegations: boolean;
+    }
+  | { status: 'corrupt' };
 
 /** Store-authenticated cursor for a folded Session-inventory group. */
 export type SessionInventoryCursor = {
@@ -1727,9 +1771,18 @@ function snapshotEvent(
       )
         ? htmlReplyReference(payload.output)
         : undefined;
+    // A station-control refusal is the tool's whole result, as JSON: the
+    // excerpt below no longer parses, so its code and sentence ride along
+    // whole (bounded), read from the full text before the cut.
+    const toolName =
+      typeof payload.toolName === 'string' ? payload.toolName : undefined;
+    const refusal =
+      parseStationControlRefusal(toolName, payload.error) ??
+      parseStationControlRefusal(toolName, payload.output);
     snapshotPayload = {
       ...payload,
       ...(pageReference ? { htmlReply: pageReference } : {}),
+      ...(refusal ? { stationControlRefusal: refusal } : {}),
       ...(error ? { error: error.text } : {}),
       ...(output ? { output: output.text } : {}),
     };
@@ -2101,6 +2154,8 @@ export class EventStore {
   private sessionControlKeys?: SessionControlRequestKeys;
   private delegationResults?: DelegationResultStore;
   private threadInbox?: ThreadInboxStore;
+  private agentSchedule?: AgentScheduleStore;
+  private resumeChoices?: UsageLimitResumeChoices;
   private mcpAppResourceResolver?: (toolRef: string) => string | undefined;
 
   /** Bootstrap-owned reader of already-open catalogs; never connects a server. */
@@ -2546,7 +2601,8 @@ export class EventStore {
         !parsed ||
         typeof parsed !== 'object' ||
         Array.isArray(parsed) ||
-        Object.keys(parsed).length !== 5 ||
+        (Object.keys(parsed).length !== 5 &&
+          Object.keys(parsed).length !== 6) ||
         !Object.keys(parsed).every((key) =>
           [
             'sessionId',
@@ -2554,12 +2610,14 @@ export class EventStore {
             'highWater',
             'sequence',
             'declarationId',
+            'turnId',
           ].includes(key),
         )
       )
         return undefined;
       const cursor = parsed as Record<string, unknown>;
       return typeof cursor.sessionId === 'string' &&
+        (cursor.turnId === undefined || typeof cursor.turnId === 'string') &&
         typeof cursor.authority === 'string' &&
         Number.isSafeInteger(cursor.highWater) &&
         (cursor.highWater as number) >= 0 &&
@@ -2568,6 +2626,9 @@ export class EventStore {
         typeof cursor.declarationId === 'string'
         ? {
             sessionId: cursor.sessionId,
+            ...(typeof cursor.turnId === 'string'
+              ? { turnId: cursor.turnId }
+              : {}),
             authority: cursor.authority,
             highWater: cursor.highWater as number,
             sequence: cursor.sequence as number,
@@ -2865,6 +2926,76 @@ export class EventStore {
       default:
         throw new Error('Unsupported Session inventory event');
     }
+  }
+
+  /** Exact-turn, descriptor-only decisions and explicit child Session joins. */
+  readAnswerInventoryLineage(
+    threadId: string,
+    turnId: string,
+  ): AnswerInventoryLineageRead {
+    const rows = this.db
+      .prepare(`SELECT id, method,
+      json_extract(payload, '$.requestId') AS request_id,
+      json_extract(payload, '$.status') AS status,
+      json_extract(payload, '$.delta.kind') AS delta_kind,
+      json_extract(payload, '$.delta.item.reporterThreadId') AS reporter,
+      json_extract(payload, '$.delta.item.parent.turnId') AS parent_turn,
+      json_extract(payload, '$.delta.item.parent.toolCallId') AS tool_call_id,
+      json_extract(payload, '$.delta.item.result.handle.kind') AS handle_kind,
+      json_extract(payload, '$.delta.item.result.handle.threadId') AS child_session
+      FROM orchestration_events WHERE thread_id = ? AND turn_id = ?
+      AND method IN ('request.resolved', 'child-work.updated')
+      ORDER BY sequence, id LIMIT 1001`)
+      .all(threadId, turnId) as Record<string, unknown>[];
+    if (
+      rows.length > 1000 ||
+      Buffer.byteLength(JSON.stringify(rows)) > 128 * 1024
+    )
+      return { status: 'corrupt' };
+    const decisions: Extract<
+      AnswerInventoryLineageRead,
+      { status: 'found' }
+    >['decisions'][number][] = [];
+    const delegations: Extract<
+      AnswerInventoryLineageRead,
+      { status: 'found' }
+    >['delegations'][number][] = [];
+    let partialDelegations = false;
+    for (const row of rows) {
+      if (typeof row.id !== 'string') return { status: 'corrupt' };
+      if (row.method === 'request.resolved') {
+        if (typeof row.request_id !== 'string') return { status: 'corrupt' };
+        decisions.push({
+          eventId: row.id,
+          requestId: row.request_id,
+          status:
+            row.status === 'approved'
+              ? 'accepted'
+              : row.status === 'denied'
+                ? 'declined'
+                : row.status === 'cancelled' || row.status === 'expired'
+                  ? 'cancelled'
+                  : 'pending',
+        });
+      } else if (row.delta_kind === 'upsert') {
+        if (
+          row.reporter !== threadId ||
+          row.parent_turn !== turnId ||
+          row.handle_kind !== 'session' ||
+          typeof row.child_session !== 'string' ||
+          typeof row.tool_call_id !== 'string'
+        ) {
+          partialDelegations = true;
+          continue;
+        }
+        delegations.push({
+          eventId: row.id,
+          toolCallId: row.tool_call_id,
+          childSessionId: row.child_session,
+        });
+      }
+    }
+    return { status: 'found', decisions, delegations, partialDelegations };
   }
 
   readSessionInventoryHighWater(threadId: string): number {
@@ -5011,6 +5142,7 @@ export class EventStore {
    */
   listDeclaredOutputDescriptors(input: {
     threadId: string;
+    turnId?: string;
     highWater?: number;
     after?: { sequence: number; declarationId: string };
     limit: number;
@@ -5070,6 +5202,7 @@ export class EventStore {
            FROM orchestration_declared_outputs o
            INNER JOIN orchestration_events e ON e.id = o.event_id
           WHERE o.thread_id = ? AND e.sequence <= ?
+            AND (? IS NULL OR o.turn_id = ?)
             AND (? IS NULL OR e.sequence > ?
               OR (e.sequence = ? AND o.declaration_id > ?))
           ORDER BY e.sequence ASC, o.declaration_id ASC
@@ -5078,6 +5211,8 @@ export class EventStore {
       .all(
         input.threadId,
         highWater,
+        input.turnId ?? null,
+        input.turnId ?? null,
         input.after?.sequence ?? null,
         input.after?.sequence ?? null,
         input.after?.sequence ?? null,
@@ -12655,6 +12790,18 @@ export class EventStore {
         ),
     );
     return this.threadInbox;
+  }
+
+  /** #3157: a person's resume choice per usage-limit stop. */
+  usageLimitResumeChoices(): UsageLimitResumeChoices {
+    this.resumeChoices ??= createSqliteUsageLimitResumeChoices(this.db);
+    return this.resumeChoices;
+  }
+
+  /** Agent wake-ups and job proposals (`agent-schedule.ts`). */
+  agentScheduleStore(): AgentScheduleStore {
+    this.agentSchedule ??= createSqliteAgentScheduleStore(this.db);
+    return this.agentSchedule;
   }
 
   /** A pending steer claim is never reclaimed: its engine may have accepted it. */

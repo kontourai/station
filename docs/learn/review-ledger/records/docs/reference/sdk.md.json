@@ -714,6 +714,8 @@
 
     "packages/sdk/src/__tests__/taskGraph-invalidation.test.tsx",
 
+    "packages/sdk/src/engine-sign-in.ts",
+
     "packages/sdk/src/server-events.ts"
   ],
 

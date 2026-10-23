@@ -221,8 +221,8 @@ rebuilds for the same reason. The ledger is read from `origin/main`, not the
 checkout, because rows land on `main` after the ship: the checkout at the
 source SHA can never contain the row for its own marker. A missing ref or
 malformed ledger fails the plan closed rather than reading as "no rows".
-A TestFlight failure reddens the Nightly run and opens the `main-health`
-tracker, but never blocks Android/macOS finality, the ledger, or the marker.
+A required TestFlight upload or internal-delivery failure reddens the Nightly
+run and opens the `main-health` tracker, but never blocks Android/macOS finality, the ledger, or the marker.
 The iOS matrix cell keeps `NOT_VERIFIED` evidence until a processed TestFlight
 channel receipt exists (#1016).
 
@@ -673,7 +673,12 @@ candidate source SHA and IPA digest. A new upload records their association
 with the upload operation; a reconciled pre-existing build instead records
 `providerSourceSha: NOT_VERIFIED` and no provider IPA digest. Never attribute
 a newly rebuilt candidate to that existing provider binary. Group membership
-has its own readback receipt; physical installation remains separate.
+has its own readback receipt; physical installation remains separate. Ordinary
+Nightly additionally opts into external-group assignment, automatic tester
+notifications and TestFlight beta-review submission. This external step is
+non-blocking and retains its own warning/summary and provider receipt; missing
+setup or an Apple rejection does not fail required internal delivery. Internal
+cohort authority tags never opt in. See [Nightly external setup](mobile-release.md#nightly-external-testflight-distribution).
 
 ## Stage, inspect, publish, and roll back
 

@@ -95,7 +95,8 @@ that take a path are not covered by it.
 Choosing a command for Station to run takes the same authority, decided by the
 same check, and answers `403` with `code: 'command-not-granted'` and nothing saved
 or run. It covers exactly: `POST /acp/connections`, and `PUT /acp/connections/:id`
-when `command`, `args` or `cwd` change; `POST /integrations`, and
+when `command`, `args` or `cwd` change; `POST /acp/registry/:id/install` for a
+public agent registry listing; `POST /integrations`, and
 `PUT /integrations/:id`, when `command` or `args` are set or change; `POST
 /api/projects/:slug/flow/runs/:runId/evidence/command`; and `PUT /config/app`
 when `terminalShell` changes (an agent's station-control call may not change it
@@ -898,6 +899,20 @@ Standalone `/layouts` endpoints were removed during project-layout convergence.
 Use the [Project layout routes](../../src-server/routes/projects/projects.ts)
 under `/api/projects/:slug/layouts`, or the separate [personal Board](#personal-boards)
 routes for principal-owned layouts.
+
+Project layouts may declare `workspaceBinding: 'repository'`. The server derives
+`config.workingDirectory` from the owning Project (or the named `config.repoId`),
+never from a second persisted path in the layout. A named repository with no
+local binding yields no path; it does not fall back to another repository.
+Create and update reject a supplied path that differs from the derived value;
+an equal value is accepted and stripped before storage. This declaration grants
+no filesystem or terminal permission.
+
+A stored `type: 'coding'` layout remains repository-bound without an installed
+Coding plugin. Reads project the explicit binding; its next write preserves it,
+including when its type changes. Other layouts keep their own configuration
+unless they declare the binding. Request and persisted-record parsers reject
+unknown bindings and `null`.
 
 
 ---
@@ -3274,6 +3289,37 @@ union, not both. Other schedule variants are `{kind: "every", everyMs}` and
 apply prompt limits and schedule validation. The response is
 `{success: true, data: {output}}`, where output is the provider's result text;
 it is not proof that a future run completed.
+
+A person approves an agent's job proposal (`propose_job`) by sending this
+route the proposed job with its `proposalId`. The route then creates the job
+only when the request is a person's own (a request that may be an agent's
+answers 403 `person-approval-required`), the person may send to the
+proposal's conversation (404 `job_proposal_not_found` otherwise), the
+proposal is still open (409 `job_proposal_settled`), and the body is exactly
+the proposed `name`, `schedule`, `prompt` and `agent` with nothing more (409
+`job_proposal_mismatch`). Admission claims the proposal (a Decline after it
+changes nothing); the route then creates the job and records the proposal
+approved, or gives it back to `open` if creating it failed. The
+`proposalId` is never passed to the scheduler. A hosted Station approves no
+proposal (404).
+
+### Agent check-backs and job proposals in a conversation
+
+`GET /api/orchestration/agent-schedule/:conversationId` answers a
+`ConversationAgentSchedule`: the conversation's waiting check-backs
+(`wakeUps`), its open job proposals, up to 20 jobs approved from it (`jobs`,
+by name), and a usage-limit stop waiting for a known reset
+(`usageLimitResume`). It needs a person who may read every Session of the
+conversation.
+`POST .../wake-ups/:wakeUpId/cancel` (or `/decline`, the same act) cancels a
+check-back, `POST .../wake-ups/:wakeUpId/approve` approves one waiting for a
+person (`needs_approval`; 409 `wake_up_settled` once it is decided or due,
+503 `wake_up_unavailable` while check-back delivery is stopped, as during
+shutdown; it stays `needs_approval`),
+and `POST .../job-proposals/:proposalId/decline` declines a proposal; each
+needs a person who may send to the conversation, and answers 404 to anyone
+else. An agent's request reaches none of them. The agent's own side is the station-control tools in
+[the self-configuring agent guide](../guides/self-configuring-agent.md#wake-an-agent-later).
 
 ### Update Job
 

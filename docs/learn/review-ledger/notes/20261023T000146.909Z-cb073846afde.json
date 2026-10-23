@@ -1,0 +1,7 @@
+{
+  "revision": "ad1dc493631f4b6d2bcfb9fe7300dae252ba6360",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed the complete relationship guide against the connections.md proxy-readiness delta and actual CodexAdapter.getPrerequisites, resolveConnectionLaunch, resolveEngineProxy and engineProxyLaunch callers. The configured proxy injects its provider key and satisfies local Engine authentication without a separate Codex CLI login; it does not pair a Device, enroll a Station peer, grant scopes or move execution/persistence. Existing device/SSH/delegation/fleet-inference direction, credential ownership, membership ceilings and qualification limits remain accurate. No prose correction is needed. This is the specific changed-input source review, not renewed historical provider/device execution or a blanket ledger refresh.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

@@ -5,6 +5,7 @@ import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-t
 import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollout-session-source.js';
 import { GrokSessionSource } from '../../providers/sessions/grok-session-source.js';
 import { OpenCodeSessionSource } from '../../providers/sessions/opencode-session-source.js';
+import { engineSignIn } from '../../services/acp/engine-sign-in.js';
 import { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
 import type { RelayInvitationOwner } from '../../services/connections/relay-invitation-owner.js';
 import { createApplicationSessionRuntime } from '../../services/identity/application-session-runtime.js';
@@ -284,6 +285,7 @@ export async function loadStablePreToolPolicySpec(options: {
 }
 
 import { primeEnginePrerequisites } from './engine-prerequisite-priming.js';
+import { recordAdoptedBuiltinEngine } from './builtin-engine-adoption.js';
 import { adoptDetectedNativeEngines } from './native-engine-adoption.js';
 import { isHostedTenantExecutionRequired } from './runtime-tenant-context.js';
 
@@ -1782,11 +1784,22 @@ export class StationRuntime {
       ) !== null;
 
     const explicitConnectionId = appConfig.builtinAgentEngineConnectionId;
-    return resolveBuiltinAgentEngineBinding({
+    const binding = resolveBuiltinAgentEngineBinding({
       explicitConnectionId,
       stationChatReady,
       readyExternalEngines,
     });
+    // Record an adoption so the choice stops being a per-boot guess. Reading
+    // readiness again must never take back an engine that is already the
+    // built-in agent's — see the recorder's docblock for the failure this
+    // closes.
+    await recordAdoptedBuiltinEngine({
+      configLoader: this.configLoader,
+      explicitConnectionId,
+      binding,
+      logger: this.logger,
+    });
+    return binding;
   }
 
   /**
@@ -4131,6 +4144,7 @@ export class StationRuntime {
     await attempt(() => this.discordGatewayService.stop());
     await attempt(() => this.pluginDraftService?.dispose());
     this.pluginDraftService = undefined;
+    await attempt(() => engineSignIn()?.dispose());
     // #2443: route composition may have built these before the failure. The
     // same order as shutdown(): browsers, then device sessions (their
     // producers read the hub the toolchain stops), SSH device hosts, the
@@ -4613,6 +4627,10 @@ export class StationRuntime {
       agentHooksMap: this.agentHooksMap,
       approvalRegistry: this.approvalRegistry,
       configLoader: this.configLoader,
+      // The projected read seam: the reserved Station identity's engine
+      // binding lives in the runtime, not in its stored record (§7.1.1), so
+      // every reader — including the tool-catalog route — must see it.
+      loadProjectedAgent: (slug) => this.agentService.getAgent(slug),
       get appConfig() {
         return runtime.appConfig;
       },
@@ -5172,6 +5190,12 @@ export class StationRuntime {
     try {
       this.pluginDraftService?.dispose();
       this.pluginDraftService = undefined;
+    } catch (error) {
+      failures.push(error);
+    }
+    try {
+      // A running engine sign-in owns a child process or a host terminal.
+      engineSignIn()?.dispose();
     } catch (error) {
       failures.push(error);
     }

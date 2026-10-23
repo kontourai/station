@@ -57,7 +57,7 @@ export function useNewChatSetupReturn({
     current.current = null;
     pending.controller.abort();
     setJourney(null);
-    bannerStore.dismiss(id, { reason: 'system' });
+    bannerStore.dismiss(id);
     callbacks.current.onCancel();
   }, [id]);
 
@@ -101,7 +101,7 @@ export function useNewChatSetupReturn({
             }
             current.current = null;
             setJourney(null);
-            bannerStore.dismiss(id, { reason: 'system' });
+            bannerStore.dismiss(id);
             callbacks.current.onResume();
           },
           (error: unknown) => {
@@ -112,7 +112,7 @@ export function useNewChatSetupReturn({
             }
             current.current = null;
             setJourney(null);
-            bannerStore.dismiss(id, { reason: 'system' });
+            bannerStore.dismiss(id);
             callbacks.current.onResume(
               error instanceof Error
                 ? error
@@ -171,7 +171,6 @@ export function useNewChatSetupReturn({
       id,
       priority: BANNER_PRIORITY.setup,
       tone: 'info',
-      userInitiated: true,
       message: journey.revalidating
         ? `Checking ${workflowLabel} setup before returning.`
         : `Your ${workflowLabel} draft is waiting while you finish setup.`,
@@ -215,7 +214,7 @@ export function useNewChatSetupReturn({
           } else {
             current.current = null;
             setJourney(null);
-            bannerStore.dismiss(id, { reason: 'system' });
+            bannerStore.dismiss(id);
             callbacks.current.onResume(
               new Error(
                 'Could not open setup. Your draft is retained; try again.',
@@ -262,7 +261,7 @@ export function useNewChatSetupReturn({
     () => () => {
       current.current?.controller.abort();
       current.current = null;
-      bannerStore.dismiss(id, { reason: 'system' });
+      bannerStore.dismiss(id);
     },
     [id],
   );

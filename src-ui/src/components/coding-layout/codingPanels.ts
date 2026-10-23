@@ -1,15 +1,4 @@
-import type {
-  CodingSessionPanels,
-  CodingSessionPanelsRecord,
-} from '@kontourai/station-contracts/device-settings';
-import { useCallback, useEffect, useState } from 'react';
-import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
-import {
-  CLOSED_CODING_SESSION_PANELS,
-  readCodingSessionPanels,
-  writeCodingSessionPanels,
-} from '../../lib/coding-panels-record';
-import { deviceSettingsStore } from '../../lib/device-settings-store';
+import { useEffect, useState } from 'react';
 import { TRANSCRIPT_MIN_WIDTH } from '../chat/transcriptMeasure';
 
 /**
@@ -203,37 +192,4 @@ export function resizeCodingPanelFromKeyboard(
   if (key === 'End') return options.max;
   if (key === 'Enter') return clamp(options.reset);
   return null;
-}
-
-/**
- * The session's remembered panels, and a write-through to the device
- * setting. The record is one device setting (`codingPanels`), read through
- * the same store every other per-device UI state uses, so it survives a
- * reload and is bounded there.
- */
-export function useCodingSessionPanels(sessionKey: string): {
-  panels: CodingSessionPanels;
-  update(patch: Partial<Omit<CodingSessionPanels, 'at'>>): void;
-} {
-  const record: CodingSessionPanelsRecord = useDeviceSettings().codingPanels;
-  const panels = sessionKey
-    ? readCodingSessionPanels(record, sessionKey)
-    : CLOSED_CODING_SESSION_PANELS;
-  const update = useCallback(
-    (patch: Partial<Omit<CodingSessionPanels, 'at'>>) => {
-      if (!sessionKey) return;
-      // Read the store at write time, not the render's copy: two writes in
-      // one commit (a toggle and the size it restores) must both land.
-      const current = deviceSettingsStore.get('codingPanels');
-      const next = writeCodingSessionPanels(
-        current,
-        sessionKey,
-        patch,
-        Date.now(),
-      );
-      if (next !== current) deviceSettingsStore.set('codingPanels', next);
-    },
-    [sessionKey],
-  );
-  return { panels, update };
 }

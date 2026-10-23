@@ -14,6 +14,7 @@ import type {
   SessionTransitionReason,
   SessionTransitionSource,
 } from './session-lifecycle.js';
+import type { StationControlRefusalView } from './station-control-refusal.js';
 import type {
   WorkflowNextActionStatus,
   WorkflowPhase,
@@ -642,6 +643,12 @@ export interface ToolOutputReceipt {
 export interface ToolCompletedEvent extends CanonicalRuntimeEventBase {
   /** Bounded page display reference retained independently of output excerpts. */
   htmlReply?: HtmlReplyReference;
+  /**
+   * A station-control tool's refusal, read from its whole result before a
+   * history window cut it to an excerpt (which no longer parses). Bounded;
+   * see `station-control-refusal.ts`.
+   */
+  stationControlRefusal?: StationControlRefusalView;
   method: 'tool.completed';
   /** Station stamps this from an already-open tool definition, never from result metadata. */
   mcpAppResourceUri?: string;

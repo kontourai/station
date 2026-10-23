@@ -7,16 +7,15 @@ describe('application provider order', () => {
   // subtree, so every activation transition unmounted the open
   // access-request flow. It now mounts ABOVE `AuthorityQueryProvider` in
   // `RecoveryQueryBoundary` while the application shell stays INSIDE it.
-  // The preserved core of the old assertion is the single toast provider
-  // covering BOTH lifetimes — toasts must survive a connection switch —
-  // plus navigation above both (the recovery shell navigates).
-  test('keeps recovery and the application shell inside one toast provider, split by the authority boundary', () => {
+  // One stable toast provider covers both lifetimes and fences notices by
+  // selected Station. Navigation stays above both (the recovery shell navigates).
+  test('keeps recovery and the application shell inside one scoped toast provider, split by the authority boundary', () => {
     const source = readFileSync(
       new URL('../main.tsx', import.meta.url),
       'utf8',
     );
     const navOpen = source.indexOf('<NavigationProvider>');
-    const toastOpen = source.indexOf('<ToastProvider>');
+    const toastOpen = source.indexOf('<ScopedToastProvider>');
     const recoveryOpen = source.indexOf('<RecoveryQueryBoundary>');
     const onboardingBoundary = source.indexOf('id="connection-recovery"');
     const recoveryClose = source.indexOf('</RecoveryQueryBoundary>');
@@ -24,7 +23,7 @@ describe('application provider order', () => {
     const authorityOpen = source.search(/<AuthorityQueryProvider\s/u);
     const authorityClose = source.indexOf('</AuthorityQueryProvider>');
     const app = source.indexOf('<App />');
-    const toastClose = source.indexOf('</ToastProvider>');
+    const toastClose = source.indexOf('</ScopedToastProvider>');
 
     expect(navOpen).toBeGreaterThan(-1);
     expect(toastOpen).toBeGreaterThan(navOpen);
@@ -38,7 +37,8 @@ describe('application provider order', () => {
     expect(authorityClose).toBeGreaterThan(app);
     // One toast provider covers both lifetimes.
     expect(toastClose).toBeGreaterThan(authorityClose);
-    expect(source.indexOf('<ToastProvider>', toastOpen + 1)).toBe(-1);
+    expect(source.indexOf('<ScopedToastProvider>', toastOpen + 1)).toBe(-1);
+    expect(source.match(/<ToastProvider(?:\s|>)/g)).toHaveLength(1);
   });
 
   // Every placement action reaches the region model through
