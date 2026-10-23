@@ -1057,3 +1057,18 @@ listener and adapter session count, not arbitrary native descendants. Network
 and shared-write zero counters in the old harness are declarations rather than
 independently monitored measurements. No previous mutation is relabeled as a
 current-head execution.
+
+At `6b173a7e95f`, a separate foreground native control returns a synthetic HTTP
+400 from the loopback Messages endpoint for the child. Four physical requests
+are observed: parent start, two child requests, then the parent after the error.
+Station retains one failed child with `provider-error`; the parent's tool result
+has `is_error: true` and the exact spawning tool-call ID. No authored answer or
+`tool-return` is fabricated. Twelve retained-evidence checks and three
+fresh-process, zero-adapter recovery checks pass, including the refusal transcript,
+failed/error provenance and foreign-reader denial. This does not establish a
+single physical attempt, external-provider behavior or billing. The harness
+records source hashes before adapter execution; follow-up comparison matches the
+pinned commit. SDK version is recorded, but installed SDK bytes are not
+independently hashed. Service shutdown, listener closure and zero remaining
+adapter sessions are recorded; network/write counters retain the declaration
+limit above.
