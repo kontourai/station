@@ -7,7 +7,7 @@
 
   "summary": "Accepted-direction record of the 2026-10-03 owner decisions for #2875: preparation as a phase of one #485 attempt, a new project-portable-prepared workspace variant with a handshake capability, a git-commit adapter chosen by resource kind, the disclosed version race, scope-gated result return as a later slice, and conservative slice 1 defaults for the undecided policies.",
 
-  "limits": "Design, not shipped behavior beyond slice 1. Current-state claims are source inspection at c2c67c2f25. Slice 1 behavior is established only by the tests named in the implementing change; a genuinely older receiver build is not exercised.",
+  "limits": "Design beyond implemented slices 1 and 3. Original owner/current-state observations remain dated to c2c67c2f25. CLI prepared-target construction and receiver-local lookup have source support; historical slice 1 test/live evidence is not renewed by this review. A genuinely older receiver build is not exercised.",
 
   "sources": [
     "packages/contracts/src/execution-target.ts",

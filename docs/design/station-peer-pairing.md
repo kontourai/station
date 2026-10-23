@@ -432,9 +432,11 @@ store.
   For a write (a message, a response, an interrupt), the report says the
   change may still have been applied. Whether a target is this Station or
   another one is decided by the forwarder-minted target's kind, never by its
-  address. Another
-  Station's refusal reaches the caller as this Station's fixed copy and the
-  HTTP status, never its own words or code. Other server-side peer clients
+  address. Ordinary remote refusals reach the caller through this Station's
+  fixed copy and HTTP status. Portable delegation additionally preserves its
+  closed known refusal codes with local fixed copy, and attempt duplicates
+  preserve their closed 409 outcomes. Arbitrary peer words and unknown codes
+  are not forwarded. Other server-side peer clients
   (session analytics, remote message search, home-authority room binding,
   the fleet probe) still read the peer store in-process for their own calls;
   they are not routed through this seam. `GET /api/environments/peers/:id/credential`, the
