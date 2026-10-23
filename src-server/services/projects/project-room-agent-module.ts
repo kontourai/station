@@ -37,13 +37,16 @@ export interface ProjectRoomAgentExecution {
   launch(capture: ProjectRoomAgentCapture, recheck: () => void): Promise<void>;
   answer(
     capture: ProjectRoomAgentCapture,
-  ): Promise<{ turnId: string; text: string } | null>;
+  ): Promise<{ turnId: string; text: string } | { failed: true } | null>;
   cancel(capture: ProjectRoomAgentCapture): Promise<void>;
 }
-export type ProjectRoomAgentHandle = Omit<
-  ProjectRoomAgentRequest,
-  'sessionId' | 'executionCorrelationId'
->;
+export type ProjectRoomAgentFailure =
+  | 'agent_unavailable'
+  | 'launch_uncertain'
+  | 'execution_failed';
+export type ProjectRoomAgentHandle = {
+  failure?: ProjectRoomAgentFailure;
+} & Omit<ProjectRoomAgentRequest, 'sessionId' | 'executionCorrelationId'>;
 const publicHandle = ({
   sessionId: _session,
   executionCorrelationId: _correlation,
@@ -64,6 +67,16 @@ export class ProjectRoomAgentModule {
     db.exec(
       'CREATE TABLE IF NOT EXISTS project_room_agent_captures (request_id TEXT PRIMARY KEY, record TEXT NOT NULL) STRICT',
     );
+    db.exec(
+      'CREATE TABLE IF NOT EXISTS project_room_agent_failures (request_id TEXT PRIMARY KEY, code TEXT NOT NULL) STRICT',
+    );
+  }
+  private failure(id: string, code: ProjectRoomAgentFailure): void {
+    this.db
+      .prepare(
+        'INSERT INTO project_room_agent_failures VALUES (?, ?) ON CONFLICT(request_id) DO UPDATE SET code=excluded.code',
+      )
+      .run(id, code);
   }
   private capture(id: string): ProjectRoomAgentCapture | null {
     const row = this.db
@@ -98,7 +111,19 @@ export class ProjectRoomAgentModule {
     this.check(authority);
     const request = this.store.getRequest(authority.scope, id);
     // Handles are shared; private Session coordinates never cross this seam.
-    return publicHandle(request);
+    const failure = this.db
+      .prepare(
+        'SELECT code FROM project_room_agent_failures WHERE request_id=?',
+      )
+      .get(id)?.code as ProjectRoomAgentFailure | undefined;
+    return {
+      ...publicHandle(request),
+      ...(failure &&
+      request.state !== 'published' &&
+      request.state !== 'cancelled'
+        ? { failure }
+        : {}),
+    };
   }
   async request(
     authority: ProjectRoomAgentAuthority,
@@ -111,12 +136,14 @@ export class ProjectRoomAgentModule {
       input,
       () => this.check(authority),
     );
-    if (request.state !== 'reserved') return publicHandle(request);
+    if (request.state !== 'reserved')
+      return this.inspect(authority, request.requestId);
     let agent: { label: string };
     try {
       agent = await this.execution.prepare(request.agentId, authority);
     } catch {
-      throw new Error('Project room Agent unavailable');
+      this.failure(request.requestId, 'agent_unavailable');
+      return this.inspect(authority, request.requestId);
     }
     this.check(authority);
     const first = this.store.history(authority.scope, 0, 100);
@@ -134,10 +161,11 @@ export class ProjectRoomAgentModule {
     const throughCheckpoint = new Set(
       messages.map((message) => message.messageId),
     );
-    const reviewedNote =
-      note && note.sourceMessageIds.every((id) => throughCheckpoint.has(id))
-        ? note
-        : null;
+    const reviewedNote = note?.sourceMessageIds.every((id) =>
+      throughCheckpoint.has(id),
+    )
+      ? note
+      : null;
     const prefix = JSON.stringify({
       request: request.text,
       note: reviewedNote
@@ -217,6 +245,7 @@ export class ProjectRoomAgentModule {
     try {
       await this.execution.launch(capture, recheck);
     } catch {
+      this.failure(request.requestId, 'launch_uncertain');
       const current = this.store.getRequest(authority.scope, request.requestId);
       if (current.state === 'started')
         this.store.markUncertain(authority.scope, request.requestId, () => {});
@@ -248,6 +277,12 @@ export class ProjectRoomAgentModule {
         throw new Error('Project room agent request unavailable');
     };
     current();
+    if (answer && 'failed' in answer) {
+      this.failure(id, 'execution_failed');
+      if (request.state === 'started')
+        this.store.markUncertain(authority.scope, id, current);
+      return this.inspect(authority, id);
+    }
     if (answer) {
       const message = this.store.append(
         authority.scope,

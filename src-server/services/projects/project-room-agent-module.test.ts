@@ -47,6 +47,7 @@ describe('Project Room explicit agent participation', () => {
     let launches = 0;
     let fail = false;
     let completed = false;
+    let terminalFailure = false;
     const execution: ProjectRoomAgentExecution = {
       async prepare() {
         return { label: 'Registered Agent' };
@@ -57,6 +58,7 @@ describe('Project Room explicit agent participation', () => {
         if (fail) throw new Error('secret provider stderr');
       },
       async answer() {
+        if (terminalFailure) return { failed: true };
         return completed ? { turnId: 'turn', text: 'Selected answer' } : null;
       },
       async cancel() {},
@@ -84,6 +86,9 @@ describe('Project Room explicit agent participation', () => {
       },
       revoke() {
         current = false;
+      },
+      terminalFailure() {
+        terminalFailure = true;
       },
       complete() {
         completed = true;
@@ -159,6 +164,32 @@ describe('Project Room explicit agent participation', () => {
           },
         },
         sessions,
+        executionTargets: {
+          resolveEnvironmentAccess: async () => ({
+            kind: 'current',
+            apiBase: 'http://isolated.invalid',
+            environmentId: 'local',
+            environmentName: 'Local',
+          }),
+          getAgent: async () => ({
+            name: 'Real registry label',
+            prompt: '',
+            execution: { agentConnectionId: engineConnectionId('claude') },
+          }),
+          getConnection: async () => ({
+            id: 'claude',
+            name: 'Claude',
+            kind: 'agent',
+            type: 'claude',
+            enabled: true,
+            status: 'ready',
+            capabilities: ['agent-runtime'],
+            config: { provider: 'claude' },
+            prerequisites: [],
+          }),
+          getProject: async () => undefined,
+          getProviderAdapter: () => adapter,
+        },
         authorityForOwner: (id) =>
           sessionReadAuthorityFromRequest(id, undefined, undefined),
         commandContext: (id) => ({ userId: id }),
@@ -190,8 +221,49 @@ describe('Project Room explicit agent participation', () => {
           runtime.module.request(f.authority, f.input),
         ).rejects.toThrow('revoked');
       else {
-        await runtime.module.request(f.authority, f.input);
+        const handle = await runtime.module.request(f.authority, f.input);
         expect(launchError).toBeUndefined();
+        const sessionId = start.mock.calls[0][0].threadId;
+        const base = {
+          invocationId: send.mock.calls[0][0].invocationId,
+          provider: 'claude',
+          threadId: sessionId,
+          createdAt: new Date().toISOString(),
+        };
+        adapter.events.push({
+          ...base,
+          eventId: randomUUID(),
+          method: 'turn.started',
+          turnId: 'turn-1',
+          prompt: 'Room prompt',
+        });
+        adapter.events.push({
+          ...base,
+          eventId: randomUUID(),
+          method: 'content.text-delta',
+          turnId: 'turn-1',
+          itemId: 'answer',
+          delta: 'Canonical selected answer',
+        });
+        adapter.events.push({
+          ...base,
+          eventId: randomUUID(),
+          method: 'turn.completed',
+          turnId: 'turn-1',
+          finishReason: 'stop',
+          outputText: 'Canonical selected answer',
+        });
+        await vi.waitFor(async () =>
+          expect(
+            (await runtime.module.reconcile(f.authority, handle.requestId))
+              .state,
+          ).toBe('published'),
+        );
+        expect(
+          f.room.store
+            .history(f.authority.scope)
+            .messages.map((message) => message.text),
+        ).toEqual(['Canonical selected answer']);
       }
       expect(start).toHaveBeenCalledTimes(revokeAtSpawn ? 0 : 1);
       expect(send).toHaveBeenCalledTimes(revokeAtSpawn ? 0 : 1);
@@ -202,6 +274,7 @@ describe('Project Room explicit agent participation', () => {
     f.fail();
     const handle = await f.module.request(f.authority, f.input);
     expect(handle.state).toBe('uncertain');
+    expect(handle.failure).toBe('launch_uncertain');
     expect(handle).not.toHaveProperty('sessionId');
     expect(JSON.stringify(handle)).not.toContain('stderr');
     f.restart();
@@ -221,6 +294,19 @@ describe('Project Room explicit agent participation', () => {
         .history(f.authority.scope)
         .messages.map((m) => [m.actor.displayName, m.text]),
     ).toEqual([['Registered Agent', 'Selected answer']]);
+  });
+  it('exposes a fixed durable terminal failure without publishing provider diagnostics', async () => {
+    const f = fixture();
+    const handle = await f.module.request(f.authority, f.input);
+    f.terminalFailure();
+    expect(
+      await f.module.reconcile(f.authority, handle.requestId),
+    ).toMatchObject({ state: 'uncertain', failure: 'execution_failed' });
+    f.restart();
+    expect(f.module.inspect(f.authority, handle.requestId).failure).toBe(
+      'execution_failed',
+    );
+    expect(f.room.store.history(f.authority.scope).messages).toHaveLength(0);
   });
   it('a lost publication acknowledgement is repaired after restart without a second Room message', async () => {
     const f = fixture();

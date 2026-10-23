@@ -1,6 +1,11 @@
-import { parseEngineId } from '@kontourai/station-contracts/agent-identity';
+import { agentId } from '@kontourai/station-contracts/agent-identity';
+import { isDeferredRetriableTurnError } from '@kontourai/station-contracts/runtime-events';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import type { AgentService } from '../../services/agents/agent-service.js';
+import {
+  type ExecutionTargetResolverDependencies,
+  resolveExecutionTarget,
+} from '../../services/execution-target/execution-target-resolver.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import type { SessionCommandContext } from '../../services/orchestration/session-command-module.js';
 import type {
@@ -12,6 +17,7 @@ import { canonicalPath } from '../../utils/path-containment.js';
 /** Parent supplies server action authority and owner attribution; no Task or private-chat route participates. */
 export function projectRoomAgentExecution(deps: {
   agents: Pick<AgentService, 'getAgent'>;
+  executionTargets: ExecutionTargetResolverDependencies;
   sessions: Pick<
     OrchestrationService,
     'startSessionInternal' | 'dispatch' | 'readSession' | 'sessionQueries'
@@ -19,11 +25,19 @@ export function projectRoomAgentExecution(deps: {
   authorityForOwner(ownerId: string): SessionReadAuthority;
   commandContext(ownerId: string): SessionCommandContext;
 }): ProjectRoomAgentExecution {
-  const definition = async (id: string) => {
+  const definition = async (id: string, executionRoot: string) => {
     const spec = await deps.agents.getAgent(id);
-    const provider = parseEngineId(spec.execution?.agentConnectionId);
-    if (!provider) throw new Error('Project room Agent engine unavailable');
-    return { spec, provider };
+    const target = await resolveExecutionTarget(
+      {
+        environment: { kind: 'current' },
+        agent: agentId(id),
+        workspace: { kind: 'directory', cwd: executionRoot },
+      },
+      deps.executionTargets,
+    );
+    if (target.access.kind !== 'current')
+      throw new Error('Project room Agent environment unavailable');
+    return { spec, target };
   };
   const checkRoot = (capture: ProjectRoomAgentCapture, recheck: () => void) => {
     recheck();
@@ -31,11 +45,16 @@ export function projectRoomAgentExecution(deps: {
       throw new Error('Project room execution root changed');
   };
   return {
-    async prepare(agentId) {
-      return { label: (await definition(agentId)).spec.name };
+    async prepare(agentId, authority) {
+      return {
+        label: (await definition(agentId, authority.executionRoot)).spec.name,
+      };
     },
     async launch(capture, recheck) {
-      const { spec, provider } = await definition(capture.agentId);
+      const { target } = await definition(
+        capture.agentId,
+        capture.executionRoot,
+      );
       checkRoot(capture, recheck);
       const context = deps.commandContext(capture.requester.id);
       const receiverExecutionAdmission = {
@@ -46,14 +65,20 @@ export function projectRoomAgentExecution(deps: {
           type: 'start-session',
           input: {
             threadId: capture.sessionId,
-            provider,
+            provider: target.provider,
             cwd: capture.executionRoot,
             persistSession: true,
-            ...(spec.model ? { modelId: spec.model } : {}),
+            ...(target.modelId ? { modelId: target.modelId } : {}),
+            ...(target.modelOptions
+              ? { modelOptions: { ...target.modelOptions } }
+              : {}),
             metadata: {
               userId: capture.requester.id,
               agentSlug: capture.agentId,
-              executionAgentId: capture.agentId,
+              executionAgentId: target.executionAgentId ?? capture.agentId,
+              ...(target.engine.kind === 'connection'
+                ? { connectionId: target.engine.connectionId }
+                : {}),
               projectSlug: capture.scope.localProjectSlug,
             },
           },
@@ -102,6 +127,17 @@ export function projectRoomAgentExecution(deps: {
           e.method === 'turn.started' &&
           e.clientTurnId === capture.correlationId,
       );
+      if (
+        started?.turnId &&
+        session.events.some(
+          (e) =>
+            e.turnId === started.turnId &&
+            (e.method === 'turn.aborted' ||
+              (e.method === 'runtime.error' &&
+                !isDeferredRetriableTurnError(e))),
+        )
+      )
+        return { failed: true };
       if (
         !started?.turnId ||
         !session.events.some(
