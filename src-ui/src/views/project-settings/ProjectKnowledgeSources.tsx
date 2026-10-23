@@ -60,10 +60,13 @@ export function ProjectKnowledgeSources({
     disconnect.isPending ||
     validate.isPending ||
     attach.isPending;
+  const sourcesAvailable = !roots.isPending && !roots.isError;
+  const currentRoots = sourcesAvailable ? roots.data : undefined;
   const projectRoots =
-    roots.data?.filter((root) => isProjectKnowledgeRoot(root, projectId)) ?? [];
+    currentRoots?.filter((root) => isProjectKnowledgeRoot(root, projectId)) ??
+    [];
   const legacyRoots =
-    roots.data?.filter(
+    currentRoots?.filter(
       (root) =>
         root.scope.kind === 'project' &&
         root.scope.projectSlug === slug &&
@@ -112,6 +115,18 @@ export function ProjectKnowledgeSources({
       title="Documents and knowledge"
       description="Keep useful documents with this Project. Agents can read permitted content when you ask; adding a library does not guarantee search or indexing is ready."
     >
+      <ProjectDocumentImport
+        key={JSON.stringify([
+          authority.apiBase,
+          authority.authorityKey,
+          projectId,
+        ])}
+        projectId={projectId}
+        roots={projectRoots}
+        authority={authority}
+        sourcesAvailable={sourcesAvailable}
+        canManage={canManage && sourcesAvailable && !roots.isFetching}
+      />
       {roots.isPending ? (
         <SkeletonBlock count={1} label="Loading sources" />
       ) : roots.isError ? (
@@ -121,12 +136,6 @@ export function ProjectKnowledgeSources({
         </div>
       ) : (
         <>
-          <ProjectDocumentImport
-            projectId={projectId}
-            roots={projectRoots}
-            authority={authority}
-            canManage={canManage}
-          />
           {projectRoots.length ? (
             <ul className="project-sources__list">
               {projectRoots.map((root) => (

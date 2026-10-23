@@ -65,11 +65,13 @@ export function ProjectDocumentImport({
   roots,
   authority,
   canManage,
+  sourcesAvailable = true,
 }: {
   projectId: string;
   roots: KnowledgeStoreRoot[];
   authority: ApiRequestScope & { draftRecoveryKey?: string };
   canManage: boolean;
+  sourcesAvailable?: boolean;
 }) {
   const storageKey = `station.document-import:${JSON.stringify([authority.apiBase, authority.draftRecoveryKey ?? authority.authorityKey, projectId])}`;
   const [saved, setSaved] = useState<Pointer | undefined>(() => {
@@ -400,7 +402,11 @@ export function ProjectDocumentImport({
         </>
       ) : (
         <>
-          {eligible.length ? (
+          {!sourcesAvailable ? (
+            <p>
+              Your document selection is kept. Reload sources before importing.
+            </p>
+          ) : eligible.length ? (
             <label>
               Destination store
               <select

@@ -321,10 +321,12 @@ function NewProjectForm({
   state,
   onClose,
   nameRef,
+  hidden,
 }: {
   state: NewProjectModalState;
   onClose: () => void;
   nameRef: RefObject<HTMLInputElement | null>;
+  hidden: boolean;
 }) {
   const { canSubmit, submit, sourceError } = useNewProjectFormSubmit(state);
   const [acquisitionBusy, setAcquisitionBusy] = useState(false);
@@ -332,6 +334,9 @@ function NewProjectForm({
   return (
     <form
       className="new-project-modal__form"
+      hidden={hidden}
+      inert={hidden}
+      style={hidden ? { display: 'none' } : undefined}
       onSubmit={(event) => {
         if (acquisitionBusy) {
           event.preventDefault();
@@ -497,7 +502,16 @@ export function NewProjectModalContent({
       overlayClassName="new-project-modal__overlay"
       panelClassName="new-project-modal"
     >
-      {browsingLayouts ? (
+      {!browsingLayouts && (
+        <NewProjectModalHeader onClose={onClose} headingRef={headingRef} />
+      )}
+      <NewProjectForm
+        state={state}
+        onClose={onClose}
+        nameRef={nameRef}
+        hidden={browsingLayouts}
+      />
+      {browsingLayouts && (
         <NewProjectLayoutBrowserBody
           available={starter.eligibleLayouts}
           loading={starter.layoutsLoading}
@@ -510,11 +524,6 @@ export function NewProjectModalContent({
           }}
           onBack={returnToForm}
         />
-      ) : (
-        <>
-          <NewProjectModalHeader onClose={onClose} headingRef={headingRef} />
-          <NewProjectForm state={state} onClose={onClose} nameRef={nameRef} />
-        </>
       )}
     </ResponsiveDialogSurface>
   );

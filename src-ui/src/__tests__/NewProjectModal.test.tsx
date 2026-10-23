@@ -103,6 +103,15 @@ const projectsQueryState = vi.hoisted(() => ({
 const createProjectMutationState = vi.hoisted(() => ({ isPending: false }));
 const availableLayoutsQueryMock = vi.hoisted(() => vi.fn());
 const layoutCatalogTelemetry = vi.hoisted(() => ({ track: vi.fn() }));
+const repositoryFixture = vi.hoisted(() => ({
+  enabled: false,
+  mutate: vi.fn(),
+}));
+beforeEach(() => {
+  repositoryFixture.enabled = false;
+  repositoryFixture.mutate.mockReset();
+});
+
 const StationHttpError = vi.hoisted(
   () =>
     class StationHttpError extends Error {
@@ -147,7 +156,36 @@ const reviewLayout = {
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<object>()),
+  mutateJson: (...args: unknown[]) => repositoryFixture.mutate(...args),
   getJson: async (url: string) => {
+    if (
+      repositoryFixture.enabled &&
+      url ===
+        'http://localhost:3000/api/projects/repository-providers/github?page=1'
+    )
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            provider: 'github',
+            account: { id: '42', login: 'operator' },
+            page: 1,
+            hasMore: false,
+            observedAt: '2026-10-22T00:00:00Z',
+            repositories: [
+              {
+                id: '7',
+                fullName: 'org/research',
+                visibility: 'private',
+                webUrl: 'https://github.com/org/research',
+                httpsCloneUrl: 'https://github.com/org/research.git',
+                sshCloneUrl: 'git@github.com:org/research.git',
+                defaultBranch: 'release',
+              },
+            ],
+          },
+        }),
+      );
     if (url === 'http://localhost:3000/api/projects/creation-requests')
       return new Response(
         JSON.stringify({
@@ -636,6 +674,102 @@ describe('NewProjectModal starter layout picker', () => {
     expect(buttons[0].textContent).toContain('2 tabs');
   });
 
+  test.each(['typed', 'provider'] as const)(
+    'layout browsing retains the unacquired %s repository draft in memory and authority changes retire it',
+    async (source) => {
+      repositoryFixture.enabled = true;
+      const view = render(<NewProjectModal isOpen onClose={onCloseMock} />);
+      fireEvent.click(screen.getByText('Start from a Git repository'));
+      let url = 'https://user:private-token@github.com/org/draft.git';
+      if (source === 'provider') {
+        fireEvent.change(screen.getByLabelText('Repository provider'), {
+          target: { value: 'github' },
+        });
+        await screen.findByLabelText('Clone protocol');
+        fireEvent.change(screen.getByLabelText('Clone protocol'), {
+          target: { value: 'ssh' },
+        });
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Use org/research' }),
+        );
+        url = 'git@github.com:org/research.git';
+      } else {
+        fireEvent.change(screen.getByLabelText('Repository URL'), {
+          target: { value: url },
+        });
+      }
+      fireEvent.change(screen.getByLabelText('Branch or tag (optional)'), {
+        target: { value: 'release-candidate' },
+      });
+      fireEvent.change(
+        screen.getByLabelText('Repository subdirectory (optional)'),
+        { target: { value: 'packages/app' } },
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Browse all' }));
+      expect(
+        screen.queryByRole('button', { name: 'Acquire repository' }),
+      ).toBeNull();
+      expect(
+        screen.queryByRole('textbox', { name: 'Repository URL' }),
+      ).toBeNull();
+      fireEvent.click(
+        source === 'provider'
+          ? screen.getByRole('button', { name: 'Back to project' })
+          : within(
+              screen.getByRole('dialog', { name: /Browse installed layouts/ }),
+            ).getByRole('button', { name: /Coding/ }),
+      );
+      expect(screen.getByLabelText('Repository URL')).toHaveProperty(
+        'value',
+        url,
+      );
+      expect(screen.getByLabelText('Branch or tag (optional)')).toHaveProperty(
+        'value',
+        'release-candidate',
+      );
+      expect(
+        screen.getByLabelText('Repository subdirectory (optional)'),
+      ).toHaveProperty('value', 'packages/app');
+      if (source === 'provider') {
+        expect(screen.getByLabelText('Repository provider')).toHaveProperty(
+          'value',
+          'github',
+        );
+        expect(screen.getByLabelText('Clone protocol')).toHaveProperty(
+          'value',
+          'ssh',
+        );
+      }
+      expect(repositoryFixture.mutate).not.toHaveBeenCalled();
+      const stored =
+        Object.values(localStorage).join('') +
+        Object.values(sessionStorage).join('');
+      expect(stored).not.toContain(url);
+      expect(stored).not.toContain('private-token');
+      // Retire the mounted form's local source under a new live authority,
+      // even when its durable account recovery partition remains the same.
+      authorityState.key = 'replacement-live-authority';
+      view.rerender(<NewProjectModal isOpen onClose={onCloseMock} />);
+      expect(screen.getByLabelText('Repository URL')).toHaveProperty(
+        'value',
+        '',
+      );
+      expect(screen.getByLabelText('Branch or tag (optional)')).toHaveProperty(
+        'value',
+        '',
+      );
+      expect(
+        screen.getByLabelText('Repository subdirectory (optional)'),
+      ).toHaveProperty('value', '');
+      expect(screen.getByLabelText('Repository provider')).toHaveProperty(
+        'value',
+        '',
+      );
+      expect(screen.queryByText(/Signed in as operator/)).toBeNull();
+      expect(repositoryFixture.mutate).not.toHaveBeenCalled();
+    },
+  );
+
   test('keeps every project draft field mounted while browsing and selecting a layout', () => {
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
     fireEvent.change(screen.getByLabelText('Project folder'), {
@@ -1112,7 +1246,7 @@ describe('NewProjectModal copy density and layout browser placement (station#182
     ).toBeTruthy();
   });
 
-  test('item 4: the layout browser swaps in as the modal body — Create is not present while browsing, and the browser is never appended after it', () => {
+  test('item 4: layout browsing hides and disables the draft form while keeping the browser actions last', () => {
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
 
     // Before browsing: exactly one dialog, Create present, no browser markup
@@ -1124,13 +1258,10 @@ describe('NewProjectModal copy density and layout browser placement (station#182
 
     fireEvent.click(screen.getByRole('button', { name: 'Browse all' }));
 
-    // The defect this fixes: the old nested-dialog implementation kept the
-    // project form (and its Create button) mounted underneath, with the
-    // browse panel appended after it. A genuine swap removes the form
-    // entirely while browsing — there is no "primary action" for this step
-    // other than the browser's own trailing action.
     expect(screen.queryByRole('button', { name: 'Create' })).toBeNull();
-    expect(document.querySelector('.new-project-modal__form')).toBeNull();
+    const retainedForm = document.querySelector('.new-project-modal__form');
+    expect(retainedForm).toHaveProperty('hidden', true);
+    expect(retainedForm?.hasAttribute('inert')).toBe(true);
 
     const panel = screen.getByRole('dialog', {
       name: /Browse installed layouts/,
@@ -1153,6 +1284,9 @@ describe('NewProjectModal copy density and layout browser placement (station#182
     const formEl = document.querySelector(
       '.new-project-modal__form',
     ) as HTMLElement;
+    expect(formEl).toBe(retainedForm);
+    expect(formEl.hidden).toBe(false);
+    expect(formEl.hasAttribute('inert')).toBe(false);
     expect(restoredPanel.lastElementChild).toBe(formEl);
     expect(formEl.lastElementChild?.contains(createButton)).toBe(true);
   });
