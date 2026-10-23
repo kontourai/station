@@ -5,8 +5,11 @@ import {
   parseProjectRoomMessageIntent,
   useProjectRoom,
 } from '@kontourai/station-sdk/project-rooms';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
+import { Empty, SkeletonBlock } from '../../components/state';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import './ProjectRoom.css';
 
@@ -161,7 +164,7 @@ function ProjectRoomSession({
       expectedRoomId: view.roomId,
       expectedProjectId: projectId,
       expectedActorId: view.actor.id,
-      intentId: crypto.randomUUID(),
+      intentId: randomCorrelationId(),
       text,
       ...(replyTo ? { replyTo } : {}),
     };
@@ -224,7 +227,7 @@ function ProjectRoomSession({
   if (room.unprovisioned)
     return (
       <section className="project-room" aria-label="Project room">
-        <h2># Project room</h2>
+        <h3># Project room</h3>
         <p>The room has not been opened yet.</p>
         {room.initialize.isError && (
           <p role="alert">
@@ -233,7 +236,7 @@ function ProjectRoomSession({
         )}
         <Button
           pending={room.initialize.isPending}
-          pendingLabel="Opening…"
+          pendingLabel="Open room"
           onClick={() => room.initialize.mutate()}
         >
           Open room
@@ -253,7 +256,7 @@ function ProjectRoomSession({
   if (!view)
     return (
       <section className="project-room" aria-label="Project room">
-        <p role="status">Loading room…</p>
+        <SkeletonBlock count={2} label="Loading room" />
       </section>
     );
   const messages = [
@@ -282,7 +285,7 @@ function ProjectRoomSession({
     >
       <header className="project-room__header">
         <div className="project-room__title">
-          <h2># Project room</h2>
+          <h3># Project room</h3>
           <details className="project-room__menu">
             <summary aria-label="Room menu">Room ▾</summary>
             <Button onClick={() => guard(() => setTab('conversation'))}>
@@ -360,12 +363,13 @@ function ProjectRoomSession({
               </Button>
             </p>
           ) : room.history.isPending ? (
-            <p role="status">Loading conversation…</p>
+            <SkeletonBlock count={2} label="Loading conversation" />
           ) : (
             !messages.length && (
-              <p className="project-room__empty">
-                Start a conversation with your project team.
-              </p>
+              <Empty
+                variant="compact"
+                label="Start a conversation with your project team."
+              />
             )
           )}
           <ol className="project-room__messages" aria-label="Conversation">
@@ -437,66 +441,71 @@ function ProjectRoomSession({
                   }
                 }}
               />
-              <div className="project-room__actions">
-                <Button
-                  type="submit"
-                  variant="primary"
-                  pending={room.send.isPending}
-                  pendingLabel="Sending…"
-                  disabled={
-                    !restored ||
-                    !text.trim() ||
-                    new TextEncoder().encode(text).length >
-                      PROJECT_ROOM_LIMITS.textBytes
-                  }
-                >
-                  {proposal ? 'Retry same message' : 'Send message'}
-                </Button>
-                {proposal && (
+              <ActionRow
+                className="project-room__actions"
+                overflowLabel="More message actions"
+                primary={
                   <Button
-                    type="button"
-                    onClick={() =>
-                      guard(() => {
-                        clearProposal();
-                        setText('');
-                        setReplyTo(undefined);
-                        setNotice('');
-                      })
+                    type="submit"
+                    variant="primary"
+                    pending={room.send.isPending}
+                    pendingLabel="Sending…"
+                    disabled={
+                      !restored ||
+                      !text.trim() ||
+                      new TextEncoder().encode(text).length >
+                        PROJECT_ROOM_LIMITS.textBytes
                     }
                   >
-                    Discard retained message
+                    {proposal ? 'Retry same message' : 'Send message'}
                   </Button>
-                )}
-                {onRequestAgent && view.capabilities.execute && (
-                  <Button
-                    type="button"
-                    pending={agentPending}
-                    disabled={!!proposal || !text.trim()}
-                    onClick={async () => {
-                      setAgentPending(true);
-                      try {
-                        await onRequestAgent({
-                          prompt: text,
-                          ...(replyTo ? { replyTo } : {}),
-                        });
-                        if (mounted.current) {
+                }
+                secondary={
+                  proposal ? (
+                    <Button
+                      type="button"
+                      onClick={() =>
+                        guard(() => {
+                          clearProposal();
                           setText('');
                           setReplyTo(undefined);
-                        }
-                      } catch {
-                        if (mounted.current)
-                          setNotice(
-                            'The Agent request was not confirmed. Check the room before trying again.',
-                          );
-                      } finally {
-                        if (mounted.current) setAgentPending(false);
+                          setNotice('');
+                        })
                       }
-                    }}
-                  >
-                    Bring an Agent
-                  </Button>
-                )}
-              </div>
+                    >
+                      Discard retained message
+                    </Button>
+                  ) : onRequestAgent && view.capabilities.execute ? (
+                    <Button
+                      type="button"
+                      pending={agentPending}
+                      disabled={!!proposal || !text.trim()}
+                      onClick={async () => {
+                        setAgentPending(true);
+                        try {
+                          await onRequestAgent({
+                            prompt: text,
+                            ...(replyTo ? { replyTo } : {}),
+                          });
+                          if (mounted.current) {
+                            setText('');
+                            setReplyTo(undefined);
+                          }
+                        } catch {
+                          if (mounted.current)
+                            setNotice(
+                              'The Agent request was not confirmed. Check the room before trying again.',
+                            );
+                        } finally {
+                          if (mounted.current) setAgentPending(false);
+                        }
+                      }}
+                    >
+                      Bring an Agent
+                    </Button>
+                  ) : undefined
+                }
+              />
             </form>
           ) : (
             <p>You can read this conversation.</p>

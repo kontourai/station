@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
@@ -97,7 +98,7 @@ function fixture() {
             expectedProjectId: undefined,
             expectedActorId: undefined,
             roomId,
-            messageId: crypto.randomUUID(),
+            messageId: randomCorrelationId(),
             seq: messages.length + 1,
             actor,
             createdAt: at,
@@ -306,8 +307,8 @@ test('revocation clears retained content and stops the live connection', async (
   messages = [
     {
       roomId,
-      intentId: crypto.randomUUID(),
-      messageId: crypto.randomUUID(),
+      intentId: randomCorrelationId(),
+      messageId: randomCorrelationId(),
       seq: 1,
       actor,
       createdAt: at,
@@ -361,8 +362,8 @@ test('two independent mounted query contexts receive the shared stream through r
 test('loads an older bounded window and exposes actual reply context to the optional Agent bridge', async () => {
   messages = Array.from({ length: 30 }, (_, index) => ({
     roomId,
-    intentId: crypto.randomUUID(),
-    messageId: crypto.randomUUID(),
+    intentId: randomCorrelationId(),
+    messageId: randomCorrelationId(),
     seq: index + 1,
     actor:
       index === 29
@@ -436,7 +437,7 @@ test('preview opens the full room without replacing its draft and exposes shared
   fireEvent.click(screen.getByLabelText('Room menu'));
   fireEvent.click(screen.getByRole('button', { name: 'Shared notes' }));
   expect(screen.getByRole('dialog')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Discard', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: /^Discard$/ }));
   expect(
     screen.getByRole('textbox', { name: 'Notes (Markdown)' }),
   ).toBeTruthy();
