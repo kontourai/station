@@ -976,9 +976,12 @@ A fresh private delivery read joins actual attempts/invocations and uses the
 canonical task/client-turn delivery lookup to recover the accepted session/turn;
 it refuses a different session and does not infer started work from reservations.
 It supplies identity for later cancellation composition, not proof of stop or
-provider termination.
+provider termination. Fresh operation-scoped POST authority can revoke the exact
+retained root through the published v3 service after preparation expiry. The
+private revocation path preserves known and unknown invocation accounting and
+does not claim group cancellation, interrupt delivery or physical stop.
 
-Public serving lookup, fresh-request cancellation, Flow-backed frontier/join and
+Public serving lookup, complete fresh-request cancellation, Flow-backed frontier/join and
 session ACK remain required before enabling the paid-group capability. The control-plane read responses and provider response in this
 qualification are controlled; live ingress/provider acceptance remains open.
 

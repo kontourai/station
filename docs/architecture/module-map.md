@@ -2017,7 +2017,12 @@ joins the seat's actual rounds attempts and authority invocations before asking
 the canonical conversation owner about the reserved task/client-turn key. No
 attempt yields no started-task claim, and an accepted turn on a different
 session refuses. This recovers accepted-turn identity, not terminal evidence or
-a stop receipt. Public serving and fresh-request cancellation remain required.
+a stop receipt. A fresh POST with operation scope can separately revoke the
+exact retained root through the published v3 authority owner, even after the
+original preparation closes or expires. That operation preserves invocation
+usage and unknown holds; it neither changes the group cancellation journal nor
+interrupts a descendant. Public serving, descendant requests and group
+cancellation acknowledgement remain required.
 
 The [controlled integration](../../src-server/services/orchestration/__tests__/station-report-group-preparation.test.ts)
 consumes an issued root through the published durable v3 authority, rounds

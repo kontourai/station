@@ -1,4 +1,5 @@
 // UNWIRED(#91): private historical custody; public serving and cancellation composition remain required.
+import { createDelegationAuthorityServiceV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
 import { canonicalJson } from '@kontourai/relay';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { createOrchestrationRequestPrincipalResolver } from '../../runtime/bootstrap/orchestration-request-principal.js';
@@ -124,19 +125,28 @@ export class StationReportGroupCustody {
     return data.spec.groupId;
   }
 
-  async #readContext(context: RuntimeSourceRequestContext) {
-    this.#request(context, 'GET');
-    const lease = await captureEnvironmentLocalGrantReadOwner(
-      context.req.raw,
-      this.owners.environment,
-      this.owners.security,
-    );
+  async #context(context: RuntimeSourceRequestContext, method: 'GET' | 'POST') {
+    this.#request(context, method);
+    const lease =
+      method === 'GET'
+        ? await captureEnvironmentLocalGrantReadOwner(
+            context.req.raw,
+            this.owners.environment,
+            this.owners.security,
+          )
+        : (
+            await captureEnvironmentLocalGrantObservationOwner(
+              context.req.raw,
+              this.owners.environment,
+              this.owners.security,
+            )
+          ).requireCurrentLocalGrant(context.req.raw);
     const principal = createOrchestrationRequestPrincipalResolver({
       environmentSecurityService: this.owners.environment,
     })(context);
     const current = (): undefined => {
       lease.assertCurrent();
-      this.#request(context, 'GET');
+      this.#request(context, method);
       return undefined;
     };
     current();
@@ -180,8 +190,36 @@ export class StationReportGroupCustody {
   }
 
   async inspect(context: RuntimeSourceRequestContext, groupId: string) {
-    return this.#inspect(await this.#readContext(context), groupId);
+    return this.#inspect(await this.#context(context, 'GET'), groupId);
   }
+  async revokeExecutionAuthority(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+  ) {
+    const authorized = await this.#context(context, 'POST');
+    const before = await this.#inspect(authorized, groupId);
+    if (!before?.authority) refuse();
+    const service = createDelegationAuthorityServiceV3(
+      this.owners.persistence.roundsAuthorityStore(authorized.current),
+      {
+        now: () => new Date().toISOString(),
+        authorize: async (action, root) => {
+          authorized.current();
+          return action === 'cancel' && same(root, before.admission.root);
+        },
+        confirmExecution: async () => false,
+        authenticateRenewal: async () => null,
+      },
+      { maxRenewals: 0 },
+    );
+    authorized.current();
+    await service.cancel(before.admission.root.authority_id);
+    const after = await this.#inspect(authorized, groupId);
+    if (!after?.authority?.cancelled) refuse();
+    authorized.current();
+    return { ...after, authority: after.authority };
+  }
+
   async inspectDelivery(
     context: RuntimeSourceRequestContext,
     groupId: string,
@@ -189,7 +227,7 @@ export class StationReportGroupCustody {
     orchestration: OrchestrationService,
   ) {
     id(seatId);
-    const authorized = await this.#readContext(context);
+    const authorized = await this.#context(context, 'GET');
     const historical = await this.#inspect(authorized, groupId);
     if (!historical) return null;
     const member = historical.admission.members.find(
@@ -248,7 +286,7 @@ export class StationReportGroupCustody {
     operationId: string,
   ) {
     id(operationId);
-    const authorized = await this.#readContext(context);
+    const authorized = await this.#context(context, 'GET');
     const records = await this.owners.persistence.listReportAdmissions(
       authorized.current,
     );

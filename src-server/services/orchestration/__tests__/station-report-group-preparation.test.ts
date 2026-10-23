@@ -529,6 +529,45 @@ test('issued preparation reaches canonical delegated-task dispatch and retained 
       { code: 'group_custody_unavailable' },
     );
     lookup.mockRestore();
+    h.f.environment.devicePairing.setDeviceScope(
+      current.device.id,
+      ['orchestration:read'],
+      { kind: 'presented-credential' },
+    );
+    await assert.rejects(() =>
+      reader.revokeExecutionAuthority(
+        h.f.context(requestFor(h, 'POST', current.credential)),
+        groupId,
+      ),
+    );
+    const stillActive = await reader.inspect(
+      h.f.context(requestFor(h, 'GET', current.credential)),
+      groupId,
+    );
+    assert.equal(stillActive?.authority?.cancelled, false);
+    h.f.environment.devicePairing.setDeviceScope(
+      current.device.id,
+      ['orchestration:read', 'orchestration:operate'],
+      { kind: 'presented-credential' },
+    );
+    const revoked = await reader.revokeExecutionAuthority(
+      h.f.context(requestFor(h, 'POST', current.credential)),
+      groupId,
+    );
+    assert.equal(revoked.authority.cancelled, true);
+    assert.deepEqual(
+      revoked.authority.invocations,
+      historical.authority.invocations,
+    );
+    assert.equal(revoked.group?.cancellation, 'none');
+    const repeated = await reader.revokeExecutionAuthority(
+      h.f.context(requestFor(h, 'POST', current.credential)),
+      groupId,
+    );
+    assert.deepEqual(
+      repeated.authority.invocations,
+      historical.authority.invocations,
+    );
     assert.equal(h.rawFetch.mock.calls.length, 1);
     assert.throws(() => h.owner.read(handle, h.f.req));
   } finally {
@@ -636,6 +675,18 @@ for (const defect of [
       assert.equal(ledger.invocations.length, 1);
       assert.equal(ledger.invocations[0].usage, null);
       assert.equal(ledger.invocations[0].terminal, false);
+      if (defect === 'environment') {
+        const groupId = h.owner.read(handle, h.f.req).spec.groupId;
+        h.owner.close(handle);
+        const returning = newGrant(h);
+        const revoked = await h.custody.revokeExecutionAuthority(
+          h.f.context(requestFor(h, 'POST', returning.credential)),
+          groupId,
+        );
+        assert.equal(revoked.authority.cancelled, true);
+        assert.deepEqual(revoked.authority.invocations, ledger.invocations);
+        assert.equal(h.rawFetch.mock.calls.length, 0);
+      }
     } finally {
       h.owner.close(handle);
     }
