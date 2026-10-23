@@ -151,7 +151,8 @@ All 12,415 installed artifact files match the registry archive. The existing
 persistence/runtime/group integration selection passes 29 cases across three
 files. Independent source/artifact review finds no dependency-delta blocker;
 it does not independently rerun those checks. Serving preparation, physical
-transport, AccountingV1 settlement and rounds adoption remain unfinished.
+transport and rounds adoption remain unfinished. Controlled retained-accounting
+integration is qualified below; no production settlement caller is wired.
 
 The earlier Flow Agents 9.3.0 adoption is retained as history below.
 Upstream PRs #1535 and #1536 merged, and the
@@ -946,14 +947,23 @@ The raw JSON/SSE observers, repaired Google terminal-counter assembler and
 reserved provider fetch are adopted. The reserved sealed-SDK attempt joins them
 to durable intent and source authorization. A focused selection passes 41
 SDK/Google cases; 33 observer cases passed separately before the added Google
-regressions. Server-test types pass. Exact tariff usage remains private evidence:
-the installed legacy controller refuses settlement without provider-reported
-dollars and retains the full allocation. AccountingV1 integration remains
-required. The independent composition review completed with no blocking findings: it checked canonical durable joins, exact
-wire/source binding, pending duplicate isolation, incomplete JSON/SSE usage,
-unknown allocations and SDK-waiter cleanup. Its compiling waiter-refusal mutation
-failed as intended and exact restoration passed. Real provider/registry authority
-and AccountingV1 settlement acceptance were not established.
+regressions. Server-test types pass. At `ce37e9fc59e`, the reserved SDK attempt awaits
+private evidence publication and its synchronous finalizer before returning
+published AccountingV1 counters and integer tariff-derived micros. Raw response
+JSON is retained alongside the usage evidence; for SSE this is reconstructed
+JSON, not the original wire bytes. No provider-reported dollars are fabricated.
+
+The controlled owner suite passes 32 cases. Both provider fixtures settle
+4 input tokens, 2 output tokens and 7 tariff-derived micros into the real Flow
+authority ledger. An actual filesystem publication refusal leaves usage unknown,
+the allocation held and the attempt non-terminal. The fixture explicitly fsyncs
+the evidence directory on POSIX; it does not qualify Windows durability.
+Server-test types and changed-file style checks pass. A compiling mutation that
+skips awaited publication and finalization fails the publication-refusal case
+with 31 controls passing; byte-exact restoration passes all 32 cases.
+Independent source review found no unsafe settlement path before that mutation.
+Private issuance, production retention and settlement callers remain unwired;
+these controlled checks establish no serving, provider or billing acceptance.
 
 Flow rounds/continuation and v3 authority renewal are adopted in the Flow Agents
 worktree at `57f02040`; `36de11b1` joins their independent, paid Flow and
