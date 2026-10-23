@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { navigationStore } from '../../contexts/navigation-store';
 import { isPlainLeftClick } from '../../utils/attentionOpen';
+import { ProjectSearch } from './ProjectSearch';
 import {
   type ProjectDestination,
   projectDestination,
@@ -44,9 +45,11 @@ export function useProjectDestination(slug: string) {
 export function ProjectNavigation({
   slug,
   member = false,
+  projectId,
 }: {
   slug: string;
   member?: boolean;
+  projectId?: string;
 }) {
   const { destination, selectDestination } = useProjectDestination(slug);
   const { navigate } = useNavigation();
@@ -61,6 +64,7 @@ export function ProjectNavigation({
     <details className="project-page__navigation-panel" open>
       <summary>Project</summary>
       <nav className="project-page__navigation" aria-label="Project">
+        {projectId && <ProjectSearch key={projectId} projectId={projectId} />}
         {destinations.map(([id, label]) => (
           <a
             key={id}

@@ -329,7 +329,7 @@ function ProjectOperatorPage({
           navigateToSettings={() => navigate(`/projects/${slug}/edit`)}
         />
 
-        <ProjectNavigation slug={slug} />
+        <ProjectNavigation slug={slug} projectId={project.id} />
         <main className="project-page__content">
           <section
             hidden={destination !== 'overview'}
