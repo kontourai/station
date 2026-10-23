@@ -27,6 +27,7 @@ import {
   buildPortableServerArchive,
   bundleStationCli,
   obtainNodeDistribution,
+  PORTABLE_ARCHIVE_ROOT,
   PORTABLE_SERVER_TARGETS,
   PREBUILT_ARCHIVE_MARKER,
   readPortableNodeRuntime,
@@ -418,7 +419,7 @@ describe('portable server archive workflow', () => {
 
 it('the archive smoke refuses a missing required companion before launching the server', () => {
   const root = makeTempDir('portable-missing-companion-');
-  const stage = join(root, 'station-server');
+  const stage = join(root, PORTABLE_ARCHIVE_ROOT);
   mkdirSync(stage);
   writeFileSync(
     join(stage, '.station-release.json'),
@@ -435,7 +436,7 @@ it('the archive smoke refuses a missing required companion before launching the 
   const archive = join(root, 'server.tar.gz');
   execFileSyncBounded(
     archiveTool(),
-    ['-czf', archive, '-C', root, 'station-server'],
+    ['-czf', archive, '-C', root, PORTABLE_ARCHIVE_ROOT],
     { windowsHide: true },
   );
   const result = spawnSyncBounded(
@@ -538,6 +539,11 @@ describe('portable archive workflow paths filter', () => {
       'packages/shared/src/release-manifest.mjs',
       'packages/shared/src/release-rings.generated.mjs',
       'packages/shared/src/portable-server-targets.mjs',
+      'packages/contracts/src/product-telemetry.ts',
+      'packages/shared/src/product-telemetry.ts',
+      'packages/telemetry-broker/build.mjs',
+      'deployment/telemetry/compose.yaml',
+      'Dockerfile',
       'package.json',
       'packages/cli/src/cli.ts',
       'packaging/portable-server/bin/station.mjs',

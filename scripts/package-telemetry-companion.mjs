@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
 import {
+  lstat,
   mkdir,
   mkdtemp,
   open,
@@ -159,6 +160,9 @@ export async function packageTelemetryCompanion(
 
 export async function verifyTelemetryCompanion(directory) {
   directory = resolve(directory);
+  const root = await lstat(directory);
+  if (!root.isDirectory() || root.isSymbolicLink())
+    throw new Error('Companion package root must be a real directory');
   const manifest = JSON.parse(
     (
       await bytes(join(directory, 'companion-manifest.json'), 64 * 1024)
