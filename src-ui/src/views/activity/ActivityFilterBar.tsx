@@ -54,7 +54,7 @@ function FilterSelect({
 }
 
 /**
- * Activity's compact filter bar: Kind, Project and Started from, each a
+ * Activity's compact filter bar: Kind, Project and Recorded origin, each a
  * native select in the shared `.choice-trigger` treatment (the BrowserPane
  * viewport picker's shape). Filters compose with each other and with the
  * search box; the active ones repeat as removable chips with "Clear all".
@@ -102,7 +102,7 @@ export function ActivityFilterBar({
   if (filters.origin !== null)
     chips.push({
       id: 'origin',
-      text: `Started from: ${filters.origin}`,
+      text: `Recorded origin: ${filters.origin}`,
       clear: () => onChange({ ...filters, origin: null }),
     });
 
@@ -140,7 +140,7 @@ export function ActivityFilterBar({
           onChange={(project) => onChange({ ...filters, project })}
         />
         <FilterSelect
-          label="Started from"
+          label="Recorded origin"
           allLabel="Anywhere"
           value={filters.origin}
           options={originOptions}

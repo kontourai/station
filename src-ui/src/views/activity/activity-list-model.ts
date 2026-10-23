@@ -28,8 +28,8 @@ function attachedEngineName(session: OrchestrationSessionSummary): string {
 }
 
 /**
- * The "Started from" filter bucket: the recorded turn origin as
- * `clientOriginSummary` words it, "Started in <engine>" for an attached
+ * The "Recorded origin" filter bucket: the most recent recorded turn origin
+ * for each session, as `clientOriginSummary` words it, "Started in <engine>" for an attached
  * transcript, and an explicit "Origin not recorded" otherwise — never a
  * guessed origin (the summary's `turnOrigin` is absent when the latest turn
  * carried none).

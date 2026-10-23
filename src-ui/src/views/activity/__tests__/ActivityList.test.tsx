@@ -645,14 +645,16 @@ describe('Activity list', () => {
     );
   });
 
-  test('Started from groups by recorded origin with counts, and never guesses a missing one', () => {
+  test('Recorded origin groups by recorded origin with counts, and never guesses a missing one', () => {
     sessions = [
       runningChat(),
       session('Unrecorded chat'),
       session('Claude transcript', { controlMode: 'read-only-attached' }),
     ];
     renderView();
-    const origin = screen.getByLabelText('Started from') as HTMLSelectElement;
+    const origin = screen.getByLabelText(
+      'Recorded origin',
+    ) as HTMLSelectElement;
     expect(
       Array.from(origin.options).map((option) => option.textContent),
     ).toEqual([
@@ -841,7 +843,7 @@ describe('Activity list', () => {
     ];
     const { container } = renderView();
     const startedFrom = screen.getByRole('combobox', {
-      name: /^Started from/,
+      name: /^Recorded origin/,
     }) as HTMLSelectElement;
     expect(Array.from(startedFrom.options).map((o) => o.textContent)).toEqual([
       'Anywhere',
