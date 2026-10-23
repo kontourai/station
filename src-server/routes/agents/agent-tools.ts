@@ -95,8 +95,17 @@ export function createAgentToolRoutes(ctx: RuntimeContext) {
         // are active for orchestration immediately, even though they never
         // appear in Station's VoltAgent map; expose their empty Station-tool
         // catalog instead of incorrectly returning 409 until a restart.
+        //
+        // The projected read, not `configLoader.loadAgent`: the reserved
+        // Station identity is STORED without an engine binding and receives
+        // one only from `AgentService` (§7.1.1, archive#3662 delta H3). Reading
+        // the raw record classified a Station identity that is live on
+        // OpenCode as unbound, so this branch could never fire for the one
+        // agent whose catalog it exists to answer.
         try {
-          const spec = await ctx.configLoader.loadAgent(slug);
+          const spec = ctx.loadProjectedAgent
+            ? await ctx.loadProjectedAgent(slug)
+            : await ctx.configLoader.loadAgent(slug);
           if (isExternalEngineBoundAgent(spec)) {
             return c.json({ success: true, data: [] });
           }

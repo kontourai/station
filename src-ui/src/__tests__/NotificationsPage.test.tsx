@@ -468,7 +468,7 @@ describe('NotificationsPage', () => {
       screen.getByText('Nothing needs your attention right now.'),
     ).toBeTruthy();
     expect(
-      screen.getByRole('button', { name: 'Dismiss all attention items' }),
+      screen.getByRole('button', { name: 'Dismiss eligible items' }),
     ).toHaveProperty('disabled', true);
   });
 
@@ -683,13 +683,13 @@ describe('NotificationsPage', () => {
 
     const view = renderPage();
 
-    fireEvent.click(screen.getByText('Dismiss all attention items'));
+    fireEvent.click(screen.getByText('Dismiss eligible items'));
     expect(screen.getByRole('dialog').textContent).toContain(
-      'Dismiss 1 item needing attention? Activity stays.',
+      'Dismiss 1 eligible item? Activity stays.',
     );
     fireEvent.click(
       within(screen.getByRole('dialog')).getByRole('button', {
-        name: 'Dismiss all attention items',
+        name: 'Dismiss eligible items',
       }),
     );
 
@@ -710,10 +710,83 @@ describe('NotificationsPage', () => {
     expect(
       (
         screen.getByRole('button', {
-          name: 'Dismiss all attention items',
+          name: 'Dismiss eligible items',
         }) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
+  });
+
+  /**
+   * The bulk action acknowledges the eligible rows in THIS view, and its label
+   * says so. "Dismiss all attention items" promised the unfiltered set while
+   * the mutation only ever posted the rows the filter left visible — the
+   * confirm then counted a different population than the button named.
+   */
+  test('bulk dismissal names the filtered view it acts on', async () => {
+    const timestamp = new Date().toISOString();
+    window.history.replaceState(
+      {},
+      '',
+      '/notifications?category=review_pending',
+    );
+    attention = {
+      pendingCount: 2,
+      items: [
+        {
+          id: 'review_pending:thread-review',
+          kind: 'review_pending',
+          title: 'Review pending',
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          openHref: '/?surface=activity&session=thread-review',
+          source: { threadId: 'thread-review' },
+        },
+        {
+          id: 'approval:notif-approval',
+          kind: 'approval',
+          title: 'Approval needed',
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          openHref: '/?surface=activity&session=thread-approval',
+          source: {
+            notificationId: 'notif-approval',
+            notificationSource: 'approval-inbox',
+          },
+          actions: [{ id: 'accept', label: 'Allow Once' }],
+        },
+      ],
+    };
+
+    renderPage();
+
+    // The heading keeps the server's total and names the narrowing; the bulk
+    // control names its own, smaller population.
+    expect(attentionHeading()).toBe('Needs attention (1 of 2)');
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Dismiss eligible items in this view',
+      }),
+    );
+    expect(screen.getByRole('dialog').textContent).toContain(
+      'Dismiss 1 eligible item in this view? Activity stays.',
+    );
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Dismiss eligible items',
+      }),
+    );
+
+    await waitFor(() =>
+      expect(sdkMocks.acknowledgeAttentionItem).toHaveBeenCalledTimes(1),
+    );
+    expect(sdkMocks.acknowledgeAttentionItem).toHaveBeenCalledWith(
+      'review_pending:thread-review',
+      'http://station.test',
+    );
+    expect(sdkMocks.acknowledgeAttentionItem).not.toHaveBeenCalledWith(
+      'approval:notif-approval',
+      expect.anything(),
+    );
   });
 
   test('bulk dismissal confirms and dismisses only attention items', async () => {
@@ -771,18 +844,16 @@ describe('NotificationsPage', () => {
     renderPage();
 
     expect(screen.getByText('Needs attention (2)')).toBeTruthy();
-    fireEvent.click(screen.getByText('Dismiss all attention items'));
+    fireEvent.click(screen.getByText('Dismiss eligible items'));
     const dialog = screen.getByRole('dialog');
     expect(
-      within(dialog).getByText(
-        'Dismiss 2 items needing attention? Activity stays.',
-      ),
+      within(dialog).getByText('Dismiss 2 eligible items? Activity stays.'),
     ).toBeTruthy();
     expect(sdkMocks.acknowledgeAttentionItem).not.toHaveBeenCalled();
 
     fireEvent.click(
       within(dialog).getByRole('button', {
-        name: 'Dismiss all attention items',
+        name: 'Dismiss eligible items',
       }),
     );
     await waitFor(() =>
@@ -794,7 +865,7 @@ describe('NotificationsPage', () => {
     );
     expect(clearActivity, 'activity count unchanged').not.toHaveBeenCalled();
     // The answered confirm closes. It used to stay open and re-render against
-    // the emptied queue as "Dismiss 0 items needing attention?".
+    // the emptied queue as "Dismiss 0 eligible items?".
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
@@ -842,10 +913,10 @@ describe('NotificationsPage', () => {
 
     renderPage();
 
-    fireEvent.click(screen.getByText('Dismiss all attention items'));
+    fireEvent.click(screen.getByText('Dismiss eligible items'));
     fireEvent.click(
       within(screen.getByRole('dialog')).getByRole('button', {
-        name: 'Dismiss all attention items',
+        name: 'Dismiss eligible items',
       }),
     );
 
@@ -884,10 +955,10 @@ describe('NotificationsPage', () => {
     };
     renderPage();
 
-    fireEvent.click(screen.getByText('Dismiss all attention items'));
+    fireEvent.click(screen.getByText('Dismiss eligible items'));
     fireEvent.click(
       within(screen.getByRole('dialog')).getByRole('button', {
-        name: 'Dismiss all attention items',
+        name: 'Dismiss eligible items',
       }),
     );
 
@@ -928,7 +999,7 @@ describe('NotificationsPage', () => {
       ],
     };
     renderPage();
-    fireEvent.click(screen.getByText('Dismiss all attention items'));
+    fireEvent.click(screen.getByText('Dismiss eligible items'));
     const dialog = screen.getByRole('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
 

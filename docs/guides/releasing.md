@@ -1,13 +1,13 @@
 # Integration, qualification, and releases
 
 Station integrates small changes quickly, qualifies the combined application
-on a six-hour schedule, and publishes deliberate releases from an immutable source.
+after main pushes and on a six-hour schedule, and publishes deliberate releases from an immutable source.
 A merged PR is integration evidence. It does not establish release readiness.
 
 ## Release flow
 
 Preview is the Beta channel. Nightly publishes usable main-edge builds after
-its source and artifact gates. Scheduled full qualification tests the combined
+its source and artifact gates. Full qualification on main tests the combined
 merged changes; Beta and Stable require its exact-source evidence.
 
 ```mermaid
@@ -15,11 +15,11 @@ flowchart TD
     PR["PR: required affected tests, security and platform checks"] --> MQ["Merge queue: combined candidate checks"]
     PR --> OPTIONAL["After core checks: affected delivery families in sequence"]
     MQ --> MAIN["Changes land on main"]
-    MAIN --> Q["Every six hours or manual: full source qualification"]
+    MAIN --> Q["Coalesced main pushes, six-hour schedule or manual: full source qualification"]
     Q -->|Failure| REPAIR["Bounded repair episode and normal repair PR"]
     REPAIR --> PR
     Q -->|Pass| RECEIPT["Exact-source full qualification receipt"]
-    Q -->|Pass| DELIVERY["All delivery validation families in sequence"]
+    Q -->|Scheduled/manual pass| DELIVERY["All delivery validation families in sequence"]
     MAIN --> DECIDE["Hourly Nightly decision: six-hour minimum publication interval"]
     DECIDE -->|Eligible| SMOKE["Exact-source lint, typecheck, native boundary and browser smoke"]
     SMOKE --> NIGHTLY["Build, sign, verify and publish Nightly"]
@@ -75,7 +75,7 @@ publication or all-artifact acceptance.
 | Stage | Evidence | Failure consequence |
 | --- | --- | --- |
 | Pull request | Affected tests, all typecheck lanes, lint, governance, security, critical browser smoke, and relevant platform checks | Blocks that PR |
-| Merge queue | Required checks against the synthesized combined candidate; the full regression when its fast-checks plan defers to a lane | Blocks incompatible integration |
+| Merge queue | Affected tests, static/browser invariants, security and relevant platform checks against the synthesized combined candidate | Blocks incompatible integration |
 | Main source qualification | Every full-regression phase and Android viewport tests | Opens or updates one repair episode; source remains unqualified |
 | Scheduled delivery validation | All five packaging/platform families after successful source qualification | Retains delivery failure; does not turn the source receipt into artifact proof |
 | Internal development | Local/dev build with focused and smoke evidence | Must be identified as unqualified; never advertised as Preview or Stable |
@@ -89,20 +89,24 @@ The authorities are [CI](../../.github/workflows/ci.yml),
 `Merge-queue regression` remains the required check's legacy name for ruleset
 compatibility. `PR: CI` owns it and shares the affected-test plan rather than
 installing and computing it again in another workflow. It checks the
-candidate diff, and it runs the hosted full regression on a candidate whose
-fast-checks plan defers to the `ci-fast` or `test-full` lane or names a path
-whose consumers only the queue runs. Every other candidate takes the fast path
-([merge integration](testing.md#merge-integration-required)). The required
-`fast-checks`, security, Windows portable floor and relevant iOS checks retain
-their integration protections.
+candidate diff and validates the exact same-run affected-test plan, requiring
+all bounded `fast-checks` evidence. Unknown/global paths and broad consumer
+coverage remain explicitly deferred to main/release full qualification
+([merge integration](testing.md#merge-integration-required)). A passing queue
+check is not a full source-qualification receipt. Security, Windows portable
+floor and relevant iOS checks retain their integration protections.
 
-Background qualification and optional delivery enter one GitHub-native
-`station-background-compute` concurrency group before allocating their runners.
-`queue: max` retains up to 100 pending requests, ordered by arrival at that
-group; overflow is cancelled, never qualification. There is no outer
-single-pending queue that can replace an admitted request. Required merge-group
-qualification uses a separate source-specific class, and release qualification
-uses a separate release class. They do not wait behind the optional backlog.
+Background qualification and optional delivery enter the shared GitHub-native
+`station-background-compute` group before allocating their runners. That inner
+group retains up to 100 pending requests; overflow is cancelled, never qualified.
+Main qualification coalesces pushes in an outer caller group, keeping the
+admitted push and one pending push replaced by a later arriving push. Scheduled
+and manual runs have unique caller groups; pushes cannot discard their delivery
+or explicit force requests. It does not
+cancel the running corpus; replaced revisions have no completion claim. This
+coalesces main work without accumulating one exhaustive run per merge. Arrival
+order does not guarantee source recency. Release qualification retains its
+separate class and exact-source full-receipt requirements.
 
 The default Free profile bounds a background qualification to four jobs;
 delivery validation uses at most two. Thus participating background work is
@@ -185,8 +189,10 @@ allocate a source publisher. Its status is
 not full release qualification and does not replace Beta/stable receipts.
 
 [Main: Qualification](../../.github/workflows/main-qualification.yml) runs at
-minute 17 every six UTC hours, or by manual dispatch. It tests one exact workflow-event SHA from
-`main`, independently of platform publishing. Matrices do not cancel siblings
+each main push, minute 17 every six UTC hours, or by manual dispatch. It tests
+one exact workflow-event SHA from `main`, independently of platform publishing.
+Push runs qualify source only; scheduled/manual success also runs delivery
+validation. Coalesced pending revisions remain unqualified. Matrices do not cancel siblings
 on failure, and the phase driver continues through failed phases. A prerequisite
 failure, missing job or cancelled job remains incomplete evidence, never a pass.
 The full corpus includes files in the historical quarantine list.

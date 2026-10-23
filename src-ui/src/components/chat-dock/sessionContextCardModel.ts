@@ -43,6 +43,9 @@ export function sessionContextCardFits(
  */
 function transcriptColumn(surface: HTMLElement): HTMLElement {
   return (
+    surface.querySelector<HTMLElement>(
+      ':scope > .split-pane-companion__main',
+    ) ??
     surface.querySelector<HTMLElement>(':scope > .chat-dock__content-area') ??
     surface
   );
