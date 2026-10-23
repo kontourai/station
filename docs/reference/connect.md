@@ -280,6 +280,10 @@ on `ConnectionHealthSnapshot` / `ConnectionStatusResult`). It resumes on the nex
 `trigger()` — already reachable through a manual "Try now", the browser
 regaining network, or a saved-credential change). The coordinator keeps its own
 multi-endpoint polling loop; it does not instantiate `ConnectionSupervisor`.
+If React Strict Mode stops and immediately resubscribes during a probe, the
+coordinator suppresses the aborted result and then runs the queued probe. It
+does not wait for a focus event or the next polling interval to publish health.
+
 The hook shares coordinators through a registry, which is separate from the
 proposed reusable supervisor registry (#1096). See the
 [supervisor](../../packages/connect/src/core/ConnectionSupervisor.ts),

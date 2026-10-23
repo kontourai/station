@@ -142,12 +142,11 @@ package's 367 inspected artifact files match the verified tarball. Managed
 installation does not establish supported group execution or provider acceptance.
 
 The published 9.3.0 pin and managed installation were explicitly authorized.
-Subsequent rounds, renewal and accounting work followed the agent's assessment
-of contract gaps; issue requirements and that assessment do not establish blanket
-authorization for every new primitive. Brian requested an independent scope and
-product-ownership audit. Station consumes published contracts rather than
-sibling internals, and the upstream release and single Station epic PR have
-separate acceptance evidence.
+On 2026-10-22, Brian authorized resuming upstream contract work and publication
+as needed for the full epic after the controlled CLI consumer worked. This
+lifts the earlier generalized migration/publication hold. Station still consumes
+published contracts rather than sibling internals; upstream release and the one
+combined Station epic PR retain separate acceptance evidence.
 
 Before implementing group execution, bind the published authority and
 persistence contracts for create/get/list/events/cancel, ready seats, aggregate
@@ -963,3 +962,24 @@ published serving contract.
 - Merge master/main, qualify the exact combined SHA, then publish one PR with
   honest remaining acceptance limits. No local/focused receipt implies hosted
   integration, merge, deployment, or live-provider success.
+
+## Current desktop connection and physical second-device evidence
+
+At `e6be8cc1ae4`, the canonical lifecycle runtime reports identity 200 with that
+source SHA. A desktop browser opens the retained controlled CLI output and
+reloads it with the directory label; the header no longer remains Reconnecting.
+The root React Strict Mode regression fails for healthy and authentication-failed
+probes on the prior source (2 red, 22 controls); the queued-probe repair passes
+41 tests. Removing the aborted-result drain reproduces both failures; byte-exact
+restoration passes 41 tests. Connect typechecking and Biome pass.
+
+The isolated Android proof app built from `4cd2f9ba7e4` (APK SHA-256
+`6544b62aba7b44c9c7f35e53eff8c833a743cd5a5bf4797373cd830835b2f0fc`)
+paired through the normal native link and operator-approved API with that
+runtime on physical B10. It opens `CLI_CONTEXT_OK`, shows a projectless directory
+label and Done, and retains the connection/output through WebView reload.
+Activity exposes the exact task ID and `from CLI`; Home details omit origin.
+This uses adb loopback forwarding, not tailnet transport qualification, and
+reopens the earlier controlled task without a new provider invocation. YouTube
+was restored; the owned proof app and forwards were removed. It does not close
+whole-epic or new-provider-run acceptance.
