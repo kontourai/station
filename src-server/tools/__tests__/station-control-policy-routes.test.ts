@@ -28,7 +28,10 @@ import {
   claudeInProcessStationControlOptions,
   type InProcessStationControlServer,
 } from '../../runtime/mcp/station-control-in-process.js';
-import { __resetStationControlMcpTokensForTests } from '../../runtime/mcp/station-control-mcp-token.js';
+import {
+  __resetStationControlMcpTokensForTests,
+  revokeStationControlMcpToken,
+} from '../../runtime/mcp/station-control-mcp-token.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { INTERNAL_API_TOKEN_HEADER } from '../../utils/internal-api-token.js';
 import {
@@ -36,6 +39,7 @@ import {
   STATION_CONTROL_TOOL_POLICY,
 } from '../station-control-policy.js';
 
+let revokeAfterRoots = false;
 const resolveRecord: StationControlCallerRecordResolver = () => ({
   principal: { id: LOCAL_OPERATOR_PRINCIPAL_ID, source: 'session-owner' },
   localProjectId: 'local-project-a',
@@ -64,7 +68,12 @@ beforeAll(async () => {
     // environment is "current".
     if (c.req.path === '/.well-known/station/v1')
       return c.json({ environmentId: 'environment-current' });
-    if (c.req.path === '/api/knowledge/roots')
+    if (c.req.path === '/api/knowledge/roots') {
+      if (revokeAfterRoots)
+        revokeStationControlMcpToken(
+          'op-route-capture-knowledge',
+          'station-knowledge',
+        );
       return c.json({
         success: true,
         data: [
@@ -86,6 +95,7 @@ beforeAll(async () => {
           },
         ],
       });
+    }
     return c.json({ success: true, data: {} });
   });
   let resolvePort!: (value: number) => void;
@@ -107,6 +117,7 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
+  revokeAfterRoots = false;
   __resetStationControlMcpTokensForTests();
 });
 
@@ -389,6 +400,22 @@ describe('the authority table routes are the routes the tools call', () => {
               `${serverId}/${name}: ${entry.method} ${entry.path}`,
             );
         }
+      }
+      if (serverId === 'station-knowledge') {
+        revokeAfterRoots = true;
+        const revoked = await request(++id, 'tools/call', {
+          name: 'list_knowledge_roots',
+          arguments: {},
+        });
+        expect(JSON.stringify(revoked)).not.toContain('Same policy');
+        expect(JSON.stringify(revoked)).not.toContain('current-root');
+        const refusal = JSON.parse(
+          revoked.result.content.find(
+            (part: { type: string }) => part.type === 'text',
+          ).text,
+        );
+        expect(refusal.success).toBe(false);
+        revokeAfterRoots = false;
       }
       await instance.close();
     }

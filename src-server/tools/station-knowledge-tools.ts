@@ -118,6 +118,7 @@ export function registerKnowledgeDataTools(server: StationControlToolRegistry) {
             controlRequestOptions(),
           ).then(async (roots) => {
             const caller = await getStationControlCaller();
+            if (!caller) throw new StationControlCallerRequiredError();
             const projectId =
               caller?.projectIdSource === 'session-record'
                 ? caller.localProjectId
