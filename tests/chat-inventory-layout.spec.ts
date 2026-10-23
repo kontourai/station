@@ -16,6 +16,7 @@ import {
   closeFixtureServer,
   startOllamaFixture,
 } from './helpers/ollama-fixture';
+import { dragDockTo } from './helpers/region-placement';
 
 /**
  * #3882: opening Chat inventory beside the transcript in a wide bottom dock.
@@ -253,6 +254,55 @@ test.describe('Chat inventory beside the transcript (#3882)', () => {
       await expect(card).toBeVisible();
       await expect.poll(() => focusedSurface(page)).toBe('card-inventory');
     }
+    // #3951: the same real chat in a 400px side dock must remain usable.
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await dragDockTo(page, 'right');
+    await expect(dock).toHaveClass(/chat-dock--right/);
+    const resize = dock.getByRole('button', {
+      name: 'Resize chat dock',
+      exact: true,
+    });
+    const handle = await resize.boundingBox();
+    const beforeResize = await dock.boundingBox();
+    if (!handle || !beforeResize)
+      throw new Error('Side dock resize handle is missing');
+    await page.mouse.move(
+      handle.x + handle.width / 2,
+      handle.y + handle.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      beforeResize.x + beforeResize.width - 400,
+      handle.y + handle.height / 2,
+      { steps: 8 },
+    );
+    await page.mouse.up();
+    await expect
+      .poll(async () => Math.round((await dock.boundingBox())?.width ?? 0))
+      .toBe(400);
+    const basis = dock.getByRole('button', { name: /^Basis/ }).first();
+    await basis.click();
+    const inventory = dock.getByLabel('Chat inventory', { exact: true });
+    await expect(inventory).toBeVisible();
+    await expect(dock.locator('.chat-dock__content-area')).toBeHidden();
+    await expect
+      .poll(async () => {
+        const surface = await dock
+          .locator('.chat-dock__conversation-surface')
+          .boundingBox();
+        const panel = await inventory.boundingBox();
+        if (!surface || !panel) return false;
+        return (
+          Math.abs(panel.width - surface.width) <= 1 &&
+          Math.abs(panel.height - surface.height) <= 1
+        );
+      })
+      .toBe(true);
+    await inventory
+      .getByRole('button', { name: 'Close Chat inventory' })
+      .click();
+    await expect(dock.getByText(REPLY, { exact: true })).toBeVisible();
+    await expect(basis).toBeFocused();
     browserHealth.assertHealthy();
   });
 });

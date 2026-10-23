@@ -53,12 +53,12 @@ const APP_URI = 'ui://station/basis/session-inventory/v1';
 const V2_APP_URI = 'ui://station/basis/session-inventory/v2';
 const V2_SCOPE = {
   kind: 'whole-session' as const,
-  sessionId: 'fixture-session',
+  sessionId: 'station:1792425046978',
 };
 const WORK_ITEM_URL = 'https://github.com/kontourai/station/issues/235';
 const SCOPE = {
   kind: 'current-answer' as const,
-  sessionId: 'fixture-session',
+  sessionId: 'station:1792425046978',
   turnId: 'fixture-turn',
 };
 const hostile =
@@ -205,7 +205,7 @@ function page(
 
 const KEPT_SCOPE = {
   kind: 'kept-in-task' as const,
-  sessionId: 'fixture-session',
+  sessionId: 'station:1792425046978',
   taskId: 'fixture-task',
 };
 
@@ -266,7 +266,7 @@ const themes = {
 const bridge = new AppBridge(null, {name:'Official Session inventory host fixture',version:'1'}, {serverTools:{}}, {hostContext:{theme:'dark',styles:{variables:themes.dark}}});
 window.__setSessionInventoryTheme = (theme) => bridge.setHostContext({theme,styles:{variables:themes[theme]}});
 bridge.oninitialized = async () => {
-  const args = {operation:'open',scope:{kind:'current-answer',sessionId:'fixture-session',turnId:'fixture-turn'}};
+  const args = {operation:'open',scope:{kind:'current-answer',sessionId:'station:1792425046978',turnId:'fixture-turn'}};
   const result = await call(args);
   capture(result);
   await bridge.sendToolInput({arguments:args});
@@ -276,7 +276,7 @@ bridge.oncalltool = async ({name,arguments:args}) => {
   const continuation = expected?.continuations?.find((entry) => entry?.groupId === 'inputs');
   if (name !== 'get_session_inventory' || !continuation || !args ||
       Object.keys(args).length !== 5 || args.operation !== 'page' ||
-      JSON.stringify(args.scope) !== JSON.stringify({kind:'current-answer',sessionId:'fixture-session',turnId:'fixture-turn'}) ||
+      JSON.stringify(args.scope) !== JSON.stringify({kind:'current-answer',sessionId:'station:1792425046978',turnId:'fixture-turn'}) ||
       args.occurrenceId !== expected.occurrenceId || args.groupId !== 'inputs' ||
       args.continuationToken !== continuation.continuationToken)
     throw new Error('Page escaped captured Session inventory capability');
@@ -299,7 +299,7 @@ const call = async (args) => {
 };
 const bridge = new AppBridge(null, {name:'Official kept Session inventory host fixture',version:'1'}, {serverTools:{}}, {hostContext:{theme:'light'}});
 bridge.oninitialized = async () => {
-  const args = {operation:'open',scope:{kind:'kept-in-task',sessionId:'fixture-session',taskId:'fixture-task'}};
+  const args = {operation:'open',scope:{kind:'kept-in-task',sessionId:'station:1792425046978',taskId:'fixture-task'}};
   const result = await call(args);
   await bridge.sendToolInput({arguments:args});
   await bridge.sendToolResult(result);
@@ -329,7 +329,7 @@ const call = async (args) => {
 };
 const bridge = new AppBridge(null, {name:'Official Session inventory v2 host fixture',version:'1'}, {serverTools:{},openLinks:{}}, {hostContext:{theme:'light'}});
 bridge.oninitialized = async () => {
-  const args = {version:'station.session-inventory-mcp/v2',operation:'open',scope:{kind:'whole-session',sessionId:'fixture-session'}};
+  const args = {version:'station.session-inventory-mcp/v2',operation:'open',scope:{kind:'whole-session',sessionId:'station:1792425046978'}};
   const result = await call(args);
   capture(result);
   await bridge.sendToolInput({arguments:args});
@@ -339,7 +339,7 @@ bridge.oncalltool = async ({name,arguments:args}) => {
   const continuation = expected?.continuations?.find((entry) => entry?.groupId === 'work-items');
   if (name !== 'get_session_inventory' || !continuation || !args ||
       Object.keys(args).length !== 6 || args.version !== 'station.session-inventory-mcp/v2' ||
-      args.operation !== 'page' || JSON.stringify(args.scope) !== JSON.stringify({kind:'whole-session',sessionId:'fixture-session'}) ||
+      args.operation !== 'page' || JSON.stringify(args.scope) !== JSON.stringify({kind:'whole-session',sessionId:'station:1792425046978'}) ||
       args.occurrenceId !== expected.occurrenceId || args.groupId !== 'work-items' ||
       args.continuationToken !== continuation.continuationToken)
     throw new Error('Page escaped captured Session inventory v2 capability');
@@ -454,7 +454,18 @@ test('Session inventory resource interoperates with an independent official AppB
   if (!server.listening)
     await new Promise<void>((resolve) => server.once('listening', resolve));
   const port = (server.address() as AddressInfo).port;
-  owner.route('/', createStationControlMcpRoutes({ port }));
+  owner.route(
+    '/',
+    createStationControlMcpRoutes({
+      port,
+      resolveCallerRecord: (callerSessionId) => ({
+        principal: {
+          id: `human:inventory-interop:${callerSessionId}`,
+          source: 'session-owner',
+        },
+      }),
+    }),
+  );
   const sessionId = `session-inventory-interop-${testInfo.workerIndex}`;
   const { token } = mintStationControlMcpToken(sessionId, 'url-token');
   const transport = new StreamableHTTPClientTransport(
@@ -816,7 +827,18 @@ test('v2 work-item inventory crosses the real MCP tool, durable projection, and 
   if (!server.listening)
     await new Promise<void>((resolve) => server.once('listening', resolve));
   const port = (server.address() as AddressInfo).port;
-  owner.route('/', createStationControlMcpRoutes({ port }));
+  owner.route(
+    '/',
+    createStationControlMcpRoutes({
+      port,
+      resolveCallerRecord: (callerSessionId) => ({
+        principal: {
+          id: `human:inventory-interop:${callerSessionId}`,
+          source: 'session-owner',
+        },
+      }),
+    }),
+  );
   const sessionId = `session-inventory-v2-${testInfo.workerIndex}`;
   const { token } = mintStationControlMcpToken(sessionId, 'url-token');
   const client = new Client(
@@ -1056,7 +1078,18 @@ test('kept-in-task inventory crosses the real Task app-read route into the porta
   if (!server.listening)
     await new Promise<void>((resolve) => server.once('listening', resolve));
   const port = (server.address() as AddressInfo).port;
-  owner.route('/', createStationControlMcpRoutes({ port }));
+  owner.route(
+    '/',
+    createStationControlMcpRoutes({
+      port,
+      resolveCallerRecord: (callerSessionId) => ({
+        principal: {
+          id: `human:inventory-interop:${callerSessionId}`,
+          source: 'session-owner',
+        },
+      }),
+    }),
+  );
   const sessionId = `session-inventory-kept-${testInfo.workerIndex}`;
   const { token } = mintStationControlMcpToken(sessionId, 'url-token');
   const client = new Client(

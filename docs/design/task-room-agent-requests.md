@@ -6,6 +6,13 @@ the [shared channel](shared-task-channels.md). Local controlled tests verify
 selection and retry behavior; browser, actual-provider and invited/public
 acceptance remain unfinished.
 
+The Task view retains one tab choice in renderer memory across authority
+re-verification. Its identity includes the verified namespace, API base, Task
+ID and creation time. This retains presentation only: protected queries still
+re-authorize, and no Task data, draft, or editor mode is restored by that choice.
+After reconnect, Brief can return as a freshly read preview; editing remains an
+explicit action.
+
 ## Owners and transport
 
 The [work module](../../src-server/services/projects/task-room-work-module.ts)

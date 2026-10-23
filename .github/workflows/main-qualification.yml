@@ -1,6 +1,8 @@
 name: "Main: Qualification"
 
 on:
+  push:
+    branches: [main]
   schedule:
     - cron: '17 */6 * * *'
   workflow_dispatch:
@@ -14,9 +16,14 @@ permissions:
   contents: read
   actions: read
 
+# Coalesce only pushes; scheduled/manual requests retain their own admission.
+# This group covers source qualification, not downstream delivery validation.
 jobs:
   qualification:
     if: github.ref == 'refs/heads/main'
+    concurrency:
+      group: ${{ github.event_name == 'push' && 'station-main-qualification-push' || format('station-main-qualification-deliberate-{0}', github.run_id) }}
+      cancel-in-progress: false
     uses: ./.github/workflows/full-regression.yml
     with:
       capacity_class: background
@@ -25,5 +32,5 @@ jobs:
 
   delivery-validation:
     needs: [qualification]
-    if: needs.qualification.result == 'success'
+    if: github.event_name != 'push' && needs.qualification.result == 'success'
     uses: ./.github/workflows/delivery-validation.yml

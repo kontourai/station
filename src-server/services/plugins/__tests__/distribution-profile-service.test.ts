@@ -502,6 +502,7 @@ describe('DistributionProfileService', () => {
         name: 'typed-layout',
         slug: 'typed',
         type: 'session-board',
+        workspaceBinding: 'repository',
         tabs: [],
       }),
     );
@@ -514,7 +515,38 @@ describe('DistributionProfileService', () => {
     expect(
       service.resolveForApply('plugin:typed-layout:typed').definition.type,
     ).toBe('session-board');
+    expect(
+      service.resolveForCatalog('plugin:typed-layout:typed').item
+        .workspaceBinding,
+    ).toBe('repository');
+    expect(
+      service
+        .listLayouts()
+        .find((item) => item.id === 'plugin:typed-layout:typed')
+        ?.workspaceBinding,
+    ).toBe('repository');
   });
+
+  test.each([null, '', 'none', 'terminal', true, {}])(
+    'refuses invalid plugin workspace binding %j at catalog resolution',
+    (workspaceBinding) => {
+      const projectHome = home();
+      const directory = writePlugin(projectHome, 'bad-binding');
+      writeFileSync(
+        join(directory, 'layout.json'),
+        JSON.stringify({
+          name: 'Bad binding',
+          slug: 'bad-binding',
+          workspaceBinding,
+          tabs: [],
+        }),
+      );
+      const service = new DistributionProfileService(projectHome);
+      expect(() =>
+        service.resolveForApply('plugin:bad-binding:bad-binding'),
+      ).toThrow('known installed contribution');
+    },
+  );
 
   test('reads a disabled installed plugin descriptor without authorizing application', () => {
     const projectHome = home();

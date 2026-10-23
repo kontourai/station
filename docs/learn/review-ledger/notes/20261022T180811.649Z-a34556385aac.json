@@ -1,0 +1,7 @@
+{
+  "revision": "1a32deccc64a215aff879d9161559f856aec4736",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"Bounded test-only delta through1a32deccc64: the real requestDevicePairing fetch assertion now expects protocol3, matching the existing published STATION_COMPAT_PROTOCOL_VERSION3 and shared header policy. The old literal2 failed locally/Windows; restored suite38 passes. No product transport, pairing offer/proof, authorization, compatibility admission, header-negotiation or retry behavior changes. Current guide accurately says requests carry the build protocol and declarations grant no credential/scope. No prose change needed; not a live-device/hosted successor qualification.","inputs":["docs/reference/connect.md","packages/connect/src/__tests__/devicePairing.test.ts"]}
+  ]
+}

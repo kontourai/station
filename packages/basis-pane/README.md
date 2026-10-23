@@ -88,3 +88,19 @@ Hosts capture a non-secret request scope before invoking protected reads or
 mutations. Connection activation and native authorization epochs partition
 queries and reject late responses; native receipts are attached only to scoped
 requests. No raw credentials belong in cache keys or pane props.
+
+## Connected Session inventory
+
+Station presents groups in this order: Inputs, Execution, Decisions, Outputs,
+Work items, Verification & delivery, Sources, Kept, Attention, Resources and
+Live now. This presentation order does not change the wire order or turn
+lineage into answer support. In a narrow side dock, inventory occupies the
+conversation surface and hides the underlying transcript until Close; focus
+returns to its opener when possible.
+
+The chat pane owns the authority/chat registration independently of its lazy
+panel and desktop/mobile headers. Current execution updates preserve a captured
+exact-answer scope; changing chat or authority, or unmounting the pane, retires
+it. The connected exact-answer action opens an explicit Task picker before
+Keep. The portable App remains a reader: its existing protocol negotiation does
+not opt into all protocol 3 HTTP lineage rows.

@@ -1494,22 +1494,16 @@ export class ConnectionService {
           ...engineRuntime.config,
           modelRoute: proxyRoute,
         };
-        engineRuntime.prerequisites = engineRuntime.prerequisites.map((item) =>
-          ['claude-auth', 'codex-auth'].includes(item.id)
-            ? {
-                ...item,
-                name: 'Proxy key',
-                status: 'installed' as const,
-                description: `A key is saved for ${proxyRoute.label}. Check the connection to verify an answer.`,
-              }
-            : item,
-        );
-        if (
-          engineRuntime.enabled &&
-          engineRuntime.status === 'missing_prerequisites' &&
-          !hasRequiredMissing(engineRuntime.prerequisites)
-        )
-          engineRuntime.status = 'ready';
+        // The auth CELL is not rewritten here. Its basis — the CLI's own login
+        // or the route's key — is the adapter's answer, resolved at the launch
+        // seam every spawn already goes through
+        // (`engine-proxy-auth-prerequisite.ts`). This projection used to
+        // substitute it a second time, and only here: the adapter and the
+        // launch gate (`orchestration-service.assertAdapterReady`) disagreed
+        // with the projected "ready", so one payload carried
+        // `status: "ready"` beside `readinessState: "unavailable_prerequisites"`
+        // while `codex` refused to start on "prerequisites missing: Codex
+        // login" (2026-10-22).
       }
       const projected = failure
         ? applyRuntimeAuthenticationFailure(engineRuntime, failure)

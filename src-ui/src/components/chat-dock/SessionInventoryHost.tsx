@@ -73,6 +73,17 @@ export function SessionInventoryHost({
         else restoreFocusFallback?.();
       }
       onClose();
+      // A narrow dock covers and hides the transcript. Its answer trigger can
+      // receive focus only after the close commits and makes the chat visible.
+      if (
+        restoreFocus &&
+        trigger?.isConnected &&
+        document.activeElement !== trigger
+      )
+        requestAnimationFrame(() => {
+          if (trigger.isConnected && document.activeElement === document.body)
+            trigger.focus();
+        });
     },
     [onClose, restoreFocusFallback, trigger],
   );

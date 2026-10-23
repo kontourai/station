@@ -32,7 +32,6 @@ import {
   FAST_CHECKS_SHARD_COUNT,
   fastChecksShardCount,
   isPassingFastChecksStatus,
-  MERGE_QUEUE_REGRESSION_CHECK,
   parseFastChecksShard,
   sliceFastChecksPlan,
   validateFastChecksPlan,
@@ -331,7 +330,7 @@ async function runCommand(
   );
   if (receipt.status === 'provisional')
     report(
-      `[fast-checks] selection deferred to ${base.deferredLanes.join(', ') || 'test-full'}; full-regression remains the required completion gate\n`,
+      `[fast-checks] selection deferred to ${base.deferredLanes.join(', ') || 'test-full'}; full-regression remains required for full qualification and release\n`,
     );
   return receipt.passed ? 0 : 1;
 }
@@ -379,7 +378,7 @@ function aggregateCommand(
   if (suiteDeferrals.length) {
     // #1706: this green is not a full run's green. Say so on the check run
     // itself, and name who runs the deferred suite.
-    const message = `fast-checks deferred ${suiteDeferrals.join(', ')}: the affected suite did not run in this check; ${MERGE_QUEUE_REGRESSION_CHECK} runs full regression before merge`;
+    const message = `fast-checks deferred ${suiteDeferrals.join(', ')}: the affected suite did not run in this check; full qualification runs on main and before release`;
     if (env.GITHUB_ACTIONS === 'true')
       report(`::warning title=fast-checks is provisional::${message}\n`);
     if (env.GITHUB_OUTPUT)

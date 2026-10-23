@@ -28,6 +28,21 @@ Distribution owners can control whether a plugin layout is shown, enabled, or
 available for project use without changing the plugin itself; see
 [Distribution Profiles](./distribution-profiles.md).
 
+## Use the Project repository
+
+A plugin layout can declare `workspaceBinding: 'repository'` at the top level
+of its layout definition. Applying it to a Project retains that declaration.
+The Project layout API derives `config.workingDirectory` from the Project on
+each read; the plugin should not save a separate working-directory path.
+`config.repoId` may name a particular repository in a multi-repository Project.
+If that repository is not bound locally, no working directory is returned.
+
+This declaration only selects where the layout's workspace comes from. File,
+diff and terminal operations retain their own permission and admission checks.
+See [layout management](../reference/api.md#layout-management). It does not
+implement the proposed generic panel-state migration or change the layout's
+presentation.
+
 ## Directory Structure
 
 A new plugin (what `station plugin create` and **Plugins → New plugin**
@@ -1953,7 +1968,8 @@ cannot use the count route. Capability-bearing or Pane-marked requests cannot ra
 tier, acknowledge Full, or write an opt-in/notice receipt.
 
 These Pane-context checks prevent accidental or well-behaved SDK misuse. They recognize
-only the explicit `x-station-plugin-capability` and `x-station-plugin` headers; browser
+the explicit `x-station-plugin-capability` and `x-station-plugin` headers and
+iframe navigations (`Sec-Fetch-Dest: iframe`); ordinary browser
 fetch/XHR requests use `Sec-Fetch-Dest: empty`, which provides no Pane identity.
 Same-origin plugin code shares the existing shell trust model: it can omit those
 headers, call shell APIs, raise its telemetry tier, mint Pane tokens, and read the

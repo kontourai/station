@@ -48,6 +48,22 @@ routes do not depend on it, and disabling it does not remove an existing root.
 The earlier description of the flag as inert is obsolete.
 `defaultChatFontSize` and `workspaceCheckpoints` gained Station-configuration rows.
 
+## Panel state within a layout
+
+`layoutPanels` is device-local direct-manipulation state, keyed by Project/Layout
+host scope and conversation. It remembers generic side/lower-panel slots,
+dimensions and inbox fold choices. Coding uses the generic record and hook; other layout hosts can use the same
+state owner. The record is bounded to 32 layouts and 32 sessions per layout;
+unknown pairs start closed. Updates read the fresh persisted record so a local
+interaction preserves another tab's latest layout choices.
+
+The v3 device envelope removes the pre-release `codingPanels` preference.
+The owner chose to reset those old open-panel/size choices on 2026-10-21;
+there is no compatibility bucket or deferred Coding migration. Other preferences
+retain their normal ownership and upgrade behavior. See
+[panel placement](placement.md) and the
+[record owner](../../src-ui/src/lib/layout-panels-record.ts).
+
 ## Settings presentation
 
 The current [topic navigation](../../src-ui/src/views/settings/settings-pages.ts)

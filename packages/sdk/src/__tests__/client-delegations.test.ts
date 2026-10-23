@@ -306,7 +306,7 @@ describe('client/delegations fetchers (#977 Wave 2)', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
       'http://station.test/api/orchestration/delegations/task%3A1?environmentId=env-1',
-      { method: 'GET', headers: { 'X-Station-Client-Protocol': '2' } },
+      { method: 'GET', headers: { 'X-Station-Client-Protocol': '3' } },
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -324,7 +324,7 @@ describe('client/delegations fetchers (#977 Wave 2)', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
       'http://station.test/api/orchestration/delegations/task%3A1',
-      { method: 'GET', headers: { 'X-Station-Client-Protocol': '2' } },
+      { method: 'GET', headers: { 'X-Station-Client-Protocol': '3' } },
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -357,7 +357,7 @@ describe('client/delegations fetchers (#977 Wave 2)', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
       'http://station.test/api/orchestration/delegations/task%3A1/events?cursor=station-task-events%3Av1%3A2&limit=25',
-      { method: 'GET', headers: { 'X-Station-Client-Protocol': '2' } },
+      { method: 'GET', headers: { 'X-Station-Client-Protocol': '3' } },
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -548,7 +548,7 @@ describe('client/delegations fetchers (#977 Wave 2)', () => {
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
       'http://station.test/api/orchestration/delegations?environmentId=env-1&limit=10',
-      { method: 'GET', headers: { 'X-Station-Client-Protocol': '2' } },
+      { method: 'GET', headers: { 'X-Station-Client-Protocol': '3' } },
     );
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });

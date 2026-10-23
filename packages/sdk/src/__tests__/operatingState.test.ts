@@ -32,7 +32,7 @@ describe('operatingState SDK domain', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/projects/demo/operating-state',
-      { headers: { 'X-Station-Client-Protocol': '2' } },
+      { headers: { 'X-Station-Client-Protocol': '3' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });

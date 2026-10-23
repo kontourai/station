@@ -118,16 +118,16 @@ export type SessionInventoryViewModel = {
 
 const labels: Readonly<Record<SessionInventoryV2GroupId, string>> = {
   inputs: 'Inputs',
-  sources: 'Sources',
-  'work-items': 'Work items',
   execution: 'Execution',
   decisions: 'Decisions',
   outputs: 'Outputs',
+  'work-items': 'Work items',
   'verification-delivery': 'Verification & delivery',
-  'live-now': 'Live now',
+  sources: 'Sources',
   kept: 'Kept',
   attention: 'Attention',
   resources: 'Resources',
+  'live-now': 'Live now',
 };
 
 function scopeLabel(scope: SessionInventoryScope): string {
@@ -325,9 +325,7 @@ export function buildSessionInventoryViewModel(
   // not-captured/unsupported gaps, not only errors.
   const ownerGaps = [
     ...new Set(
-      groups
-        .filter((group) => group.id !== 'attention')
-        .flatMap((group) => group.gaps),
+      groups.flatMap((group) => (group.id === 'attention' ? [] : group.gaps)),
     ),
   ];
   const withAttention = isV1

@@ -2623,8 +2623,11 @@ export function configureRuntimeRoutes(
   // owner gap. Logged once per read so it cannot hide behind a fallback gap.
   const reportBasisCompositionInvariant = (
     error: StationBasisCompositionInvariantError,
+    taskId?: string,
   ) =>
     context.logger.error('Station Basis composition invariant failed', {
+      ...error.identity,
+      ...(taskId ? { taskId } : {}),
       surfaceGapCode: error.surfaceGap.code,
       surfaceGapMessage: error.surfaceGap.message,
     });
@@ -2689,6 +2692,11 @@ export function configureRuntimeRoutes(
     canReadSession: (threadId, authority) =>
       context.orchestrationService.canUserReadSession(threadId, authority),
     readExactAnswerBasis: exactAnswerBasis.read,
+    readAnswerLineage: (sessionId, turnId) =>
+      context.orchestrationEventStore?.readAnswerInventoryLineage(
+        sessionId,
+        turnId,
+      ) ?? { status: 'corrupt' },
     readAnswerBasis: (threadId, turnId, authority) =>
       context.orchestrationService.sessionQueries.readAnswerBasis?.(
         { type: 'answer-basis', threadId, turnId },
@@ -3914,9 +3922,7 @@ export function configureRuntimeRoutes(
         authority,
         current,
       });
-      return outcome.status === 'found'
-        ? { status: 'unavailable' as const }
-        : outcome;
+      return outcome;
     },
     page: async ({
       scope,
@@ -3944,9 +3950,7 @@ export function configureRuntimeRoutes(
         authority,
         current,
       });
-      return outcome.status === 'found'
-        ? { status: 'unavailable' as const }
-        : outcome;
+      return outcome;
     },
     authorize: ({ scope, routeFamily, authority, request }) => {
       if (

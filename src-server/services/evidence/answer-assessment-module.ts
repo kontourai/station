@@ -71,6 +71,8 @@ export class AnswerAssessmentConflictError extends Error {}
 export class AnswerAssessmentUnavailableError extends Error {}
 export class AnswerAssessmentNotFoundError extends Error {}
 
+class AssessmentIndexCorruptError extends AnswerAssessmentUnavailableError {}
+
 /**
  * Opaque deterministic subject for one exact answer. JSON tuple hashing avoids
  * separator ambiguity and keeps message IDs out of arbitrary bundle paths.
@@ -519,8 +521,9 @@ export class AnswerAssessmentModule {
     current?: () => boolean;
   }): Promise<CapturedAssessment | { read: SurfaceAssessmentRead }> {
     const current = input.current ?? (() => true);
-    if (input.authority.mode === 'hosted' || !current())
-      return { read: unavailable() };
+    if (!current()) return { read: unavailable() };
+    if (input.authority.mode === 'hosted')
+      return { read: notCaptured(input.authorizedAnswer.observedAt) };
     const binding = bindingFor(input.authorizedAnswer);
     const principalId = `${input.authority.mode}:${input.authority.userId}`;
     let record: Record | undefined;
@@ -530,8 +533,13 @@ export class AnswerAssessmentModule {
           item.sessionId === binding.sessionId &&
           item.turnId === binding.turnId,
       );
-    } catch {
-      return { read: unavailable() };
+    } catch (error) {
+      return {
+        read:
+          error instanceof AssessmentIndexCorruptError
+            ? corrupt(input.authorizedAnswer.observedAt)
+            : unavailable(),
+      };
     }
     if (!record?.active)
       return { read: notCaptured(input.authorizedAnswer.observedAt) };
@@ -670,16 +678,28 @@ export class AnswerAssessmentModule {
   private readIndexReadOnly(allowMissing = false): Index {
     try {
       try {
-        lstatSync(this.indexPath);
+        const stat = lstatSync(this.indexPath);
+        // Refuse the oversized stored document before the shared guarded reader
+        // allocates bytes. It is an unreadable snapshot, not a transient outage.
+        if (stat.isFile() && stat.size > MAX_INDEX_BYTES)
+          throw new AssessmentIndexCorruptError(
+            'Assessment index exceeds its bound',
+          );
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT' && allowMissing)
           return { schemaVersion: 1, records: [] };
         throw error;
       }
       const raw = readBoundedRegularFile(this.indexPath);
-      if (Buffer.byteLength(raw) > MAX_INDEX_BYTES) throw new Error('large');
-      return parseIndex(JSON.parse(raw));
-    } catch (_error) {
+      try {
+        return parseIndex(JSON.parse(raw));
+      } catch {
+        throw new AssessmentIndexCorruptError(
+          'Assessment index cannot be read',
+        );
+      }
+    } catch (error) {
+      if (error instanceof AssessmentIndexCorruptError) throw error;
       throw new AnswerAssessmentUnavailableError('Assessment unavailable');
     }
   }

@@ -493,7 +493,7 @@ export const FAST_CHECKS_PROVISIONAL_STEP_IF =
   // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
   "${{ steps.verify.outputs.provisional == 'true' }}";
 export const FAST_CHECKS_PROVISIONAL_RUN =
-  'echo "fast-checks deferred ci-fast/test-full; Merge-queue regression runs full regression before merge"';
+  'echo "fast-checks deferred ci-fast/test-full; full regression is deferred to main and release qualification"';
 export const FAST_CHECKS_PLAN_RUN =
   'npm run fast-checks:shard -- plan --out="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json"';
 export const FAST_CHECKS_MATRIX =
@@ -531,10 +531,7 @@ export const MERGE_INTEGRATION_DECISION_STEP = Object.freeze({
     // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
     PLAN_BASE: '${{ github.event.merge_group.base_sha }}',
   },
-  run: `if ! node scripts/merge-queue-regression-decision.mjs --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --head="$HEAD_SHA" --base="$PLAN_BASE"; then
-  echo 'full-regression=true' >> "$GITHUB_OUTPUT"
-fi
-`,
+  run: 'node scripts/merge-queue-regression-decision.mjs --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --head="$HEAD_SHA" --base="$PLAN_BASE"',
 });
 
 function swallowsFailure(job) {
@@ -664,6 +661,9 @@ export function collectRequiredBrowserSmokeFindings(workflowText) {
     JSON.stringify(plan?.outputs) !==
       JSON.stringify({
         legacy: FAST_CHECKS_LEGACY_OUTPUT,
+        'integration-ready':
+          // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+          '${{ steps.merge-decision.outputs.integration-ready }}',
         'full-regression':
           // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
           '${{ steps.merge-decision.outputs.full-regression }}',

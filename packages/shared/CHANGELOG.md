@@ -1,5 +1,11 @@
 # @kontourai/station-shared
 
+## 0.12.1
+
+### Patch Changes
+
+- @kontourai/station-contracts@0.12.1
+
 ## 0.12.0
 
 ### Minor Changes

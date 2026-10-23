@@ -1,0 +1,12 @@
+name: Setup verified pinned pnpm
+description: Install the signed pnpm 11.25.0 JavaScript package without running dependency scripts
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version-file: .nvmrc
+        package-manager-cache: false
+    - name: Verify and install pnpm
+      shell: bash
+      run: node "$GITHUB_ACTION_PATH/bootstrap.mjs"

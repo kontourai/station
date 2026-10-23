@@ -35,9 +35,9 @@ const FAST_CHECKS_MAX_SHARD_COUNT = 16;
 /** The required status context; ruleset 21782867 names it exactly. */
 export const MERGE_QUEUE_REGRESSION_CHECK = 'Merge-queue regression';
 /**
- * The deferred lanes whose broader obligations require full regression.
- * Narrower lanes (an E2E or packaging leg) are not re-run there: the owner
- * chose this scope to keep the queue under the shared runner cap (#3149).
+ * The deferred lanes whose broader obligations require full qualification.
+ * Integration runs their mapped tests; main/release qualification owns the
+ * remaining corpus. Narrower lanes retain their separate owners.
  * A fast-checks run that defers one of these did not cover the change, so
  * it is provisional, never complete (#1706).
  */
@@ -414,15 +414,15 @@ export function verifyFastChecks({
     findings.push('the shards together did not run exactly the plan');
   if (plan.deferredLanes.length)
     notes.push(
-      `selection deferred to ${plan.deferredLanes.map((lane) => lane.id).join(', ')}; full-regression remains the required completion gate`,
+      `selection deferred to ${plan.deferredLanes.map((lane) => lane.id).join(', ')}; full-regression remains required for full qualification and release`,
     );
   return { findings, notes, suiteDeferrals: suiteDeferrals(plan) };
 }
 
 /**
  * The plan's deferred lanes whose suite fast-checks did not run (#1706).
- * A pass over such a plan is provisional: the merge queue's full regression
- * keys on the same list, so it owns the deferred work before merge.
+ * A pass over such a plan is provisional. Main/release qualification owns
+ * the broader work; a successful integration check is not its receipt.
  */
 function suiteDeferrals(plan) {
   return (plan?.deferredLanes ?? [])

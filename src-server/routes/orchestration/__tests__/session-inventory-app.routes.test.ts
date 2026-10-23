@@ -18,6 +18,62 @@ const appResult = {
 const body = (value: unknown) => JSON.stringify(value);
 
 describe('Session inventory App read routes', () => {
+  test.each([undefined, '1', '2', '3'])(
+    'HTTP protocol %s reaches the inventory owner on reads and pages',
+    async (protocol) => {
+      const inventory = {
+        read: vi.fn(async () => ({
+          status: 'found' as const,
+          projection: { marker: 'read' },
+        })),
+        page: vi.fn(async () => ({
+          status: 'found' as const,
+          page: { marker: 'page' },
+        })),
+      };
+      const app = createOrchestrationRoutes(
+        { canUserReadSession: () => true } as never,
+        {
+          eventBus: { subscribe: () => () => {} },
+          logger: { debug: vi.fn() },
+          getUserId: () => 'fixture-user',
+          isRequestPrincipalCurrent: () => true,
+          sessionInventory: inventory as never,
+        },
+      );
+      const options = {
+        headers: protocol ? { 'X-Station-Client-Protocol': protocol } : {},
+      };
+      expect(
+        (
+          await app.request(
+            '/sessions/station:1/inventory?scope=current-answer&turnId=turn-a',
+            options,
+          )
+        ).status,
+      ).toBe(200);
+      expect(
+        (
+          await app.request(
+            '/sessions/station:1/inventory/groups/execution?scope=current-answer&turnId=turn-a',
+            options,
+          )
+        ).status,
+      ).toBe(200);
+      for (const read of [inventory.read, inventory.page])
+        expect(read).toHaveBeenCalledWith(
+          expect.objectContaining({
+            clientProtocol: Number(protocol ?? 1),
+            scope: {
+              kind: 'current-answer',
+              sessionId: 'station:1',
+              turnId: 'turn-a',
+            },
+          }),
+        );
+    },
+  );
+
   test('direct Session open/page/revoke are opaque no-store and preserve only capability metadata', async () => {
     let principalCurrent = true;
     let aclCurrent = true;

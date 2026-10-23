@@ -231,7 +231,7 @@ describe('fast-checks aggregate verdict', () => {
     });
     expect(findings).toEqual([]);
     expect(notes.join('\n')).toContain(
-      'selection deferred to test-full; full-regression remains the required completion gate',
+      'selection deferred to test-full; full-regression remains required for full qualification and release',
     );
     expect(notes.filter((note) => note.includes(': empty,'))).toHaveLength(4);
   });

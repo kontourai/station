@@ -24,6 +24,8 @@ import {
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { KeyboardShortcutsProvider } from '../../../contexts/KeyboardShortcutsContext';
+import { useKeyboardShortcut } from '../../../hooks/useKeyboardShortcut';
 import partial from './fixtures/current-answer-inventory.json';
 
 const authority = vi.hoisted(() => ({
@@ -117,6 +119,49 @@ function renderCompact(client = new QueryClient()) {
 }
 
 describe('SessionInventoryCompact, current-answer scope', () => {
+  test('Escape closes inventory without also firing the real parent navigation shortcut', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ok(accepted())),
+    );
+    const navigateParent = vi.fn();
+    const close = vi.fn();
+    function ParentNavigation() {
+      useKeyboardShortcut(
+        'app.escapeUp',
+        'Escape',
+        [],
+        'Go up one level',
+        navigateParent,
+        true,
+        -100,
+      );
+      return null;
+    }
+    render(
+      <KeyboardShortcutsProvider>
+        <ParentNavigation />
+        <QueryClientProvider client={new QueryClient()}>
+          <SessionInventoryCompact
+            scope={scope}
+            density="aside"
+            chatStoreId={scope.sessionId}
+            onClose={close}
+            onOpenFull={() => {}}
+          />
+        </QueryClientProvider>
+      </KeyboardShortcutsProvider>,
+    );
+    await screen.findByRole('heading', { name: 'Chat inventory' });
+    fireEvent.keyDown(screen.getByLabelText('Chat inventory'), {
+      key: 'Escape',
+    });
+    expect(close).toHaveBeenCalledOnce();
+    expect(navigateParent).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(navigateParent).toHaveBeenCalledOnce();
+  });
+
   test('a colon-shaped session id renders its inventory after the first read', async () => {
     expect(scope.sessionId).toMatch(/^[a-z]+:\d+$/);
     vi.stubGlobal(

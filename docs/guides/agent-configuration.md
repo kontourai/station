@@ -83,8 +83,9 @@ Project Owner can select a smaller list. The operator can withdraw a source from
 Projects using **About this source → Share with Projects**. This setting covers
 all Projects on the Station; turning it off blocks new Project runs using the
 source without uninstalling it. Already-running engines without pre-tool
-interception cannot guarantee immediate withdrawal. Station Control remains
-operator-only. Installed tools,
+interception cannot guarantee immediate withdrawal. Station Control applies
+each tool’s session-owner, Project or operator authority; exposing its catalog
+does not grant operator identity. Installed tools,
 Project permissions and personal account sign-in are separate; installing a
 source does not share someone's OAuth credentials. Personal tool accounts
 require the managed Station engine; external engines cannot deliver that

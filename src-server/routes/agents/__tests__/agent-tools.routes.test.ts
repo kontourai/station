@@ -248,6 +248,48 @@ describe('Agent Tool Routes', () => {
     );
   });
 
+  // The bound half of the pair above. `station` is stored with no engine
+  // binding on purpose (agent-engine-unification §7.1.1) and receives one from
+  // the service projection, so only the projected read can tell that this
+  // identity is live on an external engine. Reading the raw record answered
+  // 409 "exists but is not active" for an agent that was running.
+  test('GET /:slug/tools serves the empty catalog for an externally-bound station agent', async () => {
+    stubRegistry(['station']);
+    const ctx = createMockRuntimeContext() as any;
+    // No VoltAgent instance: the external engine owns the tool loop.
+    ctx.activeAgents.delete('default');
+    // The persisted record stays binding-free — that is the stored shape.
+    ctx.configLoader.loadAgent.mockResolvedValue({ tools: { mcpServers: [] } });
+    ctx.loadProjectedAgent = vi
+      .fn()
+      .mockResolvedValue({ execution: { agentConnectionId: 'opencode' } });
+    const app = createAgentToolRoutes(ctx);
+
+    const res = await app.request('/station/tools');
+
+    expect(res.status).toBe(200);
+    expect(await json(res)).toEqual({ success: true, data: [] });
+    expect(ctx.loadProjectedAgent).toHaveBeenCalledWith('station');
+  });
+
+  // Discriminating control: an identity the projection reports as UNBOUND must
+  // still answer 409. Without this, "return 200 whenever a projection exists"
+  // would pass the test above while hiding a genuinely inactive agent.
+  test('a projected station agent with no engine binding is still 409', async () => {
+    stubRegistry(['station']);
+    const ctx = createMockRuntimeContext() as any;
+    ctx.activeAgents.delete('default');
+    ctx.loadProjectedAgent = vi.fn().mockResolvedValue({ execution: null });
+    const app = createAgentToolRoutes(ctx);
+
+    const res = await app.request('/station/tools');
+
+    expect(res.status).toBe(409);
+    expect((await json(res)).error).toBe(
+      "Agent 'station' exists but is not active",
+    );
+  });
+
   test('POST /:slug/tools adds tool to agent', async () => {
     const ctx = createMockRuntimeContext();
     const app = createAgentToolRoutes(ctx as any);

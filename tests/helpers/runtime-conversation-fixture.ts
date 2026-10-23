@@ -67,6 +67,34 @@ export async function mockRuntimeConversation(
       body: JSON.stringify({ success: true, data }),
     });
   });
+  // This transcript fixture has no queued turns or producer assessment.
+  await page.route(
+    `**/api/orchestration/conversations/${id}/inbox`,
+    async (route) => {
+      if (route.request().method() !== 'GET')
+        return rejectUnexpectedFixtureRequest(route);
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: { entries: [] } }),
+      });
+    },
+  );
+  await page.route(
+    `**/api/orchestration/sessions/${id}/turns/*/basis`,
+    async (route) => {
+      if (route.request().method() !== 'GET')
+        return rejectUnexpectedFixtureRequest(route);
+      await route.fulfill({
+        status: 404,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: false,
+          error: 'Answer Basis unavailable',
+        }),
+      });
+    },
+  );
   await page.route(
     `**/api/orchestration/conversations/${id}/event-window**`,
     createLongSessionEventWindowHandler({

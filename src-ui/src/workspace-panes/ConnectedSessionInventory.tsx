@@ -34,6 +34,7 @@ import {
 } from '../components/chat-dock/useSessionInventoryLive';
 import { SkeletonBlock } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
+import { KeepAnswerInTask } from './KeepAnswerInTask';
 import {
   clearSessionInventorySelectionsForAuthority,
   commitSessionInventorySelection,
@@ -265,6 +266,17 @@ function ConnectedSessionInventorySurface({
           scope={model.scope}
           requestScope={requestScope}
           basis={projection.basis}
+        />
+      ) : null}
+      {model.scope.kind === 'current-answer' &&
+      projection?.scope.kind === 'current-answer' &&
+      projection.basisBinding ? (
+        <KeepAnswerInTask
+          key={JSON.stringify([requestScope, model.scope])}
+          sessionId={model.scope.sessionId}
+          turnId={model.scope.turnId}
+          currentProjectId={currentProjectId}
+          requestScope={requestScope}
         />
       ) : null}
       <SessionInventory

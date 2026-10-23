@@ -6,6 +6,7 @@ import {
   useQueryClient,
 } from '@kontourai/station-sdk';
 import { useApiBase } from '../contexts/ApiBaseContext';
+import { suppressMirroredNotifications } from '../utils/attention';
 import { sortNotifications } from '../utils/notifications';
 
 export function useAttentionInbox() {
@@ -16,20 +17,12 @@ export function useAttentionInbox() {
   const dismissMutation = useDismissNotificationMutation();
   const queryClient = useQueryClient();
   const items = attentionQuery.data?.items ?? [];
-  const projectedNotificationIds = new Set(
-    items.flatMap((item) => {
-      if (item.kind === 'approval') return [item.source.notificationId];
-      // #765 D5: a pending pairing request projects as an attention item;
-      // its mirror activity notification would be a duplicate row while the
-      // decision is still pending — same dedupe approvals get.
-      if (item.kind === 'device-pairing' && item.source.notificationId) {
-        return [item.source.notificationId];
-      }
-      return [];
-    }),
-  );
-  const notifications = sortNotifications(notificationsQuery.data ?? []).filter(
-    (notification) => !projectedNotificationIds.has(notification.id),
+  // #765 D5 / archive#1780: an approval or a pending pairing request projects
+  // as an attention item and keeps its stored notification; the activity list
+  // shows the decided fact once, not twice. Shared with the bell popover.
+  const notifications = suppressMirroredNotifications(
+    sortNotifications(notificationsQuery.data ?? []),
+    items,
   );
 
   return {

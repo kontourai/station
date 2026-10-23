@@ -56,7 +56,7 @@ import {
   bootAppearanceFrom,
   readAppearanceCache,
 } from './appearance-cache';
-import { parseCodingSessionPanelsRecord } from './coding-panels-record';
+import { parseLayoutPanelsRecord } from './layout-panels-record';
 
 const ENVELOPE_STORAGE_KEY = 'station-device-settings-v1';
 
@@ -80,8 +80,10 @@ const PRIOR_DEVICE_SETTINGS_EVENT = 'station-device-settings-changed';
  * path at all, and without this ladder step their `station.device-settings`
  * root would silently orphan and their customizations would read back as
  * registry defaults.
+ * v2 -> v3 retires the pre-release global Coding panel preference; generic
+ * Panel choices within a Layout start from their registered defaults.
  */
-const CURRENT_ENVELOPE_VERSION = 2;
+const CURRENT_ENVELOPE_VERSION = 3;
 
 export interface DeviceSettingsEnvelope {
   version: number;
@@ -390,7 +392,7 @@ const COMPOSITE_RECORD_PARSERS: {
   [K in keyof DeviceSettings]?: (
     candidate: unknown,
   ) => DeviceSettings[K] | null;
-} = { codingPanels: parseCodingSessionPanelsRecord };
+} = { layoutPanels: parseLayoutPanelsRecord };
 
 function validateImportedValue<K extends keyof DeviceSettings>(
   definition: DeviceSettingDefinition<K>,
@@ -680,6 +682,15 @@ function migrateEnvelopeV1ToV2(
  * the time a future version reaches this loop it is only ever from the
  * general boot-time load path, which must never throw.)
  */
+/** Retire the pre-release, globally scoped panel preference without guessing a Layout. */
+function migrateEnvelopeV2ToV3(
+  envelope: DeviceSettingsEnvelope,
+): DeviceSettingsEnvelope {
+  const values: Record<string, unknown> = { ...envelope.values };
+  delete values.codingPanels;
+  return { version: 3, values };
+}
+
 function runMigrationLadder(raw: unknown): DeviceSettingsEnvelope {
   if (!isPlainEnvelopeShape(raw)) {
     return { version: CURRENT_ENVELOPE_VERSION, values: {} };
@@ -689,6 +700,9 @@ function runMigrationLadder(raw: unknown): DeviceSettingsEnvelope {
     switch (envelope.version) {
       case 1:
         envelope = migrateEnvelopeV1ToV2(envelope);
+        break;
+      case 2:
+        envelope = migrateEnvelopeV2ToV3(envelope);
         break;
       default:
         envelope = { ...envelope, version: envelope.version + 1 };
@@ -761,7 +775,15 @@ class DeviceSettingsStore {
     const raw = readRaw(ENVELOPE_STORAGE_KEY);
     if (raw !== null) {
       try {
-        return runMigrationLadder(JSON.parse(raw));
+        const decoded: unknown = JSON.parse(raw);
+        const migrated = runMigrationLadder(decoded);
+        if (
+          isPlainEnvelopeShape(decoded) &&
+          decoded.version < CURRENT_ENVELOPE_VERSION
+        ) {
+          writeRaw(ENVELOPE_STORAGE_KEY, JSON.stringify(migrated));
+        }
+        return migrated;
       } catch {
         return { version: CURRENT_ENVELOPE_VERSION, values: {} };
       }
@@ -1126,6 +1148,20 @@ class DeviceSettingsStore {
 
   get = <K extends keyof DeviceSettings>(key: K): DeviceSettings[K] =>
     this.snapshot[key];
+
+  /** Transform one setting from its current persisted value, including unseen cross-tab changes. */
+  update = <K extends keyof DeviceSettings>(
+    key: K,
+    transform: (current: DeviceSettings[K]) => DeviceSettings[K],
+  ): void => {
+    const fresh = this.readPersistedEnvelope();
+    const current =
+      this.account &&
+      ACCOUNT_PREFERENCE_KEYS.some((candidate) => candidate === key)
+        ? this.snapshot[key]
+        : this.resolveValue(fresh, key);
+    this.set(key, transform(current));
+  };
 
   /** Read-merge-write; a value equal to the current FRESH value is a true no-op — no snapshot replacement, no persist, no notify. */
   set = <K extends keyof DeviceSettings>(

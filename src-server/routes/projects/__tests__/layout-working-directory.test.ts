@@ -21,9 +21,10 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { LayoutWorkspaceBinding } from '@kontourai/station-contracts/layout';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
-import { codingLayoutRepoId } from '../layout-working-directory.js';
+import { layoutRepositoryId } from '../layout-working-directory.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   projectOps: { add: vi.fn() },
@@ -94,6 +95,7 @@ async function seedLayout(
   storage: InstanceType<typeof FileStorageAdapter>,
   config: Record<string, unknown>,
   type = 'coding',
+  workspaceBinding?: LayoutWorkspaceBinding,
 ): Promise<void> {
   await storage.createLayout('demo', {
     id: 'layout-1',
@@ -101,6 +103,7 @@ async function seedLayout(
     slug: 'coding',
     name: 'Coding',
     type,
+    ...(workspaceBinding === undefined ? {} : { workspaceBinding }),
     config,
     createdAt: NOW,
     updatedAt: NOW,
@@ -574,15 +577,15 @@ describe('an unreadable project record fails the request rather than degrading',
 
 // ── archive#1503 — layouts reference repos by id ───────────────────
 
-describe('codingLayoutRepoId (pure)', () => {
+describe('layoutRepositoryId (pure)', () => {
   test('reads a non-empty string repoId from a CODING layout only', () => {
     expect(
-      codingLayoutRepoId({ type: 'coding', config: { repoId: ' api ' } }),
+      layoutRepositoryId({ type: 'coding', config: { repoId: ' api ' } }),
     ).toBe('api');
     // Non-coding layouts have no derived working directory at all, so they
     // have nothing to point at a repo.
     expect(
-      codingLayoutRepoId({ type: 'tasks', config: { repoId: 'api' } }),
+      layoutRepositoryId({ type: 'tasks', config: { repoId: 'api' } }),
     ).toBeUndefined();
   });
 
@@ -599,7 +602,7 @@ describe('codingLayoutRepoId (pure)', () => {
     // named, and the caller then falls back to the project's own directory —
     // which on a multi-repo project is a DIFFERENT repo's checkout.
     expect(
-      codingLayoutRepoId(
+      layoutRepositoryId(
         layout as { type?: string; config?: Record<string, unknown> },
       ),
     ).toBeUndefined();
@@ -651,20 +654,28 @@ describe('a coding layout that names a repo derives THAT repo (station#1503)', (
     };
   }
 
-  test('resolves the NAMED repo, not the project working directory', async () => {
-    const home = tempHome();
-    const { app, storage, asked } = appWithResolver(home, {
-      'github.com/acme/web': { state: 'bound', path: '/checkouts/web' },
-    });
-    await seedProject(storage, '/checkouts/api');
-    await seedLayout(storage, { repoId: 'github.com/acme/web' });
+  test.each(['coding', 'research'])(
+    'resolves the NAMED repo for %s, not the project working directory',
+    async (type) => {
+      const home = tempHome();
+      const { app, storage, asked } = appWithResolver(home, {
+        'github.com/acme/web': { state: 'bound', path: '/checkouts/web' },
+      });
+      await seedProject(storage, '/checkouts/api');
+      await seedLayout(
+        storage,
+        { repoId: 'github.com/acme/web' },
+        type,
+        type === 'research' ? 'repository' : undefined,
+      );
 
-    const config = await getLayoutConfig(app);
+      const config = await getLayoutConfig(app);
 
-    expect(config.workingDirectory).toBe('/checkouts/web');
-    expect(config.repoId).toBe('github.com/acme/web');
-    expect(asked).toContain('github.com/acme/web');
-  });
+      expect(config.workingDirectory).toBe('/checkouts/web');
+      expect(config.repoId).toBe('github.com/acme/web');
+      expect(asked).toContain('github.com/acme/web');
+    },
+  );
 
   test('a repo that is NOT bound here derives NO working directory', async () => {
     // Absent means absent. Falling back to the project's directory would open
@@ -713,5 +724,171 @@ describe('a coding layout that names a repo derives THAT repo (station#1503)', (
     expect(storedLayoutConfig(home)).toEqual({
       repoId: 'github.com/acme/web',
     });
+  });
+});
+
+describe('repository workspace binding for plugin layouts (#2993 a2)', () => {
+  test('custom layout derives Project moves and clearing without persisting a path', async () => {
+    const home = tempHome();
+    const { app, storage } = appFor(home);
+    await seedProject(storage, '/repos/research');
+    const created = await app.request('/demo/layouts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        slug: 'coding',
+        name: 'Research',
+        type: 'research',
+        workspaceBinding: 'repository',
+      }),
+    });
+    expect(created.status).toBe(201);
+    expect((await json(created)).data).toMatchObject({
+      workspaceBinding: 'repository',
+      config: { workingDirectory: '/repos/research' },
+    });
+    const file = join(home, 'projects', 'demo', 'layouts', 'coding.json');
+    const beforeRead = readFileSync(file, 'utf8');
+    expect(JSON.parse(beforeRead).config).toEqual({});
+    await seedProject(storage, '/repos/moved');
+    expect(await getLayoutConfig(app)).toEqual({
+      workingDirectory: '/repos/moved',
+    });
+    await seedProject(storage);
+    expect(await getLayoutConfig(app)).toEqual({});
+    expect(readFileSync(file, 'utf8')).toBe(beforeRead);
+    const renamed = await app.request('/demo/layouts/coding', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'Research renamed' }),
+    });
+    expect(renamed.status).toBe(200);
+    const restarted = appFor(home);
+    expect(await getLayoutConfig(restarted.app)).toEqual({});
+    expect(restarted.storage.getLayout('demo', 'coding').workspaceBinding).toBe(
+      'repository',
+    );
+  });
+
+  test('create and update refuse an independently chosen repository path without writing it', async () => {
+    const home = tempHome();
+    const { app, storage } = appFor(home);
+    await seedProject(storage, '/repos/research');
+    const refused = await app.request('/demo/layouts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        slug: 'coding',
+        name: 'Research',
+        type: 'research',
+        workspaceBinding: 'repository',
+        config: { workingDirectory: '/other' },
+      }),
+    });
+    expect(refused.status).toBe(400);
+    expect(storage.listLayouts('demo')).toEqual([]);
+    await seedLayout(storage, {}, 'research', 'repository');
+    const file = join(home, 'projects', 'demo', 'layouts', 'coding.json');
+    const beforeWrite = readFileSync(file, 'utf8');
+    const updated = await app.request('/demo/layouts/coding', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ config: { workingDirectory: '/other' } }),
+    });
+    expect(updated.status).toBe(400);
+    expect(readFileSync(file, 'utf8')).toBe(beforeWrite);
+  });
+
+  test.each([null, '', 'none', 'terminal', true, {}])(
+    'rejects invalid binding %j before creating a layout',
+    async (workspaceBinding) => {
+      const home = tempHome();
+      const { app, storage } = appFor(home);
+      await seedProject(storage, '/repos/research');
+      const refused = await app.request('/demo/layouts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slug: 'coding',
+          name: 'Research',
+          type: 'research',
+          workspaceBinding,
+        }),
+      });
+      expect(refused.status).toBe(400);
+      expect(storage.listLayouts('demo')).toEqual([]);
+    },
+  );
+
+  test('legacy Coding remains bound without an installed plugin and cannot evade admission by changing type', async () => {
+    const home = tempHome();
+    const { app, storage } = appFor(home);
+    await seedProject(storage, '/repos/research');
+    await seedLayout(storage, {});
+    expect(existsSync(join(home, 'plugins', 'coding'))).toBe(false);
+    expect(await getLayoutConfig(app)).toEqual({
+      workingDirectory: '/repos/research',
+    });
+    const changed = await app.request('/demo/layouts/coding', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'research',
+        config: { workingDirectory: '/other' },
+      }),
+    });
+    expect(changed.status).toBe(400);
+    expect(storage.getLayout('demo', 'coding').type).toBe('coding');
+    const renamedType = await app.request('/demo/layouts/coding', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'research' }),
+    });
+    expect(renamedType.status).toBe(200);
+    expect(storage.getLayout('demo', 'coding').workspaceBinding).toBe(
+      'repository',
+    );
+    expect(await getLayoutConfig(app)).toEqual({
+      workingDirectory: '/repos/research',
+    });
+  });
+
+  test('installed plugin catalog retains the binding when applied to a Project', async () => {
+    const home = tempHome();
+    const pluginDir = join(home, 'plugins', 'research');
+    mkdirSync(pluginDir, { recursive: true });
+    writeFileSync(
+      join(pluginDir, 'plugin.json'),
+      JSON.stringify({
+        name: 'research',
+        version: '1.0.0',
+        layout: { slug: 'research', source: 'layout.json' },
+      }),
+    );
+    writeFileSync(
+      join(pluginDir, 'layout.json'),
+      JSON.stringify({
+        name: 'Research',
+        slug: 'research',
+        type: 'research',
+        workspaceBinding: 'repository',
+        tabs: [],
+      }),
+    );
+    const { app, storage } = appFor(home);
+    await seedProject(storage, '/repos/research');
+    const applied = await app.request('/demo/layouts/apply', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ layoutId: 'plugin:research:research' }),
+    });
+    expect(applied.status).toBe(201);
+    expect((await json(applied)).data).toMatchObject({
+      workspaceBinding: 'repository',
+      config: { workingDirectory: '/repos/research' },
+    });
+    const stored = storage.getLayout('demo', 'research');
+    expect(stored.workspaceBinding).toBe('repository');
+    expect(Object.hasOwn(stored.config, 'workingDirectory')).toBe(false);
   });
 });

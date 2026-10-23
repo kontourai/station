@@ -26,6 +26,7 @@ import {
   assertNoRetiredLayoutKeys,
   BUILTIN_PROJECT_LAYOUTS,
   type LayoutCatalogContribution,
+  parseLayoutWorkspaceBinding,
 } from '@kontourai/station-contracts/layout';
 import {
   isCanonicalPluginId,
@@ -204,6 +205,7 @@ function parseLayoutDefinition(
     // of the full-viewport Chat placement, and the app suspends its ambient
     // regions for a layout that renders it (#1446).
     type: typeof value.type === 'string' ? value.type : 'custom',
+    workspaceBinding: parseLayoutWorkspaceBinding(value.workspaceBinding),
     tabs: Array.isArray(value.tabs) ? (value.tabs as any[]) : [],
     globalSkills: Array.isArray(value.globalSkills)
       ? (value.globalSkills as any[])
@@ -590,6 +592,9 @@ export class DistributionProfileService {
           icon: item.icon,
           description: item.description,
           type: item.type,
+          workspaceBinding: BUILTIN_PROJECT_LAYOUTS.find(
+            (layout) => layout.slug === item.slug,
+          )?.workspaceBinding,
           tabs: [],
         },
       };
@@ -753,6 +758,9 @@ export class DistributionProfileService {
       icon: definition.icon,
       description: definition.description,
       type: definition.type,
+      ...(definition.workspaceBinding === undefined
+        ? {}
+        : { workspaceBinding: definition.workspaceBinding }),
       id,
       sourceIdentity: {
         id: pluginName,

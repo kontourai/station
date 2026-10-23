@@ -122,7 +122,7 @@ function activityRegion(page: Page) {
 }
 
 function bulkDismiss(page: Page) {
-  return page.getByRole('button', { name: 'Dismiss all attention items' });
+  return page.getByRole('button', { name: 'Dismiss eligible items' });
 }
 
 /**
@@ -194,13 +194,13 @@ test.describe('Notifications: attention queue and activity log', () => {
     await bulkDismiss(page).click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toContainText(
-      'Dismiss 1 item needing attention? Activity stays.',
+      'Dismiss 1 eligible item? Activity stays.',
     );
     await dialog
-      .getByRole('button', { name: 'Dismiss all attention items' })
+      .getByRole('button', { name: 'Dismiss eligible items' })
       .click();
     // The confirm is answered. It used to stay open and re-render itself
-    // against the emptied queue as "Dismiss 0 items needing attention?".
+    // against the emptied queue as "Dismiss 0 eligible items?".
     await expect(dialog).toHaveCount(0);
 
     // ORDER MATTERS, and it is the emptied attention region that has to come

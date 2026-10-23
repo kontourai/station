@@ -1,0 +1,7 @@
+{
+  "revision": "89fe4546f29e6c7e432242b40c097f90b845d0d1",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Reviewed the new Handing a running instance to the operator subsection against observed behavior on the running dev instance: station open --print mints a single-use #station-ui-bootstrap link, the server log recorded pairing approved on consumption and credential_missing denials for unpaired visits, pairing persists per browser profile in the instance home across restarts, and the watch-mode loopback note about links binding the bound address is untouched.","inputs":["docs/guides/development.md"]}
+  ]
+}

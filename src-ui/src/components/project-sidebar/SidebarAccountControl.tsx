@@ -56,7 +56,7 @@ export function SidebarAccountControl({
             ? ' sidebar__footer-action--active'
             : ''
         }`}
-        aria-label="Profile and settings"
+        aria-label={`Profile and settings: ${userInitials}`}
         title="Profile and settings"
         aria-haspopup="menu"
         aria-expanded={open}

@@ -49,6 +49,7 @@ jobs:
     if: ${REQUIRED_FAST_CHECKS_CONDITION}
     outputs:
       legacy: ${FAST_CHECKS_LEGACY_OUTPUT}
+      integration-ready: \${{ steps.merge-decision.outputs.integration-ready }}
       full-regression: \${{ steps.merge-decision.outputs.full-regression }}
       shards: \${{ steps.plan.outputs.shards }}
       shard-count: \${{ steps.plan.outputs.shard-count }}

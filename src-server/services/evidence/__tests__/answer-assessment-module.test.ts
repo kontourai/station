@@ -1,5 +1,6 @@
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -13,12 +14,15 @@ import {
 } from '@kontourai/station-contracts';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   AnswerAssessmentModule,
   AnswerAssessmentNotFoundError,
   AnswerAssessmentUnavailableError,
   stationAnswerAssessmentClaimProfile,
 } from '../answer-assessment-module.js';
+
+const makeTempDir = trackTempDirs();
 
 const binding: StationAnswerBinding = createStationAnswerBinding({
   sessionId: 'session-a',
@@ -127,6 +131,71 @@ describe('AnswerAssessmentModule', () => {
     ).resolves.toMatchObject({ state: 'not-captured' });
     expect(existsSync(home)).toBe(false);
   });
+
+  test('hosted assessment reads are not captured without reading personal storage', async () => {
+    const home = makeTempDir('station-assessment-hosted-');
+    try {
+      mkdirSync(join(home, 'answer-assessments'));
+      writeFileSync(join(home, 'answer-assessments', 'index.json'), '{broken');
+      const read = vi.fn(async () => answer);
+      const module = new AnswerAssessmentModule(home, { read });
+      await expect(
+        module.readExactAnswerAssessment({
+          authorizedAnswer: answer,
+          authority: { ...authority, mode: 'hosted' },
+        }),
+      ).resolves.toMatchObject({ state: 'not-captured' });
+      expect(read).not.toHaveBeenCalled();
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test.each([
+    ['invalid JSON', '{broken'],
+    ['invalid schema', JSON.stringify({ schemaVersion: 2, records: [] })],
+    ['oversized index', ' '.repeat(1_048_577)],
+  ])(
+    'reports %s as corrupt, while an owner read failure stays retryable',
+    async (_name, bytes) => {
+      const home = makeTempDir('station-assessment-corrupt-');
+      try {
+        mkdirSync(join(home, 'answer-assessments'));
+        const index = join(home, 'answer-assessments', 'index.json');
+        writeFileSync(index, bytes);
+        const module = new AnswerAssessmentModule(home, {
+          read: async () => answer,
+        });
+        await expect(
+          module.readExactAnswerAssessment({
+            authorizedAnswer: answer,
+            authority,
+          }),
+        ).resolves.toMatchObject({ state: 'corrupt' });
+        expect(() => module.readTarget(answer, authority, () => true)).toThrow(
+          AnswerAssessmentUnavailableError,
+        );
+        rmSync(index);
+        mkdirSync(index);
+        await expect(
+          module.readExactAnswerAssessment({
+            authorizedAnswer: answer,
+            authority,
+          }),
+        ).resolves.toMatchObject({ state: 'unavailable' });
+        rmSync(index, { recursive: true });
+        writeFileSync(index, JSON.stringify({ schemaVersion: 1, records: [] }));
+        await expect(
+          module.readExactAnswerAssessment({
+            authorizedAnswer: answer,
+            authority,
+          }),
+        ).resolves.toMatchObject({ state: 'not-captured' });
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
 
   test('returns a guarded read-only CAS target across publish, restart, removal, and resurrection', async () => {
     const home = mkdtempSync(join(tmpdir(), 'station-assessment-target-'));

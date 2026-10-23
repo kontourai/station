@@ -1,3 +1,4 @@
+import type { AccountPreferencesView } from '@kontourai/station-contracts/account-preferences';
 import {
   AUTHORITY_OBSERVATION_SCHEMA_VERSION,
   type AuthorityObservation,
@@ -12,6 +13,14 @@ import type { Route } from '@playwright/test';
 
 /** Explicit optional shell reads; keep each envelope aligned with its route owner. */
 const READS: Readonly<Record<string, unknown>> = {
+  '/api/me/preferences': {
+    success: true,
+    data: {
+      schemaVersion: 1,
+      values: {},
+      revision: 'shell-fixture',
+    } satisfies AccountPreferencesView,
+  },
   '/api/agents': { success: true, data: [] },
   '/api/connections/agents': { success: true, data: [] },
   '/api/models': { success: true, data: [] },

@@ -710,9 +710,9 @@ export function isPairingScopeSubset(
  * too — that is the switch that turns a silent misbehavior into a
  * "update your app" verdict.
  */
-// Protocol 2 adds revision-bound product disclosure acknowledgements. Core
-// protocol-1 callers remain admitted; this optional feature negotiates separately.
-export const STATION_COMPAT_PROTOCOL_VERSION = 2;
+// Protocol 3 admits exact-turn inventory lineage. Older readers keep the
+// contribution-only shape; protocol-1 callers remain admitted.
+export const STATION_COMPAT_PROTOCOL_VERSION = 3;
 
 /**
  * Oldest client protocol this host still serves. A client advertising less

@@ -137,7 +137,7 @@ test.each([false, true])(
       new Headers(fetch.mock.calls[1][1].headers).get(
         'X-Station-Client-Protocol',
       ),
-    ).toBe(advertised ? '2' : null);
+    ).toBe(advertised ? '3' : null);
     fireEvent.click(screen.getByRole('button', { name: 'Remove grant' }));
     await screen.findByText('Telemetry destination grant removed.');
     expect(fetch.mock.calls[3][0]).toBe(
@@ -151,7 +151,7 @@ test.each([false, true])(
       new Headers(fetch.mock.calls[3][1].headers).get(
         'X-Station-Client-Protocol',
       ),
-    ).toBe(advertised ? '2' : null);
+    ).toBe(advertised ? '3' : null);
     expect(screen.queryByRole('button', { name: 'Remove grant' })).toBeNull();
   },
 );

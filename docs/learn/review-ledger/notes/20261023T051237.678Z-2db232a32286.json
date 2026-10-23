@@ -1,0 +1,15 @@
+{
+  "revision": "5b138b7afbd130829567e8a5b53a6feeb5327308",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Delta review: isolate push-only latest-pending admission from scheduled/manual caller groups keyed by run ID, preserving their deliberate force/delivery requests. Reviewed pr-ci-supersession legacy optional corpus row: absent in new topology, required completed/skipped if present; source identity, successful core, complete unique inventory and unknown-job refusal unchanged. 77 focused retirement/promotion controls PASS; real HTTP positive uses missing deleted-job row and legacy executed/failed/cancelled rows refuse retirement. Source binding mutation/restoration remains valid. No hosted cancellation, coalescing or throughput proof.","inputs":["docs/guides/testing.md","scripts/__tests__/pr-ci-supersession.test.ts","scripts/pr-ci-supersession.mjs","scripts/merge-queue-regression-decision.mjs","scripts/ci-workflow-governance.mjs"]},
+
+    {"path":"docs/guides/releasing.md","note":"Delta review: scheduled/manual qualification now has unique per-run outer admission groups, so later pushes cannot replace deliberate full/delivery/force requests; push requests alone coalesce. Inner background queue and exact-source release qualification remain unchanged. Updated admission prose; no hosted scheduling or publication claim.","inputs":["docs/guides/releasing.md"]},
+
+    {"path":"docs/guides/development.md","note":"Delta review: contributor cadence text now distinguishes replaceable pending pushes from preserved scheduled/manual qualification and force requests. Tested actual workflow group expression for push equality and deliberate-run separation plus source-only push delivery exclusion. Bootstrap/hooks/runner declarations remain unchanged.","inputs":["docs/guides/development.md"]},
+
+    {"path":"CONTEXT.md","note":"Reviewed complete context page and operations context change. The five work/execution, governance/evidence, workspace, extension and operations boundaries remain unchanged. Full verification now includes coalesced main pushes without converting integration status into full source, delivery or provider evidence.","inputs":["CONTEXT.md","docs/contexts/operations/CONTEXT.md"]},
+
+    {"path":"CONTEXT-MAP.md","note":"Reviewed complete context map and operations verification term delta. Routing still owns five areas with canonical operations/testing links. Adding coalesced main qualification changes CI timing, not domain ownership, durable operation evidence or application authority.","inputs":["CONTEXT-MAP.md","docs/contexts/operations/CONTEXT.md"]}
+  ]
+}

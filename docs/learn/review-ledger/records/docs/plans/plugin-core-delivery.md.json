@@ -1,0 +1,15 @@
+{
+  "path": "docs/plans/plugin-core-delivery.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Active consolidated source and acceptance plan for the unfinished plugin/core epic and its single feature branch.",
+
+  "limits": "Planning and source integration status only; not a claim of implementation, combined qualification, publication or completion.",
+
+  "sources": [],
+
+  "checks": []
+}

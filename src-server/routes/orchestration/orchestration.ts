@@ -28,6 +28,10 @@ import type {
 } from '@kontourai/station-contracts/conversation-context-boundary';
 import type { EnsembleCliSessionGroupInput } from '@kontourai/station-contracts/ensemble';
 import {
+  CLIENT_PROTOCOL_HEADER,
+  readClientProtocolHeader,
+} from '@kontourai/station-contracts/environment-security';
+import {
   type EnvironmentRef,
   EXECUTION_ENGINE_CHANGED_CODE,
   type ExecutionModelRequest,
@@ -6023,6 +6027,12 @@ export function createOrchestrationRoutes(
         : { kind: 'whole-session' as const, sessionId };
     const outcome = await deps.sessionInventory?.read({
       scope,
+      clientProtocol: (() => {
+        const value = readClientProtocolHeader(
+          c.req.header(CLIENT_PROTOCOL_HEADER),
+        );
+        return value.kind === 'declared' ? value.protocol : 1;
+      })(),
       authority,
       current: () =>
         deps.isRequestPrincipalCurrent?.(c.req.raw) === true &&
@@ -6177,6 +6187,12 @@ export function createOrchestrationRoutes(
         : { kind: 'whole-session' as const, sessionId };
     const outcome = await deps.sessionInventory?.page({
       scope,
+      clientProtocol: (() => {
+        const value = readClientProtocolHeader(
+          c.req.header(CLIENT_PROTOCOL_HEADER),
+        );
+        return value.kind === 'declared' ? value.protocol : 1;
+      })(),
       groupId:
         groupId as import('@kontourai/station-contracts/session-inventory').SessionInventoryV2GroupId,
       continuation: parsed.data.continuation,
@@ -6618,8 +6634,14 @@ export function createOrchestrationRoutes(
       } catch (error) {
         // Station's own projection failed Surface's contract: unavailable,
         // never an owner gap published as if it were Basis data.
-        if (error instanceof StationBasisCompositionInvariantError)
+        if (error instanceof StationBasisCompositionInvariantError) {
+          deps.logger.warn?.('Station Basis composition invariant failed', {
+            ...error.identity,
+            surfaceGapCode: error.surfaceGap.code,
+            surfaceGapMessage: error.surfaceGap.message,
+          });
           return c.json({ success: false, error: 'Basis unavailable' }, 503);
+        }
         throw error;
       }
     }

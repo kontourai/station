@@ -73,7 +73,7 @@ context file.
 _Avoid_: docs-only check if type/unit failures can block it
 
 **Full verification gate**:
-The canonical `npm run full:regression` promotion lane qualifies exact source revisions for scheduled main and tagged Preview/Stable. Nightly has a separate exact-source usability and artifact gate. The [testing guide](../../guides/testing.md) defines focused evidence, local diagnostic lanes, and hosted PR/merge-queue qualification.
+The canonical `npm run full:regression` promotion lane qualifies exact source revisions for coalesced main pushes, scheduled main and tagged Preview/Stable. Nightly has a separate exact-source usability and artifact gate. The [testing guide](../../guides/testing.md) defines focused evidence, local diagnostic lanes, and hosted PR/merge-queue qualification.
 _Avoid_: quick test
 
 **Generated artifact**:

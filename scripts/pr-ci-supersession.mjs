@@ -128,7 +128,6 @@ function qualifiedOptionalTail(jobs, run) {
     'Fork pull-request smoke',
     'Exact full-diff classification',
     'diff',
-    'merge-integration-full-regression',
     'Merge-queue regression',
     'full-regression',
     'manual-completion-diagnostics',
@@ -141,6 +140,16 @@ function qualifiedOptionalTail(jobs, run) {
           job.status === 'completed' &&
           job.conclusion === 'skipped',
       ),
+    )
+  )
+    return false;
+  // The bounded queue topology omits this old job. If a legacy run has it,
+  // it must still be completed/skipped: an executed corpus is not optional.
+  if (
+    jobs.some(
+      (job) =>
+        job.name === 'merge-integration-full-regression' &&
+        (job.status !== 'completed' || job.conclusion !== 'skipped'),
     )
   )
     return false;

@@ -100,6 +100,37 @@ export function countPendingAttention(items: AttentionItem[]): number {
 }
 
 /**
+ * Activity notifications that merely restate an attention item already on the
+ * projection, suppressed in ONE place (#765 D5, archive#1780).
+ *
+ * A pending approval and a pending device-pairing request each project as an
+ * attention item AND keep the stored notification they were raised from.
+ * Rendering both shows one fact twice: an actionable row under "Needs
+ * attention" beside a passive copy in "Recent activity". The inbox page and
+ * the bell popover both suppress these mirrors, so the membership lives here
+ * instead of as a kind list in each component — a third projected kind must
+ * not have to be remembered at two call sites.
+ *
+ * Callers apply this BEFORE narrowing (the page's filter bar, the popover's
+ * row budget), so a suppressed row cannot consume a slot the reader was
+ * promised.
+ */
+export function suppressMirroredNotifications<T extends { id: string }>(
+  notifications: T[],
+  items: AttentionItem[],
+): T[] {
+  const mirrored = new Set<string>();
+  for (const item of items) {
+    if (item.kind === 'approval') {
+      mirrored.add(item.source.notificationId);
+    } else if (item.kind === 'device-pairing' && item.source.notificationId) {
+      mirrored.add(item.source.notificationId);
+    }
+  }
+  return notifications.filter((notification) => !mirrored.has(notification.id));
+}
+
+/**
  * archive#3214: the parenthesised count beside "Needs attention", and the
  * whole point of this being a function is that the number has to name its own
  * scope.

@@ -1,0 +1,9 @@
+{
+  "revision": "912221bbe92527acdcf0d3b00183f1500c5ed0e1",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Bounded test-only delta review through912221bbe92: UI health-probe assertion now expects [null,3] after no-capability then capability-advertised handshakes. Keeps null before cross-origin opt-in, capability/minimum/old-host/refusal controls and production code unchanged. Independent literal3 matches published client build protocol. Baseline one intended failure/48keepers; repaired49 pass. Existing frontend health/Connect request-admission descriptions remain accurate; declarations grant no credential or scope. No prose change needed and no hosted successor/live-device proof inferred.","inputs":["docs/patterns/frontend.md","src-ui/src/__tests__/serverHealth.test.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Bounded test-only delta review through912221bbe92: UI health-probe assertion now expects [null,3] after no-capability then capability-advertised handshakes. Keeps null before cross-origin opt-in, capability/minimum/old-host/refusal controls and production code unchanged. Independent literal3 matches published client build protocol. Baseline one intended failure/48keepers; repaired49 pass. Existing frontend health/Connect request-admission descriptions remain accurate; declarations grant no credential or scope. No prose change needed and no hosted successor/live-device proof inferred.","inputs":["docs/reference/connect.md","src-ui/src/__tests__/serverHealth.test.ts"]}
+  ]
+}

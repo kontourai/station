@@ -1,0 +1,7 @@
+{
+  "revision": "fedf416e75ff7ae763d8dcfd657ca070a2f09c81",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"Re-read the SDK routing rules after the sdk.md useReposQuery limit sentence: route-to-reference, no-app-internal-imports and cache/waiting-caller observations are unchanged by a limit note inside one route description; no prose change. Re-recorded after history rewrite.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

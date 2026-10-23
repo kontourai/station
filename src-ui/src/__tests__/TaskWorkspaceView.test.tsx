@@ -297,6 +297,7 @@ vi.mock('../workspace-panes/BasisWorkspacePane', () => ({
   ),
 }));
 
+import { AuthorityPersistenceContext } from '../contexts/AuthorityPersistenceContext';
 import { NavigationProvider } from '../contexts/NavigationContext';
 import {
   relativeWorkspacePath,
@@ -1874,6 +1875,35 @@ describe('TaskWorkspaceView', () => {
       },
     };
     view.rerender(<TaskWorkspaceView taskId="task-alpha" />);
+    expect(
+      screen.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected'),
+    ).toBe('true');
+  });
+
+  test('retains only the selected tab across a verified-authority subtree remount', () => {
+    function View({
+      visible,
+      namespace,
+    }: {
+      visible: boolean;
+      namespace: string;
+    }) {
+      return (
+        <AuthorityPersistenceContext.Provider
+          value={{ status: 'verified', namespace, observation: null }}
+        >
+          {visible ? <TaskWorkspaceView taskId="task-alpha" /> : null}
+        </AuthorityPersistenceContext.Provider>
+      );
+    }
+    const view = render(<View visible namespace="task-view-authority-a" />);
+    fireEvent.click(screen.getByRole('tab', { name: 'Brief' }));
+    view.rerender(<View visible={false} namespace="task-view-authority-a" />);
+    view.rerender(<View visible namespace="task-view-authority-a" />);
+    expect(
+      screen.getByRole('tab', { name: 'Brief' }).getAttribute('aria-selected'),
+    ).toBe('true');
+    view.rerender(<View visible namespace="task-view-authority-b" />);
     expect(
       screen.getByRole('tab', { name: 'Chat' }).getAttribute('aria-selected'),
     ).toBe('true');

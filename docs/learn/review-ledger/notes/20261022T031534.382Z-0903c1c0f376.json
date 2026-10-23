@@ -1,0 +1,7 @@
+{
+  "revision": "fc653b4fff93ad42374d7c4863cd8324a3cc2ea9",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Re-read the integration guide claims that cite the SDK reference after the sdk.md useReposQuery limit sentence (24-repository discovery bound, scan coalescing): the guide's public-contract routing, hosted/cloud delivery requirements and SDK handoff claims do not describe repo-discovery exhaustiveness, so the bound changes no claim here; no prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]}
+  ]
+}

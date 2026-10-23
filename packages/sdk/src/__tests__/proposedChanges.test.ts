@@ -49,7 +49,7 @@ describe('proposedChanges query domain', () => {
     expect(fetch).toHaveBeenNthCalledWith(
       1,
       'http://example.test/api/proposed-changes?status=pending&status=rejected&sessionId=session-1&projectId=project-a',
-      { headers: { 'X-Station-Client-Protocol': '2' } },
+      { headers: { 'X-Station-Client-Protocol': '3' } },
     );
     expect(fetch).toHaveBeenCalledTimes(1);
   });

@@ -163,7 +163,7 @@ test.describe('Profile retained usage', () => {
 
   test('navigates through the sidebar account menu', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('button', { name: 'Profile and settings' }).click();
+    await page.getByRole('button', { name: /^Profile and settings:/ }).click();
     await page.getByRole('menuitem', { name: 'Profile', exact: true }).click();
     await expect(page).toHaveURL(/\/profile/);
     await expect(

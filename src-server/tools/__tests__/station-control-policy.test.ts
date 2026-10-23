@@ -83,6 +83,7 @@ const DECISION_2_PRINCIPAL_READS = [
   'read_conversation',
   'board_read',
   'get_basis',
+  'get_answer_assessment_target',
   'get_task_basis',
   'get_session_inventory',
   'list_plugins',

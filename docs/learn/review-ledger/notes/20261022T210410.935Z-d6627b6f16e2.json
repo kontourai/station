@@ -1,0 +1,7 @@
+{
+  "revision": "fedf416e75ff7ae763d8dcfd657ca070a2f09c81",
+
+  "notes": [
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Re-read the workspace-surface claims mapped to src-server/routes/projects/coding.ts after bounding /repos discovery (24-root walk cap, 4-way enrichment concurrency, in-flight scan coalescing): the coding host, confined repository/config snapshot, worktree-diff and file-preview claims are untouched by the change; no prose change. Re-recorded after history rewrite.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md","src-server/routes/projects/coding.ts"]}
+  ]
+}

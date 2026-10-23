@@ -1,26 +1,9 @@
 #!/usr/bin/env node
 /**
- * Decides whether a merge-queue candidate needs the hosted full regression
- * (ci.yml, the required `Merge-queue regression` check).
- *
- * Hosted fast-checks keeps concrete mapped tests even when another path
- * defers broader coverage. Those tests provide early failures; passing them
- * does not discharge a deferred ci-fast/test-full obligation. A path marked
- * `mergeQueueRegression` also leaves its consumers to the queue on purpose.
- * Either obligation requires full regression; otherwise the queue keeps the
- * fast path. Local bounded feedback retains its separate selection limits.
- *
- * Fail-closed: a missing, unreadable, invalid or foreign plan decides `full`,
- * never `fast`. Node alone; no dependencies, so it decides even when the
- * install or the planner failed.
- *
- *   node scripts/merge-queue-regression-decision.mjs \
- *     --plan=<file> --head=<sha> --base=<base>
- *
- * Writes `full-regression=true|false` to $GITHUB_OUTPUT and one summary line
- * to stdout and $GITHUB_STEP_SUMMARY. Exit 0 on any decision, 2 on a usage
- * fault (the workflow then runs the full regression anyway: its condition is
- * "unless the decision is exactly false").
+ * Validate the same-run affected-test plan for bounded merge integration.
+ * Deferred broad coverage remains explicit; only main/release full regression
+ * can produce a full-qualification receipt. Invalid or foreign evidence blocks
+ * integration instead of launching an expensive fallback corpus.
  */
 import { appendFileSync, readFileSync } from 'node:fs';
 import {
@@ -30,62 +13,69 @@ import {
 } from './lib/fast-checks-shards.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
-export const FAST_PATH_SUMMARY = 'no deferred lane: fast path';
-export { FULL_REGRESSION_LANES, MERGE_QUEUE_REGRESSION_CHECK };
+const FAST_PATH_SUMMARY = 'no deferred lane: fast path';
 
 const USAGE =
   'usage: node scripts/merge-queue-regression-decision.mjs --plan=<file> --head=<sha> --base=<base>';
 const OPTIONS = ['plan', 'head', 'base'];
 const SHA_PATTERN = /^[0-9a-f]{40}$/;
 
-function full(reason) {
-  return { fullRegression: true, reason };
+function invalid(reason) {
+  return { integrationReady: false, fullRegression: true, reason };
+}
+
+function deferred(reason) {
+  return { integrationReady: true, fullRegression: true, reason };
 }
 
 /**
  * @param {string | undefined} planText the plan's bytes, or undefined when
  *   the file could not be read
  * @param {{ head: string, base: string }} expected
- * @returns {{ fullRegression: boolean, reason: string }}
+ * @returns {{ integrationReady: boolean, fullRegression: boolean, reason: string }}
  */
-export function decideMergeQueueRegression(planText, { head, base }) {
+function decideMergeQueueRegression(planText, { head, base }) {
   if (planText === undefined)
-    return full('fast-checks plan is missing or unreadable: fail closed');
+    return invalid('fast-checks plan is missing or unreadable: fail closed');
   let plan;
   try {
     plan = JSON.parse(planText);
   } catch {
-    return full('fast-checks plan is not valid JSON: fail closed');
+    return invalid('fast-checks plan is not valid JSON: fail closed');
   }
   const errors = validateFastChecksPlan(plan);
   if (errors.length)
-    return full(
+    return invalid(
       `fast-checks plan is invalid (${errors.slice(0, 3).join('; ')}): fail closed`,
     );
   if (plan.headSha !== head)
-    return full(
+    return invalid(
       `fast-checks plan is for ${String(plan.headSha).slice(0, 12)}, not this candidate ${head.slice(0, 12)}: fail closed`,
     );
   if (plan.base !== base)
-    return full(
+    return invalid(
       `fast-checks plan diffs against ${String(plan.base).slice(0, 40)}, not the queue base ${base.slice(0, 40)}: fail closed`,
     );
   if (!Array.isArray(plan.mergeQueueRegressionPaths))
-    return full(
+    return invalid(
       'fast-checks plan does not record mergeQueueRegressionPaths: fail closed',
     );
   const covered = plan.deferredLanes.filter((lane) =>
     FULL_REGRESSION_LANES.includes(lane.id),
   );
   if (covered.length)
-    return full(
-      `plan defers to ${covered.map((lane) => lane.id).join(', ')}: full regression`,
+    return deferred(
+      `plan defers to ${covered.map((lane) => lane.id).join(', ')}: full qualification deferred to main/release`,
     );
   if (plan.mergeQueueRegressionPaths.length)
-    return full(
-      `consumers of ${plan.mergeQueueRegressionPaths.slice(0, 5).join(', ')}${plan.mergeQueueRegressionPaths.length > 5 ? ', ...' : ''} run only in the merge queue: full regression`,
+    return deferred(
+      `consumers of ${plan.mergeQueueRegressionPaths.slice(0, 5).join(', ')}${plan.mergeQueueRegressionPaths.length > 5 ? ', ...' : ''} remain deferred: full qualification deferred to main/release`,
     );
-  return { fullRegression: false, reason: FAST_PATH_SUMMARY };
+  return {
+    integrationReady: true,
+    fullRegression: false,
+    reason: FAST_PATH_SUMMARY,
+  };
 }
 
 export function parseDecisionArgs(args) {
@@ -117,16 +107,16 @@ export function main(args = process.argv.slice(2), env = process.env) {
     planText = undefined;
   }
   const decision = decideMergeQueueRegression(planText, options);
-  const line = `[${MERGE_QUEUE_REGRESSION_CHECK}] ${decision.fullRegression ? 'full regression' : 'fast path'}: ${decision.reason}`;
+  const line = `[${MERGE_QUEUE_REGRESSION_CHECK}] ${decision.integrationReady ? 'bounded integration plan accepted' : 'integration blocked'}: ${decision.reason}`;
   console.log(line);
   if (env.GITHUB_STEP_SUMMARY)
     appendFileSync(env.GITHUB_STEP_SUMMARY, `${line}\n`);
   if (env.GITHUB_OUTPUT)
     appendFileSync(
       env.GITHUB_OUTPUT,
-      `full-regression=${decision.fullRegression ? 'true' : 'false'}\n`,
+      `integration-ready=${decision.integrationReady}\nfull-regression=${decision.fullRegression}\n`,
     );
-  return 0;
+  return decision.integrationReady ? 0 : 1;
 }
 
 if (invokedDirectly(import.meta.url)) process.exitCode = main();

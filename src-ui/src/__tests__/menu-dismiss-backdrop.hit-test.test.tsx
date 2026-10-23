@@ -413,7 +413,7 @@ const SHAPES: readonly Shape[] = [
     // The account control sits in the sidebar footer beside Live work. On a
     // phone that footer is inside the closed drawer, so the desktop rail is
     // where its trigger is chrome a press can land on.
-    openerLabel: 'Profile and settings',
+    openerLabel: 'Profile and settings: ST',
   },
   {
     name: 'the header’s help menu on a phone',

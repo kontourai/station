@@ -12,14 +12,8 @@ import {
   validateTestImpactManifest,
 } from '../test-impact-manifest.mjs';
 
-/**
- * The required `Merge-queue regression` check runs the hosted full
- * regression only for a candidate whose fast-checks plan defers to a lane or
- * names a `mergeQueueRegression` path, and fails closed on anything it cannot
- * read. Plans here come from the real planner through the real `plan` CLI
- * (only the diff and related discovery are injected); the decision and the
- * aggregator run as child processes, the way the workflow runs them.
- */
+/** Exercise the real planner, decision CLI and workflow aggregate. A bounded
+ * integration pass must never depend on a full corpus or admit foreign plans. */
 
 const root = resolve(import.meta.dirname, '../..');
 const WORKFLOW = '.github/workflows/ci.yml';
@@ -93,11 +87,12 @@ function decide(
 
 /** A GitHub expression, without a `${` literal the linter flags. */
 const expr = (inner: string) => `\${{ ${inner} }}`;
-const RUNS_FULL = 'full-regression=true\n';
-const FAST_PATH = 'full-regression=false\n';
+const RUNS_FULL = 'integration-ready=true\nfull-regression=true\n';
+const BLOCKED = 'integration-ready=false\nfull-regression=true\n';
+const FAST_PATH = 'integration-ready=true\nfull-regression=false\n';
 
 describe('the decision over real plans (child process)', () => {
-  test('a shared-package change escalates to a deferred lane and runs the full regression', async () => {
+  test('a shared-package change retains its broad deferral without blocking bounded integration', async () => {
     const { file, plan } = await writeRealPlan([
       'packages/shared/src/agent-validation.ts',
     ]);
@@ -110,7 +105,7 @@ describe('the decision over real plans (child process)', () => {
     expect(result.stdout).toContain('plan defers to ci-fast');
   });
 
-  test('a deferred hosted plan retains more than32 explicit tests and still requires full regression', async () => {
+  test('a deferred hosted plan retains more than32 explicit tests and retains its full qualification obligation', async () => {
     // 33 real suites the manifest already names, changed in one diff.
     const tests = [
       ...new Set(
@@ -141,10 +136,8 @@ describe('the decision over real plans (child process)', () => {
 
   test('an ordinary related-only change takes the fast path', async () => {
     const { file, plan } = await writeRealPlan(
-      ['src-ui/src/components/acp-connections/ACPConnectionCard.tsx'],
-      [
-        'src-ui/src/components/acp-connections/__tests__/ACPConnectionCard.test.tsx',
-      ],
+      ['src-ui/src/components/header/ProfileMenu.tsx'],
+      ['src-ui/src/components/header/__tests__/ProfileMenu.test.tsx'],
     );
     expect(plan.deferredLanes).toEqual([]);
     expect(plan.mergeQueueRegressionPaths).toEqual([]);
@@ -155,7 +148,7 @@ describe('the decision over real plans (child process)', () => {
     expect(result.summary).toContain('no deferred lane: fast path');
   });
 
-  test('a path whose consumers only the queue runs takes the full regression without any lane', async () => {
+  test('consumer coverage remains deferred while its boundary plan is accepted', async () => {
     const { file, plan } = await writeRealPlan([
       'packages/sdk/src/client/http.ts',
     ]);
@@ -172,48 +165,46 @@ describe('the decision over real plans (child process)', () => {
 describe('fail-closed decisions (child process)', () => {
   async function ordinaryPlan() {
     return writeRealPlan(
-      ['src-ui/src/components/acp-connections/ACPConnectionCard.tsx'],
-      [
-        'src-ui/src/components/acp-connections/__tests__/ACPConnectionCard.test.tsx',
-      ],
+      ['src-ui/src/components/header/ProfileMenu.tsx'],
+      ['src-ui/src/components/header/__tests__/ProfileMenu.test.tsx'],
     );
   }
 
-  test('a missing plan runs the full regression', () => {
+  test('a missing plan blocks integration', () => {
     const result = decide(join(makeTempDir('station-mq-none-'), 'plan.json'));
-    expect(result.status).toBe(0);
-    expect(result.output).toBe(RUNS_FULL);
+    expect(result.status).toBe(1);
+    expect(result.output).toBe(BLOCKED);
     expect(result.stdout).toContain('missing or unreadable: fail closed');
   });
 
   test.each([
     ['unparsable', () => '{"schemaVersion":'],
     ['structurally invalid', () => JSON.stringify({ schemaVersion: 1 })],
-  ])('a %s plan runs the full regression', (_name, text) => {
+  ])('a %s plan blocks integration', (_name, text) => {
     const file = join(makeTempDir('station-mq-bad-'), 'plan.json');
     writeFileSync(file, text());
     const result = decide(file);
-    expect(result.output).toBe(RUNS_FULL);
+    expect(result.output).toBe(BLOCKED);
     expect(result.stdout).toContain('fail closed');
   });
 
-  test('an ordinary plan for another candidate or base runs the full regression', async () => {
+  test('an ordinary plan for another candidate or base blocks integration', async () => {
     const { file } = await ordinaryPlan();
     expect(decide(file).output).toBe(FAST_PATH);
-    expect(decide(file, { head: 'd'.repeat(40) }).output).toBe(RUNS_FULL);
-    expect(decide(file, { base: 'e'.repeat(40) }).output).toBe(RUNS_FULL);
+    expect(decide(file, { head: 'd'.repeat(40) }).output).toBe(BLOCKED);
+    expect(decide(file, { base: 'e'.repeat(40) }).output).toBe(BLOCKED);
   });
 
-  test('a plan that does not record mergeQueueRegressionPaths runs the full regression', async () => {
+  test('a plan that does not record mergeQueueRegressionPaths blocks integration', async () => {
     const { file, plan } = await ordinaryPlan();
     delete plan.mergeQueueRegressionPaths;
     writeFileSync(file, JSON.stringify(plan));
     const result = decide(file);
-    expect(result.output).toBe(RUNS_FULL);
+    expect(result.output).toBe(BLOCKED);
     expect(result.stdout).toContain('mergeQueueRegressionPaths: fail closed');
   });
 
-  test('only a deferred ci-fast or test-full lane runs the full regression (owner-chosen scope)', async () => {
+  test('broader coverage stays explicit independently of bounded integration', async () => {
     const { file, plan } = await ordinaryPlan();
     const withLanes = (ids: string[]) => {
       writeFileSync(
@@ -233,7 +224,7 @@ describe('fail-closed decisions (child process)', () => {
     );
   });
 
-  test('a usage fault exits 2 and writes no decision, so the workflow runs the full regression', () => {
+  test('a usage fault exits 2 and writes no admission decision', () => {
     const result = decide('plan.json', { head: 'not-a-sha' });
     expect(result.status).toBe(2);
     expect(result.output).toBeUndefined();
@@ -241,9 +232,9 @@ describe('fail-closed decisions (child process)', () => {
 });
 
 describe('mergeQueueRegression impact edges', () => {
-  test('every edge that leaves its consumers to the merge queue says so structurally', () => {
+  test('each consumer deferral remains explicitly identified', () => {
     const claimed = TEST_IMPACT_MANIFEST.filter((edge) =>
-      /merge-queue\s+full\s+regression/.test(edge.reason ?? ''),
+      /main\/release full qualification/.test(edge.reason ?? ''),
     ).map((edge) => edge.pattern);
     const flagged = TEST_IMPACT_MANIFEST.filter(
       (edge) =>
@@ -255,7 +246,7 @@ describe('mergeQueueRegression impact edges', () => {
     expect(flagged).toHaveLength(9);
   });
 
-  test('only an exactly owned path selects the queue regression', () => {
+  test('only an exactly owned path identifies deferred consumer coverage', () => {
     expect(
       mergeQueueRegressionPaths([
         'src-server/services/orchestration/event-store.ts',
@@ -330,8 +321,8 @@ describe('same-run merge integration wiring', () => {
     expect(decision?.if).toBe(
       expr("always() && !cancelled() && github.event_name == 'merge_group'"),
     );
-    expect(jobs['fast-checks-plan'].outputs?.['full-regression']).toBe(
-      expr('steps.merge-decision.outputs.full-regression'),
+    expect(jobs['fast-checks-plan'].outputs?.['integration-ready']).toBe(
+      expr('steps.merge-decision.outputs.integration-ready'),
     );
     expect(jobs['merge-queue-regression'].needs).toContain('fast-checks');
     const diagnostic = load(
@@ -344,7 +335,7 @@ describe('same-run merge integration wiring', () => {
     expect(Object.keys(diagnostic.on)).toEqual(['workflow_dispatch']);
   });
 
-  test('an old candidate without the decision CLI explicitly falls back to full regression', () => {
+  test('an old candidate without the decision CLI cannot gain bounded admission', () => {
     const directory = makeTempDir('station-mq-legacy-decision-');
     const output = join(directory, 'output');
     const step = workflow().jobs['fast-checks-plan'].steps?.find(
@@ -367,161 +358,84 @@ describe('same-run merge integration wiring', () => {
         timeout: 30_000,
       },
     );
-    expect(result.status, result.stderr).toBe(0);
+    expect(result.status).not.toBe(0);
     expect(result.stderr).toContain('MODULE_NOT_FOUND');
-    expect(readFileSync(output, 'utf8')).toBe(RUNS_FULL);
+    expect(existsSync(output)).toBe(false);
   });
 
-  test('the full regression runs unless the same-run decision is exactly false', () => {
-    const job = workflow().jobs['merge-integration-full-regression'];
-    expect(job.if).toBe(
-      expr(
-        "always() && !cancelled() && github.event_name == 'merge_group' && (needs.fast-checks-plan.result != 'success' || needs.fast-checks-plan.outputs.full-regression != 'false')",
-      ),
+  test('the required integration DAG has no full-corpus dependency', () => {
+    const { jobs } = workflow();
+    expect(jobs).not.toHaveProperty('merge-integration-full-regression');
+    expect(jobs['merge-queue-regression'].needs).toEqual([
+      'diff',
+      'fast-checks-plan',
+      'fast-checks',
+    ]);
+    // The remaining canonical full call is a manual diagnostic only.
+    expect(jobs['full-regression'].if).toContain(
+      "github.event_name == 'workflow_dispatch'",
     );
-    expect(job.uses).toBe('./.github/workflows/full-regression.yml');
-    expect(job.with).toMatchObject({
-      capacity_class: 'integration',
-      source_sha: expr('github.sha'),
-      allow_reuse: true,
-    });
   });
 });
 
 describe('the required aggregate over job results (bash and jq child process)', () => {
-  const bash = spawnSync('bash', ['-c', 'command -v jq'], {
-    encoding: 'utf8',
-    windowsHide: true,
-  });
   const run = workflow().jobs['merge-queue-regression'].steps?.[0]?.run ?? '';
-
-  function aggregate(needs: Record<string, unknown>) {
+  const job = (result: string, outputs: Record<string, string> = {}) => ({
+    result,
+    outputs,
+  });
+  function aggregate(overrides: Record<string, unknown> = {}) {
     return spawnSync('bash', ['-eo', 'pipefail', '-c', run], {
       encoding: 'utf8',
       env: {
         PATH: process.env.PATH ?? '',
-        NEEDS: JSON.stringify({ 'fast-checks': job('success'), ...needs }),
+        NEEDS: JSON.stringify({
+          diff: job('success'),
+          'fast-checks': job('success'),
+          'fast-checks-plan': job('success', {
+            'integration-ready': 'true',
+            'full-regression': 'true',
+          }),
+          ...overrides,
+        }),
       },
       timeout: 30_000,
       windowsHide: true,
     });
   }
-  const job = (result: string, outputs: Record<string, string> = {}) => ({
-    result,
-    outputs,
-  });
-  const fast = { 'full-regression': 'false' };
-  const full = { 'full-regression': 'true' };
 
-  test('jq is available to the aggregate', () => {
-    expect(bash.status, 'jq is required by the real aggregate').toBe(0);
+  test('accepts passed bounded checks while the corpus remains explicitly unqualified', () => {
+    const result = aggregate();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain(
+      'Bounded integration only; full qualification runs on main and before release',
+    );
   });
 
-  test.each([
-    [
-      'fast path: plan says false and the regression was skipped',
-      {
-        diff: job('success'),
-        'fast-checks-plan': job('success', fast),
-        'merge-integration-full-regression': job('skipped'),
-      },
-      0,
-    ],
-    ...['failure', 'cancelled', 'skipped'].map(
-      (result): [string, Record<string, ReturnType<typeof job>>, number] => [
-        `fast-checks ${result} prevents premature green`,
-        {
-          diff: job('success'),
-          'fast-checks-plan': job('success', fast),
-          'merge-integration-full-regression': job('skipped'),
-          'fast-checks': job(result),
-        },
-        1,
-      ],
-    ),
-    [
-      'deferred candidate whose full regression passed',
-      {
-        diff: job('success'),
-        'fast-checks-plan': job('success', full),
+  test.each(['diff', 'fast-checks-plan', 'fast-checks'])(
+    '%s must succeed even when other evidence is green',
+    (part) => {
+      for (const result of ['failure', 'cancelled', 'skipped', 'in_progress']) {
+        expect(
+          aggregate({ [part]: job(result, { 'integration-ready': 'true' }) })
+            .status,
+        ).toBe(1);
+      }
+      expect(aggregate({ [part]: undefined }).status).toBe(1);
+    },
+  );
+
+  test.each([undefined, 'false', 'garbled'])(
+    'invalid/missing admission decision %s cannot be replaced by a full-run success',
+    (ready) => {
+      const result = aggregate({
+        'fast-checks-plan': job(
+          'success',
+          ready === undefined ? {} : { 'integration-ready': ready },
+        ),
         'merge-integration-full-regression': job('success'),
-      },
-      0,
-    ],
-    [
-      'failed plan job whose fail-closed full regression passed',
-      {
-        diff: job('success'),
-        'fast-checks-plan': job('failure'),
-        'merge-integration-full-regression': job('success'),
-      },
-      0,
-    ],
-    [
-      'deferred candidate whose full regression failed',
-      {
-        diff: job('success'),
-        'fast-checks-plan': job('success', full),
-        'merge-integration-full-regression': job('failure'),
-      },
-      1,
-    ],
-    [
-      'decision true but the regression was skipped',
-      {
-        diff: job('success'),
-        'fast-checks-plan': job('success', full),
-        'merge-integration-full-regression': job('skipped'),
-      },
-      1,
-    ],
-    [
-      'no decision and no regression',
-      {
-        diff: job('success'),
-        'fast-checks-plan': job('success'),
-        'merge-integration-full-regression': job('skipped'),
-      },
-      1,
-    ],
-    [
-      'failed plan job and skipped regression',
-      {
-        diff: job('success'),
-        'fast-checks-plan': job('failure', fast),
-        'merge-integration-full-regression': job('skipped'),
-      },
-      1,
-    ],
-    [
-      'cancelled full regression',
-      {
-        diff: job('success'),
-        'fast-checks-plan': job('success', full),
-        'merge-integration-full-regression': job('cancelled'),
-      },
-      1,
-    ],
-    [
-      'failed candidate diff on the fast path',
-      {
-        diff: job('failure'),
-        'fast-checks-plan': job('success', fast),
-        'merge-integration-full-regression': job('skipped'),
-      },
-      1,
-    ],
-  ])('%s', (_name, needs, expected) => {
-    const result = aggregate(needs);
-    expect(result.status, result.stderr).toBe(expected);
-  });
-
-  test('the fast path says so on the required check', () => {
-    const result = aggregate({
-      diff: job('success'),
-      'fast-checks-plan': job('success', fast),
-      'merge-integration-full-regression': job('skipped'),
-    });
-    expect(result.stdout).toContain('no deferred lane: fast path');
-  });
+      });
+      expect(result.status).toBe(1);
+    },
+  );
 });

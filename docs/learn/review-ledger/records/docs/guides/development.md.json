@@ -118,7 +118,13 @@
 
     "packages/basis-pane/package.json",
 
-    "packages/board-pane/package.json"
+    "packages/board-pane/package.json",
+
+    ".github/actions/setup-verified-pnpm/action.yml",
+
+    ".github/actions/setup-verified-pnpm/bootstrap.mjs",
+
+    "scripts/__tests__/verified-pnpm-bootstrap.test.ts"
   ],
 
   "checks": [

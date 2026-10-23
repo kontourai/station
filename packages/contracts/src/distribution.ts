@@ -89,6 +89,7 @@ export interface ResolvedCatalogLayout {
     | 'defaultAgent'
     | 'availableAgents'
     | 'requiredProviders'
+    | 'workspaceBinding'
   > & { type: string };
   pluginName?: string;
 }
