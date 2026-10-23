@@ -92,9 +92,13 @@ describe('runtime resource diagnostics', () => {
     const active = new AbortController();
     const abandoned = controller.waitForEngineStart(cancelled.signal);
     const refusal = expect(abandoned).rejects.toBe('cancelled');
-    let admitted = false;
+    const admissionOrder: string[] = [];
     const next = controller.waitForEngineStart(active.signal).then((lease) => {
-      admitted = true;
+      admissionOrder.push('second');
+      return lease;
+    });
+    const last = controller.waitForEngineStart(active.signal).then((lease) => {
+      admissionOrder.push('third');
       return lease;
     });
     expect(() => controller.reserveEngineStart()).toThrow(
@@ -102,15 +106,22 @@ describe('runtime resource diagnostics', () => {
     );
     cancelled.abort('cancelled');
     await refusal;
-    expect(admitted).toBe(false);
+    expect(admissionOrder).toEqual([]);
     first.release();
-    const second = await next;
-    expect(admitted).toBe(true);
+    const second = await Promise.race([next, last]);
+    expect(admissionOrder).toEqual(['second']);
     first.release();
     expect(() => controller.reserveEngineStart()).toThrow(
       ConcurrentEngineStartCapacityError,
     );
+    expect(admissionOrder).toEqual(['second']);
     second.release();
+    const third = await last;
+    expect(admissionOrder).toEqual(['second', 'third']);
+    expect(() => controller.reserveEngineStart()).toThrow(
+      ConcurrentEngineStartCapacityError,
+    );
+    third.release();
     const final = controller.reserveEngineStart();
     final.release();
   });

@@ -2181,8 +2181,10 @@ Canonical interruption rechecks request currency and session read authority afte
 adapter resolution, at deferred native dispatch and before forced teardown.
 Pending interrupts retain that check. Authority loss before dispatch rejects and
 clears its timer/stop slot without publishing terminal evidence. These receipts
-do not prove provider termination or change invocation usage. Public serving and
-group cancellation acknowledgement remain required.
+do not prove provider termination or change invocation usage. The personal-host
+runtime separately composes public report serving, cancellation and explicit
+receipt finalization. Flow-backed synchronization and live-provider qualification
+remain open.
 
 The [controlled integration](../../src-server/services/orchestration/__tests__/station-report-group-preparation.test.ts)
 consumes an issued root through the published durable v3 authority, rounds
@@ -2549,9 +2551,11 @@ provider-name reconciliation, or read-time identity aliases.
 `providers/finish-reason-authority.ts` owns `PROVIDER_PROVEN_FINISH_REASONS`: the
 allowlist of `turn.completed` finish reasons that positively prove a provider ran a
 whole turn — the single decision point for every "does this completion clear a recorded
-failure" question. Two consumers: runtime auth-health clearing
-(`runtime-auth-health-monitor.ts`) and session-scoped `runtime.error` supersession in
-both event-store projection folds (station#3485). Membership is typed against the
+failure" question. The shared allowlist serves runtime auth-health clearing
+(`runtime-auth-health-monitor.ts`), session-scoped `runtime.error` supersession in
+both event-store projection folds (station#3485), and exact initial-turn completion
+evidence for CLI session-group dependencies. The dependency gate observes
+provider completion, not semantic acceptance. Membership is typed against the
 contracts `finishReason` union, and each consumer pins its own stake with tests, so
 widening the set is a decision made once, visibly, for all of them. **Do not
 reintroduce:** a per-consumer copy of the set, an exclusion-list ("everything except
