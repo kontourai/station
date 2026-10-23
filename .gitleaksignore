@@ -86,3 +86,9 @@ b78eecc87b8c0ac3c0ef4b864c9f73855b659e30:tests/input-request.spec.ts:generic-api
 # No provider-issued credential; current fixture is explicit noncredential text.
 # Approval: T3 63d2c37c-00d8-45df-b608-dbcdba53de1f, 2026-10-22T17:14:27.137Z.
 f5e4ad873375a1ffbb0123c1c56f24ffb0cd070b:src-server/routes/connections/__tests__/acp-sign-in.routes.test.ts:generic-api-key:57
+
+# #4017 / #4046: exact squash-history occurrence of the byte-identical public EC root.
+# Brian approved only this fingerprint on 2026-10-23: "Approve this exact fingerprint only".
+# Approval source: T3 thread b775132c-7785-4a1f-a8e8-d3b7286c26bf.
+# No credential authority; fresh same-path occurrences remain scanned.
+69ada7f1f6c54fa851b774ceb8ceb9e92c803623:.github/actions/setup-verified-pnpm/bootstrap.mjs:generic-api-key:25
