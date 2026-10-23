@@ -415,6 +415,7 @@ external engines through that wrapper. Terminal receipts are appended to
 `<STATION_HOME>/monitoring/model-dispatch-receipts.ndjson`; they contain digests,
 opaque candidate identifiers, outcome, timing, token, and estimated-cost data,
 but not prompts, credentials, endpoints, connection IDs, or model configuration.
+Successful attempts also retain `model` and `modelSource`.
 
 #### `policy.minimumEvidence` and `policy.requiredCapabilities`
 
