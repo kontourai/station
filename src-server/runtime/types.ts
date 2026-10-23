@@ -621,6 +621,23 @@ export interface RuntimeContext {
   // Services
   approvalRegistry: ApprovalRegistry;
   configLoader: ConfigLoader;
+  /**
+   * The projected Agent read (`agentCatalogReadSeam`), when this runtime owns
+   * an `AgentService`.
+   *
+   * The reserved Station identity's record is deliberately stored WITHOUT an
+   * engine binding and gets one from the service projection
+   * (`docs/design/agent-engine-unification.md` §7.1.1). A reader that calls
+   * `configLoader.loadAgent` directly therefore sees a binding-free record for
+   * an identity that IS bound to an external engine — which is how
+   * `GET /agents/station/tools` answered 409 "exists but is not active" for an
+   * agent the runtime was actively running on OpenCode.
+   *
+   * Optional only so transport-only fixtures need not supply it; every
+   * production construction wires it. An absent seam falls back to the raw
+   * record, which fails closed (409) rather than overclaiming.
+   */
+  loadProjectedAgent?: (slug: string) => Promise<AgentSpec>;
   appConfig: AppConfig;
   modelCatalog?: BedrockModelCatalog;
   framework: IAgentFramework;
