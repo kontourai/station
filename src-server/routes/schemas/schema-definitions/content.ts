@@ -211,6 +211,13 @@ export const projectCreateSchema = z
     slug: z.string().optional(),
     icon: projectIconSchema,
     workingDirectory: z.string().optional(),
+    repositoryAcquisitionId: z.string().uuid().optional(),
+    creationRequestId: z.string().uuid().optional(),
+    starterLayoutId: z
+      .string()
+      .regex(LAYOUT_CATALOG_ITEM_ID_PATTERN)
+      .nullable()
+      .optional(),
     description: z.string().optional(),
     defaultEnvironment: projectEnvironmentRefSchema.optional(),
     toolDefaults: z
@@ -395,6 +402,8 @@ export const projectLayoutFromPluginSchema = z.object({
 
 export const projectLayoutApplySchema = z.object({
   layoutId: z.string().regex(LAYOUT_CATALOG_ITEM_ID_PATTERN),
+  creationRequestId: z.string().uuid().optional(),
+  retryUncertain: z.boolean().optional(),
 });
 
 /**

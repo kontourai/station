@@ -58,8 +58,9 @@ import type {
   KitLink,
   KitRecordType,
   KnowledgeStoreProvider,
+  KnowledgeStoreRoot,
 } from '@kontourai/station-contracts/knowledge-store';
-import type { Context } from 'hono';
+import type { Context, Env, MiddlewareHandler } from 'hono';
 import { Hono } from 'hono';
 import { isSafePathSegment } from '../../knowledge-index/path-safety.js';
 import {
@@ -75,6 +76,11 @@ import { projectKnowledgePersistenceError } from './knowledge-persistence-errors
 
 interface KnowledgeRecordRouteDeps {
   store: KnowledgeStoreProvider;
+  guardReadResponse?: (
+    request: Request,
+    roots: readonly KnowledgeStoreRoot[],
+    response: Response,
+  ) => Promise<Response>;
   mayUseRoot?: (
     request: Request,
     rootId: string,
@@ -186,13 +192,26 @@ interface LinkRecordBody {
 
 export function createKnowledgeRecordRoutes(deps: KnowledgeRecordRouteDeps) {
   const app = new Hono();
-  app.use('/roots/:rootId/*', async (c, next) => {
+  const authorizeRoot: MiddlewareHandler<Env, '/roots/:rootId'> = async (
+    c,
+    next,
+  ) => {
+    const read = c.req.method === 'GET' || c.req.method === 'HEAD';
+    const expectedRoot =
+      read && deps.guardReadResponse
+        ? await deps.store.getRoot(c.req.param('rootId'))
+        : undefined;
+    if (read && deps.guardReadResponse && !expectedRoot)
+      return c.json(
+        { success: false, error: 'Knowledge store not found.' },
+        404,
+      );
     if (
       deps.mayUseRoot &&
       !(await deps.mayUseRoot(
         c.req.raw,
         c.req.param('rootId'),
-        c.req.method === 'GET' ? 'view' : 'edit',
+        read ? 'view' : 'edit',
       ))
     ) {
       return c.json(
@@ -200,8 +219,13 @@ export function createKnowledgeRecordRoutes(deps: KnowledgeRecordRouteDeps) {
         403,
       );
     }
-    return next();
-  });
+    await next();
+    if (expectedRoot && deps.guardReadResponse && c.res.ok)
+      c.res = await deps.guardReadResponse(c.req.raw, [expectedRoot], c.res);
+  };
+  app.use('/roots/:rootId/records', authorizeRoot);
+  app.use('/roots/:rootId/records/*', authorizeRoot);
+  app.use('/roots/:rootId/graph', authorizeRoot);
 
   // POST /roots/:rootId/records — body: CreateInput (store-contract.md §6.1).
   app.post('/roots/:rootId/records', async (c) => {

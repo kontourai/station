@@ -21,13 +21,17 @@ import {
   describe,
   expect,
   test,
+  vi,
 } from 'vitest';
 import type { StationControlCallerRecordResolver } from '../../runtime/mcp/station-control-caller.js';
 import {
   claudeInProcessStationControlOptions,
   type InProcessStationControlServer,
 } from '../../runtime/mcp/station-control-in-process.js';
-import { __resetStationControlMcpTokensForTests } from '../../runtime/mcp/station-control-mcp-token.js';
+import {
+  __resetStationControlMcpTokensForTests,
+  revokeStationControlMcpToken,
+} from '../../runtime/mcp/station-control-mcp-token.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../services/identity/principal-resolver.js';
 import { INTERNAL_API_TOKEN_HEADER } from '../../utils/internal-api-token.js';
 import {
@@ -35,6 +39,7 @@ import {
   STATION_CONTROL_TOOL_POLICY,
 } from '../station-control-policy.js';
 
+let revokeAfterRoots = false;
 const resolveRecord: StationControlCallerRecordResolver = () => ({
   principal: { id: LOCAL_OPERATOR_PRINCIPAL_ID, source: 'session-owner' },
   localProjectId: 'local-project-a',
@@ -52,6 +57,7 @@ const recorded: Recorded[] = [];
 let server: ReturnType<typeof serve>;
 
 beforeAll(async () => {
+  vi.stubEnv('STATION_EXPERIMENTAL_S3_SOURCES', '1');
   const app = new Hono();
   app.all('*', async (c) => {
     recorded.push({
@@ -66,6 +72,34 @@ beforeAll(async () => {
     // environment is "current".
     if (c.req.path === '/.well-known/station/v1')
       return c.json({ environmentId: 'environment-current' });
+    if (c.req.path === '/api/knowledge/roots') {
+      if (revokeAfterRoots)
+        revokeStationControlMcpToken(
+          'op-route-capture-knowledge',
+          'station-knowledge',
+        );
+      return c.json({
+        success: true,
+        data: [
+          {
+            id: 'other-root',
+            displayName: 'Same policy',
+            scope: { kind: 'project', projectSlug: 'other-project' },
+            projectId: 'other-id',
+            adapterId: 'kit-default-store',
+            storeRoot: '/private/other',
+          },
+          {
+            id: 'current-root',
+            displayName: 'Same policy',
+            scope: { kind: 'project', projectSlug: 'project-a' },
+            projectId: 'local-project-a',
+            adapterId: 'kit-default-store',
+            storeRoot: '/private/current',
+          },
+        ],
+      });
+    }
     return c.json({ success: true, data: {} });
   });
   let resolvePort!: (value: number) => void;
@@ -80,12 +114,14 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  vi.unstubAllEnvs();
   await new Promise<void>((resolve) => server.close(() => resolve()));
   delete process.env.STATION_API_BASE;
   delete process.env.STATION_SSH_CONNECT_POLL_TIMEOUT_MS;
 });
 
 beforeEach(() => {
+  revokeAfterRoots = false;
   __resetStationControlMcpTokensForTests();
 });
 
@@ -250,6 +286,17 @@ const ARGS: Record<string, Record<string, unknown>> = {
   reindex_knowledge: {},
   search_knowledge: { query: 'q' },
   list_knowledge_roots: {},
+  list_project_s3_sources: { projectSlug: 'fixture' },
+  list_project_s3_objects: {
+    projectSlug: 'fixture',
+    sourceId: '11111111-1111-4111-8111-111111111111',
+  },
+  read_project_s3_object: {
+    projectSlug: 'fixture',
+    sourceId: '11111111-1111-4111-8111-111111111111',
+    key: 'selected/note.md',
+    etag: '"etag"',
+  },
   list_knowledge_records: { rootId: 'root-a', type: 'raw' },
   get_knowledge_record: { rootId: 'root-a', id: 'record-a' },
   add_knowledge_record: { rootId: 'root-a', title: 't', body: 'b' },
@@ -411,6 +458,29 @@ describe('the authority table routes are the routes the tools call', () => {
           name,
           arguments: ARGS[name] ?? {},
         });
+        if (name === 'list_knowledge_roots') {
+          const envelope = JSON.parse(
+            result.result.content.find(
+              (part: { type: string }) => part.type === 'text',
+            ).text,
+          );
+          expect(envelope.success).toBe(true);
+          expect(envelope.data).toEqual([
+            expect.objectContaining({
+              id: 'other-root',
+              projectId: 'other-id',
+              isCurrentProject: false,
+            }),
+            expect.objectContaining({
+              id: 'current-root',
+              projectId: 'local-project-a',
+              isCurrentProject: true,
+              currentProjectId: 'local-project-a',
+              currentProjectSlug: 'project-a',
+            }),
+          ]);
+          expect(JSON.stringify(envelope)).not.toContain('/private/');
+        }
         const internal = recorded.filter((entry) => entry.internal);
         const policy =
           STATION_CONTROL_TOOL_POLICY[
@@ -437,6 +507,22 @@ describe('the authority table routes are the routes the tools call', () => {
             );
         }
       }
+      if (serverId === 'station-knowledge') {
+        revokeAfterRoots = true;
+        const revoked = await request(++id, 'tools/call', {
+          name: 'list_knowledge_roots',
+          arguments: {},
+        });
+        expect(JSON.stringify(revoked)).not.toContain('Same policy');
+        expect(JSON.stringify(revoked)).not.toContain('current-root');
+        const refusal = JSON.parse(
+          revoked.result.content.find(
+            (part: { type: string }) => part.type === 'text',
+          ).text,
+        );
+        expect(refusal.success).toBe(false);
+        revokeAfterRoots = false;
+      }
       await instance.close();
     }
     expect(undeclared).toEqual([]);
@@ -450,7 +536,7 @@ describe('the authority table routes are the routes the tools call', () => {
     );
   });
 
-  test('the Knowledge-only tools are the four #3196 moved off station-control, and both servers drive search_knowledge', () => {
+  test('Knowledge source tools stay off station-control, and both servers drive search_knowledge', () => {
     const only = (serverId: PolicyServerId) =>
       Object.keys(STATION_CONTROL_TOOL_POLICY)
         .filter((name) => policyServerIds(name).includes(serverId))
@@ -461,6 +547,9 @@ describe('the authority table routes are the routes the tools call', () => {
       'get_knowledge_record',
       'list_knowledge_records',
       'list_knowledge_roots',
+      'list_project_s3_objects',
+      'list_project_s3_sources',
+      'read_project_s3_object',
     ]);
     expect(policyServerIds('search_knowledge')).toEqual([
       'station-control',

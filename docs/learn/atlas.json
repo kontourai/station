@@ -83,6 +83,7 @@
         "WorkspacePaneHostContributions",
         "WorkspacePaneHostAdmission",
         "WorkspacePaneHostActions",
+        "ProjectRoom",
         "ProjectTaskRoom",
         "MobileDeviceHost",
         "BrowserSessionService",

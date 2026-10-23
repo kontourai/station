@@ -6,12 +6,12 @@ the [shared channel](shared-task-channels.md). Local controlled tests verify
 selection and retry behavior; browser, actual-provider and invited/public
 acceptance remain unfinished.
 
-The Task view retains one tab choice in renderer memory across authority
-re-verification. Its identity includes the verified namespace, API base, Task
-ID and creation time. This retains presentation only: protected queries still
-re-authorize, and no Task data, draft, or editor mode is restored by that choice.
-After reconnect, Brief can return as a freshly read preview; editing remains an
-explicit action.
+The Task view records its selected view in the URL's `taskView` parameter;
+missing or unsupported values open **Overview**. The URL can survive authority
+re-verification, but it grants no access. The protected Room subtree remounts
+when the API base, request authority, Task ID or Task creation time changes.
+That remount does not restore Task data, drafts or editor mode from the view
+choice. **Plan** starts in preview; editing remains an explicit action.
 
 ## Owners and transport
 
@@ -94,12 +94,12 @@ One publication pass opens history at most once for all its pending answers. Pub
 rechecks the immutable request binding, Task incarnation, Project and owner;
 reconciliation repeats publication idempotently, never provider execution.
 
-Chat hides brief revision links and presence events; Details retains the raw
+Conversation hides brief revision links and presence events; Details retains the raw
 history. Owner history rebuilds display names and run identities from durable
 principal, agent and Session sources. Guest history retains its anonymized
 Participant/Agent labels and filters owner status and thread fragments.
 Answers are clamped with Show more, and Keep remains disabled after confirmation.
-The Chat view groups replies to an agent answer by its Session. The thread replaces
+The Conversation view groups replies to an agent answer by its Session. The thread replaces
 the desktop rail and fills the room on narrow screens. A reply uses
 `POST /api/orchestration/delegations/:sessionId/continue` with `taskRoomReply`
 (Task identity, creation time and operation ID). The server verifies the exact
@@ -110,11 +110,11 @@ provider effects. Unknown acknowledgements require full-run inspection instead
 of an automatic resend. The operation ID remains stable for the same send.
 The latest saved brief is attached by default; the thread checkbox can opt out.
 
-The shared Task document is the canonical brief. The Chat rail parses the saved
+The shared Task document is the canonical brief. The Overview summary parses the saved
 document, or the Task description when the document is empty. Goal uses its named
 section or prose before the first heading; later sections never become Goal.
 Done when accepts plain bullets and numbered items as neutral criteria, alongside
-checked and unchecked Markdown checkboxes. The Brief display renders Markdown and explicitly enters the same
+checked and unchecked Markdown checkboxes. The Plan display renders Markdown and explicitly enters the same
 live editor; edits autosave through the existing CRDT plan/batch protocol.
 
 Current canonical lifecycle ends an agent's live presence after each completed
@@ -158,7 +158,7 @@ The composer refreshes the latest saved brief immediately before a fresh Send.
 The attachment checkbox explicitly opts out. Connection or recipient changes
 retire an in-flight preflight; unknown acknowledgements retain the exact saved
 operation and context for retry. The agent receives readable markdown rather
-than serialized snapshot JSON. The Brief tab autosaves through the existing
+than serialized snapshot JSON. The Plan tab autosaves through the existing
 server edit-plan/batch protocol, keeps its draft mounted across tabs and retains
 new typing while an older commit settles. In-app navigation flushes pending autosaves before committing its destination.
 Failed or uncertain saves retain the draft in place. Co-editing plan rejection
@@ -465,8 +465,10 @@ real-provider, native-device, public-sharing or installed-release behavior.
 
 ## Room action hierarchy and draft ownership
 
-Chat remains the primary Task surface; Brief and Results hold the shared plan
-and kept work, with identity and execution inspection in Details. Opening an
+Overview is the default Task view and includes kept deliverables. Conversation
+holds the shared discussion, Plan holds the shared document, Work chats links
+separately authorized conversations, and Details holds identity and execution
+inspection. Opening an
 agent thread replaces its navigation button with answer-local Keep and run
 inspection actions. Every answer in that thread can be kept, including its first
 answer. The composer keeps one visible message prompt and an accessible label.

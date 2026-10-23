@@ -1302,21 +1302,6 @@
   gap: 8px;
 }
 
-@media (max-width: 768px) {
-  /* Keep the whole row tappable. Nothing else changes: `flex: 1 1 12rem` on
-     the body already keeps the icon and the title on one line at 390px and
-     lets only the chip and the call to action drop below, and the title's own
-     ellipsis (with `min-width: 0`) clamps a long one instead of widening the
-     page. */
-  .project-page__live-work-row {
-    min-height: 44px;
-  }
-
-  .project-page__live-work-row-actions button {
-    min-height: 44px;
-  }
-}
-
 /* ── Modals ─────────────────────────────────────────────────────── */
 
 .project-page__modal-overlay {
@@ -1432,4 +1417,178 @@
 .project-page__task-sharing p {
   margin: 0;
   color: var(--text-muted);
+}
+
+.project-page__navigation {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  border-bottom: 1px solid var(--k-line);
+  padding-block: var(--k-space-3);
+}
+
+.project-page__navigation a,
+.project-page__workspace > summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: var(--k-space-2) var(--k-space-3);
+  color: var(--k-text-muted);
+  border-radius: var(--k-radius-control);
+  cursor: pointer;
+}
+
+.project-page__navigation a[aria-current="page"] {
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+  text-decoration: underline;
+  text-underline-offset: var(--k-space-1);
+}
+
+.project-page__navigation a:focus-visible,
+.project-page__workspace > summary:focus-visible {
+  outline: 2px solid var(--k-focus-ring);
+  outline-offset: var(--k-space-1);
+}
+
+.project-page__operator-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-3);
+  margin-block: var(--k-space-4);
+}
+
+.project-page__operator-actions button {
+  min-height: 44px;
+}
+
+.project-page__workspace {
+  border-top: 1px solid var(--k-line);
+  margin-top: var(--k-space-5);
+}
+
+.project-page__workspace > summary::before {
+  content: "▸";
+  margin-right: var(--k-space-2);
+}
+
+.project-page__workspace[open] > summary::before {
+  content: "▾";
+}
+
+.project-page__inner > [hidden] {
+  display: none;
+}
+
+.project-page__inner.project-page__space {
+  display: grid;
+  grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr);
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  min-height: 100%;
+  padding: 0;
+  align-content: start;
+}
+.project-page__space > .project-page__header {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: var(--k-space-5);
+  border-bottom: 1px solid var(--k-line-strong);
+  background: var(--k-panel);
+}
+.project-page__space > .project-page__navigation-panel {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-self: stretch;
+  border: 0;
+  border-right: 1px solid var(--k-line-strong);
+  padding: var(--k-space-4) var(--k-space-3);
+  background: var(--k-panel);
+}
+.project-page__space:has(> .project-page__navigation-panel:not([open])) {
+  grid-template-columns: minmax(6rem, 8rem) minmax(0, 1fr);
+}
+.project-tasks-section__collections {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  margin-block: var(--k-space-3);
+}
+.project-tasks-section__collection-empty {
+  color: var(--k-text-muted);
+  padding-block: var(--k-space-4);
+}
+.project-page__space .project-page__navigation a {
+  text-decoration: none;
+  font-weight: 600;
+}
+.project-page__space .project-page__navigation a[aria-current="page"] {
+  background: var(--k-action);
+  color: var(--k-action-contrast);
+}
+.project-page__content {
+  min-width: 0;
+  padding: var(--k-space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-6);
+}
+.project-page__content > [hidden] {
+  display: none;
+}
+
+.project-page__navigation-panel > summary {
+  display: list-item;
+  min-height: 44px;
+  padding: var(--k-space-2) var(--k-space-3);
+  cursor: pointer;
+  color: var(--k-text);
+}
+.project-page__navigation-panel > .project-page__navigation {
+  flex-direction: column;
+  border: 0;
+}
+.project-page__navigation-panel > summary:focus-visible {
+  outline: 2px solid var(--k-focus-ring);
+  outline-offset: var(--k-space-1);
+}
+
+@media (max-width: 768px) {
+  /* Keep the whole row tappable. Nothing else changes: `flex: 1 1 12rem` on
+     the body already keeps the icon and the title on one line at 390px and
+     lets only the chip and the call to action drop below, and the title's own
+     ellipsis (with `min-width: 0`) clamps a long one instead of widening the
+     page. */
+  .project-page__live-work-row {
+    min-height: 44px;
+  }
+
+  .project-page__live-work-row-actions button {
+    min-height: 44px;
+  }
+
+  .project-page__inner.project-page__space {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .project-page__space:has(> .project-page__navigation-panel:not([open])) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .project-page__space > .project-page__navigation-panel {
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-right: 0;
+    border-bottom: 1px solid var(--k-line);
+  }
+  .project-page__content {
+    padding: var(--k-space-4);
+  }
+
+  .project-page__navigation-panel > summary {
+    display: list-item;
+    align-content: center;
+  }
+  .project-page__navigation-panel > .project-page__navigation {
+    flex-direction: row;
+  }
 }

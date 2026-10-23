@@ -486,7 +486,57 @@
 
     "packages/sdk/src/client/plugin-telemetry.ts",
 
-    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts"
+    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts",
+
+    "src-server/services/projects/repository-acquisition-service.ts",
+
+    "src-server/routes/projects/repository-acquisition-routes.ts",
+
+    "src-server/domain/file-storage-schemas.ts",
+
+    "src-server/services/projects/project-creation-service.ts",
+
+    "src-ui/src/hooks/useProjectCreationRecovery.ts",
+
+    "src-server/services/knowledge/knowledge-document-import-service.ts",
+
+    "src-server/routes/knowledge/knowledge-document-import-routes.ts",
+
+    "src-server/knowledge-store/knowledge-write-authority.ts",
+
+    "src-server/services/projects/project-s3-sources.ts",
+
+    "src-server/routes/projects/project-s3-source-routes.ts",
+
+    "src-server/services/projects/repository-provider-catalog.ts",
+
+    "src-server/services/projects/operator-setup-service.ts",
+
+    "src-server/routes/projects/operator-setup-routes.ts",
+
+    "src-server/utils/process-group-exec.ts",
+
+    "src-ui/src/views/project-settings/ProjectOperatorSetup.tsx",
+
+    "src-server/utils/git-exec.ts",
+
+    "src-server/routes/orchestration/task-relationships.ts",
+
+    "src-server/services/projects/task-graph-service.ts",
+
+    "src-server/runtime/routes/task-relationship-authority.ts",
+
+    "src-server/services/projects/project-room-store.ts",
+
+    "src-server/services/projects/project-room-agent-module.ts",
+
+    "src-server/services/projects/project-room-agent-publication.ts",
+
+    "src-server/routes/projects/project-room-routes.ts",
+
+    "src-ui/src/views/project-page/ProjectRoom.tsx",
+
+    "src-ui/src/lib/project-onboarding-recovery.ts"
   ],
 
   "checks": [

@@ -34,6 +34,7 @@ import { requestTaskShaping } from '../../lib/task-shaping';
 import { isPlainLeftClick } from '../../utils/attentionOpen';
 import { ProjectTaskSharingControl } from './ProjectTaskSharingControl';
 import '../ProjectPage.css';
+import './ProjectTasksSection.css';
 
 /** Human-readable label for a claim actor (roadmap archive#584, part of epic
  * archive#580, S4) — used by both the local-task guard and the provider-item badge. */
@@ -153,8 +154,26 @@ export function ProjectTasksSection({
     refetch: refetchTasks,
   } = useTasksQuery(slug);
   const sortedTasks = sortTasks(tasks as TaskRecord[]);
+  const [collection, setCollection] = useState<'now' | 'backlog' | 'history'>(
+    'now',
+  );
+  const collections = {
+    now: sortedTasks.filter((task) =>
+      ['ready', 'in_progress', 'blocked', 'review', 'verification'].includes(
+        task.status,
+      ),
+    ),
+    backlog: sortedTasks.filter((task) =>
+      ['todo', 'triage'].includes(task.status),
+    ),
+    history: sortedTasks.filter((task) =>
+      ['done', 'canceled'].includes(task.status),
+    ),
+  };
+  const visibleTasks = collections[collection];
   const [title, setTitle] = useState('');
   const [selectedTaskId, setSelectedTaskId] = useState('');
+  const [showRecordDetails, setShowRecordDetails] = useState(false);
   const [selectedProviderItemId, setSelectedProviderItemId] = useState('');
   const createTaskMutation = useCreateTaskMutation();
   const dispatchTaskMutation = useDispatchTaskMutation();
@@ -434,19 +453,34 @@ export function ProjectTasksSection({
   const binding = selectedTask?.workspaceBinding;
 
   return (
-    <section className="project-page__tasks">
+    <section className="project-page__tasks project-tasks-section">
       <div className="project-page__section-header">
         <span className="project-page__section-label">Tasks</span>
         <Button size="sm" onClick={() => void refetchTasks()}>
           Refresh Tasks
         </Button>
       </div>
-      {presentation === 'board' ? (
-        <p>
-          Follow the work by its recorded status. Open a task to discuss it,
-          inspect contributions, and keep results.
-        </p>
-      ) : null}
+      {presentation === 'list' && (
+        <nav
+          className="project-tasks-section__collections"
+          aria-label="Task collection"
+        >
+          {(['now', 'backlog', 'history'] as const).map((id) => (
+            <Button
+              key={id}
+              active={collection === id}
+              aria-pressed={collection === id}
+              onClick={() => {
+                setCollection(id);
+                setShowRecordDetails(false);
+              }}
+            >
+              {{ now: 'Now', backlog: 'Backlog', history: 'History' }[id]} ·{' '}
+              {collections[id].length}
+            </Button>
+          ))}
+        </nav>
+      )}
 
       {starterId !== 'start-task' ? (
         <Button
@@ -536,7 +570,7 @@ export function ProjectTasksSection({
         )}
 
       <div
-        className={`project-page__task-grid${presentation === 'board' ? ' project-page__task-grid--board' : ''}`}
+        className={`project-page__task-grid${presentation === 'board' ? ' project-page__task-grid--board' : ' project-tasks-section__list-layout'}`}
       >
         <div className="project-page__task-list">
           {tasksError ? (
@@ -566,29 +600,62 @@ export function ProjectTasksSection({
                   onSelect={selectLocalTask}
                 />
               ) : (
-                sortedTasks.map((task) => (
-                  <button
-                    className={`project-page__task-row ${
-                      task.id === selectedTaskId
-                        ? 'project-page__task-row--active'
-                        : ''
-                    }`}
-                    key={task.id}
-                    type="button"
-                    onClick={() => selectLocalTask(task.id)}
-                  >
-                    <span className="project-page__task-row-title">
-                      {task.title}
-                    </span>
-                    <span className="project-page__task-row-meta">
-                      <StatusBadge
-                        tone="neutral"
-                        status={taskStatusLabel(task.status)}
-                      />
-                      {task.priority !== 'normal' && ` · ${task.priority}`}
-                    </span>
-                  </button>
+                visibleTasks.map((task) => (
+                  <div className="project-tasks-section__outcome" key={task.id}>
+                    <a
+                      className="project-tasks-section__open"
+                      href={`/tasks/${encodeURIComponent(task.id)}`}
+                      onClick={(event) => {
+                        if (!isPlainLeftClick(event)) return;
+                        event.preventDefault();
+                        navigate(`/tasks/${encodeURIComponent(task.id)}`);
+                      }}
+                    >
+                      <span className="project-tasks-section__title">
+                        {task.title}
+                      </span>
+                      <span className="project-page__task-row-meta">
+                        <StatusBadge
+                          tone="neutral"
+                          status={taskStatusLabel(task.status)}
+                        />
+                        {task.agentId?.trim() && (
+                          <span>Agent: {task.agentId}</span>
+                        )}
+                        {task.priority !== 'normal' && (
+                          <span>{task.priority}</span>
+                        )}
+                      </span>
+                      <span className="project-tasks-section__next">
+                        Open Task
+                      </span>
+                    </a>
+                    <Button
+                      size="sm"
+                      aria-label={`Details for ${task.title}`}
+                      aria-expanded={
+                        showRecordDetails && selectedTaskId === task.id
+                      }
+                      onClick={() => {
+                        selectLocalTask(task.id);
+                        setShowRecordDetails(true);
+                      }}
+                    >
+                      Details
+                    </Button>
+                  </div>
                 ))
+              )}
+              {presentation === 'list' && visibleTasks.length === 0 && (
+                <p className="project-tasks-section__collection-empty">
+                  {
+                    {
+                      now: 'Nothing active right now.',
+                      backlog: 'The backlog is clear.',
+                      history: 'Completed and canceled Tasks appear here.',
+                    }[collection]
+                  }
+                </p>
               )}
               {providerItems.map((item) => (
                 <button
@@ -619,7 +686,21 @@ export function ProjectTasksSection({
           )}
         </div>
 
-        <div className="project-page__task-detail">
+        <div
+          className="project-page__task-detail"
+          hidden={
+            presentation === 'list' &&
+            !showRecordDetails &&
+            !selectedProviderItem
+          }
+        >
+          {presentation === 'list' &&
+            showRecordDetails &&
+            !selectedProviderItem && (
+              <Button size="sm" onClick={() => setShowRecordDetails(false)}>
+                Close details
+              </Button>
+            )}
           {selectedProviderItem ? (
             <>
               <div className="project-page__task-detail-header">

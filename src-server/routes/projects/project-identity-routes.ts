@@ -11,7 +11,9 @@ import {
 } from '../../domain/project-file-transactions.js';
 import { ProjectIdentityValidationError } from '../../domain/project-identity-record.js';
 import { InvalidPathSegmentError } from '../../knowledge-index/path-safety.js';
+import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
 import type { ProjectIdentityService } from '../../services/projects/project-identity-service.js';
+import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import { createLogger } from '../../utils/logger.js';
 import { getBody, param, validate } from '../schemas/schemas.js';
 import { refuseUngrantedWorkingDirectory } from '../working-directory-authority.js';
@@ -39,6 +41,11 @@ const executionRootMutationSchema = z
 /** Mounted under the existing Project read/write authorization boundary. */
 export function createProjectIdentityRoutes(
   service: ProjectIdentityService | undefined,
+  repositoryAttachment?: Omit<
+    Parameters<ProjectIdentityService['attachRepository']>[2],
+    'assertCurrent'
+  > & { current: (request: Request) => boolean },
+  mutationCurrent?: (request: Request, choosingDirectory: boolean) => boolean,
 ) {
   const app = new Hono();
   async function run(
@@ -46,7 +53,7 @@ export function createProjectIdentityRoutes(
     action: (
       service: ProjectIdentityService,
     ) => Promise<ProjectIdentityView | ProjectAttachResult>,
-  ) {
+  ): Promise<Response> {
     if (!service)
       return c.json(
         {
@@ -124,6 +131,67 @@ export function createProjectIdentityRoutes(
       );
     }
   }
+  app.post(
+    '/:slug/identity/repositories',
+    validate(
+      z
+        .object({
+          expectedIdentity: z.record(z.string(), z.unknown()),
+          expectedLocalProjectId: z.string().min(1),
+          acquisitionId: z.string().uuid(),
+          useForCode: z.boolean(),
+        })
+        .strict(),
+    ),
+    async (c) => {
+      if (!isOperatorInPersonNotAgent(c.req.raw))
+        return c.json(
+          {
+            success: false,
+            error:
+              'Repository attachment requires the current Station operator.',
+          },
+          403,
+        );
+      if (!repositoryAttachment)
+        return c.json(
+          {
+            success: false,
+            error: 'Repository attachment is unavailable on this server.',
+          },
+          501,
+        );
+      const current = () =>
+        isOperatorInPersonNotAgent(c.req.raw) &&
+        repositoryAttachment?.current(c.req.raw) === true &&
+        !c.req.raw.signal.aborted;
+      if (!current())
+        return c.json(
+          {
+            success: false,
+            error:
+              'Repository attachment requires the current Station operator.',
+          },
+          403,
+        );
+      const response = await run(c, (owner) =>
+        owner.attachRepository(param(c, 'slug'), getBody(c), {
+          acquisitions: repositoryAttachment!.acquisitions,
+          bindings: repositoryAttachment!.bindings,
+          assertCurrent: () => {
+            if (!current())
+              throw new Error('Repository attachment authority ended.');
+          },
+        }),
+      );
+      if (!current())
+        return c.json(
+          { success: false, error: 'Repository attachment authority ended.' },
+          403,
+        );
+      return guardProjectResponse(response, async () => current());
+    },
+  );
   app.get('/:slug/identity', (c) =>
     run(c, (owner) => owner.read(param(c, 'slug'))),
   );
@@ -133,7 +201,7 @@ export function createProjectIdentityRoutes(
   app.put(
     '/:slug/identity/execution-root',
     validate(executionRootMutationSchema),
-    (c) => {
+    async (c): Promise<Response> => {
       const input: z.infer<typeof executionRootMutationSchema> = getBody(c);
       // Setting a path chooses a folder; clearing the root does not.
       const refused =
@@ -141,9 +209,33 @@ export function createProjectIdentityRoutes(
           ? undefined
           : refuseUngrantedWorkingDirectory(c, 'saved');
       if (refused) return refused;
-      return run(c, (owner) =>
-        owner.updateExecutionRoot(param(c, 'slug'), input),
-      );
+      const current = () => {
+        if (
+          c.req.raw.signal.aborted ||
+          mutationCurrent?.(c.req.raw, input.executionRoot !== null) === false
+        )
+          throw new FileStorageConflictError(
+            'Workspace selection authority ended.',
+          );
+      };
+      const response = await run(c, async (owner) => {
+        current();
+        const result = await owner.updateExecutionRoot(
+          param(c, 'slug'),
+          input,
+          current,
+        );
+        current();
+        return result;
+      });
+      return guardProjectResponse(response, async () => {
+        try {
+          current();
+          return true;
+        } catch {
+          return false;
+        }
+      });
     },
   );
   app.post('/attach', validate(attachSchema), (c) => {

@@ -1999,3 +1999,40 @@
   .task-room-guest-message--grouped {
   padding-block: var(--k-space-1);
 }
+
+.task-overview {
+  display: grid;
+  gap: var(--k-space-6);
+  align-content: start;
+}
+.task-overview[hidden] {
+  display: none;
+}
+.task-overview .task-room-rail-content {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+  gap: var(--k-space-5);
+}
+.task-relationships {
+  padding: var(--k-space-5);
+}
+.task-relationships ul {
+  list-style: none;
+  padding: 0;
+}
+.task-relationships li,
+.task-relationships form {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--k-space-3);
+  padding-block: var(--k-space-2);
+}
+.task-relationships input,
+.task-relationships select {
+  color: var(--k-text);
+  background: var(--k-panel);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-sm);
+  padding: var(--k-space-2);
+}

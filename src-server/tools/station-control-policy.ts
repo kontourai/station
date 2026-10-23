@@ -841,6 +841,25 @@ export const STATION_CONTROL_TOOL_POLICY = {
     serverIds: ['station-knowledge'],
     routes: [get('/api/knowledge/roots')],
   },
+  list_project_s3_sources: {
+    ...SELF_READ,
+    serverIds: ['station-knowledge'],
+    routes: [get('/api/knowledge/s3-sources/projects/:projectSlug')],
+  },
+  list_project_s3_objects: {
+    ...SELF_READ,
+    serverIds: ['station-knowledge'],
+    routes: [
+      get('/api/knowledge/s3-sources/projects/:projectSlug/:sourceId/objects'),
+    ],
+  },
+  read_project_s3_object: {
+    ...SELF_READ,
+    serverIds: ['station-knowledge'],
+    routes: [
+      get('/api/knowledge/s3-sources/projects/:projectSlug/:sourceId/object'),
+    ],
+  },
   list_knowledge_records: {
     serverIds: ['station-knowledge'],
     ...SELF_READ,

@@ -31,6 +31,23 @@ import { peerRecordSummary } from './fixtures/peer-delegation-record';
 // navigate to `{ type: 'activity' }` now reveals the region surface instead.
 // `useShowSurface` reaches the region model through a provider this file does
 // not mount, so the double is both the stand-in and what the assertions read.
+const platformRef = vi.hoisted(() => ({ mobile: false }));
+beforeEach(() => {
+  platformRef.mobile = false;
+});
+vi.mock('../platform/PlatformProfileContext', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../platform/PlatformProfileContext')>();
+  return {
+    ...actual,
+    usePlatformProfile: () => ({
+      ...actual.usePlatformProfile(),
+      ...(platformRef.mobile
+        ? { isTauri: true, isMobile: true, target: 'android' as const }
+        : {}),
+    }),
+  };
+});
 const showSurface = vi.hoisted(() => vi.fn());
 const showSurfacePage = vi.hoisted(() => vi.fn());
 // Mutable so the authority-switching test can move the mounted Home between
@@ -558,21 +575,30 @@ describe('HomeView', () => {
       initialPrompt: 'Help me plan my day',
       selection: { context: '__global__', agentSlug: 'codex-agent' },
     });
-    fireEvent.click(
-      screen.getByRole('button', { name: /Open local project/i }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: /New Project/i }));
     expect(onNavigate).toHaveBeenCalledWith({ type: 'project-new' });
   });
 
-  test('the project-folder card names this Station, not this computer', () => {
-    renderHomeView({ continuation: null, onNavigate: vi.fn() });
+  test('Project creation advertises more than a folder and opens the shared flow', () => {
+    const onNavigate = vi.fn();
+    renderHomeView({ continuation: null, onNavigate });
+    const entry = screen.getByRole('button', {
+      name: /New Project.*Repository, folder, documents or tools/i,
+    });
+    fireEvent.click(entry);
+    expect(onNavigate).toHaveBeenCalledWith({ type: 'project-new' });
+  });
 
-    // The folder lives on the Station host, which is a different machine
-    // when this UI runs as a remote client (e.g. the paired phone app).
-    expect(
-      screen.getByRole('button', { name: /Add a folder on this Station/i }),
-    ).toBeTruthy();
-    expect(screen.queryByText(/from this computer/i)).toBeNull();
+  test('a phone can open Project creation without advertising its unavailable folder picker', () => {
+    platformRef.mobile = true;
+    const onNavigate = vi.fn();
+    renderHomeView({ continuation: null, onNavigate });
+    const entry = screen.getByRole('button', {
+      name: /New Project.*Repository, documents, tools or blank/i,
+    });
+    expect(entry.textContent).not.toContain('folder');
+    fireEvent.click(entry);
+    expect(onNavigate).toHaveBeenCalledWith({ type: 'project-new' });
   });
 
   test('renders shimmer cards while Home actions are unresolved instead of claiming an agent is absent', () => {

@@ -120,9 +120,10 @@ Session's owner, or what a call aims at, which stay call-time refusals. Hiding
 never widens anything: the server guard decides every request, listed or
 not.
 
-For reading and capturing records, add `station-knowledge`. Its five data tools
+For reading and capturing records, add `station-knowledge`. Its five default data tools
 follow the calling Session owner’s store access; capture also needs Project
-edit access. Index rebuild and migration remain Station Control operations.
+edit access. Three additional read tools are available only when experimental
+S3 sources are enabled. Index rebuild and migration remain Station Control operations.
 See [Knowledge agent tools](knowledge.md#agent-tools).
 
 ### Searching and renaming conversations

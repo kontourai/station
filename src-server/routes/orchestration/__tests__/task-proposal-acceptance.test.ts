@@ -147,6 +147,7 @@ test('acceptance durably commits the brief and first Session link, and retries k
       targetId: 'shaping-session',
       relationType: 'spawned_session',
       source: 'user',
+      createdAt: task.createdAt,
       metadata: { shapingTurnId: 'shaping-turn', proposalBriefSaved: true },
     }),
   ]);

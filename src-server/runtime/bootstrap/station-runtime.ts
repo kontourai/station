@@ -1,4 +1,5 @@
 import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-contracts/deployment-authentication';
+import { isProjectKnowledgeRoot } from '@kontourai/station-contracts/knowledge-store';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { getBrandingProvider } from '../../providers/registries/registry.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
@@ -43,6 +44,7 @@ import { ToolLibraryService } from '../../services/plugins/tool-library-service.
 import { deriveWorkspaceHomeRoleStatus } from '../../services/plugins/workspace-home-role-service.js';
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
 import { createProjectNativeToolLoader } from '../../services/projects/project-native-tools.js';
+import { hasProjectS3Sources } from '../../services/projects/project-s3-sources.js';
 import { projectMcpServers } from '../../services/projects/project-tools.js';
 import { NativeRelayEnrollmentJournal } from '../../services/relay/native-relay-enrollment-journal.js';
 import { ConnectionSigningKeyStore } from '../../services/ssh/connection-signing-key-store.js';
@@ -1028,6 +1030,7 @@ export class StationRuntime {
   });
   private ollamaAdapter = new OllamaAdapter();
   private orchestrationService!: OrchestrationService;
+  private projectRoomRuntime?: { close(): Promise<void> };
   private resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
   private attachedSessionFollowService?: AttachedSessionFollowService;
   private consoleBridgeService?: ConsoleBridgeService;
@@ -3608,7 +3611,9 @@ export class StationRuntime {
           this.deploymentAuthentication = undefined;
           this.localAccounts = undefined;
         });
-        await retire(() => {
+        await retire(async () => {
+          await this.projectRoomRuntime?.close();
+          this.projectRoomRuntime = undefined;
           this.projectMembership?.close();
           this.projectMembership = undefined;
         });
@@ -3880,11 +3885,11 @@ export class StationRuntime {
             const roots = await this.knowledgeStoreProvider.listRoots();
             return projectMcpServers(
               project,
-              roots.some(
-                (root) =>
-                  root.scope.kind === 'project' &&
-                  root.scope.projectSlug === slug,
-              ),
+              roots.some((root) => isProjectKnowledgeRoot(root, project.id)) ||
+                hasProjectS3Sources(
+                  this.configLoader.getProjectHomeDir(),
+                  project.id,
+                ),
             );
           },
           skillService: this.skillService,
@@ -4501,6 +4506,7 @@ export class StationRuntime {
       notificationService,
       kitLifecycleReady,
       projectTaskRoomRuntime,
+      projectRoomRuntime,
       browserService,
       deviceToolchainService,
       deviceSessions,
@@ -4511,6 +4517,9 @@ export class StationRuntime {
       notificationDeliveryRouter,
       serverUpdate,
     } = configureRuntimeRoutes({
+      retainProjectRoomRuntime: (runtime) => {
+        this.projectRoomRuntime = runtime;
+      },
       relayInvitationOwner: this.relayInvitationOwner,
       projectMembership: this.projectMembership?.service,
       projectSharedTasks: this.projectMembership?.sharedTasks,
@@ -4629,6 +4638,7 @@ export class StationRuntime {
     this.notificationService = notificationService;
     this.kitLifecycleReady = kitLifecycleReady;
     this.projectTaskRoomRuntime = projectTaskRoomRuntime;
+    this.projectRoomRuntime = projectRoomRuntime;
     this.browserService = browserService;
     this.deviceToolchainService = deviceToolchainService;
     this.deviceSessions = deviceSessions;
@@ -4657,6 +4667,8 @@ export class StationRuntime {
         agentSpecs: this.agentSpecs,
         getProject: (slug) => this.projectService.getProject(slug),
         listRoots: () => this.knowledgeStoreProvider.listRoots(),
+        hasAdditionalKnowledgeSources: (projectId) =>
+          hasProjectS3Sources(this.configLoader.getProjectHomeDir(), projectId),
         loadTools: (slug, spec) =>
           this.framework.loadTools(slug, spec, {
             configLoader: this.configLoader,
@@ -5175,6 +5187,8 @@ export class StationRuntime {
       failures.push(error);
     }
     try {
+      await this.projectRoomRuntime?.close();
+      this.projectRoomRuntime = undefined;
       this.projectMembership?.close();
       this.projectMembership = undefined;
     } catch (error) {

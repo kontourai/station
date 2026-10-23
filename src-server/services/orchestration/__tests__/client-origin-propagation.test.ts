@@ -88,6 +88,49 @@ describe('client origin propagation', () => {
     expect(forged && 'clientTurnId' in forged).toBe(false);
   });
 
+  it.each(['early', 'late'])(
+    'binds a legacy %s start only to its accepted turn',
+    (timing) => {
+      const propagation = new ClientOriginTurnPropagation();
+      propagation.begin('legacy', origin, undefined, undefined, 'trusted-key');
+      propagation.bindInvocation('legacy', 'invocation');
+      const event = {
+        eventId: 'legacy-event',
+        provider: 'test',
+        threadId: 'legacy',
+        createdAt: '2026-10-22T00:00:00.000Z',
+        method: 'turn.started' as const,
+        turnId: 'accepted-turn',
+        clientTurnId: 'forged-key',
+      };
+      expect(
+        propagation.apply({ ...event, invocationId: 'other' }),
+      ).not.toHaveProperty('clientTurnId');
+      if (timing === 'early') expect(propagation.apply(event)).toBeUndefined();
+      propagation.settle(
+        'legacy',
+        'accepted-turn',
+        origin,
+        undefined,
+        undefined,
+        'trusted-key',
+        'invocation',
+      );
+      const result =
+        timing === 'early'
+          ? propagation.takeLegacyRouting('legacy', 'accepted-turn')
+          : propagation.apply(event);
+      expect(result).toMatchObject({
+        turnId: 'accepted-turn',
+        clientTurnId: 'trusted-key',
+        clientOrigin: origin,
+      });
+      expect(
+        propagation.apply({ ...event, turnId: 'unrelated' }),
+      ).not.toHaveProperty('clientTurnId');
+    },
+  );
+
   it('a send that fails before acceptance hands back the start it held, instead of losing it', () => {
     const propagation = new ClientOriginTurnPropagation();
     propagation.begin('thread-c', origin);
