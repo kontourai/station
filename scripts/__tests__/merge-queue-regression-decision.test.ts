@@ -136,9 +136,9 @@ describe('the decision over real plans (child process)', () => {
 
   test('an ordinary related-only change takes the fast path', async () => {
     const { file, plan } = await writeRealPlan(
-      ['src-ui/src/components/acp-connections/ACPConnectionCard.tsx'],
+      ['src-ui/src/components/header/ProfileMenu.tsx'],
       [
-        'src-ui/src/components/acp-connections/__tests__/ACPConnectionCard.test.tsx',
+        'src-ui/src/components/header/__tests__/ProfileMenu.test.tsx',
       ],
     );
     expect(plan.deferredLanes).toEqual([]);
@@ -167,9 +167,9 @@ describe('the decision over real plans (child process)', () => {
 describe('fail-closed decisions (child process)', () => {
   async function ordinaryPlan() {
     return writeRealPlan(
-      ['src-ui/src/components/acp-connections/ACPConnectionCard.tsx'],
+      ['src-ui/src/components/header/ProfileMenu.tsx'],
       [
-        'src-ui/src/components/acp-connections/__tests__/ACPConnectionCard.test.tsx',
+        'src-ui/src/components/header/__tests__/ProfileMenu.test.tsx',
       ],
     );
   }
