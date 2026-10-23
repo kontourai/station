@@ -238,7 +238,10 @@ shell/device behavior separately.
 The authenticated native HTTP bridge admits up to 8 ordinary requests and 12
 requested event streams per origin, with 32 active requests across origins.
 Ordinary requests wait in a bounded FIFO of 64 entries. The reserved identity
-health probe has a separate allowance. These are request counts, not CPU,
+health probe has a separate allowance. Cancelling a response body shuts down
+that request's registered socket read, including a stream that sent bytes and
+then went silent. The interrupted exchange releases its admission slot; SSE
+bodies retain no total lifetime limit. These are request counts, not CPU,
 memory, provider usage, or rate-limit measurements.
 
 A full ordinary queue rejects admission before sending HTTP bytes. That

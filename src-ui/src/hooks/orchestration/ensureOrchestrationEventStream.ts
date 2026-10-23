@@ -288,7 +288,11 @@ function sessionReadModelRefreshState(
  * must not unregister the other. Each registration is its own entry, so a
  * release removes exactly that one; the last live entry for an apiBase wins.
  */
-const streamQueryClients: { apiBase: string; queryClient: QueryClient }[] = [];
+const streamQueryClients: {
+  apiBase: string;
+  queryClient: QueryClient;
+  authorityKey?: string;
+}[] = [];
 
 function currentStreamQueryClient(apiBase: string): QueryClient | undefined {
   return streamQueryClients.filter((entry) => entry.apiBase === apiBase).at(-1)
@@ -298,8 +302,9 @@ function currentStreamQueryClient(apiBase: string): QueryClient | undefined {
 export function registerOrchestrationStreamQueryClient(
   apiBase: string,
   queryClient: QueryClient,
+  authorityKey?: string,
 ): () => void {
-  const registration = { apiBase, queryClient };
+  const registration = { apiBase, queryClient, authorityKey };
   streamQueryClients.push(registration);
   return () => {
     const index = streamQueryClients.indexOf(registration);
@@ -422,7 +427,7 @@ export function ensureOrchestrationEventStream(
   authorityKey?: string,
 ): () => void {
   const release = queryClient
-    ? registerOrchestrationStreamQueryClient(apiBase, queryClient)
+    ? registerOrchestrationStreamQueryClient(apiBase, queryClient, authorityKey)
     : () => {};
   requestedBases.add(apiBase);
   installRecoveryListeners();
@@ -601,6 +606,25 @@ export function ensureOrchestrationEventStream(
                 session.conversationActivity,
               );
           }
+        // Overflow compaction replaces non-durable list and inbox hints too.
+        if (client) {
+          const currentAuthority = streamQueryClients.findLast(
+            (entry) =>
+              entry.apiBase === apiBase &&
+              entry.queryClient === client &&
+              entry.authorityKey !== undefined,
+          )?.authorityKey;
+          const scope =
+            currentAuthority === undefined
+              ? [apiBase]
+              : [apiBase, currentAuthority];
+          void client.invalidateQueries({
+            queryKey: ['orchestration-sessions', ...scope],
+          });
+          void client.invalidateQueries({
+            queryKey: ['conversation-inbox', ...scope],
+          });
+        }
         hasReceivedSnapshot = true;
         basesWithSnapshot.add(apiBase);
       } else if (raw.event === ORCHESTRATION_STREAM_ACTIVITY_EVENT) {

@@ -3995,7 +3995,7 @@ fn cancel_native_http_request(
         .lock()
         .map_err(|_| "native request cancellation state unavailable".to_string())?;
     if let Some(active) = state.active.get(request_id) {
-        active.cancel.store(true, Ordering::SeqCst);
+        native_http_transport::cancel_body_read(&active.cancel);
     } else if let Some(pending) = state
         .pending_reads
         .iter()
@@ -4331,10 +4331,8 @@ fn native_http_agent_config() -> ureq::config::ConfigBuilder<ureq::typestate::Ag
         // the 1s budget previously configured here killed each SSE connection
         // exactly 1s after open, pinned the SDK reconnect ladder at its 30s
         // ceiling, and left every desktop chat showing "Reconnecting…".
-        // Cancellation is still bounded: the cancel flag is checked between
-        // body reads, and an idle SSE delivers its next keepalive frame within
-        // the server's SSE_KEEPALIVE_INTERVAL_MS, so a cancel takes effect at
-        // worst one keepalive later.
+        // Body reads register their socket under the request's cancel flag.
+        // Cancellation shuts it down, waking even a black-holed SSE read.
         //
         // Every phase before the body is bounded (station#2327): a cancelled
         // call keeps running as an orphan until it returns, so an unbounded
@@ -4862,10 +4860,17 @@ fn station_native_http_request_to_sink_blocking(
                     if body_deadline.is_some_and(|deadline| Instant::now() >= deadline) {
                         return Err(NativeHttpBrokerFailure::coded("response_timeout"));
                     }
-                    let read = match reader.read(&mut buffer) {
+                    let read = match native_http_transport::read_body(
+                        Arc::clone(&cancel),
+                        &mut reader,
+                        &mut buffer,
+                    ) {
+                        Err(_) if cancel.load(Ordering::SeqCst) => {
+                            return Err(NativeHttpBrokerFailure::coded("cancelled"));
+                        }
                         Ok(read) => read,
-                        // A short body receive timeout gives cancellation a bounded
-                        // rendezvous without imposing a lifetime on an SSE stream.
+                        // Ordinary requests may have a body deadline; SSE bodies
+                        // remain open-ended and cancellation wakes their socket.
                         Err(error)
                             if matches!(
                                 error.kind(),
