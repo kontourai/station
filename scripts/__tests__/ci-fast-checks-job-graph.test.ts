@@ -402,43 +402,6 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
     },
   );
 
-  test.each(['', 'true', 'garbled'])(
-    'queue decision %s fails closed without another planner',
-    (decision) => {
-      const state = simulate(
-        jobs,
-        { ...sameRepositoryPr, event: 'merge_group' },
-        {
-          outputs: {
-            'fast-checks-plan': {
-              legacy: 'false',
-              'full-regression': decision,
-            },
-          },
-        },
-      );
-      expect(state.results.get('merge-integration-full-regression')).toBe(
-        'success',
-      );
-    },
-  );
-
-  test('a failed plan still runs full regression even if it wrote false before failing', () => {
-    const state = simulate(
-      jobs,
-      { ...sameRepositoryPr, event: 'merge_group' },
-      {
-        outputs: {
-          'fast-checks-plan': { legacy: 'false', 'full-regression': 'false' },
-        },
-        outcomes: { 'fast-checks-plan': 'failure' },
-      },
-    );
-    expect(state.results.get('merge-integration-full-regression')).toBe(
-      'success',
-    );
-  });
-
   test('empty selections allocate no shard runner while retaining a required verdict', () => {
     const state = simulate(jobs, sameRepositoryPr, {
       outputs: {

@@ -1,5 +1,37 @@
 [
   {
+    "timestampUtc": "2026-10-23T20:50:41Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2487.40020871381",
+    "sha": "6d479e59f857b7af2d3ea48076335718e8da356c",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/40020871381",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2487.40020871381 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "28a4592f09b5254ce80cc7e5fdd5fc3e543f1bad",
+      "groups": {
+        "feat": [
+          "[#4083](https://github.com/kontourai/station/pull/4083) feat(governance): adopt native Veritas policies and required hygiene"
+        ],
+        "fix": [
+          "[#4082](https://github.com/kontourai/station/pull/4082) fix(ci): align qualification tests and attest fixture launches",
+          "[#4086](https://github.com/kontourai/station/pull/4086) fix(ci): count main push qualification in health reports"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 3
+    }
+  },
+  {
     "timestampUtc": "2026-10-23T17:38:50Z",
     "channel": "nightly-npm",
     "version": "0.11.0-nightly.2487.39995225707",

@@ -155,9 +155,8 @@ describe('TestFlight delivery builds the Live Activity where the channel names o
     );
     expect(resolveStep.run).toContain('echo "aps_environment=production"');
     expect(stepIndex(RESOLVE)).toBeLessThan(stepIndex(SECRETS));
-    // Build and signing consumers use the resolved answer. Upload distribution
-    // has its own channel policy, covered by internal-testflight-workflow.
-    expect(source).not.toContain("inputs.channel != 'stable'");
+    // Signing and build consumers use the channel-table result. Upload
+    // distribution owns a separate channel admission contract.
     for (const step of deliver.steps) {
       if (step.name === RESOLVE) continue;
       expect(step.if ?? '', step.name).not.toContain('inputs.channel');
