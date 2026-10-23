@@ -697,6 +697,22 @@ test.describe
           .click();
         await peer.getByRole('tab', { name: 'Plan', exact: true }).click();
 
+        const peerEditor = peer.getByRole('textbox', {
+          name: 'Task brief',
+          exact: true,
+          includeHidden: true,
+        });
+        const peerComposer = peer.getByRole('textbox', {
+          name: 'Message the Task',
+          exact: true,
+          includeHidden: true,
+        });
+        await expect(peerEditor).toHaveCount(1);
+        await expect(peerEditor).toBeAttached();
+        await expect(peerComposer).toHaveCount(1);
+        await expect(peerComposer).toBeAttached();
+        await expect(peerComposer).toBeHidden();
+
         const revoked = await fetch(
           `${live.api}/api/pairing/devices/${encodeURIComponent(paired.device.id)}`,
           {
@@ -717,12 +733,8 @@ test.describe
         await expect(
           peer.getByRole('button', { name: 'Review Station', exact: true }),
         ).toBeVisible();
-        await expect(
-          peer.getByRole('textbox', { name: 'Task brief' }),
-        ).toHaveCount(0);
-        await expect(
-          peer.getByRole('textbox', { name: 'Message the Task' }),
-        ).toHaveCount(0);
+        await expect(peerEditor).toHaveCount(0);
+        await expect(peerComposer).toHaveCount(0);
 
         await owner.screenshot({
           path: testInfo.outputPath('project-task-room-owner.png'),
