@@ -144,7 +144,7 @@ describe('Station dogfood client launch path', () => {
       ],
       codex: [
         'src-server/providers/adapters/codex-adapter.ts',
-        /command: 'codex'/,
+        /= 'codex';/,
       ],
     };
     for (const command of SUPPORTED_CLIENT_COMMANDS) {

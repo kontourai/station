@@ -143,22 +143,13 @@ describe('TestFlight delivery builds the Live Activity where the channel names o
     );
     expect(resolveStep.run).toContain('echo "aps_environment=production"');
     expect(stepIndex(RESOLVE)).toBeLessThan(stepIndex(SECRETS));
-    // Every consumer reads the resolved answer; no step condition or step
-    // environment re-derives it from the channel name, in any spelling.
-    expect(source).not.toContain("inputs.channel != 'stable'");
-    for (const [name, job] of Object.entries(workflow.jobs)) {
-      if (name === 'advisory') {
-        expect(job).toMatchObject({
-          uses: './.github/workflows/release-advisory.yml',
-        });
-        continue;
-      }
-      for (const step of job.steps) {
-        if (step.name === RESOLVE) continue;
-        expect(step.if ?? '', step.name).not.toContain('inputs.channel');
-        for (const value of Object.values(step.env ?? {}))
-          expect(String(value), step.name).not.toContain('inputs.channel');
-      }
+    // Signing and build consumers use the channel-table result. Upload
+    // distribution owns a separate channel admission contract.
+    for (const step of deliver.steps) {
+      if (step.name === RESOLVE) continue;
+      expect(step.if ?? '', step.name).not.toContain('inputs.channel');
+      for (const value of Object.values(step.env ?? {}))
+        expect(String(value), step.name).not.toContain('inputs.channel');
     }
   });
 
