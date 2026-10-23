@@ -1,0 +1,7 @@
+{
+  "revision": "6c4ee6a29838efbac01cf44f28a0578df5a03db2",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed ce37e9fc59e reserved-provider evidence and reserved SDK caller plus controlled owner fixture: awaited private publication/finalization precedes AccountingV1 counters; 32 baseline/restored cases, compiling skipped-retention mutant has one intended failure and 31 controls. SSE retained JSON is reconstructed; POSIX directory fsync is fixture evidence. Production issuance, retention/settlement callers, serving and provider/billing acceptance remain unwired or unverified.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}
