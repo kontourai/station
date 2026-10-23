@@ -248,7 +248,7 @@ describe('the operational event envelope', () => {
         event({
           payload: {
             schema: 'station.runtime.lifecycle/v1',
-            data: new Date() as never,
+            data: new Date(0) as never,
           },
         }),
         'invalid-payload',
