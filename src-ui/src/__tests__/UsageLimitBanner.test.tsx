@@ -53,6 +53,8 @@ let answers: {
   read: () => unknown;
   resume: () => unknown;
   cancel: () => unknown;
+  hold: () => unknown;
+  'resume-at-reset': () => unknown;
   status?: number;
 };
 
@@ -81,6 +83,14 @@ beforeEach(() => {
         outcomeReason: 'user-canceled',
       }),
     }),
+    hold: () => ({
+      result: { kind: 'chosen', choice: 'hold' },
+      recovery: projection({ autoResume: false, autoResumeChoice: 'hold' }),
+    }),
+    'resume-at-reset': () => ({
+      result: { kind: 'chosen', choice: 'resume' },
+      recovery: projection({ autoResume: true, autoResumeChoice: 'resume' }),
+    }),
   };
   vi.stubGlobal(
     'fetch',
@@ -92,7 +102,11 @@ beforeEach(() => {
         ? 'resume'
         : url.endsWith('/cancel')
           ? 'cancel'
-          : 'read';
+          : url.endsWith('/hold')
+            ? 'hold'
+            : url.endsWith('/resume-at-reset')
+              ? 'resume-at-reset'
+              : 'read';
       return envelope(answers[leaf](), answers.status ?? 200);
     }),
   );
@@ -148,13 +162,13 @@ describe('UsageLimitBanner (#3157)', () => {
     expect(element.querySelector('time')?.getAttribute('datetime')).toBe(
       RESET_AT,
     );
-    expect(element.textContent).toContain(
-      'Station will resume this conversation automatically.',
-    );
+    expect(element.textContent).toContain('Resumes automatically.');
     // The reset time is said once.
     expect(element.textContent?.match(/11:00 PM/g)).toHaveLength(1);
     expect(button('Resume now')).not.toBeNull();
-    expect(button('Cancel auto-resume')).not.toBeNull();
+    expect(button("Don't resume")).not.toBeNull();
+    // Already resuming at the reset: nothing to choose there.
+    expect(screen.queryByRole('button', { name: /^Resume at/ })).toBeNull();
     // It reads this Session's own projection, on the documented route.
     expect(calls[0]).toEqual({
       method: 'GET',
@@ -162,7 +176,7 @@ describe('UsageLimitBanner (#3157)', () => {
     });
   });
 
-  test('with auto-resume off before the reset it says so, warns the limit may not have reset, and still offers Resume now', async () => {
+  test('with auto-resume off before the reset it offers Resume at the reset, warns the limit may not have reset, and still offers Resume now', async () => {
     answers.read = () => ({
       recovery: projection({
         autoResume: false,
@@ -171,12 +185,13 @@ describe('UsageLimitBanner (#3157)', () => {
     });
     renderBanner();
     const element = await banner();
-    expect(element.textContent).toContain('Auto-resume is off.');
-    expect(element.textContent).toContain('your limit may not have reset yet');
-    expect(element.textContent).not.toContain('will resume');
-    expect(button('Resume now')).not.toBeNull();
+    expect(element.textContent).not.toContain('automatically');
+    expect(button('Resume at 10:00 PM')).not.toBeNull();
+    expect(button('Resume now')?.getAttribute('title')).toBe(
+      'Your limit may not have reset yet.',
+    );
     // There is no automatic resume to cancel.
-    expect(button('Cancel auto-resume')).toBeNull();
+    expect(button("Don't resume")).toBeNull();
     fireEvent.click(button('Resume now') as HTMLElement);
     await waitFor(() => expect(posts()).toHaveLength(1));
     expect(posts()[0]?.url).toBe(
@@ -199,20 +214,21 @@ describe('UsageLimitBanner (#3157)', () => {
             }),
           };
     renderBanner();
-    const element = await banner();
-    expect(element.textContent).toContain('may not have reset yet');
+    await banner();
+    expect(button('Resume now')?.getAttribute('title')).toBe(
+      'Your limit may not have reset yet.',
+    );
     await waitFor(
       () =>
-        expect(screen.getByTestId('usage-limit-banner').textContent).toContain(
-          'Auto-resume is off. Resume it yourself.',
-        ),
+        expect(screen.queryByRole('button', { name: /^Resume at/ })).toBeNull(),
       { timeout: 6_000 },
     );
+    expect(button('Resume now')?.getAttribute('title')).toBeNull();
     expect(screen.getByTestId('usage-limit-banner').textContent).toContain(
       'Reset ',
     );
     expect(button('Resume now')).not.toBeNull();
-    expect(button('Cancel auto-resume')).toBeNull();
+    expect(button("Don't resume")).toBeNull();
   }, 10_000);
 
   test('an unknown reset says plainly that it is manual, and still offers Resume now', async () => {
@@ -228,9 +244,12 @@ describe('UsageLimitBanner (#3157)', () => {
     const element = await banner();
     expect(element.textContent).toContain('Usage limit reached');
     expect(element.textContent).not.toMatch(/Resets?\s\d/);
-    expect(element.textContent).toContain("can't tell when your limit resets");
+    expect(element.textContent).toContain(
+      'Reset time unknown. Resume when your limit is back.',
+    );
+    expect(screen.queryByRole('button', { name: /^Resume at/ })).toBeNull();
     expect(button('Resume now')).not.toBeNull();
-    expect(button('Cancel auto-resume')).toBeNull();
+    expect(button("Don't resume")).toBeNull();
   });
 
   test('Resume now dispatches the resume and then shows only that it is resuming', async () => {
@@ -249,29 +268,50 @@ describe('UsageLimitBanner (#3157)', () => {
       },
     ]);
     expect(button('Resume now')).toBeNull();
-    expect(button('Cancel auto-resume')).toBeNull();
+    expect(button("Don't resume")).toBeNull();
   });
 
-  test('Cancel auto-resume retires the stop through the server and the banner updates to the reason', async () => {
+  test("Don't resume holds this stop through the server: Resume now stays, and Resume at the reset is offered back", async () => {
     renderBanner();
     await banner();
-    fireEvent.click(button('Cancel auto-resume') as HTMLElement);
-    await waitFor(() =>
-      expect(screen.getByRole('status').textContent).toBe(
-        'Auto-resume canceled.',
-      ),
-    );
+    fireEvent.click(button("Don't resume") as HTMLElement);
+    await waitFor(() => expect(button('Resume at 11:00 PM')).not.toBeNull());
     expect(posts()).toEqual([
       {
         method: 'POST',
-        url: `${API}/api/orchestration/sessions/${THREAD}/usage-limit/cancel`,
+        url: `${API}/api/orchestration/sessions/${THREAD}/usage-limit/hold`,
       },
     ]);
-    // No stale actions once the stop has settled.
-    expect(button('Resume now')).toBeNull();
-    expect(button('Cancel auto-resume')).toBeNull();
-    fireEvent.click(button('Dismiss') as HTMLElement);
-    expect(screen.queryByTestId('usage-limit-banner')).toBeNull();
+    expect(button("Don't resume")).toBeNull();
+    expect(button('Resume now')).not.toBeNull();
+    expect(screen.getByTestId('usage-limit-banner').textContent).not.toContain(
+      'automatically',
+    );
+  });
+
+  test('Resume at the reset decides this stop through the server and snoozes the chat until then', async () => {
+    answers.read = () => ({ recovery: projection({ autoResume: false }) });
+    localStorage.clear();
+    renderBanner();
+    await banner();
+    fireEvent.click(button('Resume at 11:00 PM') as HTMLElement);
+    await waitFor(() => expect(button("Don't resume")).not.toBeNull());
+    expect(posts()).toEqual([
+      {
+        method: 'POST',
+        url: `${API}/api/orchestration/sessions/${THREAD}/usage-limit/resume-at-reset`,
+      },
+    ]);
+    expect(
+      JSON.parse(localStorage.getItem('station.activity.snoozed') ?? '{}'),
+    ).toEqual({ [THREAD]: Date.parse(RESET_AT) });
+    // Don't resume clears the snooze again.
+    fireEvent.click(button("Don't resume") as HTMLElement);
+    await waitFor(() =>
+      expect(
+        JSON.parse(localStorage.getItem('station.activity.snoozed') ?? '{}'),
+      ).toEqual({}),
+    );
   });
 
   test('a click on a banner that has since settled reads back the real state and offers nothing', async () => {
@@ -291,7 +331,7 @@ describe('UsageLimitBanner (#3157)', () => {
       ),
     );
     expect(button('Resume now')).toBeNull();
-    expect(button('Cancel auto-resume')).toBeNull();
+    expect(button("Don't resume")).toBeNull();
   });
 
   test('a stop retired while the banner is open shows its reason and drops the actions', async () => {
@@ -310,7 +350,7 @@ describe('UsageLimitBanner (#3157)', () => {
       ),
     );
     expect(button('Resume now')).toBeNull();
-    expect(button('Cancel auto-resume')).toBeNull();
+    expect(button("Don't resume")).toBeNull();
   });
 
   test('a stop that settled before the banner opened is not announced and offers nothing', async () => {
@@ -346,13 +386,13 @@ describe('UsageLimitBanner (#3157)', () => {
   });
 
   test('a failed action says so and keeps the actions so the user can try again', async () => {
-    answers.cancel = () => ({ error: 'boom' });
+    answers.hold = () => ({ error: 'boom' });
     renderBanner();
     await banner();
     answers.status = 500;
-    fireEvent.click(button('Cancel auto-resume') as HTMLElement);
+    fireEvent.click(button("Don't resume") as HTMLElement);
     await waitFor(() => expect(screen.getByRole('alert')).not.toBeNull());
-    expect(button('Cancel auto-resume')).not.toBeNull();
+    expect(button("Don't resume")).not.toBeNull();
     expect(button('Resume now')).not.toBeNull();
   });
 
@@ -373,7 +413,7 @@ describe('UsageLimitBanner (#3157)', () => {
       ),
     );
     expect(button('Resume now')).toBeNull();
-    expect(button('Cancel auto-resume')).toBeNull();
+    expect(button("Don't resume")).toBeNull();
     fireEvent.click(button('Dismiss') as HTMLElement);
     expect(screen.queryByTestId('usage-limit-banner')).toBeNull();
   });
@@ -414,7 +454,7 @@ describe('UsageLimitBanner (#3157)', () => {
         expect(screen.getByRole('status').textContent).toBe(copy),
       );
       expect(button('Resume now')).toBeNull();
-      expect(button('Cancel auto-resume')).toBeNull();
+      expect(button("Don't resume")).toBeNull();
     },
   );
 

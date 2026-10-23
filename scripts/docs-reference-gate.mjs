@@ -124,6 +124,10 @@ export const ALLOWED_MISSING = new Map([
     'Android build output, absent until built',
   ],
   ['src-desktop/target/', 'Cargo build output, absent until built'],
+  [
+    'src-desktop/binaries/',
+    'gitignored private Node sidecar, absent until desktop resource staging runs',
+  ],
 ]);
 
 /**

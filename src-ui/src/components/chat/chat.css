@@ -891,21 +891,48 @@
   color: var(--text-muted);
 }
 
-/* The user's own message before the agent has it: outlined, with no fill,
-   and a short delivery line (`MessageDeliveryNote`). The outline is drawn
-   inside the bubble so the bubble keeps its size when it fills on delivery.
+/* The user's own message before the agent has it: outlined, with no fill.
+   The outline is drawn inside the bubble so the bubble keeps its size when it
+   fills on delivery. The happy path has no text (`MessageDeliveryNote`):
+   sending is a dimmed dashed outline with a turning ring beside the bubble;
+   received is the full dashed outline with a check; delivered fills the
+   bubble and the check fades out. Exceptions add one line with their action.
    The line style carries meaning beside colour: dashed while it is on its
-   way, solid once it needs the user (not sent, may have reached the agent).
-   Only a send under way keeps the accent; a send with no answer reads as a
-   caution. */
+   way, solid once it needs the user (not sent, may have reached the agent). */
 .message.user {
-  transition: background-color var(--motion-base) var(--ease-standard);
+  transition:
+    background-color var(--motion-base) var(--ease-standard),
+    outline-color var(--motion-base) var(--ease-standard);
+}
+/* A check-back Station sent: sent as the person, written by nobody. A
+   quiet panel with Station's label instead of the person's filled bubble. */
+.message.user.message--station-check-back {
+  background: var(--k-panel);
+  color: var(--k-text);
+  outline: 1px solid var(--k-line);
+  outline-offset: -1px;
+}
+.message__station-label {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  margin-bottom: var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+}
+.message__station-glyph {
+  width: 14px;
+  height: 14px;
+  color: var(--k-text-muted);
 }
 .message.user.message--undelivered {
   background: transparent;
   color: var(--text-primary);
   outline: 1px dashed var(--accent-primary);
   outline-offset: -1px;
+}
+.message.user.message--delivery-sending {
+  outline-color: color-mix(in srgb, var(--accent-primary) 45%, transparent);
 }
 .message.user.message--delivery-not-sent {
   outline: 1px solid var(--k-negative);
@@ -919,40 +946,126 @@
 }
 .message-delivery {
   display: grid;
-  gap: var(--k-space-1);
-  margin-top: var(--k-space-1);
   color: var(--text-secondary);
   font-size: var(--k-text-xs);
   line-height: 1.4;
+}
+/* The glyph sits just outside the bubble's start edge, out of the text's way
+   and out of flow, so a state change never moves the bubble or its
+   neighbours. Positioned against the bubble's own wrapper. */
+.message-delivery__glyph {
+  position: absolute;
+  inset-inline-start: calc(-1 * (var(--k-space-4) + var(--k-space-1)));
+  bottom: var(--k-space-2);
+  display: inline-grid;
+  width: var(--k-space-4);
+  height: var(--k-space-4);
+  color: var(--accent-primary);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--motion-slow) var(--ease-standard);
+}
+.message-delivery:is(
+    [data-delivery-state="sending"],
+    [data-delivery-state="received"]
+  )
+  .message-delivery__glyph {
+  opacity: 1;
+  pointer-events: auto;
+}
+.message-delivery__glyph svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.message-delivery__glyph-ring {
+  transform-origin: 50% 50%;
+  transition: stroke-dasharray var(--motion-base) var(--ease-standard);
+}
+.message-delivery__glyph-check {
+  stroke-dasharray: 10;
+  stroke-dashoffset: 10;
+  transition: stroke-dashoffset var(--motion-slow) var(--ease-out);
+}
+/* Sending: a dashed ring turns, slowly, while Station has not answered. */
+.message-delivery__glyph[data-glyph="sending"] {
+  opacity: 0.7;
+}
+.message-delivery__glyph[data-glyph="sending"] .message-delivery__glyph-ring {
+  stroke-dasharray: 3 2.75;
+  animation: message-delivery-turn calc(var(--motion-status-spin) * 4)
+    var(--ease-linear) infinite;
+}
+/* Received (and delivered, while it fades): the ring closes and the check
+   draws in. */
+.message-delivery__glyph[data-glyph="received"] .message-delivery__glyph-check {
+  stroke-dashoffset: 0;
+}
+@keyframes message-delivery-turn {
+  to {
+    transform: rotate(360deg);
+  }
+}
+:root[data-page-hidden] .message-delivery__glyph-ring {
+  animation-play-state: paused;
+}
+/* An exception's line folds open in place (rows 0fr to 1fr) and folds away
+   the same way, so the bubble grows and shrinks smoothly. */
+.message-delivery__reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows var(--motion-base) var(--ease-standard),
+    opacity var(--motion-base) var(--ease-standard);
+}
+.message-delivery__reveal[data-open] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+/* No @starting-style: a note that mounts already open (history, opening a
+   chat) shows its line at rest; only a line that opens after mount, from
+   the closed rows above, animates. */
+.message-delivery__reveal-inner {
+  min-height: 0;
+  overflow: hidden;
 }
 .message-delivery__line {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--k-space-1) var(--k-space-2);
+  padding-top: var(--k-space-1);
 }
-/* The two states that need the user name themselves in their tone as well as
-   in words (AA on the page background in both themes). */
-.message-delivery[data-delivery-state="unconfirmed"] .message-delivery__label,
-.message-delivery[data-delivery-state="unanswered"] .message-delivery__label,
-.message-delivery[data-delivery-state="awaiting-confirmation"]
-  .message-delivery__label {
+/* The states that need the user name themselves in their tone as well as in
+   words (AA on the page background in both themes). */
+.message-delivery__label:is(
+  [data-tone="unconfirmed"],
+  [data-tone="unanswered"],
+  [data-tone="awaiting-confirmation"]
+) {
   color: var(--k-caution);
   font-weight: 500;
 }
-.message-delivery[data-delivery-state="not-sent"] .message-delivery__label {
+.message-delivery__label[data-tone="not-sent"] {
   color: var(--error-text, var(--k-negative));
   font-weight: 500;
 }
-/* The status regions stay in the accessibility tree while empty (so their
-   first text is announced), but take no space in the line or the grid. */
-.message-delivery__status:empty,
+/* The announcer speaks the received fact or the exception line; the visible
+   line is its sighted twin. Status regions stay in the accessibility tree
+   while empty (so their first text is announced) but take no space. */
+.message-delivery__status,
 .message-delivery__notice:empty {
   position: absolute;
   width: 1px;
   height: 1px;
   overflow: hidden;
   clip-path: inset(50%);
+  white-space: nowrap;
 }
 .message-delivery__actions {
   display: inline-flex;
@@ -989,8 +1102,37 @@
   padding-inline: var(--k-space-3);
 }
 
+/* A turn that ended with nothing to show: its row's one line, with the
+   turn's actions at its end and the same 28px height for every outcome. */
+.message__turn-outcome {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-height: 28px;
+}
+
+.message__turn-outcome-label {
+  min-width: 0;
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--text-xs);
+}
+
+/* Why Station or the engine stopped it, when the person did not. */
+.message__turn-outcome-detail {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message__turn-outcome .turn-footer__bar {
+  margin-inline-start: auto;
+}
+
 /* A steer that stopped the running step says so inside its own bubble, on
    the bubble's accent background. */
+
 .message__steer-note {
   margin-top: var(--space-1);
   /* On a fine pointer the bubble's actions button sits inside its
@@ -1397,6 +1539,23 @@
   flex-shrink: 1000;
   min-height: 0;
   overflow-y: auto;
+}
+
+/* The pending list yields next, down to its toggle row (ChatInputArea counts
+   only that row as taken): its rows scroll inside it rather than pushing the
+   draft off the dock. */
+.chat-dock__body > .queued-messages-presence {
+  flex-shrink: 500;
+  min-height: 0;
+}
+.chat-dock__body
+  > .queued-messages-presence:not(
+    [data-phase="entering"],
+    [data-phase="exiting"]
+  )
+  > .queued-presence__clip {
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 /* No room above the composer (data-composer-priority): the transcript has
@@ -3351,49 +3510,53 @@
   }
 }
 
-/* The existing live markers gate motion; settled and approval rows stay still. */
-.tool-call__line:has(.tool-call__pulse),
-.tool-call-batch__summary:has(.tool-call-batch__pulse) {
-  position: relative;
-  overflow: hidden;
-  isolation: isolate;
-}
-
-.tool-call__line .tool-call__pulse,
-.tool-call-batch__summary .tool-call-batch__pulse {
-  display: none;
-}
-
-.tool-call__line:has(.tool-call__pulse)::after,
-.tool-call-batch__summary:has(.tool-call-batch__pulse)::after {
-  content: "";
-  position: absolute;
-  inset-block: 0;
-  left: 0;
-  width: 35%;
-  pointer-events: none;
-  background: linear-gradient(
+/* An executing call highlights its own words, not its row: a band of full
+   text colour moves through the glyphs of `.tool-call__label--active` (set
+   from `isToolCallActive` on every active row — single, batch child, sheet).
+   The resting position puts the band past the text, so reduced motion (one
+   instant iteration) and a hidden page leave plain, readable text; the verb
+   ("Running …") still says the call is live without motion. */
+.tool-call__label--active {
+  background-image: linear-gradient(
     90deg,
-    transparent,
-    color-mix(in srgb, var(--k-text) 10%, transparent),
-    transparent
+    var(--k-text-faint) 0%,
+    var(--k-text-faint) 35%,
+    var(--k-text) 50%,
+    var(--k-text-faint) 65%,
+    var(--k-text-faint) 100%
   );
-  animation: tool-call-reflection var(--motion-status-breathe)
-    var(--ease-linear) infinite both;
+  background-size: 300% 100%;
+  background-position: 100% 0;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  animation: tool-call-label-highlight var(--motion-status-breathe)
+    var(--ease-linear) infinite;
 }
 
-@keyframes tool-call-reflection {
+@keyframes tool-call-label-highlight {
   from {
-    transform: translateX(-100%);
+    background-position: 100% 0;
   }
   to {
-    transform: translateX(390%);
+    background-position: 0% 0;
   }
 }
 
-:root[data-page-hidden] .tool-call__line::after,
-:root[data-page-hidden] .tool-call-batch__summary::after {
+:root[data-page-hidden] .tool-call__label--active {
   animation-play-state: paused;
+}
+
+.tool-call__elapsed {
+  flex-shrink: 0;
+  /* Its column from the start ("1h 59m" at most), so the time appearing at
+     ten seconds, and growing after, never changes the row's width. */
+  min-width: 6ch;
+  text-align: end;
+  margin-inline-start: auto;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
 }
 
 .chat-input__activity .chat-scroll-to-bottom:hover {

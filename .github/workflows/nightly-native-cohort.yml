@@ -343,6 +343,7 @@ jobs:
     uses: ./.github/workflows/testflight-delivery.yml
     with:
       delivery: upload
+      distribute_external: true
       channel: nightly
       source_sha: ${{ inputs.source_sha }}
       source_ref: refs/tags/${{ inputs.reservation_tag }}

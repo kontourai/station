@@ -1,0 +1,11 @@
+{
+  "revision": "a684115673203c5d2c065a6fd49137d585d18e7a",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Formatting-only follow-up at a684115: the process fixture's realpathSync(makeTempDir(...)) call is now one formatter-approved line. Reviewed complete one-line diff; cleanup behavior, subprocess assertions and all runtime code are unchanged. Read-only npm run lint:check passes. Prior scoped device runtime, platform proof and NOT_VERIFIED qualifications remain intact.","inputs":["docs/architecture/module-map.md","src-server/services/devices/toolchain/__tests__/device-tool-runtime.process.test.ts"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Formatting-only follow-up at a684115: the process fixture's realpathSync(makeTempDir(...)) call is now one formatter-approved line. Reviewed complete one-line diff; cleanup behavior, subprocess assertions and all runtime code are unchanged. Read-only npm run lint:check passes. Prior scoped device runtime, platform proof and NOT_VERIFIED qualifications remain intact.","inputs":["docs/guides/desktop-build.md","src-server/services/devices/toolchain/__tests__/device-tool-runtime.process.test.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Formatting-only follow-up at a684115: the process fixture's realpathSync(makeTempDir(...)) call is now one formatter-approved line. Reviewed complete one-line diff; cleanup behavior, subprocess assertions and all runtime code are unchanged. Read-only npm run lint:check passes. Prior scoped device runtime, platform proof and NOT_VERIFIED qualifications remain intact.","inputs":["docs/guides/mobile-device-workspace.md","src-server/services/devices/toolchain/__tests__/device-tool-runtime.process.test.ts"]}
+  ]
+}

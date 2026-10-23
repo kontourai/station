@@ -1,0 +1,13 @@
+{
+  "revision": "ac439687644a36830bb0af60350db43bc2eb9ab1",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"cross-runtime spec now expects the working pill after turn.started and the streaming row after the first delta, matching this doc's claim that the streaming row appears with its first content while the pill carries the turn.","inputs":["docs/design/chat-composer.md","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"cross-runtime spec change only moves the streaming-row assertion after the first delta and checks the pill first; no responsive layout claim here depends on it.","inputs":["docs/guides/responsive-ui.md","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"cross-runtime spec still proves exact settled Claude and Codex turns; only its mid-turn visibility check moved from an empty streaming row to the pill, then the row after first content.","inputs":["docs/testing/browser-smoke.md","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"cross-runtime spec change is a test assertion move (pill before first content, streaming row after); the getting-started claims about turns and delivery are unchanged.","inputs":["docs/user/getting-started.md","tests/cross-runtime-chat-switching.spec.ts"]}
+  ]
+}

@@ -150,6 +150,13 @@
   padding: 0;
 }
 
+/* Section tabs above flush content (Connections) are page navigation, not
+   the content's chrome: they keep the header's inset so they line up with
+   the title above them. */
+.page-frame--flush > .page-frame__body .page__tabs--frame-inset {
+  padding-inline: 1.5rem;
+}
+
 @media (max-width: 640px) {
   .page-frame__header {
     padding: 1.5rem 1rem 0;
@@ -161,6 +168,10 @@
 
   .page-frame--flush > .page-frame__body {
     padding: 0;
+  }
+
+  .page-frame--flush > .page-frame__body .page__tabs--frame-inset {
+    padding-inline: 1rem;
   }
 
   /* station#541 (moved from index.css, review round 2): mirrors the

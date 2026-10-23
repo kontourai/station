@@ -1123,6 +1123,15 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    */
   answerability: RequestAnswerability;
   attachedSource?: AttachedSessionSourceMetadata;
+  /**
+   * Present when `cwd` is a folder Station created for this chat rather than
+   * one the user chose: an ACP engine started with no project or connection
+   * directory runs in `<stationHome>/runtime/acp-workspaces/session/<digest>`.
+   * The server decides (`isManagedAcpWorkspace`), so clients name the folder
+   * ("Chat workspace") instead of printing a hash path, and never match the
+   * path themselves.
+   */
+  cwdManagedWorkspace?: true;
   isLoaded: boolean;
   isPersisted: boolean;
   eventCount: number;
