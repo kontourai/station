@@ -1585,6 +1585,15 @@ so browser timer overflow cannot close a valid link early.
 
 ## Make this host discoverable on the LAN
 
+On Android 17 and later, Station asks for local-network access before it starts
+browsing. Answer the system permission prompt, return to Station, and choose
+**Check again**. Permission admission and browsing have separate lifetimes: a
+prompt cannot start a scan, and hiding Station still cancels an active scan.
+Denied access leaves QR and manual connection choices available. Android's
+implicit service picker is not used while a foreground scan is owned; its
+Activity would pause Station and correctly cancel that scan. See Android's
+[local-network permission contract](https://developer.android.com/reference/android/net/nsd/NsdManager).
+
 On the host, open **Settings → Pairing → Discover this Station nearby**.
 This saved Station setting (`lanDiscoveryEnabled`) defaults to off. Only the
 Station's local operator may change it. Enabling it exposes the Station service

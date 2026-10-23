@@ -4,10 +4,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { registerNativeConnectionDiscovery } from '../connectionDiscovery';
 
 const invoke = vi.hoisted(() => vi.fn());
-vi.mock('../tauriInvoke', () => ({ invokeTauri: invoke }));
+const prepare = vi.hoisted(() => vi.fn());
+vi.mock('../tauriInvoke', () => ({
+  invokeTauri: (command: string, args: unknown) =>
+    command.endsWith('|prepare') ? prepare() : invoke(command, args),
+}));
 let unregister: (() => void) | undefined;
 beforeEach(() => {
   invoke.mockReset();
+  prepare.mockReset().mockResolvedValue({ status: 'ready' });
   Object.defineProperty(document, 'visibilityState', {
     configurable: true,
     value: 'visible',
@@ -26,6 +31,33 @@ const station = {
 };
 
 describe('native LAN provider', () => {
+  it.each(['permission-required', 'permission-denied', 'unavailable'])(
+    'does not begin a scan when admission returns %s',
+    async (status) => {
+      prepare.mockResolvedValue({ status });
+      const result = await discoverConnectionCandidates();
+      expect(result.providers[0].status).toBe(status);
+      expect(result.candidates).toEqual([]);
+      expect(invoke).not.toHaveBeenCalled();
+    },
+  );
+
+  it('does not start browsing after its owner aborts during permission UI', async () => {
+    let finish: ((value: unknown) => void) | undefined;
+    prepare.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const owner = new AbortController();
+    const result = discoverConnectionCandidates({ signal: owner.signal });
+    owner.abort();
+    finish?.({ status: 'ready' });
+    expect((await result).candidates).toEqual([]);
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
   it('uses resolved host and actual port while rejecting non-LAN and malformed results', async () => {
     invoke.mockResolvedValue({
       status: 'available',
@@ -95,6 +127,12 @@ describe('native LAN provider', () => {
         : Promise.resolve(),
     );
     const result = discoverConnectionCandidates();
+    await vi.waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith(
+        'plugin:station-discovery|discover',
+        expect.objectContaining({ scanId: expect.any(String) }),
+      ),
+    );
     Object.defineProperty(document, 'visibilityState', {
       configurable: true,
       value: 'hidden',

@@ -1,4 +1,4 @@
 "$schema" = "schemas/schema.json"
 [default]
-description = "Browse advertised Station services on the local network for a bounded foreground request, and cancel that request. Does not connect, save a Station or grant access."
-permissions = ["allow-discover", "allow-cancel"]
+description = "Request local-network permission when required, browse advertised Station services on the local network for a bounded foreground request, and cancel that request. Does not connect, save a Station or grant access."
+permissions = ["allow-prepare", "allow-discover", "allow-cancel"]

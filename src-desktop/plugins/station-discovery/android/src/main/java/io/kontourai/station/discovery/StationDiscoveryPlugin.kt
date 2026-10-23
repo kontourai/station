@@ -7,6 +7,9 @@ import android.net.nsd.NsdServiceInfo
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import app.tauri.PermissionState
+import app.tauri.annotation.Permission
+import app.tauri.annotation.PermissionCallback
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
@@ -19,12 +22,13 @@ import org.json.JSONArray
 class ScanArgs { lateinit var scanId: String }
 
 /** System DNS-SD only: no subnet probes, connections, profile writes or trust. */
-@TauriPlugin
+@TauriPlugin(permissions = [Permission(strings = ["android.permission.ACCESS_LOCAL_NETWORK"], alias = "localNetwork")])
 class StationDiscoveryPlugin(private val activity: Activity) : Plugin(activity) {
   private val handler = Handler(Looper.getMainLooper())
   private val manager get() = activity.getSystemService(Context.NSD_SERVICE) as? NsdManager
   private val cancelledIds = ArrayDeque<String>()
   private var scan: Scan? = null
+  private var permissionPending = false
 
   private inner class Scan(val id: String, val invoke: Invoke, val nsd: NsdManager) : NsdManager.DiscoveryListener {
     var finished = false
@@ -99,6 +103,33 @@ class StationDiscoveryPlugin(private val activity: Activity) : Plugin(activity) 
     }
   }
 
+  // Permission UI may pause the Activity. No scan exists during admission;
+  // actual browsing still stops on every background transition.
+  @Command
+  fun prepare(invoke: Invoke) {
+    handler.post {
+      if (Build.VERSION.SDK_INT < 37 || getPermissionState("localNetwork") == PermissionState.GRANTED) {
+        invoke.resolve(JSObject().put("status", "ready"))
+      } else if (permissionPending) {
+        invoke.resolve(JSObject().put("status", "permission-required"))
+      } else {
+        permissionPending = true
+        try { requestPermissionForAlias("localNetwork", invoke, "localNetworkPermissionResult") }
+        catch (_: Exception) { permissionPending = false; invoke.resolve(JSObject().put("status", "unavailable")) }
+      }
+    }
+  }
+
+  @PermissionCallback
+  private fun localNetworkPermissionResult(invoke: Invoke) {
+    handler.post {
+      permissionPending = false
+      // Return to the app before the explicit Check again starts a scan.
+      val status = if (getPermissionState("localNetwork") == PermissionState.GRANTED) "permission-required" else "permission-denied"
+      invoke.resolve(JSObject().put("status", status))
+    }
+  }
+
   @Command
   fun discover(invoke: Invoke) {
     val args = invoke.parseArgs(ScanArgs::class.java)
@@ -106,6 +137,9 @@ class StationDiscoveryPlugin(private val activity: Activity) : Plugin(activity) 
       if (args.scanId.isEmpty() || args.scanId.length > 100) { invoke.reject("Invalid discovery request"); return@post }
       if (cancelledIds.remove(args.scanId)) { invoke.resolve(JSObject().put("status", "cancelled").put("candidates", JSONArray())); return@post }
       scan?.finish("cancelled")
+      if (Build.VERSION.SDK_INT >= 37 && getPermissionState("localNetwork") != PermissionState.GRANTED) {
+        invoke.resolve(JSObject().put("status", "permission-required").put("candidates", JSONArray())); return@post
+      }
       val nsd = manager
       if (Build.VERSION.SDK_INT < 34 || nsd == null) { invoke.resolve(JSObject().put("status", "unavailable").put("candidates", JSONArray())); return@post }
       Scan(args.scanId, invoke, nsd).also { scan = it; it.start() }

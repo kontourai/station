@@ -122,7 +122,7 @@ export function ConnectionManagerDiscoverPanel({
               : candidates.length > 0
                 ? `${candidates.length} Station suggestion${candidates.length === 1 ? '' : 's'}`
                 : permissionRequired
-                  ? 'Local network access is needed. Allow it in Settings, or check again after answering the permission prompt.'
+                  ? 'Allow local network access when asked. After returning to Station, choose Check again.'
                   : denied
                     ? 'Local network permission is denied. Allow access in system settings, then check again.'
                     : unavailable

@@ -138,6 +138,7 @@ class StationDiscoveryPlugin: Plugin {
     if let observer = backgroundObserver { NotificationCenter.default.removeObserver(observer) }
     scan?.finish("cancelled")
   }
+  @objc public func prepare(_ invoke: Invoke) { invoke.resolve(["status": "ready"]) }
   @objc public func discover(_ invoke: Invoke) throws {
     let args = try invoke.parseArgs(ScanArgs.self)
     DispatchQueue.main.async {

@@ -24,7 +24,7 @@ describe('connection candidate panel', () => {
   });
 
   test.each([
-    ['permission-required', /access is needed/],
+    ['permission-required', /After returning to Station, choose Check again/],
     ['permission-denied', /permission is denied/],
     ['unavailable', /discovery is unavailable/],
     ['timed-out', /did not finish in time/],

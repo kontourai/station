@@ -43,6 +43,31 @@ export function registerNativeConnectionDiscovery(): () => void {
     async discover({ signal }) {
       if (signal.aborted || document.visibilityState === 'hidden')
         throw new ConnectionCandidateProviderError('cancelled');
+      // Android's permission Activity may hide the WebView. Admit permission
+      // before owning a scan; permission completion never starts browsing.
+      let admission: unknown;
+      try {
+        admission = await invokeTauri<unknown>(
+          'plugin:station-discovery|prepare',
+        );
+      } catch {
+        throw new ConnectionCandidateProviderError('unavailable');
+      }
+      if (signal.aborted)
+        throw new ConnectionCandidateProviderError('cancelled');
+      if (!admission || typeof admission !== 'object')
+        throw new ConnectionCandidateProviderError('failed');
+      const status = (admission as Record<string, unknown>).status;
+      if (
+        status === 'permission-required' ||
+        status === 'permission-denied' ||
+        status === 'unavailable'
+      )
+        throw new ConnectionCandidateProviderError(status);
+      if (status !== 'ready')
+        throw new ConnectionCandidateProviderError('failed');
+      if (document.visibilityState === 'hidden')
+        throw new ConnectionCandidateProviderError('cancelled');
       const scanId = randomCorrelationId();
       const controller = new AbortController();
       active.set(scanId, controller);
