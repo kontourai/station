@@ -18,6 +18,7 @@ import {
   setTaskParent,
   setTaskWorkChat,
 } from '../client/task-relationships';
+import { taskQueries } from '../queryFactories';
 import type { TaskRoomWorkRequestScope } from './taskRoomWork';
 
 export type TaskRelationshipScope = TaskRoomWorkRequestScope;
@@ -50,6 +51,13 @@ export async function invalidateTaskRelationships(
     result.parent,
     result.previousParent,
   ].filter((item): item is TaskIdentity => !!item);
+  await client.invalidateQueries({ queryKey: ['tasks'] });
+  await Promise.all(
+    identities.flatMap((task) => [
+      client.invalidateQueries(taskQueries.task(task.taskId)),
+      client.invalidateQueries(taskQueries.graph(task.taskId)),
+    ]),
+  );
   await Promise.all(
     identities.map((task) =>
       client.invalidateQueries({ queryKey: taskRelationshipKey(scope, task) }),
@@ -115,6 +123,7 @@ export function useSetTaskParentMutation(scope: TaskRelationshipScope) {
       });
       current(scope);
       await invalidateTaskRelationships(client, scope, result);
+      current(scope);
       return result;
     },
   });
@@ -129,6 +138,7 @@ export function useCreateTaskChildMutation(scope: TaskRelationshipScope) {
       });
       current(scope);
       await invalidateTaskRelationships(client, scope, result.relationship);
+      current(scope);
       return result;
     },
   });
@@ -145,6 +155,7 @@ export function useSetTaskWorkChatMutation(scope: TaskRelationshipScope) {
       await client.invalidateQueries({
         queryKey: taskRelationshipKey(scope, input.task, 'work-chats'),
       });
+      current(scope);
       return result;
     },
   });

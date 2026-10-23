@@ -9,7 +9,14 @@ import type {
   TaskWorkChatMutationResult,
   TaskWorkChatsResult,
 } from '@kontourai/station-contracts/task-graph';
-import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import {
+  type ApiRequestScope,
+  type ClientRequestOptions,
+  getJson,
+  mutateJson,
+} from './http';
+
+type ScopedOptions = ClientRequestOptions & { requestScope: ApiRequestScope };
 
 async function unwrap<T>(response: Response): Promise<T> {
   const body = (await response.json()) as { success?: boolean; data?: T };
@@ -21,7 +28,7 @@ const path = (taskId: string) => `/api/tasks/${encodeURIComponent(taskId)}`;
 export function fetchTaskChildren(
   apiBase: string,
   task: TaskIdentity,
-  options: ClientRequestOptions,
+  options: ScopedOptions,
 ): Promise<TaskChildrenResult> {
   return getJson(
     `${apiBase}${path(task.taskId)}/children?taskCreatedAt=${encodeURIComponent(task.taskCreatedAt)}`,
@@ -31,7 +38,7 @@ export function fetchTaskChildren(
 export function createTaskChild(
   apiBase: string,
   input: TaskChildCreateInput,
-  options: ClientRequestOptions,
+  options: ScopedOptions,
 ): Promise<{ task: TaskRecord; relationship: TaskParentMutationResult }> {
   return mutateJson(
     `${apiBase}${path(input.parent.taskId)}/children`,
@@ -43,7 +50,7 @@ export function createTaskChild(
 export function setTaskParent(
   apiBase: string,
   input: TaskParentMutationInput,
-  options: ClientRequestOptions,
+  options: ScopedOptions,
 ): Promise<TaskParentMutationResult> {
   return mutateJson(
     `${apiBase}${path(input.child.taskId)}/parent`,
@@ -55,7 +62,7 @@ export function setTaskParent(
 export function fetchTaskWorkChats(
   apiBase: string,
   task: TaskIdentity,
-  options: ClientRequestOptions,
+  options: ScopedOptions,
 ): Promise<TaskWorkChatsResult> {
   return getJson(
     `${apiBase}${path(task.taskId)}/work-chats?taskCreatedAt=${encodeURIComponent(task.taskCreatedAt)}`,
@@ -65,7 +72,7 @@ export function fetchTaskWorkChats(
 export function setTaskWorkChat(
   apiBase: string,
   input: TaskWorkChatMutationInput,
-  options: ClientRequestOptions,
+  options: ScopedOptions,
 ): Promise<TaskWorkChatMutationResult> {
   const { linked, ...body } = input;
   return mutateJson(
@@ -73,5 +80,18 @@ export function setTaskWorkChat(
     linked ? 'POST' : 'DELETE',
     options,
     body,
+  ).then(unwrap<TaskWorkChatMutationResult>);
+}
+
+/** A known candidate's current revision, including a prior unlink tombstone. */
+export function fetchTaskWorkChat(
+  apiBase: string,
+  task: TaskIdentity,
+  conversationId: string,
+  options: ScopedOptions,
+): Promise<TaskWorkChatMutationResult> {
+  return getJson(
+    `${apiBase}${path(task.taskId)}/work-chats/${encodeURIComponent(conversationId)}?taskCreatedAt=${encodeURIComponent(task.taskCreatedAt)}`,
+    options,
   ).then(unwrap<TaskWorkChatMutationResult>);
 }

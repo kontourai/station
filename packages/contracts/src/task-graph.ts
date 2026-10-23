@@ -567,7 +567,7 @@ export interface TaskChildrenResult {
 
 export interface TaskWorkChatsResult {
   task: TaskIdentity;
-  conversationIds: string[];
+  chats: { conversationId: string; revision: number }[];
 }
 
 export interface TaskRecord {

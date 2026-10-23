@@ -106,6 +106,7 @@ import {
   taskIdentity,
   validateParentChain,
   validateRelationshipState,
+  validTaskIdentity,
 } from './task-relationship-state.js';
 
 interface TaskGraphStoreData {
@@ -1457,7 +1458,12 @@ function relationshipReplay(
   operationId: string,
   fingerprint: string,
 ) {
-  if (!operationId || operationId.length > 160)
+  if (
+    typeof operationId !== 'string' ||
+    !operationId.trim() ||
+    operationId !== operationId.trim() ||
+    operationId.length > 160
+  )
     throw new TaskRelationshipError('invalid');
   const prior = data.relationshipReceipts.find(
     (receipt) => receipt.operationId === operationId,
@@ -1739,6 +1745,13 @@ export class TaskGraphService {
     input: TaskParentMutationInput,
     authority: TaskRelationshipAuthority,
   ): Promise<TaskParentMutationResult> {
+    if (
+      !validTaskIdentity(input.child) ||
+      (input.parent !== null && !validTaskIdentity(input.parent)) ||
+      !Number.isSafeInteger(input.expectedRevision) ||
+      input.expectedRevision < 0
+    )
+      throw new TaskRelationshipError('invalid');
     return this.mutateStore((data) => {
       const child = requireRelationshipTask(data.tasks, input.child);
       const parent = input.parent
@@ -1787,6 +1800,8 @@ export class TaskGraphService {
     input: TaskChildCreateInput,
     authority: TaskRelationshipAuthority,
   ): Promise<{ task: TaskRecord; relationship: TaskParentMutationResult }> {
+    if (!validTaskIdentity(input.parent))
+      throw new TaskRelationshipError('invalid');
     if (
       input.task.shapingSource ||
       input.task.proposalBrief ||
@@ -1848,6 +1863,17 @@ export class TaskGraphService {
     input: TaskWorkChatMutationInput,
     authority: TaskRelationshipAuthority,
   ): Promise<TaskWorkChatMutationResult> {
+    if (
+      !validTaskIdentity(input.task) ||
+      typeof input.conversationId !== 'string' ||
+      !input.conversationId.trim() ||
+      input.conversationId !== input.conversationId.trim() ||
+      input.conversationId.length > 4096 ||
+      typeof input.linked !== 'boolean' ||
+      !Number.isSafeInteger(input.expectedRevision) ||
+      input.expectedRevision < 0
+    )
+      throw new TaskRelationshipError('invalid');
     return this.mutateStore((data) => {
       const task = requireRelationshipTask(data.tasks, input.task);
       const project = authorizeRelationship(authority, [task]);
@@ -1874,7 +1900,7 @@ export class TaskGraphService {
         revision: (existing?.revision ?? 0) + 1,
       };
       if (existing) Object.assign(existing, result);
-      else data.workChats.push(result);
+      else data.workChats.push(structuredClone(result));
       data.relationshipReceipts.push({
         operationId: input.operationId,
         fingerprint,
@@ -1893,6 +1919,7 @@ export class TaskGraphService {
   ): TaskRecord[] {
     const data = this.readStore();
     const parent = requireRelationshipTask(data.tasks, identity);
+    relationshipProject(authority, [parent]);
     if (!authority.canReadTask(parent))
       throw new TaskRelationshipError('unavailable');
     return data.tasks
@@ -1908,10 +1935,33 @@ export class TaskGraphService {
       .map((task) => ({ ...task, parent: undefined }));
   }
 
+  /** Exact candidate lookup retains the unlink tombstone revision for relinking. */
+  readTaskWorkChat(
+    identity: TaskIdentity,
+    conversationId: string,
+    authority: TaskRelationshipAuthority,
+  ): TaskWorkChatMutationResult {
+    const data = this.readStore();
+    const task = requireRelationshipTask(data.tasks, identity);
+    const project = relationshipProject(authority, [task]);
+    if (
+      !authority.canReadTask(task) ||
+      !authority.canReadConversation(conversationId, project)
+    )
+      throw new TaskRelationshipError('unavailable');
+    const existing = data.workChats.find(
+      (chat) =>
+        sameTask(chat.task, identity) && chat.conversationId === conversationId,
+    );
+    return existing
+      ? structuredClone(existing)
+      : { task: identity, conversationId, linked: false, revision: 0 };
+  }
+
   listTaskWorkChats(
     identity: TaskIdentity,
     authority: TaskRelationshipAuthority,
-  ): string[] {
+  ): { conversationId: string; revision: number }[] {
     const data = this.readStore();
     const task = requireRelationshipTask(data.tasks, identity);
     const project = relationshipProject(authority, [task]);
@@ -1924,7 +1974,10 @@ export class TaskGraphService {
           sameTask(chat.task, identity) &&
           authority.canReadConversation(chat.conversationId, project),
       )
-      .map((chat) => chat.conversationId);
+      .map((chat) => ({
+        conversationId: chat.conversationId,
+        revision: chat.revision,
+      }));
   }
 
   async createTask(

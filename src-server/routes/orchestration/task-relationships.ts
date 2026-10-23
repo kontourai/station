@@ -101,6 +101,23 @@ export function createTaskRelationshipRoutes(
     if (!parsed.success) throw new TaskRelationshipError('invalid');
     return parsed.data;
   };
+  const readableTask = (
+    task: TaskIdentity,
+    access: TaskRelationshipAuthority,
+    mutation = false,
+  ) => {
+    const current = graph.readTask(task.taskId);
+    const project = current && access.canonicalProject(current.projectId);
+    if (
+      !current ||
+      current.createdAt !== task.taskCreatedAt ||
+      !project ||
+      project.id !== access.expectedProject.id ||
+      project.createdAt !== access.expectedProject.createdAt ||
+      !(mutation ? access.canMutateTask(current) : access.canReadTask(current))
+    )
+      throw new TaskRelationshipError('unavailable');
+  };
   app.get('/:taskId/children', async (c) => {
     const task = readIdentity(
       c.req.param('taskId'),
@@ -130,6 +147,11 @@ export function createTaskRelationshipRoutes(
     const access = await authority(c.req.raw);
     const result = await graph.createChildTask(input.data, access);
     delivery(c.req.raw);
+    readableTask(input.data.parent, access, true);
+    readableTask(
+      { taskId: result.task.id, taskCreatedAt: result.task.createdAt },
+      access,
+    );
     if (!access.canReadTask(result.task))
       throw new TaskRelationshipError('unavailable');
     return c.json({ success: true, data: result });
@@ -141,7 +163,8 @@ export function createTaskRelationshipRoutes(
     const access = await authority(c.req.raw);
     const result = await graph.setTaskParent(input.data, access);
     delivery(c.req.raw);
-    // The service rechecks mutation authority while committing; no target titles are returned.
+    for (const task of [result.child, result.parent, result.previousParent])
+      if (task) readableTask(task, access, true);
     return c.json({ success: true, data: result });
   });
   app.get('/:taskId/work-chats', async (c) => {
@@ -150,15 +173,30 @@ export function createTaskRelationshipRoutes(
       c.req.query('taskCreatedAt'),
     );
     const access = await authority(c.req.raw);
-    const conversationIds = graph.listTaskWorkChats(task, access);
+    const chats = graph.listTaskWorkChats(task, access);
     delivery(c.req.raw);
-    const readable = new Set(graph.listTaskWorkChats(task, access));
+    const readable = new Set(
+      graph.listTaskWorkChats(task, access).map((chat) => chat.conversationId),
+    );
     return c.json({
       success: true,
       data: {
         task,
-        conversationIds: conversationIds.filter((id) => readable.has(id)),
+        chats: chats.filter((chat) => readable.has(chat.conversationId)),
       },
+    });
+  });
+  app.get('/:taskId/work-chats/:conversationId', async (c) => {
+    const task = readIdentity(
+      c.req.param('taskId'),
+      c.req.query('taskCreatedAt'),
+    );
+    const conversationId = c.req.param('conversationId');
+    const access = await authority(c.req.raw, conversationId);
+    delivery(c.req.raw);
+    return c.json({
+      success: true,
+      data: graph.readTaskWorkChat(task, conversationId, access),
     });
   });
   for (const method of ['post', 'delete'] as const)
@@ -180,6 +218,8 @@ export function createTaskRelationshipRoutes(
         task.createdAt !== result.task.taskCreatedAt ||
         !access.canMutateTask(task) ||
         !project ||
+        project.id !== access.expectedProject.id ||
+        project.createdAt !== access.expectedProject.createdAt ||
         !access.canReadConversation(result.conversationId, project)
       )
         throw new TaskRelationshipError('unavailable');

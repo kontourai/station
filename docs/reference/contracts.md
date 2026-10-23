@@ -933,6 +933,39 @@ a Task store that carries it is refused by Station builds that predate it.
 
 Server-only provider interfaces now live directly in `src-server/providers/provider-interfaces.ts`, `src-server/providers/provider-contracts.ts`, and `src-server/providers/llm/model-provider-types.ts`. The old `src-server/providers/types.ts` barrel was removed during convergence.
 
+### Task deliverable and work-chat relationships
+
+`task-graph` exports `TaskIdentity` (`taskId`, `taskCreatedAt`),
+`TaskParentMutationInput`, `TaskChildCreateInput`, and
+`TaskWorkChatMutationInput`. A child stores one optional `TaskRecord.parent`
+and a monotonic `relationshipRevision`; children are found by reverse lookup.
+These relationships do not roll up status or start execution.
+
+The dedicated `createTaskRelationshipRoutes` factory exposes child creation
+and listing, parent attach/reparent/detach, and work-chat link/list/unlink.
+Runtime mounting and current authority adapters are integration prerequisites.
+Each mutation uses an operation ID, exact incarnation, and expected revision
+(except atomic child creation). TaskGraph reloads and validates under its
+existing cross-process lock. Receipts retain the exact request fingerprint
+and original result. Replaying an old attach after detach returns its receipt
+without restoring the relationship; changing its payload conflicts.
+
+The injected authority binds the expected canonical Project incarnation,
+normalizes Project IDs/slugs, and checks current mutation/read capabilities.
+Ancestor corruption, missing incarnations, cycles and cross-Project references
+fail closed. Child listings contain only currently readable children, with no
+hidden-child count or unavailable sentinel.
+
+Work chats persist the Task incarnation and canonical `conversationId` with a
+revision and linked state. They never replace `TaskRecord.sessionId`, create a
+`spawned_session` link, grant access, or publish private followups. Runtime must
+use `conversation-open-resolver` to establish current Conversation lineage and
+reader capability; a Session ID or inventory row alone is insufficient.
+Work-chat listings expose only currently readable canonical IDs and revisions.
+`ProjectSharedTaskService` remains the separate default-private publication
+owner. See the real-store relationship and mounted-route tests for the local
+persistence/transport boundary; these do not qualify production composition.
+
 ### Conversation measurements
 
 Per-model rows in `ConversationStatsResponse.modelStats` use optional token,

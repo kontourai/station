@@ -7,6 +7,7 @@ import type {
 
 /** Runtime supplies live checks, called under the TaskGraph mutation lock. */
 export interface TaskRelationshipAuthority {
+  expectedProject: { id: string; createdAt: string };
   canonicalProject(
     projectId: string,
   ): { id: string; createdAt: string } | undefined;
@@ -66,6 +67,8 @@ export function relationshipProject(
   const first = projects[0];
   if (
     !first ||
+    first.id !== authority.expectedProject.id ||
+    first.createdAt !== authority.expectedProject.createdAt ||
     projects.some(
       (project) =>
         !project ||

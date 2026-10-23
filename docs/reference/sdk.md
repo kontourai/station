@@ -235,6 +235,31 @@ the Task's answer and user-input references. Other Tasks' detail caches and
 unrelated domains remain unchanged; a failed mutation does not invalidate them.
 
 
+`@kontourai/station-sdk/task-relationships` exports
+`useTaskChildrenQuery`, `useTaskWorkChatsQuery`,
+`useCreateTaskChildMutation`, `useSetTaskParentMutation`, and
+`useSetTaskWorkChatMutation`. The React-free client subpath
+`@kontourai/station-sdk/client/task-relationships` exports
+`fetchTaskChildren`, `fetchTaskWorkChats`, `fetchTaskWorkChat`, `createTaskChild`, `setTaskParent`,
+and `setTaskWorkChat`. Clients require explicit `requestScope`; hooks additionally
+require a current-authority predicate. Query keys include host, authority, Task
+ID and creation timestamp. Late responses after authority retirement reject the
+waiting caller and do not update relationship caches.
+
+Preserve operation ID, Task incarnation, expected revision and full payload
+when retrying an uncertain mutation. Detach uses `parent: null`; unlink uses
+`linked: false`. A work-chat listing returns `chats` containing canonical
+`conversationId` and `revision` for the next explicit unlink.
+For an authorized known Conversation candidate, `fetchTaskWorkChat` returns its
+current revision, including a previous unlink tombstone, for an explicit relink. Open that canonical
+Conversation through the chat inbox's existing open resolver; linking does not
+start an Agent or create a subtask. Reparent invalidates the child and both old
+and new parent relationship queries, plus affected Task detail/graph and Task
+lists. Work-chat changes invalidate that Task's scoped work-chat list. Runtime
+must mount the dedicated relationship factory with current authority adapters
+before these APIs are available.
+
+
 ## Shared Project room
 
 `@kontourai/station-sdk/project-rooms` provides `useProjectRoom` and the
