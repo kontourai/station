@@ -4062,7 +4062,11 @@ its serialized text contains at most 2,097,152 UTF-16 code units. Every read
 still opens and reads the current primary or existing `.previous` recovery
 file through [JsonFileStore](../../src-server/services/infra/json-store.ts).
 Only identical text reuses validation; size, mtime and TTL are never freshness
-authority. Returned records are deep copies. Missing, unreadable or corrupt
+authority. Returned records are detached from retained snapshots. If cloning a
+valid document fails, TaskGraph declines retention and returns the validated
+read. A failed cache-hit clone clears the snapshot and reparses and validates
+the current text; it never exposes the retained object or hides a storage,
+parse or validation error. Missing, unreadable or corrupt
 storage still follows the existing default, recovery or refusal path; it
 cannot fall back to the last good cache entry. Larger documents remain readable
 without retention. Mutations clear the snapshot and independently reload and

@@ -1763,22 +1763,36 @@ export class TaskGraphService {
   private loadStoreForRead(): TaskGraphStoreData {
     let source: string | undefined;
     let hit = false;
+    let cloneFailed = false;
     try {
       const value = this.store.read((text) => {
         source = text;
         if (this.readCache?.text === text) {
-          hit = true;
-          return structuredClone(this.readCache.data);
+          try {
+            const snapshot = structuredClone(this.readCache.data);
+            hit = true;
+            return snapshot;
+          } catch {
+            cloneFailed = true;
+          }
         }
         this.readCache = undefined;
         return JSON.parse(text);
       });
       if (hit) return value;
       const data = validateTaskGraphStoreData(value, this.storePath);
-      this.readCache =
-        source !== undefined && source.length <= TASK_GRAPH_READ_CACHE_MAX_CHARS
-          ? { text: source, data: structuredClone(data) }
-          : undefined;
+      this.readCache = undefined;
+      if (
+        !cloneFailed &&
+        source !== undefined &&
+        source.length <= TASK_GRAPH_READ_CACHE_MAX_CHARS
+      ) {
+        try {
+          this.readCache = { text: source, data: structuredClone(data) };
+        } catch {
+          // Valid JSON can exceed structuredClone's stack limit. Retention is optional.
+        }
+      }
       return data;
     } catch (error) {
       this.readCache = undefined;
