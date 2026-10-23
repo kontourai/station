@@ -10,7 +10,7 @@
  * These tests pin the lead-in to the machine-readable `enable` signal the
  * new-chat picker already keys on, and — the load-bearing one — prove the
  * derivation is NOT reading `unavailableReason` prose: an agent carrying the
- * alias reason text WITHOUT the signal keeps a neutral unavailable heading, and an agent
+ * alias reason text WITHOUT the signal keeps a neutral unavailable heading;
  * carrying the signal with model-flavoured prose still reads as "not set up".
  */
 

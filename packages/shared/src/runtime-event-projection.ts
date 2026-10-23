@@ -206,7 +206,8 @@ export interface ProjectRuntimeEventsOptions {
   markEndedTurns?: boolean;
 }
 
-/** Historical recovery could mistake a retained invocation fence for an open turn.
+/**
+ * Historical recovery could mistake a retained invocation fence for an open turn.
  * This changes presentation only; it supplies no invocation-settlement proof.
  */
 export function withoutCompletedTurnRecovery(

@@ -6700,6 +6700,8 @@ export class EventStore {
       positiveStart?.payload.invocationId !== undefined
         ? positiveStart
         : latestObservedStart;
+    // Retain completion evidence for historical false recovery, scoped to
+    // the current turn so a stale terminal cannot hide a newer failure.
     const latestCompletion = this.latestEventByMethod(
       threadId,
       'turn.completed',
@@ -6763,8 +6765,6 @@ export class EventStore {
       // fold no-op (e.g. `request.resolved`, `session.state-changed` alone) —
       // see the "orphan terminal" test below for one such change, pinned
       // rather than left implicit.
-      // Keep successful completion evidence even if a later recovery abort
-      // incorrectly claimed this turn was interrupted. One indexed fact.
       currentTurnCompletion,
       latestObservedStart,
       positiveStart,
