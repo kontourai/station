@@ -726,6 +726,16 @@ describe('#3429: a continued attached conversation opens in the dock', () => {
       expect(followUp.body.data).toMatchObject({
         conversationId: child,
         sessionId: child,
+        resolution: {
+          workspace: projectSlug
+            ? {
+                kind: 'project',
+                projectSlug,
+                cwd,
+                workspaceIsolation: { mode: 'shared' },
+              }
+            : { kind: 'directory', cwd },
+        },
       });
       // It reached the continuation's own engine session, which runs in the
       // conversation's folder: nothing was started anywhere else, and the
@@ -1249,26 +1259,45 @@ describe('#3429: a continued attached conversation opens in the dock', () => {
 describe('#4074: attached repository selection preserves existing Sessions', () => {
   async function started() {
     const f = await fixture({ engineAgent: true, boundResources: true });
-    const response = await f.request(
-      '/api/orchestration/chat',
-      dockFollowUp('claude', undefined, 'station', 'first turn'),
-    );
+    const response = await f.request('/api/orchestration/chat', {
+      ...dockFollowUp('claude', undefined, 'station', 'first turn'),
+      clientTurnId: 'first-turn',
+    });
     expect(response.status, response.text).toBe(200);
     const conversation = response.body.data.conversationId as string;
     await vi.waitFor(() =>
       expect(f.store.readSessionByThread(conversation)?.cwd).toBe(f.project),
     );
     await f.selectSecond();
-    return { f, conversation };
+    return { f, conversation, first: response.body.data };
   }
 
   test('old Session and cold successor execute in the original repository; a new Session executes in the selected repository', async () => {
-    const { f, conversation } = await started();
+    const { f, conversation, first } = await started();
+    const firstRetry = await f.request('/api/orchestration/chat', {
+      ...dockFollowUp('claude', conversation, 'station', 'first turn'),
+      clientTurnId: 'first-turn',
+    });
+    expect(firstRetry.status, firstRetry.text).toBe(200);
+    expect(firstRetry.body.data).toMatchObject({
+      sessionId: first.sessionId,
+      providerTurnId: first.providerTurnId,
+      resolution: { workspace: first.resolution.workspace },
+    });
+    expect(first.resolution.workspace).toEqual({
+      kind: 'project',
+      projectSlug: 'station',
+      cwd: f.project,
+      workspaceIsolation: { mode: 'shared' },
+    });
     const follow = await f.request(
       '/api/orchestration/chat',
       dockFollowUp('claude', conversation, 'station', 'old follow-up'),
     );
     expect(follow.status, follow.text).toBe(200);
+    expect(follow.body.data.resolution.workspace).toEqual(
+      first.resolution.workspace,
+    );
     for (const workspace of [
       { kind: 'directory', cwd: f.otherProject },
       { kind: 'project', projectSlug: 'other' },
@@ -1303,6 +1332,9 @@ describe('#4074: attached repository selection preserves existing Sessions', () 
       dockFollowUp('claude', conversation, undefined, 'cold follow-up'),
     );
     expect(cold.status, cold.text).toBe(200);
+    expect(cold.body.data.resolution.workspace).toEqual(
+      first.resolution.workspace,
+    );
     expect(
       f.engines.claude.starts.find(
         (start) => start.threadId === cold.body.data.sessionId,
@@ -1313,6 +1345,12 @@ describe('#4074: attached repository selection preserves existing Sessions', () 
       dockFollowUp('claude', undefined, 'station', 'new conversation'),
     );
     expect(fresh.status, fresh.text).toBe(200);
+    expect(fresh.body.data.resolution.workspace).toEqual({
+      kind: 'project',
+      projectSlug: 'station',
+      cwd: f.otherProject,
+      workspaceIsolation: { mode: 'shared' },
+    });
     expect(
       f.engines.claude.starts.find(
         (start) => start.threadId === fresh.body.data.sessionId,

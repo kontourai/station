@@ -683,6 +683,23 @@ export async function executeForegroundMessage(
         input.target.workspace.workspaceIsolation === undefined,
     );
   }
+  // Resolution checks today's target; a validated continuation still executes
+  // in its server-read binding. Keep worktree receipts' repository-root form.
+  const resolution: ExecutionResolutionReceipt =
+    binding?.cwd !== undefined && !binding.worktree
+      ? {
+          ...resolved.receipt,
+          workspace:
+            binding.projectSlug && binding.workspaceIsolation
+              ? {
+                  kind: 'project',
+                  projectSlug: binding.projectSlug,
+                  cwd: binding.cwd,
+                  workspaceIsolation: binding.workspaceIsolation,
+                }
+              : { kind: 'directory', cwd: binding.cwd },
+        }
+      : resolved.receipt;
   const effectiveClientTurnId = requestedHandoff
     ? `handoff:${createHash('sha256')
         .update(`${conversationId}\0${input.handoffIntent!.idempotencyKey}`)
@@ -817,7 +834,7 @@ export async function executeForegroundMessage(
         sessionId: preparedHandoff.marker.sessionId,
         providerTurnId: existingEffect.providerTurnId,
         target: { kind: 'agent', id: resolved.agentId },
-        resolution: resolved.receipt,
+        resolution,
         handoff: {
           predecessorSessionId: preparedHandoff.marker.predecessorSessionId,
           sessionId: preparedHandoff.marker.sessionId,
@@ -929,7 +946,7 @@ export async function executeForegroundMessage(
         sessionId: decision.sessionId,
         providerTurnId: decision.turnId,
         target: { kind: 'agent', id: resolved.agentId },
-        resolution: resolved.receipt,
+        resolution,
       };
     }
     if (decision.kind === 'may-have-been-sent')
@@ -1422,7 +1439,7 @@ export async function executeForegroundMessage(
     sessionId,
     providerTurnId: turn.turnId,
     target: { kind: 'agent', id: resolved.agentId },
-    resolution: resolved.receipt,
+    resolution,
     ...(approvalMode ? { approvalMode } : {}),
     ...(preparedHandoff
       ? {
