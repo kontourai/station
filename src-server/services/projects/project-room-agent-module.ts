@@ -54,6 +54,12 @@ export type ProjectRoomAgentFailure =
   | 'launch_uncertain'
   | 'execution_failed'
   | 'publication_failed';
+const failureSchema = z.enum([
+  'agent_unavailable',
+  'launch_uncertain',
+  'execution_failed',
+  'publication_failed',
+]);
 export type ProjectRoomAgentHandle = {
   failure?: ProjectRoomAgentFailure;
 } & Omit<ProjectRoomAgentRequest, 'sessionId' | 'executionCorrelationId'>;
@@ -180,17 +186,23 @@ export class ProjectRoomAgentModule {
     this.check(authority);
     const request = this.store.getRequest(authority.scope, id);
     // Handles are shared; private Session coordinates never cross this seam.
-    const failure = this.db
+    const storedFailure = this.db
       .prepare(
         'SELECT code FROM project_room_agent_failures WHERE request_id=?',
       )
-      .get(id)?.code as ProjectRoomAgentFailure | undefined;
+      .get(id)?.code;
+    const failure =
+      storedFailure === undefined
+        ? undefined
+        : failureSchema.safeParse(storedFailure);
+    if (failure && !failure.success)
+      throw new Error('Project room failure unavailable');
     return {
       ...publicHandle(request),
       ...(failure &&
       request.state !== 'published' &&
       request.state !== 'cancelled'
-        ? { failure }
+        ? { failure: failure.data }
         : {}),
     };
   }

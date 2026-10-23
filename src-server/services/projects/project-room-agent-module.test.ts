@@ -118,6 +118,25 @@ describe('Project Room explicit agent participation', () => {
       },
     };
   }
+  it('refuses an unknown persisted failure code before exposing a handle', async () => {
+    const f = fixture();
+    const handle = await f.module.request(f.authority, f.input);
+    const db = new DatabaseSync(
+      join(f.authority.executionRoot, 'security', 'project-room-agent.sqlite'),
+    );
+    try {
+      db.prepare('INSERT INTO project_room_agent_failures VALUES (?, ?)').run(
+        handle.requestId,
+        'private diagnostic text',
+      );
+      expect(() => f.module.inspect(f.authority, handle.requestId)).toThrow(
+        'Project room failure unavailable',
+      );
+    } finally {
+      db.close();
+    }
+  });
+
   it.each([
     'sessionId',
     'correlationId',
