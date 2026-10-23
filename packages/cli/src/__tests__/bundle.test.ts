@@ -260,7 +260,7 @@ describe('published CLI bundle', () => {
     // Pairing offers render a terminal QR code; qrcode is the reviewed,
     // runtime-only encoder used by that command.
     expect(manifest.dependencies ?? {}).toEqual({
-      '@napi-rs/keyring': '2.1.1',
+      '@napi-rs/keyring': '2.1.2',
       qrcode: '^1.5.4',
     });
     expect(optionalPeers).toContain('esbuild');
