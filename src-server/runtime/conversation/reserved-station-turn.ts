@@ -212,6 +212,12 @@ export async function reservedStationTurnResult(
   if (!value.result) refuse();
   const result = await value.result;
   state(handle);
+  await value.attempt.persistence.assertProviderEvidenceRetained(
+    result.evidence,
+    result.evidenceReference,
+    value.attempt.transport.launch.finalizeCurrent,
+  );
+  state(handle);
   return result;
 }
 

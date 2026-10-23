@@ -1899,7 +1899,7 @@ token and physical-attempt caps are unavailable; portable Flow lineage is
 unbound and work acceptance is unassessed. The separate reserved direct-API
 source/tariff owners do not establish those guarantees for CLI sessions.
 
-## Reserved Station source execution
+### Reserved Station source execution
 
 The [reserved-turn owner](../../src-server/runtime/conversation/reserved-station-turn.ts)
 issues an in-memory opaque port over an already prepared sealed SDK attempt.
@@ -1921,7 +1921,10 @@ and stop restrictions; the marker cannot issue a port or authorize a request.
 The [reserved SDK attempt](../../src-server/runtime/conversation/reserved-sdk-source-attempt.ts)
 passes through the durable physical launch fence and awaits
 [host evidence retention](../../src-server/services/orchestration/delegation-group-persistence.ts)
-before returning integer token usage and tariff-derived micros. Canonical
+before returning integer token usage and tariff-derived micros. Reserved-result
+disclosure re-reads that exact retained record under the same custody lock and
+current authority; missing or changed evidence refuses without resending or
+rewriting settled charges. Canonical
 adapter events then carry buffered output and an evidence reference, not raw
 provider JSON. The mode offers no tools, approval requests or continuation.
 [Cooperative stop](../../src-server/services/orchestration/cooperative-stop.ts)

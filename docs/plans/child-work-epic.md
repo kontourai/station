@@ -898,6 +898,10 @@ Cancellation requests abort without asserting provider termination; unknown
 usage retains its reservation. Ordinary sessions keep their existing logical
 stop deadline and teardown.
 
+Result disclosure also rechecks the exact retained provider evidence under the
+private persistence lock. Missing or changed bytes refuse; restoration permits
+reading the original result without a second invocation or charge rewrite.
+
 This is controlled integration under synthetic provider fixtures. Boot
 preparation, production provider qualification issuance, real Flow AccountingV1
 serving settlement, authenticated ACK and separate rounds custody remain open.

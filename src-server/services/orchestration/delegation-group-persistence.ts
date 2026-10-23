@@ -282,6 +282,38 @@ export class StationDelegationPersistence {
     });
   }
 
+  async assertProviderEvidenceRetained(
+    evidence: ReservedProviderEvidence,
+    reference: { id: string; domain: string; digest: string },
+    finalizeCurrent: DelegationPersistenceFinalizer,
+  ): Promise<void> {
+    const record = structuredClone({ version: 1, evidence });
+    const id = createHash('sha256')
+      .update(
+        canonicalJson([evidence.intent.root.id, evidence.intent.invocationId]),
+      )
+      .digest('hex');
+    const digest = `sha256:${createHash('sha256')
+      .update(canonicalJson(record))
+      .digest('hex')}`;
+    requirePersistence(
+      reference.id === id &&
+        reference.domain === 'station.provider-evidence' &&
+        reference.digest === digest,
+      'delegation_provider_evidence_mismatch',
+    );
+    await this.#providerEvidence.locked(finalizeCurrent, async () => {
+      const bytes = readBytes(
+        join(this.#providerEvidence.directory, `${id}.json`),
+        20 * 1024 * 1024,
+      );
+      requirePersistence(
+        bytes !== null && same(JSON.parse(bytes), record),
+        'delegation_provider_evidence_unavailable',
+      );
+    });
+  }
+
   authorityStore(
     finalizeCurrent: DelegationPersistenceFinalizer,
   ): DelegationAuthorityStore {

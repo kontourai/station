@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { RESERVED_SOURCE_EXECUTION_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import { test } from 'vitest';
 import {
@@ -679,6 +681,29 @@ for (const provider of ['anthropic', 'google'] as const)
     assert.equal(f.starts, 1);
     await assert.rejects(() => driver.reserveAnother(), {
       code: 'invocation_budget_exhausted',
+    });
+    const file = join(
+      driver.evidenceDirectory,
+      readdirSync(driver.evidenceDirectory).find((name) =>
+        name.endsWith('.json'),
+      )!,
+    );
+    const bytes = readFileSync(file);
+    writeFileSync(file, '{}');
+    await assert.rejects(() => driver.readReservedResult(), {
+      code: 'delegation_provider_evidence_unavailable',
+    });
+    unlinkSync(file);
+    await assert.rejects(() => driver.readReservedResult(), {
+      code: 'delegation_provider_evidence_unavailable',
+    });
+    writeFileSync(file, bytes, { mode: 0o600 });
+    assert.equal((await driver.readReservedResult()).sdkResult.text, 'OK');
+    assert.equal(f.starts, 1);
+    assert.deepEqual((await driver.ledger()).invocations[0].usage, {
+      inputTokens: 4,
+      outputTokens: 2,
+      costMicros: 7,
     });
     await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
   });

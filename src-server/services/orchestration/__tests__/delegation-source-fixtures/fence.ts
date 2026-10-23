@@ -272,6 +272,9 @@ export async function publicFenceFixture(
       await orchestration.shutdown();
       eventStore.close();
     });
+  let reservedResult:
+    | (() => ReturnType<typeof reservedStationTurnResult>)
+    | undefined;
   let repeatAttempt:
     | (() => ReturnType<typeof runReservedSdkSourceAttempt>)
     | undefined;
@@ -337,6 +340,7 @@ export async function publicFenceFixture(
           },
           attemptInput,
         );
+        reservedResult = () => reservedStationTurnResult(port);
         const started = await orchestration.startSessionInternal(
           {
             type: 'start-session',
@@ -544,6 +548,11 @@ export async function publicFenceFixture(
         { reservedStationTurn: JSON.parse('{}') },
       ]);
     },
+    readReservedResult: () => {
+      if (!reservedResult) throw Error('reserved result missing');
+      return reservedResult();
+    },
+    evidenceDirectory,
     retainedReference: () => {
       const files = readdirSync(evidenceDirectory).filter((file) =>
         file.endsWith('.json'),
