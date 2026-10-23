@@ -170,6 +170,7 @@ describe('StationFixtureOwner', () => {
     ['bound launch and boot', {}, true],
     ['no receipt', { noReceipt: '1' }, false],
     ['no captured boot', { noCapture: '1' }, false],
+    ['later start has no captured boot', { uncapturedRestart: '1' }, false],
     ['wrong receipt root', { wrongRoot: '1' }, false],
     ['wrong receipt nonce', { wrongNonce: '1' }, false],
     ['actor changed after capture', { changedActor: '1' }, false],
@@ -287,6 +288,14 @@ describe('StationFixtureOwner', () => {
       if (change.changedActor) {
         receipt.actor.pid += 1;
         writeFileSync(receiptPath, JSON.stringify(receipt) + '\n');
+      }
+      if (change.uncapturedRestart) {
+        appendFileSync(
+          receiptPath,
+          `${JSON.stringify(
+            attestRuntimeRecoveryLaunch(request, actorPid, 'start', read),
+          )}\n`,
+        );
       }
       // Start a fresh candidate observation after the publication controls.
       read = recoveryProcReader(workerPid, actorPid, candidatePid, change);

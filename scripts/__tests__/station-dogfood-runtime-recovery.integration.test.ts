@@ -605,15 +605,20 @@ describe('production reconcile backend-only recovery', () => {
     const runtimeBeforeFailedStop = readFileSync(
       join(logDir, 'station-runtime.log'),
     );
-    expect(() =>
-      reconcile(config, {
-        run: command,
-        now: () => {
-          now += 10;
-          return now;
-        },
-      }),
-    ).toThrow('process fingerprint mismatch');
+    const refusedStop = spawnSync(
+      './station',
+      ['stop', '--instance=phone', `--base=${stationHome}`],
+      {
+        cwd: release,
+        env: { ...process.env, STATION_HOME: stationHome },
+        encoding: 'utf8',
+        windowsHide: true,
+      },
+    );
+    expect(refusedStop.error).toBeUndefined();
+    expect(refusedStop.signal).toBeNull();
+    expect(refusedStop.status).toBe(1);
+    expect(refusedStop.stderr).toContain('process fingerprint mismatch');
     expect(() => process.kill(unrelated.pid!, 0)).not.toThrow();
     expect(
       readFileSync(join(logDir, 'station-runtime.log')).equals(
