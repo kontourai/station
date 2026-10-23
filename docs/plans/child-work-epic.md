@@ -1017,3 +1017,12 @@ row selection itself is component state and is not automatically restored by
 reload. This journey sends no new model request. A 390px browser viewport is
 not a second physical-device receipt for this later wording change; the earlier
 B10 evidence remains pinned to its own APK and server revisions.
+
+At `57ce3a235be`, Activity calls its filter “Recorded origin” rather than
+“Started from”: the contract supplies each Session's most recent attributed
+turn, and conversation filtering considers those Session values. It does not
+claim complete per-turn origin history or replace the delegation header's
+first-turn initiation record. The existing mounted label/selection cases fail
+on the former label (2 red, 21 controls) and the two-file selection passes 24
+tests after correction. Biome and independent source review pass. This small
+copy-only follow-up has no new browser or physical-device receipt.
