@@ -1,0 +1,7 @@
+{
+  "revision": "26e94a23a9760e7239d097c5335a741c2550dcc2",
+
+  "notes": [
+    {"path":"docs/design/remote-execution-preparation.md","note":"Completed the design claim review against preparation contract/adapter, prepared receiver route and delegateTask start/reattach/turn ordering, refusal settlement, capability flag, explicit CLI four-flag producer and lookup. Corrected reattach ordering, attempted-refusal recording and existing-session wording; independent report-only audit agreed and found two race injections rather than one, now corrected. Full lowercase SHA1/SHA256 IDs, scheme/value pre-read refusal, closed git-only registry, path-free receipt, no transfer/setup and unfenced when-checked guarantee map to source. Test definitions show intended refusal and injected-race coverage only; no new execution/provider/older-receiver/SSH proof. Full admission auth and Git confinement internals were consumed as owner seams, not newly requalified. Slices1and3 source exists; result return/protection/unpublished transfer remain proposals.","inputs":["docs/design/remote-execution-preparation.md","packages/contracts/src/execution-preparation.ts","src-server/capabilities/station-capability-flags.ts"]}
+  ]
+}
