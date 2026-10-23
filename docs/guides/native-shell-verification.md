@@ -722,6 +722,13 @@ versions report unavailable. iOS declares the exact Bonjour service and local
 network usage description. A fixed declared service does not require the
 multicast entitlement.
 
+Android 17 first admits the runtime local-network permission without starting a
+scan. The native permission callback returns to an explicit **Check again**;
+`discover` refuses missing permission. Verify denial and return from that prompt
+separately from active browsing: Android's implicit NSD picker pauses the app and
+cannot share a foreground scan's lifetime. Earlier Android versions keep their
+existing bounded NSD path. iOS `prepare` does not start browsing or request access.
+
 Scans are bounded and cancelled on explicit cancellation, foreground loss and
 provider disposal. The adapter validates every result before passing it to the
 candidate registry. Selection enters the existing address review, explicit HTTP

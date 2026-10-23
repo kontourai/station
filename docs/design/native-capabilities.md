@@ -72,7 +72,10 @@ backgrounding and provider disposal cancel the exact scan; the registry ignores
 late or replaced-provider results. The outer deadline is 18 seconds. iOS declares
 the exact Bonjour service and local-network usage description; this fixed service
 does not require a multicast entitlement. Android resolver cancellation requires
-API 34, while the application's earlier supported versions keep QR/manual paths.
+API 34, while the application's earlier supported versions keep QR/manual paths. Android 17's local-network permission is admitted by a separate
+`prepare` command before a scan is owned. The permission prompt may pause the
+Activity; after returning, the user checks again. `discover` refuses ungranted
+permission, and active scans still cancel on hide or pause.
 
 Host publication is separately opt-in and currently private-IPv4-only. Discovery
 creates no trust, credentials, saved profile, browser navigation or Tailscale
