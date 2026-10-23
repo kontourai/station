@@ -255,7 +255,7 @@ function deriveOwnTurn(
 function ownTurnEnding(
   eventStore: EventStore,
   threadId: string,
-  own: { turnId: string; start: PersistedRuntimeEvent },
+  own: { turnId: string; start: PersistedRuntimeEvent; invocationId?: string },
 ): 'completed' | 'ended' | undefined {
   let ending: 'completed' | 'ended' | undefined;
   for (const event of eventStore.listEventsByMethodsAfterSequence(
@@ -266,6 +266,16 @@ function ownTurnEnding(
   )) {
     if (event.turnId !== own.turnId) continue;
     const terminal = event.payload;
+    if (
+      terminal.invocationId !== undefined &&
+      terminal.invocationId !== own.invocationId
+    )
+      continue;
+    if (
+      own.start.payload.invocationId !== undefined &&
+      terminal.invocationId !== own.start.payload.invocationId
+    )
+      continue;
     if (terminal.method === 'turn.completed') {
       if (terminal.finishReason !== 'cancelled') return 'completed';
       ending = 'ended';
@@ -596,6 +606,8 @@ export class InterruptedTurnRecovery {
             : ownTurnEnding(eventStore, record.threadId, {
                 turnId: ownTurnId,
                 start: ownStart,
+                invocationId:
+                  record.intent?.invocationId ?? ownStart.payload.invocationId,
               });
         if (ownEnding === 'completed') {
           // A retained boundary is a possible-effect fence, not proof that

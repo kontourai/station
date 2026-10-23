@@ -726,8 +726,12 @@ export class CodexAdapterTransport {
     return record;
   }
 
-  publish(event: CanonicalRuntimeEvent): void {
-    const origins = this.sessions.get(event.threadId)?.turnInvocationIds;
+  publish(
+    event: CanonicalRuntimeEvent,
+    sourceRecord?: CodexSessionRecord,
+  ): void {
+    const origins = (sourceRecord ?? this.sessions.get(event.threadId))
+      ?.turnInvocationIds;
     if (event.turnId && origins && !origins.has(event.turnId)) {
       origins.set(event.turnId, null);
     }
@@ -1278,14 +1282,14 @@ export class CodexAdapterTransport {
     settleUnresolvedCodexToolCalls({
       record,
       nowIso,
-      publish: (event) => this.publish(event),
+      publish: (event) => this.publish(event, record),
     });
     // #2458: a subagent still running when its session ends can never
     // report again, so it settles `unresolved` — same doors, same moment.
     settleOpenCodexChildren({
       record,
       nowIso: () => nowIso,
-      publish: (event) => this.publish(event),
+      publish: (event) => this.publish(event, record),
     });
   }
 
@@ -1348,18 +1352,21 @@ export class CodexAdapterTransport {
     const turnId = record.activeTurnId;
     record.activeTurnId = undefined;
     markCodexTurnTerminal(record, turnId);
-    this.publish({
-      eventId: crypto.randomUUID(),
-      provider: 'codex',
-      threadId: record.externalThreadId,
-      createdAt: nowIso,
-      method: 'runtime.error',
-      ...providerFailure('engine_crashed'),
-      severity: 'error',
-      turnId,
-      message,
-      code: 'codex-turn-orphaned',
-    } satisfies ProviderRuntimeErrorEvent);
+    this.publish(
+      {
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: nowIso,
+        method: 'runtime.error',
+        ...providerFailure('engine_crashed'),
+        severity: 'error',
+        turnId,
+        message,
+        code: 'codex-turn-orphaned',
+      } satisfies ProviderRuntimeErrorEvent,
+      record,
+    );
   }
 
   /**

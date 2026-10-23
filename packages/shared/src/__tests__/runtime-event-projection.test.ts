@@ -1486,7 +1486,14 @@ describe('projectRuntimeEventsToMessages', () => {
   });
 
   describe('the interrupted-turn banner (station#4080 slice 1, review round 1 M3)', () => {
-    it.each(['completed', 'cancelled', 'reused-id', 'other-session'] as const)(
+    it.each([
+      'completed',
+      'cancelled',
+      'reused-id',
+      'other-session',
+      'mismatched-invocation',
+      'untagged-terminal',
+    ] as const)(
       'historical recovery respects the actual turn outcome: %s',
       (outcome) => {
         const reason = 'Turn interrupted — process restarted.';
@@ -1496,6 +1503,10 @@ describe('projectRuntimeEventsToMessages', () => {
               method: 'turn.started',
               turnId: 'old-turn',
               prompt: 'Question',
+              ...(outcome === 'mismatched-invocation' ||
+              outcome === 'untagged-terminal'
+                ? { invocationId: 'current-invocation' }
+                : {}),
             }),
             ev({
               method: 'content.text-delta',
@@ -1507,6 +1518,9 @@ describe('projectRuntimeEventsToMessages', () => {
               turnId: 'old-turn',
               threadId: outcome === 'other-session' ? 'other' : 't1',
               finishReason: outcome === 'cancelled' ? 'cancelled' : 'stop',
+              ...(outcome === 'mismatched-invocation'
+                ? { invocationId: 'stale-invocation' }
+                : {}),
             }),
             ...(outcome === 'reused-id'
               ? [

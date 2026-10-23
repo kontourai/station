@@ -344,52 +344,70 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
     ).toEqual({ kind: 'available', active: true });
   });
 
-  test('a previous completion with a reused native ID does not hide an interrupted accepted turn', async () => {
-    const threadId = 'reused-native-id';
-    const store = bootAfterCrash({
-      path: databasePath(),
-      threadId,
-      provider: 'codex',
-      boundaryState: 'accepted',
-      capturedInput: true,
-      beforeTurnStarted: [
-        {
-          eventId: 'old-start',
-          provider: 'codex',
-          threadId,
-          turnId: 'turn-1',
-          method: 'turn.started',
-          createdAt: '2026-08-16T00:00:00.100Z',
-        },
-        {
-          eventId: 'old-completion',
-          provider: 'codex',
-          threadId,
-          turnId: 'turn-1',
-          method: 'turn.completed',
-          finishReason: 'stop',
-          createdAt: '2026-08-16T00:00:00.200Z',
-        },
-      ],
-    });
-    stores.push(store);
-    const service = new OrchestrationService({
-      adapterRegistry: createRegistry(),
-      eventBus: new EventBus(),
-      eventStore: store,
-      logger,
-    });
-    await (service as any).interruptedTurns.consume();
-    expect(
-      store
-        .listEvents(threadId)
-        .filter(
-          (event) =>
-            event.payload.method === 'session.state-changed' &&
-            event.payload.interruptedTurnBoundary,
-        ),
-    ).toHaveLength(1);
-  });
+  test.each(['previous-completion', 'mismatched-invocation'] as const)(
+    'a %s with a reused native ID does not hide an interrupted accepted turn',
+    async (outcome) => {
+      const threadId = 'reused-native-id';
+      const store = bootAfterCrash({
+        path: databasePath(),
+        threadId,
+        provider: 'codex',
+        boundaryState: 'accepted',
+        capturedInput: true,
+        duringTurn:
+          outcome === 'mismatched-invocation'
+            ? [
+                {
+                  eventId: 'late-wrong-invocation',
+                  provider: 'codex',
+                  threadId,
+                  turnId: 'turn-1',
+                  invocationId: 'stale-invocation',
+                  method: 'turn.completed',
+                  finishReason: 'stop',
+                  createdAt: '2026-08-16T00:00:03.000Z',
+                },
+              ]
+            : [],
+        beforeTurnStarted: [
+          {
+            eventId: 'old-start',
+            provider: 'codex',
+            threadId,
+            turnId: 'turn-1',
+            method: 'turn.started',
+            createdAt: '2026-08-16T00:00:00.100Z',
+          },
+          {
+            eventId: 'old-completion',
+            provider: 'codex',
+            threadId,
+            turnId: 'turn-1',
+            method: 'turn.completed',
+            finishReason: 'stop',
+            createdAt: '2026-08-16T00:00:00.200Z',
+          },
+        ],
+      });
+      stores.push(store);
+      const service = new OrchestrationService({
+        adapterRegistry: createRegistry(),
+        eventBus: new EventBus(),
+        eventStore: store,
+        logger,
+      });
+      await (service as any).interruptedTurns.consume();
+      expect(
+        store
+          .listEvents(threadId)
+          .filter(
+            (event) =>
+              event.payload.method === 'session.state-changed' &&
+              event.payload.interruptedTurnBoundary,
+          ),
+      ).toHaveLength(1);
+    },
+  );
 
   test('historical recovery after a completed turn leaves the inbox finished', () => {
     const threadId = 'historical-false-interruption';
@@ -417,6 +435,13 @@ describe('station#4080 slice 1: interrupted-turn boundary consumption', () => {
       threadId,
       createdAt: '2026-08-16T00:00:04.000Z',
     };
+    store.appendEvent({
+      ...base,
+      eventId: 'late-other-turn-completion',
+      method: 'turn.completed',
+      turnId: 'previous-turn',
+      finishReason: 'stop',
+    });
     store.appendEvent({
       ...base,
       eventId: 'old-recovery-abort',

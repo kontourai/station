@@ -213,7 +213,8 @@ export interface ProjectRuntimeEventsOptions {
 export function withoutCompletedTurnRecovery(
   events: readonly CanonicalRuntimeEvent[],
 ): CanonicalRuntimeEvent[] {
-  const completed = new Set<string>();
+  const starts = new Map<string, string | undefined>();
+  const completed = new Map<string, string | undefined>();
   return events.filter((event) => {
     const turnId =
       event.method === 'session.state-changed'
@@ -221,12 +222,21 @@ export function withoutCompletedTurnRecovery(
         : event.turnId;
     if (!turnId) return true;
     const key = JSON.stringify([event.threadId, turnId]);
-    if (event.method === 'turn.started' && event.inputKind !== 'steer')
+    if (event.method === 'turn.started' && event.inputKind !== 'steer') {
+      starts.set(key, event.invocationId);
       completed.delete(key);
-    if (event.method === 'turn.completed' && event.finishReason !== 'cancelled')
-      completed.add(key);
+    }
+    if (
+      event.method === 'turn.completed' &&
+      (!starts.has(key) || event.invocationId === starts.get(key))
+    ) {
+      if (event.finishReason === 'cancelled') completed.delete(key);
+      else completed.set(key, event.invocationId);
+    }
     return !(
       completed.has(key) &&
+      (event.invocationId === undefined ||
+        event.invocationId === completed.get(key)) &&
       ((event.method === 'turn.aborted' && event.recoveryTerminal) ||
         (event.method === 'session.state-changed' &&
           event.interruptedTurnBoundary))
