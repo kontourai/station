@@ -1,0 +1,7 @@
+{
+  "revision": "2046c7bc1b3c035fba2aa0d01c9975810548ca7c",
+
+  "notes": [
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Reviewed the full historical ADR and its bounded reading-status claim against the outstanding contracts/orchestration.ts history delta, current RequestAnswerability/required summary fields, open-requests.ts projectRequestAnswerability, and OrchestrationService observeAnswerability/read emitters. Additive sender, cwd workspace, latest-tool, delivery/inbox, approval-scope and termination-uncertainty fields do not change the required answerability union or move process-local observations into persisted resolution events. Reserved-source and retained-session sync dispatch fences remain separate from the read decoration. Prose remains accurate; original historical counts, consumer completion and live cross-instance behavior are not requalified. EXECUTED at 2046c7bc1b3: two focused owner files passed25/25 and typecheck:contracts passed. Reviewed tests for their required-wire and real-service read/no-write contracts; no new tests or mutations introduced for this documentation-only classification.","inputs":["docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","packages/contracts/src/orchestration.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}
