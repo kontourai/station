@@ -283,9 +283,9 @@ export async function initializeWorkloadResources(): Promise<void> {
     const probe = spawnChildWorkload('/bin/true', [], {
       stdio: ['ignore', 'ignore', 'pipe'],
     });
-    let probeError = '';
+    let probeError = Buffer.alloc(0);
     probe.stderr?.on('data', (data: Buffer) => {
-      probeError = (probeError + data.toString()).slice(-2048);
+      probeError = Buffer.concat([probeError, data]).subarray(-2048);
     });
     try {
       await new Promise<void>((resolve, reject) => {
@@ -303,7 +303,7 @@ export async function initializeWorkloadResources(): Promise<void> {
           else
             reject(
               new Error(
-                `Workload scope capability probe exited ${code ?? signal}. ${probeError.trim()}`.trim(),
+                `Workload scope capability probe exited ${code ?? signal}. ${probeError.toString().trim()}`.trim(),
               ),
             );
         });
