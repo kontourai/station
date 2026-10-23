@@ -254,7 +254,20 @@ export async function listReportGroups(
     afterGroupId === undefined
       ? ''
       : `?afterGroupId=${encodeURIComponent(id.parse(afterGroupId))}`;
-  return list.parse(await read(root(base) + suffix, options));
+  const parsed = list.parse(await read(root(base) + suffix, options));
+  if (
+    parsed.groups.some(
+      (group, index) =>
+        (afterGroupId !== undefined && group.groupId <= afterGroupId) ||
+        (index > 0 && group.groupId <= parsed.groups[index - 1].groupId),
+    ) ||
+    (parsed.hasMore
+      ? parsed.nextGroupId === null ||
+        parsed.nextGroupId !== parsed.groups.at(-1)?.groupId
+      : parsed.nextGroupId !== null)
+  )
+    throw new ReportGroupProtocolError('Invalid report group list page.');
+  return parsed;
 }
 export async function cancelReportGroup(
   base: string,

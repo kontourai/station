@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import {
   createReportGroup,
+  listReportGroups,
   ReportGroupProtocolError,
   readReportGroupEvents,
   readReportGroupResult,
@@ -121,3 +122,62 @@ test.each(['foreign-checkpoint', 'malformed-json'] as const)(
     }
   },
 );
+
+const groupView = (groupId: string) => ({
+  version: 'station.report-group/v1',
+  groupId,
+  operationId: 'op',
+  revision: 0,
+  topology: { kind: 'independent-advisory' },
+  execution: 'idle',
+  cancellation: 'none',
+  authorityRevoked: false,
+  acceptance: 'unassessed',
+  members: [
+    {
+      seatId: 's',
+      agentId: 'a',
+      taskId: 'task',
+      clientTurnId: 'turn',
+      requestedModelId: 'model',
+      attempts: [],
+    },
+  ],
+});
+test.each([
+  { groups: [], hasMore: true, nextGroupId: null },
+  { groups: [groupView('a')], hasMore: false, nextGroupId: 'a' },
+  {
+    groups: [groupView('a'), groupView('a')],
+    hasMore: false,
+    nextGroupId: null,
+  },
+  {
+    groups: [groupView('b'), groupView('a')],
+    hasMore: false,
+    nextGroupId: null,
+  },
+  { groups: [groupView('a')], hasMore: true, nextGroupId: 'b' },
+])(
+  'report list refuses inconsistent membership/page cursor %j',
+  async (value) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async () => envelope(value)),
+    );
+    await expect(listReportGroups(base)).rejects.toThrow(
+      ReportGroupProtocolError,
+    );
+  },
+);
+test('report list advances only through the last ordered member and refuses replay behind the requested cursor', async () => {
+  const data = { groups: [groupView('b')], hasMore: true, nextGroupId: 'b' };
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof fetch>(async () => envelope(data)),
+  );
+  expect(await listReportGroups(base, 'a')).toEqual(data);
+  await expect(listReportGroups(base, 'b')).rejects.toThrow(
+    ReportGroupProtocolError,
+  );
+});
