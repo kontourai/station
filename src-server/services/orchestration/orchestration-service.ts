@@ -1604,8 +1604,8 @@ function isWithinDirectory(root: string, candidate: string): boolean {
  * Meaning (R3): `localProjectId` is "the Project named at start AND
  * verified to contain the session's working directory". It is stamped only
  * when the resolved start `cwd` lies inside that Project's
- * `workingDirectory`, or is exactly the server-admitted workspace (a
- * provisioned worktree) bound to this thread and Project. A Project with no
+ * resolved execution root, or is exactly the server-admitted secondary
+ * resource or provisioned worktree bound to this thread and Project. A Project with no
  * directory, or a start whose cwd is elsewhere, is named but unverified:
  * it gets no id and an explicit `localProjectIdRefused: true`, so a reader
  * cannot fall back to looking the slug up.
@@ -1632,8 +1632,13 @@ async function withSessionLocalProjectId(
     ? listProjects?.().find((entry) => entry.slug === slug)
     : undefined;
   const cwd = input.cwd ? resolve(expandTilde(input.cwd)) : undefined;
+  const admittedCwd =
+    cwd !== undefined &&
+    admittedWorkspace?.threadId === input.threadId &&
+    admittedWorkspace.projectSlug === slug &&
+    admittedWorkspace.cwd === cwd;
   const resolvedRoot =
-    slug && resolveProjectDirectory
+    !admittedCwd && slug && resolveProjectDirectory
       ? await resolveProjectDirectory(slug)
       : project?.workingDirectory;
   const currentProject = slug
@@ -1642,10 +1647,7 @@ async function withSessionLocalProjectId(
   const root = resolvedRoot ? resolve(expandTilde(resolvedRoot)) : undefined;
   const cwdVerified =
     cwd !== undefined &&
-    ((root !== undefined && isWithinDirectory(root, cwd)) ||
-      (admittedWorkspace?.threadId === input.threadId &&
-        admittedWorkspace.projectSlug === slug &&
-        admittedWorkspace.cwd === cwd));
+    ((root !== undefined && isWithinDirectory(root, cwd)) || admittedCwd);
   const id =
     cwdVerified && currentProject?.id === project?.id ? project?.id : undefined;
   if (typeof id === 'string' && id)
@@ -1751,7 +1753,7 @@ async function resolveStartSessionCwd(
     });
   }
 
-  if (projectSlug && resolveProjectDirectory) {
+  if (projectSlug && resolveProjectDirectory && !admittedWorkspace) {
     projectCwd = await resolveProjectDirectory(projectSlug);
   }
 

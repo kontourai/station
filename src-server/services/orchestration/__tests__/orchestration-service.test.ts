@@ -4933,6 +4933,25 @@ describe('OrchestrationService', () => {
       });
     });
 
+    test('starts and stamps an admitted secondary workspace when the default resolver is unavailable', async () => {
+      configuredProjects.push({ id: 'local-project-1', slug: 'local', workingDirectory: join(tmp, 'unavailable-primary') });
+      const resolver = vi.fn(async () => { throw new Error('primary unavailable'); });
+      const runtime = new OrchestrationService({
+        adapterRegistry: createRegistry([claude]), eventBus, eventStore,
+        listProjects: () => configuredProjects,
+        resolveProjectSessionDirectory: resolver,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      const outcome = await runtime.startSessionInternal(
+        { type: 'start-session', input: { threadId: 'portable-secondary', provider: 'claude', cwd: tmp, metadata: { projectSlug: 'local' } } },
+        { userId: 'owner-user' },
+        { receiverExecutionAdmission: admittedFor('portable-secondary', tmp) },
+      );
+      if (outcome.status !== 'accepted') throw new Error(outcome.message);
+      expect(claude.startSession).toHaveBeenCalledWith(expect.objectContaining({ cwd: tmp, metadata: expect.objectContaining({ localProjectId: 'local-project-1' }) }));
+      expect(resolver).not.toHaveBeenCalled();
+    });
+
     test('an offer withdrawn while the start is queued refuses before the adapter runs', async () => {
       configuredProjects.push({ slug: 'local', workingDirectory: tmp });
       let entered = false;
