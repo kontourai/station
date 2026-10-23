@@ -1037,6 +1037,14 @@ replay. The public owner drives SDK finalization and registered CLI replay.
 Accounting and reservations remain unchanged; requested cancellation is not a
 physical-stop, refund or acceptance claim.
 
+The 9.5.1 prerequisite is now published and adopted in Station, contracts and
+SDK through the managed dependency workflow. Release PR #1548 merged, and the
+registry tarball matches the lock integrity. Installed public contract source,
+built JavaScript and declarations match that tarball. The contract permits
+omitting legacy `gate_attempt` metadata; Station must not fabricate a gate
+counter before Flow has claimed work. This removes a contract prerequisite.
+It does not wire Flow topology, continuation or provider acceptance by itself.
+
 Registered `group report-*` CLI commands now consume the strict SDK for
 create/get/list/events/follow/results/cancel. Input file and flag bounds apply
 before request dispatch; terminal output is escaped. SIGINT closes observation
