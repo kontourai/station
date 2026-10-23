@@ -1,0 +1,7 @@
+{
+  "revision": "05331e4fa19ac5d7de5da84ca3730ccb89582253",
+
+  "notes": [
+    {"path":"docs/reference/env-vars.md","note":"At c664041278c169e2f1c06d7a6d749da1454da43a, independently read the complete env-vars reference and inspected 69f1..head changes to runtime-initialize, runtime-routes and orchestration-service through their actual startup, route composition, retained-sync/send and automatic idle-parking callers. The new startup configuration fence and group/source execution composition introduce no operator environment variable, precedence or default change. STATION_IDLE_SESSION_PARK_AFTER_MS still controls automatic sweeps; explicit retained-sync parking uses the existing mechanism without changing env0 semantics. Listed unrelated resolver boundaries remain unchanged. Source-only; no tests, checks, build, runtime, network, provider, native or hosted execution verified. This note covers those three affected inputs only, not whole-product qualification. Root verified unchanged document bytes before recording; later documentation-only commits do not renew runtime evidence.","inputs":["docs/reference/env-vars.md","src-server/runtime/bootstrap/runtime-initialize.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}
