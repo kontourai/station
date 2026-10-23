@@ -1809,7 +1809,7 @@ The [usage reference](usage-telemetry.md) owns the program and deployment limits
 ### Telemetry delivery status and connection checks
 
 `GET /api/operator/telemetry-companion/prerequisites` is a separate, no-store
-host-capability read. It requires the operator in person and `home:control` for
+host-capability read. It requires the operator in person and `orchestration:read` for
 paired credentials; agents and raw internal-token callers are refused. It
 returns `{data: TelemetryCompanionPrerequisites}`: either observed local
 Docker/Compose versions and Linux container architecture, or a typed missing

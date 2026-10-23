@@ -53,7 +53,7 @@ test('an operator sees the explicit unavailable prerequisite result', async () =
       'GET',
       '/api/operator/telemetry-companion/prerequisites',
     ),
-  ).toBe('home:control');
+  ).toBe('orchestration:read');
 });
 
 test('authority withdrawn during a host probe cannot disclose the result', async () => {

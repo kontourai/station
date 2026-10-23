@@ -51,7 +51,7 @@ pending; these commands do not implement that journey.
 `GET /api/operator/telemetry-companion/prerequisites` is an uncached read for
 the operator in person, excluding agent-originated and internal-token callers.
 It probes the selected local container host. Paired callers additionally
-need `home:control`; that scope does not replace operator authorization. The
+need `orchestration:read`; that scope does not replace operator authorization. The
 route checks current operator authority before probing and before returning its
 result. It does not start Docker, pull images, create services or enable export.
 

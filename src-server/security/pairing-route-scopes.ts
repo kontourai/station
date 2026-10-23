@@ -538,7 +538,7 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     id: '/api/operator/telemetry-companion:prerequisites',
     method: 'GET',
     prefix: '/api/operator/telemetry-companion',
-    scope: PAIRING_SCOPE_HOME_CONTROL,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },
   {

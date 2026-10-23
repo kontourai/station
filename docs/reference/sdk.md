@@ -32,7 +32,7 @@ automatically, and refreshes when mounted or explicitly requested. A server
 refusal, unsupported response or malformed capability result is an error,
 not a passed prerequisite. The bounded response contains versions and container
 architecture, never credentials or raw host output. A passed host check is not
-artifact qualification or installation readiness. The Developer → Telemetry →
+artifact qualification or installation readiness. The Developer → Monitoring →
 Companion tab consumes this read; qualified install/start controls remain
 pending. See the [host prerequisite API](../../deployment/telemetry/README.md#station-host-prerequisite-api).
 

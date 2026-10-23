@@ -4822,7 +4822,7 @@ The Station-side [companion route](../../src-server/routes/system/telemetry-comp
 is mounted under `/api/operator/telemetry-companion`. Its prerequisite read uses
 the current operator authority at both sides of the asynchronous
 [local container probe](../../src-server/services/telemetry-companion.ts), with
-an additional `home:control` pairing scope. The bounded probe pins the selected
+an additional `orchestration:read` pairing scope. The bounded probe pins the selected
 local Docker endpoint and returns the shared telemetry-delivery capability
 shape. It launches no deployment and grants no artifact, export, source or
 personal analytics authority. Installation and ingestion readiness are separate
