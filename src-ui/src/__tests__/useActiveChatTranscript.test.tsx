@@ -1247,7 +1247,8 @@ describe('useActiveChatTranscript', () => {
     ).toHaveLength(11);
     expect(
       result.current.messages.find(
-        (message) => message.role === 'assistant' && message.turnId === 'turn-5c',
+        (message) =>
+          message.role === 'assistant' && message.turnId === 'turn-5c',
       )?.content,
     ).toBe('partial answer');
     // Empty rows explain their restart; partial answers keep a separate notice.
