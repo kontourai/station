@@ -254,7 +254,7 @@ test('a delegate from the session read model shows in All with its provenance an
   ).toBeTruthy();
   expect(screen.getByText('🦉')).toBeTruthy();
   expect(screen.getByText('Nightly audit')).toBeTruthy();
-  expect(screen.getByText('Started from the CLI')).toBeTruthy();
+  expect(screen.getByText('Recorded origin: CLI (reported)')).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Stop' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Open session' }));
   expect(showSurface).toHaveBeenCalledWith('activity', {

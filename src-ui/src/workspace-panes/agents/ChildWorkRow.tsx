@@ -49,7 +49,7 @@ function provenanceText(provenance: ChildWorkProvenance): string {
     case 'task':
       return `From task ${provenance.taskId}`;
     case 'cli':
-      return 'Started from the CLI';
+      return 'Recorded origin: CLI (reported)';
     case 'none':
       return 'No parent';
   }
