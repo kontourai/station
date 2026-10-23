@@ -1,6 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
@@ -12,6 +10,7 @@ import {
 } from '@kontourai/station-contracts/project-room-browser';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { ProjectManifestStore } from '../../services/projects/project-manifest-store.js';
 import {
@@ -26,12 +25,16 @@ import {
   type ProjectRoomAccessPort,
   ProjectRoomService,
 } from '../../services/projects/project-room-service.js';
-import { createProjectRoomRuntime } from '../../services/projects/project-room-store.js';
+import {
+  createProjectRoomRuntime,
+  ProjectRoomStore,
+} from '../../services/projects/project-room-store.js';
 import { ProjectService } from '../../services/projects/project-service.js';
 import { createProjectRoomRoutes } from './project-room-routes.js';
 
 const owner = humanPrincipal('deployment', 'alice', 'Alice');
 const member = humanPrincipal('deployment', 'bob', 'Bob');
+const makeTempDir = trackTempDirs();
 const cleanup: (() => void)[] = [];
 afterEach(() => {
   vi.useRealTimers();
@@ -48,8 +51,7 @@ async function harness(
   role: 'viewer' | 'contributor' = 'contributor',
   provision = true,
 ) {
-  const home = mkdtempSync(join(tmpdir(), 'station-room-http-'));
-  cleanup.push(() => rmSync(home, { recursive: true, force: true }));
+  const home = makeTempDir('station-room-http-');
   const storage = new FileStorageAdapter(home);
   const manifests = new ProjectManifestStore(home, storage);
   const projects = new ProjectService(storage, manifests);
@@ -559,10 +561,127 @@ test('an unconsumed SSE response stops on its bounded write deadline without que
   await h.discover('alice');
   vi.useFakeTimers();
   const response = await h.request('alice', '/events');
-  // No reader drains Hono's first frame: the writer must stop itself.
+  // Wait for asynchronous membership IO to reach the blocked writer. The
+  // other timer belongs to the shared consistency owner.
+  await vi.waitFor(() => expect(vi.getTimerCount()).toBe(2));
   await vi.advanceTimersByTimeAsync(2001);
   expect(vi.getTimerCount()).toBe(0);
   await response.body?.cancel();
   h.service.close();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+// These mounted tests own transport timing, bounded queued work, and the durable
+// writer boundary. Store CRUD tests cannot detect idle invalidation or lost wakes.
+async function frame(reader: ReadableStreamDefaultReader<Uint8Array>) {
+  return new TextDecoder().decode((await reader.read()).value);
+}
+test('mounted SSE is idle without history reads, pushes direct Agent commits and note-only changes, and coalesces retries', async () => {
+  const h = await harness();
+  const a = await h.discover('alice');
+  vi.useFakeTimers();
+  const history = vi.spyOn(h.runtime.store, 'history');
+  const response = await h.request('alice', '/events');
+  const reader = response.body!.getReader();
+  expect(await frame(reader)).toContain('event: changed');
+  expect(await frame(reader)).toContain('event: presence');
+  history.mockClear();
+  let delivered = false;
+  const next = frame(reader).then((value) => {
+    delivered = true;
+    return value;
+  });
+  await vi.advanceTimersByTimeAsync(6500);
+  expect(delivered).toBe(false);
+  expect(history).not.toHaveBeenCalled();
+  expect(() =>
+    h.runtime.store.append(
+      h.scope,
+      a.actor,
+      { intentId: randomUUID(), text: 'rollback' },
+      () => {
+        throw new Error('revoked');
+      },
+    ),
+  ).toThrow('revoked');
+  await vi.advanceTimersByTimeAsync(0);
+  expect(delivered).toBe(false);
+  const input = { intentId: randomUUID(), text: 'Agent direct write' };
+  const agent = { kind: 'agent' as const, id: 'agent', displayName: 'Agent' };
+  for (let i = 0; i < 20; i++)
+    h.runtime.store.append(h.scope, agent, input, () => {});
+  await vi.advanceTimersByTimeAsync(0);
+  await vi.waitFor(() => expect(delivered).toBe(true));
+  expect(await next).toContain('"lastSeq":1');
+  const burst = frame(reader);
+  for (let i = 0; i < 20; i++)
+    h.runtime.store.append(
+      h.scope,
+      agent,
+      { intentId: randomUUID(), text: `burst ${i}` },
+      () => {},
+    );
+  await vi.advanceTimersByTimeAsync(0);
+  expect(await burst).toContain('"lastSeq":21');
+  const noteFrame = frame(reader);
+  h.runtime.store.updateNote(
+    h.scope,
+    a.actor,
+    { expectedRevision: 0, markdown: 'note only', sourceMessageIds: [] },
+    () => {},
+  );
+  await vi.advanceTimersByTimeAsync(0);
+  expect(await noteFrame).toContain('event: changed');
+  let extra = false;
+  const pending = frame(reader).then((value) => {
+    extra = true;
+    return value;
+  });
+  await vi.advanceTimersByTimeAsync(6000);
+  expect(extra).toBe(false);
+  expect(history).not.toHaveBeenCalled();
+  h.service.close();
+  await pending;
+  await reader.cancel();
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+test('mounted SSE reconciles another SQLite writer once per Room and heartbeat does not emit changed', async () => {
+  const h = await harness();
+  await h.discover('alice');
+  vi.useFakeTimers();
+  const checkpoint = vi.spyOn(h.runtime.store, 'checkpoint');
+  const readers = [];
+  for (let i = 0; i < 3; i++) {
+    const response = await h.request('alice', '/events');
+    const reader = response.body!.getReader();
+    readers.push(reader);
+    await frame(reader);
+    await frame(reader);
+  }
+  checkpoint.mockClear();
+  const pending = readers.map((reader) => frame(reader));
+  await vi.advanceTimersByTimeAsync(20000);
+  for (const value of await Promise.all(pending))
+    expect(value).toContain(': ping');
+  expect(checkpoint).toHaveBeenCalledTimes(1);
+  const db = new DatabaseSync(join(h.home, 'security', 'project-rooms.sqlite'));
+  try {
+    const writer = new ProjectRoomStore(db);
+    writer.append(
+      h.scope,
+      { kind: 'agent', id: 'external', displayName: 'External' },
+      { intentId: randomUUID(), text: 'other connection' },
+      () => {},
+    );
+    const changes = readers.map((reader) => frame(reader));
+    await vi.advanceTimersByTimeAsync(20000);
+    for (const value of await Promise.all(changes))
+      expect(value).toContain('"lastSeq":1');
+  } finally {
+    db.close();
+  }
+  for (const reader of readers) await reader.cancel();
+  await vi.advanceTimersByTimeAsync(0);
   expect(vi.getTimerCount()).toBe(0);
 });

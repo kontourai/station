@@ -274,11 +274,18 @@ export function createProjectRoomRoutes(
         return c.json({ error: { code: 'project_room_access_changed' } }, 403);
       const response = streamSSE(c, async (stream) => {
         let stopped = false;
+        let dirty = true;
+        const roomId = initial.data.roomId;
+        let lastContent = '';
+        let lastPresence = '';
+        let heartbeatAt = Date.now() + 20000;
         let wake: (() => void) | undefined;
         let timer: ReturnType<typeof setTimeout> | undefined;
         let rejectWrite: ((error: Error) => void) | undefined;
         let writeTimer: ReturnType<typeof setTimeout> | undefined;
+        let unwatch = () => {};
         const stop = () => {
+          unwatch();
           stopped = true;
           if (timer) clearTimeout(timer);
           wake?.();
@@ -287,7 +294,14 @@ export function createProjectRoomRoutes(
           stream.abort();
         };
         const off = service.onClose(stop);
+        // Subscribe before taking the first checkpoint; a commit during admission
+        // cannot fall into a read/subscribe gap. Dirty is bounded to one bit.
+        unwatch = service.watch(roomId, () => {
+          dirty = true;
+          wake?.();
+        });
         stream.onAbort(() => {
+          unwatch();
           stopped = true;
           if (timer) clearTimeout(timer);
           wake?.();
@@ -295,9 +309,12 @@ export function createProjectRoomRoutes(
           rejectWrite?.(new Error('Room stream closed'));
         });
         const write = async (event: string, data: unknown) => {
+          if (stopped) throw new Error('Room stream closed');
           try {
             await Promise.race([
-              stream.writeSSE({ event, data: JSON.stringify(data) }),
+              event === 'heartbeat'
+                ? stream.write(': ping\n\n')
+                : stream.writeSSE({ event, data: JSON.stringify(data) }),
               new Promise<never>((_, reject) => {
                 rejectWrite = reject;
                 writeTimer = setTimeout(() => {
@@ -319,28 +336,36 @@ export function createProjectRoomRoutes(
               await write('revoked', { reason: 'access_changed' });
               break;
             }
-            const fresh = await service.history(
-              c.req.raw,
-              c.req.param('slug'),
-              0,
-              1,
-            );
-            if (
-              JSON.stringify(fresh.admission) !==
-              JSON.stringify(initial.admission)
-            )
-              break;
-            if (!(await service.current(c.req.raw, initial.admission)))
-              continue;
-            await write('changed', fresh.data.checkpoint);
-            if (!(await service.current(c.req.raw, initial.admission)))
-              continue;
-            await write('presence', {
-              participants: service.presence(fresh.data.roomId),
-            });
+            if (stopped) break;
+            dirty = false;
+            const checkpoint = service.checkpoint(roomId);
+            const content = JSON.stringify(checkpoint);
+            if (content !== lastContent) {
+              if (!(await service.current(c.req.raw, initial.admission)))
+                continue;
+              await write('changed', { roomId, lastSeq: checkpoint.lastSeq });
+              lastContent = content;
+            }
+            const participants = service.presence(roomId);
+            const presence = JSON.stringify(participants);
+            if (presence !== lastPresence) {
+              if (!(await service.current(c.req.raw, initial.admission)))
+                continue;
+              await write('presence', { participants });
+              lastPresence = presence;
+            }
+            if (Date.now() >= heartbeatAt) {
+              if (!(await service.current(c.req.raw, initial.admission)))
+                continue;
+              await write('heartbeat', {});
+              heartbeatAt = Date.now() + 20000;
+            }
             await new Promise<void>((resolve) => {
-              wake = resolve;
-              if (stopped) resolve();
+              wake = () => {
+                if (timer) clearTimeout(timer);
+                resolve();
+              };
+              if (stopped || dirty) resolve();
               else timer = setTimeout(resolve, 2000);
             });
           }
@@ -355,6 +380,8 @@ export function createProjectRoomRoutes(
           }
         } finally {
           off();
+          unwatch();
+          service.removePresence(initial.admission);
           if (timer) clearTimeout(timer);
         }
       });

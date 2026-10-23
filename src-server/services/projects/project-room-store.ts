@@ -141,6 +141,34 @@ function requestValue(value: unknown): ProjectRoomAgentRequest {
   return v as unknown as ProjectRoomAgentRequest;
 }
 export class ProjectRoomStore {
+  private listeners = new Map<string, Set<() => void>>();
+  subscribe(roomId: string, callback: () => void) {
+    let listeners = this.listeners.get(roomId);
+    if (!listeners) {
+      listeners = new Set();
+      this.listeners.set(roomId, listeners);
+    }
+    listeners.add(callback);
+    return () => {
+      listeners.delete(callback);
+      if (!listeners.size) this.listeners.delete(roomId);
+    };
+  }
+  checkpoint(roomId: string) {
+    const row = this.db
+      .prepare(`SELECT
+      (SELECT COALESCE(MAX(seq),0) FROM project_room_messages WHERE room_id=?) AS seq,
+      (SELECT record FROM project_room_notes WHERE room_id=?) AS note`)
+      .get(roomId, roomId)!;
+    return {
+      roomId,
+      lastSeq: Number(row.seq),
+      noteRevision: row.note
+        ? parseProjectRoomNote(JSON.parse(String(row.note))).revision
+        : 0,
+    };
+  }
+  private pendingRoom: string | undefined;
   constructor(private readonly db: DatabaseSync) {
     db.exec(`CREATE TABLE IF NOT EXISTS project_rooms (scope_key TEXT PRIMARY KEY, room_id TEXT NOT NULL UNIQUE, record TEXT NOT NULL) STRICT;
       CREATE TABLE IF NOT EXISTS project_room_messages (room_id TEXT NOT NULL, seq INTEGER NOT NULL, message_id TEXT NOT NULL UNIQUE, author TEXT NOT NULL, intent_id TEXT NOT NULL, payload TEXT NOT NULL, record TEXT NOT NULL, PRIMARY KEY(room_id, seq), UNIQUE(room_id, author, intent_id)) STRICT;
@@ -149,15 +177,22 @@ export class ProjectRoomStore {
   }
   private transaction<T>(run: () => T, readOnly = false): T {
     this.db.exec(readOnly ? 'BEGIN' : 'BEGIN IMMEDIATE');
+    let result: T;
     try {
-      const result = run();
+      result = run();
       this.db.exec('COMMIT');
-      return result;
     } catch (error) {
+      this.pendingRoom = undefined;
       this.db.exec('ROLLBACK');
       throw error;
     }
+    const roomId = this.pendingRoom;
+    this.pendingRoom = undefined;
+    if (roomId)
+      for (const callback of this.listeners.get(roomId) ?? []) callback();
+    return result;
   }
+
   private assertActor(actor: ProjectRoomActor) {
     if (
       !actor ||
@@ -315,6 +350,7 @@ export class ProjectRoomStore {
           payload,
           JSON.stringify(result),
         );
+      this.pendingRoom = roomId;
       return result;
     });
   }
@@ -414,6 +450,7 @@ export class ProjectRoomStore {
           'INSERT INTO project_room_notes VALUES (?, ?) ON CONFLICT(room_id) DO UPDATE SET record=excluded.record',
         )
         .run(roomId, JSON.stringify(note));
+      this.pendingRoom = roomId;
       return note;
     });
   }

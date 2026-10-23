@@ -58,13 +58,72 @@ export class ProjectRoomService {
     private readonly store: ProjectRoomStore,
     readonly access: ProjectRoomAccessPort,
   ) {}
+  // One consistency read per active Room, independent of subscriber count.
+  // Other SQLite connections/processes do not share the in-process commit owner.
+  private rooms = new Map<
+    string,
+    {
+      listeners: Set<() => void>;
+      off: () => void;
+      timer: ReturnType<typeof setInterval>;
+      value: ReturnType<ProjectRoomStore['checkpoint']> | undefined;
+    }
+  >();
+  watch(roomId: string, callback: () => void) {
+    this.assertOpen();
+    let room = this.rooms.get(roomId);
+    if (!room) {
+      const listeners = new Set<() => void>();
+      const refresh = () => {
+        const current = this.rooms.get(roomId);
+        if (!current) return;
+        try {
+          const value = this.store.checkpoint(roomId);
+          if (JSON.stringify(value) === JSON.stringify(current.value)) return;
+          current.value = value;
+        } catch {
+          current.value = undefined;
+          // Wake consumers to fail closed on the next checkpoint read.
+        }
+        for (const listener of listeners) listener();
+      };
+      room = {
+        listeners,
+        value: this.store.checkpoint(roomId),
+        off: this.store.subscribe(roomId, refresh),
+        timer: setInterval(refresh, 20000),
+      };
+      this.rooms.set(roomId, room);
+    }
+    room.listeners.add(callback);
+    let active = true;
+    return () => {
+      if (!active) return;
+      active = false;
+      room.listeners.delete(callback);
+      if (!room.listeners.size) {
+        room.off();
+        clearInterval(room.timer);
+        this.rooms.delete(roomId);
+      }
+    };
+  }
+  checkpoint(roomId: string) {
+    return this.rooms.get(roomId)?.value ?? this.store.checkpoint(roomId);
+  }
   private assertOpen() {
     if (this.closed) throw new ProjectRoomRefusal('not_found');
+  }
+  private notifyPresence(roomId: string) {
+    for (const listener of this.rooms.get(roomId)?.listeners ?? []) listener();
   }
   private prune() {
     const now = Date.now();
     for (const [key, p] of this.participants)
-      if (Date.parse(p.value.expiresAt) <= now) this.participants.delete(key);
+      if (Date.parse(p.value.expiresAt) <= now) {
+        this.participants.delete(key);
+        this.notifyPresence(p.roomId);
+      }
   }
   presence(roomId: string): ProjectRoomPresence[] {
     this.prune();
@@ -236,6 +295,7 @@ export class ProjectRoomService {
               expiresAt: new Date(Date.now() + 30000).toISOString(),
             },
           });
+        this.notifyPresence(guard.expectedRoomId);
         return this.presence(guard.expectedRoomId);
       },
     );
@@ -262,8 +322,10 @@ export class ProjectRoomService {
       if (
         p.value.actor.id === admission.actorId &&
         JSON.stringify(p.scope) === JSON.stringify(admission.scope)
-      )
+      ) {
         this.participants.delete(key);
+        this.notifyPresence(p.roomId);
+      }
   }
   onClose(callback: () => void) {
     if (this.closed) callback();
@@ -276,6 +338,11 @@ export class ProjectRoomService {
     if (this.closed) return;
     this.closed = true;
     this.participants.clear();
+    for (const room of this.rooms.values()) {
+      room.off();
+      clearInterval(room.timer);
+    }
+    this.rooms.clear();
     for (const stop of this.subscriptions) stop();
     this.subscriptions.clear();
   }
