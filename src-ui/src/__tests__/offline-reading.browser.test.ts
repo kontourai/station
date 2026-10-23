@@ -44,7 +44,7 @@ beforeAll(async () => {
     window.reading=reading;
     import {ConnectionsProvider,useConnections} from '@kontourai/station-connect';
     function Probe(){window.connections=useConnections(); useEffect(()=>{window.fixtureMounted=true},[]); return null;}
-    function App(){return <><WebOfflineShell/><OfflineReadingBoundary><QueryClientProvider client={new QueryClient()}><h1>Live app</h1><OfflineReadingSection/></QueryClientProvider></OfflineReadingBoundary></>}
+    function App(){return <><WebOfflineShell/><OfflineReadingBoundary><QueryClientProvider client={new QueryClient()}><main><h1>Live app</h1><OfflineReadingSection/></main></QueryClientProvider></OfflineReadingBoundary></>}
     createRoot(document.getElementById('root')).render(<ConnectionsProvider defaultUrl={location.origin}><Probe/><App/></ConnectionsProvider>);
 
   `,
@@ -181,6 +181,7 @@ test('opt-in text survives an offline reload under CSP, stays read-only, and cle
     await page
       .getByRole('switch', { name: 'Save offline reading copies' })
       .waitFor();
+    expect(await page.getByRole('main').count()).toBe(1);
     await page.waitForFunction(() => !!navigator.serviceWorker.controller);
     expect(await page.getByRole('switch').getAttribute('aria-checked')).toBe(
       'false',
@@ -256,8 +257,10 @@ test('opt-in text survives an offline reload under CSP, stays read-only, and cle
     await page
       .getByText('Conversation conversation-a', { exact: true })
       .waitFor();
+    expect(await page.getByRole('main').count()).toBe(1);
     await page.reload();
     await page.getByRole('heading', { name: 'Station is offline' }).waitFor();
+    expect(await page.getByRole('main').count()).toBe(1);
     await page
       .getByText('Conversation conversation-a', { exact: true })
       .click();
@@ -296,6 +299,7 @@ test('opt-in text survives an offline reload under CSP, stays read-only, and cle
     await page.waitForFunction(() => window.fixtureMounted);
     await context.setOffline(false);
     await page.getByRole('heading', { name: 'Live app' }).waitFor();
+    expect(await page.getByRole('main').count()).toBe(1);
   } finally {
     await context.close();
   }

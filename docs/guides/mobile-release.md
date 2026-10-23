@@ -284,6 +284,7 @@ package evidence.
 | Capability | Platform declarations | When Station uses it |
 | --- | --- | --- |
 | Network access | Android `INTERNET`; iOS local-network rationale | Connect to the selected Station host, including a LAN or tailnet address. |
+| Network state | Android `ACCESS_NETWORK_STATE` | Observe the default network and metered status so native transport and polling can react to connection changes. Required in source, merged, and packaged manifests. |
 | Camera | Android `CAMERA` plus optional camera hardware; iOS camera rationale | Scan a pairing QR code. |
 | Microphone | Android `RECORD_AUDIO`/`MODIFY_AUDIO_SETTINGS` plus optional microphone hardware; iOS microphone rationale | Voice conversations with an agent. |
 | Notifications | Android `POST_NOTIFICATIONS` | Show requested Station attention on supported Android releases. |

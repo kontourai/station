@@ -6,6 +6,11 @@ import { PROVIDER_FAILURE_KINDS } from '../../packages/contracts/src/provider-fa
 
 const root = resolve(import.meta.dirname, '../..');
 const exclusions = {
+  'src-server/runtime/conversation/runtime-event-log.ts:EventHistoryLimitError.code':
+    [
+      'event_history_limit_exceeded',
+      'Monitoring history read budget; surfaced as HTTP 413, not provider execution.',
+    ],
   'packages/contracts/src/agent-identity.ts:ReservedStationIdentityError.code':
     [
       'STATION_ID_RESERVED',

@@ -28,6 +28,8 @@ const SRC = join(import.meta.dirname, '..');
 const PRE_SHELL_MAIN_OWNERS = new Set([
   // The whole-window access gate, rendered instead of `<App>`.
   'components/LocalUiSessionGate.tsx',
+  // Replaces the shell with its reader while the shell subtree is hidden.
+  'components/OfflineReadingBoundary.tsx',
   // Rendered by that gate, in place of the shell.
   'components/first-run/UnpairedSampleWorkspace.tsx',
   // Standalone public share routes; they mount their own document shell.
