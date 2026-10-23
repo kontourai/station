@@ -320,7 +320,8 @@ export interface ExecutionSessionBinding {
   /**
    * #3429: the canonical folder the server admitted this conversation into
    * (`dispatchCanonicalCwd`): an adopted attached conversation's own folder,
-   * or a scoped dispatch's. Never caller-supplied.
+   * a scoped dispatch's, or the persisted folder reauthorized against its
+   * original Project incarnation and a current attached resource. Never caller-supplied.
    */
   admittedCwd?: string;
   workspaceIsolation?: WorkspaceIsolationConfig;

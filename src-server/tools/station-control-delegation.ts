@@ -6539,6 +6539,14 @@ export async function executeExecutionTargetMessage(
         readAuthority,
       );
       const metadata = sessionBinding(rootDetail);
+      const retainedWorkspace =
+        _access.kind === 'current' &&
+        typeof orchestrationService.authorizedConversationWorkspace ===
+          'function'
+          ? await orchestrationService.authorizedConversationWorkspace(
+              sessionId,
+            )
+          : undefined;
       // #764: same reserved-but-unstarted plain-continuation
       // tail as continueExecutionTargetMessage — fall back to the
       // lineage-aware read so the predecessor's binding governs instead of
@@ -6598,6 +6606,7 @@ export async function executeExecutionTargetMessage(
               ] as string,
             }
           : {}),
+        ...(retainedWorkspace ? { admittedCwd: retainedWorkspace.cwd } : {}),
         ...(metadata.workspaceIsolation &&
         typeof metadata.workspaceIsolation === 'object' &&
         ((metadata.workspaceIsolation as { mode?: unknown }).mode ===
