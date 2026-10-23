@@ -1032,6 +1032,21 @@ on the former label (2 red, 21 controls) and the two-file selection passes 24
 tests after correction. Biome and independent source review pass. This small
 copy-only follow-up has no new browser or physical-device receipt.
 
+At `58ade549521`, the Agents child row also changes “Started from the CLI” to
+“Recorded origin: CLI (reported)”: its selector reads the latest reported
+Session surface, not an initiation receipt. Parent conversation/task precedence
+is unchanged. The mounted regression fails on the former copy with 14 controls
+passing; the pane/row selection passes 39 tests after repair. Independent source
+review finds no issue. E2E types, fixture policy and lint pass after the longer
+browser assertion receives its required line wrap at `5af8c9cce17`.
+
+The canonical product browser runner then passes both desktop and 390px cases
+and stops its temporary Station. Orchestration SSE/read models are mocked;
+this is not provider, native recovery, physical-device or accounting evidence.
+The initial run refused before tests because the repo-local browser directory
+was empty. The corrected run selects the existing cache matching installed
+Playwright Chromium revision 1248; no browser installation was needed.
+
 ## Current installed-native child result controls
 
 At `b712fbce09f`, a controlled loopback model drives the installed Claude Code
