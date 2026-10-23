@@ -2031,9 +2031,9 @@ current execution identities or authority allocations. Separate directories do
 not create a second budget over an existing authority.
 
 Published Flow validators and capacity functions own ledger validity, rounds
-replay and remaining serialization headroom. Station preserves immutable epochs,
-append-only origins/journal events, known charges, terminal observations and
-cancellation across writes. Its existing private-file publication seam checks
+replay and remaining serialization headroom. Station preserves epoch roots and renewal proofs, closed epoch rosters,
+append-only current rosters and origins/journal events, known charges, terminal
+observations and cancellation across writes. Its existing private-file publication seam checks
 current request authority at commit, performs readback and fsync, and refuses
 stale disclosure after lock release. These are cooperative host-custody checks;
 they do not isolate hostile processes sharing the host uid.
