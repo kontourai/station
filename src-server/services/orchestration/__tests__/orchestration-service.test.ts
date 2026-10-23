@@ -21518,13 +21518,16 @@ describe('OrchestrationService', () => {
     await dynamicService.shutdown();
   });
 
-  test('preserves accepted turn truth when its adapter is replaced during send', async () => {
+  test('retains no-replay truth when adapter retirement precedes its send acknowledgement', async () => {
     const sending = new FakeAdapter('claude');
+    const replacement = new FakeAdapter('claude');
+    const ledger = eventStore.createTurnDeduplicator();
     const registry = createReplaceableRegistry([sending]);
     const dynamicService = new OrchestrationService({
       adapterRegistry: registry,
       eventBus,
       eventStore,
+      turnDeduplicator: ledger,
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
     await dynamicService.dispatch({
@@ -21540,16 +21543,28 @@ describe('OrchestrationService', () => {
 
     const turn = dynamicService.dispatchWithReceipt({
       type: 'sendTurn',
-      input: { threadId: 'send-race', input: 'hello' },
+      input: {
+        threadId: 'send-race',
+        input: 'hello',
+        clientTurnId: 'send-race-key',
+      },
     });
     await vi.waitFor(() => expect(sending.sendTurn).toHaveBeenCalledOnce());
-    registry.register(new FakeAdapter('claude'));
+    registry.register(replacement);
     sent.resolve({ threadId: 'send-race', turnId: 'stale-turn' });
 
-    await expect(turn).resolves.toMatchObject({
-      receipt: expect.objectContaining({ status: 'accepted' }),
-      result: { threadId: 'send-race', turnId: 'stale-turn' },
+    // Session retirement removes custody before the late adapter ACK.
+    await expect(turn).rejects.toMatchObject({
+      code: 'foreground_message_indeterminate',
+      outcome: 'indeterminate',
+      retryable: false,
     });
+    expect(
+      ledger.inspect({
+        threadId: 'send-race',
+        clientTurnId: 'send-race-key',
+      }),
+    ).toEqual({ state: 'indeterminate' });
     await waitFor(
       () =>
         eventStore
@@ -21557,6 +21572,18 @@ describe('OrchestrationService', () => {
           .find((session) => session.threadId === 'send-race')?.status,
       (status) => status === 'closed',
     );
+    await expect(
+      dynamicService.dispatchWithReceipt({
+        type: 'sendTurn',
+        input: {
+          threadId: 'send-race',
+          input: 'hello',
+          clientTurnId: 'send-race-key',
+        },
+      }),
+    ).rejects.toBeInstanceOf(OrchestrationCommandDispatchError);
+    expect(sending.sendTurn).toHaveBeenCalledOnce();
+    expect(replacement.sendTurn).not.toHaveBeenCalled();
     await dynamicService.shutdown();
   });
 
