@@ -13,11 +13,12 @@ import {
 } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { dump, load } from 'js-yaml';
+import { CORE_SCHEMA, dump, load, mergeTag } from 'js-yaml';
 import { readReceiverArtifactManifest } from '../packages/telemetry-broker/artifact-manifest.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const COMPOSE_SCHEMA = CORE_SCHEMA.withTags(mergeTag);
 const DEPLOYMENT = [
   'compose.yaml',
   'compose.diagnostics.yaml',
@@ -95,9 +96,12 @@ export async function packageTelemetryCompanion(
       `deployment/${file}`,
       await bytes(join(projectRoot, 'deployment/telemetry', file)),
     );
-  const compose = load(snapshots.get('deployment/compose.yaml').toString());
+  const compose = load(snapshots.get('deployment/compose.yaml').toString(), {
+    schema: COMPOSE_SCHEMA,
+  });
   const diagnostics = load(
     snapshots.get('deployment/compose.diagnostics.yaml').toString(),
+    { schema: COMPOSE_SCHEMA },
   );
   const images = [
     ...new Set([...imagePins(compose), ...imagePins(diagnostics)]),
@@ -227,11 +231,13 @@ export async function verifyTelemetryCompanion(directory) {
     throw new Error('Companion source differs from its receiver build');
   const compose = load(
     (await bytes(join(directory, 'deployment/compose.yaml'))).toString(),
+    { schema: COMPOSE_SCHEMA },
   );
   const diagnostics = load(
     (
       await bytes(join(directory, 'deployment/compose.diagnostics.yaml'))
     ).toString(),
+    { schema: COMPOSE_SCHEMA },
   );
   const runtimeImage = (await bytes(join(directory, 'Dockerfile')))
     .toString()
