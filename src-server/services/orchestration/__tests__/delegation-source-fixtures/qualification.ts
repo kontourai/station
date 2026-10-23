@@ -69,7 +69,6 @@ export function fixture(provider: BoundedApiProvider = 'anthropic') {
     credentialRevision: 'key-r1',
     principalId: 'principal-1',
     tenantId: 'tenant-1',
-    billingContextId: 'billing-1',
     sourceId: 'source-1',
     sourceRevision: 'source-r1',
     optionsSha256: boundedApiWireOptionsSha256(provider, wire),

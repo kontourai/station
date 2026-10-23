@@ -76,7 +76,6 @@ function fixture(provider: BoundedApiProvider = 'anthropic') {
     credentialRevision: 'key-r1',
     principalId: 'principal-1',
     tenantId: 'tenant-1',
-    billingContextId: 'billing-1',
     sourceId: 'source-1',
     sourceRevision: 'source-r1',
     optionsSha256: boundedApiWireOptionsSha256(provider, wire),
@@ -303,6 +302,11 @@ test('every execution binding must match, and approved record revocation/expiry 
 
 test('unknown fields, partial/foreign tariffs, gaps/overlaps, duplicate keys and unsafe rational charges fail closed', () => {
   const changes = [
+    (f: ReturnType<typeof fixture>) => {
+      f.raw.binding = Object.assign({}, f.raw.binding, {
+        billingContextId: 'unverified-invoice-label',
+      });
+    },
     (f: ReturnType<typeof fixture>) => {
       f.raw.tariff.currency = 'EUR';
     },

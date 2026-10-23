@@ -17,6 +17,8 @@ export class BoundedApiProviderContractError extends Error {
   }
 }
 
+/** Current host selection for provider-inference-before-tax tariff accounting.
+ * This binding neither authenticates an invoice account nor proves model entitlement. */
 export interface BoundedApiProviderBinding {
   provider: BoundedApiProvider;
   endpointUrl: string;
@@ -27,8 +29,8 @@ export interface BoundedApiProviderBinding {
   connectionRevision: string;
   credentialRevision: string;
   principalId: string;
+  /** Station tenancy scope, not a provider organization or invoice identity. */
   tenantId: string;
-  billingContextId: string;
   sourceId: string;
   sourceRevision: string;
   optionsSha256: string;
@@ -147,7 +149,6 @@ const BINDING_KEYS = [
   'credentialRevision',
   'principalId',
   'tenantId',
-  'billingContextId',
   'sourceId',
   'sourceRevision',
   'optionsSha256',
@@ -473,7 +474,6 @@ export function resolveBoundedApiProviderContract(
     credentialRevision: fields.credentialRevision,
     principalId: fields.principalId,
     tenantId: fields.tenantId,
-    billingContextId: fields.billingContextId,
     sourceId: fields.sourceId,
     sourceRevision: fields.sourceRevision,
     optionsSha256: fields.optionsSha256,
