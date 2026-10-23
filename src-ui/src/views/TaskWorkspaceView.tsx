@@ -42,7 +42,10 @@ import {
   useApiBase,
   useHostRequestAuthorityScope,
 } from '../contexts/ApiBaseContext';
-import { useNavigation } from '../contexts/NavigationContext';
+import {
+  useNavigation,
+  useNavigationActions,
+} from '../contexts/NavigationContext';
 import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import { clientOriginDetail } from '../utils/clientOrigin';
 import { errorText } from '../utils/errorText';
@@ -78,6 +81,14 @@ import { TaskTurnReferenceView } from './task-workspace/TaskTurnReferenceView';
 import { TaskUserInputReferences } from './task-workspace/TaskUserInputReferences';
 import './page-layout.css';
 import './TaskWorkspaceView.css';
+
+const TASK_VIEWS = {
+  overview: 'Overview',
+  conversation: 'Conversation',
+  'work-chats': 'Work chats',
+  plan: 'Plan',
+  details: 'Details',
+} as const;
 
 type ReferenceKind = 'artifact' | 'receipt' | 'file' | 'external';
 
@@ -198,15 +209,21 @@ function isTaskNotFound(error: unknown): boolean {
 
 export function TaskWorkspaceView({ taskId }: { taskId: string }) {
   const { apiBase } = useApiBase();
-  const [selectedTab, selectTab] = useState<{
-    identity: string;
-    tab: string;
-  } | null>(null);
+  const requestScope = useHostRequestAuthorityScope();
+  // Navigation survives authority verification remounts; protected pane state does not.
+  const requestedView = useNavigation(() =>
+    new URLSearchParams(window.location.search).get('taskView'),
+  );
+  const { updateParams } = useNavigationActions();
   const { data: graph, isLoading, error, refetch } = useTaskGraphQuery(taskId);
-  const tabIdentity = JSON.stringify([apiBase, taskId, graph?.task.createdAt]);
   const setTab = useCallback(
-    (tab: string) => selectTab({ identity: tabIdentity, tab }),
-    [tabIdentity],
+    (tab: string) => {
+      const view = Object.entries(TASK_VIEWS).find(
+        ([, name]) => name === tab,
+      )?.[0];
+      if (view) updateParams({ taskView: view });
+    },
+    [updateParams],
   );
   const projectsQuery = useScopedProjectsQuery() as {
     data?: Array<{ id: string; slug: string }>;
@@ -239,7 +256,8 @@ export function TaskWorkspaceView({ taskId }: { taskId: string }) {
     );
   }
   const tab =
-    selectedTab?.identity === tabIdentity ? selectedTab.tab : 'Overview';
+    Object.entries(TASK_VIEWS).find(([view]) => view === requestedView)?.[1] ??
+    'Overview';
   const taskProject = projectsQuery.data.find(
     (project) =>
       project.id === graph.task.projectId ||
@@ -250,7 +268,12 @@ export function TaskWorkspaceView({ taskId }: { taskId: string }) {
     <>
       {starterLinkUnverified && <StarterLinkRetry task={graph.task} />}
       <ProjectTaskRoomProvider
-        key={`${taskId}:${graph.task.createdAt}`}
+        key={JSON.stringify([
+          apiBase,
+          requestScope?.authorityKey,
+          taskId,
+          graph.task.createdAt,
+        ])}
         taskId={taskId}
       >
         <TaskWorkspaceContent
@@ -501,48 +524,44 @@ function TaskWorkspaceContent({
         role="tablist"
         aria-label="Task views"
       >
-        {['Overview', 'Conversation', 'Work chats', 'Plan', 'Details'].map(
-          (name) => (
-            <Button
-              key={name}
-              role="tab"
-              tabIndex={tab === name ? 0 : -1}
-              aria-selected={tab === name}
-              aria-controls={`task-panel-${name.replaceAll(' ', '-')}`}
-              id={`task-tab-${name.replaceAll(' ', '-')}`}
-              className="page__tab"
-              onClick={() => setTab(name)}
-              onKeyDown={(event) => {
-                if (
-                  !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(
-                    event.key,
-                  )
-                )
-                  return;
-                const tabs = Array.from(
-                  event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
-                    '[role="tab"]',
-                  ) ?? [],
-                ).filter((button) => button.offsetParent !== null);
-                const index = tabs.indexOf(event.currentTarget);
-                const next =
-                  event.key === 'Home'
-                    ? 0
-                    : event.key === 'End'
-                      ? tabs.length - 1
-                      : (index +
-                          (event.key === 'ArrowRight' ? 1 : -1) +
-                          tabs.length) %
-                        tabs.length;
-                event.preventDefault();
-                tabs[next]?.focus();
-                tabs[next]?.click();
-              }}
-            >
-              {name}
-            </Button>
-          ),
-        )}
+        {Object.values(TASK_VIEWS).map((name) => (
+          <Button
+            key={name}
+            role="tab"
+            tabIndex={tab === name ? 0 : -1}
+            aria-selected={tab === name}
+            aria-controls={`task-panel-${name.replaceAll(' ', '-')}`}
+            id={`task-tab-${name.replaceAll(' ', '-')}`}
+            className="page__tab"
+            onClick={() => setTab(name)}
+            onKeyDown={(event) => {
+              if (
+                !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)
+              )
+                return;
+              const tabs = Array.from(
+                event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+                  '[role="tab"]',
+                ) ?? [],
+              ).filter((button) => button.offsetParent !== null);
+              const index = tabs.indexOf(event.currentTarget);
+              const next =
+                event.key === 'Home'
+                  ? 0
+                  : event.key === 'End'
+                    ? tabs.length - 1
+                    : (index +
+                        (event.key === 'ArrowRight' ? 1 : -1) +
+                        tabs.length) %
+                      tabs.length;
+              event.preventDefault();
+              tabs[next]?.focus();
+              tabs[next]?.click();
+            }}
+          >
+            {name}
+          </Button>
+        ))}
       </div>
       <div
         className="task-room-main"

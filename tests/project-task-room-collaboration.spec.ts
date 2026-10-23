@@ -56,7 +56,7 @@ async function installBatchHold(page: Page, pattern: string) {
 }
 
 async function documentReceipt(
-  response: Awaited<ReturnType<Page['waitForResponse']>>,
+  response: Pick<Awaited<ReturnType<Page['waitForResponse']>>, 'json'>,
 ) {
   const value: unknown = await response.json();
   if (
@@ -77,6 +77,20 @@ async function documentReceipt(
     revision: value.data.revision,
     text: value.data.text,
   };
+}
+
+function waitForDocumentReceipt(page: Page) {
+  // Query cancellation can abort a 200 after headers. Only a complete body
+  // establishes the authoritative document used by the mounted browser.
+  return page
+    .waitForResponse(
+      async (response) =>
+        response.request().method() === 'GET' &&
+        new URL(response.url()).pathname.endsWith('/room/document') &&
+        response.status() === 200 &&
+        (await response.finished()) === null,
+    )
+    .then(documentReceipt);
 }
 
 async function liveFixtureCommand(
@@ -148,7 +162,9 @@ async function expectAgentPresence(
   expect(agent?.work.runId).toBe(runId);
   if (!agent) throw new Error('Published Agent is missing');
   await expect(
-    page.locator(`.task-room-rail [data-actor-id="${agent.actor.actorId}"]`),
+    page
+      .getByRole('region', { name: 'Present in this Task' })
+      .locator(`[data-actor-id="${agent.actor.actorId}"]`),
   ).toContainText(agent.actor.label);
 }
 
@@ -544,12 +560,6 @@ test.describe
             response.request().method() === 'POST' &&
             new URL(response.url()).pathname.endsWith('/room/batches'),
         );
-        const retryDocument = owner.waitForResponse(
-          (response) =>
-            response.request().method() === 'GET' &&
-            new URL(response.url()).pathname.endsWith('/room/document') &&
-            response.status() === 200,
-        );
         await owner
           .getByRole('button', { name: 'Retry identical batch' })
           .click();
@@ -562,7 +572,13 @@ test.describe
         await expect(duplicateEnvelope).resolves.toMatchObject({
           data: { kind: 'duplicate' },
         });
-        const retryAuthoritative = await documentReceipt(await retryDocument);
+        // Independent authenticated receipt; this read does not publish into
+        // the browser query cache or trigger editor convergence.
+        const retryDocument = await owner.request.get(
+          `${live.ui}/api/tasks/${encodeURIComponent(taskId)}/room/document`,
+        );
+        expect(retryDocument.status()).toBe(200);
+        const retryAuthoritative = await documentReceipt(retryDocument);
         expect(retryAuthoritative.text).toBe(converged);
         await expect(
           owner
@@ -584,31 +600,45 @@ test.describe
           peerContext.setOffline(true),
         ]);
         await new Promise((resolve) => setTimeout(resolve, 250));
-        const ownerReconnectedDocument = owner.waitForResponse(
-          (response) =>
-            response.request().method() === 'GET' &&
-            new URL(response.url()).pathname.endsWith('/room/document') &&
-            response.status() === 200,
-        );
-        const peerReconnectedDocument = peer.waitForResponse(
-          (response) =>
-            response.request().method() === 'GET' &&
-            new URL(response.url()).pathname.endsWith('/room/document') &&
-            response.status() === 200,
-        );
+        const ownerReconnectedDocument = waitForDocumentReceipt(owner);
+        const peerReconnectedDocument = waitForDocumentReceipt(peer);
         await Promise.all([
           owner.context().setOffline(false),
           peerContext.setOffline(false),
         ]);
         const [ownerDurable, peerDurable] = await Promise.all([
-          ownerReconnectedDocument.then(documentReceipt),
-          peerReconnectedDocument.then(documentReceipt),
+          ownerReconnectedDocument,
+          peerReconnectedDocument,
         ]);
         expect(ownerDurable).toEqual(peerDurable);
         expect(ownerDurable).toMatchObject({
           revision: expect.stringMatching(/^swsr-v1:[0-9a-f]{64}$/),
           text: converged,
         });
+        for (const page of [owner, peer]) {
+          await expect(
+            page.getByRole('tab', { name: 'Plan', exact: true }),
+          ).toHaveAttribute('aria-selected', 'true');
+          expect(new URL(page.url()).searchParams.get('taskView')).toBe('plan');
+          const panel = page.getByRole('tabpanel', {
+            name: 'Plan',
+            exact: true,
+          });
+          await expect(panel).toBeVisible();
+          // A protected-tree remount starts the fresh editor in preview mode.
+          // Prove the selected view displays the durable text before editing.
+          const mode = panel.getByRole('button', {
+            name: /^(Edit|View) brief$/,
+          });
+          if ((await mode.textContent()) === 'Edit brief') {
+            await expect(
+              panel
+                .getByText(converged, { exact: true })
+                .filter({ visible: true }),
+            ).toBeVisible();
+            await mode.click();
+          }
+        }
         await expect(ownerDocument).toHaveValue(converged);
         await expect(peerDocument).toHaveValue(converged);
         expect(sharedBase).not.toBe(converged);
@@ -691,7 +721,23 @@ test.describe
 
         await stopStation(live);
         await startStation(live, false);
+        const restartedJoin = owner.waitForResponse(
+          (response) =>
+            response.request().method() === 'POST' &&
+            new URL(response.url()).pathname.endsWith('/room/live') &&
+            response.request().postDataJSON()?.command === 'join',
+        );
         await owner.goto(taskUrl);
+        // Presence is implicit: await the browser's own join before issuing a
+        // fixture heartbeat, without injecting or retrying a membership command.
+        const joinedResponse = await restartedJoin;
+        expect(joinedResponse.status()).toBe(200);
+        const joinedEnvelope = (await joinedResponse.json()) as {
+          data?: { result?: { outcome?: string } };
+        };
+        expect(['joined', 'refreshed']).toContain(
+          joinedEnvelope.data?.result?.outcome,
+        );
         const restartedRoomProbe = await owner.evaluate(async (id) => {
           const response = await fetch(
             `/api/tasks/${encodeURIComponent(id)}/room`,
