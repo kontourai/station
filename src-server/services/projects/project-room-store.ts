@@ -534,19 +534,6 @@ export class ProjectRoomStore {
     if (!row) throw new ProjectRoomRefusal('not_found');
     return this.storedRequest(row);
   }
-  listPendingRequests(
-    scope: ProjectMembershipScope,
-  ): ProjectRoomAgentRequest[] {
-    const rows = this.db
-      .prepare(
-        'SELECT * FROM project_room_requests WHERE room_id=? ORDER BY rowid LIMIT ?',
-      )
-      .all(this.room(scope).roomId, LIMITS.requestsPerRoom + 1);
-    if (rows.length > LIMITS.requestsPerRoom) corrupt();
-    return rows
-      .map((row) => this.storedRequest(row))
-      .filter((v) => ['reserved', 'started', 'uncertain'].includes(v.state));
-  }
   private transition(
     scope: ProjectMembershipScope,
     id: string,

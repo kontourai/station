@@ -275,7 +275,6 @@ describe('Project Room explicit agent participation', () => {
       );
       expect(reserve).not.toHaveBeenCalled();
       expect(f.preparations).toBe(0);
-      expect(f.room.store.listPendingRequests(f.authority.scope)).toEqual([]);
       expect(f.launches).toBe(0);
     },
   );

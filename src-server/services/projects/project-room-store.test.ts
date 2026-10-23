@@ -211,7 +211,6 @@ describe('ProjectRoomStore durable boundaries', () => {
     expect(() =>
       a.store.markStarted(scope, request.requestId, current),
     ).toThrow('conflict');
-    expect(a.store.listPendingRequests(scope)).toHaveLength(1);
     a.store.markUncertain(scope, request.requestId, current);
     const reply = b.store.append(
       scope,
@@ -227,7 +226,10 @@ describe('ProjectRoomStore durable boundaries', () => {
         current,
       ).publishedMessageId,
     ).toBe(reply.messageId);
-    expect(b.store.listPendingRequests(scope)).toEqual([]);
+    expect(b.store.getRequest(scope, request.requestId)).toMatchObject({
+      state: 'published',
+      publishedMessageId: reply.messageId,
+    });
   });
   it('refuses corrupted persisted DTOs without leaking their contents and restores the exact original records', () => {
     const message = a.store.append(
@@ -311,7 +313,7 @@ describe('ProjectRoomStore durable boundaries', () => {
       {
         table: 'project_room_requests',
         patch: { state: 'foreign-secret' },
-        read: () => b.store.listPendingRequests(scope),
+        read: () => b.store.getRequest(scope, request.requestId),
       },
       {
         table: 'project_room_requests',
