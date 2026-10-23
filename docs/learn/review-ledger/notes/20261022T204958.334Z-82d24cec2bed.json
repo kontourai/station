@@ -1,0 +1,7 @@
+{
+  "revision": "89fe4546f29e6c7e432242b40c097f90b845d0d1",
+
+  "notes": [
+    {"path":"AGENTS.md","note":"Reviewed the new Start-here handoff bullet (mint a station open --print link at handoff, never a bare localhost URL) against actual behavior observed on the running dev instance: the ui-bootstrap token is single-use, pairing is per browser profile stored in the instance home, and restarts mint a new boot identity; the remaining router bullets are unchanged.","inputs":["AGENTS.md"]}
+  ]
+}

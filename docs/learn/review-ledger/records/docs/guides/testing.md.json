@@ -220,7 +220,11 @@
 
     "scripts/__tests__/source-verification-policy.test.ts",
 
-    ".github/workflows/ci-throughput-health.yml"
+    ".github/workflows/ci-throughput-health.yml",
+
+    "scripts/merge-queue-regression-decision.mjs",
+
+    "scripts/ci-workflow-governance.mjs"
   ],
 
   "checks": [

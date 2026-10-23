@@ -74,6 +74,14 @@
 
     "src-ui/src/views/settings/composite-editors.tsx",
 
+    "src-ui/src/lib/layout-panels-record.ts",
+
+    "src-ui/src/hooks/useLayoutSessionPanels.ts",
+
+    "src-ui/src/hooks/__tests__/useLayoutSessionPanels.test.tsx",
+
+    "src-ui/src/lib/__tests__/layout-panels-record.test.ts",
+
     "src-ui/src/hooks/useDeveloperFeatures.ts",
 
     "src-ui/src/views/settings/DeveloperFeatures.tsx",

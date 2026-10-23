@@ -252,7 +252,7 @@ describe('fast-checks aggregator exit status (child process)', () => {
       );
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout).toContain(
-        '::warning title=fast-checks is provisional::fast-checks deferred ci-fast: the affected suite did not run in this check; Merge-queue regression runs full regression before merge',
+        '::warning title=fast-checks is provisional::fast-checks deferred ci-fast: the affected suite did not run in this check; full qualification runs on main and before release',
       );
       expect(result.stdout).toContain('[fast-checks] PASS (provisional):');
       expect(result.stdout).not.toContain('[fast-checks] PASS: ');
