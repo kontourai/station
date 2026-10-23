@@ -108,6 +108,12 @@ and OTel callback/probe acceptance remain separate from downstream collection
 and personal usage accounting. Unsupported or malformed responses throw;
 refreshing or failed status must not display cached success as current.
 
+`fetchTelemetryCompanionPrerequisites` and
+`useTelemetryCompanionPrerequisitesQuery` read operator-only local container
+capabilities. Pass the captured request authority; a passed host check is not
+installation or ingestion readiness. The hook partitions by Station and
+authority, drops previous data, and does not automatically retry a failed read.
+
 The `/secret-bindings` and `/secret-bindings-query` subpaths expose the separate
 telemetry destination grant operations and hooks. Callers supply the API base,
 captured request authority, exact product/collector address and current binding

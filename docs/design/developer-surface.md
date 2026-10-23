@@ -34,7 +34,11 @@ existing engine, capability, developer-service and ACP projections, including
 unavailable reasons and discovery freshness. Ready means the projection's
 readiness observation, not successful execution of a turn.
 
-Monitoring separates Activity, Tool latency, Usage, Context, and Routing.
+Monitoring has Activity and Companion tabs. Companion reads operator-only host
+prerequisites through the authority-bound SDK query; it exposes missing
+capabilities and observed versions without installing or starting services.
+Its host check is separate from artifact qualification and ingestion readiness.
+The Activity tab separates Activity, Tool latency, Usage, Context, and Routing.
 Activity keeps the event explorer and adds expandable current session diagnostics.
 Tool latency uses only measured result events in the loaded, filtered window;
 truncated or unreadable history is marked partial. Usage reuses the receipt
