@@ -1,0 +1,9 @@
+{
+  "revision": "98a6b5e459aeec27f8d6cc3ef0d1d6a7415adaf9",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Read the complete instruction file and contracts reference ownership rules. Reviewed the changed package export map: ensemble, delegation-group and report-group select their domain-owned TypeScript modules under packages/contracts/src; the Flow Agents dependency remains a published package pin. Those additions do not move services, Node/filesystem/network operations or app implementation into the contract ownership guidance. Direct-subpath ownership, pure helper constraints and compatibility/consumer-test requirements remain accurate instructions. This is classification of the changed export input and document routing, not a new claim that every existing contract module or consumer was audited; no tests executed for unchanged instructions.","inputs":["packages/contracts/AGENTS.md","packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Read the complete SDK instruction file, current SDK reference introduction and qualified report-group section, the package export map, root/queries report hook exports, query-core mutation ownership and reportGroups scoped hooks. The new report create/read/cancel/finalize documentation remains on the named canonical SDK reference and uses public SDK/client entries rather than app-internal imports. Guidance to include affected consumer evidence and check caller plus canonical cache outcomes remains a requirement; it does not claim the new mounted tests prove every cache race. No prose change needed. Scope is instruction accuracy after changed sdk.md input, not a full SDK/reference audit or new runtime/browser/provider qualification.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}
