@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
@@ -227,5 +228,145 @@ describe('ProjectRoomStore durable boundaries', () => {
       ).publishedMessageId,
     ).toBe(reply.messageId);
     expect(b.store.listPendingRequests(scope)).toEqual([]);
+  });
+  it('refuses corrupted persisted DTOs without leaking their contents and restores the exact original records', () => {
+    const message = a.store.append(
+      scope,
+      actor,
+      { intentId: randomUUID(), text: 'original' },
+      current,
+    );
+    a.store.updateNote(
+      scope,
+      actor,
+      {
+        expectedRevision: 0,
+        markdown: 'original note',
+        sourceMessageIds: [message.messageId],
+      },
+      current,
+    );
+    const input = { intentId: randomUUID(), text: 'request', agentId: 'agent' };
+    const request = a.store.reserveRequest(scope, actor, input, current);
+    const db = openPrivateSqlite(
+      join(home, 'security', 'project-rooms.sqlite'),
+      'Project rooms',
+    );
+    const cases = [
+      {
+        table: 'project_rooms',
+        patch: { roomId: randomUUID() },
+        read: () => b.store.lookupRoom(scope),
+      },
+      {
+        table: 'project_rooms',
+        patch: { scope: { ...scope, localProjectId: 'foreign' } },
+        read: () => b.store.lookupRoom(scope),
+      },
+      {
+        table: 'project_rooms',
+        patch: { scope: { ...scope, extra: 'foreign' } },
+        read: () => b.store.lookupRoom(scope),
+      },
+      {
+        table: 'project_room_messages',
+        patch: { roomId: randomUUID() },
+        read: () => b.store.history(scope),
+      },
+      {
+        table: 'project_room_messages',
+        patch: { seq: 2 },
+        read: () => b.store.history(scope),
+      },
+      {
+        table: 'project_room_messages',
+        patch: { messageId: randomUUID() },
+        read: () => b.store.history(scope),
+      },
+      {
+        table: 'project_room_messages',
+        patch: { text: 'foreign-secret'.repeat(2000) },
+        read: () => b.store.history(scope),
+      },
+      {
+        table: 'project_room_messages',
+        patch: { text: 'x'.repeat(512 * 1024 + 1) },
+        read: () => b.store.history(scope),
+      },
+      {
+        table: 'project_room_notes',
+        patch: { markdown: 'foreign-secret'.repeat(1000) },
+        read: () => b.store.getNote(scope),
+      },
+      {
+        table: 'project_room_notes',
+        patch: { roomId: randomUUID() },
+        read: () => b.store.getNote(scope),
+      },
+      {
+        table: 'project_room_requests',
+        patch: { roomId: randomUUID() },
+        read: () => b.store.getRequest(scope, request.requestId),
+      },
+      {
+        table: 'project_room_requests',
+        patch: { state: 'foreign-secret' },
+        read: () => b.store.listPendingRequests(scope),
+      },
+      {
+        table: 'project_room_requests',
+        patch: { text: 'foreign-secret'.repeat(2000) },
+        read: () => b.store.reserveRequest(scope, actor, input, current),
+      },
+    ];
+    try {
+      for (const test of cases) {
+        const original = String(
+          db.prepare(`SELECT record FROM ${test.table}`).get()!.record,
+        );
+        db.prepare(`UPDATE ${test.table} SET record=?`).run(
+          JSON.stringify({ ...JSON.parse(original), ...test.patch }),
+        );
+        try {
+          expect(test.read).toThrow(/^Project room invalid$/);
+        } finally {
+          db.prepare(`UPDATE ${test.table} SET record=?`).run(original);
+        }
+        expect(
+          db.prepare(`SELECT record FROM ${test.table}`).get()!.record,
+        ).toBe(original);
+        expect(b.store.history(scope).messages).toEqual([message]);
+        expect(b.store.getRequest(scope, request.requestId)).toEqual(request);
+        expect(b.store.getNote(scope)?.markdown).toBe('original note');
+      }
+    } finally {
+      db.close();
+    }
+  });
+  it('reads existing rooms and history while another connection holds writer admission', () => {
+    const message = a.store.append(
+      scope,
+      actor,
+      { intentId: randomUUID(), text: 'committed' },
+      current,
+    );
+    const db = openPrivateSqlite(
+      join(home, 'security', 'project-rooms.sqlite'),
+      'Project rooms',
+    );
+    db.exec('BEGIN IMMEDIATE');
+    const wal = join(home, 'security', 'project-rooms.sqlite-wal');
+    const originalWal = readFileSync(wal);
+    try {
+      expect(b.store.lookupRoom(scope)?.roomId).toBe(message.roomId);
+      expect(b.store.history(scope).messages).toEqual([message]);
+      expect(
+        b.store.lookupRoom({ ...scope, localProjectId: 'missing' }),
+      ).toBeNull();
+      expect(readFileSync(wal)).toEqual(originalWal);
+    } finally {
+      db.exec('ROLLBACK');
+      db.close();
+    }
   });
 });

@@ -44,7 +44,10 @@ async function data(response: Response): Promise<unknown> {
     throw new Error('Missing response data');
   return envelope.data;
 }
-async function harness(role: 'viewer' | 'contributor' = 'contributor') {
+async function harness(
+  role: 'viewer' | 'contributor' = 'contributor',
+  provision = true,
+) {
   const home = mkdtempSync(join(tmpdir(), 'station-room-http-'));
   cleanup.push(() => rmSync(home, { recursive: true, force: true }));
   const storage = new FileStorageAdapter(home);
@@ -155,6 +158,13 @@ async function harness(role: 'viewer' | 'contributor' = 'contributor') {
   cleanup.push(() => runtime.close());
   const service = new ProjectRoomService(runtime.store, port);
   cleanup.push(() => service.close());
+  if (provision)
+    await service.open(
+      new Request('http://localhost', {
+        headers: { authorization: 'Bearer alice-session' },
+      }),
+      'example',
+    );
   const app = new Hono();
   app.route('/api/projects', createProjectRoomRoutes(service));
   const request = (
@@ -288,8 +298,15 @@ test('two independent human authorities keep attribution, ordering, replay and n
   ).toBe(400);
 });
 test('viewer discovery permits viewing presence but refuses writes and history never creates a Room', async () => {
-  const h = await harness('viewer');
+  const h = await harness('viewer', false);
   expect((await h.request('bob', '/messages')).status).toBe(404);
+  expect((await h.request('bob')).status).toBe(404);
+  await h.service.open(
+    new Request('http://station.test', {
+      headers: { authorization: 'Bearer alice-session' },
+    }),
+    'example',
+  );
   const b = await h.discover('bob');
   expect(b.capabilities.discuss).toBe(false);
   expect(
@@ -406,6 +423,12 @@ test('presence capacity is enforced per Room and globally and leave frees a slot
       });
       await h.membership.enable(slug, project.id, h.alice);
     }
+    await h.service.open(
+      new Request('http://station.test', {
+        headers: { authorization: 'Bearer alice-session' },
+      }),
+      slug,
+    );
     const view = (
       await h.service.discover(
         new Request('http://station.test', {

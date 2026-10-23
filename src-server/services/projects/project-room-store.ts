@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
 import {
+  isProjectRoomUuid,
   PROJECT_ROOM_LIMITS as LIMITS,
   type ProjectRoomActor,
   type ProjectRoomAgentRequest,
@@ -17,6 +18,10 @@ import {
   parseProjectRoomAppendInput,
   parseProjectRoomNoteInput,
 } from '@kontourai/station-contracts/project-room';
+import {
+  parseProjectRoomMessage,
+  parseProjectRoomNote,
+} from '@kontourai/station-contracts/project-room-browser';
 import { openPrivateSqlite } from '../../utils/private-sqlite.js';
 
 export class ProjectRoomRefusal extends Error {
@@ -42,8 +47,99 @@ const key = (scope: ProjectMembershipScope) =>
   ]);
 const author = (actor: ProjectRoomActor) =>
   JSON.stringify([actor.kind, actor.id]);
-const decode = <T>(row: { [key: string]: unknown } | undefined): T | null =>
-  row ? (JSON.parse(String(row.record)) as T) : null;
+type Row = Record<string, unknown>;
+function corrupt(): never {
+  throw new ProjectRoomRefusal('invalid');
+}
+function object(value: unknown, keys: string[]): Row {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    Object.keys(value).some((k) => !keys.includes(k))
+  )
+    corrupt();
+  return value as Row;
+}
+function scopeValue(value: unknown): ProjectMembershipScope {
+  const v = object(value, [
+    'stationId',
+    'localProjectId',
+    'portableProjectId',
+    'localProjectSlug',
+  ]);
+  for (const k of [
+    'stationId',
+    'localProjectId',
+    'portableProjectId',
+    'localProjectSlug',
+  ])
+    if (
+      typeof v[k] !== 'string' ||
+      !v[k].trim() ||
+      Buffer.byteLength(v[k]) > 512
+    )
+      corrupt();
+  return v as unknown as ProjectMembershipScope;
+}
+function decode<T>(row: Row, parse: (value: unknown) => T): T {
+  try {
+    return parse(JSON.parse(String(row.record)));
+  } catch {
+    return corrupt();
+  }
+}
+function requestValue(value: unknown): ProjectRoomAgentRequest {
+  const v = object(value, [
+    'intentId',
+    'text',
+    'replyTo',
+    'agentId',
+    'roomId',
+    'requestId',
+    'executionCorrelationId',
+    'actor',
+    'state',
+    'sessionId',
+    'publishedMessageId',
+    'createdAt',
+    'updatedAt',
+  ]);
+  parseProjectRoomAgentRequestInput({
+    intentId: v.intentId,
+    text: v.text,
+    agentId: v.agentId,
+    ...(v.replyTo === undefined ? {} : { replyTo: v.replyTo }),
+  });
+  // The message parser owns the common persisted actor, UUID, text and date schema.
+  parseProjectRoomMessage({
+    roomId: v.roomId,
+    messageId: v.requestId,
+    seq: 1,
+    actor: v.actor,
+    createdAt: v.createdAt,
+    intentId: v.intentId,
+    text: v.text,
+  });
+  if (
+    !isProjectRoomUuid(v.executionCorrelationId) ||
+    typeof v.state !== 'string' ||
+    !['reserved', 'started', 'published', 'uncertain', 'cancelled'].includes(
+      v.state,
+    ) ||
+    typeof v.updatedAt !== 'string' ||
+    !Number.isFinite(Date.parse(v.updatedAt)) ||
+    (v.sessionId !== undefined &&
+      (typeof v.sessionId !== 'string' ||
+        !v.sessionId.trim() ||
+        Buffer.byteLength(v.sessionId) > 256)) ||
+    (v.publishedMessageId !== undefined &&
+      !isProjectRoomUuid(v.publishedMessageId)) ||
+    (v.state === 'published') !== (v.publishedMessageId !== undefined)
+  )
+    corrupt();
+  return v as unknown as ProjectRoomAgentRequest;
+}
 export class ProjectRoomStore {
   constructor(private readonly db: DatabaseSync) {
     db.exec(`CREATE TABLE IF NOT EXISTS project_rooms (scope_key TEXT PRIMARY KEY, room_id TEXT NOT NULL UNIQUE, record TEXT NOT NULL) STRICT;
@@ -51,8 +147,8 @@ export class ProjectRoomStore {
       CREATE TABLE IF NOT EXISTS project_room_notes (room_id TEXT PRIMARY KEY, record TEXT NOT NULL) STRICT;
       CREATE TABLE IF NOT EXISTS project_room_requests (room_id TEXT NOT NULL, request_id TEXT NOT NULL UNIQUE, author TEXT NOT NULL, intent_id TEXT NOT NULL, payload TEXT NOT NULL, record TEXT NOT NULL, PRIMARY KEY(room_id, author, intent_id)) STRICT;`);
   }
-  private transaction<T>(run: () => T): T {
-    this.db.exec('BEGIN IMMEDIATE');
+  private transaction<T>(run: () => T, readOnly = false): T {
+    this.db.exec(readOnly ? 'BEGIN' : 'BEGIN IMMEDIATE');
     try {
       const result = run();
       this.db.exec('COMMIT');
@@ -73,34 +169,40 @@ export class ProjectRoomStore {
     )
       throw new ProjectRoomRefusal('invalid');
   }
+  lookupRoom(scope: ProjectMembershipScope): ProjectRoomIdentity | null {
+    scopeValue(scope);
+    const row = this.db
+      .prepare('SELECT * FROM project_rooms WHERE scope_key=?')
+      .get(key(scope));
+    if (!row) return null;
+    return decode(row, (value) => {
+      const v = object(value, ['roomId', 'scope']);
+      const stored = scopeValue(v.scope);
+      if (
+        !isProjectRoomUuid(v.roomId) ||
+        v.roomId !== row.room_id ||
+        key(stored) !== row.scope_key ||
+        key(stored) !== key(scope)
+      )
+        corrupt();
+      return { roomId: v.roomId, scope: { ...scope } };
+    });
+  }
   private room(scope: ProjectMembershipScope): ProjectRoomIdentity {
-    const room = decode<ProjectRoomIdentity>(
-      this.db
-        .prepare('SELECT record FROM project_rooms WHERE scope_key=?')
-        .get(key(scope)),
-    );
+    const room = this.lookupRoom(scope);
     if (!room) throw new ProjectRoomRefusal('not_found');
-    return { roomId: room.roomId, scope: { ...scope } };
+    return room;
   }
   ensureRoom(
     scope: ProjectMembershipScope,
     assertCurrent: ProjectRoomAssertCurrent,
   ): ProjectRoomIdentity {
-    if (
-      Object.values(scope).some(
-        (v) => typeof v !== 'string' || !v.trim() || Buffer.byteLength(v) > 512,
-      )
-    )
-      throw new ProjectRoomRefusal('invalid');
+    scopeValue(scope);
     return this.transaction(() => {
-      const existing = decode<ProjectRoomIdentity>(
-        this.db
-          .prepare('SELECT record FROM project_rooms WHERE scope_key=?')
-          .get(key(scope)),
-      );
+      const existing = this.lookupRoom(scope);
       if (existing) {
         assertSynchronousCurrent(assertCurrent);
-        return { roomId: existing.roomId, scope: { ...scope } };
+        return existing;
       }
       const room = { scope: { ...scope }, roomId: randomUUID() };
       assertSynchronousCurrent(assertCurrent);
@@ -110,17 +212,55 @@ export class ProjectRoomStore {
       return room;
     });
   }
-  private message(roomId: string, messageId: string): ProjectRoomMessage {
-    const value = decode<ProjectRoomMessage>(
-      this.db
-        .prepare(
-          'SELECT record FROM project_room_messages WHERE room_id=? AND message_id=?',
-        )
-        .get(roomId, messageId),
-    );
-    if (!value) throw new ProjectRoomRefusal('not_found');
+  private storedMessage(row: Row): ProjectRoomMessage {
+    const value = decode(row, parseProjectRoomMessage);
+    this.assertActor(value.actor);
+    const payload = parseProjectRoomAppendInput({
+      intentId: value.intentId,
+      text: value.text,
+      ...(value.replyTo === undefined ? {} : { replyTo: value.replyTo }),
+    });
+    if (
+      value.roomId !== row.room_id ||
+      value.seq !== row.seq ||
+      value.seq > LIMITS.messagesPerRoom ||
+      value.messageId !== row.message_id ||
+      author(value.actor) !== row.author ||
+      value.intentId !== row.intent_id ||
+      JSON.stringify(payload) !== row.payload
+    )
+      corrupt();
     return value;
   }
+  private storedRequest(row: Row): ProjectRoomAgentRequest {
+    const value = decode(row, requestValue);
+    this.assertActor(value.actor);
+    const payload = parseProjectRoomAgentRequestInput({
+      intentId: value.intentId,
+      text: value.text,
+      agentId: value.agentId,
+      ...(value.replyTo === undefined ? {} : { replyTo: value.replyTo }),
+    });
+    if (
+      value.roomId !== row.room_id ||
+      value.requestId !== row.request_id ||
+      author(value.actor) !== row.author ||
+      value.intentId !== row.intent_id ||
+      JSON.stringify(payload) !== row.payload
+    )
+      corrupt();
+    return value;
+  }
+  private message(roomId: string, messageId: string): ProjectRoomMessage {
+    const row = this.db
+      .prepare(
+        'SELECT * FROM project_room_messages WHERE room_id=? AND message_id=?',
+      )
+      .get(roomId, messageId);
+    if (!row) throw new ProjectRoomRefusal('not_found');
+    return this.storedMessage(row);
+  }
+
   append(
     scope: ProjectMembershipScope,
     actor: ProjectRoomActor,
@@ -134,14 +274,14 @@ export class ProjectRoomStore {
       const payload = JSON.stringify(value);
       const existing = this.db
         .prepare(
-          'SELECT payload, record FROM project_room_messages WHERE room_id=? AND author=? AND intent_id=?',
+          'SELECT * FROM project_room_messages WHERE room_id=? AND author=? AND intent_id=?',
         )
         .get(roomId, author(actor), value.intentId);
       if (existing) {
         if (existing.payload !== payload)
           throw new ProjectRoomRefusal('conflict');
         assertSynchronousCurrent(assertCurrent);
-        return decode<ProjectRoomMessage>(existing)!;
+        return this.storedMessage(existing);
       }
       if (value.replyTo) this.message(roomId, value.replyTo);
       const last = Number(
@@ -204,33 +344,48 @@ export class ProjectRoomStore {
       );
       const rows = this.db
         .prepare(
-          'SELECT record FROM project_room_messages WHERE room_id=? AND seq>? ORDER BY seq LIMIT ?',
+          'SELECT * FROM project_room_messages WHERE room_id=? AND seq>? ORDER BY seq LIMIT ?',
         )
         .all(roomId, after, limit);
+      if (
+        !Number.isSafeInteger(lastSeq) ||
+        lastSeq < 0 ||
+        lastSeq > LIMITS.messagesPerRoom
+      )
+        corrupt();
       const messages: ProjectRoomMessage[] = [];
       let bytes = 0;
       for (const row of rows) {
         const size = Buffer.byteLength(String(row.record));
-        if (bytes + size > LIMITS.pageBytes) break;
-        messages.push(decode<ProjectRoomMessage>(row)!);
+        const message = this.storedMessage(row);
+        if (size > LIMITS.pageBytes) corrupt();
+        if (bytes + size + 2 + messages.length > LIMITS.pageBytes) break;
+        messages.push(message);
         bytes += size;
       }
       const end = messages.at(-1)?.seq ?? after;
+      if (end < lastSeq && messages.length === 0) corrupt();
       return {
         ...identity,
         messages,
         checkpoint: { roomId, lastSeq },
         nextAfter: end < lastSeq ? end : null,
       };
-    });
+    }, true);
   }
   getNote(scope: ProjectMembershipScope): ProjectRoomNote | null {
-    return decode(
-      this.db
-        .prepare('SELECT record FROM project_room_notes WHERE room_id=?')
-        .get(this.room(scope).roomId),
-    );
+    const roomId = this.room(scope).roomId;
+    const row = this.db
+      .prepare('SELECT * FROM project_room_notes WHERE room_id=?')
+      .get(roomId);
+    if (!row) return null;
+    const note = decode(row, parseProjectRoomNote);
+    this.assertActor(note.actor);
+    if (note.roomId !== roomId) corrupt();
+    for (const id of note.sourceMessageIds) this.message(roomId, id);
+    return note;
   }
+
   updateNote(
     scope: ProjectMembershipScope,
     actor: ProjectRoomActor,
@@ -275,14 +430,14 @@ export class ProjectRoomStore {
       const payload = JSON.stringify(value);
       const existing = this.db
         .prepare(
-          'SELECT payload, record FROM project_room_requests WHERE room_id=? AND author=? AND intent_id=?',
+          'SELECT * FROM project_room_requests WHERE room_id=? AND author=? AND intent_id=?',
         )
         .get(roomId, author(actor), value.intentId);
       if (existing) {
         if (existing.payload !== payload)
           throw new ProjectRoomRefusal('conflict');
         assertSynchronousCurrent(assertCurrent);
-        return decode<ProjectRoomAgentRequest>(existing)!;
+        return this.storedRequest(existing);
       }
       if (value.replyTo) this.message(roomId, value.replyTo);
       if (
@@ -324,25 +479,25 @@ export class ProjectRoomStore {
     scope: ProjectMembershipScope,
     requestId: string,
   ): ProjectRoomAgentRequest {
-    const value = decode<ProjectRoomAgentRequest>(
-      this.db
-        .prepare(
-          'SELECT record FROM project_room_requests WHERE room_id=? AND request_id=?',
-        )
-        .get(this.room(scope).roomId, requestId),
-    );
-    if (!value) throw new ProjectRoomRefusal('not_found');
-    return value;
+    const row = this.db
+      .prepare(
+        'SELECT * FROM project_room_requests WHERE room_id=? AND request_id=?',
+      )
+      .get(this.room(scope).roomId, requestId);
+    if (!row) throw new ProjectRoomRefusal('not_found');
+    return this.storedRequest(row);
   }
   listPendingRequests(
     scope: ProjectMembershipScope,
   ): ProjectRoomAgentRequest[] {
-    return this.db
+    const rows = this.db
       .prepare(
-        'SELECT record FROM project_room_requests WHERE room_id=? ORDER BY rowid',
+        'SELECT * FROM project_room_requests WHERE room_id=? ORDER BY rowid LIMIT ?',
       )
-      .all(this.room(scope).roomId)
-      .map((row) => decode<ProjectRoomAgentRequest>(row)!)
+      .all(this.room(scope).roomId, LIMITS.requestsPerRoom + 1);
+    if (rows.length > LIMITS.requestsPerRoom) corrupt();
+    return rows
+      .map((row) => this.storedRequest(row))
       .filter((v) => ['reserved', 'started', 'uncertain'].includes(v.state));
   }
   private transition(

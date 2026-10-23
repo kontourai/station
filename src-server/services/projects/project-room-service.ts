@@ -97,7 +97,7 @@ export class ProjectRoomService {
             guard &&
             (actor.id !== guard.expectedActorId ||
               scope.localProjectId !== guard.expectedProjectId ||
-              this.store.history(scope, 0, 1).roomId !== guard.expectedRoomId)
+              this.store.lookupRoom(scope)?.roomId !== guard.expectedRoomId)
           )
             throw new ProjectRoomRefusal('conflict');
           const result = operation(scope, actor, caps, () => {
@@ -120,6 +120,16 @@ export class ProjectRoomService {
     if (!outcome.ok) throw outcome.error;
     return { data: outcome.data, admission: outcome.admission };
   }
+  open(request: Request, slug: string) {
+    return this.run(
+      request,
+      slug,
+      'discuss',
+      undefined,
+      (scope, _actor, _caps, assertCurrent) =>
+        this.store.ensureRoom(scope, assertCurrent),
+    );
+  }
   discover(request: Request, slug: string) {
     return this.run(
       request,
@@ -127,7 +137,8 @@ export class ProjectRoomService {
       'view',
       undefined,
       (scope, actor, capabilities, assertCurrent): ProjectRoomBrowserView => {
-        const room = this.store.ensureRoom(scope, assertCurrent);
+        const room = this.store.lookupRoom(scope);
+        if (!room) throw new ProjectRoomRefusal('not_found');
         const checkpoint = this.store.history(scope, 0, 1).checkpoint;
         const note = this.store.getNote(scope);
         assertCurrent();
