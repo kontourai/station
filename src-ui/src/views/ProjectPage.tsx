@@ -272,7 +272,9 @@ function ProjectOperatorPage({
     // accepted layout type(s), plus parser and retained-LayoutTab adaptation
     // checks so contributed routing metadata cannot bypass integrity checks.
     const hostingLayout = requiresLayout
-      ? layouts.find((layout) => layout.type === 'coding')
+      ? layouts.find(
+          (layout: { slug: string; type?: string }) => layout.type === 'coding',
+        )
       : undefined;
     const directRoute = workspacePaneDirectRoute(
       slug,
