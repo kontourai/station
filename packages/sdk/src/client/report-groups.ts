@@ -263,7 +263,7 @@ export async function listReportGroups(
     ) ||
     (parsed.hasMore
       ? parsed.nextGroupId === null ||
-        parsed.nextGroupId !== parsed.groups.at(-1)?.groupId
+        parsed.nextGroupId !== parsed.groups[parsed.groups.length - 1]?.groupId
       : parsed.nextGroupId !== null)
   )
     throw new ReportGroupProtocolError('Invalid report group list page.');
