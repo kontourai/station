@@ -231,6 +231,50 @@ when a client must support either engine kind.
 
 ---
 
+## Run independent advisory reports
+
+On a personal Station, open **Agents → Inspect an Ensemble → Run an advisory
+report group**. These operations require current local-grant operator
+authority. An ordinary browser-bootstrap session alone is insufficient; the
+server refuses unavailable authority or provider qualification. Saved Agent
+configuration does not prove provider access. Flow-backed topology and
+continuation remain unavailable on this report surface.
+
+1. Enter the configured **Project ID** and optional **Resource ID** whose source
+   should be inspected.
+2. Set the deadline (1–5 minutes), concurrent report count, and explicit aggregate
+   input-token, output-token and inference-cost limits. Cost is entered in
+   microdollars: 1,000,000 microdollars is one dollar. These limits concern
+   provider inference before tax, not the final invoice.
+3. For each of up to 16 members, enter a seat ID, configured Agent ID, its own
+   brief and output-token limit. **Add report member** adds another seat. Each
+   member receives its own brief and the selected Project source. Station
+   resolves the configured runtime/model and validates source and authority.
+4. Keep the displayed operation ID, then choose **Start paid reports**. Submission
+   can start paid requests immediately. The form disables edits and repeat
+   submission. If the response is lost or refused, inspect retained groups
+   before starting new work; an unknown outcome is not permission to resend.
+   Closing the view stops waiting but does not prove provider termination.
+5. Choose **Show report groups**, then **Read report** for the member you want.
+   Returned text remains unassessed. Reserved usage, known accounting and
+   termination receipts are displayed separately; a returned report is not
+   acceptance or a refund.
+6. To stop further admission and request interruption, choose **Request
+   cancellation**. If cancellation remains pending, **Check cancellation
+   receipts** requires the original cancellation operation key. This checks
+   retained receipts without resending interrupts. Missing receipts remain
+   pending; requested cancellation does not confirm physical termination.
+
+Unsent draft edits use the normal unsaved-changes guard. Paid-report operations
+have no automatic retries. Historical reports remain readable when a provider
+profile expires, subject to current read authority.
+
+See the [report-group API](../reference/api.md#report-groups) for source bounds,
+availability and exact recovery inputs, and the [SDK reference](../reference/sdk.md#qualified-report-groups)
+for client behavior. CLI session groups on the same inspection page have a
+separate logical seat-start allowance; their dollar, token and physical-attempt
+caps are unavailable.
+
 ## Tool Approval Flow
 
 In attended Station-engine chat on the per-Agent route, tools not otherwise

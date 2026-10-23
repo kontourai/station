@@ -56,7 +56,8 @@ conversation access. Filesystem preparation stays in the server.
 | Module | Owns |
 |---|---|
 | `@kontourai/station-contracts/ensemble` | Versioned named-member preset parsing, deterministic roster/brief text, and inspection facts with optional declared prerequisite references; presets and inspection grant no execution or authentication authority |
-| `@kontourai/station-contracts/delegation-group` | Group transport and Station-authorized CLI session-group views, retained preset/member identities and bounded revision pages; these shapes grant no launch authority and do not bind portable Flow lineage |
+| `@kontourai/station-contracts/delegation-group` | `DelegationGroupView` transport with unavailable physical execution capability, and `CliSessionGroupView` under Station Session authority; CLI `maxDispatches` bounds reserved seat starts, not provider attempts. Dollar, token and physical-attempt caps remain unavailable, portable Flow lineage is unbound, and acceptance remains unassessed |
+| `@kontourai/station-contracts/report-group` | Independent advisory report requests/views, cancellation, revision events and paged results; allocation, usage and accounting-terminal observations remain separate from task acceptance and execution authority |
 | `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota, optional identity/credit/model/spending/breakdown metadata and bounded capture-audit projections, plus provider-owned login; runtime validation stays in SDK consumers |
 | `@kontourai/station-contracts/engine-sign-in` | Sign-in for engines run as commands: status with its source, offered methods (id, name, kind, terms note), key names (never values), the running attempt and what the caller may do |
 | `@kontourai/station-contracts/acp` | ACP connection config, ACP connection status values, and engine catalogue entries with their install/launch/sign-in descriptor and its validator (`validateACPEngineDescriptor`), and the public agent registry's listing facts and source status |
@@ -264,6 +265,15 @@ Claude's early resumed-child replies require an observed matching `SendMessage`
 recipient before they can seed the resumed run. Replay suppression retains the
 latest 64 SDK-frame, tool-call and resume-call identities per category; identities
 evicted from that bounded history are no longer recognized as replays.
+
+### Delegation initiation origin
+
+`OrchestrationInputOrigin.initiator`, when present, reports the first observed
+turn's validated client-origin actor kind and separately its self-reported
+client surface. It includes no Device identity and grants no authority. A later
+turn does not replace that initiating origin. Absence means the initial turn
+carried no valid origin observation; clients must not infer one from prompt
+text or User-Agent.
 
 ### Child-work result reports
 

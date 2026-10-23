@@ -1895,7 +1895,8 @@ strict response and cursor validation; the [CLI](cli.md#qualified-report-groups)
 consumes it. The Ensemble inspector also lists retained groups and explicitly
 loads authorized raw reports through scoped SDK queries. It displays unresolved
 reservations and unconfirmed termination separately from reported output.
-The inspector also provides explicit budgeted paid-report submission,
+The [operator guide](../guides/agent-configuration.md#run-independent-advisory-reports)
+walks through the inspector. It also provides explicit budgeted paid-report submission,
 cancellation requests, and pending-cancellation receipt checks. Each mounted
 form allows one attempt, uses scoped authority, and never retries automatically.
 Receipt checks retain the original cancellation key and never resend interrupts.
