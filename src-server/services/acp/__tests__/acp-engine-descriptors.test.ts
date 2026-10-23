@@ -3,7 +3,10 @@ import {
   clearAll,
   registerACPConnectionRegistryProvider,
 } from '../../../providers/registries/registry.js';
-import { registryLaunchEnvFor } from '../acp-engine-descriptors.js';
+import {
+  nameSkeleton,
+  registryLaunchEnvFor,
+} from '../acp-engine-descriptors.js';
 
 /**
  * Which connections get a built-in entry's launch variables: the ones whose
@@ -51,5 +54,20 @@ describe('registryLaunchEnvFor executable matching', () => {
   ])('%s on %s does not', (command, platform) => {
     registerGoose();
     expect(registryLaunchEnvFor({ command }, platform)).toBeUndefined();
+  });
+});
+
+describe('nameSkeleton', () => {
+  test('drops characters that render as nothing before comparing names', () => {
+    for (const name of [
+      'Go\u00ADose',
+      'Go\u034Fose',
+      'Goose\u3164',
+      'Goose\uFFA0',
+      'Go\u200Dose',
+      'Goose\uFE0F',
+    ]) {
+      expect(nameSkeleton(name)).toBe('goose');
+    }
   });
 });

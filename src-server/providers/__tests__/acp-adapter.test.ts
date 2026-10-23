@@ -14,7 +14,10 @@ import {
   ENGINE_CAPABILITY_MATRICES,
   engineControlPlaneCapability,
 } from '@kontourai/station-contracts/engine-capability-matrix';
-import { FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY } from '@kontourai/station-contracts/provider';
+import {
+  ENGINE_SIGN_IN_REQUIRED_CODE,
+  FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
+} from '@kontourai/station-contracts/provider';
 import type { SessionLifecycleState } from '@kontourai/station-contracts/session-lifecycle';
 import { turnProvenanceEngineLabel } from '@kontourai/station-contracts/turn-provenance';
 import {
@@ -29,6 +32,7 @@ import {
   builtinStationControlServerPath,
   builtinStationDocsServerPath,
 } from '../../runtime/bootstrap/station-control-runtime-env.js';
+import { requiredMissingPrerequisites } from '../../runtime/frameworks/runtime-adapter-readiness.js';
 import { isAutoApprovedExternalTool } from '../../runtime/tools/tool-executor.js';
 
 // The genuine built-in station-control server as it appears in a resolved
@@ -316,7 +320,7 @@ describe('AcpAdapter', () => {
       connectionId: 'kiro',
     });
     expect(selected).not.toHaveLength(0);
-    expect(selected.every((item) => item.status === 'installed')).toBe(true);
+    expect(requiredMissingPrerequisites(selected)).toEqual([]);
     expect(selected.every((item) => item.name.includes('OpenCode'))).toBe(true);
 
     const aggregate = await adapter.getPrerequisites();
@@ -325,6 +329,28 @@ describe('AcpAdapter', () => {
         (item) => item.name.includes('Cursor') && item.status !== 'installed',
       ),
     ).toBe(true);
+  });
+
+  // #1940: `node --version` exits 0, which is all the old auth check read, so
+  // every installed engine claimed its credentials were present. Nothing a
+  // generic engine exposes proves sign-in; the row must say so and not gate.
+  test('#1940: an installed engine reports sign-in as unverified, never signed in, and does not block', async () => {
+    const { adapter } = createAdapter({
+      connectionOverrides: [{ id: 'kiro', name: 'OpenCode', command: 'node' }],
+    });
+
+    const prerequisites = await adapter.getPrerequisites({
+      connectionId: 'kiro',
+    });
+
+    expect(prerequisites).toContainEqual(
+      expect.objectContaining({ id: 'node-cli', status: 'installed' }),
+    );
+    const auth = prerequisites.find((item) => item.id === 'node-auth');
+    expect(auth).toMatchObject({ status: 'error', category: 'optional' });
+    expect(auth?.description).toContain('has no way to check whether OpenCode');
+    expect(auth?.description).not.toMatch(/credentials are present/i);
+    expect(requiredMissingPrerequisites(prerequisites)).toEqual([]);
   });
 
   test('#2316: an interrupt settles the open permission request; a late answer is refused and grants nothing', async () => {
@@ -5072,6 +5098,116 @@ describe('station#1182: runtime-reported model', () => {
     expect(exited).not.toHaveProperty('exitCode');
     expect(processes[0].destroyCalls).toBe(1);
     await expect(adapter.listSessions()).resolves.toEqual([]);
+  });
+
+  // An engine that is not signed in answers `session/new` with ACP's
+  // auth_required (-32000). `session.started` already went out, so the start
+  // must end in the stream, and the cause must be typed, not bare text.
+  test('auth_required on session/new ends the announced session with a typed sign-in failure', async () => {
+    expect(ENGINE_SIGN_IN_REQUIRED_CODE).toBe('engine-sign-in-required');
+    const { adapter, processes } = createAdapter({
+      newSessionError: RequestError.authRequired(undefined, 'run kiro login'),
+    });
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+
+    await expect(
+      adapter.startSession({
+        provider: 'acp',
+        threadId: 'thread-auth-required',
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'kiro' },
+      }),
+    ).rejects.toMatchObject({
+      name: 'SessionStartRefusedError',
+      code: ENGINE_SIGN_IN_REQUIRED_CODE,
+      kind: 'auth',
+    });
+
+    await nextEvent(iterator, 'session.started');
+    const failure = await nextEvent(iterator, 'runtime.error');
+    expect(failure).toMatchObject({
+      method: 'runtime.error',
+      kind: 'auth',
+      retryable: false,
+      failurePhase: 'refused',
+      code: ENGINE_SIGN_IN_REQUIRED_CODE,
+      message: expect.stringContaining(
+        'Authentication required: run kiro login',
+      ),
+    });
+    await expect(nextEvent(iterator, 'session.exited')).resolves.toMatchObject({
+      method: 'session.exited',
+      sessionId: 'thread-auth-required',
+      reason: 'start-refused',
+    });
+    expect(processes[0].destroyCalls).toBe(1);
+    await expect(adapter.listSessions()).resolves.toEqual([]);
+  });
+
+  // -32000 opens JSON-RPC's server-error range (-32000..-32099); only the
+  // ACP SDK's own authRequired shape means "sign in".
+  test('a generic -32000 on session/new is not labelled a sign-in failure', async () => {
+    const { adapter } = createAdapter({
+      newSessionError: new RequestError(-32000, 'turn failed'),
+    });
+
+    const start = adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-generic-32000',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+
+    await expect(start).rejects.toThrow('turn failed');
+    await expect(start).rejects.not.toBeInstanceOf(SessionStartRefusedError);
+  });
+
+  test('a generic -32000 on a prompt stays a provider error', async () => {
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-prompt-generic',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    await adapter.sendTurn({ threadId: 'thread-prompt-generic', input: 'hi' });
+    await nextEvent(iterator, 'turn.started');
+
+    processes[0].rejectPrompt(new RequestError(-32000, 'turn failed'));
+
+    const failure = await nextEvent(iterator, 'runtime.error');
+    expect(failure).toMatchObject({
+      method: 'runtime.error',
+      kind: 'provider_error',
+    });
+    expect(failure).not.toHaveProperty('code', ENGINE_SIGN_IN_REQUIRED_CODE);
+  });
+
+  test('auth_required on a prompt is reported as a typed sign-in failure', async () => {
+    const { adapter, processes } = createAdapter();
+    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+    await adapter.startSession({
+      provider: 'acp',
+      threadId: 'thread-prompt-auth',
+      cwd: '/tmp/project',
+      metadata: { connectionId: 'kiro' },
+    });
+    await nextEvent(iterator, 'session.started');
+    await nextEvent(iterator, 'session.configured');
+    await adapter.sendTurn({ threadId: 'thread-prompt-auth', input: 'hi' });
+    await nextEvent(iterator, 'turn.started');
+
+    processes[0].rejectPrompt(RequestError.authRequired());
+
+    await expect(nextEvent(iterator, 'runtime.error')).resolves.toMatchObject({
+      method: 'runtime.error',
+      kind: 'auth',
+      code: ENGINE_SIGN_IN_REQUIRED_CODE,
+      message: expect.stringContaining('Authentication required'),
+    });
   });
 
   // A Stop that lands while `session/new` is in flight is the user's act: the

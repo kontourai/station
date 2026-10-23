@@ -14,6 +14,13 @@
 //                             auth_required error (-32000)
 // `--record` appends one JSON line per request received and per permission
 // outcome, so a test can see what reached the engine.
+//
+// Sign-in:
+//   --record-env <NAME>          record NAME's value in this process's
+//                                environment at start (what Station spawned it with)
+//   --authenticate-stderr <text> write text to stderr while authenticating
+//   --authenticate-delay-ms <ms> take that long to authenticate
+//   --authenticate-fail          refuse authenticate with an internal error
 import { appendFileSync, readFileSync } from 'node:fs';
 import { Readable, Writable } from 'node:stream';
 import * as acp from '@agentclientprotocol/sdk';
@@ -39,6 +46,11 @@ const recordPath = flag('record');
 const record = (entry) => {
   if (recordPath) appendFileSync(recordPath, `${JSON.stringify(entry)}\n`);
 };
+const recordEnv = flag('record-env');
+if (recordEnv)
+  record({ env: recordEnv, value: process.env[recordEnv] ?? null });
+const authenticateStderr = flag('authenticate-stderr');
+const authenticateDelayMs = Number(flag('authenticate-delay-ms') ?? 0);
 
 const DEFAULT_PERMISSION_OPTIONS = [
   { optionId: 'allow', kind: 'allow_once', name: 'Allow' },
@@ -165,16 +177,26 @@ const authRequired = () =>
 
 const app = acp
   .agent({ name: `fake-${profile.engine}` })
-  .onRequest('initialize', async () => {
-    record({ method: 'initialize' });
+  .onRequest('initialize', async ({ params }) => {
+    record({
+      method: 'initialize',
+      ...(params?.clientCapabilities?.auth
+        ? { clientAuth: params.clientCapabilities.auth }
+        : {}),
+    });
     if (initializeDelayMs > 0)
       await new Promise((resolve) => setTimeout(resolve, initializeDelayMs));
     return profile.initialize;
   })
-  // authenticate, set_mode and set_config_option are not driven by the
-  // qualification test yet; they are kept for the sign-in and mode/model lanes.
-  .onRequest('authenticate', ({ params }) => {
+  // set_mode and set_config_option are not driven by the qualification
+  // test yet; they are kept for the mode/model lanes.
+  .onRequest('authenticate', async ({ params }) => {
     record({ method: 'authenticate', methodId: params.methodId });
+    if (authenticateStderr) process.stderr.write(`${authenticateStderr}\n`);
+    if (authenticateDelayMs > 0)
+      await new Promise((resolve) => setTimeout(resolve, authenticateDelayMs));
+    if (process.argv.includes('--authenticate-fail'))
+      throw acp.RequestError.internalError(undefined, 'Pairing was declined');
     return {};
   })
   .onRequest('session/new', () => {

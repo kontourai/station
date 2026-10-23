@@ -1,0 +1,93 @@
+/* The public registry group in Add engine. Text wraps at every width: a
+   publisher's name, a reason or a command has to be readable in full. */
+
+.public-registry {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+  margin-top: var(--space-4, 16px);
+}
+
+.public-registry__heading {
+  margin: 0;
+  font-size: var(--text-base);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.public-registry__intro,
+.public-registry__notice,
+.public-registry__reason {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.public-registry__source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2, 8px);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.public-registry__source > span {
+  flex: 1 1 16rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.public-registry__facts {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.public-registry__details {
+  margin-top: var(--space-2, 8px);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.public-registry__details dl {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(0, 1fr);
+  gap: var(--space-1, 4px) var(--space-3, 12px);
+  margin: var(--space-2, 8px) 0;
+}
+
+.public-registry__details dl > div {
+  display: contents;
+}
+
+.public-registry__details dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.public-registry__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3, 12px);
+}
+
+.public-registry__update {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1, 4px);
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm, 6px);
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.public-registry__details code {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}

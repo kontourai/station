@@ -508,7 +508,8 @@ export async function buildCliRuntimePrerequisites(input: {
   command: string;
   displayName: string;
   versionArgs: string[];
-  authArgs: string[];
+  /** Ignored when `detectAuthState` is given. */
+  authArgs?: string[];
   installStep: string;
   authStep: string;
   runCommand?: (
@@ -525,6 +526,12 @@ export async function buildCliRuntimePrerequisites(input: {
    */
   findBinary?: (command: string) => string | null;
   detectAuthState?: () => Promise<CliAuthState>;
+  /**
+   * Set when the runtime has no sign-in check at all, so `unknown` is the
+   * expected answer rather than a failed check. The login row then says
+   * sign-in is unverified, and is optional so it never gates a chat.
+   */
+  unverifiedAuthDescription?: string;
   signal?: AbortSignal;
 }): Promise<Prerequisite[]> {
   throwIfAborted(input.signal);
@@ -567,9 +574,11 @@ export async function buildCliRuntimePrerequisites(input: {
   const versionProbe = execute(binary, input.versionArgs, input.signal);
   const authProbe = input.detectAuthState
     ? input.detectAuthState()
-    : JSON.stringify(input.authArgs) === JSON.stringify(input.versionArgs)
-      ? versionProbe
-      : execute(binary, input.authArgs, input.signal);
+    : !input.authArgs
+      ? Promise.resolve(null)
+      : JSON.stringify(input.authArgs) === JSON.stringify(input.versionArgs)
+        ? versionProbe
+        : execute(binary, input.authArgs, input.signal);
   const [versionResult, authResult] = await Promise.all([
     versionProbe,
     authProbe,
@@ -605,6 +614,20 @@ export async function buildCliRuntimePrerequisites(input: {
     : authResult
       ? parseCliAuthState(authResult as CliCommandResult, input.command)
       : 'unknown';
+
+  if (authState === 'unknown' && input.unverifiedAuthDescription) {
+    prerequisites.push({
+      id: `${input.command}-auth`,
+      name: `${input.displayName} login`,
+      description: input.unverifiedAuthDescription,
+      status: 'error',
+      category: 'optional',
+      installGuide: {
+        steps: [input.authStep],
+      },
+    });
+    return prerequisites;
+  }
 
   prerequisites.push({
     id: `${input.command}-auth`,
