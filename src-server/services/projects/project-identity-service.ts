@@ -295,6 +295,7 @@ export class ProjectIdentityService {
     input: Omit<ProjectExecutionRootMutationRequest, 'expectedIdentity'> & {
       expectedIdentity: unknown;
     },
+    assertCurrent: () => void = () => {},
   ): Promise<ProjectIdentityView> {
     const expectedIdentity = parseProjectPortableIdentity(
       input.expectedIdentity,
@@ -321,7 +322,18 @@ export class ProjectIdentityService {
         'This Project has no portable identity. Prepare it explicitly before selecting an execution root.',
       );
     const current = parseProjectPortableIdentity(record);
-    if (!isDeepStrictEqual(current, expectedIdentity))
+    const { executionRoot: _previousRoot, ...expectedBase } = expectedIdentity;
+    const replayCandidate = parseProjectPortableIdentity({
+      ...expectedBase,
+      ...(input.executionRoot === null
+        ? {}
+        : { executionRoot: input.executionRoot }),
+      updatedAt: current.updatedAt,
+    });
+    if (
+      !isDeepStrictEqual(current, expectedIdentity) &&
+      !isDeepStrictEqual(current, replayCandidate)
+    )
       throw new FileStorageConflictError(
         'Project identity changed before the execution root could update.',
       );
@@ -338,7 +350,8 @@ export class ProjectIdentityService {
             : { executionRoot: input.executionRoot }),
           updatedAt: this.now().toISOString(),
         });
-    await revision.replaceManifest(record, candidate);
+    assertCurrent();
+    await revision.replaceManifest(record, candidate, assertCurrent);
     return identityView(revision.value, candidate);
   }
 

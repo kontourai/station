@@ -4,6 +4,7 @@ import { ProjectKnowledgeSources } from './ProjectKnowledgeSources';
 import { ProjectOperatorSetup } from './ProjectOperatorSetup';
 import { ProjectRepositoryAttachment } from './ProjectRepositoryAttachment';
 import { ProjectS3Sources } from './ProjectS3Sources';
+import { ProjectWorkspaceSelection } from './ProjectWorkspaceSelection';
 import { ResourcesSection } from './ResourcesSection';
 import './ProjectSourcesSection.css';
 
@@ -27,6 +28,13 @@ export function ProjectSourcesSection({
           className="project-sources"
         >
           <ResourcesSection slug={slug} requestScope={authority} embedded />
+          {projectId && (
+            <ProjectWorkspaceSelection
+              slug={slug}
+              projectId={projectId}
+              authority={authority}
+            />
+          )}
           {projectId && (
             <ProjectRepositoryAttachment
               slug={slug}

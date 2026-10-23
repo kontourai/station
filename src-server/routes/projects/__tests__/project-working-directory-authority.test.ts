@@ -9,8 +9,14 @@
  * a real file store.
  */
 
-import { randomUUID } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import {
@@ -23,7 +29,14 @@ import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
+import { mayRunCommandsOnHostCurrently } from '../../../security/coding-authority.js';
+import { isRuntimeRequestPrincipalCurrent } from '../../../security/runtime-request-security.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
+import { readCheckoutRemotes } from '../../../services/projects/checkout-remote-reader.js';
+import { ProjectBindingsStore } from '../../../services/projects/project-binding-store.js';
+import { ProjectIdentityService } from '../../../services/projects/project-identity-service.js';
+import { ProjectManifestStore } from '../../../services/projects/project-manifest-store.js';
+import { ProjectResourceResolver } from '../../../services/projects/project-resource-resolver.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
 import { RepositoryAcquisitionService } from '../../../services/projects/repository-acquisition-service.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
@@ -78,6 +91,7 @@ function internalRequestInit(agent: boolean, init: RequestInit) {
 
 async function fixture(
   repositoryDiscoveryCurrent?: (request: Request) => boolean,
+  withIdentity = false,
 ) {
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
   const root = mkdtempSync(join(tmpdir(), 'station-project-wd-authority-'));
@@ -94,6 +108,18 @@ async function fixture(
   mkdirSync(projectHome);
   const storage = new FileStorageAdapter(projectHome);
   const projects = new ProjectService(storage);
+  const bindings = new ProjectBindingsStore(projectHome);
+  const manifests = new ProjectManifestStore(projectHome, storage, {
+    bindings,
+    readRemotes: readCheckoutRemotes,
+  });
+  const resolver = new ProjectResourceResolver({
+    homeDir: projectHome,
+    source: storage,
+    manifests,
+    bindings,
+    readRemotes: readCheckoutRemotes,
+  });
 
   const pair = (preset: 'delegation' | 'standard', extra: string[] = []) => {
     const offer = security.devicePairing.createOffer({
@@ -155,6 +181,20 @@ async function fixture(
     createProjectRoutes(projects as never, storage as never, projectHome, {
       listAgents: async () => [],
       repositoryDiscoveryCurrent,
+      ...(withIdentity
+        ? {
+            resolution: {
+              resolver,
+              manifests,
+              bindings,
+              readRemotes: readCheckoutRemotes,
+            },
+          }
+        : {}),
+      identityMutationCurrent: (request, choosingDirectory) =>
+        isRuntimeRequestPrincipalCurrent(request, security) &&
+        (!choosingDirectory ||
+          mayRunCommandsOnHostCurrently(request, security)),
     }),
   );
 
@@ -197,6 +237,9 @@ async function fixture(
     stored,
     folderA,
     folderB,
+    storage,
+    security,
+    projectHome,
   };
 }
 
@@ -857,3 +900,72 @@ test.skipIf(process.platform === 'win32')(
     ).toMatchObject({ status: 200, body: { data: { phase: 'stale' } } });
   },
 );
+
+test('a directory choice waiting for publication refuses a removed coding grant while ordinary Project access remains', async () => {
+  const f = await fixture(undefined, true);
+  await f.send(f.operator.credential, 'POST', '', {
+    name: 'Workspace',
+    slug: 'workspace',
+    workingDirectory: f.folderA,
+  });
+  const prepared = await f.send(
+    f.operator.credential,
+    'POST',
+    '/workspace/identity/prepare',
+    {},
+  );
+  expect(prepared.status).toBe(200);
+  const device = f.pair('standard', [PAIRING_SCOPE_CODING_EXEC]);
+  const input = {
+    expectedIdentity: prepared.body.data.identity,
+    expectedLocalProjectId: prepared.body.data.association.localProjectId,
+    executionRoot: {
+      repoId: prepared.body.data.identity.repos[0].id,
+      path: '.',
+    },
+  };
+  const path = join(f.projectHome, 'projects', 'workspace', 'manifest.json');
+  const before = readFileSync(path);
+  const release = await acquireFileMutationLockAsync(
+    join(
+      f.projectHome,
+      '.storage-transactions',
+      'projects',
+      `${createHash('sha256').update('workspace').digest('hex')}.mutation`,
+    ),
+  );
+  let entered!: () => void;
+  const started = new Promise<void>((done) => {
+    entered = done;
+  });
+  const original = ProjectIdentityService.prototype.updateExecutionRoot;
+  const observed = vi
+    .spyOn(ProjectIdentityService.prototype, 'updateExecutionRoot')
+    .mockImplementation(function (...args) {
+      entered();
+      return original.apply(this, args);
+    });
+  const pending = f.send(
+    device,
+    'PUT',
+    '/workspace/identity/execution-root',
+    input,
+  );
+  try {
+    await started;
+    const paired = f.security.identifyDevice(device);
+    if (!paired) throw new Error('missing paired fixture');
+    f.security.devicePairing.setDeviceScope(
+      paired.id,
+      PAIRING_SCOPE_PRESETS.standard,
+      { kind: 'presented-credential' },
+    );
+    expect((await f.send(device, 'GET', '/workspace', {})).status).toBe(200);
+  } finally {
+    await release();
+  }
+  const response = await pending;
+  observed.mockRestore();
+  expect(response.status).not.toBe(200);
+  expect(readFileSync(path)).toEqual(before);
+});

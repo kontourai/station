@@ -149,8 +149,8 @@ describe('portable Project attachment', () => {
     });
     expect(
       await service.updateExecutionRoot('local', {
-        expectedIdentity: first.identity,
-        expectedLocalProjectId: first.association.localProjectId,
+        expectedIdentity: attached.identity,
+        expectedLocalProjectId: attached.association.localProjectId,
         executionRoot: first.identity.executionRoot ?? null,
       }),
     ).toEqual(first);
@@ -201,6 +201,41 @@ describe('portable Project attachment', () => {
       repoId: 'git.example/acme/repo',
       path: 'apps/winner',
     });
+  });
+
+  test('a directory choice refuses authority lost at final manifest rename and preserves the previous root', async () => {
+    const h = harness();
+    const attached = await h.service.attach({
+      name: 'Local',
+      slug: 'local',
+      identity: identity(),
+    });
+    let refusedAtRename = false;
+    const request = {
+      expectedIdentity: attached.identity,
+      expectedLocalProjectId: attached.association.localProjectId,
+      executionRoot: { repoId: 'git.example/acme/repo', path: 'apps/web' },
+    };
+    await expect(
+      h.service.updateExecutionRoot('local', request, () => {
+        if (
+          readdirSync(join(h.home, 'projects', 'local')).some(
+            (name) =>
+              name.startsWith('manifest.json.') && name.endsWith('.tmp'),
+          )
+        ) {
+          refusedAtRename = true;
+          throw new Error('Directory choice authority ended');
+        }
+      }),
+    ).rejects.toThrow('Project storage mutation is unavailable');
+    expect(refusedAtRename).toBe(true);
+    expect((await h.service.read('local')).identity).toEqual(attached.identity);
+    const recovered = await h.service.updateExecutionRoot('local', request);
+    expect(recovered.identity.executionRoot).toEqual(request.executionRoot);
+    expect(await h.service.updateExecutionRoot('local', request)).toEqual(
+      recovered,
+    );
   });
 
   test('stale concurrent identity mutation loses without replacing the winner', async () => {

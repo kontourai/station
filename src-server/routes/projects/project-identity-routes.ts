@@ -45,6 +45,7 @@ export function createProjectIdentityRoutes(
     Parameters<ProjectIdentityService['attachRepository']>[2],
     'assertCurrent'
   > & { current: (request: Request) => boolean },
+  mutationCurrent?: (request: Request, choosingDirectory: boolean) => boolean,
 ) {
   const app = new Hono();
   async function run(
@@ -208,8 +209,33 @@ export function createProjectIdentityRoutes(
           ? undefined
           : refuseUngrantedWorkingDirectory(c, 'saved');
       if (refused) return refused;
-      return run(c, (owner) =>
-        owner.updateExecutionRoot(param(c, 'slug'), input),
+      const current = () => {
+        if (
+          c.req.raw.signal.aborted ||
+          mutationCurrent?.(c.req.raw, input.executionRoot !== null) === false
+        )
+          throw new FileStorageConflictError(
+            'Workspace selection authority ended.',
+          );
+      };
+      return run(c, async (owner) => {
+        current();
+        const result = await owner.updateExecutionRoot(
+          param(c, 'slug'),
+          input,
+          current,
+        );
+        current();
+        return result;
+      }).then((response) =>
+        guardProjectResponse(response, async () => {
+          try {
+            current();
+            return true;
+          } catch {
+            return false;
+          }
+        }),
       );
     },
   );

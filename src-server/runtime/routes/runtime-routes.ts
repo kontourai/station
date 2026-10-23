@@ -32,7 +32,10 @@ import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollmen
 import { createRelayManagementRoutes } from '../../routes/system/relay-management-routes.js';
 import { createToolLibraryRoutes } from '../../routes/tool-library.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
-import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
+import {
+  isOperatorInPersonNotAgent,
+  mayRunCommandsOnHostCurrently,
+} from '../../security/coding-authority.js';
 import {
   classifyOperatorCredentialPosition,
   isHostLocalOperatorCredentialUse,
@@ -6025,6 +6028,16 @@ export function configureRuntimeRoutes(
       context.storageAdapter,
       context.configLoader.getProjectHomeDir(),
       {
+        identityMutationCurrent: (request, choosingDirectory) => {
+          return (
+            isRequestPrincipalCurrent(request) &&
+            (!choosingDirectory ||
+              mayRunCommandsOnHostCurrently(
+                request,
+                context.environmentSecurityService,
+              ))
+          );
+        },
         repositoryDiscoveryCurrent: (request) =>
           isOperatorInPersonNotAgent(request) &&
           isRequestPrincipalCurrent(request),

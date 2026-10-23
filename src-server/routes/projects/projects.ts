@@ -251,6 +251,10 @@ async function registerPluginNamespaces(
 
 interface ProjectRouteDeps {
   repositoryDiscoveryCurrent?: (request: Request) => boolean;
+  identityMutationCurrent?: (
+    request: Request,
+    choosingDirectory: boolean,
+  ) => boolean;
   /**
    * #2476: the directory a session of this project runs in, for a caller
    * allowed to read it — so a file preview of that conversation reads its
@@ -585,6 +589,7 @@ export function createProjectRoutes(
               deps.repositoryDiscoveryCurrent ?? isOperatorInPersonNotAgent,
           }
         : undefined,
+      deps.identityMutationCurrent,
     ),
   );
   const layoutCatalog =
