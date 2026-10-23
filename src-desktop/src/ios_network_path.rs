@@ -74,14 +74,17 @@ impl PathState {
 
 #[cfg(any(target_os = "ios", test))]
 pub(crate) fn resumed() {
-    // Activation also follows alerts and Face ID; never abort an active send.
+    // tao 0.37.1 emits Resumed on willEnterForeground, not didBecomeActive.
+    // Retire old pooled sockets without interrupting requests already in flight.
     crate::native_http_transport::retire_idle_connections();
 }
 
 #[cfg(any(target_os = "ios", test))]
 fn interface_mask(mut uses: impl FnMut(u32) -> bool) -> u8 {
-    // nw_interface_type_t: other=0, Wi-Fi=1, cellular=2, wired=3, loopback=4.
-    (0..=4).fold(
+    // nw_interface_type_t: other=0, Wi-Fi=1, cellular=2, wired=3.
+    // Loopback=4 cannot carry a remote Station route; its churn must not abort
+    // response waits. Keep other because VPN/virtual interfaces can change routing.
+    (0..=3).fold(
         0,
         |set, kind| {
             if uses(kind) {
@@ -232,26 +235,6 @@ mod tests {
             (wifi, false, true, true),
             (cellular, false, true, true), // Same cost, different interface.
             (wired, false, false, true),
-            (
-                PathIdentity {
-                    satisfied: true,
-                    interfaces: interface_mask(|kind| kind == 3 || kind == 0),
-                },
-                false,
-                false,
-                true,
-            ),
-            (wired, false, false, true),
-            (
-                PathIdentity {
-                    satisfied: true,
-                    interfaces: interface_mask(|kind| kind == 3 || kind == 4),
-                },
-                false,
-                false,
-                true,
-            ),
-            (wired, false, false, true),
         ] {
             let before = crate::native_http_transport::network_epoch();
             state.update(identity, constrained, expensive, |snapshot| {
@@ -262,7 +245,7 @@ mod tests {
                 epoch_changes
             );
         }
-        assert_eq!(events.len(), 11, "duplicate callbacks do not emit");
+        assert_eq!(events.len(), 7, "duplicate callbacks do not emit");
         assert_eq!(
             events[1],
             serde_json::json!({"revision": 2, "constrained": true, "expensive": false})
@@ -273,8 +256,48 @@ mod tests {
         );
         assert_eq!(
             serde_json::to_value(state.snapshot()).unwrap(),
-            serde_json::json!({"revision": 11, "constrained": false, "expensive": false})
+            serde_json::json!({"revision": 7, "constrained": false, "expensive": false})
         );
+    }
+
+    #[test]
+    fn loopback_only_changes_preserve_epoch_but_other_changes_advance_it() {
+        const WORKER: &str = "STATION_IOS_INTERFACE_TEST_WORKER";
+        if std::env::var_os(WORKER).is_none() {
+            assert!(std::process::Command::new(std::env::current_exe().unwrap())
+                .args(["--exact", "ios_network_path::tests::loopback_only_changes_preserve_epoch_but_other_changes_advance_it", "--nocapture"])
+                .env(WORKER, "1").status().unwrap().success());
+            return;
+        }
+        let state = PathState::default();
+        for (loopback, other, epoch_changes) in [
+            (false, false, false),
+            (true, false, false),
+            (false, false, false),
+            (false, true, true),
+            (true, true, false),
+            (false, true, false),
+            (false, false, true),
+        ] {
+            let identity = PathIdentity {
+                satisfied: true,
+                interfaces: interface_mask(|kind| {
+                    kind == 1 || (kind == 4 && loopback) || (kind == 0 && other)
+                }),
+            };
+            let before = crate::native_http_transport::network_epoch();
+            state.update(identity, false, false, |_| {});
+            let reason = if epoch_changes {
+                "other changes must advance the network epoch"
+            } else {
+                "loopback-only changes must not advance the network epoch"
+            };
+            assert_eq!(
+                crate::native_http_transport::network_epoch() != before,
+                epoch_changes,
+                "{reason}"
+            );
+        }
     }
 
     #[test]

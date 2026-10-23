@@ -282,17 +282,21 @@ WebView IPC, packaged-shell, mobile, or physical-device behavior.
 The [iOS observer](../../src-desktop/src/ios_network_path.rs) starts one
 Network.framework path monitor for the app process and cancels it at exit.
 The first callback establishes a baseline and conservatively retires connections
-opened before observation. Later changes to path satisfaction or the complete
-interface type set (other, Wi-Fi, cellular, wired Ethernet and loopback) advance
-the broker's network epoch. Duplicate callbacks and cost-only changes leave it
-unchanged. This type-level identity detects an `other` or loopback interface
-appearing or disappearing, but cannot distinguish Wi-Fi access points or VPN
-routes with the same satisfaction and interface types. Existing in-flight requests retain the broker's send/revalidation
-rules; observation does not authorize a retry or replacement
+opened before observation. Later changes to path satisfaction or the set of
+interface types that can carry remote traffic (other, Wi-Fi, cellular and wired
+Ethernet) advance the broker's network epoch. Loopback is excluded because it cannot carry traffic to
+a remote Station: a loopback-only change must not abort active response waits.
+The `other` type remains included because VPN/virtual interfaces can change
+routing. Duplicate callbacks and cost-only changes leave the epoch unchanged.
+This type-level identity detects an `other` interface appearing or disappearing,
+but cannot distinguish Wi-Fi access points or VPN routes with the same
+satisfaction and interface types. Existing in-flight requests retain the broker's
+send/revalidation rules; observation does not authorize a retry or replacement
 credential. The monitor sends only revision, constrained and expensive flags,
 with a retained snapshot for a WebView that subscribes after the first callback.
-On iOS `WindowEvent::Resumed`, checkout-only retirement prevents reuse of old
-pooled connections even when no path callback has arrived. It neither advances
+On iOS `WindowEvent::Resumed` (tao 0.37.1's application/scene
+`willEnterForeground`, rather than `didBecomeActive`), checkout-only retirement
+prevents reuse of old pooled connections even when no path callback has arrived. It neither advances
 the response-wait epoch nor shuts down active requests; uploads and response
 waits can finish. Retirement also applies to previously cloned agents at their
 next connection checkout. The C path-monitor API has no synchronous current-path
@@ -315,8 +319,10 @@ ephemeral cookie/credential storage, redirects, streaming/cancellation, dispatch
 uncertainty and authority revalidation before replacing the broker transport.
 
 Rust tests cover startup/resume retirement over real pooled sockets, active
-upload and response-wait preservation, all interface types, material-change epoch
-publication, duplicate/cost-only non-invalidation and retained cost; mounted inbox tests cover actual polling cadence, validation and late-reply ordering. Neither
+upload and response-wait preservation, loopback-only non-invalidation versus
+`other` interface changes, material-change epoch publication, duplicate/cost-only
+non-invalidation and retained cost; mounted inbox tests cover actual polling
+cadence, validation and late-reply ordering. Neither
 proves delivery from Network.framework through real iOS IPC. Physical-device
 behavior is `NOT_VERIFIED`: install the exact candidate, toggle Low Data Mode
 on Wi-Fi and cellular, verify optional polling slows and restores, then switch

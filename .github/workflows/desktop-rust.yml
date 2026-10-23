@@ -296,7 +296,8 @@ jobs:
           controls = [
               ("src-desktop/src/ios_network_path.rs", "\n    crate::native_http_transport::retire_idle_connections();\n}", "\n    // Injected: omit resume retirement.\n}", "ios_network_path::tests::resume_and_first_observation_retire_preexisting_connections_without_epoch_change", "resume must retire connections even without a path callback"),
               ("src-desktop/src/ios_network_path.rs", "if current.is_none()", "if false && current.is_none()", "ios_network_path::tests::resume_and_first_observation_retire_preexisting_connections_without_epoch_change", "first observation must retire startup connections"),
-              ("src-desktop/src/ios_network_path.rs", "(0..=4).fold", "(1..=3).fold", "ios_network_path::tests::only_connectivity_or_interface_changes_invalidate_transport_and_cost_is_retained", "assertion `left == right` failed"),
+              ("src-desktop/src/ios_network_path.rs", "(0..=3).fold", "(1..=3).fold", "ios_network_path::tests::loopback_only_changes_preserve_epoch_but_other_changes_advance_it", "other changes must advance the network epoch"),
+              ("src-desktop/src/ios_network_path.rs", "(0..=3).fold", "(0..=4).fold", "ios_network_path::tests::loopback_only_changes_preserve_epoch_but_other_changes_advance_it", "loopback-only changes must not advance the network epoch"),
               ("src-desktop/src/native_http_transport.rs", "    IDLE_GENERATION.fetch_add(1, Ordering::AcqRel);", "    IDLE_GENERATION.fetch_add(1, Ordering::AcqRel);\n    network_changed();", "native_http_transport::tests::ios_resume_leaves_registered_response_wait_alive_and_never_replays_post", "resume must leave registered response waits uninterrupted"),
           ]
           def cargo(name):
@@ -319,5 +320,5 @@ jobs:
                   path.write_text(original)
               assert cargo(name).returncode == 0, (name, "restored must pass")
               subprocess.run(["git", "diff", "--exit-code", "--", source], check=True)
-          print("iOS network controls: baseline GREEN, four injected regressions RED, exact sources restored GREEN.", flush=True)
+          print("iOS network controls: baseline GREEN, five injected regressions RED, exact sources restored GREEN.", flush=True)
           PYTHON
