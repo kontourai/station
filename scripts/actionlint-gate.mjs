@@ -401,7 +401,6 @@ const PRIMARY_ROUTER_JOBS = new Set([
   'manual-completion-diagnostics',
   'repo-scans',
   'diff',
-  'merge-integration-full-regression',
   'merge-queue-regression',
 ]);
 const FAST_CHECKOUT_REPOSITORY = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}`;
@@ -840,36 +839,9 @@ function isExactPortableServerArchiveUpload(file, jobId, step) {
 }
 const MERGE_QUEUE_REGRESSION_AGGREGATE_JOB = 'merge-queue-regression';
 const MERGE_QUEUE_REGRESSION_AGGREGATE_RUN = `echo "$NEEDS" | jq -r 'to_entries[] | "\\(.key): \\(.value.result)"'
-echo "$NEEDS" | jq -r 'if .["fast-checks-plan"].outputs["full-regression"] == "false" then "no deferred lane: fast path" else "full regression: \\(.["merge-integration-full-regression"].result)" end'
-echo "$NEEDS" | jq -e '.["fast-checks"].result == "success" and .diff.result == "success" and (.["merge-integration-full-regression"].result == "success" or (.["fast-checks-plan"].result == "success" and .["fast-checks-plan"].outputs["full-regression"] == "false" and .["merge-integration-full-regression"].result == "skipped"))' > /dev/null
+echo "Bounded integration only; full qualification runs on main and before release"
+echo "$NEEDS" | jq -e '.["fast-checks"].result == "success" and .diff.result == "success" and .["fast-checks-plan"].result == "success" and .["fast-checks-plan"].outputs["integration-ready"] == "true"' > /dev/null
 `;
-const MERGE_QUEUE_FULL_REGRESSION_JOB = 'merge-integration-full-regression';
-const MERGE_QUEUE_FULL_REGRESSION_GUARD = `\${{ always() && !cancelled() && github.event_name == 'merge_group' && (needs.fast-checks-plan.result != 'success' || needs.fast-checks-plan.outputs.full-regression != 'false') }}`;
-
-/**
- * The merge queue's one reusable call: the hosted full regression of this
- * candidate (github.sha), fail-closed on its plan decision. It needs
- * `actions: read` for full-regression.yml's exact-source evidence reuse, the
- * same grant as ci.yml's dispatch call. Any other callee, guard, input,
- * secret or permission loses the exemption.
- */
-function isExactMergeQueueFullRegressionCall(file, jobId, job) {
-  return (
-    file === MERGE_QUEUE_REGRESSION_WORKFLOW &&
-    jobId === MERGE_QUEUE_FULL_REGRESSION_JOB &&
-    hasExactKeys(job, ['needs', 'if', 'permissions', 'uses', 'with']) &&
-    job.needs === 'fast-checks-plan' &&
-    job.if === MERGE_QUEUE_FULL_REGRESSION_GUARD &&
-    job.uses === './.github/workflows/full-regression.yml' &&
-    hasExactKeys(job.permissions, ['contents', 'actions']) &&
-    job.permissions.contents === 'read' &&
-    job.permissions.actions === 'read' &&
-    hasExactKeys(job.with, ['source_sha', 'allow_reuse', 'capacity_class']) &&
-    job.with.source_sha === `\${{ github.sha }}` &&
-    job.with.allow_reuse === true &&
-    job.with.capacity_class === 'integration'
-  );
-}
 
 /**
  * docs-kit.yml's one job: the reviewed org docs gate (see
@@ -2618,7 +2590,6 @@ function primaryCiRouterFindings(file, document) {
         job.permissions.contents === 'read' &&
         job.permissions['pull-requests'] === 'read'
       ) &&
-      !isExactMergeQueueFullRegressionCall(file, jobId, job) &&
       !(
         jobId === 'pr-title' &&
         JSON.stringify(job.permissions) ===
@@ -2693,21 +2664,6 @@ function primaryCiRouterFindings(file, document) {
       });
   }
 
-  const integration = jobs['merge-integration-full-regression'];
-  if (
-    integration &&
-    !isExactMergeQueueFullRegressionCall(
-      file,
-      'merge-integration-full-regression',
-      integration,
-    )
-  )
-    findings.push({
-      file,
-      jobId: 'merge-integration-full-regression',
-      message:
-        'merge integration must retain the exact fail-closed full-regression call',
-    });
   const aggregate = jobs['merge-queue-regression'];
   if (
     aggregate &&
@@ -2718,18 +2674,13 @@ function primaryCiRouterFindings(file, document) {
     ) ||
       aggregate.if !== "always() && github.event_name == 'merge_group'" ||
       JSON.stringify(aggregate.needs) !==
-        JSON.stringify([
-          'diff',
-          'fast-checks-plan',
-          'merge-integration-full-regression',
-          'fast-checks',
-        ]))
+        JSON.stringify(['diff', 'fast-checks-plan', 'fast-checks']))
   )
     findings.push({
       file,
       jobId: 'merge-queue-regression',
       message:
-        'merge integration must require fast-checks and the planned regression',
+        'merge integration must require fast-checks and the exact valid plan',
     });
   const diff = jobs.diff;
   if (
@@ -3100,15 +3051,9 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
   if (file === SECURITY_ANALYSIS_WORKFLOW)
     findings.push(...securityAnalysisTopologyFindings(file, jobs));
   for (const [jobId, job] of Object.entries(jobs)) {
-    const exactFullRegressionCall = isExactMergeQueueFullRegressionCall(
-      file,
-      jobId,
-      job,
-    );
     if (
       job?.permissions !== undefined &&
-      !hasOnlyReadContentsPermission(job.permissions) &&
-      !exactFullRegressionCall
+      !hasOnlyReadContentsPermission(job.permissions)
     )
       findings.push({
         file,
@@ -3120,14 +3065,8 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
     const exactDeliveryCall = isReviewedDeliveryCall(file, jobId, job);
     const runner = classifyRunner(job);
     // The exact calls have no runner of their own. This rule does not follow
-    // them into full-regression.yml, which pins its own hosted images, or
-    // the reviewed remote docs-gate.yml, which runs on ubuntu-latest.
-    if (
-      !runner.hosted &&
-      !exactFullRegressionCall &&
-      !exactDocsGateCall &&
-      !exactDeliveryCall
-    )
+    // them into the reviewed remote docs-gate.yml, which runs on ubuntu-latest.
+    if (!runner.hosted && !exactDocsGateCall && !exactDeliveryCall)
       findings.push({
         file,
         jobId,
@@ -3143,7 +3082,6 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
           : file === SECURITY_ANALYSIS_WORKFLOW
             ? false
             : isExactMergeQueueRegressionAggregate(file, jobId, job) ||
-              exactFullRegressionCall ||
               exactDocsGateCall ||
               exactDeliveryCall ||
               hasExplicitCheckout(
