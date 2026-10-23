@@ -2075,7 +2075,7 @@ export class TaskGraphService {
                   targetId: input.shapingSource.sessionId,
                   relationType: 'spawned_session' as const,
                   confidence: 1,
-                  createdAt: now,
+                  createdAt: task.createdAt,
                   source: 'user' as const,
                   ...(clientOrigin ? { clientOrigin } : {}),
                   metadata: { shapingTurnId: input.shapingSource.turnId },
