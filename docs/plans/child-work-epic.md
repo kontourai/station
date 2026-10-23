@@ -949,9 +949,14 @@ custody, provider/billing, publication and Station integration were not verified
 The Station response composition review passed within its stated fixture scope.
 The earlier rounds review failed without a completed verdict. At `17827e72`,
 the upstream CI registration repair preserves the reviewed production/docs/package
-bytes. Full readiness is being requalified; the earlier accounting-only pass
-does not qualify the combined source. Everything remains unpublished, and
-Station still consumes published 9.3.0.
+bytes. The final documentation follow-up at `c4ec9698f58d` passed hosted CI;
+upstream PR #1543 merged as `cc7690a77e40eb8071ef34876650caa3dddb6f0e`.
+Release Please generated PR #1544 for 9.4.0. Publication remains unverified,
+and Station still consumes published 9.3.0. A merged source contract does not
+establish an installed serving path. Existing v2 group journals have no public
+rounds import API; retain their controller and charges. New rounds need separate
+authorized custody, and any v3 authority import must transfer the actual locked
+snapshot while revoking the old writer.
 Tariff-derived integer micros must retain
 their cost basis and must not be silently converted to provider-reported Relay
 dollars. A candidate public API or a successful synthetic SDK response is not a
@@ -1057,6 +1062,17 @@ listener and adapter session count, not arbitrary native descendants. Network
 and shared-write zero counters in the old harness are declarations rather than
 independently monitored measurements. No previous mutation is relabeled as a
 current-head execution.
+
+At `3c12cca5793`, the current retention/store, mounted-hook and activity-sheet
+selection passes 79 cases. Reversing only closed-row recency fails the newest-row
+retention assertion with five controls passing; exact restoration passes all 79.
+Independent source/log review confirms distinct closure clocks and the separate
+render-count test for unrelated-chat isolation. At `ffd2b1573de`, the same closure
+storm additionally requires 50 retained omission flags before snapshot clearing.
+Discarding all closed-chat flags fails that assertion with five controls passing;
+exact restoration passes all 79. Independent delta review accepts the stronger
+assertion. These are local store/jsdom and mutation results, not screen-reader,
+physical-device, hosted or full-epic acceptance.
 
 At `6b173a7e95f`, a separate foreground native control returns a synthetic HTTP
 400 from the loopback Messages endpoint for the child. Four physical requests
