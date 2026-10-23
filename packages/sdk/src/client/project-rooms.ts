@@ -18,12 +18,12 @@ import {
 
 const bounded = (max: number) =>
   z.string().refine((v) => new TextEncoder().encode(v).length <= max);
-const id = z.string().min(1).max(512);
+const id = z.string().min(1).max(2048);
 const uuid = z.uuid();
 const seq = z.number().int().min(0).max(Number.MAX_SAFE_INTEGER);
 const actor = z.strictObject({
   id,
-  displayName: bounded(512),
+  displayName: bounded(2048),
   kind: z.enum(['person', 'agent']),
 });
 const scope = z.strictObject({
@@ -57,7 +57,7 @@ const note = z.strictObject({
 });
 const presence = z
   .array(z.strictObject({ clientId: uuid, actor, expiresAt: z.iso.datetime() }))
-  .max(1000);
+  .max(100);
 const view = z.strictObject({
   scope,
   roomId: uuid,

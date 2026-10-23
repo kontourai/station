@@ -329,3 +329,48 @@ test('two independent mounted query contexts receive the shared stream through r
   expect(browserB.getByText('Ada')).toBeTruthy();
   expect(writes).toHaveLength(1);
 });
+
+test('loads an older bounded window and exposes actual reply context to the optional Agent bridge', async () => {
+  messages = Array.from({ length: 30 }, (_, index) => ({
+    roomId,
+    intentId: crypto.randomUUID(),
+    messageId: crypto.randomUUID(),
+    seq: index + 1,
+    actor:
+      index === 29
+        ? { id: 'agent', displayName: 'Researcher', kind: 'agent' }
+        : actor,
+    createdAt: at,
+    text: `Update ${index + 1}`,
+  }));
+  const onRequestAgent = vi.fn();
+  const client = new QueryClient();
+  render(
+    <QueryClientProvider client={client}>
+      <ProjectRoom
+        slug="team"
+        projectId="project"
+        requestScope={requestScope}
+        onRequestAgent={onRequestAgent}
+      />
+    </QueryClientProvider>,
+  );
+  await screen.findByText('Update 30');
+  expect(screen.queryByText('Update 1')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Load older messages' }));
+  await screen.findByText('Update 1');
+  expect(screen.getByText('Agent')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Reply to Researcher' }));
+  fireEvent.change(
+    screen.getByRole('textbox', { name: 'Message the project' }),
+    { target: { value: 'Please investigate this' } },
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Bring an Agent' }));
+  await waitFor(() =>
+    expect(onRequestAgent).toHaveBeenCalledWith({
+      prompt: 'Please investigate this',
+      replyTo: messages[29].messageId,
+    }),
+  );
+  expect(writes).toHaveLength(0);
+});
