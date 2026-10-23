@@ -1836,7 +1836,7 @@ Hosted mode and unavailable private storage return `report_groups_unavailable`.
 The Flow-bound serving composition is not runtime-qualified. Its controlled
 concurrent HTTP test currently refuses before provider fetch: Station loads Flow
 5.2.2 while Flow Agents 9.5.1 loads a separate Flow 5.2.0 module, and their
-same-process mutation-lock registries conflict. Upstream Flow Agents #1540 is the
+same-process mutation-lock registries conflict. [Flow Agents #1540](https://github.com/kontourai/flow-agents/pull/1540) is the
 published dependency-alignment prerequisite; landing or publication alone will
 not establish installed module deduplication or successful serving. Independent
 advisory receipts do not qualify this path. The full group capability remains
