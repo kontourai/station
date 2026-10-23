@@ -1471,10 +1471,12 @@
   display: none;
 }
 
-.project-page__space {
+.project-page__inner.project-page__space {
   display: grid;
   grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr);
+  width: 100%;
   max-width: none;
+  margin: 0;
   min-height: 100%;
   padding: 0;
   align-content: start;
@@ -1557,7 +1559,7 @@
     min-height: 44px;
   }
 
-  .project-page__space {
+  .project-page__inner.project-page__space {
     grid-template-columns: minmax(0, 1fr);
   }
   .project-page__space:has(> .project-page__navigation-panel:not([open])) {

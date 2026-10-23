@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { navigationStore } from '../../contexts/navigation-store';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { isPlainLeftClick } from '../../utils/attentionOpen';
 import { ProjectSearch } from './ProjectSearch';
 import {
@@ -52,6 +53,7 @@ export function ProjectNavigation({
   projectId?: string;
 }) {
   const { destination, selectDestination } = useProjectDestination(slug);
+  const isMobile = useIsMobile();
   const { navigate } = useNavigation();
   const destinations = [
     ['overview', 'Overview'],
@@ -61,7 +63,7 @@ export function ProjectNavigation({
   ] as const;
   const projectPath = `/projects/${encodeURIComponent(slug)}`;
   return (
-    <details className="project-page__navigation-panel" open>
+    <details className="project-page__navigation-panel" open={!isMobile}>
       <summary>Project</summary>
       <nav className="project-page__navigation" aria-label="Project">
         {projectId && <ProjectSearch key={projectId} projectId={projectId} />}

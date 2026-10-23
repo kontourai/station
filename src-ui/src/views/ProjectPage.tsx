@@ -344,14 +344,6 @@ function ProjectOperatorPage({
               </Button>
             </div>
             <ProjectLiveWorkSection slug={slug} />
-            <div className="project-page__overview-links">
-              <Button onClick={() => selectDestination('tasks')}>
-                View Tasks
-              </Button>
-              <Button onClick={() => selectDestination('sources')}>
-                Files & connections
-              </Button>
-            </div>
           </section>
 
           <div hidden={destination !== 'overview' && destination !== 'room'}>
