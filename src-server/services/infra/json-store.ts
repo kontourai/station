@@ -120,7 +120,8 @@ export class JsonFileStore<T> {
     }
   }
 
-  read(): T {
+  /** The decoder must preserve JSON parse failures; I/O and recovery stay owned here. */
+  read(decode: (text: string) => T = JSON.parse): T {
     if (!existsSync(this.filePath)) {
       const previousPath = `${this.filePath}.previous`;
       if (this.options.durableAtomicWrite && existsSync(previousPath)) {
@@ -129,7 +130,7 @@ export class JsonFileStore<T> {
             'JSON store primary is missing; recovering the prior complete value',
             { filePath: this.filePath },
           );
-          return JSON.parse(this.readText(previousPath));
+          return decode(this.readText(previousPath));
         } catch (e) {
           if (e instanceof JsonFileStoreReadLimitError) throw e;
           if (this.options.onCorruption === 'throw') {
@@ -140,7 +141,7 @@ export class JsonFileStore<T> {
       return structuredClone(this.defaultValue);
     }
     try {
-      return JSON.parse(this.readText(this.filePath));
+      return decode(this.readText(this.filePath));
     } catch (e) {
       if (e instanceof JsonFileStoreReadLimitError) throw e;
       if (this.options.onCorruption === 'throw') {

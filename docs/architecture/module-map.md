@@ -4057,6 +4057,24 @@ A Task remains a durable work record before and after an engine runs. The [dispa
 
 **Interface.** `TaskDispatcher.dispatch(taskId, intent)` is the canonical Task dispatch Interface and returns a total tagged `DispatchOutcome`. `TaskGraphService` owns durable graph reads and transitions; it does not expose dispatch as a second caller Interface. Independent [Task room agent requests](../design/task-room-agent-requests.md) use existing delegation and retain their own executions without replacing the Task's current-session association.
 
+**Read snapshots.** TaskGraph retains one parsed, validated document only when
+its serialized text contains at most 2,097,152 UTF-16 code units. Every read
+still opens and reads the current primary or existing `.previous` recovery
+file through [JsonFileStore](../../src-server/services/infra/json-store.ts).
+Only identical text reuses validation; size, mtime and TTL are never freshness
+authority. Returned records are deep copies. Missing, unreadable or corrupt
+storage still follows the existing default, recovery or refusal path; it
+cannot fall back to the last good cache entry. Larger documents remain readable
+without retention. Mutations clear the snapshot and independently reload and
+validate under the cross-process lock before deriving and durably writing the
+next value. Dispatch reservation checks and publication fences also keep their
+uncached reload. Request authorization, Project identity resolution and live
+workspace checks remain separate from the snapshot. The
+[cache tests](../../src-server/services/projects/__tests__/task-graph-cache.test.ts)
+cover reader reuse, detached results, external replacement and in-place edits,
+missing/corrupt storage, failed writes and the retention bound; service and
+route tests cover the surrounding authority and lifecycle behavior.
+
 **Chat proposal acceptance.** The [shaping prompt](../../src-ui/src/lib/task-shaping.ts),
 [shared proposal contract](../../packages/contracts/src/task-graph.ts),
 [entry host](../../src-ui/src/components/chat/TaskShapingComposer.tsx),
