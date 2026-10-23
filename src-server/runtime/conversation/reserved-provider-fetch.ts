@@ -1,7 +1,9 @@
 // UNWIRED #91: boot issuance, provider qualification and exact ledger settlement remain required.
 import {
   FinalFetchLaunchFence,
+  type ReservedFinalFetchOwners,
   type ReservedWireBinding,
+  RoundsFinalFetchLaunchFence,
   snapshotFinalWire,
 } from '../../services/orchestration/delegation-group-launch-fence.js';
 import {
@@ -46,7 +48,7 @@ export class ReservedProviderFetch {
   #started = false;
   constructor(
     owners: Readonly<{
-      launch: ConstructorParameters<typeof FinalFetchLaunchFence>[0];
+      launch: ReservedFinalFetchOwners;
       reservation: Omit<ReservedWireBinding, 'expectedWireDigest'>;
       contract: ResolvedBoundedApiProviderContract;
       provider: BoundedApiProvider;
@@ -122,9 +124,12 @@ export class ReservedProviderFetch {
           { ...reservation.allocation, currency: 'USD' },
           owners.now(),
         );
-        const fence = new FinalFetchLaunchFence({
+        const guardedLaunch = {
           ...launch,
-          fetch: (input, init) => {
+          fetch: (
+            input: Parameters<typeof fetch>[0],
+            init?: Parameters<typeof fetch>[1],
+          ) => {
             const current = quoteBoundedApiProviderAttempt(
               owners.contract,
               {
@@ -142,7 +147,11 @@ export class ReservedProviderFetch {
             signal.throwIfAborted();
             return launch.fetch(input, init);
           },
-        });
+        };
+        const fence =
+          guardedLaunch.protocol === 'rounds-v1'
+            ? new RoundsFinalFetchLaunchFence(guardedLaunch)
+            : new FinalFetchLaunchFence(guardedLaunch);
         const begun = await fence.start(
           { ...reservation, expectedWireDigest: wireIdentityDigest(wire) },
           wire,

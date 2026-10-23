@@ -1924,6 +1924,21 @@ Production preparation, provider qualification, new-rounds request serving and
 authenticated context ACK remain separate integration work. Store availability
 alone does not enable the paid group capability.
 
+The [rounds final-fetch fence](../../src-server/services/orchestration/delegation-group-launch-fence.ts)
+checks the latest seat attempt, unreturned round, current adopted grant,
+controller and immutable allocation under the rounds lock. Flow-backed attempts
+also require a retained claimed invocation. Under the authority lock it checks
+that the reservation belongs to the current v3 epoch. It then uses the shared
+source/effect admission, exact wire intent consumption and synchronous final
+check before transport. Nested owner/launch entry refuses; neither lock is held
+while awaiting the provider response.
+
+The [reserved provider transport](../../src-server/runtime/conversation/reserved-provider-fetch.ts)
+selects the rounds fence only through its explicit server-owned protocol; the
+legacy group fence remains separate. This member-invocation fence does not
+admit context-sync attempts, issue provider qualification or authenticate a
+recipient. Those require their own current session/ACK admission.
+
 ### Reserved Station source execution
 
 The [reserved-turn owner](../../src-server/runtime/conversation/reserved-station-turn.ts)

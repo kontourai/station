@@ -6,11 +6,16 @@ import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
 import type { RootAuthorityV2 } from '@kontourai/flow-agents/delegation-authority-contract';
 import { createDelegationAuthorityService } from '@kontourai/flow-agents/delegation-authority-service';
+import { createDelegationAuthorityServiceV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
 import {
   type DelegationEnvelopeV2,
   delegationEnvelopeDigestV2,
   rootAuthorityReferenceV2,
 } from '@kontourai/flow-agents/delegation-envelope-v2';
+import {
+  createDelegationRoundsController,
+  type DelegationRoundsSpec,
+} from '@kontourai/flow-agents/delegation-group-rounds';
 import {
   createDelegationGroupControllerV2,
   type DelegationGroupSpecV2,
@@ -26,6 +31,7 @@ import {
   FinalFetchLaunchFence,
   type FinalWire,
   type ReservedWireBinding,
+  RoundsFinalFetchLaunchFence,
   snapshotFinalWire,
 } from '../delegation-group-launch-fence.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
@@ -69,7 +75,7 @@ const responseResult: ModelInvocationResult = {
   latencyMs: 0,
 };
 
-async function setup(mode: string) {
+async function setup(mode: string, protocol: 'legacy' | 'rounds' = 'legacy') {
   const root = realpathSync(makeTempDir('station-group-launch-fence-'));
   const persistence = new StationDelegationPersistence(root);
   let active = true;
@@ -226,15 +232,38 @@ async function setup(mode: string) {
       () => new Response('fixture', { status: 200 }),
     );
   };
-  const fence = new FinalFetchLaunchFence({
-    groups: persistence.groupStore(finalizeCurrent),
-    authorities: persistence.authorityStore(finalizeCurrent),
-    host,
-    intents,
-    finalizeCurrent,
-    fetch: controlledFetch,
-  });
-  const service = createDelegationAuthorityService(fence.authorities, host);
+  const legacyFence =
+    protocol === 'legacy'
+      ? new FinalFetchLaunchFence({
+          groups: persistence.groupStore(finalizeCurrent),
+          authorities: persistence.authorityStore(finalizeCurrent),
+          host,
+          intents,
+          finalizeCurrent,
+          fetch: controlledFetch,
+        })
+      : undefined;
+  const roundsFence =
+    protocol === 'rounds'
+      ? new RoundsFinalFetchLaunchFence({
+          protocol: 'rounds-v1',
+          groups: persistence.roundsStore(finalizeCurrent),
+          authorities: persistence.roundsAuthorityStore(finalizeCurrent),
+          host,
+          intents,
+          finalizeCurrent,
+          fetch: controlledFetch,
+        })
+      : undefined;
+  const fence = roundsFence ?? legacyFence;
+  if (!fence) throw Error('fixture fence missing');
+  const service = roundsFence
+    ? createDelegationAuthorityServiceV3(
+        roundsFence.authorities,
+        { ...host, authenticateRenewal: async () => null },
+        { maxRenewals: 0 },
+      )
+    : createDelegationAuthorityService(legacyFence!.authorities, host);
   await service.issue(authorityRoot);
   await service.derive('authority', envelope);
   mkdirSync(join(root, 'dispatch'), { mode: 0o700 });
@@ -283,11 +312,14 @@ async function setup(mode: string) {
       if (mode === 'missing-reservation') {
         const file = join(
           root,
-          'station-delegation-authorities',
+          protocol === 'legacy'
+            ? 'station-delegation-authorities'
+            : 'station-rounds-authorities-v3',
           `${createHash('sha256').update('authority').digest('hex')}.json`,
         );
         const value = JSON.parse(readFileSync(file, 'utf8'));
         value.invocations = [];
+        if (protocol === 'rounds') value.origins = [];
         writeFileSync(file, JSON.stringify(value), { mode: 0o600 });
       }
       if (mode === 'revoke-after-consume')
@@ -318,72 +350,131 @@ async function setup(mode: string) {
       return structuredClone(responseResult);
     },
   };
-  const controller = createDelegationGroupControllerV2({
-    store: fence.groups,
-    authorityService: service,
-    dispatchLedger: new FileAuthorizationLedger({
-      root: join(root, 'dispatch'),
-    }),
-    host: {
-      authorize: async () =>
-        active ? reference('actual-fixture-caller') : null,
-      executionHost: () => ({
-        resolveRuntime: async () => ({
-          runtime: model,
-          runtimeReceipt: executionBinding.runtime.runtime_receipt_ref,
-          modelReceipt: executionBinding.runtime.model_receipt_ref,
+  const legacyController = legacyFence
+    ? createDelegationGroupControllerV2({
+        store: legacyFence.groups,
+        authorityService: service,
+        dispatchLedger: new FileAuthorizationLedger({
+          root: join(root, 'dispatch'),
         }),
-        invokeFenced: async (_envelope, id, invoke) =>
-          invocation.run(id, invoke),
-        retainFailure: async () => {},
-        retainResult: async () => {},
-        recordScheduleEvent: async () => {
-          throw Error('advisory fixture must not schedule Flow');
+        host: {
+          authorize: async () =>
+            active ? reference('actual-fixture-caller') : null,
+          executionHost: () => ({
+            resolveRuntime: async () => ({
+              runtime: model,
+              runtimeReceipt: executionBinding.runtime.runtime_receipt_ref,
+              modelReceipt: executionBinding.runtime.model_receipt_ref,
+            }),
+            invokeFenced: async (_envelope, id, invoke) =>
+              invocation.run(id, invoke),
+            retainFailure: async () => {},
+            retainResult: async () => {},
+            recordScheduleEvent: async () => {
+              throw Error('advisory fixture must not schedule Flow');
+            },
+            confirmClaim: async () => {
+              throw Error('advisory fixture must not claim Flow');
+            },
+            prepareRequest: async () => {
+              throw Error('advisory fixture must not request Flow');
+            },
+            recordMemberOutcome: async () => {
+              throw Error('advisory fixture must not write Flow');
+            },
+          }),
+          prepareIndependentRequest: async () => ({
+            messages: [{ role: 'user', content: 'fixture' }],
+            maxOutputTokens: 10,
+          }),
+          retainMemberOutcome: async () => ({
+            outcomeRef: reference('raw-outcome-fixture'),
+            dissentRefs: [],
+            uncertaintyRefs: [],
+          }),
+          retainRunObservation: async () =>
+            reference('run-observation-fixture'),
+          retainRunFailure: async () => reference('run-failure-fixture'),
+          requestDescendantCancellation: async () =>
+            reference('controlled-cancel-request'),
+          confirmDescendantCancellation: async () =>
+            reference('controlled-cancel-observed'),
         },
-        confirmClaim: async () => {
-          throw Error('advisory fixture must not claim Flow');
+      })
+    : undefined;
+  const roundsSpec: DelegationRoundsSpec = {
+    ...spec,
+    schemaVersion: '1.0',
+    policy: { ...spec.policy, maxRounds: 1, maxAttempts: 1 },
+    seats: spec.seats.map(({ stepId: _stepId, ...seat }) => seat),
+  };
+  const roundsController = roundsFence
+    ? createDelegationRoundsController({
+        store: roundsFence.groups,
+        authorityService: service,
+        dispatchLedger: new FileAuthorizationLedger({
+          root: join(root, 'dispatch'),
+        }),
+        host: {
+          accountingProtocol: 'retained-tariff-v1',
+          authorize: async () =>
+            active ? reference('actual-fixture-caller') : null,
+          executionHost: () => ({
+            resolveRuntime: async () => ({
+              runtime: model,
+              runtimeReceipt: executionBinding.runtime.runtime_receipt_ref,
+              modelReceipt: executionBinding.runtime.model_receipt_ref,
+            }),
+            invokeFenced: async (_envelope, id, invoke) =>
+              invocation.run(id, invoke),
+            retainFailure: async () => {},
+            retainResult: async () => ({
+              inputTokens: 2,
+              outputTokens: 1,
+              costMicros: 1,
+              costBasis: 'tariff-upper-bound',
+            }),
+          }),
+          prepareRequest: async () => ({
+            messages: [{ role: 'user', content: 'fixture' }],
+            maxOutputTokens: 10,
+          }),
+          retainObservation: async () => reference('raw-outcome-fixture'),
+          confirmTerminal: async () => null,
+          requestDescendantCancellation: async () =>
+            reference('controlled-cancel-request'),
         },
-        prepareRequest: async () => {
-          throw Error('advisory fixture must not request Flow');
-        },
-        recordMemberOutcome: async () => {
-          throw Error('advisory fixture must not write Flow');
-        },
-      }),
-      prepareIndependentRequest: async () => ({
-        messages: [{ role: 'user', content: 'fixture' }],
-        maxOutputTokens: 10,
-      }),
-      retainMemberOutcome: async () => ({
-        outcomeRef: reference('raw-outcome-fixture'),
-        dissentRefs: [],
-        uncertaintyRefs: [],
-      }),
-      retainRunObservation: async () => reference('run-observation-fixture'),
-      retainRunFailure: async () => reference('run-failure-fixture'),
-      requestDescendantCancellation: async () =>
-        reference('controlled-cancel-request'),
-      confirmDescendantCancellation: async () =>
-        reference('controlled-cancel-observed'),
-    },
-  });
+      })
+    : undefined;
+  const controller = roundsController ?? legacyController;
+  if (!controller) throw Error('fixture controller missing');
   await controller.create({
     kind: 'create',
     groupId: 'group',
     operationKey: 'create',
     expectedRevision: 0,
     controller: spec.controller,
-    spec,
+    spec: roundsController ? roundsSpec : spec,
   });
-  let running: ReturnType<typeof controller.run> | undefined;
+  let running: Promise<unknown> | undefined;
   const run = () => {
-    running = controller.run({
-      kind: 'run',
-      groupId: 'group',
-      operationKey: 'run',
-      expectedRevision: 1,
-      controller: spec.controller,
-    });
+    running = roundsController
+      ? roundsController.release({
+          kind: 'release',
+          groupId: 'group',
+          operationKey: 'run',
+          expectedRevision: 1,
+          controller: spec.controller,
+          checkpoint: reference('checkpoint'),
+          seats: [{ seatId: 'seat', previousInvocationId: null }],
+        })
+      : legacyController!.run({
+          kind: 'run',
+          groupId: 'group',
+          operationKey: 'run',
+          expectedRevision: 1,
+          controller: spec.controller,
+        });
     void running.catch(() => {});
     return running;
   };
@@ -467,8 +558,12 @@ const cases = [
   'queued-group-cancel',
 ] as const;
 
-test.each(cases)('final fetch: %s', async (mode) => {
-  const f = await setup(mode);
+test.each(
+  ['legacy', 'rounds'].flatMap((protocol) =>
+    cases.map((mode) => ({ protocol: protocol as 'legacy' | 'rounds', mode })),
+  ),
+)('final fetch: $protocol $mode', async ({ protocol, mode }) => {
+  const f = await setup(mode, protocol);
   const running = f.run();
   const observed = running.then(
     (value) => ({ ok: true as const, value }),

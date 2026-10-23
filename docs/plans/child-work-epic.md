@@ -902,6 +902,14 @@ append-only history. No provider invocation or boot-serving acceptance follows
 from this storage integration. Production preparation, qualified issuance and
 session-bound context ACK are still required.
 
+The next increment connects member invocation to a rounds-aware final-fetch
+fence. It reads the actual latest attempt and adopted grant under the rounds
+lock, checks a current-epoch reservation under v3 authority custody, and shares
+the existing durable wire consume plus final synchronous source checks. The
+reserved SDK transport selects it explicitly; it does not reinterpret a legacy
+journal. Context-sync launch admission and authenticated recipient continuity
+remain open. Controlled provider fixtures are not live provider qualification.
+
 ## Controlled reserved Station turn integration
 
 The internal reserved-turn port now reaches the real Station adapter through

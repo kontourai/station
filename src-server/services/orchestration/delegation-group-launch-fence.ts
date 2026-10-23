@@ -3,15 +3,21 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import {
   createDelegationAuthorityService,
   type DelegationAuthorityHost,
+  type DelegationAuthorityLedger,
   type DelegationAuthorityStore,
   type DelegationInvocationAmounts,
 } from '@kontourai/flow-agents/delegation-authority-service';
+import type { DelegationAuthorityStoreV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
 import {
   type DelegationEnvelopeV2,
   delegationEnvelopeDigestV2,
   rootAuthorityReferenceV2,
   validateDelegationAncestryV2,
 } from '@kontourai/flow-agents/delegation-envelope-v2';
+import {
+  type DelegationRoundsStore,
+  projectDelegationRounds,
+} from '@kontourai/flow-agents/delegation-group-rounds';
 import {
   type DelegationGroupStoreV2,
   projectDelegationGroupV2,
@@ -80,6 +86,122 @@ export function snapshotFinalWire(input: FinalWire): FinalWire {
   };
 }
 
+type LaunchOwners = {
+  host: DelegationAuthorityHost;
+  intents: FileFinalWireIntentStore;
+  finalizeCurrent: WireFinalizer;
+  fetch: typeof globalThis.fetch;
+};
+export type LegacyFinalFetchOwners = LaunchOwners & {
+  protocol?: 'group-v2';
+  groups: DelegationGroupStoreV2;
+  authorities: DelegationAuthorityStore;
+};
+export type RoundsFinalFetchOwners = LaunchOwners & {
+  protocol: 'rounds-v1';
+  groups: DelegationRoundsStore;
+  authorities: DelegationAuthorityStoreV3;
+};
+export type ReservedFinalFetchOwners =
+  | LegacyFinalFetchOwners
+  | RoundsFinalFetchOwners;
+export type PreparedReservedFinalFetchOwners =
+  | Omit<LegacyFinalFetchOwners, 'fetch'>
+  | Omit<RoundsFinalFetchOwners, 'fetch'>;
+
+async function sendReservedWire(
+  owners: LaunchOwners,
+  current: DelegationAuthorityLedger,
+  binding: ReservedWireBinding,
+  wire: FinalWire,
+  signal: AbortSignal,
+): Promise<{ response: Promise<Response>; intent: FinalWireIntentIdentity }> {
+  const digest = wireIdentityDigest(wire);
+  const snapshot = canonicalJson(current);
+  requireLaunch(
+    same(rootAuthorityReferenceV2(current.root), binding.authority),
+  );
+  let active = true;
+  const readView: DelegationAuthorityStore = {
+    async transact(id, body) {
+      requireLaunch(active && id === binding.authority.id);
+      const result = await body(structuredClone(current));
+      requireLaunch(active && canonicalJson(result.ledger) === snapshot);
+      return result.result;
+    },
+  };
+  try {
+    const service = createDelegationAuthorityService(readView, owners.host);
+    const { envelope } = await service.admitEffect(
+      binding.authority.id,
+      binding.envelope.id,
+      binding.effect,
+    );
+    requireLaunch(
+      envelope.generation === binding.envelope.generation &&
+        delegationEnvelopeDigestV2(envelope) === binding.envelope.digest,
+    );
+    const reservation = current.invocations.find(
+      (value) => value.invocationId === binding.invocationId,
+    );
+    requireLaunch(
+      reservation &&
+        !reservation.terminal &&
+        reservation.usage === null &&
+        reservation.envelopeId === envelope.envelope_id &&
+        same(reservation.allocation, binding.allocation),
+    );
+    const identity: FinalWireIntentIdentity = {
+      groupId: binding.groupId,
+      controller: structuredClone(binding.controller),
+      seatId: binding.seatId,
+      root: rootAuthorityReferenceV2(current.root),
+      envelope: structuredClone(binding.envelope),
+      executionId: envelope.execution_id,
+      invocationId: binding.invocationId,
+      effect: binding.effect,
+      allocation: structuredClone(reservation.allocation),
+      executionBindingDigest: wireIdentityDigest(envelope.execution_binding),
+      principalDigest: current.root.authenticated_principal_ref.digest,
+      subjectDigest: current.root.authenticated_subject_ref.digest,
+      finalWireDigest: digest,
+    };
+    const finalChecks = (): undefined => {
+      signal.throwIfAborted();
+      const chain: DelegationEnvelopeV2[] = [];
+      let cursor = envelope;
+      for (;;) {
+        chain.unshift(cursor);
+        if (!cursor.parent) break;
+        const parentId = cursor.parent.id;
+        const parent = current.envelopes.find(
+          (value) => value.envelope_id === parentId,
+        );
+        if (!parent || chain.length > current.envelopes.length)
+          throw new WireIntentRefusal('ancestry_unavailable');
+        cursor = parent;
+      }
+      validateDelegationAncestryV2(current.root, chain, owners.host.now());
+      assertSynchronous(owners.finalizeCurrent);
+      return undefined;
+    };
+    await owners.intents.consume(identity, finalChecks);
+    // LAST AWAIT before the actual controlled/native fetch invocation.
+    finalChecks();
+    const response = owners.fetch(wire.url, {
+      method: wire.method,
+      headers: wire.headers.map(([name, value]) => [name, value]),
+      body: wire.body,
+      redirect: 'error',
+      signal,
+    });
+    void Promise.resolve(response).catch(() => {});
+    return { response, intent: identity };
+  } finally {
+    active = false;
+  }
+}
+
 /**
  * Host-only final fetch owner. Canonical persistence, authenticated host and finalizer
  * are boot/request dependencies, never route input or a fabricated grant issuer.
@@ -89,17 +211,7 @@ export class FinalFetchLaunchFence {
   readonly #authorities: DelegationAuthorityStore;
   readonly groups: DelegationGroupStoreV2;
   readonly authorities: DelegationAuthorityStore;
-  constructor(
-    private readonly owners: {
-      groups: DelegationGroupStoreV2;
-      authorities: DelegationAuthorityStore;
-      host: DelegationAuthorityHost;
-      intents: FileFinalWireIntentStore;
-      finalizeCurrent: WireFinalizer;
-      /** Already-qualified innermost transport. The test seam is explicitly no-billable. */
-      fetch: typeof globalThis.fetch;
-    },
-  ) {
+  constructor(private readonly owners: LegacyFinalFetchOwners) {
     this.#groups = owners.groups;
     this.#authorities = owners.authorities;
     // All services/controller callbacks in this composition use these guarded views.
@@ -170,105 +282,129 @@ export class FinalFetchLaunchFence {
             binding.authority.id,
             async (current) => {
               if (!current) throw new WireIntentRefusal('authority_missing');
-              const snapshot = canonicalJson(current);
-              requireLaunch(
-                same(rootAuthorityReferenceV2(current.root), binding.authority),
+              const result = await sendReservedWire(
+                this.owners,
+                current,
+                binding,
+                wire,
+                signal,
               );
-              let active = true;
-              const readView: DelegationAuthorityStore = {
-                async transact(id, body) {
-                  requireLaunch(active && id === binding.authority.id);
-                  const result = await body(structuredClone(current));
-                  requireLaunch(
-                    active && canonicalJson(result.ledger) === snapshot,
-                  );
-                  return result.result;
-                },
-              };
-              try {
-                const service = createDelegationAuthorityService(
-                  readView,
-                  this.owners.host,
-                );
-                const { envelope } = await service.admitEffect(
-                  binding.authority.id,
-                  binding.envelope.id,
-                  binding.effect,
-                );
-                requireLaunch(
-                  envelope.generation === binding.envelope.generation &&
-                    delegationEnvelopeDigestV2(envelope) ===
-                      binding.envelope.digest,
-                );
-                const reservation = current.invocations.find(
-                  (value) => value.invocationId === binding.invocationId,
-                );
-                requireLaunch(
-                  reservation &&
-                    !reservation.terminal &&
-                    reservation.usage === null &&
-                    reservation.envelopeId === envelope.envelope_id &&
-                    same(reservation.allocation, binding.allocation),
-                );
-                const identity: FinalWireIntentIdentity = {
-                  groupId: group.spec.groupId,
-                  controller: structuredClone(group.spec.controller),
-                  seatId: binding.seatId,
-                  root: rootAuthorityReferenceV2(current.root),
-                  envelope: structuredClone(binding.envelope),
-                  executionId: envelope.execution_id,
-                  invocationId: binding.invocationId,
-                  effect: binding.effect,
-                  allocation: structuredClone(reservation.allocation),
-                  executionBindingDigest: wireIdentityDigest(
-                    envelope.execution_binding,
+              return { ledger: current, result };
+            },
+          );
+          return { journal, result };
+        }),
+      );
+    } finally {
+      scope.active = false;
+    }
+  }
+}
+
+/** Member invocation admission for new rounds. Context-sync needs its own exact recipient admission. */
+export class RoundsFinalFetchLaunchFence {
+  readonly groups: DelegationRoundsStore;
+  readonly authorities: DelegationAuthorityStoreV3;
+  constructor(private readonly owners: RoundsFinalFetchOwners) {
+    this.groups = {
+      transact: (id, body) => {
+        forbidNestedOwner();
+        return owners.groups.transact(id, body);
+      },
+    };
+    this.authorities = {
+      transact: (id, body) => {
+        forbidNestedOwner();
+        return owners.authorities.transact(id, body);
+      },
+    };
+  }
+  async start(
+    bindingInput: ReservedWireBinding,
+    wireInput: FinalWire,
+    signal: AbortSignal,
+  ): Promise<{ response: Promise<Response>; intent: FinalWireIntentIdentity }> {
+    forbidNestedOwner();
+    const binding = structuredClone(bindingInput),
+      wire = snapshotFinalWire(wireInput);
+    requireLaunch(wireIdentityDigest(wire) === binding.expectedWireDigest);
+    signal.throwIfAborted();
+    assertSynchronous(this.owners.finalizeCurrent);
+    const scope = { active: true };
+    try {
+      return await launchContext.run(scope, () =>
+        this.owners.groups.transact(binding.groupId, async (journal) => {
+          if (!journal) throw new WireIntentRefusal('group_missing');
+          const group = projectDelegationRounds(journal);
+          const seat = group.spec.seats.find(
+            (s) => s.seatId === binding.seatId,
+          );
+          const grant = group.grants.envelopes.find(
+            (s) => s.seatId === binding.seatId,
+          );
+          const attempt = group.attempts
+            .filter((a) => a.seatId === binding.seatId)
+            .at(-1);
+          requireLaunch(
+            group.cancellation === 'none' &&
+              same(group.spec.controller, binding.controller) &&
+              same(group.grants.authority, binding.authority),
+          );
+          requireLaunch(
+            seat &&
+              grant &&
+              same(grant.envelope, binding.envelope) &&
+              seat.effect === binding.effect &&
+              same(seat.allocation, binding.allocation),
+          );
+          requireLaunch(
+            attempt &&
+              attempt.invocationId === binding.invocationId &&
+              attempt.observation === null &&
+              attempt.terminal === null &&
+              group.rounds[attempt.round - 1]?.returned === false,
+          );
+          if (group.spec.topology.kind === 'flow') {
+            const action = group.flowActions.find(
+              (a) =>
+                a.round === attempt.round &&
+                a.seatId === binding.seatId &&
+                a.invocationId === binding.invocationId &&
+                a.mode === 'invoke',
+            );
+            requireLaunch(
+              attempt.admission === 'claimed' &&
+                action?.claim !== null &&
+                action?.claim !== undefined,
+            );
+          }
+          const result = await this.owners.authorities.transact(
+            binding.authority.id,
+            async (ledger) => {
+              if (!ledger) throw new WireIntentRefusal('authority_missing');
+              const epoch = ledger.epochs.at(-1);
+              requireLaunch(
+                epoch &&
+                  ledger.origins.some(
+                    (o) =>
+                      o.invocationId === binding.invocationId &&
+                      o.epoch === ledger.epochs.length - 1,
                   ),
-                  principalDigest:
-                    current.root.authenticated_principal_ref.digest,
-                  subjectDigest: current.root.authenticated_subject_ref.digest,
-                  finalWireDigest: digest,
-                };
-                const finalChecks = (): undefined => {
-                  signal.throwIfAborted();
-                  const chain: DelegationEnvelopeV2[] = [];
-                  let cursor = envelope;
-                  for (;;) {
-                    chain.unshift(cursor);
-                    if (!cursor.parent) break;
-                    const parentId = cursor.parent.id;
-                    const parent = current.envelopes.find(
-                      (value) => value.envelope_id === parentId,
-                    );
-                    if (!parent || chain.length > current.envelopes.length)
-                      throw new WireIntentRefusal('ancestry_unavailable');
-                    cursor = parent;
-                  }
-                  validateDelegationAncestryV2(
-                    current.root,
-                    chain,
-                    this.owners.host.now(),
-                  );
-                  assertSynchronous(this.owners.finalizeCurrent);
-                  return undefined;
-                };
-                await this.owners.intents.consume(identity, finalChecks);
-                // LAST AWAIT before the actual controlled/native fetch invocation.
-                finalChecks();
-                const response = this.owners.fetch(wire.url, {
-                  method: wire.method,
-                  headers: wire.headers.map(([name, value]) => [name, value]),
-                  body: wire.body,
-                  redirect: 'error',
-                  signal,
-                });
-                void Promise.resolve(response).catch(() => {});
-                return {
-                  ledger: current,
-                  result: { response, intent: identity },
-                };
-              } finally {
-                active = false;
-              }
+              );
+              const current: DelegationAuthorityLedger = {
+                root: epoch.root,
+                envelopes: epoch.envelopes,
+                cancelled: ledger.cancelled,
+                invocations: ledger.invocations,
+              };
+              const result = await sendReservedWire(
+                this.owners,
+                current,
+                binding,
+                wire,
+                signal,
+              );
+              return { ledger, result };
             },
           );
           return { journal, result };

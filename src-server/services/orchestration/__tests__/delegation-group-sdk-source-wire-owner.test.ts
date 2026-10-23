@@ -587,8 +587,13 @@ test('SDK brief and instructions are immutable before SDK serialization and chec
   assert.equal(f.starts, 0);
 });
 
-for (const provider of ['anthropic', 'google'] as const)
-  test(`reserved raw observer ${provider} settles retained tariff usage through published AccountingV1`, async () => {
+for (const [provider, protocol] of [
+  ['anthropic', 'legacy'],
+  ['google', 'legacy'],
+  ['anthropic', 'rounds'],
+  ['google', 'rounds'],
+] as const)
+  test(`reserved raw observer ${provider}/${protocol} settles retained tariff usage through published AccountingV1`, async () => {
     const f = await sdkFixture(provider);
     const prepared = await f.owner.prepareSdkSnapshot(
       f.context(),
@@ -604,7 +609,12 @@ for (const provider of ['anthropic', 'google'] as const)
       prepared.sdkHandle,
       wire,
       () => assert.equal(f.starts, 0),
-      { provider, contract: f.configuration.contract, now: () => 1000 },
+      {
+        provider,
+        protocol,
+        contract: f.configuration.contract,
+        now: () => 1000,
+      },
     );
     await driver.run();
     assert.equal(f.starts, 1, String(driver.invocationFailure));

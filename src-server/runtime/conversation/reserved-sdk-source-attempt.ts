@@ -1,4 +1,5 @@
 import type { DelegationRetainedAccountingV1 } from '@kontourai/flow-agents/delegation-dispatch';
+import type { PreparedReservedFinalFetchOwners } from '../../services/orchestration/delegation-group-launch-fence.js';
 import type { StationDelegationPersistence } from '../../services/orchestration/delegation-group-persistence.js';
 import {
   deliverSdkResponse,
@@ -27,10 +28,7 @@ export async function runReservedSdkSourceAttempt(input: {
     'launch'
   > & {
     /** Canonical persistence views; do not wrap another launch fence's guarded views. */
-    launch: Omit<
-      ConstructorParameters<typeof ReservedProviderFetch>[0]['launch'],
-      'fetch'
-    >;
+    launch: PreparedReservedFinalFetchOwners;
   };
 }) {
   const { sdkOwner, sdkHandle, persistence } = input;
