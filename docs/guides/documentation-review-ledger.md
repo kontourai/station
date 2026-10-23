@@ -40,6 +40,10 @@ can cover named outstanding inputs; restoring old bytes alone cannot erase an
 unreviewed change. `docs:review:record -- --show-delta` shows the input diff
 since the coverage baseline, including working edits. This is an inspection
 lead, not an assertion that every intermediate change is visible in the net diff.
+Advisory dependency history reads deduplicate repeated valid paths in historical
+path-only records, preserving their dependency leads. Current records still
+refuse duplicate paths; legacy digest/revision bindings and malformed historical
+paths remain strict. This compatibility read grants no review approval.
 
 `--base=<ref>` overrides the catch-up search for new or unmapped paths, but does
 not change the freshness baseline. The one-time path-only migration sets the

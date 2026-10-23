@@ -354,7 +354,8 @@ export function parseRecordFile(file, text, recordLayout = 'canonical') {
     if (
       (pathOnly ? typeof source !== 'string' : !validIdentity(source)) ||
       !isBindingPath(path) ||
-      seen.has(path)
+      (seen.has(path) &&
+        !(pathOnly && recordLayout === 'advisory-dependency-history'))
     )
       throw reviewError(
         'invalid-shape',
@@ -363,7 +364,9 @@ export function parseRecordFile(file, text, recordLayout = 'canonical') {
       );
     seen.add(path);
   }
-  return record;
+  return pathOnly && recordLayout === 'advisory-dependency-history'
+    ? { ...record, sources: [...seen] }
+    : record;
 }
 
 function parseCaptureFile(file, text) {
