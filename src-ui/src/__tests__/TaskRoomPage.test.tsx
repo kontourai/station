@@ -165,14 +165,7 @@ test('header edits the title and offers only permitted status transitions, shari
 });
 test('rail derives the goal and completion checklist from the saved shared document', () => {
   const brief = vi.fn();
-  mount(
-    <TaskRoomRail
-      task={task}
-      projectSlug="project"
-      onBrief={brief}
-      onResults={vi.fn()}
-    />,
-  );
+  mount(<TaskRoomRail task={task} onBrief={brief} />);
   expect(screen.getByText('Ship a calm chat room.')).toBeTruthy();
   expect(screen.getByText('Chat comes first')).toBeTruthy();
   expect(screen.getByLabelText('Checked')).toBeTruthy();
@@ -234,9 +227,7 @@ test.each([
     mount(
       <TaskRoomRail
         task={{ ...task, description: 'Stale description' }}
-        projectSlug="project"
         onBrief={vi.fn()}
-        onResults={vi.fn()}
       />,
     );
     const goalSection = screen
@@ -266,9 +257,7 @@ test('rail parses the description only when the document is empty, with mixed ch
         description:
           '## Goal\nDescription goal.\n## Done when\n1. [X] Complete\n+ [ ] Pending\n* Neutral\n## Suggested first step\nExcluded step',
       }}
-      projectSlug="project"
       onBrief={vi.fn()}
-      onResults={vi.fn()}
     />,
   );
   expect(screen.getByText('Description goal.')).toBeTruthy();
@@ -283,9 +272,7 @@ test('a heading-only document does not substitute the description or later secti
   mount(
     <TaskRoomRail
       task={{ ...task, description: 'Stale description' }}
-      projectSlug="project"
       onBrief={vi.fn()}
-      onResults={vi.fn()}
     />,
   );
   const goal = screen

@@ -573,14 +573,7 @@ function TaskWorkspaceContent({
         id="task-panel-Overview"
         aria-labelledby="task-tab-Overview"
       >
-        <TaskRoomRail
-          task={graph.task}
-          projectSlug={projectSlug}
-          onBrief={() => setTab('Plan')}
-          onResults={() =>
-            document.getElementById('task-deliverables')?.scrollIntoView()
-          }
-        />
+        <TaskRoomRail task={graph.task} onBrief={() => setTab('Plan')} />
         <TaskRelationships task={graph.task} kind="children" />
         <div id="task-deliverables">
           <TaskRoomResults task={graph.task} />

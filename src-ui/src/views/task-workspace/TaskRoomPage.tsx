@@ -247,12 +247,7 @@ function useResults(task: TaskRecord) {
     answers,
     outputs,
     prs,
-    count:
-      (answers.data?.length ?? 0) +
-      (outputs.data?.length ?? 0) +
-      (prs.data?.length ?? 0),
     unavailable: !!(answers.error || outputs.error || prs.error),
-    loading: answers.isLoading || outputs.isLoading || prs.isLoading,
   };
 }
 
@@ -361,18 +356,12 @@ export function TaskRoomResults({ task }: { task: TaskRecord }) {
 
 export function TaskRoomRail({
   task,
-  projectSlug,
   onBrief,
-  onResults,
 }: {
   task: TaskRecord;
-  projectSlug: string;
   onBrief(): void;
-  onResults(): void;
 }) {
   const document = useProjectTaskRoomDocumentQuery(task.id);
-  const { count, unavailable, loading, answers, outputs, prs } =
-    useResults(task);
   const text =
     document.data?.kind === 'snapshot' || document.data?.kind === 'delta'
       ? document.data.text
@@ -472,56 +461,6 @@ export function TaskRoomRail({
           <p>Add a checklist in the plan.</p>
         )}
       </section>
-      <section>
-        <h3>Deliverables</h3>
-        {!loading && !unavailable && count === 0 ? (
-          <Empty label="Nothing kept yet" />
-        ) : (
-          <Button onClick={onResults} size="sm">
-            {loading
-              ? 'Loading results…'
-              : unavailable
-                ? 'Results unavailable'
-                : `${count} kept ${count === 1 ? 'result' : 'results'}`}
-          </Button>
-        )}
-      </section>
-      {!loading && !unavailable && count > 0 && (
-        <ul className="task-room-result-summary">
-          {answers.data
-            ?.filter((answer) => answer.state === 'available')
-            .slice(0, 2)
-            .map(
-              (answer) =>
-                answer.state === 'available' && (
-                  <li key={answer.id}>
-                    <Button size="sm" onClick={onResults}>
-                      {answer.answer.content
-                        .split('\n')
-                        .find((line) => line.trim())
-                        ?.replace(/^#+\s*/, '')
-                        .slice(0, 80) || 'Kept answer'}
-                    </Button>
-                  </li>
-                ),
-            )}
-          {outputs.data?.slice(0, 2).map((output) => (
-            <li key={output.id}>
-              <Button size="sm" onClick={onResults}>
-                {output.title}
-              </Button>
-            </li>
-          ))}
-          {prs.data?.slice(0, 2).map((pr) => (
-            <li key={pr.nativeId}>
-              <Button size="sm" onClick={onResults}>
-                PR #{pr.ref}
-                {task.closeOnMerge ? ' · closes Task on merge' : ''}
-              </Button>
-            </li>
-          ))}
-        </ul>
-      )}
       {['Decisions', 'Blockers'].map((name) => (
         <section key={name}>
           <h3>{name}</h3>
@@ -532,18 +471,6 @@ export function TaskRoomRail({
           )}
         </section>
       ))}
-      <footer>
-        <span>{projectSlug}</span>
-        <span>{task.workspaceBinding?.branch ?? 'Branch not recorded'}</span>
-        {task.workItemRef && <span>{task.workItemRef}</span>}
-      </footer>
     </div>
   );
-}
-
-export function TaskRoomResultCount({ task }: { task: TaskRecord }) {
-  const results = useResults(task);
-  return !results.loading && !results.unavailable && results.count > 0 ? (
-    <span className="task-room-count">{results.count}</span>
-  ) : null;
 }
