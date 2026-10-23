@@ -379,12 +379,18 @@ describe('Project Room explicit agent participation', () => {
       f.room.store.history(f.authority.scope).messages.map((m) => m.text),
     ).toEqual([text]);
   });
-  it.each(['invocation', 'legacy-early', 'legacy-late'])(
+  it.each(['invocation', 'legacy-early', 'legacy-late', 'legacy-receipt'])(
     'canonical orchestration enforces Room publication, cancellation, and private Session identity (%s)',
     async (routing) => {
       for (const outcome of ['published', 'cancelled', 'revoked']) {
         const revokeAtSpawn = outcome === 'revoked';
         const f = fixture();
+        const legacyReceipt =
+          routing === 'legacy-receipt'
+            ? vi
+                .spyOn(ClientOriginTurnPropagation.prototype, 'apply')
+                .mockImplementation((event) => event)
+            : undefined;
         const adapter = new GateTestAdapter();
         const live = new Set<string>();
         vi.spyOn(adapter, 'hasSession').mockImplementation(
@@ -456,6 +462,7 @@ describe('Project Room explicit agent participation', () => {
           adapterRegistry: createGateTestRegistry(adapter),
           eventBus: new EventBus(),
           eventStore: events,
+          turnDeduplicator: events.createTurnDeduplicator(),
           adoptionLedger: events.createAdoptionLedger(),
           resolveSessionAgent: async (input) => {
             if (revokeAtSpawn) f.revoke();
@@ -744,6 +751,7 @@ describe('Project Room explicit agent participation', () => {
         expect(send).toHaveBeenCalledTimes(
           revokeAtSpawn ? 0 : outcome === 'published' ? 3 : 1,
         );
+        legacyReceipt?.mockRestore();
       }
     },
   );

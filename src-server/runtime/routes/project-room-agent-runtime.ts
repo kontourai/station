@@ -20,7 +20,11 @@ export function projectRoomAgentExecution(deps: {
   executionTargets: ExecutionTargetResolverDependencies;
   sessions: Pick<
     OrchestrationService,
-    'startSessionInternal' | 'dispatch' | 'readSession' | 'sessionQueries'
+    | 'startSessionInternal'
+    | 'dispatch'
+    | 'readSession'
+    | 'sessionQueries'
+    | 'inspectTurnDelivery'
   >;
   authorityForOwner(ownerId: string): SessionReadAuthority;
   commandContext(ownerId: string): SessionCommandContext;
@@ -130,10 +134,24 @@ export function projectRoomAgentExecution(deps: {
         authority,
       );
       if (!session) return null;
+      const receipt = deps.sessions.inspectTurnDelivery(
+        capture.sessionId,
+        capture.correlationId,
+        authority,
+      );
+      if (
+        receipt?.outcome === 'started' &&
+        receipt.sessionId !== capture.sessionId
+      )
+        throw new Error('Project room turn identity changed');
+      // Older provider starts may lack the send key. The durable accepted-turn
+      // receipt binds that exact key to its Session and turn without guessing.
       const started = session.events.find(
         (e) =>
           e.method === 'turn.started' &&
-          e.clientTurnId === capture.correlationId,
+          (receipt?.outcome === 'started'
+            ? e.turnId === receipt.turnId
+            : e.clientTurnId === capture.correlationId),
       );
       if (
         started?.turnId &&
