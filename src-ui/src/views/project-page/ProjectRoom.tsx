@@ -755,13 +755,20 @@ function ProjectRoomAgentPanel({
   useLayoutEffect(() => {
     requestAction.current = act;
   });
+  // biome-ignore lint/correctness/useExhaustiveDependencies: settlement wakes the latest checkpoint skipped while the request ref was busy.
   useEffect(() => {
     if (!retained?.requestId || stopped || terminal || busy.current) return;
     const key = `${retained.requestId}:${checkpointSeq}`;
     if (inspectedCheckpoint.current === key) return;
     inspectedCheckpoint.current = key;
     void requestAction.current('inspect');
-  }, [retained?.requestId, checkpointSeq, stopped, terminal, settlementVersion]);
+  }, [
+    retained?.requestId,
+    checkpointSeq,
+    stopped,
+    terminal,
+    settlementVersion,
+  ]);
 
   return (
     <div className="project-room__agent">
@@ -772,9 +779,11 @@ function ProjectRoomAgentPanel({
             ? `Agent request needs attention: ${handle.failure.replaceAll('_', ' ')}`
             : {
                 reserved: 'Agent request accepted.',
-                started: 'Agent is working. Its answer will appear in the Room.',
+                started:
+                  'Agent is working. Its answer will appear in the Room.',
                 published: 'Agent answer shared in the Room.',
-                uncertain: 'Agent start could not be confirmed. Check its answer before retrying.',
+                uncertain:
+                  'Agent start could not be confirmed. Check its answer before retrying.',
                 cancelled: 'Agent request cancelled.',
               }[handle.state]}
         </p>

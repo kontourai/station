@@ -1,10 +1,8 @@
 # Project/Task room collaboration acceptance
 
-`tests/project-task-room-collaboration.spec.ts` is the real-browser acceptance
-lane for the personal Station Task room. It starts an isolated production
-server/UI, creates a Project and Task through shipped HTTP/UI entry points,
-pairs a second browser as a distinct device, and uses the rendered Task
-workspace rather than injected pane props.
+`tests/project-task-room-collaboration.spec.ts` is the retained real-browser acceptance fixture for the personal Station Task room. It starts an isolated production server/UI, creates a Project and Task through shipped HTTP/UI entry points, pairs a second browser as a distinct device, and targets the rendered Task workspace rather than injected pane props.
+
+**Current limitation:** the fixture still expects the retired **Chat** and **Brief** tabs and a Chat-first landing. The mounted Task workspace now opens on **Overview**, with **Conversation** and **Plan** replacing those tabs. Update the fixture's navigation and assertions before using this lane as current-head acceptance evidence; its presence or an earlier passing run does not qualify the current UI.
 
 When it passes, the lane checks both browsers receive the same server-owned room generation;
 implicit join and durable publication; symmetric named presence; autosave;
@@ -13,7 +11,7 @@ document convergence over the shared SSE connection; revoked-device cached
 read-only behavior; immutable revision links in Details; and same-home SQLite
 restoration after a full server restart.
 
-Chat and Brief are exercised through normal user actions. Retained watch/follow
+The retained fixture exercises its conversation and document through normal user actions, but its selectors need the update described above. Retained watch/follow
 protocol setup uses explicitly named real HTTP fixture commands because those
 controls are not on the primary chat surface. The lane is not a claim that a
 human watch/follow picker is currently shipped there.

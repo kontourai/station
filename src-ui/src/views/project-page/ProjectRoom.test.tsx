@@ -498,7 +498,9 @@ test('loads older history and explicitly requests an available Agent with actual
   expect(agentWrites).toHaveLength(0);
   fireEvent.change(picker, { target: { value: 'researcher' } });
   fireEvent.click(screen.getByRole('button', { name: 'Ask in room' }));
-  await screen.findByText('Agent is working. Its answer will appear in the Room.');
+  await screen.findByText(
+    'Agent is working. Its answer will appear in the Room.',
+  );
   expect(agentWrites).toEqual([
     expect.objectContaining({
       agentId: 'researcher',
@@ -611,7 +613,9 @@ test('lost Agent acknowledgement reload retries immutable intent, never automati
   fireEvent.click(
     screen.getByRole('button', { name: 'Retry same Agent request' }),
   );
-  await screen.findByText('Agent is working. Its answer will appear in the Room.');
+  await screen.findByText(
+    'Agent is working. Its answer will appear in the Room.',
+  );
   expect(agentWrites).toEqual([first, first]);
   expect(agentRetentions).toEqual([true, true]);
   fireEvent.click(screen.getByRole('button', { name: 'More Agent actions' }));
@@ -634,11 +638,15 @@ test('lost Agent acknowledgement reload retries immutable intent, never automati
 test('Agent handles retire on authority loss and permission-only readers cannot invoke', async () => {
   const ui = mount();
   await askAgent();
-  await screen.findByText('Agent is working. Its answer will appear in the Room.');
+  await screen.findByText(
+    'Agent is working. Its answer will appear in the Room.',
+  );
   agentDenied = true;
   fireEvent.click(screen.getByRole('button', { name: 'Inspect request' }));
   await screen.findByText('Agent request access changed. Check Room access.');
-  expect(screen.queryByText('Agent is working. Its answer will appear in the Room.')).toBeNull();
+  expect(
+    screen.queryByText('Agent is working. Its answer will appear in the Room.'),
+  ).toBeNull();
   expect(
     Object.values(sessionStorage).some((raw) =>
       String(raw).includes('researcher'),
@@ -655,8 +663,12 @@ test('Agent handles retire on authority loss and permission-only readers cannot 
 test('a pushed completion waits for an in-flight inspect and then updates without manual reconciliation', async () => {
   let release!: () => void;
   let inspecting = false;
-  heldInspection = new Promise<void>((resolve) => { release = resolve; });
-  inspectionStarted = () => { inspecting = true; };
+  heldInspection = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  inspectionStarted = () => {
+    inspecting = true;
+  };
   mount();
   const composer = await screen.findByRole('textbox', {
     name: 'Message the project',
@@ -667,7 +679,9 @@ test('a pushed completion waits for an in-flight inspect and then updates withou
     target: { value: 'researcher' },
   });
   fireEvent.click(screen.getByRole('button', { name: 'Ask in room' }));
-  await screen.findByText('Agent is working. Its answer will appear in the Room.');
+  await screen.findByText(
+    'Agent is working. Its answer will appear in the Room.',
+  );
   await waitFor(() => expect(inspecting).toBe(true));
   await waitFor(() => expect(streams.length).toBeGreaterThan(0));
   const messageId = randomCorrelationId();
@@ -694,7 +708,9 @@ test('a pushed completion waits for an in-flight inspect and then updates withou
       );
   });
   await screen.findByText('Completed shared answer');
-  await act(async () => { release(); });
+  await act(async () => {
+    release();
+  });
   await screen.findByText('Agent answer shared in the Room.');
   expect(agentWrites).toHaveLength(1);
   expect(agentOperations).not.toContain('reconcile');
