@@ -11,13 +11,14 @@ import { fetchConversationInventory } from '@kontourai/station-sdk';
 import { fetchTaskWorkChat } from '@kontourai/station-sdk/client/task-relationships';
 import {
   type TaskRelationshipScope,
+  taskRelationshipKey,
   useCreateTaskChildMutation,
   useSetTaskWorkChatMutation,
   useTaskChildrenQuery,
   useTaskWorkChatsQuery,
 } from '@kontourai/station-sdk/task-relationships';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useLayoutEffect, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Empty, SkeletonList } from '../../components/state';
@@ -219,6 +220,7 @@ function WorkChats({
   scope: TaskRelationshipScope;
   scopeKey: string;
 }) {
+  const client = useQueryClient();
   const chats = useTaskWorkChatsQuery(identity(task), scope);
   const mutation = useSetTaskWorkChatMutation(scope);
   const [selected, setSelected] = useState('');
@@ -239,8 +241,13 @@ function WorkChats({
   });
   const [notice, setNotice] = useState('');
   const [preparing, setPreparing] = useState(false);
+  const inventoryKey = [
+    'task-work-chat-candidates',
+    scope.apiBase,
+    scope.authorityKey,
+  ] as const;
   const inventory = useQuery({
-    queryKey: ['task-work-chat-candidates', scope.apiBase, scope.authorityKey],
+    queryKey: inventoryKey,
     retry: false,
     queryFn: async ({ signal }) => {
       if (!scope.isCurrent()) throw new Error('Connection changed');
@@ -253,8 +260,26 @@ function WorkChats({
       return page;
     },
   });
+  const chatsReadable = chats.isSuccess && scope.isCurrent();
+  const inventoryReadable = inventory.isSuccess && scope.isCurrent();
+  const readsReady = chatsReadable && inventoryReadable;
+  function currentChats() {
+    return (
+      scope.isCurrent() &&
+      retained.isActive() &&
+      client.getQueryState(
+        taskRelationshipKey(scope, identity(task), 'work-chats'),
+      )?.status === 'success'
+    );
+  }
+  function currentReads() {
+    // Link preparation can outlive a failed refetch; check the live cache at admission.
+    return (
+      currentChats() && client.getQueryState(inventoryKey)?.status === 'success'
+    );
+  }
   function send(input: TaskWorkChatMutationInput) {
-    if (!scope.isCurrent() || !retained.isActive()) return;
+    if (!currentReads()) return;
     if (!retained.retain(input) || retained.blocked) return;
     mutation.mutate(input, {
       onSuccess: () => {
@@ -266,7 +291,15 @@ function WorkChats({
     });
   }
   async function link() {
-    if (!selected || preparing || request || !scope.isCurrent()) return;
+    if (
+      !selected ||
+      preparing ||
+      request ||
+      !currentReads() ||
+      !inventory.data?.items.some((item) => item.id === selected) ||
+      chats.data?.chats.some((chat) => chat.conversationId === selected)
+    )
+      return;
     const operationId = randomCorrelationId();
     const conversationId = selected;
     setPreparing(true);
@@ -294,9 +327,10 @@ function WorkChats({
     }
   }
   async function open(conversationId: string) {
+    if (!currentChats()) return;
     setNotice('');
     if (
-      !(await openChatsStore.openConversation(conversationId, scope.isCurrent, {
+      !(await openChatsStore.openConversation(conversationId, currentChats, {
         revealDock: true,
       })) &&
       scope.isCurrent()
@@ -314,55 +348,61 @@ function WorkChats({
         </p>
       )}
       <ul>
-        {chats.data?.chats.map((chat) => (
-          <li key={chat.conversationId}>
-            <Button onClick={() => void open(chat.conversationId)}>
-              {inventory.data?.items.find(
-                (item) => item.id === chat.conversationId,
-              )?.title || 'Open chat'}
-            </Button>
-            <Button
-              disabled={!!request || preparing}
-              onClick={() =>
-                send({
-                  operationId: randomCorrelationId(),
-                  task: identity(task),
-                  conversationId: chat.conversationId,
-                  expectedRevision: chat.revision,
-                  linked: false,
-                })
-              }
-            >
-              Unlink
-            </Button>
-          </li>
-        ))}
+        {chatsReadable &&
+          chats.data.chats.map((chat) => (
+            <li key={chat.conversationId}>
+              <Button onClick={() => void open(chat.conversationId)}>
+                {(inventoryReadable &&
+                  inventory.data.items.find(
+                    (item) => item.id === chat.conversationId,
+                  )?.title) ||
+                  'Open chat'}
+              </Button>
+              <Button
+                disabled={!readsReady || !!request || preparing}
+                onClick={() =>
+                  send({
+                    operationId: randomCorrelationId(),
+                    task: identity(task),
+                    conversationId: chat.conversationId,
+                    expectedRevision: chat.revision,
+                    linked: false,
+                  })
+                }
+              >
+                Unlink
+              </Button>
+            </li>
+          ))}
       </ul>
-      {chats.data?.chats.length === 0 && <Empty label="Nothing linked yet" />}
+      {chatsReadable && chats.data.chats.length === 0 && (
+        <Empty label="Nothing linked yet" />
+      )}
       <label>
         Link a chat{' '}
         <select
           value={selected}
-          disabled={!!request || preparing}
+          disabled={!readsReady || !!request || preparing}
           onChange={(event) => setSelected(event.target.value)}
         >
           <option value="">Choose a chat</option>
-          {inventory.data?.items
-            .filter(
-              (item) =>
-                !chats.data?.chats.some(
-                  (chat) => chat.conversationId === item.id,
-                ),
-            )
-            .map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.title || 'Untitled chat'}
-              </option>
-            ))}
+          {readsReady &&
+            inventory.data.items
+              .filter(
+                (item) =>
+                  !chats.data?.chats.some(
+                    (chat) => chat.conversationId === item.id,
+                  ),
+              )
+              .map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.title || 'Untitled chat'}
+                </option>
+              ))}
         </select>
       </label>
       <Button
-        disabled={!selected || !!request || preparing}
+        disabled={!readsReady || !selected || !!request || preparing}
         onClick={() => void link()}
       >
         Link chat
@@ -375,7 +415,7 @@ function WorkChats({
           </Button>
         </p>
       )}
-      {inventory.data?.hasMore && <p>Showing recent chats.</p>}
+      {readsReady && inventory.data.hasMore && <p>Showing recent chats.</p>}
       <DiscardModal />
       {retained.notice && <p role="alert">{retained.notice}</p>}
       {request && !mutation.isPending && (
@@ -383,7 +423,7 @@ function WorkChats({
           Chat update could not be confirmed. The change may already have been
           applied.
           <Button
-            disabled={mutation.isPending || retained.blocked}
+            disabled={!readsReady || mutation.isPending || retained.blocked}
             onClick={() => send(request)}
           >
             Retry update

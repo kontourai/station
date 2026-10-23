@@ -16,6 +16,9 @@ const state = vi.hoisted(() => ({
   recoveryKey: 'owner',
   current: true,
   linked: true,
+  readChats: vi.fn(),
+  inventory: vi.fn(),
+  candidate: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
   navigate: vi.fn(),
@@ -39,25 +42,21 @@ vi.mock('../../contexts/open-chats-store', () => ({
   openChatsStore: { openConversation: state.open },
 }));
 vi.mock('@kontourai/station-sdk', () => ({
-  fetchConversationInventory: async () => ({
-    items: [{ id: 'canonical-chat', title: 'Implementation' }],
-    hasMore: false,
-  }),
+  fetchConversationInventory: (...args: unknown[]) => state.inventory(...args),
 }));
 vi.mock('@kontourai/station-sdk/client/task-relationships', () => ({
-  fetchTaskWorkChat: async () => ({ revision: 4 }),
+  fetchTaskWorkChat: (...args: unknown[]) => state.candidate(...args),
+  fetchTaskWorkChats: (...args: unknown[]) => state.readChats(...args),
 }));
-vi.mock('@kontourai/station-sdk/task-relationships', async () => {
+vi.mock('@kontourai/station-sdk/task-relationships', async (importOriginal) => {
   const { useMutation } = await import('@tanstack/react-query');
+  const original =
+    await importOriginal<
+      typeof import('@kontourai/station-sdk/task-relationships')
+    >();
   return {
+    ...original,
     useTaskChildrenQuery: () => ({ data: { children: [] } }),
-    useTaskWorkChatsQuery: () => ({
-      data: {
-        chats: state.linked
-          ? [{ conversationId: 'canonical-chat', revision: 4 }]
-          : [],
-      },
-    }),
     useCreateTaskChildMutation: () => useMutation({ mutationFn: state.create }),
     useSetTaskWorkChatMutation: () => useMutation({ mutationFn: state.update }),
   };
@@ -77,9 +76,13 @@ const task: TaskRecord = {
   createdBy: 'owner',
   updatedAt: '2026-10-22',
 };
-function view(kind: 'children' | 'work-chats' = 'children', record = task) {
+function view(
+  kind: 'children' | 'work-chats' = 'children',
+  record = task,
+  client = new QueryClient(),
+) {
   return (
-    <QueryClientProvider client={new QueryClient()}>
+    <QueryClientProvider client={client}>
       <TaskRelationships task={record} kind={kind} />
     </QueryClientProvider>
   );
@@ -93,6 +96,20 @@ beforeEach(() => {
   state.recoveryKey = 'owner';
   state.current = true;
   state.linked = true;
+  state.readChats.mockReset().mockImplementation(async () => ({
+    task: { taskId: task.id, taskCreatedAt: task.createdAt },
+    chats: state.linked
+      ? [{ conversationId: 'canonical-chat', revision: 4 }]
+      : [],
+  }));
+  state.inventory.mockReset().mockResolvedValue({
+    items: [
+      { id: 'canonical-chat', title: 'Implementation' },
+      { id: 'candidate-chat', title: 'Private candidate' },
+    ],
+    hasMore: false,
+  });
+  state.candidate.mockReset().mockResolvedValue({ revision: 4 });
 });
 test('restores exact creation across a new live activation and opens the returned Task', async () => {
   state.create
@@ -137,6 +154,117 @@ test('opens canonical linked conversation through the inbox', async () => {
     { revealDock: true },
   );
 });
+
+test('a failed relationship refresh withholds cached rows, titles and actions until recovery', async () => {
+  const client = new QueryClient();
+  render(view('work-chats', task, client));
+  await screen.findByRole('button', { name: 'Implementation' });
+  fireEvent.change(screen.getByLabelText('Link a chat'), {
+    target: { value: 'candidate-chat' },
+  });
+  state.readChats.mockRejectedValueOnce(new Error('Task access unavailable'));
+  await act(async () => {
+    await client.refetchQueries({ queryKey: ['task-relationships'] });
+  });
+  await screen.findByText(/Work chats unavailable/);
+  expect(
+    client
+      .getQueryCache()
+      .find({ queryKey: ['task-relationships'], exact: false })?.state.data,
+  ).toBeTruthy();
+  expect(screen.queryByText('Implementation')).toBeNull();
+  expect(screen.queryByText('Private candidate')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Open chat' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Unlink' })).toBeNull();
+  expect(
+    (screen.getByLabelText('Link a chat') as HTMLSelectElement).disabled,
+  ).toBe(true);
+  const link = screen.getByRole('button', { name: 'Link chat' });
+  expect((link as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(link);
+  expect(state.candidate).not.toHaveBeenCalled();
+  expect(state.update).not.toHaveBeenCalled();
+  expect(state.open).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  await screen.findByRole('button', { name: 'Implementation' });
+  fireEvent.click(screen.getByRole('button', { name: 'Unlink' }));
+  await waitFor(() => expect(state.update).toHaveBeenCalledTimes(1));
+});
+
+test('a failed inventory refresh hides cached titles and candidates and blocks mutations until recovery', async () => {
+  const client = new QueryClient();
+  render(view('work-chats', task, client));
+  await screen.findByRole('button', { name: 'Implementation' });
+  fireEvent.change(screen.getByLabelText('Link a chat'), {
+    target: { value: 'candidate-chat' },
+  });
+  state.inventory.mockRejectedValueOnce(new Error('Inventory unavailable'));
+  await act(async () => {
+    await client.refetchQueries({ queryKey: ['task-work-chat-candidates'] });
+  });
+  await screen.findByText(/Chat selection unavailable/);
+  expect(
+    client
+      .getQueryCache()
+      .find({ queryKey: ['task-work-chat-candidates'], exact: false })?.state
+      .data,
+  ).toBeTruthy();
+  expect(screen.queryByText('Implementation')).toBeNull();
+  expect(screen.queryByText('Private candidate')).toBeNull();
+  expect(
+    (screen.getByLabelText('Link a chat') as HTMLSelectElement).disabled,
+  ).toBe(true);
+  for (const name of ['Link chat', 'Unlink']) {
+    const button = screen.getByRole('button', { name });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(button);
+  }
+  expect(state.candidate).not.toHaveBeenCalled();
+  expect(state.update).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Retry selection' }));
+  await screen.findByRole('button', { name: 'Implementation' });
+  fireEvent.click(screen.getByRole('button', { name: 'Link chat' }));
+  await waitFor(() => expect(state.update).toHaveBeenCalledTimes(1));
+  expect(state.update.mock.calls[0][0]).toMatchObject({
+    conversationId: 'candidate-chat',
+    linked: true,
+  });
+});
+
+test.each(['task-relationships', 'task-work-chat-candidates'])(
+  'a failed %s refresh during link preparation blocks the late mutation',
+  async (query) => {
+    const client = new QueryClient();
+    let resolveCandidate!: (value: { revision: number }) => void;
+    state.candidate.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveCandidate = resolve;
+        }),
+    );
+    render(view('work-chats', task, client));
+    await screen.findByRole('option', { name: 'Private candidate' });
+    fireEvent.change(screen.getByLabelText('Link a chat'), {
+      target: { value: 'candidate-chat' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Link chat' }));
+    await waitFor(() => expect(state.candidate).toHaveBeenCalledTimes(1));
+    const read =
+      query === 'task-relationships' ? state.readChats : state.inventory;
+    read.mockRejectedValueOnce(new Error('Fresh access unavailable'));
+    await act(async () => {
+      await client.refetchQueries({ queryKey: [query] });
+    });
+    await screen.findByText(
+      query === 'task-relationships'
+        ? /Work chats unavailable/
+        : /Chat selection unavailable/,
+    );
+    await act(async () => resolveCandidate({ revision: 4 }));
+    expect(state.update).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Retry update' })).toBeNull();
+  },
+);
 
 test.each(['children', 'work-chats'] as const)(
   'storage failure blocks %s mutation',
@@ -184,13 +312,51 @@ test.each([true, false])(
     await screen.findByRole('button', { name: 'Retry update' });
     mounted.unmount();
     state.authority = 'owner-live-after-reload';
-    render(view('work-chats'));
+    const client = new QueryClient();
+    render(view('work-chats', task, client));
     const retry = await screen.findByRole('button', { name: 'Retry update' });
+    await screen.findByText('Implementation');
     expect(state.update).toHaveBeenCalledTimes(1);
     state.current = false;
     fireEvent.click(retry);
     expect(state.update).toHaveBeenCalledTimes(1);
     state.current = true;
+    for (const [query, read, alert] of [
+      ['task-relationships', state.readChats, /Work chats unavailable/],
+      [
+        'task-work-chat-candidates',
+        state.inventory,
+        /Chat selection unavailable/,
+      ],
+    ] as const) {
+      read.mockRejectedValueOnce(new Error('Fresh access unavailable'));
+      await act(async () => {
+        await client.refetchQueries({ queryKey: [query] });
+      });
+      await screen.findByText(alert);
+      expect(
+        (
+          screen.getByRole('button', {
+            name: 'Retry update',
+          }) as HTMLButtonElement
+        ).disabled,
+      ).toBe(true);
+      fireEvent.click(screen.getByRole('button', { name: 'Retry update' }));
+      expect(state.update).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        await client.refetchQueries({ queryKey: [query] });
+      });
+      await waitFor(() =>
+        expect(
+          (
+            screen.getByRole('button', {
+              name: 'Retry update',
+            }) as HTMLButtonElement
+          ).disabled,
+        ).toBe(false),
+      );
+      expect(state.update).toHaveBeenCalledTimes(1);
+    }
     fireEvent.click(screen.getByRole('button', { name: 'Retry update' }));
     await waitFor(() => expect(state.update).toHaveBeenCalledTimes(2));
     expect(state.update.mock.calls[1][0]).toEqual(
