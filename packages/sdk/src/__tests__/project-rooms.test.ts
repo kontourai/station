@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
-import { setClientCredentialResolver } from '../client/http';
+import {
+  StationRequestAuthorityError,
+  StationRequestTimeoutError,
+  setClientCredentialResolver,
+  setClientRequestTimeout,
+} from '../client/http';
 import {
   discoverProjectRoom,
   fetchProjectRoomHistory,
@@ -56,6 +61,7 @@ beforeEach(() =>
 );
 afterEach(() => {
   setClientCredentialResolver(undefined);
+  setClientRequestTimeout(undefined);
   vi.unstubAllGlobals();
 });
 const ok = (data: unknown) => Response.json({ success: true, data });
@@ -211,4 +217,175 @@ test('initialization validates the returned Project identity and preserves discu
   await expect(
     initializeProjectRoom(requestScope, 'team', 'project'),
   ).rejects.toMatchObject({ status: 403, code: 'project_room_access_changed' });
+});
+
+test.each([200, 502])(
+  'preserves body-reader failures instead of reporting malformed JSON (HTTP %i)',
+  async (status) => {
+    const failures = [
+      new StationRequestTimeoutError(requestScope.apiBase, 20, {
+        method: 'GET',
+      }),
+      new StationRequestAuthorityError(),
+      new DOMException('Cancelled by caller', 'AbortError'),
+      { code: 'caller-cancelled' },
+    ];
+    for (const failure of failures) {
+      const response = new Response('{}', { status });
+      vi.spyOn(response, 'json').mockRejectedValue(failure);
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
+      await expect(
+        discoverProjectRoom(requestScope, 'team', 'project'),
+      ).rejects.toBe(failure);
+    }
+  },
+);
+
+test.each([200, 502])(
+  'still classifies malformed JSON using the response status (HTTP %i)',
+  async (status) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('not JSON', { status })),
+    );
+    const result = discoverProjectRoom(requestScope, 'team', 'project');
+    if (status === 200)
+      await expect(result).rejects.toThrow(
+        'Project room response is not JSON.',
+      );
+    else await expect(result).rejects.toMatchObject({ status });
+  },
+);
+
+test.each(
+  [200, 502].flatMap((status) =>
+    ['discover', 'initialize'].map((operation) => ({ status, operation })),
+  ),
+)(
+  '$operation rejects a stalled transport body with the canonical deadline (HTTP $status)',
+  async ({ status, operation }) => {
+    setClientRequestTimeout(20);
+    const cancel = vi.fn();
+    const transport = vi.fn(
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(new TextEncoder().encode('{"success":'));
+            },
+            cancel,
+          }),
+          { status },
+        ),
+    );
+    setClientCredentialResolver(() => ({
+      origin: requestScope.apiBase,
+      requestAuthority: { ...requestScope, isCurrent: () => true },
+      transport,
+    }));
+    const request =
+      operation === 'discover'
+        ? discoverProjectRoom(requestScope, 'team', 'project')
+        : initializeProjectRoom(requestScope, 'team', 'project');
+    await expect(request).rejects.toBeInstanceOf(StationRequestTimeoutError);
+    await expect(request).rejects.toMatchObject({
+      timeoutMs: 20,
+      method: operation === 'discover' ? 'GET' : 'POST',
+      mutation: operation === 'initialize',
+    });
+    expect(transport).toHaveBeenCalledOnce();
+    expect(cancel).toHaveBeenCalledOnce();
+  },
+);
+
+test('a caller cancellation remains observable while the room transport body is pending', async () => {
+  const caller = new AbortController();
+  const reason = { code: 'caller-cancelled' };
+  let reading!: () => void;
+  const bodyRead = new Promise<void>((resolve) => {
+    reading = resolve;
+  });
+  const transport = vi.fn(async (_input: unknown, init?: RequestInit) => {
+    expect(init?.signal).toBe(caller.signal);
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{"success":'));
+          init?.signal?.addEventListener(
+            'abort',
+            () => controller.error(init.signal?.reason),
+            { once: true },
+          );
+        },
+      }),
+    );
+    const clone = response.clone.bind(response);
+    vi.spyOn(response, 'clone').mockImplementation(() => {
+      const value = clone();
+      reading();
+      return value;
+    });
+    return response;
+  });
+  setClientCredentialResolver(() => ({
+    origin: requestScope.apiBase,
+    requestAuthority: { ...requestScope, isCurrent: () => true },
+    transport,
+  }));
+  const request = discoverProjectRoom(
+    requestScope,
+    'team',
+    'project',
+    caller.signal,
+  );
+  const rejected = expect(request).rejects.toBe(reason);
+  await bodyRead;
+  caller.abort(reason);
+  await rejected;
+  expect(transport).toHaveBeenCalledOnce();
+});
+
+test('a room body cannot publish after its captured authority becomes stale', async () => {
+  let current = true;
+  let reading!: () => void;
+  const bodyRead = new Promise<void>((resolve) => {
+    reading = resolve;
+  });
+  let finish!: () => void;
+  const response = new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('{"success":true,"data":'));
+        finish = () => {
+          controller.enqueue(
+            new TextEncoder().encode(`${JSON.stringify(view)}}`),
+          );
+          controller.close();
+        };
+      },
+    }),
+  );
+  const clone = response.clone.bind(response);
+  vi.spyOn(response, 'clone').mockImplementation(() => {
+    const value = clone();
+    reading();
+    return value;
+  });
+  const transport = vi.fn(async () => response);
+  const resolver = vi.fn(() => ({
+    origin: requestScope.apiBase,
+    requestAuthority: { ...requestScope, isCurrent: () => current },
+    transport,
+  }));
+  setClientCredentialResolver(resolver);
+  const request = discoverProjectRoom(requestScope, 'team', 'project');
+  const rejected = expect(request).rejects.toBeInstanceOf(
+    StationRequestAuthorityError,
+  );
+  await bodyRead;
+  current = false;
+  finish();
+  await rejected;
+  expect(transport).toHaveBeenCalledOnce();
+  expect(resolver).toHaveBeenCalledOnce();
 });

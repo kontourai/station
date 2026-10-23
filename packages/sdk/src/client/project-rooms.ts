@@ -10,6 +10,7 @@ import {
 import { z } from 'zod';
 import { envelopeError } from './api-error-message';
 import { type ApiRequestScope, fetchSSE, getJson, mutateJson } from './http';
+import { rethrowDeadline } from './request-deadline';
 
 const bounded = (max: number) =>
   z.string().refine((v) => new TextEncoder().encode(v).length <= max);
@@ -133,7 +134,8 @@ async function envelope(response: Response): Promise<unknown> {
   try {
     body = await response.json();
   } catch (error) {
-    if (error instanceof Error && error.name !== 'SyntaxError') throw error;
+    rethrowDeadline(error);
+    if (!(error instanceof SyntaxError)) throw error;
     if (!response.ok)
       throw envelopeError(response, undefined, 'Project room request failed.');
     throw new ProjectRoomProtocolError('Project room response is not JSON.');
