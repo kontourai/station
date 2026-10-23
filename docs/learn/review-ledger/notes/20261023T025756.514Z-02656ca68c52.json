@@ -1,0 +1,7 @@
+{
+  "revision": "d4c4b631293a9e3ae92e3bc1f1896ef0d3347a27",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the added child-work coverage row against tests/agents-pane.spec.ts and its product manifest ownership. The spec seeds chats and mocks orchestration SSE/read models; it asserts per-chat/All scope, CLI provenance, exit No result, scope reload and390px sheet/action note. Independent source review corrected Stop wording: exactly one applies only to running children with a wired stop seam, while the exited chatless subagent has none. Direct spec dependency already exists; the initial duplicate-add command refused before writing and was corrected. This is scoped source review, not a new browser run or whole matrix acceptance; provider, native recovery, accounting and physical-phone proof remain excluded.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/agents-pane.spec.ts"]}
+  ]
+}
