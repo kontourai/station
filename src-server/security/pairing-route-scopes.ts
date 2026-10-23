@@ -2752,6 +2752,21 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/api/orchestration/session-activity/:sessionId/digest',
     },
+    // #3413 part B work claims. The three POST leaves are agent-only at the
+    // route (403 `station_control_caller_required` without a verified
+    // station-control caller), and the claimant is that caller's own Session.
+    // The GET leaf is the UI's read, owner-scoped to the Sessions the
+    // requester may read.
+    { method: 'POST', path: '/api/orchestration/work-claims' },
+    {
+      method: 'POST',
+      path: '/api/orchestration/work-claims/:claimId/renew',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/work-claims/:claimId/release',
+    },
+    { method: 'GET', path: '/api/orchestration/work-claims' },
     // #3161 `declare_pull_request`'s REST side. Internal-only at the route: a
     // request the runtime boundary did not accept as Station's own internal
     // principal gets a 404 whatever its scope, and the session it records on
@@ -2762,6 +2777,16 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/station-control/declare-pull-request',
     },
+    // Epic #4003 `get_task_brief`'s REST side. Internal-only at the route
+    // (404 otherwise) and keyed on the verified station-control caller's own
+    // Task binding, so a paired credential reaches nothing through it.
+    { method: 'GET', path: '/api/orchestration/station-control/task-brief' },
+    // #4003 `task_summary_update` and `task_record`'s REST side.
+    // Internal-only at the route like the leaf above; the Task they write is
+    // the verified caller Session's own bound Task, and each write is one
+    // bounded Task-memory revision or record version.
+    { method: 'POST', path: '/api/orchestration/station-control/task-summary' },
+    { method: 'POST', path: '/api/orchestration/station-control/task-record' },
     // `schedule_wake_up`, `list_wake_ups`, `cancel_wake_up` and `propose_job`:
     // internal-only at the route (404 to anything the runtime boundary did not
     // accept as Station's own internal principal), acting only on the
@@ -2882,6 +2907,32 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // merge. It mutates only that Task's own record, so the task family's
     // operate tier is the intended scope; no station-control tool reaches it.
     { method: 'PUT', path: '/api/tasks/:taskId/close-on-merge' },
+    // #4003 Start Task on a board item, and the Task's linked-item header.
+    // Both read one tracker item through the Station host's own `gh` login.
+    // The POST reads only a ref the Project's board offers when it is
+    // called, and creates a Task like `POST /api/tasks` at its operate tier.
+    // The GET reads only a Task ref that entered through such a board check
+    // (`TaskRecord.workItemProvenance`), and answers `unsupported` for any
+    // other. The board check is a membership test on the board's current
+    // listing, not proof the requester may see that repository on GitHub.
+    // No station-control tool names either route.
+    { method: 'POST', path: '/api/tasks/from-work-item' },
+    { method: 'GET', path: '/api/tasks/:taskId/work-item' },
+    // #4003 Task memory from the Task workspace: the summary and records of
+    // the exact Task the paired caller's room authority resolves, read at
+    // the read tier and written (one bounded revision or record version,
+    // every earlier one kept) at the operate tier.
+    { method: 'GET', path: '/api/tasks/:taskId/room/memory' },
+    { method: 'GET', path: '/api/tasks/:taskId/room/memory/summary/revisions' },
+    { method: 'PUT', path: '/api/tasks/:taskId/room/memory/summary' },
+    { method: 'POST', path: '/api/tasks/:taskId/room/memory/records' },
+    // #4003 layer 4: a done Task's promotion candidates, read at the read
+    // tier; promoting one (a single knowledge record in a store of the
+    // Task's own Project, never twice for one record version) or dismissing
+    // one (one append-only row) at the operate tier.
+    { method: 'GET', path: '/api/tasks/:taskId/room/memory/learning' },
+    { method: 'POST', path: '/api/tasks/:taskId/room/memory/learning/promote' },
+    { method: 'POST', path: '/api/tasks/:taskId/room/memory/learning/dismiss' },
     { method: 'DELETE', path: '/api/tasks/:taskId/outputs/:outputId' },
     {
       method: 'POST',

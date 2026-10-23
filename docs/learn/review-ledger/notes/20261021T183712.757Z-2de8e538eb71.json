@@ -1,0 +1,13 @@
+{
+  "revision": "52380ba6694bfeb6f29a0d9c52a51aeb365db7cd",
+
+  "notes": [
+    {"path":"docs/learn/media/shared-task-document.png","note":"Viewed the capture: it illustrates the Task document and Task conversation panes, which this branch leaves unchanged. It predates the Task memory panel that TaskWorkspaceView now renders after the objective, so the page shown is no longer the whole workspace; the claims it supports (document and conversation) still hold. A recapture is a follow-up, not done here.","inputs":["docs/learn/media/shared-task-document.png","src-server/services/orchestration/project-task-room-runtime.ts","src-ui/src/views/TaskWorkspaceView.css","src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"Viewed the capture: a Project page with one local Task and its detail. The ProjectPage.css change on this branch styles the Start Task affordance on tracker provider items, which the capture does not show; what it shows is unchanged.","inputs":["docs/learn/media/project-with-task.png","src-ui/src/views/ProjectPage.css"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"The orchestration-service change on this branch prepends a Task brief to the first turn's ambient context only for Sessions dispatched for a Task (a reserved start-metadata key). The captured request inspector shows an ordinary chat request, which is unchanged.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Same review as inspect-request.png: the first-turn Task brief applies only to Sessions dispatched for a Task; the recorded ordinary chat request flow is unchanged.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

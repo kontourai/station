@@ -3726,6 +3726,41 @@ are also exported from `@kontourai/station-sdk/client`.
 - `useTasksQuery` accepts `TaskDestinationQueryConfig` for a scoped Keep
   destination picker. `TaskDestinationRequestError` identifies a rejected
   destination read; both are exported from the SDK root and query barrel.
+  It returns `TaskListRecord[]`: a `TaskRecord` plus `openQuestionCount`
+  when the Task has open Task-memory questions (#4003).
+
+### Tracker-backed Tasks and Task memory (#4003)
+
+Exported from the SDK root and query barrel; see
+[Tracker-backed Tasks](../design/tracker-backed-tasks.md).
+
+- `startTaskFromWorkItem` and `useStartTaskFromWorkItemMutation` call
+  `POST /api/tasks/from-work-item` and resolve `{ task, existing, briefSaved }`;
+  when the open Task is in another Project, `task` is only `{ id, projectId }`
+  and `elsewhere` is `true`.
+- `fetchTaskWorkItem` and `useTaskWorkItemQuery` re-read a Task's linked item
+  (`GET /api/tasks/:taskId/work-item`).
+- `fetchTaskMemory` and `useTaskMemoryQuery` read the Task summary and records
+  (`GET /api/tasks/:taskId/room/memory`, key `taskMemoryQueryKey(taskId)`);
+  `fetchTaskSummaryHistory` and `useTaskSummaryHistoryQuery` read earlier
+  summary revisions.
+- `updateTaskSummary` and `useUpdateTaskSummaryMutation` write the summary
+  with the revision it was based on. A stale base throws
+  `TaskSummaryConflictError`, whose `current` is the summary to merge with.
+- `writeTaskRecord` and `useWriteTaskRecordMutation` set, answer or retire a
+  keyed record; the mutation also refreshes the Tasks list, since an answer can
+  take a Task out of Needs you.
+- `fetchTaskLearning` and `useTaskLearningQuery` read a done Task's
+  promotion candidates and the Project's knowledge stores
+  (`GET /api/tasks/:taskId/room/memory/learning`, key
+  `taskLearningQueryKey(taskId)`). `promoteTaskLearning` and
+  `usePromoteTaskLearningMutation` promote one candidate version, as edited,
+  into a Project store and resolve `status: "promoted"` or
+  `"already-promoted"`; `dismissTaskLearning` and
+  `useDismissTaskLearningMutation` dismiss one. Types: `TaskLearningView`,
+  `TaskLearningCandidate`, `TaskLearningReview`, `TaskLearningStore`,
+  `TaskLearningPromotion`, `TaskLearningDismissal`,
+  `TaskLearningPromoteResult`.
 
 ### Answer-assessment producer protocol
 

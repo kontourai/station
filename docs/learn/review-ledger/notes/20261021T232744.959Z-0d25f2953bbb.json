@@ -1,0 +1,13 @@
+{
+  "revision": "dce265574972b11a2f383ada0b91d68face3715e",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Corrects this round's generic note. Re-read for the #4003 verifier round: the work-claims section says a Session dispatched for a Task in that Project stamps the Task id on its claims, and lists taskId? on claims. Before this round that never happened live, because the binding's Project (the Task's slug) was compared to the claim scope (the opaque id) as strings; session-work-claims.ts now resolves both through localProjectIdFor, so the statement holds, and a binding in another Project still stamps nothing. The runtime-routes and station-runtime changes only pass that lookup.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Corrects this round's generic note. Re-read for the #4003 verifier round: 'A Session dispatched for a Task stamps the Task id on its claims' (Work claims) now holds live, since session-work-claims.ts resolves the room binding's Project and the claim scope through localProjectIdFor; the get_task_brief and claim tool lines are otherwise unchanged.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Corrects this round's generic note. Re-read for the #4003 verifier round: it says the execution binding uses the Task room's exact stored Project identity, which is what the work-claim fix relies on (the binding keeps that identity; only the comparison to a claim scope now resolves it to the Project's opaque id). Its 'Not delivered' wording is about room agent-request continuations, not the conversation inbox log added this round.","inputs":["docs/design/task-room-agent-requests.md"]},
+
+    {"path":"docs/glossary.md","note":"Corrects this round's generic note. Re-read for the #4003 verifier round: the Task brief entry (claims on each Session line) and the Work claim entry still hold; Task-scoped claims now actually reach the brief because their Task id is stamped by Project identity, not string equality.","inputs":["docs/glossary.md"]}
+  ]
+}

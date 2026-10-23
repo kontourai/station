@@ -197,6 +197,12 @@ beforeAll(async () => {
     logger: quietLogger(),
     eventBus: { emit: vi.fn() } as unknown as EventBus,
     security: {
+      // This file walks every tool route several times as one internal
+      // principal, so the production budget (300 mutations a minute per
+      // principal) 429s the later tests once enough tool routes exist (#4003's
+      // Task brief, memory and claim routes crossed it). The budget itself is
+      // pinned in runtime-mutation-budget.test.ts.
+      maxMutationsPerWindow: 10_000,
       verifyCredential: (candidate: string) =>
         candidate === OPERATOR_CREDENTIAL,
       resolveGrantedScope: () => 'orchestration:read orchestration:operate',

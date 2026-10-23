@@ -34,6 +34,7 @@ const input = {
   shapingSource: { sessionId: 'shaping-session', turnId: 'shaping-turn' },
 };
 async function fixture(
+  options: { checkLedgerBeforeCreate?: boolean } = {},
   outcome: SessionAssistantTurnQueryOutcome = {
     status: 'found',
     sessionId: 'shaping-session',
@@ -98,6 +99,9 @@ async function fixture(
     canReadSession: () => true,
     readAssistantTurn: read,
     seedProposalBrief: (input) => room.seedProposalBrief(input),
+    ...(options.checkLedgerBeforeCreate === false
+      ? {}
+      : { proposalBriefRefusal: (text) => room.proposalBriefRefusal(text) }),
   });
   const accept = (changes: Partial<typeof input> & { agentId?: string } = {}) =>
     app.request('/', {
@@ -197,7 +201,7 @@ test.each([
 ] satisfies SessionAssistantTurnQueryOutcome[])(
   'refuses an unreadable or out-of-project shaping source: $status',
   async (outcome) => {
-    const { service, accept } = await fixture(outcome);
+    const { service, accept } = await fixture({}, outcome);
     expect((await accept()).status).toBe(
       outcome.status === 'unavailable' ? 503 : 404,
     );
@@ -351,3 +355,150 @@ test('rejects an assigned agent on proposal acceptance without creating a Task',
   expect(service.listTasks()).toEqual([]);
   expect(service.readSessionRelations('shaping-session').links).toEqual([]);
 });
+
+test('a proposal brief the Task document cannot hold is refused before any Task exists (#4007)', async () => {
+  // Proposals allow 12,000 characters; a Task document holds about 5,400.
+  const goal = 'Show progress. '.repeat(400).trim();
+  const long = { ...proposal, goal };
+  const { read, accept, service, working } = await fixture();
+  read.mockResolvedValue({
+    status: 'found',
+    sessionId: 'shaping-session',
+    turnId: 'shaping-turn',
+    projectSlug: 'alpha',
+    message: {
+      id: 'answer',
+      role: 'assistant',
+      parts: [
+        {
+          type: 'text',
+          text: `\`\`\`station-task-proposal\n${JSON.stringify(long)}\n\`\`\``,
+        },
+      ],
+    },
+  });
+  const longBrief = `## Goal\n\n${goal}\n\n## Done when\n\n- [ ] Steps have counts.\n\n## Suggested first step\n\nFind the installer.`;
+  expect(longBrief.length).toBeGreaterThan(5_479);
+  expect(longBrief.length).toBeLessThanOrEqual(12_000);
+  const response = await accept({
+    description: goal,
+    proposalBrief: longBrief,
+  });
+  expect(response.status).toBe(413);
+  expect(((await response.json()) as { error?: string }).error).toBe(
+    'This brief is too long for a Task document, which holds about 5,400 characters of plain text. Ask the agent for a shorter proposal.',
+  );
+  expect(service.listTasks()).toEqual([]);
+  expect(working.settle).not.toHaveBeenCalled();
+});
+
+/**
+ * Fills the Station-wide revision ledger (#4055) through other Tasks' rooms,
+ * with ever smaller documents, until even a one-character document's receipt
+ * no longer fits. Each edit stores a receipt of the whole document.
+ */
+async function fillRevisionLedger(
+  service: TaskGraphService,
+  room: ProjectTaskRoomRuntime,
+) {
+  const request = new Request('http://station.test');
+  const fillers: string[] = [];
+  for (const size of [4_000, 2_000, 1_000, 500, 200, 50, 1]) {
+    const filler = await service.createTask({
+      projectId: 'alpha',
+      title: `Ledger filler ${size}`,
+      description: 'Fills the ledger.',
+      createdBy: 'user',
+    } as Parameters<TaskGraphService['createTask']>[0]);
+    fillers.push(filler.id);
+    await room.discover({ taskId: filler.id, request });
+    let text = 'f'.repeat(size);
+    for (let index = 0; ; index += 1) {
+      if (index > 20) throw new Error('the revision ledger never filled');
+      const plan = await room.editPlan({
+        taskId: filler.id,
+        request,
+        intentId: `fill-${size}-${index}`,
+        desiredText: text,
+        selection: { anchor: 0, focus: 0 },
+      });
+      if (plan.kind !== 'planned') throw new Error(`plan was ${plan.kind}`);
+      const result = await room.submitBatch({
+        taskId: filler.id,
+        request,
+        intentId: plan.intentId,
+        intentDigest: plan.digest,
+      });
+      if (result.kind === 'committed') {
+        text += 'g';
+        continue;
+      }
+      expect(result).toEqual({
+        kind: 'rejected',
+        reason: 'evidence-ledger-full',
+      });
+      break;
+    }
+  }
+  return fillers;
+}
+
+test('with the revision ledger full, acceptance refuses before creating the Task (#4007, #4055)', async () => {
+  const { accept, service, room } = await fixture();
+  const fillers = await fillRevisionLedger(service, room);
+  const response = await accept();
+  expect(response.status).toBe(507);
+  const body = (await response.json()) as { error?: string; code?: string };
+  expect(body).toMatchObject({ code: 'revision-history-full' });
+  expect(body.error).toBe(
+    "Station's revision history is full, so it cannot save a Task brief, and the Task was not created. Retrying will not help until the history has room.",
+  );
+  expect(
+    service
+      .listTasks()
+      .map((task) => task.id)
+      .sort(),
+  ).toEqual([...fillers].sort());
+}, 300_000);
+
+test('a ledger that fills between the check and the seed is reported without a retry promise (#4007, #4055)', async () => {
+  // No pre-creation check: the seed itself meets the full ledger.
+  const { accept, service, room } = await fixture({
+    checkLedgerBeforeCreate: false,
+  });
+  await fillRevisionLedger(service, room);
+  const response = await accept();
+  expect(response.status).toBe(507);
+  const body = (await response.json()) as { error?: string; code?: string };
+  expect(body).toMatchObject({ code: 'revision-history-full' });
+  expect(body.error).toBe(
+    "Task created, but its brief was not saved. Station's revision history is full, so it cannot save a Task brief. Retrying will not help until the history has room.",
+  );
+  expect(body.error).not.toMatch(/Retry Create Task/);
+  // The created Task is named so the client can open it.
+  const created = service
+    .listTasks()
+    .find((task) => task.title === 'Installer progress');
+  expect(created).toBeDefined();
+  expect(body).toMatchObject({ details: { taskId: created?.id } });
+}, 300_000);
+
+test('re-accepting an accepted proposal while the revision ledger is full returns the existing Task (#4007, #4055)', async () => {
+  const { accept, service, room } = await fixture();
+  const first = await accept();
+  expect(first.status, await first.clone().text()).toBe(201);
+  const accepted = ((await first.json()) as { data: { id: string } }).data;
+  await fillRevisionLedger(service, room);
+  // A lost response or a double-click: the same source again.
+  const again = await accept();
+  expect(again.status, await again.clone().text()).toBe(201);
+  expect(((await again.json()) as { data: { id: string } }).data.id).toBe(
+    accepted.id,
+  );
+  expect(
+    await room.document({
+      taskId: accepted.id,
+      request: new Request('http://station.test'),
+    }),
+  ).toMatchObject({ text: brief });
+}, 300_000);

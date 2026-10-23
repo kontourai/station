@@ -1,0 +1,7 @@
+{
+  "revision": "23d1295d2f05e4b33e3b12daca8b672c1cefaa13",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed the merged contracts package metadata at 23d1295d2f0: frozen Root contributes version 0.12.1 while this Task lane retains the task-memory and work-claims subpath exports. Checked the reference module rows and export-map ownership against packages/contracts/package.json, task-memory.ts and work-claims.ts; pure shapes/parsers still grant no authority. The installed graph passed 49 focused instruction, model-input, Task brief dispatch and memory-panel controls. No prose correction or publication/hosted qualification claim is needed.","inputs":["docs/reference/contracts.md","packages/contracts/package.json","src-server/runtime/bootstrap/station-runtime.ts"]}
+  ]
+}

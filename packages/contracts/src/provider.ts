@@ -253,6 +253,19 @@ export const SESSION_AGENT_ICON_MAX_LENGTH = AGENT_ICON_TOKEN_MAX_LENGTH;
  */
 export const FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY =
   'firstTurnInstructionsComposed';
+/**
+ * Epic #4003: the Task brief a Session dispatched for a Task receives with
+ * its first turn, `{ version, digest, text }`. Stamped into start metadata by
+ * Station's start choke point from a server-only internal option (after the
+ * reserved-key strip), read back once before the first turn, and prepended to
+ * that turn's ambient context on every engine.
+ */
+export const TASK_BRIEF_METADATA_KEY = 'stationTaskBrief';
+/**
+ * Stamped on the one turn that composed the pending Task brief, with the
+ * brief's digest: that turn's own record of what it carried.
+ */
+export const TASK_BRIEF_COMPOSED_METADATA_KEY = 'stationTaskBriefComposed';
 export const WORKSPACE_PANE_HOST_ACTION_METADATA_KEY =
   'workspacePaneHostAction';
 
@@ -340,6 +353,8 @@ export const RESERVED_ORCHESTRATION_METADATA_KEYS = [
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
   SESSION_AGENT_ICON_METADATA_KEY,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
+  TASK_BRIEF_METADATA_KEY,
+  TASK_BRIEF_COMPOSED_METADATA_KEY,
   WORKSPACE_PANE_HOST_ACTION_METADATA_KEY,
   STATION_CONFINEMENT_METADATA_KEY,
   STATION_CONFINEMENT_GRANTOR_METADATA_KEY,

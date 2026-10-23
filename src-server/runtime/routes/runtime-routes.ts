@@ -185,6 +185,7 @@ import {
 import {
   type DevicePairingRequest,
   parseTaskTurnReference,
+  type TaskRecord,
 } from '@kontourai/station-contracts';
 import { ACPStatus } from '@kontourai/station-contracts/acp';
 import {
@@ -243,6 +244,7 @@ import {
   INTERNAL_SESSION_READ_SCOPE,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
+import { workItemRefKey } from '@kontourai/station-contracts/work-item-provider';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { isStationNativeShellOrigin } from '@kontourai/station-shared/native-shell-origin';
 import { operatorCliCommand } from '@kontourai/station-shared/ports';
@@ -379,12 +381,17 @@ import { createProjectTaskRoomRoutes } from '../../routes/orchestration/project-
 import { createRunRoutes } from '../../routes/orchestration/runs.js';
 import { createSessionAgentControlRoutes } from '../../routes/orchestration/session-agent-control.js';
 import { createSessionProjectActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
+import { createSessionWorkClaimRoutes } from '../../routes/orchestration/session-work-claims.js';
+import { createTaskBriefRoutes } from '../../routes/orchestration/task-brief.js';
+import { createTaskLearningRoutes } from '../../routes/orchestration/task-learning.js';
+import { createTaskMemoryRoutes } from '../../routes/orchestration/task-memory.js';
 import { createTaskOutputRoutes } from '../../routes/orchestration/task-outputs.js';
 import { createTaskRelationshipRoutes } from '../../routes/orchestration/task-relationships.js';
 import {
   createTaskRoutes,
   keptRowsForTaskSession,
 } from '../../routes/orchestration/tasks.js';
+import { WORK_CLAIM_MAX_ACTIVE_PER_SESSION } from '../../routes/orchestration/work-claim-limits.js';
 import { createWorkItemRoutes } from '../../routes/orchestration/work-items.js';
 import { createWorkspacePaneHostActionRoutes } from '../../routes/orchestration/workspace-pane-host-actions.js';
 import { createPluginDraftRoutes } from '../../routes/plugins/plugin-draft-routes.js';
@@ -618,6 +625,11 @@ import {
 } from '../../services/orchestration/session-lifecycle-service.js';
 import type { StartOwnerAttribution } from '../../services/orchestration/session-owner-attribution.js';
 import { createSessionWorkItemModule } from '../../services/orchestration/session-work-item-module.js';
+import {
+  createTaskLeadReader,
+  TaskQuestionWake,
+  type TaskQuestionWakePorts,
+} from '../../services/orchestration/task-question-wake.js';
 import { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
 import { resolveWorkspaceIdentity } from '../../services/orchestration/workspace-identity.js';
 import { PeerCredentialStore } from '../../services/peers/peer-credential-store.js';
@@ -643,6 +655,7 @@ import type { FileTreeService } from '../../services/projects/file-tree-service.
 import type { LayoutService } from '../../services/projects/layout-service.js';
 import { ProjectBindingsStore } from '../../services/projects/project-binding-store.js';
 import { ProjectContributionService } from '../../services/projects/project-contribution-service.js';
+import { localProjectIdFor } from '../../services/projects/project-local-id.js';
 import { ProjectManifestStore } from '../../services/projects/project-manifest-store.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
 import {
@@ -657,6 +670,7 @@ import { orchestrationSessionWorkspaceDirectory } from '../../services/projects/
 import { createTaskBasisAppReadModule } from '../../services/projects/task-basis-app-read-module.js';
 import type { StationBasisCompositionInvariantError } from '../../services/projects/task-basis-module.js';
 import { createTaskBasisRuntimeComposition } from '../../services/projects/task-basis-runtime-composition.js';
+import { composeTaskBriefSource } from '../../services/projects/task-brief-source.js';
 import { createTaskCloseOut } from '../../services/projects/task-close-out.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
 import type { TaskGraphService } from '../../services/projects/task-graph-service.js';
@@ -721,6 +735,10 @@ import {
 import type { TerminalService } from '../../services/terminal/terminal-service.js';
 import type { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import { FlowAgentsWorkItemProvider } from '../../services/work-item-providers/flow-agents-work-item-provider.js';
+import {
+  GitHubWorkItemObserver,
+  type WorkItemObserver,
+} from '../../services/work-item-providers/github-work-item-observer.js';
 import { LocalWorkItemProvider } from '../../services/work-item-providers/local-work-item-provider.js';
 import {
   checkpointCaptureOps,
@@ -960,6 +978,15 @@ export interface ConfigureRuntimeRoutesContext {
   secretBindingIntegrationAdministration: SecretBindingIntegrationAdministration;
   taskGraphService: TaskGraphService;
   taskDispatcher: TaskDispatcher;
+  /**
+   * Exact-identity tracker reads (#4003): the runtime's one observer, shared
+   * by Start Task, the Task's linked-item header, `get_task_brief` and (wired
+   * in `StationRuntime`) dispatch. A composition without one gets a
+   * route-local GitHub observer.
+   */
+  workItemObserver?: WorkItemObserver;
+  /** The Project board aggregate; composed here when absent. */
+  workItemProviderService?: Pick<WorkItemProviderService, 'listWorkItems'>;
   orchestrationService: OrchestrationService;
   /** Diagnostics sampler and orchestration's independent engine-start lease. */
   resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
@@ -2832,6 +2859,64 @@ export function configureRuntimeRoutes(
         context.orchestrationService.declareStationControlPullRequest(input),
     }),
   );
+  // #4003: one tracker reader for this route composition: Start Task, the
+  // Task's linked-item header and `get_task_brief` all read through it.
+  const workItemObserver =
+    context.workItemObserver ?? new GitHubWorkItemObserver();
+  // Epic #4003 `get_task_brief`'s REST side: the verified caller's own
+  // session, the Task its immutable room execution binding names.
+  const taskBriefSource = composeTaskBriefSource({
+    taskGraph: context.taskGraphService,
+    eventStore: context.orchestrationEventStore,
+    sessionReadModel: context.orchestrationService,
+    readAuthorityForUser: readAuthorityForExecution,
+    localProjectIdFor: (identity) =>
+      localProjectIdFor(context.projectService, identity),
+    roomRuntime: () => projectTaskRoomRuntime,
+    workItemObserver,
+    logger: context.logger,
+  });
+  context.app.route(
+    '/api/orchestration',
+    createTaskBriefRoutes({
+      isInternalRequest: isStationInternalRequest,
+      scope: stationControlDispatchScope,
+      readBrief: (sessionId) => taskBriefSource.forSession(sessionId),
+      readListing: (sessionId, include) =>
+        taskBriefSource.listingForSession(sessionId, include),
+    }),
+  );
+  // #4003 `task_summary_update` and `task_record`'s REST side: the verified
+  // caller's own Session; the room runtime derives its Task from the
+  // immutable execution binding. Composed later in this function, so the
+  // runtime is read at request time.
+  context.app.route(
+    '/api/orchestration',
+    createTaskMemoryRoutes({
+      isInternalRequest: isStationInternalRequest,
+      scope: stationControlDispatchScope,
+      get updateSummary() {
+        const runtime = projectTaskRoomRuntime;
+        return runtime
+          ? (
+              input: Parameters<
+                ProjectTaskRoomRuntime['updateTaskSummaryForSession']
+              >[0],
+            ) => runtime.updateTaskSummaryForSession(input)
+          : undefined;
+      },
+      get writeRecord() {
+        const runtime = projectTaskRoomRuntime;
+        return runtime
+          ? (
+              input: Parameters<
+                ProjectTaskRoomRuntime['writeTaskRecordForSession']
+              >[0],
+            ) => runtime.writeTaskRecordForSession(input)
+          : undefined;
+      },
+    }),
+  );
   context.app.route(
     '/api/feature-previews',
     createFeaturePreviewRoutes(context.featurePreviews, context.logger),
@@ -4152,6 +4237,8 @@ export function configureRuntimeRoutes(
   );
   // Proposal acceptance writes the Task document before returning from POST /api/tasks.
   // Prime the same room principal before that route can consume the request.
+  // Start Task from a work item (#4003) seeds the document the same way; the
+  // `/api/tasks/*` prime below runs before the Task routes that serve it.
   if (!isHostedTenantExecutionRequired() && context.orchestrationEventStore)
     context.app.use('/api/tasks', primeRoomRequestPrincipal);
   context.app.route(
@@ -4166,6 +4253,17 @@ export function configureRuntimeRoutes(
       resolveProjectWorkspace: resolveWorkspacePath,
     }),
   );
+  // One board aggregate for the Tasks board route and for Start Task, which
+  // accepts only a ref the Project's board lists (#4003).
+  const workItemProviderService =
+    context.workItemProviderService ??
+    new WorkItemProviderService(
+      [
+        new LocalWorkItemProvider(context.taskGraphService),
+        new FlowAgentsWorkItemProvider({ logger: context.logger }),
+      ],
+      context.logger,
+    );
   const relationshipRequestWitnesses = new WeakMap<Request, () => boolean>();
   const relationshipRequestShares = new WeakMap<
     Request,
@@ -4404,10 +4502,51 @@ export function configureRuntimeRoutes(
         });
       },
       taskDispatcher: context.taskDispatcher,
+      // #4003: an open Task-memory question is a "Needs you" signal; hosted
+      // tenancy composes no Task room, so it reads no Task memory either.
+      ...(context.orchestrationEventStore
+        ? {
+            openQuestionCounts: (tasks: readonly TaskRecord[]) =>
+              projectTaskRoomRuntime && !isHostedTenantExecutionRequired()
+                ? context
+                    .orchestrationEventStore!.taskMemoryStore()
+                    .countOpenQuestions(
+                      tasks.map((task) => ({
+                        taskId: task.id,
+                        taskCreatedAt: task.createdAt,
+                      })),
+                    )
+                : new Map(),
+          }
+        : {}),
+      workItemObserver,
+      resolveProviderWorkItem: async ({ projectId, workItemRef }) => {
+        const workingDirectory = resolveWorkspacePath(projectId);
+        if (!workingDirectory) return undefined;
+        const board = await workItemProviderService.listWorkItems({
+          projectId,
+          workingDirectory,
+        });
+        return (
+          board.providers
+            .filter((provider) => provider.identity.kind !== 'local')
+            .flatMap((provider) => provider.items)
+            // GitHub refs compare case-insensitively (review F5).
+            .find(
+              (item) =>
+                item.workItemRef !== undefined &&
+                workItemRefKey(item.workItemRef) ===
+                  workItemRefKey(workItemRef),
+            )
+        );
+      },
       proposalBriefAvailable: () => projectTaskRoomRuntime !== undefined,
       seedProposalBrief: (input) =>
         projectTaskRoomRuntime?.seedProposalBrief(input) ??
         Promise.resolve(false),
+      proposalBriefRefusal: (text) =>
+        projectTaskRoomRuntime?.proposalBriefRefusal(text) ??
+        Promise.resolve(null),
       readAuthorityForRequest: conversationReadAuthorityForRequest,
       dispatchOwnerForRequest: (request) =>
         sessionOwnerForRequest(
@@ -4532,6 +4671,22 @@ export function configureRuntimeRoutes(
     } catch {
       // Room editing remains available; discovery names revision-link absence.
     }
+    const roomEventStore = context.orchestrationEventStore;
+    const taskQuestionWake = new TaskQuestionWake({
+      readTask: (taskId) => context.taskGraphService.readTaskView(taskId),
+      conversationOf: (sessionId) =>
+        roomEventStore.conversationForSession(sessionId)?.conversationId ??
+        sessionId,
+      readLead: createTaskLeadReader({
+        eventStore: roomEventStore,
+        service: context.orchestrationService,
+      }),
+      get submit(): TaskQuestionWakePorts['submit'] {
+        const inbox = threadInbox;
+        return inbox ? (input) => inbox.submit(input) : undefined;
+      },
+      logger: context.logger,
+    });
     const roomRuntime = new ProjectTaskRoomRuntime({
       outputFeedbackTargets: {
         validate: (scope, target) =>
@@ -4670,6 +4825,15 @@ export function configureRuntimeRoutes(
           createdAt: record.createdAt,
         }));
       },
+      readExecutionBinding: (sessionId) =>
+        context.orchestrationEventStore!.readProjectTaskRoomExecutionBinding(
+          sessionId,
+        ),
+      memory: context.orchestrationEventStore!.taskMemoryStore(),
+      // #4003 lead wake: after a question version commits, one message into
+      // the lead's conversation through its durable inbox. `threadInbox` is
+      // composed later in this function and read when a record is written.
+      afterTaskRecord: (input) => taskQuestionWake.wake(input),
       readDisplayName: async (id) =>
         context.environmentSecurityService.devicePairing
           .listKnownPrincipals()
@@ -4739,6 +4903,33 @@ export function configureRuntimeRoutes(
     // Resolve each Request-only room consumer through the same principal owner.
     context.app.use('/api/live-activity', primeRoomRequestPrincipal);
     context.app.use('/api/home-authority/rooms/*', primeRoomRequestPrincipal);
+    // #4003 layer 4: a person reviews a done Task's lessons and promotes them
+    // into the Project's knowledge store. Room request authority; no
+    // station-control tool names these routes.
+    context.app.route(
+      '/api/tasks',
+      createTaskLearningRoutes({
+        store: context.knowledgeStoreProvider,
+        logger: context.logger,
+        access: async (taskId, request) => {
+          const access = await roomRuntime.personTaskLearningAccess({
+            taskId,
+            request,
+          });
+          if (access.kind !== 'granted') return access;
+          const project = context.projectService
+            .listProjects()
+            .find(
+              (p) =>
+                p.id === access.task.projectId ||
+                p.slug === access.task.projectId,
+            );
+          return project
+            ? { ...access, projectSlug: project.slug }
+            : { kind: 'not-found' as const };
+        },
+      }),
+    );
     context.app.route(
       '/api/tasks',
       createProjectTaskRoomRoutes(roomRuntime, {
@@ -5570,6 +5761,10 @@ export function configureRuntimeRoutes(
   // their own per-Session scope check; their own prefix so nothing above
   // changes.
   if (context.orchestrationEventStore) {
+    // #3413 part B: the claims agents declare, shown on their activity rows.
+    const workClaims = context.orchestrationEventStore.createWorkClaimStore({
+      maxActivePerClaimant: WORK_CLAIM_MAX_ACTIVE_PER_SESSION,
+    });
     context.app.route(
       '/api/orchestration/session-activity',
       createSessionProjectActivityRoutes({
@@ -5578,6 +5773,20 @@ export function configureRuntimeRoutes(
         stationControlDispatchScope,
         resolvePrincipal: resolveOrchestrationRequestPrincipal,
         hostedTenantRegistry,
+        workClaims,
+      }),
+    );
+    context.app.route(
+      '/api/orchestration/work-claims',
+      createSessionWorkClaimRoutes({
+        workClaims,
+        orchestrationService: context.orchestrationService,
+        eventStore: context.orchestrationEventStore,
+        stationControlDispatchScope,
+        resolvePrincipal: resolveOrchestrationRequestPrincipal,
+        hostedTenantRegistry,
+        localProjectIdFor: (identity) =>
+          localProjectIdFor(context.projectService, identity),
       }),
     );
   }
@@ -7311,27 +7520,18 @@ export function configureRuntimeRoutes(
   );
   context.app.route(
     '/api/projects/:slug/work-items',
-    createWorkItemRoutes(
-      new WorkItemProviderService(
-        [
-          new LocalWorkItemProvider(context.taskGraphService),
-          new FlowAgentsWorkItemProvider({ logger: context.logger }),
-        ],
-        context.logger,
-      ),
-      {
-        getWorkspacePath: resolveWorkspacePath,
-        // Mode only: work items are refused when hosted, whoever asks.
-        getSessionReadAuthority: readAuthorityForRequest,
-        // Stateless service (package-root resolution only) — a separate
-        // instance from the one `StationRuntime` wires into
-        // `taskGraphService` (roadmap #584) is cheap and avoids widening
-        // this function's context type just to share one.
-        assignmentClaimService: new AssignmentClaimService({
-          logger: context.logger,
-        }),
-      },
-    ),
+    createWorkItemRoutes(workItemProviderService, {
+      getWorkspacePath: resolveWorkspacePath,
+      // Mode only: work items are refused when hosted, whoever asks.
+      getSessionReadAuthority: readAuthorityForRequest,
+      // Stateless service (package-root resolution only) — a separate
+      // instance from the one `StationRuntime` wires into
+      // `taskGraphService` (roadmap #584) is cheap and avoids widening
+      // this function's context type just to share one.
+      assignmentClaimService: new AssignmentClaimService({
+        logger: context.logger,
+      }),
+    }),
   );
   context.app.route(
     '/api/projects/:slug/operating-state',
