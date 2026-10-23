@@ -9,6 +9,7 @@ import {
   type ProjectRoomAgentRequestInput,
   parseProjectRoomAgentRequestInput,
 } from '@kontourai/station-contracts/project-room';
+import { z } from 'zod/v3';
 import { openPrivateSqlite } from '../../utils/private-sqlite.js';
 import { ProjectRoomStore } from './project-room-store.js';
 
@@ -67,6 +68,44 @@ const stableIntent = (requestId: string, turnId: string) => {
     .digest('hex');
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 };
+const captureSchema = z
+  .object({
+    scope: z
+      .object({
+        stationId: z.string().min(1),
+        localProjectId: z.string().min(1),
+        localProjectSlug: z.string().min(1),
+        portableProjectId: z.string().min(1),
+      })
+      .strict(),
+    requester: z
+      .object({
+        kind: z.literal('person'),
+        id: z.string().min(1),
+        displayName: z.string().min(1),
+      })
+      .strict(),
+    executionRoot: z.string().min(1),
+    sessionId: z.string().uuid(),
+    correlationId: z.string().uuid(),
+    agentId: z.string().min(1),
+    agentLabel: z.string().min(1),
+    checkpoint: z
+      .object({
+        roomId: z.string().uuid(),
+        lastSeq: z.number().int().nonnegative(),
+      })
+      .strict(),
+    context: z
+      .string()
+      .refine(
+        (value) => Buffer.byteLength(value) <= PROJECT_ROOM_LIMITS.textBytes,
+      ),
+    digest: z.string().regex(/^[a-f0-9]{64}$/),
+  })
+  .strict();
+const captureDigest = ({ digest: _, ...payload }: ProjectRoomAgentCapture) =>
+  createHash('sha256').update(JSON.stringify(payload)).digest('hex');
 export class ProjectRoomAgentModule {
   constructor(
     private readonly db: DatabaseSync,
@@ -87,16 +126,34 @@ export class ProjectRoomAgentModule {
       )
       .run(id, code);
   }
-  private capture(id: string): ProjectRoomAgentCapture | null {
+  private capture(
+    authority: ProjectRoomAgentAuthority,
+    id: string,
+  ): ProjectRoomAgentCapture | null {
     const row = this.db
       .prepare(
         'SELECT record FROM project_room_agent_captures WHERE request_id=?',
       )
       .get(id);
-    return row
-      ? (JSON.parse(String(row.record)) as ProjectRoomAgentCapture)
-      : null;
+    if (!row) return null;
+    const capture = captureSchema.parse(JSON.parse(String(row.record)));
+    const request = this.store.getRequest(authority.scope, id);
+    if (
+      JSON.stringify(capture) !== row.record ||
+      capture.digest !== captureDigest(capture) ||
+      capture.sessionId !== request.sessionId ||
+      capture.correlationId !== request.executionCorrelationId ||
+      capture.agentId !== request.agentId ||
+      capture.requester.kind !== request.actor.kind ||
+      capture.requester.id !== request.actor.id ||
+      capture.requester.displayName !== request.actor.displayName ||
+      capture.checkpoint.roomId !== request.roomId
+    )
+      throw new Error('Project room agent capture unavailable');
+    this.check(authority, capture);
+    return capture;
   }
+
   private check(
     authority: ProjectRoomAgentAuthority,
     capture?: ProjectRoomAgentCapture,
@@ -107,7 +164,10 @@ export class ProjectRoomAgentModule {
     if (
       authority.requester.kind !== 'person' ||
       (capture &&
-        (JSON.stringify(capture.scope) !== JSON.stringify(authority.scope) ||
+        (Object.entries(capture.scope).some(
+          ([key, value]) =>
+            authority.scope[key as keyof ProjectMembershipScope] !== value,
+        ) ||
           capture.requester.id !== authority.requester.id ||
           capture.executionRoot !== authority.executionRoot))
     )
@@ -235,8 +295,8 @@ export class ProjectRoomAgentModule {
     this.check(authority);
 
     const capture: ProjectRoomAgentCapture = {
-      scope: { ...authority.scope },
-      requester: { ...authority.requester },
+      scope: captureSchema.shape.scope.parse(authority.scope),
+      requester: captureSchema.shape.requester.parse(authority.requester),
       executionRoot: authority.executionRoot,
       sessionId: randomUUID(),
       correlationId: request.executionCorrelationId,
@@ -244,18 +304,9 @@ export class ProjectRoomAgentModule {
       agentLabel: agent.label,
       checkpoint: first.checkpoint,
       context,
-      digest: createHash('sha256')
-        .update(
-          JSON.stringify([
-            authority.scope,
-            authority.requester.id,
-            authority.executionRoot,
-            request.executionCorrelationId,
-            context,
-          ]),
-        )
-        .digest('hex'),
+      digest: '',
     };
+    capture.digest = captureDigest(capture);
     // The unique capture is a durable launch fence. A crash before markStarted
     // leaves a reserved handle requiring operator reconciliation, never automatic replay.
     const inserted = this.db
@@ -294,7 +345,7 @@ export class ProjectRoomAgentModule {
     id: string,
   ): Promise<ProjectRoomAgentHandle> {
     const request = this.store.getRequest(authority.scope, id);
-    const capture = this.capture(id);
+    const capture = this.capture(authority, id);
     this.check(authority, capture ?? undefined);
     const handle = this.inspect(authority, id);
     if (
@@ -310,6 +361,7 @@ export class ProjectRoomAgentModule {
       throw new Error('Project room answer unavailable');
     }
     const current = () => {
+      this.capture(authority, id);
       this.check(authority, capture);
       if (
         !['started', 'uncertain'].includes(
@@ -362,7 +414,7 @@ export class ProjectRoomAgentModule {
     id: string,
   ): Promise<ProjectRoomAgentHandle> {
     this.check(authority);
-    const capture = this.capture(id);
+    const capture = this.capture(authority, id);
     this.check(authority, capture ?? undefined);
     const request = this.store.getRequest(authority.scope, id);
     if (request.actor.id !== authority.requester.id)
@@ -391,8 +443,13 @@ export function createProjectRoomAgentRuntime(
     join(home, 'security', 'project-room-agent.sqlite'),
     'Project room agent requests',
   );
-  return {
-    module: new ProjectRoomAgentModule(db, store, execution),
-    close: () => db.close(),
-  };
+  try {
+    return {
+      module: new ProjectRoomAgentModule(db, store, execution),
+      close: () => db.close(),
+    };
+  } catch (error) {
+    db.close();
+    throw error;
+  }
 }

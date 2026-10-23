@@ -141,6 +141,8 @@ export function projectRoomAgentExecution(deps: {
           (e) =>
             e.turnId === started.turnId &&
             (e.method === 'turn.aborted' ||
+              (e.method === 'turn.completed' &&
+                e.finishReason === 'cancelled') ||
               (e.method === 'runtime.error' &&
                 !isDeferredRetriableTurnError(e))),
         )

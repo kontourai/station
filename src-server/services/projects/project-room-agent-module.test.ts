@@ -1,7 +1,8 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import { PROJECT_ROOM_LIMITS } from '@kontourai/station-contracts/project-room';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
@@ -10,6 +11,7 @@ import {
   createGateTestRegistry,
   GateTestAdapter,
 } from '../../__test-utils__/orchestration-gate-test-harness.js';
+import { mapTurnFinishReason } from '../../providers/adapters/codex-adapter-events.js';
 import { projectRoomAgentExecution } from '../../runtime/routes/project-room-agent-runtime.js';
 import { EventBus } from '../orchestration/event-bus.js';
 import { EventStore } from '../orchestration/event-store.js';
@@ -82,6 +84,7 @@ describe('Project Room explicit agent participation', () => {
     };
     return {
       authority,
+      execution,
       input,
       room,
       get module() {
@@ -113,6 +116,128 @@ describe('Project Room explicit agent participation', () => {
       },
     };
   }
+  it.each([
+    'sessionId',
+    'correlationId',
+    'agentId',
+    'agentLabel',
+    'requester',
+    'scope',
+    'checkpoint',
+    'context',
+    'digest',
+    'extra',
+    'bytes',
+  ])(
+    'refuses corrupted capture %s before reading, publishing, or cancelling another Session',
+    async (field) => {
+      const f = fixture();
+      const handle = await f.module.request(f.authority, f.input);
+      const answer = vi.spyOn(f.execution, 'answer');
+      const cancel = vi.spyOn(f.execution, 'cancel');
+      const db = new DatabaseSync(
+        join(
+          f.authority.executionRoot,
+          'security',
+          'project-room-agent.sqlite',
+        ),
+      );
+      try {
+        const row = db
+          .prepare(
+            'SELECT record FROM project_room_agent_captures WHERE request_id=?',
+          )
+          .get(handle.requestId)!;
+        const capture = JSON.parse(String(row.record));
+        if (field === 'requester') capture.requester.kind = 'agent';
+        else if (field === 'scope') capture.scope.localProjectId = 'other';
+        else if (field === 'checkpoint')
+          capture.checkpoint.roomId = randomUUID();
+        else if (field === 'extra') capture.extra = true;
+        else if (field !== 'bytes')
+          capture[field] =
+            field === 'sessionId' || field === 'correlationId'
+              ? randomUUID()
+              : 'substituted';
+        // Relational identity must still refuse substitutions with a recomputed digest.
+        if (
+          [
+            'sessionId',
+            'correlationId',
+            'agentId',
+            'requester',
+            'scope',
+            'checkpoint',
+          ].includes(field)
+        ) {
+          const { digest: _, ...payload } = capture;
+          capture.digest = createHash('sha256')
+            .update(JSON.stringify(payload))
+            .digest('hex');
+        }
+        db.prepare(
+          'UPDATE project_room_agent_captures SET record=? WHERE request_id=?',
+        ).run(
+          JSON.stringify(capture) + (field === 'bytes' ? ' ' : ''),
+          handle.requestId,
+        );
+      } finally {
+        db.close();
+      }
+      f.complete('private transcript sentinel');
+      f.restart();
+      await expect(
+        f.module.reconcile(f.authority, handle.requestId),
+      ).rejects.toThrow();
+      await expect(
+        f.module.cancel(f.authority, handle.requestId),
+      ).rejects.toThrow();
+      expect(answer).not.toHaveBeenCalled();
+      expect(cancel).not.toHaveBeenCalled();
+      expect(f.room.store.history(f.authority.scope).messages).toEqual([]);
+      expect(f.module.inspect(f.authority, handle.requestId).state).toBe(
+        'started',
+      );
+      await f.module.request(f.authority, f.input);
+      expect(f.launches).toBe(1);
+    },
+  );
+  it('closes the real database after conflicting schema construction and permits repair/reopen', () => {
+    const f = fixture();
+    const path = join(
+      f.authority.executionRoot,
+      'security',
+      'project-room-agent.sqlite',
+    );
+    const db = new DatabaseSync(path);
+    db.exec(
+      'DROP TABLE project_room_agent_failures; CREATE TABLE conflict (x); CREATE INDEX project_room_agent_failures ON conflict(x)',
+    );
+    db.close();
+    const exec = vi.spyOn(DatabaseSync.prototype, 'exec');
+    try {
+      expect(() =>
+        createProjectRoomAgentRuntime(
+          f.authority.executionRoot,
+          f.room.store,
+          f.execution,
+        ),
+      ).toThrow();
+      const failed = exec.mock.contexts.find((context) => context !== db)!;
+      expect(() => failed.prepare('SELECT 1')).toThrow(/closed|not open/i);
+      const repair = new DatabaseSync(path);
+      repair.exec('DROP INDEX project_room_agent_failures');
+      repair.close();
+      const reopened = createProjectRoomAgentRuntime(
+        f.authority.executionRoot,
+        f.room.store,
+        f.execution,
+      );
+      reopened.close();
+    } finally {
+      exec.mockRestore();
+    }
+  });
   it.each(['x', '\u0001'])(
     'rejects a contract-valid maximum %j prompt before reservation or preparation',
     async (unit) => {
@@ -252,8 +377,9 @@ describe('Project Room explicit agent participation', () => {
       f.room.store.history(f.authority.scope).messages.map((m) => m.text),
     ).toEqual([text]);
   });
-  it('real canonical start reaches the adapter only while the captured compute authority remains current', async () => {
-    for (const revokeAtSpawn of [false, true]) {
+  it('canonical orchestration enforces compute admission, terminal cancellation, and private Session capture identity', async () => {
+    for (const outcome of ['published', 'cancelled', 'revoked']) {
+      const revokeAtSpawn = outcome === 'revoked';
       const f = fixture();
       const adapter = new GateTestAdapter();
       const live = new Set<string>();
@@ -401,23 +527,180 @@ describe('Project Room explicit agent participation', () => {
           eventId: randomUUID(),
           method: 'turn.completed',
           turnId: 'turn-1',
-          finishReason: 'stop',
+          finishReason: mapTurnFinishReason(
+            outcome === 'cancelled' ? 'interrupted' : 'completed',
+          ),
           outputText: 'Canonical selected answer',
         });
         await vi.waitFor(async () =>
           expect(
             (await runtime.module.reconcile(f.authority, handle.requestId))
               .state,
-          ).toBe('published'),
+          ).toBe(outcome === 'cancelled' ? 'uncertain' : 'published'),
         );
         expect(
           f.room.store
             .history(f.authority.scope)
             .messages.map((message) => message.text),
-        ).toEqual(['Canonical selected answer']);
+        ).toEqual(outcome === 'cancelled' ? [] : ['Canonical selected answer']);
+        if (outcome === 'cancelled') {
+          expect(
+            runtime.module.inspect(f.authority, handle.requestId).failure,
+          ).toBe('execution_failed');
+        } else {
+          adapter.events.push({
+            ...base,
+            eventId: randomUUID(),
+            method: 'turn.completed',
+            turnId: 'turn-1',
+            finishReason: 'cancelled',
+          });
+          expect(
+            (await runtime.module.reconcile(f.authority, handle.requestId))
+              .state,
+          ).toBe('published');
+        }
       }
-      expect(start).toHaveBeenCalledTimes(revokeAtSpawn ? 0 : 1);
-      expect(send).toHaveBeenCalledTimes(revokeAtSpawn ? 0 : 1);
+      if (outcome === 'published') {
+        const privateId = randomUUID();
+        const privateCorrelation = randomUUID();
+        await sessions.startSessionInternal(
+          {
+            type: 'start-session',
+            input: {
+              threadId: privateId,
+              provider: 'claude',
+              cwd: f.authority.executionRoot,
+              persistSession: true,
+              metadata: {
+                userId: 'owner',
+                agentSlug: 'agent',
+                executionAgentId: 'agent',
+              },
+            },
+          },
+          { userId: 'owner' },
+        );
+        await sessions.dispatch(
+          {
+            type: 'sendTurn',
+            input: {
+              threadId: privateId,
+              input: 'unrelated private prompt',
+              clientTurnId: privateCorrelation,
+            },
+          },
+          { userId: 'owner' },
+        );
+        const privateBase = {
+          eventId: randomUUID(),
+          invocationId: send.mock.calls.at(-1)![0].invocationId,
+          provider: 'claude',
+          threadId: privateId,
+          createdAt: new Date().toISOString(),
+          turnId: 'private-turn',
+        };
+        adapter.events.push({
+          ...privateBase,
+          method: 'turn.started',
+          prompt: 'unrelated private prompt',
+        });
+        adapter.events.push({
+          ...privateBase,
+          eventId: randomUUID(),
+          method: 'content.text-delta',
+          itemId: 'private-answer',
+          delta: 'private transcript sentinel',
+        });
+        adapter.events.push({
+          ...privateBase,
+          eventId: randomUUID(),
+          method: 'turn.completed',
+          finishReason: 'stop',
+          outputText: 'private transcript sentinel',
+        });
+        const readAuthority = sessionReadAuthorityFromRequest(
+          'owner',
+          undefined,
+          undefined,
+        );
+        await vi.waitFor(async () =>
+          expect(
+            (
+              await sessions.sessionQueries.readAssistantTurn(
+                {
+                  type: 'assistant-turn',
+                  threadId: privateId,
+                  turnId: 'private-turn',
+                },
+                readAuthority,
+              )
+            ).status,
+          ).toBe('found'),
+        );
+        const pending = await runtime.module.request(f.authority, {
+          ...f.input,
+          intentId: randomUUID(),
+        });
+        const db = new DatabaseSync(
+          join(
+            f.authority.executionRoot,
+            'security',
+            'project-room-agent.sqlite',
+          ),
+        );
+        try {
+          const capture = JSON.parse(
+            String(
+              db
+                .prepare(
+                  'SELECT record FROM project_room_agent_captures WHERE request_id=?',
+                )
+                .get(pending.requestId)!.record,
+            ),
+          );
+          capture.sessionId = privateId;
+          capture.correlationId = privateCorrelation;
+          const { digest: _, ...payload } = capture;
+          capture.digest = createHash('sha256')
+            .update(JSON.stringify(payload))
+            .digest('hex');
+          db.prepare(
+            'UPDATE project_room_agent_captures SET record=? WHERE request_id=?',
+          ).run(JSON.stringify(capture), pending.requestId);
+        } finally {
+          db.close();
+        }
+        const read = vi.spyOn(sessions, 'readSession');
+        const transcript = vi.spyOn(
+          sessions.sessionQueries,
+          'readAssistantTurn',
+        );
+        const dispatch = vi.spyOn(sessions, 'dispatch');
+        await expect(
+          runtime.module.reconcile(f.authority, pending.requestId),
+        ).rejects.toThrow();
+        await expect(
+          runtime.module.cancel(f.authority, pending.requestId),
+        ).rejects.toThrow();
+        expect(read).not.toHaveBeenCalled();
+        expect(transcript).not.toHaveBeenCalled();
+        expect(dispatch).not.toHaveBeenCalled();
+        expect(
+          f.room.store
+            .history(f.authority.scope)
+            .messages.map((message) => message.text),
+        ).toEqual(['Canonical selected answer']);
+        read.mockRestore();
+        transcript.mockRestore();
+        dispatch.mockRestore();
+      }
+      expect(start).toHaveBeenCalledTimes(
+        revokeAtSpawn ? 0 : outcome === 'published' ? 3 : 1,
+      );
+      expect(send).toHaveBeenCalledTimes(
+        revokeAtSpawn ? 0 : outcome === 'published' ? 3 : 1,
+      );
     }
   });
   it('loss of launch acknowledgement survives restart without replay and publishes exactly one selected answer', async () => {
