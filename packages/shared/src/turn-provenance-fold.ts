@@ -1,5 +1,6 @@
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
+  TURN_ENGINE_DISPLAY_NAME_METADATA_KEY,
   TURN_PROVENANCE_ENVELOPE_VERSION,
   TURN_PROVENANCE_MAX_OBSERVATIONS,
   TURN_PROVENANCE_MAX_TOOL_NAMES,
@@ -144,14 +145,29 @@ function emptyAccumulator(): TurnAccumulator {
 }
 
 function engineSlot(
+  accumulator: TurnAccumulator,
   terminal: CanonicalRuntimeEvent,
 ): TurnProvenanceSlot<TurnProvenanceEngine> {
   const provider = boundedIdentifier(terminal.provider, 128);
   if (!provider) return unavailable(NOT_REPORTED);
+  // The connection name rides this turn's own events, terminal first, exactly
+  // like the model slots; it never comes from the session or a later lookup.
+  // A started event from another engine cannot name this one.
+  const named = [terminal, accumulator.started].find(
+    (event) =>
+      event?.provider === terminal.provider &&
+      readMetadataString(event, TURN_ENGINE_DISPLAY_NAME_METADATA_KEY, 128),
+  );
+  const displayName = named
+    ? readMetadataString(named, TURN_ENGINE_DISPLAY_NAME_METADATA_KEY, 128)
+    : undefined;
   return {
     state: 'observed',
-    value: { provider },
-    observedFrom: [observation(terminal)],
+    value: displayName ? { provider, displayName } : { provider },
+    observedFrom:
+      named && named !== terminal
+        ? [observation(terminal), observation(named)]
+        : [observation(terminal)],
   };
 }
 
@@ -436,7 +452,7 @@ export function assembleTurnProvenanceEnvelopes(
       turnId: terminal.turnId,
       outcome: terminal.method === 'turn.completed' ? 'completed' : 'aborted',
       observedAt: terminal.createdAt,
-      engine: engineSlot(terminal),
+      engine: engineSlot(accumulator, terminal),
       requestedModel: modelSlot(accumulator, 'effectiveModel'),
       reportedModel: modelSlot(accumulator, 'reportedModel'),
       tools: toolsSlot(accumulator),

@@ -26,6 +26,10 @@ import {
   PAIRING_WS_SCOPES,
 } from '../../security/pairing-route-scopes.js';
 import { ACPManager } from '../../services/acp/acp-bridge.js';
+import {
+  EngineCredentials,
+  registerEngineCredentials,
+} from '../../services/acp/engine-credentials.js';
 import { AgentService } from '../../services/agents/agent-service.js';
 import { SkillService } from '../../services/agents/skill-service.js';
 import type { ApprovalRegistry } from '../../services/approvals/approval-registry.js';
@@ -396,6 +400,8 @@ export function createRuntimeServiceBundle(
   // beneath Station home. Pass the authority root, not a launch cwd; the
   // probe keeps an explicitly configured connection cwd ahead of this seam.
   const acpManagedWorkspaceHome = context.configLoader.getProjectHomeDir();
+  // Before any engine spawns: every ACP launch reads its stored keys here.
+  registerEngineCredentials(new EngineCredentials(acpManagedWorkspaceHome));
 
   const acpBridge =
     factories.createACPManager?.(

@@ -14,39 +14,25 @@ import {
 } from '../../../tests/helpers/css-cascade-fixture';
 
 /**
- * With a project bound, the dock header's identity row and project-context row
- * share one line. Its parts refused to shrink (`flex-shrink: 0` on the agent
- * name and the model) inside a box that could be narrower than they were, and
- * nothing clipped that box — so "Claude Code" and "Opus 5" painted over the
- * session title, the project name wrapped onto a second line inside its
- * <button>, and "main" dropped below the ⎇ glyph.
+ * The dock header's one row: the identity (title, then agent and engine, on
+ * one line) on the left, and the actions on the right, where New and its
+ * destination project are one split control. Parts that refused to shrink
+ * once painted over the title; a project name wrapped inside its button.
  *
  * jsdom lays nothing out, so it cannot see any of that. This measures the real
  * markup in a real Chromium page against the real, cascade-resolved
  * stylesheet — the same harness as
  * `ConnectionsSectionFrame.banner-hittest.test.tsx`.
  *
- * OWNERSHIP, after #1536 F merged: `ChatDockActiveIdentity.overflow.test.tsx`
- * is the identity row's authority — it measures real dock widths (down to
- * 260px, below `MIN_DOCK_WIDTH`) and pins the yield ORDER their policy sets
- * (engine, then agent, then title), including containment and the title's
- * floors, so this file no longer re-measures them. What it owns is the
- * PROJECT-CONTEXT half: the project badge and the git badge, which #1536 F left
- * in place when it deleted the visible path segment beside them, plus the
- * clip-or-fit rule across the shared row. #3144 deliberately stacked a
- * "New chats" caption above the project name: each label must stay on one
- * line, rather than requiring the whole badge to be one line tall.
+ * OWNERSHIP: `ChatDockActiveIdentity.overflow.test.tsx` measures the identity
+ * row alone at real dock widths. This file owns the shared row: the identity
+ * beside the New split, the destination's one-line name, the clip-or-fit rule
+ * across the row, and the yield order between the title and its context.
  *
- * DRIVEN: three widths, each chosen because it makes a different part of the
- * row the binding constraint — 320px (the identity row's own contents no
- * longer fit its box: the overprint), 800px (the project row is squeezed and
- * the git badge is still rendered, so the wrapped project name and branch are
- * both observable), and 1200px (comfortable, proving the fix costs nothing
- * when there is room). NOT driven: the mobile header
- * (`ChatDockMobileHeader`, its own component and its own wrap rules) and the
- * maximized dock. Below the dock's mobile breakpoint the project path and git
- * badge are `display: none`, so a width alone is not enough to make the branch
- * assertion meaningful — `renders the git branch` below pins that.
+ * DRIVEN: three widths — 320px (nothing fits; everything must clip, not
+ * overprint), 800px (the identity is squeezed by the actions cluster) and
+ * 1200px (comfortable, proving the rules cost nothing when there is room).
+ * NOT driven: the mobile header (`ChatDockMobileHeader`, its own component).
  */
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -55,6 +41,10 @@ const INDEX_CSS_PATH = resolve(HERE, '../index.css');
 const PROJECT_CONTEXT_CSS_PATH = resolve(
   HERE,
   '../components/chat-dock/ChatDockProjectContext.css',
+);
+const NEW_CHAT_ACTION_CSS_PATH = resolve(
+  HERE,
+  '../components/NewChatAction.css',
 );
 
 vi.mock('../hooks/useKeyboardShortcut', () => ({
@@ -76,6 +66,7 @@ vi.mock('../components/icons/AgentIcon', () => ({
 
 import { ChatDockActiveIdentity } from '../components/chat-dock/ChatDockActiveIdentity';
 import { ChatDockProjectContext } from '../components/chat-dock/ChatDockProjectContext';
+import { ChatDockWorkspaceActions } from '../components/chat-dock/ChatDockWorkspaceControls';
 
 const session = {
   id: 'session-1',
@@ -85,20 +76,6 @@ const session = {
   title: 'Reply with exactly: TURN TWO OK',
   messages: [],
 } as never;
-
-const gitStatus = {
-  isRepo: true,
-  // A real branch name from this lane: short enough labels never squeezed the
-  // badge at all, which is why "⎇ main" wrapping went unnoticed for so long.
-  branch: 'ux-audit/2026-09-05-fresh-home-highs',
-  changes: [],
-  staged: 0,
-  unstaged: 0,
-  untracked: 0,
-  ahead: 0,
-  behind: 0,
-  lastCommit: null,
-};
 
 function renderHeaderMarkup(): string {
   const { container, unmount } = render(
@@ -119,17 +96,23 @@ function renderHeaderMarkup(): string {
               onClose={() => {}}
             />
           </div>
-          <div className="chat-dock__header-context">
+          <span className="chat-dock__title-spacer" />
+        </div>
+        <div className="chat-dock__header-actions">
+          <div className="chat-dock__new-split">
+            <ChatDockWorkspaceActions onNewChat={() => {}} />
             <ChatDockProjectContext
               projectSlug="demo"
-              projectName="Demo Project"
+              projectName="A Rather Long Demo Project Name"
               workingDirectory="/Users/me/dev/github/kontourai/demo-project"
-              gitStatus={gitStatus}
               projects={[]}
               onSelectProject={() => {}}
               onSwitchProject={() => {}}
             />
           </div>
+          <button type="button" className="chat-dock__more-btn">
+            ⋯
+          </button>
         </div>
       </div>
     </div>,
@@ -145,8 +128,8 @@ function buildFixtureHtml(
   ownerFirst: boolean,
 ): string {
   const cssPaths = ownerFirst
-    ? [PROJECT_CONTEXT_CSS_PATH, INDEX_CSS_PATH]
-    : [INDEX_CSS_PATH, PROJECT_CONTEXT_CSS_PATH];
+    ? [NEW_CHAT_ACTION_CSS_PATH, PROJECT_CONTEXT_CSS_PATH, INDEX_CSS_PATH]
+    : [INDEX_CSS_PATH, NEW_CHAT_ACTION_CSS_PATH, PROJECT_CONTEXT_CSS_PATH];
   const css = cssPaths.map((path) => resolveCssImports(path)).join('\n');
   assertNoImportsSurvive(css);
   return `<!doctype html>
@@ -169,6 +152,8 @@ type Measurement = {
   visible: boolean;
   left: number;
   right: number;
+  top: number;
+  bottom: number;
   inkLeft: number;
 };
 
@@ -204,17 +189,16 @@ describe.skipIf(!chromiumAvailable).each([
         );
         return await page.evaluate(() =>
           [
+            '.chat-dock__header',
             '.chat-dock__active-identity-text',
+            '.chat-dock__active-identity-context',
             '.chat-dock__active-identity-agent',
             '.chat-dock__active-identity-engine',
             '.chat-dock__active-identity-title',
+            '.chat-dock__new-split',
             '.chat-dock__project-context',
             '.chat-dock__project-badge',
-            '.chat-dock__project-badge-lines',
-            '.chat-dock__project-badge-caption',
             '.chat-dock__project-badge-name',
-            '.git-badge',
-            '.git-badge__branch',
           ].map((selector) => {
             const element = document.querySelector(selector);
             if (!element) throw new Error(`missing ${selector}`);
@@ -236,6 +220,8 @@ describe.skipIf(!chromiumAvailable).each([
               visible: box.width > 0,
               left: box.left,
               right: box.right,
+              top: box.top,
+              bottom: box.bottom,
               inkLeft: text.getBoundingClientRect().left,
             };
           }),
@@ -269,64 +255,71 @@ describe.skipIf(!chromiumAvailable).each([
     );
 
     test.each(WIDTHS)(
-      'the project labels stay left aligned and all labels fit one line at %ipx',
+      'the destination project name stays on one line inside the split at %ipx',
       async (width) => {
         const measurements = await measure(width);
-        const column = measurements.find(
-          (entry) => entry.selector === '.chat-dock__project-badge-lines',
-        );
-        if (!column) throw new Error('missing project label column');
-        for (const selector of [
-          '.chat-dock__project-badge-caption',
-          '.chat-dock__project-badge-name',
-          '.git-badge__branch',
-        ]) {
+        const find = (selector: string) => {
           const entry = measurements.find((m) => m.selector === selector);
           if (!entry) throw new Error(`missing ${selector}`);
-          // Below the dock's mobile breakpoint the git badge is display:none,
-          // so it has no line to wrap. `renders the git branch` proves this
-          // skip cannot quietly cover every width.
-          if (entry.clientWidth === 0) continue;
-          // A wrapped second line at least doubles the box height.
-          expect(entry.clientHeight).toBeLessThan(entry.lineHeight * 1.8);
-          if (selector !== '.git-badge__branch') {
-            expect(entry.left).toBeGreaterThanOrEqual(column.left - 1);
-            expect(entry.right).toBeLessThanOrEqual(column.right + 1);
-            expect(
-              entry.inkLeft,
-              `${selector} text remains left aligned`,
-            ).toBeCloseTo(column.left, 0);
-          }
-        }
+          return entry;
+        };
+        const name = find('.chat-dock__project-badge-name');
+        const split = find('.chat-dock__new-split');
+        // A wrapped second line at least doubles the box height.
+        expect(name.clientHeight).toBeLessThan(name.lineHeight * 1.8);
+        expect(name.left).toBeGreaterThanOrEqual(split.left - 1);
+        expect(name.right).toBeLessThanOrEqual(split.right + 1);
       },
     );
-
-    test('renders the git branch at 800px, so the one-line check is not vacuous', async () => {
-      const branch = (await measure(800)).find(
-        (entry) => entry.selector === '.git-badge__branch',
-      );
-      expect(branch?.clientWidth).toBeGreaterThan(0);
-    });
 
     test.each(WIDTHS)(
-      'the git badge stays inside its own box at %ipx',
+      'the row never spills past the header at %ipx',
       async (width) => {
-        // #1536 L10: the branch label ellipsises, but the badge that holds it
-        // must not spill — a `flex-shrink: 0` anchor plus a long branch name is
-        // exactly how the header used to push content past its edge.
-        const measurements = await measure(width);
-        const badge = measurements.find((m) => m.selector === '.git-badge');
-        if (!badge) throw new Error('missing git badge');
-        if (badge.clientWidth === 0) return; // display:none below the breakpoint
-        expect(
-          badge.scrollWidth <= badge.clientWidth + 1 ||
-            badge.overflowX === 'hidden' ||
-            badge.overflowX === 'clip',
-          `the git badge holds ${badge.scrollWidth}px in a ${badge.clientWidth}px ` +
-            `box with overflow-x:${badge.overflowX}, so it is painting outside it`,
-        ).toBe(true);
+        const header = (await measure(width)).find(
+          (m) => m.selector === '.chat-dock__header',
+        );
+        expect(header?.right).toBeLessThanOrEqual(width + 1);
       },
     );
+
+    const find = (measurements: Measurement[], selector: string) =>
+      measurements.find((m) => m.selector === selector)!;
+    // Below the row's one clipped line: stepped aside, not squeezed.
+    const offTheLine = (part: Measurement, row: Measurement) =>
+      part.top >= row.bottom - 1;
+
+    test.each([320, 560, 800])(
+      'squeezed (%ipx): while the title is cut, the agent and engine are off its line',
+      async (width) => {
+        const measurements = await measure(width);
+        const row = find(measurements, '.chat-dock__active-identity-text');
+        const title = find(measurements, '.chat-dock__active-identity-title');
+        const agent = find(measurements, '.chat-dock__active-identity-agent');
+        const engine = find(measurements, '.chat-dock__active-identity-engine');
+        // Not vacuous at the narrowest width: the title is cut there.
+        if (width === 320) expect(doesNotFit(title)).toBe(true);
+        if (doesNotFit(title)) {
+          expect(offTheLine(agent, row)).toBe(true);
+          expect(offTheLine(engine, row)).toBe(true);
+        }
+        // The engine goes before the agent.
+        if (!offTheLine(engine, row))
+          expect(offTheLine(agent, row)).toBe(false);
+      },
+    );
+
+    test('with room (1200px), the title is whole and the agent and engine share its line', async () => {
+      const measurements = await measure(1200);
+      const row = find(measurements, '.chat-dock__active-identity-text');
+      expect(
+        doesNotFit(find(measurements, '.chat-dock__active-identity-title')),
+      ).toBe(false);
+      for (const selector of [
+        '.chat-dock__active-identity-agent',
+        '.chat-dock__active-identity-engine',
+      ])
+        expect(offTheLine(find(measurements, selector), row)).toBe(false);
+    });
   },
 );
 

@@ -1587,9 +1587,11 @@ function overlayDockProjectMismatchHooks(
       await expect(
         page.locator('.chat-dock__project-badge', { hasText: 'Project A' }),
       ).toBeVisible({ timeout: 10_000 });
+      // The badge is New's destination now; the chat's own project is its
+      // session context card's, so the bar prints no "This chat" lead-in.
       await expect(
         page.locator('.chat-dock__project-session-name'),
-      ).toBeVisible({ timeout: 10_000 });
+      ).toHaveCount(0);
       await expect(
         page.getByRole('button', {
           name: 'Status unavailable — resync this conversation',

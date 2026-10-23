@@ -227,6 +227,7 @@ export function claudeInProcessStationControlOptions(
             allowedTools,
             undefined,
             'station-knowledge',
+            'bound',
           ),
         token: 'reuse',
         serverId: 'station-knowledge',
@@ -243,7 +244,13 @@ export function claudeInProcessStationControlOptions(
         createServer: () =>
           createServer
             ? createServer()
-            : createSelectedStationControlMcpServer(allowedTools),
+            : // The in-process channel is the only `bound` one.
+              createSelectedStationControlMcpServer(
+                allowedTools,
+                undefined,
+                'station-control',
+                'bound',
+              ),
         token: 'fresh',
       }),
     // #90 D14: the browser tools as their own narrow server, bound like

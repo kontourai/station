@@ -1,0 +1,7 @@
+{
+  "revision": "8f5796b92d5157d03f5a4f1ec0cba76f2a3cd608",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Checked against the merged tree: testing.md differs from origin/main only by this branch's sentence that vitest.setup.ts sets STATION_PUBLIC_AGENT_REGISTRY=off; this context's claims (testing guide owns focused evidence, local diagnostic lanes and hosted qualification; lane registry row) are unaffected.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]}
+  ]
+}
