@@ -762,3 +762,14 @@ The frozen managed install, dependency identity/lock checks and advisory policy
 passed with the Ciao lifecycle patch unchanged. No advisory exception or baseline
 was added. The exported deprecated `RE_ZONE_STRING` constant remains upstream;
 this upgrade does not protect code that imports and invokes that regex directly.
+
+## Withdrawn braces advisory (2026-10-23)
+
+GitHub withdrew [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)
+on 2026-10-23. The registry audit no longer reports it, so the exact temporary
+exception was removed; keeping it made the policy reject an unused exception.
+This is advisory metadata maintenance, not a claim that Station proved every
+brace-expansion input safe. The prior threat model was untrusted deeply nested
+patterns exhausting the Node stack; the dependency graph and runtime controls
+are unchanged. Historical acceptance and investigation remain in
+[#3150](https://github.com/kontourai/station/issues/3150).
