@@ -216,22 +216,44 @@ function ProjectRoomSession({
     return (
       <section className="project-room" aria-label="Project room">
         <p role="status">
-          Project room access changed. Reconnect to check access.
+          Room access changed. Your draft was cleared. Check access to continue.
         </p>
         <Button onClick={room.recover}>Check access</Button>
+      </section>
+    );
+  if (room.unprovisioned)
+    return (
+      <section className="project-room" aria-label="Project room">
+        <h2># Project room</h2>
+        <p>The room has not been opened yet.</p>
+        {room.initialize.isError && (
+          <p role="alert">
+            Opening was not confirmed. Check access, then try again.
+          </p>
+        )}
+        <Button
+          pending={room.initialize.isPending}
+          pendingLabel="Opening…"
+          onClick={() => room.initialize.mutate()}
+        >
+          Open room
+        </Button>
       </section>
     );
   if (room.discovery.isError)
     return (
       <section className="project-room" aria-label="Project room">
-        <p role="alert">The project room could not be opened.</p>
+        <p role="alert">
+          Room unavailable. Check your connection and Project access, then try
+          again.
+        </p>
         <Button onClick={room.recover}>Try again</Button>
       </section>
     );
   if (!view)
     return (
       <section className="project-room" aria-label="Project room">
-        <p role="status">Opening project room…</p>
+        <p role="status">Loading room…</p>
       </section>
     );
   const messages = [
@@ -259,9 +281,17 @@ function ProjectRoomSession({
       aria-label="Project room"
     >
       <header className="project-room__header">
-        <div>
-          <h2>Project room</h2>
-          <p>Talk together. Keep shared notes.</p>
+        <div className="project-room__title">
+          <h2># Project room</h2>
+          <details className="project-room__menu">
+            <summary aria-label="Room menu">Room ▾</summary>
+            <Button onClick={() => guard(() => setTab('conversation'))}>
+              Conversation
+            </Button>
+            <Button onClick={() => guard(() => setTab('notes'))}>
+              Shared notes
+            </Button>
+          </details>
         </div>
         {variant === 'preview' && onOpenRoom && (
           <Button onClick={onOpenRoom}>Open room</Button>
@@ -475,7 +505,7 @@ function ProjectRoomSession({
       ) : (
         <div className="project-room__notes">
           <h3>Shared notes</h3>
-          <p>Keep decisions and useful context together.</p>
+
           <label htmlFor={`note-${editorId}`}>Notes (Markdown)</label>
           <textarea
             id={`note-${editorId}`}

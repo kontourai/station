@@ -34,6 +34,9 @@ let note: null | {
   actor: typeof actor;
   updatedAt: string;
 };
+let provisioned: boolean;
+let failInitialization: boolean;
+let initializationBodies: unknown[];
 let loseAck: boolean;
 let conflict: boolean;
 let writes: Array<Record<string, unknown>>;
@@ -46,6 +49,28 @@ function fixture() {
       const url = new URL(input);
       const body = init?.body ? JSON.parse(String(init.body)) : undefined;
       const ok = (data: unknown) => Response.json({ success: true, data });
+      if (url.pathname.endsWith('/init')) {
+        initializationBodies.push(body);
+        if (failInitialization) {
+          failInitialization = false;
+          return Response.json(
+            { success: false, error: 'Unavailable' },
+            { status: 503 },
+          );
+        }
+        provisioned = true;
+        return ok({ scope, roomId });
+      }
+      if (url.pathname.endsWith('/room') && !provisioned) {
+        return Response.json(
+          {
+            success: false,
+            error: 'Room not found',
+            code: 'project_room_not_found',
+          },
+          { status: 404 },
+        );
+      }
       if (url.pathname.endsWith('/events')) {
         let ownedController: ReadableStreamDefaultController<Uint8Array>;
         return new Response(
@@ -161,6 +186,9 @@ beforeEach(() => {
   messages = [];
   writes = [];
   streams = [];
+  provisioned = true;
+  failInitialization = false;
+  initializationBodies = [];
   loseAck = false;
   conflict = false;
   note = null;
@@ -296,7 +324,7 @@ test('revocation clears retained content and stops the live connection', async (
       ),
     ),
   );
-  await screen.findByText(/Project room access changed/);
+  await screen.findByText(/Room access changed/);
   expect(screen.queryByText('Shared team content')).toBeNull();
   expect(
     ui.client
@@ -373,4 +401,63 @@ test('loads an older bounded window and exposes actual reply context to the opti
     }),
   );
   expect(writes).toHaveLength(0);
+});
+
+test('preview opens the full room without replacing its draft and exposes shared notes beside the title', async () => {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const onOpenRoom = vi.fn();
+  const room = (variant: 'preview' | 'full') => (
+    <QueryClientProvider client={client}>
+      <ProjectRoom
+        slug="team"
+        projectId="project"
+        requestScope={requestScope}
+        variant={variant}
+        onOpenRoom={onOpenRoom}
+      />
+    </QueryClientProvider>
+  );
+  const ui = render(room('preview'));
+  const composer = await screen.findByRole('textbox', {
+    name: 'Message the project',
+  });
+  fireEvent.change(composer, { target: { value: 'Keep this draft' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Open room' }));
+  expect(onOpenRoom).toHaveBeenCalledTimes(1);
+  ui.rerender(room('full'));
+  expect(
+    screen.getByRole<HTMLTextAreaElement>('textbox', {
+      name: 'Message the project',
+    }).value,
+  ).toBe('Keep this draft');
+  expect(screen.queryByRole('button', { name: 'Bring an Agent' })).toBeNull();
+  fireEvent.click(screen.getByLabelText('Room menu'));
+  fireEvent.click(screen.getByRole('button', { name: 'Shared notes' }));
+  expect(screen.getByRole('dialog')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Discard', exact: true }));
+  expect(
+    screen.getByRole('textbox', { name: 'Notes (Markdown)' }),
+  ).toBeTruthy();
+});
+
+test('an unprovisioned room requires an explicit open and keeps failed initialization retryable', async () => {
+  provisioned = false;
+  failInitialization = true;
+  mount();
+  const open = await screen.findByRole('button', { name: 'Open room' });
+  expect(initializationBodies).toEqual([]);
+  expect(
+    screen.queryByRole('textbox', { name: 'Message the project' }),
+  ).toBeNull();
+  fireEvent.click(open);
+  await screen.findByRole('alert');
+  expect(initializationBodies).toEqual([{ expectedProjectId: 'project' }]);
+  fireEvent.click(screen.getByRole('button', { name: 'Open room' }));
+  await screen.findByRole('textbox', { name: 'Message the project' });
+  expect(initializationBodies).toEqual([
+    { expectedProjectId: 'project' },
+    { expectedProjectId: 'project' },
+  ]);
 });
