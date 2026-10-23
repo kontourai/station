@@ -74,6 +74,7 @@ test.each([false, true])(
         store.initChat('first-chat', {
           agentSlug: 'agent-one',
           agentName: 'Agent One',
+          title: 'First chat',
         });
         store.updateChat('first-chat', { input: 'Start this chat' });
       });
