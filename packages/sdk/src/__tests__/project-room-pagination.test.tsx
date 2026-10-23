@@ -64,9 +64,15 @@ let reads: Array<{
   authorization?: string;
 }>;
 let clients: QueryClient[];
+let discoveryFailure: { status: number; code: string } | undefined;
+let initializations: unknown[];
+let initializationDenied: boolean;
 
 beforeEach(async () => {
   scope = initialScope;
+  discoveryFailure = undefined;
+  initializations = [];
+  initializationDenied = false;
   corruptAfter = undefined;
   db = new DatabaseSync(':memory:');
   // Load the real server owner at runtime: the SDK's isolated TS project must
@@ -93,6 +99,21 @@ beforeEach(async () => {
       response.writeHead(200, { 'Content-Type': 'application/json' });
       response.end(JSON.stringify({ success: true, data }));
     };
+    if (url.pathname.endsWith('/init')) {
+      let body = '';
+      for await (const chunk of request) body += chunk;
+      initializations.push(JSON.parse(body));
+      if (initializationDenied) {
+        response.writeHead(403, { 'Content-Type': 'application/json' });
+        response.end(
+          JSON.stringify({ error: { code: 'project_room_access_changed' } }),
+        );
+        return;
+      }
+      discoveryFailure = undefined;
+      ok(store.ensureRoom(scope, current));
+      return;
+    }
     if (url.pathname.endsWith('/events')) {
       response.writeHead(200, { 'Content-Type': 'text/event-stream' });
       response.flushHeaders();
@@ -121,6 +142,13 @@ beforeEach(async () => {
           ? { ...page, nextAfter: corrupt === 'stalled' ? after : 'bad-cursor' }
           : page,
       );
+      return;
+    }
+    if (discoveryFailure) {
+      response.writeHead(discoveryFailure.status, {
+        'Content-Type': 'application/json',
+      });
+      response.end(JSON.stringify({ error: { code: discoveryFailure.code } }));
       return;
     }
     ok({
@@ -402,3 +430,70 @@ test.each([
     } else if (change !== 'cancellation') expect(old).toEqual([]);
   },
 );
+
+test('exposes unprovisioned discovery and initializes only on explicit mutation before refreshing discovery', async () => {
+  discoveryFailure = { status: 404, code: 'project_room_not_found' };
+  const hook = mount();
+  await waitFor(() => expect(hook.result.current.unprovisioned).toBe(true));
+  expect(hook.result.current.stopped).toBe(false);
+  expect(initializations).toEqual([]);
+  expect(reads).toEqual([]);
+  let identity: Awaited<
+    ReturnType<typeof hook.result.current.initialize.mutateAsync>
+  >;
+  await act(async () => {
+    identity = await hook.result.current.initialize.mutateAsync();
+  });
+  expect(initializations).toEqual([{ expectedProjectId: 'project' }]);
+  expect(identity!).toEqual({ scope, roomId });
+  await waitFor(() =>
+    expect(hook.result.current.discovery.isSuccess).toBe(true),
+  );
+  expect(hook.result.current.unprovisioned).toBe(false);
+  expect(hook.result.current.discovery.data?.roomId).toBe(roomId);
+});
+
+test.each([
+  { status: 401, code: 'authentication_required' },
+  { status: 403, code: 'project_room_access_changed' },
+  { status: 404, code: 'project_not_found' },
+])(
+  'does not treat discovery $status/$code as an unprovisioned room',
+  async (failure) => {
+    discoveryFailure = failure;
+    const hook = mount();
+    await waitFor(() =>
+      expect(
+        hook.result.current.discovery.isError || hook.result.current.stopped,
+      ).toBe(true),
+    );
+    expect(hook.result.current.unprovisioned).toBe(false);
+    expect(initializations).toEqual([]);
+    expect(reads).toEqual([]);
+    if (failure.status !== 404)
+      await waitFor(() => expect(hook.result.current.stopped).toBe(true));
+  },
+);
+
+test('initialization discuss denial remains observable to its caller and stops the room hook', async () => {
+  discoveryFailure = { status: 404, code: 'project_room_not_found' };
+  initializationDenied = true;
+  const hook = mount();
+  await waitFor(() => expect(hook.result.current.unprovisioned).toBe(true));
+  await act(async () => {
+    await expect(
+      hook.result.current.initialize.mutateAsync(),
+    ).rejects.toMatchObject({
+      status: 403,
+      code: 'project_room_access_changed',
+    });
+  });
+  await waitFor(() => expect(hook.result.current.stopped).toBe(true));
+  expect(initializations).toEqual([{ expectedProjectId: 'project' }]);
+  expect(reads).toEqual([]);
+  expect(
+    hook.client.getQueriesData({
+      queryKey: projectRoomKey({ apiBase, authorityKey: authority }, 'project'),
+    }),
+  ).toEqual([]);
+});

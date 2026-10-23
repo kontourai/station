@@ -190,6 +190,30 @@ export async function discoverProjectRoom(
     throw new ProjectRoomProtocolError('Project room identity changed.');
   return value;
 }
+export async function initializeProjectRoom(
+  requestScope: ApiRequestScope,
+  slug: string,
+  projectId: string,
+) {
+  parse(id, projectId);
+  const value = parse(
+    z.strictObject({ scope, roomId: uuid }),
+    await envelope(
+      await mutateJson(
+        `${requestScope.apiBase}${path(slug, '/init')}`,
+        'POST',
+        options(requestScope),
+        { expectedProjectId: projectId },
+      ),
+    ),
+  );
+  if (
+    value.scope.localProjectId !== projectId ||
+    value.scope.localProjectSlug !== slug
+  )
+    throw new ProjectRoomProtocolError('Project room identity changed.');
+  return value;
+}
 export async function fetchProjectRoomHistory(
   requestScope: ApiRequestScope,
   slug: string,

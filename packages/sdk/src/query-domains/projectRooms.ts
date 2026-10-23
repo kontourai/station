@@ -10,6 +10,7 @@ import type { ApiRequestScope } from '../client/http';
 import {
   discoverProjectRoom,
   fetchProjectRoomHistory,
+  initializeProjectRoom,
   type ProjectRoomBrowserView,
   type ProjectRoomMessageIntent,
   type ProjectRoomNoteIntent,
@@ -121,6 +122,15 @@ export function useProjectRoom(
       after > 0 ? { after: Math.max(0, after - 25), end: after } : undefined,
     maxPages: 20,
   });
+  const initialize = useMutation({
+    retry: false,
+    mutationFn: () => initializeProjectRoom(scope, slug, projectId),
+    onSuccess: () => client.invalidateQueries({ queryKey: root }),
+  });
+  const unprovisioned =
+    discovery.error instanceof StationHttpError &&
+    discovery.error.status === 404 &&
+    discovery.error.code === 'project_room_not_found';
   const send = useMutation({
     retry: false,
     mutationFn: (input: ProjectRoomMessageIntent) =>
@@ -135,15 +145,27 @@ export function useProjectRoom(
   });
   useEffect(() => {
     if (
-      ![discovery.error, history.error, send.error, note.error].some(
-        isProjectRoomAccessError,
-      )
+      ![
+        discovery.error,
+        history.error,
+        initialize.error,
+        send.error,
+        note.error,
+      ].some(isProjectRoomAccessError)
     )
       return;
     setStopped(true);
     void client.cancelQueries({ queryKey: root });
     client.removeQueries({ queryKey: root });
-  }, [client, root, discovery.error, history.error, send.error, note.error]);
+  }, [
+    client,
+    root,
+    discovery.error,
+    history.error,
+    initialize.error,
+    send.error,
+    note.error,
+  ]);
   useEffect(() => {
     if (!roomId || !actorId || stopped) return;
     let active = true;
@@ -214,12 +236,15 @@ export function useProjectRoom(
   );
   return {
     discovery,
+    initialize,
+    unprovisioned,
     history,
     send,
     note,
     stopped,
     streamError,
     recover: () => {
+      initialize.reset();
       send.reset();
       note.reset();
       setStopped(false);

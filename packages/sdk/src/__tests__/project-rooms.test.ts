@@ -3,6 +3,7 @@ import { setClientCredentialResolver } from '../client/http';
 import {
   discoverProjectRoom,
   fetchProjectRoomHistory,
+  initializeProjectRoom,
   parseProjectRoomMessageIntent,
   saveProjectRoomNote,
   sendProjectRoomMessage,
@@ -186,4 +187,28 @@ test('preserves notes CAS conflicts and rejects mismatched message acknowledgeme
   await expect(
     sendProjectRoomMessage(requestScope, 'team', proposal),
   ).rejects.toThrow('does not match');
+});
+
+test('initialization validates the returned Project identity and preserves discuss denial', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      ok({ scope: { ...scope, localProjectId: 'replacement' }, roomId }),
+    ),
+  );
+  await expect(
+    initializeProjectRoom(requestScope, 'team', 'project'),
+  ).rejects.toThrow('identity changed');
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () =>
+      Response.json(
+        { error: { code: 'project_room_access_changed' } },
+        { status: 403 },
+      ),
+    ),
+  );
+  await expect(
+    initializeProjectRoom(requestScope, 'team', 'project'),
+  ).rejects.toMatchObject({ status: 403, code: 'project_room_access_changed' });
 });
