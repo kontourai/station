@@ -76,7 +76,17 @@
 
     "src-ui/src/workspace-panes/task-room-draft-recovery.ts",
 
-    "tests/task-room-reload-recovery.spec.ts"
+    "tests/task-room-reload-recovery.spec.ts",
+
+    "src-server/services/projects/task-room-attachments.ts",
+
+    "src-ui/src/hooks/useTaskRoomAttachments.ts",
+
+    "src-ui/src/workspace-panes/TaskRoomAttachmentComposer.tsx",
+
+    "src-ui/src/workspace-panes/TaskRoomAttachmentImages.tsx",
+
+    "src-server/routes/orchestration/__tests__/task-room-attachments.test.ts"
   ],
 
   "checks": [

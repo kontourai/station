@@ -536,7 +536,11 @@
 
     "src-ui/src/views/project-page/ProjectRoom.tsx",
 
-    "src-ui/src/lib/project-onboarding-recovery.ts"
+    "src-ui/src/lib/project-onboarding-recovery.ts",
+
+    "src-server/routes/orchestration/task-room-attachment-http.ts",
+
+    "src-server/routes/orchestration/project-task-rooms.ts"
   ],
 
   "checks": [
