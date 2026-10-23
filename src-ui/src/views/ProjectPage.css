@@ -1441,16 +1441,8 @@
   margin-block: var(--k-space-4);
 }
 
-.project-page__operator-actions button,
-.project-page__overview-links button {
+.project-page__operator-actions button {
   min-height: 44px;
-}
-
-.project-page__overview-links {
-  display: grid;
-  gap: var(--k-space-3);
-  justify-items: start;
-  margin-block: var(--k-space-5);
 }
 
 .project-page__workspace {

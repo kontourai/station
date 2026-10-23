@@ -670,12 +670,6 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
 
         <LayoutsSection slug={slug} />
 
-        {/*
-          station#1502 slice 4 — §3.6's resolution states and their repair
-          actions. Mounted HERE and nowhere else: `ProjectPage.tsx` stays
-          byte-unchanged so the first-run journey `tests/first-run-live.spec.ts`
-          pins is provably untouched without an e2e run.
-*/}
         <ProjectSourcesSection slug={slug} projectId={project?.id} />
         {project && <AccessSection slug={slug} projectId={project.id} />}
 
