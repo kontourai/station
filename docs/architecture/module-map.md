@@ -1392,7 +1392,9 @@ not the check before the engine starts. The
 drives both dispatch routes into a real `OrchestrationService` with a recording
 engine double, and the
 [runtime wiring test](../../src-server/runtime/bootstrap/__tests__/runtime-initialize-connection-default-cwd.test.ts)
-covers the connection reader; the credential-profile restart has no test.
+covers the connection reader. The retained-workspace recovery suite exercises
+credential restart, direct replay and cold materialization with a recording
+provider; it does not qualify a real provider or remote device.
 Their presence is not a new executed or remote-device receipt. See
 [agent configuration](../guides/self-configuring-agent.md#dispatch-authority) for tool-level
 restrictions and caller binding.
@@ -4487,8 +4489,10 @@ existing manifest and live resource resolver for new engine starts and retained
 qualified Sessions. New Sessions use the selected execution root. A continuation
 keeps its recorded canonical cwd only when its persisted local Project ID still
 matches and that directory remains inside a currently verified attached resource.
-Read-binding, successor-start and send-turn admission recheck this authority;
-changing the Project default does not move an existing Session. An unstamped or
+Read-binding, successor-start and send-turn admission recheck this authority.
+Credential-profile restart and cold materialization recheck after recovery
+preparation, before provider start; direct credential replay rechecks before
+sending the turn. Changing the Project default does not move an existing Session. An unstamped or
 explicitly refused Project incarnation is never inferred from a matching slug.
 Missing, unbound, drifted, ambiguous or replaced resources and changed symlink
 coordinates stop before engine invocation. Only a directory-less organizational
