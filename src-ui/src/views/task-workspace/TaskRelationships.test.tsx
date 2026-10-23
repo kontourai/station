@@ -67,7 +67,7 @@ const task: TaskRecord = {
   projectId: 'project',
   title: 'Parent',
   description: '',
-  priority: 'medium',
+  priority: 'normal',
   status: 'todo',
   createdBy: 'owner',
   updatedAt: '2026-10-22',
@@ -83,6 +83,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   sessionStorage.clear();
   state.update.mockReset();
+  state.create.mockReset();
   state.authority = 'owner';
   state.current = true;
   state.linked = true;
