@@ -24,6 +24,12 @@ import {
   reportCredentialDigest,
   type StationReportAdmission,
 } from './station-report-group-admission.js';
+import {
+  reportInterruptReference,
+  reportInterruptResultSchema,
+  signReportInterrupt,
+  verifyReportInterrupt,
+} from './station-report-group-cancellation.js';
 import type {
   PreparedStationReportGroup,
   StationReportGroupPreparation,
@@ -226,8 +232,21 @@ export class StationReportGroupCustody {
     seatId: string,
     orchestration: OrchestrationService,
   ) {
+    return this.#delivery(
+      await this.#context(context, 'GET'),
+      groupId,
+      seatId,
+      orchestration,
+    );
+  }
+
+  async #delivery(
+    authorized: ReadContext,
+    groupId: string,
+    seatId: string,
+    orchestration: OrchestrationService,
+  ) {
     id(seatId);
-    const authorized = await this.#context(context, 'GET');
     const historical = await this.#inspect(authorized, groupId);
     if (!historical) return null;
     const member = historical.admission.members.find(
@@ -278,6 +297,157 @@ export class StationReportGroupCustody {
       outcome: delivery.outcome,
       sessionId: delivery.sessionId,
       turnId: delivery.turnId,
+    };
+  }
+
+  async inspectMemberInterrupt(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    seatId: string,
+  ) {
+    id(seatId);
+    const authorized = await this.#context(context, 'GET');
+    const historical = await this.#inspect(authorized, groupId);
+    if (!historical) return null;
+    const member = historical.admission.members.find(
+      (entry) => entry.seatId === seatId,
+    );
+    if (!member) refuse();
+    const record = await this.owners.persistence.readReportInterrupt(
+      groupId,
+      seatId,
+      authorized.current,
+    );
+    if (!record) return null;
+    if (
+      !verifyReportInterrupt(record, this.owners.environment) ||
+      record.intent.hostId !== authorized.lease.hostContextId ||
+      record.intent.principalId !== authorized.principal.id ||
+      record.intent.admissionSignature !==
+        reportAdmissionSignature(
+          historical.admission,
+          this.owners.environment,
+        ) ||
+      record.intent.taskId !== member.reservedTaskId ||
+      record.intent.clientTurnId !== member.reservedClientTurnId
+    )
+      refuse();
+    authorized.current();
+    return {
+      record,
+      reference: record.acknowledgement
+        ? reportInterruptReference(record)
+        : null,
+    };
+  }
+
+  async requestMemberInterrupt(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    seatId: string,
+    operationId: string,
+    orchestration: OrchestrationService,
+  ) {
+    id(operationId);
+    const authorized = await this.#context(context, 'POST');
+    const historical = await this.#inspect(authorized, groupId);
+    if (!historical?.authority?.cancelled) refuse();
+    const delivery = await this.#delivery(
+      authorized,
+      groupId,
+      seatId,
+      orchestration,
+    );
+    if (
+      delivery?.outcome !== 'started' ||
+      !delivery.sessionId ||
+      !delivery.turnId
+    )
+      refuse();
+    const member = historical.admission.members.find(
+      (entry) => entry.seatId === seatId,
+    );
+    if (!member) refuse();
+    const admissionSignature = reportAdmissionSignature(
+      historical.admission,
+      this.owners.environment,
+    );
+    const intent = signReportInterrupt(
+      {
+        groupId,
+        seatId,
+        operationId,
+        hostId: authorized.lease.hostContextId,
+        principalId: authorized.principal.id,
+        admissionSignature,
+        taskId: delivery.taskId,
+        clientTurnId: member.reservedClientTurnId,
+        sessionId: delivery.sessionId,
+        turnId: delivery.turnId,
+      },
+      null,
+      this.owners.environment,
+    );
+    authorized.current();
+    const retained = await this.owners.persistence.recordReportInterrupt(
+      intent,
+      authorized.current,
+      async () => {
+        authorized.current();
+        const still = orchestration.inspectTurnDelivery(
+          member.reservedTaskId,
+          member.reservedClientTurnId,
+          sessionReadAuthorityFromRequest(
+            authorized.principal.id,
+            undefined,
+            undefined,
+          ),
+        );
+        if (
+          still?.outcome !== 'started' ||
+          still.sessionId !== delivery.sessionId ||
+          still.turnId !== delivery.turnId
+        )
+          refuse();
+        authorized.current();
+        const response = await orchestration.dispatchWithReceipt(
+          {
+            type: 'interruptTurn',
+            threadId: delivery.sessionId,
+            turnId: delivery.turnId,
+          },
+          {
+            userId: authorized.principal.id,
+            principal: authorized.principal,
+            requestCurrent: () => {
+              try {
+                authorized.current();
+                return true;
+              } catch {
+                return false;
+              }
+            },
+          },
+        );
+        authorized.current();
+        const acknowledgement = reportInterruptResultSchema.parse(
+          response.result,
+        );
+        return signReportInterrupt(
+          intent.intent,
+          acknowledgement,
+          this.owners.environment,
+        );
+      },
+    );
+    if (!verifyReportInterrupt(retained.record, this.owners.environment))
+      refuse();
+    authorized.current();
+    return {
+      ...retained,
+      reference: retained.record.acknowledgement
+        ? reportInterruptReference(retained.record)
+        : null,
     };
   }
 

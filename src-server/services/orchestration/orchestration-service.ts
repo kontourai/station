@@ -8866,6 +8866,19 @@ export class OrchestrationService {
           }
         }
         case 'interruptTurn': {
+          const assertInterruptCurrent = () => {
+            if (
+              context?.requestCurrent?.() === false ||
+              (context?.userId !== undefined &&
+                !this.sessionAuthz.canReadSessionForCommand(
+                  command.threadId,
+                  context.userId,
+                  context.tenantExecutionContext,
+                ))
+            )
+              throw new Error('Request authority changed before interruption.');
+          };
+          assertInterruptCurrent();
           // archive#3493 residual 1: mid-materialisation there IS work to
           // cancel — the turn that triggered the start is about to be
           // announced, and the dormant branch would answer `no-active-turn`
@@ -8905,7 +8918,9 @@ export class OrchestrationService {
             // against the thread instead — `consumeAdapterEvents` applies it
             // to that thread's next `turn.started` — and say exactly that,
             // rather than claiming a stop that has not happened.
+            assertInterruptCurrent();
             this.cooperativeStop.recordPendingTurnInterrupt(command.threadId, {
+              assertCurrent: assertInterruptCurrent,
               expiresAt: Date.now() + PENDING_TURN_INTERRUPT_TTL_MS,
               startedTurnIds: new Set<string>(),
               ...(command.clientTurnId
@@ -8921,6 +8936,7 @@ export class OrchestrationService {
             return { receipt, result: pending };
           }
           this.assertAdapterCurrent(adapter);
+          assertInterruptCurrent();
           // UX audit T1: the settlement this returns is the ONLY thing that
           // knows whether the engine acknowledged (session kept warm and
           // resumable) or the budget expired and Station tore the process
@@ -8932,6 +8948,8 @@ export class OrchestrationService {
               adapter,
               command.threadId,
               command.turnId,
+              'user',
+              assertInterruptCurrent,
             );
           if (
             interrupted.outcome === 'cooperative' ||

@@ -2021,8 +2021,23 @@ a stop receipt. A fresh POST with operation scope can separately revoke the
 exact retained root through the published v3 authority owner, even after the
 original preparation closes or expires. That operation preserves invocation
 usage and unknown holds; it neither changes the group cancellation journal nor
-interrupts a descendant. Public serving, descendant requests and group
-cancellation acknowledgement remain required.
+interrupts a descendant. The private per-seat interrupt operation requires that
+revocation plus exact accepted-turn delivery. It durably retains a
+[host-signed intent](../../src-server/services/orchestration/station-report-group-cancellation.ts)
+before canonical interrupt dispatch and retains only the closed acknowledgement
+vocabulary afterward. Missing acknowledgement remains unknown; reconnect and
+changed operation keys cannot resend or rebind the recorded seat. A completed
+request reference is returned only for a retained acknowledgement, not for intent.
+Fresh historical GET reads verify the signed receipt against its original
+admission, host/principal and member identities without resolving an engine or
+requiring the live delivery key to remain retained.
+
+Canonical interruption rechecks request currency and session read authority after
+adapter resolution, at deferred native dispatch and before forced teardown.
+Pending interrupts retain that check. Authority loss before dispatch rejects and
+clears its timer/stop slot without publishing terminal evidence. These receipts
+do not prove provider termination or change invocation usage. Public serving and
+group cancellation acknowledgement remain required.
 
 The [controlled integration](../../src-server/services/orchestration/__tests__/station-report-group-preparation.test.ts)
 consumes an issued root through the published durable v3 authority, rounds

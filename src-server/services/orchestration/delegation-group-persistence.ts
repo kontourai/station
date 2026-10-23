@@ -51,6 +51,12 @@ import {
   validateStationReportAdmission,
 } from './station-report-group-admission.js';
 
+import {
+  type ReportInterruptRecord,
+  reportInterruptLedgerSchema,
+  reportInterruptRecordSchema,
+} from './station-report-group-cancellation.js';
+
 export type DelegationPersistenceFinalizer = () => undefined;
 const AUTHORITY_MAX_BYTES = 16 * 1024 * 1024;
 const MAX_FILES = 1024;
@@ -252,6 +258,7 @@ export class StationDelegationPersistence {
   readonly #roundsAuthorities: PrivateDomain;
   readonly #rounds: PrivateDomain;
   readonly #reportAdmissions: PrivateDomain;
+  readonly #reportInterrupts: PrivateDomain;
   constructor(privateRoot: string) {
     const requested = resolve(privateRoot);
     privateDirectory(requested);
@@ -276,10 +283,111 @@ export class StationDelegationPersistence {
       root,
       'station-report-admissions-v1',
     );
+    this.#reportInterrupts = new PrivateDomain(
+      root,
+      'station-report-interrupts-v1',
+    );
     this.#providerEvidence = new PrivateDomain(
       root,
       'station-provider-evidence',
     );
+  }
+
+  async recordReportInterrupt(
+    value: ReportInterruptRecord,
+    finalizeCurrent: DelegationPersistenceFinalizer,
+    issue: () => Promise<ReportInterruptRecord>,
+  ) {
+    const intent = reportInterruptRecordSchema.parse(value);
+    requirePersistence(
+      intent.acknowledgement === null,
+      'report_interrupt_intent_required',
+    );
+    const domain = this.#reportInterrupts,
+      file = address(intent.intent.groupId);
+    return domain.locked(finalizeCurrent, async () => {
+      const bytes = readBytes(join(domain.directory, file), 128 * 1024);
+      const ledger =
+        bytes === null
+          ? {
+              version: 1 as const,
+              groupId: intent.intent.groupId,
+              entries: [] as ReportInterruptRecord[],
+            }
+          : reportInterruptLedgerSchema.parse(JSON.parse(bytes));
+      requirePersistence(
+        ledger.groupId === intent.intent.groupId,
+        'report_interrupt_group_conflict',
+      );
+      const prior = ledger.entries.find(
+        (entry) => entry.intent.seatId === intent.intent.seatId,
+      );
+      if (prior) {
+        requirePersistence(
+          same(prior.intent, intent.intent),
+          'report_interrupt_identity_conflict',
+        );
+        return { record: prior, replayed: true };
+      }
+      requirePersistence(
+        ledger.entries.length < 16 &&
+          (bytes !== null || domain.files().length < 128),
+        'report_interrupt_capacity',
+      );
+      ledger.entries.push(intent);
+      await domain.publish(
+        file,
+        reportInterruptLedgerSchema.parse(ledger),
+        128 * 1024,
+        finalizeCurrent,
+      );
+      const retained = readBytes(join(domain.directory, file), 128 * 1024);
+      requirePersistence(
+        retained !== null &&
+          same(reportInterruptLedgerSchema.parse(JSON.parse(retained)), ledger),
+        'report_interrupt_intent_unconfirmed',
+      );
+      assertCurrent(finalizeCurrent);
+      const acknowledged = reportInterruptRecordSchema.parse(await issue());
+      requirePersistence(
+        same(acknowledged.intent, intent.intent) &&
+          acknowledged.acknowledgement !== null,
+        'report_interrupt_ack_invalid',
+      );
+      ledger.entries[ledger.entries.length - 1] = acknowledged;
+      await domain.publish(file, ledger, 128 * 1024, finalizeCurrent);
+      const confirmed = readBytes(join(domain.directory, file), 128 * 1024);
+      requirePersistence(
+        confirmed !== null &&
+          same(
+            reportInterruptLedgerSchema.parse(JSON.parse(confirmed)),
+            ledger,
+          ),
+        'report_interrupt_ack_unconfirmed',
+      );
+      return { record: acknowledged, replayed: false };
+    });
+  }
+
+  async readReportInterrupt(
+    groupId: string,
+    seatId: string,
+    finalizeCurrent: DelegationPersistenceFinalizer,
+  ) {
+    const domain = this.#reportInterrupts,
+      file = address(groupId);
+    return domain.locked(finalizeCurrent, async () => {
+      const bytes = readBytes(join(domain.directory, file), 128 * 1024);
+      if (bytes === null) return null;
+      const ledger = reportInterruptLedgerSchema.parse(JSON.parse(bytes));
+      requirePersistence(
+        ledger.groupId === groupId,
+        'report_interrupt_group_conflict',
+      );
+      return (
+        ledger.entries.find((entry) => entry.intent.seatId === seatId) ?? null
+      );
+    });
   }
 
   async retainReportAdmission(

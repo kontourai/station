@@ -4,6 +4,7 @@ import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createDelegationAuthorityServiceV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
 import { afterEach, test, vi } from 'vitest';
+import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
 import { AnthropicSealedPreparation } from '../../../runtime/conversation/anthropic-sealed-preparation.js';
 import {
   captureEnvironmentLocalGrantObservationOwner,
@@ -568,6 +569,88 @@ test('issued preparation reaches canonical delegated-task dispatch and retained 
       repeated.authority.invocations,
       historical.authority.invocations,
     );
+    const dispatch = vi.spyOn(driver.orchestration, 'dispatchWithReceipt');
+    const interrupted = await reader.requestMemberInterrupt(
+      h.f.context(requestFor(h, 'POST', current.credential)),
+      groupId,
+      'left',
+      'cancel-left',
+      driver.orchestration,
+    );
+    assert.equal(interrupted.replayed, false);
+    assert.equal(interrupted.record.intent.turnId, driver.task.initialTurnId);
+    assert.equal(interrupted.record.intent.sessionId, driver.task.sessionId);
+    assert.ok(interrupted.record.acknowledgement);
+    assert.ok(interrupted.reference);
+    assert.equal(
+      dispatch.mock.calls.filter(
+        ([command]) => command.type === 'interruptTurn',
+      ).length,
+      1,
+    );
+    const reconnected = new StationReportGroupCustody(h.custodyOwners);
+    const replay = await reconnected.requestMemberInterrupt(
+      h.f.context(requestFor(h, 'POST', current.credential)),
+      groupId,
+      'left',
+      'cancel-left',
+      driver.orchestration,
+    );
+    assert.equal(replay.replayed, true);
+    assert.deepEqual(replay.record, interrupted.record);
+    const saved = await reconnected.inspectMemberInterrupt(
+      h.f.context(requestFor(h, 'GET', current.credential)),
+      groupId,
+      'left',
+    );
+    assert.deepEqual(saved?.record, interrupted.record);
+    assert.deepEqual(saved?.reference, interrupted.reference);
+    const cancellationFile = join(
+      h.f.root,
+      'station-report-interrupts-v1',
+      `${createHash('sha256').update(groupId).digest('hex')}.json`,
+    );
+    const receiptBytes = readFileSync(cancellationFile);
+    const substituted = JSON.parse(receiptBytes.toString('utf8'));
+    substituted.entries[0].intent.operationId = 'forged-cancellation';
+    writeFileSync(cancellationFile, JSON.stringify(substituted), {
+      mode: 0o600,
+    });
+    await assert.rejects(
+      () =>
+        reconnected.inspectMemberInterrupt(
+          h.f.context(requestFor(h, 'GET', current.credential)),
+          groupId,
+          'left',
+        ),
+      { code: 'group_custody_unavailable' },
+    );
+    writeFileSync(cancellationFile, receiptBytes, { mode: 0o600 });
+    assert.deepEqual(
+      (
+        await reconnected.inspectMemberInterrupt(
+          h.f.context(requestFor(h, 'GET', current.credential)),
+          groupId,
+          'left',
+        )
+      )?.record,
+      interrupted.record,
+    );
+    assert.equal(
+      dispatch.mock.calls.filter(
+        ([command]) => command.type === 'interruptTurn',
+      ).length,
+      1,
+    );
+    const afterInterrupt = await reader.inspect(
+      h.f.context(requestFor(h, 'GET', current.credential)),
+      groupId,
+    );
+    assert.deepEqual(
+      afterInterrupt?.authority?.invocations,
+      historical.authority.invocations,
+    );
+    dispatch.mockRestore();
     assert.equal(h.rawFetch.mock.calls.length, 1);
     assert.throws(() => h.owner.read(handle, h.f.req));
   } finally {
@@ -807,5 +890,145 @@ test('a returning operator credential can read the same admission but cannot rep
   } finally {
     h.owner.close(handle);
     if (second) renewed.close(second);
+  }
+});
+
+test('lost canonical interrupt acknowledgement stays unknown on fresh-request replay without a second interrupt', async () => {
+  const h = await setup();
+  installControl(h);
+  const handle = await h.owner.prepare(h.f.context(), {
+    ...h.input,
+    maxConcurrent: 1,
+    members: h.input.members.slice(0, 1),
+  });
+  try {
+    const { driver, sdk, prepared } = await taskDriver(h, handle);
+    await driver.run();
+    assert.equal(h.rawFetch.mock.calls.length, 1);
+    await sdkDisposalPromise(sdk.owner, sdk.sdkHandle);
+    h.owner.close(handle);
+    const grant = newGrant(h);
+    const groupId = prepared.spec.groupId;
+    const revoked = await h.custody.revokeExecutionAuthority(
+      h.f.context(requestFor(h, 'POST', grant.credential)),
+      groupId,
+    );
+    const dispatch = driver.orchestration.dispatchWithReceipt.bind(
+      driver.orchestration,
+    );
+    const lost = vi
+      .spyOn(driver.orchestration, 'dispatchWithReceipt')
+      .mockImplementation(async (...args) => {
+        const response = await dispatch(...args);
+        if (args[0].type === 'interruptTurn')
+          throw Error('controlled lost interrupt acknowledgement');
+        return response;
+      });
+    await assert.rejects(
+      () =>
+        h.custody.requestMemberInterrupt(
+          h.f.context(requestFor(h, 'POST', grant.credential)),
+          groupId,
+          'left',
+          'cancel-left',
+          driver.orchestration,
+        ),
+      /controlled lost interrupt acknowledgement/,
+    );
+    const reader = new StationReportGroupCustody(h.custodyOwners);
+    const replay = await reader.requestMemberInterrupt(
+      h.f.context(requestFor(h, 'POST', grant.credential)),
+      groupId,
+      'left',
+      'cancel-left',
+      driver.orchestration,
+    );
+    assert.equal(replay.replayed, true);
+    assert.equal(replay.record.acknowledgement, null);
+    assert.equal(replay.reference, null);
+    const retainedUnknown = await reader.inspectMemberInterrupt(
+      h.f.context(requestFor(h, 'GET', grant.credential)),
+      groupId,
+      'left',
+    );
+    assert.equal(retainedUnknown?.record.acknowledgement, null);
+    assert.equal(retainedUnknown?.reference, null);
+    assert.equal(
+      lost.mock.calls.filter(([command]) => command.type === 'interruptTurn')
+        .length,
+      1,
+    );
+    await assert.rejects(
+      () =>
+        reader.requestMemberInterrupt(
+          h.f.context(requestFor(h, 'POST', grant.credential)),
+          groupId,
+          'left',
+          'changed-cancel-key',
+          driver.orchestration,
+        ),
+      { code: 'report_interrupt_identity_conflict' },
+    );
+    assert.equal(
+      lost.mock.calls.filter(([command]) => command.type === 'interruptTurn')
+        .length,
+      1,
+    );
+    const after = await reader.inspect(
+      h.f.context(requestFor(h, 'GET', grant.credential)),
+      groupId,
+    );
+    assert.deepEqual(
+      after?.authority?.invocations,
+      revoked.authority.invocations,
+    );
+    assert.equal(h.rawFetch.mock.calls.length, 1);
+  } finally {
+    h.owner.close(handle);
+  }
+});
+
+test('canonical interrupt refuses request currency lost during adapter resolution', async () => {
+  const h = await setup();
+  installControl(h);
+  const handle = await h.owner.prepare(h.f.context(), {
+    ...h.input,
+    maxConcurrent: 1,
+    members: h.input.members.slice(0, 1),
+  });
+  try {
+    const { driver, sdk, prepared } = await taskDriver(h, handle);
+    await driver.run();
+    assert.ok(driver.task?.initialTurnId);
+    await sdkDisposalPromise(sdk.owner, sdk.sdkHandle);
+    const task = driver.task;
+    let current = true;
+    const resolution = vi
+      .spyOn(StationAgentAdapter.prototype, 'hasSession')
+      .mockImplementationOnce(async () => {
+        current = false;
+        return true;
+      });
+    const interrupt = vi.spyOn(StationAgentAdapter.prototype, 'interruptTurn');
+    await assert.rejects(
+      () =>
+        driver.orchestration.dispatchWithReceipt(
+          {
+            type: 'interruptTurn',
+            threadId: task.sessionId,
+            turnId: task.initialTurnId,
+          },
+          {
+            userId: prepared.root.authenticated_principal_ref.id,
+            requestCurrent: () => current,
+          },
+        ),
+      /Request authority changed before interruption/,
+    );
+    assert.equal(resolution.mock.calls.length, 1);
+    assert.equal(interrupt.mock.calls.length, 0);
+    assert.equal(h.rawFetch.mock.calls.length, 1);
+  } finally {
+    h.owner.close(handle);
   }
 });

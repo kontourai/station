@@ -70,6 +70,72 @@ function makeAdapter(
 }
 
 describe('CooperativeStop (unit pins)', () => {
+  it('refuses currency lost before the deferred adapter call without forced teardown and releases its stop slot', async () => {
+    const deps = makeDeps();
+    const stop = new CooperativeStop(deps);
+    const adapter = makeAdapter(
+      vi.fn(async () => ({ outcome: 'cancelled' as const, turnId: 'turn-a' })),
+    );
+    let current = true;
+    const assertCurrent = () => {
+      if (!current) throw Error('controlled authority loss');
+    };
+    const pending = stop.interruptUserTurnCooperatively(
+      adapter,
+      'unit-thread',
+      'turn-a',
+      'user',
+      assertCurrent,
+    );
+    current = false;
+    await expect(pending).rejects.toThrow('controlled authority loss');
+    await vi.advanceTimersByTimeAsync(COOPERATIVE_STOP_BUDGET_MS + 1);
+    expect(adapter.interruptTurn).not.toHaveBeenCalled();
+    expect(adapter.stopSession).not.toHaveBeenCalled();
+    expect(deps.publishEvent).not.toHaveBeenCalled();
+    current = true;
+    await expect(
+      stop.interruptUserTurnCooperatively(
+        adapter,
+        'unit-thread',
+        'turn-a',
+        'user',
+        assertCurrent,
+      ),
+    ).resolves.toMatchObject({ outcome: 'cooperative', turnId: 'turn-a' });
+    expect(adapter.interruptTurn).toHaveBeenCalledOnce();
+  });
+
+  it('does not apply a deferred stop after its request authority is revoked', async () => {
+    const deps = makeDeps();
+    const stop = new CooperativeStop(deps);
+    const interrupt = vi.fn(async () => ({
+      outcome: 'cancelled' as const,
+      turnId: 'turn-a',
+    }));
+    const adapter = makeAdapter(interrupt);
+    let current = true;
+    stop.recordPendingTurnInterrupt('unit-thread', {
+      expiresAt: Date.now() + COOPERATIVE_STOP_BUDGET_MS * 2,
+      turnId: 'turn-a',
+      startedTurnIds: new Set(),
+      assertCurrent: () => {
+        if (!current) throw Error('controlled revoked deferred request');
+      },
+    });
+    current = false;
+    const event = deps.listSessionProjectionEvents('unit-thread')[0];
+    stop.applyPendingTurnInterrupt(adapter, event);
+    await vi.advanceTimersByTimeAsync(COOPERATIVE_STOP_BUDGET_MS + 1);
+    expect(interrupt).not.toHaveBeenCalled();
+    expect(adapter.stopSession).not.toHaveBeenCalled();
+    expect(deps.publishEvent).not.toHaveBeenCalled();
+    expect(deps.logger.warn).toHaveBeenCalledWith(
+      'Deferred user stop could not be applied',
+      expect.any(Object),
+    );
+  });
+
   beforeEach(() => {
     vi.useFakeTimers();
   });

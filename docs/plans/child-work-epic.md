@@ -980,6 +980,17 @@ provider termination. Fresh operation-scoped POST authority can revoke the exact
 retained root through the published v3 service after preparation expiry. The
 private revocation path preserves known and unknown invocation accounting and
 does not claim group cancellation, interrupt delivery or physical stop.
+The private per-seat request now requires revoked authority and an accepted
+session/turn from canonical delivery lookup. It persists a host-signed interrupt
+intent before the exact canonical command and a bounded acknowledgement after it.
+A lost response leaves the intent unknown and reconnect cannot resend it; only
+a retained acknowledgement receives a request reference. Historical receipt reads
+verify the original admission and signed member identity independently of live
+delivery-key retention or engine availability. Canonical interruption
+also fences request currency after adapter resolution and at native/deferred
+handoff, without forced teardown after pre-dispatch authority loss. Public
+serving and Flow journal acknowledgement are still required, and an interrupt
+receipt neither settles usage nor proves provider termination.
 
 Public serving lookup, complete fresh-request cancellation, Flow-backed frontier/join and
 session ACK remain required before enabling the paid-group capability. The control-plane read responses and provider response in this

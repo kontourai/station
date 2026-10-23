@@ -40,6 +40,7 @@ type StopSettlement = 'acknowledged' | 'completed' | 'deadline' | 'unconfirmed';
  */
 interface PendingTurnInterrupt {
   expiresAt: number;
+  assertCurrent?: () => void;
   clientTurnId?: string;
   /** Bound by `sendTurn` once its dispatch resolves to a provider turn. */
   turnId?: string;
@@ -262,7 +263,12 @@ export class CooperativeStop {
     }
     if (pending.turnId !== undefined && pending.turnId !== event.turnId) return;
     this.clearPendingTurnInterrupt(event.threadId);
-    this.dispatchDeferredInterrupt(adapter, event.threadId, event.turnId);
+    this.dispatchDeferredInterrupt(
+      adapter,
+      event.threadId,
+      event.turnId,
+      pending.assertCurrent,
+    );
   }
 
   /** Records a held Stop and arms its own expiry (see {@link PendingTurnInterrupt}). */
@@ -294,16 +300,21 @@ export class CooperativeStop {
     adapter: ProviderAdapterShape,
     threadId: string,
     turnId: string | undefined,
+    assertCurrent?: () => void,
   ): void {
-    void this.interruptUserTurnCooperatively(adapter, threadId, turnId).catch(
-      (error) => {
-        this.deps.logger.warn('Deferred user stop could not be applied', {
-          provider: adapter.provider,
-          threadId,
-          error: errorMessage(error),
-        });
-      },
-    );
+    void this.interruptUserTurnCooperatively(
+      adapter,
+      threadId,
+      turnId,
+      'user',
+      assertCurrent,
+    ).catch((error) => {
+      this.deps.logger.warn('Deferred user stop could not be applied', {
+        provider: adapter.provider,
+        threadId,
+        error: errorMessage(error),
+      });
+    });
   }
 
   /**
@@ -345,7 +356,12 @@ export class CooperativeStop {
       return;
     }
     this.clearPendingTurnInterrupt(threadId);
-    this.dispatchDeferredInterrupt(adapter, threadId, turnId);
+    this.dispatchDeferredInterrupt(
+      adapter,
+      threadId,
+      turnId,
+      pending.assertCurrent,
+    );
   }
 
   /**
@@ -370,7 +386,9 @@ export class CooperativeStop {
     threadId: string,
     requestedTurnId?: string,
     initiatedBy: 'user' | 'stall' = 'user',
+    assertCurrent?: () => void,
   ): Promise<InterruptTurnResult> {
+    assertCurrent?.();
     const existing = this.cooperativeStops.get(threadId);
     if (existing) {
       // A second Stop for the same thread rides the first one's task rather
@@ -412,6 +430,7 @@ export class CooperativeStop {
       state,
       completed,
       initiatedBy,
+      assertCurrent,
     );
     this.cooperativeStops.set(threadId, state);
     try {
@@ -429,8 +448,10 @@ export class CooperativeStop {
     state: CooperativeStopTask,
     completed: Promise<void>,
     initiatedBy: 'user' | 'stall',
+    assertCurrent?: () => void,
   ): Promise<StopSettlement> {
-    const settlement = await new Promise<StopSettlement>((resolve) => {
+    const settlement = await new Promise<StopSettlement>((resolve, reject) => {
+      let authorityLost = false;
       let settled = false;
       const settle = (next: StopSettlement) => {
         if (settled) return;
@@ -444,7 +465,15 @@ export class CooperativeStop {
       );
       completed.then(() => settle('completed'));
       void Promise.resolve()
-        .then(() => adapter.interruptTurn(threadId, state.turnId))
+        .then(() => {
+          try {
+            assertCurrent?.();
+          } catch (error) {
+            authorityLost = true;
+            throw error;
+          }
+          return adapter.interruptTurn(threadId, state.turnId);
+        })
         .then((result) => {
           if (
             isProviderInterruptTurnResult(result) &&
@@ -469,6 +498,12 @@ export class CooperativeStop {
           );
         })
         .catch((error) => {
+          if (authorityLost) {
+            settled = true;
+            clearTimeout(timer);
+            reject(error);
+            return;
+          }
           // A cancel rejection is not an engine error for the user who asked
           // to stop. It is simply no acknowledgement, so the named budget
           // still owns the transition to the existing hard teardown.
@@ -507,6 +542,8 @@ export class CooperativeStop {
       this.persistResumableStoppedSession(adapter.provider, threadId);
       return settlement;
     }
+
+    assertCurrent?.();
 
     // The deadline is the sole path to hard teardown. Persist both the
     // derived fact and a terminal turn before touching the engine process so
