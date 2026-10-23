@@ -367,7 +367,8 @@ describe('project guest administration over the production composition', () => {
     });
     const context = deepStub({
       projectMembership: membership.service,
-      projectSharedTasks: useLocalAccounts ? membership.sharedTasks : undefined,
+      projectSharedTasks:
+        useLocalAccounts || withAgent ? membership.sharedTasks : undefined,
       deploymentAuthentication: useLocalAccounts
         ? localAccounts
         : authentication,
@@ -1077,6 +1078,29 @@ describe('project guest administration over the production composition', () => {
   test('mounted Room Agent uses canonical orchestration, owner reads and selected answer publication without exposing private coordinates', async () => {
     const h = await setup(true);
     const { project } = await h.shareWithGuestAdmin('agent-room', 'Agent Room');
+    const shared = await h.graph.createTask({
+      projectId: project.id,
+      title: 'Explicit shared recap Task',
+      description: 'PRIVATE DESCRIPTION',
+    });
+    await h.graph.createTask({
+      projectId: project.id,
+      title: 'PRIVATE RECAP TASK SENTINEL',
+    });
+    const portable = new ProjectManifestStore(h.homeDir, h.storage).readRecord(
+      project.slug,
+    )!;
+    const taskShare = h.membership.sharedTasks.share({
+      scope: {
+        stationId: STATION_ID,
+        localProjectId: project.id,
+        localProjectSlug: project.slug,
+        portableProjectId: portable.id,
+      },
+      taskId: shared.id,
+      taskCreatedAt: shared.createdAt,
+      sharedBy: 'operator',
+    });
     const root = join(h.homeDir, 'room-workspace');
     mkdirSync(root);
     await h.projectService.updateProject('agent-room', {
@@ -1157,6 +1181,22 @@ describe('project guest administration over the production composition', () => {
     const sessionId = h.start.mock.calls[0][0].threadId;
     expect(h.start.mock.calls[0][0].metadata?.userId).toBe(view.actor.id);
     expect(h.send.mock.calls[0][0].input).toContain('Answer this room request');
+    const context = String(h.send.mock.calls[0][0].input);
+    const taskEvidence = JSON.parse(context.split('\n')[0]!).tasks;
+    expect(taskEvidence).toMatchObject({
+      coverage: 'shared_subset',
+      items: [
+        {
+          taskId: shared.id,
+          taskCreatedAt: shared.createdAt,
+          shareId: taskShare.shareId,
+          title: shared.title,
+          status: 'todo',
+        },
+      ],
+    });
+    expect(context).not.toMatch(/PRIVATE|childCount/);
+
     expect((await h.request(`${base}/agents`, post(input))).status).toBe(200);
     expect(h.start).toHaveBeenCalledTimes(1);
     const events = {

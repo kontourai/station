@@ -162,6 +162,7 @@ import {
 } from '../request-read-authority-context.js';
 import { createProjectRoomAccess } from './project-room-access.js';
 import { projectRoomAgentExecution } from './project-room-agent-runtime.js';
+import { createProjectRoomTaskContext } from './project-room-task-context.js';
 import { runtimeToolLibraryDependencies } from './tool-library-runtime.js';
 
 export {
@@ -6029,22 +6030,22 @@ export function configureRuntimeRoutes(
       },
     ),
   );
-  if (
-    context.projectMembership &&
-    context.projectSharedTasks &&
-    projectTaskRoomRuntime
-  ) {
-    const sharedTasks = new ProjectSharedTaskService({
-      store: context.projectSharedTasks,
-      readTask: (taskId) => context.taskGraphService.readTaskView(taskId),
-      projectCandidates: (identity) =>
-        context.projectService
-          .listProjects()
-          .filter(
-            (project) => project.id === identity || project.slug === identity,
-          )
-          .map((project) => ({ id: project.id, slug: project.slug })),
-    });
+  const sharedTasks = context.projectSharedTasks
+    ? new ProjectSharedTaskService({
+        store: context.projectSharedTasks,
+        withTaskReadFence: (operation) =>
+          context.taskGraphService.withTaskReadFence(operation),
+        readTask: (taskId) => context.taskGraphService.readTaskView(taskId),
+        projectCandidates: (identity) =>
+          context.projectService
+            .listProjects()
+            .filter(
+              (project) => project.id === identity || project.slug === identity,
+            )
+            .map((project) => ({ id: project.id, slug: project.slug })),
+      })
+    : undefined;
+  if (context.projectMembership && sharedTasks && projectTaskRoomRuntime) {
     const sharedAuthority = (request: Request) => {
       const membership = projectMembershipAuthority(request);
       return {
@@ -6402,6 +6403,48 @@ export function configureRuntimeRoutes(
                   requester,
                   executionRoot,
                   assertCurrent: current,
+                  taskContext: createProjectRoomTaskContext({
+                    request,
+                    scope,
+                    requesterId: requester.id,
+                    requireView: async () => {
+                      const member = await authenticatedProjectMember(request);
+                      return () => {
+                        current();
+                        if (
+                          !_caps.view ||
+                          !runtimeRequestPrincipalMayAccessHttpRoute(
+                            request,
+                            context.environmentSecurityService,
+                            {
+                              method: 'GET',
+                              path: `/api/projects/${slug}/room`,
+                            },
+                          )
+                        )
+                          throw new ProjectMembershipRefusal('forbidden');
+                        if (
+                          member &&
+                          !context.projectMembership
+                            ?.admissionsForResolvedPrincipal(requester.id)
+                            .some(
+                              (admission) =>
+                                Object.entries(scope).every(
+                                  ([key, value]) =>
+                                    admission.scope[
+                                      key as keyof typeof scope
+                                    ] === value,
+                                ) && admission.member.actions.includes('view'),
+                            )
+                        )
+                          throw new ProjectMembershipRefusal('forbidden');
+                      };
+                    },
+                    service: sharedTasks,
+                    principalId: async () =>
+                      (await projectMembershipAuthority(request).current())
+                        .principal.id,
+                  }),
                   refresh: async () => {
                     const actor =
                       await projectMembershipAuthority(request).current();
