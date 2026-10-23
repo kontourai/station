@@ -3,6 +3,7 @@ import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
+import { PROJECT_ROOM_LIMITS } from '@kontourai/station-contracts/project-room';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -45,21 +46,26 @@ describe('Project Room explicit agent participation', () => {
     };
     room.store.ensureRoom(authority.scope, authority.assertCurrent);
     let launches = 0;
+    let preparations = 0;
     let fail = false;
     let completed = false;
     let terminalFailure = false;
+    let answerText = 'Selected answer';
+    const captures: string[] = [];
     const execution: ProjectRoomAgentExecution = {
       async prepare() {
+        preparations++;
         return { label: 'Registered Agent' };
       },
-      async launch(_, recheck) {
+      async launch(capture, recheck) {
         recheck();
         launches++;
+        captures.push(capture.context);
         if (fail) throw new Error('secret provider stderr');
       },
       async answer() {
         if (terminalFailure) return { failed: true };
-        return completed ? { turnId: 'turn', text: 'Selected answer' } : null;
+        return completed ? { turnId: 'turn', text: answerText } : null;
       },
       async cancel() {},
     };
@@ -81,6 +87,10 @@ describe('Project Room explicit agent participation', () => {
       get module() {
         return runtime.module;
       },
+      captures,
+      get preparations() {
+        return preparations;
+      },
       get launches() {
         return launches;
       },
@@ -90,7 +100,8 @@ describe('Project Room explicit agent participation', () => {
       terminalFailure() {
         terminalFailure = true;
       },
-      complete() {
+      complete(text = 'Selected answer') {
+        answerText = text;
         completed = true;
       },
       fail() {
@@ -102,6 +113,145 @@ describe('Project Room explicit agent participation', () => {
       },
     };
   }
+  it.each(['x', '\u0001'])(
+    'rejects a contract-valid maximum %j prompt before reservation or preparation',
+    async (unit) => {
+      const f = fixture();
+      const reserve = vi.spyOn(f.room.store, 'reserveRequest');
+      f.input.text = unit.repeat(PROJECT_ROOM_LIMITS.textBytes);
+      await expect(f.module.request(f.authority, f.input)).rejects.toThrow(
+        'context exceeds limit',
+      );
+      f.restart();
+      await expect(f.module.request(f.authority, f.input)).rejects.toThrow(
+        'context exceeds limit',
+      );
+      expect(reserve).not.toHaveBeenCalled();
+      expect(f.preparations).toBe(0);
+      expect(f.room.store.listPendingRequests(f.authority.scope)).toEqual([]);
+      expect(f.launches).toBe(0);
+    },
+  );
+  it.each(['x', '\u0001'])(
+    'budgets an optional maximum %j note and history without losing the mandatory prompt',
+    async (unit) => {
+      const f = fixture();
+      const source = f.room.store.append(
+        f.authority.scope,
+        f.authority.requester,
+        { intentId: randomUUID(), text: 'history '.repeat(1800) },
+        f.authority.assertCurrent,
+      );
+      f.room.store.updateNote(
+        f.authority.scope,
+        f.authority.requester,
+        {
+          expectedRevision: 0,
+          markdown: unit.repeat(PROJECT_ROOM_LIMITS.noteBytes),
+          sourceMessageIds: [source.messageId],
+        },
+        f.authority.assertCurrent,
+      );
+      f.input.text = 'mandatory '.repeat(1100);
+      const handle = await f.module.request(f.authority, f.input);
+      expect(handle.state).toBe('started');
+      expect(Buffer.byteLength(f.captures[0])).toBeLessThanOrEqual(
+        PROJECT_ROOM_LIMITS.textBytes,
+      );
+      const [frame, history] = f.captures[0]
+        .split('\n')
+        .map((part) => JSON.parse(part));
+      expect(frame.request).toBe(f.input.text);
+      expect(frame.note).toBeNull();
+      expect(frame.coverage).toMatchObject({
+        note: 'omitted_budget',
+        history: 'bounded_recent_suffix',
+      });
+      expect(history).toEqual([]);
+      f.restart();
+      await f.module.request(f.authority, f.input);
+      expect(f.launches).toBe(1);
+      f.complete();
+      expect(
+        (await f.module.reconcile(f.authority, handle.requestId)).state,
+      ).toBe('published');
+    },
+  );
+  it('includes a fitting note and history unchanged', async () => {
+    const f = fixture();
+    const source = f.room.store.append(
+      f.authority.scope,
+      f.authority.requester,
+      { intentId: randomUUID(), text: 'shared source' },
+      f.authority.assertCurrent,
+    );
+    f.room.store.updateNote(
+      f.authority.scope,
+      f.authority.requester,
+      {
+        expectedRevision: 0,
+        markdown: 'reviewed note',
+        sourceMessageIds: [source.messageId],
+      },
+      f.authority.assertCurrent,
+    );
+    await f.module.request(f.authority, f.input);
+    const [frame, history] = f.captures[0]
+      .split('\n')
+      .map((part) => JSON.parse(part));
+    expect(frame.note.markdown).toBe('reviewed note');
+    expect(frame.coverage.note).toBe('included');
+    expect(history.map((m: { text: string }) => m.text)).toEqual([
+      'shared source',
+    ]);
+  });
+  it.each(['x', '😀'])(
+    'durably refuses oversized %j answers without publishing private content or retrying after reopen',
+    async (unit) => {
+      const f = fixture();
+      const handle = await f.module.request(f.authority, f.input);
+      f.complete(
+        unit.repeat(PROJECT_ROOM_LIMITS.textBytes) +
+          'private transcript sentinel',
+      );
+      expect(
+        await f.module.reconcile(f.authority, handle.requestId),
+      ).toMatchObject({ state: 'uncertain', failure: 'publication_failed' });
+      f.restart();
+      f.complete('later changed answer must not publish');
+      expect(
+        await f.module.reconcile(f.authority, handle.requestId),
+      ).toMatchObject({ state: 'uncertain', failure: 'publication_failed' });
+      await f.module.request(f.authority, f.input);
+      expect(f.module.inspect(f.authority, handle.requestId).failure).toBe(
+        'publication_failed',
+      );
+      expect(f.room.store.history(f.authority.scope).messages).toEqual([]);
+      expect(f.launches).toBe(1);
+    },
+  );
+  it('publishes a maximum-size selected answer unchanged and repairs its acknowledgement after reopen', async () => {
+    const f = fixture();
+    const handle = await f.module.request(f.authority, f.input);
+    const text = 'x'.repeat(PROJECT_ROOM_LIMITS.textBytes);
+    f.complete(text);
+    const finish = vi
+      .spyOn(f.room.store, 'finishPublished')
+      .mockImplementationOnce(() => {
+        throw new Error('lost acknowledgement');
+      });
+    await expect(
+      f.module.reconcile(f.authority, handle.requestId),
+    ).rejects.toThrow('lost acknowledgement');
+    finish.mockRestore();
+    f.restart();
+    expect(
+      (await f.module.reconcile(f.authority, handle.requestId)).state,
+    ).toBe('published');
+    expect(
+      f.room.store.history(f.authority.scope).messages.map((m) => m.text),
+    ).toEqual([text]);
+  });
   it('real canonical start reaches the adapter only while the captured compute authority remains current', async () => {
     for (const revokeAtSpawn of [false, true]) {
       const f = fixture();

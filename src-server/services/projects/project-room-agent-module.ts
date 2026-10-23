@@ -2,10 +2,12 @@ import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
-import type {
-  ProjectRoomActor,
-  ProjectRoomAgentRequest,
-  ProjectRoomAgentRequestInput,
+import {
+  PROJECT_ROOM_LIMITS,
+  type ProjectRoomActor,
+  type ProjectRoomAgentRequest,
+  type ProjectRoomAgentRequestInput,
+  parseProjectRoomAgentRequestInput,
 } from '@kontourai/station-contracts/project-room';
 import { openPrivateSqlite } from '../../utils/private-sqlite.js';
 import { ProjectRoomStore } from './project-room-store.js';
@@ -43,7 +45,8 @@ export interface ProjectRoomAgentExecution {
 export type ProjectRoomAgentFailure =
   | 'agent_unavailable'
   | 'launch_uncertain'
-  | 'execution_failed';
+  | 'execution_failed'
+  | 'publication_failed';
 export type ProjectRoomAgentHandle = {
   failure?: ProjectRoomAgentFailure;
 } & Omit<ProjectRoomAgentRequest, 'sessionId' | 'executionCorrelationId'>;
@@ -130,22 +133,9 @@ export class ProjectRoomAgentModule {
     input: ProjectRoomAgentRequestInput,
   ): Promise<ProjectRoomAgentHandle> {
     this.check(authority);
-    const request = this.store.reserveRequest(
-      authority.scope,
-      authority.requester,
-      input,
-      () => this.check(authority),
-    );
-    if (request.state !== 'reserved')
-      return this.inspect(authority, request.requestId);
-    let agent: { label: string };
-    try {
-      agent = await this.execution.prepare(request.agentId, authority);
-    } catch {
-      this.failure(request.requestId, 'agent_unavailable');
-      return this.inspect(authority, request.requestId);
-    }
-    this.check(authority);
+    // Serialize the mandatory request/frame before reserving or preparing an effect.
+    // The wire budget is independent of the raw-text admission limit (JSON may expand).
+    const value = parseProjectRoomAgentRequestInput(input);
     const first = this.store.history(authority.scope, 0, 100);
     const note = this.store.getNote(authority.scope);
     const messages = [...first.messages];
@@ -166,17 +156,44 @@ export class ProjectRoomAgentModule {
     )
       ? note
       : null;
-    const prefix = JSON.stringify({
-      request: request.text,
-      note: reviewedNote
-        ? {
-            markdown: reviewedNote.markdown,
-            revision: reviewedNote.revision,
-            sourceMessageIds: reviewedNote.sourceMessageIds,
-          }
-        : null,
+    const frame: {
+      request: string;
+      note: null | {
+        markdown: string;
+        revision: number;
+        sourceMessageIds: string[];
+      };
+      checkpoint: ProjectRoomAgentCapture['checkpoint'];
+      coverage: { note: string; history: string };
+    } = {
+      request: value.text,
+      note: null,
       checkpoint: first.checkpoint,
-    });
+      coverage: {
+        note: reviewedNote
+          ? 'omitted_budget'
+          : note
+            ? 'omitted_unreviewed'
+            : 'absent',
+        history: 'bounded_recent_suffix',
+      },
+    };
+    const serialize = (selected: unknown[]) =>
+      `${JSON.stringify(frame)}\n${JSON.stringify(selected)}`;
+    if (Buffer.byteLength(serialize([])) > PROJECT_ROOM_LIMITS.textBytes)
+      throw new Error('Project room agent context exceeds limit');
+    if (reviewedNote) {
+      frame.note = {
+        markdown: reviewedNote.markdown,
+        revision: reviewedNote.revision,
+        sourceMessageIds: reviewedNote.sourceMessageIds,
+      };
+      frame.coverage.note = 'included';
+      if (Buffer.byteLength(serialize([])) > PROJECT_ROOM_LIMITS.textBytes) {
+        frame.note = null;
+        frame.coverage.note = 'omitted_budget';
+      }
+    }
     const selected: unknown[] = [];
     for (const message of messages.reverse()) {
       const candidate = {
@@ -186,17 +203,30 @@ export class ProjectRoomAgentModule {
         seq: message.seq,
       };
       if (
-        Buffer.byteLength(
-          `${prefix}\n${JSON.stringify([candidate, ...selected])}`,
-        ) >
-        16 * 1024
+        Buffer.byteLength(serialize([candidate, ...selected])) >
+        PROJECT_ROOM_LIMITS.textBytes
       )
         break;
       selected.unshift(candidate);
     }
-    const context = `${prefix}\n${JSON.stringify(selected)}`;
-    if (Buffer.byteLength(context) > 16 * 1024)
-      throw new Error('Project room agent context exceeds limit');
+    const context = serialize(selected);
+    const request = this.store.reserveRequest(
+      authority.scope,
+      authority.requester,
+      value,
+      () => this.check(authority),
+    );
+    if (request.state !== 'reserved')
+      return this.inspect(authority, request.requestId);
+    let agent: { label: string };
+    try {
+      agent = await this.execution.prepare(request.agentId, authority);
+    } catch {
+      this.failure(request.requestId, 'agent_unavailable');
+      return this.inspect(authority, request.requestId);
+    }
+    this.check(authority);
+
     const capture: ProjectRoomAgentCapture = {
       scope: { ...authority.scope },
       requester: { ...authority.requester },
@@ -259,8 +289,13 @@ export class ProjectRoomAgentModule {
     const request = this.store.getRequest(authority.scope, id);
     const capture = this.capture(id);
     this.check(authority, capture ?? undefined);
-    if (!capture || !['started', 'uncertain'].includes(request.state))
-      return publicHandle(request);
+    const handle = this.inspect(authority, id);
+    if (
+      !capture ||
+      !['started', 'uncertain'].includes(request.state) ||
+      handle.failure === 'publication_failed'
+    )
+      return handle;
     let answer: Awaited<ReturnType<ProjectRoomAgentExecution['answer']>>;
     try {
       answer = await this.execution.answer(capture);
@@ -284,6 +319,17 @@ export class ProjectRoomAgentModule {
       return this.inspect(authority, id);
     }
     if (answer) {
+      // Publish only a representable selected answer, never a private transcript
+      // excerpt or provider diagnostic. This durable refusal fences future retries.
+      if (
+        !answer.text.trim() ||
+        Buffer.byteLength(answer.text) > PROJECT_ROOM_LIMITS.textBytes
+      ) {
+        this.failure(id, 'publication_failed');
+        if (request.state === 'started')
+          this.store.markUncertain(authority.scope, id, current);
+        return this.inspect(authority, id);
+      }
       const message = this.store.append(
         authority.scope,
         { kind: 'agent', id: capture.agentId, displayName: capture.agentLabel },
