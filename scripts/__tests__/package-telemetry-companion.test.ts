@@ -67,7 +67,7 @@ test('rejects changed bundles, extra payloads and a manifest promoted to release
   const extra = join(directory, 'unexpected.mjs');
   await writeFile(extra, 'extra');
   await expect(verifyTelemetryCompanion(directory)).rejects.toThrow(
-    'inventory differs',
+    'inventory exceeds its bound',
   );
   await rm(extra);
   const manifestPath = join(directory, 'companion-manifest.json');
