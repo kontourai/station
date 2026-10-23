@@ -18,7 +18,7 @@ import {
 } from '@kontourai/station-sdk/task-relationships';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Empty, SkeletonList } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
@@ -46,9 +46,10 @@ export function TaskRelationships({
     task.createdAt,
     task.projectId,
   ]);
-  const previous = useRef(key);
   useLayoutEffect(() => {
-    if (previous.current !== key) {
+    try {
+      if (sessionStorage.getItem('station-task-relationship:scope') === key)
+        return;
       for (const panel of ['children', 'work-chats']) {
         try {
           sessionStorage.removeItem(`station-task-relationship:${panel}`);
@@ -56,7 +57,9 @@ export function TaskRelationships({
           /* New scope cannot restore the old envelope. */
         }
       }
-      previous.current = key;
+      sessionStorage.setItem('station-task-relationship:scope', key);
+    } catch {
+      /* Sending still requires successful storage. */
     }
   }, [key]);
   if (!scope) return <p>Task relationships unavailable.</p>;
@@ -383,6 +386,7 @@ function WorkChats({
           <Button
             onClick={() => {
               if (!retained.clear()) return;
+              setSelected('');
               mutation.reset();
             }}
           >

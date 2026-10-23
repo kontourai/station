@@ -266,3 +266,43 @@ test('an unconfirmed chat update guards navigation and stopping retries explains
   expect(screen.queryByRole('button', { name: 'Retry update' })).toBeNull();
   expect(state.update).toHaveBeenCalledTimes(1);
 });
+
+test('a different Task retires both panels even across page unmounts', async () => {
+  state.create.mockRejectedValue(new Error('lost acknowledgement'));
+  const mounted = render(view());
+  fireEvent.change(screen.getByLabelText('Subtask title'), {
+    target: { value: 'Old work' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Add subtask' }));
+  await screen.findByRole('button', { name: 'Retry creation' });
+  mounted.unmount();
+  const other = render(view('work-chats', { ...task, id: 'other-task' }));
+  other.unmount();
+  render(view());
+  expect(screen.queryByRole('button', { name: 'Retry creation' })).toBeNull();
+  expect(state.create).toHaveBeenCalledTimes(1);
+});
+
+test.each(['counterfeit', 'overlong', 'wrong-parent'])(
+  'rejects invalid retained child input: %s',
+  async (change) => {
+    state.create.mockRejectedValue(new Error('lost acknowledgement'));
+    const mounted = render(view());
+    fireEvent.change(screen.getByLabelText('Subtask title'), {
+      target: { value: 'Saved work' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Add subtask' }));
+    await screen.findByRole('button', { name: 'Retry creation' });
+    mounted.unmount();
+    const key = 'station-task-relationship:children';
+    const saved = JSON.parse(sessionStorage.getItem(key) || 'null');
+    if (change === 'counterfeit') saved.input.task.createdBy = 'owner';
+    if (change === 'overlong') saved.input.task.title = 'x'.repeat(241);
+    if (change === 'wrong-parent')
+      saved.input.parent.taskCreatedAt = 'different';
+    sessionStorage.setItem(key, JSON.stringify(saved));
+    render(view());
+    expect(screen.queryByRole('button', { name: 'Retry creation' })).toBeNull();
+    expect(state.create).toHaveBeenCalledTimes(1);
+  },
+);
