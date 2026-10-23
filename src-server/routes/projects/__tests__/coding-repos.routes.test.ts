@@ -1,13 +1,7 @@
-import {
-  mkdirSync,
-  mkdtempSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileTreeService } from '../../../services/projects/file-tree-service.js';
 import { execGitSync } from '../../../utils/git-exec.js';
 import { createCodingRoutes, DISCOVER_MAX_ROOTS } from '../coding.js';
@@ -20,6 +14,10 @@ import { createCodingRoutes, DISCOVER_MAX_ROOTS } from '../coding.js';
  */
 
 // #2412: every read names its Project; the workspace below is Project `w`.
+// `lifetime: 'file'` — the beforeAll-created workspaces are shared by every
+// test in the file, and the tracker removes them at the file's afterAll even
+// when an assertion fails first (#2421).
+const makeTempDir = trackTempDirs({ lifetime: 'file' });
 let workspace: string;
 // A deliberately over-broad workspace (more repos than discovery may report).
 let swarm: string;
@@ -49,7 +47,7 @@ function initRepo(dir: string, branch: string) {
 describe('coding multi-repo discovery (real git, no mocks)', () => {
   beforeAll(() => {
     // A workspace that is NOT itself a repo but contains several.
-    workspace = mkdtempSync(join(tmpdir(), 'station-multirepo-'));
+    workspace = makeTempDir('station-multirepo-');
     initRepo(join(workspace, 'repo-a'), 'main');
     initRepo(join(workspace, 'repo-b'), 'develop');
     initRepo(join(workspace, 'group', 'repo-c'), 'feature'); // one level deeper
@@ -61,15 +59,10 @@ describe('coding multi-repo discovery (real git, no mocks)', () => {
     // back to an unbounded walk (and its unbounded git fan-out) fails here.
     // A `.git` directory is enough for discovery; the enrichment read refuses
     // these quickly and they still list, which is the behavior under test.
-    swarm = mkdtempSync(join(tmpdir(), 'station-repo-swarm-'));
+    swarm = makeTempDir('station-repo-swarm-');
     for (let index = 0; index < DISCOVER_MAX_ROOTS + 6; index += 1) {
       mkdirSync(join(swarm, `repo-${index}`, '.git'), { recursive: true });
     }
-  });
-
-  afterAll(() => {
-    rmSync(workspace, { recursive: true, force: true });
-    rmSync(swarm, { recursive: true, force: true });
   });
 
   test('discovers every nested repo under a non-repo workspace', async () => {
