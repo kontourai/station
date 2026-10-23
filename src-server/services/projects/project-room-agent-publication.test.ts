@@ -4,7 +4,10 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { EventBus } from '../orchestration/event-bus.js';
-import { createProjectRoomAgentRuntime } from './project-room-agent-module.js';
+import {
+  createProjectRoomAgentRuntime,
+  type ProjectRoomAgentExecution,
+} from './project-room-agent-module.js';
 import { createProjectRoomAgentPublication } from './project-room-agent-publication.js';
 import { createProjectRoomRuntime } from './project-room-store.js';
 
@@ -43,7 +46,7 @@ describe('Room completion observation lifecycle', () => {
     const answer = vi.fn(async () =>
       completed ? { turnId: 'turn', text: 'Shared answer' } : null,
     );
-    const runtime = createProjectRoomAgentRuntime(home, room.store, {
+    const execution: ProjectRoomAgentExecution = {
       async prepare() {
         return { label: 'Agent' };
       },
@@ -52,7 +55,8 @@ describe('Room completion observation lifecycle', () => {
       },
       answer,
       async cancel() {},
-    });
+    };
+    let runtime = createProjectRoomAgentRuntime(home, room.store, execution);
     const eventBus = new EventBus();
     let observer = createProjectRoomAgentPublication({
       eventBus,
@@ -66,13 +70,17 @@ describe('Room completion observation lifecycle', () => {
     return {
       authority,
       room,
-      runtime,
+      get runtime() {
+        return runtime;
+      },
       answer,
       get observer() {
         return observer;
       },
       async reopen() {
         await observer.close();
+        runtime.close();
+        runtime = createProjectRoomAgentRuntime(home, room.store, execution);
         observer = createProjectRoomAgentPublication({
           eventBus,
           module: runtime.module,
