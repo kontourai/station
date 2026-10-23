@@ -22,7 +22,11 @@
 
     "src-server/services/orchestration/delegation-group-persistence.ts",
 
-    "src-server/services/orchestration/__tests__/delegation-group-sdk-source-wire-owner.test.ts"
+    "src-server/services/orchestration/__tests__/delegation-group-sdk-source-wire-owner.test.ts",
+
+    "src-server/runtime/conversation/bounded-api-provider-contract.ts",
+
+    "src-server/runtime/conversation/__tests__/bounded-api-provider-contract.test.ts"
   ],
 
   "checks": [
