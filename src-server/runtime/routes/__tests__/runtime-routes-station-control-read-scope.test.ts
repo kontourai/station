@@ -141,9 +141,7 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     for (const close of closers.splice(0)) await close();
   });
 
-  async function setup(
-    operatorScope = 'orchestration:read orchestration:operate',
-  ) {
+  async function setup() {
     __resetStationServerSelfAttestationForTests();
     const home = makeTempDir('station-control-read-scope-');
 
@@ -399,7 +397,7 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
           credential === OPERATOR_CREDENTIAL,
         resolveGrantedScope: (credential: string) =>
           credential === OPERATOR_CREDENTIAL
-            ? operatorScope
+            ? 'orchestration:read orchestration:operate'
             : undefined,
         identifyDevice: () => undefined,
         canSharePersonalConversation: () => false,
@@ -484,9 +482,7 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
   }
 
   test('companion host prerequisites require the operator in person through the production auth boundary', async () => {
-    const { base } = await setup(
-      'orchestration:read orchestration:operate home:control',
-    );
+    const { base } = await setup();
     companionProbe.mockClear();
     const path = '/api/operator/telemetry-companion/prerequisites';
     expect(await asOperatorUi(base, path)).toEqual({
