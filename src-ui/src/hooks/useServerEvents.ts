@@ -179,11 +179,15 @@ const DATA_HANDLERS: Record<
 };
 
 const EVENT_HANDLERS: Record<string, (queryClient: any) => void> = {
-  [SERVER_EVENTS.AGENTS_CHANGED]: (qc) =>
-    qc.invalidateQueries({ queryKey: ['agents'], refetchType: 'none' }),
+  [SERVER_EVENTS.AGENTS_CHANGED]: (qc) => {
+    qc.invalidateQueries({ queryKey: ['agents'] });
+    qc.invalidateQueries({ queryKey: ['connections', 'engines'] });
+    qc.invalidateQueries({ queryKey: ['acp-connections'] });
+  },
   [SERVER_EVENTS.ACP_STATUS]: (qc) => {
     qc.invalidateQueries({ queryKey: ['agents'] });
     qc.invalidateQueries({ queryKey: ['acp-connections'] });
+    qc.invalidateQueries({ queryKey: ['connections', 'engines'] });
     qc.invalidateQueries({ queryKey: ['system-status'] });
   },
   [SERVER_EVENTS.CONFIG_CHANGED]: (qc) => {
