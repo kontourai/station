@@ -34,13 +34,6 @@ export function ProjectSourcesSection({
               authority={authority}
             />
           )}
-          {projectId && (
-            <ProjectOperatorSetup
-              slug={slug}
-              projectId={projectId}
-              authority={authority}
-            />
-          )}
           <ProjectKnowledgeSources
             slug={slug}
             projectId={projectId}
@@ -48,6 +41,13 @@ export function ProjectSourcesSection({
           />
           {projectId && (
             <ProjectS3Sources
+              slug={slug}
+              projectId={projectId}
+              authority={authority}
+            />
+          )}
+          {projectId && (
+            <ProjectOperatorSetup
               slug={slug}
               projectId={projectId}
               authority={authority}

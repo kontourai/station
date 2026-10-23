@@ -89,6 +89,9 @@ test('setup previews before separate authorization and recovers a lost run respo
     );
   };
   let view = mount();
+  fireEvent.click(
+    screen.getByText('Optional repository setup', { exact: true }),
+  );
   fireEvent.change(screen.getByLabelText('Setup command'), {
     target: { value: 'npm ci' },
   });

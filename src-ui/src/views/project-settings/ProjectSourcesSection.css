@@ -51,3 +51,16 @@
   overflow-wrap: anywhere;
   min-width: 0;
 }
+
+.project-sources__form .project-sources__consent {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-3);
+  min-height: 44px;
+}
+.project-sources__consent input[type="checkbox"] {
+  width: var(--k-space-4);
+  min-height: var(--k-space-4);
+  height: var(--k-space-4);
+  flex-shrink: 0;
+}

@@ -1238,7 +1238,8 @@ See the [API contract](../reference/api.md#repository-acquisition).
 ## Review local repository setup
 
 Repository acquisition and attachment run no setup. After creating the Project,
-open **Project settings → Sources → Review and run setup**. Enter a command you
+open **Project settings → Sources → Optional repository setup**, then review
+setup. Enter a command you
 trust, its deadline (1–600 seconds; 30 by default), and the execution-directory-relative
 files that affect it. Include manifests, lockfiles and any invoked scripts.
 **Preview setup** records the exact command, deadline, current execution root,
