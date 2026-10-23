@@ -2305,7 +2305,7 @@ button:hover {
 
 /* archive#3309 motion polish. The dock's own height already animates
    (`.chat-dock`'s `transition: height`), but everything the expanded dock
-   ADDS to its bar — the panel toggles, the context meter, the Open/New pair —
+   ADDS to its bar — the panel toggles, the Open/New pair —
    was mounted by the same state change and appeared instantly, so the bar's
    contents popped into a box that was still growing. These mount exactly when
    the pane opens, so a mount-triggered entrance is the whole mechanism: no
