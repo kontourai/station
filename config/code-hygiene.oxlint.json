@@ -1,0 +1,17 @@
+{
+  "jsPlugins": ["@kontourai/veritas/hygiene/oxlint"],
+  "categories": {
+    "correctness": "off"
+  },
+  "rules": {
+    "repo-hygiene/require-suppression-reason": "error"
+  },
+  "overrides": [
+    {
+      "files": ["packages/contracts/src/**/*.test.ts"],
+      "rules": {
+        "repo-hygiene/deterministic-unit-tests": "error"
+      }
+    }
+  ]
+}

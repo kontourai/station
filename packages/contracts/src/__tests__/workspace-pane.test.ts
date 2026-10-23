@@ -760,7 +760,7 @@ describe('WorkspacePane contract', () => {
         ...base,
         renderer: {
           ...baseRenderer,
-          initialArguments: { nested: { createdAt: new Date() } },
+          initialArguments: { nested: { createdAt: new Date(0) } },
         },
       }),
     ).toBeNull();

@@ -235,7 +235,6 @@ export function NoteEditor({
         ) : (
           <div
             className="note-editor-preview"
-            // eslint-disable-next-line react/no-danger
             dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }}
           />
         )}

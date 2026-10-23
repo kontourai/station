@@ -10,7 +10,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 // @ts-expect-error -- @kontourai/veritas ships untyped ESM
-import { classifyNodes } from '@kontourai/veritas';
+import { classifyNodes, loadRepoStandards } from '@kontourai/veritas';
 import { describe, expect, it } from 'vitest';
 import {
   codexHookFeatureFindings,
@@ -26,8 +26,8 @@ function readJson(relativePath: string) {
 }
 
 const repoMap = readJson('.veritas/repo-map.json');
-const standards = readJson(
-  '.veritas/repo-standards/default.repo-standards.json',
+const standards = loadRepoStandards(
+  resolve(rootDir, '.veritas/repo-standards/default.repo-standards.json'),
 );
 const inventory = readJson(
   '.veritas/proof-families/repo-guardrails.families.json',
