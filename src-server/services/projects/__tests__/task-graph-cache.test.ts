@@ -79,6 +79,64 @@ describe('Task graph read snapshots', () => {
     expect(readFileSync(path, 'utf8')).toBe(source);
   });
 
+  test('keeps valid deep reference metadata readable without retaining caller mutations', async () => {
+    const { service, path, graph } = fixture();
+    const metadataText = `${'{"n":'.repeat(2500)}0${'}'.repeat(2500)}`;
+    expect(Buffer.byteLength(metadataText)).toBe(15_001);
+    const unrelatedId = '33333333-3333-4333-8333-333333333333';
+    const source = JSON.stringify({
+      ...graph,
+      tasks: [
+        ...graph.tasks,
+        { ...graph.tasks[0], id: unrelatedId, title: 'Task B' },
+      ],
+      links: [
+        {
+          id: '22222222-2222-4222-8222-222222222222',
+          sourceType: 'task',
+          sourceId: taskId,
+          targetType: 'external',
+          targetId: 'issue:1',
+          relationType: 'references_external',
+          confidence: 1,
+          createdAt: '2026-10-01T00:00:00.000Z',
+          source: 'user',
+          metadata: JSON.parse(metadataText),
+        },
+      ],
+    });
+    writeFileSync(path, source);
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      expect(service.readTask(unrelatedId)?.title).toBe('Task B');
+      expect(service.readTaskView(taskId)?.title).toBe('Task A');
+      const read = await service.readTaskGraph(taskId);
+      expect(read?.task.title).toBe('Task A');
+      expect(read?.links).toHaveLength(1);
+      expect(JSON.stringify(read!.links[0].metadata)).toBe(metadataText);
+      read!.links[0].metadata!.n = 'caller edit';
+      read!.task.title = 'caller edit';
+    }
+    expect(
+      service
+        .listTasks()
+        .map((task) => task.title)
+        .sort(),
+    ).toEqual(['Task A', 'Task B']);
+    expect(readFileSync(path, 'utf8')).toBe(source);
+  });
+
+  test('falls back to a fresh validated read when copying a retained snapshot fails', () => {
+    const { service } = fixture();
+    expect(service.readTask(taskId)?.title).toBe('Task A');
+    vi.spyOn(globalThis, 'structuredClone').mockImplementationOnce(() => {
+      throw new RangeError('injected cache-hit clone failure');
+    });
+    const read = service.readTask(taskId)!;
+    expect(read.title).toBe('Task A');
+    read.title = 'caller edit';
+    expect(service.readTask(taskId)?.title).toBe('Task A');
+  });
+
   test.each(['replace', 'in-place'] as const)(
     'observes a same-size %s writer even when mtime is restored',
     (kind) => {
