@@ -86,6 +86,8 @@ interface GroupRunOptions {
   /** Written to the child's stdin, which is then closed. Without it the
    * child's stdin is the null device. */
   input?: Buffer | string;
+  /** Aborting stops the process group, as the deadline does. */
+  signal?: AbortSignal;
 }
 
 type GroupRunError = Error & {
@@ -109,6 +111,16 @@ export function runInProcessGroup(
   options: GroupRunOptions,
 ): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
+    if (options.signal?.aborted) {
+      const error: GroupRunError = new Error(
+        `Command aborted before it started: ${[file, ...args].join(' ')}`,
+      );
+      error.killed = true;
+      error.signal = 'SIGTERM';
+      error.cmd = [file, ...args].join(' ');
+      reject(error);
+      return;
+    }
     const child = trackGroup(
       spawn(file, [...args], {
         cwd: options.cwd,
@@ -148,6 +160,10 @@ export function runInProcessGroup(
       options.timeout && options.timeout > 0
         ? setTimeout(stop, options.timeout)
         : undefined;
+    const signal = options.signal;
+    if (signal?.aborted) stop();
+    else signal?.addEventListener('abort', stop, { once: true });
+    const unlisten = () => signal?.removeEventListener('abort', stop);
     child.stdout?.on('data', (chunk: Buffer) => {
       if (stdoutBytes < maxBuffer)
         stdout.push(chunk.subarray(0, maxBuffer - stdoutBytes));
@@ -170,6 +186,7 @@ export function runInProcessGroup(
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
+      unlisten();
       reject(error);
     });
     // The LEADER's exit is the command's outcome. A process it started that
@@ -190,6 +207,7 @@ export function runInProcessGroup(
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
+      unlisten();
       const code = exited ? exited.code : closeCode;
       const signal = exited ? exited.signal : closeSignal;
       const out = Buffer.concat(stdout).toString('utf8');

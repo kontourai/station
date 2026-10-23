@@ -93,10 +93,26 @@ export function TaskProposalCard({
       });
       navigate(`/tasks/${encodeURIComponent(task.id)}`);
     } catch (error) {
+      // A capacity refusal after the Task was created names it (#4007):
+      // offer to open it rather than a retry that cannot succeed.
+      const createdTaskId =
+        error instanceof StationHttpError &&
+        error.code === 'revision-history-full' &&
+        typeof (error.details as { taskId?: unknown } | undefined)?.taskId ===
+          'string'
+          ? (error.details as { taskId: string }).taskId
+          : undefined;
+      if (createdTaskId) setAcceptedId(createdTaskId);
       setFailure(
         error instanceof StationHttpError && error.status === 409
           ? "This proposal no longer matches the agent's answer. Ask the agent for a fresh proposal."
-          : 'Task creation or brief saving did not finish. Your proposal is kept. Retry Create Task to finish saving; an existing Task will be reused.',
+          : error instanceof StationHttpError &&
+              (error.code === 'task-document-full' ||
+                error.code === 'revision-history-full')
+            ? // The server's own words carry its capacity figure (#4007);
+              // retrying cannot help, so no retry is promised.
+              error.message
+            : 'Task creation or brief saving did not finish. Your proposal is kept. Retry Create Task to finish saving; an existing Task will be reused.',
       );
     }
   }

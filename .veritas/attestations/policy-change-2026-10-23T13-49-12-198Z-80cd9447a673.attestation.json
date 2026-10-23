@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-10-23T13-49-12-198Z-80cd9447a673",
+  "kind": "policy-change",
+  "actor": {
+    "id": "brian",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": null,
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-10-23T13:49:12.198Z",
+  "repoStandardsHash": "sha256:03b4e8ec9e6d2369d81fe31700dd3804df1a1259d3ba4c3e977feb27e17edbed",
+  "repoMapHash": "sha256:9d34778160693b23973e8048f8cfecde7cfec3c6870e17b2913f6a09d9d5532a",
+  "repoMapHashAlgorithm": "public-policy-v1",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-10-22T17-16-19-233Z-906689727ace",
+  "validUntilDays": 90,
+  "notes": "Owner explicitly approved exact historical fingerprint 69ada7f1f6c54fa851b774ceb8ceb9e92c803623:.github/actions/setup-verified-pnpm/bootstrap.mjs:generic-api-key:25. Byte-identical public EC verification root, not a credential; retain all future-location scanning.",
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-10-22T17-16-19-233Z-906689727ace",
+    "approvalRef": "t3-thread://v1/01a16416-4d7f-7a80-8035-6e3a45f50cbd",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-10-23T13-49-12-198Z-80cd9447a673",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "ee542bcfe47163ded7c34d33322b230214ba8f1163f671ff75c20dd9fc998ff8",
+        "validUntil": "2027-01-21T13:49:12.198Z"
+      },
+      "createdAt": "2026-10-23T13:49:12.198Z",
+      "updatedAt": "2026-10-23T13:49:12.198Z",
+      "status": "proposed",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "weak",
+        "reviewerAuthority": "none",
+        "evidenceStrength": "weak",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-10-23T13-49-12-198Z-80cd9447a673",
+      "claimId": "veritas.attestation.policy-change-2026-10-23T13-49-12-198Z-80cd9447a673",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Owner explicitly approved exact historical fingerprint 69ada7f1f6c54fa851b774ceb8ceb9e92c803623:.github/actions/setup-verified-pnpm/bootstrap.mjs:generic-api-key:25. Byte-identical public EC verification root, not a credential; retain all future-location scanning.",
+      "observedAt": "2026-10-23T13:49:12.198Z",
+      "collectedBy": "brian",
+      "integrityRef": "ee542bcfe47163ded7c34d33322b230214ba8f1163f671ff75c20dd9fc998ff8",
+      "metadata": {
+        "actor": {
+          "id": "brian",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-10-23T13:49:12.198Z",
+        "validUntil": "2027-01-21T13:49:12.198Z",
+        "contentHash": "ee542bcfe47163ded7c34d33322b230214ba8f1163f671ff75c20dd9fc998ff8"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-10-23T13-49-12-198Z-80cd9447a673.proposed",
+      "claimId": "veritas.attestation.policy-change-2026-10-23T13-49-12-198Z-80cd9447a673",
+      "status": "proposed",
+      "actor": "brian",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-10-23T13-49-12-198Z-80cd9447a673"
+      ],
+      "createdAt": "2026-10-23T13:49:12.198Z"
+    }
+  },
+  "recordIntegrity": {
+    "algorithm": "veritas-attestation-record-v1",
+    "digest": "d682f94bb1bdd5958f9cf7b88ea1643e16e3d1a7a191374957697d37584d135b"
+  }
+}

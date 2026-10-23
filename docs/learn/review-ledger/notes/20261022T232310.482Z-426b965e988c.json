@@ -1,0 +1,13 @@
+{
+  "revision": "d1debbf80e7ffa47405de188da8162301647f79a",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the Task read-worker and TaskDispatcher sections against the d1debbf80e7 delta: TaskGraph now imports OrchestrationService only as a type, and loads the existing OrchestrationCommandDispatchError constructor only after a dispatch start throws. The same instanceof/receipt-status/outcome checks remain. Task search still uses the canonical readTaskGraphForIsolatedSearch path and the unchanged worker protocol; no command schema, authorization, graph transition, deadline or response envelope changed. This is an execution-import boundary repair, with packaging/dispatch evidence kept separate from the architectural description.","inputs":["docs/architecture/module-map.md","src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Checked this reference's seeded acceptance-control dispatch description against d1debbf80e7: provider task-dispatch, Session association, attribution and shared-document persistence are unchanged. The only source delta defers loading an existing error constructor until a failed engine start; a seeded dispatch still starts no external runtime. This review does not claim a new two-browser/native/provider acceptance run.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the Task mutations, Task room requests and unified-search response descriptions against d1debbf80e7. The public SDK exports, invalidations, routes and available/not-found/unavailable shapes are unchanged. The source repair changes only when TaskGraph loads the existing server error constructor; the rejection/indeterminate conditions and error identity stay the same.","inputs":["docs/reference/sdk.md","src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the Task/workspace topic and dispatch description against d1debbf80e7. Starting the Task Session, first-turn brief delivery, graph identity, person-only status and memory APIs are unchanged. The same server dispatch error class is now loaded only on a thrown start, keeping execution initialization off the read-only worker import path. No wording change is needed for that private import boundary; no broader topic audit or new live-provider evidence is claimed.","inputs":["docs/reference/station-docs.md","src-server/services/projects/task-graph-service.ts"]}
+  ]
+}

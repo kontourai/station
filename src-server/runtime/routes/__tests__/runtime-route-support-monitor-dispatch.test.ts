@@ -98,6 +98,9 @@ test("an external monitor's Task session is the operator's to read and acts for 
     'task-monitor',
     expect.objectContaining({
       sourceSurface: 'external-monitor',
+      // #4005: a monitor keeps its seeded Session; with an Agent and no
+      // provider the dispatch would start the Agent's engine.
+      provider: 'task-dispatch',
       ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
       ownerAttribution: 'unattributed-agent',
     }),

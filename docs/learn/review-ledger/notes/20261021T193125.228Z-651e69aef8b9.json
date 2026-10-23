@@ -1,0 +1,7 @@
+{
+  "revision": "bdd5e158bbb51dbe070883afb7e858664aded0c8",
+
+  "notes": [
+    {"path":"docs/learn/media/shared-task-document.png","note":"Looked at the capture: a TODO Task. The #4003 Learning change renders TaskLearningPanel only for a done Task, adds its CSS classes, and adds personTaskLearningAccess to the room runtime; none changes what this TODO Task view shows, so the capture stays as it is.","inputs":["docs/learn/media/shared-task-document.png","src-server/services/orchestration/project-task-room-runtime.ts","src-ui/src/views/TaskWorkspaceView.css","src-ui/src/views/TaskWorkspaceView.tsx"]}
+  ]
+}

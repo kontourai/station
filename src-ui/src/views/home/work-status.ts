@@ -1,6 +1,6 @@
 import { SESSION_STATUS_WORDS } from '@kontourai/station-contracts/session-attention';
 import { formatDuration } from '../../utils/relativeTime';
-import type { HomeWorkItem } from './home-view-model';
+import { type HomeWorkItem, TASK_AWAITS_ANSWER_LABEL } from './home-view-model';
 import type { WorkAttentionKind, WorkFacts } from './work-facts';
 
 /**
@@ -128,6 +128,9 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
     const word = item.kindLabel;
     switch (item.lifecycleLabel) {
       case 'Needs attention':
+        // #4003: an open Task-memory question asks a person for an answer.
+        if (word === TASK_AWAITS_ANSWER_LABEL)
+          return { rung: 'answer', lane: 'needsYou', tone: 'attention', word };
         // Only a blocked Task wears the lock; review waits on a person.
         return word === 'Task · Blocked'
           ? { rung: 'blocked', lane: 'needsYou', tone: 'attention', word }

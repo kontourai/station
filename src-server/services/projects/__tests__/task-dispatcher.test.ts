@@ -93,6 +93,40 @@ describe('TaskDispatcher Interface', () => {
     },
   );
 
+  test('#4005: bounds Agent resolution by the dispatch deadline, before anything is reserved', async () => {
+    const state = graph();
+    const startOrSeed = vi.fn();
+    // Agent resolution reads this Station over HTTP; one that never answers
+    // must not hold the dispatch past its deadline.
+    const prepare = vi.fn(() => new Promise<never>(() => {}));
+    const dispatcher = createTaskDispatcher(
+      state,
+      { claim: vi.fn(), compensate: vi.fn() },
+      {
+        readiness: () => ({ kind: 'ready' as const }),
+        mayHaveStarted: () => true,
+        prepare,
+        startOrSeed,
+      },
+      telemetry,
+    );
+    await expect(
+      dispatcher.dispatch('task-1', {
+        ownerUserId: 'test-owner',
+        fullAccessGrant: null,
+        agentId: 'task-lead',
+        timeoutMs: 20,
+      }),
+    ).resolves.toEqual({
+      kind: 'aborted',
+      reason: 'Task dispatch timed out',
+      retryable: true,
+    });
+    expect(prepare).toHaveBeenCalledWith('task-1', expect.anything());
+    expect(state.reserve).not.toHaveBeenCalled();
+    expect(startOrSeed).not.toHaveBeenCalled();
+  });
+
   test('rejects a monitor whose declared Task Agent differs before reservation', async () => {
     const state = graph();
     const startOrSeed = vi.fn();

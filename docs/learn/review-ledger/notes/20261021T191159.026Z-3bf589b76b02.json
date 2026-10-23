@@ -1,0 +1,7 @@
+{
+  "revision": "7b5e8523102ccc460e9f54b3918b22d1179f4cbb",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Its only api.md dependency is a link in the 'Call Station from another application' row (line 26). The api.md change adds one sentence about the lead wake to the Task memory records route; the row makes no claim about that route.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
+  ]
+}

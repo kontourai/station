@@ -129,7 +129,7 @@ status route and its allowed transitions. Confirmed changes append quiet room
 lines. Engine completion does not mark the Task done.
 
 These publications are conversation contributions, not accepted results. Agent
-document edits still use the lead Task/session association. Explicit shared brief context is implemented locally as described below. Personal
+document edits still use the lead Task/session association. Task memory is the exception: a recorded independent-request Session may also write its Task's summary and records through `task_summary_update` and `task_record`, authorized by the same immutable binding and re-checked in the write transaction (see [Tracker-backed Tasks](tracker-backed-tasks.md#write-authority)); it still cannot edit the document or Task status. Explicit shared brief context is implemented locally as described below. Personal
 output previews and human review statements are implemented in the
 [Task-room history contract](project-task-room-history.md); these local slices do
 not complete agent result attribution, invited/public review or the accepted-work
@@ -138,6 +138,8 @@ existing private room agent principal includes its requesting owner identity;
 this history is not a public publication projection.
 
 ## Selected Task brief
+
+This request snapshot is distinct from the dispatch Task brief of [Tracker-backed Tasks](tracker-backed-tasks.md), which a dispatched Session receives with its first turn and re-reads with `get_task_brief`.
 
 Room dispatch captures the person's message separately from the composed model input.
 Session and conversation headers, history lists, and new durable title indexes

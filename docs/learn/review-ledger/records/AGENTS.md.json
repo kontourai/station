@@ -38,7 +38,9 @@
 
     "package.json#/scripts/test:focused",
 
-    "package.json#/packageManager"
+    "package.json#/packageManager",
+
+    "scripts/agent-instructions-manifest.mjs"
   ],
 
   "checks": [

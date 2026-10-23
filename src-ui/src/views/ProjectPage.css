@@ -412,6 +412,23 @@
   gap: 8px;
 }
 
+/* #4003: the title column gives way to the actions at narrow widths (a long
+   issue URL would otherwise hold it at its full width and push them out). */
+.project-page__task-detail-header > :first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* #4003: a long item title must not squeeze Start Task onto two lines, and
+   its actions column must not shrink below the button. */
+.project-page__task-detail-actions--start {
+  flex-shrink: 0;
+}
+
+.project-page__start-task {
+  white-space: nowrap;
+}
+
 .project-page__task-binding {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

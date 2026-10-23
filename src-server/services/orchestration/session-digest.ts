@@ -24,6 +24,7 @@ import {
   serializedBytes,
 } from '../../utils/serialized-clip.js';
 import {
+  type EventStore,
   TURN_DIGEST_PROMPT_PREFIX_CHARS,
   type TurnDigestFacts,
 } from './event-store.js';
@@ -265,4 +266,54 @@ export function decodeDigestCursor(value: string): DigestCursor | undefined {
   } catch {
     return undefined;
   }
+}
+
+type DigestLineageStore = Pick<
+  EventStore,
+  'conversationForSession' | 'conversationSessions'
+>;
+
+/**
+ * The Sessions one digest reads: the conversation the Session belongs to,
+ * the Session itself, and every Session of that conversation. The
+ * `get_session_digest` route and the Task brief's Session lines (#4003) both
+ * read through it, so they fold the same turns.
+ */
+export function sessionDigestLineage(
+  store: DigestLineageStore,
+  sessionId: string,
+): { conversationId: string; lineage: string[] } {
+  const conversationId =
+    store.conversationForSession(sessionId)?.conversationId ?? sessionId;
+  return {
+    conversationId,
+    lineage: [
+      ...new Set([
+        conversationId,
+        sessionId,
+        ...store
+          .conversationSessions(conversationId)
+          .map((entry) => entry.sessionId),
+      ]),
+    ],
+  };
+}
+
+/**
+ * A Session's digest head (#4003 Task brief): how many turns its digest
+ * counts and its newest turn's digest, without delegated children. The
+ * same recorded facts and the same per-turn fold as `get_session_digest`.
+ * Authority is the caller's.
+ */
+export function readSessionDigestHead(
+  store: DigestLineageStore & Pick<EventStore, 'readTurnDigestFacts'>,
+  sessionId: string,
+): { turnCount: number; lastTurn?: DigestTurn } {
+  const { lineage } = sessionDigestLineage(store, sessionId);
+  const read = store.readTurnDigestFacts(lineage, { turnLimit: 1 });
+  const newest = read.turns[0];
+  return {
+    turnCount: read.totalTurns,
+    ...(newest ? { lastTurn: digestTurn(newest, []) } : {}),
+  };
 }

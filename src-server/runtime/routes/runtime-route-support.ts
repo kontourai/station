@@ -454,6 +454,14 @@ export function configureRuntimeSupportServices(
           () =>
             context.taskDispatcher.dispatch(task.id, {
               agentId: input.agentId,
+              // #4005: a dispatch naming an Agent but no provider now starts
+              // the Agent's engine. A monitor keeps the seeded Session it
+              // always had: nothing on this path sends the Task's prompt as
+              // a turn (the supervisor below only observes and bounds turns
+              // something else starts), so a started engine would sit idle
+              // holding a process. Sending the first turn belongs to the
+              // generalized unattended Task envelope (automations S3).
+              provider: 'task-dispatch',
               sourceSurface: 'external-monitor',
               fullAccessGrant: null,
               // An external monitor acts for no request; this Station's

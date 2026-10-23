@@ -1,0 +1,7 @@
+{
+  "revision": "4ab2c8aee07e12d9966a8b06645546356c413534",
+
+  "notes": [
+    {"path":"docs/design/task-room-agent-requests.md","note":"Bounded fixture review at 4ab2c8aee07: runtime-routes-project-task-room-principal now supplies the real empty SessionRelations envelope so new proposal acceptance reaches the existing room authority, seeded document, and attributed history assertions. Traced tasks.ts prior-source lookup, TaskGraphService.readSessionRelations, and runtime-routes.ts principal priming and seed wiring. Production behavior and documented authority/capacity/recovery claims are unchanged. Baseline principal suite reproduced 17 passed and 1 failed with missing readSessionRelations; repaired runtime-principal and proposal-acceptance suites passed 36/36. No hosted, browser, native, or provider qualification is inferred.","inputs":["docs/design/task-room-agent-requests.md","src-server/runtime/routes/__tests__/runtime-routes-project-task-room-principal.test.ts"]}
+  ]
+}

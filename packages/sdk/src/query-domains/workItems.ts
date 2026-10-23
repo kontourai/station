@@ -1,12 +1,16 @@
+import type { TaskCreateInput } from '@kontourai/station-contracts/task-graph';
 import type {
   ProviderWorkItem,
+  StartTaskFromWorkItemResult,
+  TaskWorkItemObservationResponse,
   WorkItemClaimStatus,
   WorkItemProviderCapabilities,
   WorkItemProviderIdentity,
   WorkItemsListResponse,
 } from '@kontourai/station-contracts/work-item-provider';
 import { _getApiBase } from '../api';
-import { type QueryConfig, useApiQuery } from '../query-core';
+import { StationHttpError } from '../client/http';
+import { type QueryConfig, useApiMutation, useApiQuery } from '../query-core';
 
 // ── Work-item provider seam (roadmap #583, part of epic #580, S3) ────────
 //
@@ -18,6 +22,8 @@ import { type QueryConfig, useApiQuery } from '../query-core';
 
 export type {
   ProviderWorkItem,
+  StartTaskFromWorkItemResult,
+  TaskWorkItemObservationResponse,
   WorkItemClaimStatus,
   WorkItemProviderCapabilities,
   WorkItemProviderIdentity,
@@ -99,6 +105,83 @@ export function useWorkItemClaimQuery(
       ...config,
       enabled: !!projectSlug && !!subjectId && (config?.enabled ?? true),
       staleTime: config?.staleTime ?? 10_000,
+    },
+  );
+}
+
+// ── Tracker-backed Tasks (#4003) ─────────────────────────────────────────
+//
+// Start Task on a provider row, and the Task's linked-item header. The item
+// is re-read when the header mounts; nothing polls it.
+
+export interface StartTaskFromWorkItemInput {
+  projectId: string;
+  workItemRef: string;
+  agentId?: string;
+  workspaceBinding?: TaskCreateInput['workspaceBinding'];
+}
+
+async function readResult<T>(response: Response, fallback: string): Promise<T> {
+  const result = (await response.json()) as {
+    success?: boolean;
+    data?: T;
+    error?: string;
+  };
+  if (!response.ok || !result.success || result.data === undefined)
+    throw new StationHttpError(
+      response.status,
+      apiErrorMessage(result, fallback),
+    );
+  return result.data;
+}
+
+export async function startTaskFromWorkItem(
+  input: StartTaskFromWorkItemInput,
+): Promise<StartTaskFromWorkItemResult> {
+  const apiBase = await _getApiBase();
+  const response = await authenticatedFetch(
+    `${apiBase}/api/tasks/from-work-item`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+    },
+  );
+  return readResult(response, 'Failed to start a Task from the work item');
+}
+
+/** Creates a Task from a board item, or returns the item's open Task. */
+export function useStartTaskFromWorkItemMutation() {
+  return useApiMutation(startTaskFromWorkItem, {
+    invalidateKeys: [['tasks'], ['work-items']],
+  });
+}
+
+export async function fetchTaskWorkItem(
+  taskId: string,
+): Promise<TaskWorkItemObservationResponse> {
+  const apiBase = await _getApiBase();
+  const response = await authenticatedFetch(
+    `${apiBase}/api/tasks/${encodeURIComponent(taskId)}/work-item`,
+  );
+  return readResult(response, 'Failed to read the linked work item');
+}
+
+/** The Task's linked tracker item, read again every time it mounts. */
+export function useTaskWorkItemQuery(
+  taskId: string,
+  config?: QueryConfig<TaskWorkItemObservationResponse>,
+) {
+  return useApiQuery<TaskWorkItemObservationResponse>(
+    ['task-work-item', taskId],
+    () => fetchTaskWorkItem(taskId),
+    {
+      ...config,
+      enabled: taskId.length > 0 && (config?.enabled ?? true),
+      staleTime: config?.staleTime ?? 0,
+      refetchOnMount: config?.refetchOnMount ?? 'always',
+      // A gh failure is the host's state; retrying only repeats the call.
+      retry: config?.retry ?? false,
     },
   );
 }

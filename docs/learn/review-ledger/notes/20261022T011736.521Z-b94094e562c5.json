@@ -1,0 +1,31 @@
+{
+  "revision": "503db2c8fada68115b4a94ee87cd1ffcb9a277bd",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Edited in #4003 review round 3: the Learning dismiss route now says a version a promotion has already claimed is 409 task_learning_promoted with nothing written, matching dismissLearningCandidate's promotion-row check and the task_learning_promoted refusal in routes/orchestration/task-learning.ts. The rest of the Task routes are unchanged this round.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Re-read for #4003 review round 3: api.md changed only in the Learning dismiss route's new 409 task_learning_promoted. This guide links the API reference as a whole and describes no Task Learning route or response, so it still holds.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Re-read for #4003 review round 3: runtime-cold-start-custom-agent.test.ts gained only an assertion that the runtime's task graph compares a Project's slug and id as one Project (sameProject). This reference describes usage telemetry export and makes no claim about Task Projects or that test's Task assertions, so it holds.","inputs":["docs/reference/usage-telemetry.md","src-server/runtime/__tests__/runtime-cold-start-custom-agent.test.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Corrects round 2's note, which wrongly said this document makes no claim about Start Task's other-Project answer. It does: startTaskFromWorkItem resolves { task, existing, briefSaved }, and when the open Task is in another Project, task is only { id, projectId } and elsewhere is true. That still matches tasks.ts's existingTaskResult, which now compares Projects as one identity (slug or id). Start Task looks for an open Task in its own Project, or any Project's board-checked Task for the board-checked ref it was given. dismissTaskLearning can now be refused with 409 task_learning_promoted for a claimed version; the SDK's 'dismiss one' line does not claim it always succeeds.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Replaces round 2's templated note. This document says TaskGraphService provides adapters for assignment claims and that every confirmed release of a prior assignment claim is persisted at once. Round 2's reconciliation change (grouping Tasks by workItemRefKey, so an open Task in another spelling keeps a done Task's claim) changes which subjects the startup sweep releases, not how a release is persisted, so the document holds. The task graph's new localProjectIdFor wiring is not described here.","inputs":["docs/design/task-dispatcher.md"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Replaces round 2's templated note. This document places agent requests beside TaskGraph and TaskDispatcher and says room identity uses the Task room's exact stored Project identity. Round 2 made the task graph compare Projects by slug or id only for work-item uniqueness, not for room scope, so 'exact stored Project identity' for the room still holds.","inputs":["docs/design/task-room-agent-requests.md"]},
+
+    {"path":"docs/glossary.md","note":"Replaces round 2's templated note. The Task brief entry (Session lines the owner may read, quoted other-writer text), the Work claim entry and the Work item entry ('a TaskRecord may carry sourceProvider/workItemRef') all still hold. The glossary does not define work-item uniqueness across Projects, which round 2 narrowed to board-checked GitHub refs.","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/guides/deployment.md","note":"Replaces round 2's templated note. Its one Task mention is that hosted mode leaves the unbound /api/tasks task graph unavailable. Round 2 changed POST /api/tasks's ref bounds and uniqueness, not its hosted availability, so the statement holds.","inputs":["docs/guides/deployment.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Replaces round 2's templated note. The Work claims section (claims name a workItemRef and paths; a dispatched Session stamps its Task id) still holds: round 2 changed Task uniqueness and claim reconciliation for assignment claims, not station-control work claims or their Task stamping.","inputs":["docs/guides/self-configuring-agent.md"]},
+
+    {"path":"docs/reference/config.md","note":"Replaces round 2's templated note. Its Project mention is a config field holding the owning Project slug. Round 2's slug-or-id comparison applies to Task work-item uniqueness only and does not change how that field is read.","inputs":["docs/reference/config.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Replaces round 2's templated note. The work-claims and task-memory rows still describe their subpaths. Round 2 added no contract export (canonicalGitHubWorkItemRef and workItemRefKey are from round 1 and fall within the work-item-provider entry), so the table holds.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/reference/session-api.md","note":"Replaces round 2's templated note. It says a child Session records the Project's projectSlug and localProjectId; round 2's localProjectIdFor lookup reads those same identities and changes nothing it describes. The inbox's added log line on undelivered settles is not described here.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Replaces round 2's templated note. The tasks topic's Start Task sentence ('Station copies the issue's description and latest comments into the Task document') and its brief description still hold; round 2's uniqueness and other-Project UI changes are not described in this topic.","inputs":["docs/reference/station-docs.md"]}
+  ]
+}

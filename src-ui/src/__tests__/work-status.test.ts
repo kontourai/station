@@ -1,5 +1,6 @@
 import type {
   OrchestrationSessionSummary,
+  TaskListRecord,
   TaskRecord,
 } from '@kontourai/station-sdk';
 import { describe, expect, it } from 'vitest';
@@ -652,7 +653,7 @@ describe('status facts for chat, task and merged rows', () => {
   const build = (
     chatOver: Record<string, unknown> | null,
     sessions: OrchestrationSessionSummary[] = [],
-    tasks: TaskRecord[] = [],
+    tasks: TaskListRecord[] = [],
   ) => {
     const chats: Record<string, ChatUIState> = chatOver
       ? {
@@ -742,6 +743,56 @@ describe('status facts for chat, task and merged rows', () => {
       });
       // Home partitions without facts; both consumers must name the same state.
       expect(workStatus(row.item, NOW)).toMatchObject({ line, lane, rung });
+    },
+  );
+
+  it.each([
+    ['in_progress', 1, 'Task · Needs answer', 'needsYou', 'answer'],
+    ['todo', 2, 'Task · Needs answer', 'needsYou', 'answer'],
+    // The answer is what a person can act on, ahead of the lock.
+    ['blocked', 1, 'Task · Needs answer', 'needsYou', 'answer'],
+    ['in_progress', 0, 'Task · In progress', 'running', 'running'],
+    // A finished Task's leftover question asks nobody.
+    ['done', 3, 'Task · Done', 'finished', 'done'],
+    ['canceled', 1, 'Task · Canceled', 'finished', 'stopped'],
+  ] as const)(
+    '#4003: a %s Task with %d open Task-memory questions reads %s',
+    (status, openQuestionCount, line, lane, rung) => {
+      const task: TaskListRecord = {
+        id: 'task-1',
+        projectId: 'project-alpha',
+        title: 'Plan the release',
+        status,
+        priority: 'normal',
+        description: '',
+        createdBy: 'user',
+        createdAt: '2026-09-30T09:00:00.000Z',
+        updatedAt: '2026-09-30T10:00:00.000Z',
+        // The Tasks list sends the count only when there is one.
+        ...(openQuestionCount ? { openQuestionCount } : {}),
+      };
+      const row = build(null, [], [task]);
+      expect(workStatus(row.item, NOW, row.facts)).toMatchObject({
+        line,
+        lane,
+        rung,
+      });
+      expect(row.facts?.attention).toBe(
+        rung === 'answer' ? 'answer' : undefined,
+      );
+      // Home partitions without facts; both consumers name the same state.
+      expect(workStatus(row.item, NOW)).toMatchObject({ line, lane, rung });
+      // And Home's lane model files it in that lane.
+      if (lane === 'needsYou' || lane === 'running') {
+        const lanes = partitionHomeWorkItems({
+          items: [row.item],
+          now: NOW,
+          snoozedUntil: new Map(),
+          terminalSince: new Map(),
+          workFacts: new Map(row.facts ? [[row.item.id, row.facts]] : []),
+        });
+        expect(lanes[lane].map((item) => item.id)).toEqual(['task-1']);
+      }
     },
   );
 

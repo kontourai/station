@@ -99,9 +99,13 @@ Four findings shape the design.
   (around line 440) calls
   `createTaskIdempotent(..., `${jobId}:${fingerprint}`)`, then
   `taskDispatcher.dispatch` with `fullAccessGrant: null`, the operator as
-  owner, unattributed attribution and a budget envelope. `POST
-  /scheduler/webhook` is a separate authenticated provider transport and
-  stays separate.
+  owner, unattributed attribution, a budget envelope and
+  `provider: 'task-dispatch'`, so the Task gets a seeded Session and no
+  engine starts: nothing on this path sends the Task's prompt as a turn, and
+  a Task dispatch naming an Agent but no provider would otherwise start that
+  Agent's engine ([#4005](https://github.com/kontourai/station/issues/4005)).
+  `POST /scheduler/webhook` is a separate authenticated provider transport
+  and stays separate.
 - **Authority.** `UnattendedPrincipal` in
   [`types.ts`](../../src-server/runtime/types.ts); standing per-principal
   tool grants in

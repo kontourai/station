@@ -139,6 +139,8 @@ export const KNOWN_DIRTY_STATE_EDITORS = [
   'src-ui/src/views/ProviderSettingsView.tsx',
   'src-ui/src/views/SettingsView.tsx',
   'src-ui/src/views/integrations/SecretBindingsSection.tsx',
+  'src-ui/src/views/task-workspace/TaskLearningPanel.tsx',
+  'src-ui/src/views/task-workspace/TaskMemoryPanel.tsx',
 ];
 
 // Non-editor false positives for the heuristic below. Starts empty by

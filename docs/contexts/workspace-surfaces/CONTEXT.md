@@ -36,7 +36,7 @@ A durable Project-owned work identity that can retain a workspace binding and ex
 _Avoid_: chat or Session
 
 **Task workspace**:
-The broader `/tasks/:taskId` Workspace Surface composition for one Task's identity, references, local files and diffs, receipts, and exact execution correlation. It may contain several Workspace Panes; it is not itself one Pane.
+The broader `/tasks/:taskId` Workspace Surface composition for one Task's identity, references, linked tracker item, Task memory, local files and diffs, receipts, and exact execution correlation. It may contain several Workspace Panes; it is not itself one Pane.
 _Avoid_: Session detail
 
 **Task experience**:

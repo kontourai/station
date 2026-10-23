@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { chatDraftsStore } from '../../contexts/chat-drafts-store';
+import { useSessionWorkClaims } from '../../contexts/WorkClaimsContext';
 import { relativeTime } from '../../utils/relativeTime';
 import type { SessionIconAgent } from '../../utils/sessionDisplay';
 import {
@@ -531,7 +532,8 @@ export function InboxRow({
   // The ONE status read (#3042): the line here and the lane this row was
   // filed under come from the same function.
   const status = useObservedWorkStatus(item, now, facts);
-  const chips = inboxRowChips(item, { hasUnsentDraft, isWoken });
+  const claims = useSessionWorkClaims(item);
+  const chips = inboxRowChips(item, { hasUnsentDraft, isWoken, claims });
   // An attached transcript's meta line names the app it lives in; the
   // status word ("Elsewhere") says this Station cannot answer there.
   const agentText = item.agentLabel;

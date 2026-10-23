@@ -156,6 +156,12 @@ export type SessionCommandInternalOptions = {
   sessionStartAdmission?: SessionStartBoundaryClaim;
   /** Exact server-owned Task reservation scope; never read from public metadata. */
   roomExecutionBinding?: { projectId: string; taskId: string };
+  /**
+   * Epic #4003: the Task brief built at dispatch. `prepareStart` stamps it as
+   * `TASK_BRIEF_METADATA_KEY` after the reserved-key strip; the first turn
+   * composes it. Never accepted from public JSON.
+   */
+  taskBrief?: { digest: string; text: string };
   /** Captured server-owned action admission; never accepted from public JSON. */
   foregroundInvocationAdmission?: ForegroundInvocationAdmission;
   /** Server-owned initial group dispatch fence; never public command JSON. */

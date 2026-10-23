@@ -27,6 +27,11 @@ import type {
   TaskDispatchResult,
   TaskRecord,
 } from '@kontourai/station-contracts/task-graph';
+import type {
+  TaskMemoryRecord,
+  TaskRecordWrite,
+  TaskSummaryRevision,
+} from '@kontourai/station-contracts/task-memory';
 import {
   LIVE_WORK_RECOVERY_SCHEMA_VERSION,
   type LiveWorkAuthorization,
@@ -37,6 +42,7 @@ import {
   type LiveWorkScope,
   LiveWorkSession,
 } from '../../domain/live-work-session.js';
+import type { RevisionEvidenceAdmissionRefusal } from '../../domain/revision-bound-evidence.js';
 import {
   SHARED_WORKING_STATE_SCHEMA_VERSION,
   SharedWorkingState,
@@ -44,9 +50,11 @@ import {
 } from '../../domain/shared-working-state.js';
 import {
   createSharedWorkingStateEditingCapability,
+  lowSortingIntentId,
   type SharedWorkingStateEditBatch,
   sharedWorkingStateEditBatchDigest,
 } from '../../domain/shared-working-state-editing.js';
+import { taskRoomDocumentSeedRefusal } from '../../domain/task-room-document-capacity.js';
 import { ProjectTaskLiveWorkHistoryAdapter } from './project-task-live-work-history-adapter.js';
 import {
   projectTaskRoomDocumentId,
@@ -67,6 +75,13 @@ import {
 import type { ProjectTaskRoomRevisionEvidencePort } from './project-task-room-revision-evidence-bridge.js';
 import type { ProjectTaskRoomWorkingState } from './project-task-room-working-state.js';
 import { createOrchestrationRunId } from './run-projection.js';
+import type {
+  TaskMemoryStore,
+  TaskRecordWriteOutcome,
+  TaskRecordWriteResult,
+  TaskSummaryUpdateOutcome,
+  TaskSummaryUpdateResult,
+} from './task-memory-store.js';
 
 type RecoverableRoomHistory = ProjectTaskRoomAuthority &
   Partial<Pick<ProjectTaskRoomHistory, 'findByProposal' | 'readSourceSeal'>>;
@@ -167,6 +182,26 @@ interface ProjectTaskRoomRuntimeDeps {
       }
     | undefined
   >;
+  /**
+   * The immutable Session -> Task room binding written at provider start.
+   * Task-memory write authority starts here; absent, no Session can write.
+   */
+  readonly readExecutionBinding?: (
+    sessionId: string,
+  ) => { readonly projectId: string; readonly taskId: string } | undefined;
+  /** #4003 Task memory; absent, memory reads and writes are unavailable. */
+  readonly memory?: TaskMemoryStore;
+  /**
+   * #4003 lead wake: told of each Task record version after its write has
+   * committed. Its outcome and any throw are its own: the write stands.
+   */
+  readonly afterTaskRecord?: (input: {
+    readonly incarnation: {
+      readonly taskId: string;
+      readonly taskCreatedAt: string;
+    };
+    readonly record: TaskMemoryRecord;
+  }) => Promise<unknown> | unknown;
   readonly readDisplayName?: (id: string) => Promise<string | undefined>;
   readonly readAgentLabel?: (agentId: string) => Promise<string | undefined>;
   readonly readAgentAnswers?: (input: {
@@ -568,7 +603,6 @@ export class ProjectTaskRoomRuntime {
     });
     const runId = createOrchestrationRunId(input.provider, input.sessionId);
     const actorId = agentActorId(input.taskId, input.agentId, input.sessionId);
-    const intentId = randomUUID();
     const capability = createSharedWorkingStateEditingCapability({
       scope: association.document,
       snapshot: () => snapshot,
@@ -590,7 +624,7 @@ export class ProjectTaskRoomRuntime {
         correlationId: `agent-edit:${input.taskId}:${input.sessionId}`,
       }),
       replicaId: `agent-session:${input.sessionId}`,
-      nextIntentId: () => intentId,
+      nextIntentId: roomEditIntentId,
     });
     const plan = capability.plan({
       currentText: state.text(),
@@ -684,6 +718,361 @@ export class ProjectTaskRoomRuntime {
       text: result.text,
       sessionId: input.sessionId,
       runId,
+    };
+  }
+
+  /**
+   * Epic #4003: server-only read of the shared Task document for a Task
+   * brief. No request principal: the callers hold their own authority (an
+   * admitted dispatch, or a Session's immutable room execution binding).
+   * Hosted mode and a closed runtime have no document to read.
+   */
+  async readTaskDocumentForBrief(taskId: string): Promise<
+    | {
+        readonly kind: 'available';
+        readonly revision: string;
+        readonly text: string;
+      }
+    | { readonly kind: 'unavailable'; readonly reason: string }
+  > {
+    if (this.#closed || this.#deps.hosted?.())
+      return { kind: 'unavailable', reason: 'the Task room is not running' };
+    const scope = this.#scope(taskId);
+    if (!scope) return { kind: 'unavailable', reason: 'the Task has no room' };
+    const document = { ...scope, documentId: documentIdFor(scope) };
+    const result = await this.#deps.working.read({ scope: document });
+    const current = this.#scope(taskId);
+    if (
+      !current ||
+      !sameDocument(
+        { ...current, documentId: documentIdFor(current) },
+        document,
+      )
+    )
+      return {
+        kind: 'unavailable',
+        reason: 'the Task changed during the read',
+      };
+    if (
+      result.kind !== 'snapshot' ||
+      typeof result.revision !== 'string' ||
+      typeof result.text !== 'string'
+    )
+      return {
+        kind: 'unavailable',
+        reason: 'the Task document is unavailable',
+      };
+    return { kind: 'available', revision: result.revision, text: result.text };
+  }
+
+  /**
+   * `task_summary_update` (#4003): rewrite the Task summary for the calling
+   * Session's Task. The caller names only its own Session (the verified
+   * station-control caller), the text and the revision it read. The Task
+   * comes from the Session's immutable room execution binding, and the
+   * Session must still be the Task's lead or a recorded independent request
+   * of this Task incarnation; the write re-checks that inside its
+   * transaction. Nothing here reads or writes Task status or the document.
+   */
+  async updateTaskSummaryForSession(input: {
+    readonly sessionId: string;
+    readonly text: string;
+    readonly baseRevision: number;
+  }): Promise<TaskSummaryUpdateOutcome> {
+    const access = await this.#sessionMemoryAccess(input.sessionId);
+    if (access.kind !== 'granted') return access;
+    return this.#updateSummary(access, input);
+  }
+
+  /** A person's summary edit from the Task workspace: room request authority. */
+  async updateTaskSummaryForPerson(input: {
+    readonly taskId: string;
+    readonly request: Request;
+    readonly text: string;
+    readonly baseRevision: number;
+  }): Promise<TaskSummaryUpdateOutcome> {
+    const access = await this.#personMemoryAccess(input.taskId, input.request);
+    if (access.kind !== 'granted') return access;
+    return this.#updateSummary(access, input);
+  }
+
+  /** `task_record` (#4003): the same authority as the summary's. */
+  async writeTaskRecordForSession(input: {
+    readonly sessionId: string;
+    readonly write: TaskRecordWrite;
+  }): Promise<TaskRecordWriteOutcome> {
+    const access = await this.#sessionMemoryAccess(input.sessionId);
+    if (access.kind !== 'granted') return access;
+    return this.#afterRecord(access, this.#writeRecord(access, input.write));
+  }
+
+  /** A person's record write (an answer, say) from the Task workspace. */
+  async writeTaskRecordForPerson(input: {
+    readonly taskId: string;
+    readonly request: Request;
+    readonly write: TaskRecordWrite;
+  }): Promise<TaskRecordWriteOutcome> {
+    const access = await this.#personMemoryAccess(input.taskId, input.request);
+    if (access.kind !== 'granted') return access;
+    return this.#afterRecord(access, this.#writeRecord(access, input.write));
+  }
+
+  /** The Task's memory for a person allowed to read its room. */
+  async readTaskMemory(input: {
+    readonly taskId: string;
+    readonly request: Request;
+    /** Also read up to this many summary revisions, newest first. */
+    readonly summaryHistory?: number;
+  }): Promise<
+    | {
+        readonly kind: 'available';
+        readonly summary: TaskSummaryRevision | undefined;
+        readonly records: TaskMemoryRecord[];
+        readonly history?: { revisions: TaskSummaryRevision[]; total: number };
+      }
+    | { readonly kind: 'not-found' | 'unavailable' }
+  > {
+    const memory = this.#deps.memory;
+    if (!memory) return { kind: 'unavailable' };
+    const authorized = await this.#authorizedDocument(
+      input.taskId,
+      input.request,
+    );
+    const task = this.#deps.taskGraph.readTaskView(input.taskId);
+    if (!authorized || !task) return { kind: 'not-found' };
+    const incarnation = { taskId: task.id, taskCreatedAt: task.createdAt };
+    try {
+      return {
+        kind: 'available',
+        summary: memory.readSummary(incarnation),
+        records: memory.listRecords(incarnation),
+        ...(input.summaryHistory
+          ? {
+              history: memory.listSummaryRevisions({
+                ...incarnation,
+                limit: input.summaryHistory,
+              }),
+            }
+          : {}),
+      };
+    } catch {
+      return { kind: 'unavailable' };
+    }
+  }
+
+  /**
+   * #4003 layer 4 (Learning): a person's access to review a Task's lessons,
+   * under the same request authority as their Task memory writes. The
+   * learning routes derive the candidates and write the knowledge record;
+   * `isCurrent` re-checks the Task incarnation and room before a write.
+   */
+  async personTaskLearningAccess(input: {
+    readonly taskId: string;
+    readonly request: Request;
+  }): Promise<
+    | {
+        readonly kind: 'granted';
+        readonly memory: TaskMemoryStore;
+        readonly task: TaskRecord;
+        readonly projectId: string;
+        readonly principalId: string;
+        readonly isCurrent: () => boolean;
+      }
+    | { readonly kind: 'not-found' | 'unavailable' }
+  > {
+    const access = await this.#personMemoryAccess(input.taskId, input.request);
+    if (access.kind !== 'granted') return access;
+    const task = this.#deps.taskGraph.readTaskView(input.taskId);
+    const { author } = access.write;
+    if (!task || author.kind !== 'person') return { kind: 'not-found' };
+    return {
+      kind: 'granted',
+      memory: access.memory,
+      task,
+      projectId: access.write.projectId,
+      principalId: author.principalId,
+      isCurrent: access.write.beforeCommit,
+    };
+  }
+
+  #updateSummary(
+    access: TaskMemoryAccess,
+    input: { readonly text: string; readonly baseRevision: number },
+  ): TaskSummaryUpdateOutcome {
+    let result: TaskSummaryUpdateResult;
+    try {
+      result = access.memory.updateSummary({
+        ...access.write,
+        text: input.text,
+        baseRevision: input.baseRevision,
+      });
+    } catch {
+      return { kind: 'unavailable' };
+    }
+    if (result.kind === 'stale') return access.staleOutcome;
+    if (result.kind === 'updated')
+      return {
+        kind: 'updated',
+        taskId: access.write.taskId,
+        summary: result.summary,
+        ...(result.unchanged ? { unchanged: true as const } : {}),
+      };
+    return result;
+  }
+
+  /**
+   * Record before effect: the version has committed before the lead wake
+   * runs, and nothing the wake does changes the write's outcome.
+   */
+  async #afterRecord(
+    access: TaskMemoryAccess,
+    outcome: TaskRecordWriteOutcome,
+  ): Promise<TaskRecordWriteOutcome> {
+    if (outcome.kind !== 'recorded' || !this.#deps.afterTaskRecord)
+      return outcome;
+    try {
+      await this.#deps.afterTaskRecord({
+        incarnation: {
+          taskId: access.write.taskId,
+          taskCreatedAt: access.write.taskCreatedAt,
+        },
+        record: outcome.record,
+      });
+    } catch {
+      // The wake reports its own failures; the committed write stands.
+    }
+    return outcome;
+  }
+
+  #writeRecord(
+    access: TaskMemoryAccess,
+    write: TaskRecordWrite,
+  ): TaskRecordWriteOutcome {
+    let result: TaskRecordWriteResult;
+    try {
+      result = access.memory.writeRecord({ ...access.write, write });
+    } catch {
+      return { kind: 'unavailable' };
+    }
+    if (result.kind === 'stale') return access.staleOutcome;
+    if (result.kind === 'recorded')
+      return {
+        kind: 'recorded',
+        taskId: access.write.taskId,
+        record: result.record,
+      };
+    return result;
+  }
+
+  #readExecutionBinding(sessionId: string) {
+    try {
+      return this.#deps.readExecutionBinding?.(sessionId);
+    } catch {
+      return 'unavailable' as const;
+    }
+  }
+
+  /**
+   * A Session's write access to Task memory: the Task its immutable room
+   * execution binding names, while the Session is that Task's lead or a
+   * recorded independent request of this incarnation. `beforeCommit`
+   * repeats the check synchronously inside the write transaction: the
+   * binding, the Task incarnation and its room scope are unchanged, and a
+   * lead Session is still the Task's Session. An independent request is an
+   * immutable journal record of this incarnation, so the incarnation check
+   * covers it.
+   */
+  async #sessionMemoryAccess(
+    sessionId: string,
+  ): Promise<TaskMemoryAccess | { readonly kind: 'no-task' | 'unavailable' }> {
+    const memory = this.#deps.memory;
+    if (this.#closed || this.#deps.hosted?.() || !memory)
+      return { kind: 'unavailable' };
+    const binding = this.#readExecutionBinding(sessionId);
+    if (binding === 'unavailable') return { kind: 'unavailable' };
+    if (!binding) return { kind: 'no-task' };
+    const association = await this.#lifecycleAssociation(
+      binding.taskId,
+      sessionId,
+    );
+    if (
+      !association ||
+      association.task.id !== binding.taskId ||
+      association.scope.projectId !== binding.projectId
+    )
+      return { kind: 'no-task' };
+    const { task, scope } = association;
+    const lead = task.sessionId === sessionId;
+    return {
+      kind: 'granted',
+      memory,
+      staleOutcome: { kind: 'no-task' },
+      write: {
+        projectId: scope.projectId,
+        taskId: task.id,
+        taskCreatedAt: task.createdAt,
+        author: { kind: 'session', sessionId },
+        beforeCommit: () => {
+          if (this.#closed) return false;
+          const nowBinding = this.#readExecutionBinding(sessionId);
+          const now = this.#deps.taskGraph.readTaskView(task.id);
+          const nowScope = this.#scope(task.id);
+          return Boolean(
+            nowBinding &&
+              nowBinding !== 'unavailable' &&
+              nowBinding.taskId === binding.taskId &&
+              nowBinding.projectId === binding.projectId &&
+              now &&
+              now.createdAt === task.createdAt &&
+              (!lead || now.sessionId === sessionId) &&
+              nowScope &&
+              sameScope(nowScope, scope),
+          );
+        },
+      },
+    };
+  }
+
+  /** A person's write access: the same request authority as document edits. */
+  async #personMemoryAccess(
+    taskId: string,
+    request: Request,
+  ): Promise<
+    TaskMemoryAccess | { readonly kind: 'not-found' | 'unavailable' }
+  > {
+    const memory = this.#deps.memory;
+    if (!memory) return { kind: 'unavailable' };
+    const authorized = await this.#authorizedDocumentWithPrincipal(
+      taskId,
+      request,
+    );
+    const task = this.#deps.taskGraph.readTaskView(taskId);
+    const scope = this.#scope(taskId);
+    if (!authorized || !task || !scope) return { kind: 'not-found' };
+    return {
+      kind: 'granted',
+      memory,
+      staleOutcome: { kind: 'not-found' },
+      write: {
+        projectId: scope.projectId,
+        taskId: task.id,
+        taskCreatedAt: task.createdAt,
+        author: {
+          kind: 'person',
+          principalId: authorized.principal.operatorId,
+        },
+        beforeCommit: () => {
+          const now = this.#deps.taskGraph.readTaskView(task.id);
+          const nowScope = this.#scope(task.id);
+          return Boolean(
+            !this.#closed &&
+              now &&
+              now.createdAt === task.createdAt &&
+              nowScope &&
+              sameScope(nowScope, scope),
+          );
+        },
+      },
     };
   }
 
@@ -1639,12 +2028,32 @@ export class ProjectTaskRoomRuntime {
     }
   }
 
-  /** Acceptance reuses human editing authority and never replaces later edits. */
+  /**
+   * Why a proposal brief cannot seed a new Task document, checked before the
+   * Task exists (#4007): the document's own bound, then the Station-wide
+   * revision ledger as room admission counts it (#4055). Advisory: a write
+   * between this check and the seed is still refused by the seed itself.
+   */
+  async proposalBriefRefusal(
+    text: string,
+  ): Promise<RevisionEvidenceAdmissionRefusal | null> {
+    const document = taskRoomDocumentSeedRefusal(text);
+    if (document || this.#closed || this.#deps.hosted?.()) return document;
+    const usage = await this.#deps.working.revisionLedgerUsage?.();
+    return usage?.kind === 'available'
+      ? taskRoomDocumentSeedRefusal(text, usage)
+      : null;
+  }
+
+  /**
+   * Acceptance reuses human editing authority and never replaces later edits.
+   * A capacity refusal is returned as its reason: no retry can succeed.
+   */
   async seedProposalBrief(input: {
     taskId: string;
     request: Request;
     text: string;
-  }): Promise<boolean> {
+  }): Promise<boolean | RevisionEvidenceAdmissionRefusal> {
     const plan = await this.editPlan({
       ...input,
       intentId: randomUUID(),
@@ -1661,6 +2070,13 @@ export class ProjectTaskRoomRuntime {
       intentDigest: plan.digest,
     });
     if (result.kind === 'committed' || result.kind === 'duplicate') return true;
+    if (
+      result.kind === 'rejected' &&
+      'reason' in result &&
+      (result.reason === 'document-full' ||
+        result.reason === 'evidence-ledger-full')
+    )
+      return result.reason;
     // A concurrent accept may have committed the same brief after our plan.
     const document = await this.document({
       taskId: input.taskId,
@@ -1686,7 +2102,6 @@ export class ProjectTaskRoomRuntime {
     const state = new SharedWorkingState({ scope, snapshot });
     if (input.onlyIfEmpty && state.text())
       return { kind: 'unchanged' } as const;
-    const issuedIntentId = randomUUID();
     // Document operations participate in the room policy, not the credential
     // version of the browser that happened to plan them. Exact device
     // reauthorization still fences the eventual commit below.
@@ -1704,8 +2119,9 @@ export class ProjectTaskRoomRuntime {
       actor: () => ({ actorId: actorIdFor(principal), kind: 'human' }),
       replicaId: `room:${principal.deviceId}`,
       // The browser's local request identity is not an operation identity.
-      // Operation IDs are minted under this server authority.
-      nextIntentId: () => issuedIntentId,
+      // Operation IDs are minted under this server authority, below every id
+      // the planned document holds (#4008).
+      nextIntentId: roomEditIntentId,
     });
     const plan = capability.plan({
       currentText: state.text(),
@@ -4052,6 +4468,20 @@ function parsePendingAgentLifecycle(
     : undefined;
 }
 
+interface TaskMemoryAccess {
+  readonly kind: 'granted';
+  readonly memory: TaskMemoryStore;
+  /** What a write the in-transaction re-check stopped reports. */
+  readonly staleOutcome: { readonly kind: 'no-task' | 'not-found' };
+  readonly write: {
+    readonly projectId: string;
+    readonly taskId: string;
+    readonly taskCreatedAt: string;
+    readonly author: TaskMemoryRecord['author'];
+    readonly beforeCommit: () => boolean;
+  };
+}
+
 function agentLifecycleReceiptId(
   taskId: string,
   sessionId: string,
@@ -4274,4 +4704,13 @@ function agentStartedLifecycle(
       'started',
     ),
   };
+}
+
+/** Every room edit plan mints its identity from the planned state (#4008). */
+function roomEditIntentId({ below }: { readonly below: string | null }) {
+  const intentId = lowSortingIntentId(below);
+  // Unreachable in practice (36^8 edits). The throw reaches the planner's
+  // catch, which returns a refused plan ('editing authority unavailable').
+  if (!intentId) throw new Error('room edit identity space is exhausted');
+  return intentId;
 }

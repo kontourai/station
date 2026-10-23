@@ -67,14 +67,18 @@ Task Room. **Details** opens inspection and dispatch controls; the optional boar
 continues to group Tasks by status. The list separates **Now** (ready, active,
 blocked or awaiting review), **Backlog**, and **History**. These views do not
 change status. **Refresh tasks** reads current Task records.
-Status is not a percentage complete or proof that an Agent is running. Connected
-provider items retain their separate read-only behavior.
+Status is not a percentage complete or proof that an Agent is running. A
+connected GitHub issue offers **Start Task**, which creates a Task with its
+description and latest comments in the shared document, or opens its existing
+open Task. Other provider items remain read-only.
 The Task workspace opens on **Overview** with status, completion criteria,
 subtasks, decisions, blockers and kept deliverables. **Conversation** opens its
 shared discussion. **Plan** edits the autosaved document that supplies the goal
 and checklist. **Work chats** links canonical conversations that can open in
-the chat inbox; a link grants no transcript or execution access. **Details**
-contains identity, local workspace metadata, Basis, references and inspection.
+the chat inbox; a link grants no transcript or execution access. **Plan** also
+shows the linked tracker item, Task memory and, for a done Task, lessons for the
+Project. **Details** contains identity, local workspace metadata, Basis,
+references and inspection.
 Subtask completion does not automatically complete its parent.
 
 If the workspace is not ready, Station keeps the relevant Connections action

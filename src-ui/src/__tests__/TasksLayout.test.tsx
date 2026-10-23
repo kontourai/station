@@ -45,6 +45,11 @@ vi.mock('@kontourai/station-sdk', () => ({
   useCreateTaskMutation: () => ({ mutateAsync: createTask }),
   useDispatchTaskMutation: () => ({}),
   useLaunchStartTaskStarterMutation: () => ({ mutateAsync: launchStarterTask }),
+  // #4003: the Tasks board's Start Task on a tracker item. Unused here.
+  useStartTaskFromWorkItemMutation: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
   useQueryClient: () => ({
     invalidateQueries: vi.fn(),
     setQueryData: vi.fn(),

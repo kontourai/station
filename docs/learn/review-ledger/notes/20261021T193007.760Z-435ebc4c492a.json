@@ -1,0 +1,7 @@
+{
+  "revision": "95b2720b9063db47886eaf92f96d2cc9494c0297",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated station-docs-content.ts with docs:mcp:generate after module-map.md gained the #4003 Learning paragraph; the Task memory architecture topic now carries it and the digest changed. station-docs.md's description of the generator, topics and check is unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

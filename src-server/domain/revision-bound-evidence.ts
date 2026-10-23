@@ -26,6 +26,120 @@ export const MAX_REVISION_EVIDENCE_IDENTIFIER_BYTES = 256;
 const MAX_REVISION_EVIDENCE_LABEL_BYTES = 256;
 const MAX_REVISION_EVIDENCE_ATTESTATION_BYTES = 4 * 1024;
 
+/**
+ * The ledger bounds a default-composed module enforces. Room admission reads
+ * these same values, so a write it admits is one this module can freeze.
+ */
+const REVISION_EVIDENCE_DEFAULT_BOUNDS = Object.freeze({
+  maxRevisions: DEFAULT_REVISION_EVIDENCE_CAPACITY,
+  maxPortableBytes: DEFAULT_REVISION_EVIDENCE_IMPORT_BYTES,
+  maxSnapshotBytes: DEFAULT_REVISION_EVIDENCE_SNAPSHOT_BYTES,
+  maxTextBytes: DEFAULT_REVISION_EVIDENCE_TEXT_BYTES,
+  maxRecordBytes: DEFAULT_REVISION_EVIDENCE_RECORD_BYTES,
+});
+
+const PORTABLE_ENVELOPE_PREFIX_BYTES = Buffer.byteLength(
+  `{"schemaVersion":${REVISION_EVIDENCE_SCHEMA_VERSION},"revisions":[`,
+  'utf8',
+);
+const PORTABLE_ENVELOPE_SUFFIX_BYTES = Buffer.byteLength(']}', 'utf8');
+
+/** Exact portable-export bytes of `count` records totalling `recordBytes`. */
+export function revisionEvidencePortableBytes(
+  recordBytes: number,
+  count: number,
+): number {
+  return (
+    PORTABLE_ENVELOPE_PREFIX_BYTES +
+    recordBytes +
+    Math.max(0, count - 1) +
+    PORTABLE_ENVELOPE_SUFFIX_BYTES
+  );
+}
+
+/**
+ * Bytes a record frozen from this snapshot can take, never fewer. The fixed
+ * part covers every key, the revision and shared-revision identities, one
+ * parent and the schema version; the attestation term assumes every byte
+ * escapes. Overestimating only refuses a write slightly early.
+ */
+export function revisionEvidenceRecordBytesUpperBound(input: {
+  readonly snapshotBytes: number;
+  readonly text: string;
+  readonly scope: unknown;
+  readonly actor: unknown;
+  readonly correlation: unknown;
+}): number {
+  const json = (value: unknown) =>
+    Buffer.byteLength(JSON.stringify(value) ?? '', 'utf8');
+  return (
+    1024 +
+    input.snapshotBytes +
+    json(input.text) +
+    json(input.scope) +
+    json(input.actor) +
+    json(input.correlation) +
+    6 * MAX_REVISION_EVIDENCE_ATTESTATION_BYTES +
+    2
+  );
+}
+
+/**
+ * A snapshot's bytes by the very measure `freeze` applies to it, or null when
+ * that measure refuses its shape. Room admission uses this, not its own
+ * JSON length, so the two can never disagree (#4007).
+ */
+export function revisionEvidenceSnapshotBytes(
+  snapshot: unknown,
+  bounds: {
+    readonly maxSnapshotBytes: number;
+  } = REVISION_EVIDENCE_DEFAULT_BOUNDS,
+): number | null {
+  const measured = boundedPortableJsonBytes(snapshot, bounds.maxSnapshotBytes);
+  return measured === null || measured > bounds.maxSnapshotBytes
+    ? null
+    : measured;
+}
+
+export type RevisionEvidenceAdmissionRefusal =
+  /** This document's own revision could never be frozen. */
+  | 'document-full'
+  /** The Station-wide receipt ledger has no room for this revision. */
+  | 'evidence-ledger-full';
+
+/**
+ * The one admission check for a room write that will publish revision
+ * evidence (#4007): it applies the same bounds `freeze` and the durable
+ * ledger apply, so a write it admits is never refused afterwards for size.
+ * `ledger` counts stored receipts plus revisions admitted but not yet frozen.
+ * `reserveBytes` holds snapshot headroom back from writes that insert text,
+ * so a person can still delete from a document that inserts have filled.
+ */
+export function revisionEvidenceAdmission(input: {
+  readonly snapshotBytes: number;
+  readonly textBytes: number;
+  readonly recordBytes: number;
+  readonly reserveBytes?: number;
+  readonly ledger: { readonly count: number; readonly recordBytes: number };
+  readonly bounds?: typeof REVISION_EVIDENCE_DEFAULT_BOUNDS;
+}): RevisionEvidenceAdmissionRefusal | null {
+  const bounds = input.bounds ?? REVISION_EVIDENCE_DEFAULT_BOUNDS;
+  if (
+    input.snapshotBytes + (input.reserveBytes ?? 0) > bounds.maxSnapshotBytes ||
+    input.textBytes > bounds.maxTextBytes ||
+    input.recordBytes > bounds.maxRecordBytes
+  )
+    return 'document-full';
+  const count = input.ledger.count + 1;
+  return count > bounds.maxRevisions ||
+    revisionEvidencePortableBytes(
+      input.ledger.recordBytes + input.recordBytes,
+      count,
+    ) > bounds.maxPortableBytes
+    ? 'evidence-ledger-full'
+    : null;
+}
+
 export type EvidenceRevisionId = `revision-evidence-v1:${string}`;
 
 export interface RevisionCorrelation {
@@ -449,7 +563,10 @@ function boundedPortableJsonBytes(
     try {
       if (Array.isArray(current)) {
         // Check length before any element indexing; holes stringify as null.
-        if (current.length > 4_096) return limit + 1;
+        // Every element costs at least one byte, so a longer array is over
+        // the byte limit. (A fixed 4,096-element cap here refused a Task
+        // document of more than 4,096 atoms well under its byte bound, #4007.)
+        if (current.length > limit) return limit + 1;
         let total = 2;
         if (total > limit) return limit + 1;
         for (let index = 0; index < current.length; index += 1) {
@@ -476,7 +593,8 @@ function boundedPortableJsonBytes(
       for (const key in current) {
         if (!Object.prototype.propertyIsEnumerable.call(current, key)) continue;
         count += 1;
-        if (count > 4_096) return limit + 1;
+        // Each emitted member costs at least `"":` plus a value.
+        if (count > limit) return limit + 1;
         const child = (current as Record<string, unknown>)[key];
         // JSON omits undefined/function/symbol object properties.
         if (

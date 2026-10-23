@@ -1,6 +1,6 @@
 import type {
   OrchestrationSessionSummary,
-  TaskRecord,
+  TaskListRecord,
 } from '@kontourai/station-sdk';
 import { useMemo } from 'react';
 import { useOpenChatInbox } from '../../contexts/open-chats-store';
@@ -28,14 +28,14 @@ import {
  * Durable Tasks retain their correlated chat as a child row; recorded
  * delegation and Task links are folded by the shared lane presentation.
  */
-const NO_TASKS: TaskRecord[] = [];
+const NO_TASKS: TaskListRecord[] = [];
 const NO_REMOTE: RemoteHomeEnvironmentSessions[] = [];
 
 export function useInboxWorkItems(
   agents: AgentSummary[],
   sessions: OrchestrationSessionSummary[],
   resolveModelLabel?: ResolveModelLabel,
-  tasks: TaskRecord[] = NO_TASKS,
+  tasks: TaskListRecord[] = NO_TASKS,
   remoteEnvironments: RemoteHomeEnvironmentSessions[] = NO_REMOTE,
 ): HomeWorkItem[] {
   const { items: openChatItems, currentSessionIdByConversation } =

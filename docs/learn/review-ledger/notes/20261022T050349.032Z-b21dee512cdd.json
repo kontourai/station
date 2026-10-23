@@ -1,0 +1,15 @@
+{
+  "revision": "01ac4861e453c7c5de938989dbe368d2122af05e",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Edited in #4003 review round 8: the Task Learning paragraph now names 409 task_learning_id_taken for a version whose id another record holds, and says POST /api/knowledge/roots/:rootId/records refuses (400) provenance.agent station-task-learning. Checked against the id-taken refusal in task-learning.ts and routes/orchestration/task-learning.ts, and the reserved-agent check in knowledge-record-routes.ts.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Re-read for #4003 review round 8: api.md changed only in the Task Learning paragraph (id-taken 409, reserved agent on the records route). This guide links the API reference as a whole and lists no provenance.agent values, so it still holds.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]},
+
+    {"path":"docs/design/knowledge-foundation.md","note":"Re-read for #4003 review round 8: knowledge-record-routes.ts now refuses one reserved provenance.agent value, station-task-learning, on create. This design describes the Kit store contract, adapters and provenance fields in general and names no agent value a caller may or may not use, so it still holds.","inputs":["docs/design/knowledge-foundation.md","src-server/routes/knowledge/knowledge-record-routes.ts"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"Re-read for #4003 review round 8: the records route now refuses only provenance.agent station-task-learning. This example writes records with its own provenance and does not use that agent, so its statements hold.","inputs":["examples/knowledge-library/README.md","src-server/routes/knowledge/knowledge-record-routes.ts"]},
+
+    {"path":"examples/meeting-notes/README.md","note":"Re-read for #4003 review round 8: the records route now refuses only provenance.agent station-task-learning. This example's caller-supplied provenance label is station.meeting-notes.capture, which is unaffected, so its statements hold.","inputs":["examples/meeting-notes/README.md","src-server/routes/knowledge/knowledge-record-routes.ts"]}
+  ]
+}
