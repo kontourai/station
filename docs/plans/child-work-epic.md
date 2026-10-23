@@ -942,6 +942,12 @@ model access and same-session ACK acceptance remain separate obligations.
 
 ## Authenticated report-group preparation
 
+Published Flow Agents 9.5.0 is now adopted through the managed lock/install path
+in Station, contracts and SDK. Release PR #1546 merged; npm's published integrity
+matches the lockfile. The existing HTTP/SDK/CLI consumers pass on that artifact.
+Its explicit `finalizeCancel` contract is available, but Station's pending-cancel
+confirmation composition still needs implementation and qualification.
+
 Registered `group report-*` CLI commands now consume the strict SDK for
 create/get/list/events/follow/results/cancel. Input file and flag bounds apply
 before request dispatch; terminal output is escaped. SIGINT closes observation
@@ -977,8 +983,8 @@ rounds journal and V3 authority. It retains exact member interrupt receipts for
 nonterminal attempts and keeps missing acknowledgements pending. Exact command
 replay performs no effects. Completed attempts retain their terminal receipts,
 usage and reservations; cancellation does not mean acceptance, a refund or a
-new physical-stop claim. Explicit pending-cancellation recovery still requires
-the unpublished 9.5.0 contract.
+new physical-stop claim. Explicit pending-cancellation recovery has a published 9.5.0 contract; its
+Station confirmation composition remains open.
 
 The execution runner composes the actual preparation, signed custody,
 canonical task dispatch, sealed SDK transport and published AccountingV1 rounds.
