@@ -414,6 +414,7 @@ export function inspectSdkSourceWire(owner: object, handle: object) {
     wireDigest: wireIdentityDigest(s.wire),
     quote: s.quote,
     contract: s.contract,
+    sourceBinding: claimSdkSourceLease(s.lease).binding,
   });
 }
 export function assertSdkSourceWireCurrentSync(owner: object, handle: object) {

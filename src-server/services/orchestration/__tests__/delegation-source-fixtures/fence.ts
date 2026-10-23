@@ -58,6 +58,10 @@ import { EventBus } from '../../event-bus.js';
 import { EventStore } from '../../event-store.js';
 import { OrchestrationService } from '../../orchestration-service.js';
 import { createSessionAgentResolver } from '../../session-agent-resolution.js';
+import type {
+  PreparedStationReportGroup,
+  StationReportGroupPreparation,
+} from '../../station-report-group-preparation.js';
 import type { fixture } from './source.js';
 
 const adapterCleanup: Array<() => Promise<void>> = [];
@@ -80,6 +84,10 @@ export async function publicFenceFixture(
   beforeInner: () => void = () => {},
   observation?: {
     protocol?: 'legacy' | 'rounds';
+    preparedGroup?: {
+      owner: StationReportGroupPreparation;
+      handle: PreparedStationReportGroup;
+    };
     modelId?: string;
     allocation?: {
       inputTokens: number;
@@ -91,6 +99,13 @@ export async function publicFenceFixture(
     now(): number;
   },
 ) {
+  const issued = observation?.preparedGroup;
+  const actual = issued?.owner.read(issued.handle, f.req);
+  const initial = actual?.members[0];
+  const brief = initial?.brief ?? 'inspect exactly this source';
+  const principalId =
+    actual?.root.authenticated_principal_ref.id ?? 'fixture-owner';
+  const clientTurnId = initial?.clientTurnId ?? 'reserved-client-turn';
   const current = () =>
     runtimeRequestPrincipalMayAccessHttpRoute(f.req, f.environment, {
       method: 'POST',
@@ -98,6 +113,7 @@ export async function publicFenceFixture(
     });
   const finalize = (): undefined => {
     if (!current()) throw Error('actual-local-grant-revoked');
+    if (issued) issued.owner.read(issued.handle, f.req);
     return undefined;
   };
   const persistence = new StationDelegationPersistence(f.root);
@@ -128,7 +144,10 @@ export async function publicFenceFixture(
     max_attempts: 1,
     expires_at: '2099-01-01T00:00:00.000Z',
   };
-  const execution = {
+  const actualEnvelope = actual?.envelopes.find(
+    (e) => e.execution_id === initial?.taskId,
+  );
+  const execution = actualEnvelope?.execution_binding ?? {
     runtime: {
       runtime_receipt_ref: ref('runtime'),
       model_receipt_ref: ref('model'),
@@ -140,7 +159,7 @@ export async function publicFenceFixture(
       reason: 'synthetic-independent-advisory',
     },
   };
-  const root: RootAuthorityV2 = {
+  const root: RootAuthorityV2 = actual?.root ?? {
     schema_version: '2.0',
     authority_id: 'authority',
     authority_epoch: 1,
@@ -167,7 +186,7 @@ export async function publicFenceFixture(
     root_trace: { trace_id: 'trace', span_id: 'span' },
     root_cancellation_ref: ref('cancel'),
   };
-  const envelope: DelegationEnvelopeV2 = {
+  const envelope: DelegationEnvelopeV2 = actualEnvelope ?? {
     schema_version: '2.0',
     envelope_id: 'envelope',
     generation: 0,
@@ -188,33 +207,58 @@ export async function publicFenceFixture(
     continuation_ref: ref('continuation'),
     cancellation_ref: root.root_cancellation_ref,
   };
-  const spec: DelegationGroupSpecV2 = {
-    schemaVersion: '2.0',
-    groupId: 'group',
-    rootAuthorityRef: rootAuthorityReferenceV2(root),
-    controller: { id: 'controller', generation: 1 },
-    policy: { reference: root.revisions.policy, maxConcurrent: 1 },
-    topology: { kind: 'independent-advisory' },
-    seats: [
-      {
-        seatId: 'seat',
-        envelope: {
-          id: envelope.envelope_id,
-          generation: 0,
-          digest: delegationEnvelopeDigestV2(envelope),
+  const spec: DelegationGroupSpecV2 = actual
+    ? {
+        ...actual.spec,
+        schemaVersion: '2.0',
+        policy: {
+          reference: actual.spec.policy.reference,
+          maxConcurrent: actual.spec.policy.maxConcurrent,
         },
-        stepId: null,
-        effect: 'report',
-        allocation,
-      },
-    ],
-  };
+        seats: actual.spec.seats.map((seat) => ({ ...seat, stepId: null })),
+      }
+    : {
+        schemaVersion: '2.0',
+        groupId: 'group',
+        rootAuthorityRef: rootAuthorityReferenceV2(root),
+        controller: { id: 'controller', generation: 1 },
+        policy: { reference: root.revisions.policy, maxConcurrent: 1 },
+        topology: { kind: 'independent-advisory' },
+        seats: [
+          {
+            seatId: 'seat',
+            envelope: {
+              id: envelope.envelope_id,
+              generation: 0,
+              digest: delegationEnvelopeDigestV2(envelope),
+            },
+            stepId: null,
+            effect: 'report',
+            allocation,
+          },
+        ],
+      };
   const host = {
-    now: () => '2026-10-21T00:00:00.000Z',
-    authorize: async () => current(),
+    now: () =>
+      actual ? new Date(Date.now()).toISOString() : '2026-10-21T00:00:00.000Z',
+    authorize: async (
+      _action: unknown,
+      candidateRoot: RootAuthorityV2,
+      candidateEnvelope: DelegationEnvelopeV2 | null,
+    ) =>
+      current() &&
+      (!issued ||
+        issued.owner.authorizes(
+          issued.handle,
+          f.req,
+          candidateRoot,
+          candidateEnvelope,
+        )),
     confirmExecution: async (e: DelegationEnvelopeV2) =>
       current() &&
-      canonicalJson(e.execution_binding) === canonicalJson(execution),
+      (issued
+        ? issued.owner.confirmsExecution(issued.handle, f.req, e)
+        : canonicalJson(e.execution_binding) === canonicalJson(execution)),
     confirmReconciliation: async () => current(),
   };
   let intentCount = 0;
@@ -261,12 +305,13 @@ export async function publicFenceFixture(
       )
     : createDelegationAuthorityService(legacyFence!.authorities, host);
   await service.issue(root);
-  await service.derive(root.authority_id, envelope);
+  for (const preparedEnvelope of actual?.envelopes ?? [envelope])
+    await service.derive(root.authority_id, preparedEnvelope);
   const invocation = new AsyncLocalStorage<string>();
   const observed: ReservedProviderEvidence[] = [];
   const accounting = new Map<string, DelegationRetainedAccountingV1>();
   const evidenceDirectory = join(f.root, 'station-provider-evidence');
-  const sessionId = 'reserved-sdk-session';
+  const sessionId = initial?.taskId ?? 'reserved-sdk-session';
   const eventStore = observation
     ? new EventStore(join(f.root, 'reserved-events.sqlite'))
     : undefined;
@@ -293,10 +338,13 @@ export async function publicFenceFixture(
           eventStore,
           logger,
           resolveSessionAgent: createSessionAgentResolver({
-            loadAgentSpec: async () => ({
-              name: 'Reserved reviewer',
-              prompt: 'Report only',
-            }),
+            loadAgentSpec: async () =>
+              actual && initial
+                ? f.loader.loadAgent(initial.agentId)
+                : {
+                    name: 'Reserved reviewer',
+                    prompt: 'Report only',
+                  },
             resolveToolServer: async () => null,
             resolveSkillDir: async () => null,
           }),
@@ -376,10 +424,10 @@ export async function publicFenceFixture(
           throw Error('real orchestration missing');
         const port = prepareReservedStationTurn(
           {
-            principalId: 'fixture-owner',
+            principalId,
             threadId: sessionId,
-            clientTurnId: 'reserved-client-turn',
-            input: 'inspect exactly this source',
+            clientTurnId,
+            input: brief,
             modelId,
           },
           attemptInput,
@@ -392,10 +440,10 @@ export async function publicFenceFixture(
               threadId: sessionId,
               provider: 'station-agent',
               modelId,
-              metadata: { agentId: 'reviewer', userId: 'fixture-owner' },
+              metadata: { agentId: 'reviewer', userId: principalId },
             },
           },
-          { userId: 'fixture-owner' },
+          { userId: principalId },
           { reservedStationTurn: port },
         );
         if (started.status !== 'accepted')
@@ -405,12 +453,12 @@ export async function publicFenceFixture(
             type: 'sendTurn',
             input: {
               threadId: sessionId,
-              clientTurnId: 'reserved-client-turn',
-              input: 'inspect exactly this source',
+              clientTurnId,
+              input: brief,
               modelId,
             },
           },
-          { userId: 'fixture-owner' },
+          { userId: principalId },
           { reservedStationTurn: port },
         );
         const attempt = await reservedStationTurnResult(port);
@@ -508,7 +556,7 @@ export async function publicFenceFixture(
         },
       })
     : undefined;
-  const roundsSpec: DelegationRoundsSpec = {
+  const roundsSpec: DelegationRoundsSpec = actual?.spec ?? {
     ...spec,
     schemaVersion: '1.0',
     policy: { ...spec.policy, maxRounds: 1, maxAttempts: 1 },
@@ -602,7 +650,7 @@ export async function publicFenceFixture(
       if (!orchestration) throw Error('real orchestration missing');
       return orchestration.dispatchWithReceipt(
         { type: 'interruptTurn', threadId: sessionId },
-        { userId: 'fixture-owner' },
+        { userId: principalId },
       );
     },
     sendWithoutReservation: () => {
@@ -617,7 +665,7 @@ export async function publicFenceFixture(
             modelId,
           },
         },
-        { userId: 'fixture-owner' },
+        { userId: principalId },
       );
     },
     sendWithForgedReservation: () => {
@@ -628,11 +676,11 @@ export async function publicFenceFixture(
           input: {
             threadId: sessionId,
             clientTurnId: 'forged-client-turn',
-            input: 'inspect exactly this source',
+            input: brief,
             modelId,
           },
         },
-        { userId: 'fixture-owner' },
+        { userId: principalId },
         { reservedStationTurn: JSON.parse('{}') },
       ]);
     },
@@ -690,7 +738,9 @@ export async function publicFenceFixture(
             expectedRevision: 1,
             controller: spec.controller,
             checkpoint: ref('checkpoint'),
-            seats: [{ seatId: 'seat', previousInvocationId: null }],
+            seats: [
+              { seatId: spec.seats[0].seatId, previousInvocationId: null },
+            ],
           })
         : legacyController!.run({
             kind: 'run',

@@ -893,6 +893,7 @@ export class LocalSourceAdmissionOwner {
             request: authority.request,
             principalId: authority.principalId,
             hostContextId: authority.lease.hostContextId,
+            expiresAtMs: state.record.provenance.expiresAt,
             source: structuredClone(state.source),
           });
         },
@@ -1390,6 +1391,7 @@ export interface SdkSourceLease {
     request: Request;
     principalId: string;
     hostContextId: string;
+    expiresAtMs: number;
     source: SourceTuple;
   }>;
   assertDisclosureCurrentSync(): undefined;

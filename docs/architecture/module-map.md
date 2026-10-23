@@ -1977,6 +1977,40 @@ The authority comes from retained official [model](https://platform.claude.com/d
 the issuer records their hashes. It does not prove model entitlement. Production
 request serving and authenticated context-sync recipients remain unwired.
 
+### Operator report-group preparation
+
+The [report-group preparer](../../src-server/services/orchestration/station-report-group-preparation.ts)
+composes the actual runtime credential, configured Agent, sealed-source and
+Anthropic profile owners. It accepts an authenticated local operator's bounded
+report intent; it accepts no caller root, grant, receipt, model connection or
+credential. Bootstrap, agent-origin and hosted requests cannot issue this
+preparation. Every seat must observe the same source state, although each gets
+its own single-use sealed input. A deadline cannot outlive its source or profile.
+
+The preparer issues one controller envelope and bounded child envelopes using
+the published Flow validators. Each child allocation comes from its actual
+qualified wire quote; their sum must fit the declared aggregate budget. The
+controller cannot invoke a report, and children cannot delegate further. Model
+and runtime references describe the exact prepared profile/wire; hashes alone
+cannot authorize them. Only the issuing boot-local capability and current
+request can authenticate the root and execution bindings. They are not portable
+authority or proof of provider readiness.
+
+Task/session and client-turn identities are reserved before execution. They do
+not claim a task started. The same Request and unchanged intent join one
+preparation; changed intent, another Request or a serialized capability refuses.
+A restarted owner cannot reconstruct the capability from its references. A
+serving layer must perform its durable group lookup rather than reseal/resend an
+existing operation. It also needs independently authorized historical reads and
+cancellation after the preparation request or source lease ends.
+
+The [controlled integration](../../src-server/services/orchestration/__tests__/station-report-group-preparation.test.ts)
+consumes an issued root through the published durable v3 authority, rounds
+reservation, real Station adapter/service/SQLite and retained inference
+accounting under a synthetic response. Canonical task dispatch, boot serving,
+Flow-backed frontier/join and authenticated same-session ACK remain unwired.
+This preparer does not enable the public paid-group capability.
+
 ### Reserved Station source execution
 
 The [reserved-turn owner](../../src-server/runtime/conversation/reserved-station-turn.ts)

@@ -940,6 +940,25 @@ Its fixed evidence expiry and installed-SDK hashes fail closed; startup does not
 refresh them. Google remains unqualified by this profile. Boot request serving,
 model access and same-session ACK acceptance remain separate obligations.
 
+## Authenticated report-group preparation
+
+The private report-group preparer now derives one controller and its child
+report envelopes from an authenticated local operator intent, actual configured
+Agents, exact qualified SDK quotes and separately sealed copies of one source
+state. No caller root/grant or fabricated runtime/model reference supplies its
+authority: references describe the observed preparation, and the issuing
+boot-local capability authenticates them. Aggregate child allocations must fit
+the declared budget. Task and client-turn identities remain reserved intent
+until the actual session/turn owners accept them.
+
+The controlled test consumes that issued root in the published v3 authority and
+rounds launch path, then reaches the real Station adapter/service/SQLite and
+retained tariff accounting. Its synthetic response is not live provider proof.
+Same-request replay joins; cross-request/restart preparation replay cannot
+reconstruct a launch capability. Durable serving lookup, canonical Task dispatch,
+independent post-request reads/cancel, Flow-backed frontier/join and session ACK
+remain required before enabling the paid-group capability.
+
 ## Controlled reserved Station turn integration
 
 The internal reserved-turn port now reaches the real Station adapter through

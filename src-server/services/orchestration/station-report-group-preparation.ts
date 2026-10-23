@@ -1,0 +1,664 @@
+// UNWIRED(#91): root preparation is private; rounds/task serving and context ACK remain required.
+import { createHash, randomUUID } from 'node:crypto';
+import {
+  type DelegationAuthorityV2,
+  type DelegationReferenceV2,
+  type RootAuthorityV2,
+  validateRootAuthorityV2,
+} from '@kontourai/flow-agents/delegation-authority-contract';
+import {
+  type DelegationEnvelopeV2,
+  delegationEnvelopeDigestV2,
+  delegationParentReferenceV2,
+  rootAuthorityReferenceV2,
+  validateDelegationAncestryV2,
+  validateDelegationEnvelopeV2,
+} from '@kontourai/flow-agents/delegation-envelope-v2';
+import {
+  type DelegationRoundsSpec,
+  validateDelegationRoundsSpec,
+} from '@kontourai/flow-agents/delegation-group-rounds';
+import { canonicalJson } from '@kontourai/relay';
+import { z } from 'zod/v3';
+import { createPersonalRuntimeRequestGuard } from '../../runtime/bootstrap/runtime-tenant-context.js';
+import { AnthropicSealedPreparation } from '../../runtime/conversation/anthropic-sealed-preparation.js';
+import { captureEnvironmentLocalGrantObservationOwner } from '../../runtime/conversation/local-grant-observation-owner.js';
+import {
+  type ObservedSdkProviderCredential,
+  readObservedSdkProviderCredential,
+} from '../../runtime/conversation/provider-credential-observation.js';
+import {
+  RuntimeFencedCredentialObservationOwner,
+  type RuntimeFencedCredentialObservationOwners,
+} from '../../runtime/conversation/runtime-fenced-credential-observation.js';
+import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
+import { runtimeRequestPrincipalMayAccessHttpRoute } from '../../security/runtime-request-security.js';
+import {
+  createPreparedSdkSourceWireOwner,
+  inspectSdkSourceWire,
+} from './delegation-group-sdk-source-wire-owner.js';
+import {
+  type LocalSourceAdmissionOwner,
+  type RuntimeSourceRequestContext,
+} from './delegation-group-source-admission.js';
+
+const id = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/);
+const integer = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
+const inputSchema = z
+  .object({
+    operationId: id,
+    projectSlug: id,
+    resourceId: id.optional(),
+    deadlineAt: integer,
+    maxConcurrent: z.number().int().min(1).max(16),
+    budget: z
+      .object({
+        inputTokens: integer,
+        outputTokens: integer,
+        costMicros: integer,
+      })
+      .strict(),
+    members: z
+      .array(
+        z
+          .object({
+            seatId: id,
+            agentId: id,
+            brief: z.string().min(1).max(65536),
+            maxOutputTokens: z.number().int().min(1).max(128000),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(16),
+  })
+  .strict();
+export type StationReportGroupInput = z.input<typeof inputSchema>;
+const brand = Symbol('prepared Station report group');
+export type PreparedStationReportGroup = Readonly<{ [brand]: true }>;
+type Member = {
+  seatId: string;
+  agentId: string;
+  taskId: string;
+  clientTurnId: string;
+  brief: string;
+  modelId: string;
+  credential: ObservedSdkProviderCredential;
+  owner: object;
+  sdkHandle: object;
+  snapshot: object;
+};
+type RecordValue = {
+  root: RootAuthorityV2;
+  envelopes: DelegationEnvelopeV2[];
+  spec: DelegationRoundsSpec;
+  members: Member[];
+};
+type State = RecordValue & {
+  request: Request;
+  deadlineAt: number;
+  closed: boolean;
+};
+export class StationReportPreparationUnavailable extends Error {
+  readonly code = 'group_preparation_unavailable';
+  constructor() {
+    super('Report group preparation is unavailable.');
+  }
+}
+function refuse(): never {
+  throw new StationReportPreparationUnavailable();
+}
+const reference = (
+  domain: string,
+  id: string,
+  facts: unknown,
+): DelegationReferenceV2 => ({
+  id,
+  domain,
+  digest: `sha256:${createHash('sha256').update(canonicalJson(facts)).digest('hex')}`,
+});
+
+/** Issues one bounded, no-tools report group from existing authenticated owners.
+ * References describe observed facts; only this boot-local capability admits them. */
+export class StationReportGroupPreparation {
+  readonly #personal = createPersonalRuntimeRequestGuard();
+  readonly #credentials: RuntimeFencedCredentialObservationOwner;
+  readonly #operations = new Map<
+    string,
+    {
+      intent: string;
+      request: Request;
+      promise: Promise<PreparedStationReportGroup>;
+    }
+  >();
+  readonly #states = new WeakMap<PreparedStationReportGroup, State>();
+  constructor(
+    private readonly owners: {
+      runtime: RuntimeFencedCredentialObservationOwners;
+      sources: LocalSourceAdmissionOwner;
+      qualification: AnthropicSealedPreparation;
+      rawFetch: typeof fetch;
+    },
+  ) {
+    this.owners = Object.freeze({
+      ...owners,
+      runtime: Object.freeze({ ...owners.runtime }),
+    });
+    this.#credentials = new RuntimeFencedCredentialObservationOwner(
+      owners.runtime,
+    );
+  }
+
+  async prepare(
+    context: RuntimeSourceRequestContext,
+    sent: StationReportGroupInput,
+  ): Promise<PreparedStationReportGroup> {
+    const input = inputSchema.parse(structuredClone(sent));
+    if (Buffer.byteLength(canonicalJson(input)) > 256 * 1024) refuse();
+    this.#assertRequest(context.req.raw);
+    const authority = await captureEnvironmentLocalGrantObservationOwner(
+      context.req.raw,
+      this.owners.runtime.environmentSecurityService,
+      this.owners.runtime.requestSecurity,
+    );
+    const lease = authority.requireCurrentLocalGrant(context.req.raw);
+    lease.assertCurrent();
+    const groupId = `group:${createHash('sha256')
+      .update(
+        canonicalJson([
+          lease.hostContextId,
+          lease.principalCredential,
+          input.operationId,
+        ]),
+      )
+      .digest('hex')}`;
+    const intent = canonicalJson(input);
+    const prior = this.#operations.get(groupId);
+    if (prior) {
+      if (prior.intent !== intent || prior.request !== context.req.raw)
+        refuse();
+      const prepared = await prior.promise;
+      this.#state(prepared, context.req.raw);
+      return prepared;
+    }
+    if (this.#operations.size >= 128) refuse();
+    const promise = this.#prepare(context, input, groupId);
+    this.#operations.set(groupId, {
+      intent,
+      request: context.req.raw,
+      promise,
+    });
+    return promise;
+  }
+
+  async #prepare(
+    context: RuntimeSourceRequestContext,
+    input: StationReportGroupInput,
+    groupId: string,
+  ): Promise<PreparedStationReportGroup> {
+    const now = Date.now();
+    if (
+      input.deadlineAt <= now ||
+      input.deadlineAt > now + 300_000 ||
+      input.maxConcurrent > input.members.length ||
+      new Set(input.members.map((m) => m.seatId)).size !== input.members.length
+    )
+      refuse();
+    this.owners.qualification.assertCurrent();
+    const members: Member[] = [];
+    const executions: RootAuthorityV2['execution_grants'] = [];
+    const authority: DelegationAuthorityV2 = {
+      allowed_tools: [],
+      allowed_effects: ['report'],
+      readable_resources: [],
+      mutable_resources: [],
+      posture: 'report-only',
+      approval: 'automatic',
+      escalation: 'deny',
+    };
+    let principalId: string | undefined;
+    let hostId: string | undefined;
+    let pendingSnapshot: object | undefined;
+    const current = () => {
+      context.req.raw.signal.throwIfAborted();
+      this.#assertRequest(context.req.raw);
+      this.owners.qualification.assertCurrent();
+      if (Date.now() < now || Date.now() >= input.deadlineAt) refuse();
+      for (const member of members)
+        readObservedSdkProviderCredential(
+          member.credential,
+          'anthropic',
+          context.req.raw,
+        );
+      this.#assertRequest(context.req.raw);
+    };
+    try {
+      for (const member of input.members) {
+        current();
+        const selected = await this.#credentials.captureAgentSdkCredential(
+          context.req.raw,
+          member.agentId,
+        );
+        current();
+        this.owners.qualification.assertSelection(
+          selected.provider,
+          selected.modelId,
+        );
+        const taskId = `task:${randomUUID()}`;
+        const subject = { groupId, workItemId: taskId };
+        const sealed = await this.owners.sources.captureSnapshot(
+          context,
+          subject,
+          {
+            projectSlug: input.projectSlug,
+            ...(input.resourceId === undefined
+              ? {}
+              : { resourceId: input.resourceId }),
+          },
+        );
+        pendingSnapshot = sealed.capability;
+        current();
+        const owner = createPreparedSdkSourceWireOwner({
+          provider: selected.provider,
+          modelId: selected.modelId,
+          credential: selected.credential,
+          preparation: this.owners.qualification,
+          brief: member.brief,
+          instructions: selected.instructions,
+          maxOutputTokens: member.maxOutputTokens,
+          remaining: { ...input.budget, currency: 'USD' },
+          now: Date.now,
+          signal: context.req.raw.signal,
+          rawFetch: this.owners.rawFetch,
+        });
+        const prepared = await this.owners.sources.prepareSdkSnapshot(
+          context,
+          subject,
+          sealed.capability,
+          owner,
+        );
+        const captured = inspectSdkSourceWire(owner, prepared.sdkHandle);
+        const binding = captured.sourceBinding;
+        current();
+        if (
+          binding.request !== context.req.raw ||
+          binding.expiresAtMs < input.deadlineAt ||
+          (principalId !== undefined && principalId !== binding.principalId) ||
+          (hostId !== undefined && hostId !== binding.hostContextId)
+        )
+          refuse();
+        const previous = executions[0]?.source;
+        if (
+          previous &&
+          (previous.repository_id !== binding.source.repository_id ||
+            previous.source_state_id !== binding.source.source_state_id ||
+            previous.dirty_state_fingerprint !==
+              binding.source.dirty_state_fingerprint)
+        )
+          refuse();
+        const facts = this.owners.qualification.read(captured.contract.id);
+        if (!facts || facts.expiresAtMs < input.deadlineAt) refuse();
+        principalId = binding.principalId;
+        hostId = binding.hostContextId;
+        executions.push({
+          grant_id: member.seatId,
+          runtime: {
+            runtime_receipt_ref: reference(
+              'station.sealed-sdk.runtime.v1',
+              member.seatId,
+              {
+                agentId: selected.agentId,
+                provider: selected.provider,
+                modelId: selected.modelId,
+                wireDigest: captured.wireDigest,
+                contract: captured.contract,
+                source: binding.source,
+              },
+            ),
+            model_receipt_ref: reference(
+              'station.provider-public-contract.v1',
+              captured.contract.id,
+              captured.contract,
+            ),
+            required_capabilities: [],
+          },
+          source: binding.source,
+          flow_binding: {
+            status: 'unbound',
+            reason: 'operator-independent-advisory',
+          },
+          authority_ceiling: authority,
+        });
+        members.push({
+          seatId: member.seatId,
+          agentId: selected.agentId,
+          taskId,
+          clientTurnId: randomUUID(),
+          brief: member.brief,
+          modelId: selected.modelId,
+          credential: selected.credential,
+          owner,
+          sdkHandle: prepared.sdkHandle,
+          snapshot: sealed.capability,
+        });
+        pendingSnapshot = undefined;
+      }
+      current();
+      if (!principalId || !hostId || !executions[0]) refuse();
+      const policy = reference(
+        'station.operator-report-policy.v1',
+        input.operationId,
+        input,
+      );
+      const source = executions[0].source;
+      const budget = {
+        remaining_depth: 1,
+        max_total_children: input.members.length,
+        max_total_envelopes: input.members.length + 1,
+        max_concurrent_children: input.maxConcurrent,
+        max_runtime_ms: input.deadlineAt - now,
+        max_input_tokens: input.budget.inputTokens,
+        max_output_tokens: input.budget.outputTokens,
+        max_cost_micros: input.budget.costMicros,
+        max_attempts: input.members.length,
+        expires_at: new Date(input.deadlineAt).toISOString(),
+      };
+      const root = validateRootAuthorityV2({
+        schema_version: '2.0',
+        authority_id: groupId,
+        authority_epoch: 1,
+        issuer_host_id: hostId,
+        authenticated_principal_ref: reference(
+          'station.authenticated-local-operator.v1',
+          principalId,
+          [hostId, principalId],
+        ),
+        authenticated_subject_ref: reference(
+          'station.authenticated-report-request.v1',
+          groupId,
+          [principalId, input],
+        ),
+        source_origin: {
+          repository_id: source.repository_id,
+          worktree_id: source.execution_worktree_id,
+          source_state_id: source.source_state_id,
+          dirty_state_fingerprint: source.dirty_state_fingerprint,
+        },
+        execution_worktree_ids: executions.map(
+          (e) => e.source.execution_worktree_id,
+        ),
+        execution_grants: executions,
+        delegation_ceiling: authority,
+        budget,
+        revisions: {
+          policy,
+          prompt: reference('station.report-briefs.v1', groupId, input.members),
+          rubric: reference('station.report-result-policy.v1', groupId, {
+            acceptance: 'unassessed',
+            effect: 'report',
+          }),
+        },
+        root_trace: { trace_id: randomUUID(), span_id: randomUUID() },
+        root_cancellation_ref: reference(
+          'station.report-group-cancellation.v1',
+          groupId,
+          [hostId, groupId],
+        ),
+      });
+      const parent = validateDelegationEnvelopeV2({
+        schema_version: '2.0',
+        envelope_id: `envelope:${randomUUID()}`,
+        generation: 0,
+        parent: null,
+        root_authority_ref: rootAuthorityReferenceV2(root),
+        execution_id: groupId,
+        actor: root.authenticated_principal_ref,
+        assignment_subject: root.authenticated_subject_ref,
+        trace_id: root.root_trace.trace_id,
+        span_id: root.root_trace.span_id,
+        parent_span_id: null,
+        selected_grant_id: executions[0].grant_id,
+        remaining_allowed_grant_ids: executions.map((e) => e.grant_id),
+        execution_binding: {
+          runtime: executions[0].runtime,
+          source: executions[0].source,
+          flow_binding: executions[0].flow_binding,
+        },
+        delegation_ceiling: authority,
+        execution_authority: { ...authority, allowed_effects: [] },
+        budget,
+        continuation_ref: reference('station.report-group.v1', groupId, input),
+        cancellation_ref: root.root_cancellation_ref,
+      });
+      const children = executions.map((execution, index) => {
+        const { grant_id, authority_ceiling: _ceiling, ...binding } = execution;
+        const member = members[index];
+        const quote = inspectSdkSourceWire(
+          member.owner,
+          member.sdkHandle,
+        ).quote;
+        return validateDelegationEnvelopeV2({
+          schema_version: '2.0',
+          envelope_id: `envelope:${randomUUID()}`,
+          generation: 1,
+          parent: delegationParentReferenceV2(parent),
+          root_authority_ref: rootAuthorityReferenceV2(root),
+          execution_id: member.taskId,
+          actor: root.authenticated_principal_ref,
+          assignment_subject: root.authenticated_subject_ref,
+          trace_id: root.root_trace.trace_id,
+          span_id: randomUUID(),
+          parent_span_id: parent.span_id,
+          selected_grant_id: grant_id,
+          remaining_allowed_grant_ids: [],
+          execution_binding: binding,
+          delegation_ceiling: authority,
+          execution_authority: authority,
+          budget: {
+            ...budget,
+            remaining_depth: 0,
+            max_total_children: 1,
+            max_concurrent_children: 1,
+            max_total_envelopes: 1,
+            max_attempts: 1,
+            max_input_tokens: quote.inputUpperBoundTokens,
+            max_output_tokens: quote.outputUpperBoundTokens,
+            max_cost_micros: quote.costMicros,
+          },
+          continuation_ref: parent.continuation_ref,
+          cancellation_ref: root.root_cancellation_ref,
+        });
+      });
+      const envelopes = [parent, ...children];
+      for (const field of [
+        'max_input_tokens',
+        'max_output_tokens',
+        'max_cost_micros',
+      ] as const) {
+        const allocated = children.reduce(
+          (sum, envelope) => sum + envelope.budget[field],
+          0,
+        );
+        if (!Number.isSafeInteger(allocated) || allocated > budget[field])
+          refuse();
+      }
+      validateDelegationAncestryV2(root, [parent], new Date(now).toISOString());
+      for (const envelope of children)
+        validateDelegationAncestryV2(
+          root,
+          [parent, envelope],
+          new Date(now).toISOString(),
+        );
+      const spec = validateDelegationRoundsSpec({
+        schemaVersion: '1.0',
+        groupId,
+        rootAuthorityRef: rootAuthorityReferenceV2(root),
+        controller: { id: `controller:${randomUUID()}`, generation: 1 },
+        topology: { kind: 'independent-advisory' },
+        policy: {
+          reference: policy,
+          maxRounds: 1,
+          maxAttempts: members.length,
+          maxConcurrent: input.maxConcurrent,
+        },
+        seats: children.map((envelope, index) => {
+          const member = members[index];
+          const quote = inspectSdkSourceWire(
+            member.owner,
+            member.sdkHandle,
+          ).quote;
+          return {
+            seatId: member.seatId,
+            envelope: {
+              id: envelope.envelope_id,
+              generation: envelope.generation,
+              digest: delegationEnvelopeDigestV2(envelope),
+            },
+            effect: 'report',
+            allocation: {
+              inputTokens: quote.inputUpperBoundTokens,
+              outputTokens: quote.outputUpperBoundTokens,
+              costMicros: quote.costMicros,
+            },
+          };
+        }),
+      });
+      current();
+      const handle: PreparedStationReportGroup = Object.freeze({
+        [brand]: true,
+      });
+      this.#states.set(handle, {
+        root,
+        envelopes,
+        spec,
+        members,
+        request: context.req.raw,
+        deadlineAt: input.deadlineAt,
+        closed: false,
+      });
+      return handle;
+    } catch (error) {
+      if (pendingSnapshot) this.owners.sources.releaseSnapshot(pendingSnapshot);
+      for (const member of members)
+        this.owners.sources.releaseSnapshot(member.snapshot);
+      throw error;
+    }
+  }
+
+  #assertRequest(request: Request): void {
+    if (
+      !this.#personal(request) ||
+      !isOperatorInPersonNotAgent(request) ||
+      !runtimeRequestPrincipalMayAccessHttpRoute(
+        request,
+        this.owners.runtime.environmentSecurityService,
+        { method: 'POST', path: '/api/orchestration/chat' },
+      )
+    )
+      refuse();
+  }
+  #state(handle: PreparedStationReportGroup, request: Request): State {
+    const state = this.#states.get(handle);
+    if (
+      !state ||
+      state.closed ||
+      state.request !== request ||
+      request.signal.aborted ||
+      Date.now() >= state.deadlineAt
+    )
+      refuse();
+    this.#assertRequest(request);
+    this.owners.qualification.assertCurrent();
+    for (const member of state.members)
+      readObservedSdkProviderCredential(
+        member.credential,
+        'anthropic',
+        request,
+      );
+    this.#assertRequest(request);
+    return state;
+  }
+  authorizes(
+    handle: PreparedStationReportGroup,
+    request: Request,
+    root: RootAuthorityV2,
+    envelope: DelegationEnvelopeV2 | null,
+  ): boolean {
+    const state = this.#state(handle, request);
+    return (
+      canonicalJson(root) === canonicalJson(state.root) &&
+      (envelope === null ||
+        state.envelopes.some(
+          (e) => canonicalJson(e) === canonicalJson(envelope),
+        ))
+    );
+  }
+  confirmsExecution(
+    handle: PreparedStationReportGroup,
+    request: Request,
+    envelope: DelegationEnvelopeV2,
+  ): boolean {
+    const state = this.#state(handle, request);
+    if (
+      !state.envelopes.some((e) => canonicalJson(e) === canonicalJson(envelope))
+    )
+      return false;
+    const member = state.members.find(
+      (m) => m.seatId === envelope.selected_grant_id,
+    );
+    if (!member) return false;
+    const captured = inspectSdkSourceWire(member.owner, member.sdkHandle);
+    return (
+      canonicalJson(captured.sourceBinding.source) ===
+      canonicalJson(envelope.execution_binding.source)
+    );
+  }
+
+  read(
+    handle: PreparedStationReportGroup,
+    request: Request,
+  ): Omit<RecordValue, 'members'> & {
+    members: Array<
+      Pick<
+        Member,
+        'seatId' | 'agentId' | 'taskId' | 'clientTurnId' | 'brief' | 'modelId'
+      >
+    >;
+  } {
+    const { root, envelopes, spec, members } = this.#state(handle, request);
+    return structuredClone({
+      root,
+      envelopes,
+      spec,
+      members: members.map(
+        ({ seatId, agentId, taskId, clientTurnId, brief, modelId }) => ({
+          seatId,
+          agentId,
+          taskId,
+          clientTurnId,
+          brief,
+          modelId,
+        }),
+      ),
+    });
+  }
+  sdk(
+    handle: PreparedStationReportGroup,
+    request: Request,
+    seatId: string,
+  ): { owner: object; sdkHandle: object } {
+    const member = this.#state(handle, request).members.find(
+      (m) => m.seatId === seatId,
+    );
+    if (!member) refuse();
+    inspectSdkSourceWire(member.owner, member.sdkHandle);
+    return { owner: member.owner, sdkHandle: member.sdkHandle };
+  }
+  close(handle: PreparedStationReportGroup): void {
+    const state = this.#states.get(handle);
+    if (!state || state.closed) return;
+    state.closed = true;
+    for (const member of state.members)
+      this.owners.sources.releaseSnapshot(member.snapshot);
+  }
+}
