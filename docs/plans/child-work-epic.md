@@ -1026,3 +1026,34 @@ first-turn initiation record. The existing mounted label/selection cases fail
 on the former label (2 red, 21 controls) and the two-file selection passes 24
 tests after correction. Biome and independent source review pass. This small
 copy-only follow-up has no new browser or physical-device receipt.
+
+## Current installed-native child result controls
+
+At `b712fbce09f`, a controlled loopback model drives the installed Claude Code
+2.1.308 engine and SDK 0.3.302 through the real Station adapter, service and
+EventStore. The foreground Agent child returns exact controlled text; persisted
+child events bind its parent tool call/turn and retain `source: tool-return`.
+The parent receives that tool result. Thirteen run checks and three fresh-process
+recovery checks pass, including owner transcript reading, foreign-reader denial
+and retained provenance without registered adapters. The retained-evidence audit
+corroborates those joins and the positive probe's recorded source hashes; it
+performed no independent execution.
+
+A separate background control emits partial bytes and stops the exact child.
+Its first stronger recovery check lacked a completed parent terminal because
+the harness immediately shut down; that 8/9 result remains failed. A new run
+waits for canonical completion of the exact parent turn before teardown: six
+runtime checks and nine fresh-process recovery checks pass. The child remains
+`cancelled` with a provider summary, never a returned result. Recovery retains
+the child prompt and denies the foreign reader; partial narration was not
+persisted. The mounted ChildWorkRow suite separately passes 24 cases.
+
+These are controlled installed-native and saved-data results, not real-provider
+billing, full Station HTTP/browser, native reattachment, crash recovery or all
+background/error-ordering acceptance. Negative-run source hashes and SQLite
+backup checksums were captured after execution/recovery; they are not pre-run
+custody receipts. Cleanup checks cover service/store settlement, the owned
+listener and adapter session count, not arbitrary native descendants. Network
+and shared-write zero counters in the old harness are declarations rather than
+independently monitored measurements. No previous mutation is relabeled as a
+current-head execution.
