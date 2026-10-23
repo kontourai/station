@@ -423,8 +423,8 @@ the candidate: real conflicts are listed for the owner. A PR that merges cleanly
 with main conflicted only with an entry ahead of it, so an opted-in PR is
 re-armed once per head, pinned to the head that was checked, and other PRs get
 a comment. Automation never resolves a
-conflict or pushes to the branch. Use [the development guide](development.md#github-automation-token)
-for local automation credentials and the repository instructions for arm/confirm/stop.
+conflict or pushes to the branch. Follow [Landing a pull request](development.md#landing-a-pull-request)
+for the arm, confirm, and stop procedure.
 
 ## Release procedure
 

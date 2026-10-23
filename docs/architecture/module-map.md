@@ -3542,6 +3542,17 @@ Keep CPU classification observational; do not make high load a hidden product
 refusal, require an override token or import verification scheduling into the
 application.
 
+Linux user-service boot separately installs the
+[workload resource launcher](../../src-server/services/infra/workload-resources.ts)
+through the [shared child-process seam](../../packages/shared/src/child-workload.ts).
+Owned engines and independent tool/terminal/MCP launches use bounded systemd
+scopes outside the control server unit. The resource-posture route adds scope
+results and slice memory/pressure accounting without using the CPU sampler as
+admission authority. The [development guide](../guides/development.md#linux-service-workload-budgets)
+owns budgets, failure behavior and platform limits; the
+[process fixture](../../src-server/services/infra/__tests__/workload-resources.process.test.ts)
+exercises OOM containment, descriptor/PTY behavior and lifecycle cleanup.
+
 
 ## OutboundDispatchModule
 

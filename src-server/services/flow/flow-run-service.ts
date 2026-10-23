@@ -39,6 +39,7 @@ import {
   type GateEvaluationReadResult,
   readGateEvaluation,
 } from '@kontourai/flow/gate-evaluation-reader';
+import { spawnChildWorkload } from '@kontourai/station-shared/child-workload';
 import { createStationTempDir } from '@kontourai/station-shared/temp-dir';
 import {
   flowEvidenceAttached,
@@ -352,18 +353,18 @@ function runShellCommand(
   return new Promise((resolvePromise, rejectPromise) => {
     const startedAt = Date.now();
     const detached = process.platform !== 'win32';
-    const child = spawn(command, {
-      cwd,
-      shell: true,
-      windowsHide: true,
-      env: childProcessEnvironment(),
-      // Own process group (POSIX) so a timeout can kill the whole tree. With
-      // shell:true the command runs as a grandchild of the shell; killing only
-      // the shell leaves the grandchild alive holding the inherited stdio pipes,
-      // so 'close' never fires until it exits on its own — the command appears
-      // to hang far past timeoutMs (a flaky multi-second stall under load).
-      detached,
-    });
+    // A POSIX process group lets timeout cleanup reach the command's descendants.
+    const child = spawnChildWorkload(
+      detached ? '/bin/sh' : command,
+      detached ? ['-c', command] : [],
+      {
+        cwd,
+        shell: !detached,
+        windowsHide: true,
+        env: childProcessEnvironment(),
+        detached,
+      },
+    );
     // #561: the timeout above dies with this process, so register the group
     // for the startup sweep. The record carries a label, never the command
     // line, which the sweep would log.

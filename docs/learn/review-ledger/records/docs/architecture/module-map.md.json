@@ -1178,7 +1178,21 @@
 
     "src-server/services/devices/toolchain/__tests__/device-tool-runtime.process.test.ts",
 
-    "src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx"
+    "src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx",
+
+    "src-server/services/infra/workload-resources.ts",
+
+    "packages/shared/src/child-workload.ts",
+
+    "src-server/index.ts",
+
+    "src-server/routes/system/resource-posture-routes.ts",
+
+    "src-server/services/infra/__tests__/workload-resources.process.test.ts",
+
+    "docs/guides/development.md",
+
+    "patches/modelcontextprotocol-client-2.3.1.patch"
   ],
 
   "checks": [

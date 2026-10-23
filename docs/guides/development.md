@@ -153,6 +153,68 @@ just dev --watch --instance=hot --temp-home --port=3342 --ui-port=3374
   server runs under `scripts/dev-server-watch.mts` (`tsx watch` cannot poll).
   Polling costs some CPU; leave it off where native watching works.
 
+### Linux service workload budgets
+
+When the server runs inside a `station-*.service` user unit on Linux,
+[`workload-resources.ts`](../../src-server/services/infra/workload-resources.ts)
+places owned child workloads in systemd scopes outside the server unit. Engine
+tools inherit their engine's scope; separately launched terminals, MCP servers,
+ACP commands, Flow commands, plugin builds, project commands, Veritas readiness
+runs, Claude model discovery, engine CLI probes and owned browser/device helpers
+receive their own scopes. This separates their memory accounting and OOM failure
+domain from the control server. It does not isolate filesystem or network access.
+
+Each scope has a hard memory limit and a thread/process limit. A shared slice
+bounds their combined memory, swap, CPU and thread/process usage. There is no
+soft memory threshold: sustained reclaim throttling can otherwise stall a
+workload before it reaches its hard limit. Configure these trusted server
+environment variables before starting the service:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `STATION_WORKLOAD_MEMORY_MIB` | `3072` | Per-scope memory, capped by the aggregate budget |
+| `STATION_WORKLOAD_TOTAL_MEMORY_MIB` | Half physical RAM | Combined memory for this service's workload slice |
+| `STATION_WORKLOAD_SWAP_MIB` | `256` | Per-scope swap; `0` disables it |
+| `STATION_WORKLOAD_CPU_PERCENT` | Logical CPUs × `75` | Combined CPU quota; `100` is one core |
+| `STATION_WORKLOAD_TASKS_MAX` | `512` | Per-scope processes and threads |
+| `STATION_WORKLOAD_TOTAL_TASKS_MAX` | `2048` | Combined processes and threads |
+
+The slice also caps combined swap at 1 GiB. At most 256 scopes can be active.
+One engine's budget includes all of its tools, so size it for the intended
+workload. Exceeding its limit can interrupt that engine. Aggregate exhaustion
+can kill any workload in the slice, including a sibling engine. The server
+requests 512 MiB of memory protection and an oomd avoidance preference; these
+do not guarantee survival under host-wide exhaustion or an ancestor policy
+that kills the entire user session.
+
+Boot probes the actual scope launch. If enforcement cannot be configured, the
+server keeps management available and refuses new workloads with an actionable
+error. macOS, Windows and Linux launches outside a matching user service retain
+their existing process behavior and do not gain these limits. The developer
+`/api/system/resource-posture` response includes workload state, budgets, active
+scopes, recent results/peaks and slice memory/pressure measurements. An unavailable
+measurement is reported separately from enforcement state.
+
+The pinned MCP client 2.3.1 patch adds a spawn callback at the physical process
+boundary. Its protocol-negotiation sibling inherits that callback, so probe and
+session processes each own a fresh scope. Retain the patch until the upstream
+client supports equivalent process ownership across negotiation and session
+launches; verify removal with the full-client handshake regression.
+
+Cancellation preserves the existing graceful shutdown before scope cleanup.
+Scope cleanup also reaps descendants that start new sessions. A stopped service
+stops its bound scopes; on the next server generation, the startup sweep reaps
+scopes whose owner PID and birth fingerprint are no longer live. This work does
+not make running turns survive server restarts; the
+[process supervisor proposal](../design/process-supervisor.md) owns that design.
+
+The [process fixture](../../src-server/services/infra/__tests__/workload-resources.process.test.ts)
+exercises the manager from a disposable service, including real OOMs and PTY
+behavior when the native dependency is available. It is not a live provider,
+packaged service or cross-platform qualification receipt. Full verification and
+dependency installs refuse admission inside the unisolated Station service;
+run them from an external shell, a bounded workload scope or hosted CI.
+
 The root Vite development command is local-only by default:
 
 ```bash
@@ -422,8 +484,7 @@ gh api repos/kontourai/station/rules/branches/main
   line that looks like a failure while the PR is queued anyway, and a second
   attempt then reports `already queued to merge`. `autoMergeRequest` is `null`
   for an entry already in the queue. The merge queue has no REST endpoint, so
-  confirm once with this GraphQL query, using the
-  [automation token](#github-automation-token), then stop:
+  confirm once with this GraphQL query, then stop:
 
   ```bash
   gh api graphql -f query='{ repository(owner:"kontourai", name:"station") {
@@ -443,90 +504,6 @@ gh api repos/kontourai/station/rules/branches/main
   trailer.
 - **Do not arm another lane's in-flight PR.** Coordinate with the owning
   session first; green checks do not make its merge yours.
-
-## GitHub automation token
-
-Agent sessions and tools that arm auto-merge, confirm the merge queue or poll
-checks must not spend the owner's personal GitHub quota: during #2886 the
-shared 5,000-per-hour GraphQL limit ran out three times and blocked merges
-for 20 to 40 minutes each time (#2926). Automation uses a dedicated GitHub
-App instead, whose installation tokens carry their own quota.
-`scripts/gh-app-token.mjs` mints one per call:
-
-```bash
-# Read-only by default; workflows is excluded because it permits only write.
-GH_TOKEN=$(node scripts/gh-app-token.mjs) gh api repos/kontourai/station/pulls/<n>
-# Ask for exactly the write scope a call needs; the child gets GH_TOKEN, never your GITHUB_TOKEN.
-node scripts/gh-app-token.mjs --permissions pull_requests:write,contents:write,workflows:write -- \
-  gh pr merge <n> --repo kontourai/station --auto
-```
-
-Workflow-changing PRs require `workflows: write` on the installation and on
-the token used to arm them. Updating the App's requested permissions can leave
-an installation awaiting approval; inspect the installed permissions before
-using the grant. Read-only status tokens never request this write-only scope.
-The hosted landing caller requests it for workflow PR admission. After arming,
-it checks the current head once and reports either `queued` or
-`armed_waiting_for_queue`; an armed request is not evidence of enqueueing.
-A successful command that leaves the PR neither armed nor queued fails the
-landing job. Already queued PRs are left alone. No polling or bypass is added.
-
-Each token is scoped to the `station` repository and the requested
-permissions, lives about an hour, and is never cached or written anywhere.
-The helper fails closed (exit 78) and points here when it is not set up. It
-refuses to print a token to a terminal, so a bare run cannot leak one into a
-session transcript; capture it with `$(...)` or run a command after `--`.
-Each refusal starts with a stable reason code, such as
-`gh-app-token: key-in-repository:`.
-
-**Prefer REST for status reads.** `gh pr view`, `gh pr checks` and
-`gh pr status` are GraphQL calls. Read state over REST instead:
-`gh api repos/kontourai/station/pulls/<n>`,
-`gh api repos/kontourai/station/commits/<sha>/check-runs` and
-`gh api repos/kontourai/station/commits/<sha>/status`. The merge queue has no
-REST endpoint, so confirm an armed PR with the single GraphQL query in
-[Landing a pull request](#landing-a-pull-request), once, with the app token.
-
-### Setup (owner, once)
-
-1. Create a dedicated app, not the release app. The release app's
-   permissions are broader than arming and reading need. This link pre-fills
-   the minimal permissions and no webhook:
-   `https://github.com/organizations/kontourai/settings/apps/new?name=station-automation&url=https://github.com/kontourai/station&public=false&webhook_active=false&pull_requests=write&contents=write&workflows=write&issues=write&checks=read&statuses=read&actions=read&metadata=read`
-2. Install it on `kontourai` with **Only select repositories**:
-   `kontourai/station`.
-3. Keep the app **off every ruleset bypass list**. It arms auto-merge; the
-   merge queue and required checks must still decide.
-4. Generate a private key, store it in the macOS Keychain, then delete the
-   downloaded file:
-
-   ```bash
-   security add-generic-password -U -s kontourai-station-automation -a <app-id> -w "$(cat station-automation.pem)"
-   rm -P station-automation.pem
-   ```
-
-   The key briefly appears in the process list while that command runs.
-   `security find-generic-password -w` returns a multi-line secret
-   hex-encoded; the helper decodes it in memory.
-5. Point the helper at the app outside the repository, in
-   `~/.config/station/gh-app.json` (or `$STATION_GH_APP_CONFIG`):
-
-   ```json
-   { "appId": "5113898", "installationId": "165937750" }
-   ```
-
-   Environment variables override the file: `STATION_GH_APP_ID`,
-   `STATION_GH_APP_INSTALLATION_ID` (looked up from the app's installation on
-   `kontourai` when absent), `STATION_GH_APP_KEYCHAIN_SERVICE` (default
-   `kontourai-station-automation`), `STATION_GH_APP_KEYCHAIN_ACCOUNT`
-   (default: the app ID) and `STATION_GH_APP_PRIVATE_KEY_PATH`, a key file
-   used instead of the Keychain, for hosts without one. The helper refuses a
-   config or key file inside a repository.
-
-**Rotation.** Generate a new key in the app's settings, replace the Keychain
-item with the same `security add-generic-password -U` command, confirm
-`node scripts/gh-app-token.mjs >/dev/null` exits 0, then delete the old key
-from the app's settings.
 
 ## Verification
 

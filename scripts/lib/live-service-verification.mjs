@@ -18,6 +18,6 @@ export function assertVerificationHost(command) {
   )?.[1];
   if (!unit) return;
   throw new LiveServiceVerificationError(
-    `${command} cannot run inside live Station service ${unit}: memory-heavy verification shares its OOM failure domain. Run this command from an external shell or use hosted CI. Focused tests and individual typecheck lanes remain available in Station.`,
+    `${command} cannot run inside live Station service ${unit}: memory-heavy work shares its OOM failure domain. Run this command from an external shell or use hosted CI. Resource-isolated workload scopes, focused tests and individual typecheck lanes remain available in Station.`,
   );
 }

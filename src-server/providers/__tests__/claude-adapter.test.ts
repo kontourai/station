@@ -10,11 +10,13 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
+import * as childWorkload from '@kontourai/station-shared/child-workload';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { scenarios as deliveryScenarios } from '../../../scripts/engine-delivery-probes.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { MCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import { createSessionAgentResolver } from '../../services/orchestration/session-agent-resolution.js';
+import * as claudeEngine from '../adapters/claude-code-spawn.js';
 import {
   CredentialProfileEnvironmentError,
   usageCredentialAccountKey,
@@ -6310,6 +6312,37 @@ describe('ClaudeAdapter', () => {
         }),
       ]),
     );
+  });
+
+  test('model discovery refuses the SDK engine launch when workload enforcement is unavailable', async () => {
+    const actual = await vi.importActual<typeof claudeEngine>(
+      '../adapters/claude-code-spawn.js',
+    );
+    const engine = vi
+      .spyOn(claudeEngine, 'createClaudeEngineProcess')
+      .mockImplementation(() => actual.createClaudeEngineProcess());
+    const admission = vi
+      .spyOn(childWorkload, 'spawnChildWorkload')
+      .mockImplementation(() => {
+        throw new Error('workload enforcement unavailable');
+      });
+    mockQuery.mockImplementation(({ options }) => {
+      options.spawnClaudeCodeProcess?.({
+        command: 'station-test-fake-claude',
+        args: [],
+        env: {},
+      });
+      return createMockQuery([], [{ value: 'sonnet', displayName: 'Sonnet' }]);
+    });
+    try {
+      await expect(new ClaudeAdapter().listModels?.()).rejects.toThrow(
+        'workload enforcement unavailable',
+      );
+      expect(admission).toHaveBeenCalled();
+    } finally {
+      admission.mockRestore();
+      engine.mockRestore();
+    }
   });
 
   test('lists models reported by the authenticated Claude CLI', async () => {

@@ -134,6 +134,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Tiny disposable user-service/scope budgets exercise actual OOM containment.
+  'src-server/services/infra/__tests__/workload-resources.process.test.ts',
   'packages/agent-runtime/src/__tests__/body-process.test.ts',
   'src-server/runtime/mcp/__tests__/mcp-ui-network.process.test.ts',
   // Real temporary Git repositories; isolated home per case.
@@ -185,8 +187,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Builds disposable Git repositories to prove the real-ledger freshness
   // check keeps the job's event mode through the worker env scrub.
   'scripts/__tests__/docs-freshness-job-env.probe.test.ts',
-  // Runs the token helper as a child against a loopback GitHub and a fake `security`.
-  'scripts/__tests__/gh-app-token.test.ts',
   // Disposable Git history and isolated HTTP adapter fixtures for the public example.
   'examples/repository-knowledge-graph/__tests__/repository-knowledge-graph.test.mjs',
   // Runs the real portable-archive smoke against a fake archive whose start fails.

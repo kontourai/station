@@ -1,11 +1,7 @@
-import { exec as execCb } from 'node:child_process';
-import { promisify } from 'node:util';
-
-const exec = promisify(execCb);
-
 import { existsSync, realpathSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
 import { basename, join, relative, resolve, sep } from 'node:path';
+import { execFileChildWorkload as execFile } from '@kontourai/station-shared/child-workload';
 import { type Context, Hono, type Next } from 'hono';
 import { z } from 'zod';
 import {
@@ -1257,12 +1253,21 @@ export function createCodingRoutes(
       const location = await writeLocation(c, projectSlug, cwd);
       if (location instanceof Response) return location;
       const dir = location.target;
-      const result = await exec(command, {
+      const shell =
+        process.platform === 'win32'
+          ? (process.env.comspec ?? process.env.ComSpec ?? 'cmd.exe')
+          : '/bin/sh';
+      const args =
+        process.platform === 'win32'
+          ? ['/d', '/s', '/c', `"${command}"`]
+          : ['-c', command];
+      const result = await execFile(shell, args, {
         cwd: dir,
         encoding: 'utf-8',
         timeout: 30000,
         maxBuffer: 1024 * 1024,
         windowsHide: true,
+        windowsVerbatimArguments: process.platform === 'win32',
       });
       return c.json({
         success: true,
