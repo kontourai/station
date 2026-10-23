@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { copyFileSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,6 +20,7 @@ import {
   createRepository,
   createTaskFromProject,
   type LiveStation,
+  pairBrowserDevice,
   publishTaskRoomAgentEdit,
   startStation,
   stopStation,
@@ -325,23 +327,26 @@ test.describe
       );
 
       const operatorCredential = readE2EOperatorCredential(live.home);
-      const peerContext = await browser.newContext();
-      const peer = await peerContext.newPage();
-      const exchanged = peer.waitForResponse(
-        (response) =>
-          response.url().endsWith('/pairing/ui-bootstrap') &&
-          response.request().method() === 'POST',
+      const paired = await pairBrowserDevice(
+        live,
+        operatorCredential,
+        'Collaboration peer',
       );
-      await pairBrowser(peer, {
-        root: process.cwd(),
-        instance: live.instance,
-        serverPort: live.serverPort,
-        uiOrigin: live.ui,
-      });
-      const paired = (await (await exchanged).json()) as {
-        device: { id: string };
-      };
-      expect(paired.device.id).toBeTruthy();
+      const cookieScope = createHash('sha256')
+        .update(paired.environmentId)
+        .digest('hex')
+        .slice(0, 16);
+      const peerContext = await browser.newContext();
+      await peerContext.addCookies([
+        {
+          name: `station-device-${cookieScope}`,
+          value: paired.credential,
+          url: live.ui,
+          httpOnly: true,
+          sameSite: 'Strict',
+        },
+      ]);
+      const peer = await peerContext.newPage();
       try {
         const taskUrl = `${live.ui}/tasks/${encodeURIComponent(taskId)}`;
         await Promise.all([owner.goto(taskUrl), peer.goto(taskUrl)]);
