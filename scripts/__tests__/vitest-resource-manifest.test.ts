@@ -263,6 +263,7 @@ describe('Vitest resource manifest', () => {
   it.each([
     'scripts/__tests__/play-upload-retry.test.ts',
     'packages/agent-runtime/src/__tests__/r1-outbox.test.ts',
+    'src-server/services/__tests__/html-reply-preview.process.test.ts',
   ])(
     'classifies deadline-sensitive ownership exactly once as process exclusive: %s',
     (file) => {

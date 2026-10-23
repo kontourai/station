@@ -1571,6 +1571,10 @@ direct child-process users fail the manifest gate until deliberately
 classified. Tests that write shared repo paths belong in shared-output and
 their paths must be declared by the enclosing verification lane.
 
+The HTML preview process suite also runs in the exclusive group so other Vitest
+files in that invocation do not compete with its disposable Chromium startup.
+It retains the 15-second render deadline and 3-second effective-policy check.
+
 Pre-push and coverage remain one-worker evidence lanes. Coverage merging has a
 different correctness contract, and pre-push is already short while its
 host-wide coordinator weight allows independent worktrees to make progress.
