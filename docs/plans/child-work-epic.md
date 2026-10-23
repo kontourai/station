@@ -359,9 +359,11 @@ The independent scope audit found real published contract gaps and broadly
 appropriate product boundaries, but identified production adoption as the main
 unfinished work. Station's separate hard-cap API group runtime still refuses
 runtime resolution, invocation and request execution. More isolated framework tests cannot complete
-that path. Preserve the existing candidates and fail-closed behavior; hold
-upstream publication and generalized authority migration until a concrete
-Station consumer demonstrates the necessary contract changes.
+that path. The earlier hold on upstream publication and generalized authority
+migration was lifted after the controlled CLI consumer worked. Flow Agents
+9.4.0 is now published and adopted, as qualified above. Continue the full
+serving integration against that published contract while preserving existing
+groups, charges and fail-closed behavior.
 
 The first working group will use existing signed-in CLI engines and Station's
 existing session authority, permissions and confinement. This is the owner's
@@ -373,8 +375,9 @@ zero. Direct API qualification and tariff work remain preserved for a later path
 
 Keep the full epic and one-final-Station-PR rule intact. The CLI increment does
 not complete peer/SSH lineage, context synchronization or the remaining folded
-requirements. Hold upstream publication and generalized authority migration
-until an actual consumer requires them.
+requirements. Published-contract availability removes the upstream wait;
+authenticated preparation, provider qualification, execution and rounds custody
+remain Station implementation obligations.
 
 Preset-derived groups now retain each member's codename, color and role beside
 its stable seat identity. The inspector reads that saved roster after execution;
@@ -982,6 +985,16 @@ that addresses evidence by response content permits conflicting records for
 one invocation: both provider cases fail their refusal assertions, with 36
 controls passing. Byte-exact restoration passes all 38. Independent source
 review finds no introduced unsafe-accounting path; it performs no execution.
+
+The private provider qualification binding no longer requires an invoice-account
+label. Its principal, Station tenant, credential, connection, source, model,
+API/SDK and option identities still match exactly. Accounting is explicitly
+provider inference before tax with a retained tariff basis; neither a login nor
+an organization/catalog observation proves model entitlement or invoice terms.
+A failed entitlement request may consume a bounded attempt and retain its full
+unknown reservation. Applicable provider limits, complete tariffs and error
+charging semantics remain required before qualification. This removes an
+unsupported prerequisite; it does not issue a contract or activate serving.
 
 Flow rounds/continuation and v3 authority renewal are adopted in the Flow Agents
 worktree at `57f02040`; `36de11b1` joins their independent, paid Flow and
