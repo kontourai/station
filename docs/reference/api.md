@@ -1761,8 +1761,9 @@ separately authorized canonical task/session reads. Historical reads and exact
 replay survive profile expiry; fresh paid execution still requires a current
 profile. The current narrow Anthropic profile and its exclusions are described
 in the [child-work plan](../plans/child-work-epic.md#authenticated-report-group-preparation).
-SDK/CLI/UI adoption, cancellation finalization and live provider qualification
-remain open for this report-group surface.
+The [SDK client](sdk.md#qualified-report-groups) exposes these operations with
+strict response and cursor validation. CLI/UI adoption, cancellation finalization
+and live provider qualification remain open for this report-group surface.
 
 ## Connections
 

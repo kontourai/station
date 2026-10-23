@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import {
+  createReportGroup,
+  getReportGroup,
+  listReportGroups,
+  readReportGroupEvents,
+  readReportGroupResult,
+} from '@kontourai/station-sdk/client';
 import { Hono } from 'hono';
 import { test, vi } from 'vitest';
 import { createGateTestRegistry } from '../../../__test-utils__/orchestration-gate-test-harness.js';
@@ -203,6 +210,50 @@ test('report HTTP owner runs configured seats through canonical tasks and retain
     );
     app = appFor(new StationReportGroupRuntime(owners));
     assert.equal(qualifies.mock.calls.length, 2);
+    const controlFetch = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (url, init) => {
+        if (
+          String(url).startsWith(
+            'http://report-control.test/api/orchestration/report-groups',
+          )
+        )
+          return app.request(String(url), init);
+        return controlFetch(url, init);
+      }),
+    );
+    const sdkOptions = {
+      credential: returning.credential,
+      credentialOrigin: 'http://report-control.test',
+      headers: { 'X-Test-Operator': 'yes' },
+      signal: abort.signal,
+    };
+    const sdkReplay = await createReportGroup(
+      'http://report-control.test',
+      input,
+      sdkOptions,
+    );
+    assert.equal(sdkReplay.replayed, true);
+    assert.deepEqual(sdkReplay.group, result.group);
+    assert.deepEqual(
+      await getReportGroup(
+        'http://report-control.test',
+        result.group.groupId,
+        sdkOptions,
+      ),
+      result.group,
+    );
+    assert.deepEqual(
+      (
+        await listReportGroups(
+          'http://report-control.test',
+          undefined,
+          sdkOptions,
+        )
+      ).groups,
+      [result.group],
+    );
     const replayResponse = await send('POST', '', input, returning.credential);
     assert.equal(replayResponse.status, 200);
     const replay = (await replayResponse.json()) as { data: Operation };
@@ -256,6 +307,15 @@ test('report HTTP owner runs configured seats through canonical tasks and retain
     );
     assert.equal(eventsPage.nextRevision, result.group.revision);
     assert.equal(eventsPage.hasMore, false);
+    assert.deepEqual(
+      await readReportGroupEvents(
+        'http://report-control.test',
+        groupId,
+        0,
+        sdkOptions,
+      ),
+      eventsPage,
+    );
     const resumed = await send(
       'GET',
       `/${groupId}/events?afterRevision=${eventsPage.nextRevision}`,
@@ -315,6 +375,17 @@ test('report HTTP owner runs configured seats through canonical tasks and retain
     assert.equal(raw.kind, 'result');
     assert.equal(raw.text, reportText.slice(0, 16_384));
     assert.equal(raw.hasMore, true);
+    assert.deepEqual(
+      await readReportGroupResult(
+        'http://report-control.test',
+        groupId,
+        member.seatId,
+        attempt.invocationId,
+        0,
+        sdkOptions,
+      ),
+      raw,
+    );
     const eof = await send(
       'GET',
       `${resultPath}?afterOffset=${raw.nextOffset}`,

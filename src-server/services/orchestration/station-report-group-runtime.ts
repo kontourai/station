@@ -1,6 +1,7 @@
 import { lstatSync, mkdirSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
+import type { ReportGroupView } from '@kontourai/station-contracts/report-group';
 import { AnthropicSealedPreparation } from '../../runtime/conversation/anthropic-sealed-preparation.js';
 import {
   captureEnvironmentLocalGrantObservationOwner,
@@ -47,7 +48,7 @@ function directory(path: string) {
 type Historical = NonNullable<
   Awaited<ReturnType<StationReportGroupCustody['inspect']>>
 >;
-function view(value: Historical) {
+function view(value: Historical): ReportGroupView {
   const { admission, group, authority } = value;
   return {
     version: 'station.report-group/v1' as const,

@@ -942,6 +942,13 @@ model access and same-session ACK acceptance remain separate obligations.
 
 ## Authenticated report-group preparation
 
+The public report-group types and SDK client now cover create/get/list/cancel,
+journal GET/SSE and raw-result pages. The primary HTTP owner exercises SDK
+replay/reads on the actual serving and retained accounting path; SDK controls
+reject malformed/foreign/gapped responses and excessive create bytes. There
+are no automatic paid retries. CLI/UI adoption and broader qualification remain
+open.
+
 Report journal GET/SSE pages now project only revision/kind/member/invocation
 metadata. Report-specific resume cursors cannot cross into other group domains;
 streams bound their lifetime and recheck the captured response lease before

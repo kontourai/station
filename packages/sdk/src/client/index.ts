@@ -97,6 +97,7 @@ export * from './plugins';
 export * from './project-task-rooms';
 export * from './projects';
 export * from './relay-enrollment';
+export * from './report-groups';
 export * from './request-inspection';
 export * from './reviews';
 export * from './runs';

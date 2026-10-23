@@ -1,3 +1,5 @@
+import { reportGroupStreamCursor } from '@kontourai/station-contracts/report-group';
+
 /** Byte budgets include the public envelope, cursors and explicit omissions. */
 export function pageByBytes<T, C extends string | number, P>(input: {
   rows: readonly { cursor: C; value: T | undefined }[];
@@ -197,6 +199,8 @@ export function encodeGroupStreamCursor(
   domain: GroupStreamCursorDomain,
   cursor: number,
 ): string {
+  if (domain.kind === 'report')
+    return reportGroupStreamCursor(domain.groupId, cursor);
   return domain.kind === 'member'
     ? `member:${encodeURIComponent(domain.groupId)}:${encodeURIComponent(domain.seatId)}:${cursor}`
     : `${domain.kind}:${encodeURIComponent(domain.groupId)}:${cursor}`;

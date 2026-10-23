@@ -19,6 +19,7 @@ import {
 } from '@kontourai/flow-agents/delegation-group-rounds';
 import { canonicalJson } from '@kontourai/relay';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { ReportGroupInput } from '@kontourai/station-contracts/report-group';
 import { z } from 'zod/v3';
 import { createOrchestrationRequestPrincipalResolver } from '../../runtime/bootstrap/orchestration-request-principal.js';
 import { createPersonalRuntimeRequestGuard } from '../../runtime/bootstrap/runtime-tenant-context.js';
@@ -95,7 +96,7 @@ const inputSchema = z
       .max(16),
   })
   .strict();
-export type StationReportGroupInput = z.input<typeof inputSchema>;
+export type StationReportGroupInput = ReportGroupInput;
 export function parseStationReportGroupInput(
   sent: unknown,
 ): StationReportGroupInput {

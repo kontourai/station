@@ -5525,3 +5525,34 @@ Owners: `packages/sdk/src/client/delegation-groups.ts` and
 `packages/sdk/src/__tests__/delegation-groups.test.ts`. Mock-transport tests cover
 request projection, authority refusal, byte bounds, page delivery, reader cleanup
 and reconnect checkpoints. They do not prove mounted routes or live providers.
+
+
+## Qualified report groups
+
+`@kontourai/station-sdk/client` exports `createReportGroup`, `getReportGroup`,
+`listReportGroups`, `cancelReportGroup`, `readReportGroupEvents`,
+`subscribeReportGroupEvents` and `readReportGroupResult`. Public shapes live at
+`@kontourai/station-contracts/report-group`. This is the personal-host advisory
+report surface, separate from CLI session groups and from Flow-backed topology.
+
+Create accepts configured Agent IDs, immutable operator intent and explicit
+aggregate token/inference-micro budgets. The server resolves runtime/model
+selection and qualifies the final transport. Exact operation replay only reads
+retained state; a timeout or unknown outcome does not authorize a new operation
+ID or automatic resend. Create/cancel default to the server lifetime; pass a
+signal to stop waiting/admission without claiming physical termination.
+
+Readers validate closed DTOs, group/member/invocation identities, contiguous
+event cursors and exact result offsets. Result pages count UTF-16 code units;
+concatenate them in order before interpreting a page boundary as a Unicode
+character. They intentionally expose authorized report text. Group views and
+event pages carry references/identities, not prompts or private authority data.
+Event subscriptions checkpoint only after `onPage` succeeds, reject foreign
+cursor domains, and terminal-stop malformed protocol data. Closing a stream is
+observation-only. The strict reader/server shapes ship together.
+
+The [API reference](api.md#report-groups) lists inputs, availability and remaining
+qualification. The controlled HTTP owner test exercises real SDK calls, serving,
+canonical task dispatch, SQLite and tariff custody; it is not live-provider or
+billing acceptance. CLI/UI adoption, Flow joins, continuation and pending-cancel
+finalization remain open.
