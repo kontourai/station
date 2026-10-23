@@ -420,7 +420,9 @@ slice adds or touches:
   assert it is the whole of it. The seam now fails closed in both directions
   — a required field added to the envelope stops compiling here, and an
   optional field or an undeclared runtime key is dropped rather than
-  forwarded to a token holder. This matches the rest of the slice, which was
+  forwarded to a token holder. The engine slot is projected the same way:
+  the viewer gets its provider, never the connection name an ACP turn
+  records (`engine.value.displayName`). This matches the rest of the slice, which was
   deny-by-default already: the strict binding validator refuses unknown keys.
   The store first drops unknown binding/coordinate keys for downgrade
   compatibility, then validates known fields; prototype-affecting keys,

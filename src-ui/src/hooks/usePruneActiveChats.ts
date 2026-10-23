@@ -19,9 +19,28 @@ function isCanonicalProviderEntry([
   );
 }
 
+/**
+ * Work the person still has in this chat that exists nowhere else: queued
+ * follow-ups, a dispatch they were waiting on, messages that were not sent.
+ * A chat holding any of it is not pruned: removing it threw that work out of
+ * the one pending list, and its durable copies then surfaced in the offline
+ * list as held "in another window".
+ */
+function holdsPendingWork(chat: PersistedChats[string]): boolean {
+  return Boolean(
+    chat.queuedMessages?.length ||
+      chat.pendingQueueDispatch ||
+      chat.unsentMessages?.length,
+  );
+}
+
 function removeMissing(entries: PersistedChatEntry[], durableIds: Set<string>) {
   for (const [sessionId, chat] of entries) {
-    if (chat.conversationId && !durableIds.has(chat.conversationId)) {
+    if (
+      chat.conversationId &&
+      !durableIds.has(chat.conversationId) &&
+      !holdsPendingWork(chat)
+    ) {
       activeChatsStore.removeChat(sessionId);
     }
   }

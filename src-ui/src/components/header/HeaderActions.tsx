@@ -25,6 +25,7 @@ import { hasLocalStationForProfile } from '../../platform/client-origin-surface'
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { BellGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
+import { useStationConditions } from '../notifications/StationConditions';
 import type { HeaderHelpPrompt } from './utils';
 
 /**
@@ -164,6 +165,7 @@ export function HeaderActions({
   onViewAllNotifications,
 }: HeaderActionsProps) {
   const profile = usePlatformProfile();
+  const stationConditions = useStationConditions();
   const { activeConnection, connections, setActiveConnection } =
     useConnections();
   const connectionButtonRef = useRef<HTMLButtonElement>(null);
@@ -412,6 +414,14 @@ export function HeaderActions({
         aria-label={connAccessibleName}
       >
         <ConnectionStatusDot status={connState} size={7} />
+        {stationConditions.length > 0 && (
+          <span
+            role="img"
+            aria-label={`${stationConditions.length} Station notices`}
+          >
+            !
+          </span>
+        )}
         {compactConn ? (
           <span className="app-toolbar__conn-label">{connDisplayLabel}</span>
         ) : (

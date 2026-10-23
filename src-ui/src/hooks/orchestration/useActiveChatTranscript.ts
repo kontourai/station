@@ -17,6 +17,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react';
+import { withoutRepeatedRestartNotice } from '../../components/chat/message-bubble/visibleContent';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import type { ChatMessage, ChatSession } from '../../types';
 import { projectedRuntimeErrorRaw } from '../../utils/chatErrorTranslation';
@@ -392,13 +393,29 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     session.conversationActivity?.openTurn?.threadId ??
     session.currentSessionId ??
     session.id;
+  const projectedOpenTurn = useMemo(
+    () => openTurnInWindow(stitchedEvents, projectedOpenThread),
+    [stitchedEvents, projectedOpenThread],
+  );
   const openTurnProjected = Boolean(
     enabled &&
       !replay &&
       (session.conversationActivity?.openTurn ||
         session.orchestrationTurnOpen) &&
-      openTurnInWindow(stitchedEvents, projectedOpenThread),
+      projectedOpenTurn,
   );
+  // The open turn renders from the projection, and the server says it is
+  // still executing: its calls with no outcome yet are in flight, not
+  // abandoned. Only this caller knows that, so it tells the projection —
+  // naming the turn by the SERVER's record (`conversationActivity.openTurn`),
+  // never by the window's own last turn: a window that ends inside some
+  // other unterminated turn must not have that turn's calls claimed live.
+  // Without the server's record, nothing is claimed.
+  const serverOpenTurn = session.conversationActivity?.openTurn;
+  const liveOpenTurnThread =
+    openTurnProjected && serverOpenTurn ? serverOpenTurn.threadId : undefined;
+  const liveOpenTurnId =
+    openTurnProjected && serverOpenTurn ? serverOpenTurn.turnId : undefined;
   const checkpointRevision = session.orchestrationHistoryRevision ?? 0;
 
   useEffect(() => {
@@ -560,13 +577,24 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     const agentPresentationBySessionId = new Map(
       (window.sessionLineage ?? []).map((entry) => [entry.sessionId, entry]),
     );
-    const projected = projectRuntimeEventsToMessages(
+    const projectedRows = projectRuntimeEventsToMessages(
       stitchedEvents
         .map((item) => item.event)
         .filter((event): event is CanonicalRuntimeEvent =>
           Boolean(event.eventId),
         ),
-      { stableIds: true },
+      {
+        stableIds: true,
+        markEndedTurns: true,
+        ...(liveOpenTurnThread
+          ? {
+              liveOpenTurn: {
+                threadId: liveOpenTurnThread,
+                turnId: liveOpenTurnId,
+              },
+            }
+          : {}),
+      },
     )
       // The open turn is rendered by exactly one of two things: the live
       // streaming shell (`ChatMessageList`'s `StreamingMessage`) or this
@@ -618,12 +646,20 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
         ...(message.metadata?.steerInterruptedRun
           ? { steerInterruptedRun: true }
           : {}),
+        ...(message.metadata?.stationCheckBack
+          ? { stationCheckBack: true }
+          : {}),
         ...(message.metadata?.sender
           ? { sender: message.metadata.sender }
           : {}),
         answerEligible: message.metadata?.answerEligible,
         provenance: message.metadata?.provenance,
+        turnEnded: message.metadata?.turnEnded,
+        turnEndedReason: message.metadata?.turnEndedReason,
+        turnStoppedBy: message.metadata?.turnStoppedBy,
       }));
+    // A turn Station's restart cut off says so once, on its own row.
+    const projected = withoutRepeatedRestartNotice(projectedRows);
     // #2309: the server's record when it sent one; the legacy fold otherwise.
     const active =
       serverTurnLive({
@@ -888,6 +924,8 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     session.orchestrationStatus,
     session.orchestrationTurnOpen,
     openTurnProjected,
+    liveOpenTurnThread,
+    liveOpenTurnId,
     session.status,
     session.conversationActivity,
     session.sendAwaitingTurnStart,

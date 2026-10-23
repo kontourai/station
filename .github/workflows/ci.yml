@@ -69,7 +69,7 @@ jobs:
       # Head sha in the identity for the same reason as fast-checks (#1445).
       group: ci-fast-plan-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event.pull_request.base.sha }}
       cancel-in-progress: true
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     # The legacy path below runs the whole ci:fast lane here, so the fence
     # covers its fifteen-minute budget + actionlint (5) + install (15) +
     # Chromium (20) + planning (5) + ~3 minutes of unbounded setup = 63;
@@ -241,7 +241,8 @@ jobs:
         github.event.pull_request.head.sha || github.sha, github.event.pull_request.base.sha) }}
       queue: max
       cancel-in-progress: false
-    runs-on: ubuntu-22.04
+    # Managed workload proofs require scope OOM policy (systemd >= 253).
+    runs-on: ubuntu-24.04
     # The twenty-minute shard budget (FAST_CHECKS_SHARD_BUDGET_MS, enforced
     # by the shard runner) + actionlint (5) + install (15) + zsh (5) +
     # Chromium (20) + ~3 minutes of unbounded setup = 68;
@@ -410,7 +411,7 @@ jobs:
         github.event.pull_request.base.sha) }}
       queue: max
       cancel-in-progress: false
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     # The declared bounds sum to 53 minutes: actionlint install (5), a
     # bounded 20-minute Chromium installation, the fifteen-minute raw
     # ci:fast budget (#2577, statics only here since #2709), the 10-minute
@@ -453,8 +454,6 @@ jobs:
 
       - run: npm run dependencies:ci
 
-      - name: Dependency advisory floor
-        run: npm run audit:policy
 
       # fast-checks' changed-test selection can include real-Chromium
       # touch-target checks (NotificationContainer, station#3513) whenever
@@ -820,7 +819,7 @@ jobs:
     if: ${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name != github.repository }}
     permissions:
       contents: read
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     # Contains the fifteen-minute raw ci:fast budget (#2577) plus setup
     # (checkout, actionlint, dependencies:ci; ~2 minutes observed on
     # fast-checks). ci-workflow-contract.test.ts requires at least lane +

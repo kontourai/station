@@ -984,8 +984,7 @@ describe('registry-backed enriched Agent routes', () => {
   // the rejection. The refusal must state the missing proof and carry the
   // engine's actual observation plus the supported action.
   test('refuses a proven-nothing engine with its actual observation, not the evidence summary', async () => {
-    const initializeFailure =
-      'ACP probe initialize did not settle within its 60000ms share of the 60000ms probe budget.';
+    const initializeFailure = "OpenCode didn't answer within a minute.";
     // The REAL evidence derivation and projection feed the route, so the
     // positive summary really is what the connection carries.
     const connection = acpAgentConnection({
@@ -1080,8 +1079,7 @@ describe('registry-backed enriched Agent routes', () => {
       status: 'degraded',
       config: {
         engineId: 'acp',
-        readinessReason:
-          'ACP probe initialize did not settle within its 60000ms share of the 60000ms probe budget.',
+        readinessReason: "OpenCode didn't answer within a minute.",
       },
       readinessEvidence: {
         level: 'catalog-ready',
@@ -1093,9 +1091,7 @@ describe('registry-backed enriched Agent routes', () => {
     expect(summary.readinessReason).toBe(
       'A live model or capability catalog is available.',
     );
-    expect(summary.stateReason).toBe(
-      'ACP probe initialize did not settle within its 60000ms share of the 60000ms probe budget.',
-    );
+    expect(summary.stateReason).toBe("OpenCode didn't answer within a minute.");
   });
 
   // The level alone cannot tell a failure summary from an observation

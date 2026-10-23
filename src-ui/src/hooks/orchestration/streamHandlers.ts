@@ -286,6 +286,9 @@ export function handleToolStartedEvent(
     args: event.arguments || {},
     state: 'running',
     activityAt: event.createdAt,
+    // `activityAt` moves with every progress frame; this is the start the
+    // row's elapsed time counts from (the projection stamps the same value).
+    startedAt: event.createdAt,
   });
 }
 
