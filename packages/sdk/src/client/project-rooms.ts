@@ -9,12 +9,7 @@ import {
 } from '@kontourai/station-contracts/project-room';
 import { z } from 'zod';
 import { envelopeError } from './api-error-message';
-import {
-  type ApiRequestScope,
-  authenticatedFetch,
-  fetchSSE,
-  mutateJson,
-} from './http';
+import { type ApiRequestScope, fetchSSE, getJson, mutateJson } from './http';
 
 const bounded = (max: number) =>
   z.string().refine((v) => new TextEncoder().encode(v).length <= max);
@@ -180,7 +175,7 @@ export async function discoverProjectRoom(
   const value = parse(
     view,
     await envelope(
-      await authenticatedFetch(
+      await getJson(
         `${requestScope.apiBase}${path(slug)}`,
         options(requestScope, signal),
       ),
@@ -208,7 +203,7 @@ export async function fetchProjectRoomHistory(
   const value = parse(
     history,
     await envelope(
-      await authenticatedFetch(
+      await getJson(
         `${requestScope.apiBase}${path(slug, `/messages?after=${after}&limit=${limit}`)}`,
         options(requestScope, signal),
       ),

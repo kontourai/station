@@ -13,6 +13,7 @@ import {
   type ProjectRoomBrowserView,
   type ProjectRoomMessageIntent,
   type ProjectRoomNoteIntent,
+  ProjectRoomProtocolError,
   saveProjectRoomNote,
   sendProjectRoomMessage,
   setProjectRoomPresence,
@@ -73,25 +74,51 @@ export function useProjectRoom(
     () => [...root, roomId ?? 'unopened', 'history'],
     [root, roomId],
   );
-  // 25 worst-case 16KiB messages fit within the server's 512KiB page budget.
   const tailAfter = Math.max(0, (room?.checkpoint.lastSeq ?? 0) - 25);
   const history = useInfiniteQuery({
     queryKey: [...contentKey, tailAfter],
     enabled: !!roomId && !stopped,
     retry: false,
     gcTime: 0,
-    initialPageParam: tailAfter,
-    queryFn: ({ pageParam, signal }) =>
-      fetchProjectRoomHistory(
-        scope,
-        slug,
-        { projectId, roomId: roomId! },
-        pageParam,
-        25,
-        signal,
-      ),
-    getNextPageParam: (_last, pages, after) =>
-      after > 0 && pages.length < 20 ? Math.max(0, after - 25) : undefined,
+    initialPageParam: { after: tailAfter, end: tailAfter + 25 },
+    queryFn: async ({ pageParam, signal }) => {
+      // The byte cap can split even a 25-message window. Finish its forward
+      // continuations before moving backward, without overlapping newer windows.
+      const { end } = pageParam;
+      let after = pageParam.after;
+      const messages: Awaited<
+        ReturnType<typeof fetchProjectRoomHistory>
+      >['messages'] = [];
+      for (let requests = 0; requests < 25; requests++) {
+        signal.throwIfAborted();
+        const page = await fetchProjectRoomHistory(
+          scope,
+          slug,
+          { projectId, roomId: roomId! },
+          after,
+          Math.max(1, end - after),
+          signal,
+        );
+        signal.throwIfAborted();
+        messages.push(...page.messages.filter((item) => item.seq <= end));
+        const last = page.messages[page.messages.length - 1]?.seq ?? after;
+        if (
+          last >= end ||
+          (page.nextAfter === null && last >= page.checkpoint.lastSeq)
+        )
+          return { ...page, messages };
+        if (page.nextAfter === null || page.nextAfter <= after)
+          throw new ProjectRoomProtocolError(
+            'Project room history is incomplete.',
+          );
+        after = page.nextAfter;
+      }
+      throw new ProjectRoomProtocolError(
+        'Project room history exceeded its window budget.',
+      );
+    },
+    getNextPageParam: (_last, _pages, { after }) =>
+      after > 0 ? { after: Math.max(0, after - 25), end: after } : undefined,
     maxPages: 20,
   });
   const send = useMutation({
