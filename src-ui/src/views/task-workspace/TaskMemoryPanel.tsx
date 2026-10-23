@@ -293,7 +293,6 @@ function TaskSummaryBlock({
       ) : (
         <Empty
           variant="compact"
-          label="No summary yet"
           description="Agents write one at milestones."
         />
       )}

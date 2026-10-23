@@ -390,6 +390,6 @@ describe('Task memory panel', () => {
     await within(panel).findByText('Couldn’t read the Task memory');
     vi.mocked(fetch).mockImplementation(served);
     fireEvent.click(within(panel).getByRole('button', { name: 'Retry' }));
-    await within(panel).findByText('No summary yet');
+    await within(panel).findByRole('button', { name: 'Write summary' });
   });
 });
