@@ -9,6 +9,7 @@ import { ProjectMembershipRefusal } from '../../services/projects/project-member
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import type {
   ProjectRoomAgentAuthority,
+  ProjectRoomAgentHandle,
   ProjectRoomAgentModule,
 } from '../../services/projects/project-room-agent-module.js';
 import type { ProjectRoomMutationGuard } from '../../services/projects/project-room-service.js';
@@ -38,6 +39,11 @@ function parse<T>(parser: (v: unknown) => T, value: unknown): T {
 }
 export interface ProjectRoomAgentRoutes {
   module: ProjectRoomAgentModule;
+  /** Register a bounded, fresh execute-authorized completion watch. */
+  observe?(
+    authority: ProjectRoomAgentAuthority,
+    handle: ProjectRoomAgentHandle,
+  ): void;
   withAuthority<T>(
     request: Request,
     slug: string,
@@ -104,6 +110,18 @@ export function createProjectRoomRoutes(
     }),
   );
   if (agents) {
+    const observe = (
+      authority: ProjectRoomAgentAuthority,
+      handle: ProjectRoomAgentHandle,
+    ) => {
+      try {
+        agents.observe?.(authority, handle);
+      } catch {
+        logger.warn(
+          'Room answer observation unavailable; explicit recovery available',
+        );
+      }
+    };
     const runAgent = async (
       c: Context,
       action: 'view' | 'execute',
@@ -145,11 +163,14 @@ export function createProjectRoomRoutes(
           c,
           'execute',
           { expectedRoomId, expectedProjectId, expectedActorId },
-          (authority) =>
-            agents.module.request(
+          async (authority) => {
+            const handle = await agents.module.request(
               authority,
               parse(parseProjectRoomAgentRequestInput, input),
-            ),
+            );
+            observe(authority, handle);
+            return handle;
+          },
         );
       }),
     );
@@ -164,9 +185,14 @@ export function createProjectRoomRoutes(
       app.post(`/:slug/room/agents/:requestId/${operation}`, (c) =>
         perform(c, async () => {
           const guard = guards.strict().parse(await body(c));
-          return runAgent(c, 'execute', guard, (authority) =>
-            agents.module[operation](authority, c.req.param('requestId')!),
-          );
+          return runAgent(c, 'execute', guard, async (authority) => {
+            const handle = await agents.module[operation](
+              authority,
+              c.req.param('requestId')!,
+            );
+            if (operation === 'reconcile') observe(authority, handle);
+            return handle;
+          });
         }),
       );
     }

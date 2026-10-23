@@ -23,6 +23,7 @@ import {
   createProjectRoomAgentRuntime,
   type ProjectRoomAgentExecution,
 } from './project-room-agent-module.js';
+import { createProjectRoomAgentPublication } from './project-room-agent-publication.js';
 import { createProjectRoomRuntime } from './project-room-store.js';
 
 describe('Project Room explicit agent participation', () => {
@@ -477,9 +478,10 @@ describe('Project Room explicit agent participation', () => {
           resolveToolServer: async () => null,
           resolveSkillDir: async () => null,
         });
+        const eventBus = new EventBus();
         const sessions = new OrchestrationService({
           adapterRegistry: createGateTestRegistry(adapter),
-          eventBus: new EventBus(),
+          eventBus,
           eventStore: events,
           turnDeduplicator: events.createTurnDeduplicator(),
           adoptionLedger: events.createAdoptionLedger(),
@@ -549,12 +551,23 @@ describe('Project Room explicit agent participation', () => {
           f.room.store,
           execution,
         );
+        const publication = createProjectRoomAgentPublication({
+          eventBus,
+          module: runtime.module,
+        });
+        const observerAuthority = {
+          ...f.authority,
+          async refresh() {
+            f.authority.assertCurrent();
+          },
+        };
         cleanup.push(
           () => {
             events.close();
           },
           () => sessions.shutdown(),
           () => runtime.close(),
+          () => publication.close(),
         );
         if (revokeAtSpawn)
           await expect(
@@ -562,6 +575,7 @@ describe('Project Room explicit agent participation', () => {
           ).rejects.toThrow('revoked');
         else {
           const handle = await runtime.module.request(f.authority, f.input);
+          publication.watch(observerAuthority, handle.requestId);
           expect(launchError).toBeUndefined();
           const sessionId = start.mock.calls[0][0].threadId;
           const base = {
@@ -599,10 +613,9 @@ describe('Project Room explicit agent participation', () => {
             ),
             outputText: 'Canonical selected answer',
           });
-          await vi.waitFor(async () =>
+          await vi.waitFor(() =>
             expect(
-              (await runtime.module.reconcile(f.authority, handle.requestId))
-                .state,
+              runtime.module.inspect(f.authority, handle.requestId).state,
             ).toBe(outcome === 'cancelled' ? 'uncertain' : 'published'),
           );
           expect(

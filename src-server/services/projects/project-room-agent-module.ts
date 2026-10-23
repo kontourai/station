@@ -136,6 +136,7 @@ export class ProjectRoomAgentModule {
     authority: ProjectRoomAgentAuthority,
     id: string,
   ): ProjectRoomAgentCapture | null {
+    this.check(authority);
     const row = this.db
       .prepare(
         'SELECT record FROM project_room_agent_captures WHERE request_id=?',
@@ -205,6 +206,20 @@ export class ProjectRoomAgentModule {
         ? { failure: failure.data }
         : {}),
     };
+  }
+  /** Validated private coordinate for the completion observer; never expose in handles. */
+  publicationSession(
+    authority: ProjectRoomAgentAuthority,
+    id: string,
+  ): string | null {
+    this.check(authority);
+    const capture = this.capture(authority, id);
+    const handle = this.inspect(authority, id);
+    return capture &&
+      ['started', 'uncertain'].includes(handle.state) &&
+      (!handle.failure || handle.failure === 'launch_uncertain')
+      ? capture.sessionId
+      : null;
   }
   async request(
     authority: ProjectRoomAgentAuthority,
@@ -356,6 +371,7 @@ export class ProjectRoomAgentModule {
     authority: ProjectRoomAgentAuthority,
     id: string,
   ): Promise<ProjectRoomAgentHandle> {
+    this.check(authority);
     const request = this.store.getRequest(authority.scope, id);
     const capture = this.capture(authority, id);
     this.check(authority, capture ?? undefined);
