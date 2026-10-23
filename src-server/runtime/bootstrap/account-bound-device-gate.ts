@@ -71,7 +71,26 @@ function principalForDeviceBinding(binding: DevicePrincipalBinding) {
       );
 }
 
+/** Exact relationship leaves only; domain authority still decides every target. */
+export function isTaskRelationshipHttpLeaf(
+  method: string,
+  path: string,
+): boolean {
+  if (method === 'GET' || method === 'HEAD')
+    return /^\/api\/tasks\/[^/]+\/(?:children|work-chats(?:\/[^/]+)?)$/.test(
+      path,
+    );
+  if (method === 'PUT') return /^\/api\/tasks\/[^/]+\/parent$/.test(path);
+  if (method === 'POST')
+    return /^\/api\/tasks\/[^/]+\/(?:children|work-chats)$/.test(path);
+  return method === 'DELETE' && /^\/api\/tasks\/[^/]+\/work-chats$/.test(path);
+}
+
 export interface AccountBoundDeviceGateDeps {
+  currentRelationshipAccountDevice?(
+    request: Request,
+    binding: Extract<DevicePrincipalBinding, { kind: 'account' }>,
+  ): boolean;
   identifyDevice(credential: string):
     | {
         principalBinding?: DevicePrincipalBinding;
@@ -287,7 +306,13 @@ export function installAccountBoundDeviceGate(
         getRuntimeNativeDeviceProofPrincipal(c.req.raw) &&
         nativeDeviceOnlyObservationRoute(c.req.method, c.req.path)
       ) &&
-      account?.kind !== 'authenticated'
+      account?.kind !== 'authenticated' &&
+      !(
+        account?.kind === 'absent' &&
+        isTaskRelationshipHttpLeaf(c.req.method, c.req.path) &&
+        deps.currentRelationshipAccountDevice?.(c.req.raw, accountBinding) ===
+          true
+      )
     ) {
       c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, 'account');
       return c.json(
@@ -390,6 +415,7 @@ export function installAccountBoundDeviceGate(
         ) ||
         isAccountBoundGuestAdminLeaf(path, method) ||
         isAccountBoundRoomLeaf(path, method) ||
+        isTaskRelationshipHttpLeaf(method, path) ||
         isAccountBoundOwnTokenLeaf(path, method) ||
         (path === '/api/me/preferences' &&
           (method === 'GET' || method === 'HEAD' || method === 'PATCH')) ||

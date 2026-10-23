@@ -69,6 +69,13 @@ export function createTaskRelationshipAuthority(deps: {
           owner.createdAt === project.createdAt &&
           chats.get(id)?.() === true,
       };
+      // Capture each visible target's own admission before asynchronous reader
+      // preparation. A shared parent never confers visibility on its children.
+      access.canReadTask(task);
+      deps.graph.listTaskChildren(
+        { taskId, taskCreatedAt: task.createdAt },
+        access,
+      );
       const candidates = new Set<string>();
       if (conversationId) candidates.add(conversationId);
       else if (

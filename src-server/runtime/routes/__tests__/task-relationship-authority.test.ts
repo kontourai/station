@@ -7,6 +7,8 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { createTaskRelationshipRoutes } from '../../../routes/orchestration/task-relationships.js';
+import { DeploymentAuthenticationService } from '../../../services/identity/deployment-authentication-service.js';
+import { createLocalAccountProvider } from '../../../services/identity/local-account-provider.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -18,7 +20,7 @@ const closers: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const close of closers.splice(0)) await close();
 });
-async function fixture() {
+async function fixture(current: () => boolean = () => true) {
   const home = temp('relationship-authority-');
   const storage = new FileStorageAdapter(home);
   const project = {
@@ -87,7 +89,7 @@ async function fixture() {
         undefined,
         undefined,
       ),
-    current: () => live,
+    current: () => live && current(),
     mayRead: () => live,
     mayEdit: () => live,
   });
@@ -198,6 +200,104 @@ test.each([
           createdAt: '2026-10-02T00:00:00.000Z',
           metadata: { projectSlug: 'foreign' },
         });
+    } finally {
+      await release();
+    }
+    expect((await pending).status).toBe(404);
+    expect(readFileSync(path, 'utf8')).toBe(before);
+  },
+);
+
+test.each([
+  'session revoke',
+  'account disable',
+  'cookie switch',
+  'account switch',
+])(
+  'real local-account %s during graph lock wait refuses the captured authority',
+  async (change) => {
+    const stateDirectory = temp('relationship-local-account-');
+    const origin = 'https://relationship.example.test';
+    const provider = await createLocalAccountProvider(
+      {
+        stationId: 'relationship-test',
+        publicOrigin: origin,
+        basePath: '/api/account-auth',
+        stateDirectory,
+      },
+      'a'.repeat(64),
+      { mayRegister: async () => true, deliver: async () => {} },
+      'username-password',
+    );
+    const service = new DeploymentAuthenticationService(provider);
+    closers.push(() => service.close());
+    const credentials = [];
+    for (const username of ['lockalice', 'lockbob']) {
+      const post = (path: string) =>
+        service.handle(
+          new Request(`${origin}/api/account-auth${path}`, {
+            method: 'POST',
+            headers: {
+              Origin: origin,
+              'Content-Type': 'application/json',
+              'x-station-invitation': 'valid-invitation',
+            },
+            body: JSON.stringify({
+              username,
+              password: 'Relationship password 12345',
+            }),
+          }),
+          path,
+        );
+      expect((await post('/sign-up/username')).status).toBe(200);
+      const login = await post('/sign-in/username');
+      expect(login.status).toBe(200);
+      credentials.push(
+        login.headers
+          .getSetCookie()
+          .map((value) => value.split(';')[0])
+          .join('; '),
+      );
+    }
+    const request = new Request(`${origin}/api/tasks/read`, {
+      headers: { Cookie: credentials[0]! },
+    });
+    const authenticated = await service.authenticate(request);
+    if (authenticated.kind !== 'authenticated')
+      throw new Error('Missing real local account session');
+    const current = service.captureCurrentSession(request);
+    expect(current()).toBe(true);
+    const h = await fixture(current);
+    const path = join(h.home, 'task-graph.json');
+    const before = readFileSync(path, 'utf8');
+    const release = await acquireFileMutationLockAsync(`${path}.mutation`);
+    let prepared = false;
+    const original = h.adapters.authorityForRequest;
+    h.adapters.authorityForRequest = async (...args) => {
+      const result = await original(...args);
+      prepared = true;
+      return result;
+    };
+    const pending = h.link('chat');
+    try {
+      await vi.waitFor(() => expect(prepared).toBe(true));
+      if (change === 'session revoke')
+        await service.revokeSessionReference(
+          authenticated.session.sessionId,
+          request.signal,
+        );
+      if (change === 'account disable')
+        provider.administration.setDisabled(
+          authenticated.session.subject,
+          true,
+        );
+      if (change === 'cookie switch' || change === 'account switch')
+        request.headers.set('Cookie', credentials[1]!);
+      if (change === 'account switch')
+        expect((await service.authenticate(request)).kind).toBe(
+          'authenticated',
+        );
+      expect(current()).toBe(false);
     } finally {
       await release();
     }

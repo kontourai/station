@@ -7,6 +7,7 @@ import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-roo
 import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge-root-identity';
 import { zodSchema } from 'ai';
 import packageJson from '../../../package.json' with { type: 'json' };
+import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
 import { createDeviceAgentRoutes } from '../../routes/device-agent.js';
@@ -758,7 +759,10 @@ import {
   createRequestDelegationResolver,
   type RequestDelegationSources,
 } from '../agents/request-delegation.js';
-import { installAccountBoundDeviceGate } from '../bootstrap/account-bound-device-gate.js';
+import {
+  installAccountBoundDeviceGate,
+  isTaskRelationshipHttpLeaf,
+} from '../bootstrap/account-bound-device-gate.js';
 import {
   accountMemberCaller,
   agentAudienceForMemberCaller,
@@ -1787,9 +1791,25 @@ export function configureRuntimeRoutes(
   // `bootstrap/orchestration-request-principal.ts` so the authority
   // observation (#481 groundwork) and any future consumer resolve through
   // this ONE composition. Same memoization, same failure contract.
+  const currentRelationshipAccountDevice = (
+    request: Request,
+    binding: Extract<
+      import('@kontourai/station-contracts/environment-security').DevicePrincipalBinding,
+      { kind: 'account' }
+    >,
+  ) =>
+    isTaskRelationshipHttpLeaf(request.method, new URL(request.url).pathname) &&
+    context.deploymentAuthentication?.service.current(request)?.kind ===
+      'absent' &&
+    context.localAccounts?.accountDirectory.issuer === binding.issuer &&
+    context.localAccounts.accountDirectory.standing(
+      binding.subject,
+      binding.approvedAt,
+    ) === 'current';
   const resolveOrchestrationRequestPrincipal =
     createOrchestrationRequestPrincipalResolver({
       environmentSecurityService: context.environmentSecurityService,
+      currentRelationshipAccountDevice,
       deploymentAuthentication: context.deploymentAuthentication?.service,
       hostedTenantRegistry,
       ...(resolveNativeDeviceBinding
@@ -2012,6 +2032,7 @@ export function configureRuntimeRoutes(
   // `bootstrap/account-bound-device-gate.ts` so tests exercise the real
   // middleware rather than a copy. Behavior is unchanged.
   installAccountBoundDeviceGate(context.app, {
+    currentRelationshipAccountDevice,
     identifyDevice: (credential) =>
       context.environmentSecurityService.identifyDevice(credential),
     identifyIngress,
@@ -4121,6 +4142,11 @@ export function configureRuntimeRoutes(
       resolveProjectWorkspace: resolveWorkspacePath,
     }),
   );
+  const relationshipRequestWitnesses = new WeakMap<Request, () => boolean>();
+  const relationshipRequestShares = new WeakMap<
+    Request,
+    Map<string, string | undefined>
+  >();
   context.app.use('/api/tasks/*', primeRoomRequestPrincipal);
   context.app.route(
     '/api/tasks',
@@ -4142,30 +4168,162 @@ export function configureRuntimeRoutes(
             isPrincipalScopedAgentRequest(request)
           )
             return false;
-          // Account admission is asynchronous and current(request) is cached.
-          // Until its owner supplies a synchronous revocation witness, refuse
-          // account callers rather than carry that snapshot into a graph commit.
-          const account =
-            context.deploymentAuthentication?.service.current(request);
-          if (context.deploymentAuthentication && account?.kind !== 'absent')
-            return false;
-          const principal = getRuntimeAuthenticatedRequestPrincipal(request);
-          if (!principal || principal.kind === 'internal') return false;
-          const binding =
-            principal.authority === 'device-credential'
-              ? context.environmentSecurityService.identifyDevice(
-                  principal.credential,
-                )?.principalBinding
-              : undefined;
-          return !binding || !('kind' in binding && binding.kind === 'account');
+          let witness = relationshipRequestWitnesses.get(request);
+          if (!witness) {
+            const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+            const person = roomRequestPrincipals.get(request);
+            if (!principal || principal.kind === 'internal' || !person)
+              return false;
+            const account =
+              context.deploymentAuthentication?.service.current(request);
+            const device =
+              principal.authority === 'device-credential'
+                ? context.environmentSecurityService.identifyDevice(
+                    principal.credential,
+                  )
+                : undefined;
+            const binding = device?.principalBinding;
+            const boundAccount =
+              binding && 'kind' in binding && binding.kind === 'account'
+                ? binding
+                : undefined;
+            const sessionCurrent =
+              account?.kind === 'authenticated'
+                ? context.deploymentAuthentication!.service.captureCurrentSession(
+                    request,
+                  )
+                : undefined;
+            const directory = context.localAccounts?.accountDirectory;
+            if (
+              account &&
+              account.kind !== 'absent' &&
+              account.kind !== 'authenticated'
+            )
+              return false;
+            if (
+              account?.kind === 'authenticated' &&
+              account.principal.id !== person.id
+            )
+              return false;
+            if (
+              boundAccount &&
+              principalForDeviceBinding(boundAccount).id !== person.id
+            )
+              return false;
+            if (
+              boundAccount &&
+              !sessionCurrent &&
+              (!directory || directory.issuer !== boundAccount.issuer)
+            )
+              return false;
+            const capturedBinding = binding && structuredClone(binding);
+            const capturedTransport = structuredClone(principal);
+            const authorization = request.headers.get('authorization');
+            witness = () => {
+              if (
+                !isDeepStrictEqual(
+                  getRuntimeAuthenticatedRequestPrincipal(request),
+                  capturedTransport,
+                ) ||
+                request.headers.get('authorization') !== authorization
+              )
+                return false;
+              if (
+                roomRequestPrincipals.get(request)?.id !== person.id ||
+                !isRequestPrincipalCurrent(request)
+              )
+                return false;
+              if (sessionCurrent && !sessionCurrent()) return false;
+              if (
+                !sessionCurrent &&
+                context.deploymentAuthentication?.service.current(request)
+                  ?.kind !== account?.kind
+              )
+                return false;
+              const live =
+                principal.authority === 'device-credential'
+                  ? context.environmentSecurityService.identifyDevice(
+                      principal.credential,
+                    )
+                  : undefined;
+              if (!isDeepStrictEqual(live?.principalBinding, capturedBinding))
+                return false;
+              return (
+                !boundAccount ||
+                !!sessionCurrent ||
+                directory?.standing(
+                  boundAccount.subject,
+                  boundAccount.approvedAt,
+                ) === 'current'
+              );
+            };
+            relationshipRequestWitnesses.set(request, witness);
+          }
+          return witness();
         },
-        mayRead: (request, id) =>
-          runtimeRequestPrincipalMayAccessHttpRoute(
-            request,
-            context.environmentSecurityService,
-            { method: 'GET', path: `/api/tasks/${encodeURIComponent(id)}` },
-          ),
+        mayRead: (request, id) => {
+          if (
+            !runtimeRequestPrincipalMayAccessHttpRoute(
+              request,
+              context.environmentSecurityService,
+              { method: 'GET', path: `/api/tasks/${encodeURIComponent(id)}` },
+            )
+          )
+            return false;
+          const person = roomRequestPrincipals.get(request);
+          if (!person) return false;
+          if (
+            !isDeploymentAccountPrincipalId(person.id) ||
+            isOperatorInPersonNotAgent(request)
+          )
+            return true;
+          const task = context.taskGraphService.readTask(id);
+          const share = context.projectSharedTasks?.admission(id);
+          let shares = relationshipRequestShares.get(request);
+          if (!shares) {
+            shares = new Map();
+            relationshipRequestShares.set(request, shares);
+          }
+          if (!shares.has(id)) shares.set(id, share?.shareId);
+          if (!task || !share || share.taskCreatedAt !== task.createdAt)
+            return false;
+          if (shares.get(id) !== share.shareId) return false;
+          const projects = context.projectService
+            .listProjects()
+            .filter(
+              (p) => p.id === task.projectId || p.slug === task.projectId,
+            );
+          if (
+            projects.length !== 1 ||
+            projects[0]!.id !== share.scope.localProjectId ||
+            projects[0]!.slug !== share.scope.localProjectSlug
+          )
+            return false;
+          const manifest = contributionResolution.manifests.readRecord(
+            share.scope.localProjectSlug,
+          );
+          if (
+            !manifest ||
+            parseProjectPortableIdentity(manifest).id !==
+              share.scope.portableProjectId
+          )
+            return false;
+          return (
+            context.projectMembership
+              ?.admissionsForResolvedPrincipal(person.id)
+              .some(
+                ({ scope, member }) =>
+                  isDeepStrictEqual(scope, share.scope) &&
+                  member.status === 'active' &&
+                  member.actions.includes('view'),
+              ) === true
+          );
+        },
         mayEdit: (request, id) =>
+          (!isDeploymentAccountPrincipalId(
+            roomRequestPrincipals.get(request)?.id ?? '',
+          ) ||
+            isOperatorInPersonNotAgent(request)) &&
           runtimeRequestPrincipalMayAccessHttpRoute(
             request,
             context.environmentSecurityService,

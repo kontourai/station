@@ -47,8 +47,10 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { S3Client } from '@aws-sdk/client-s3';
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
+import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import type { ProjectMembershipScope } from '@kontourai/station-contracts/project-membership';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -259,7 +261,7 @@ describe('project guest administration over the production composition', () => {
       rmSync(directory, { recursive: true, force: true });
   });
 
-  async function setup(withAgent = false) {
+  async function setup(withAgent = false, useLocalAccounts = false) {
     const owned = directories[directories.length - 1];
     const homeDir = join(owned, 'data');
     mkdirSync(join(homeDir, 'security'), { mode: 0o700, recursive: true });
@@ -282,7 +284,7 @@ describe('project guest administration over the production composition', () => {
       storage,
     );
     const localAccounts = await loadLocalAccounts(
-      { publicOrigin: 'http://localhost:4321' },
+      { publicOrigin: useLocalAccounts ? ORIGIN : 'http://localhost:4321' },
       { stationId: STATION_ID, homeDirectory: homeDir },
       membership.service,
     );
@@ -365,8 +367,10 @@ describe('project guest administration over the production composition', () => {
     });
     const context = deepStub({
       projectMembership: membership.service,
-      projectSharedTasks: undefined,
-      deploymentAuthentication: authentication,
+      projectSharedTasks: useLocalAccounts ? membership.sharedTasks : undefined,
+      deploymentAuthentication: useLocalAccounts
+        ? localAccounts
+        : authentication,
       localAccounts,
       applicationSessions,
       storageAdapter: storage,
@@ -487,7 +491,9 @@ describe('project guest administration over the production composition', () => {
         requesterPosition: 'unproven',
         source: 'same-origin',
         accountCandidate: {
-          issuer: PROVIDER_ISSUER,
+          issuer: useLocalAccounts
+            ? localAccounts.service.describe().issuer
+            : PROVIDER_ISSUER,
           subject,
           displayName: 'Guest Person',
         },
@@ -499,7 +505,9 @@ describe('project guest administration over the production composition', () => {
         { ...operatorApproval },
         {
           principalId: deploymentAccountPrincipal(
-            PROVIDER_ISSUER,
+            useLocalAccounts
+              ? localAccounts.service.describe().issuer
+              : PROVIDER_ISSUER,
             subject,
             'Guest Person',
           ).id,
@@ -601,6 +609,8 @@ describe('project guest administration over the production composition', () => {
       projectService,
       knowledgeStoreProvider,
       membership,
+      localAccounts,
+      storage,
       ownerHeaders,
       operatorHeaders,
       pairAccountBound,
@@ -608,6 +618,283 @@ describe('project guest administration over the production composition', () => {
       shareWithGuestAdmin,
     };
   }
+
+  test('real local accounts read only individually shared children through exact Device leaves', async () => {
+    const h = await setup(false, true);
+    const project = await h.projectService.createProject({
+      name: 'Local relationships',
+    });
+    const bootstrap = {
+      current: async () => ({
+        principal: humanPrincipal('fixture', 'operator', 'Operator'),
+        verifiedEmails: [],
+      }),
+      operator: async () => {},
+    };
+    const enabled = await h.membership.service.enable(
+      project.slug,
+      project.id,
+      bootstrap,
+    );
+    const people = [];
+    for (const username of ['relationalice', 'relationbob']) {
+      const invitation = await h.membership.service.invite(
+        enabled.scope,
+        {
+          email: null,
+          role: 'viewer',
+          expiresAt: new Date(Date.now() + 3600000).toISOString(),
+        },
+        bootstrap,
+      );
+      const response = await h.localAccounts.service.handle(
+        new Request(`${ORIGIN}/api/account-auth/sign-up/username`, {
+          method: 'POST',
+          headers: {
+            Origin: ORIGIN,
+            'Content-Type': 'application/json',
+            'x-station-invitation': invitation.token,
+          },
+          body: JSON.stringify({
+            username,
+            password: 'Relationship password 12345',
+            name: username,
+          }),
+        }),
+        '/sign-up/username',
+      );
+      expect(response.status, await response.clone().text()).toBe(200);
+      const login = await h.localAccounts.service.handle(
+        new Request(`${ORIGIN}/api/account-auth/sign-in/username`, {
+          method: 'POST',
+          headers: { Origin: ORIGIN, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username,
+            password: 'Relationship password 12345',
+          }),
+        }),
+        '/sign-in/username',
+      );
+      expect(login.status, await login.clone().text()).toBe(200);
+      const cookie = login.headers
+        .getSetCookie()
+        .map((value) => value.split(';')[0])
+        .join('; ');
+      const authenticated = await h.localAccounts.service.authenticate(
+        new Request(ORIGIN, { headers: { Cookie: cookie } }),
+      );
+      if (authenticated.kind !== 'authenticated')
+        throw new Error(`real local login failed: ${authenticated.kind}`);
+      expect(
+        h.localAccounts.service.captureCurrentSession(new Request(ORIGIN))(),
+      ).toBe(false);
+      const verifiedRequest = new Request(ORIGIN, {
+        headers: { Cookie: cookie },
+      });
+      await h.localAccounts.service.authenticate(verifiedRequest);
+      expect(
+        h.localAccounts.service.captureCurrentSession(verifiedRequest)(),
+        JSON.stringify(authenticated.session),
+      ).toBe(true);
+      await h.membership.service.accept(invitation.token, {
+        current: async () => ({
+          principal: authenticated.principal,
+          verifiedEmails: [],
+        }),
+        operator: async () => {},
+      });
+      const paired = h.pairAccountBound(
+        username,
+        GUEST_GRANT,
+        authenticated.session.subject,
+      );
+      people.push({ cookie, authenticated, paired });
+    }
+    const parent = await h.graph.createTask({
+      projectId: project.id,
+      title: 'Shared parent',
+    });
+    const child = await h.graph.createTask({
+      projectId: project.id,
+      title: 'Private child title',
+    });
+    const access = {
+      expectedProject: { id: project.id, createdAt: project.createdAt },
+      canonicalProject: () => project,
+      canReadTask: () => true,
+      canMutateTask: () => true,
+      canReadConversation: () => false,
+    };
+    await h.graph.setTaskParent(
+      {
+        operationId: 'seed-parent',
+        child: { taskId: child.id, taskCreatedAt: child.createdAt },
+        parent: { taskId: parent.id, taskCreatedAt: parent.createdAt },
+        expectedRevision: 0,
+      },
+      access,
+    );
+    const share = (task: typeof parent) =>
+      h.membership.sharedTasks.share({
+        scope: enabled.scope,
+        taskId: task.id,
+        taskCreatedAt: task.createdAt,
+        sharedBy: humanPrincipal('fixture', 'operator', 'Operator').id,
+      });
+    share(parent);
+    const url = `/api/tasks/${parent.id}/children?taskCreatedAt=${encodeURIComponent(parent.createdAt)}`;
+    const read = (index: number, withCookie = true) =>
+      h.request(url, {
+        headers: {
+          Authorization: `Bearer ${people[index]!.paired.credential}`,
+          ...(withCookie ? { Cookie: people[index]!.cookie } : {}),
+        },
+      });
+    for (const index of [0, 1]) {
+      const response = await read(index);
+      expect(response.status, await response.clone().text()).toBe(200);
+      expect(
+        (await readJson<{ data: { children: unknown[] } }>(response)).data
+          .children,
+      ).toEqual([]);
+    }
+    share(child);
+    expect(
+      (
+        await readJson<{ data: { children: { title: string }[] } }>(
+          await read(0),
+        )
+      ).data.children.map((t) => t.title),
+    ).toEqual(['Private child title']);
+    const listChildren = h.graph.listTaskChildren.bind(h.graph);
+    vi.spyOn(h.graph, 'listTaskChildren').mockImplementationOnce((...args) => {
+      const children = listChildren(...args);
+      const previous = h.membership.sharedTasks.admission(child.id)!;
+      h.membership.sharedTasks.unshare(child.id, previous.shareId);
+      share(child);
+      return children;
+    });
+    const turnover = await read(0);
+    expect(turnover.status).toBe(200);
+    expect(
+      (await readJson<{ data: { children: unknown[] } }>(turnover)).data
+        .children,
+    ).toEqual([]);
+    expect(
+      (await readJson<{ data: { children: unknown[] } }>(await read(0))).data
+        .children,
+    ).toHaveLength(1);
+    // A Device without a cookie composes its exact approved account and live standing.
+    expect((await read(1, false)).status).toBe(200);
+    const mismatch = await h.request(url, {
+      headers: {
+        Authorization: `Bearer ${people[0]!.paired.credential}`,
+        Cookie: people[1]!.cookie,
+      },
+    });
+    expect(mismatch.status).toBe(401);
+    const denied = await h.request(`/api/tasks/${parent.id}/children`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${people[0]!.paired.credential}`,
+        Cookie: people[0]!.cookie,
+        Origin: ORIGIN,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        operationId: 'member-cannot-edit',
+        parent: { taskId: parent.id, taskCreatedAt: parent.createdAt },
+        task: { projectId: project.id, title: 'Denied child' },
+      }),
+    });
+    expect(denied.status).toBe(404);
+    expect(
+      (
+        await h.request(`/api/tasks/${parent.id}/dispatch`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${people[0]!.paired.credential}`,
+            Cookie: people[0]!.cookie,
+            Origin: ORIGIN,
+          },
+        })
+      ).status,
+    ).toBe(403);
+    const operatorAccountEdit = await h.request(
+      `/api/tasks/${parent.id}/children`,
+      h.operatorHeaders({
+        method: 'POST',
+        headers: {
+          Cookie: people[0]!.cookie,
+          Origin: ORIGIN,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          operationId: 'account-with-independent-operator',
+          parent: { taskId: parent.id, taskCreatedAt: parent.createdAt },
+          task: { projectId: project.id, title: 'Operator-authorized child' },
+        }),
+      }),
+    );
+    expect(
+      operatorAccountEdit.status,
+      await operatorAccountEdit.clone().text(),
+    ).toBe(200);
+    h.localAccounts.administration.setDisabled(
+      people[1]!.authenticated.session.subject,
+      true,
+    );
+    expect((await read(1, false)).status).not.toBe(200);
+    const originalProject = h.storage.getProject(project.slug);
+    vi.spyOn(h.graph, 'listTaskChildren').mockImplementationOnce((...args) => {
+      const children = listChildren(...args);
+      vi.spyOn(h.storage, 'getProject').mockImplementation((slug) =>
+        slug === project.slug
+          ? { ...originalProject, createdAt: '2001-01-01T00:00:00.000Z' }
+          : originalProject,
+      );
+      return children;
+    });
+    expect((await read(0)).status).toBe(404);
+    vi.restoreAllMocks();
+    const graphPath = join(h.homeDir, 'task-graph.json');
+    const beforeLockWait = readFileSync(graphPath, 'utf8');
+    const release = await acquireFileMutationLockAsync(`${graphPath}.mutation`);
+    let prepared = false;
+    const createChild = h.graph.createChildTask.bind(h.graph);
+    vi.spyOn(h.graph, 'createChildTask').mockImplementationOnce((...args) => {
+      prepared = true;
+      return createChild(...args);
+    });
+    const pending = h.request(
+      `/api/tasks/${parent.id}/children`,
+      h.operatorHeaders({
+        method: 'POST',
+        headers: {
+          Cookie: people[0]!.cookie,
+          Origin: ORIGIN,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          operationId: 'revoked-during-runtime-lock-wait',
+          parent: { taskId: parent.id, taskCreatedAt: parent.createdAt },
+          task: { projectId: project.id, title: 'Must never commit' },
+        }),
+      }),
+    );
+    try {
+      await vi.waitFor(() => expect(prepared).toBe(true));
+      await h.localAccounts.service.revokeSessionReference(
+        people[0]!.authenticated.session.sessionId,
+        new AbortController().signal,
+      );
+    } finally {
+      await release();
+    }
+    expect((await pending).status).toBe(404);
+    expect(readFileSync(graphPath, 'utf8')).toBe(beforeLockWait);
+    expect((await read(0)).status).not.toBe(200);
+  });
 
   test('production Task relationship mount writes with ordinary operator authority and refuses account snapshots', async () => {
     const h = await setup();
