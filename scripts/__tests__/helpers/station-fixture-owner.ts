@@ -41,7 +41,7 @@ type SpawnLsof = (
 
 type CwdObservation =
   | { source: 'lsof'; owners: Map<string, Set<number>> }
-  | { source: 'none'; reason: string };
+  | { source: 'none'; reason: string; diagnostic?: string };
 
 function snapshot(
   role: FixtureProcessSnapshot['role'],
@@ -144,22 +144,20 @@ type CwdProcessObservation = {
   birth: (pid: number) => string | null;
 };
 
-function predatesFixtureWorker(
+function fixtureBirthRejection(
   pid: number,
   workerBirth: string | null,
   observation: CwdProcessObservation,
-): boolean {
-  if (observation.platform !== 'linux') return false;
+): string | null {
+  if (observation.platform !== 'linux') return 'birth-platform';
   const before = observation.birth(pid);
   const worker = /^linux:([^:]+):(\d+)$/.exec(workerBirth ?? '');
   const candidate = /^linux:([^:]+):(\d+)$/.exec(before ?? '');
-  return Boolean(
-    worker &&
-      candidate &&
-      candidate[1] === worker[1] &&
-      BigInt(candidate[2]) < BigInt(worker[2]) &&
-      observation.birth(pid) === before,
-  );
+  if (!worker) return 'birth-worker-invalid';
+  if (!candidate) return 'birth-candidate-invalid';
+  if (candidate[1] !== worker[1]) return 'birth-boot-mismatch';
+  if (BigInt(candidate[2]) >= BigInt(worker[2])) return 'birth-not-earlier';
+  return observation.birth(pid) === before ? null : 'birth-changed';
 }
 
 export function observeFixtureCwds(
@@ -195,6 +193,13 @@ export function observeFixtureCwds(
   let pid: number | undefined;
   let state: 'pid' | 'file' | 'name' = 'pid';
   let sawCwd = false;
+  const malformed = (kind: string): CwdObservation => ({
+    source: 'none',
+    reason: 'lsof-malformed-output',
+    ...(processObservation
+      ? { diagnostic: `class=${kind};pid=${pid ?? 'none'}` }
+      : {}),
+  });
   for (const line of result.stdout.split('\n')) {
     if (line === '') continue;
     if (state === 'pid' && /^p[1-9]\d*$/.test(line)) {
@@ -207,25 +212,33 @@ export function observeFixtureCwds(
       continue;
     }
     if (state !== 'name' || !line.startsWith('n') || pid === undefined) {
-      return { source: 'none', reason: 'lsof-malformed-output' };
+      const field =
+        line === 'fNOFD'
+          ? 'no-fd'
+          : line === 'fcwd'
+            ? 'cwd'
+            : line.startsWith('p')
+              ? 'pid'
+              : line.startsWith('n')
+                ? 'name'
+                : 'other';
+      return malformed(`unexpected-${state}-${field}`);
     }
     const reportedCwd = line.slice(1).replace(/ \(deleted\)$/, '');
     if (/ \(readlink: [^\n]*\)$/.test(reportedCwd)) {
       // Fixture descendants cannot predate the worker that launched them.
       // Unavailable, reused or contemporaneous identities remain unknown.
-      if (
-        !processObservation ||
-        reportedCwd !== `/proc/${pid}/cwd (readlink: Permission denied)` ||
-        !predatesFixtureWorker(pid, workerBirth, processObservation)
-      )
-        return { source: 'none', reason: 'lsof-malformed-output' };
+      const rejection = !processObservation
+        ? 'scope-absent'
+        : reportedCwd !== `/proc/${pid}/cwd (readlink: Permission denied)`
+          ? 'readlink-name'
+          : fixtureBirthRejection(pid, workerBirth, processObservation);
+      if (rejection !== null) return malformed(rejection);
       pid = undefined;
       state = 'pid';
       continue;
     }
-    if (!isAbsolute(reportedCwd)) {
-      return { source: 'none', reason: 'lsof-malformed-output' };
-    }
+    if (!isAbsolute(reportedCwd)) return malformed('non-absolute');
     const cwd = canonicalExistingPath(reportedCwd);
     for (const root of canonicalRoots) {
       if (isWithinRoot(cwd, root)) owners.get(root)?.add(pid);
@@ -234,9 +247,8 @@ export function observeFixtureCwds(
     pid = undefined;
     state = 'pid';
   }
-  if (!sawCwd || state !== 'pid') {
-    return { source: 'none', reason: 'lsof-malformed-output' };
-  }
+  if (!sawCwd || state !== 'pid')
+    return malformed(state !== 'pid' ? `incomplete-${state}` : 'no-cwd');
   return { source: 'lsof', owners };
 }
 
@@ -347,7 +359,9 @@ export class StationFixtureOwner {
     if (process.platform !== 'win32' && this.#fixtureRoots.size > 0) {
       const observed = this.#observeFixtureCwds([...this.#fixtureRoots]);
       if (observed.source === 'none') {
-        diagnostics.push(`cwd:source=none;reason=${observed.reason}`);
+        diagnostics.push(
+          `cwd:source=none;reason=${observed.reason}${observed.diagnostic ? `;${observed.diagnostic}` : ''}`,
+        );
       } else {
         for (const [root, pids] of observed.owners) {
           if (pids.size > 0)

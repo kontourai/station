@@ -217,12 +217,37 @@ describe('StationFixtureOwner', () => {
           birth: (pid) => (pid === process.pid ? workerBirth : 'linux:boot:1'),
         },
       );
-      expect(observed).toEqual({
+      expect(observed).toMatchObject({
         source: 'none',
         reason: 'lsof-malformed-output',
       });
     },
   );
+
+  it('retains a bounded path-free diagnosis for rejected cwd records', () => {
+    const observed = observeFixtureCwds(
+      [tmpdir()],
+      () => ({
+        signal: null,
+        status: 0,
+        stdout: 'p1\nfcwd\nnprivate-fixture-token\n',
+      }),
+      { platform: 'linux', birth: () => 'linux:boot:2' },
+    );
+    expect(observed).toMatchObject({
+      source: 'none',
+      reason: 'lsof-malformed-output',
+      diagnostic: 'class=non-absolute;pid=1',
+    });
+    expect(JSON.stringify(observed)).not.toContain('private-fixture-token');
+    const owner = new StationFixtureOwner({
+      observeFixtureCwds: () => observed,
+    });
+    owner.registerFixtureRoot(tmpdir());
+    expect(() => owner.dispose()).toThrow(
+      'Fixture-owned Station cleanup failed: cwd:source=none;reason=lsof-malformed-output;class=non-absolute;pid=1',
+    );
+  });
 
   it.each([
     ['empty output', ''],
