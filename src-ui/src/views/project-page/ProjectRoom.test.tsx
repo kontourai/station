@@ -46,6 +46,7 @@ let selectedAuthority: string;
 let agentWrites: Array<Record<string, unknown>>;
 let agentOperations: string[];
 let agentLostAck: boolean;
+let agentRetentions: boolean[];
 let agentDenied: boolean;
 let agentHandle: Record<string, unknown> | undefined;
 let execute: boolean;
@@ -71,11 +72,11 @@ function fixture() {
             return undefined;
           }
         });
-        expect(
+        agentRetentions.push(
           stored.some(
             (item) => JSON.stringify(item?.intent) === JSON.stringify(body),
           ),
-        ).toBe(true);
+        );
         agentHandle = {
           intentId: body.intentId,
           agentId: body.agentId,
@@ -262,6 +263,7 @@ function mount(authority = 'one') {
 beforeEach(() => {
   sessionStorage.clear();
   agentWrites = [];
+  agentRetentions = [];
   agentOperations = [];
   agentLostAck = false;
   agentDenied = false;
@@ -600,6 +602,7 @@ test('lost Agent acknowledgement reload retries immutable intent, never automati
   );
   await screen.findByText('Agent request: started');
   expect(agentWrites).toEqual([first, first]);
+  expect(agentRetentions).toEqual([true, true]);
   fireEvent.click(screen.getByRole('button', { name: 'More Agent actions' }));
   fireEvent.click(
     screen.getByRole('menuitem', { name: 'Cancel Agent request' }),
