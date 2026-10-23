@@ -950,6 +950,47 @@ A real Flow start/pause plus prepared SDK wire test binds this distinction. This
 removes a source-admission prerequisite for Flow topology; it does not yet bind
 a report group to a Flow run, claim, frontier or join.
 
+### Remaining Flow-bound execution admission
+
+Current source at `238db867559` still issues only independent advisory report
+specifications. The rounds launch fence checks a retained `flowActions` claim,
+but that journal entry alone cannot authorize a later physical request. Keep
+Flow topology unavailable until the following composition is implemented and
+qualified together:
+
+1. Resolve the Flow workspace through the authenticated Project/resource source
+   owner. Bind its real repository and sealed source identity to a boot-local
+   capability; never accept a caller-supplied cwd, root authority or grant.
+   Require the actual Project Flow mutation scope as well as report admission.
+2. Derive the run definition, actor and per-seat step binding from current Flow
+   state. Release only Flow's public ready frontier; Flow remains responsible
+   for joins, gates, route-back and settlement. A returned report is not gate
+   evidence or semantic acceptance.
+3. Preserve group → authority → Flow lock order. After durable wire-intent
+   consumption, take the published `withRunMutationLock`, load the actual run,
+   require eligible lifecycle and find the claim in `multi_cursor.active_claims`.
+   Compare claim/liveness/run/step/actor/definition/base identities, then validate
+   the current stored claim and lease with `validateDurableStepClaim` and the
+   current time. That validator alone does not establish active membership.
+   Legitimate renewal timestamps may change without rebinding the claim.
+4. Recheck request/source authority synchronously immediately before invoking
+   fetch while the Flow lock is held. Return a wrapped response promise so no
+   provider-response wait holds the Flow, authority or group locks. A refusal
+   after intent consumption retains the occupied reservation and never resends.
+5. Qualify the actual serving composition with a real published Flow run:
+   removed/expired/rebound claims and paused/canceled runs must produce zero
+   physical fetches; a valid renewed claim must launch once. Exercise frontier
+   fan-out and join through Flow, then qualify explicit continuation and exact
+   same-session no-tools ACKs. Controlled transport evidence remains distinct
+   from the required live runtime/model-family and elicitation acceptance.
+
+The public Flow workspace route is mounted at
+`/api/projects/:slug/flow`; its evaluation operation is
+`POST /runs/:runId/evaluate`. The current source admission's chat-operation
+scope does not by itself establish authority for that operation. These are
+remaining implementation requirements, not a newly issued capability or an
+acceptance receipt.
+
 Published Flow Agents 9.5.0 is now adopted through the managed lock/install path
 in Station, contracts and SDK. Release PR #1546 merged; npm's published integrity
 matches the lockfile. The existing HTTP/SDK/CLI consumers pass on that artifact.
