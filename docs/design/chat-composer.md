@@ -89,9 +89,11 @@ manifest. Later Project identity marks, server run-location updates, Agent
 grouping and Engine & model overrides are not pictured; the images are not captures or visual qualification of the current
 composer.
 
-The Project comparison captures precede the removal of the header's local
-folder controls. Their capture revisions remain recorded; folder details now
-live in Settings.
+The Project comparison captures also precede the shared Project Room and
+Overview-first navigation. They retain their original revisions. Direct Agent
+chat now stays in Home/the dock; Project Room speech is shared discussion and
+only an explicit Agent request starts Agent work. Files & connections contains
+source and workspace controls, with specialist management still in Settings.
 
 New chat opens the shared start composer. Home renders it inline, and an
 operator's Project page renders a compact version above its activity with

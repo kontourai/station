@@ -20,7 +20,7 @@ without adding a model API key:
    enough; creating a custom Agent is optional.
 4. Choose **New Project** on Home, enter a name, and choose **Repository or
    folder**, **Documents and knowledge**, **Connected tools**, or **Blank
-   Project**. Documents opens Sources after creation; connected tools opens
+   Project**. Documents opens Files & connections after creation; connected tools opens
    the Project's Tools section. Neither asks for a folder or repository.
    Blank also permits an optional installed layout. For a repository, open
    **Start from a Git repository**, paste its HTTPS/SSH URL or use **Choose from

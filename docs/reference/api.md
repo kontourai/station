@@ -407,6 +407,44 @@ assistant turn in the same Project (or a conversation without a Project), parses
 same source returns the existing Task; acceptance leaves `sessionId` and `agentId` unset. The user-sourced link records `shapingTurnId`, and `proposalBriefSaved: true` only after successful seeding. Changing its destination Project is
 refused. This is Station proposal acceptance, not a Builder Kit gate receipt. Seeding uses the room runtime's human edit-plan/batch authority. A seed failure returns 503 with a recovery message after the Task and Session link have persisted; retrying the same source reuses that Task and seeds only an empty document. Concurrent accepts that commit the matching brief both succeed. A successful response is returned after seeding. This is recoverable creation across the graph and document stores, not a cross-store transaction.
 
+## Shared Project Room
+
+Project Rooms use `/api/projects/:slug/room`. Their identity binds the Station,
+portable Project identity, local Project incarnation and Room UUID. Discovery
+does not create a Room. Every mutation except initialization includes
+`expectedRoomId`, `expectedProjectId` and `expectedActorId`; these guards pin
+intent and grant no permission.
+
+| Method and suffix | Input | Result |
+| --- | --- | --- |
+| `GET` base | none | Room identity, current actor/capabilities, note, checkpoint and presence |
+| `POST /init` | `{ expectedProjectId }` | `{ scope, roomId }`; requires discussion permission and is idempotent |
+| `GET /messages` | `after` sequence, `limit` 1–100 | ordered history, checkpoint, `nextAfter`; byte limits may split a page |
+| `POST /messages` | guards plus `{ intentId, text, replyTo? }` | committed message; exact actor/Room/intent retry returns the same message, changed payload conflicts |
+| `PUT /note` | guards plus `{ expectedRevision, markdown, sourceMessageIds }` | revision-checked shared note |
+| `POST /presence` | guards plus `{ clientId, state: 'join' | 'leave' }` | current leased participants |
+| `GET /events` | none | SSE `changed`, `presence`, terminal `revoked`, and heartbeat comments |
+| `POST /agents` | guards plus `{ intentId, agentId, text, replyTo? }` | durable explicit Agent request handle |
+| `GET /agents/:requestId` | none | current handle without private Session/correlation coordinates |
+| `POST /agents/:requestId/reconcile` | guards | inspect completion and publish the authorized selected answer once; does not relaunch |
+| `POST /agents/:requestId/cancel` | guards | cancel request and fence later publication |
+
+Reads, discussion, note editing and execution require their distinct current
+Project actions plus transport permission. Agent requests also require current
+host execution permission and the selected Project execution root. Membership
+does not grant connector credentials, a private transcript, or general Project
+mutation. Agent contexts and answers are bounded; oversized publication records
+a durable failure rather than silently omitting or repeatedly retrying it.
+
+Messages and shared notes notify after commit. SSE coalesces wakes and does not
+repeat unchanged content while idle. Twenty-second heartbeat comments and a
+shared consistency check are separate from bounded two-second authority checks.
+Other-process writes may wait for that consistency check. Reconnect refreshes a
+durable checkpoint; clients recover content from ordered history rather than
+treating the notification stream as a durable message log. Presence expires and
+is not resurrected after restart. Slow readers are closed after the bounded
+write deadline. See the [transport decision](../decisions/project-room-realtime.md).
+
 ## Task deliverables and linked work chats
 
 The dedicated `createTaskRelationshipRoutes` factory is mounted by runtime

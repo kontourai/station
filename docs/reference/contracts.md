@@ -1269,6 +1269,29 @@ canonical inventory fingerprints and the independent plugin data revision.
 histograms and rejects identifying/undeclared fields. Broker acceptance is deferred.
 See [Publisher analytics](../guides/plugins.md#publisher-analytics).
 
+## Project Room contracts
+
+`@kontourai/station-contracts/project-room` owns Room identity, messages,
+checkpoints, note revisions and explicit Agent request records. Its scope is
+the existing `ProjectMembershipScope`, without a synthetic Task ID. Browser
+views and strict wire parsers live in the `project-room-browser` subpath.
+Actor attribution comes from authenticated server authority, not message text.
+Message intent IDs are scoped to the Room and author; exact retries retain one
+result and changed payloads conflict. Notes use expected-revision comparison.
+
+The limits distinguish a 16 KiB message/request, an 8 KiB note, a 512 KiB history
+page and bounded retained records. A valid message count can still require
+byte-based continuation. Persisted DTOs are checked against SQLite identity
+columns before delivery or Agent context use. Agent capture identity and digest
+must match its durable request before private Session reads or cancellation.
+An accepted request is not proof of execution or publication. Ambiguous launch
+is not replayed automatically; explicit reconciliation publishes only an
+authorized completed answer. SSE is an interchangeable notification transport,
+not the owner of message order, durability, authority or Task hierarchy.
+
+See [Room HTTP operations](api.md#shared-project-room) and the
+[SDK](sdk.md#shared-project-room).
+
 ## Project knowledge registration ownership
 
 `ProjectStartIntent` names initial `workspace | knowledge | connections | blank`
