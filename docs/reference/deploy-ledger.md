@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-23T02:01:47Z | nightly-android | 0.1.11-nightly.2487 | `5956a04` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39881389449) |
 | 2026-10-23T01:10:36Z | nightly-npm | 0.11.0-nightly.2487.39881389449 | `5956a04` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/39881389449) |
 | 2026-10-22T17:01:18Z | nightly-desktop | 0.1.11-nightly.2486.4 | `d650fa2` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39806934605) |
 | 2026-10-22T17:01:14Z | nightly-android | 0.1.11-nightly.2486.4 | `d650fa2` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39806934605) |
@@ -328,6 +329,41 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-23T02:01:47Z · nightly-android · 0.1.11-nightly.2487
+
+- Ship SHA: `5956a04183edffed8c1ba9ec5b7c9c540a34528f`
+- Artifact built at: `2026-10-23T01:09:39.996Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 39881389449)
+
+### Changelog
+
+Commits since `d650fa2` ([full sha](https://github.com/kontourai/station/commit/d650fa2d34d02ce00f1252c4f7b642eb75d914e5)):
+
+**Features**
+
+- [#4050](https://github.com/kontourai/station/pull/4050) feat(release): build a styled macOS installer DMG
+
+**Fixes**
+
+- [#4060](https://github.com/kontourai/station/pull/4060) fix(release): verify the copied app inside the DMG before signing
+- [#4067](https://github.com/kontourai/station/pull/4067) fix(ci): stop obsolete merge candidates consuming runners
+- [#4066](https://github.com/kontourai/station/pull/4066) fix(ci): gate dependency advisories at release promotion
+
+**CI / workflow**
+
+- [#4024](https://github.com/kontourai/station/pull/4024) ci(windows): stage the desktop sidecar when the candidate provides it
+
+**Docs**
+
+- [#4025](https://github.com/kontourai/station/pull/4025) docs(recovery): design connection-list recovery without a backup
+
+**Other**
+
+- [#4054](https://github.com/kontourai/station/pull/4054) build(deps): bump ip-address from 10.7.2 to 10.7.4
+- [#4069](https://github.com/kontourai/station/pull/4069) test(release): align promotion contracts with advisory gates
+- [#4026](https://github.com/kontourai/station/pull/4026) build(deps): bump vitest to 4.1.12 for @vitest/mocker advisories
 
 ## 2026-10-23T01:10:36Z · nightly-npm · 0.11.0-nightly.2487.39881389449
 
