@@ -76,6 +76,13 @@ iOS uses `ios-nightly`. Whether those environments currently require manual
 approval is live GitHub configuration, not determined by the schedule trigger.
 Their provider credentials and permissions have distinct scopes.
 
+After required TestFlight upload and internal delivery, Nightly attempts
+external-group assignment and beta-review submission. This step is non-blocking:
+failures appear in the workflow summary and external-distribution receipt.
+Set `TESTFLIGHT_EXTERNAL_GROUP_ID` in `ios-nightly` and complete Apple's beta
+review information first. See [external TestFlight distribution](mobile-release.md#nightly-external-testflight-distribution)
+for setup, review states and tester automatic updates.
+
 The rolling `nightly` marker moves only after Android is verified and recorded.
 Desktop has its own `nightly-desktop` publication marker. Partial or ambiguous
 provider outcomes retain their own status; a failed overall run can already have

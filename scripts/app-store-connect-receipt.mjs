@@ -131,10 +131,12 @@ async function appStoreConnectMutation(path, credentials, method, body) {
     throw new Error(
       'App Store Connect mutation response exceeded the 1 MiB limit',
     );
-  if (!response.ok)
+  if (!response.ok) {
+    const detail = appStoreConnectErrorDetail(text);
     throw new Error(
-      `App Store Connect ${method} ${path} returned HTTP ${response.status}`,
+      `App Store Connect ${method} ${path} returned HTTP ${response.status}${detail ? `: ${detail}` : ''}`,
     );
+  }
   return text ? JSON.parse(text) : null;
 }
 
@@ -702,6 +704,195 @@ export async function attachInternalGroup(
   });
 }
 
+async function distributeExternal(argv, env) {
+  const output = requiredOption(argv, '--output');
+  const receipt = {
+    schemaVersion: 1,
+    kind: 'testflight-external-distribution',
+    status: 'attempting',
+    phase: 'preflight',
+    appId: requiredOption(argv, '--app-id'),
+    buildId: requiredOption(argv, '--build-id'),
+    bundleVersion: requiredOption(argv, '--bundle-version'),
+    groupId: env.TESTFLIGHT_EXTERNAL_GROUP_ID ?? null,
+  };
+  const checkpoint = () =>
+    writeReceipt(output, {
+      ...receipt,
+      observedAt: new Date().toISOString(),
+    });
+  checkpoint();
+  try {
+    const { appId, buildId, bundleVersion, groupId } = receipt;
+    if (!/^[A-Za-z0-9-]+$/.test(groupId ?? ''))
+      throw new Error(
+        'Set TESTFLIGHT_EXTERNAL_GROUP_ID in the ios-nightly environment to an existing external tester group ID',
+      );
+    const credentials = credentialsFromEnvironment(env);
+    const groupPath = `/v1/betaGroups/${encodeURIComponent(groupId)}`;
+    const buildPath = `/v1/builds/${encodeURIComponent(buildId)}`;
+    const group = (await appStoreConnectRequest(groupPath, credentials)).data;
+    const groupApp = (
+      await appStoreConnectRequest(`${groupPath}/app`, credentials)
+    ).data;
+    const build = (await appStoreConnectRequest(buildPath, credentials)).data;
+    const buildApp = (
+      await appStoreConnectRequest(`${buildPath}/app`, credentials)
+    ).data;
+    if (
+      group?.type !== 'betaGroups' ||
+      group.id !== groupId ||
+      group.attributes?.isInternalGroup !== false ||
+      groupApp?.type !== 'apps' ||
+      groupApp.id !== appId
+    )
+      throw new Error(
+        'Configured group is not an external tester group belonging to the expected app',
+      );
+    if (
+      build?.type !== 'builds' ||
+      build.id !== buildId ||
+      build.attributes?.version !== bundleVersion ||
+      build.attributes?.processingState !== 'VALID' ||
+      build.attributes?.expired !== false ||
+      buildApp?.type !== 'apps' ||
+      buildApp.id !== appId
+    )
+      throw new Error(
+        'Expected unexpired VALID build does not belong to the expected app/version',
+      );
+    receipt.groupName = group.attributes.name;
+    const readDetail = async () => {
+      const detail = (
+        await appStoreConnectRequest(
+          `${buildPath}/buildBetaDetail`,
+          credentials,
+        )
+      ).data;
+      if (
+        detail?.type !== 'buildBetaDetails' ||
+        typeof detail.id !== 'string' ||
+        typeof detail.attributes?.autoNotifyEnabled !== 'boolean'
+      )
+        throw new Error(
+          'Build beta detail is missing its identity or automatic notification setting',
+        );
+      const state = detail.attributes.externalBuildState;
+      receipt.externalBuildState = state ?? null;
+      if (
+        ![
+          'READY_FOR_BETA_SUBMISSION',
+          'WAITING_FOR_BETA_REVIEW',
+          'IN_BETA_REVIEW',
+          'BETA_APPROVED',
+          'READY_FOR_BETA_TESTING',
+          'IN_BETA_TESTING',
+        ].includes(state)
+      )
+        throw new Error(
+          `External testing is blocked by build state ${String(state)}; check beta review information and export compliance in App Store Connect`,
+        );
+      return detail;
+    };
+    let detail = await readDetail();
+    receipt.phase = 'enable-notifications';
+    checkpoint();
+    if (!detail.attributes.autoNotifyEnabled) {
+      await appStoreConnectMutation(
+        `/v1/buildBetaDetails/${encodeURIComponent(detail.id)}`,
+        credentials,
+        'PATCH',
+        {
+          data: {
+            type: 'buildBetaDetails',
+            id: detail.id,
+            attributes: { autoNotifyEnabled: true },
+          },
+        },
+      );
+      detail = await readDetail();
+    }
+    if (detail.attributes.autoNotifyEnabled !== true)
+      throw new Error(
+        'Automatic tester notifications were not enabled on readback',
+      );
+    receipt.autoNotifyEnabled = true;
+    receipt.phase = 'submit-review';
+    checkpoint();
+    // Re-read before submitting so reruns preserve pending/approved reviews.
+    detail = await readDetail();
+    if (detail.attributes.externalBuildState === 'READY_FOR_BETA_SUBMISSION') {
+      const submission = await appStoreConnectMutation(
+        '/v1/betaAppReviewSubmissions',
+        credentials,
+        'POST',
+        {
+          data: {
+            type: 'betaAppReviewSubmissions',
+            relationships: { build: { data: { type: 'builds', id: buildId } } },
+          },
+        },
+      );
+      const review = submission?.data;
+      if (
+        review?.type !== 'betaAppReviewSubmissions' ||
+        !review.id ||
+        !['WAITING_FOR_REVIEW', 'IN_REVIEW', 'APPROVED'].includes(
+          review.attributes?.betaReviewState,
+        )
+      )
+        throw new Error(
+          'Beta review submission response did not confirm an accepted review state; inspect App Store Connect before retrying',
+        );
+      receipt.submissionId = review.id;
+      receipt.betaReviewState = review.attributes.betaReviewState;
+      receipt.status =
+        review.attributes.betaReviewState === 'APPROVED'
+          ? 'approved'
+          : 'submitted';
+    } else {
+      receipt.status = ['WAITING_FOR_BETA_REVIEW', 'IN_BETA_REVIEW'].includes(
+        detail.attributes.externalBuildState,
+      )
+        ? 'already-in-review'
+        : 'ready-for-testing';
+    }
+    receipt.phase = 'assign-group';
+    checkpoint();
+    const membership = {
+      appId,
+      buildId,
+      groupId,
+      groupName: receipt.groupName,
+      deadline: Date.now() + 60_000,
+    };
+    let read = await readGroupMembership(membership, env);
+    if (!read.found) {
+      await appStoreConnectMutation(
+        membershipRelationshipPath(groupId),
+        credentials,
+        'POST',
+        {
+          data: [{ type: 'builds', id: buildId }],
+        },
+      );
+      read = await waitForGroupMembership(membership, env, {
+        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        now: Date.now,
+      });
+    }
+    receipt.membershipVerified = true;
+    receipt.membershipPagesRead = read.pagesRead;
+    receipt.phase = 'complete';
+    checkpoint();
+  } catch (error) {
+    receipt.status = 'failed';
+    receipt.error = error instanceof Error ? error.message : String(error);
+    checkpoint();
+    throw error;
+  }
+}
+
 async function upsertWhatToTest(argv, env) {
   const buildId = requiredOption(argv, '--build-id');
   const whatsNew = requiredOption(argv, '--whats-new');
@@ -773,10 +964,12 @@ export async function main(argv = process.argv.slice(2), env = process.env) {
     return waitForValidBuild(argv.slice(1), env);
   if (command === 'attach-internal-group')
     return attachInternalGroup(argv.slice(1), env);
+  if (command === 'distribute-external')
+    return distributeExternal(argv.slice(1), env);
   if (command === 'upsert-what-to-test')
     return upsertWhatToTest(argv.slice(1), env);
   throw new Error(
-    'usage: app-store-connect-receipt.mjs <app-preflight|build-receipt|reconcile-build|wait-for-valid-build|attach-internal-group> [options]',
+    'usage: app-store-connect-receipt.mjs <app-preflight|build-receipt|reconcile-build|wait-for-valid-build|attach-internal-group|upsert-what-to-test|distribute-external> [options]',
   );
 }
 
