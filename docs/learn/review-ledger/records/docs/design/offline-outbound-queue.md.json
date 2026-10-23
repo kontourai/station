@@ -36,7 +36,9 @@
 
     "src-ui/public/sw.js",
 
-    "scripts/vite-offline-shell.ts"
+    "scripts/vite-offline-shell.ts",
+
+    "src-ui/src/hooks/useOutboundQueueFlush.ts"
   ],
 
   "checks": [

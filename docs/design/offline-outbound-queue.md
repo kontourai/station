@@ -62,15 +62,16 @@ with Check and Discard…, and the discard checks again that the window is gone.
 A window's own claim reads "Sending" only while its own send is in progress.
 While any send reads "Sending" this way the list looks again every few seconds,
 since a window that closes says nothing.
-If that lookup fails while released rows remain unresolved, the mounted flush
-hook checks again after 2 seconds, doubling to a 60-second cap. Each mounted
-renderer keeps its own lookup backoff; there is no shared lookup lease or
-ownership heartbeat. Hiding the window, a browser offline event, pagehide,
-lost connection health, unmount or an authority change cancels its retry.
-Returning to visible, online and connected starts a check immediately with the
-short backoff restored; after pagehide, pageshow must also have occurred.
-Queue changes still refresh projections. Successful settlement stops the
-schedule, and a late lookup cannot rearm a paused schedule.
+If that lookup fails while released rows remain unresolved, each mounted flush
+hook checks again after 2 seconds, doubling to a 60-second cap. Each renderer
+keeps its own local retry schedule. Hiding the document, a browser offline
+event, lost connection health or `pagehide` cancels the retry and resets its
+backoff. Unmount or an authority change also cancels the old schedule. Returning
+to visible, online and connected starts a check immediately with fresh backoff.
+After `pagehide`, the page waits for `pageshow` and resumes only when it is also
+visible, online and connected; a hidden `pageshow` waits for visibility to return.
+Successful settlement stops the schedule, and a late lookup cannot rearm a
+paused schedule.
 The timer only checks delivery: a resend still requires Station's answer that
 it never received the message.
 The lookup settles released rows, and rows whose app was closed, at the next
