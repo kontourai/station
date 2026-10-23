@@ -10,7 +10,9 @@ import {
   screen,
   waitFor,
 } from '@testing-library/react';
+import { act } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
+import { navigationStore } from '../../../contexts/navigation-store';
 import { ProjectWorkspaceSelection } from '../ProjectWorkspaceSelection';
 
 const clients: QueryClient[] = [];
@@ -137,6 +139,16 @@ test('selecting a second checkout is explicit and a lost response retries the ex
     { target: { value: 'apps/api' } },
   );
   expect(writes).toHaveLength(0);
+  const origin = window.location.pathname;
+  act(() => navigationStore.navigate('/workspace-away'));
+  expect(window.location.pathname).toBe(origin);
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(
+    screen.getByLabelText('Starting directory within that resource'),
+  ).toHaveProperty('value', 'apps/api');
+  const unload = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(unload);
+  expect(unload.defaultPrevented).toBe(true);
   fireEvent.click(
     screen.getByRole('button', { name: 'Apply starting directory' }),
   );
@@ -153,4 +165,22 @@ test('selecting a second checkout is explicit and a lost response retries the ex
     executionRoot: { repoId: 'github.com/example/backend', path: 'apps/api' },
   });
   expect(view.identity.repos).toEqual(before.identity.repos);
+  const cleanUnload = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(cleanUnload);
+  expect(cleanUnload.defaultPrevented).toBe(false);
+  fireEvent.change(
+    screen.getByLabelText('Starting directory within that resource'),
+    {
+      target: { value: 'apps/next' },
+    },
+  );
+  expect(
+    screen.queryByText('Starting directory updated for new sessions.'),
+  ).toBeNull();
+  act(() => navigationStore.navigate('/workspace-away'));
+  expect(window.location.pathname).toBe(origin);
+  fireEvent.click(screen.getByRole('button', { name: 'Discard', exact: true }));
+  expect(window.location.pathname).toBe('/workspace-away');
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(writes).toHaveLength(2);
 });

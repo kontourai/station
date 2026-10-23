@@ -149,6 +149,7 @@ export function ProjectOperatorSetup({
         </p>
         <label htmlFor={commandId}>Setup command</label>
         <textarea
+          className="editor-input"
           id={commandId}
           value={command}
           disabled={Boolean(intent) || busy}
@@ -158,6 +159,7 @@ export function ProjectOperatorSetup({
           Input files to track, one execution-directory-relative path per line
         </label>
         <textarea
+          className="editor-input"
           id={pathsId}
           value={paths}
           disabled={Boolean(intent) || busy}
@@ -165,6 +167,7 @@ export function ProjectOperatorSetup({
         />
         <label htmlFor={timeoutId}>Deadline in seconds (1–600)</label>
         <input
+          className="editor-input"
           id={timeoutId}
           type="number"
           min={1}
@@ -225,25 +228,29 @@ export function ProjectOperatorSetup({
         )}
         {intent && (
           <>
-            <p>Setup operation: {intent.id}</p>
+            {!receipt && <p>Setup operation: {intent.id}</p>}
             {receipt && (
               <>
                 <p role="status">Setup: {receipt.phase}</p>
                 <p>
                   Execution root: <code>{receipt.cwd}</code>
                 </p>
-                <p>
-                  Commit: <code>{receipt.sourceCommit}</code>
-                </p>
                 <pre>{receipt.command}</pre>
                 <p>Deadline: {receipt.timeoutSeconds} seconds</p>
-                <ul>
-                  {receipt.inputs.map((input) => (
-                    <li key={input.path}>
-                      {input.path}: {input.sha256 ?? 'absent'}
-                    </li>
-                  ))}
-                </ul>
+                <details className="project-sources__diagnostics">
+                  <summary>Setup diagnostics</summary>
+                  <p>Setup operation: {intent.id}</p>
+                  <p>
+                    Commit: <code>{receipt.sourceCommit}</code>
+                  </p>
+                  <ul>
+                    {receipt.inputs.map((input) => (
+                      <li key={input.path}>
+                        {input.path}: {input.sha256 ?? 'absent'}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
                 {receipt.phase === 'previewed' && (
                   <>
                     <label

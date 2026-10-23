@@ -8,6 +8,7 @@ import { updateProjectExecutionRoot } from '@kontourai/station-sdk/project-ident
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useId, useState } from 'react';
 import { Button } from '../../components/Button';
+import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { errorText } from '../../utils/errorText';
 
 type Draft = {
@@ -48,6 +49,12 @@ export function ProjectWorkspaceSelection({
       void client.invalidateQueries({ queryKey: ['projects', slug] });
     },
   });
+  const { DiscardModal } = useUnsavedGuard(Boolean(draft), () => {
+    if (save.isPending) return false;
+    setDraft(null);
+    save.reset();
+    return true;
+  });
   const view = identity.data;
   const primary =
     view?.identity.repos.find((repo) => repo.role === 'primary') ??
@@ -59,7 +66,8 @@ export function ProjectWorkspaceSelection({
     resolution.data?.posture === 'backing' ? resolution.data.resources : [];
   const busy = save.isPending || save.isError;
   function change(repoId: string, path: string) {
-    if (!view) return;
+    if (!view || busy) return;
+    if (save.isSuccess) save.reset();
     const expected = draft?.request ?? {
       expectedIdentity: view.identity,
       expectedLocalProjectId: view.association.localProjectId,
@@ -105,6 +113,7 @@ export function ProjectWorkspaceSelection({
         <>
           <label htmlFor={repoInput}>Starting repository or folder</label>
           <select
+            className="editor-input"
             id={repoInput}
             value={selectedRepo}
             disabled={busy}
@@ -133,6 +142,7 @@ export function ProjectWorkspaceSelection({
             Starting directory within that resource
           </label>
           <input
+            className="editor-input"
             id={pathInput}
             value={selectedPath}
             disabled={busy || !selectedRepo}
@@ -186,6 +196,7 @@ export function ProjectWorkspaceSelection({
       {save.isSuccess && (
         <p role="status">Starting directory updated for new sessions.</p>
       )}
+      <DiscardModal />
     </section>
   );
 }
