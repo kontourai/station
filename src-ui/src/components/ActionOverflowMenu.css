@@ -121,3 +121,28 @@
   font-family: var(--font-mono);
   font-size: var(--text-xs);
 }
+
+/* Live state behind the menu with no count of its own (`status`): a dot where
+   the count badge would sit. The fact is in the trigger's name; this is its
+   glyph. The badge wins when both apply. */
+.action-overflow__status-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--success-text);
+  animation: action-overflow-status-arrive var(--motion-base) var(--ease-spring);
+}
+
+@keyframes action-overflow-status-arrive {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}

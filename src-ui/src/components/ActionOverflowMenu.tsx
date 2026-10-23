@@ -131,6 +131,7 @@ export function ActionOverflowMenu({
   triggerRef,
   badgeCount = 0,
   badgeLabel,
+  status,
   label,
   inlineSingle = false,
   triggerClassName = 'action-overflow__trigger',
@@ -155,6 +156,12 @@ export function ActionOverflowMenu({
   badgeCount?: number;
   /** What the count means, for the trigger's accessible name. */
   badgeLabel?: string;
+  /**
+   * Live state behind the menu's rows that has no count of its own on the
+   * trigger ("2 chats working"). Joined to the trigger's name after the
+   * badge's; the trigger paints it as a dot (`.action-overflow__status-dot`).
+   */
+  status?: string;
   /**
    * The trigger's and the menu's accessible name. REQUIRED: the trigger shows
    * only `⋯`, so this is the only name it has, and two of these on one page
@@ -368,10 +375,12 @@ export function ActionOverflowMenu({
    */
   if (inlineSingle && actions.length === 1) {
     const only = actions[0]!;
-    const inlineName =
-      badgeCount > 0 && badgeLabel
-        ? `${only.label} — ${badgeLabel}`
-        : undefined;
+    const inlineDetail = [badgeCount > 0 ? badgeLabel : undefined, status]
+      .filter(Boolean)
+      .join(', ');
+    const inlineName = inlineDetail
+      ? `${only.label} — ${inlineDetail}`
+      : undefined;
     return (
       <button
         ref={setTrigger}
@@ -417,8 +426,10 @@ export function ActionOverflowMenu({
   ];
   const hasGlyphColumn =
     reserveGlyphColumn || actions.some((action) => action.glyph);
-  const triggerName =
-    badgeCount > 0 && badgeLabel ? `${label} — ${badgeLabel}` : label;
+  const triggerDetail = [badgeCount > 0 ? badgeLabel : undefined, status]
+    .filter(Boolean)
+    .join(', ');
+  const triggerName = triggerDetail ? `${label} — ${triggerDetail}` : label;
 
   return (
     <>
@@ -454,11 +465,13 @@ export function ActionOverflowMenu({
       >
         {triggerText}
         <span aria-hidden="true">{triggerGlyph ?? '⋯'}</span>
-        {badgeCount > 0 && (
+        {badgeCount > 0 ? (
           <span className="chat-dock__more-badge" aria-hidden="true">
             {badgeCount}
           </span>
-        )}
+        ) : status ? (
+          <span className="action-overflow__status-dot" aria-hidden="true" />
+        ) : null}
       </button>
       {open
         ? createPortal(

@@ -739,6 +739,94 @@ describe('cursor/create_plan is a plan review', () => {
   });
 });
 
+describe('a mid-turn Cursor plan belongs to the send that opened the turn', () => {
+  test('an approved plan and a todo update name the turn and its invocation', async () => {
+    const session = await startCursorSession();
+    const turn = await session.adapter.sendTurn({
+      threadId: session.threadId,
+      input: 'Plan it',
+      invocationId: 'invocation-plan',
+    });
+    const own = { turnId: turn.turnId, invocationId: 'invocation-plan' };
+    const response = session.agent.extMethod('cursor/create_plan', CREATE_PLAN);
+    const opened = await session.waitFor(isRequestOpened, 'request.opened');
+    await answerForm(session, opened, { review: 'approve' });
+    await within(response);
+    expect(await session.waitFor(isPlanUpdated, 'plan.updated')).toMatchObject(
+      own,
+    );
+
+    await session.agent.extNotification('cursor/update_todos', UPDATE_TODOS);
+    const deadline = Date.now() + 1000;
+    while (
+      session.events.filter(isPlanUpdated).length < 2 &&
+      Date.now() < deadline
+    )
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(session.events.filter(isPlanUpdated)[1]).toMatchObject(own);
+    await session.stop();
+  });
+});
+
+describe('a Cursor question asked mid-turn belongs to the send that opened the turn', () => {
+  // The execution coordinator owns a stamped turn's request only when it
+  // names the send, and only an owned request pauses the stall watch.
+  test('the question names the turn and its invocation when opened, answered and cancelled at prompt end', async () => {
+    const session = await startCursorSession();
+    const turn = await session.adapter.sendTurn({
+      threadId: session.threadId,
+      input: 'Ask me',
+      invocationId: 'invocation-question',
+    });
+    const own = { turnId: turn.turnId, invocationId: 'invocation-question' };
+    const resolvedFor = async (requestId: string) => {
+      const deadline = Date.now() + 1000;
+      for (;;) {
+        const found = session.events.find(
+          (event) =>
+            event.method === 'request.resolved' &&
+            event.requestId === requestId,
+        );
+        if (found) return found;
+        if (Date.now() > deadline)
+          throw new Error(`Timed out waiting for ${requestId} to resolve`);
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+    };
+
+    const answered = session.agent.extMethod(
+      'cursor/ask_question',
+      ASK_QUESTION,
+    );
+    const first = await session.waitFor(isRequestOpened, 'request.opened');
+    expect(first).toMatchObject(own);
+    await answerForm(session, first, { q1: '1' });
+    await within(answered);
+    expect(await resolvedFor(first.requestId)).toMatchObject({
+      status: 'approved',
+      ...own,
+    });
+
+    const orphaned = session.agent.extMethod(
+      'cursor/ask_question',
+      ASK_QUESTION,
+    );
+    const second = await session.waitFor(
+      (event): event is RequestOpened =>
+        isRequestOpened(event) && event.requestId !== first.requestId,
+      'the second request.opened',
+    );
+    expect(second).toMatchObject(own);
+    session.proc!.resolvePrompt('end_turn');
+    await within(orphaned);
+    expect(await resolvedFor(second.requestId)).toMatchObject({
+      status: 'cancelled',
+      ...own,
+    });
+    await session.stop();
+  });
+});
+
 describe('cursor/update_todos reaches the plan surface', () => {
   test('a merge folds into the plan by todo id', async () => {
     const session = await startCursorSession();

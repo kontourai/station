@@ -24,6 +24,8 @@ export interface OutboundQueuedTurnProjection {
    * sends it until the user does.
    */
   heldElsewhere?: true;
+  /** A held copy whose window is proven closed: only the user sends it. */
+  heldByClosedWindow?: true;
   /** Pending behind an earlier not-sent row of its chat (see `claimNext`). */
   behindUnsent?: true;
   /** No answer came back; Station's delivery lookup decides it. */
@@ -141,6 +143,7 @@ export function projectOutboundQueueEntries(
           heldBy,
           awaitingLookup,
           sendUnderWay,
+          holderGone,
         }) => ({
           clientTurnId,
           content,
@@ -151,6 +154,9 @@ export function projectOutboundQueueEntries(
           mergedTurns,
           ...(deliveryCheck ? { deliveryCheck } : {}),
           ...(heldBy ? { heldElsewhere: true as const } : {}),
+          ...(heldBy && holderGone
+            ? { heldByClosedWindow: true as const }
+            : {}),
           ...(awaitingLookup ? { awaitingLookup: true as const } : {}),
           ...(sendUnderWay ? { sendUnderWay: true as const } : {}),
           ...(behindUnsent.has(clientTurnId)

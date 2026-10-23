@@ -1,12 +1,15 @@
 import {
   type KeyboardEvent,
+  type ReactNode,
   type PointerEvent as ReactPointerEvent,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
+import type { OverflowAction } from '../components/ActionOverflowMenu';
 import { DockPlacementControl } from '../components/chat-dock/DockPlacementControl';
 import { CloseGlyph } from '../components/icons/Glyph';
 import { withShortcutHint } from '../contexts/KeyboardShortcutsContext';
@@ -21,6 +24,10 @@ import {
 } from '../regions/region-model';
 import type { DockMode } from '../types';
 import { nextTabIndex } from '../utils/tab-navigation';
+import {
+  type RegionChromeSlots,
+  RegionChromeSlotsContext,
+} from './RegionChromeSlots';
 import {
   workspacePaneHostPanelIdentity,
   workspacePaneHostTabIdentity,
@@ -239,6 +246,165 @@ interface RegionMoveState {
   tab: RegionChromeTab;
   anchor: { x: number; y: number; top: number };
   from: 'tab' | 'bar';
+}
+
+/**
+ * The regions a pane may be moved to (#2143): every region this device can
+ * use plus `main`, minus the one this shell RENDERS in on this device
+ * (`effectiveDockSlotPlacement`: the region's own id where the device offers
+ * it, else the device's fallback edge — on a coarse-wide device a `left`
+ * shell renders at `bottom` and that is the edge excluded), filtered by the
+ * model's own `surfaceMayOccupy` so no row offers a refused placement. ONE
+ * derivation feeds every trigger — the strip's tabs, the bar's Move button
+ * (#2160) and the region rows a pane folds into its own menu — so a lone
+ * pane, whose region renders no strip, still reaches every region it
+ * declares, `main` included.
+ */
+function regionMoveTargets(
+  chrome: DockShellChrome,
+  surfaceId: string,
+): RegionId[] {
+  const here: DockRegionId = chrome.effectiveDockSlotPlacement;
+  return [
+    ...(chrome.availableDockSlotPlacements as readonly DockMode[]),
+    'main',
+  ]
+    .filter((region): region is RegionId => region !== here)
+    .filter((region) => surfaceMayOccupy(surfaceId, region));
+}
+
+/** The maximize control's name, one wording for the button and the row. */
+function maximizeLabel(isDockMaximized: boolean): string {
+  return isDockMaximized
+    ? 'Restore dock region size'
+    : 'Expand dock region to workspace';
+}
+
+/**
+ * The region's commands as overflow rows, for a pane that folds them into
+ * its own menu (`RegionMenu`). The same gates as the bar's buttons: move and
+ * add only on a fine pointer, move only where the shown pane has somewhere
+ * to go, maximize only where the shell offers it.
+ */
+function useRegionMenuActions({
+  chrome,
+  tabs,
+  selectedSurfaceId,
+  onMoveTab,
+  onAddPane,
+}: {
+  chrome: DockShellChrome;
+  tabs: readonly RegionChromeTab[];
+  selectedSurfaceId: string | undefined;
+  onMoveTab?: (surfaceId: string, region: RegionId) => void;
+  onAddPane?: (trigger: HTMLButtonElement) => void;
+}): OverflowAction[] {
+  const registeredMaximizeShortcut = useShortcutDisplay('dock.maximize');
+  const maximizeShortcut = chrome.ownsMaximizeShortcut
+    ? registeredMaximizeShortcut
+    : '';
+  const selectedTab = tabs.find((tab) => tab.surfaceId === selectedSurfaceId);
+  const targets =
+    selectedTab && onMoveTab && !chrome.isMobile
+      ? regionMoveTargets(chrome, selectedTab.surfaceId)
+      : [];
+  const { applyDockSnap, isDockMaximized } = chrome;
+  const rows: OverflowAction[] = [
+    ...targets.map((region) => ({
+      key: `region-move-${region}`,
+      label: `Move to ${regionLabel(region)}`,
+      onSelect: () => {
+        if (selectedTab && onMoveTab) onMoveTab(selectedTab.surfaceId, region);
+      },
+    })),
+    ...(onAddPane && !chrome.isMobile
+      ? [
+          {
+            key: 'region-add-pane',
+            label: 'Add pane…',
+            onSelect: (trigger: HTMLElement) =>
+              onAddPane(trigger as HTMLButtonElement),
+          },
+        ]
+      : []),
+    ...(chrome.canMaximize
+      ? [
+          {
+            key: 'region-maximize',
+            label: isDockMaximized ? 'Restore size' : 'Maximize',
+            ...(maximizeShortcut ? { shortcut: maximizeShortcut } : {}),
+            onSelect: () => applyDockSnap(isDockMaximized ? 'half' : 'full'),
+          },
+        ]
+      : []),
+  ];
+  return rows.map((row, index) =>
+    index === 0 ? { ...row, separatorBefore: true } : row,
+  );
+}
+
+/**
+ * Publishes the bar's slots and the region's commands to the panes below
+ * (`RegionChromeSlots`). Rendered by the region host inside the shell's
+ * chrome render prop, which is where the chrome the commands read exists.
+ */
+export function RegionChromeSlotsProvider({
+  slots,
+  chrome,
+  tabs,
+  selectedSurfaceId,
+  onMoveTab,
+  onAddPane,
+  absorb,
+  children,
+}: {
+  slots: Pick<RegionChromeSlots, 'leading' | 'trailing'>;
+  chrome: DockShellChrome;
+  tabs: readonly RegionChromeTab[];
+  selectedSurfaceId: string | undefined;
+  onMoveTab?: (surfaceId: string, region: RegionId) => void;
+  onAddPane?: (trigger: HTMLButtonElement) => void;
+  absorb: () => () => void;
+  children: ReactNode;
+}) {
+  const actions = useRegionMenuActions({
+    chrome,
+    tabs,
+    selectedSurfaceId,
+    onMoveTab,
+    onAddPane,
+  });
+  // Rows are rebuilt each render; the context changes only when what they
+  // say does, so a pane reading it does not re-render on every drag frame.
+  const signature = actions
+    .map((row) => `${row.key}:${row.label}:${row.shortcut ?? ''}`)
+    .join('|');
+  const actionsRef = useRef(actions);
+  actionsRef.current = actions;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `signature` is the change key for `actions`
+  const value = useMemo<RegionChromeSlots>(
+    () => ({
+      leading: slots.leading,
+      trailing: slots.trailing,
+      regionMenu: {
+        actions: actionsRef.current.map((row) => ({
+          ...row,
+          // Read through the ref so a row always acts on the current chrome.
+          onSelect: (trigger: HTMLElement) =>
+            actionsRef.current
+              .find((current) => current.key === row.key)
+              ?.onSelect(trigger),
+        })),
+        absorb,
+      },
+    }),
+    [slots.leading, slots.trailing, absorb, signature],
+  );
+  return (
+    <RegionChromeSlotsContext.Provider value={value}>
+      {children}
+    </RegionChromeSlotsContext.Provider>
+  );
 }
 
 /** The anchor a trigger's box gives the menu: under it, its top kept for the flip. */
@@ -476,6 +642,7 @@ export function RegionChromeBar({
   leadingSlotRef,
   trailingSlotRef,
   onBackToChat,
+  regionActionsAbsorbed = false,
   backLabel = 'Chat',
 }: {
   chrome: DockShellChrome;
@@ -501,6 +668,11 @@ export function RegionChromeBar({
    * what the device's Back does (`closePhoneLayer`).
    */
   onBackToChat?: () => void;
+  /**
+   * The shown pane folds the region's commands into its own menu
+   * (`RegionMenu`): the bar then renders no Move, "+" or maximize button.
+   */
+  regionActionsAbsorbed?: boolean;
   /**
    * What the way back names: the conversation the layer's pane was opened
    * from (its relation's opener), else Chat.
@@ -538,21 +710,8 @@ export function RegionChromeBar({
   const applyDockSnap = chrome.applyDockSnap;
   const mobileChat = chrome.isMobile && selectedSurfaceId === 'chat';
   const addLabel = `Add pane to ${regionLabel(chrome.effectiveDockSlotPlacement)}`;
-  // The regions a tab may be moved to (#2143): every region this device can
-  // use plus `main`, minus the one this shell RENDERS in on this device
-  // (`effectiveDockSlotPlacement`: the region's own id where the device
-  // offers it, else the device's fallback edge — on a coarse-wide device a
-  // `left` shell renders at `bottom` and that is the edge excluded), filtered
-  // by the model's own `surfaceMayOccupy` so no row offers a refused
-  // placement. ONE derivation feeds both triggers — the strip's tabs and the
-  // bar's Move button (#2160) — so a lone pane, whose region renders no strip
-  // (`showStrip`), still reaches every region it declares, `main` included,
-  // rather than only the dock edges the ⋮⋮ grab offers.
-  const here: DockRegionId = chrome.effectiveDockSlotPlacement;
   const moveTargets = (surfaceId: string): RegionId[] =>
-    [...(chrome.availableDockSlotPlacements as readonly DockMode[]), 'main']
-      .filter((region): region is RegionId => region !== here)
-      .filter((region) => surfaceMayOccupy(surfaceId, region));
+    regionMoveTargets(chrome, surfaceId);
   const canMove = (surfaceId: string): boolean =>
     Boolean(onMoveTab) && moveTargets(surfaceId).length > 0;
   const selectedTab = tabs.find((tab) => tab.surfaceId === selectedSurfaceId);
@@ -560,7 +719,10 @@ export function RegionChromeBar({
   // only where that pane has somewhere to go, and — like the "+" — only on a
   // fine pointer (D2: the app gains no dock control on phones).
   const barMoveTab =
-    selectedTab && !chrome.isMobile && canMove(selectedTab.surfaceId)
+    !regionActionsAbsorbed &&
+    selectedTab &&
+    !chrome.isMobile &&
+    canMove(selectedTab.surfaceId)
       ? selectedTab
       : undefined;
   const barMoveLabel = barMoveTab ? `Move ${barMoveTab.title}` : '';
@@ -682,7 +844,7 @@ export function RegionChromeBar({
             <RegionMoveGlyph />
           </button>
         ) : null}
-        {onAddPane && !chrome.isMobile ? (
+        {onAddPane && !chrome.isMobile && !regionActionsAbsorbed ? (
           <button
             type="button"
             className="chat-dock__icon-btn"
@@ -695,23 +857,17 @@ export function RegionChromeBar({
             <RegionAddGlyph />
           </button>
         ) : null}
-        {chrome.canMaximize ? (
+        {chrome.canMaximize && !regionActionsAbsorbed ? (
           <button
             type="button"
             className="chat-dock__maximize-btn"
             onClick={() => applyDockSnap(isDockMaximized ? 'half' : 'full')}
             title={withShortcutHint(
-              isDockMaximized
-                ? 'Restore dock region size'
-                : 'Expand dock region to workspace',
+              maximizeLabel(isDockMaximized),
               'dock.maximize',
               () => maximizeShortcut,
             )}
-            aria-label={
-              isDockMaximized
-                ? 'Restore dock region size'
-                : 'Expand dock region to workspace'
-            }
+            aria-label={maximizeLabel(isDockMaximized)}
           >
             <RegionExtentGlyph expanded={isDockMaximized} />
           </button>

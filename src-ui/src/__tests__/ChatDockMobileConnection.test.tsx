@@ -7,6 +7,8 @@ import type {
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatDockMobileConnection } from '../components/chat-dock/ChatDockMobileConnection';
+import { StationDetailsHost } from '../components/notifications/StationConditions';
+import { bannerStore } from '../contexts/banner-store';
 
 const connectionStatus = {
   status: 'connected' as ConnectionStatus,
@@ -30,7 +32,11 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => {
     useConnectionStatus: () => connectionStatus,
     // `usePendingPairingApproval` reads real (empty, per-file jsdom)
     // localStorage and stays null unless a test explicitly seeds a record.
-    useConnections: () => ({ activeConnection, connections: [] }),
+    useConnections: () => ({
+      activeConnection,
+      connections: [],
+      apiBase: 'http://station.test',
+    }),
   };
 });
 
@@ -43,19 +49,8 @@ vi.mock('../lib/serverHealth', () => ({
   probeServerConnection: vi.fn(),
 }));
 
-function openedModals() {
-  const opened: unknown[] = [];
-  const listener = (event: Event) =>
-    opened.push(event instanceof CustomEvent ? event.detail : null);
-  window.addEventListener('station:open-connections-modal', listener);
-  return {
-    opened,
-    stop: () =>
-      window.removeEventListener('station:open-connections-modal', listener),
-  };
-}
-
 beforeEach(() => {
+  bannerStore.reset();
   activeConnection = null;
   connectionStatus.status = 'connected';
   connectionStatus.reason = null;
@@ -110,33 +105,6 @@ describe('ChatDockMobileConnection', () => {
     expect(button.className).toContain('chat-dock__mobile-conn--attention');
   });
 
-  it('never recheck-taps an identity mismatch — retrying the same address proves nothing new', () => {
-    connectionStatus.status = 'error';
-    connectionStatus.reason = 'identity-mismatch';
-    const { opened, stop } = openedModals();
-    try {
-      render(<ChatDockMobileConnection />);
-      fireEvent.click(screen.getByTestId('chat-dock-mobile-connection'));
-      expect(opened).toEqual([{ mode: 'request-access' }]);
-      expect(connectionStatus.recheck).not.toHaveBeenCalled();
-    } finally {
-      stop();
-    }
-  });
-
-  /**
-   * archive#4512 — `awaiting-approval` reaches this bar through
-   * the `reason` door archive#4512 wired directly into
-   * `connectionIndicatorState` (a native `mid_authorization` refusal), not
-   * only through a locally-tracked pending record. It is NOT repair-like:
-   * the dot stays the ordinary 8px circle, and the tap still spends a
-   * recheck — not because a recheck can complete the exchange (it cannot:
-   * this device has no credential to probe with until the separate
-   * pending-exchange poll finishes, `HeaderActions.tsx`'s own retraction
-   * of this exact claim), but because it is harmless and the tap's real
-   * job for this state is `openConnectionsModal` below, which surfaces the
-   * pending exchange itself.
-   */
   it('marks a pending approval as waiting, not broken', () => {
     connectionStatus.status = 'error';
     connectionStatus.reason = 'awaiting-approval';
@@ -149,20 +117,6 @@ describe('ChatDockMobileConnection', () => {
     expect(button.className).toContain('chat-dock__mobile-conn--attention');
     // The ordinary circle, not the enlarged repair triangle.
     expect(button.querySelector('svg')).toBeNull();
-  });
-
-  it('still recheck-taps a pending approval — harmless, and the real job is opening the sheet', () => {
-    connectionStatus.status = 'error';
-    connectionStatus.reason = 'awaiting-approval';
-    const { opened, stop } = openedModals();
-    try {
-      render(<ChatDockMobileConnection />);
-      fireEvent.click(screen.getByTestId('chat-dock-mobile-connection'));
-      expect(connectionStatus.recheck).toHaveBeenCalledOnce();
-      expect(opened).toEqual([{}]);
-    } finally {
-      stop();
-    }
   });
 
   it('does not mark an ordinary reconnect as a credential problem', () => {
@@ -235,38 +189,36 @@ describe('ChatDockMobileConnection', () => {
     expect(button.getAttribute('aria-label')).toContain('Connected');
   });
 
-  it('opens re-pairing directly — one tap, no list to navigate', () => {
-    connectionStatus.status = 'error';
-    connectionStatus.reason = 'authentication-failed';
-    const { opened, stop } = openedModals();
-    try {
-      render(<ChatDockMobileConnection />);
+  it.each([
+    ['authentication-failed', false],
+    ['identity-mismatch', false],
+    ['awaiting-approval', true],
+    ['unreachable', true],
+  ] as const)(
+    'opens Station details for %s and retries only when useful',
+    (reason, retries) => {
+      connectionStatus.status = 'error';
+      connectionStatus.reason = reason;
+      activeConnection = {
+        id: 'saved-station',
+        name: 'Kontour',
+        url: 'https://station.test',
+      };
+      render(
+        <>
+          <ChatDockMobileConnection />
+          <StationDetailsHost />
+        </>,
+      );
+      expect(screen.queryByRole('dialog')).toBeNull();
       fireEvent.click(screen.getByTestId('chat-dock-mobile-connection'));
-      expect(opened).toEqual([{ mode: 'request-access' }]);
-      // Re-probing a rejected credential can only fail again. Doing it would
-      // be the same "offer a fix that cannot work" the copy avoids.
-      expect(connectionStatus.recheck).not.toHaveBeenCalled();
-    } finally {
-      stop();
-    }
-  });
-
-  it('retries immediately for a reachability failure, then opens the list', () => {
-    // This is where the banner's "Try now" went when transient reachability
-    // stopped bannering (archive#3297). Tapping a failing indicator
-    // means "check again now"; the retry ladder's backoff can be 10s away.
-    connectionStatus.status = 'error';
-    connectionStatus.reason = 'unreachable';
-    const { opened, stop } = openedModals();
-    try {
-      render(<ChatDockMobileConnection />);
-      fireEvent.click(screen.getByTestId('chat-dock-mobile-connection'));
-      expect(connectionStatus.recheck).toHaveBeenCalledOnce();
-      expect(opened).toEqual([{}]);
-    } finally {
-      stop();
-    }
-  });
+      expect(
+        screen.getByRole('dialog', { name: 'Station details' }),
+      ).toBeTruthy();
+      expect(screen.getByText('Kontour')).toBeTruthy();
+      expect(connectionStatus.recheck).toHaveBeenCalledTimes(retries ? 1 : 0);
+    },
+  );
 
   /**
    * archive#4512 — WCAG 2.5.3 (Label in Name): the

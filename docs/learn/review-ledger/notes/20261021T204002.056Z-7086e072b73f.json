@@ -1,0 +1,7 @@
+{
+  "revision": "788e3b6b45e9e724dc29ec2f59c5e06b47f4f50d",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"Merge of #3991: RegionPaneHost now carries both main's related-layer/backLabel wiring and this branch's RegionChromeSlotsProvider with regionActionsAbsorbed; ChatDock merges main's #3882 focus handoff with this branch's card/chip exit. Neither changes the opener/selection relationship rules this page states. Source review only.","inputs":["docs/design/pane-relationships.md","src-ui/src/workspace-panes/RegionPaneHost.tsx","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

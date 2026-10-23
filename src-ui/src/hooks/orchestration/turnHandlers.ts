@@ -1,3 +1,4 @@
+import { isStationCheckBackTurn } from '@kontourai/station-contracts/agent-schedule';
 import {
   ACP_APPROVAL_TAKEOVER_FAILED_CODE,
   APPROVAL_ESCALATION_REQUIRES_RESTART_CODE,
@@ -205,6 +206,7 @@ export function handleTurnStartedEvent(
         timestamp: Date.parse(event.createdAt),
         turnId: event.turnId,
         sessionId: event.threadId,
+        ...(isStationCheckBackTurn(event) ? { stationCheckBack: true } : {}),
       });
     }
   }

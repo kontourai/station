@@ -144,7 +144,17 @@
 
     "pnpm-lock.yaml#/snapshots",
 
-    "src-desktop/src/desktop_update.rs"
+    "src-desktop/src/desktop_update.rs",
+
+    "src-ui/src/components/updates/UpdatesControl.tsx",
+
+    "src-ui/src/components/updates/UpdatesPanel.tsx",
+
+    "src-ui/src/components/updates/updatesEvents.ts",
+
+    "src-ui/src/components/updates/__tests__/UpdatesControl.test.tsx",
+
+    "src-ui/src/components/ServerOlderLaunchCheck.tsx"
   ],
 
   "checks": [

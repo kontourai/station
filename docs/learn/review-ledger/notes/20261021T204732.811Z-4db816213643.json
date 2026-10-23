@@ -1,0 +1,7 @@
+{
+  "revision": "788e3b6b45e9e724dc29ec2f59c5e06b47f4f50d",
+
+  "notes": [
+    {"path":"packages/monument/CONTEXT.md","note":"Merge of #3991: decideTurnBoundaryObserveTerminal keeps main's invocation-terminal loop and adds the retainBoundaryIdPrefixes skip; the page's session-sequence and invocation retirement rules still hold, and the README documents the option. Executed by typecheck:monument; conformance suites in the focused run. Source review only.","inputs":["packages/monument/CONTEXT.md","packages/monument/src/decisions/turn-boundary.ts","src-server/services/orchestration/session-turn-boundary.ts","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/orchestration-service.ts","src-server/routes/orchestration/orchestration.ts"]}
+  ]
+}

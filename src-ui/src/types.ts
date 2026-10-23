@@ -179,6 +179,11 @@ export interface ChatMessage {
    */
   steerInterruptedRun?: boolean;
   /**
+   * A check-back Station sent into the chat (the agent scheduled it): sent
+   * as the person, written by nobody. The bubble shows it as Station's.
+   */
+  stationCheckBack?: boolean;
+  /**
    * #3419: the agent that sent this user-role row, from the server's own
    * record. Its presence is what makes the row an incoming agent message
    * rather than the person's; `content` is the sender's own words.
@@ -213,6 +218,7 @@ export interface ChatMessage {
     result?: any;
     output?: any;
     htmlReply?: import('@kontourai/station-contracts/html-reply').HtmlReplyReference;
+    stationControlRefusal?: import('@kontourai/station-contracts/station-control-refusal').StationControlRefusalView;
     error?: string;
     errorText?: string;
     state?: string;
@@ -243,6 +249,8 @@ export interface ChatMessage {
       | 'user-denied'
       | 'policy-denied';
     activityAt?: string;
+    /** When the call started (ISO), from its `tool.started`; see `MessagePart.startedAt`. */
+    startedAt?: string;
     progressMessage?: string;
     /** archive#3769: the durable projection's own runtime.error marker — see
      * `MessagePart.runtimeError` in `packages/shared/src/conversation-message.ts`. */
@@ -282,6 +290,12 @@ export interface ChatMessage {
   agentIcon?: string;
   /** True only for a normally completed assistant turn. */
   answerEligible?: boolean;
+  /** How this row's turn ended, on its last row; absent while open. */
+  turnEnded?: 'completed' | 'aborted';
+  /** The engine's or Station's stop reason, raw, on an empty stopped row. */
+  turnEndedReason?: string;
+  /** Who stopped that turn, when Station recorded it. */
+  turnStoppedBy?: 'person' | 'stall' | 'restart';
   /**
    * archive#1410: the turn's provenance envelope exactly as the server sent
    * it. Untyped on purpose — see `TurnProvenanceCard`, which narrows it
@@ -372,6 +386,8 @@ export interface ChatSession {
     waitingForStation?: string;
     /** Held by another window or a closed one; sent only by the user. */
     heldElsewhere?: true;
+    /** The window holding this copy is proven closed. */
+    heldByClosedWindow?: true;
   }>;
   status: ChatSessionStatus;
   isThinking?: boolean;

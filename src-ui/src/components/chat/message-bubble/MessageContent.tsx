@@ -32,6 +32,7 @@ import {
 } from '../transcript-child-work';
 import { UIBlockRenderer } from '../UIBlockRenderer';
 import { uiBlockIdentity } from '../ui-block-identity';
+import { blockHasVisibleContent } from './visibleContent';
 
 type MessageContentPart = NonNullable<ChatMessage['contentParts']>[number];
 
@@ -107,6 +108,13 @@ function MessageContentComponent({
   const currentMessageProjection = useMemo(
     () => <div>{textContent}</div>,
     [textContent],
+  );
+  // A settled row normally keeps its reasoning in the turn's overflow menu
+  // (#2211). When reasoning is all the row has (a pass the reader steered
+  // away from before it answered), the row shows it as a collapsed
+  // disclosure instead, so the bubble is never an empty card.
+  const reasoningIsAllThereIs = !blocks.some((block) =>
+    blockHasVisibleContent(block, { showReasoning: false }),
   );
   const hasAnswerText =
     Boolean(textContent.trim()) ||
@@ -211,14 +219,16 @@ function MessageContentComponent({
             // disclosure row inside the answer bubble. StreamingMessage owns
             // the live path; this component renders settled rows, so only the
             // last-message-while-active case keeps the section here.
-            if (!isStreamingMessage) return null;
+            if (!isStreamingMessage && !reasoningIsAllThereIs) return null;
             return (
               <ReasoningSection
                 key={index}
                 content={part.content}
                 fontSize={chatFontSize}
                 show={showReasoning}
-                hasAnswerText={hasAnswerText}
+                // A settled reasoning-only row starts collapsed: the answer
+                // is not still coming, so there is nothing to follow along.
+                hasAnswerText={isStreamingMessage ? hasAnswerText : true}
               />
             );
           }

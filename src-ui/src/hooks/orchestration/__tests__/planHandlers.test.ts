@@ -40,7 +40,8 @@ describe('handlePlanUpdatedEvent', () => {
     });
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    await vi.dynamicImportSettled();
     vi.unstubAllGlobals();
     vi.doUnmock('../../../contexts/active-chats-store');
     vi.resetModules();

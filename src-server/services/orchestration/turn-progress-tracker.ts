@@ -47,7 +47,9 @@ interface TurnProgressTrackerDeps {
  *   review found the termination decision rested on an event vocabulary
  *   three real cases fall outside of — a turn awaiting human approval, long
  *   silent tool runs on adapters that emit nothing mid-tool, and heartbeat
- *   frames counting as progress. The per-provider counter measures the real
+ *   frames counting as progress. The first two no longer arm the window at
+ *   all: an open approval suspends the watch and an open tool call disarms
+ *   it (see `turn-stall-watchdog.ts`). The per-provider counter measures the real
  *   false-positive rate BEFORE termination is enabled per-adapter
  *   (follow-up issue); the dormant `initiatedBy: 'stall'` plumbing stays in
  *   the service for that follow-up.
@@ -81,6 +83,10 @@ export class TurnProgressTracker {
         // may still be silently stuck).
         retriable:
           event.method === 'runtime.error' ? event.retriable : undefined,
+        toolCallId:
+          event.method === 'tool.started' || event.method === 'tool.completed'
+            ? event.toolCallId
+            : undefined,
         reportedActivity:
           isDeferredRetriableTurnError(event) ||
           (event.method === 'extension.notification' &&

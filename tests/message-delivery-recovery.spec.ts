@@ -413,17 +413,54 @@ test.describe('A send whose app closed before Station answered', () => {
         },
       });
 
+      const capture = async (name: string, client: Page) => {
+        await client.screenshot({
+          path: testInfo.outputPath(name),
+          animations: 'disabled',
+        });
+        await testInfo.attach(name, {
+          path: testInfo.outputPath(name),
+          contentType: 'image/png',
+        });
+      };
+      // One pending surface, collapsed to its count until opened.
+      const openPending = async (client: Page) => {
+        const toggle = client
+          .getByRole('region', { name: 'Pending messages' })
+          .getByRole('button', { name: /pending message/ });
+        if ((await toggle.getAttribute('aria-expanded')) !== 'true')
+          await toggle.click();
+        return toggle;
+      };
       for (const client of [observer, page]) {
         const held = client.getByRole('region', {
-          name: 'Messages held by Station',
+          name: 'Pending messages',
         });
-        await expect(held).toContainText('1 pending message');
+        await expect(held).toContainText('1 pending');
+        // The list's arrival does not cover the end of the transcript.
+        await expect
+          .poll(() =>
+            client.evaluate(() => {
+              const scroller = document.querySelector('.chat-messages');
+              const rows = scroller?.querySelectorAll('.message-row');
+              const last = rows?.[rows.length - 1];
+              if (!scroller || !last) return Number.POSITIVE_INFINITY;
+              return (
+                last.getBoundingClientRect().bottom -
+                scroller.getBoundingClientRect().bottom
+              );
+            }),
+          )
+          .toBeLessThanOrEqual(1);
+        await openPending(client);
         await expect(held).toContainText(followUp);
+        await expect(held).not.toContainText('Refreshing');
       }
       await observer.reload();
       await expect(
-        observer.getByRole('region', { name: 'Messages held by Station' }),
-      ).toContainText('1 pending message');
+        observer.getByRole('region', { name: 'Pending messages' }),
+      ).toContainText('1 pending');
+      const toggle = await openPending(observer);
 
       const initialViewport = observer.viewportSize();
       const initialTheme = await observer
@@ -439,32 +476,33 @@ test.describe('A send whose app closed before Station answered', () => {
             document.documentElement.setAttribute('data-theme', value);
           }, theme);
           const held = observer.getByRole('region', {
-            name: 'Messages held by Station',
+            name: 'Pending messages',
           });
           await expect(held).toContainText(followUp);
-          const refresh = held.getByRole('button', {
-            name: 'Refresh',
-            exact: true,
-          });
           const remove = held.getByRole('button', {
             name: `Remove held message: ${followUp}`,
             exact: true,
           });
-          await expect(refresh).toBeEnabled();
-          await refresh.focus();
+          await expect(
+            held.getByRole('button', { name: 'Refresh', exact: true }),
+          ).toHaveCount(0);
+          await toggle.focus();
           await observer.keyboard.press('Tab');
           await expect(remove).toBeFocused();
           expect(
             await remove.evaluate((node) => node.matches(':focus-visible')),
           ).toBe(true);
-          for (const button of [refresh, remove]) {
+          for (const button of [toggle, remove]) {
             const box = await button.boundingBox();
             if (!box)
               throw new Error(
                 'A held-message action must have a visible target.',
               );
-            expect(box.width).toBeGreaterThanOrEqual(44);
-            expect(box.height).toBeGreaterThanOrEqual(44);
+            // Touch layouts keep 44px targets; desktop matches the queue's.
+            if (viewport.width <= 768) {
+              expect(box.width).toBeGreaterThanOrEqual(44);
+              expect(box.height).toBeGreaterThanOrEqual(44);
+            }
             expect(box.x).toBeGreaterThanOrEqual(0);
             expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
           }
@@ -517,16 +555,18 @@ test.describe('A send whose app closed before Station answered', () => {
       });
       for (const client of [page, observer])
         await expect(
-          client.getByRole('region', { name: 'Messages held by Station' }),
-        ).toContainText('2 pending messages');
+          client.getByRole('region', { name: 'Pending messages' }),
+        ).toContainText('2 pending');
+      await openPending(page);
       const removeButtons = page
-        .getByRole('region', { name: 'Messages held by Station' })
+        .getByRole('region', { name: 'Pending messages' })
         .getByRole('button', {
           name: `Remove held message: ${followUp}`,
           exact: true,
         });
       await expect(removeButtons).toHaveCount(2);
-      await removeButtons.nth(0).click();
+      // The list ends with the next message to be sent: the first one held.
+      await removeButtons.last().click();
       await expect
         .poll(async () => {
           const answer = await authenticatedRequest.get(inboxPath);
@@ -546,8 +586,9 @@ test.describe('A send whose app closed before Station answered', () => {
         });
       for (const client of [page, observer])
         await expect(
-          client.getByRole('region', { name: 'Messages held by Station' }),
-        ).toContainText('1 pending message');
+          client.getByRole('region', { name: 'Pending messages' }),
+        ).toContainText('1 pending');
+      await capture('server-inbox-after-removal.png', page);
 
       runningStream?.finish();
       runningStream = undefined;
@@ -555,10 +596,12 @@ test.describe('A send whose app closed before Station answered', () => {
       await expect
         .poll(() => turnPrompts(authenticatedRequest, conversationId))
         .toEqual([FIRST_MESSAGE, runningMessage, followUp]);
+      // Nothing held: the surface is gone, not a zero count.
       for (const client of [page, observer])
         await expect(
-          client.getByRole('region', { name: 'Messages held by Station' }),
-        ).toContainText('0 pending messages');
+          client.getByRole('region', { name: 'Pending messages' }),
+        ).toHaveCount(0);
+      await capture('server-inbox-empty.png', page);
       const delivered = await authenticatedRequest.get(inboxPath);
       expect(delivered.status()).toBe(200);
       expect(await delivered.json()).toMatchObject({

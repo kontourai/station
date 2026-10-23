@@ -269,6 +269,16 @@ export interface TurnBoundaryObserveTerminalCommand {
    * synthesized abort). Defaults to true.
    */
   readonly retire?: boolean;
+  /**
+   * Rows whose id starts with one of `boundaryIdPrefixes` AND whose state is
+   * one of `states` are kept; the rest retire as usual. A session terminal
+   * that ends some rows but not others: Station's own shutdown keeps a turn
+   * that may have reached its engine for the next boot's recovery.
+   */
+  readonly retain?: {
+    readonly boundaryIdPrefixes: readonly string[];
+    readonly states: readonly TurnBoundaryState[];
+  };
 }
 export type TurnBoundaryAppliedResult = { readonly kind: 'applied' };
 

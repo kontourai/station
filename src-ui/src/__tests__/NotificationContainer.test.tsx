@@ -31,7 +31,8 @@ const setLayout = vi.fn();
 const navigate = vi.fn();
 let notifications: Array<Record<string, unknown>> = [];
 
-vi.mock('../contexts/ToastContext', () => ({
+vi.mock('../contexts/ToastContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../contexts/ToastContext')>()),
   useNotificationHistory: () => {
     historyRead();
     return notifications;
@@ -677,8 +678,8 @@ describe('NotificationContainer', () => {
     expect(dismissAllToasts).not.toHaveBeenCalled();
   });
 
-  test('stacks multiple transient toasts and marks behind cards collapsed', () => {
-    notifications = ['a', 'b', 'c'].map((id) => ({
+  test('shows a small readable set and links an explicit overflow count', () => {
+    notifications = ['a', 'b', 'c', 'd', 'e'].map((id) => ({
       id,
       message: `msg-${id}`,
       type: 'info',
@@ -690,34 +691,16 @@ describe('NotificationContainer', () => {
 
     const stack = screen.getByTestId('toast-stack');
     expect(stack.getAttribute('data-count')).toBe('3');
-    expect(stack.querySelectorAll('[data-front="true"]')).toHaveLength(1);
-    expect(stack.querySelectorAll('[data-front="false"]')).toHaveLength(2);
-    expect(screen.getAllByTestId('toast-card-collapsed')).toHaveLength(2);
+    expect(screen.getAllByTestId('toast-card')).toHaveLength(3);
+    expect(screen.queryByText('msg-d')).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: '2 more notifications · View all' }),
+    );
+    expect(navigate).toHaveBeenCalledWith('/notifications');
   });
 
-  test('card body activates onNavigate once; action buttons do not', () => {
+  test('card body activates the conversation once', () => {
     const onNavigate = vi.fn();
-    const secondary = vi.fn();
-    notifications = [
-      {
-        id: 'nav-1',
-        message: 'Build finished',
-        type: 'info',
-        timestamp: Date.now(),
-        dismissed: false,
-        onNavigate,
-        actions: [{ label: 'Retry', variant: 'secondary', onClick: secondary }],
-      },
-    ];
-
-    render(<NotificationContainer />);
-
-    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
-    expect(secondary).toHaveBeenCalledOnce();
-    expect(onNavigate).not.toHaveBeenCalled();
-    expect(dismissToast).toHaveBeenCalledWith('nav-1');
-
-    dismissToast.mockClear();
     notifications = [
       {
         id: 'nav-2',
@@ -734,9 +717,7 @@ describe('NotificationContainer', () => {
     expect(dismissToast).toHaveBeenCalledWith('nav-2');
   });
 
-  test('a coarse-pointer tap expands the stack instead of activating the front card', () => {
-    // (hover: hover) does not match → a device that cannot hover, where CSS
-    // hover expansion can never fire (archive#3308, #1960 follow-up).
+  test('a touch click reaches each visible notification immediately', () => {
     vi.stubGlobal('matchMedia', () => ({ matches: false }));
     const onNavigate = vi.fn();
     notifications = ['a', 'b', 'c'].map((id) => ({
@@ -747,53 +728,10 @@ describe('NotificationContainer', () => {
       dismissed: false,
       onNavigate,
     }));
-
     render(<NotificationContainer />);
-    const stack = screen.getByTestId('toast-stack');
-    expect(stack.hasAttribute('data-expanded')).toBe(false);
-
-    // First tap: expand, never navigate.
-    fireEvent.click(screen.getByTestId('toast-card'));
-    expect(stack.getAttribute('data-expanded')).toBe('true');
-    expect(onNavigate).not.toHaveBeenCalled();
-
-    // Expanded: a tap on a card acts normally.
-    fireEvent.click(screen.getByTestId('toast-card'));
+    fireEvent.click(screen.getByText('msg-b'));
     expect(onNavigate).toHaveBeenCalledOnce();
-
-    // Outside tap collapses.
-    fireEvent.pointerDown(document.body);
-    expect(stack.hasAttribute('data-expanded')).toBe(false);
-
-    // Escape collapses too.
-    fireEvent.click(screen.getByTestId('toast-card'));
-    expect(stack.getAttribute('data-expanded')).toBe('true');
-    fireEvent.keyDown(document, { key: 'Escape' });
-    expect(stack.hasAttribute('data-expanded')).toBe(false);
-
-    vi.unstubAllGlobals();
-  });
-
-  test('a hover-capable pointer keeps click-to-activate on the front card', () => {
-    vi.stubGlobal('matchMedia', () => ({ matches: true }));
-    const onNavigate = vi.fn();
-    notifications = ['a', 'b'].map((id) => ({
-      id,
-      message: `msg-${id}`,
-      type: 'info',
-      timestamp: Date.now(),
-      dismissed: false,
-      onNavigate,
-    }));
-
-    render(<NotificationContainer />);
-    fireEvent.click(screen.getByTestId('toast-card'));
-    // Hover already expands via CSS; the click must keep meaning "activate".
-    expect(onNavigate).toHaveBeenCalledOnce();
-    expect(
-      screen.getByTestId('toast-stack').hasAttribute('data-expanded'),
-    ).toBe(false);
-
+    expect(dismissToast).toHaveBeenCalledWith('b');
     vi.unstubAllGlobals();
   });
 

@@ -1,0 +1,7 @@
+{
+  "revision": "788e3b6b45e9e724dc29ec2f59c5e06b47f4f50d",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Merge of #3991: live-status.css drops the removed tool-call pulse selectors from the page-hidden pause list (the classes no longer exist in src-ui); screenshots.spec.ts change is the header lead-in assertion. No motion claim in this page names either. Source review only.","inputs":["docs/design/motion.md","src-ui/src/components/status/live-status.css","tests/screenshots.spec.ts"]}
+  ]
+}

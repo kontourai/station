@@ -1,0 +1,17 @@
+{
+  "revision": "5bb21105ac24c1c5cd16b52abb3eda4e022da9e4",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"session-recovery-coordinator.ts changed only by an optional-chain lint rewrite of usageLimitResumeChoice's guard (same behaviour); the RecoveryLedger paragraph's per-stop choice text still matches.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/session-recovery-coordinator.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"agent-schedule.ts changed only by an optional-chain lint rewrite in fire() (same behaviour); the check-back text still matches.","inputs":["docs/guides/self-configuring-agent.md","src-server/services/orchestration/agent-schedule.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Added inventory entries for AgentScheduleNotes and SessionScheduledSection and updated the UsageLimitBanner entry (ActionRow, new actions); checked this document's description of the responsive action inventory and its floor still holds. No prose change.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Added inventory entries for AgentScheduleNotes and SessionScheduledSection and updated the UsageLimitBanner entry (ActionRow, new actions); checked this document's description of the responsive action inventory and its floor still holds. No prose change.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Added inventory entries for AgentScheduleNotes and SessionScheduledSection and updated the UsageLimitBanner entry (ActionRow, new actions); checked this document's description of the responsive action inventory and its floor still holds. No prose change.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Added inventory entries for AgentScheduleNotes and SessionScheduledSection and updated the UsageLimitBanner entry (ActionRow, new actions); checked this document's description of the responsive action inventory and its floor still holds. No prose change.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

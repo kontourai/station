@@ -1,0 +1,7 @@
+{
+  "revision": "b7539d8c48ca49edbe1b10c566616a30ef5789a7",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.webm","note":"Looked at this capture (stills; four sampled frames of each video): the dock is collapsed with no chat open, so it shows none of the rules this round changed in index.css (the dock header identity row: .chat-dock__active-identity-text now wraps the agent and engine off the title's line; .chat-dock__active-identity-context is display: contents). The capture still matches the current UI. No recapture.","inputs":["docs/learn/media/inspect-request.webm","src-ui/src/index.css"]}
+  ]
+}

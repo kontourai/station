@@ -18,8 +18,10 @@ waking); there is no OS job.
 
 Updating has three separate steps:
 
-1. **Download.** An available update appears in the sidebar as **Download
-   update** and in Settings → System → **Desktop app updates**. The
+1. **Download.** Open **Updates** in the sidebar, including its collapsed
+   rail or mobile drawer, to review app and connected-server updates in one
+   panel. Its **Desktop app** section offers **Download update**; the same
+   controls remain in Settings → System → **Desktop app updates**. The
    **Automatic download** setting (Never, After 24 hours, Immediately; default
    After 24 hours) decides when it downloads without a click; the 24-hour clock
    starts when that version is first seen and survives restarts. A manual
@@ -54,13 +56,27 @@ Updating has three separate steps:
    until the running agent turns are listed. A failed install leaves the update
    downloaded and the app running, with the failure shown.
 
-Settings shows check failures with the updater's own text; the sidebar does
-not. The desktop package includes the built-in Station server, so installing
+The Updates panel and Settings show check failures with the updater's own
+text; the sidebar control does not announce routine check failures. The
+desktop package includes the built-in Station server, so installing
 this update replaces the app and its embedded server together. The webview
 holds no updater or process plugin permission; it reads the native state and
 asks the native shell to act.
 
-**Connected Station server** is a separate server operation. Its source
+The panel's **Connected server** section reuses the Settings server controls
+and their permission and identity checks. An established built-in server
+explicitly uses the app update above, including its restart confirmation.
+An installed service or a remote server has its own labelled actions; there
+is no combined update request or requirement that app and server versions
+match. Supported services download first, then offer a confirmed restart or
+**When idle**. The existing server observer keeps following an accepted
+request if the panel is closed. Browser and mobile devices can open this
+server section, and mobile app release links appear in the same panel.
+**Update policies and details** opens Settings, where automatic-download
+policies remain. Source-installation and manual host guidance remain reachable
+from the server section; see [update mechanisms](nightly.md#update-checks-in-settings-source-check-vs-release-check).
+
+Updating a separately running server remains a separate operation. Its source
 checkout/build-stamp provenance does not establish the installed desktop app's
 update channel. A GitHub DMG must not require a local Git checkout or a fabricated
 `station-nightly-source.json` stamp to check its signed release feed.

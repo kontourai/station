@@ -64,6 +64,7 @@ describe('#3157 usage-limit banner actions', () => {
         }) as any,
       recoveryDispatchAdapter: { dispatch },
       autoResume,
+      resumeChoices: store.usageLimitResumeChoices(),
       now: () => new Date(Date.now()),
     });
     return { store, coordinator, dispatch };
@@ -258,6 +259,79 @@ describe('#3157 usage-limit banner actions', () => {
     });
     await vi.advanceTimersByTimeAsync(UNTIL_RESET_MS + 60_000);
     expect(dispatch).not.toHaveBeenCalled();
+    await coordinator.dispose();
+    store.close();
+  });
+
+  test('"Resume at reset" with automatic resume off sends the turn once at the reset', async () => {
+    vi.useFakeTimers({ now: STOPPED_AT });
+    const { store, coordinator, dispatch } = setup(() => false);
+    stopOnUsageLimit(coordinator, store);
+    await expect(
+      coordinator.chooseUsageLimitResume(THREAD, 'resume'),
+    ).resolves.toEqual({ kind: 'chosen', choice: 'resume' });
+    expect(coordinator.usageLimitResumeChoice(THREAD)).toBe('resume');
+    // Nothing is sent before the reset.
+    await vi.advanceTimersByTimeAsync(UNTIL_RESET_MS - 1_000);
+    expect(dispatch).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(dispatch).toHaveBeenCalledOnce();
+    await coordinator.dispose();
+    store.close();
+  });
+
+  test('"Don\'t resume" with automatic resume on sends nothing at the reset and still offers Resume now', async () => {
+    vi.useFakeTimers({ now: STOPPED_AT });
+    const { store, coordinator, dispatch } = setup(() => true);
+    stopOnUsageLimit(coordinator, store);
+    await expect(
+      coordinator.chooseUsageLimitResume(THREAD, 'hold'),
+    ).resolves.toEqual({ kind: 'chosen', choice: 'hold' });
+    await vi.advanceTimersByTimeAsync(UNTIL_RESET_MS + 60_000);
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(coordinator.latestProjection(THREAD)).toMatchObject({
+      outcome: 'manual',
+      usageLimit: true,
+    });
+    await expect(coordinator.resumeUsageLimitNow(THREAD)).resolves.toEqual({
+      kind: 'resumed',
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(dispatch).toHaveBeenCalledOnce();
+    await coordinator.dispose();
+    store.close();
+  });
+
+  test('a choice survives a restart before the reset', async () => {
+    vi.useFakeTimers({ now: STOPPED_AT });
+    const dbPath = join(makeTempDir('usage-limit-choice-'), 'o.sqlite');
+    const first = new EventStore(dbPath);
+    const before = setup(() => false, first);
+    stopOnUsageLimit(before.coordinator, first);
+    await before.coordinator.chooseUsageLimitResume(THREAD, 'resume');
+    await before.coordinator.dispose();
+    first.close();
+
+    const reopened = new EventStore(dbPath);
+    const after = setup(() => false, reopened);
+    after.coordinator.reconcile();
+    expect(after.coordinator.usageLimitResumeChoice(THREAD)).toBe('resume');
+    await vi.advanceTimersByTimeAsync(UNTIL_RESET_MS + 60_000);
+    expect(after.dispatch).toHaveBeenCalledOnce();
+    await after.coordinator.dispose();
+    reopened.close();
+  });
+
+  test('a stop with no known reset has no reset to choose for', async () => {
+    vi.useFakeTimers({ now: STOPPED_AT });
+    const { store, coordinator } = setup(() => true);
+    stopOnUsageLimit(coordinator, store, {
+      usageLimit: true,
+      scope: 'account',
+    });
+    await expect(
+      coordinator.chooseUsageLimitResume(THREAD, 'resume'),
+    ).resolves.toEqual({ kind: 'not-waiting' });
     await coordinator.dispose();
     store.close();
   });

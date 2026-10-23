@@ -2024,6 +2024,61 @@ describe('ChatInputArea dock reservation', () => {
     }
   });
 
+  test('a tall pending list yields to the draft, keeping its toggle row', () => {
+    class QuietObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    vi.stubGlobal('ResizeObserver', QuietObserver);
+    const clientHeight = vi
+      .spyOn(HTMLElement.prototype, 'clientHeight', 'get')
+      .mockImplementation(function (this: HTMLElement) {
+        return this.classList.contains('chat-dock__body') ? 300 : 0;
+      });
+    // Counted whole, the list (300) would leave the composer (200) nothing:
+    // the draft collapsed to no height in a short dock.
+    const rect = vi
+      .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+      .mockImplementation(function (this: HTMLElement) {
+        const height = this.classList.contains('chat-input')
+          ? 200
+          : this.classList.contains('queued-messages-presence')
+            ? 300
+            : this.classList.contains('queued-messages__toggle')
+              ? 30
+              : 0;
+        return { height, top: 0, bottom: height } as DOMRect;
+      });
+    try {
+      const view = render(
+        <div className="chat-dock__body">
+          <div className="chat-messages" />
+          <div className="queued-messages-presence">
+            <div className="queued-presence__clip">
+              <section className="queued-messages queued-messages--pending">
+                <button type="button" className="queued-messages__toggle">
+                  3 pending
+                </button>
+              </section>
+            </div>
+          </div>
+          <ChatInputArea {...renderProps({ dockHeight: 300 })} />
+        </div>,
+      );
+      const body = view.container.querySelector('.chat-dock__body');
+      expect(body?.hasAttribute('data-composer-priority')).toBe(false);
+      expect(
+        (view.container.querySelector('.chat-input') as HTMLElement).style
+          .minHeight,
+      ).toBe('200px');
+    } finally {
+      clientHeight.mockRestore();
+      rect.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
   test('typing does not rebuild the observers', () => {
     const constructed = vi.fn();
     class CountingObserver {

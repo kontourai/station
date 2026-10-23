@@ -176,9 +176,10 @@ person's initials, opening My access, Profile, Ask Station for help and Open
 settings) a row of their own, so neither runs under the other at 216px, with
 Schedule, Customize and Settings on the row below. The collapsed rail stacks
 live work and the account control above **Sidebar utilities**, which holds
-Schedule, Customize and Settings. In the desktop app, an update control sits
-above the footer rows only while a desktop update is available, downloading
-or ready to install; collapsed, it is icon-only (#3851). The presence tray
+Schedule, Customize and Settings. The **Updates** control sits above the footer
+rows on desktop, web and mobile. It opens one panel with separate app and
+connected-server actions; collapsed, it is icon-only. Its status reports
+available update details, app download progress and restart readiness. The presence tray
 continues to distinguish published participants, live work, pending reads,
 failed reads and unsupported publication. Notifications stay in the header.
 
@@ -253,6 +254,11 @@ plus proposed-change decisions and paused gate reviews (from Review). The
 current workspace-map refinement in D3 keeps the bell and its single projected
 count in the header; the original footer placement below remains design history.
 Project-scoped attention still requires its own backing projection.
+
+Local connection and recovery facts are owned by the Station control and remain
+readable offline. Short client outcomes use toasts and local recent-message recall;
+that recall is separate from the projected attention count. App and server update
+actions share the sidebar Updates panel while retaining separate mechanisms.
 
 Independent-review receipts and the "run independent review" action move
 into the project's Coding layout, next to the Git range they judge. Diff

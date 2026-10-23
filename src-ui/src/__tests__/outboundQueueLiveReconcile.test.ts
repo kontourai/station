@@ -410,6 +410,30 @@ describe('live outbox rows survive a killed app and settle by the delivery looku
     expect(row?.liveInFlight).toBeUndefined();
   });
 
+  it("a copy another window holds reads as that window's until the window is proven closed", async () => {
+    const first = await freshRenderer();
+    await first.outboundDispatch.syncHeld([
+      { ...intent, clientTurnId: 'held-open', content: 'after this turn' },
+    ]);
+    const second = await freshRenderer();
+    // Its window runs: its own queue sends it, nothing here waits on the user.
+    expect((await second.outboundDispatch.open())[0]?.holderGone).toBe(
+      undefined,
+    );
+    // Liveness that cannot be read is not closed.
+    const withLocks = navigator;
+    vi.stubGlobal('navigator', { ...navigator, locks: undefined });
+    expect((await second.outboundDispatch.open())[0]?.holderGone).toBe(
+      undefined,
+    );
+    vi.stubGlobal('navigator', withLocks);
+    kill();
+    expect((await second.outboundDispatch.open())[0]).toMatchObject({
+      clientTurnId: 'held-open',
+      holderGone: true,
+    });
+  });
+
   it('a held follow-up is never sent automatically: once its window is gone it is listed, and Send sends it once with its key', async () => {
     const first = await freshRenderer();
     await first.outboundDispatch.syncHeld([

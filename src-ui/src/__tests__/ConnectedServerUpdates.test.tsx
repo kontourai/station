@@ -521,7 +521,7 @@ describe('ConnectedServerUpdates', () => {
       return rendered;
     }
 
-    it('on a server older than #3851 (no stagedUpdates), applies in one click and follows the request to its rollback outcome', async () => {
+    it('on a server older than #3851 (no stagedUpdates), confirms the update and follows the request to its rollback outcome', async () => {
       await renderArchive(archiveServiceBody());
       expect(
         await screen.findByText(
@@ -547,6 +547,13 @@ describe('ConnectedServerUpdates', () => {
           name: 'Update server to 0.8.0-preview.2',
         }),
       );
+      const confirm = await screen.findByRole('button', {
+        name: 'Update and restart',
+      });
+      await waitFor(() =>
+        expect((confirm as HTMLButtonElement).disabled).toBe(false),
+      );
+      fireEvent.click(confirm);
       expect(
         await screen.findByText('Downloading and verifying the release…'),
       ).toBeTruthy();

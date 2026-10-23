@@ -22,6 +22,14 @@
 > engine setup has its own Add engine flow. Legacy URLs redirect to the corresponding
 > section. Provider presets and explicit configuration remain shared design rules.
 
+## Connection status placement
+
+The Station control owns connection repair and pairing state. **Station details**
+keeps these facts and local-service recovery readable when the Station is offline;
+work-blocking restrictions also appear in the workspace. Routine reconnects use
+the connection indicator. Setup-return guidance is inline on the current page,
+and short action outcomes use toasts. No global banner stack is mounted.
+
 ## Intent-first work entry
 
 Home accepts the task before configuration choices. A submitted request uses the

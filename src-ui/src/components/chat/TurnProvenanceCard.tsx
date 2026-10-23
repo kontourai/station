@@ -1,12 +1,13 @@
-import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import {
   isSupportedTurnProvenanceEnvelope,
+  type TurnProvenanceEngine,
   type TurnProvenanceEnvelope,
   type TurnProvenanceRefSlot,
   type TurnProvenanceSlot,
   type TurnProvenanceTrustReportRef,
   type TurnProvenanceUnavailableReason,
   type TurnProvenanceUsage,
+  turnProvenanceEngineLabel,
 } from '@kontourai/station-contracts/turn-provenance';
 import {
   cacheInclusivePromptTokens,
@@ -278,10 +279,13 @@ function headlineUsage(
  * the slug has no product name yet, the slug IS the honest answer — better a
  * raw identifier than an invented label.
  */
-function engineDisplay(provider: string): { label: string; slug: string } {
+function engineDisplay(engine: TurnProvenanceEngine): {
+  label: string;
+  slug: string;
+} {
   return {
-    label: engineDisplayLabel(provider) ?? provider,
-    slug: provider,
+    label: turnProvenanceEngineLabel(engine),
+    slug: engine.provider,
   };
 }
 
@@ -302,7 +306,7 @@ function contextBoundaryRow(
 function buildRows(envelope: TurnProvenanceEnvelope): ProvenanceRow[] {
   const rows: ProvenanceRow[] = [
     slotRow('Engine', envelope.engine, (engine) => {
-      const { label, slug } = engineDisplay(engine.provider);
+      const { label, slug } = engineDisplay(engine);
       return label === slug ? slug : `${label} (${slug})`;
     }),
     slotRow('Model requested', envelope.requestedModel, (model) => model),
@@ -413,7 +417,7 @@ function summaryText(
   if (!statedInRow.engine) {
     parts.push(
       envelope.engine.state === 'observed'
-        ? engineDisplay(envelope.engine.value.provider).label
+        ? engineDisplay(envelope.engine.value).label
         : 'Engine unknown',
     );
   }

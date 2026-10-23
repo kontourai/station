@@ -1,0 +1,7 @@
+{
+  "revision": "3dc3716e6a6f0e83fcd3a50f51251440e6035bce",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed only the in-app outcomes and recall delta against ToastContext.persistRecall and its existing lifecycle privacy test. Unsafe transient messages with no existing recall cache now leave storage untouched; clearing existing safe recall still writes an empty cache. Opt-in safe text, field bounds, scope and no-action replay contracts remain intact. App launch and Board assertions were migrated to existing notice owners, and plan teardown settles deferred imports before resetting modules. Focused baseline and restoration each pass156tests; injected notice/recall defects produce7intended failures. Native push, delivery provisioning and historical receipts are outside this delta and retain prior classifications. No prose changes required.","inputs":["docs/design/notification-delivery.md","src-ui/src/__tests__/toast-lifecycle.test.tsx","src-ui/src/contexts/ToastContext.tsx"]}
+  ]
+}

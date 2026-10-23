@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
@@ -228,6 +229,28 @@ describe('verification policy gate', () => {
     expect(gate('2026-09-21')).toEqual([
       `Test quarantine: quarantine entry 1 (${quarantined}): quarantine expired on 2026-09-21; fix the test and remove the entry, or renew it with new evidence`,
     ]);
+  });
+
+  // A listing past Node's 1 MiB default capture killed git on a Windows
+  // runner (ENOBUFS); the default capture must hold a listing that size.
+  test('reads a tracked listing larger than the 1 MiB default capture', () => {
+    const NODE_DEFAULT_MAX_BUFFER = 1024 * 1024;
+    // 20,000 paths of ~70 bytes: well past the default, built in the child.
+    const emit = `const parts = Array.from({ length: 20000 }, (_, i) => 'src-ui/src/padding/' + 'x'.repeat(48) + '-' + i + '.ts'); parts.push('scripts/__tests__/kept.test.ts'); process.stdout.write(parts.join('\\0') + '\\0');`;
+    let bytes = 0;
+    const files = discoverTrackedVitestTestFiles({
+      rootDir: process.cwd(),
+      execFile: (_command, _args, options) => {
+        const out = execFileSync(process.execPath, ['-e', emit], {
+          ...options,
+          encoding: 'utf8',
+        });
+        bytes = Buffer.byteLength(out);
+        return out;
+      },
+    });
+    expect(bytes).toBeGreaterThan(NODE_DEFAULT_MAX_BUFFER);
+    expect(files).toContain('scripts/__tests__/kept.test.ts');
   });
 
   test('fails closed when independently tracked Vitest discovery cannot run', () => {

@@ -187,6 +187,48 @@ describe('usage-limit banner routes (#3157)', () => {
     });
   });
 
+  test('"Resume at reset" and "Don\'t resume" decide this stop in place of the setting, and send nothing now', async () => {
+    const f = await fixture({ autoResume: false });
+    expect(await (await post(f, 'resume-at-reset')).json()).toMatchObject({
+      success: true,
+      data: {
+        result: { kind: 'chosen', choice: 'resume' },
+        recovery: {
+          outcome: 'armed',
+          autoResume: true,
+          autoResumeChoice: 'resume',
+        },
+      },
+    });
+    expect(await (await post(f, 'hold')).json()).toMatchObject({
+      data: {
+        result: { kind: 'chosen', choice: 'hold' },
+        recovery: {
+          outcome: 'armed',
+          autoResume: false,
+          autoResumeChoice: 'hold',
+        },
+      },
+    });
+    // The read reports the choice too.
+    expect(await (await f.app.request(PATH)).json()).toMatchObject({
+      data: { recovery: { autoResumeChoice: 'hold', autoResume: false } },
+    });
+  });
+
+  test('another person cannot make the choice, and none is recorded', async () => {
+    const f = await fixture({ autoResume: false });
+    f.setUser('someone-else');
+    expect((await post(f, 'resume-at-reset')).status).toBe(404);
+    expect((await post(f, 'hold')).status).toBe(404);
+    f.setUser('owner');
+    const read = (await (await f.app.request(PATH)).json()) as {
+      data: { recovery: Record<string, unknown> };
+    };
+    expect(read.data.recovery.autoResumeChoice).toBeUndefined();
+    expect(read.data.recovery.autoResume).toBe(false);
+  });
+
   test('Resume now runs the same pre-dispatch checks: a closed Session retires the stop with its reason', async () => {
     const f = await fixture();
     f.store.upsertSession({

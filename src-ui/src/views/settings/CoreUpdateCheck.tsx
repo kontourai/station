@@ -23,7 +23,10 @@ import {
   TechnicalDetails,
   UpdateChannelRow,
 } from './coreUpdatePresentation';
-import { ServerUpdateStageApply } from './ServerUpdateStageApply';
+import {
+  ServerUpdateRestartConfirmation,
+  ServerUpdateStageApply,
+} from './ServerUpdateStageApply';
 
 export const RESTART_STATUS_POLL_INTERVAL_MS = 1_500;
 const SERVICE_UPDATE_POLL_INTERVAL_MS = 2_000;
@@ -48,10 +51,12 @@ type RestartVerificationState =
   | { state: 'failed' };
 
 export function CoreUpdateCheck({
+  active = true,
   apiBase,
   enabled = true,
   context,
 }: {
+  active?: boolean;
   apiBase: string;
   /**
    * Gated by the connected-server correlation (ConnectedServerUpdates):
@@ -70,6 +75,11 @@ export function CoreUpdateCheck({
   context?: ConnectedServerUpdateContext | null;
 }) {
   const scopeKey = coreUpdateScopeFromContext(context);
+  const [confirmApplyScope, setConfirmApplyScope] = useState<string | null>(
+    null,
+  );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Closing the owner or changing the connection or boot invalidates its confirmation.
+  useEffect(() => setConfirmApplyScope(null), [active, apiBase, scopeKey]);
   // A service update restarts the server, so it outlives the boot-bound
   // scope above: it is followed per connection, and the progress it reads is
   // durable on the server whichever version answers.
@@ -122,7 +132,7 @@ export function CoreUpdateCheck({
       // Auto-check on mount so freshness shows without a click (#1624). This
       // deliberately applies to EVERY install kind — the kind isn't knowable
       // before the first check — so a source checkout also fetches its remote
-      // on Settings mount, bounded to once per staleTime window. The button
+      // on Settings or Updates mount, bounded to once per staleTime window. The button
       // stays the explicit re-check. The caller may hold the auto-check until
       // server identity correlation has settled (see the `enabled` prop); a
       // held check is still refetchable by the button.
@@ -468,7 +478,7 @@ export function CoreUpdateCheck({
       )
     : null;
 
-  // Apply-offer gating (plan): current scope, successful comparison, explicit
+  // Apply-offer gating: current scope, successful comparison, explicit
   // supported method, non-diverged checkout, and the answering server's
   // identity matching the identity this view correlated. Unknown methods and
   // servers that cannot state an identity never render an apply button.
@@ -560,8 +570,7 @@ export function CoreUpdateCheck({
             type="button"
             className="settings__update-btn settings__update-btn--apply"
             onClick={() => {
-              applyScopeRef.current = scopeRef.current;
-              updateMutation.mutate();
+              setConfirmApplyScope(scopeKey ?? 'unscoped');
             }}
             disabled={updateMutation.isPending || restarting}
           >
@@ -573,6 +582,23 @@ export function CoreUpdateCheck({
           </button>
         )}
       </div>
+      {active &&
+        confirmApplyScope === (scopeKey ?? 'unscoped') &&
+        canApply &&
+        !stagedFlow && (
+          <ServerUpdateRestartConfirmation
+            apiBase={apiBase}
+            version={status?.latestVersion ?? 'the checked server version'}
+            mode={canApplyServiceUpdate ? 'service-update' : 'checkout'}
+            pending={updateMutation.isPending}
+            onLater={() => setConfirmApplyScope(null)}
+            onRestartNow={() => {
+              applyScopeRef.current = scopeRef.current;
+              updateMutation.mutate();
+              setConfirmApplyScope(null);
+            }}
+          />
+        )}
       {stagedFlow &&
         serverUpdateState?.supported &&
         identityMatches &&
@@ -580,6 +606,8 @@ export function CoreUpdateCheck({
         !trackedServiceUpdate &&
         !awaitingOutcomeRecheck && (
           <ServerUpdateStageApply
+            key={connectionScope}
+            active={active}
             apiBase={apiBase}
             state={serverUpdateState}
             latestVersion={status?.latestVersion ?? null}

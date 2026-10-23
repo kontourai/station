@@ -1,0 +1,7 @@
+{
+  "revision": "ad2cff6c1aa0774e2ff9edf8ee556a60273281a5",
+
+  "notes": [
+    {"path":"docs/guides/code-quality.md","note":"Changed files only lost unused export keywords (file-local constants/helpers), dropped an unused type, and the verification policy gate now reads git ls-files with the bounded capture. No behaviour, API or wording this document states moved.","inputs":["docs/guides/code-quality.md","scripts/verification-policy-gate.mjs"]}
+  ]
+}

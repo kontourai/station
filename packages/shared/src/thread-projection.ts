@@ -281,7 +281,12 @@ export function conversationToThread(
           toolResults.push({
             toolCallId: callId,
             name,
-            content: toolResultContent(result),
+            // A failure with no output carries its text only in `error`
+            // (the projection no longer copies it into `result`), and the
+            // export has one content field for both.
+            content: toolResultContent(
+              result ?? (failed ? (part.error ?? undefined) : undefined),
+            ),
             ...(failed ? { isError: true } : {}),
           });
         }

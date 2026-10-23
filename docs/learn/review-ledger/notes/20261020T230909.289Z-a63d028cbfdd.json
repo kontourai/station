@@ -1,0 +1,13 @@
+{
+  "revision": "37d5e217647ef4b0c85482621bb369c95eafd1e6",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Integration review: the streaming row's Running line and a steer's wait now read isToolCallActive (tool-call-labels.ts) like the tool rows; added that claim. Pending-list and scheduled rows still grow in and collapse out via the one usePresenceList hook (QueuedMessages.tsx), matching the existing grow/collapse claim.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/QueuedMessages.tsx","src-ui/src/components/chat/tool-call-labels.ts"]},
+
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Integration review: StreamingMessage.tsx only moved its tool-progress import to tool-call-labels.ts; it still mounts UIBlockRenderer for live ui-block parts as the Render step says.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/StreamingMessage.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Integration review: ChatDockBody.tsx changed only the steer waiting-for-tools derivation (now isToolCallActive); no setting, default, attachment or approval claim in this reference depends on it.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Integration review: ChatDockBody.tsx changed only the steer waiting-for-tools derivation; the concept guide's work/session, engine and evidence claims are unaffected.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

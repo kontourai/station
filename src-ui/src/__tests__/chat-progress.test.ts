@@ -1,8 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import {
-  deriveToolProgressSummary,
-  formatToolName,
-} from '../utils/chat-progress';
+import { deriveToolProgressSummary } from '../components/chat/tool-call-labels';
+import { formatToolName } from '../utils/chat-progress';
 
 describe('formatToolName', () => {
   test('humanizes a programmatic name', () => {
@@ -40,6 +38,24 @@ describe('chat progress utils', () => {
         },
       ]),
     ).toBeNull();
+  });
+
+  test('a running-state call that is waiting on approval, failed or cancelled is not running', () => {
+    for (const part of [
+      { needsApproval: true, approvalId: 'a-1' },
+      { error: 'exit 1' },
+      { cancelled: true },
+    ])
+      expect(
+        deriveToolProgressSummary([
+          {
+            type: 'tool-invocation',
+            name: 'run_tests',
+            state: 'running',
+            ...part,
+          },
+        ]),
+      ).toBeNull();
   });
 
   test('builds a fallback label for a running tool without progress text', () => {

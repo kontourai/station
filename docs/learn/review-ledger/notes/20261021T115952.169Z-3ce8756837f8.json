@@ -1,0 +1,9 @@
+{
+  "revision": "5bc693adbea2b73bc54a9e3b61150391baab6f90",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"Capture unaffected: the request-inspection dialog and its route do not change; orchestration-service's only change this round passes the event projection a lookup of the durable session row for a thread not in memory, which a live request inspection (an in-memory session) never reaches.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Capture unaffected: the request-inspection dialog and its route do not change; orchestration-service's only change this round passes the event projection a lookup of the durable session row for a thread not in memory, which a live request inspection (an in-memory session) never reaches.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

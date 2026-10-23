@@ -30,3 +30,24 @@
 .tool-call__approve-error {
   overflow-wrap: anywhere;
 }
+
+/* A station-control refusal's sentence, shown before (not as) its JSON
+   envelope; the envelope sits in the "Raw response" disclosure below it. */
+.tool-call__refusal {
+  margin: 0;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+}
+
+.tool-call__raw {
+  margin-bottom: 12px;
+}
+
+.tool-call__raw > summary {
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+
+.tool-call__raw[open] > summary {
+  margin-bottom: 6px;
+}

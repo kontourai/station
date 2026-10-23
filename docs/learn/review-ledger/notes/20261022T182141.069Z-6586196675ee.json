@@ -1,0 +1,7 @@
+{
+  "revision": "88f25ee8a3b068c4986f6868611235c41392d8aa",
+
+  "notes": [
+    {"path":"examples/self-configuring-agent/README.md","note":"acp-adapter.ts change is internal: publishForTurn records every tool call at first sight (with no origin when no stamped turn is open) so a re-announced start never adopts a later send. No API, CLI, configuration or behaviour this document states moved.","inputs":["examples/self-configuring-agent/README.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

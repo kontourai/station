@@ -1,0 +1,7 @@
+{
+  "revision": "788e3b6b45e9e724dc29ec2f59c5e06b47f4f50d",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Merge of #3991: re-checked the Wake an agent later section against merged sources. Check-back transcript claim ('shown as Station's, not a message the person wrote') now holds with main's #3419 sender rows: agentMessageInput leaves a wake-up turn without the unattributed sender (follow-up commit). Contract, conversation-message and delegation-result-delivery deltas reviewed. Executed runtime-event-projection tests (98 passed).","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md","src-server/services/orchestration/delegation-result-delivery.ts","packages/contracts/src/orchestration.ts","packages/shared/src/conversation-message.ts"]}
+  ]
+}

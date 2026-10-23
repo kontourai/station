@@ -140,6 +140,22 @@ export class TurnStallWatchdog {
   private readonly watched = new Map<string, WatchedTurn>();
   /** Turns whose watch is suspended awaiting a human response. */
   private readonly suspended = new Map<string, string>();
+  /**
+   * A turn with a tool call open is running known work: a long build, a test
+   * run, or an agent's own blocking wait loop. Some adapters report nothing
+   * between `tool.started` and `tool.completed`, so the window cannot count
+   * that time as silence without reporting healthy work as "No progress" with
+   * a Stop prompt. While any call is open the window is not armed; the last
+   * call's `tool.completed` is progress and re-arms it. Unlike an approval
+   * wait, the progress observation is kept: its `lastProgressEventAt` (the
+   * call's start, or later progress) stays true. A call that never completes
+   * keeps the window disarmed until the turn ends; the running tool row and
+   * its start time remain the user-visible fact for that case.
+   */
+  private readonly openTools = new Map<
+    string,
+    { turnId: string; callIds: Set<string> }
+  >();
 
   /** Live timer count this instance currently owns (test/shutdown hook). */
   get size(): number {
@@ -201,7 +217,16 @@ export class TurnStallWatchdog {
     lastProgressEventAt = new Date().toISOString(),
   ): void {
     const lifecycle = lifecycleCallbacks(callbacks);
+    // Restarting the same turn's window keeps its open calls; a new turn's
+    // start drops the previous turn's, which can no longer complete here.
+    const openTools = this.openTools.get(threadId);
     this.clear(threadId, lifecycle);
+    if (openTools?.turnId === turnId && openTools.callIds.size > 0) {
+      this.openTools.set(threadId, openTools);
+      this.watched.set(threadId, { turnId, windowMs, lastProgressEventAt });
+      lifecycle.onProgress?.({ threadId, turnId, lastProgressEventAt });
+      return;
+    }
     const timer = setTimeout(() => {
       const watched = this.watched.get(threadId);
       if (!watched || watched.turnId !== turnId) return;
@@ -241,6 +266,8 @@ export class TurnStallWatchdog {
       createdAt?: string;
       /** Only meaningful (and only ever set) for a `runtime.error` event. */
       retriable?: boolean;
+      /** Only read for `tool.started` and `tool.completed`. */
+      toolCallId?: string;
     },
     windowMs: number,
     callbacks: TurnStallCallbacks,
@@ -356,6 +383,9 @@ export class TurnStallWatchdog {
       }
       return;
     }
+    if (event.method === 'tool.started' || event.method === 'tool.completed') {
+      this.trackOpenTool(event);
+    }
     const watching = this.watched.get(event.threadId);
     if (!watching) return;
     if (event.turnId && event.turnId !== watching.turnId) return;
@@ -371,8 +401,35 @@ export class TurnStallWatchdog {
     );
   }
 
+  /**
+   * Record a call opening or closing in the thread's tracked turn, watched or
+   * suspended (a call can finish while an approval is open). A call naming
+   * another turn, or arriving with no tracked turn, is not this watch's.
+   */
+  private trackOpenTool(event: {
+    method: CanonicalRuntimeEvent['method'];
+    threadId: string;
+    turnId?: string;
+    toolCallId?: string;
+  }): void {
+    if (!event.toolCallId) return;
+    const turnId =
+      this.watched.get(event.threadId)?.turnId ??
+      this.suspended.get(event.threadId);
+    if (turnId === undefined) return;
+    if (event.turnId && event.turnId !== turnId) return;
+    let open = this.openTools.get(event.threadId);
+    if (open?.turnId !== turnId) {
+      open = { turnId, callIds: new Set() };
+      this.openTools.set(event.threadId, open);
+    }
+    if (event.method === 'tool.started') open.callIds.add(event.toolCallId);
+    else open.callIds.delete(event.toolCallId);
+  }
+
   /** Clear any watch for `threadId` without firing. */
   clear(threadId: string, callbacks?: TurnStallLifecycleCallbacks): void {
+    this.openTools.delete(threadId);
     const suspendedTurnId = this.suspended.get(threadId);
     this.suspended.delete(threadId);
     const watching = this.watched.get(threadId);

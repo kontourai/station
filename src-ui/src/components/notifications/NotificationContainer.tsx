@@ -3,7 +3,6 @@ import {
   restoreReturnFocus,
 } from '@kontourai/station-shared/return-focus';
 import {
-  type CSSProperties,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   useCallback,
@@ -14,8 +13,13 @@ import {
 } from 'react';
 import { useActiveChatIds } from '../../contexts/ActiveChatsContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
-import { useNotificationHistory, useToast } from '../../contexts/ToastContext';
+import {
+  toastStore,
+  useNotificationHistory,
+  useToast,
+} from '../../contexts/ToastContext';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
+import { Button } from '../Button';
 import {
   focusRenderedApprovalCard,
   getApprovalClaims,
@@ -23,10 +27,7 @@ import {
   subscribeApprovalClaims,
 } from '../status/approvalReveal';
 import './NotificationContainer.css';
-import {
-  buildToastStackLayout,
-  selectToastStackItems,
-} from './toast-stack-layout';
+import { selectToastStackItems } from './toast-stack-layout';
 
 type Notification = ReturnType<typeof useNotificationHistory>[number];
 
@@ -53,7 +54,6 @@ function ToastCard({
   handleAction,
   onActivate,
   clickable,
-  collapsedContentHidden,
 }: {
   notification: Notification;
   dismissToast: (id: string) => void;
@@ -72,12 +72,52 @@ function ToastCard({
   handleAction?: (notificationId: string, actionId: string) => void;
   onActivate?: () => void;
   clickable: boolean;
-  collapsedContentHidden?: boolean;
 }) {
   const isApproval = notification.type === 'tool-approval';
   const isActivity = notification.type === 'tool-activity';
   const isTurn = notification.type === 'turn-activity';
   const isPairing = notification.type === 'pairing-request';
+  const cardRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (isApproval || isPairing) return;
+    const element = cardRef.current;
+    if (!element) return;
+    const visible = () => {
+      const rect = element.getBoundingClientRect();
+      toastStore.setVisible(
+        notification.id,
+        rect.width > 0 &&
+          rect.height > 0 &&
+          rect.top >= 0 &&
+          rect.bottom <= window.innerHeight,
+      );
+    };
+    visible();
+    const observer =
+      typeof IntersectionObserver === 'undefined'
+        ? undefined
+        : new IntersectionObserver(
+            ([entry]) => {
+              toastStore.setVisible(
+                notification.id,
+                Boolean(
+                  entry?.isIntersecting && entry.intersectionRatio >= 0.95,
+                ),
+              );
+            },
+            { threshold: [0, 0.95, 1] },
+          );
+    observer?.observe(element);
+    window.addEventListener('resize', visible);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', visible);
+      toastStore.setVisible(notification.id, false);
+      for (const reason of ['hover', 'focus', 'details']) {
+        toastStore.pause(notification.id, reason, false);
+      }
+    };
+  }, [notification.id, isApproval, isPairing]);
   const shortcut = getSessionShortcut(notification.sessionId);
   const message = notification.message.trim();
   const firstLine = message.split(/\r?\n/, 1)[0] ?? message;
@@ -93,13 +133,18 @@ function ToastCard({
     .join('\n\n');
 
   const activate = (event?: ReactMouseEvent | ReactKeyboardEvent) => {
-    if (!clickable || !onActivate) return;
+    if (
+      !clickable ||
+      !onActivate ||
+      !toastStore.isCurrentScope(notification.stationScope)
+    )
+      return;
     event?.stopPropagation?.();
     onActivate();
   };
 
   const onKeyDown = (event: ReactKeyboardEvent) => {
-    if (!clickable) return;
+    if (!clickable || event.target !== event.currentTarget) return;
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
       activate(event);
@@ -116,13 +161,18 @@ function ToastCard({
         isApproval ? 'toast-card--approval' : '',
         isPairing ? 'toast-card--pairing' : '',
         clickable ? 'toast-card--clickable' : '',
-        collapsedContentHidden ? 'toast-card--collapsed-hidden' : '',
       ]
         .filter(Boolean)
         .join(' ')}
-      data-testid={
-        collapsedContentHidden ? 'toast-card-collapsed' : 'toast-card'
-      }
+      data-testid="toast-card"
+      ref={cardRef}
+      onMouseEnter={() => toastStore.pause(notification.id, 'hover', true)}
+      onMouseLeave={() => toastStore.pause(notification.id, 'hover', false)}
+      onFocusCapture={() => toastStore.pause(notification.id, 'focus', true)}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget))
+          toastStore.pause(notification.id, 'focus', false);
+      }}
       {...(clickable
         ? {
             role: 'button',
@@ -134,24 +184,43 @@ function ToastCard({
     >
       <div className="toast-card__header">
         <div className="toast-card__content">
-          <div className="toast-card__meta">
-            {isApproval && (
-              <span className="toast-card__eyebrow">Tool Approval Request</span>
+          {(isApproval || isPairing || isActivity || isTurn) && (
+            <div className="toast-card__meta">
+              {isApproval && (
+                <span className="toast-card__eyebrow">
+                  Tool Approval Request
+                </span>
+              )}
+              {isActivity && (
+                <span className="toast-card__eyebrow">Tool Activity</span>
+              )}
+              {isTurn && (
+                <span className="toast-card__eyebrow">Agent turn</span>
+              )}
+              {isPairing && (
+                <span className="toast-card__eyebrow">
+                  Device Pairing Request
+                </span>
+              )}
+              <time className="toast-card__time">
+                {formatTimestamp(notification.timestamp)}
+              </time>
+            </div>
+          )}
+          <div className="toast-card__message">
+            {(notification.type === 'warning' ||
+              notification.type === 'error') && (
+              <strong>
+                {notification.type === 'error' ? 'Error: ' : 'Warning: '}
+              </strong>
             )}
-            {isActivity && (
-              <span className="toast-card__eyebrow">Tool Activity</span>
-            )}
-            {isTurn && <span className="toast-card__eyebrow">Agent turn</span>}
-            {isPairing && (
-              <span className="toast-card__eyebrow">
-                Device Pairing Request
-              </span>
-            )}
-            <time className="toast-card__time">
-              {formatTimestamp(notification.timestamp)}
-            </time>
+            {headline}
           </div>
-          <div className="toast-card__message">{headline}</div>
+          {(notification.occurrences ?? 1) > 1 && (
+            <span className="toast-card__repeat">
+              Repeated {notification.occurrences} times
+            </span>
+          )}
           {/*
             #1545: which command, or which file, the call will touch — so the
             operator is deciding about that rather than about the word "Bash".
@@ -167,6 +236,13 @@ function ToastCard({
           {details ? (
             <details
               className="toast-card__diagnostics"
+              onToggle={(event) =>
+                toastStore.pause(
+                  notification.id,
+                  'details',
+                  event.currentTarget.open,
+                )
+              }
               onClick={(event) => event.stopPropagation()}
               onKeyDown={(event) => event.stopPropagation()}
             >
@@ -205,20 +281,33 @@ function ToastCard({
       {notification.actions && notification.actions.length > 0 && (
         <div className="toast-card__actions">
           {notification.actions.map((action, index) => (
-            <button
-              type="button"
+            <Button
               key={`${action.label}-${index}`}
+              variant={action.variant || 'secondary'}
+              size="sm"
               className={`toast-card__action toast-card__action--${action.variant || 'secondary'}`}
+              disabled={notification.pendingAction !== undefined}
+              aria-busy={notification.pendingAction === index || undefined}
               onClick={(event) => {
                 event.stopPropagation();
-                action.onClick();
-                dismissToast(notification.id);
+                if (!toastStore.isCurrentScope(notification.stationScope))
+                  return;
+                if (isApproval || isPairing) {
+                  action.onClick();
+                  dismissToast(notification.id);
+                } else toastStore.runAction(notification.id, index);
               }}
             >
-              {action.label}
-            </button>
+              {notification.pendingAction === index ? 'Working…' : action.label}
+            </Button>
           ))}
         </div>
+      )}
+
+      {notification.actionError && (
+        <p className="toast-card__action-error" role="alert">
+          {notification.actionError}
+        </p>
       )}
 
       {notification.onNavigate &&
@@ -230,6 +319,8 @@ function ToastCard({
               className="toast-card__action toast-card__action--primary"
               onClick={(event) => {
                 event.stopPropagation();
+                if (!toastStore.isCurrentScope(notification.stationScope))
+                  return;
                 notification.onNavigate?.();
                 dismissToast(notification.id);
               }}
@@ -246,6 +337,7 @@ function ToastCard({
             className="toast-card__action toast-card__action--primary"
             onClick={(event) => {
               event.stopPropagation();
+              if (!toastStore.isCurrentScope(notification.stationScope)) return;
               handleAction?.(notification.id, 'allow');
               dismissToast(notification.id);
             }}
@@ -257,6 +349,7 @@ function ToastCard({
             className="toast-card__action toast-card__action--danger"
             onClick={(event) => {
               event.stopPropagation();
+              if (!toastStore.isCurrentScope(notification.stationScope)) return;
               handleAction?.(notification.id, 'deny');
               dismissToast(notification.id);
             }}
@@ -273,6 +366,7 @@ function ToastCard({
             className="toast-card__action toast-card__action--primary"
             onClick={(event) => {
               event.stopPropagation();
+              if (!toastStore.isCurrentScope(notification.stationScope)) return;
               handleNavigateTo(notification.metadata!, notification.id);
             }}
           >
@@ -355,56 +449,6 @@ export function NotificationContainer() {
     (item) => item.type !== 'tool-approval' && item.type !== 'pairing-request',
   );
   const stackedTransients = selectToastStackItems(transientNotifications);
-  const stackLayout = buildToastStackLayout(stackedTransients.length);
-  /**
-   * Coarse-pointer expansion for the archive#1960 stack. CSS `:hover`/`:focus-within`
-   * expansion has no touch equivalent, so on a device that cannot hover the
-   * stack could never be expanded at all. A tap on the collapsed stack sets
-   * this state (the CSS treats it as a third expansion trigger); outside-tap
-   * and Escape clear it. Hover-capable pointers never reach the tap path —
-   * their stack is already expanded by :hover before any click lands.
-   */
-  const toastStackRef = useRef<HTMLDivElement>(null);
-  const [stackExpanded, setStackExpanded] = useState(false);
-
-  useEffect(() => {
-    if (stackExpanded && stackedTransients.length <= 1) {
-      setStackExpanded(false);
-    }
-  }, [stackExpanded, stackedTransients.length]);
-
-  useEffect(() => {
-    if (!stackExpanded) return;
-
-    const handlePointerDown = (event: PointerEvent) => {
-      if (!toastStackRef.current?.contains(event.target as Node)) {
-        setStackExpanded(false);
-      }
-    };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      setStackExpanded(false);
-    };
-
-    document.addEventListener('pointerdown', handlePointerDown);
-    document.addEventListener('keydown', handleKeyDown, true);
-    return () => {
-      document.removeEventListener('pointerdown', handlePointerDown);
-      document.removeEventListener('keydown', handleKeyDown, true);
-    };
-  }, [stackExpanded]);
-
-  const expandStackOnCoarseTap = (event: ReactMouseEvent) => {
-    if (stackExpanded || stackedTransients.length <= 1) return;
-    // Missing matchMedia (jsdom) reads as hover-capable: interception is a
-    // touch affordance, never desktop default behavior.
-    const hoverCapable = window.matchMedia?.('(hover: hover)').matches ?? true;
-    if (hoverCapable) return;
-    event.preventDefault();
-    event.stopPropagation();
-    setStackExpanded(true);
-  };
-
   useEffect(() => {
     if (!approvalQueueOpen) return;
 
@@ -473,6 +517,7 @@ export function NotificationContainer() {
   };
 
   const activateNotification = (notification: Notification) => {
+    if (!toastStore.isCurrentScope(notification.stationScope)) return;
     if (notification.onNavigate) {
       notification.onNavigate();
       dismissToast(notification.id);
@@ -595,35 +640,29 @@ export function NotificationContainer() {
         </button>
       )}
 
+      {transientNotifications.length > stackedTransients.length && (
+        <button
+          type="button"
+          className="notification-container__overflow"
+          onClick={() => navigate('/notifications')}
+        >
+          {transientNotifications.length - stackedTransients.length} more
+          notifications · View all
+        </button>
+      )}
+
       {stackedTransients.length > 0 && (
         <div
-          ref={toastStackRef}
           className="toast-stack"
           data-testid="toast-stack"
           data-count={stackedTransients.length}
-          data-expanded={stackExpanded || undefined}
-          onClickCapture={expandStackOnCoarseTap}
         >
-          {stackedTransients.map((notification, index) => {
-            const layout = stackLayout[index]!;
+          {stackedTransients.map((notification) => {
             const canNavigate =
               Boolean(notification.onNavigate) ||
               notification.metadata?.navigateTo != null;
             return (
-              <div
-                key={notification.id}
-                className="toast-stack__item"
-                data-depth={layout.depth}
-                data-front={layout.depth === 0 ? 'true' : 'false'}
-                style={
-                  {
-                    '--toast-stack-depth': layout.depth,
-                    '--toast-stack-offset-y': `${layout.offsetY}px`,
-                    '--toast-stack-scale': layout.scale,
-                    '--toast-stack-z': layout.zIndex,
-                  } as CSSProperties
-                }
-              >
+              <div key={notification.id} className="toast-stack__item">
                 <ToastCard
                   notification={notification}
                   dismissToast={dismissToast}
@@ -635,7 +674,6 @@ export function NotificationContainer() {
                       ? () => activateNotification(notification)
                       : undefined
                   }
-                  collapsedContentHidden={layout.hideContentWhenCollapsed}
                 />
               </div>
             );

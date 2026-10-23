@@ -21,6 +21,7 @@ export type UsageLimitActionResult =
   | { kind: 'failed' }
   | { kind: 'canceled' }
   | { kind: 'retired'; reason: ConnectionRecoveryOutcomeReason }
+  | { kind: 'chosen'; choice: 'resume' | 'hold' }
   | { kind: 'not-waiting' };
 
 interface UsageLimitRecoveryAnswer {
@@ -32,6 +33,7 @@ const ACTION_KINDS = [
   'failed',
   'canceled',
   'retired',
+  'chosen',
   'not-waiting',
 ];
 
@@ -104,7 +106,9 @@ export function useUsageLimitRecovery(input: {
   });
   // Every action answers with the projection as it stands afterward, so a
   // click on a banner that has since settled reads back the real state.
-  const mutationFor = (action: 'resume' | 'cancel') => ({
+  const mutationFor = (
+    action: 'resume' | 'cancel' | 'resume-at-reset' | 'hold',
+  ) => ({
     mutationFn: async () =>
       readData(
         await mutateJson(path(apiBase, threadId, `/${action}`), 'POST', {
@@ -118,14 +122,22 @@ export function useUsageLimitRecovery(input: {
       recovery: ConnectionRecoveryProjection | null;
     }) => {
       queryClient.setQueryData<UsageLimitRecoveryAnswer>(key, { recovery });
+      // The chat's Scheduled list shows a resume waiting for its reset.
+      void queryClient.invalidateQueries({ queryKey: ['agent-schedule'] });
     },
   });
   const resume = useMutation(mutationFor('resume'));
   const cancel = useMutation(mutationFor('cancel'));
+  /** This stop only: resume at the reset whatever the setting says. */
+  const resumeAtReset = useMutation(mutationFor('resume-at-reset'));
+  /** This stop only: do not resume on its own. */
+  const hold = useMutation(mutationFor('hold'));
   return {
     recovery: query.data?.recovery ?? null,
     refetch: query.refetch,
     resume,
     cancel,
+    resumeAtReset,
+    hold,
   };
 }

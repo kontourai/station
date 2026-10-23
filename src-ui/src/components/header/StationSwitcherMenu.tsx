@@ -8,6 +8,8 @@ import { createPortal } from 'react-dom';
 import { navigationStore } from '../../contexts/navigation-store';
 import { toastStore } from '../../contexts/ToastContext';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
+import { useStationConditions } from '../notifications/StationConditions';
+import { openStationDetails } from '../notifications/stationDetailsEvents';
 import './HeaderMenu.css';
 
 export function StationSwitcherMenu({
@@ -31,6 +33,7 @@ export function StationSwitcherMenu({
   onManage: () => void;
   onPairPhone?: () => void;
 }) {
+  const conditions = useStationConditions();
   const menuRef = useMenuFocus<HTMLDivElement>(true, onClose);
   const [position, setPosition] = useState({ right: 12, top: 0 });
   const [switchingId, setSwitchingId] = useState<string | null>(null);
@@ -109,6 +112,18 @@ export function StationSwitcherMenu({
         className="menu-surface app-toolbar__station-switcher"
         style={position}
       >
+        <button
+          type="button"
+          role="menuitem"
+          className="menu-row"
+          onClick={() => {
+            onClose();
+            openStationDetails();
+          }}
+        >
+          Station details
+          {conditions.length ? ` · ${conditions.length} notices` : ''}
+        </button>
         <div className="station-switcher__profiles">
           {connections.map((connection) => {
             const current = connection.id === activeConnectionId;

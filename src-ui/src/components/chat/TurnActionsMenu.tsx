@@ -17,6 +17,10 @@ import type { TurnProvenanceStatedInRow } from './TurnProvenanceCard';
 import { TurnProvenanceCard } from './TurnProvenanceCard';
 import './TurnActionsMenu.css';
 
+const loadConnectedAttachUserInputToTaskButton = () =>
+  import('./AttachAnswerToTaskButton').then((module) => ({
+    default: module.ConnectedAttachUserInputToTaskButton,
+  }));
 const loadConnectedAttachAnswerToTaskButton = () =>
   import('./AttachAnswerToTaskButton').then((module) => ({
     default: module.ConnectedAttachAnswerToTaskButton,
@@ -335,6 +339,17 @@ export interface UserMessageActionsMenuProps {
    */
   onDiscardUnsent?: () => void;
   /**
+   * A durable authored input that can be pinned to a Task. Listed here, like
+   * an answer's "Add to Task", instead of as a standing button on every
+   * user bubble. Not used inline: the phone sheet lists its own Task row.
+   */
+  taskTarget?: {
+    sessionId: string;
+    eventId: string;
+    projectId?: string;
+    excerpt?: string;
+  };
+  /**
    * Already inside a surface of its own (the phone's message sheet): the rows
    * render in place, with no second ⋯ to open.
    */
@@ -348,21 +363,29 @@ export function UserMessageActionsMenu({
   onForkFromTurn,
   onNewChatFromMessage,
   onDiscardUnsent,
+  taskTarget,
   inline = false,
 }: UserMessageActionsMenuProps) {
-  const [open, setOpen] = useState(false);
+  // 'picker': the Task dialog is open and this owner stays mounted (with the
+  // menu hidden) until it settles, exactly as the answer menu does.
+  const [view, setView] = useState<'closed' | 'menu' | 'picker'>('closed');
+  const open = view === 'menu';
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const close = () => setOpen(false);
+  const close = () =>
+    setView((current) => (current === 'menu' ? 'closed' : current));
   const menuRef = useMenuFocus<HTMLDivElement>(open, close);
   const canFork = Boolean(forkSource && onForkFromTurn);
+  const pinsToTask = Boolean(taskTarget) && !inline;
   const rowCount =
-    (canFork ? 1 : onNewChatFromMessage ? 1 : 0) + (onDiscardUnsent ? 1 : 0);
+    (pinsToTask ? 1 : 0) +
+    (canFork ? 1 : onNewChatFromMessage ? 1 : 0) +
+    (onDiscardUnsent ? 1 : 0);
   const { position, place } = useFixedMenuPlacement(triggerRef, open, rowCount);
   const triggerProps = useMenuTriggerToggle(
     open,
     () => {
       place();
-      setOpen(true);
+      setView('menu');
     },
     close,
   );
@@ -372,6 +395,24 @@ export function UserMessageActionsMenu({
   // since nothing there gives them menu keyboard behaviour.
   const rows = (close: () => void, itemRole?: 'menuitem') => (
     <>
+      {pinsToTask && taskTarget && (
+        <LazyBoundary
+          load={loadConnectedAttachUserInputToTaskButton}
+          componentProps={{
+            ...taskTarget,
+            menuItem: true,
+            onOpen: () => setView('picker'),
+            onClose: () => setView('closed'),
+            returnFocusTarget: triggerRef.current,
+          }}
+          pending={null}
+          unavailable={() => (
+            <span className="turn-footer__unavailable-note">
+              Add to Task is unavailable.
+            </span>
+          )}
+        />
+      )}
       {canFork && forkSource && onForkFromTurn && (
         <button
           type="button"
@@ -431,9 +472,10 @@ export function UserMessageActionsMenu({
         <MoreActionsGlyph />
       </button>
       {/* Portalled for the same reason as the answer menu above. */}
-      {open &&
+      {view !== 'closed' &&
         createPortal(
           <div
+            hidden={!open}
             ref={menuRef}
             className="turn-footer__overflow-menu"
             style={position}

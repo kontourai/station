@@ -336,12 +336,17 @@ export function useOutboundQueueFlush(apiBase: string): void {
               if (!active) return;
               projectOutboundQueueEntries(entries, retired);
               // "Sending" holds only while the window sending it runs, and a
-              // window that closes or crashes says nothing. While any row
-              // reads so, look again now and then; nothing is scheduled
-              // once none does.
+              // window that closes or crashes says nothing; the same goes for
+              // a copy another window holds. While any row depends on a
+              // window still running, look again now and then; nothing is
+              // scheduled once none does.
               if (
                 ownerRecheck === undefined &&
-                entries.some((entry) => entry.sendUnderWay)
+                entries.some(
+                  (entry) =>
+                    entry.sendUnderWay ||
+                    (entry.heldBy && !entry.heldHere && !entry.holderGone),
+                )
               )
                 ownerRecheck = setTimeout(() => {
                   ownerRecheck = undefined;

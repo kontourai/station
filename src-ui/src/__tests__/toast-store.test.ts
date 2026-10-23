@@ -102,7 +102,8 @@ describe('toastStore.show — duration: 0 is sticky', () => {
   });
 
   test('a positive duration still auto-dismisses', () => {
-    toastStore.show('transient notice', 's-b2-2', 1_000);
+    const id = toastStore.show('transient notice', 's-b2-2', 1_000);
+    toastStore.setVisible(id, true);
     expect(toastStore.getSnapshot().some((t) => t.sessionId === 's-b2-2')).toBe(
       true,
     );

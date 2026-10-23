@@ -49,7 +49,7 @@ describe('PageCallout', () => {
   });
 });
 
-describe('the tone scale is shared with banners, not copied', () => {
+describe('the callout tone scale uses root tokens', () => {
   // A structural rule, proved structurally: the only observable difference
   // between "both files resolve one custom property" and "both files happen
   // to spell the same `color-mix` today" is in the stylesheets themselves,
@@ -58,7 +58,6 @@ describe('the tone scale is shared with banners, not copied', () => {
   // host already defines — which is exactly how the three cards C4 replaced
   // ended up with three different borders.
   const calloutCss = readCss('../PageCallout.css');
-  const bannerCss = readCss('../notifications/BannerHost.css');
   const rootCss = readCss('../../index.css');
 
   test.each(['info', 'warning', 'error'])(
@@ -74,23 +73,16 @@ describe('the tone scale is shared with banners, not copied', () => {
     },
   );
 
-  test('both surfaces read the tone properties rather than their own colours', () => {
+  test('callouts read the tone properties rather than their own colours', () => {
     for (const tone of ['info', 'warning', 'error']) {
       expect(
         calloutCss.includes(`var(--tone-border-${tone})`),
         `PageCallout.css does not resolve --tone-border-${tone}`,
       ).toBe(true);
-      expect(
-        bannerCss.includes(`var(--tone-border-${tone})`),
-        `BannerHost.css does not resolve --tone-border-${tone}`,
-      ).toBe(true);
     }
     // The reverse direction: a tone border written as a literal in either
     // file is a second scale, whatever it currently evaluates to.
-    for (const [name, css] of [
-      ['PageCallout.css', calloutCss],
-      ['BannerHost.css', bannerCss],
-    ] as const) {
+    for (const [name, css] of [['PageCallout.css', calloutCss]] as const) {
       expect(
         /border(-color)?:[^;]*color-mix\([^;]*--(warning-text|error-text|accent-primary)/.test(
           css,

@@ -74,7 +74,17 @@
 
     "src-ui/src/views/connections-hub/connection-sections.ts",
 
-    "src-ui/src/views/provider-settings/providerCatalog.tsx"
+    "src-ui/src/views/provider-settings/providerCatalog.tsx",
+
+    "src-ui/src/components/notifications/StationConditions.tsx",
+
+    "src-ui/src/contexts/banner-store.ts",
+
+    "src-ui/src/components/BundledServiceBanner.tsx",
+
+    "src-ui/src/components/MobileConnectionBanner.tsx",
+
+    "src-ui/src/__tests__/ConnectionBannerSource.test.tsx"
   ],
 
   "checks": [

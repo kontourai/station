@@ -18,7 +18,6 @@ vi.mock('../../hooks/useIsMobile', async (importOriginal) => ({
   useIsMobile: () => isMobile,
 }));
 
-import { bannerStore } from '../../contexts/banner-store';
 import { toastStore } from '../../contexts/ToastContext';
 import {
   BOARD_UNAVAILABLE_BANNER_ID,
@@ -60,7 +59,7 @@ describe('useInProcessWorkspacePaneHost', () => {
     hoisted.navigate.mockClear();
     isMobile = false;
     latest = null;
-    bannerStore.dismiss(BOARD_UNAVAILABLE_BANNER_ID);
+    toastStore.clear();
   });
 
   test('host.confirm opens the SHELL ConfirmModal and resolves confirmed', async () => {
@@ -205,9 +204,9 @@ describe('useInProcessWorkspacePaneHost', () => {
       host().presentUnavailable('no-builder-run');
     });
 
-    const banner = bannerStore
+    const banner = toastStore
       .getSnapshot()
-      .find((item) => item.id === BOARD_UNAVAILABLE_BANNER_ID);
+      .find((item) => item.dedupeKey === `${BOARD_UNAVAILABLE_BANNER_ID}:demo`);
     expect(banner?.message).toBe(BOARD_UNAVAILABLE_NOTICE);
     // The redirect goes through the same target→route resolution every other
     // navigation uses, which always passes an explicit params object; `{}`
@@ -222,9 +221,11 @@ describe('useInProcessWorkspacePaneHost', () => {
     });
 
     expect(
-      bannerStore
+      toastStore
         .getSnapshot()
-        .some((item) => item.id === BOARD_UNAVAILABLE_BANNER_ID),
+        .some(
+          (item) => item.dedupeKey === `${BOARD_UNAVAILABLE_BANNER_ID}:demo`,
+        ),
     ).toBe(false);
     expect(hoisted.navigate).not.toHaveBeenCalled();
   });

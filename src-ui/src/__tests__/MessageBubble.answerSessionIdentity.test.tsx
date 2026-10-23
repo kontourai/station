@@ -178,6 +178,11 @@ describe('MessageBubble answer Session identity', () => {
         'conversation-1',
       ),
     );
+    // Desktop: the pin is a row of the bubble's ⋯ menu, not a standing button.
+    expect(screen.queryByTestId('input-origin')).toBeNull();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'More message actions' }),
+    );
     expect((await screen.findByTestId('input-origin')).textContent).toBe(
       'original-session/event-1',
     );

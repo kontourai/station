@@ -60,6 +60,25 @@ describe('usePruneActiveChats', () => {
     expect(activeChatsStore.getSnapshot()['session-kept']).toBeDefined();
   });
 
+  test('keeps a chat that still holds queued follow-ups, even when its conversation is not listed', async () => {
+    seedChat('session-held', 'conversation-unlisted');
+    seedChat('session-pruned', 'conversation-pruned');
+    activeChatsStore.updateChat('session-held', {
+      queuedMessages: ['and then summarize it'],
+      queuedMessageMetadata: [{ id: 'follow-up-1', mode: 'queue' }],
+    } as never);
+    fetchConversationPage.mockResolvedValue({ items: [], hasMore: false });
+
+    renderHook(() => usePruneActiveChats());
+
+    await waitFor(() => {
+      expect(activeChatsStore.getSnapshot()['session-pruned']).toBeUndefined();
+    });
+    expect(
+      activeChatsStore.getSnapshot()['session-held']?.queuedMessages,
+    ).toEqual(['and then summarize it']);
+  });
+
   test('keeps persisted chats when conversation reconciliation is unavailable', async () => {
     seedChat('session-kept', 'conversation-kept');
     fetchConversationPage.mockRejectedValue(new Error('offline'));

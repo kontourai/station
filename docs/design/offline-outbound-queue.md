@@ -54,8 +54,9 @@ only while that window is proven running (it holds its renderer lock); a claim
 left by a window that closed or crashed reads "No answer yet" like its bubble,
 with Check and Discard…, and the discard checks again that the window is gone.
 A window's own claim reads "Sending" only while its own send is in progress.
-While any send reads "Sending" this way the list looks again every few seconds,
-since a window that closes says nothing.
+While any send reads "Sending" this way, or a copy is held by another window
+that may still be open, the list looks again every few seconds, since a window
+that closes says nothing.
 The lookup settles released rows, and rows whose app was closed, at the next
 launch or reconnect: never received → sent again with the same key; started →
 done; received → asked again later; possibly started, or the conversation runs
@@ -74,9 +75,13 @@ Follow-ups held behind a running turn stay in the tab's session storage, and
 each keeps a durable copy in the queue under the key the queue will send it
 with. Nothing sends that copy automatically: the window's own queue sends it
 when the turn ends, a reload's restored queue takes the copies back (so an
-edit or a delete there is what counts), and a copy whose window closed, or
-another window's, is listed first with Send and Discard for the user (it does
-not hold back later messages). A discarded or delivered message is never sent
+edit or a delete there is what counts), and a copy another window holds is
+listed first with Send and Discard for the user (it does not hold back later
+messages). While that window runs (it holds its renderer lock) the copy is its
+ordinary follow-up; once the window is proven gone it needs the person. Send on
+a closed window's copy, while a turn runs or this window's queue holds
+follow-ups, puts it in that queue under its own key (the queue's durable copy
+takes it over); otherwise it is released to send now. A discarded or delivered message is never sent
 again from any window. A
 message whose row is already on its way or possibly started is never sent
 again from the composer or the queue. A send refused because the engine is

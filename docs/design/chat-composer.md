@@ -286,25 +286,60 @@ inbox footer offers Refresh, which reconnects the same stream and re-reads the
 session list and conversation inventory; when the last read failed, the footer
 says the rows are the last known list.
 
-The pill uses compact state labels such as Sending, Working, Thinking, and
-Reconnecting; it does not expand to display tool names. **Sending** covers the
-chat's own send until the agent has its turn (no turn open on the server yet);
-once Station's delivery lookup says it has the message, its detail says Station
-has it and is starting the agent, and that the app may be closed only when
-that Station keeps running without the app (not the desktop's own Station when
-it stops with the app, nor while the desktop has not reported it). The user's
-own bubble carries the same state until the agent has the message
-(`MessageDeliveryNote`): outlined rather than filled (dashed while on its way,
-solid when not sent or when it may have reached the agent; only a send under
-way keeps the accent colour, and a send with no answer reads as a caution), with a short label that says whether it goes if the app
-closes (including waiting behind an unsent message, waiting for its own
-Station, and "Not confirmed" for this window's send with no answer), plus Retry
-and Edit when not sent (Discard is in the bubble's ⋯ menu) and Check and
-Discard… when it may have reached the agent. State changes animate its width with
-the shared motion token, while the clock reserves a stable text column. Running
-tool rows and batches show a subtle reflection sweeping left to right; settled
-calls and approval requests stay still. Reduced motion disables the reflection
-and makes pill size changes immediate.
+The pill uses compact state labels such as Sending, Starting, Working,
+Thinking, and Reconnecting; it does not expand to display tool names.
+**Sending** covers the chat's own send until Station's delivery lookup says it
+has the message; from then until the agent has its turn (no turn open on the
+server yet) the pill says **Starting**, and its detail uses the same words as
+the bubble: "Received. You can close the app." only when that Station keeps
+running without the app, "Received. Keep the app open." for the desktop's own
+Station that stops with it, and "Received" while the desktop has not reported
+it. Both labels are one pill kind, so the word swaps while the width eases.
+The user's own bubble carries the same state until the agent has the message
+(`MessageDeliveryNote`). The happy path has no text: sending is a dimmed dashed
+outline with a turning ring beside the bubble, received is the full dashed
+outline with a check, and delivered fills the bubble while the check fades out.
+The glyph's SVG title is its tooltip and accessible name, and one status region
+announces the received fact. Exceptions keep one short line with their action,
+folded open in place (grid rows `0fr` to `1fr`, so neighbours do not jump):
+"Sends when connected", "No answer yet. Resends only if it never arrived.",
+"Waits for the unsent message above", "Waits for its own Station", "Queued.
+Sends after this reply.", "Not sent" with Retry and Edit (Discard is in the
+bubble's ⋯ menu), "May have reached the agent" with Check and Discard…, and
+"Not confirmed" for this window's send with no answer. The outline stays solid
+for not sent and may-have-reached, and caution-coloured for a send with no
+answer. An assistant row with nothing to draw renders no bubble: the streaming
+row appears with its first text, reasoning or tool row (the pill carries the
+starting state before that) and eases in, and a settled row whose only content
+is reasoning keeps a collapsed **Reasoning · N words** disclosure. A turn that
+ended with nothing to draw (no text, tool or file rows, or only reasoning the
+reader hides) keeps its row as one line, **No reply**, or **Stopped** when it
+was stopped, with the turn's actions at the end of that line, so both are the
+same height. The engine's stop reason is not drawn in its place. When the
+person did not stop it, a second short line says why: "No progress for too
+long" when Station's stall detection stopped it, "Station restarted mid-turn"
+after recovery, or the engine's own reason (a known one as a short line, any
+other cut to one line with the full text as its tooltip). Who stopped it comes
+from Station's `session.stop-settled` record and the recovery abort's marker,
+not from the reason text. A row without answer text has no Basis chip. The pill's state changes animate its width with
+the shared motion token, while the clock reserves a stable text column. A running
+tool call's label carries a highlight moving through its text; settled calls
+and approval requests stay still. The streaming row's "Running <tool>" line
+use the same running rule as the tool rows, so a call waiting on approval
+never reads as running in one place and not another. A queued steer's
+"Waiting for tools to finish" reads the server's record of the open turn's
+running calls, the same fact the status pill reads, so the two agree after a
+reload. A running batch keeps one summary row ("4 commands · 3 done", where
+"done" counts calls that finished successfully, past tense only once every
+call settled) and shows each running call on its own row beneath it, at most
+two and then "+N more", with its elapsed time after ten seconds; a single
+running call shows it too. Such a row shows what is running ("npm run build")
+without the "Running" its highlight already says; the full label is its
+tooltip and what a screen reader hears. The batch fills the answer's column for its whole
+life, so its running calls changing never resize the card, and the elapsed time
+holds its column from the start, so its appearing never widens it. A call is shown running only inside
+the turn the server reports open. Reduced motion disables the highlight and
+makes pill size changes immediate.
 
 On a phone, a settled answer without anchored child work shows its tool work as one row. Every call from
 the first to the last, and the narration between them, folds into a single
@@ -463,8 +498,11 @@ default"); a context-percent meter; plus the session tab strip above. Problems:
    naming its engine ("Station", "Claude Code", "OpenCode · GLM-4.7") instead of an
    External/ACP badge pair; "External" and "ACP" never render. Shipped in archive#894. The
    navigability principle (§1) and the §4 API-parity table remain binding as written.
-5. **Context meter and session chrome** move to the session header/tab area, out of the
-   input row.
+5. **Context meter and session chrome** stay out of the input row. The context meter
+   sits in the composer's meta row beside the model picker it measures (2026-10-20:
+   it had moved to the dock header, where it crowded the chat's identity); the dock
+   header holds session identity only (see placement.md, "What the dock header
+   holds").
 
 ### 3.1 Provider and model picker
 
@@ -573,21 +611,54 @@ protected wire command before invoking an engine. The pending marker must save
 successfully before any native mutation; failed storage keeps the message held. The server journal
 retains digests rather than message bodies, and Session deletion removes it.
 
-The open conversation also shows **Messages held by Station**, a separate
-[server inbox view](../../src-ui/src/components/chat/ConversationInboxMessages.tsx).
+Follow-ups Station holds in the open conversation's server inbox share the
+pending-message list with this browser's queued follow-ups
+([wrapper](../../src-ui/src/components/chat/ConversationInboxMessages.tsx)).
 It reads the existing [inbox API](../reference/session-api.md#let-station-hold-a-follow-up)
 for that conversation and verified Station identity, including messages submitted
-by another client. Waiting and sending rows contribute to its pending count;
-unknown or refused delivery remains visible separately. A failed read shows
-unavailable rather than zero. Foreground polling, event-driven invalidation,
-focus/reconnect and **Refresh** request fresh observations. **Remove** or
-**Dismiss** uses the original message key and the server's authorization and placement checks;
-rows without a permitted key are read-only. They offer no local edit, reorder,
-send-now or steer action. This view does not transfer ordinary busy-composer
-submissions from browser-local storage into the server inbox.
+by another client. Held rows read **Held by Station** and sit at the bottom of
+the list, in the server's send order. A message both queued locally and held by
+Station (the same `clientTurnId`) appears once, as the held row. The count is
+every row the list shows, whatever its state (waiting, sending, unknown or
+refused delivery), and the chat's context card shows the same count from the
+same rule ([pendingMessages](../../src-ui/src/components/chat/pendingMessages.ts)). While neither holds anything the
+list renders nothing. Reads are silent: polling (every 2s while the
+conversation is working or holds messages, every 15s otherwise), turn-fact
+invalidation and focus/reconnect change the list only when the answer changes.
+A failed read after held rows were shown replaces them with a
+**Couldn't load held messages** line and its **Retry**, never a zero count.
+**Remove** or **Dismiss** uses the original message key and the server's
+authorization and placement checks; rows without a permitted key are
+read-only. Held rows offer no local edit, reorder, send-now or steer action.
+This view does not transfer ordinary busy-composer submissions from
+browser-local storage into the server inbox. This browser's durable outbox for
+the chat (a send that failed or got no answer, and copies queued in another
+window or one that closed) leads the same list, not a second list, and its rows
+keep their own Send, Retry, Check and Discard actions. Order numbers follow the
+order messages send, 1 at the bottom: what Station holds goes as the turn ends,
+then this window's queued follow-ups, one per turn. Outbox rows carry no
+number: they go when the turn ends too, and which lands first is not known
+ahead. Needs review marks a row only the person can settle: a send that failed
+or may have reached the agent, unconfirmed delivery, or a copy from a window
+proven closed (its Web Lock is gone; liveness that cannot be read is not
+closed). A failed send marks it **Not sent** instead. A copy another open
+window holds reads **Queued in another window.** (that window sends it), one
+from a closed window **From a closed window. Not sent.**; both offer **Send**.
+Send on a closed window's copy, while a turn runs or this window's queue holds
+follow-ups, queues it here under its own key, so it sends in that order and
+takes its number; otherwise it goes now. A key already in the queue is not
+queued again, so a repeat Send adds no second row.
+Rows, and the list itself, grow in and collapse out (height and opacity) rather
+than popping.
+In a dock too short for the list and the draft, the list yields before the
+draft does, down to its toggle row (and, while open, its first row); the rest
+scrolls inside it.
 
-The browser-local pending-message section starts collapsed, showing only its
-count and a Needs review indicator for failures or unconfirmed delivery. Its disclosure
+The pending-message section starts collapsed, showing only its
+count and a Needs review (or Not sent) indicator; a live region outside the
+collapsed rows announces it when it appears. The region mounts empty and takes
+its text after mount, so a list that first appears already failed is announced
+too, once. Its disclosure
 reveals message content, mode, status and actions; it does not auto-expand during
 a turn. Pending rows retain their selected mode. **Send now** is an explicit immediate
 stop override: Station waits for a settled interruption receipt before sending
@@ -680,7 +751,7 @@ simple per-device preference rather than claiming to detect an attached keyboard
   blocked send; slash-command output and status notices are not repeated, and
   a later accepted send clears it. A message queued to retry automatically is
   not a failure, so its notice is not repeated. The queue panel in the dock
-  body already lists the queued turn with a "×" (**Delete message**) that
+  body already lists the queued turn with a "×" (**Discard message**) that
   discards it, so discarding was never impossible; but that control is an
   unlabelled icon, and the notice it explained stayed in the transcript. The
   notice's own **Discard** sits in that hidden transcript, so while the chat is
@@ -769,9 +840,10 @@ Selecting a workspace through the sidebar also sets the default project for
 new chats after navigation guards admit the route. It preserves the active
 chat and its original project. Opening an existing conversation also preserves
 this default. Choosing a different project in the chat bar
-overrides that default until the next explicit workspace selection. Both bars
-caption this value **New chats**; desktop also names the current chat's project
-when it differs. On a phone, when a long chat title leaves the control too
+overrides that default until the next explicit workspace selection. On a phone the
+Project control captions this value **New chats**; on desktop it is the second
+half of the dock's New split button, named "New chats: <project>", and the
+current chat's own project is its session context card's Workspace row. On a phone, when a long chat title leaves the control too
 narrow for words, it shows only a folder glyph; its accessible name still
 names the project. This revises the earlier independent-sidebar/default behavior.
 
@@ -793,7 +865,9 @@ Mobile message rows prioritize the authored text and essential live approval or
 error state. Each row with text has a 44px copy button beside a separate 44px
 actions button; the actions button opens attribution, model facts, provenance,
 ratings, and Task references on demand, and omits itself from a user message
-that has none of them. These details retain their original event-backed
+that has none of them. On desktop a durable user message lists **Add input to
+Task** in its ⋯ menu, as an answer lists **Add to Task**, rather than as a
+button under every message. These details retain their original event-backed
 identities. Desktop attribution stays inline. On every screen size a message's
 copy control is one icon button, named "Copy your message" or "Copy answer";
 no menu repeats it as text.
@@ -816,8 +890,9 @@ engine/model, future-chat Project and Git strip; Agent and engine/model controls
 stay beside the composer, while Project and file context remain in their owning
 surfaces. Imported conversations retain their origin. Phone Coding leaves the conversation
 title in the chat header and uses its breadcrumb for Inbox and pane navigation.
-Working chats open a keyboard-operable
-menu. On mobile, the title is one line with assistant context beneath it. The direct
+Working chats are the first rows of the dock's
+keyboard-operable More menu; their count rides the inbox toggle, and is the
+number of inbox rows that say Running. On mobile, the title is one line with assistant context beneath it. The direct
 Project control retains its New chats caption: it sets future chat context,
 not the current conversation’s binding. Moving that control into Chat actions
 remains an unimplemented proposal requiring a product-contract decision.

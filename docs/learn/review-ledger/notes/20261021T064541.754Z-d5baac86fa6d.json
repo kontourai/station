@@ -1,0 +1,7 @@
+{
+  "revision": "4a65dee0b931de1fb8947c8cf7e7cd7733821417",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"chat.css/MessageBubble.tsx: the No reply / Stopped marker class renamed (message__empty-turn to message__turn-outcome); no behaviour this document states moved. No prose change.","inputs":["docs/design/placement.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

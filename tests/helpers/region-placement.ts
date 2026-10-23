@@ -43,6 +43,24 @@ export function chatDockShell(page: Page): Locator {
   return page.locator('#chat-dock');
 }
 
+/**
+ * Chat folds its region's own commands — move, add a pane, maximize — into
+ * its More menu (`RegionMenu`), so the bar has no separate buttons for them
+ * while Chat is the shown pane. This presses one of those rows the way a user
+ * does: the ⋯ trigger, then the row.
+ */
+export async function chooseChatRegionRow(
+  page: Page,
+  row: 'Maximize' | 'Restore size' | 'Add pane…' | `Move to ${string}`,
+): Promise<void> {
+  await chatDockShell(page)
+    .getByRole('button', { name: /^More dock actions/ })
+    .click();
+  const menu = page.getByRole('menu', { name: 'More dock actions' });
+  await menu.getByRole('menuitem', { name: row, exact: true }).click();
+  await expect(menu).toBeHidden();
+}
+
 /** The dock shell of a non-Chat surface, named by its registered title. */
 export function surfaceDockShell(page: Page, title: string): Locator {
   return page.locator(`.chat-dock[aria-label="${title}"]`);

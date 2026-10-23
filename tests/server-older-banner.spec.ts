@@ -1,27 +1,23 @@
 /**
- * E2E: the "server is older than this app" banner (#2675) as a reader sees it.
- *
- * Harness: the real `ServerOlderLaunchCheck`, `BannerHost` and
- * `src-ui/src/index.css` (both token layers) bundled from source with
- * esbuild — the technique `banner-stack-bound.spec.ts` and
- * `toggle-contrast.spec.ts` use. Only the two data seams are stubbed: the
- * SDK's core-update hooks answer with the exact status a service-run archive
- * install returns, and the connected-server context names a remote server.
- * No live instance or server.
- *
- * Proves what jsdom cannot: the banner and its one-click update fit at phone
- * width without a horizontal scroll, in both themes, and clicking the update
- * moves the same banner to the update's progress. Each state is captured to
- * the test's own output directory for a person to look at.
+ * The real server-older source and unified Updates panel, in both themes and
+ * at phone/desktop widths. SDK responses and connection/platform identity are
+ * controlled inputs; the panel, confirmation and service-progress UI are real.
  */
+import { createRequire } from 'node:module';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Page } from '@playwright/test';
 import { build, type Plugin } from 'esbuild';
+import { test } from './helpers/fixture-audit';
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const SDK_ENTRY = createRequire(import.meta.url).resolve(
+  '@kontourai/station-sdk',
+);
 
 const STUB_SDK = `
+export * from ${JSON.stringify(SDK_ENTRY)};
+const checkedAt = Date.now();
 const scenario = () => window.__scenario;
 const status = () => ({
   installKind: scenario() === 'manual' ? 'archive' : 'archive-service',
@@ -37,10 +33,11 @@ const status = () => ({
   serviceUpdate: { state: 'idle' },
 });
 export function useCoreUpdateStatusQuery(_apiBase, options) {
-  return { data: options.enabled ? status() : undefined, error: null, refetch: () => Promise.resolve() };
+  return { data: status(), dataUpdatedAt: checkedAt, error: null, isFetching: false, isPending: false, refetch: () => Promise.resolve() };
 }
 export function useApplyCoreUpdateMutation(_apiBase, options) {
   return {
+    isPending: false, error: null, reset: () => {},
     mutate: () => setTimeout(() => options.onSuccess({ success: true, serviceUpdate: { requestId: 'req-1' } }), 0),
   };
 }
@@ -52,6 +49,10 @@ const trial = {
   targetVersion: '0.1.11-nightly.246500',
   attempts: 1,
 };
+export function useServerUpdateStateQuery() { return { data: undefined, refetch: () => Promise.resolve() }; }
+export function useServerUpdateRunningTurnsQuery() {
+  return { data: { turns: [], hiddenCount: 0 }, isPending: false, isFetching: false, error: null };
+}
 export function useServiceUpdateProgressQuery(_apiBase, options) {
   return options.enabled
     ? { data: trial, dataUpdatedAt: 1, errorUpdatedAt: 0 }
@@ -94,24 +95,29 @@ const stubSeams: Plugin = {
     builder.onLoad({ filter: /.*/, namespace: 'stub' }, (args) => ({
       contents: args.path === 'sdk' ? STUB_SDK : STUB_CONTEXT,
       loader: 'js',
+      resolveDir: REPO_ROOT,
     }));
   },
 };
 
 const HARNESS_SOURCE = `
 import './src-ui/src/index.css';
+import './src-ui/src/components/updates/Updates.css';
 import { createRoot } from 'react-dom/client';
-import { BannerHost } from './src-ui/src/components/notifications/BannerHost';
+import { useState } from 'react';
+import { UpdatesPanel } from './src-ui/src/components/updates/UpdatesPanel';
 import { ServerOlderLaunchCheck } from './src-ui/src/components/ServerOlderLaunchCheck';
 
-createRoot(document.getElementById('root')).render(
-  <>
+function Harness() {
+  const [open, setOpen] = useState(false);
+  return <>
     <ServerOlderLaunchCheck clientVersion="0.1.11-nightly.2465" />
-    {/* The banner alone: the shell's toolbar and content inset are not
-      part of this harness, so no content is drawn for it to sit over. */}
-    <BannerHost />
-  </>,
-);
+    <button type="button" onClick={() => setOpen(true)}>Review updates</button>
+    {open && <UpdatesPanel open onClose={() => setOpen(false)} onNavigate={() => {}}
+      returnFocusTarget={null} target="server" requestSequence={1} />}
+  </>;
+}
+createRoot(document.getElementById('root')).render(<Harness />);
 `;
 
 let harnessScript = '';
@@ -123,7 +129,10 @@ test.beforeAll(async () => {
     bundle: true,
     format: 'iife',
     jsx: 'automatic',
-    define: { 'process.env.NODE_ENV': '"production"' },
+    define: {
+      'process.env.NODE_ENV': '"production"',
+      'import.meta.env': '{}',
+    },
     external: ['/fonts/*', '/favicon-*'],
     loader: { '.woff2': 'empty', '.woff': 'empty' },
     plugins: [stubSeams],
@@ -137,9 +146,7 @@ test.beforeAll(async () => {
     if (file.path.endsWith('.css')) harnessStyles = file.text;
   }
   expect(harnessScript.length, 'harness JS bundled').toBeGreaterThan(0);
-  expect(harnessStyles, 'the real BannerHost.css is bundled').toContain(
-    '.banner-host',
-  );
+  expect(harnessStyles.length, 'real panel styles bundled').toBeGreaterThan(0);
 });
 
 const VIEWPORTS = {
@@ -159,12 +166,9 @@ async function mount(
 <body style="margin:0;background:var(--bg-primary);color:var(--text-primary)"><div id="root"></div></body></html>`,
   );
   await page.addStyleTag({ content: harnessStyles });
-  // A capture taken mid-transition shows the content inset half applied.
-  await page.addStyleTag({
-    content: '*, *::before, *::after { transition: none !important; }',
-  });
+
   await page.evaluate((value) => {
-    (window as unknown as { __scenario: string }).__scenario = value;
+    (window as typeof window & { __scenario: string }).__scenario = value;
     try {
       window.localStorage.clear();
     } catch {}
@@ -186,13 +190,17 @@ const OLDER =
 
 for (const theme of ['light', 'dark'] as const) {
   for (const viewport of ['desktop', 'phone'] as const) {
-    test(`offers a one-click server update (${theme}, ${viewport})`, async ({
+    test(`confirms a server update and follows its progress in Updates (${theme}, ${viewport})`, async ({
       page,
     }, testInfo) => {
       await mount(page, theme, viewport, 'update');
-      await expect(page.getByText(OLDER)).toBeVisible();
+      await page
+        .getByRole('button', { name: 'Review updates', exact: true })
+        .click();
+      const panel = page.getByRole('dialog', { name: 'Updates', exact: true });
+      await expect(panel.getByText(OLDER)).toBeVisible();
       const update = page.getByRole('button', {
-        name: 'Update server to Nightly Oct 1',
+        name: 'Update server to 0.1.11-nightly.246500',
       });
       await expect(update).toBeVisible();
       await expectNoHorizontalScroll(page);
@@ -201,6 +209,13 @@ for (const theme of ['light', 'dark'] as const) {
       });
 
       await update.click();
+      const confirmation = page.getByRole('alertdialog', {
+        name: 'Update and restart the server?',
+      });
+      await expect(confirmation).toBeVisible();
+      await confirmation
+        .getByRole('button', { name: 'Update and restart', exact: true })
+        .click();
       await expect(
         page.getByText(
           'Trying Station 0.1.11-nightly.246500 (attempt 1). The server restarts during the trial.',
@@ -217,16 +232,20 @@ for (const theme of ['light', 'dark'] as const) {
   }
 
   for (const viewport of ['desktop', 'phone'] as const) {
-    test(`explains how to update a server that cannot do it from here (${theme}, ${viewport})`, async ({
+    test(`explains the host-managed server update in Updates (${theme}, ${viewport})`, async ({
       page,
     }, testInfo) => {
       await mount(page, theme, viewport, 'manual');
-      await expect(page.getByText(OLDER)).toBeVisible();
+      await page
+        .getByRole('button', { name: 'Review updates', exact: true })
+        .click();
+      const panel = page.getByRole('dialog', { name: 'Updates', exact: true });
+      await expect(panel.getByText(OLDER)).toBeVisible();
       await expect(
         page.getByRole('button', { name: /Update server/ }),
       ).toHaveCount(0);
       await expect(
-        page.getByRole('link', { name: 'Server update details' }),
+        panel.getByText(/Run "station upgrade" on its host to update it\./),
       ).toBeVisible();
       await expectNoHorizontalScroll(page);
       await page.screenshot({

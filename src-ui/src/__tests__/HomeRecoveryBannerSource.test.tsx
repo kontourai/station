@@ -6,10 +6,14 @@ import {
   fireEvent,
   render,
   screen,
+  within,
 } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
-import { BannerHost } from '../components/notifications/BannerHost';
 import { HomeRecoveryBannerSource } from '../components/notifications/HomeRecoveryBannerSource';
+import {
+  StationDetailsHost,
+  WorkspaceStationState,
+} from '../components/notifications/StationConditions';
 import { bannerStore } from '../contexts/banner-store';
 
 const state = vi.hoisted(() => ({
@@ -21,66 +25,92 @@ vi.mock('@kontourai/station-connect', () => ({
   useConnections: () => ({ apiBase: state.apiBase }),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
-  useSystemStatusForApiBaseQuery: (apiBase: string) => {
-    expect(apiBase).toBe(state.apiBase);
-    return {
-      isFetchedAfterMount: state.fetched,
-      isError: false,
-      data: { homeRecovery: state.recovery },
-    };
-  },
+  useSystemStatusForApiBaseQuery: () => ({
+    isFetchedAfterMount: state.fetched,
+    isError: false,
+    data: { homeRecovery: state.recovery },
+  }),
 }));
 afterEach(() => {
   cleanup();
   act(() => bannerStore.reset());
+  state.apiBase = 'https://source.example.test';
   state.fetched = true;
   state.recovery = undefined;
 });
 const view = () => (
   <>
     <HomeRecoveryBannerSource />
-    <BannerHost />
+    <WorkspaceStationState />
+    <StationDetailsHost />
   </>
 );
+const recovered: HomeRecoveryDisclosure = {
+  kind: 'recovered-from-copy',
+  recoveryId: 'copy-1',
+  snapshotCreatedAt: '2026-09-05T00:00:00.000Z',
+  authorityTransferred: false,
+};
 
-test('shows recovered-copy disclosure with snapshot time and no dismiss-as-normal action', () => {
-  state.recovery = {
-    kind: 'recovered-from-copy',
-    recoveryId: 'copy-1',
-    snapshotCreatedAt: '2026-09-05T00:00:00.000Z',
-    authorityTransferred: false,
-  };
+test('shows the recovered snapshot in the workspace and retains authority disclosure in Station details', () => {
+  state.recovery = recovered;
   render(view());
-  expect(screen.getByText(/Recovered from a copy saved/)).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Details' }));
+  const workspace = screen.getByRole('status');
+  expect(workspace.textContent).toContain(
+    new Date('2026-09-05T00:00:00.000Z').toLocaleString(),
+  );
+  expect(screen.queryByRole('dialog')).toBeNull();
+  fireEvent.click(
+    within(workspace).getByRole('button', { name: 'Review Station' }),
+  );
+  const details = screen.getByRole('dialog', { name: 'Station details' });
   expect(
-    screen.getByText(/Work after that snapshot may be missing/),
+    within(details).getByText(/Work after that snapshot may be missing/)
+      .textContent,
+  ).toContain('Restoring this copy did not transfer execution authority.');
+  expect(
+    within(details).queryByRole('button', { name: /dismiss/i }),
+  ).toBeNull();
+  fireEvent.click(
+    within(details).getByRole('button', { name: 'Close Station details' }),
+  );
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(workspace.textContent).toContain('Recovered from a copy saved');
+  fireEvent.click(
+    within(workspace).getByRole('button', { name: 'Review Station' }),
+  );
+  expect(
+    within(screen.getByRole('dialog')).getByText(
+      /did not transfer execution authority/,
+    ),
   ).toBeTruthy();
-  expect(screen.queryByRole('button', { name: /dismiss/i })).toBeNull();
 });
 
-test('removes prior-host recovery on connection change and names unavailable evidence', () => {
-  state.recovery = {
-    kind: 'recovered-from-copy',
-    recoveryId: 'copy-1',
-    snapshotCreatedAt: '2026-09-05T00:00:00.000Z',
-    authorityTransferred: false,
-  };
+test('withdraws prior-host recovery on selection change and explains unavailable evidence without claiming ownership', () => {
+  state.recovery = recovered;
   const mounted = render(view());
-  expect(screen.getByText(/Recovered from a copy saved/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Review Station' }));
   state.apiBase = 'https://other.example.test';
   state.fetched = false;
   mounted.rerender(view());
+  expect(screen.queryByRole('dialog')).toBeNull();
   expect(screen.queryByText(/Recovered from a copy saved/)).toBeNull();
   state.fetched = true;
   state.recovery = { kind: 'unavailable' };
   mounted.rerender(view());
+  expect(screen.getByRole('status').textContent).toMatch(
+    /recovery record could not be verified/,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Review Station' }));
   expect(
-    screen.getByText(/recovery record could not be verified/),
+    within(screen.getByRole('dialog')).getByText(
+      /does not establish execution ownership/,
+    ),
   ).toBeTruthy();
   state.recovery = { kind: 'not-restored' };
   mounted.rerender(view());
   expect(
     screen.queryByText(/recovery record could not be verified/),
   ).toBeNull();
+  expect(screen.queryByRole('status')).toBeNull();
 });

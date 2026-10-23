@@ -7,6 +7,7 @@ import {
 } from './ResponsiveDialogSurface';
 
 interface DialogProps {
+  open?: boolean;
   /** Small uppercase line above the title (New Project's `PROJECT SETUP`). */
   eyebrow?: ReactNode;
   title: ReactNode;
@@ -85,6 +86,7 @@ interface DialogProps {
  * index.css.
  */
 export function Dialog({
+  open,
   eyebrow,
   title,
   subtitle,
@@ -107,6 +109,7 @@ export function Dialog({
 
   return (
     <ResponsiveDialogSurface
+      open={open}
       layer="dialog"
       role={role}
       onClose={onClose}

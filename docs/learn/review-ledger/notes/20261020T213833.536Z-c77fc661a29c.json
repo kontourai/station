@@ -1,0 +1,7 @@
+{
+  "revision": "40f1b4f972e90262c73cfcb26d48f23ebc4695e1",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Rewrote the held-messages paragraph: one pending list marked Held by Station, pending count semantics, unavailable Retry instead of a Refresh button, Remove semantics. ChatDockBody now mounts one wrapper; other concept claims unaffected.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDockBody.tsx","src-ui/src/components/chat/ConversationInboxMessages.tsx","src-ui/src/hooks/useConversationInbox.ts"]}
+  ]
+}

@@ -99,7 +99,7 @@ describe('ChatDockProjectContext', () => {
   test('the badge is a real button with dialog popup semantics', () => {
     renderRow({});
 
-    const badge = screen.getByRole('button', { name: 'Alpha' });
+    const badge = screen.getByRole('button', { name: 'New chats: Alpha' });
     expect(badge.getAttribute('type')).toBe('button');
     expect(badge.getAttribute('aria-haspopup')).toBe('dialog');
     expect(badge.getAttribute('aria-expanded')).toBe('false');
@@ -108,11 +108,11 @@ describe('ChatDockProjectContext', () => {
   test('a mouse click on the badge opens the switcher without toggling the dock', async () => {
     const { onHeaderToggle } = renderRow({});
 
-    fireEvent.click(screen.getByRole('button', { name: 'Alpha' }));
+    fireEvent.click(screen.getByRole('button', { name: 'New chats: Alpha' }));
 
     expect(
       screen
-        .getByRole('button', { name: 'Alpha' })
+        .getByRole('button', { name: 'New chats: Alpha' })
         .getAttribute('aria-expanded'),
     ).toBe('true');
     await screen.findByRole('dialog', { name: 'Projects' });
@@ -123,7 +123,7 @@ describe('ChatDockProjectContext', () => {
   test('opening the switcher and choosing "Open project" delegates to onSelectProject', async () => {
     const { onSelectProject } = renderRow({});
 
-    fireEvent.click(screen.getByRole('button', { name: 'Alpha' }));
+    fireEvent.click(screen.getByRole('button', { name: 'New chats: Alpha' }));
     await screen.findByRole('dialog', { name: 'Projects' });
 
     fireEvent.click(screen.getByRole('button', { name: 'Open Alpha' }));
@@ -133,7 +133,7 @@ describe('ChatDockProjectContext', () => {
   test('choosing "Switch to <project>" delegates to onSwitchProject (station#4524)', async () => {
     const { onSwitchProject } = renderRow({});
 
-    fireEvent.click(screen.getByRole('button', { name: 'Alpha' }));
+    fireEvent.click(screen.getByRole('button', { name: 'New chats: Alpha' }));
     await screen.findByRole('dialog', { name: 'Projects' });
 
     fireEvent.click(screen.getByRole('button', { name: 'Switch to Beta' }));
@@ -150,12 +150,14 @@ describe('ChatDockProjectContext', () => {
   test('names the project and keeps the full path as the badge tooltip, not as a visible segment', () => {
     renderRow({});
 
-    const badge = screen.getByRole('button', { name: 'Alpha' });
+    const badge = screen.getByRole('button', { name: 'New chats: Alpha' });
     expect(badge.getAttribute('title')).toBe('Alpha — /repos/alpha');
     const row = document.querySelector(
       '.chat-dock__project-context',
     ) as HTMLElement;
-    expect(row.textContent).toBe('New chatsAlpha');
+    // The New split button's destination: the name alone. "New chats" is the
+    // accessible name; beside New, printing it would say the same thing twice.
+    expect(row.textContent).toBe('Alpha');
   });
 
   /**
@@ -179,7 +181,7 @@ describe('ChatDockProjectContext', () => {
     );
 
     const title = screen
-      .getByRole('button', { name: 'Alpha' })
+      .getByRole('button', { name: 'New chats: Alpha' })
       .getAttribute('title');
     expect(title).toBe('Alpha');
     expect(title).not.toContain('no project folder set');
@@ -303,54 +305,29 @@ describe('ChatDockProjectContext — clearable badge (chat-dock-maximize-readine
   });
 });
 
-// archive#4525 (owner design ruling): the badge always names
-// the BOUND project (unchanged) — this is the muted lead-in the facts row
-// shows when the active session's own project diverges from it, so the
-// header never implies the visible transcript belongs to the badge's
-// project. own ruling (session facts never gate on the badge) is
-// pinned by the `workingDirectory`/`gitStatus` props always being present here
-// regardless of `sessionProjectMismatchLabel`.
-describe('ChatDockProjectContext — session/badge mismatch label (station#4525 review MED-1)', () => {
-  test('renders the muted lead-in before the directory when a mismatch label is provided', () => {
+// archive#4525 MED-1 asked that the header never imply the transcript belongs
+// to the badge's project, which is why a "This chat: <project>" lead-in stood
+// beside the standalone badge. The badge is now the destination half of the
+// New split button, which says whose project it is, and the chat's own
+// project is the session context card's Workspace row.
+describe('ChatDockProjectContext — a destination, not a fact about the chat on screen', () => {
+  test('prints only the destination, with no lead-in and no branch badge', () => {
     render(
       <ChatDockProjectContext
         projectSlug="alpha"
         projectName="Alpha"
         workingDirectory="/repos/beta-checkout"
-        sessionProjectMismatchLabel="Beta"
         projects={PROJECTS}
         onSelectProject={vi.fn()}
         onSwitchProject={vi.fn()}
       />,
     );
 
-    // The badge still names the BOUND project ("Alpha"), not the session's.
-    expect(screen.getByRole('button', { name: 'Alpha' })).toBeTruthy();
-    const label = screen.getByText('This chat: Beta');
-    expect(label.className).toContain('chat-dock__project-session-name');
-    // the session's own facts still reach the row — the directory is the
-    // badge's tooltip since #1536 F, and it is the SESSION's, not the badge
-    // project's.
-    expect(
-      screen.getByRole('button', { name: 'Alpha' }).getAttribute('title'),
-    ).toContain('/repos/beta-checkout');
-  });
-
-  test('renders nothing extra when there is no mismatch (sessionProjectMismatchLabel absent or null)', () => {
-    render(
-      <ChatDockProjectContext
-        projectSlug="alpha"
-        projectName="Alpha"
-        workingDirectory="/repos/alpha"
-        sessionProjectMismatchLabel={null}
-        projects={PROJECTS}
-        onSelectProject={vi.fn()}
-        onSwitchProject={vi.fn()}
-      />,
-    );
-
-    expect(
-      document.querySelector('.chat-dock__project-session-name'),
-    ).toBeNull();
+    const row = document.querySelector(
+      '.chat-dock__project-context',
+    ) as HTMLElement;
+    expect(row.textContent).toBe('Alpha');
+    expect(row.querySelector('.chat-dock__project-session-name')).toBeNull();
+    expect(row.querySelector('.git-badge')).toBeNull();
   });
 });

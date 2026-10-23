@@ -805,11 +805,6 @@ test.describe('Connections CRUD', () => {
       const appMain = document.querySelector('.app__main');
       const routeTransition = document.querySelector('.route-transition');
       const pageFrame = document.querySelector('.page-frame');
-      const reservingBanners = [
-        ...document.querySelectorAll(
-          '[data-banner-id]:not([data-overlay]), .banner-host__cap',
-        ),
-      ];
       const box = (element: Element | null | undefined) => {
         const rect = element?.getBoundingClientRect();
         return rect
@@ -860,33 +855,7 @@ test.describe('Connections CRUD', () => {
           scrollOwner && !routeTransition?.contains(scrollOwner),
         ),
         pageFrameInert: pageFrame?.hasAttribute('inert') ?? false,
-        appMain: appMain
-          ? {
-              ...box(appMain),
-              // The shell's CSS consumers use `var(--banner-stack-height,
-              // 0px)`, while an empty stack need not publish the custom
-              // property itself. Measure that identical zero fallback rather
-              // than letting an empty string turn this geometry assertion into
-              // `NaN`.
-              bannerStackHeight:
-                parseFloat(
-                  getComputedStyle(appMain).getPropertyValue(
-                    '--banner-stack-height',
-                  ),
-                ) || 0,
-            }
-          : null,
-        banners: reservingBanners.map((banner) => ({
-          ...box(banner),
-          className: banner instanceof HTMLElement ? banner.className : null,
-          id: banner.getAttribute('data-banner-id'),
-        })),
-        reservingBannerBottom: Math.max(
-          -Infinity,
-          ...reservingBanners.map(
-            (banner) => banner.getBoundingClientRect().bottom,
-          ),
-        ),
+        appMain: box(appMain),
         dock: box(dock),
         hit: {
           isTile: hit === tile || tile.contains(hit),
@@ -918,15 +887,10 @@ test.describe('Connections CRUD', () => {
       geometry.scrollOwner?.scrollPaddingTop ?? 0,
       diagnostics,
     ).toBeGreaterThanOrEqual(geometry.back?.height ?? Infinity);
-    const sheetTopBlocker = Math.max(
-      geometry.toolbar?.bottom ?? -Infinity,
-      (geometry.toolbar?.bottom ?? -Infinity) +
-        (geometry.appMain?.bannerStackHeight ?? -Infinity),
-    );
     expect(
       geometry.scrollOwner?.top ?? -Infinity,
       diagnostics,
-    ).toBeGreaterThanOrEqual(sheetTopBlocker - 1);
+    ).toBeGreaterThanOrEqual((geometry.toolbar?.bottom ?? -Infinity) - 1);
     expect(geometry.scrollOwner?.bottom ?? 0, diagnostics).toBeCloseTo(
       geometry.dock?.top ?? 0,
       0,

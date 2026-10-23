@@ -167,6 +167,27 @@ describe('projectEnvelopeForShareViewer', () => {
     expect(projected.turnId).toBe('turn-1');
   });
 
+  it("names the engine's provider to a share viewer but never the operator's connection name", () => {
+    const named = {
+      ...envelope(),
+      engine: {
+        state: 'observed' as const,
+        value: { provider: 'acp' as const, displayName: 'Acme internal agent' },
+        observedFrom: observation,
+      },
+    } as TurnProvenanceEnvelope;
+    const projected = projectEnvelopeForShareViewer(
+      named,
+      ANSWER_SHARE_VIEWER_AUTHORIZATION,
+    );
+    expect(projected.engine).toEqual({
+      state: 'observed',
+      value: { provider: 'acp' },
+      observedFrom: observation,
+    });
+    expect(JSON.stringify(projected)).not.toContain('Acme internal agent');
+  });
+
   it('honours an authorization that DOES permit a dereference (the v2 seam)', () => {
     const projected = projectEnvelopeForShareViewer(envelope(), {
       ...ANSWER_SHARE_VIEWER_AUTHORIZATION,

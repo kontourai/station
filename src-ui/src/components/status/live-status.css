@@ -79,8 +79,6 @@
 :root[data-page-hidden] .live-status-glyph *,
 :root[data-page-hidden] .chat-status-pill,
 :root[data-page-hidden] .chat-status-pill *,
-:root[data-page-hidden] .tool-call__pulse,
-:root[data-page-hidden] .tool-call-batch__pulse,
 :root[data-page-hidden] .workflow-plan-panel__runtime-dot--live,
 :root[data-page-hidden] .workflow-plan-panel__runtime-dot--live::after,
 :root[data-page-hidden] .voice-pill,

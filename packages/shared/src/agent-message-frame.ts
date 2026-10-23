@@ -21,6 +21,7 @@
  * `clientOrigin.sender` says another agent sent it; it never decides who sent
  * a message.
  */
+import { parseWakeUpClientTurnId } from '@kontourai/station-contracts/agent-schedule';
 import {
   type ClientOriginSender,
   clientOriginSender,
@@ -96,13 +97,19 @@ export function unframeAgentMessage(prompt: string): string | undefined {
 export function agentMessageInput(event: {
   prompt?: string;
   threadId?: string;
+  clientTurnId?: string;
   clientOrigin?: { sender?: unknown; actor?: { kind?: string } };
 }): { sender?: ClientOriginSender; prompt: string | undefined } {
   const sender = clientOriginSender(event.clientOrigin);
   if (!sender)
     return {
       prompt: event.prompt,
-      ...(event.clientOrigin?.actor?.kind === 'internal' && event.threadId
+      // An internal turn with no recorded sender reads as unattributed, except
+      // a scheduled check-back: its sender is recorded, as Station itself
+      // (`isStationCheckBackTurn`), and the row says so on its own.
+      ...(event.clientOrigin?.actor?.kind === 'internal' &&
+      event.threadId &&
+      parseWakeUpClientTurnId(event.clientTurnId) === undefined
         ? {
             sender: {
               kind: 'unattributed' as const,

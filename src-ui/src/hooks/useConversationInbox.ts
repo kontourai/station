@@ -7,6 +7,7 @@ import {
 } from '@kontourai/station-sdk/client';
 import {
   type QueryClient,
+  skipToken,
   useMutation,
   useQuery,
   useQueryClient,
@@ -22,16 +23,65 @@ interface Cancellation {
   key: string;
 }
 
-export function useConversationInbox(conversationId: string) {
-  const scope = useHostRequestAuthorityScope();
-  const client = useQueryClient();
-  const enabled = Boolean(conversationId && scope?.isCurrent());
-  const queryKey = [
+/** Entries a reader still needs to see: not sent, not withdrawn. */
+export function visibleInboxEntries(
+  entries: readonly ConversationInboxEntry[] | undefined,
+): ConversationInboxEntry[] {
+  return (entries ?? []).filter(
+    (entry) => entry.state !== 'sent' && entry.state !== 'cancelled',
+  );
+}
+
+/**
+ * How often to read the inbox. Station holds a follow-up only behind a
+ * running turn, so while this client sees the conversation working, or the
+ * last read showed held messages, it reads every 2s; otherwise a slower read
+ * still finds a message another client queued behind a turn this client has
+ * not seen start. Turn facts on the event stream and focus/reconnect read
+ * again in between.
+ */
+export const INBOX_ACTIVE_POLL_MS = 2_000;
+export const INBOX_IDLE_POLL_MS = 15_000;
+
+function inboxQueryKey(
+  scope: ReturnType<typeof useHostRequestAuthorityScope>,
+  conversationId: string,
+) {
+  return [
     'conversation-inbox',
     scope?.apiBase,
     scope?.authorityKey,
     conversationId,
   ];
+}
+
+/**
+ * The entries the pending list shows now, read from the same query without
+ * reading the inbox again: for a second view of that list (the chat's
+ * context card). Empty while the list's own read has no current answer.
+ */
+export function useConversationInboxSnapshot(
+  conversationId: string,
+): ConversationInboxEntry[] {
+  const scope = useHostRequestAuthorityScope();
+  const query = useQuery<ConversationInboxEntry[]>({
+    queryKey: inboxQueryKey(scope, conversationId),
+    queryFn: skipToken,
+    gcTime: 0,
+  });
+  return query.status === 'success' && query.fetchStatus !== 'paused'
+    ? visibleInboxEntries(query.data)
+    : [];
+}
+
+export function useConversationInbox(
+  conversationId: string,
+  { active = false }: { active?: boolean } = {},
+) {
+  const scope = useHostRequestAuthorityScope();
+  const client = useQueryClient();
+  const enabled = Boolean(conversationId && scope?.isCurrent());
+  const queryKey = inboxQueryKey(scope, conversationId);
   const query = useQuery<ConversationInboxEntry[]>({
     queryKey,
     enabled,
@@ -45,7 +95,9 @@ export function useConversationInbox(conversationId: string) {
       current.state.error instanceof StationHttpError &&
       [401, 403, 404].includes(current.state.error.status)
         ? false
-        : 2_000,
+        : active || visibleInboxEntries(current.state.data).length > 0
+          ? INBOX_ACTIVE_POLL_MS
+          : INBOX_IDLE_POLL_MS,
     refetchIntervalInBackground: false,
     queryFn: async ({ signal }): Promise<ConversationInboxEntry[]> => {
       if (!scope?.isCurrent())
@@ -72,6 +124,11 @@ export function useConversationInbox(conversationId: string) {
         ? 'available'
         : 'loading';
   const entries = availability === 'available' ? query.data : undefined;
+  // A failed read keeps TanStack's last successful data; it is not shown (it
+  // may be stale), but it says whether there was anything to lose sight of.
+  const lostSightOfEntries =
+    availability === 'unavailable' &&
+    visibleInboxEntries(query.data).length > 0;
   const cancellation = useMutation({
     mutationKey: [...queryKey, 'cancel'],
     retry: false,
@@ -121,10 +178,7 @@ export function useConversationInbox(conversationId: string) {
   return {
     availability,
     entries,
-    pendingCount: entries?.filter(
-      (entry) => entry.state === 'queued' || entry.state === 'sending',
-    ).length,
-    refreshing: query.isFetching,
+    lostSightOfEntries,
     refresh: () => {
       if (enabled && scope?.isCurrent())
         void query.refetch({ cancelRefetch: false });

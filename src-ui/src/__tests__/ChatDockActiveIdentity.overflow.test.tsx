@@ -2,7 +2,9 @@
  * @vitest-environment jsdom
  *
  * Browser geometry for the real title/assistant markup and application CSS.
- * Protects the two-line hierarchy and legible title at the smallest side dock.
+ * Protects the one-line identity (title, then agent and engine) and a legible
+ * title at the smallest side dock: the agent and engine step off the line
+ * before the title is cut.
  */
 
 import { dirname, resolve } from 'node:path';
@@ -24,7 +26,6 @@ import {
   resolveCssImports,
 } from '../../../tests/helpers/css-cascade-fixture';
 import { ChatDockActiveIdentity } from '../components/chat-dock/ChatDockActiveIdentity';
-import { ChatDockProjectContext } from '../components/chat-dock/ChatDockProjectContext';
 import type { AgentData } from '../contexts/AgentsContext';
 import type { ChatSession } from '../types';
 
@@ -55,8 +56,10 @@ function dockFixtureHtml(headerMarkup: string, width: number): string {
 }
 
 /**
- * The whole title cluster as `ChatDockHeader` composes it: the identity block,
- * the project context, and the remaining spacer.
+ * The whole title cluster as `ChatDockHeader` composes it: the identity block
+ * and the spacer. (The project is New's destination now, in the actions
+ * cluster; `ChatDockHeader.identityGeometry.test.tsx` measures the two side by
+ * side.)
  */
 function titleClusterMarkup(title = 'New chat'): string {
   const { container, unmount } = render(
@@ -81,19 +84,6 @@ function titleClusterMarkup(title = 'New chat'): string {
           }
           modelLabel="Opus 5"
           onClose={() => {}}
-        />
-      </div>
-      <div className="chat-dock__header-context">
-        {/* A real project name and path, not "No project": the badge is the
-            identity cluster's competitor for the row, and an empty one would
-            make every narrow measurement below optimistic. */}
-        <ChatDockProjectContext
-          projectSlug="kontourai-station"
-          projectName="kontourai-station"
-          workingDirectory="/Users/someone/dev/kontourai-station"
-          projects={[]}
-          onSelectProject={() => {}}
-          onSwitchProject={() => {}}
         />
       </div>
       <span className="chat-dock__title-spacer" />
@@ -144,36 +134,46 @@ describe.skipIf(!chromiumAvailable)(
             };
             return {
               title: box('.chat-dock__active-identity-title'),
+              titleCut: (() => {
+                const t = document.querySelector<HTMLElement>(
+                  '.chat-dock__active-identity-title',
+                )!;
+                return t.scrollWidth > t.clientWidth + 1;
+              })(),
+              row: box('.chat-dock__active-identity-text'),
               agent: box('.chat-dock__active-identity-agent'),
-              engine: box('.chat-dock__active-identity-engine'),
               close: box('.chat-dock__active-identity-close'),
-              project: box('.chat-dock__project-badge'),
               header: box('.chat-dock__header'),
             };
           });
           expect(geometry.title.width).toBeGreaterThanOrEqual(
             width >= 420 ? 110 : 48,
           );
-          expect(geometry.agent.width).toBeGreaterThan(24);
-          expect(geometry.engine.width).toBeGreaterThan(24);
-          expect(geometry.title.bottom).toBeLessThanOrEqual(
-            geometry.agent.top + 1,
-          );
-          expect(geometry.agent.right).toBeLessThanOrEqual(
-            geometry.engine.left + 1,
-          );
-          expect(geometry.close.right).toBeLessThanOrEqual(
-            geometry.project.left + 1,
-          );
-          expect(geometry.project.right).toBeLessThanOrEqual(
-            geometry.header.right + 1,
-          );
-          for (const item of [
-            geometry.title,
-            geometry.agent,
-            geometry.engine,
-            geometry.close,
-          ]) {
+          // One line. The agent follows the title on it, or, once they do
+          // not both fit, steps off it (below the clipped row) before the
+          // title is cut: never squeezed beside a cut title.
+          const agentOnLine =
+            Math.abs(geometry.agent.top - geometry.title.top) < 6;
+          if (agentOnLine) {
+            expect(geometry.titleCut).toBe(false);
+            expect(geometry.title.right).toBeLessThanOrEqual(
+              geometry.agent.left + 1,
+            );
+            expect(geometry.agent.right).toBeLessThanOrEqual(
+              geometry.close.left + 1,
+            );
+          } else {
+            expect(geometry.agent.top).toBeGreaterThanOrEqual(
+              geometry.row.bottom - 1,
+            );
+          }
+          // Not vacuous: at the smallest docks this long title is cut, so
+          // its agent is off the line there.
+          if (width <= 320) {
+            expect(geometry.titleCut).toBe(true);
+            expect(agentOnLine).toBe(false);
+          }
+          for (const item of [geometry.title, geometry.close]) {
             expect(item.left).toBeGreaterThanOrEqual(geometry.header.left);
             expect(item.right).toBeLessThanOrEqual(geometry.header.right + 1);
             expect(item.bottom).toBeLessThanOrEqual(geometry.header.bottom + 1);

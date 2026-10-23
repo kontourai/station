@@ -211,8 +211,8 @@
 
 .toast-card__dismiss {
   display: grid;
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   flex: 0 0 auto;
   place-items: center;
   padding: 0;
@@ -237,7 +237,7 @@
 }
 
 .toast-card__action {
-  min-height: 40px;
+  min-height: 44px;
   padding: 8px 14px;
   border: 1px solid transparent;
   border-radius: 7px;
@@ -283,106 +283,68 @@
   pointer-events: auto;
 }
 
-/* ── Toast stack (archive#1960) ── */
-
 .toast-stack {
-  position: relative;
   display: flex;
   width: 100%;
+  min-height: 0;
   flex-direction: column;
-  gap: 0;
-  pointer-events: none;
+  gap: var(--k-space-2);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  pointer-events: auto;
 }
 
 .toast-stack__item {
-  position: relative;
   width: 100%;
-  z-index: var(--toast-stack-z, 1);
+  flex: 0 0 auto;
+}
+
+.notification-container__overflow {
   pointer-events: auto;
-  transform-origin: top center;
+  min-height: 44px;
+  padding: var(--k-space-2) var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  color: var(--k-text);
+  cursor: pointer;
+  font-size: var(--k-text-sm);
+}
+
+.notification-container__overflow:focus-visible,
+.toast-card--clickable:focus-visible {
+  outline: 2px solid var(--k-focus-ring);
+  outline-offset: 2px;
 }
 
 .toast-card--clickable {
   cursor: pointer;
 }
 
-.toast-card--clickable:focus-visible {
-  outline: 2px solid var(--accent-primary);
-  outline-offset: 2px;
+.toast-card__repeat {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
 }
 
-/*
- * Collapsed: front card full; behind peeks with scale. Expanded on hover,
- * keyboard focus-within, or the coarse-pointer tap state (`data-expanded`,
- * set by NotificationContainer) so the whole stack is actionable on devices
- * that cannot hover.
- */
-.toast-stack:not(:hover):not(:focus-within):not([data-expanded="true"])
-.toast-stack__item:not([data-front="true"]) {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  transform: translateY(var(--toast-stack-offset-y, 0))
-    scale(var(--toast-stack-scale, 1));
-  pointer-events: none;
+.toast-card__action-error {
+  margin-top: var(--k-space-2);
+  color: var(--k-negative);
+  font-size: var(--k-text-sm);
 }
 
-.toast-stack:not(:hover):not(:focus-within):not([data-expanded="true"])
-  .toast-stack__item:not([data-front="true"])
-  .toast-card--collapsed-hidden
-  .toast-card__content,
-.toast-stack:not(:hover):not(:focus-within):not([data-expanded="true"])
-  .toast-stack__item:not([data-front="true"])
-  .toast-card--collapsed-hidden
-  .toast-card__actions {
-  opacity: 0;
+.toast-card__action:disabled {
+  cursor: wait;
+  opacity: 0.7;
 }
 
-.toast-stack:is(:hover, :focus-within, [data-expanded="true"]) {
-  gap: 8px;
+.toast-card--success {
+  border-inline-start: var(--k-space-1) solid var(--k-positive);
 }
-
-.toast-stack:is(:hover, :focus-within, [data-expanded="true"])
-  .toast-stack__item {
-  position: relative;
-  top: auto;
-  transform: none;
-  pointer-events: auto;
+.toast-card--warning {
+  border-inline-start: var(--k-space-1) solid var(--k-caution);
 }
-
-.toast-stack:is(:hover, :focus-within, [data-expanded="true"])
-  .toast-card--collapsed-hidden
-  .toast-card__content,
-.toast-stack:is(:hover, :focus-within, [data-expanded="true"])
-  .toast-card--collapsed-hidden
-  .toast-card__actions {
-  opacity: 1;
-}
-
-/* Declared unconditionally: the reduced-motion decision is made ONCE, in the
-   motion primitive (`tokens.css`), whose global reset forces every duration to
-   0.01ms with `!important`. A `prefers-reduced-motion: no-preference` wrapper
-   around a transition only restates that preference in a second place. */
-.toast-stack__item {
-  transition:
-    transform var(--motion-base) var(--ease-emphasized),
-    opacity var(--motion-fast) var(--ease-standard);
-}
-
-.toast-card {
-  animation: toast-stack-enter var(--motion-base) var(--ease-emphasized);
-}
-
-@keyframes toast-stack-enter {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
+.toast-card--error {
+  border-inline-start: var(--k-space-1) solid var(--k-negative);
 }
 
 @media (max-width: 640px) {

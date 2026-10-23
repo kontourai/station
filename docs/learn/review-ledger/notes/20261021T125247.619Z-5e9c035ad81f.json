@@ -1,0 +1,7 @@
+{
+  "revision": "502741166e778342f5b60b885d68aa1b01bda4ef",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Added: no session.state-changed reopens a closed or dead session; only session.started does. Checked against orchestration-session-state.ts (state-changed guard, session.started sets connecting unconditionally, session.configured keeps its own guard).","inputs":["docs/reference/session-api.md"]}
+  ]
+}

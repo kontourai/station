@@ -93,7 +93,7 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
 }));
 
 import { authenticatedFetch } from '@kontourai/station-sdk';
-import { BannerHost } from '../../components/notifications/BannerHost';
+import { WorkspaceStationState } from '../../components/notifications/StationConditions';
 import { OnboardingGate } from '../../components/OnboardingGate';
 import { ApiBaseProvider } from '../ApiBaseContext';
 
@@ -172,7 +172,7 @@ describe('with Web Locks installed, the banner follows the awaited response', ()
         <ConnectionsProbe />
         <OnboardingGate>
           <div>App</div>
-          <BannerHost />
+          <WorkspaceStationState />
         </OnboardingGate>
       </ApiBaseProvider>,
     );
@@ -191,15 +191,15 @@ describe('with Web Locks installed, the banner follows the awaited response', ()
       await authenticatedFetch(`${origin}/api/boot`);
     });
     // No `waitFor`: the 401 does not resolve before the rejection it reports.
-    expect(screen.queryByRole('alert')?.textContent ?? 'NO BANNER').toMatch(
-      BANNER,
-    );
+    expect(
+      screen.queryByRole('status')?.textContent ?? 'NO RESTRICTION',
+    ).toMatch(BANNER);
 
     fetchByPath({ '/api/': async () => new Response('{"success":true}') });
     await act(async () => {
       await authenticatedFetch(`${origin}/api/settings`);
     });
-    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
     expect(screen.queryByText(BANNER)).toBeNull();
   });
 });

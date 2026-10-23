@@ -44,7 +44,7 @@ function renderRow(
     // #1552 D3: with no project bound the chip carries no visible label, so its
     // accessible name is what pressing it does.
     badge: screen.getByRole('button', {
-      name: project.name ?? 'Choose a project',
+      name: project.name ? `New chats: ${project.name}` : 'Choose a project',
     }),
   };
 }

@@ -23,7 +23,11 @@ final class StationRuntimeSmokeTests: XCTestCase {
             app.activate()
         }
 
-        let connect = app.buttons["Connect to a Station"]
+        // WKWebView exposes the toolbar's menu trigger as Other in XCTest.
+        // Its status suffix can change while the first connection probe settles.
+        let connect = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Manage Stations —")
+        ).firstMatch
         XCTAssertTrue(
             waitForElement(connect, budget: 90),
             "Station never left its startup surface for an actionable no-connection shell. Accessibility hierarchy:\n\(app.debugDescription)"
@@ -39,7 +43,7 @@ final class StationRuntimeSmokeTests: XCTestCase {
         }
         XCTAssertTrue(
             connect.waitForExistence(timeout: 5),
-            "Connect to a Station disappeared after dismissing the notification sheet. Accessibility hierarchy:\n\(app.debugDescription)"
+            "Manage Stations disappeared after dismissing the notification sheet. Accessibility hierarchy:\n\(app.debugDescription)"
         )
         XCTAssertTrue(connect.isHittable)
         // Settings lives in the sidebar drawer's footer, not the header: open

@@ -24,6 +24,14 @@ import type { ChatMessage } from '../types';
 
 const { mobile } = vi.hoisted(() => ({ mobile: { current: true } }));
 
+// The file chip reads attachment bytes through the host; this suite asks
+// only which actions a row offers.
+vi.mock('../components/chat/FilePartPreview', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  FilePartPreview: ({ part }: { part: { name?: string } }) => (
+    <span>{part.name}</span>
+  ),
+}));
 vi.mock('../hooks/useIsMobile', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../hooks/useIsMobile')>()),
   useIsMobile: () => mobile.current,
@@ -562,7 +570,7 @@ describe('MessageBubble phone copy and details actions', () => {
     });
   });
 
-  it('keeps the Task pin on a desktop user message', () => {
+  it("lists a desktop user message's Task pin in its ⋯ menu, not as a standing button", async () => {
     mobile.current = false;
     try {
       renderRow({
@@ -572,9 +580,57 @@ describe('MessageBubble phone copy and details actions', () => {
         sessionId: 'thread-1',
         turnId: 'turn-1',
       });
-      const pin = document.querySelector('.message__task-input-action');
-      expect(pin).not.toBeNull();
-      expect(pin!.closest('.message.user')).not.toBeNull();
+      expect(document.querySelector('.message__task-input-action')).toBeNull();
+      expect(screen.queryByRole('button', { name: /^Add to Task/ })).toBeNull();
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'More message actions' }),
+      );
+      const menu = await screen.findByRole('menu', { name: 'Message actions' });
+      fireEvent.click(
+        await within(menu).findByRole('menuitem', {
+          name: 'Add to Task: message',
+        }),
+      );
+      // The picker opens from the menu and stays open after the menu hides.
+      expect(
+        await screen.findByRole('dialog', { name: 'Add to Task' }),
+      ).toBeTruthy();
+      expect(menu.hidden).toBe(true);
+    } finally {
+      mobile.current = true;
+    }
+  });
+
+  it('an image-only message keeps its desktop ⋯ with Add to Task', async () => {
+    mobile.current = false;
+    try {
+      renderRow({
+        role: 'user',
+        content: '',
+        contentParts: [
+          {
+            type: 'file',
+            mediaType: 'image/png',
+            name: 'shot.png',
+          },
+        ],
+        sourceEventId: 'event-2',
+        sessionId: 'thread-1',
+        turnId: 'turn-2',
+      } as never);
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'More message actions' }),
+      );
+      const menu = await screen.findByRole('menu', { name: 'Message actions' });
+      expect(
+        await within(menu).findByRole('menuitem', {
+          name: 'Add to Task: message',
+        }),
+      ).toBeTruthy();
+      // The text actions need text: none is offered for an image.
+      expect(
+        within(menu).queryByRole('menuitem', { name: /new chat/i }),
+      ).toBeNull();
     } finally {
       mobile.current = true;
     }

@@ -73,7 +73,7 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 
 import { PAGE_HEADER_CLASS, PageFrame } from '../../components/page-frame';
-import { bannerStore } from '../../contexts/banner-store';
+import { toastStore } from '../../contexts/ToastContext';
 import {
   BOARD_UNAVAILABLE_BANNER_ID,
   BOARD_UNAVAILABLE_NOTICE,
@@ -104,7 +104,7 @@ describe('ConsoleBoardView', () => {
     queryResult = { data: undefined, isLoading: true, error: null };
     hasBuilderRun = true;
     coarsePointer = false;
-    bannerStore.dismiss(BOARD_UNAVAILABLE_BANNER_ID);
+    toastStore.clear();
     projectsQueryResult = {
       data: [{ id: 'demo-id', slug: 'demo', name: 'Demo project' }],
       isLoading: false,
@@ -118,7 +118,7 @@ describe('ConsoleBoardView', () => {
    * route guard. The notice is the load-bearing half: it used to be
    * handed to `navigate` as a second argument, which is the destination's
    * QUERY STRING — no surface reads a `notice` key, so a reader was moved
-   * off the route they asked for without a word. Asserting the banner is
+   * off the route they asked for without a word. Asserting the toast is
    * what makes that regression visible again.
    */
   test('a project with no Builder run is redirected, and the notice travels with it', () => {
@@ -130,10 +130,10 @@ describe('ConsoleBoardView', () => {
     // mapping, which always passes an explicit params object; `{}` writes no
     // query fields, exactly as omitting the argument did.
     expect(hoisted.navigate).toHaveBeenCalledWith('/projects/demo', {});
-    const banner = bannerStore
+    const toast = toastStore
       .getSnapshot()
-      .find((item) => item.id === BOARD_UNAVAILABLE_BANNER_ID);
-    expect(banner?.message).toBe(BOARD_UNAVAILABLE_NOTICE);
+      .find((item) => item.dedupeKey === `${BOARD_UNAVAILABLE_BANNER_ID}:demo`);
+    expect(toast?.message).toBe(BOARD_UNAVAILABLE_NOTICE);
   });
 
   test('a project with a Builder run is not redirected', () => {
@@ -142,9 +142,11 @@ describe('ConsoleBoardView', () => {
 
     expect(hoisted.navigate).not.toHaveBeenCalled();
     expect(
-      bannerStore
+      toastStore
         .getSnapshot()
-        .some((item) => item.id === BOARD_UNAVAILABLE_BANNER_ID),
+        .some(
+          (item) => item.dedupeKey === `${BOARD_UNAVAILABLE_BANNER_ID}:demo`,
+        ),
     ).toBe(false);
   });
 
@@ -308,7 +310,7 @@ describe('ConsoleBoardView — the receipt is stated once (station#3776)', () =>
   beforeEach(() => {
     hasBuilderRun = true;
     coarsePointer = false;
-    bannerStore.dismiss(BOARD_UNAVAILABLE_BANNER_ID);
+    toastStore.clear();
   });
 
   test("the frame no longer prints a second copy of the Kit's number", () => {
@@ -345,7 +347,7 @@ describe('ConsoleBoardView — the Board names its columns on a phone (station#3
 
   beforeEach(() => {
     hasBuilderRun = true;
-    bannerStore.dismiss(BOARD_UNAVAILABLE_BANNER_ID);
+    toastStore.clear();
   });
 
   test('a coarse pointer gets a tab strip naming every stage and its count', () => {
@@ -397,7 +399,7 @@ describe('ConsoleBoardView — the pane path (epic station#4142 M4a)', () => {
     hasBuilderRun = true;
     coarsePointer = false;
     queryResult = { data: { processes: [] }, isLoading: false, error: null };
-    bannerStore.dismiss(BOARD_UNAVAILABLE_BANNER_ID);
+    toastStore.clear();
     projectsQueryResult = {
       data: [{ id: 'demo-id', slug: 'demo', name: 'Demo project' }],
       isLoading: false,

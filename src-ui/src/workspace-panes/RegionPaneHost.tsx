@@ -40,8 +40,11 @@ import {
 } from '../regions/region-surface-panes';
 import type { DockMode } from '../types';
 import { LayoutPaneTitles } from './LayoutPaneTitles';
-import { RegionChromeBar, type RegionChromeTab } from './RegionChromeBar';
-import { RegionChromeSlotsContext } from './RegionChromeSlots';
+import {
+  RegionChromeBar,
+  RegionChromeSlotsProvider,
+  type RegionChromeTab,
+} from './RegionChromeBar';
 import { RegionEmptyChooser } from './RegionEmptyChooser';
 import { useDockProject } from './useDockProject';
 import type { WorkspacePaneFailureContext } from './WorkspacePaneFailure';
@@ -777,6 +780,13 @@ export function RegionPaneHost({
     setChooserAnchor({ right: box.right, top: box.top, bottom: box.bottom });
   }, []);
   const closeChooser = useCallback(() => setChooserAnchor(null), []);
+  // How many mounted panes fold the region's commands into their own menu
+  // (`RegionMenu`); while any does, the bar drops its buttons for them.
+  const [regionActionsAbsorbed, setRegionActionsAbsorbed] = useState(0);
+  const absorbRegionActions = useCallback(() => {
+    setRegionActionsAbsorbed((count) => count + 1);
+    return () => setRegionActionsAbsorbed((count) => count - 1);
+  }, []);
   // A visible region with no panes (#2153): the bar over the chooser. Only
   // under a model — the model-less mount's `panes` is Chat's, never empty.
   const emptyRegion =
@@ -796,7 +806,15 @@ export function RegionPaneHost({
       onRenderedRegionGeometryChange={reportRegionClearance}
     >
       {(shellChrome) => (
-        <RegionChromeSlotsContext.Provider value={slots}>
+        <RegionChromeSlotsProvider
+          slots={slots}
+          chrome={shellChrome}
+          tabs={tabs}
+          selectedSurfaceId={selected}
+          onMoveTab={regionId && model ? moveTab : undefined}
+          onAddPane={chooserRegion ? openChooser : undefined}
+          absorb={absorbRegionActions}
+        >
           {layoutPaneIds.length > 0 ? (
             <LayoutPaneTitles
               surfaceIds={layoutPaneIds}
@@ -818,6 +836,7 @@ export function RegionPaneHost({
             addPaneOpen={chooserAnchor !== null}
             leadingSlotRef={setLeadingSlot}
             trailingSlotRef={setTrailingSlot}
+            regionActionsAbsorbed={regionActionsAbsorbed > 0}
             onBackToChat={
               model?.phoneLayer && model.phoneLayer.region === regionId
                 ? // Called, not passed: the click event must not become
@@ -945,7 +964,7 @@ export function RegionPaneHost({
               />
             )
           ) : null}
-        </RegionChromeSlotsContext.Provider>
+        </RegionChromeSlotsProvider>
       )}
     </DockShell>
   );

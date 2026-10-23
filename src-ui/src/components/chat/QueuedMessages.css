@@ -113,12 +113,18 @@
 ):not(:where([data-composer-priority] *)) {
   max-height: none;
 }
-/* The outbox list's own summary reads as a sentence, not a caption, and so
-   do another window's send under way and an accepted message (neutral, not
-   a caution). */
-.queued-messages__label.queued-messages__label--summary,
+/* The outbox's rows sit at the top of the pending list, spaced like its
+   other rows. */
+.queued-messages__outbox {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+/* Another window's send under way, an accepted message and a copy held from
+   another window read as sentences, not captions (neutral, not a caution). */
 .queued-messages__label.queued-messages__label--sending,
-.queued-messages__label.queued-messages__label--accepted {
+.queued-messages__label.queued-messages__label--accepted,
+.queued-messages__label.queued-messages__label--held {
   font-weight: 500;
   letter-spacing: normal;
   text-transform: none;
@@ -370,4 +376,66 @@
   .queued-messages--pending .queued-messages__toggle {
     min-height: 44px;
   }
+}
+
+/* #3868 follow-up: the pending list, and each row in it, grows in and
+   collapses out (grid row 0fr <-> 1fr with opacity) instead of popping, so
+   the transcript and composer around it move smoothly rather than jump. Only
+   a surface or row that arrives after the list first rendered animates in. */
+.queued-messages-presence,
+.queued-message-presence {
+  display: grid;
+  grid-template-rows: 1fr;
+  min-width: 0;
+}
+.queued-messages-presence > *,
+.queued-message-presence > * {
+  min-height: 0;
+}
+/* The clip box carries no padding or margin of its own, so it can collapse
+   to nothing, and while it animates it contains the row's padding and the
+   surface's gap to the composer, which collapse with it. */
+.queued-messages-presence:is([data-phase="entering"], [data-phase="exiting"])
+> *,
+.queued-message-presence:is([data-phase="entering"], [data-phase="exiting"])
+  > * {
+  overflow: hidden;
+}
+.queued-messages-presence[data-phase="entering"],
+.queued-message-presence[data-phase="entering"] {
+  animation: queued-presence-enter var(--motion-base) var(--ease-out) both;
+}
+.queued-messages-presence[data-phase="exiting"],
+.queued-message-presence[data-phase="exiting"] {
+  animation: queued-presence-exit var(--motion-base) var(--ease-in) both;
+  pointer-events: none;
+}
+:root[data-page-hidden] .queued-messages-presence,
+:root[data-page-hidden] .queued-message-presence {
+  animation-play-state: paused;
+}
+@keyframes queued-presence-enter {
+  from {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+  to {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+}
+@keyframes queued-presence-exit {
+  from {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+  to {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+}
+
+/* A message Station holds reads like a queued one but has only Remove. */
+.queued-message--held .queued-message__status + .queued-message__status {
+  margin-top: 0;
 }

@@ -1,0 +1,7 @@
+{
+  "revision": "788e3b6b45e9e724dc29ec2f59c5e06b47f4f50d",
+
+  "notes": [
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Merge of #3991: monument commands.ts adds optional retainBoundaryIdPrefixes on observeTerminal; no agent-runtime claim depends on it. Source review only.","inputs":["packages/agent-runtime/CONTEXT.md","packages/monument/src/commands.ts"]}
+  ]
+}
