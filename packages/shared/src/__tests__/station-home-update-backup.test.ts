@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   existsSync,
   lstatSync,
@@ -14,6 +14,8 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
+import { FileStorageAdapter } from '../../../../src-server/domain/file-storage-adapter.js';
+import { ProjectCreationService } from '../../../../src-server/services/projects/project-creation-service.js';
 import {
   createStationHomeBackup,
   createStationHomeUpdateBackup,
@@ -67,6 +69,45 @@ function writeSchemaVersion(home: string, version: number): void {
 }
 
 describe('update backup and in-place restore (#2675 D)', () => {
+  it('restores an uncertain creation intent without admitting another publication', async () => {
+    const fixture = serviceHome();
+    const service = new ProjectCreationService(
+      fixture.home,
+      new FileStorageAdapter(fixture.home),
+    );
+    const id = randomUUID();
+    const request = { slug: 'research', name: 'Research' };
+    let publications = 0;
+    const publish = async (): Promise<never> => {
+      publications += 1;
+      throw new Error('publication interrupted');
+    };
+    await expect(service.create(id, request, publish)).rejects.toThrow(
+      'publication interrupted',
+    );
+    const before = service.get(id);
+    expect(before?.phase).toBe('uncertain');
+    mkdirSync(join(fixture.root, 'update-backups'));
+    createStationHomeUpdateBackup({
+      homeDir: fixture.home,
+      backupDir: fixture.backupDir,
+    });
+    rmSync(join(fixture.home, 'project-creation-requests'), {
+      recursive: true,
+    });
+    restoreStationHomeUpdateBackup({
+      homeDir: fixture.home,
+      backupDir: fixture.backupDir,
+    });
+    const restarted = new ProjectCreationService(
+      fixture.home,
+      new FileStorageAdapter(fixture.home),
+    );
+    expect(restarted.get(id)).toEqual(before);
+    expect(await restarted.create(id, request, publish)).toEqual(before);
+    expect(publications).toBe(1);
+  });
+
   it('backs up state including the schema marker and leaves live roots out', () => {
     const fixture = serviceHome();
     mkdirSync(join(fixture.root, 'update-backups'));

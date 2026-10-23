@@ -82,20 +82,30 @@ export const STATION_HOME_ROOTS: Readonly<
   integrations: 'state',
   kits: 'state',
   knowledge: 'state',
+  // Import originals and per-document uncertain outcomes, not a derived index.
+  'knowledge-document-imports': 'state',
   'knowledge-index': 'state',
   'knowledge-stores': 'state',
   layouts: 'state',
   'mcp-ui-render-grants.json': 'state',
   'notifications.json': 'state',
+  // Reviewed commands and started-effect receipts must survive maintenance.
+  'operator-setup': 'state',
   'plugin-grants.json': 'state',
   'plugin-install-publication.mutation': 'state',
   plugins: 'state',
   pricing: 'state',
+  'project-creation-requests': 'state',
   'project-resource-shadow.json': 'state',
+  // Private source selections and AWS profile names; credentials stay with AWS.
+  'project-s3-sources.json': 'state',
   projects: 'state',
   prompts: 'state',
   'proposed-changes.json': 'state',
   'pull-request-guides': 'state',
+  // Acquisition receipts and retained checkouts used by Projects live together.
+  // These private repository bytes are not a disposable download cache.
+  'repository-acquisitions': 'state',
   runtime: 'state',
   'runtime-auth-health.json': 'state',
   scheduler: 'state',
@@ -227,6 +237,8 @@ export const STATION_HOME_SQLITE_STORES: readonly (readonly string[])[] =
     // #3257: operator passkey public keys. Created at the first enrollment.
     ['authentication', 'operator-passkeys.sqlite'],
     ['security', 'project-membership.sqlite'],
+    ['security', 'project-room-agent.sqlite'],
+    ['security', 'project-rooms.sqlite'],
     ['security', 'native-surfaces.sqlite'],
     ['security', 'native-device-proof-replay.sqlite'],
     // sqlite-vec knowledge index; a `.db`, not a `.sqlite`.
