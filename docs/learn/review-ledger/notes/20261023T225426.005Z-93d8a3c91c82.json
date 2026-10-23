@@ -1,0 +1,7 @@
+{
+  "revision": "ee4e558dd0e2cf2fa783559bcc44d470c2211dea",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Bounded source and local runtime review: network source79e packaged into exact image and isolated full profile. Positive private Grafana API auth accepted; authenticated OTLP DELTA2+3 queried as cumulative5 from private Prometheus; same allowed-operation trace queried from Tempo with injected private resource/scope/span/status/name/event/link/valid-trace-state data projected away. A separate same-volume restart with no resends retained historical Prometheus2/5 and the identical projected trace. Private receipts are in the owned profile project q1229-79e77a-f3cbbf8b19; all services stopped and stores/private credentials retained. Updated formerly blanket-pending trace statement to exact revision-bound synthetic proof and explicit limits. No real Station export, personal source authority, full privacy/cardinality matrix, fresh restore, version rollback, native, publisher authentication or release installation is established. Front-end network egress disclosure remains explicit; backend networks remain private and separate.","inputs":["deployment/telemetry/README.md"]}
+  ]
+}
