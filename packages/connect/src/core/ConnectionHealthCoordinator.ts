@@ -145,7 +145,10 @@ export class ConnectionHealthCoordinator {
     ) {
       this.inFlight = false;
       if (this.abortController === controller) this.abortController = null;
-      if (controller.signal.aborted || this.listeners.size === 0) return;
+      if (controller.signal.aborted || this.listeners.size === 0) {
+        this.runQueuedProbe();
+        return;
+      }
       this.failureCount = 0;
       this.publish({
         status: 'connected',
@@ -156,10 +159,7 @@ export class ConnectionHealthCoordinator {
         failureWindows: this.snapshot.failureWindows,
       });
       this.schedule(this.options.pollIntervalMs ?? 10_000);
-      if (this.rerunRequested) {
-        this.rerunRequested = false;
-        this.trigger();
-      }
+      this.runQueuedProbe();
       return;
     }
     let connected: AccessEndpoint | null = null;
@@ -191,6 +191,8 @@ export class ConnectionHealthCoordinator {
       } catch (error) {
         if (controller.signal.aborted) {
           this.inFlight = false;
+          if (this.abortController === controller) this.abortController = null;
+          this.runQueuedProbe();
           return;
         }
         // Both probes catch their own transport failures and return a reason,
@@ -205,7 +207,10 @@ export class ConnectionHealthCoordinator {
     }
     this.inFlight = false;
     if (this.abortController === controller) this.abortController = null;
-    if (controller.signal.aborted || this.listeners.size === 0) return;
+    if (controller.signal.aborted || this.listeners.size === 0) {
+      this.runQueuedProbe();
+      return;
+    }
     if (connected) {
       this.failureCount = 0;
       this.options.onSuccess?.(connected, success);
@@ -276,10 +281,13 @@ export class ConnectionHealthCoordinator {
       });
       if (!blocked) this.schedule(this.retryDelay());
     }
-    if (this.rerunRequested) {
-      this.rerunRequested = false;
-      this.trigger();
-    }
+    this.runQueuedProbe();
+  }
+
+  private runQueuedProbe(): void {
+    if (!this.rerunRequested) return;
+    this.rerunRequested = false;
+    this.trigger();
   }
 
   private retryDelay(): number {

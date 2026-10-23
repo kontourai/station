@@ -46,6 +46,38 @@ function wrapper(store: ConnectionStore) {
 const POLL = 80;
 
 describe('useConnectionStatus', () => {
+  it.each(['connected', 'error'] as const)(
+    'publishes a prompt %s health result after Strict Mode resubscribes',
+    async (expectedStatus) => {
+      const store = storeWithUrl(`http://strict-${expectedStatus}.test:3141`);
+      const probeEndpoint = vi.fn(async () =>
+        expectedStatus === 'connected'
+          ? { ok: true as const, bootId: 'current-boot' }
+          : { ok: false as const, reason: 'authentication-failed' as const },
+      );
+      const { result } = renderHook(
+        () =>
+          useConnectionStatus({
+            checkHealth: async () => false,
+            probeEndpoint,
+            pollInterval: 60_000,
+          }),
+        { wrapper: wrapper(store), reactStrictMode: true },
+      );
+      await waitFor(() => expect(result.current.status).toBe(expectedStatus), {
+        timeout: 10_000,
+      });
+      expect(probeEndpoint).toHaveBeenCalled();
+      if (expectedStatus === 'connected') {
+        expect(result.current.reason).toBeNull();
+        expect(store.getActive()?.lastBootId).toBe('current-boot');
+      } else {
+        expect(result.current.reason).toBe('authentication-failed');
+        expect(result.current.blocked).toBe(true);
+      }
+    },
+  );
+
   it('uses one broker-route probe target and never records it as a direct endpoint', async () => {
     const store = new ConnectionStore({ storage: memoryAdapter() });
     const route = store.addBrokerRoute({
