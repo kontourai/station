@@ -13,12 +13,6 @@
 // Veritas guidance. It runs no evidence checks and exits 2 when the edit scope
 // or required governance context cannot be read.
 import { execFileSync } from 'node:child_process';
-import { resolve } from 'node:path';
-import {
-  buildExplainGuidance,
-  loadRepoMap,
-  loadRepoStandards,
-} from '@kontourai/veritas';
 import { decideOrchestrationTransferScope } from './check-prepush-orchestration-transfer.mjs';
 import { decideSdkBarrelScope } from './check-prepush-sdk-barrel.mjs';
 import { decideStaticGateScope } from './check-prepush-static-gates.mjs';
@@ -27,7 +21,9 @@ import {
   formatDocumentationImpact,
   readDocumentationImpact,
 } from './documentation-impact.mjs';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
+import { npmInvocation } from './lib/npm-cli.mjs';
 import { fixturePolicyCommands } from './test-fixture-policy.mjs';
 
 function resolveBaseSha(base) {
@@ -172,12 +168,6 @@ export function gateReport({ changedPaths, baseSha }) {
   return lines.join('\n');
 }
 
-function addGuidanceRule(selected, rule, filePath) {
-  const existing = selected.get(rule.id);
-  if (existing) existing.paths.add(filePath);
-  else selected.set(rule.id, { rule, paths: new Set([filePath]) });
-}
-
 function guidanceLinesForRule(rule) {
   const { paths } = rule;
   const lines = [
@@ -194,32 +184,40 @@ function guidanceLinesForRule(rule) {
 /**
  * The Veritas rules that govern `changedPaths`, as data: each rule once,
  * with the paths it matched.
+ * @returns {(ReturnType<typeof import('@kontourai/veritas').buildExplainGuidance>['rules'][number] & { paths: string[] })[]}
  */
 export function veritasGuidanceRules(changedPaths, rootDir = process.cwd()) {
   if (changedPaths.length === 0) return [];
-  const repoMap = loadRepoMap(resolve(rootDir, '.veritas/repo-map.json'));
-  const repoStandards = loadRepoStandards(
-    resolve(rootDir, '.veritas/repo-standards/default.repo-standards.json'),
+  const invocation = npmInvocation([
+    'exec',
+    '--no',
+    '--',
+    'veritas',
+    'plan',
+    '--root',
+    rootDir,
+    '--json',
+    ...changedPaths,
+  ]);
+  const resource = JSON.parse(
+    execFileSyncBounded(invocation.command, invocation.args, {
+      cwd: rootDir,
+      encoding: 'utf8',
+      windowsHide: true,
+    }),
   );
-  const selected = new Map();
-  for (const filePath of changedPaths) {
-    const guidance = buildExplainGuidance({
-      rootDir,
-      repoMap,
-      repoStandards,
-      filePath,
-    });
-    for (const rule of guidance.rules)
-      addGuidanceRule(selected, rule, filePath);
+  if (
+    resource.apiVersion !== 'veritas.kontour.ai/v1alpha1' ||
+    resource.kind !== 'ChangePlan' ||
+    resource.status.executed !== false
+  ) {
+    throw new Error(
+      'Veritas did not return an unexecuted ChangePlan resource.',
+    );
   }
-  return [...selected.values()].map(({ rule, paths }) => ({
-    id: rule.id,
-    enforcementLevel: rule.enforcementLevel,
-    summary: rule.summary,
-    evidenceCheckIds: [...rule.evidenceCheckIds],
-    mustDo: [...rule.mustDo],
-    mustNotDo: [...rule.mustNotDo],
-    paths: [...paths],
+  return resource.status.guidance.map(({ files, ...rule }) => ({
+    ...rule,
+    paths: files,
   }));
 }
 

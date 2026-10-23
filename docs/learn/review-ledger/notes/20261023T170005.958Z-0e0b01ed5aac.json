@@ -1,0 +1,7 @@
+{
+  "revision": "48c3c3716b69063b1f04a0c898fc8ab189f9aa1b",
+
+  "notes": [
+    {"path":".veritas/init-plans/documentation-maintenance.md","note":"Reviewed the new hygiene-policy attestation HEAD against the historical documentation activation record. Documentation-truth remains default and required; its 2026-09-27 approval and revision-bound receipts remain historical. The new owner-authorized additive hygiene attestation preserves existing authority and documentation checks; no historical prose or receipt is relabeled.","inputs":[".veritas/init-plans/documentation-maintenance.md",".veritas/attestations/HEAD"]}
+  ]
+}
