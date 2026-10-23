@@ -206,10 +206,38 @@ export interface ProjectRuntimeEventsOptions {
   markEndedTurns?: boolean;
 }
 
+/** Historical recovery could mistake a retained invocation fence for an open turn.
+ * This changes presentation only; it supplies no invocation-settlement proof.
+ */
+export function withoutCompletedTurnRecovery(
+  events: readonly CanonicalRuntimeEvent[],
+): CanonicalRuntimeEvent[] {
+  const completed = new Set<string>();
+  return events.filter((event) => {
+    const turnId =
+      event.method === 'session.state-changed'
+        ? event.interruptedTurnBoundary?.providerTurnId
+        : event.turnId;
+    if (!turnId) return true;
+    const key = JSON.stringify([event.threadId, turnId]);
+    if (event.method === 'turn.started' && event.inputKind !== 'steer')
+      completed.delete(key);
+    if (event.method === 'turn.completed' && event.finishReason !== 'cancelled')
+      completed.add(key);
+    return !(
+      completed.has(key) &&
+      ((event.method === 'turn.aborted' && event.recoveryTerminal) ||
+        (event.method === 'session.state-changed' &&
+          event.interruptedTurnBoundary))
+    );
+  });
+}
+
 export function projectRuntimeEventsToMessages(
   events: CanonicalRuntimeEvent[],
   options: ProjectRuntimeEventsOptions = {},
 ): ConversationMessage[] {
+  events = withoutCompletedTurnRecovery(events);
   const messages: ConversationMessage[] = [];
   const turnKey = (
     sessionId: string | undefined,
@@ -1280,7 +1308,11 @@ export function projectRuntimeEventsToMessages(
         turnAnswerEligible = false;
         stamp(ev.createdAt);
         flushText();
-        if (ev.reason && !(options.markEndedTurns && parts.length === 0))
+        if (
+          ev.reason &&
+          !ev.recoveryTerminal &&
+          !(options.markEndedTurns && parts.length === 0)
+        )
           parts.push({ type: 'text', text: `_${ev.reason}_` });
         const initiator = stopInitiators.get(
           turnKey(ev.threadId, ev.turnId) ?? '',

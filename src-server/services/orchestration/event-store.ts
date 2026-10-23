@@ -6700,6 +6700,18 @@ export class EventStore {
       positiveStart?.payload.invocationId !== undefined
         ? positiveStart
         : latestObservedStart;
+    const latestCompletion = this.latestEventByMethod(
+      threadId,
+      'turn.completed',
+      bounded,
+    );
+    const currentTurnCompletion =
+      latestTurnStarted &&
+      latestCompletion &&
+      latestCompletion.turnId === latestTurnStarted.turnId &&
+      latestCompletion.sequence > latestTurnStarted.sequence
+        ? latestCompletion
+        : undefined;
     // The verified selected open request supplies pending-review evidence;
     // another request's later resolution must not erase it.
     const unresolvedRequests =
@@ -6751,6 +6763,9 @@ export class EventStore {
       // fold no-op (e.g. `request.resolved`, `session.state-changed` alone) —
       // see the "orphan terminal" test below for one such change, pinned
       // rather than left implicit.
+      // Keep successful completion evidence even if a later recovery abort
+      // incorrectly claimed this turn was interrupted. One indexed fact.
+      currentTurnCompletion,
       latestObservedStart,
       positiveStart,
       latestTurnStarted,
@@ -7403,6 +7418,14 @@ export class EventStore {
         positiveStart?.payload.invocationId !== undefined
           ? positiveStart
           : latestObservedStart;
+      const latestCompletion = methodFacts?.get('turn.completed')?.latest;
+      const currentTurnCompletion =
+        latestTurnStarted &&
+        latestCompletion &&
+        latestCompletion.turnId === latestTurnStarted.turnId &&
+        latestCompletion.sequence > latestTurnStarted.sequence
+          ? latestCompletion
+          : undefined;
       const unscopedRuntimeError = methodFacts?.get('runtime.error')?.latest;
       const latestRuntimeError =
         latestTurnStarted?.payload.invocationId !== undefined
@@ -7469,6 +7492,7 @@ export class EventStore {
         methodFacts?.get('session.configured')?.first,
         methodFacts?.get('session.configured')?.latest,
         firstPromptedTurnByThread.get(threadId),
+        currentTurnCompletion,
         latestObservedStart,
         positiveStart,
         latestTurnStarted,

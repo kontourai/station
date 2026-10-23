@@ -234,7 +234,7 @@ function deriveOwnTurn(
 }
 
 /**
- * #3562: how a derived own turn already ended, read from that turn's own
+ * #3562: how an owned turn already ended, read from that turn's own
  * terminals after its first start (never the thread's latest terminal: a
  * later terminal of a different turn must not hide this one's).
  *
@@ -574,27 +574,45 @@ export class InterruptedTurnRecovery {
           return false;
         };
         if (movedOn()) continue;
-        const ownEnding =
-          derivedOwn === undefined
+        const ownStart =
+          derivedOwn?.start ??
+          (ownTurnId === undefined
             ? undefined
-            : ownTurnEnding(eventStore, record.threadId, derivedOwn);
+            : eventStore
+                .listTurnStartsSince(
+                  record.threadId,
+                  record.createdAt,
+                  OWN_TURN_START_SCAN_LIMIT,
+                )
+                .find(
+                  (event) =>
+                    event.turnId === ownTurnId &&
+                    event.payload.method === 'turn.started' &&
+                    event.payload.inputKind !== 'steer',
+                ));
+        const ownEnding =
+          ownStart === undefined || ownTurnId === undefined
+            ? undefined
+            : ownTurnEnding(eventStore, record.threadId, {
+                turnId: ownTurnId,
+                start: ownStart,
+              });
         if (ownEnding === 'completed') {
-          // #3562: `sendTurn` can find its turn already terminal when the
-          // adapter resolves (`markTurnAccepted` → `terminalObserved`); a
-          // death before that leaves this row `invoking` over a turn that
-          // finished. Boot retires such rows only once `accepted` (it is
-          // never told the turn id otherwise), so check here: nothing was
-          // interrupted, so resolve silently. Only a real completion earns
-          // that; any other ending banners below (see `ownTurnEnding`).
+          // A retained boundary is a possible-effect fence, not proof that
+          // a native turn with a recorded completion was interrupted.
           this.deps.logger.warn(
-            'Interrupted-turn boundary names a turn that already finished — resolving without recovery events',
+            'Interrupted-turn boundary names a turn that already finished — skipping recovery events',
             { threadId: record.threadId, boundaryId: record.boundaryId },
           );
-          eventStore.resolveInterruptedTurnBoundary({
-            boundaryId: record.boundaryId,
-            ownerId: record.ownerId,
-            state: boundaryState,
-          });
+          // Untagged native completion suppresses a false interruption, but
+          // cannot release captured input's invocation-safety fence.
+          if (record.intent === undefined) {
+            eventStore.resolveInterruptedTurnBoundary({
+              boundaryId: record.boundaryId,
+              ownerId: record.ownerId,
+              state: boundaryState,
+            });
+          }
           continue;
         }
         const providerTurn = isProviderTurnBoundary(record);

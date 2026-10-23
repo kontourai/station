@@ -118,6 +118,7 @@ export function createCodexSessionRecord(options: {
     },
     rpcRequestCounter: 0,
     pendingRpcRequests: new Map(),
+    turnInvocationIds: new Map(),
     pendingApprovals: new Map(),
     approvedTools: new Set(),
     lastSessionState: 'idle',
@@ -690,7 +691,7 @@ export class CodexAdapterTransport {
      * teardown's in-flight check can compare against `record.activeTurnId`
      * instead of assuming any pending interrupt belongs to the CURRENT turn.
      */
-    options?: { turnId?: string },
+    options?: { turnId?: string; mapResult?: (result: unknown) => T },
   ): Promise<T> {
     const id = String(++record.rpcRequestCounter);
     const payload =
@@ -699,7 +700,15 @@ export class CodexAdapterTransport {
         : { jsonrpc: '2.0', id, method, params };
     const response = new Promise<T>((resolve, reject) => {
       record.pendingRpcRequests.set(id, {
-        resolve,
+        resolve: (result) => {
+          try {
+            resolve(
+              options?.mapResult ? options.mapResult(result) : (result as T),
+            );
+          } catch (error) {
+            reject(error);
+          }
+        },
         reject,
         method,
         turnId: options?.turnId,
@@ -718,7 +727,16 @@ export class CodexAdapterTransport {
   }
 
   publish(event: CanonicalRuntimeEvent): void {
-    this.events.push(event);
+    const origins = this.sessions.get(event.threadId)?.turnInvocationIds;
+    if (event.turnId && origins && !origins.has(event.turnId)) {
+      origins.set(event.turnId, null);
+    }
+    const invocationId = event.turnId ? origins?.get(event.turnId) : undefined;
+    this.events.push(
+      event.invocationId === undefined && invocationId
+        ? { ...event, invocationId }
+        : event,
+    );
   }
 
   listSessions(): CodexSessionRecord[] {
