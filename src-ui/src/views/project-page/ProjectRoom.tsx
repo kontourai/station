@@ -636,6 +636,7 @@ function ProjectRoomAgentPanel({
   const [stopped, setStopped] = useState(false);
   const mounted = useRef(true);
   const busy = useRef(false);
+  const [settlementVersion, setSettlementVersion] = useState(0);
   const agent = useProjectRoomAgent(requestScope, slug, guard, !stopped);
   useEffect(() => {
     mounted.current = true;
@@ -744,6 +745,7 @@ function ProjectRoomAgentPanel({
         );
     } finally {
       busy.current = false;
+      if (mounted.current) setSettlementVersion((version) => version + 1);
     }
   }
   const terminal =
@@ -754,12 +756,12 @@ function ProjectRoomAgentPanel({
     requestAction.current = act;
   });
   useEffect(() => {
-    if (!retained?.requestId || stopped || terminal) return;
+    if (!retained?.requestId || stopped || terminal || busy.current) return;
     const key = `${retained.requestId}:${checkpointSeq}`;
     if (inspectedCheckpoint.current === key) return;
     inspectedCheckpoint.current = key;
     void requestAction.current('inspect');
-  }, [retained?.requestId, checkpointSeq, stopped, terminal]);
+  }, [retained?.requestId, checkpointSeq, stopped, terminal, settlementVersion]);
 
   return (
     <div className="project-room__agent">

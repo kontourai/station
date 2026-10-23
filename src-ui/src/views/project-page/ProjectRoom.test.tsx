@@ -51,6 +51,8 @@ let agentDenied: boolean;
 let agentHandle: Record<string, unknown> | undefined;
 let execute: boolean;
 let discuss: boolean;
+let heldInspection: Promise<void> | undefined;
+let inspectionStarted: (() => void) | undefined;
 function fixture() {
   vi.stubGlobal(
     'fetch',
@@ -126,7 +128,14 @@ function fixture() {
         }
         if (operation === 'cancel')
           agentHandle = { ...agentHandle, state: 'cancelled' };
-        return ok(agentHandle);
+        const response = ok(agentHandle);
+        const held = heldInspection;
+        heldInspection = undefined;
+        if (held) {
+          inspectionStarted?.();
+          await held;
+        }
+        return response;
       }
       if (url.pathname.endsWith('/init')) {
         initializationBodies.push(body);
@@ -268,6 +277,8 @@ beforeEach(() => {
   agentLostAck = false;
   agentDenied = false;
   agentHandle = undefined;
+  heldInspection = undefined;
+  inspectionStarted = undefined;
   execute = true;
   discuss = true;
   messages = [];
@@ -641,7 +652,11 @@ test('Agent handles retire on authority loss and permission-only readers cannot 
   expect(agentWrites).toHaveLength(1);
 });
 
-test('a pushed completed answer updates the Agent handle without a manual reconciliation request', async () => {
+test('a pushed completion waits for an in-flight inspect and then updates without manual reconciliation', async () => {
+  let release!: () => void;
+  let inspecting = false;
+  heldInspection = new Promise<void>((resolve) => { release = resolve; });
+  inspectionStarted = () => { inspecting = true; };
   mount();
   const composer = await screen.findByRole('textbox', {
     name: 'Message the project',
@@ -653,6 +668,7 @@ test('a pushed completed answer updates the Agent handle without a manual reconc
   });
   fireEvent.click(screen.getByRole('button', { name: 'Ask in room' }));
   await screen.findByText('Agent is working. Its answer will appear in the Room.');
+  await waitFor(() => expect(inspecting).toBe(true));
   await waitFor(() => expect(streams.length).toBeGreaterThan(0));
   const messageId = randomCorrelationId();
   agentHandle = {
@@ -678,6 +694,7 @@ test('a pushed completed answer updates the Agent handle without a manual reconc
       );
   });
   await screen.findByText('Completed shared answer');
+  await act(async () => { release(); });
   await screen.findByText('Agent answer shared in the Room.');
   expect(agentWrites).toHaveLength(1);
   expect(agentOperations).not.toContain('reconcile');
