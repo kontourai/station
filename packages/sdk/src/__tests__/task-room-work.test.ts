@@ -81,23 +81,21 @@ test('attachment acknowledgements accept reordered descriptor keys and reject ch
   await expect(submit()).rejects.toThrow('acknowledgement');
   vi.stubGlobal(
     'fetch',
-    vi
-      .fn<typeof fetch>()
-      .mockImplementation(async (url) =>
-        String(url).endsWith('/agent-requests')
-          ? response({
-              version: TASK_ROOM_WORK_VERSION,
-              kind: 'available',
-              records: [],
-            })
-          : new Response(
-              JSON.stringify({
-                success: false,
-                code: 'task_room_attachments_unavailable',
-              }),
-              { status: 409 },
-            ),
-      ),
+    vi.fn<typeof fetch>().mockImplementation(async (url) =>
+      String(url).endsWith('/agent-requests')
+        ? response({
+            version: TASK_ROOM_WORK_VERSION,
+            kind: 'available',
+            records: [],
+          })
+        : new Response(
+            JSON.stringify({
+              success: false,
+              code: 'task_room_attachments_unavailable',
+            }),
+            { status: 409 },
+          ),
+    ),
   );
   await expect(submit()).rejects.toBeInstanceOf(TaskRoomWorkNotSentError);
 });
