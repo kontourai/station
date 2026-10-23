@@ -1,0 +1,39 @@
+{
+  "engine": "factory-droid",
+  "registry": {
+    "id": "factory-droid",
+    "version": "0.245.1",
+    "distribution": "npx",
+    "package": "droid@0.245.1",
+    "args": ["exec", "--output-format", "acp-daemon"],
+    "env": {
+      "DROID_DISABLE_AUTO_UPDATE": "true",
+      "FACTORY_DROID_AUTO_UPDATE_ENABLED": "false"
+    }
+  },
+  "initialize": {
+    "protocolVersion": 1,
+    "agentInfo": {
+      "name": "droid",
+      "title": "Factory Droid",
+      "version": "0.245.1"
+    },
+    "agentCapabilities": {
+      "loadSession": true,
+      "promptCapabilities": {
+        "image": true
+      }
+    },
+    "authMethods": [
+      {
+        "id": "device-pairing",
+        "name": "Pair this device"
+      },
+      {
+        "id": "factory-api-key",
+        "name": "Factory API key",
+        "description": "Set FACTORY_API_KEY"
+      }
+    ]
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "40f1b4f972e90262c73cfcb26d48f23ebc4695e1",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"ChatDockBody change only merges the pending-message mounts; no settings, defaults or config claims changed.","inputs":["docs/reference/config.md","pnpm-lock.yaml#/packages","src-ui/src/components/chat-dock/ChatDockBody.tsx"]}
+  ]
+}

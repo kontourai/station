@@ -1,0 +1,7 @@
+{
+  "revision": "d18ce77c89b7a8c989ffad5d5f1f32486388a19d",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"index.css change is a comment only: the motion comment no longer lists the context meter among the dock bar's entrances, since the meter moved to the composer. No styling or behaviour changed.","inputs":["docs/guides/responsive-ui.md","src-ui/src/index.css"]}
+  ]
+}

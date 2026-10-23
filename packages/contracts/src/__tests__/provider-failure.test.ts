@@ -70,6 +70,7 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['engine-decision-unacknowledged', 'warning', false],
     ['engine-session-binding-dead', 'session_gone', false],
     ['engine-turn-failed', 'provider_error', false],
+    ['engine-sign-in-required', 'auth', false],
     ['execution_engine_changed', 'conflict', false],
     ['foreground_message_indeterminate', 'indeterminate', false],
     ['model-override-unsupported', 'input_unsupported', false],

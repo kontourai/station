@@ -372,52 +372,6 @@ async function assertNoLoadingSkeleton(page: Page, timeoutMs = 15_000) {
   });
 }
 
-/**
- * `BannerHost.tsx` measures its own rendered stack height and writes it as
- * `--banner-stack-height` on `.app__main`, which `.main-content`'s
- * `padding-top` (a CSS transition, `BannerHost.css`) reads — the mechanism
- * that reserves layout space for the banner instead of overlaying content.
- * None of this suite's other screens ever expand a banner's disclosure
- * (`overlay-connection-banner`'s "Details" toggle is the first), and doing
- * so races that measure-then-transition pipeline: two otherwise-identical
- * captures disagreed by exactly the reserved-space delta below the banner
- * (confirmed live — the banner card itself, and everything inside it,
- * matched byte-for-byte both times; only the page content's top offset
- * moved). `animations: 'disabled'` on the eventual screenshot call
- * fast-forwards an IN-FLIGHT transition to its end value, but it can't fix
- * a `padding-top` that is still transitioning TOWARD a stale measurement
- * taken before the disclosure content settled. Poll the resolved
- * `padding-top` until it reads the same value across several spaced
- * samples, so the shot only ever happens once that pipeline has actually
- * converged, regardless of how many frames it took this run.
- */
-async function waitForStableLayout(
-  page: Page,
-  selector = '.main-content',
-  timeoutMs = 10_000,
-) {
-  const start = Date.now();
-  let last: string | null = null;
-  let stableReads = 0;
-  while (Date.now() - start < timeoutMs) {
-    const current = await page.evaluate((sel) => {
-      const el = document.querySelector(sel);
-      return el ? getComputedStyle(el).paddingTop : null;
-    }, selector);
-    if (current !== null && current === last) {
-      stableReads += 1;
-      if (stableReads >= 3) return;
-    } else {
-      stableReads = 0;
-    }
-    last = current;
-    await page.waitForTimeout(150);
-  }
-  throw new Error(
-    `waitForStableLayout: '${selector}' padding-top never settled within ${timeoutMs}ms (last read: ${last}).`,
-  );
-}
-
 async function assertReducedMotion(
   page: Page,
   selector: string,
@@ -1633,9 +1587,11 @@ function overlayDockProjectMismatchHooks(
       await expect(
         page.locator('.chat-dock__project-badge', { hasText: 'Project A' }),
       ).toBeVisible({ timeout: 10_000 });
+      // The badge is New's destination now; the chat's own project is its
+      // session context card's, so the bar prints no "This chat" lead-in.
       await expect(
         page.locator('.chat-dock__project-session-name'),
-      ).toBeVisible({ timeout: 10_000 });
+      ).toHaveCount(0);
       await expect(
         page.getByRole('button', {
           name: 'Status unavailable — resync this conversation',
@@ -3065,23 +3021,13 @@ const SCREENS: Screen[] = [
     let cleanup: () => Promise<void> = async () => {};
     return {
       name: 'overlay-connection-banner',
-      title: 'Overlay — Connection banner (identity mismatch, expanded)',
-      // Deliberately not '/' or '/agents': home's `StarterInspectionCards` /
-      // `StarterScheduledCheckCard` widgets, and Agents' "Engines on this
-      // machine" list (real host CLI detection — order/count varies between
-      // separate server boots; two consecutive captures can disagree
-      // well below the banner itself, which matches byte-for-byte
-      // both times), are real, live-queried content this screen has no
-      // reason to depend on. The banner itself is chrome-wide (mounted
-      // regardless of route); Settings is config-driven, not
-      // detection-driven, and `?view=overview` + the `.settings__search`
-      // wait below are the same route/ready-selector `mobile-settings-overview`
-      // already proves stable.
+      title: 'Station details — Identity mismatch and recovery actions',
+      // Settings avoids live Agent detection noise beneath the real dialog.
       path: '/settings?view=overview',
       viewport: MOBILE,
       waitFor: '.settings__search',
       beforeGoto: async (page) => {
-        // archive#4470's identity-mismatch banner — reachable purely through
+        // archive#4470's identity-mismatch condition — reachable purely through
         // the public handshake `probeServerConnection` reads
         // (`serverHealth.ts`), with no dependency on any real paired
         // connection: `typeof handshake.environmentId !== 'string'` alone
@@ -3093,7 +3039,7 @@ const SCREENS: Screen[] = [
         //
         // Answered only for the first two calls, then left to hang:
         // `ConnectionBannerSource.tsx`'s `loopbackFromElsewhere` grows a
-        // "Connecting from another device?" sentence into the banner's
+        // "Connecting from another device?" sentence into the condition's
         // `detail` once the coordinator's `failureStreak` crosses 3 — a real
         // retry ladder running on real timers (500ms/1s/2s backoff), racing
         // however long this screen takes to reach its shot. Caught live: two
@@ -3135,17 +3081,21 @@ const SCREENS: Screen[] = [
       },
       afterGoto: async (page) => {
         try {
-          const banner = page.locator('.banner-host__item').first();
-          await expect(banner).toBeVisible({ timeout: 15_000 });
-          // archive#4470's expanded surface: reveal the disclosure detail so the
-          // banner's full content (message, detail, and the "Pair
-          // again"/"Remove" actions) is captured, not just the collapsed
-          // one-line summary.
-          const details = page.getByRole('button', { name: 'Details' });
-          await details.click();
-          await expect(details).toHaveAttribute('aria-expanded', 'true');
-          await expect(page.locator('.banner-host__detail')).toBeVisible();
-          await waitForStableLayout(page);
+          await page.getByTestId('app-toolbar-connection').click();
+          await page
+            .getByRole('menuitem', { name: /^Station details/ })
+            .click();
+          const details = page.getByRole('dialog', {
+            name: 'Station details',
+            exact: true,
+          });
+          await expect(details).toBeVisible({ timeout: 15_000 });
+          await expect(
+            details.getByRole('button', { name: 'Pair again' }),
+          ).toBeVisible();
+          await expect(
+            details.getByRole('button', { name: 'Remove connection' }),
+          ).toBeVisible();
         } finally {
           // `withRoute` removes only this screen's LIFO override. The healthy
           // station#531 handshake registered once in the main test body stays

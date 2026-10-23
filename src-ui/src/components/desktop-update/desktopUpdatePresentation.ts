@@ -2,10 +2,8 @@ import type { DesktopUpdateState } from '@kontourai/station-contracts/desktop-up
 import { formatBytes } from '../../utils/formatBytes';
 
 /**
- * What the always-visible app-chrome update control shows (#3851). Pure, so
- * every state's presentation is decided in one place and tested without a
- * native shell. Check failures are deliberately not chrome: an offline
- * laptop's hourly check must not raise anything. Settings shows them.
+ * The desktop summary on the shared Updates control. Check failures stay
+ * inside the panel: an offline laptop's hourly check must not raise chrome.
  */
 export type DesktopUpdateControlView =
   | { kind: 'hidden' }

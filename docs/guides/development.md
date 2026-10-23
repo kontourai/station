@@ -276,6 +276,23 @@ it owns dependencies that the root install must provide. Root-managed examples
 use the repository's `pnpm-lock.yaml`; do not add a second lock inside the
 example.
 
+### Verified CI package-manager bootstrap
+
+CI, Windows PR verification, iOS verification, and the paired PR/Nightly
+Gallery workflows use the immutable `setup-verified-pnpm` action. It installs
+exactly `pnpm@11.25.0` from the JavaScript package, after checking npm's
+ECDSA registry signature against a reviewed fixed public key and checking the
+archive against a pinned SHA-512 integrity value. Identity, version, origin,
+signature, archive or extraction failures stop setup; there is no mirror or
+unsigned fallback. Trust-root and package-version changes require source review.
+
+The action installs Node through the pinned Node setup action, preserves the
+existing `.cjs` package-manager discovery path on Windows, and runs no dependency
+lifecycle scripts. `npm run dependencies:ci` remains the reviewed install owner.
+The JavaScript artifact avoids the native platform-package metadata endpoints;
+this does not establish the cause or availability of those network paths.
+Release packaging retains its separately owned bootstrap until migrated.
+
 ### Dependency install deadline
 
 The dependency bootstrap gives the inert pnpm install step a finite
@@ -583,8 +600,11 @@ locally merely because `main` moved.
 
 The reusable hosted workflow `.github/workflows/full-regression.yml` qualifies
 one exact source SHA through every canonical phase and the Android viewport suite.
-`Main: Qualification` runs every six hours or manually, then runs all five
-packaging/platform validation families after successful qualification. Optional
+`Main: Qualification` runs after main pushes (one admitted push and one
+replaceable pending push), every six hours or manually. Scheduled/manual
+requests retain distinct admission groups and cannot be displaced by a push. Push runs qualify
+source only; scheduled/manual success then runs all five packaging/platform
+validation families. Replaced pending revisions have no qualification claim. Optional
 PR delivery families run in sequence after core fast checks, selected by a
 trusted base-owned diff planner; required integration contexts stay unchanged.
 Scheduled main qualification and tagged Preview/Stable require full qualification with bounded exact-source reuse.
@@ -622,9 +642,11 @@ npm run test:e2e:product -- --spec=tests/<owned-product-spec>.spec.ts
 
 Every Playwright spec must be assigned to exactly one bucket in `tests/e2e-manifest.mjs`.
 
-Dependency updates must also pass the workspace advisory floor. See
-[Dependency security](dependency-security.md) for the root, SDK, and shared lock
-workflow, production-reachability interpretation, and exception contract.
+Dependency updates retain lock and compatibility checks. Feature PRs, merge
+queues and Nightly builds do not run advisory audits; the central scheduled
+scan tracks disclosures, and Preview/Stable publication enforces a fresh
+exact-source floor. See [Dependency security](dependency-security.md) for graph
+views, accountable ownership, trusted release policy and exception contracts.
 
 Pushes that touch orchestration transfer inputs run the transfer gate from
 `.githooks/pre-push`. It reads its baseline from

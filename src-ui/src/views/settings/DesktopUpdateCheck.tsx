@@ -3,7 +3,7 @@ import {
   type DesktopUpdateDownloadPolicy,
   type DesktopUpdateState,
 } from '@kontourai/station-contracts/desktop-update';
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { DesktopUpdateRestartDialog } from '../../components/desktop-update/DesktopUpdateRestartDialog';
@@ -105,15 +105,24 @@ const ERROR_LEADS = {
 } as const;
 
 /**
- * The Settings card for the desktop app's own updates (#3851): the native
+ * The desktop app's update controls in Settings and Updates (#3851): the native
  * state, its progress, the automatic-download policy and a manual check.
- * Unlike the chrome control, check failures are shown here.
+ * Check failures are shown here rather than on the sidebar trigger.
  */
-export function DesktopUpdateCheck() {
+export function DesktopUpdateCheck({
+  active = true,
+  showPolicy = true,
+}: {
+  active?: boolean;
+  showPolicy?: boolean;
+}) {
   const { target, isDesktop } = usePlatformProfile();
   const { state, error: readError, retry } = useDesktopUpdateState(isDesktop);
   const impact = useDesktopRestartServerImpact();
   const [confirming, setConfirming] = useState(false);
+  useEffect(() => {
+    if (!active) setConfirming(false);
+  }, [active]);
   const [requestError, setRequestError] = useState<{
     lead: string;
     detail: string;
@@ -158,6 +167,9 @@ export function DesktopUpdateCheck() {
 
   return (
     <div className="settings__update-check">
+      <p className="settings__field-hint">
+        Installed app: Station {state.currentVersion}
+      </p>
       <StatusLine state={state} />
       {phase.status === 'available' && phase.notes && (
         <details>
@@ -226,7 +238,7 @@ export function DesktopUpdateCheck() {
           }
         />
       )}
-      {phase.status !== 'disabled' && (
+      {showPolicy && phase.status !== 'disabled' && (
         <div className="settings__field">
           <label className="settings__field-label" htmlFor={policyId}>
             Automatic download
@@ -263,7 +275,7 @@ export function DesktopUpdateCheck() {
           : ''}
         . Station restarts only when you confirm.
       </span>
-      {confirming && (
+      {active && confirming && (
         <DesktopUpdateRestartDialog
           state={state}
           onClose={() => setConfirming(false)}

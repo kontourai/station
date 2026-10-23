@@ -1,0 +1,7 @@
+{
+  "revision": "502741166e778342f5b60b885d68aa1b01bda4ef",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"session-api.md gained one sentence on the closed/dead reopen guard; nothing this ADR states about routing managed chat through orchestration changed.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}

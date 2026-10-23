@@ -528,7 +528,8 @@ it. The strip lives in the region's chrome bar (`RegionChromeBar`, in the
 placement grab, the strip, maximize and visibility, and the click surface
 that collapses the bar — and carries two slots the selected pane's own
 toolbar renders into: `ChatDockHeader` is Chat's toolbar now (identity,
-context meter, project context, chat-list toggle, More menu) and portals into
+chat-list toggle, New with its destination project, More menu — see "What the
+dock header holds" below) and portals into
 the bar, so a dock still has ONE chrome bar (archive#1064, archive#3309); `ActivityDockPane`
 has no bar of its own. The pane host's `dock` presentation mounts the
 selected pane as the strip's `tabpanel` and nothing else — a pane behind a
@@ -1739,14 +1740,18 @@ per conversation.** Below the fold nothing above changes.
   drill-in from below it, a reload on one) opens it below and clears the
   side. It is mounted on first open and hidden (collapsed to no height,
   inert) after, and unmounted below the fold where the pane host owns it.
-- **Per-session memory is one device setting** (`codingPanels`,
+- **Panel memory is a generic device setting** (`layoutPanels`,
   [device-settings.ts](../../packages/contracts/src/device-settings.ts);
-  record logic in [coding-panels-record.ts](../../src-ui/src/lib/coding-panels-record.ts)):
-  `{ version: 1, sessions: { [conversation]: { side, sideWidth, terminalOpen,
-  terminalHeight, at } } }`, keyed by `activeChat` (`~` with none), bounded
-  to 32 sessions by evicting the entry touched longest ago, validated on
-  import by its own parser as `regionArrangement` is, and classified as
-  direct manipulation (not restored by "Restore device defaults"). Arrival
+  record logic in [layout-panels-record.ts](../../src-ui/src/lib/layout-panels-record.ts),
+  consumed through [the shared layout hook](../../src-ui/src/hooks/useLayoutSessionPanels.ts)):
+  `{ version: 1, layouts: { [hostScope]: { sessions: { [conversation]:
+  { side, sideWidth, lowerOpen, lowerHeight, inbox, at } } } } }`.
+  Host scope includes Project and Layout identity; `activeChat` is the session
+  key (`~` with none). Retention is bounded to 32 layouts and 32 sessions per
+  layout, evicting the entries touched longest ago. Import uses the same parser
+  as the reader. It remains direct manipulation (excluded from "Restore device
+  defaults"). The v3 envelope retires old Coding-only visibility/size preferences;
+  those reset to the generic defaults, as the owner chose on 2026-10-21. Arrival
   past the fold takes the URL as the fact when it names a tool and remembers
   it, else restores the session's memory; a change of session (the inbox's
   replace) restores that session's own panels and a session with no entry
@@ -1927,6 +1932,31 @@ inbox fold is judged when a tool opens, is
 resized or restored and when the room rests after a resize, with the inbox's
 measured width at fold time deciding the unfold.
 
+## What the dock header holds (2026-10-20)
+
+**The bar names the chat on screen and carries the dock's primary verbs;
+everything else is one menu away.** The owner's report was that the bar was
+crowded and that nothing said what belonged in it. The rule:
+
+| In the bar | Where it went instead |
+| --- | --- |
+| Identity, one line: title, then agent and engine, muted. When they do not all fit, the engine and then the agent step off the line (they wrap onto a clipped second line) before the title truncates; the title's tooltip names all three, and model and route are the context's tooltip. | Model and route: the composer's model picker names them. |
+| Inbox toggle, with the working chats' count (the inbox's Running rows) as a badge and unread as a dot; both are in its name. While it shows a number, the More trigger shows its background-task count as a dot, not a second number. | "N chats working" dropdown: the working chats are the More menu's first rows (with their ⌘1–9 chords); the unread pill: the toggle. |
+| New, as a split button whose second half is the destination project (`ChatDockProjectContext`); switching rebinds only (#4524). | "New chats / <project>" badge, "This chat: <project>", branch badge: the destination joined New; the chat's own project and branch are the session context card's. |
+| One overflow (⋯). Where the region host offers its commands (`RegionMenu` in `RegionChromeSlots`), Chat folds the region's Move to …, Add pane… and Maximize/Restore size into it as a last group. | Region Move, "+" and maximize buttons: rows of that menu. The bar drops its own buttons only while a pane absorbs the rows; other panes keep them. |
+| The region's ⋮⋮ grab (shown on hover or focus) and the show/hide chevron. | — |
+| The "This chat" chip, only while the card is folded away. | — |
+| — | Context meter: the composer's meta row, beside the model it measures. |
+
+A control earns a place in the bar when it is about the chat on screen or is
+the dock's primary verb, and it is used often enough that a menu would cost
+more than its width. Anything else is a row of the More menu. Chords keep
+working wherever their control lives. The phone's bar is
+`ChatDockMobileHeader` and is unchanged by this (product law
+`station.mobile-context.primary-actions`). A region host decides per pane:
+Chat absorbs the region's rows; Activity and the other panes keep the bar's
+buttons, so their bars are unchanged.
+
 ## The session context card beside Chat (2026-10-19)
 
 **A compact panel at the dock body's right edge that answers "what is the
@@ -1940,7 +1970,8 @@ server read beyond the pull request links Chat details already reads.
   count, ahead/behind; opens the Active work Changed files panel), Activity
   (the inbox row's status-ladder line for this chat from
   `useOptionalObservedWorkStatus`, the Background tasks count and the
-  composer queue's pending count; opens Background tasks through the dock's
+  pending-message list's own count, from the same rule as the list
+  (`pendingMessageCount`); opens Background tasks through the dock's
   own router, so a desktop dock reveals the Agents pane), Pull requests
   (only when links exist or the read failed; opens Chat details). The footer
   presses the dock's one Chat inventory host and appears only once that host
@@ -1976,13 +2007,14 @@ server read beyond the pull request links Chat details already reads.
   body — and both must read one derivation. A phone never shows it inline.
   By the inbox's own width rule a full-width bottom dock keeps it from about
   1211px with the inbox open (920px without); a side dock folds it.
-- **One copy of each fact.** While the card shows, the header's branch badge
-  and the More trigger's running-count badge stand down. "Shows" is the
-  card's own report that it has mounted, not the width answer alone: while
-  its lazy chunk loads, or if it fails to load, the header keeps both. The
-  header's "This chat: <project>" lead-in stays: it is the contrast with the
-  badge's bound project (archive#4525 MED-1), which the card's Workspace row does
-  not state beside the badge. The card's props are memoised on the
+- **One copy of each fact.** The dock header carries no branch badge and no
+  "This chat: <project>" lead-in (2026-10-20): the card, or the chip's
+  popover, is where the chat's project, directory and branch live, and the
+  header's project control is New's destination, which says it is not this
+  chat's. While the card shows, the More trigger's running-count badge
+  stands down. "Shows" is the card's own report that it has mounted, not the
+  width answer alone: while its lazy chunk loads, or if it fails to load, the
+  trigger keeps the count. The card's props are memoised on the
   facts they show, so the dock's resize frames and stream renders do not
   re-render it. While it is folded,
   a chip after the project context names the ladder word and opens the same
@@ -1993,6 +2025,22 @@ server read beyond the pull request links Chat details already reads.
   onto a second line, so the sheet opens from a **This chat** row of the
   Chat actions sheet instead, and closing it returns focus to ⋯. The actions
   sheet's bare branch line went with it: the sheet's Branch row is labelled.
+- **A folder Station made is named, not printed.** A chat whose engine runs in
+  a workspace Station created for it (an ACP engine started without a project
+  or connection directory) reports `cwdManagedWorkspace` on its session
+  summary; the server decides with `isManagedAcpWorkspace`. The Workspace row
+  then reads "Chat workspace", with the hash path as its tooltip. The UI never
+  matches the path itself.
+- **It fades; its column does not animate.** The card and its chip enter and
+  leave with opacity and transform only and stay mounted for one motion beat
+  on the way out (`SESSION_CONTEXT_EXIT_MS`, paired with `--motion-base`).
+  The column itself appears and leaves in one step: the fit above is a
+  measurement, and animating the column would feed it mid-flight. A regrow
+  mounts the card in the same commit that starts the chip's exit (its
+  already-loaded chunk is shared across mounts, so it does not suspend
+  again), so the transcript changes width once and the two crossfade. While
+  it leaves, the composer and the pending list paint over it on the dock's
+  own background: it fades over the transcript's edge only.
 - **One inventory host per dock.** The phone dock now mounts the
   `ChatDockSessionInventoryHost` the desktop header mounts, with the phone
   presentation (`full-fallback`), so Chat inventory is reachable on a phone

@@ -83,7 +83,8 @@ const dismissToast = vi.fn();
 const dismissAllToasts = vi.fn();
 let notifications: Array<Record<string, unknown>> = [];
 
-vi.mock('../../../contexts/ToastContext', () => ({
+vi.mock('../../../contexts/ToastContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../contexts/ToastContext')>()),
   useNotificationHistory: () => notifications,
   useToast: () => ({ dismissToast, dismissAllToasts }),
 }));
@@ -159,26 +160,9 @@ function renderFixtureMarkup(): string {
   return markup;
 }
 
-/**
- * The stack's own peek/scale presentation (`toast-stack-layout.ts`,
- * `NotificationContainer.css`'s `.toast-stack:not(:hover)...` rule) shrinks
- * every card behind the front one AND sets `pointer-events: none` on them —
- * they are not tappable at all in that state. Forcing `data-expanded="true"`
- * (the same attribute a coarse-pointer tap on the collapsed stack sets,
- * `NotificationContainer.tsx`'s `expandStackOnCoarseTap`) matches the state
- * the cards are actually interactive in, so their measured size is the real
- * touch target rather than an artifact of the collapsed peek's `scale`.
- */
-function expandToastStack(markup: string): string {
-  return markup.replace(
-    'data-testid="toast-stack"',
-    'data-testid="toast-stack" data-expanded="true"',
-  );
-}
-
 function buildFixtureHtml(): string {
   const css = buildFixtureCss();
-  const markup = expandToastStack(renderFixtureMarkup());
+  const markup = renderFixtureMarkup();
   return `<!doctype html>
 <html>
   <head>
@@ -259,25 +243,21 @@ describe.skipIf(!chromiumAvailable || wslQuarantinedHost)(
               (await controls.nth(i).getAttribute('class')) ?? '',
             );
           }
-          // Exact, ORDERED membership — see BannerHost.touch-target.test.tsx
-          // for why a bare count cannot substitute for this, and why it
-          // matters even more here. DOM order here is fixed by
-          // NotificationContainer.tsx's render: dismiss-all first, then the
-          // toast stack front-to-back; within one card, the header's dismiss
-          // button comes before its optional action row.
           expect(
-            classNames,
-            `expected exactly these controls under .notification-container, ` +
-              `in DOM order, but found ${JSON.stringify(classNames)} — ` +
-              `NotificationContainer.tsx's render changed. Update this list ` +
-              `and audit whichever control differs.`,
+            await controls.evaluateAll((elements) =>
+              elements.map(
+                (element) =>
+                  element.getAttribute('aria-label') ??
+                  element.textContent?.trim(),
+              ),
+            ),
           ).toEqual([
-            'notification-container__dismiss-all',
-            'toast-card__dismiss',
-            'toast-card__action toast-card__action--secondary',
-            'toast-card__dismiss',
-            'toast-card__action toast-card__action--primary',
-            'toast-card__dismiss',
+            'Dismiss notifications (3)',
+            'Dismiss notification',
+            'Retry',
+            'Dismiss notification',
+            'Open chat',
+            'Dismiss notification',
           ]);
 
           const failures: string[] = [];

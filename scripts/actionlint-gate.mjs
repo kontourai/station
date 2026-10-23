@@ -74,6 +74,7 @@ const WORKFLOW_DIR = join(REPO_ROOT, '.github', 'workflows');
 const GITHUB_HOSTED_RUNNER_IMAGES = new Set([
   'ubuntu-latest',
   'ubuntu-22.04',
+  'ubuntu-24.04',
   // GitHub's partner arm64 hosted image (free for public repositories),
   // used by node-pty-prebuilds.yml to build the linux-arm64 artifact (#1245).
   'ubuntu-22.04-arm',
@@ -400,7 +401,6 @@ const PRIMARY_ROUTER_JOBS = new Set([
   'manual-completion-diagnostics',
   'repo-scans',
   'diff',
-  'merge-integration-full-regression',
   'merge-queue-regression',
 ]);
 const FAST_CHECKOUT_REPOSITORY = `\${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name || github.repository }}`;
@@ -470,6 +470,9 @@ const WINDOWS_PR_EVIDENCE_PATHS =
  */
 export const PNPM_SETUP_ACTION =
   'pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4';
+// Reviewed fixed source: npm signature plus pinned SHA512, no dependency install or cache.
+export const VERIFIED_PNPM_SETUP_ACTION =
+  'kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20';
 /**
  * #2675: pnpm/setup installs only pnpm's native single-executable build, and
  * for pnpm v11 it refuses Intel macOS ("does not provide a working binary for
@@ -732,6 +735,8 @@ const UNTRUSTED_ACTION_CACHE_POLICY = Object.freeze({
       ? []
       : [SETUP_NODE_AUTO_CACHE_MESSAGE]),
   ],
+  'kontourai/station/.github/actions/setup-verified-pnpm': (step) =>
+    isPinnedVerifiedPnpmSetup(step) ? [] : [UNREVIEWED_CACHE_ACTION_MESSAGE],
   'pnpm/setup': (step) =>
     String(step?.uses).toLowerCase() !== PNPM_SETUP_ACTION.toLowerCase()
       ? [UNREVIEWED_CACHE_ACTION_MESSAGE]
@@ -834,36 +839,9 @@ function isExactPortableServerArchiveUpload(file, jobId, step) {
 }
 const MERGE_QUEUE_REGRESSION_AGGREGATE_JOB = 'merge-queue-regression';
 const MERGE_QUEUE_REGRESSION_AGGREGATE_RUN = `echo "$NEEDS" | jq -r 'to_entries[] | "\\(.key): \\(.value.result)"'
-echo "$NEEDS" | jq -r 'if .["fast-checks-plan"].outputs["full-regression"] == "false" then "no deferred lane: fast path" else "full regression: \\(.["merge-integration-full-regression"].result)" end'
-echo "$NEEDS" | jq -e '.["fast-checks"].result == "success" and .diff.result == "success" and (.["merge-integration-full-regression"].result == "success" or (.["fast-checks-plan"].result == "success" and .["fast-checks-plan"].outputs["full-regression"] == "false" and .["merge-integration-full-regression"].result == "skipped"))' > /dev/null
+echo "Bounded integration only; full qualification runs on main and before release"
+echo "$NEEDS" | jq -e '.["fast-checks"].result == "success" and .diff.result == "success" and .["fast-checks-plan"].result == "success" and .["fast-checks-plan"].outputs["integration-ready"] == "true"' > /dev/null
 `;
-const MERGE_QUEUE_FULL_REGRESSION_JOB = 'merge-integration-full-regression';
-const MERGE_QUEUE_FULL_REGRESSION_GUARD = `\${{ always() && !cancelled() && github.event_name == 'merge_group' && (needs.fast-checks-plan.result != 'success' || needs.fast-checks-plan.outputs.full-regression != 'false') }}`;
-
-/**
- * The merge queue's one reusable call: the hosted full regression of this
- * candidate (github.sha), fail-closed on its plan decision. It needs
- * `actions: read` for full-regression.yml's exact-source evidence reuse, the
- * same grant as ci.yml's dispatch call. Any other callee, guard, input,
- * secret or permission loses the exemption.
- */
-function isExactMergeQueueFullRegressionCall(file, jobId, job) {
-  return (
-    file === MERGE_QUEUE_REGRESSION_WORKFLOW &&
-    jobId === MERGE_QUEUE_FULL_REGRESSION_JOB &&
-    hasExactKeys(job, ['needs', 'if', 'permissions', 'uses', 'with']) &&
-    job.needs === 'fast-checks-plan' &&
-    job.if === MERGE_QUEUE_FULL_REGRESSION_GUARD &&
-    job.uses === './.github/workflows/full-regression.yml' &&
-    hasExactKeys(job.permissions, ['contents', 'actions']) &&
-    job.permissions.contents === 'read' &&
-    job.permissions.actions === 'read' &&
-    hasExactKeys(job.with, ['source_sha', 'allow_reuse', 'capacity_class']) &&
-    job.with.source_sha === `\${{ github.sha }}` &&
-    job.with.allow_reuse === true &&
-    job.with.capacity_class === 'integration'
-  );
-}
 
 /**
  * docs-kit.yml's one job: the reviewed org docs gate (see
@@ -1719,11 +1697,11 @@ function forkSmokeIsolationFindings(file, job) {
       message:
         'fork-smoke must use the exact fork-only pull_request_target guard',
     });
-  if (job?.['runs-on'] !== 'ubuntu-22.04')
+  if (job?.['runs-on'] !== 'ubuntu-24.04')
     findings.push({
       file,
       jobId: FORK_SMOKE_JOB.jobId,
-      message: 'fork-smoke must run only on ubuntu-22.04',
+      message: 'fork-smoke must run only on ubuntu-24.04',
     });
   if (!hasOnlyReadContentsPermission(job.permissions))
     findings.push({
@@ -2001,7 +1979,16 @@ function securityAnalysisTopologyFindings(file, jobs) {
 // This bootstrap installs only the package manager pinned by package.json.
 // Keep install explicitly disabled: the action otherwise installs candidate dependencies
 // before the reviewed lifecycle entrypoint gets to apply its policy.
+function isPinnedVerifiedPnpmSetup(step) {
+  return (
+    step?.uses === VERIFIED_PNPM_SETUP_ACTION &&
+    step?.name === 'Setup pinned pnpm' &&
+    Object.keys(step).sort().join(',') === 'name,uses'
+  );
+}
+
 function isPinnedPnpmSetup(step) {
+  if (isPinnedVerifiedPnpmSetup(step)) return true;
   return (
     step?.uses === PNPM_SETUP_ACTION &&
     step?.name === 'Setup pinned pnpm' &&
@@ -2416,8 +2403,10 @@ function fastChecksShardingFindings(file, jobs) {
         jobId,
         `${jobId} must declare only permissions: { contents: read }`,
       );
-    if (job['runs-on'] !== 'ubuntu-22.04')
-      finding(jobId, `${jobId} must run on a hosted ubuntu-22.04 image`);
+    const image =
+      jobId === FAST_CHECKS_AGGREGATE_JOB ? 'ubuntu-22.04' : 'ubuntu-24.04';
+    if (job['runs-on'] !== image)
+      finding(jobId, `${jobId} must run on a hosted ${image} image`);
     if (!hasExplicitCheckout(job, FAST_CHECKOUT_REPOSITORY, FAST_CHECKOUT_REF))
       finding(
         jobId,
@@ -2601,7 +2590,6 @@ function primaryCiRouterFindings(file, document) {
         job.permissions.contents === 'read' &&
         job.permissions['pull-requests'] === 'read'
       ) &&
-      !isExactMergeQueueFullRegressionCall(file, jobId, job) &&
       !(
         jobId === 'pr-title' &&
         JSON.stringify(job.permissions) ===
@@ -2676,21 +2664,6 @@ function primaryCiRouterFindings(file, document) {
       });
   }
 
-  const integration = jobs['merge-integration-full-regression'];
-  if (
-    integration &&
-    !isExactMergeQueueFullRegressionCall(
-      file,
-      'merge-integration-full-regression',
-      integration,
-    )
-  )
-    findings.push({
-      file,
-      jobId: 'merge-integration-full-regression',
-      message:
-        'merge integration must retain the exact fail-closed full-regression call',
-    });
   const aggregate = jobs['merge-queue-regression'];
   if (
     aggregate &&
@@ -2701,18 +2674,13 @@ function primaryCiRouterFindings(file, document) {
     ) ||
       aggregate.if !== "always() && github.event_name == 'merge_group'" ||
       JSON.stringify(aggregate.needs) !==
-        JSON.stringify([
-          'diff',
-          'fast-checks-plan',
-          'merge-integration-full-regression',
-          'fast-checks',
-        ]))
+        JSON.stringify(['diff', 'fast-checks-plan', 'fast-checks']))
   )
     findings.push({
       file,
       jobId: 'merge-queue-regression',
       message:
-        'merge integration must require fast-checks and the planned regression',
+        'merge integration must require fast-checks and the exact valid plan',
     });
   const diff = jobs.diff;
   if (
@@ -2986,7 +2954,7 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
       .update(JSON.stringify(canonicalValue(document)))
       .digest('hex');
     return digest ===
-      '6bcfb0af788025369a0f9d1a90fc61dae2826dd06cb1d56bf2bc933d9bec044b'
+      '7bdd49ac2e268b43fb9f91352e42af18a431b487213987351077b45f44b67c7d'
       ? []
       : [
           {
@@ -3083,15 +3051,9 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
   if (file === SECURITY_ANALYSIS_WORKFLOW)
     findings.push(...securityAnalysisTopologyFindings(file, jobs));
   for (const [jobId, job] of Object.entries(jobs)) {
-    const exactFullRegressionCall = isExactMergeQueueFullRegressionCall(
-      file,
-      jobId,
-      job,
-    );
     if (
       job?.permissions !== undefined &&
-      !hasOnlyReadContentsPermission(job.permissions) &&
-      !exactFullRegressionCall
+      !hasOnlyReadContentsPermission(job.permissions)
     )
       findings.push({
         file,
@@ -3103,14 +3065,8 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
     const exactDeliveryCall = isReviewedDeliveryCall(file, jobId, job);
     const runner = classifyRunner(job);
     // The exact calls have no runner of their own. This rule does not follow
-    // them into full-regression.yml, whose jobs run on ubuntu-22.04 today, or
-    // the reviewed remote docs-gate.yml, which runs on ubuntu-latest.
-    if (
-      !runner.hosted &&
-      !exactFullRegressionCall &&
-      !exactDocsGateCall &&
-      !exactDeliveryCall
-    )
+    // them into the reviewed remote docs-gate.yml, which runs on ubuntu-latest.
+    if (!runner.hosted && !exactDocsGateCall && !exactDeliveryCall)
       findings.push({
         file,
         jobId,
@@ -3126,7 +3082,6 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
           : file === SECURITY_ANALYSIS_WORKFLOW
             ? false
             : isExactMergeQueueRegressionAggregate(file, jobId, job) ||
-              exactFullRegressionCall ||
               exactDocsGateCall ||
               exactDeliveryCall ||
               hasExplicitCheckout(

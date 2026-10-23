@@ -85,7 +85,7 @@ test.describe
       }
     });
 
-    test('creates, restores, and switches durable Task workspaces with honest optional experiences', async ({
+    test('restores and switches API-created durable Task workspaces with honest optional experiences', async ({
       page,
     }, testInfo) => {
       testInfo.setTimeout(180_000);

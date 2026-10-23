@@ -83,8 +83,9 @@ Project Owner can select a smaller list. The operator can withdraw a source from
 Projects using **About this source → Share with Projects**. This setting covers
 all Projects on the Station; turning it off blocks new Project runs using the
 source without uninstalling it. Already-running engines without pre-tool
-interception cannot guarantee immediate withdrawal. Station Control remains
-operator-only. Installed tools,
+interception cannot guarantee immediate withdrawal. Station Control applies
+each tool’s session-owner, Project or operator authority; exposing its catalog
+does not grant operator identity. Installed tools,
 Project permissions and personal account sign-in are separate; installing a
 source does not share someone's OAuth credentials. Personal tool accounts
 require the managed Station engine; external engines cannot deliver that
@@ -314,7 +315,8 @@ Claude Code these always reach a person:
 On ACP engines a plan exit (a `switch_mode` tool call or `ExitPlanMode`)
 always prompts, and answering it "for this session" allows that one exit
 only. An engine's plan review sent as Cursor's `cursor/create_plan` shows the
-whole plan as a form to approve or reject; only an approved plan replaces the
+whole plan as a form, labelled **Plan review** rather than **Question**, to
+approve or reject; only an approved plan replaces the
 Session's plan. Station doesn't resume the engine after approval: send a
 message to continue. A plan too long to show whole lists its todos as a count,
 and only as a last resort is cut with a note saying how much was left out. ACP reports no other escalation signal. Codex and Muse do not

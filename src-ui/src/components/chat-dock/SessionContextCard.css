@@ -17,6 +17,61 @@
   color: var(--text-primary);
 }
 
+/* The card comes and goes with the dock's width (and with Chat inventory,
+   which takes its room). It fades and slides in place; its column never
+   animates. The show/hide decision is a measured fit with anti-oscillation
+   (sessionContextCardModel.ts), and a width animation would feed that
+   ResizeObserver mid-flight. Leaving, it gives its column back at once (a
+   negative margin as wide as the card nets it zero room in the row) and
+   fades over the transcript's edge, so the transcript takes its new width
+   in one step rather than narrowing for the fade and widening after. The
+   fit reads the same answer either way (sessionContextCardFits). The exit
+   class is only ever applied with motion on: under reduced motion
+   `useExitTransition` unmounts at once. */
+.session-context-card:not(.session-context-card--sheet) {
+  animation: session-context-card-enter var(--motion-base) var(--ease-standard);
+}
+
+.session-context-card--exiting:not(.session-context-card--sheet) {
+  margin-inline-start: calc(-1 * var(--session-context-card-width));
+  pointer-events: none;
+  animation: session-context-card-exit var(--motion-base) var(--ease-standard)
+    forwards;
+}
+
+/* Its fade covers only the transcript's edge: while it leaves, the composer
+   and the pending list above it paint over it on the dock's own background,
+   so it never hides Send or the composer's pills. */
+.chat-dock__workspace:has(> .session-context-card--exiting)
+  .chat-dock__body
+  > :is(.chat-input, .queued-messages-presence) {
+  position: relative;
+  z-index: 1;
+  background: var(--bg-secondary);
+}
+
+@keyframes session-context-card-enter {
+  from {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes session-context-card-exit {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(8px);
+  }
+}
+
 .session-context-card--sheet {
   width: auto;
   border-left: 0;

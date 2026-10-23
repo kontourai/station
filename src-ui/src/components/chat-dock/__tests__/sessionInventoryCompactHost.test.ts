@@ -36,6 +36,7 @@ vi.mock('../useSessionInventoryLive', () => ({
   sessionInventoryLiveItems: () => [],
 }));
 
+import { SplitPaneCompanion } from '../../SplitPaneLayout';
 import { SessionInventoryCompact } from '../SessionInventoryCompact';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -64,7 +65,7 @@ const DOCK_VIEWPORT = { width: 720, height: 720 } as const;
 const BLINK_LAYOUT_UNIT_CSS_PX = 1 / 64;
 
 function buildFixtureCss(): string {
-  const css = `${resolveCssImports(INDEX_CSS_PATH)}\n${resolveCssImports(COMPACT_CSS_PATH)}\n${resolveCssImports(BASIS_LAUNCHER_CSS_PATH)}`;
+  const css = `${resolveCssImports(INDEX_CSS_PATH)}\n${resolveCssImports(COMPACT_CSS_PATH)}\n${resolveCssImports(resolve(HERE, '../../SplitPaneLayout.css'))}\n${resolveCssImports(BASIS_LAUNCHER_CSS_PATH)}`;
   assertNoImportsSurvive(css);
   return css;
 }
@@ -126,13 +127,28 @@ function renderCompactMarkup(density: 'aside' | 'card'): string {
     error: null,
   });
   const { container, unmount } = render(
-    createElement(SessionInventoryCompact, {
-      scope: compactScope,
-      density,
-      chatStoreId: 'compact-geometry',
-      onClose: () => {},
-      onOpenFull: () => {},
-    }),
+    createElement(
+      SplitPaneCompanion,
+      {
+        inspection: { containerFit: false },
+        companion: createElement(
+          'div',
+          { id: 'session-inventory-host' },
+          createElement(SessionInventoryCompact, {
+            scope: compactScope,
+            density,
+            chatStoreId: 'compact-geometry',
+            onClose: () => {},
+            onOpenFull: () => {},
+          }),
+        ),
+      },
+      createElement(
+        'section',
+        { id: 'chat-body', style: { flex: 1, minWidth: 0 } },
+        'Conversation',
+      ),
+    ),
   );
   const markup = container.innerHTML;
   unmount();
@@ -146,7 +162,7 @@ function buildFixtureHtml(
   return `<!doctype html>
 <html><head><meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <style>${buildFixtureCss()}</style></head>
-<body style="margin:0"><main class="chat-dock__conversation-surface" style="width:${hostWidth}px;max-width:100%;height:680px"><div id="session-inventory-host">${renderCompactMarkup(density)}</div><section id="chat-body" style="flex:1;min-width:0">Conversation</section></main></body></html>`;
+<body style="margin:0"><main style="display:flex;width:${hostWidth}px;max-width:100%;height:680px">${renderCompactMarkup(density)}</main></body></html>`;
 }
 
 const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
