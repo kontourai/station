@@ -152,18 +152,18 @@ async function qualifyArtifactManifest(manifest, outdir, repoRoot) {
   }
 }
 
-async function assertEntrypointRefusal(execution, label) {
+async function assertEntrypointExit(execution, label, status = 1) {
   let timer;
   try {
     const deadline = new Promise((_, reject) => {
       timer = setTimeout(
-        () => reject(new Error(`${label}: no bounded startup refusal`)),
+        () => reject(new Error(`${label}: no bounded command exit`)),
         6000,
       );
     });
     const result = await Promise.race([execution.completion, deadline]);
     assert.equal(result.error, undefined, label);
-    assert.equal(result.status, 1, label);
+    assert.equal(result.status, status, label);
   } finally {
     clearTimeout(timer);
   }
@@ -220,6 +220,8 @@ async function exerciseEntrypoint({
   sourceId,
   entrypoint,
   activeEntrypoints,
+  args = [],
+  expectedExit,
 }) {
   const reservation = createTcpServer();
   await new Promise((resolve, reject) => {
@@ -230,7 +232,7 @@ async function exerciseEntrypoint({
   await new Promise((resolve) => reservation.close(resolve));
   const execution = executeOwnedProcess(
     process.execPath,
-    [entrypoint],
+    [entrypoint, ...args],
     undefined,
     'telemetry receiver entrypoint',
     {
@@ -249,7 +251,8 @@ async function exerciseEntrypoint({
   activeEntrypoints.add(execution);
   const output = captureOwnedProcessOutput(execution, { maxBytes: 65536 });
   try {
-    if (expected) await assertEntrypointRefusal(execution, label);
+    if (expected || expectedExit !== undefined)
+      await assertEntrypointExit(execution, label, expectedExit ?? 1);
     else
       await assertEntrypointProbe(execution, port, sourceKey, sourceId, label);
   } finally {
@@ -265,7 +268,7 @@ async function exerciseEntrypoint({
     );
   }
   const result = await execution.completion;
-  assert.equal(result.status, expected ? 1 : 0, label);
+  assert.equal(result.status, expected ? 1 : (expectedExit ?? 0), label);
   const captured = output.finish();
   assert(
     !captured.truncated && !captured.invalidUtf8,
@@ -300,7 +303,13 @@ async function qualifyEntrypoint(
     await writeFile(oversizedFile, 'x'.repeat(4097), { mode: 0o400 });
     await writeFile(malformedFile, privateSentinel, { mode: 0o400 });
     await symlink(databaseFile, symlinkFile);
-    for (const [label, credential, expected] of [
+    for (const [label, credential, expected, args] of [
+      [
+        'unknown command',
+        {},
+        /Unknown telemetry receiver command/,
+        ['--unknown-command'],
+      ],
       [
         'both database sources',
         { STATION_TELEMETRY_BROKER_DATABASE_URL: databaseUrl },
@@ -380,6 +389,7 @@ async function qualifyEntrypoint(
         sourceId,
         entrypoint,
         activeEntrypoints,
+        args,
       });
       assert(
         !captured.stderr.text.includes(privateSentinel) &&
@@ -393,6 +403,83 @@ async function qualifyEntrypoint(
     else
       console.error(
         `Unsettled entrypoint; private credential fixture retained: ${root}`,
+      );
+  }
+}
+
+async function qualifyRestoreFence(
+  databaseUrl,
+  operatorKey,
+  entrypoint,
+  activeEntrypoints,
+  pool,
+) {
+  const root = await mkdtemp(
+    join(tmpdir(), 'station-telemetry-restore-fence-'),
+  );
+  const operatorFile = join(root, 'operator-key');
+  const databaseFile = join(root, 'database-url');
+  try {
+    await writeFile(operatorFile, operatorKey, { mode: 0o400 });
+    await writeFile(databaseFile, databaseUrl, { mode: 0o400 });
+    const expected = Number(
+      (
+        await pool.query(
+          'SELECT count(*) AS n FROM station_telemetry.sources WHERE revoked_at IS NULL',
+        )
+      ).rows[0].n,
+    );
+    assert(expected > 0, 'fence must exercise an active copied credential');
+    const unchanged = async () =>
+      (
+        await pool.query(`SELECT
+      (SELECT md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb)::text) FROM station_telemetry.events t) AS events,
+      (SELECT md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb)::text) FROM station_telemetry.commits t) AS commits,
+      (SELECT md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb)::text) FROM station_telemetry.migrations t) AS migrations,
+      (SELECT md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb)::text) FROM station_telemetry.lite_noise_key t) AS noise,
+      (SELECT md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb)::text) FROM station_telemetry.lite_publications t) AS publications,
+      (SELECT md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb)::text) FROM station_telemetry.lite_published t) AS published`)
+      ).rows[0];
+    const before = await unchanged();
+    for (const count of [expected, 0]) {
+      const output = await exerciseEntrypoint({
+        label: 'product restore fence',
+        credential: {},
+        operatorFile,
+        databaseFile,
+        entrypoint,
+        activeEntrypoints,
+        args: ['--fence-product-sources-after-restore'],
+        expectedExit: 0,
+      });
+      assert.deepEqual(JSON.parse(output.stdout.text), {
+        protocol: 'station-product-restore-fence/v1',
+        scope: 'product-sources-only',
+        revokedSources: count,
+        publisherState: 'unreconciled',
+      });
+      assert.equal(
+        Number(
+          (
+            await pool.query(
+              'SELECT count(*) AS n FROM station_telemetry.sources WHERE revoked_at IS NULL',
+            )
+          ).rows[0].n,
+        ),
+        0,
+      );
+      assert.deepEqual(
+        await unchanged(),
+        before,
+        'fence must not migrate or alter observations or publisher privacy state',
+      );
+    }
+  } finally {
+    if (activeEntrypoints.size === 0)
+      await rm(root, { recursive: true, force: true });
+    else
+      console.error(
+        `Unsettled restore fence; private fixture retained: ${root}`,
       );
   }
 }
@@ -769,6 +856,18 @@ async function qualifyReceiver(snapshot, buildManifest, activeEntrypoints) {
       for (const socket of sockets) socket.destroy();
       await new Promise((resolve) => transport.close(resolve));
     }
+    await qualifyRestoreFence(
+      url.href,
+      operatorKey,
+      join(snapshot, 'main.mjs'),
+      activeEntrypoints,
+      pool,
+    );
+    await store.refreshCredentials();
+    assert.equal((await send(batch)).status, 401);
+    checks.push(
+      'one-shot product restore fence revokes copied credentials, settles idempotently, and preserves data/migrations/publisher state',
+    );
     passed = true;
     report = {
       state: 'PASS',

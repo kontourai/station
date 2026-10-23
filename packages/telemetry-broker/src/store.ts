@@ -359,6 +359,24 @@ export class PgProductRepository implements ProductRepository {
       await this.assertSchema(client);
     });
   }
+  /** Invalidate copied product credentials before exposing a restored receiver. */
+  async fenceProductSourcesAfterRestore(): Promise<number> {
+    const revoked = await this.transaction(async (client) => {
+      await this.assertSchema(client);
+      await client.query(
+        "SELECT pg_advisory_xact_lock(hashtext('station.product.telemetry.admission'))",
+      );
+      const result = await client.query(
+        "UPDATE station_telemetry.sources SET revoked_at=clock_timestamp() WHERE namespace='product' AND revoked_at IS NULL",
+      );
+      if (result.rowCount === null)
+        throw new BrokerError('schema_incompatible');
+      return result.rowCount;
+    });
+    this.credentialRevision++;
+    this.credentialSources.clear();
+    return revoked;
+  }
   async authenticate(key: string): Promise<void> {
     if (!this.hasCredential(key)) throw new BrokerError('source_unauthorized');
   }
