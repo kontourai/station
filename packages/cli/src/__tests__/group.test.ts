@@ -552,6 +552,7 @@ test('registered report CLI resolves SDK operations with explicit credentials an
     return new Response(JSON.stringify({ success: true, data }));
   });
   vi.stubGlobal('fetch', fetch);
+  const listeners = process.listeners('SIGINT');
   const commands = [
     ['report-create', `--file=${file}`],
     ['report-list'],
@@ -568,6 +569,7 @@ test('registered report CLI resolves SDK operations with explicit credentials an
       '--credential=fixture',
       '--json',
     ]);
+  assert.deepEqual(process.listeners('SIGINT'), listeners);
   assert.equal(fetch.mock.calls.length, 6);
   assert.equal(output.length, 6);
   assert.deepEqual(JSON.parse(String(fetch.mock.calls[0][1]?.body)), input);
