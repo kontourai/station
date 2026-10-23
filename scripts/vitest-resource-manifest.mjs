@@ -45,6 +45,9 @@ export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
 // changes the system under test or turns their correctness bound into a
 // scheduler-contention measurement.
 export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // Disposable Chromium boots retain 15s render/3s policy deadlines; keep
+  // sibling runtime boots out of this lifecycle measurement (#4022).
+  'src-server/services/__tests__/html-reply-preview.process.test.ts',
   // Real 1,026-part WAL/FULL setup and 1,027 one-at-a-time acknowledgements
   // use a 120-second completion guard, not a throughput assertion. Serial
   // ownership keeps ordinary workers from adding filesystem contention.
@@ -132,8 +135,6 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/agent-runtime/src/__tests__/body-process.test.ts',
-  // Disposable Chromium previews, including renderer limits and process cleanup.
-  'src-server/services/__tests__/html-reply-preview.process.test.ts',
   'src-server/runtime/mcp/__tests__/mcp-ui-network.process.test.ts',
   // Real temporary Git repositories; isolated home per case.
   'src-server/services/pull-requests/__tests__/pull-request-review-guide.test.ts',
@@ -643,6 +644,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // starts that REAL hub under the guard and stops it. Installs nothing and
   // never downloads; hub cases report an explicit skip without an install.
   'src-server/services/devices/toolchain/__tests__/device-hub.real.test.ts',
+  // Builds fixture archives with the host tar executable; bounded, private output.
+  'scripts/__tests__/portable-server-archive.test.ts',
+  // Runs copied user Node executables and shell-free npm/hub entry fixtures.
+  'src-server/services/devices/toolchain/__tests__/device-tool-runtime.process.test.ts',
   // station#1649: runs the glyph-coverage ratchet as a real child process
   // against a throwaway git repository, because the thing under test is the
   // gate's EXIT STATUS on a rejection — a guardrail whose failure branch has

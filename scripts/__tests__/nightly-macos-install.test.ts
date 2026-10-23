@@ -28,7 +28,7 @@ describe('macOS nightly lane', () => {
     expect(config.app.windows[0].title).toBe('Station Nightly');
     expect(config.bundle.macOS).toEqual({ infoPlist: 'Info.nightly.plist' });
     expect(config.bundle.resources).toEqual({
-      '../dist-server': 'dist-server',
+      '../dist-desktop-runtime/dist-server': 'dist-server',
       '../dist-desktop-runtime/node_modules': 'node_modules',
       '../schemas': 'schemas',
       '../dist-desktop-runtime/examples': 'examples',

@@ -1,0 +1,29 @@
+{
+  "revision": "45d9b9570a9b09a12c515c25056c9c4f4e1cded5",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the final desktop startup changes: fatal own-process Node/protocol diagnosis, uncertain foreign lock holders retain refusal/retry, and missing-profile recovery still precedes home claims. Runtime/private Node and recovery source tests pass; unrelated module composition is unchanged.","inputs":["docs/architecture/module-map.md","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed the testing-guide delta: private Node preparation precedes the same Rust compile, generated binary outputs are fenced, and Windows staging fixture now proves a digest-verified executable. Operations ownership, scheduling, service lifetimes and evidence distinctions remain unchanged.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed built-in Agent runtime tests and their production overlay. Built-in tool spawn command now uses process.execPath and remains excluded from persisted ConfigLoader projections; credential and MCP App transport/rendering contracts are unchanged.","inputs":["docs/design/mcp-ui-host.md","src-server/runtime/agents/__tests__/runtime-default-agent.test.ts"]},
+
+    {"path":"docs/guides/android-build.md","note":"Reviewed desktop wrapper target handling: only desktop host-matched private Node staging is added. Android native-client build and generated mobile permissions remain unchanged and contain no desktop server/Node sidecar.","inputs":["docs/guides/android-build.md","scripts/build-desktop.mjs"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Reviewed final private Node custody, host-target mismatch refusal, stale sidecar removal, signature requirements, unchanged user PATH, and explicit pre-supervisor root recovery. Focused tests and installed Windows fresh Home proof executed; signed Mac proof belongs to independent lane exact build.","inputs":["docs/guides/desktop-build.md","scripts/build-desktop.mjs","src-desktop/src/lib.rs"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Reviewed wrapper and ownership paths: private Node staging and exact target handling do not alter tray service targeting, home ownership, shutdown, or update ownership. Same-home service blocks a second backend; no new automatic attachment is claimed.","inputs":["docs/guides/desktop-tray.md","scripts/build-desktop.mjs"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed verification-lane output set addition for generated src-desktop/binaries. Lane commands, selectors, browser/native evidence distinctions and completion boundaries are unchanged; no new E2E acceptance is implied by staging.","inputs":["docs/guides/e2e-coverage-matrix.md","scripts/verification-lanes.mjs"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Reviewed wrapper host-target handling and Node resolver. No channel identity, home selection or port-map input changed; private Node custody preserves all documented channel listener bands.","inputs":["docs/guides/release-channel-ports.md","scripts/build-desktop.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed Node staging fixture and focused test changes: mismatch rejects before mutation; verified cached archive replaces only owned stale sidecars and retains license; generic test/spec pruning was removed to preserve Flow eval assets. Output ownership and generated schedule were regenerated from lane catalog.","inputs":["docs/guides/testing.md","scripts/__tests__/portable-server-archive.test.ts"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Reviewed final Node-specific title/body, bounded named root blockers, foreign lock-holder contention mapping, keyring-prefix history refusal including enrollment recipients, and no-secret enumeration failures. Existing-root Create remains explicit and narrowly eligible; actual returning-user recovery policy awaits owner decision.","inputs":["docs/user/native-recovery.md","src-desktop/src/lib.rs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed testing guide and verify-local output fence changes. Existing focused checks, native evidence rules, managed installs and process bounds remain applicable; new Node preparation uses the existing digest-verifying archive helper.","inputs":["scripts/AGENTS.md","docs/guides/testing.md","scripts/verification-lanes.mjs"]},
+
+    {"path":"tests/AGENTS.md","note":"Reviewed testing guide update: prerequisite staging and generated binary ownership change no test effectiveness, fixture authority, mutation custody, or focused/hosted evidence requirements.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}
