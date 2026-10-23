@@ -293,6 +293,7 @@ export async function loadStablePreToolPolicySpec(options: {
   return { spec, revision };
 }
 
+import { recordAdoptedBuiltinEngine } from './builtin-engine-adoption.js';
 import { primeEnginePrerequisites } from './engine-prerequisite-priming.js';
 import { adoptDetectedNativeEngines } from './native-engine-adoption.js';
 import {
@@ -1791,11 +1792,22 @@ export class StationRuntime {
       ) !== null;
 
     const explicitConnectionId = appConfig.builtinAgentEngineConnectionId;
-    return resolveBuiltinAgentEngineBinding({
+    const binding = resolveBuiltinAgentEngineBinding({
       explicitConnectionId,
       stationChatReady,
       readyExternalEngines,
     });
+    // Record an adoption so the choice stops being a per-boot guess. Reading
+    // readiness again must never take back an engine that is already the
+    // built-in agent's — see the recorder's docblock for the failure this
+    // closes.
+    await recordAdoptedBuiltinEngine({
+      configLoader: this.configLoader,
+      explicitConnectionId,
+      binding,
+      logger: this.logger,
+    });
+    return binding;
   }
 
   /**
@@ -4671,6 +4683,10 @@ export class StationRuntime {
       agentHooksMap: this.agentHooksMap,
       approvalRegistry: this.approvalRegistry,
       configLoader: this.configLoader,
+      // The projected read seam: the reserved Station identity's engine
+      // binding lives in the runtime, not in its stored record (§7.1.1), so
+      // every reader — including the tool-catalog route — must see it.
+      loadProjectedAgent: (slug) => this.agentService.getAgent(slug),
       get appConfig() {
         return runtime.appConfig;
       },

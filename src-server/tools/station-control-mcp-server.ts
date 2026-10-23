@@ -9,6 +9,7 @@ import {
 } from '@modelcontextprotocol/server';
 import { z } from 'zod';
 import { registerAgentTools } from './station-control-agent-tools.js';
+import { registerAssessmentTools } from './station-control-assessment-tools.js';
 import { registerBasisTools } from './station-control-basis-tools.js';
 import { registerBoardTools } from './station-control-board-tools.js';
 import { registerCatalogTools } from './station-control-catalog-tools.js';
@@ -96,7 +97,7 @@ function withToolSideRefusal<
 function stationControlToolMetadata(name: string) {
   const groups: [string, RegExp][] = [
     ['Knowledge', /knowledge/],
-    ['Evidence', /basis|review|receipt/],
+    ['Evidence', /basis|assessment|review|receipt/],
     ['Agents', /agent/],
     // The Sessions in a Project: a chat-level read, not a Project record.
     ['Chats', /^list_project_activity$/],
@@ -319,6 +320,7 @@ export function createSelectedStationControlMcpServer(
   registerOperationsTools(registry);
   registerScheduleTools(registry);
   registerPlatformTools(registry);
+  registerAssessmentTools(registry);
   registerBasisTools(registry);
   registerSessionInventoryTools(registry);
   registerSessionSearchTools(registry);

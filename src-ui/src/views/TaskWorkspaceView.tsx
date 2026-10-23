@@ -48,6 +48,7 @@ import {
   useApiBase,
   useHostRequestAuthorityScope,
 } from '../contexts/ApiBaseContext';
+import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import { clientOriginDetail } from '../utils/clientOrigin';
@@ -204,17 +205,30 @@ function isTaskNotFound(error: unknown): boolean {
   return error instanceof Error && /\b404\b|not found/i.test(error.message);
 }
 
+type TaskTabSelection = { identity: string; tab: string };
+// A single view choice survives protected-tree replacement; no Task data or draft does.
+let retainedTaskTab: TaskTabSelection | null = null;
+
 export function TaskWorkspaceView({ taskId }: { taskId: string }) {
   const { apiBase } = useApiBase();
-  const [selectedTab, selectTab] = useState<{
-    identity: string;
-    tab: string;
-  } | null>(null);
+  const { namespace } = useAuthorityPersistence();
+  const [selectedTab, selectTab] = useState<TaskTabSelection | null>(
+    () => retainedTaskTab,
+  );
   const { data: graph, isLoading, error, refetch } = useTaskGraphQuery(taskId);
-  const tabIdentity = JSON.stringify([apiBase, taskId, graph?.task.createdAt]);
+  const tabIdentity = JSON.stringify([
+    namespace,
+    apiBase,
+    taskId,
+    graph?.task.createdAt,
+  ]);
   const setTab = useCallback(
-    (tab: string) => selectTab({ identity: tabIdentity, tab }),
-    [tabIdentity],
+    (tab: string) => {
+      const selection = { identity: tabIdentity, tab };
+      if (namespace) retainedTaskTab = selection;
+      selectTab(selection);
+    },
+    [namespace, tabIdentity],
   );
   const projectsQuery = useScopedProjectsQuery() as {
     data?: Array<{ id: string; slug: string }>;

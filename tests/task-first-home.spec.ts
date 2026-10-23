@@ -1151,7 +1151,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
     // #1552 D1: "Ask Station for help" is a row of the account menu (the
     // sidebar footer's account control), not a toolbar button. It opens the
     // header's help menu, whose prompt list is unchanged.
-    await page.getByRole('button', { name: 'Profile and settings' }).click();
+    await page.getByRole('button', { name: /^Profile and settings:/ }).click();
     await page.getByRole('menuitem', { name: 'Ask Station for help' }).click();
     await page.getByRole('button', { name: 'What can you do?' }).click();
 

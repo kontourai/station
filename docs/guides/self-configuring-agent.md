@@ -87,6 +87,16 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
   for, and `task_summary_update` and `task_record` to keep that Task's summary,
   decisions, open questions and dead ends; none of them changes Task status or
   the Task document ([Tracker-backed Tasks](../design/tracker-backed-tasks.md#session-brief))
+- `get_answer_assessment_target`, `publish_answer_assessment`, and
+  `remove_answer_assessment` for a personal-mode producer's frozen Surface
+  assessment of one completed answer. Copy the target's exact answer binding
+  and required profile, and use its revision for compare-and-swap publication
+  or revocation. A conflict requires reading the target again. Publication
+  never Keeps the answer in a Task; revocation retains its historical answer
+  and frozen artifact. These owner-scoped tools still enforce the HTTP
+  producer's access and Project binding; hosted authority is refused. See the
+  [producer contract](../reference/sdk.md) and
+  [tool owner](../../src-server/tools/station-control-assessment-tools.ts).
 - config and navigation tools for steering the workspace
 - the full scheduler lifecycle: `list_jobs`, `list_scheduler_providers`,
   `get_scheduler_stats`, `get_scheduler_status`, `preview_schedule`,

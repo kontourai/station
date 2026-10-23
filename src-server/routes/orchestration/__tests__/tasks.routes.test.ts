@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import {
   mkdirSync,
   readdirSync,
@@ -281,6 +282,38 @@ describe('Task routes', () => {
         relativePath: 'output.txt',
         title: 'Output',
       });
+      const declared = await outputs.createDeclared(task.id, {
+        operationId: 'declared-output-a',
+        title: 'Declared Output',
+        sourceWorkspace: workspace,
+        relativePath: 'output.txt',
+        digest: createHash('sha256').update('output').digest('hex'),
+        length: 6,
+        fingerprintContext: 'declared-output-a',
+        declaredBy: {
+          sessionId: threadId,
+          turnId,
+          eventId: 'done-a',
+          toolCallId: 'call-a',
+          declarationId: 'declaration-a',
+        },
+      });
+      await outputs.createDeclared(task.id, {
+        operationId: 'other-turn-output',
+        title: 'Other turn Output',
+        sourceWorkspace: workspace,
+        relativePath: 'output.txt',
+        digest: createHash('sha256').update('output').digest('hex'),
+        length: 6,
+        fingerprintContext: 'other-turn-output',
+        declaredBy: {
+          sessionId: threadId,
+          turnId: 'other-turn',
+          eventId: 'other-done',
+          toolCallId: 'other-call',
+          declarationId: 'other-declaration',
+        },
+      });
       const authority = sessionReadAuthorityFromRequest(
         'owner',
         undefined,
@@ -322,6 +355,23 @@ describe('Task routes', () => {
           },
         },
       });
+      const keptReference = graph.readTaskTurnReferenceLinks(task.id)?.[0];
+      if (!keptReference) throw new Error('Kept answer reference missing');
+      const selectedOutput = await app.request(
+        `/api/tasks/${task.id}/basis?answerReferenceId=${encodeURIComponent(keptReference.id)}`,
+      );
+      const selectedProjection = await readJson<{
+        data: {
+          standing: string;
+          regions: { outcomes: { ref: { outputId?: string } }[] };
+        };
+      }>(selectedOutput);
+      expect(selectedProjection.data.standing).toBe('execution-only');
+      expect(
+        selectedProjection.data.regions.outcomes.map(
+          (item) => item.ref.outputId,
+        ),
+      ).toEqual([declared.output.id]);
       const whole = await app.request(`/api/tasks/${task.id}/basis`);
       await expect(readJson(whole)).resolves.toMatchObject({
         data: {
@@ -336,6 +386,7 @@ describe('Task routes', () => {
             }),
           ],
           unassociated: [
+            expect.objectContaining({ kind: 'task-output', kept: true }),
             expect.objectContaining({ kind: 'task-output', kept: true }),
           ],
           gaps: [],

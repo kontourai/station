@@ -118,7 +118,52 @@ describe('Station Surface Basis adapter', () => {
     });
     expect(JSON.stringify(whole)).not.toContain('1970-01-01');
     expect(reported).toHaveLength(2);
+    expect(reported[0]?.identity).toEqual({
+      sessionId: 'station:1792425046978',
+      turnId: 'turn-a',
+    });
   });
+
+  test.each(['assessment', 'narrative'] as const)(
+    'bad %s owner data remains a Surface gap rather than Station invariant',
+    (owner) => {
+      const badAssessment = {
+        owner: { authority: '@kontourai/surface' as const },
+        state: 'available' as const,
+        observedAt,
+        value: {},
+      };
+      const badNarrative = {
+        owner: { authority: '@kontourai/flow-agents' as const },
+        state: 'available' as const,
+        observedAt,
+        value: [
+          {
+            ref: {
+              authority: '@kontourai/flow-agents',
+              schemaVersion: 'grounded-execution-narrative/v1',
+              kind: 'narrative',
+              narrativeId: 'bad-\ud800',
+            },
+          },
+        ],
+      };
+      const projection = composeAuthorizedSessionAnswerBasis(
+        answer,
+        owner === 'assessment' ? (badAssessment as never) : undefined,
+        owner === 'narrative' ? (badNarrative as never) : undefined,
+      );
+      expect(projection.standing).toBe('unresolved');
+      expect(projection.gaps).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code:
+              owner === 'assessment' ? 'invalid-assessment' : 'hostile-input',
+          }),
+        ]),
+      );
+    },
+  );
 
   test('round-trips a direct observed answer through Surface and stays execution-only without assessment', () => {
     const projection = composeAuthorizedSessionAnswerBasis(answer);
