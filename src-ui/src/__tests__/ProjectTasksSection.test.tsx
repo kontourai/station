@@ -41,7 +41,7 @@ let tasks: Array<{
   projectId: string;
   title: string;
   priority: 'normal';
-  status: 'todo' | 'ready';
+  status: 'todo' | 'ready' | 'in_progress' | 'done';
   createdAt: string;
   updatedAt: string;
   description: string;
@@ -203,7 +203,7 @@ describe('ProjectTasksSection', () => {
         projectId: 'project-alpha',
         title: 'Existing task',
         priority: 'normal',
-        status: 'todo',
+        status: 'ready',
         description: '',
         createdBy: 'user',
         agentId: 'agent-one',
@@ -445,6 +445,39 @@ describe('ProjectTasksSection', () => {
     window.history.pushState({}, '', '/');
   });
 
+  test('keeps backlog and completed work out of Now and opens the selected outcome', () => {
+    tasks = [
+      {
+        ...tasks[0],
+        id: 'active',
+        title: 'Active outcome',
+        status: 'in_progress',
+      },
+      { ...tasks[0], id: 'planned', title: 'Planned outcome', status: 'todo' },
+      {
+        ...tasks[0],
+        id: 'finished',
+        title: 'Finished outcome',
+        status: 'done',
+      },
+    ];
+    render(<ProjectTasksSection slug="project-alpha" />);
+    expect(screen.getByRole('link', { name: /Active outcome/ })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /Planned outcome/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: /Finished outcome/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Backlog · 1' }));
+    expect(screen.getByRole('link', { name: /Planned outcome/ })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /Active outcome/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'History · 1' }));
+    fireEvent.click(screen.getByRole('link', { name: /Finished outcome/ }));
+    expect(navigate).toHaveBeenCalledWith('/tasks/finished');
+    expect(tasks.map((task) => task.status)).toEqual([
+      'in_progress',
+      'todo',
+      'done',
+    ]);
+  });
+
   test('New Task offers shaping in the exact project without creating a Task', () => {
     const listener = vi.fn();
     window.addEventListener('station:shape-task', listener);
@@ -480,7 +513,7 @@ describe('ProjectTasksSection', () => {
       expect(reason.textContent).toContain('See Project settings › Agents.');
       fireEvent.click(button);
       expect(dispatchTask).not.toHaveBeenCalled();
-      expect(tasks[0].status).toBe('todo');
+      expect(tasks[0].status).toBe('ready');
       const settingsLink = screen.getByRole('link', {
         name: 'Project settings › Agents',
       });

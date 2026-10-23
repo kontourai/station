@@ -147,6 +147,23 @@ export function ProjectTasksSection({
     refetch: refetchTasks,
   } = useTasksQuery(slug);
   const sortedTasks = sortTasks(tasks as TaskRecord[]);
+  const [collection, setCollection] = useState<'now' | 'backlog' | 'history'>(
+    'now',
+  );
+  const collections = {
+    now: sortedTasks.filter((task) =>
+      ['ready', 'in_progress', 'blocked', 'review', 'verification'].includes(
+        task.status,
+      ),
+    ),
+    backlog: sortedTasks.filter((task) =>
+      ['todo', 'triage'].includes(task.status),
+    ),
+    history: sortedTasks.filter((task) =>
+      ['done', 'canceled'].includes(task.status),
+    ),
+  };
+  const visibleTasks = collections[collection];
   const [title, setTitle] = useState('');
   const [selectedTaskId, setSelectedTaskId] = useState('');
   const [showRecordDetails, setShowRecordDetails] = useState(false);
@@ -385,10 +402,27 @@ export function ProjectTasksSection({
           Refresh Tasks
         </Button>
       </div>
-      <p>
-        Follow the work by its recorded status. Open a task to discuss it,
-        inspect contributions, and keep results.
-      </p>
+      {presentation === 'list' && (
+        <nav
+          className="project-tasks-section__collections"
+          aria-label="Task collection"
+        >
+          {(['now', 'backlog', 'history'] as const).map((id) => (
+            <Button
+              key={id}
+              active={collection === id}
+              aria-pressed={collection === id}
+              onClick={() => {
+                setCollection(id);
+                setShowRecordDetails(false);
+              }}
+            >
+              {{ now: 'Now', backlog: 'Backlog', history: 'History' }[id]} ·{' '}
+              {collections[id].length}
+            </Button>
+          ))}
+        </nav>
+      )}
 
       {starterId !== 'start-task' ? (
         <Button
@@ -508,7 +542,7 @@ export function ProjectTasksSection({
                   onSelect={selectLocalTask}
                 />
               ) : (
-                sortedTasks.map((task) => (
+                visibleTasks.map((task) => (
                   <div className="project-tasks-section__outcome" key={task.id}>
                     <a
                       className="project-tasks-section__open"
@@ -553,6 +587,17 @@ export function ProjectTasksSection({
                     </Button>
                   </div>
                 ))
+              )}
+              {presentation === 'list' && visibleTasks.length === 0 && (
+                <p className="project-tasks-section__collection-empty">
+                  {
+                    {
+                      now: 'Nothing active right now.',
+                      backlog: 'The backlog is clear.',
+                      history: 'Completed and canceled Tasks appear here.',
+                    }[collection]
+                  }
+                </p>
               )}
               {providerItems.map((item) => (
                 <button

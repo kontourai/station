@@ -59,7 +59,7 @@ export function ProjectNavigation({
   const projectPath = `/projects/${encodeURIComponent(slug)}`;
   return (
     <details className="project-page__navigation-panel" open>
-      <summary>Rooms</summary>
+      <summary>Project</summary>
       <nav className="project-page__navigation" aria-label="Project">
         {destinations.map(([id, label]) => (
           <a
