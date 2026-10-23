@@ -1,7 +1,8 @@
-import { hashKey, useQueryClient } from '@tanstack/react-query';
+import { hashKey, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo } from 'react';
 import {
   getTaskBasis,
+  keepAnswerInTask,
   parseStationTaskBasisCollection,
   parseTaskBasisProjection,
   parseTaskBasisResult,
@@ -16,11 +17,13 @@ import {
   resolveApiBase,
   useApiQuery,
 } from './query-core';
+import { taskQueries } from './queryFactories';
 
 export type { StationBasisProjection as BasisProjection } from '@kontourai/station-contracts/task-basis';
 export type { StationBasisResult, StationTaskBasisCollection };
 export {
   getTaskBasis,
+  keepAnswerInTask,
   parseStationTaskBasisCollection,
   parseTaskBasisProjection,
   parseTaskBasisResult,
@@ -129,4 +132,30 @@ export function useTaskBasisQuery(
         ? query.data
         : undefined,
   };
+}
+
+/** This mutation owns only the answer reference explicitly selected in Basis. */
+export function useKeepAnswerInTaskMutation() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      taskId: string;
+      sessionId: string;
+      turnId: string;
+      requestScope: ApiRequestScope;
+    }) =>
+      keepAnswerInTask(
+        input.taskId,
+        { sessionId: input.sessionId, turnId: input.turnId },
+        input.requestScope,
+      ),
+    onSuccess: (_receipt, input) => {
+      for (const queryKey of [
+        taskBasisQueries.scope(input.taskId, input.requestScope),
+        taskQueries.turnReferences(input.taskId).queryKey,
+        taskQueries.graph(input.taskId).queryKey,
+      ])
+        void client.invalidateQueries({ queryKey });
+    },
+  });
 }

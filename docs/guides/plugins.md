@@ -1968,7 +1968,8 @@ cannot use the count route. Capability-bearing or Pane-marked requests cannot ra
 tier, acknowledge Full, or write an opt-in/notice receipt.
 
 These Pane-context checks prevent accidental or well-behaved SDK misuse. They recognize
-only the explicit `x-station-plugin-capability` and `x-station-plugin` headers; browser
+the explicit `x-station-plugin-capability` and `x-station-plugin` headers and
+iframe navigations (`Sec-Fetch-Dest: iframe`); ordinary browser
 fetch/XHR requests use `Sec-Fetch-Dest: empty`, which provides no Pane identity.
 Same-origin plugin code shares the existing shell trust model: it can omit those
 headers, call shell APIs, raise its telemetry tier, mint Pane tokens, and read the

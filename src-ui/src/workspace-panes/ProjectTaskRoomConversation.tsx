@@ -837,7 +837,13 @@ export function ProjectTaskRoomConversation({
 export function TaskRoomHistoryDetails({ taskId }: { taskId: string }) {
   const history = useProjectTaskRoomHistoryQuery(taskId);
   return (
-    <details className="task-workspace__record-details">
+    <details
+      className="task-workspace__record-details"
+      aria-busy={history.isFetching}
+      onToggle={(event) => {
+        if (event.currentTarget.open) void history.refetch();
+      }}
+    >
       <summary>Raw room history</summary>
       {history.isError ? (
         <p role="alert">Room history unavailable.</p>

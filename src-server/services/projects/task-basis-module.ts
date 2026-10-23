@@ -6,6 +6,7 @@ import {
   type StationTaskBasisCollection,
   type StationTaskBasisCollectionGap,
 } from '@kontourai/station-contracts/task-basis';
+import type { TaskOutputRecord } from '@kontourai/station-contracts/task-graph';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import {
   type BasisCompositionInput,
@@ -29,6 +30,7 @@ import type {
   SessionAnswerBasisQueryOutcome,
   SessionQueryModule,
 } from '../orchestration/session-query-module.js';
+import type { TaskOutputDeclarationSource } from './task-output-module.js';
 import type {
   TaskGateEvaluationReferenceRead,
   TaskToolResultReferenceRead,
@@ -53,6 +55,14 @@ export interface TaskBasisQueryModule {
 }
 
 type ReferenceLink = { id: unknown; targetId: unknown };
+type BasisTaskOutput = {
+  id: unknown;
+  taskId?: string;
+  title?: string;
+  materialization?: TaskOutputRecord['materialization'];
+  declaredBy?: TaskOutputDeclarationSource;
+};
+
 const MAX_REFS = 64;
 const MAX_ID_BYTES = 1_024;
 
@@ -66,7 +76,10 @@ const MAX_ID_BYTES = 1_024;
  */
 export class StationBasisCompositionInvariantError extends Error {
   readonly surfaceGap: { readonly code: string; readonly message: string };
-  constructor(surfaceGap: { code: string; message: string }) {
+  constructor(
+    surfaceGap: { code: string; message: string },
+    readonly identity: { sessionId: string; turnId: string },
+  ) {
     super(
       `Station Basis composition violates Surface's contract: ${surfaceGap.code}`,
     );
@@ -92,6 +105,7 @@ export function composeAuthorizedSessionAnswerBasis(
   },
   narrative?: ContributionRead,
   reviewedSource?: ContributionReadV2,
+  outcomes?: ContributionRead,
 ): BasisProjection | ReturnType<typeof composeBasisProjectionV2> {
   const input: BasisCompositionInput = {
     version: SURFACE_BASIS_VERSION,
@@ -124,6 +138,7 @@ export function composeAuthorizedSessionAnswerBasis(
           (item) => resultContribution(answer, item) ?? [],
         ),
       },
+      ...(outcomes ? [outcomes] : []),
     ],
   };
   // Station builds the answer and its input/result contributions itself, so a
@@ -137,10 +152,17 @@ export function composeAuthorizedSessionAnswerBasis(
       state: 'not-captured',
       observedAt: answer.observedAt,
     },
-    contributions: [input.contributions[0]!, input.contributions.at(-1)!],
+    contributions: [
+      input.contributions[0]!,
+      input.contributions.at(outcomes ? -2 : -1)!,
+      ...(outcomes ? [outcomes] : []),
+    ],
   });
   if (!stationOwned.ok)
-    throw new StationBasisCompositionInvariantError(stationOwned.gap);
+    throw new StationBasisCompositionInvariantError(stationOwned.gap, {
+      sessionId: answer.sessionId,
+      turnId: answer.turnId,
+    });
   // Surface owns total parsing and standing. Host context is pre-sanitized so
   // malformed owner display fields cannot turn one Task answer into a 500.
   const parsed = parseBasisComposition(input);
@@ -171,7 +193,7 @@ export function createTaskBasisQueryModule(input: {
     ): number | undefined;
   };
   sessionQueries: Pick<SessionQueryModule, 'readAnswerBasis'>;
-  outputs: { list(taskId: string): Promise<readonly { id: unknown }[]> };
+  outputs: { list(taskId: string): Promise<readonly BasisTaskOutput[]> };
   toolResultReferences: TaskToolResultReferenceRead;
   /** Constructor-composed owner adapter; Task never reads Flow directly. */
   gateEvaluationReferences?: TaskGateEvaluationReferenceRead;
@@ -202,6 +224,7 @@ export function createTaskBasisQueryModule(input: {
   /** Diagnostic sink for Station's own Basis composition invariant failures. */
   reportCompositionInvariant?: (
     error: StationBasisCompositionInvariantError,
+    taskId?: string,
   ) => void;
 }): TaskBasisQueryModule {
   return {
@@ -230,6 +253,14 @@ export function createTaskBasisQueryModule(input: {
         projection: StationBasisProjection;
       }[] = [];
       const gaps = new Set<StationTaskBasisCollectionGap['state']>();
+      let outputRead: Promise<readonly BasisTaskOutput[]> | undefined;
+      let outputUnavailable = false;
+      const readOutputs = () =>
+        (outputRead ??= input.outputs.list(taskId).catch(() => {
+          outputUnavailable = true;
+          gaps.add('unavailable');
+          return [];
+        }));
       if (!answerReferenceId && links.length !== source.length)
         gaps.add('corrupt');
       for (const link of selected) {
@@ -299,6 +330,21 @@ export function createTaskBasisQueryModule(input: {
                 answerReferenceId: link.id as string,
               })
             : undefined;
+          const outputs = await readOutputs();
+          const outcomes: ContributionRead = outputUnavailable
+            ? {
+                owner: { authority: '@kontourai/station' },
+                state: 'unavailable',
+                observedAt: answer.observedAt,
+              }
+            : {
+                owner: { authority: '@kontourai/station' },
+                state: 'available',
+                observedAt: answer.observedAt,
+                value: outputs.flatMap(
+                  (output) => outputContribution(taskId, answer, output) ?? [],
+                ),
+              };
           answers.push({
             answerReferenceId: link.id as string,
             projection: composeAuthorizedSessionAnswerBasis(
@@ -306,6 +352,7 @@ export function createTaskBasisQueryModule(input: {
               assessment,
               narrative,
               reviewedSource,
+              outcomes,
             ),
           });
         } catch (error) {
@@ -313,7 +360,7 @@ export function createTaskBasisQueryModule(input: {
             error instanceof StationBasisCompositionInvariantError;
           if (invariant) {
             try {
-              input.reportCompositionInvariant?.(error);
+              input.reportCompositionInvariant?.(error, taskId);
             } catch {}
           }
           if (answerReferenceId) return { status: 'unavailable' };
@@ -325,14 +372,8 @@ export function createTaskBasisQueryModule(input: {
         return answers.length === 1
           ? { status: 'found', data: answers[0]!.projection }
           : { status: 'not-found' };
-      let outputs: readonly { id: unknown }[];
-      try {
-        outputs = await input.outputs.list(taskId);
-      } catch {
-        outputs = [];
-        gaps.add('unavailable');
-      }
-      const unassociated = outputs
+      const outputs = await readOutputs();
+      const validOutputs = outputs
         .flatMap((output) =>
           id(output.id)
             ? [
@@ -346,7 +387,19 @@ export function createTaskBasisQueryModule(input: {
             : [],
         )
         .sort((a, b) => a.outputId.localeCompare(b.outputId));
-      if (unassociated.length !== outputs.length) gaps.add('corrupt');
+      if (validOutputs.length !== outputs.length) gaps.add('corrupt');
+      const unassociated = validOutputs.filter(
+        (output) =>
+          !answers.some(({ projection }) =>
+            projection.regions.outcomes.some(
+              (item) =>
+                item.ref.kind === 'task-output' &&
+                item.ref.taskId === taskId &&
+                item.ref.outputId === output.outputId,
+            ),
+          ),
+      );
+
       const kept = await input.toolResultReferences.read({ taskId, authority });
       if (kept.status === 'unavailable') gaps.add('unavailable');
       else if (kept.status === 'not-found') gaps.add('restricted');
@@ -415,6 +468,49 @@ export function createTaskBasisQueryModule(input: {
           ],
         } as StationTaskBasisCollection,
       };
+    },
+  };
+}
+
+function outputContribution(
+  taskId: string,
+  answer: FoundAnswer,
+  output: BasisTaskOutput,
+): BasisContribution<
+  Extract<
+    BasisContributionRef,
+    { authority: '@kontourai/station'; kind: 'task-output' }
+  >
+> | null {
+  const source = output.declaredBy;
+  if (
+    !source ||
+    source.sessionId !== answer.sessionId ||
+    source.turnId !== answer.turnId ||
+    output.taskId !== taskId ||
+    !id(output.id) ||
+    !output.materialization
+  )
+    return null;
+  const title = safeContextScalar(output.title, 512);
+  const mediaType = safeContextScalar(output.materialization.mediaType, 512);
+  if (!title || !mediaType) return null;
+  return {
+    ref: {
+      authority: '@kontourai/station',
+      schemaVersion: '1',
+      kind: 'task-output',
+      taskId,
+      outputId: output.id,
+    },
+    answer: answer.binding.answer,
+    role: 'outcome',
+    context: {
+      kind: 'station-output',
+      title,
+      mediaType,
+      byteLength: output.materialization.byteLength,
+      digest: output.materialization.digest.replace(/^sha256:/, 'sha256-'),
     },
   };
 }

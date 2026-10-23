@@ -181,6 +181,17 @@ optional `turnId` for this. The Session resource summary has no turn, so it neve
 appears in a current-answer inventory. See the
 [parser](../../packages/contracts/src/session-inventory.ts).
 
+Client protocol 3 admits these lineage rows in the server inventory. Older or
+undeclared HTTP clients retain contribution-only groups and typed gaps; the
+server never strips rows after computing a continuation digest. Inventory
+continuations bind the client dialect as well as scope and authority. Output
+pages filter the durable declaration index by the exact turn before paging,
+and their signed cursors cannot be reused for another turn or Whole Session.
+Decisions come from exact-turn request events. Delegations require an explicit
+child Session handle and parent turn/tool identity; provider-only child IDs
+stay an owner gap. These reads select descriptors, not tool bodies or metadata.
+
+
 `AgentTools.mcpMode` selects additive (`add`) or replacement (`replace`) MCP
 configuration; omission preserves the prior engine-specific behavior.
 `AgentTools.mcpLoading` optionally selects Claude's native on-demand or eager
