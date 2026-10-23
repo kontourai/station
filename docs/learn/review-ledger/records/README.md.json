@@ -14,8 +14,6 @@
 
     "docker-compose.yml",
 
-    "docs/architecture/module-map.md",
-
     "docs/guides/deployment.md",
 
     "docs/guides/nightly.md",
@@ -23,8 +21,6 @@
     "docs/guides/release-channel-ports.md",
 
     "docs/privacy-policy.md",
-
-    "docs/reference/cli.md",
 
     "install.sh",
 
@@ -42,7 +38,11 @@
 
     "src-ui/src/hooks/voiceWsUrl.ts",
 
-    "src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts"
+    "src-ui/src/providers/voice/NovaVoiceSessionAdapter.ts",
+
+    "src-ui/src/workspace-panes/agents/ChildWorkRow.tsx",
+
+    "src-ui/src/components/chat-dock/BackgroundTasksSheet.tsx"
   ],
 
   "checks": [
