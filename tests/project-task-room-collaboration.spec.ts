@@ -422,8 +422,8 @@ test.describe
           'updated',
         );
         expect(
-          stoppedAfterEdit.panes.find((pane) => pane.paneId === paneId)?.state,
-        ).toBe('paused');
+          stoppedAfterEdit.panes.find((pane) => pane.paneId === paneId),
+        ).toBeUndefined();
 
         await expect(
           peer.getByRole('textbox', { name: 'Task brief' }),
@@ -461,8 +461,8 @@ test.describe
           'updated',
         );
         expect(
-          stoppedAfterInput.panes.find((pane) => pane.paneId === paneId)?.state,
-        ).toBe('paused');
+          stoppedAfterInput.panes.find((pane) => pane.paneId === paneId),
+        ).toBeUndefined();
 
         await Promise.all([
           owner.getByRole('tab', { name: 'Conversation', exact: true }).click(),
