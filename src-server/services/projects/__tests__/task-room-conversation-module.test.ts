@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { rm, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { parseProjectTaskRoomBrowserHistory } from '@kontourai/station-contracts/project-task-room-browser';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
@@ -1310,6 +1310,21 @@ test('Task images reach the provider on requests and same-session replies and re
         attachments,
       },
     };
+    const unavailable = await f.post('/delegations', {
+      ...body,
+      taskRoomRequest: {
+        ...body.taskRoomRequest,
+        attachments: [
+          { ...attachments[0], id: 'ffffffff-ffff-4fff-8fff-ffffffffffff' },
+        ],
+      },
+    });
+    expect(unavailable.status).toBe(409);
+    expect(await unavailable.json()).toMatchObject({
+      success: false,
+      code: 'task_room_attachments_unavailable',
+    });
+    expect(f.adapter.turns).toHaveLength(0);
     const response = await f.post('/delegations', body);
     expect(response.status, await response.clone().text()).toBe(200);
     const result = await readJson<{ data: TaskRoomWorkOutcome }>(response);
@@ -1376,7 +1391,71 @@ test('Task images reach the provider on requests and same-session replies and re
         ]),
       ),
     );
+    await rm(join(dirname(f.workFile), 'assets', 'blobs'), { recursive: true });
+    const replay = await f.post('/delegations', {
+      ...body,
+      taskRoomRequest: {
+        ...body.taskRoomRequest,
+        attachments: attachments.map(({ id, kind, name, mimeType, size }) => ({
+          size,
+          mimeType,
+          name,
+          kind,
+          id,
+        })),
+      },
+    });
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toMatchObject({
+      data: { kind: 'recorded', replayed: true, record: { sessionId } },
+    });
+    expect(f.adapter.turns).toHaveLength(2);
   } finally {
+    await f.close();
+  }
+});
+
+test('unavailable reply attachments release publication before the hold expires', async () => {
+  const f = await fixture(false);
+  const reconcile = vi
+    .spyOn(f.room, 'reconcileAgentLifecycles')
+    .mockResolvedValue(undefined);
+  try {
+    const sessionId = await requestAgent(f);
+    await f.complete(sessionId, 'turn-1', 'Ready for another image');
+    const response = await f.post(
+      `/delegations/${encodeURIComponent(sessionId)}/continue`,
+      {
+        message: 'Missing screenshot',
+        taskRoomReply: {
+          taskId: f.task.id,
+          taskCreatedAt: f.task.createdAt,
+          operationId: 'missing-image-reply',
+          attachBrief: false,
+          attachments: [
+            {
+              id: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+              kind: 'image',
+              name: 'missing.png',
+              mimeType: 'image/png',
+              size: 8,
+            },
+          ],
+        },
+      },
+    );
+    expect(response.ok).toBe(false);
+    reconcile.mockClear();
+    let reconciled = false;
+    const pending = f.conversation.reconcile(f.task.id).then(() => {
+      reconciled = true;
+    });
+    await vi.waitFor(() => expect(reconciled).toBe(true), { timeout: 1000 });
+    await pending;
+    expect(reconcile).toHaveBeenCalled();
+    expect(f.adapter.turns).toHaveLength(1);
+  } finally {
+    reconcile.mockRestore();
     await f.close();
   }
 });

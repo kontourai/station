@@ -223,6 +223,15 @@ export async function submitTaskRoomAgentRequest(
   );
   const acknowledgement: unknown = await response.json();
   if (
+    response.status === 409 &&
+    object(acknowledgement) &&
+    acknowledgement.success === false &&
+    acknowledgement.code === 'task_room_attachments_unavailable'
+  )
+    throw new TaskRoomWorkNotSentError(
+      'Task attachments are unavailable. Choose the files again. Nothing was sent.',
+    );
+  if (
     input.context &&
     response.status === 409 &&
     object(acknowledgement) &&
@@ -257,8 +266,19 @@ export async function submitTaskRoomAgentRequest(
       input.expectedDefinitionFingerprint &&
     value.record.modelId === modelId &&
     value.record.modelOptionsDigest === modelOptionsDigest &&
-    JSON.stringify(value.record.attachments ?? []) ===
-      JSON.stringify(input.attachments ?? []) &&
+    (value.record.attachments ?? []).length ===
+      (input.attachments ?? []).length &&
+    (value.record.attachments ?? []).every((attachment, index) => {
+      const other = input.attachments?.[index];
+      return (
+        other &&
+        attachment.id === other.id &&
+        attachment.kind === other.kind &&
+        attachment.name === other.name &&
+        attachment.mimeType === other.mimeType &&
+        attachment.size === other.size
+      );
+    }) &&
     value.record.prompt === input.prompt.trim() &&
     value.record.taskCreatedAt === taskCreatedAt &&
     value.record.context?.digest === input.context?.digest

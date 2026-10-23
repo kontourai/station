@@ -3830,6 +3830,7 @@ export function createOrchestrationRoutes(
       const delegation = resolvedDelegation?.context;
       const delegate = deps.delegateTask;
       const roomRequest = body.taskRoomRequest;
+      let roomAttachments: ChatAttachmentInput[] | undefined;
       let releaseRoomRequestPublication: (() => void) | undefined;
       const dispatch = async (
         sessionId?: string,
@@ -3837,16 +3838,6 @@ export function createOrchestrationRoutes(
         roomBinding?: TaskRoomInvocationAdmission['roomBinding'],
         contextSnapshot?: TaskRoomContextSnapshot,
       ) => {
-        let roomAttachments: ChatAttachmentInput[] | undefined;
-        if (roomRequest?.attachments?.length) {
-          roomAttachments = await deps.taskRoomWork?.resolveAttachments?.({
-            ...roomRequest,
-            request: c.req.raw,
-            attachments: roomRequest.attachments,
-          });
-          if (!roomAttachments)
-            throw new Error('Task attachments are unavailable.');
-        }
         if (roomRequest) {
           releaseRoomRequestPublication ??=
             deps.taskRoomWork?.holdPublication?.(roomRequest.taskId);
@@ -3954,6 +3945,7 @@ export function createOrchestrationRoutes(
             ? scope
             : undefined;
         };
+        class AttachmentsUnavailable extends Error {}
         try {
           const outcome = await work.module.submit(
             roomRequest.taskId,
@@ -4004,6 +3996,20 @@ export function createOrchestrationRoutes(
             () =>
               work.resolveContext?.(roomRequest.taskId, c.req.raw, principal) ??
               Promise.resolve(undefined),
+            async () => {
+              if (!roomRequest.attachments?.length) return;
+              try {
+                roomAttachments = await work.resolveAttachments?.({
+                  ...roomRequest,
+                  request: c.req.raw,
+                  attachments: roomRequest.attachments,
+                });
+                if (!roomAttachments)
+                  throw new Error('Attachments unavailable');
+              } catch {
+                throw new AttachmentsUnavailable();
+              }
+            },
           );
           if (
             outcome.kind === 'recorded' &&
@@ -4037,6 +4043,18 @@ export function createOrchestrationRoutes(
                 ? 403
                 : 409,
           );
+        } catch (error) {
+          if (error instanceof AttachmentsUnavailable)
+            return c.json(
+              {
+                success: false,
+                code: 'task_room_attachments_unavailable',
+                error:
+                  'Task attachments are unavailable. Choose the files again. Nothing was sent.',
+              },
+              409,
+            );
+          throw error;
         } finally {
           releaseRoomRequestPublication?.();
         }
@@ -4520,23 +4538,23 @@ export function createOrchestrationRoutes(
             },
             403,
           );
-        const roomAttachments = roomReply?.attachments?.length
-          ? await deps.taskRoomWork?.resolveAttachments?.({
-              ...roomReply,
-              request: c.req.raw,
-              attachments: roomReply.attachments,
-            })
-          : undefined;
-        if (roomReply?.attachments?.length && !roomAttachments)
-          return c.json(
-            {
-              success: false,
-              error: 'Task attachments are unavailable.',
-              code: 'task_room_reply_refused',
-            },
-            409,
-          );
         try {
+          const roomAttachments = roomReply?.attachments?.length
+            ? await deps.taskRoomWork?.resolveAttachments?.({
+                ...roomReply,
+                request: c.req.raw,
+                attachments: roomReply.attachments,
+              })
+            : undefined;
+          if (roomReply?.attachments?.length && !roomAttachments)
+            return c.json(
+              {
+                success: false,
+                error: 'Task attachments are unavailable.',
+                code: 'task_room_reply_refused',
+              },
+              409,
+            );
           const data = await deps.continueDelegatedTask({
             ...(roomAttachments
               ? { taskRoomAttachments: roomAttachments }

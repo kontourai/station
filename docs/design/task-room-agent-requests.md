@@ -76,6 +76,12 @@ owns image capability; a reference in room history does not establish that an
 actual model understood it. Ordinary room messages share images without starting
 an agent.
 
+A new agent request validates attachment availability before reserving its
+operation. Unavailable references return an explicit not-sent refusal, preserving
+the draft. Existing request identities replay without requiring retained bytes;
+ordinary messages likewise check permanent proposal identity before validating
+bytes for a fresh append. Exact committed retries therefore survive byte eviction.
+
 Uncertain main-composer sends preserve attachment references with the original
 operation/proposal for explicit retries, including after reload. Unsent local
 files are guarded as dirty state but are not restored after reload. An upload

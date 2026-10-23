@@ -356,6 +356,7 @@ export class TaskRoomWorkModule {
       context?: TaskRoomContextSnapshot,
     ) => Promise<{ sessionId: string }>,
     resolveContext?: () => Promise<TaskRoomContextSnapshot | undefined>,
+    beforeReserve?: () => Promise<void>,
   ): Promise<TaskRoomWorkOutcome> {
     input = structuredClone(input);
     if (
@@ -415,7 +416,10 @@ export class TaskRoomWorkModule {
             record.ownerId === requesterId &&
             record.operationId === input.operationId,
         );
-        if (!existing && input.context) captured = await resolveContext?.();
+        if (!existing) {
+          if (input.context) captured = await resolveContext?.();
+          await beforeReserve?.();
+        }
         return store;
       },
       (store) => {
@@ -436,8 +440,19 @@ export class TaskRoomWorkModule {
               input.expectedDefinitionFingerprint ||
             existing.modelId !== modelId ||
             existing.modelOptionsDigest !== modelOptionsDigest ||
-            JSON.stringify(existing.attachments ?? []) !==
-              JSON.stringify(input.attachments ?? []) ||
+            (existing.attachments ?? []).length !==
+              (input.attachments ?? []).length ||
+            (existing.attachments ?? []).some((attachment, index) => {
+              const other = input.attachments?.[index];
+              return (
+                !other ||
+                attachment.id !== other.id ||
+                attachment.kind !== other.kind ||
+                attachment.name !== other.name ||
+                attachment.mimeType !== other.mimeType ||
+                attachment.size !== other.size
+              );
+            }) ||
             existing.prompt !== input.prompt ||
             existing.context?.digest !== input.context?.digest
               ? { kind: 'refused', reason: 'conflict' }

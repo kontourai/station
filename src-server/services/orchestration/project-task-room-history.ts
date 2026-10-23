@@ -171,6 +171,12 @@ interface StorageAdapter {
 type StorageCommitPhase = 'authorize' | 'admit-new-write';
 type StorageCommitDisposition = 'admitted' | 'denied' | 'unavailable';
 export interface ProjectTaskRoomHistory extends ProjectTaskRoomAuthority {
+  append(
+    input: Parameters<ProjectTaskRoomAuthority['append']>[0] & {
+      /** Runs after permanent duplicate detection, before a fresh record commits. */
+      admitNewWrite?: () => Promise<boolean>;
+    },
+  ): Promise<ProjectTaskRoomAppendOutcome>;
   readSourceSeal(input: {
     grant: ProjectTaskRoomGrant<'history-read'>;
   }): Promise<
@@ -402,12 +408,10 @@ function createProjectTaskRoomHistoryInternal(
   async function append({
     grant,
     intent: providedIntent,
-  }: {
-    grant: ProjectTaskRoomGrant<
-      'message-write' | 'lifecycle-append' | 'revision-link' | 'agent-publish'
-    >;
-    intent: ProjectTaskRoomAppendIntent;
-  }): Promise<ProjectTaskRoomAppendOutcome> {
+    admitNewWrite,
+  }: Parameters<
+    ProjectTaskRoomHistory['append']
+  >[0]): Promise<ProjectTaskRoomAppendOutcome> {
     const started = performance.now();
     const operationGeneration = generation;
     let outcome: ProjectTaskRoomAppendOutcome = { kind: 'unavailable' };
@@ -519,7 +523,8 @@ function createProjectTaskRoomHistoryInternal(
                 body: body.body,
                 grantReceipt: finalAuthorization.receipt,
                 authorizationId: finalAuthorization.receipt.receiptId,
-                writeAdmissionRequired,
+                writeAdmissionRequired:
+                  writeAdmissionRequired || admitNewWrite !== undefined,
               },
               async (phase) => {
                 if (!active(operationGeneration)) return 'unavailable';
@@ -530,6 +535,17 @@ function createProjectTaskRoomHistoryInternal(
                 );
                 const local = authorizationDisposition(commitAuthorization);
                 if (phase === 'authorize' || local !== 'admitted') return local;
+                if (admitNewWrite) {
+                  if (!(await admitNewWrite())) return 'denied';
+                  if (!active(operationGeneration)) return 'unavailable';
+                  const refreshed = await resolveAuthorized(
+                    grant,
+                    required,
+                    finalAuthorization.receipt,
+                  );
+                  const disposition = authorizationDisposition(refreshed);
+                  if (disposition !== 'admitted') return disposition;
+                }
                 // Only fresh identities need a retained output. Exact retries survive deletion.
                 if (body.body.kind === 'output-feedback') {
                   if (!input.outputFeedbackTargets) return 'denied';

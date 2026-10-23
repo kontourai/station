@@ -1,3 +1,4 @@
+import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
@@ -113,6 +114,7 @@ test('Task attachment transport preserves history and bytes across restart and e
         taskId: task.id,
         proposalId: 'screenshot',
         text: 'Look here',
+        occurredAt: createdAt,
         expectedTaskCreatedAt: createdAt,
         attachments,
       },
@@ -204,6 +206,36 @@ test('Task attachment transport preserves history and bytes across restart and e
       ),
     ).rejects.toThrow();
     revoked = false;
+    await rm(join(root, 'assets', 'blobs'), { recursive: true });
+    expect((await read()).status).toBe(404);
+    await expect(
+      appendProjectTaskRoomHumanMessage(
+        'http://station',
+        {
+          taskId: task.id,
+          proposalId: 'screenshot',
+          text: 'Look here',
+          occurredAt: createdAt,
+          expectedTaskCreatedAt: createdAt,
+          attachments,
+        },
+        opts,
+      ),
+    ).resolves.toMatchObject({ kind: 'duplicate' });
+    await expect(
+      appendProjectTaskRoomHumanMessage(
+        'http://station',
+        {
+          taskId: task.id,
+          proposalId: 'expired-fresh-message',
+          text: 'Look here',
+          occurredAt: createdAt,
+          expectedTaskCreatedAt: createdAt,
+          attachments,
+        },
+        opts,
+      ),
+    ).rejects.toThrow();
     task.createdAt = '2026-10-02T00:00:00.000Z';
     expect((await read()).status).toBe(404);
     expect(

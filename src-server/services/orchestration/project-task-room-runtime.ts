@@ -86,7 +86,8 @@ import type {
   TaskSummaryUpdateResult,
 } from './task-memory-store.js';
 
-type RecoverableRoomHistory = ProjectTaskRoomAuthority &
+type RecoverableRoomHistory = Omit<ProjectTaskRoomAuthority, 'append'> &
+  Pick<ProjectTaskRoomHistory, 'append'> &
   Partial<Pick<ProjectTaskRoomHistory, 'findByProposal' | 'readSourceSeal'>>;
 type BrowserCapability = 'discover' | 'history-read' | 'message-write';
 type RoomCapability =
@@ -1735,19 +1736,22 @@ export class ProjectTaskRoomRuntime {
       input.expectedTaskCreatedAt,
     );
     if (!grant) return { kind: 'not-found' };
-    if (
-      input.attachments?.length &&
-      (!input.expectedTaskCreatedAt ||
-        !(await this.resolveAttachments({
-          taskId: input.taskId,
-          taskCreatedAt: input.expectedTaskCreatedAt,
-          request: input.request,
-          attachments: input.attachments,
-        })))
-    )
-      return { kind: 'not-found' };
     const result = await this.#history.append({
       grant,
+      ...(input.attachments?.length
+        ? {
+            admitNewWrite: async () =>
+              Boolean(
+                input.expectedTaskCreatedAt &&
+                  (await this.resolveAttachments({
+                    taskId: input.taskId,
+                    taskCreatedAt: input.expectedTaskCreatedAt,
+                    request: input.request,
+                    attachments: input.attachments!,
+                  })),
+              ),
+          }
+        : {}),
       intent: {
         proposalId: input.proposalId,
         occurredAt: input.occurredAt ?? new Date().toISOString(),
