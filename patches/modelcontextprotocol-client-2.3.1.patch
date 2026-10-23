@@ -1,0 +1,30 @@
+--- a/dist/stdio.mjs
++++ b/dist/stdio.mjs
+@@ -74 +74 @@
+-			this._process = spawn(this._serverParams.command, this._serverParams.args ?? [], {
++			this._process = (this._serverParams.spawnProcess ?? spawn)(this._serverParams.command, this._serverParams.args ?? [], {
+@@ -87 +87 @@
+-			});
++			}, spawn);
+--- a/dist/stdio.cjs
++++ b/dist/stdio.cjs
+@@ -77 +77 @@
+-			this._process = (0, cross_spawn.default)(this._serverParams.command, this._serverParams.args ?? [], {
++			this._process = (this._serverParams.spawnProcess ?? cross_spawn.default)(this._serverParams.command, this._serverParams.args ?? [], {
+@@ -90 +90 @@
+-			});
++			}, cross_spawn.default);
+--- a/dist/stdio.d.mts
++++ b/dist/stdio.d.mts
+@@ -6 +6,3 @@
+-type StdioServerParameters = {
++type StdioServerParameters = {
++  /** Station-owned spawn boundary, retained by negotiation siblings. */
++  spawnProcess?: (command: string, args: string[], options: import("node:child_process").SpawnOptions, defaultSpawn: typeof import("node:child_process").spawn) => import("node:child_process").ChildProcess;
+--- a/dist/stdio.d.cts
++++ b/dist/stdio.d.cts
+@@ -6 +6,3 @@
+-type StdioServerParameters = {
++type StdioServerParameters = {
++  /** Station-owned spawn boundary, retained by negotiation siblings. */
++  spawnProcess?: (command: string, args: string[], options: import("node:child_process").SpawnOptions, defaultSpawn: typeof import("node:child_process").spawn) => import("node:child_process").ChildProcess;

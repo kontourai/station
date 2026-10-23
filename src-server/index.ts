@@ -52,6 +52,10 @@ import {
   getInstalledServerLogSink,
   installServerLogSink,
 } from './services/infra/server-log-store.js';
+import {
+  initializeWorkloadResources,
+  stopWorkloadResources,
+} from './services/infra/workload-resources.js';
 import { lifecycleService } from './telemetry/metrics.js';
 import { createLogger, resolveLogLevel } from './utils/logger.js';
 import { resolveHomeDir } from './utils/paths.js';
@@ -92,6 +96,7 @@ async function main() {
   const supervisorLink = await parkOrExit();
   if (supervisorLink) installListenerLink(supervisorLink);
   allowHomeAccess();
+  await initializeWorkloadResources();
   // Set as boot reaches them; a drain before then exits without them.
   let runtimeForDrain: StationRuntime | undefined;
   let gracefulShutdown:
@@ -274,7 +279,11 @@ async function main() {
       logger.info('Station shutting down', { signal });
       let exitCode = forcedExitCode ?? (signal === 'uncaughtException' ? 1 : 0);
       try {
-        await runtime.shutdown();
+        try {
+          await runtime.shutdown();
+        } finally {
+          await stopWorkloadResources();
+        }
         logger.info('Station shutdown complete', { signal, exitCode });
       } catch (error) {
         exitCode = 1;
