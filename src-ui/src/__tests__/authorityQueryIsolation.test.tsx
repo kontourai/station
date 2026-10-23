@@ -1024,7 +1024,7 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     unmount();
   });
 
-  it('fetches the local boot payload during identity verification without publishing or restoring before verification', async () => {
+  it('waits for local access before fetching boot data, then verifies identity before publishing or restoring it', async () => {
     const urlA = homeUrl('parallel-boot');
     const harness = createHarness();
     harness.observationPlan.set('default', async () => OBS_DEFAULT);
@@ -1047,33 +1047,47 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
       }
       return new Response('not found', { status: 404 });
     });
-    vi.mocked(resolveLocalUiSession).mockResolvedValue({
-      kind: 'authenticated',
-    });
+    const localAccess =
+      deferred<Awaited<ReturnType<typeof resolveLocalUiSession>>>();
+    vi.mocked(resolveLocalUiSession).mockImplementation((apiBase) =>
+      apiBase === urlA
+        ? localAccess.promise
+        : Promise.resolve({ kind: 'host-unavailable' }),
+    );
     const mounted = renderTree(harness, { localUiApiBase: urlA });
     const { id } = await addHome('parallel-boot', urlA);
     harness.observationPlan.set(urlA, () => observation.promise);
-    await switchTo(id);
-    await waitFor(() => expect(payloadFetched).toHaveBeenCalled());
-    expect(screen.queryByTestId('probe')).toBeNull();
-    expect(harness.asyncStorage.data.has(authorityPersistenceKey(NS_A))).toBe(
-      false,
-    );
-    expect(
-      storageRead.mock.calls.some(
-        ([key]) => key === authorityPersistenceKey(NS_A),
-      ),
-    ).toBe(false);
-    await act(async () => observation.resolve(OBS_A));
-    await waitFor(() =>
-      expect(probe().getAttribute('data-namespace')).toBe(NS_A),
-    );
-    await waitFor(() =>
-      expect(harness.activeClient?.getQueryData(['branding'])).toEqual(
-        expect.objectContaining({ appName: 'parallel-boot-marker' }),
-      ),
-    );
-    mounted.unmount();
+    try {
+      await switchTo(id);
+      await waitFor(() =>
+        expect(resolveLocalUiSession).toHaveBeenCalledWith(urlA),
+      );
+      expect(payloadFetched).not.toHaveBeenCalled();
+      await act(async () => localAccess.resolve({ kind: 'authenticated' }));
+      await waitFor(() => expect(payloadFetched).toHaveBeenCalled());
+      expect(screen.queryByTestId('probe')).toBeNull();
+      expect(harness.asyncStorage.data.has(authorityPersistenceKey(NS_A))).toBe(
+        false,
+      );
+      expect(
+        storageRead.mock.calls.some(
+          ([key]) => key === authorityPersistenceKey(NS_A),
+        ),
+      ).toBe(false);
+      await act(async () => observation.resolve(OBS_A));
+      await waitFor(() =>
+        expect(probe().getAttribute('data-namespace')).toBe(NS_A),
+      );
+      await waitFor(() =>
+        expect(harness.activeClient?.getQueryData(['branding'])).toEqual(
+          expect.objectContaining({ appName: 'parallel-boot-marker' }),
+        ),
+      );
+    } finally {
+      localAccess.resolve({ kind: 'host-unavailable' });
+      observation.resolve(OBS_A);
+      mounted.unmount();
+    }
   });
 
   it("a delayed boot payload never seeds another identity's shelf", async () => {
