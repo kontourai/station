@@ -210,7 +210,9 @@ test.describe('Agents pane child work (#2459)', () => {
       prompt: 'Nightly audit',
     });
     await expect(page.getByText('Nightly audit')).toBeVisible();
-    await expect(page.getByText('Recorded origin: CLI (reported)')).toBeVisible();
+    await expect(
+      page.getByText('Recorded origin: CLI (reported)'),
+    ).toBeVisible();
     const delegateRow = page
       .getByRole('listitem')
       .filter({ hasText: 'Nightly audit' });
