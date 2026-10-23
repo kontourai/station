@@ -446,6 +446,24 @@ existing owner. Prove acknowledged events, exact deduplication, revocation,
 migration state and queries survive receiver/database restart and restored
 storage. Retain failed-control stores and records.
 
+A local product fixture at `79e77a7f28b` acknowledged two synthetic events,
+enforced source-scoped receipt lookup and conflicting-event refusal, and
+retained receipts, replay deduplication and revocation across receiver/database
+restart. Its complete PostgreSQL logical backup restored into a fresh isolated
+project with matching row digests for all 14 application tables. The restored
+receiver returned the original receipt, deduplicated replay and refused the
+source revoked before the snapshot. Public publication tables were empty in
+this fixture; this is not a public-release rollback or diagnostic-store backup
+qualification.
+
+Snapshot preservation does not preserve authority changes made later. An
+additional control revoked a source after the backup: the original receiver
+refused it, but the older restored database still accepted its credential.
+Managed restore therefore needs current-authority reconciliation or source
+credential invalidation before receiver activation. That activation fence is
+not implemented yet. Do not treat raw snapshot restoration as safe reactivation;
+post-snapshot revocations and public publication state require separate proof.
+
 Do not remove volumes with `down -v`, edit migration records or strip new grant
 fields to make an older binary start. An incompatible upgrade/rollback must
 refuse without modifying retained data. Secret-binding documents containing new
