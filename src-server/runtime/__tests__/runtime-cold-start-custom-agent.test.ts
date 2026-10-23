@@ -1072,6 +1072,11 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         enableWebSocket: false,
         configureFullApp: expect.any(Function),
       }),
+      undefined,
+      expect.objectContaining({
+        bound: expect.any(Function),
+        stop: expect.any(Function),
+      }),
     );
     expect(attachVoiceWebSocket).toHaveBeenCalledWith(
       port + 2,

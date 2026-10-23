@@ -102,7 +102,15 @@
 
     "src-server/security/pairing-route-scopes.ts",
 
-    "src-server/security/relay-management-authority.ts"
+    "src-server/security/relay-management-authority.ts",
+
+    "src-desktop/plugins/station-discovery/src/lib.rs",
+
+    "src-desktop/plugins/station-discovery/ios/Sources/StationDiscoveryPlugin.swift",
+
+    "src-desktop/plugins/station-discovery/android/src/main/java/io/kontourai/station/discovery/StationDiscoveryPlugin.kt",
+
+    "src-ui/src/platform/native/connectionDiscovery.ts"
   ],
 
   "checks": [

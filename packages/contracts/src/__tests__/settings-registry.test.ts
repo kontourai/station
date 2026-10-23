@@ -300,6 +300,7 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
         // — every reader falls through to 'shared'.
         'defaultWorkspaceIsolation',
         'knowledgeStores',
+        'lanDiscoveryEnabled',
         'mcpUiHost',
         // Guide runtime wiring reads enabled === true: absent is off.
         'reviewGuidesEnabled',

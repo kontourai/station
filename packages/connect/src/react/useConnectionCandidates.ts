@@ -1,8 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import {
   type ConnectionCandidateProviderResult,
   connectionCandidateProviderCount,
+  connectionCandidateProviderRevision,
   discoverConnectionCandidates,
+  subscribeConnectionCandidateProviders,
 } from '../core/connectionCandidates';
 import type { ConnectionCandidate } from '../core/types';
 
@@ -12,6 +20,7 @@ export interface UseConnectionCandidatesResult {
   providers: ConnectionCandidateProviderResult[];
   providerCount: number;
   refresh: () => void;
+  cancel: () => void;
 }
 
 export function useConnectionCandidates(): UseConnectionCandidatesResult {
@@ -22,15 +31,31 @@ export function useConnectionCandidates(): UseConnectionCandidatesResult {
   >([]);
   const generationRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
+  const providerRevision = useSyncExternalStore(
+    subscribeConnectionCandidateProviders,
+    connectionCandidateProviderRevision,
+    connectionCandidateProviderRevision,
+  );
   const providerCount = connectionCandidateProviderCount();
+  const cancel = useCallback(() => {
+    generationRef.current += 1;
+    abortRef.current?.abort();
+    abortRef.current = null;
+    setDiscovering(false);
+  }, []);
 
   const refresh = useCallback(() => {
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
     const generation = ++generationRef.current;
+    setCandidates([]);
+    setProviders([]);
     setDiscovering(true);
-    void discoverConnectionCandidates({ signal: controller.signal }).then(
+    void discoverConnectionCandidates({
+      signal: controller.signal,
+      providerRevision,
+    }).then(
       (result) => {
         if (generation !== generationRef.current) return;
         setCandidates(result.candidates);
@@ -44,7 +69,7 @@ export function useConnectionCandidates(): UseConnectionCandidatesResult {
         setDiscovering(false);
       },
     );
-  }, []);
+  }, [providerRevision]);
 
   useEffect(
     () => () => {
@@ -54,5 +79,5 @@ export function useConnectionCandidates(): UseConnectionCandidatesResult {
     [],
   );
 
-  return { discovering, candidates, providers, providerCount, refresh };
+  return { discovering, candidates, providers, providerCount, refresh, cancel };
 }

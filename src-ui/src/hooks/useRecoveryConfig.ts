@@ -69,7 +69,7 @@ async function fetchRecoveryConfig(
   return result.data;
 }
 
-export function useRecoveryConfig() {
+export function useRecoveryConfig(options?: { enabled?: boolean }) {
   const scope = useOptionalRecoveryScope();
   return useQuery({
     queryKey: scope
@@ -81,7 +81,7 @@ export function useRecoveryConfig() {
         scope?.requestScope ?? null,
         signal,
       ),
-    enabled: scope !== null,
+    enabled: scope !== null && (options?.enabled ?? true),
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
     refetchOnWindowFocus: false,

@@ -4710,6 +4710,17 @@ account session.
 
 ## Create a device invitation
 
+`GET /api/pairing/endpoint-suggestions` uses pairing-management admission and
+revalidates the principal after lookup. Its raw JSON is
+`{ "endpoints": string[], "source": "tailscale-serve" }`, with at most eight
+canonical HTTPS origins, or an empty list when no mapping can be established.
+The daemon resolver checks this node's own Serve configuration against the
+Station API/UI-proxy port. This is configuration evidence, not phone reachability
+or approval; it does not enumerate other tailnet nodes, use allowed origins as
+mapping evidence or change Tailscale settings. The host UI applies an address
+only after an explicit Use action and requires reachable HTTPS for QR creation.
+
+
 `POST /api/pairing/offers` accepts `endpoint`, optional `scope`, and optional
 `approval: "on-create" | "on-request"`. The host CLI and pairing panel send
 `on-create`: creating the invitation approves the selected access, and its

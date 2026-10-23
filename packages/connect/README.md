@@ -241,3 +241,28 @@ operator setup. The [free collaboration lab](../../docs/guides/local-collaborati
 exercises real browser, broker, Pion and Station application behavior. Fresh
 relay-only guest enrollment and native credential transport require their own
 supported account/Device flows; a fixture credential is not proof of that journey.
+
+
+### Native nearby discovery and exchange recovery
+
+The host registers native DNS-SD discovery through the candidate provider
+registry. Providers return untrusted address hints and explicit availability,
+permission, timeout and cancellation states. The picker enters the existing
+access-request flow; discovery never navigates to an advertised page, writes a
+profile or grants access. Browser clients have no native LAN provider.
+
+Pairing HTTP requests refuse redirects. Before exchanging a one-time proof,
+Station commits an origin-and-kind scoped IndexedDB claim with strict transaction
+durability. The browser implementation must report support or admission fails
+closed. Completion follows credential/profile custody. Uncertain attempts stay
+held across expiry, reload and ordinary pending-slot cleanup; only exact proven
+unconsumed responses release a claim for retry. Recovery inventory distinguishes
+empty, unavailable and corrupt storage. Terminal receipts are retained through
+the original offer expiry; the server remains the authority for proof expiry.
+These guarantees rely on browser persistence and do not promise recovery after
+site-data deletion or storage/device failure.
+
+`renderPairingEndpointSuggestions` is an optional host-owned render slot on the
+connection modal. Station's UI uses React Query to fetch authenticated endpoint
+suggestions only while hosting pairing, and applies an address only after the
+operator chooses it. The connect package does not depend on React Query.

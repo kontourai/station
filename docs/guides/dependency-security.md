@@ -734,3 +734,42 @@ non-passing. Reconciliation launches no candidate tests. Keep the legacy require
 `fast-checks` context until real publisher statuses are verified, then follow
 [the activation procedure](releasing.md#qualification-cadence-and-evidence-reuse).
 This source status is not full release qualification.
+
+
+## IPv6 zone parsing denial of service (2026-10)
+
+The lock resolves `ip-address` 10.7.4 for both `express-rate-limit` and optional
+`socks`, replacing 10.7.2 with the minimal patch from the reviewed dependency
+candidate. [GHSA-rxp7-6hxx-x8q5](https://github.com/advisories/GHSA-rxp7-6hxx-x8q5)
+affects versions through 10.7.3: `Address6` scans the zone regex `/%.*$/` before
+its length check. Repeated `%` followed by a line terminator causes quadratic
+synchronous rejection. The threat is an attacker controlling a string passed to
+that parser and blocking its caller's event loop. The official fix finds the
+zone delimiter by index; it preserves accepted address/zone behavior without
+adding network permissions or changing trust decisions.
+
+A bounded Node 24.22.1 library probe reproduced rejection of 40,000 `%`
+characters plus newline in about 958 ms on 10.7.2. Installed 10.7.4 rejected four
+one-million-character variants (LF, CR, U+2028, U+2029) in about 7 ms total under
+a two-second child-process deadline. IPv4, IPv6, scoped IPv6, mapped IPv4 and
+malformed-address controls passed. The installed `express-rate-limit` consumer
+resolved 10.7.4 and retained its IPv4/mapped/IPv6-subnet behavior; its `net.isIPv6`
+prefilter does not pass this malformed payload to `Address6`. These are bounded
+library/consumer observations, not a reproduced unauthenticated Station endpoint
+exploit or a performance promise for all hosts.
+
+The frozen managed install, dependency identity/lock checks and advisory policy
+passed with the Ciao lifecycle patch unchanged. No advisory exception or baseline
+was added. The exported deprecated `RE_ZONE_STRING` constant remains upstream;
+this upgrade does not protect code that imports and invokes that regex directly.
+
+## Withdrawn braces advisory (2026-10-23)
+
+GitHub withdrew [GHSA-vfj7-8cjw-p6xm](https://github.com/advisories/GHSA-vfj7-8cjw-p6xm)
+on 2026-10-23. The registry audit no longer reports it, so the exact temporary
+exception was removed; keeping it made the policy reject an unused exception.
+This is advisory metadata maintenance, not a claim that Station proved every
+brace-expansion input safe. The prior threat model was untrusted deeply nested
+patterns exhausting the Node stack; the dependency graph and runtime controls
+are unchanged. Historical acceptance and investigation remain in
+[#3150](https://github.com/kontourai/station/issues/3150).

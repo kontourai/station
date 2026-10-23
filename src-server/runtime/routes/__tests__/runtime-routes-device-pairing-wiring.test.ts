@@ -244,7 +244,7 @@ describe('runtime routes: device pairing security wiring', () => {
         DEVICE_PEER,
       );
       expect(response.status).toBe(202);
-      expect(ingress.ports).toEqual([PORT]);
+      expect(ingress.ports).toEqual([PORT, PORT]);
       expect(recorded).toHaveBeenCalledTimes(1);
       expect(recorded.mock.calls[0]?.[0]).toMatchObject({
         endpoint: 'https://station-node.example.ts.net',

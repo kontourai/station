@@ -341,3 +341,23 @@ controller and leaves unrelated dock state intact. Its chat header does not
 repeat the app toolbar’s navigation and Station controls. VisualViewport fitting
 bounds the workbench above the on-screen keyboard; actual device and browser
 checks remain necessary.
+
+
+## Fresh-phone welcome and initial CSS
+
+The mobile welcome replaces the protected application tree until a real saved
+Station exists. It owns the page's sole `main` landmark during that state;
+saved/offline Stations retain the existing recovery shell. Its eager CSS keeps
+the first screen styled before interaction: canonical safe-area variables,
+44px actions, readable hierarchy and keyboard-visible disclosure controls.
+
+The onboarding production build measured initial normalized gzip payloads of
+361,843 bytes JavaScript and 54,002 bytes CSS. The welcome's 79-line stylesheet
+was checked for shared primitives and dead/redundant rules; the existing global
+mobile button media query does not cover every supported mobile-profile geometry,
+so its touch-target floor remains. Deferring this first screen's CSS would add
+an unstyled/loading transition. The CSS ceiling therefore moved from 54,000 to
+57,000 under the existing 1,000-byte-step policy, preserving at least 2 KiB of
+headroom without removing accessibility or setting the budget to the exact
+measurement. This is bundle evidence, not a Gallery screenshot, native layout
+or physical-device qualification.

@@ -158,7 +158,11 @@
 
     "scripts/write-ios-build-manifest.mjs",
 
-    "src-ui/src/platform/native/startupPresentation.ts"
+    "src-ui/src/platform/native/startupPresentation.ts",
+
+    "src-ui/src/platform/native/connectionDiscovery.ts",
+
+    "src-desktop/plugins/station-discovery/src/lib.rs"
   ],
 
   "checks": [
