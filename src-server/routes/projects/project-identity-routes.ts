@@ -143,6 +143,23 @@ export function createProjectIdentityRoutes(
         .strict(),
     ),
     async (c) => {
+      if (!isOperatorInPersonNotAgent(c.req.raw))
+        return c.json(
+          {
+            success: false,
+            error:
+              'Repository attachment requires the current Station operator.',
+          },
+          403,
+        );
+      if (!repositoryAttachment)
+        return c.json(
+          {
+            success: false,
+            error: 'Repository attachment is unavailable on this server.',
+          },
+          501,
+        );
       const current = () =>
         isOperatorInPersonNotAgent(c.req.raw) &&
         repositoryAttachment?.current(c.req.raw) === true &&

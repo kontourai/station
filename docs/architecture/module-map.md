@@ -2349,15 +2349,28 @@ identity and receiver-local Project ID under the current Project revision;
 an exact replay writes nothing, and clearing removes only that selection.
 
 **Behavior.** Reads do not backfill. Explicit preparation uses the current
-Project-revision admission and creates only a missing sidecar. Attachment
-validates its snapshot and any selected local directory, then requires atomic
-Project/manifest creation from the storage adapter. Existing mismatched identity
+Project-revision admission and creates only a missing sidecar. Attaching a
+portable Project validates its snapshot and any selected local directory, then
+requires atomic Project/manifest creation from the storage adapter. Existing mismatched identity
 or configuration is a conflict; unknown versions/fields, unavailable stores and
 unverifiable directories are named refusals. A same remote or slug is not
 membership, execution consent, a room locator or a history-merge instruction.
 
+Adding a retained repository to an existing Project is a separate operation.
+`attachRepository` verifies the pinned acquisition, compares the expected
+portable identity and local Project ID, conditionally publishes its binding,
+then conditionally publishes the manifest. Existing resources and primary
+selection remain; an explicit code-work choice selects the execution root. An
+empty resource list requires that choice to avoid an implicit fallback. The
+binding may be recorded before an interrupted manifest publication; exact
+intent retries recover it without cloning. Recovery rechecks the binding under
+its mutation lock. Binding write, final staged manifest rename and response
+release each check current operator authority. This is no setup or credential
+grant.
+
 **Code and evidence.** Project routes inject the runtime-pinned stores
-and checkout reader; no second store is constructed behind a route. The SDK's
+and checkout reader; repository attachment uses that same binding owner rather
+than constructing another store behind the route. The SDK's
 React-free client methods validate responses and capture the original attachment
 request before asynchronous work. `project-identity-service.test.ts` covers
 real Git checkouts, real filesystem publication/faults, conflicts and the HTTP

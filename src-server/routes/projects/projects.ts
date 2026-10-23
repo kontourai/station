@@ -78,7 +78,7 @@ import {
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
 import type { CheckoutRemoteReader } from '../../services/projects/checkout-remote-reader.js';
 import { findGitEntryOnPath } from '../../services/projects/checkout-remote-reader.js';
-import { ProjectBindingsStore } from '../../services/projects/project-binding-store.js';
+import type { ProjectBindingsStore } from '../../services/projects/project-binding-store.js';
 import {
   ProjectCreationConflict,
   ProjectCreationService,
@@ -340,7 +340,9 @@ interface ProjectRouteDeps {
 export interface ProjectResolutionRouteDeps {
   resolver: ProjectResourceResolverLike;
   manifests: ProjectManifestRecordReader & ProjectManifestReader;
-  bindings: ProjectBindingWriter & ProjectResolutionBindingReader;
+  bindings: ProjectBindingWriter &
+    ProjectResolutionBindingReader &
+    Partial<Pick<ProjectBindingsStore, 'confirmProjectBinding'>>;
   readRemotes: CheckoutRemoteReader;
 }
 
@@ -553,11 +555,27 @@ export function createProjectRoutes(
             () => resolution.bindings.hostAliases(),
           )
         : undefined,
-      {
-        acquisitions,
-        bindings: new ProjectBindingsStore(projectHomeDir),
-        current: deps.repositoryDiscoveryCurrent ?? isOperatorInPersonNotAgent,
-      },
+      resolution?.bindings.findBinding &&
+        resolution.bindings.confirmProjectBinding
+        ? {
+            acquisitions,
+            bindings: {
+              findBinding: resolution.bindings.findBinding.bind(
+                resolution.bindings,
+              ),
+              confirmProjectBinding:
+                resolution.bindings.confirmProjectBinding.bind(
+                  resolution.bindings,
+                ),
+              upsertProjectBinding:
+                resolution.bindings.upsertProjectBinding.bind(
+                  resolution.bindings,
+                ),
+            },
+            current:
+              deps.repositoryDiscoveryCurrent ?? isOperatorInPersonNotAgent,
+          }
+        : undefined,
     ),
   );
   const layoutCatalog =
