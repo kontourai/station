@@ -80,6 +80,8 @@ const PUBLIC_QUERY_DOMAINS = [
  * inline reason.
  */
 const INTERNAL_QUERY_DOMAINS: Record<string, string> = {
+  projectRooms:
+    'shared Project room hooks are published only from the documented project-rooms subpath; keep the room stream and strict parsers outside the eager root entry.',
   sessionStructuralSharing:
     'shared cache-identity policy for session query hooks; not a public query or mutation.',
   catalogRequests:
