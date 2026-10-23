@@ -30,6 +30,8 @@ import { canonicalJson } from '@kontourai/relay';
 import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 
+import type { ReservedProviderEvidence } from '../../runtime/conversation/reserved-provider-fetch.js';
+
 export type DelegationPersistenceFinalizer = () => undefined;
 const AUTHORITY_MAX_BYTES = 16 * 1024 * 1024;
 const MAX_FILES = 1024;
@@ -219,6 +221,7 @@ class PrivateDomain {
 export class StationDelegationPersistence {
   readonly #authorities: PrivateDomain;
   readonly #groups: PrivateDomain;
+  readonly #providerEvidence: PrivateDomain;
   constructor(privateRoot: string) {
     const requested = resolve(privateRoot);
     privateDirectory(requested);
@@ -229,6 +232,54 @@ export class StationDelegationPersistence {
       'station-delegation-authorities',
     );
     this.#groups = new PrivateDomain(root, 'station-delegation-groups');
+    this.#providerEvidence = new PrivateDomain(
+      root,
+      'station-provider-evidence',
+    );
+  }
+
+  /** Private raw evidence remains bound to the consumed physical invocation. */
+  async retainProviderEvidence(
+    evidence: ReservedProviderEvidence,
+    finalizeCurrent: DelegationPersistenceFinalizer,
+  ) {
+    const record = structuredClone({ version: 1, evidence });
+    const domain = this.#providerEvidence;
+    const file = `${createHash('sha256')
+      .update(
+        canonicalJson([
+          record.evidence.intent.root.id,
+          record.evidence.intent.invocationId,
+        ]),
+      )
+      .digest('hex')}.json`;
+    const maxBytes = 20 * 1024 * 1024;
+    return domain.locked(finalizeCurrent, async () => {
+      const path = join(domain.directory, file);
+      const previous = readBytes(path, maxBytes);
+      if (previous !== null) {
+        requirePersistence(
+          same(JSON.parse(previous), record),
+          'delegation_provider_evidence_conflict',
+        );
+      } else {
+        requirePersistence(
+          domain.files().length < MAX_FILES,
+          'delegation_store_capacity',
+        );
+        await domain.publish(file, record, maxBytes, finalizeCurrent);
+      }
+      const committed = readBytes(path, maxBytes);
+      requirePersistence(
+        committed !== null && same(JSON.parse(committed), record),
+        'delegation_commit_unconfirmed',
+      );
+      return Object.freeze({
+        id: file.slice(0, -5),
+        domain: 'station.provider-evidence',
+        digest: `sha256:${createHash('sha256').update(canonicalJson(record)).digest('hex')}`,
+      });
+    });
   }
 
   authorityStore(

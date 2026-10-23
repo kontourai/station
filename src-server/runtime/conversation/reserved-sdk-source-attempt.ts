@@ -1,4 +1,5 @@
 import type { DelegationRetainedAccountingV1 } from '@kontourai/flow-agents/delegation-dispatch';
+import type { StationDelegationPersistence } from '../../services/orchestration/delegation-group-persistence.js';
 import {
   deliverSdkResponse,
   disposeSdkSourceWire,
@@ -7,12 +8,8 @@ import {
   refuseSdkResponse,
   sdkResultPromise,
 } from '../../services/orchestration/delegation-group-sdk-source-wire-owner.js';
+import { assertSynchronous } from '../../services/orchestration/delegation-group-wire-intent-store.js';
 import {
-  assertSynchronous,
-  type WireFinalizer,
-} from '../../services/orchestration/delegation-group-wire-intent-store.js';
-import {
-  type ReservedProviderEvidence,
   ReservedProviderFetch,
   ReservedProviderUnavailable,
 } from './reserved-provider-fetch.js';
@@ -22,8 +19,7 @@ const claimedAttempts = new WeakSet<object>();
 // UNWIRED #91: private issuance and the AccountingV1 settlement caller remain required.
 /** Consume a prepared sealed source only inside the durable reservation's final fetch. */
 export async function runReservedSdkSourceAttempt(input: {
-  /** Host-owned durable publication; failure leaves the reservation held. */
-  retainEvidence(evidence: ReservedProviderEvidence): Promise<WireFinalizer>;
+  persistence: StationDelegationPersistence;
   sdkOwner: object;
   sdkHandle: object;
   transport: Omit<
@@ -37,7 +33,8 @@ export async function runReservedSdkSourceAttempt(input: {
     >;
   };
 }) {
-  const { sdkOwner, sdkHandle, retainEvidence } = input;
+  const { sdkOwner, sdkHandle, persistence } = input;
+  const finalizeCurrent = input.transport.launch.finalizeCurrent;
   if (claimedAttempts.has(sdkHandle))
     throw new ReservedProviderUnavailable(
       'Reserved source attempt already claimed',
@@ -67,15 +64,23 @@ export async function runReservedSdkSourceAttempt(input: {
       result,
       transport.evidence,
     ]);
-    const finalizeRetainedEvidence = await retainEvidence(evidence);
-    assertSynchronous(finalizeRetainedEvidence);
+    const evidenceReference = await persistence.retainProviderEvidence(
+      evidence,
+      finalizeCurrent,
+    );
+    assertSynchronous(finalizeCurrent);
     const accounting: DelegationRetainedAccountingV1 = Object.freeze({
       inputTokens: evidence.usage.inputTokens,
       outputTokens: evidence.usage.outputTokens,
       costMicros: evidence.usage.costMicros,
       costBasis: 'tariff-upper-bound',
     });
-    return Object.freeze({ sdkResult, evidence, accounting });
+    return Object.freeze({
+      sdkResult,
+      evidence,
+      evidenceReference,
+      accounting,
+    });
   } catch {
     // A completed HTTP response rejected by the raw observer must also terminate the waiting SDK.
     try {

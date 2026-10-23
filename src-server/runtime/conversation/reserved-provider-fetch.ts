@@ -6,6 +6,7 @@ import {
 } from '../../services/orchestration/delegation-group-launch-fence.js';
 import {
   assertSynchronous,
+  type FinalWireIntentIdentity,
   wireIdentityDigest,
 } from '../../services/orchestration/delegation-group-wire-intent-store.js';
 import { assembleAnthropicStream } from './bounded-api-anthropic-stream.js';
@@ -22,6 +23,7 @@ import { observeRawProviderSseResponse } from './bounded-api-sse-response.js';
 
 type Usage = ReturnType<typeof priceBoundedApiProviderRawUsage>;
 export interface ReservedProviderEvidence {
+  readonly intent: FinalWireIntentIdentity;
   readonly usage: Usage;
   readonly quote: BoundedApiAttemptQuote;
   readonly rawBodySha256: string;
@@ -74,6 +76,7 @@ export class ReservedProviderFetch {
       quote: BoundedApiAttemptQuote,
       raw: unknown,
       rawBodySha256: string,
+      intent: FinalWireIntentIdentity,
     ) => {
       const rawResponseJson = JSON.stringify(raw);
       const usage = priceBoundedApiProviderRawUsage(
@@ -82,7 +85,9 @@ export class ReservedProviderFetch {
         rawResponseJson,
         owners.now(),
       );
-      resolve(Object.freeze({ usage, quote, rawBodySha256, rawResponseJson }));
+      resolve(
+        Object.freeze({ intent, usage, quote, rawBodySha256, rawResponseJson }),
+      );
     };
     this.fetch = async (input, init) => {
       try {
@@ -166,6 +171,7 @@ export class ReservedProviderFetch {
                 ? assembleAnthropicStream(e.frames)
                 : assembleGoogleStream(e.frames),
               e.rawBodySha256,
+              begun.intent,
             ),
           );
           void finish.catch(reject);
@@ -176,7 +182,7 @@ export class ReservedProviderFetch {
           owners.maxResponseBytes,
           signal,
         );
-        known(quote, observed.raw, observed.rawBodySha256);
+        known(quote, observed.raw, observed.rawBodySha256, begun.intent);
         return observed.response;
       } catch (error) {
         reject(error);

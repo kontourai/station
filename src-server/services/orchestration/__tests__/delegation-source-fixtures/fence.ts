@@ -1,13 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
-import {
-  closeSync,
-  constants,
-  fsyncSync,
-  mkdirSync,
-  openSync,
-  readFileSync,
-} from 'node:fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
 import type { RootAuthorityV2 } from '@kontourai/flow-agents/delegation-authority-contract';
@@ -25,7 +18,6 @@ import {
   type ModelInvocationResult,
   type ModelRuntime,
 } from '@kontourai/relay';
-import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
 import type {
   BoundedApiProvider,
   ResolvedBoundedApiProviderContract,
@@ -220,7 +212,7 @@ export async function publicFenceFixture(
   const invocation = new AsyncLocalStorage<string>();
   const observed: ReservedProviderEvidence[] = [];
   const accounting = new Map<string, DelegationRetainedAccountingV1>();
-  const evidencePath = join(f.root, 'retained-provider-evidence.json');
+  const evidenceDirectory = join(f.root, 'station-provider-evidence');
   let repeatAttempt:
     | (() => ReturnType<typeof runReservedSdkSourceAttempt>)
     | undefined;
@@ -256,24 +248,7 @@ export async function publicFenceFixture(
           {
             sdkOwner,
             sdkHandle: handle,
-            retainEvidence: async (evidence) => {
-              await publishJsonFileWithOwnedLock(evidencePath, evidence, {
-                maxBytes: 2 * 1024 * 1024,
-                finalizeCommit: finalize,
-              });
-              const directory = openSync(
-                f.root,
-                constants.O_RDONLY |
-                  constants.O_DIRECTORY |
-                  constants.O_NOFOLLOW,
-              );
-              try {
-                fsyncSync(directory);
-              } finally {
-                closeSync(directory);
-              }
-              return finalize;
-            },
+            persistence,
             transport: {
               launch: {
                 groups: persistence.groupStore(finalize),
@@ -380,8 +355,19 @@ export async function publicFenceFixture(
   });
   return {
     observed,
-    retainedEvidence: () => JSON.parse(readFileSync(evidencePath, 'utf8')),
-    blockEvidencePublication: () => mkdirSync(evidencePath),
+    retainedEvidence: () => {
+      const files = readdirSync(evidenceDirectory).filter((file) =>
+        file.endsWith('.json'),
+      );
+      if (files.length !== 1)
+        throw Error('expected one retained evidence record');
+      return JSON.parse(readFileSync(join(evidenceDirectory, files[0]), 'utf8'))
+        .evidence;
+    },
+    retainAgain: (evidence: ReservedProviderEvidence) =>
+      persistence.retainProviderEvidence(evidence, finalize),
+    blockEvidencePublication: () =>
+      writeFileSync(evidenceDirectory, 'blocked', { mode: 0o600 }),
     repeatAttempt: () => {
       if (!repeatAttempt) throw Error('source attempt not started');
       return repeatAttempt();

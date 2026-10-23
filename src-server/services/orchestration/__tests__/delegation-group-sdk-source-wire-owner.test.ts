@@ -613,6 +613,22 @@ for (const provider of ['anthropic', 'google'] as const)
     assert.equal(driver.observed[0].usage.costMicros, 7);
     assert.equal(driver.observed[0].usage.costBasis, 'tariff-upper-bound');
     assert.deepEqual(driver.retainedEvidence(), driver.observed[0]);
+    const retained = driver.observed[0];
+    assert.equal(
+      retained.intent.invocationId,
+      (await driver.ledger()).invocations[0].invocationId,
+    );
+    const firstReference = await driver.retainAgain(retained);
+    assert.deepEqual(await driver.retainAgain(retained), firstReference);
+    await assert.rejects(
+      () =>
+        driver.retainAgain({
+          ...retained,
+          rawResponseJson: '{}',
+        }),
+      { code: 'delegation_provider_evidence_conflict' },
+    );
+    assert.deepEqual(driver.retainedEvidence(), retained);
     const ledger = await driver.ledger();
     assert.deepEqual(ledger.invocations[0].usage, {
       inputTokens: 4,
