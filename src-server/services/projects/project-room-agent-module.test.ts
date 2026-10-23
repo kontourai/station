@@ -245,7 +245,10 @@ describe('Project Room explicit agent participation', () => {
           f.execution,
         ),
       ).toThrow();
-      const failed = exec.mock.contexts.find((context) => context !== db)!;
+      const failed = exec.mock.contexts.find((context) => context !== db);
+      expect(failed).toBeInstanceOf(DatabaseSync);
+      if (!(failed instanceof DatabaseSync))
+        throw new Error('Missing failed database');
       expect(() => failed.prepare('SELECT 1')).toThrow(/closed|not open/i);
       const repair = new DatabaseSync(path);
       repair.exec('DROP INDEX project_room_agent_failures');
@@ -661,6 +664,7 @@ describe('Project Room explicit agent participation', () => {
               },
             },
             { userId: 'owner' },
+            {},
           );
           await sessions.dispatch(
             {

@@ -183,7 +183,7 @@ describe('Room completion observation lifecycle', () => {
     const now = Date.now();
     try {
       clock.mockReturnValue(now);
-      const handles = [];
+      const handles: Awaited<ReturnType<typeof f.request>>[] = [];
       for (let n = 0; n < 129; n++) handles.push(await f.request());
       for (const handle of handles)
         f.observer.watch(f.authority, handle.requestId);

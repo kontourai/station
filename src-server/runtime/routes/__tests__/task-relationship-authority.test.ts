@@ -140,10 +140,14 @@ test('mounted composition uses real Conversation open/read authority, prepares l
   expect((await h.link('private')).status).toBe(404);
   expect((await h.link('cross-project')).status).toBe(404);
   expect(readFileSync(join(h.home, 'task-graph.json'), 'utf8')).toBe(before);
-  expect((await (await h.list()).json()).data.chats).toEqual([
-    { conversationId: 'chat', revision: 1 },
-  ]);
-  expect((await (await h.list('other')).json()).data.chats).toEqual([]);
+  expect(
+    ((await (await h.list()).json()) as { data: { chats: unknown[] } }).data
+      .chats,
+  ).toEqual([{ conversationId: 'chat', revision: 1 }]);
+  expect(
+    ((await (await h.list('other')).json()) as { data: { chats: unknown[] } })
+      .data.chats,
+  ).toEqual([]);
   h.store.reserveNextConversationSession({
     conversationId: 'chat',
     predecessorSessionId: 'chat',

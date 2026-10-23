@@ -803,7 +803,11 @@ test('secured cancellation withholds publication when current operator authority
   const original = RepositoryAcquisitionService.prototype.cancel;
   const observed = vi
     .spyOn(RepositoryAcquisitionService.prototype, 'cancel')
-    .mockImplementation(function (id, assertCurrent) {
+    .mockImplementation(function (
+      this: RepositoryAcquisitionService,
+      id,
+      assertCurrent,
+    ) {
       entered();
       return original.call(this, id, assertCurrent);
     });
@@ -822,12 +826,24 @@ test('secured cancellation withholds publication when current operator authority
   const refused = await pending;
   observed.mockRestore();
   expect(refused.status).toBe(403);
+  const deniedRead = await f.send(
+    f.operator.credential,
+    'GET',
+    `/repository-acquisitions/${request.requestId}`,
+    {},
+  );
+  expect(deniedRead.status).toBe(403);
+  expect(JSON.stringify(deniedRead.body)).not.toContain(
+    failed.body.data.checkoutPath,
+  );
+  allowed = true;
   const inspected = await f.send(
     f.operator.credential,
     'GET',
     `/repository-acquisitions/${request.requestId}`,
     {},
   );
+  expect(inspected.status).toBe(200);
   expect(inspected.body.data).toEqual(failed.body.data);
 });
 
@@ -945,7 +961,7 @@ test('a directory choice waiting for publication refuses a removed coding grant 
   const original = ProjectIdentityService.prototype.updateExecutionRoot;
   const observed = vi
     .spyOn(ProjectIdentityService.prototype, 'updateExecutionRoot')
-    .mockImplementation(function (...args) {
+    .mockImplementation(function (this: ProjectIdentityService, ...args) {
       entered();
       return original.apply(this, args);
     });

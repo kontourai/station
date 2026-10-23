@@ -624,6 +624,7 @@ describe('project guest administration over the production composition', () => {
     const h = await setup(false, true);
     const project = await h.projectService.createProject({
       name: 'Local relationships',
+      slug: 'local-relationships',
     });
     const bootstrap = {
       current: async () => ({
@@ -637,7 +638,14 @@ describe('project guest administration over the production composition', () => {
       project.id,
       bootstrap,
     );
-    const people = [];
+    const people: {
+      cookie: string;
+      paired: ReturnType<typeof h.pairAccountBound>;
+      authenticated: Extract<
+        Awaited<ReturnType<typeof h.localAccounts.service.authenticate>>,
+        { kind: 'authenticated' }
+      >;
+    }[] = [];
     for (const username of ['relationalice', 'relationbob']) {
       const invitation = await h.membership.service.invite(
         enabled.scope,
@@ -901,6 +909,7 @@ describe('project guest administration over the production composition', () => {
     const h = await setup();
     const project = await h.projectService.createProject({
       name: 'Relationships',
+      slug: 'relationships',
     });
     const parent = await h.graph.createTask({
       projectId: project.id,
