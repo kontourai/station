@@ -1,14 +1,14 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { openPrivateSqlite } from '../../utils/private-sqlite.js';
 import {
   createProjectRoomRuntime,
   ProjectRoomStore,
 } from './project-room-store.js';
 
+const makeTempDir = trackTempDirs();
 const scope = {
   stationId: 'station',
   localProjectId: 'incarnation',
@@ -22,7 +22,7 @@ describe('ProjectRoomStore durable boundaries', () => {
   let a: ReturnType<typeof createProjectRoomRuntime>;
   let b: ReturnType<typeof createProjectRoomRuntime>;
   beforeEach(() => {
-    home = mkdtempSync(join(tmpdir(), 'project-room-'));
+    home = makeTempDir('project-room-');
     a = createProjectRoomRuntime(home);
     b = createProjectRoomRuntime(home);
     a.store.ensureRoom(scope, current);
@@ -30,7 +30,6 @@ describe('ProjectRoomStore durable boundaries', () => {
   afterEach(() => {
     a.close();
     b.close();
-    rmSync(home, { recursive: true, force: true });
   });
   it('deduplicates across connections and reopen, rejects changed intent, and preserves reply identity', () => {
     const input = { intentId: randomUUID(), text: 'hello' };

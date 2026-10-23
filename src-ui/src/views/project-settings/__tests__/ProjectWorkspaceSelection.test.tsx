@@ -179,7 +179,7 @@ test('selecting a second checkout is explicit and a lost response retries the ex
   ).toBeNull();
   act(() => navigationStore.navigate('/workspace-away'));
   expect(window.location.pathname).toBe(origin);
-  fireEvent.click(screen.getByRole('button', { name: 'Discard', exact: true }));
+  fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
   expect(window.location.pathname).toBe('/workspace-away');
   expect(screen.queryByRole('dialog')).toBeNull();
   expect(writes).toHaveLength(2);
