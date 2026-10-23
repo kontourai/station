@@ -3,17 +3,18 @@ import { join } from 'node:path';
 import { trackTempDirs } from '../../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../../domain/config-loader.js';
 import { FileStorageAdapter } from '../../../../domain/file-storage-adapter.js';
-import { captureEnvironmentLocalGrantObservationOwner } from '../../../../runtime/conversation/local-grant-observation-owner.js';
 import {
   type ObservedSdkProviderCredential,
-  ProviderCredentialObservationStore,
   readObservedSdkProviderCredential,
 } from '../../../../runtime/conversation/provider-credential-observation.js';
+import { RuntimeFencedCredentialObservationOwner } from '../../../../runtime/conversation/runtime-fenced-credential-observation.js';
 import {
   bindRuntimeLocalOperator,
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../../security/runtime-request-security.js';
 import { execGit } from '../../../../utils/git-exec.js';
+import { createLogger } from '../../../../utils/logger.js';
+import { AgentService } from '../../../agents/agent-service.js';
 import { EnvironmentSecurityService } from '../../../ssh/environment-security-service.js';
 import {
   LocalSourceAdmissionOwner,
@@ -150,7 +151,6 @@ export async function sdkCredentialFixture(
 ): Promise<{
   credential: ObservedSdkProviderCredential;
   observed: ReturnType<typeof readObservedSdkProviderCredential>;
-  store: ProviderCredentialObservationStore;
 }> {
   await f.storage.saveProviderConnection({
     id: 'connection-1',
@@ -166,21 +166,31 @@ export async function sdkCredentialFixture(
           : 'https://generativelanguage.googleapis.com/v1beta',
     },
   });
-  const authority = await captureEnvironmentLocalGrantObservationOwner(
-    f.req,
-    f.environment,
-    f.environment,
+  const agentService = new AgentService(
+    f.loader,
+    f.storage,
+    new Map(),
+    new Map(),
+    new Map(),
+    createLogger({ name: 'sdk-credential-fixture', level: 'error' }),
   );
-  const store = new ProviderCredentialObservationStore(f.home, {
-    authority,
-    adapter: f.storage,
-    captureConfigurationFence: () =>
-      f.loader.capturePreparationConfigurationFence(['worker']),
-    // Controlled source/config projection only; no boot runtime qualification is implied.
-    captureRuntimeFence: () =>
-      f.loader.capturePreparationConfigurationFence(['worker']),
+  const owner = new RuntimeFencedCredentialObservationOwner({
+    configLoader: f.loader,
+    storageAdapter: f.storage,
+    environmentSecurityService: f.environment,
+    requestSecurity: f.environment,
+    agentService,
+    // Controlled read scheduling; the separate owner tests exercise StationRuntime's real queue.
+    runtime: {
+      getAgentConfigurationRevision: () => 2,
+      commitAgentConfigurationRead: async (_expected, callback) => callback(),
+    },
   });
-  const credential = store.captureSdkCredential(f.req, 'connection-1');
+  const credential = await owner.captureSdkCredential(f.req, {
+    agentIds: ['worker'],
+    connectionId: 'connection-1',
+    provider,
+  });
   const observed = readObservedSdkProviderCredential(credential, provider);
-  return { credential, observed, store };
+  return { credential, observed };
 }

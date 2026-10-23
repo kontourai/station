@@ -9,8 +9,10 @@ import type { EnvironmentSecurityService } from '../../services/ssh/environment-
 import type { RuntimeContext } from '../types.js';
 import { captureEnvironmentLocalGrantObservationOwner } from './local-grant-observation-owner.js';
 import {
+  type ObservedSdkProviderCredential,
   type ProviderCredentialObservation,
   ProviderCredentialObservationStore,
+  readObservedSdkProviderCredential,
 } from './provider-credential-observation.js';
 
 export interface RuntimeFencedCredentialObservationOwners {
@@ -149,6 +151,103 @@ export class RuntimeFencedCredentialObservationOwner {
       realpathSync(resolve(owners.agentService.getProjectHomeDir())) !== home
     )
       refuse();
+  }
+
+  /** Private SDK handoff under the actual boot/configuration read lease. The
+   * returned capability retains these fences; it never exposes a wire DTO/key. */
+  async captureSdkCredential(
+    request: Request,
+    input: Readonly<{
+      agentIds: readonly string[];
+      connectionId: string;
+      provider: 'anthropic' | 'google';
+      lifetimeMs?: number;
+    }>,
+  ): Promise<ObservedSdkProviderCredential> {
+    const owners = this.#owners;
+    const provider = input.provider;
+    const selected = snapshot({
+      agentIds: input.agentIds,
+      operation: {
+        kind: 'capture',
+        connectionId: input.connectionId,
+        ...(input.lifetimeMs === undefined
+          ? {}
+          : { lifetimeMs: input.lifetimeMs }),
+      },
+    });
+    if (selected.operation.kind !== 'capture') refuse();
+    const operation = selected.operation;
+    let active = true;
+    let entered = false;
+    try {
+      const revision = owners.runtime.getAgentConfigurationRevision();
+      if (revision === null || !Number.isSafeInteger(revision) || revision < 0)
+        refuse();
+      const configuration =
+        owners.configLoader.capturePreparationConfigurationFence(
+          selected.agentIds,
+        );
+      const runtime = owners.agentService.capturePreparationConfigurationFence(
+        selected.agentIds,
+        () => owners.runtime.getAgentConfigurationRevision(),
+      );
+      const assertCurrent = () => {
+        if (
+          request.signal.aborted ||
+          owners.runtime.getAgentConfigurationRevision() !== revision
+        )
+          refuse();
+        this.#requireSameHome();
+        configuration();
+        runtime();
+      };
+      assertCurrent();
+      const authority = await captureEnvironmentLocalGrantObservationOwner(
+        request,
+        owners.environmentSecurityService,
+        owners.requestSecurity,
+      );
+      assertCurrent();
+      const store = new ProviderCredentialObservationStore(
+        owners.configLoader.getProjectHomeDir(),
+        {
+          adapter: owners.storageAdapter,
+          authority,
+          captureConfigurationFence: () => assertCurrent,
+          captureRuntimeFence: () => assertCurrent,
+        },
+      );
+      let credential: ObservedSdkProviderCredential | undefined;
+      const receipt = await owners.runtime.commitAgentConfigurationRead(
+        revision,
+        () => {
+          if (!active || entered || this.#captureAttempts >= 4096) refuse();
+          assertCurrent();
+          authority.requireCurrentLocalGrant(request).assertCurrent();
+          entered = true;
+          this.#captureAttempts++;
+          credential = store.captureSdkCredential(
+            request,
+            operation.connectionId,
+            operation.lifetimeMs,
+          );
+          readObservedSdkProviderCredential(credential, provider, request);
+          assertCurrent();
+          return Promise.resolve(credential);
+        },
+      );
+      assertCurrent();
+      if (!entered || credential === undefined || receipt !== credential)
+        refuse();
+      readObservedSdkProviderCredential(credential, provider, request);
+      return credential;
+    } catch {
+      return refuse();
+    } finally {
+      // A rejected/timed-out outer lease must fence a still-queued callback.
+      active = false;
+    }
   }
 
   async observe(

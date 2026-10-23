@@ -28,6 +28,7 @@ import { EventStore } from '../../../services/orchestration/event-store.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import { createLogger } from '../../../utils/logger.js';
 import { StationRuntime } from '../../bootstrap/station-runtime.js';
+import { readObservedSdkProviderCredential } from '../provider-credential-observation.js';
 import {
   RuntimeCredentialObservationUnavailable,
   type RuntimeFencedCredentialObservationInput,
@@ -611,77 +612,211 @@ test('unchanged live capture and revalidation retain the exact original timestam
   }
 });
 
-test('actual StationRuntime read queue refuses an aborted queued observation and admits a later current request', async () => {
-  const h = await setup();
-  const events = new EventStore(join(h.home, 'lease-events.db'));
-  const providers = new ProviderService(h.adapter, () =>
-    h.loader.loadAppConfig(),
-  );
-  const station: StationRuntime = Object.create(StationRuntime.prototype);
-  Object.assign(station, {
-    agentConfigurationRevision: 2,
-    agentConfigurationMutationQueue: Promise.resolve(),
-    agentConfigurationPersistenceQueue: Promise.resolve(),
-    agentConfigurationMutationsClosed: false,
-    configLoader: h.loader,
-    providerService: providers,
-    orchestrationEventStore: events,
-    loadedProviderLaunchabilityRevision: providers.getLaunchabilityRevision(),
-    loadedAppConfigLaunchabilityRevision: h.loader.getLaunchabilityRevision(),
-    loadedSelectedPackageFingerprint: createHash('sha256')
-      .update('[]')
-      .digest('hex'),
-  });
-  let release!: () => void;
-  let entered!: () => void;
-  const blocked = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const started = new Promise<void>((resolve) => {
-    entered = resolve;
-  });
-  const holding = station.commitAgentConfigurationRead(2, async () => {
-    entered();
-    await blocked;
-  });
-  let queued!: () => void;
-  const queueEntered = new Promise<void>((resolve) => {
-    queued = resolve;
-  });
-  const owner = new RuntimeFencedCredentialObservationOwner({
-    ...h.owners,
-    runtime: {
-      getAgentConfigurationRevision: () => 2,
-      commitAgentConfigurationRead(expected, operation) {
-        queued();
-        return station.commitAgentConfigurationRead(expected, operation);
+for (const mode of ['observation', 'sdk'] as const) {
+  test(`actual StationRuntime read queue refuses aborted queued ${mode} capture and admits a later current request`, async () => {
+    const h = await setup();
+    const events = new EventStore(join(h.home, 'lease-events.db'));
+    const providers = new ProviderService(h.adapter, () =>
+      h.loader.loadAppConfig(),
+    );
+    const station: StationRuntime = Object.create(StationRuntime.prototype);
+    Object.assign(station, {
+      agentConfigurationRevision: 2,
+      agentConfigurationMutationQueue: Promise.resolve(),
+      agentConfigurationPersistenceQueue: Promise.resolve(),
+      agentConfigurationMutationsClosed: false,
+      configLoader: h.loader,
+      providerService: providers,
+      orchestrationEventStore: events,
+      loadedProviderLaunchabilityRevision: providers.getLaunchabilityRevision(),
+      loadedAppConfigLaunchabilityRevision: h.loader.getLaunchabilityRevision(),
+      loadedSelectedPackageFingerprint: createHash('sha256')
+        .update('[]')
+        .digest('hex'),
+    });
+    let release!: () => void;
+    let entered!: () => void;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const started = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const holding = station.commitAgentConfigurationRead(2, async () => {
+      entered();
+      await blocked;
+    });
+    let queued!: () => void;
+    const queueEntered = new Promise<void>((resolve) => {
+      queued = resolve;
+    });
+    const owner = new RuntimeFencedCredentialObservationOwner({
+      ...h.owners,
+      runtime: {
+        getAgentConfigurationRevision: () => 2,
+        commitAgentConfigurationRead(expected, operation) {
+          queued();
+          return station.commitAgentConfigurationRead(expected, operation);
+        },
       },
-    },
+    });
+    try {
+      await started;
+      const capture = (request: Request) =>
+        mode === 'observation'
+          ? owner.observe(request, h.input)
+          : owner.captureSdkCredential(request, {
+              agentIds: ['station'],
+              connectionId: 'selected',
+              provider: 'anthropic',
+            });
+      const denied = refused(() => capture(h.request));
+      void denied.catch(() => {});
+      await queueEntered;
+      assert.equal(h.records().length, 0);
+      h.controller.abort();
+      release();
+      await holding;
+      await denied;
+      assert.equal(h.records().length, 0);
+      const current = new Request(h.request.url, { method: 'POST' });
+      setRuntimeAuthenticatedRequestPrincipal(
+        current,
+        getRuntimeAuthenticatedRequestPrincipal(h.request)!,
+      );
+      bindRuntimeLocalOperator(current);
+      const receipt = await capture(current);
+      if ('kind' in receipt)
+        assert.equal(receipt.kind, 'credential-source-observation');
+      else
+        assert.equal(
+          readObservedSdkProviderCredential(receipt, 'anthropic', current)
+            .connectionId,
+          'selected',
+        );
+      assert.equal(h.records().length, 1);
+    } finally {
+      release();
+      await holding;
+      events.close();
+      h.cleanup();
+    }
   });
+}
+
+test('actual runtime lease issues an opaque SDK credential that remains bound to its request and capture fences', async () => {
+  const h = await setup();
   try {
-    await started;
-    const denied = refused(() => owner.observe(h.request, h.input));
-    void denied.catch(() => {});
-    await queueEntered;
-    assert.equal(h.records().length, 0);
-    h.controller.abort();
-    release();
-    await holding;
-    await denied;
-    assert.equal(h.records().length, 0);
-    const current = new Request(h.request.url, { method: 'POST' });
+    const credential = await h.service.captureSdkCredential(h.request, {
+      agentIds: ['station'],
+      connectionId: 'selected',
+      provider: 'anthropic',
+    });
+    assert.equal(JSON.stringify(credential), '{}');
+    assert.equal(Object.isFrozen(credential), true);
+    const observed = readObservedSdkProviderCredential(
+      credential,
+      'anthropic',
+      h.request,
+    );
+    assert.equal(observed.apiKey, 'synthetic-selected-key');
+    assert.equal(observed.connectionId, 'selected');
+    assert.equal(h.records().length, 1);
+    const copied = new Request(h.request.url, { method: 'POST' });
     setRuntimeAuthenticatedRequestPrincipal(
-      current,
+      copied,
       getRuntimeAuthenticatedRequestPrincipal(h.request)!,
     );
-    bindRuntimeLocalOperator(current);
-    const receipt = await owner.observe(current, h.input);
-    assert.equal(receipt.kind, 'credential-source-observation');
-    assert.equal(h.records().length, 1);
+    bindRuntimeLocalOperator(copied);
+    assert.throws(() =>
+      readObservedSdkProviderCredential(credential, 'anthropic', copied),
+    );
+    h.controller.abort();
+    assert.throws(() =>
+      readObservedSdkProviderCredential(credential, 'anthropic', h.request),
+    );
   } finally {
-    release();
-    await holding;
-    events.close();
+    h.cleanup();
+  }
+});
+
+for (const change of [
+  'configuration',
+  'projection',
+  'revision',
+  'credential',
+  'revoke',
+] as const) {
+  test(`issued SDK credential refuses later actual ${change} drift`, async () => {
+    const h = await setup();
+    try {
+      const credential = await h.service.captureSdkCredential(h.request, {
+        agentIds: ['station'],
+        connectionId: 'selected',
+        provider: 'anthropic',
+      });
+      assert.equal(
+        readObservedSdkProviderCredential(credential, 'anthropic', h.request)
+          .connectionId,
+        'selected',
+      );
+      if (change === 'configuration')
+        writeFileSync(join(h.home, 'config', 'app.json'), '{}', {
+          mode: 0o600,
+        });
+      if (change === 'projection')
+        h.metadata.set('default', {
+          slug: 'station',
+          name: 'Station',
+          execution: { modelId: 'changed-after-sdk-capture' },
+        });
+      if (change === 'revision') h.setRevision(4);
+      if (change === 'credential')
+        await h.adapter.saveProviderConnection({
+          id: 'selected',
+          name: 'selected',
+          type: 'anthropic',
+          enabled: true,
+          capabilities: ['llm'],
+          config: {
+            apiKey: 'changed-private-key',
+            baseUrl: 'https://api.anthropic.com/v1',
+          },
+        });
+      if (change === 'revoke')
+        h.environment.devicePairing.revokeDevice(
+          h.paired.device.id,
+          'operator-credential',
+        );
+      assert.throws(() =>
+        readObservedSdkProviderCredential(credential, 'anthropic', h.request),
+      );
+      assert.equal(h.records().length, 1);
+    } finally {
+      h.cleanup();
+    }
+  });
+}
+
+test('SDK capture refuses a timed-out queued callback before any credential persistence', async () => {
+  const h = await setup();
+  try {
+    let late: (() => Promise<unknown>) | undefined;
+    h.runtime.commitAgentConfigurationRead = async (_revision, callback) => {
+      late = callback;
+      throw Error('controlled queued lease timeout');
+    };
+    await refused(() =>
+      h.service.captureSdkCredential(h.request, {
+        agentIds: ['station'],
+        connectionId: 'selected',
+        provider: 'anthropic',
+      }),
+    );
+    assert.ok(late);
+    await refused(async () => late!());
+    assert.equal(h.records().length, 0);
+  } finally {
     h.cleanup();
   }
 });

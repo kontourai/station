@@ -918,7 +918,12 @@ consumption and again after its callbacks return, immediately before raw fetch.
 A post-consumption refusal keeps unknown accounting held and forbids resending
 the consumed source. This supplies a credential-source handoff, not provider
 entitlement, tariff approval or a production serving issuer. Raw keys are not
-returned in observation DTOs or lease serialization.
+returned in observation DTOs or lease serialization. The runtime credential
+owner now issues the nominal SDK lease under the actual Agent configuration
+read queue and retains the configuration/runtime fences for later SDK reads.
+The installed-SDK source preparation controls consume this runtime-owned
+handoff. Controlled responses remain the transport evidence; boot serving and
+provider acceptance are not established.
 
 The narrow Anthropic preparation issuer now derives its contract from the actual
 source/credential leases and captured final SDK wire. It selects the documented

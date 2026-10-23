@@ -2007,6 +2007,15 @@ retains uncertainty and cannot resend the snapshot. Serialization of a lease or 
 key; a copied observation or JSON object cannot reconstruct the capability.
 Custom endpoint overrides refuse this official-endpoint mode.
 
+The [runtime credential owner](../../src-server/runtime/conversation/runtime-fenced-credential-observation.ts)
+issues this private SDK lease inside the actual Agent configuration read queue.
+The lease retains the selected Agents' ConfigLoader and AgentService fences,
+boot revision, home identity and authenticated Request. It stays readable after
+the read callback returns, while abort, revocation, credential replacement or
+configuration/runtime drift refuses subsequent SDK use. A timed-out queued
+callback cannot create an observation later. The ordinary observation operation
+still returns only its bounded DTO.
+
 This lease authenticates a credential source, not model entitlement or a tariff.
 The existing qualified provider contract remains independently required, and
 production request preparation still has to compose both owners.
