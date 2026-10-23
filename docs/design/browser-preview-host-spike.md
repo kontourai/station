@@ -17,10 +17,12 @@ and the record is kept as written. Two parts no longer bind:
   host for the Browser pane. A *bundled* browser is still rejected: ADR 0019
   uses an installed Chrome or Edge, or downloads a pinned build after consent.
 - The go/no-go limit "do not expand it to … remote target, shared browser
-  store, automation, or a mobile/web renderer". On personal hosts the Browser
-  pane admits any `http(s)` target, except Station's own listeners. It has a
-  persistent profile per Project (never shared across Projects), is driven by
-  agent tools, and renders in the web and mobile clients.
+  store, automation, or a mobile/web renderer". Personal-host Browser sessions
+  support HTTP(S) navigation subject to the Browser workspace guide's
+  authorization and egress policy, including Station-listener denial and
+  restrictions on non-public destinations. Persistent profiles are scoped by
+  Project and principal. Authorized agent tools can drive sessions, and web
+  and mobile clients render them.
 
 The Tauri 2 child-webview limit and the Electron decision are unchanged. The
 evidence, scorecard and "Remaining expansion criteria" below apply to the
