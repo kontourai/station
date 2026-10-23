@@ -1,3 +1,4 @@
+import { isTaskRoomAttachments } from '@kontourai/station-contracts/project-task-room';
 import {
   TASK_ROOM_CONTEXT_VERSION,
   TASK_ROOM_WORK_VERSION,
@@ -71,6 +72,8 @@ function workRecord(
 ): value is TaskRoomWorkRecord {
   if (!object(value)) return false;
   return (
+    (value.attachments === undefined ||
+      isTaskRoomAttachments(value.attachments)) &&
     value.version === TASK_ROOM_WORK_VERSION &&
     value.taskId === taskId &&
     (value.expectedDefinitionFingerprint === undefined ||
@@ -211,6 +214,9 @@ export async function submitTaskRoomAgentRequest(
         taskId,
         taskCreatedAt,
         operationId: input.operationId,
+        ...(input.attachments?.length
+          ? { attachments: input.attachments }
+          : {}),
         ...(input.context ? { context: input.context } : {}),
       },
     },
@@ -251,6 +257,8 @@ export async function submitTaskRoomAgentRequest(
       input.expectedDefinitionFingerprint &&
     value.record.modelId === modelId &&
     value.record.modelOptionsDigest === modelOptionsDigest &&
+    JSON.stringify(value.record.attachments ?? []) ===
+      JSON.stringify(input.attachments ?? []) &&
     value.record.prompt === input.prompt.trim() &&
     value.record.taskCreatedAt === taskCreatedAt &&
     value.record.context?.digest === input.context?.digest

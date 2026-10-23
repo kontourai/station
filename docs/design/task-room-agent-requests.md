@@ -50,6 +50,44 @@ in-memory set avoids repeated lookups, and durable proposal lookup covers restar
 and cache eviction.
 Existing document/history updates continue using SSE and HTTP.
 
+## Images and files
+
+The main Task room composer and agent-thread reply composer accept file drops,
+clipboard screenshots and picker selections. Image previews and removal controls
+appear before sending; image-only messages are allowed. Intake reuses the chat
+limits: five attachments, 5 MiB per file and 15 MiB combined, with the same image
+conversion and resizing rules. Clipboard paste depends on the browser exposing
+files; native keyboard image insertion is not qualified by these tests.
+
+The [Task asset store](../../src-server/services/projects/task-room-attachments.ts)
+saves bytes separately from room history. Upload and reference resolution require
+current message-write authority; byte reads require current history-read authority.
+Bindings include the canonical Project, Task ID and Task creation time. Knowing an
+attachment ID grants no access. Room history and durable agent requests store only
+`TaskRoomAttachment` descriptors. Bytes use the existing content-addressed store's
+retention settings (90 days and 512 MiB by default); a retained history entry may
+therefore outlive its bytes and show an unavailable attachment.
+
+The [room routes](../../src-server/routes/orchestration/project-task-rooms.ts)
+expose upload and authenticated byte reads under `/api/tasks/:taskId/room/attachments`.
+Initial requests and replies resolve references under Task authority and pass the
+bytes through the neutral provider attachment contract. The provider/model still
+owns image capability; a reference in room history does not establish that an
+actual model understood it. Ordinary room messages share images without starting
+an agent.
+
+Uncertain main-composer sends preserve attachment references with the original
+operation/proposal for explicit retries, including after reload. Unsent local
+files are guarded as dirty state but are not restored after reload. An upload
+failure keeps the draft and prevents dispatch. Room records advance to v4 with a permanent old-writer fence; the private request
+journal advances to `station.task-room-work-store/v4`. Older binaries reject
+these formats; use matching server/client
+versions when introducing attachment-bearing room records.
+
+Local tests cover screenshot intake, recovery, SDK/HTTP storage across restart,
+Task authority and neutral provider-adapter delivery. Browser, native shell and
+actual-provider image understanding remain unverified.
+
 ## Independent room contributions
 
 The contribution follow-up extends the existing room lifecycle owner to requests

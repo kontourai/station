@@ -696,8 +696,10 @@ simple per-device preference rather than claiming to detect an attached keyboard
 
 ### 3.2 Attachments
 
-- A new chat's start composer attaches through its paperclip and paste, and
-  dictates through its mic, like a reply. It cannot know what the new chat's
+- A new chat or New Task's start composer accepts file drops, clipboard images
+  and its paperclip picker, shows image thumbnails with removal controls, and
+  dictates through its mic, like a reply. Folder drops show a file-selection
+  error; ordinary text paste keeps its normal behavior. It cannot know what the new chat's
   engine accepts, so Start hands the files to the chat it opens, which runs
   them through its own intake and staging before its first send. If that
   engine refuses a file or a file does not stage, the message waits in the

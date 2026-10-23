@@ -22,6 +22,7 @@ import type {
   ProjectTaskRoomScope,
 } from '@kontourai/station-contracts/project-task-room';
 import {
+  isTaskRoomAttachments,
   PROJECT_TASK_ROOM_MAX_PAGE_JSON_ITEMS,
   PROJECT_TASK_ROOM_MAX_PAGE_RECORDS,
 } from '@kontourai/station-contracts/project-task-room';
@@ -1271,7 +1272,11 @@ async function resolveBody(
   if (body.kind === 'human-message')
     return {
       kind: 'resolved',
-      body: { kind: 'human-message', text: body.text },
+      body: {
+        kind: 'human-message',
+        text: body.text,
+        ...(body.attachments ? { attachments: body.attachments } : {}),
+      },
     };
   if (body.kind === 'outcome-link') {
     const link = await totalLink(links, body.linkKind, body.reference, scope);
@@ -1397,7 +1402,12 @@ function validAppendBody(value: unknown): value is ProjectTaskRoomAppendBody {
   const kind = value.kind;
   if (kind === 'output-feedback') return validOutputFeedback(value);
   if (kind === 'human-message')
-    return isPlainOwn(value, ['kind', 'text']) && text(value.text);
+    return (
+      isPlainOwn(value, ['kind', 'text', 'attachments']) &&
+      text(value.text) &&
+      (value.attachments === undefined ||
+        isTaskRoomAttachments(value.attachments))
+    );
   if (kind === 'live-work-started')
     return (
       isPlainOwn(value, ['kind', 'sessionId', 'runReference']) &&
@@ -1663,6 +1673,7 @@ function isReadStorage(
       value,
       PROJECT_TASK_ROOM_LIMITS.pageBytes,
       PROJECT_TASK_ROOM_MAX_PAGE_JSON_ITEMS,
+      16,
     ) ||
     !isPlainRecord(value) ||
     !['available', 'stale', 'gap', 'denied', 'unavailable'].includes(
@@ -1850,9 +1861,11 @@ function validRecord(
       'bodyBytes',
       'checkpointDigest',
     ]) ||
-    !['station.project-task-room/v2', 'station.project-task-room/v3'].includes(
-      value.schemaVersion,
-    ) ||
+    ![
+      'station.project-task-room/v2',
+      'station.project-task-room/v3',
+      'station.project-task-room/v4',
+    ].includes(value.schemaVersion) ||
     !validScope(value.scope) ||
     !validPrincipal(value.principal) ||
     !optionalId(value.correlationId) ||
@@ -1860,8 +1873,14 @@ function validRecord(
     !isPlainRecord(value.envelope) ||
     !validStoredBody(value.body) ||
     (value.body.kind === 'output-feedback' &&
-      (value.schemaVersion !== 'station.project-task-room/v3' ||
+      (![
+        'station.project-task-room/v3',
+        'station.project-task-room/v4',
+      ].includes(value.schemaVersion) ||
         value.principal.kind !== 'operator')) ||
+    (value.body.kind === 'human-message' &&
+      value.body.attachments !== undefined &&
+      value.schemaVersion !== 'station.project-task-room/v4') ||
     !Number.isSafeInteger(value.bodyBytes) ||
     value.bodyBytes < 0 ||
     !id(value.checkpointDigest)
@@ -1969,7 +1988,12 @@ function validStoredBody(value: unknown): value is ProjectTaskRoomBody {
   if (!isPlainRecord(value)) return false;
   if (value.kind === 'output-feedback') return validOutputFeedback(value);
   if (value.kind === 'human-message')
-    return isPlainOwn(value, ['kind', 'text']) && text(value.text);
+    return (
+      isPlainOwn(value, ['kind', 'text', 'attachments']) &&
+      text(value.text) &&
+      (value.attachments === undefined ||
+        isTaskRoomAttachments(value.attachments))
+    );
   if (value.kind === 'live-work-started')
     return (
       isPlainOwn(value, ['kind', 'sessionId', 'run']) &&
@@ -2044,10 +2068,11 @@ function boundedPlain(
   value: unknown,
   maxBytes: number,
   maxItems: number = PROJECT_TASK_ROOM_LIMITS.jsonItems,
+  maxDepth: number = PROJECT_TASK_ROOM_LIMITS.jsonDepth,
 ) {
   return measureBoundedJson(value, {
     maxBytes,
-    maxDepth: PROJECT_TASK_ROOM_LIMITS.jsonDepth,
+    maxDepth,
     maxItems,
     maxStringCodeUnits: PROJECT_TASK_ROOM_LIMITS.stringBytes,
     maxKeyCodeUnits: 256,

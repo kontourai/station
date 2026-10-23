@@ -53,6 +53,7 @@ import {
   humanPrincipal,
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
+import type { TaskRoomAttachment } from '@kontourai/station-contracts/project-task-room';
 import {
   APPROVAL_MODES,
   type ApprovalMode,
@@ -231,6 +232,7 @@ import {
   ForegroundDeliveryReceiptCapacityError,
   ForegroundDeliveryReceipts,
 } from './foreground-delivery-receipts.js';
+import { taskRoomAttachmentsSchema } from './task-room-attachment-http.js';
 
 // These are intentional public projections. The typed code/outcome and, when
 // available, the receipt/session below give callers evidence to observe; a
@@ -804,6 +806,7 @@ export const delegateTaskSchema = z.object({
       taskId: z.string().min(1).max(160),
       taskCreatedAt: z.string().min(1).max(40),
       operationId: z.string().min(1).max(160),
+      attachments: taskRoomAttachmentsSchema.optional(),
       context: z
         .object({
           version: z.literal(TASK_ROOM_CONTEXT_VERSION),
@@ -1109,6 +1112,7 @@ export const continueDelegatedTaskBodySchema = z.object({
       taskId: z.string().min(1).max(256),
       taskCreatedAt: z.string().max(40).datetime(),
       operationId: z.string().min(1).max(128),
+      attachments: taskRoomAttachmentsSchema.optional(),
       attachBrief: z.boolean().optional(),
     })
     .strict()
@@ -1877,6 +1881,12 @@ export function createOrchestrationRoutes(
     stationControlDispatchScope?: StationControlDispatchScope;
     delegateTask?: (input: DelegateTaskRequest) => Promise<unknown>;
     taskRoomWork?: {
+      resolveAttachments?(input: {
+        taskId: string;
+        taskCreatedAt: string;
+        request: Request;
+        attachments: TaskRoomAttachment[];
+      }): Promise<ChatAttachmentInput[] | undefined>;
       holdPublication?(taskId: string): () => void;
       beforeInvocation?(taskId: string): Promise<void>;
       continued?(taskId: string): Promise<void>;
@@ -1903,6 +1913,7 @@ export function createOrchestrationRoutes(
           taskCreatedAt: string;
           operationId: string;
           message: string;
+          attachments?: TaskRoomAttachment[];
         },
         request: Request,
         principal: PrincipalRef,
@@ -3826,6 +3837,16 @@ export function createOrchestrationRoutes(
         roomBinding?: TaskRoomInvocationAdmission['roomBinding'],
         contextSnapshot?: TaskRoomContextSnapshot,
       ) => {
+        let roomAttachments: ChatAttachmentInput[] | undefined;
+        if (roomRequest?.attachments?.length) {
+          roomAttachments = await deps.taskRoomWork?.resolveAttachments?.({
+            ...roomRequest,
+            request: c.req.raw,
+            attachments: roomRequest.attachments,
+          });
+          if (!roomAttachments)
+            throw new Error('Task attachments are unavailable.');
+        }
         if (roomRequest) {
           releaseRoomRequestPublication ??=
             deps.taskRoomWork?.holdPublication?.(roomRequest.taskId);
@@ -3834,6 +3855,7 @@ export function createOrchestrationRoutes(
         return delegate({
           ...request,
           ...(stagedFiles ? { stagedFiles } : {}),
+          ...(roomAttachments ? { taskRoomAttachments: roomAttachments } : {}),
           ...(contextSnapshot
             ? {
                 prompt: formatTaskRoomPrompt(body.prompt, contextSnapshot),
@@ -3954,6 +3976,9 @@ export function createOrchestrationRoutes(
                   }
                 : {}),
               prompt: body.prompt,
+              ...(roomRequest.attachments?.length
+                ? { attachments: roomRequest.attachments }
+                : {}),
               ...(roomRequest.context ? { context: roomRequest.context } : {}),
             },
             authorize,
@@ -4495,8 +4520,27 @@ export function createOrchestrationRoutes(
             },
             403,
           );
+        const roomAttachments = roomReply?.attachments?.length
+          ? await deps.taskRoomWork?.resolveAttachments?.({
+              ...roomReply,
+              request: c.req.raw,
+              attachments: roomReply.attachments,
+            })
+          : undefined;
+        if (roomReply?.attachments?.length && !roomAttachments)
+          return c.json(
+            {
+              success: false,
+              error: 'Task attachments are unavailable.',
+              code: 'task_room_reply_refused',
+            },
+            409,
+          );
         try {
           const data = await deps.continueDelegatedTask({
+            ...(roomAttachments
+              ? { taskRoomAttachments: roomAttachments }
+              : {}),
             ...(roomAdmission
               ? { taskRoomInvocationAdmission: roomAdmission }
               : {}),
