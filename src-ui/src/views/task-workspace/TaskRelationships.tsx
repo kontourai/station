@@ -3,7 +3,10 @@ import type {
   TaskRecord,
   TaskWorkChatMutationInput,
 } from '@kontourai/station-contracts/task-graph';
-import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
+import {
+  MAX_TASK_TITLE_LENGTH,
+  taskStatusLabel,
+} from '@kontourai/station-contracts/task-graph';
 import { fetchConversationInventory } from '@kontourai/station-sdk';
 import { fetchTaskWorkChat } from '@kontourai/station-sdk/client/task-relationships';
 import {
@@ -15,12 +18,18 @@ import {
 } from '@kontourai/station-sdk/task-relationships';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Empty, SkeletonList } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { openChatsStore } from '../../contexts/open-chats-store';
+import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
+import {
+  chatIntent,
+  childIntent,
+  useRetainedRelationship,
+} from './useRetainedRelationship';
 
 export function TaskRelationships({
   task,
@@ -30,17 +39,31 @@ export function TaskRelationships({
   kind: 'children' | 'work-chats';
 }) {
   const scope = useHostRequestAuthorityScope();
-  if (!scope) return <p>Task relationships unavailable.</p>;
   const key = JSON.stringify([
-    scope.apiBase,
-    scope.authorityKey,
+    scope?.apiBase,
+    scope?.authorityKey,
     task.id,
     task.createdAt,
+    task.projectId,
   ]);
+  const previous = useRef(key);
+  useLayoutEffect(() => {
+    if (previous.current !== key) {
+      for (const panel of ['children', 'work-chats']) {
+        try {
+          sessionStorage.removeItem(`station-task-relationship:${panel}`);
+        } catch {
+          /* New scope cannot restore the old envelope. */
+        }
+      }
+      previous.current = key;
+    }
+  }, [key]);
+  if (!scope) return <p>Task relationships unavailable.</p>;
   return kind === 'children' ? (
-    <Subtasks key={key} task={task} scope={scope} />
+    <Subtasks key={key} task={task} scope={scope} scopeKey={key} />
   ) : (
-    <WorkChats key={key} task={task} scope={scope} />
+    <WorkChats key={key} task={task} scope={scope} scopeKey={key} />
   );
 }
 const identity = (task: TaskRecord) => ({
@@ -51,24 +74,45 @@ const identity = (task: TaskRecord) => ({
 function Subtasks({
   task,
   scope,
+  scopeKey,
 }: {
   task: TaskRecord;
   scope: TaskRelationshipScope;
+  scopeKey: string;
 }) {
   const { navigate } = useNavigation();
   const children = useTaskChildrenQuery(identity(task), scope);
   const create = useCreateTaskChildMutation(scope);
   const [title, setTitle] = useState('');
-  const [request, setRequest] = useState<TaskChildCreateInput>();
+  const retained = useRetainedRelationship(
+    'children',
+    scopeKey,
+    childIntent.refine(
+      (input) =>
+        input.parent.taskId === task.id &&
+        input.parent.taskCreatedAt === task.createdAt &&
+        input.task.projectId === task.projectId,
+    ),
+  );
+  const { request } = retained;
+  const [destination, setDestination] = useState('');
+  const { DiscardModal } = useUnsavedGuard(!!title || !!request, () => {
+    if (!retained.clear()) return false;
+    setTitle('');
+    return true;
+  });
+  useEffect(() => {
+    if (destination) navigate(destination);
+  }, [destination, navigate]);
   function submit(input: TaskChildCreateInput) {
-    if (!scope.isCurrent()) return;
-    setRequest(input);
+    if (!scope.isCurrent() || !retained.isActive()) return;
+    if (!retained.retain(input) || retained.blocked) return;
     create.mutate(input, {
       onSuccess: (result) => {
-        if (!scope.isCurrent()) return;
-        setRequest(undefined);
+        if (!scope.isCurrent() || !retained.isActive()) return;
+        if (!retained.clear()) return;
         setTitle('');
-        navigate(`/tasks/${encodeURIComponent(result.task.id)}`);
+        setDestination(`/tasks/${encodeURIComponent(result.task.id)}`);
       },
     });
   }
@@ -105,7 +149,12 @@ function Subtasks({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          if (!title.trim() || request) return;
+          if (
+            !title.trim() ||
+            title.trim().length > MAX_TASK_TITLE_LENGTH ||
+            request
+          )
+            return;
           submit({
             operationId: randomCorrelationId(),
             parent: identity(task),
@@ -116,7 +165,7 @@ function Subtasks({
         <label>
           Subtask title{' '}
           <input
-            maxLength={512}
+            maxLength={MAX_TASK_TITLE_LENGTH}
             value={title}
             disabled={!!request}
             onChange={(event) => setTitle(event.target.value)}
@@ -126,19 +175,26 @@ function Subtasks({
           Add subtask
         </Button>
       </form>
-      {create.error && request && (
+      <DiscardModal />
+      {retained.notice && <p role="alert">{retained.notice}</p>}
+      {request && !create.isPending && (
         <p role="alert">
-          Subtask creation could not be confirmed.
-          <Button disabled={create.isPending} onClick={() => submit(request)}>
+          Subtask creation could not be confirmed. It may already have been
+          added.
+          <Button
+            disabled={create.isPending || retained.blocked}
+            onClick={() => submit(request)}
+          >
             Retry creation
           </Button>
           <Button
             onClick={() => {
-              setRequest(undefined);
+              if (!retained.clear()) return;
+              setTitle('');
               create.reset();
             }}
           >
-            Dismiss
+            Stop retrying
           </Button>
         </p>
       )}
@@ -149,14 +205,30 @@ function Subtasks({
 function WorkChats({
   task,
   scope,
+  scopeKey,
 }: {
   task: TaskRecord;
   scope: TaskRelationshipScope;
+  scopeKey: string;
 }) {
   const chats = useTaskWorkChatsQuery(identity(task), scope);
   const mutation = useSetTaskWorkChatMutation(scope);
   const [selected, setSelected] = useState('');
-  const [request, setRequest] = useState<TaskWorkChatMutationInput>();
+  const retained = useRetainedRelationship(
+    'work-chats',
+    scopeKey,
+    chatIntent.refine(
+      (input) =>
+        input.task.taskId === task.id &&
+        input.task.taskCreatedAt === task.createdAt,
+    ),
+  );
+  const { request } = retained;
+  const { DiscardModal } = useUnsavedGuard(!!selected || !!request, () => {
+    if (!retained.clear()) return false;
+    setSelected('');
+    return true;
+  });
   const [notice, setNotice] = useState('');
   const [preparing, setPreparing] = useState(false);
   const inventory = useQuery({
@@ -174,12 +246,12 @@ function WorkChats({
     },
   });
   function send(input: TaskWorkChatMutationInput) {
-    if (!scope.isCurrent()) return;
-    setRequest(input);
+    if (!scope.isCurrent() || !retained.isActive()) return;
+    if (!retained.retain(input) || retained.blocked) return;
     mutation.mutate(input, {
       onSuccess: () => {
-        if (scope.isCurrent()) {
-          setRequest(undefined);
+        if (scope.isCurrent() && retained.isActive()) {
+          if (!retained.clear()) return;
           setSelected('');
         }
       },
@@ -198,7 +270,7 @@ function WorkChats({
         conversationId,
         { requestScope: scope },
       );
-      if (!scope.isCurrent()) return;
+      if (!scope.isCurrent() || !retained.isActive()) return;
       send({
         operationId,
         task: identity(task),
@@ -296,19 +368,25 @@ function WorkChats({
         </p>
       )}
       {inventory.data?.hasMore && <p>Showing recent chats.</p>}
-      {mutation.error && request && (
+      <DiscardModal />
+      {retained.notice && <p role="alert">{retained.notice}</p>}
+      {request && !mutation.isPending && (
         <p role="alert">
-          Chat update could not be confirmed.
-          <Button disabled={mutation.isPending} onClick={() => send(request)}>
+          Chat update could not be confirmed. The change may already have been
+          applied.
+          <Button
+            disabled={mutation.isPending || retained.blocked}
+            onClick={() => send(request)}
+          >
             Retry update
           </Button>
           <Button
             onClick={() => {
-              setRequest(undefined);
+              if (!retained.clear()) return;
               mutation.reset();
             }}
           >
-            Dismiss
+            Stop retrying
           </Button>
         </p>
       )}
