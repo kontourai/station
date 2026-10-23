@@ -9,6 +9,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { ReportGroupsPanel } from '../ReportGroupsPanel';
@@ -404,6 +405,39 @@ test.each(['returned', 'refused', 'authority-loss', 'unmount'] as const)(
     fill('Agent ID', 'review-agent');
     fill('Member brief', 'Inspect only the selected source.');
     fill('Member output token limit', '500');
+    if (outcome === 'returned') {
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Add report member' }),
+      );
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Add report member' }),
+      );
+      const critic = within(
+        screen.getByRole('group', { name: 'Report member 2' }),
+      );
+      fireEvent.change(critic.getByLabelText('Agent ID'), {
+        target: { value: 'critic-agent' },
+      });
+      fireEvent.change(critic.getByLabelText('Member brief'), {
+        target: { value: 'Find contrary evidence only.' },
+      });
+      fireEvent.change(critic.getByLabelText('Member output token limit'), {
+        target: { value: '200' },
+      });
+      const verifier = within(
+        screen.getByRole('group', { name: 'Report member 3' }),
+      );
+      fireEvent.change(verifier.getByLabelText('Agent ID'), {
+        target: { value: 'verification-agent' },
+      });
+      fireEvent.change(verifier.getByLabelText('Member brief'), {
+        target: { value: 'Verify the exact source independently.' },
+      });
+      fireEvent.change(verifier.getByLabelText('Member output token limit'), {
+        target: { value: '250' },
+      });
+      fill('Concurrent reports', '2');
+    }
     const leave = new Event('beforeunload', { cancelable: true });
     window.dispatchEvent(leave);
     expect(leave.defaultPrevented).toBe(true);
@@ -418,7 +452,7 @@ test.each(['returned', 'refused', 'authority-loss', 'unmount'] as const)(
         projectSlug: 'project-one',
         resourceId: 'resource-one',
         deadlineAt: expect.any(Number),
-        maxConcurrent: 1,
+        maxConcurrent: outcome === 'returned' ? 2 : 1,
         budget: { inputTokens: 10000, outputTokens: 1000, costMicros: 50000 },
         members: [
           {
@@ -427,6 +461,22 @@ test.each(['returned', 'refused', 'authority-loss', 'unmount'] as const)(
             brief: 'Inspect only the selected source.',
             maxOutputTokens: 500,
           },
+          ...(outcome === 'returned'
+            ? [
+                {
+                  seatId: 'seat-2',
+                  agentId: 'critic-agent',
+                  brief: 'Find contrary evidence only.',
+                  maxOutputTokens: 200,
+                },
+                {
+                  seatId: 'seat-3',
+                  agentId: 'verification-agent',
+                  brief: 'Verify the exact source independently.',
+                  maxOutputTokens: 250,
+                },
+              ]
+            : []),
         ],
       },
     ]);
