@@ -63,7 +63,6 @@ function host(discovery: LanDiscovery, hostname = '0.0.0.0') {
     {
       port: 0,
       hostname,
-      enableWebSocket: false,
       configureFullApp: ({ app }) => {
         app.get('/probe', (c) => c.text('ok'));
       },

@@ -17,6 +17,10 @@ const RESULTS = new Set([
   'failed',
 ]);
 
+function isAppHidden(): boolean {
+  return document.visibilityState === 'hidden';
+}
+
 function privateLanHost(hostname: string): boolean {
   const host = hostname.replace(/^\[|\]$/g, '').toLowerCase();
   if (/^(fc|fd)[0-9a-f]{2}:/.test(host)) return true;
@@ -41,7 +45,7 @@ export function registerNativeConnectionDiscovery(): () => void {
   const unregister = registerConnectionCandidateProvider({
     id: 'native.lan-dns-sd',
     async discover({ signal }) {
-      if (signal.aborted || document.visibilityState === 'hidden')
+      if (signal.aborted || isAppHidden())
         throw new ConnectionCandidateProviderError('cancelled');
       // Android's permission Activity may hide the WebView. Admit permission
       // before owning a scan; permission completion never starts browsing.
@@ -66,7 +70,7 @@ export function registerNativeConnectionDiscovery(): () => void {
         throw new ConnectionCandidateProviderError(status);
       if (status !== 'ready')
         throw new ConnectionCandidateProviderError('failed');
-      if (document.visibilityState === 'hidden')
+      if (isAppHidden())
         throw new ConnectionCandidateProviderError('cancelled');
       const scanId = randomCorrelationId();
       const controller = new AbortController();
@@ -78,7 +82,7 @@ export function registerNativeConnectionDiscovery(): () => void {
         );
       };
       const onVisibility = () => {
-        if (document.visibilityState === 'hidden') cancelNative();
+        if (isAppHidden()) cancelNative();
       };
       signal.addEventListener('abort', cancelNative, { once: true });
       document.addEventListener('visibilitychange', onVisibility);

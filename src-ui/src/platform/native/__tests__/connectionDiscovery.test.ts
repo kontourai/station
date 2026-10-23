@@ -43,22 +43,30 @@ describe('native LAN provider', () => {
     },
   );
 
-  it('does not start browsing after its owner aborts during permission UI', async () => {
-    let finish: ((value: unknown) => void) | undefined;
-    prepare.mockImplementation(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        }),
-    );
-    invoke.mockResolvedValue({ status: 'available', candidates: [station] });
-    const owner = new AbortController();
-    const result = discoverConnectionCandidates({ signal: owner.signal });
-    owner.abort();
-    finish?.({ status: 'ready' });
-    expect((await result).candidates).toEqual([]);
-    expect(invoke).not.toHaveBeenCalled();
-  });
+  it.each(['aborted', 'hidden'])(
+    'does not start browsing when its owner becomes %s during permission UI',
+    async (state) => {
+      let finish: ((value: unknown) => void) | undefined;
+      prepare.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      );
+      invoke.mockResolvedValue({ status: 'available', candidates: [station] });
+      const owner = new AbortController();
+      const result = discoverConnectionCandidates({ signal: owner.signal });
+      if (state === 'aborted') owner.abort();
+      else
+        Object.defineProperty(document, 'visibilityState', {
+          configurable: true,
+          value: 'hidden',
+        });
+      finish?.({ status: 'ready' });
+      expect((await result).candidates).toEqual([]);
+      expect(invoke).not.toHaveBeenCalled();
+    },
+  );
 
   it('uses resolved host and actual port while rejecting non-LAN and malformed results', async () => {
     invoke.mockResolvedValue({

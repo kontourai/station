@@ -5,6 +5,19 @@ import { type Browser, type BrowserContext, chromium } from '@playwright/test';
 import { build, stop } from 'esbuild';
 import { afterAll, afterEach, beforeAll, expect, test } from 'vitest';
 
+// Only Playwright callbacks use this browser fixture; scripts keep Node-only libs.
+declare const window: {
+  isSecureContext: boolean;
+  localStorage: { clear(): void };
+  pairingJournal: {
+    pending(): { endpoint: string; requestKind: 'direct' };
+    run(pending: unknown, failCustody?: boolean): Promise<{ status: string }>;
+    claim(pending: unknown): Promise<'claimed' | 'held' | 'unavailable'>;
+    restore(): Promise<{ status: string; held: unknown[] }>;
+    clear(endpoint: string, requestKind: 'direct'): void;
+  };
+};
+
 let browser: Browser;
 let origin: string;
 let script = '';
@@ -128,16 +141,11 @@ test('serializes two nonsecure tabs and retains a redirected one-shot exchange a
   const ctx = await context();
   const first = await page(ctx);
   const second = await page(ctx);
-  expect(await first.evaluate(() => isSecureContext)).toBe(false);
-  const pending = await first.evaluate(() =>
-    (window as any).pairingJournal.pending(),
-  );
+  expect(await first.evaluate(() => window.isSecureContext)).toBe(false);
+  const pending = await first.evaluate(() => window.pairingJournal.pending());
   const results = await Promise.all(
     [first, second].map((tab) =>
-      tab.evaluate(
-        (pending) => (window as any).pairingJournal.run(pending),
-        pending,
-      ),
+      tab.evaluate((pending) => window.pairingJournal.run(pending), pending),
     ),
   );
   expect(results.map((result) => result.status)).toEqual([
@@ -147,14 +155,14 @@ test('serializes two nonsecure tabs and retains a redirected one-shot exchange a
   expect(exchanges).toBe(1);
   expect(redirects).toBe(0);
   await first.evaluate((pending) => {
-    localStorage.clear();
-    (window as any).pairingJournal.clear(pending.endpoint, pending.requestKind);
+    window.localStorage.clear();
+    window.pairingJournal.clear(pending.endpoint, pending.requestKind);
   }, pending);
   await first.reload();
   await first.waitForFunction(() => 'pairingJournal' in window);
   expect(
     await first.evaluate(() =>
-      (window as any).pairingJournal
+      window.pairingJournal
         .restore()
         .then(({ held }: { held: unknown[] }) => held.length),
     ),
@@ -162,7 +170,7 @@ test('serializes two nonsecure tabs and retains a redirected one-shot exchange a
   expect(
     (
       await first.evaluate(
-        (pending) => (window as any).pairingJournal.run(pending),
+        (pending) => window.pairingJournal.run(pending),
         pending,
       )
     ).status,
@@ -173,12 +181,10 @@ test('serializes two nonsecure tabs and retains a redirected one-shot exchange a
 test('a committed claim survives renderer loss before send and blocks a fresh completion owner', async () => {
   const ctx = await context();
   const first = await page(ctx);
-  const pending = await first.evaluate(() =>
-    (window as any).pairingJournal.pending(),
-  );
+  const pending = await first.evaluate(() => window.pairingJournal.pending());
   expect(
     await first.evaluate(
-      (pending) => (window as any).pairingJournal.claim(pending),
+      (pending) => window.pairingJournal.claim(pending),
       pending,
     ),
   ).toBe('claimed');
@@ -187,7 +193,7 @@ test('a committed claim survives renderer loss before send and blocks a fresh co
   expect(
     (
       await restored.evaluate(
-        (pending) => (window as any).pairingJournal.run(pending),
+        (pending) => window.pairingJournal.run(pending),
         pending,
       )
     ).status,
@@ -198,13 +204,11 @@ test('a committed claim survives renderer loss before send and blocks a fresh co
 test('keeps the attempt after successful wire delivery when credential custody fails', async () => {
   mode = 'success';
   const tab = await page(await context());
-  const pending = await tab.evaluate(() =>
-    (window as any).pairingJournal.pending(),
-  );
+  const pending = await tab.evaluate(() => window.pairingJournal.pending());
   expect(
     (
       await tab.evaluate(
-        (pending) => (window as any).pairingJournal.run(pending, true),
+        (pending) => window.pairingJournal.run(pending, true),
         pending,
       )
     ).status,
@@ -215,7 +219,7 @@ test('keeps the attempt after successful wire delivery when credential custody f
   expect(
     (
       await tab.evaluate(
-        (pending) => (window as any).pairingJournal.run(pending),
+        (pending) => window.pairingJournal.run(pending),
         pending,
       )
     ).status,
@@ -231,9 +235,7 @@ test('does not send when the authoritative journal cannot open', async () => {
   expect(
     (
       await tab.evaluate(() =>
-        (window as any).pairingJournal.run(
-          (window as any).pairingJournal.pending(),
-        ),
+        window.pairingJournal.run(window.pairingJournal.pending()),
       )
     ).status,
   ).toBe('not-started');
@@ -243,13 +245,11 @@ test('does not send when the authoritative journal cannot open', async () => {
 test('completes successful custody once and refuses the same proof in a fresh coordinator', async () => {
   mode = 'success';
   const tab = await page(await context());
-  const pending = await tab.evaluate(() =>
-    (window as any).pairingJournal.pending(),
-  );
+  const pending = await tab.evaluate(() => window.pairingJournal.pending());
   expect(
     (
       await tab.evaluate(
-        (pending) => (window as any).pairingJournal.run(pending),
+        (pending) => window.pairingJournal.run(pending),
         pending,
       )
     ).status,
@@ -257,15 +257,16 @@ test('completes successful custody once and refuses the same proof in a fresh co
   expect(
     (
       await tab.evaluate(
-        (pending) => (window as any).pairingJournal.run(pending),
+        (pending) => window.pairingJournal.run(pending),
         pending,
       )
     ).status,
   ).toBe('indeterminate');
   expect(exchanges).toBe(1);
-  expect(
-    await tab.evaluate(() => (window as any).pairingJournal.restore()),
-  ).toEqual({ status: 'available', held: [] });
+  expect(await tab.evaluate(() => window.pairingJournal.restore())).toEqual({
+    status: 'available',
+    held: [],
+  });
 });
 
 test('releases only an exact unconsumed approval response before completing custody', async () => {
@@ -274,9 +275,7 @@ test('releases only an exact unconsumed approval response before completing cust
   expect(
     (
       await tab.evaluate(() =>
-        (window as any).pairingJournal.run(
-          (window as any).pairingJournal.pending(),
-        ),
+        window.pairingJournal.run(window.pairingJournal.pending()),
       )
     ).status,
   ).toBe('paired');

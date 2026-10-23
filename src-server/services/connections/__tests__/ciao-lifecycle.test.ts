@@ -60,6 +60,7 @@ beforeEach(() => {
             failResponses && response
               ? new Error('injected UDP send failure')
               : null,
+            Buffer.isBuffer(message) ? message.length : 0,
           );
       });
     });
