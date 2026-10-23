@@ -2,7 +2,7 @@ import { generateKeyPairSync, verify } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
   appStoreConnectErrorDetail,
@@ -10,6 +10,7 @@ import {
   assertCanonicalArtifactBuiltAt,
   attachInternalGroup,
   createAppStoreConnectJwt,
+  main,
   receiptArtifactProvenance,
   resolveAppStoreConnectUrl,
   selectAppResource,
@@ -958,5 +959,338 @@ describe('resolveAppStoreConnectUrl', () => {
       ),
     ).rejects.toThrow('must stay on');
     expect(fetchImpl).not.toHaveBeenCalled();
+  });
+});
+
+describe('external TestFlight distribution command', () => {
+  const env = {
+    APPLE_API_ISSUER_ID: 'issuer',
+    APPLE_API_KEY_ID: 'key',
+    APPLE_API_PRIVATE_KEY: privateKey,
+    TESTFLIGHT_EXTERNAL_GROUP_ID: 'external-1',
+  };
+  afterEach(() => vi.unstubAllGlobals());
+
+  function provider(
+    options: {
+      state?: string;
+      namedGroups?: number;
+      groupApp?: string;
+      buildApp?: string;
+      buildVersion?: string;
+      expired?: boolean;
+      internal?: boolean;
+      submissionError?: boolean;
+      lostSubmissionResponse?: boolean;
+      membershipVisible?: boolean;
+      notificationsPersist?: boolean;
+    } = {},
+  ) {
+    let state = options.state ?? 'READY_FOR_BETA_SUBMISSION';
+    let autoNotifyEnabled = false;
+    let assigned = false;
+    const mutations: string[] = [];
+    const response = (data: unknown) => new Response(JSON.stringify({ data }));
+    vi.stubGlobal('fetch', async (input: URL | string, init?: RequestInit) => {
+      const path = new URL(String(input)).pathname;
+      const method = init?.method ?? 'GET';
+      if (method !== 'GET') mutations.push(`${method} ${path}`);
+      const body = init?.body ? JSON.parse(String(init.body)) : null;
+      if (method === 'GET' && path === '/v1/betaGroups') {
+        const query = new URL(String(input)).searchParams;
+        expect(query.get('filter[app]')).toBe('app-1');
+        expect(query.get('filter[name]')).toBe('Friends & Family');
+        return response(
+          Array.from({ length: options.namedGroups ?? 1 }, (_, i) => ({
+            type: 'betaGroups',
+            id: i === 0 ? 'external-1' : 'external-2',
+            attributes: { name: 'Friends & Family', isInternalGroup: false },
+          })),
+        );
+      }
+      if (method === 'GET' && path === '/v1/betaGroups/external-1')
+        return response({
+          type: 'betaGroups',
+          id: 'external-1',
+          attributes: {
+            name: 'Friends & Family',
+            isInternalGroup: options.internal ?? false,
+          },
+        });
+      if (method === 'GET' && path === '/v1/betaGroups/external-1/app')
+        return response({ type: 'apps', id: options.groupApp ?? 'app-1' });
+      if (method === 'GET' && path === '/v1/builds/build-1')
+        return response({
+          type: 'builds',
+          id: 'build-1',
+          attributes: {
+            version: options.buildVersion ?? '10542',
+            processingState: 'VALID',
+            expired: options.expired ?? false,
+          },
+        });
+      if (method === 'GET' && path === '/v1/builds/build-1/app')
+        return response({ type: 'apps', id: options.buildApp ?? 'app-1' });
+      if (method === 'GET' && path === '/v1/builds/build-1/buildBetaDetail')
+        return response({
+          type: 'buildBetaDetails',
+          id: 'detail-1',
+          attributes: { autoNotifyEnabled, externalBuildState: state },
+        });
+      if (method === 'PATCH' && path === '/v1/buildBetaDetails/detail-1') {
+        expect(body).toEqual({
+          data: {
+            type: 'buildBetaDetails',
+            id: 'detail-1',
+            attributes: { autoNotifyEnabled: true },
+          },
+        });
+        if (options.notificationsPersist !== false) autoNotifyEnabled = true;
+        return response({ type: 'buildBetaDetails', id: 'detail-1' });
+      }
+      if (method === 'POST' && path === '/v1/betaAppReviewSubmissions') {
+        expect(autoNotifyEnabled).toBe(true);
+        expect(body).toEqual({
+          data: {
+            type: 'betaAppReviewSubmissions',
+            relationships: {
+              build: { data: { type: 'builds', id: 'build-1' } },
+            },
+          },
+        });
+        if (options.submissionError)
+          return new Response(
+            JSON.stringify({
+              errors: [
+                { detail: 'Beta review contact information is required.' },
+              ],
+            }),
+            { status: 422 },
+          );
+        state = 'WAITING_FOR_BETA_REVIEW';
+        if (options.lostSubmissionResponse)
+          throw new Error('connection lost after submission');
+        return response({
+          type: 'betaAppReviewSubmissions',
+          id: 'review-1',
+          attributes: { betaReviewState: 'WAITING_FOR_REVIEW' },
+        });
+      }
+      if (path === '/v1/betaGroups/external-1/relationships/builds') {
+        if (method === 'POST') {
+          expect(state).not.toBe('READY_FOR_BETA_SUBMISSION');
+          expect(body).toEqual({ data: [{ type: 'builds', id: 'build-1' }] });
+          assigned = true;
+          return new Response(null, { status: 204 });
+        }
+        if (method === 'GET')
+          return response(
+            assigned && options.membershipVisible !== false
+              ? [{ type: 'builds', id: 'build-1' }]
+              : [],
+          );
+      }
+      throw new Error(`Unexpected Apple request: ${method} ${path}`);
+    });
+    return mutations;
+  }
+  const outputPath = () => join(makeTempDir('asc-external-'), 'receipt.json');
+  const run = (
+    output: string,
+    environment: typeof env & { TESTFLIGHT_EXTERNAL_GROUP_NAME?: string } = env,
+  ) =>
+    main(
+      [
+        'distribute-external',
+        '--app-id',
+        'app-1',
+        '--build-id',
+        'build-1',
+        '--bundle-version',
+        '10542',
+        '--output',
+        output,
+      ],
+      environment,
+    );
+  const receipt = (output: string) => JSON.parse(readFileSync(output, 'utf8'));
+
+  test('enables notifications, submits the exact build, and verifies external group membership', async () => {
+    const mutations = provider();
+    const output = outputPath();
+    await run(output);
+    expect(mutations).toEqual([
+      'PATCH /v1/buildBetaDetails/detail-1',
+      'POST /v1/betaAppReviewSubmissions',
+      'POST /v1/betaGroups/external-1/relationships/builds',
+    ]);
+    expect(receipt(output)).toMatchObject({
+      status: 'submitted',
+      phase: 'complete',
+      appId: 'app-1',
+      buildId: 'build-1',
+      bundleVersion: '10542',
+      groupId: 'external-1',
+      autoNotifyEnabled: true,
+      membershipVerified: true,
+      submissionId: 'review-1',
+      betaReviewState: 'WAITING_FOR_REVIEW',
+    });
+    // An already delivered build is reconciled without another mutation.
+    await run(output);
+    expect(mutations).toHaveLength(3);
+    expect(receipt(output).status).toBe('already-in-review');
+  });
+
+  test.each([
+    'WAITING_FOR_BETA_REVIEW',
+    'IN_BETA_REVIEW',
+    'BETA_APPROVED',
+    'READY_FOR_BETA_TESTING',
+    'IN_BETA_TESTING',
+  ])(
+    'preserves an existing %s review instead of resubmitting',
+    async (state) => {
+      const mutations = provider({ state });
+      const output = outputPath();
+      await run(output);
+      expect(mutations).not.toContain('POST /v1/betaAppReviewSubmissions');
+      expect(receipt(output)).toMatchObject({
+        externalBuildState: state,
+        membershipVerified: true,
+      });
+    },
+  );
+
+  test.each([
+    { groupApp: 'other-app' },
+    { buildApp: 'other-app' },
+    { buildVersion: '10541' },
+    { expired: true },
+    { internal: true },
+    { state: 'MISSING_EXPORT_COMPLIANCE' },
+    { state: 'BETA_REJECTED' },
+    { state: 'UNKNOWN_STATE' },
+  ])(
+    'refuses external effects for invalid provider prerequisites: %j',
+    async (options) => {
+      const mutations = provider(options);
+      const output = outputPath();
+      await expect(run(output)).rejects.toThrow(
+        /external tester group|blocked by build state|Expected unexpired VALID build/,
+      );
+      expect(mutations).toEqual([]);
+      expect(receipt(output)).toMatchObject({
+        status: 'failed',
+        phase: 'preflight',
+      });
+    },
+  );
+
+  test.each([0, 1, 2])(
+    'resolves a named group only when exactly one external match exists (%i)',
+    async (namedGroups) => {
+      const mutations = provider({ namedGroups });
+      const output = outputPath();
+      const result = run(output, {
+        ...env,
+        TESTFLIGHT_EXTERNAL_GROUP_ID: '',
+        TESTFLIGHT_EXTERNAL_GROUP_NAME: 'Friends & Family',
+      });
+      if (namedGroups === 1) {
+        await result;
+        expect(receipt(output)).toMatchObject({
+          status: 'submitted',
+          groupId: 'external-1',
+          groupName: 'Friends & Family',
+          membershipVerified: true,
+        });
+      } else {
+        await expect(result).rejects.toThrow(
+          /Expected exactly one external tester group/,
+        );
+        expect(mutations).toEqual([]);
+      }
+    },
+  );
+
+  test('records missing group configuration without attempting a provider request', async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const output = outputPath();
+    await expect(
+      run(output, { ...env, TESTFLIGHT_EXTERNAL_GROUP_ID: '' }),
+    ).rejects.toThrow(/Set TESTFLIGHT_EXTERNAL_GROUP_ID/);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(receipt(output)).toMatchObject({
+      status: 'failed',
+      phase: 'preflight',
+    });
+  });
+
+  test('requires readback of automatic notifications before submitting', async () => {
+    const mutations = provider({ notificationsPersist: false });
+    const output = outputPath();
+    await expect(run(output)).rejects.toThrow(/not enabled on readback/);
+    expect(mutations).toEqual(['PATCH /v1/buildBetaDetails/detail-1']);
+    expect(receipt(output)).toMatchObject({
+      status: 'failed',
+      phase: 'enable-notifications',
+    });
+  });
+
+  test('does not claim tester availability when assignment never appears on readback', async () => {
+    vi.useFakeTimers();
+    try {
+      provider({ membershipVisible: false });
+      const output = outputPath();
+      const check = expect(run(output)).rejects.toThrow(
+        /does not contain build build-1 before the deadline/,
+      );
+      await vi.advanceTimersByTimeAsync(60_000);
+      await check;
+      expect(receipt(output)).toMatchObject({
+        status: 'failed',
+        phase: 'assign-group',
+        betaReviewState: 'WAITING_FOR_REVIEW',
+      });
+      expect(receipt(output).membershipVerified).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('retains an actionable Apple rejection without claiming submission or membership', async () => {
+    provider({ submissionError: true });
+    const output = outputPath();
+    await expect(run(output)).rejects.toThrow(
+      /HTTP 422: Beta review contact information is required/,
+    );
+    expect(receipt(output)).toMatchObject({
+      status: 'failed',
+      phase: 'submit-review',
+    });
+    expect(receipt(output).membershipVerified).toBeUndefined();
+    expect(receipt(output).submissionId).toBeUndefined();
+  });
+
+  test('reconciles a lost submission response without sending another review request', async () => {
+    const mutations = provider({ lostSubmissionResponse: true });
+    const output = outputPath();
+    await expect(run(output)).rejects.toThrow(
+      /connection lost after submission/,
+    );
+    expect(receipt(output)).toMatchObject({
+      status: 'failed',
+      phase: 'submit-review',
+    });
+    await run(output);
+    expect(
+      mutations.filter((call) => call === 'POST /v1/betaAppReviewSubmissions'),
+    ).toHaveLength(1);
+    expect(receipt(output)).toMatchObject({
+      status: 'already-in-review',
+      membershipVerified: true,
+    });
   });
 });

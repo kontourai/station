@@ -92,8 +92,8 @@ For Windows PowerShell, updates, and connection help, follow
 
 Connect to a Station running on a computer. The phone uses that computer’s
 agents and files; it does not need Node.js or coding tools. The phone apps are
-in internal testing (Google Play internal testing and TestFlight), so most
-people open the Station's address in the phone's browser. Follow
+distributed through Google Play internal testing and invited TestFlight
+testing, so most people open the Station's address in the phone's browser. Follow
 [Connect your phone](docs/user/getting-started.md#connect-your-phone).
 
 <a id="run-from-source-macos-linux"></a>
