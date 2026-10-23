@@ -27,7 +27,10 @@ vi.mock('../contexts/AgentsContext', () => ({
 }));
 
 import { isTurnInFlight } from '../contexts/active-chats-state';
-import { activeChatsStore } from '../contexts/active-chats-store';
+import {
+  ActiveChatsStore,
+  activeChatsStore,
+} from '../contexts/active-chats-store';
 import { conversationsStore } from '../contexts/ConversationsContext';
 import { handleTextDeltaEvent } from '../hooks/orchestration/streamHandlers';
 import { useDerivedSessions } from '../hooks/useDerivedSessions';
@@ -41,6 +44,51 @@ function clearChats() {
     activeChatsStore.removeChat(sessionId);
   }
 }
+
+test.each([false, true])(
+  'a mounted dock observes the first added chat (hydrated store: %s)',
+  (hydrated) => {
+    const store = new ActiveChatsStore({
+      storage: {
+        getItem: () =>
+          hydrated
+            ? JSON.stringify([
+                { sessionId: 'persisted-chat', agentSlug: 'agent-one' },
+              ])
+            : null,
+        setItem: () => {},
+      },
+    });
+    const snapshot = vi
+      .spyOn(activeChatsStore, 'getSnapshot')
+      .mockImplementation(store.getSnapshot);
+    const subscribe = vi
+      .spyOn(activeChatsStore, 'subscribe')
+      .mockImplementation(store.subscribe);
+    try {
+      const { result } = renderHook(() => useDerivedSessions('', null));
+      expect(result.current.map((session) => session.id)).toEqual(
+        hydrated ? ['persisted-chat'] : [],
+      );
+      act(() => {
+        store.initChat('first-chat', {
+          agentSlug: 'agent-one',
+          agentName: 'Agent One',
+        });
+        store.updateChat('first-chat', { input: 'Start this chat' });
+      });
+      expect(result.current.map((session) => session.id)).toEqual(
+        hydrated ? ['persisted-chat', 'first-chat'] : ['first-chat'],
+      );
+      expect(store.getSnapshot()['first-chat'].input).toBe('Start this chat');
+    } finally {
+      cleanup();
+      snapshot.mockRestore();
+      subscribe.mockRestore();
+      store.flushPendingSave();
+    }
+  },
+);
 
 describe('useDerivedSessions — ChatDock identity stability (station#726)', () => {
   beforeEach(() => {

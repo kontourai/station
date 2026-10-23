@@ -43,7 +43,7 @@ export type {
 export class ActiveChatsStore {
   private chats: ActiveChatsMap = {};
   private listeners = new Set<() => void>();
-  private snapshot = this.chats;
+  private snapshot = { ...this.chats };
   /** Ephemeral draft occurrence tokens; never persisted or reused after removal. */
   private draftRevisions = new Map<string, object>();
   private readonly storageKey: string;
@@ -94,7 +94,7 @@ export class ActiveChatsStore {
         typeof hydrateActiveChats
       >[0];
       this.chats = hydrateActiveChats(minimal);
-      this.snapshot = this.chats;
+      this.snapshot = { ...this.chats };
     } catch (error) {
       log.api('Failed to load active chats from sessionStorage:', error);
     }
