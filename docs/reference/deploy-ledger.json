@@ -1,5 +1,87 @@
 [
   {
+    "timestampUtc": "2026-10-23T02:01:50Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2487",
+    "sha": "5956a04183edffed8c1ba9ec5b7c9c540a34528f",
+    "artifactBuiltAt": "2026-10-23T01:09:28.936Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39881389449",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 39881389449)"
+    ],
+    "changelog": {
+      "previousSha": "d650fa2d34d02ce00f1252c4f7b642eb75d914e5",
+      "groups": {
+        "feat": [
+          "[#4050](https://github.com/kontourai/station/pull/4050) feat(release): build a styled macOS installer DMG"
+        ],
+        "fix": [
+          "[#4060](https://github.com/kontourai/station/pull/4060) fix(release): verify the copied app inside the DMG before signing",
+          "[#4067](https://github.com/kontourai/station/pull/4067) fix(ci): stop obsolete merge candidates consuming runners",
+          "[#4066](https://github.com/kontourai/station/pull/4066) fix(ci): gate dependency advisories at release promotion"
+        ],
+        "ci": [
+          "[#4024](https://github.com/kontourai/station/pull/4024) ci(windows): stage the desktop sidecar when the candidate provides it"
+        ],
+        "docs": [
+          "[#4025](https://github.com/kontourai/station/pull/4025) docs(recovery): design connection-list recovery without a backup"
+        ],
+        "other": [
+          "[#4054](https://github.com/kontourai/station/pull/4054) build(deps): bump ip-address from 10.7.2 to 10.7.4",
+          "[#4069](https://github.com/kontourai/station/pull/4069) test(release): align promotion contracts with advisory gates",
+          "[#4026](https://github.com/kontourai/station/pull/4026) build(deps): bump vitest to 4.1.12 for @vitest/mocker advisories"
+        ]
+      },
+      "note": null,
+      "commitCount": 9
+    }
+  },
+  {
+    "timestampUtc": "2026-10-23T02:01:47Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2487",
+    "sha": "5956a04183edffed8c1ba9ec5b7c9c540a34528f",
+    "artifactBuiltAt": "2026-10-23T01:09:39.996Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/39881389449",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 39881389449)"
+    ],
+    "changelog": {
+      "previousSha": "d650fa2d34d02ce00f1252c4f7b642eb75d914e5",
+      "groups": {
+        "feat": [
+          "[#4050](https://github.com/kontourai/station/pull/4050) feat(release): build a styled macOS installer DMG"
+        ],
+        "fix": [
+          "[#4060](https://github.com/kontourai/station/pull/4060) fix(release): verify the copied app inside the DMG before signing",
+          "[#4067](https://github.com/kontourai/station/pull/4067) fix(ci): stop obsolete merge candidates consuming runners",
+          "[#4066](https://github.com/kontourai/station/pull/4066) fix(ci): gate dependency advisories at release promotion"
+        ],
+        "ci": [
+          "[#4024](https://github.com/kontourai/station/pull/4024) ci(windows): stage the desktop sidecar when the candidate provides it"
+        ],
+        "docs": [
+          "[#4025](https://github.com/kontourai/station/pull/4025) docs(recovery): design connection-list recovery without a backup"
+        ],
+        "other": [
+          "[#4054](https://github.com/kontourai/station/pull/4054) build(deps): bump ip-address from 10.7.2 to 10.7.4",
+          "[#4069](https://github.com/kontourai/station/pull/4069) test(release): align promotion contracts with advisory gates",
+          "[#4026](https://github.com/kontourai/station/pull/4026) build(deps): bump vitest to 4.1.12 for @vitest/mocker advisories"
+        ]
+      },
+      "note": null,
+      "commitCount": 9
+    }
+  },
+  {
     "timestampUtc": "2026-10-23T01:10:36Z",
     "channel": "nightly-npm",
     "version": "0.11.0-nightly.2487.39881389449",

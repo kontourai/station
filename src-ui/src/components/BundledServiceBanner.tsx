@@ -88,13 +88,6 @@ export function BundledServiceBanner({
             : 'Restarting Station on this device. Settings and saved Stations remain available.';
     bannerStore.present({
       id: BANNER_IDS.bundledService,
-      // Required, not decorative, because this banner is now dismissible for
-      // its non-blocking states. The store keys user-dismissal suppression by
-      // `id` + `occurrence`, and a dismissible banner with NO occurrence stays
-      // suppressed until `clear` — so dismissing "local Station stopped"
-      // would have swallowed the `failed` banner that follows it, which is a
-      // real fault reported to nobody. Keyed on the two fields that decide
-      // what this banner says, so any change of state is a new occurrence.
       occurrence: `${status.ownership}:${phase}`,
       priority:
         phase === 'failed'
@@ -114,13 +107,6 @@ export function BundledServiceBanner({
             ? 'Local Station stopped'
             : 'Local Station',
       message,
-      // Everything this banner still presents that is NOT connection-blocking
-      // is a notice the reader may reasonably be done with — it costs a band
-      // of vertical space at the top of the window for as long as it is up.
-      // The `failed` band stays non-dismissible for archive#3432's reason:
-      // dismissing it hides the action needed to get a Station back. Same
-      // shape, and the same reason, as ConnectionBannerSource's
-      // `dismissible: !blocked`.
       dismissible: phase !== 'failed',
       dismissAriaLabel: 'Dismiss local Station notice',
       ariaLive: 'polite',
@@ -131,10 +117,17 @@ export function BundledServiceBanner({
         // user sees nothing happen. Gating on `!serviceOwnsHome` left it
         // rendered for `none`, where it is equally dead.
         ...(canRestart
-          ? [{ label: 'Restart Station', onClick: onRestart }]
+          ? [
+              {
+                label: 'Restart Station',
+                closesDetails: true,
+                onClick: onRestart,
+              },
+            ]
           : []),
         {
           label: 'Manage Stations',
+          closesDetails: true,
           variant: 'secondary',
           onClick: onOpenConnections,
         },

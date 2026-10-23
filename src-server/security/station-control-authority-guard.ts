@@ -132,6 +132,12 @@ export interface StationControlAuthorityGuardOptions {
    * the command is refused (fail closed).
    */
   commandThread?(threadId: string): StationControlDispatchTarget | undefined;
+  /**
+   * For the `wake-up-stays-in-own-conversation` rule: the conversation a
+   * recorded wake-up belongs to. Absent, throwing or answering nothing: a
+   * cancel naming it is refused (fail closed).
+   */
+  wakeUpConversation?(wakeUpId: string): string | undefined;
   /** Called once per refusal, for the operator's logs. */
   onRefusal?(
     refusal: StationControlRefusal,
@@ -231,6 +237,42 @@ function commandThread(
   }
 }
 
+/**
+ * For `wake-up-stays-in-own-conversation`: the conversation the request
+ * names. A cancel (`DELETE .../wake-ups/:wakeUpId`) names the wake-up's
+ * recorded conversation, or `null` when Station cannot find it; a schedule
+ * names its body's `conversationId` when it carries one.
+ */
+function wakeUpConversationId(
+  options: StationControlAuthorityGuardOptions,
+  method: string,
+  path: string,
+  body: unknown,
+): string | null | undefined {
+  if (
+    !matchStationControlRoute(method, path)?.rules.includes(
+      'wake-up-stays-in-own-conversation',
+    )
+  )
+    return undefined;
+  if (method.toUpperCase() === 'DELETE') {
+    // A malformed escape names nothing: refused like an unknown id.
+    try {
+      const wakeUpId = decodeURIComponent(
+        path.split('/').filter(Boolean).at(-1) ?? '',
+      );
+      return options.wakeUpConversation?.(wakeUpId) ?? null;
+    } catch {
+      return null;
+    }
+  }
+  if (!body || typeof body !== 'object') return undefined;
+  const named = (body as { conversationId?: unknown }).conversationId;
+  // A non-string value names nothing the guard can compare; the route's
+  // strict body schema refuses it.
+  return typeof named === 'string' ? named : undefined;
+}
+
 /** The thread a scoped command's body names, if it is one. */
 function scopedCommandThreadId(body: unknown): string | undefined {
   if (!body || typeof body !== 'object') return undefined;
@@ -301,6 +343,7 @@ export function createStationControlAuthorityGuard(
         body,
       ),
       commandThread: commandThread(options, method, path, body),
+      wakeUpConversationId: wakeUpConversationId(options, method, path, body),
     });
     if (!refusal) {
       await next();

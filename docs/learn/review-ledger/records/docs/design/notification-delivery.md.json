@@ -90,7 +90,17 @@
 
     "src-server/services/approvals/approval-inbox.ts",
 
-    "src-server/services/orchestration/orchestration-service.ts"
+    "src-server/services/orchestration/orchestration-service.ts",
+
+    "src-ui/src/components/notifications/NotificationContainer.tsx",
+
+    "src-ui/src/contexts/ToastContext.tsx",
+
+    "src-ui/src/hooks/useServerEvents.ts",
+
+    "src-ui/src/lib/notification-envelope-toast.ts",
+
+    "src-ui/src/__tests__/toast-lifecycle.test.tsx"
   ],
 
   "checks": [

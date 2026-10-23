@@ -2,10 +2,10 @@ import {
   type EngineId,
   parseEngineId,
 } from '@kontourai/station-contracts/agent-identity';
-import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import {
   isSupportedTurnProvenanceEnvelope,
   type TurnProvenanceEnvelope,
+  turnProvenanceEngineLabel,
 } from '@kontourai/station-contracts/turn-provenance';
 import type { EngineDescriptor } from '../../../utils/engine';
 import { modelIdentityLabel } from '../../../utils/modelCapabilities';
@@ -75,9 +75,10 @@ export function turnCompletedNormally(msg: TurnIdentitySource): boolean {
  *   discovery-only design), and inventing one here would be a guess wearing
  *   a chip.
  *
- * The label comes from `engineDisplayLabel` — the same function
+ * The label comes from `turnProvenanceEngineLabel` — the same function
  * `TurnProvenanceCard` uses — so the chip and the card speak ONE vocabulary
- * for one fact. When the provider has no product name yet, the raw slug is
+ * for one fact: the connection name the turn recorded (an ACP connection
+ * such as OpenCode), else the provider's product name. When the provider has no product name yet, the raw slug is
  * the honest answer (identical to the card's own unknown state); it is an
  * identifier the envelope actually observed, not the guessed-from-a-
  * connection-id case `EngineChip`'s rule exists to prevent.
@@ -87,8 +88,7 @@ export function resolveTurnEngine(
 ): EngineDescriptor | null {
   const envelope = readEnvelope(msg);
   if (envelope?.engine.state !== 'observed') return null;
-  const { provider } = envelope.engine.value;
-  return { name: engineDisplayLabel(provider) ?? provider };
+  return { name: turnProvenanceEngineLabel(envelope.engine.value) };
 }
 
 /**

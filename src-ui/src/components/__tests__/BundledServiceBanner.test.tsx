@@ -249,121 +249,57 @@ describe('BundledServiceBanner (station#3079)', () => {
   });
 });
 
-describe('BundledServiceBanner dismissibility (station#3476)', () => {
+describe('BundledServiceBanner failure severity', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     bannerStore.reset();
   });
 
-  test.each([
-    ['stopped', 'sidecar'],
-    ['stopped', 'none'],
-    ['starting', 'sidecar'],
-    ['restarting', 'sidecar'],
-    ['stopping', 'none'],
-  ] as const)(
-    'a non-blocking %s/%s notice can be dismissed',
-    (phase, ownership) => {
-      const calls = presented();
-      render(
-        <BundledServiceBanner
-          status={{ ...baseStatus, phase, ownership }}
-          onRestart={vi.fn()}
-          onOpenConnections={vi.fn()}
-        />,
-      );
-
-      expect(calls).toHaveLength(1);
-      expect(calls[0]!.priority).toBe(BANNER_PRIORITY.connectionTransient);
-      // BannerHost gates BOTH the close button and swipe-to-dismiss on this
-      // one field — the owner's complaint was that neither was available.
-      expect(calls[0]!.dismissible).toBe(true);
-    },
-  );
-
   test.each(['sidecar', 'none'] as const)(
-    'a failed %s home stays non-dismissible (station#3432)',
+    'a failed %s home remains a blocking fault',
     (ownership) => {
-      // Unchanged on purpose: dismissing a connection-blocking banner hides
-      // the action needed to get a Station back.
       const calls = presented();
       render(
         <BundledServiceBanner
-          status={{ ...baseStatus, phase: 'failed' as const, ownership }}
+          status={{ ...baseStatus, phase: 'failed', ownership }}
           onRestart={vi.fn()}
           onOpenConnections={vi.fn()}
         />,
       );
-
       expect(calls).toHaveLength(1);
       expect(calls[0]!.priority).toBe(BANNER_PRIORITY.connectionBlocking);
       expect(calls[0]!.tone).toBe('error');
-      expect(calls[0]!.dismissible).toBe(false);
     },
   );
 
-  test('dismissing the stopped notice does not swallow the failure that follows', () => {
-    // Against the REAL store, because this is a store-contract hazard rather
-    // than a component one: user-dismissal suppression is keyed by
-    // `id` + `occurrence`, and a dismissible banner with NO occurrence stays
-    // suppressed until `clear`. Without `occurrence` the failed banner below
-    // is silently dropped — a genuinely broken Station reported to nobody,
-    // caused by the dismissibility this change adds.
+  test('replaces a stopped condition with the subsequent failure', () => {
+    const onRestart = vi.fn();
+    const onOpenConnections = vi.fn();
     const view = render(
       <BundledServiceBanner
-        status={{ ...baseStatus, ownership: 'sidecar' as const }}
-        onRestart={vi.fn()}
-        onOpenConnections={vi.fn()}
+        status={{ ...baseStatus, ownership: 'sidecar' }}
+        onRestart={onRestart}
+        onOpenConnections={onOpenConnections}
       />,
     );
     expect(bannerStore.getSnapshot()).toHaveLength(1);
-
-    bannerStore.dismiss(BANNER_IDS.bundledService, { reason: 'user' });
-    bannerStore.flushExits();
-    expect(bannerStore.getSnapshot()).toHaveLength(0);
-
     view.rerender(
       <BundledServiceBanner
         status={{
           ...baseStatus,
-          phase: 'failed' as const,
-          ownership: 'sidecar' as const,
+          phase: 'failed',
+          ownership: 'sidecar',
           message: 'HOST-NARRATION-SENTINEL crashed.',
         }}
-        onRestart={vi.fn()}
-        onOpenConnections={vi.fn()}
+        onRestart={onRestart}
+        onOpenConnections={onOpenConnections}
       />,
     );
-
-    const live = bannerStore.getSnapshot();
-    expect(live).toHaveLength(1);
-    expect(live[0]!.message).toContain('HOST-NARRATION-SENTINEL');
-    expect(live[0]!.dismissible).toBe(false);
-  });
-
-  test('a dismissed notice stays dismissed while its state is unchanged', () => {
-    // The other half of the occurrence contract: keying it too finely (on a
-    // field that churns, e.g. `attempt`) would re-present a banner the user
-    // just closed on the next status poll.
-    const view = render(
-      <BundledServiceBanner
-        status={{ ...baseStatus, ownership: 'sidecar' as const }}
-        onRestart={vi.fn()}
-        onOpenConnections={vi.fn()}
-      />,
-    );
-    bannerStore.dismiss(BANNER_IDS.bundledService, { reason: 'user' });
-    bannerStore.flushExits();
-
-    // A fresh object with the same decisive fields — what a status poll emits.
-    view.rerender(
-      <BundledServiceBanner
-        status={{ ...baseStatus, ownership: 'sidecar' as const, attempt: 2 }}
-        onRestart={vi.fn()}
-        onOpenConnections={vi.fn()}
-      />,
-    );
-
-    expect(bannerStore.getSnapshot()).toHaveLength(0);
+    expect(bannerStore.getSnapshot()).toEqual([
+      expect.objectContaining({
+        message: 'HOST-NARRATION-SENTINEL crashed.',
+        priority: BANNER_PRIORITY.connectionBlocking,
+      }),
+    ]);
   });
 });

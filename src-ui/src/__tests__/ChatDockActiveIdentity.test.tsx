@@ -47,7 +47,12 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
    * is that the label distinguishing this chat from the last one is no longer
    * the first thing to vanish.
    */
-  test('shows the execution route alongside the reported model', () => {
+  /**
+   * One line: title, agent, engine. The model and the route are the
+   * composer's (its model picker names them), so the bar carries them only in
+   * the context's tooltip.
+   */
+  test('keeps the model and route out of the line and in the tooltip', () => {
     render(
       <ChatDockActiveIdentity
         session={session}
@@ -59,10 +64,15 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
     );
     expect(
       document.querySelector('.chat-dock__active-identity-engine')?.textContent,
-    ).toBe('Claude Code · GPT-6.1 Sol · via home-media');
+    ).toBe('Claude Code');
+    expect(
+      document
+        .querySelector('.chat-dock__active-identity-context')
+        ?.getAttribute('title'),
+    ).toBe('Codex · Claude Code · GPT-6.1 Sol · via home-media');
   });
 
-  test('leads with the conversation title and keeps assistant and model context together', () => {
+  test('leads with the conversation title, then the agent and engine', () => {
     render(
       <ChatDockActiveIdentity
         session={session}
@@ -72,13 +82,8 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
       />,
     );
 
-    // Order is the claim, not just presence: agent → title → engine · model.
-    expect(identityText()).toBe(
-      'Polish the Station dockCodexClaude Code · Opus 5 (1M context)',
-    );
-    expect(
-      document.querySelector('.chat-dock__active-identity-engine')?.textContent,
-    ).toBe('Claude Code · Opus 5 (1M context)');
+    // Order is the claim, not just presence: title → agent → engine.
+    expect(identityText()).toBe('Polish the Station dockCodexClaude Code');
     expect(
       document.querySelector('.chat-dock__active-identity-avatar'),
     ).not.toBeNull();
@@ -103,9 +108,29 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
     expect(
       screen.getByText('Driven from delegation').getAttribute('title'),
     ).toBe('Driven from delegated task: Review Station');
+    // It is the first to give way on a narrow bar, so the title's tooltip
+    // keeps it.
+    expect(
+      document
+        .querySelector('.chat-dock__active-identity-title')
+        ?.getAttribute('title')
+        ?.split('\n')
+        .at(-1),
+    ).toBe('Driven from delegated task: Review Station');
+    // With no task title, it says so plainly rather than show the raw id.
+    rerender(
+      <ChatDockActiveIdentity
+        session={session}
+        inputOrigin={{ kind: 'delegation', taskId: 'task:01da7f' }}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByText('Driven from delegation').getAttribute('title'),
+    ).toBe('Driven from a delegated task');
   });
 
-  test('the title and the token each carry their full text as a tooltip, because each ellipsizes', () => {
+  test('the title and the context each carry their full text as a tooltip; the title names the context too, which may have stepped aside', () => {
     render(
       <ChatDockActiveIdentity
         session={session}
@@ -117,12 +142,14 @@ describe('ChatDockActiveIdentity agent identity (#3309)', () => {
 
     expect(
       screen.getByText('Polish the Station dock').getAttribute('title'),
-    ).toBe('Polish the Station dock');
+    ).toBe(
+      'Polish the Station dock\nCodex · Claude Code · Opus 5 (1M context)',
+    );
     expect(
-      screen
-        .getByText('Claude Code · Opus 5 (1M context)')
-        .getAttribute('title'),
-    ).toBe('Claude Code · Opus 5 (1M context)');
+      document
+        .querySelector('.chat-dock__active-identity-context')
+        ?.getAttribute('title'),
+    ).toBe('Codex · Claude Code · Opus 5 (1M context)');
   });
 
   test('an unreported model names none rather than a placeholder', () => {

@@ -3,9 +3,16 @@
  * launch, with what onboarding needs to install and describe each one.
  * Install recipes are copied from each vendor's own install docs; Station
  * shows them and never runs them. Windows commands are PowerShell.
- * `auth` and `homepageUrl` are data only, not yet applied: nothing reads them
- * until the sign-in work does.
+ * `homepageUrl` is data only, not yet applied.
+ *
+ * `auth.statusCommand` is set only where the vendor's source or docs pin
+ * what the command prints signed in and signed out (2026-10-21 review);
+ * everywhere else sign-in stays unchecked rather than guessed.
  */
+
+/** Anthropic's statement on subscription logins in other tools. */
+const ANTHROPIC_SUBSCRIPTION_TERMS =
+  'https://code.claude.com/docs/en/legal-and-compliance';
 
 import type { ACPConnectionRegistryEntry } from '@kontourai/station-contracts/acp';
 
@@ -42,7 +49,14 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
       },
     },
     auth: {
-      statusCommand: ['kiro-cli', 'whoami', '--format', 'json'],
+      // Strings present in the kiro-cli binary and in the open-source
+      // Amazon Q CLI it grew from (crates/chat-cli/src/cli/user.rs). Other
+      // output (a login kind that code does not print) stays unknown.
+      statusCommand: ['kiro-cli', 'whoami'],
+      statusRule: {
+        signedOutText: ['Not logged in'],
+        signedInText: ['Logged in with'],
+      },
       signInHint: 'Run kiro-cli login on the computer Station runs on.',
       credentialEnvVars: ['KIRO_API_KEY'],
     },
@@ -74,7 +88,10 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
       },
     },
     auth: {
-      statusCommand: ['cursor-agent', 'status'],
+      // `status` exits 0 signed in or out; the JSON field is the answer
+      // (src/commands/status.ts in the installed cursor-agent bundle).
+      statusCommand: ['cursor-agent', 'status', '--format', 'json'],
+      statusRule: { signedInJsonField: 'isAuthenticated' },
       signInHint:
         'Run cursor-agent login on the computer Station runs on, or provide a Cursor API key.',
       credentialEnvVars: ['CURSOR_API_KEY', 'CURSOR_AUTH_TOKEN'],
@@ -104,7 +121,8 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
       },
     },
     auth: {
-      statusCommand: ['opencode', 'auth', 'list'],
+      // `opencode auth list` exits 0 and lists only some credential sources,
+      // so it is not a sign-in check.
       signInHint:
         'Run opencode auth login on the computer Station runs on to add a model provider.',
     },
@@ -137,7 +155,8 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
       },
     },
     auth: {
-      statusCommand: ['goose', 'info', '-v'],
+      // `goose info --check` is the only check with a documented exit code,
+      // and it sends a real model request, so Station does not run it.
       signInHint:
         'Run goose configure on the computer Station runs on to choose a model provider.',
     },
@@ -332,6 +351,9 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
       signInHint:
         'Run droid in a terminal on the computer Station runs on and sign in, or provide a Factory API key.',
       credentialEnvVars: ['FACTORY_API_KEY'],
+      // Its `authenticate` only reads FACTORY_API_KEY, which the key field
+      // above provides.
+      hiddenAuthMethodIds: ['factory-api-key'],
     },
   },
   {
@@ -367,9 +389,18 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
       },
     },
     auth: {
-      statusCommand: ['hermes', 'status'],
+      // `hermes status` never exits non-zero and `hermes auth status` is
+      // per provider, so neither is a sign-in check.
       signInHint:
         'Run hermes setup on the computer Station runs on to choose a model provider.',
+      // Hermes setup offers Anthropic OAuth (website/docs/integrations/providers.md).
+      subscriptionTermsNotices: [
+        {
+          provider: 'Anthropic',
+          termsUrl: ANTHROPIC_SUBSCRIPTION_TERMS,
+          authMethodIds: ['hermes-setup'],
+        },
+      ],
     },
   },
   {
@@ -402,6 +433,15 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
     auth: {
       signInHint:
         'Start pi in a terminal on the computer Station runs on and run /login.',
+      // pi's /login offers "Anthropic (Claude Pro/Max)"
+      // (packages/ai/src/auth/oauth/anthropic.ts).
+      subscriptionTermsNotices: [
+        {
+          provider: 'Anthropic',
+          termsUrl: ANTHROPIC_SUBSCRIPTION_TERMS,
+          authMethodIds: ['pi_terminal_login'],
+        },
+      ],
     },
   },
   {
@@ -448,7 +488,7 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
       },
     },
     auth: {
-      statusCommand: ['devin', 'auth', 'status'],
+      // `devin auth status` documents no output or exit codes.
       signInHint: 'Run devin auth login on the computer Station runs on.',
       credentialEnvVars: ['WINDSURF_API_KEY'],
     },
@@ -505,7 +545,8 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
       },
     },
     auth: {
-      statusCommand: ['kilo', 'auth', 'list'],
+      // `kilo auth list` is OpenCode's provider list: it exits 0 and is not
+      // a sign-in check.
       signInHint: 'Run kilo auth login on the computer Station runs on.',
       credentialEnvVars: ['KILO_API_KEY'],
     },
@@ -538,6 +579,39 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
       signInHint:
         'Start junie in a terminal on the computer Station runs on and sign in with your JetBrains account or a Junie API key.',
       credentialEnvVars: ['JUNIE_API_KEY'],
+    },
+  },
+  {
+    id: 'auggie',
+    name: 'Auggie',
+    description: "Augment Code's Auggie coding agent CLI.",
+    command: 'auggie',
+    args: ['--acp'],
+    icon: 'AU',
+    tags: ['acp', 'auggie', 'augment'],
+    homepageUrl: 'https://docs.augmentcode.com/cli/acp/agent',
+    // The same variable Augment's own registry entry sets.
+    launchEnv: { AUGMENT_DISABLE_AUTO_UPDATE: '1' },
+    install: {
+      darwin: {
+        command: 'npm install -g @augmentcode/auggie@latest',
+        docsUrl: 'https://github.com/augmentcode/auggie',
+      },
+      linux: {
+        command: 'npm install -g @augmentcode/auggie@latest',
+        docsUrl: 'https://github.com/augmentcode/auggie',
+      },
+      win32: {
+        command: 'npm install -g @augmentcode/auggie@latest',
+        docsUrl: 'https://github.com/augmentcode/auggie',
+      },
+    },
+    auth: {
+      // Auggie advertises no sign-in methods; it reads a stored login or the
+      // session JSON `auggie token print` prints.
+      signInHint:
+        'Run auggie login on the computer Station runs on, or paste the session JSON that auggie token print shows.',
+      credentialEnvVars: ['AUGMENT_SESSION_AUTH'],
     },
   },
 ];

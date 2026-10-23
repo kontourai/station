@@ -36,7 +36,7 @@ const openTurn = {
 };
 
 describe('deriveChatStatus — one status, by priority', () => {
-  test('says Sending, not Working, until the agent has the turn', () => {
+  test('says Sending, then Starting once Station has the send, until the agent has the turn', () => {
     const sending = deriveChatStatus({
       ...base,
       turnLive: true,
@@ -51,27 +51,33 @@ describe('deriveChatStatus — one status, by priority', () => {
       stationHasSend: true,
       stationOutlivesApp: true,
     });
-    expect(received?.label).toBe('Sending');
+    // The bubble shows received; the pill never still says Sending.
+    expect(received?.label).toBe('Starting');
+    // Same kind, so the pill swaps the word and eases its width in place.
+    expect(received?.kind).toBe(sending?.kind);
     expect(received?.details).toEqual([
-      {
-        text: 'Station has your message and is starting the agent. It is safe to close the app.',
-      },
+      { text: 'Received. You can close the app.' },
     ]);
-    // A Station that stops with this app (the desktop's own), or one not yet
-    // reported, never gets the safe-to-close promise.
-    for (const stationOutlivesApp of [false, undefined]) {
-      expect(
-        deriveChatStatus({
-          ...base,
-          turnLive: true,
-          sendAwaitingTurnStart: true,
-          stationHasSend: true,
-          stationOutlivesApp,
-        })?.details,
-      ).toEqual([
-        { text: 'Station has your message and is starting the agent.' },
-      ]);
-    }
+    // A Station that stops with this app (the desktop's own) says keep it
+    // open; one not yet reported promises nothing either way.
+    expect(
+      deriveChatStatus({
+        ...base,
+        turnLive: true,
+        sendAwaitingTurnStart: true,
+        stationHasSend: true,
+        stationOutlivesApp: false,
+      })?.details,
+    ).toEqual([{ text: 'Received. Keep the app open.' }]);
+    expect(
+      deriveChatStatus({
+        ...base,
+        turnLive: true,
+        sendAwaitingTurnStart: true,
+        stationHasSend: true,
+        stationOutlivesApp: undefined,
+      })?.details,
+    ).toEqual([{ text: 'Received' }]);
     // Once the server shows the turn open, it is the turn's status.
     expect(
       deriveChatStatus({

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ORCHESTRATION_EVENT_STORE_MIGRATION } from '../../../domain/migrations/003-orchestration-events.js';
 import { EventStore } from '../event-store.js';
+import { captureTurnIntent } from '../prepared-turn-intent.js';
 import { SESSION_TURN_ACCEPTED_CAPACITY } from '../session-turn-boundary.js';
 
 describe('session-terminal boundary ordering', () => {
@@ -439,6 +440,219 @@ describe('session-terminal boundary ordering', () => {
       },
     );
   }
+  test.each(
+    (['observe', 'read', 'restart'] as const).flatMap((mode) =>
+      (['sent', 'engine-opened'] as const).map((kind) => [mode, kind] as const),
+    ),
+  )(
+    'Station’s own shutdown exit keeps an in-flight turn for the next boot’s recovery (%s, %s)',
+    (mode, kind) => {
+      const path = databasePath();
+      const store = open(path);
+      if (kind === 'sent') invoking(store);
+      else {
+        const now = new Date().toISOString();
+        const prepared = store
+          .sessionTurnBoundaryAuthority()
+          .prepareProviderTurn('thread', 'engine-turn', now);
+        store.appendEvent(
+          {
+            eventId: 'engine-start',
+            provider: 'claude',
+            threadId: 'thread',
+            method: 'turn.started',
+            turnId: 'engine-turn',
+            createdAt: now,
+          },
+          [],
+          () => {
+            expect(prepared.record()).toEqual({ kind: 'applied' });
+          },
+        );
+      }
+      const exited = (
+        eventId: string,
+        reason: string,
+      ): CanonicalRuntimeEvent => ({
+        eventId,
+        provider: 'claude',
+        threadId: 'thread',
+        createdAt: new Date().toISOString(),
+        method: 'session.exited',
+        sessionId: 'thread',
+        reason,
+      });
+      const event = exited('terminal', 'orchestration_shutdown');
+      store.appendEvent(event);
+      const current = settle(store, path, event, mode);
+      expect(boundaries(path)).toEqual([{ thread_id: 'thread' }]);
+      // The read projection agrees with the kept row: the turn may still
+      // have had its effect until the next boot's recovery settles it.
+      expect(
+        current.sessionTurnBoundaryAuthority().hasPossibleEffect('thread'),
+      ).toEqual({ kind: 'available', active: true });
+      if (mode === 'restart')
+        expect(
+          current.takeInterruptedTurnBoundaries().map((row) => row.threadId),
+        ).toEqual(['thread']);
+      // Any other exit still ends the turn's possible effect.
+      const crashed = exited('engine-exit', 'process_exited');
+      current.appendEvent(crashed);
+      expect(current.sessionTurnBoundaryAuthority().observe(crashed)).toEqual({
+        kind: 'applied',
+      });
+      expect(boundaries(path)).toEqual([]);
+    },
+  );
+  test.each(['observe', 'read', 'restart'] as const)(
+    'Station’s own shutdown exit still retires a session start left unresolved (%s)',
+    (mode) => {
+      const path = databasePath();
+      const store = open(path);
+      const start = store
+        .sessionTurnBoundaryAuthority()
+        .claimSessionStart('thread', new Date().toISOString());
+      if (start.kind !== 'owner') throw new Error('Expected start owner');
+      expect(start.claim.beginInvocation(new Date().toISOString())).toEqual({
+        kind: 'applied',
+      });
+      expect(start.claim.indeterminate(new Date().toISOString())).toEqual({
+        kind: 'applied',
+      });
+      const event: CanonicalRuntimeEvent = {
+        eventId: 'terminal',
+        provider: 'claude',
+        threadId: 'thread',
+        createdAt: new Date().toISOString(),
+        method: 'session.exited',
+        sessionId: 'thread',
+        reason: 'orchestration_shutdown',
+      };
+      store.appendEvent(event);
+      const settled = settle(store, path, event, mode);
+      // Each path retires it on its own: the live observe deletes the row,
+      // and a poll already reads it as settled before any restart.
+      if (mode === 'observe') expect(boundaries(path)).toEqual([]);
+      if (mode === 'read')
+        expect(
+          settled.sessionTurnBoundaryAuthority().hasPossibleEffect('thread'),
+        ).toEqual({ kind: 'available', active: false });
+      // Boot recovery settles turn rows only, so nothing else would ever
+      // clear this one: the thread would stay busy for good.
+      const current =
+        mode === 'restart' ? settled : settle(settled, path, event, 'restart');
+      expect(current.takeInterruptedTurnBoundaries()).toEqual([]);
+      const authority = current.sessionTurnBoundaryAuthority();
+      expect(authority.hasPossibleEffect('thread')).toEqual({
+        kind: 'available',
+        active: false,
+      });
+      expect(
+        authority.claimSessionStart('thread', new Date().toISOString()).kind,
+      ).toBe('owner');
+    },
+  );
+  /**
+   * A sent turn's row carrying its prepared input, left at `upTo`: the
+   * production send reserves, prepares the intent, then begins invoking.
+   */
+  function withIntent(
+    store: EventStore,
+    upTo: 'prepared' | 'invoking' | 'indeterminate',
+  ) {
+    const reserved = store.sessionTurnBoundaryAuthority().reserve!(
+      'thread',
+      new Date().toISOString(),
+    );
+    if (reserved.kind !== 'owner') throw new Error('Expected boundary owner');
+    const capture = captureTurnIntent(
+      { threadId: 'thread', input: 'check the build' },
+      { binding: {}, requiresFreshCompanions: false },
+    );
+    expect(
+      reserved.claim.prepareIntent!(
+        capture,
+        undefined,
+        new Date().toISOString(),
+      ),
+    ).toEqual({ kind: 'applied' });
+    if (upTo === 'prepared') return;
+    expect(reserved.claim.beginInvocation(new Date().toISOString())).toEqual({
+      kind: 'applied',
+    });
+    if (upTo === 'indeterminate')
+      expect(reserved.claim.indeterminate(new Date().toISOString())).toEqual({
+        kind: 'applied',
+      });
+  }
+  const shutdownExit = (): CanonicalRuntimeEvent => ({
+    eventId: 'terminal',
+    provider: 'claude',
+    threadId: 'thread',
+    createdAt: new Date().toISOString(),
+    method: 'session.exited',
+    sessionId: 'thread',
+    reason: 'orchestration_shutdown',
+  });
+  test.each(['observe', 'read', 'restart'] as const)(
+    'Station’s own shutdown exit retires a sent turn that never began invoking (%s)',
+    (mode) => {
+      const path = databasePath();
+      const store = open(path);
+      // The send failed after preparing its input and before invoking the
+      // engine, and its claim was retained: nothing reached an engine.
+      withIntent(store, 'prepared');
+      const event = shutdownExit();
+      store.appendEvent(event);
+      const settled = settle(store, path, event, mode);
+      if (mode === 'observe') expect(boundaries(path)).toEqual([]);
+      if (mode === 'read')
+        expect(
+          settled.sessionTurnBoundaryAuthority().hasPossibleEffect('thread'),
+        ).toEqual({ kind: 'available', active: false });
+      // Boot recovery only sets a prepared row aside, and nothing resumes
+      // it: kept, it would hold the thread busy for good.
+      const current =
+        mode === 'restart' ? settled : settle(settled, path, event, 'restart');
+      expect(current.takeInterruptedTurnBoundaries()).toEqual([]);
+      expect(boundaries(path)).toEqual([]);
+      const authority = current.sessionTurnBoundaryAuthority();
+      expect(authority.hasPossibleEffect('thread')).toEqual({
+        kind: 'available',
+        active: false,
+      });
+      expect(authority.reserve!('thread', new Date().toISOString()).kind).toBe(
+        'owner',
+      );
+    },
+  );
+  test.each(
+    (['observe', 'read', 'restart'] as const).flatMap((mode) =>
+      (['invoking', 'indeterminate'] as const).map(
+        (state) => [mode, state] as const,
+      ),
+    ),
+  )(
+    'Station’s own shutdown exit keeps a sent turn with its input that may have reached the engine (%s, %s)',
+    (mode, state) => {
+      const path = databasePath();
+      const store = open(path);
+      withIntent(store, state);
+      const event = shutdownExit();
+      store.appendEvent(event);
+      const settled = settle(store, path, event, mode);
+      expect(boundaries(path)).toEqual([{ thread_id: 'thread' }]);
+      expect(
+        settled.sessionTurnBoundaryAuthority().hasPossibleEffect('thread'),
+      ).toEqual({ kind: 'available', active: true });
+      // The next boot's interrupted-turn recovery takes it.
+      const current =
+        mode === 'restart' ? settled : settle(settled, path, event, 'restart');
+      expect(
+        current.takeInterruptedTurnBoundaries().map((row) => row.threadId),
+      ).toEqual(['thread']);
+    },
+  );
   test('an engine-opened boundary captures the durable head inside its start append', () => {
     const path = databasePath();
     const store = open(path);

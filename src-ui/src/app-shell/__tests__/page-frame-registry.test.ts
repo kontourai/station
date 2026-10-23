@@ -108,10 +108,9 @@ describe('page-frame registry', () => {
       const destination = APP_DESTINATION_REGISTRY.getDestinationForView(route);
       if (!spec || !destination) continue;
       // Routes that state their own title in the table keep it (Connections'
-      // hub is 'Connections'; the ACP sub-route is 'Provider setup').
+      // hub is 'Connections').
       const stated = new Set([
         'connections',
-        'connections-engine-new',
         'connections-knowledge',
         'registry',
         'schedule',
@@ -142,6 +141,7 @@ describe('page-frame registry', () => {
       'agents',
       'connections-models',
       'connections-engines',
+      'connections-engine-new',
       'connections-tools',
       'plugins',
       'guidance',
@@ -198,10 +198,7 @@ describe('page-frame registry', () => {
   // 'Connections / <section>' breadcrumb-as-eyebrow that restated the title.
   it('gives every subpage with a static eyebrow just its parent, not a breadcrumb trail', () => {
     expect(resolvePageFrame({ type: 'developer' })?.eyebrow).toBe('Developer');
-    for (const route of [
-      { type: 'connections-engine-new', providerId: 'p' },
-      { type: 'connections-knowledge' },
-    ] as const) {
+    for (const route of [{ type: 'connections-knowledge' }] as const) {
       const spec = resolvePageFrame(route as NavigationView);
       expect(spec?.eyebrow, `${route.type} eyebrow`).toBe('Connections');
     }

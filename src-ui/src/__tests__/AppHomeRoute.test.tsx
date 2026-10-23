@@ -13,6 +13,11 @@ import { type ReactNode, Suspense, useEffect } from 'react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import App from '../App';
 import { ResponsiveDialogSurface } from '../components/ResponsiveDialogSurface';
+import {
+  type UpdateNotice,
+  useOpenUpdatesRequest,
+  useUpdateNotices,
+} from '../components/updates/updatesEvents';
 import { bannerStore } from '../contexts/banner-store';
 import { openChatsStore } from '../contexts/open-chats-store';
 import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
@@ -610,7 +615,7 @@ describe('App home route resolution', () => {
     }
   });
 
-  test('loads the deferred launch update checker and presents its banner', async () => {
+  test('loads the deferred launch update checker and publishes a server review notice', async () => {
     coreUpdateStatus.data = {
       updateAvailable: true,
       installKind: 'source-checkout',
@@ -618,11 +623,38 @@ describe('App home route resolution', () => {
       behind: 3,
     };
 
-    render(<App />);
-
-    expect((await screen.findByRole('status')).textContent).toContain(
-      'Server checkout is 3 commits behind its configured upstream.',
+    let notices: readonly UpdateNotice[] = [];
+    let request: ReturnType<typeof useOpenUpdatesRequest>;
+    function UpdatesObserver() {
+      notices = useUpdateNotices();
+      request = useOpenUpdatesRequest();
+      return null;
+    }
+    render(
+      <>
+        <App />
+        <UpdatesObserver />
+      </>,
     );
+    await waitFor(() =>
+      expect(notices).toContainEqual(
+        expect.objectContaining({
+          target: 'server',
+          message:
+            'Server checkout is 3 commits behind its configured upstream.',
+          actionLabel: 'Review server update',
+        }),
+      ),
+    );
+    const sequence = request!.sequence;
+    act(() =>
+      notices.find((notice) => notice.id === 'launch-update')!.onAction?.(),
+    );
+    expect(request!).toMatchObject({
+      target: 'server',
+      sequence: sequence + 1,
+      pending: true,
+    });
   });
 
   test('renders pending root route without exposing stale restore state, then settles on Home without redirecting', async () => {

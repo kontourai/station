@@ -5,16 +5,15 @@ import {
 import { useCallback, useEffect, useState } from 'react';
 import { compare, valid } from 'semver';
 import {
-  BANNER_IDS,
-  BANNER_PRIORITY,
-  bannerStore,
-} from '../contexts/banner-store';
-import {
   coreUpdateScopeFromContext,
   useConnectedServerUpdateContext,
 } from '../hooks/useConnectedServerUpdateContext';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
-import { settingsDeepLinkUrl } from '../views/settings/settings-deep-link';
+import {
+  clearUpdateNotice,
+  openUpdates,
+  publishUpdateNotice,
+} from './updates/updatesEvents';
 
 interface NativeUpdateFeed {
   channel: string;
@@ -196,83 +195,50 @@ export function CoreUpdateLaunchCheck({
     return () => controller.abort();
   }, [attempt, channel, feedUrl, installedVersion, isMobile, providerOrigin]);
 
-  // Update state is chrome, so it presents through the one banner slot the
-  // shell owns rather than its own markup outside the safe-area layout. An
-  // update is never more urgent than reaching the host, so it sits in the
-  // lowest band and stays dismissible.
   useEffect(() => {
     if (!failure) {
-      bannerStore.dismiss(BANNER_IDS.updateCheck);
+      clearUpdateNotice('launch-check-failed');
       return;
     }
-    bannerStore.present({
-      id: BANNER_IDS.updateCheck,
-      priority: BANNER_PRIORITY.info,
-      tone: 'warning',
-      message: `Update check failed: ${failure}`,
-      occurrence: failure,
-      dismissible: true,
-      actions: [{ label: 'Retry update check', onClick: retry }],
+    publishUpdateNotice({
+      id: 'launch-check-failed',
+      target: 'desktop',
+      message: 'Could not check for app updates.',
+      detail: failure,
+      actionLabel: 'Retry update check',
+      onAction: retry,
     });
-    return () => {
-      bannerStore.dismiss(BANNER_IDS.updateCheck);
-    };
+    return () => clearUpdateNotice('launch-check-failed');
   }, [failure, retry]);
 
   useEffect(() => {
     const sourceMessage = desktopStatus
       ? sourceComparisonMessage(desktopStatus)
       : null;
-    const availableDesktopStatus =
-      !isMobile && context.kind !== 'embedded-sidecar' && sourceMessage
-        ? desktopStatus
-        : null;
-    if (!latest && !availableDesktopStatus) {
-      bannerStore.dismiss(BANNER_IDS.updateAvailable);
-      return;
-    }
     if (latest) {
-      const { version, releaseUrl } = latest;
-      bannerStore.present({
-        id: BANNER_IDS.updateAvailable,
-        priority: BANNER_PRIORITY.info,
-        tone: 'info',
-        ariaLive: 'polite',
-        message: `Station ${version} is available.`,
-        occurrence: version,
-        dismissible: true,
-        actions: [{ label: 'Update Station', href: releaseUrl }],
+      publishUpdateNotice({
+        id: 'launch-update',
+        target: 'desktop',
+        message: `Station ${latest.version} is available.`,
+        href: latest.releaseUrl,
+        actionLabel: 'Update app',
       });
-    } else if (availableDesktopStatus) {
-      bannerStore.present({
-        id: BANNER_IDS.updateAvailable,
-        priority: BANNER_PRIORITY.info,
-        tone: 'info',
-        ariaLive: 'polite',
-        // Explicit comparison facts only: a stamped bundle's SHA difference
-        // is a build-stamp comparison — never a released desktop update —
-        // and an established embedded sidecar has no server update at all.
-        message: sourceMessage ?? '',
-        occurrence:
-          availableDesktopStatus.remoteHash ?? sourceMessage ?? undefined,
-        dismissible: true,
-        // Settings owns the install-specific truth: git pull, verified
-        // self-update, or reinstall guidance. The launch banner only claims
-        // that an update exists and never advertises an unavailable action.
-        actions: [
-          {
-            label: 'Review update',
-            href: settingsDeepLinkUrl({
-              view: 'system',
-              highlight: 'core-app-updates',
-            }),
-          },
-        ],
+    } else if (
+      !isMobile &&
+      context.kind !== 'embedded-sidecar' &&
+      sourceMessage
+    ) {
+      publishUpdateNotice({
+        id: 'launch-update',
+        target: 'server',
+        message: sourceMessage,
+        actionLabel: 'Review server update',
+        onAction: () => openUpdates('server'),
       });
+    } else {
+      clearUpdateNotice('launch-update');
     }
-    return () => {
-      bannerStore.dismiss(BANNER_IDS.updateAvailable);
-    };
+    return () => clearUpdateNotice('launch-update');
   }, [context.kind, desktopStatus, isMobile, latest]);
 
   return null;

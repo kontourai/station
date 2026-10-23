@@ -21627,6 +21627,135 @@ describe('OrchestrationService', () => {
     ).toMatchObject({ reason: 'orchestration_shutdown' });
   });
 
+  test('a turn in flight at shutdown is closed by the next boot’s recovery, as after a crash', async () => {
+    await service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: 'shutdown-turn',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+      },
+    });
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: 'shutdown-turn', input: 'long work' },
+    });
+    expect(
+      eventStore
+        .sessionTurnBoundaryAuthority()
+        .hasPossibleEffect('shutdown-turn'),
+    ).toEqual({ kind: 'available', active: true });
+
+    await service.shutdown();
+    const path = join(tmp, 'orchestration.sqlite');
+    eventStore.close();
+    eventStore = new EventStore(path);
+    const rebooted = new OrchestrationService({
+      adapterRegistry: createRegistry([new FakeAdapter('claude')]),
+      eventBus: new EventBus(),
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    await (
+      rebooted as unknown as {
+        interruptedTurns: { consume(): Promise<void> };
+      }
+    ).interruptedTurns.consume();
+
+    expect(
+      eventStore
+        .listEvents('shutdown-turn')
+        .map((event) => event.payload)
+        .filter((event) => event.method === 'turn.aborted'),
+    ).toEqual([
+      expect.objectContaining({
+        turnId: 'claude-turn',
+        recoveryTerminal: true,
+      }),
+    ]);
+    await rebooted.shutdown();
+  });
+
+  test('a conversation interrupted by a graceful stop keeps its folder and cursor through the next boot’s recovery, and continues', async () => {
+    const cwd = join(tmp, 'alpha');
+    mkdirSync(cwd);
+    claude.startSession.mockImplementationOnce(async (input) => {
+      const session: ProviderSession = {
+        provider: 'claude',
+        threadId: input.threadId,
+        status: 'ready',
+        cwd,
+        resumeCursor: { nativeSession: 'graceful-one' },
+        createdAt: '2026-10-21T00:00:00.000Z',
+        updatedAt: '2026-10-21T00:00:00.000Z',
+      };
+      claude.sessions.set(input.threadId, session);
+      return session;
+    });
+    await service.dispatch({
+      type: 'startSession',
+      input: { threadId: 'graceful-stop', provider: 'claude', cwd },
+    });
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: 'graceful-stop', input: 'long work' },
+    });
+
+    await service.shutdown();
+    eventStore.close();
+    eventStore = new EventStore(join(tmp, 'orchestration.sqlite'));
+    // The stop closed the row and kept what a continuation reads.
+    expect(eventStore.readSessionByThread('graceful-stop')).toMatchObject({
+      status: 'closed',
+      cwd,
+      resumeCursor: { nativeSession: 'graceful-one' },
+    });
+    const rebooted = new OrchestrationService({
+      adapterRegistry: createRegistry([new FakeAdapter('claude')]),
+      eventBus: new EventBus(),
+      eventStore,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    await (
+      rebooted as unknown as {
+        interruptedTurns: { consume(): Promise<void> };
+      }
+    ).interruptedTurns.consume();
+    // Fixture guard: recovery really ran on this thread (abort + banner).
+    expect(
+      eventStore
+        .listEvents('graceful-stop')
+        .map((event) => event.payload.method)
+        .filter(
+          (method) =>
+            method === 'turn.aborted' || method === 'session.state-changed',
+        ),
+    ).toEqual(['turn.aborted', 'session.state-changed']);
+
+    // Recovery's own events leave the closed row's binding intact: the
+    // conversation's folder (what the continuation's workspace check reads)
+    // and the engine cursor its successor resumes from.
+    expect(eventStore.readSessionByThread('graceful-stop')).toMatchObject({
+      status: 'closed',
+      cwd,
+      resumeCursor: { nativeSession: 'graceful-one' },
+    });
+    expect(
+      (await rebooted.readSession('graceful-stop'))?.session.cwd,
+    ).toBe(cwd);
+    await expect(
+      rebooted.resolveConversationContinuation(
+        'graceful-stop',
+        INTERNAL_SESSION_READ_SCOPE,
+        { provider: 'claude' },
+      ),
+    ).resolves.toMatchObject({
+      startRequired: true,
+      resumeCursor: { nativeSession: 'graceful-one' },
+    });
+    await rebooted.shutdown();
+  });
+
   test('bounds shutdown when an adapter cleanup never settles', async () => {
     claude.stopAll.mockReturnValueOnce(new Promise(() => {}));
     const boundedService = new OrchestrationService({

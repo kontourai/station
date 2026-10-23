@@ -142,6 +142,12 @@ function isPortableDraftShortcut(event: {
 interface ChatInputAreaProps {
   activity?: React.ReactNode;
   activityRef?: React.Ref<HTMLDivElement>;
+  /**
+   * The context-window meter for the chat on screen, shown beside the model
+   * picker it measures. It moved here from the dock header, which is for the
+   * chat's identity and the dock's own controls.
+   */
+  contextMeter?: React.ReactNode;
   // Session info
   /**
    * The active chat session's stable identity (thread id) — used only to
@@ -413,6 +419,7 @@ function sizeDraft(textarea: HTMLTextAreaElement, availableHeight: number) {
 export function ChatInputArea({
   activity,
   activityRef,
+  contextMeter,
   sessionId,
   activeConversationId,
   input,
@@ -844,6 +851,15 @@ export function ChatInputArea({
             edge('padding-bottom') +
             edge('border-top-width') +
             edge('border-bottom-width');
+        } else if (child.classList.contains('queued-messages-presence')) {
+          // The pending list yields down to its toggle row and, while open,
+          // its first row whole; the rest scroll.
+          const kept = child.querySelectorAll(
+            '.queued-messages__toggle, .queued-messages__content:not([hidden]) .queued-messages__list > :first-child',
+          );
+          for (const part of kept)
+            yielding += part.getBoundingClientRect().height;
+          yielding += margins;
         } else {
           others += child.getBoundingClientRect().height + margins;
         }
@@ -905,6 +921,12 @@ export function ChatInputArea({
         // height must still be re-measured.
         for (const sibling of body.children)
           if (sibling !== root) observer.observe(sibling);
+        // A shrunk pending list keeps its box when it opens or closes, so
+        // its panel is watched instead: opening changes what it keeps.
+        for (const panel of body.querySelectorAll(
+          ':scope > .queued-messages-presence .queued-messages',
+        ))
+          observer.observe(panel);
       }
       for (const row of root.querySelectorAll(observed)) observer.observe(row);
     };
@@ -1092,6 +1114,7 @@ export function ChatInputArea({
               Use {modelResetSourceLabel(defaultModelSource)}
             </button>
           )}
+          {contextMeter}
           {modeChoices.length > 0 && onAcpSessionModeChange ? (
             <React.Suspense fallback={null}>
               <AcpSessionModeChip

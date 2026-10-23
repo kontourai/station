@@ -713,6 +713,7 @@ on this computer's `PATH`; detection does not mean it is signed in or ready.
 | Kimi Code | `kimi acp` | Agent Client Protocol |
 | Kilo | `kilo acp` | Agent Client Protocol |
 | Junie | `junie --acp=true` | Agent Client Protocol |
+| Auggie | `auggie --acp` | Agent Client Protocol; it lists no sign-in methods, so sign in with `auggie login` or save its session JSON as a key (see [Sign an engine in](#sign-an-engine-in)) |
 
 The native engines come from
 [startup adoption](../../src-server/runtime/bootstrap/native-engine-adoption.ts)
@@ -737,18 +738,54 @@ device the card says the install belongs on the computer Station runs on.
 
 Some built-in engines carry launch settings that Station sets when it starts
 them, such as `GOOSE_DISABLE_KEYRING=1` for Goose (its keychain lookup can hang
-without a terminal) and the auto-update switches for Factory Droid. A value
+without a terminal) and the auto-update switches for Factory Droid and Auggie. A value
 already set in the environment Station launches with wins. Only Station's own
 catalogue sets them, and only engine-scoped names; they never carry
 credentials. A custom connection running the same program, even by full path,
 gets the same settings.
 
-1. Select a detected or supported engine, or choose the custom option.
-2. For custom setup, enter a name and command. Command arguments, working directory, and other
+Add engine opens one catalogue in the Engines detail pane, beside your
+engine list: saved engines that are **Not connected yet**, the native apps
+Station supports, the built-in command engines (**Found, not connected** or
+**Not installed**), and a custom command. Everything that follows stays in
+that pane; a link to one entry (`/connections/engines/new/<id>`, or `custom`)
+opens on that entry's first step.
+
+1. Choose an engine. An engine that is **Not installed** offers only its
+   install command and **Check again**; it can be connected once Station finds
+   it, or through the custom option.
+2. Confirm a new catalogue engine with **Connect** (or **Add** for a native
+   app) after reviewing what connecting changes. Choosing a saved engine that
+   is **Not connected yet** starts its retry directly. For custom setup, enter
+   a name and command instead. Command arguments, working directory, and other
    raw setup details stay under **Advanced**.
-3. Keep the same dialog or sheet open while Station shows **Checking**.
-4. Read the readiness result and its detail. If it is
-   not Ready, use the offered retry, edit, or choose-another-engine action before closing.
+3. Stay on the page while Station shows **Checking**. An
+   engine that is starting for the first time can take up to a minute; the
+   page says so and keeps checking. If it has not finished after about 90
+   seconds, it stops waiting; Station keeps checking the engine while
+   it runs. Station does not check it at startup after a restart; use its
+   **Retry check** (or add it again) if it was not ready by then.
+4. Read the readiness result and its detail. If it is not Ready, the result
+   names the phase that failed and its reason. Use **Retry check** after fixing
+   the cause, or **Edit setup** for a custom engine. The engine's Agent is
+   added only once its check succeeds.
+5. When it is **Ready**, **Start a chat with** the engine opens New chat with
+   its Agent selected. A Project-owned Agent uses its own Project; otherwise
+   New chat uses the dock's current Project, or no Project when none is open.
+   Choose **Done** to finish without opening a chat.
+
+A configured engine that reads **Setup required** offers **Retry check** on its
+engine page; a Ready engine offers **Check connection** instead.
+An engine whose first check never succeeded is saved but has no Agent yet; it
+is listed on the Engines page and at the top of Add engine as **Not connected
+yet**, and its page offers **Retry check**, **Remove**, and, for a custom
+engine, **Edit setup**. It is not counted as one of your engines until a check
+succeeds. A command engine's page also opens its **Connection details**: what
+it reported when it connected and the tool servers Station passes to it.
+In the Add catalogue, an app that still needs setup offers **Add and set up**:
+after its confirm step it is added, and **Finish setup** opens its page, where
+setup continues. A **Setup required** result also offers **Sign in to** the
+engine, which opens the sign-in described in [Sign an engine in](#sign-an-engine-in).
 
 Discovery reports a possible local engine; it does not guarantee readiness.
 Separately, startup can register detected Claude Code, Codex, and Muse CLIs and
@@ -764,7 +801,9 @@ The first-run Engines chapter shows the detected, not-yet-connected local Engine
 one there explicitly connects the Engine and creates its default Agent binding.
 That discovery action is separate from the automatic startup adoption above.
 Catalogue engines Station did not find are listed under **Station also works
-with**, each with its install command, and cannot be selected there.
+with**, each with its install command and **Check again**, and cannot be
+selected until Station finds them. The list opens on its own when nothing else
+can be chosen.
 
 For the built-in Claude Code Engine, Station chooses between the `claude` executable it finds
 installed on your machine and the Claude Code bundled with the Claude Agent SDK:
@@ -778,6 +817,135 @@ installed on your machine and the Claude Code bundled with the Claude Agent SDK:
 
 The Engine's readiness detail names the executable Station will launch and whichever versions it
 was able to read.
+
+### Engines from the public registry
+
+Below Station's own engines, **Add engine** lists the engines in the
+[public agent registry](https://github.com/agentclientprotocol/registry) under
+**From the public registry**. Their publishers list them there, not Station.
+Each card shows the publisher, the version the registry lists, and whether it
+can connect on this computer:
+
+- **Found** or **Not installed**: Station has reviewed this listing against
+  the publisher's own documentation, and the registry has a build for this
+  computer's operating system and processor. Connecting runs only the program
+  Station reviewed (`stakpak`), which you installed yourself and Station finds
+  on `PATH`, with the reviewed arguments (`acp`), and only after the confirm
+  step. A **Not installed** card links to the publisher's site. Station never
+  downloads the program; the registry's download links are not used.
+- **Unavailable**: the card says why and stays in the list, with its
+  publisher, version and links. Most listings read **Not yet reviewed by
+  Station**. Others have no build for this computer, run only from a package
+  (`npx` or `uvx`) that Station would have to download and run, or name a
+  different program or arguments than Station reviewed. You can install such
+  an engine yourself and add it as a custom engine. Listings for engines
+  Station connects directly, such as Claude Code and Codex, point to those
+  engines instead.
+
+**About this listing** on each card shows what the registry lists: its id,
+how it is distributed, its builds and packages, the command connecting would
+run, and any settings it recommends. Station does not apply those settings:
+the registry is not Station's own catalogue, and an environment variable can
+change what a program runs.
+
+**Review** opens the confirm step, which shows the exact command line (an
+argument with a space, or an empty one, is shown in quotes),
+publisher and version before anything is saved. Adding a registry engine is
+choosing a command, so a paired device needs the operator's `coding:exec`
+grant. If the registry changed the command between the confirm step and the
+add, Station saves nothing and asks you to review it again. An added registry
+engine goes through the same check and Agent setup as any engine; being listed
+does not mean it is signed in, or that Station's tools, approvals, model
+choice or remote use work with it.
+
+An engine that is also one of Station's own, such as Goose or Cursor, is listed
+once, as Station's card. The registry adds only its version and publisher to
+that card, never its command, arguments, settings or install instructions.
+
+When the registry later lists a new version or command for an engine you
+added from it, the engine's page says **Update listed**. Station does not
+change the saved connection; update the program yourself. Changing the
+connection's command yourself ends the comparison.
+
+Station downloads the registry index when the catalogue is read and its copy
+is more than a day old, or when you choose **Check registry**, and keeps the
+last good copy under its home folder. Without a network it lists that copy and
+says **Offline copy**. An index that is too large or malformed is refused whole
+and the saved copy stays; a single malformed listing is left out. Set
+`STATION_PUBLIC_AGENT_REGISTRY=off` (or `0`, `false`, `no`) to stop Station
+reading the registry. Registry engines are offered only here, never in **Add
+model connection**.
+
+## Sign an engine in
+
+An engine Station runs as a command keeps its own sign-in on the computer
+Station runs on. Its engine page has a **Sign-in** panel, and a chat the engine
+refused because it needs a sign-in offers **Sign in**, which opens that page.
+
+**Status.** The panel reads **Signed in**, **Not signed in** or **Not checked**
+and says where that came from:
+
+- The engine's own status command, for the engines whose vendor documents what
+  it prints: Kiro CLI (`kiro-cli whoami`) and Cursor
+  (`cursor-agent status --format json`). Station runs it without a shell,
+  stops it after 8 seconds or 64 KB of output, and reuses the answer for a
+  minute; **Check again** runs it now. An exit code alone never reads as signed
+  in. With a key for the engine present, a "signed out" answer reads as not
+  checked, because no vendor documents the status command reading the key.
+  Only this check feeds the engine's readiness: signed out is a required
+  prerequisite, and an inconclusive check is optional.
+- What the engine said: a chat or a check it refused with "Authentication
+  required" reads as **Not signed in** until a later chat gets an answer, and a
+  sign-in started here that finished reads as **Signed in**. Neither changes
+  readiness. These observations belong to the command and arguments that
+  produced them; changing the invocation or removing the connection forgets
+  them. A status check already running at that point cannot restore its old
+  answer.
+- Otherwise **Not checked**, and the panel says the engine has no check
+  Station can run.
+
+**Ways to sign in.** Station asks the engine which sign-in methods it offers
+(a short-lived start of the engine that tells it Station can run a terminal
+sign-in) and lists them, minus any the catalogue hides (Factory Droid's
+API-key method, which the key field replaces):
+
+- A *terminal* method (for example pi's) runs the engine's own command, with
+  its configured arguments plus the arguments the engine named, in a terminal
+  on the computer Station runs on; the panel shows that terminal. The engine's
+  exit code decides the result. Nothing the browser sends is run: the browser
+  names only the method.
+- Any other method asks the engine to sign itself in. It may open a browser on
+  that computer; links it prints are shown with **Open link**, and Station never
+  opens them itself. Station gives up after five minutes (a terminal sign-in
+  after 15).
+
+**Keys.** For engines that read a key from the environment (for example
+`FACTORY_API_KEY`, `CURSOR_API_KEY`, `WINDSURF_API_KEY`,
+`AUGMENT_SESSION_AUTH`), the panel has a field per variable. Station stores
+the value in its engine credential store (`security/engine-credentials.json`
+under the Station home, readable only by its owner), never in
+`config/acp.json`, never in logs, and never sends it back; the panel shows
+only that it is saved. The value is added to that one connection's engine
+processes, overriding the same variable in Station's own environment.
+Removing the connection attempts to remove its keys. Station logs a warning
+if that cleanup fails; the connection removal still completes.
+
+**Who may sign in.** Reading the panel needs read access; **Check again**
+needs permission to operate Station. Starting or cancelling a sign-in and
+saving or removing a key need `engine:login` on a paired device. A terminal
+sign-in runs a command on the computer Station runs on, so a paired device
+also needs `coding:exec` and `terminal:operate`; without them the panel says to
+sign in on that computer. The operator in person needs no grant.
+
+**Subscription logins.** Where a method can use a subscription whose provider
+restricts using it in other tools (pi's and Hermes' setup can use a Claude
+subscription), the panel shows a short note and a link to the provider's
+terms. It does not stop the sign-in. Station never reads, copies or passes on
+an engine's own credentials (see
+[ADR 0013](../adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md)).
+
+Live sign-in against real vendor accounts has not been verified; the flows are
+tested against a stand-in engine that speaks the same protocol.
 
 ---
 
@@ -842,7 +1010,9 @@ discovery lists what the proxy serves.
 The Engine's login readiness is checked under the same `env` and `configHome`:
 a proxy token such as `ANTHROPIC_AUTH_TOKEN` counts as signed in, an
 empty-string value masks the inherited key, and Codex's login probe reads the
-configured `CODEX_HOME`. On macOS, Claude readiness reads its selected
+configured `CODEX_HOME`. A connection routed through a model proxy counts as
+signed in through the proxy's injected provider key, so no Codex CLI login is
+needed there. On macOS, Claude readiness reads its selected
 Keychain namespace first, using `CLAUDE_SECURESTORAGE_CONFIG_DIR` before
 `CLAUDE_CONFIG_DIR`. It consults the selected credential file only when the
 Keychain entry is absent. An unreadable or malformed secure-store result stays

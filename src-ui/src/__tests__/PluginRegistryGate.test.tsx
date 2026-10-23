@@ -4,7 +4,6 @@
 
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { BannerHost } from '../components/notifications/BannerHost';
 import { PluginRegistryGate } from '../components/registry/PluginRegistryGate';
 import { bannerStore } from '../contexts/banner-store';
 import { toastStore } from '../contexts/ToastContext';
@@ -101,12 +100,9 @@ describe('PluginRegistryGate', () => {
     });
 
     render(
-      <>
-        <PluginRegistryGate>
-          <main>Station shell</main>
-        </PluginRegistryGate>
-        <BannerHost />
-      </>,
+      <PluginRegistryGate>
+        <main>Station shell</main>
+      </PluginRegistryGate>,
     );
 
     expect(screen.getByText('Station shell')).toBeTruthy();
@@ -115,7 +111,7 @@ describe('PluginRegistryGate', () => {
         queryKey: ['layouts'],
       }),
     );
-    expect(screen.queryByRole('alert')).toBeNull();
+    expect(bannerStore.getSnapshot()).toHaveLength(0);
   });
 
   test.each([false, true])(
@@ -181,12 +177,9 @@ describe('PluginRegistryGate', () => {
     mocks.reload.mockImplementation(async () => 'loading');
 
     const view = render(
-      <>
-        <PluginRegistryGate>
-          <main>Station shell</main>
-        </PluginRegistryGate>
-        <BannerHost />
-      </>,
+      <PluginRegistryGate>
+        <main>Station shell</main>
+      </PluginRegistryGate>,
     );
 
     await waitFor(() => expect(mocks.reload).toHaveBeenCalledTimes(1));
@@ -194,12 +187,9 @@ describe('PluginRegistryGate', () => {
 
     mocks.connectionStatus = 'connected';
     view.rerender(
-      <>
-        <PluginRegistryGate>
-          <main>Station shell</main>
-        </PluginRegistryGate>
-        <BannerHost />
-      </>,
+      <PluginRegistryGate>
+        <main>Station shell</main>
+      </PluginRegistryGate>,
     );
 
     // A fresh attempt is what earns the right to report a failure.
@@ -207,12 +197,9 @@ describe('PluginRegistryGate', () => {
 
     setLoadStatus('degraded', [], 'registry-unavailable');
     view.rerender(
-      <>
-        <PluginRegistryGate>
-          <main>Station shell</main>
-        </PluginRegistryGate>
-        <BannerHost />
-      </>,
+      <PluginRegistryGate>
+        <main>Station shell</main>
+      </PluginRegistryGate>,
     );
     await waitFor(() => expect(toastStore.getSnapshot()).toHaveLength(1));
     expect(bannerStore.getSnapshot()).toHaveLength(0);
@@ -226,12 +213,9 @@ describe('PluginRegistryGate', () => {
     });
 
     const view = render(
-      <>
-        <PluginRegistryGate>
-          <main>Station shell</main>
-        </PluginRegistryGate>
-        <BannerHost />
-      </>,
+      <PluginRegistryGate>
+        <main>Station shell</main>
+      </PluginRegistryGate>,
     );
 
     await waitFor(() => expect(mocks.reload).toHaveBeenCalledTimes(1));
@@ -242,12 +226,9 @@ describe('PluginRegistryGate', () => {
 
     mocks.connectionStatus = 'connected';
     view.rerender(
-      <>
-        <PluginRegistryGate>
-          <main>Station shell</main>
-        </PluginRegistryGate>
-        <BannerHost />
-      </>,
+      <PluginRegistryGate>
+        <main>Station shell</main>
+      </PluginRegistryGate>,
     );
 
     await waitFor(() => expect(toastStore.getSnapshot()).toHaveLength(1));
@@ -271,29 +252,23 @@ describe('PluginRegistryGate', () => {
       });
 
     const view = render(
-      <>
-        <PluginRegistryGate>
-          <main>Station shell</main>
-        </PluginRegistryGate>
-        <BannerHost />
-      </>,
+      <PluginRegistryGate>
+        <main>Station shell</main>
+      </PluginRegistryGate>,
     );
 
     await waitFor(() => expect(mocks.reload).toHaveBeenCalledTimes(1));
-    expect(screen.queryByRole('alert')).toBeNull();
+    expect(bannerStore.getSnapshot()).toHaveLength(0);
 
     mocks.connectionStatus = 'connected';
     view.rerender(
-      <>
-        <PluginRegistryGate>
-          <main>Station shell</main>
-        </PluginRegistryGate>
-        <BannerHost />
-      </>,
+      <PluginRegistryGate>
+        <main>Station shell</main>
+      </PluginRegistryGate>,
     );
 
     await waitFor(() => expect(mocks.reload).toHaveBeenCalledTimes(2));
-    await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+    await waitFor(() => expect(bannerStore.getSnapshot()).toHaveLength(0));
   });
 
   test('invalidates layouts when a reload changes the degraded plugin set', async () => {

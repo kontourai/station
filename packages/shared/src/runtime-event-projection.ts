@@ -1,9 +1,11 @@
+import { isStationCheckBackTurn } from '@kontourai/station-contracts/agent-schedule';
 import type { ClientOriginSender } from '@kontourai/station-contracts/client-origin';
 import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
   isProviderTriggeredTurn,
 } from '@kontourai/station-contracts/runtime-events';
+import { stationControlRefusalView } from '@kontourai/station-contracts/station-control-refusal';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import { agentMessageInput } from './agent-message-frame.js';
 import type {
@@ -106,6 +108,16 @@ export const TURN_INTERRUPTED_MESSAGE =
   'Turn interrupted — the process restarted while this turn was in progress.';
 
 /**
+ * The `turn.aborted` reasons a forced Stop writes (cooperative-stop.ts),
+ * shared so a transcript can tell them apart from an engine's own reason
+ * when the event predates `initiatedBy`.
+ */
+export const FORCED_STOP_REASON =
+  'Stopped after the cooperative cancel budget expired.';
+export const STALL_FORCED_STOP_REASON =
+  'Stopped after the turn-stall window elapsed with no observed progress, then the cooperative cancel budget expired.';
+
+/**
  * Canonical observed assistant identity for an event-backed turn. The same
  * factory is consumed by the general conversation projection and Basis; a
  * caller must not recreate this tuple from turn position or text.
@@ -168,9 +180,35 @@ function retireApprovalCard(part: MessagePart): void {
   if (part.state === 'awaiting-approval') part.state = 'cancelled';
 }
 
+export interface ProjectRuntimeEventsOptions {
+  stableIds?: boolean;
+  /**
+   * The turn the caller knows is still executing, by the authority that owns
+   * liveness (the server's activity record), not by this event window. When
+   * the window ends inside THIS turn, a call it started with no outcome yet
+   * projects as `state: 'running'` — the same state the live stream writes
+   * (`streamHandlers.ts`'s `handleToolStartedEvent`) — instead of `'call'`.
+   *
+   * Without it (or when the window's open turn is a different one, or its
+   * Session already exited) such a call stays `'call'`: the window alone
+   * cannot tell an in-flight call from one an interrupted turn abandoned, and
+   * the renderer reads `'call'` as "No result recorded".
+   */
+  liveOpenTurn?: { threadId: string; turnId?: string };
+  /**
+   * Each ended turn's last assistant row carries `turnEnded`, and a turn that
+   * ended with nothing to show keeps a row with no parts, so a chat can say
+   * how it ended ("No reply", "Stopped"). An aborted turn with no text or
+   * tool rows gets no reason text: `turnEnded` says it. Off, a turn with
+   * nothing to show has no row. Such an aborted row keeps the reason as
+   * `turnEndedReason` instead.
+   */
+  markEndedTurns?: boolean;
+}
+
 export function projectRuntimeEventsToMessages(
   events: CanonicalRuntimeEvent[],
-  options: { stableIds?: boolean } = {},
+  options: ProjectRuntimeEventsOptions = {},
 ): ConversationMessage[] {
   const messages: ConversationMessage[] = [];
   const turnKey = (
@@ -444,10 +482,46 @@ export function projectRuntimeEventsToMessages(
    * turn has not closed, so its held markers are not shown yet — unless its
    * Session already exited (`openTurnSessionExited`).
    */
-  const emitAssistantTurn = (releaseMarkers = true) => {
+  const emitAssistantTurn = (
+    releaseMarkers = true,
+    ended?: 'completed' | 'aborted',
+    endedStop?: {
+      reason?: string;
+      by?: NonNullable<
+        NonNullable<ConversationMessage['metadata']>['turnStoppedBy']
+      >;
+    },
+  ) => {
     flushReasoning();
     flushText();
+    const rowsBefore = messages.length;
     if (parts.length > 0) pushMessage('assistant', parts);
+    else if (ended && options.markEndedTurns) {
+      const key = turnKey(turnSessionId, turnIdentity);
+      // Only a turn with an identity and no row of its own yet (a steer may
+      // already have emitted its first part).
+      if (
+        key &&
+        preSteerRowIndex === undefined &&
+        !assistantMessageIndexByTurn.has(key)
+      )
+        pushMessage('assistant', []);
+    }
+    if (ended && options.markEndedTurns && messages.length > rowsBefore) {
+      const row = messages[messages.length - 1]!;
+      row.metadata = {
+        ...row.metadata,
+        turnEnded: ended,
+        ...(endedStop && row.parts.length === 0
+          ? {
+              ...(endedStop.reason
+                ? { turnEndedReason: endedStop.reason }
+                : {}),
+              ...(endedStop.by ? { turnStoppedBy: endedStop.by } : {}),
+            }
+          : {}),
+      };
+    }
     const closedTurnTimestamp = turnTimestamp;
     // A turn that produced nothing after its steer still needs an owner row,
     // or a late event for it would land on whatever turn is open next.
@@ -498,7 +572,11 @@ export function projectRuntimeEventsToMessages(
     if (!Number.isNaN(ms)) turnTimestamp = ms;
   };
 
-  const resultText = (output: unknown, error?: string): string | undefined => {
+  // The OUTPUT's text only. The error is its own field (`part.error`), and a
+  // fallback to it here rendered every output-less failure twice — once as
+  // "Response", once as "Error" — where the live path (`streamHandlers.ts`'s
+  // `handleToolCompletedEvent`, `result: event.output`) shows it once.
+  const resultText = (output: unknown): string | undefined => {
     if (typeof output === 'string') return output;
     if (output != null) {
       try {
@@ -507,7 +585,7 @@ export function projectRuntimeEventsToMessages(
         return String(output);
       }
     }
-    return error ?? undefined;
+    return undefined;
   };
 
   /**
@@ -580,6 +658,20 @@ export function projectRuntimeEventsToMessages(
     if (turnOpen) heldMarkers.push({ ev, marker });
     else pushTranscriptMarker(ev, marker, false);
   };
+
+  /**
+   * Who stopped each turn, from Station's own `session.stop-settled` record
+   * (which can land before or after the turn's `turn.aborted`), keyed by
+   * session and turn.
+   */
+  const stopInitiators = new Map<string, 'user' | 'stall'>();
+  if (options.markEndedTurns) {
+    for (const ev of events) {
+      if (ev.method !== 'session.stop-settled' || !ev.initiatedBy) continue;
+      const key = turnKey(ev.threadId, ev.turnId);
+      if (key) stopInitiators.set(key, ev.initiatedBy);
+    }
+  }
 
   for (const ev of events) {
     if (
@@ -702,6 +794,10 @@ export function projectRuntimeEventsToMessages(
         }
         if (userParts.length > 0) {
           pushMessage('user', userParts, ev.inputKind);
+          if (isStationCheckBackTurn(ev)) {
+            const row = messages[messages.length - 1]!;
+            row.metadata = { ...row.metadata, stationCheckBack: true };
+          }
           userRowSender = undefined;
         }
         break;
@@ -802,6 +898,7 @@ export function projectRuntimeEventsToMessages(
           args: ev.arguments,
           purpose: ev.purpose,
           state: 'call',
+          startedAt: ev.createdAt,
         };
         toolsByCallId.set(ev.toolCallId, part);
         toolPartThread.set(part, ev.threadId);
@@ -810,7 +907,7 @@ export function projectRuntimeEventsToMessages(
       }
       case 'tool.completed': {
         turnSessionId ??= ev.threadId;
-        const text = resultText(ev.output, ev.error);
+        const text = resultText(ev.output);
         // station#3167: `cancelled` gets its own branch instead of folding
         // into `isError` — a rehydrated cancellation used to render as
         // "error", contradicting the live path's own `state: 'cancelled'`
@@ -900,6 +997,8 @@ export function projectRuntimeEventsToMessages(
           existing.state = derivedState;
           existing.output = ev.output;
           if (ev.htmlReply) existing.htmlReply = ev.htmlReply;
+          const refusal = stationControlRefusalView(ev.stationControlRefusal);
+          if (refusal) existing.stationControlRefusal = refusal;
           if (ev.outputReceipt?.truncated) existing.outputTruncated = true;
           existing.error = ev.error;
           existing.sourceEventId = ev.eventId;
@@ -982,6 +1081,13 @@ export function projectRuntimeEventsToMessages(
             state: derivedState,
             output: ev.output,
             ...(ev.htmlReply ? { htmlReply: ev.htmlReply } : {}),
+            ...(stationControlRefusalView(ev.stationControlRefusal)
+              ? {
+                  stationControlRefusal: stationControlRefusalView(
+                    ev.stationControlRefusal,
+                  ),
+                }
+              : {}),
             ...(ev.outputReceipt?.truncated
               ? { outputTruncated: true as const }
               : {}),
@@ -1174,8 +1280,19 @@ export function projectRuntimeEventsToMessages(
         turnAnswerEligible = false;
         stamp(ev.createdAt);
         flushText();
-        if (ev.reason) parts.push({ type: 'text', text: `_${ev.reason}_` });
-        emitAssistantTurn();
+        if (ev.reason && !(options.markEndedTurns && parts.length === 0))
+          parts.push({ type: 'text', text: `_${ev.reason}_` });
+        const initiator = stopInitiators.get(
+          turnKey(ev.threadId, ev.turnId) ?? '',
+        );
+        emitAssistantTurn(true, 'aborted', {
+          reason: ev.reason,
+          by: ev.recoveryTerminal
+            ? 'restart'
+            : initiator === 'user'
+              ? 'person'
+              : initiator,
+        });
         break;
       }
       case 'turn.completed': {
@@ -1225,7 +1342,7 @@ export function projectRuntimeEventsToMessages(
             textBuf = ev.outputText;
           }
         }
-        emitAssistantTurn();
+        emitAssistantTurn(true, 'completed');
         break;
       }
       case 'session.configured': {
@@ -1304,7 +1421,24 @@ export function projectRuntimeEventsToMessages(
     if (turnOpen && turnTimestamp === undefined) stamp(ev.createdAt);
   }
 
-  if (turnOpen) emitAssistantTurn(openTurnSessionExited);
+  if (turnOpen) {
+    const live = options.liveOpenTurn;
+    if (
+      live &&
+      !openTurnSessionExited &&
+      (turnSessionId ?? live.threadId) === live.threadId &&
+      // Exact identity: a turn the window cannot name is not claimed live.
+      (live.turnId === undefined || turnIdentity === live.turnId)
+    ) {
+      // `toolsByCallId` holds only this turn's calls with no terminal yet
+      // (the terminal branch retires the slot), so these are exactly the
+      // calls still executing. An approval-bound call keeps its own state.
+      for (const part of toolsByCallId.values()) {
+        if (part.state === 'call') part.state = 'running';
+      }
+    }
+    emitAssistantTurn(openTurnSessionExited);
+  }
   return messages.map((message) => {
     if (
       message.role !== 'assistant' ||
