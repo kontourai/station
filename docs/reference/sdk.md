@@ -3977,9 +3977,9 @@ to `false`, so status alone must not be treated as a definitive Station
 refusal. A Station older than the header never sends it: until an origin has
 sent the header once in this process (on any response the SDK's request
 functions return), the shape alone decides, as before. That fallback is not
-independent proof of the responder's identity. The desktop native transport
-does not yet pass the header to the renderer, so requests it carries stay on
-the fallback.
+independent proof of the responder's identity. The native transport preserves
+this header in its validated response metadata, so native SDK requests use the
+same marker and fallback rules.
 `ForegroundMessageIndeterminateError` keeps its `detail` and fixed `code`.
 Both classes retain their positional constructors.
 The direct chat stream (`streamConversationTurn`) rejects a retried

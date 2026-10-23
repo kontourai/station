@@ -30,7 +30,10 @@ test.each([
       mkdirSync(dirname(activity), { recursive: true });
       writeFileSync(
         join(app, 'build.gradle.kts'),
-        `android { namespace = "${namespace}" }`,
+        `android {
+  namespace = "${namespace}"
+  buildTypes { getByName("release") { isMinifyEnabled = true } }
+}`,
       );
       // The shared bootstrap also restores permissions after Android init.
       // Keep this fixture shaped like a generated project so inset coverage
@@ -59,6 +62,15 @@ test.each([
         );
         expect(bridge).toContain(`package ${namespace}\n`);
         expect(bridge).toContain('WindowInsetsCompat.Type.ime()');
+        for (const callback of ['onAvailable', 'onLost']) {
+          const body = bridge.match(
+            new RegExp(`override fun ${callback}\\([^)]*\\) \\{([^}]+)\\}`),
+          )?.[1];
+          expect(body, callback).toContain('NativeHttpNetwork.changed()');
+        }
+        expect(
+          bridge.match(/override fun onCapabilitiesChanged[^\n]+/)?.[0],
+        ).not.toContain('NativeHttpNetwork');
         expect(bridge).toContain('.put("visibleHeight",');
         expect(bridge).not.toContain('__STATION_NAMESPACE__');
       }
@@ -94,5 +106,31 @@ test('preserves unrelated WebView customization and refuses ambiguous callbacks'
   expect(activityWithAndroidInsets(next)).toBe(next);
   expect(() => activityWithAndroidInsets(activity + activity)).toThrow(
     'Ambiguous',
+  );
+});
+
+test('the checked-in Android bridge is reproducible from the native bootstrap', () => {
+  const path =
+    'src-desktop/gen/android/app/src/main/java/io/kontourai/station/StationAndroidInsetsBridge.kt';
+  const expected = readFileSync(
+    'scripts/templates/android/StationAndroidInsetsBridge.kt',
+    'utf8',
+  ).replace('__STATION_NAMESPACE__', 'io.kontourai.station');
+  expect(readFileSync(path, 'utf8')).toBe(expected);
+});
+
+test('iOS recovery clock and network epoch follow monotonic and path APIs', () => {
+  const source = readFileSync('src-desktop/src/mobile_recovery_ios.rs', 'utf8');
+  expect(source).not.toContain('SystemTime');
+  expect(source).toContain('.terminated(Instant::now(),');
+  expect(source).toContain('state.foreground(Instant::now())');
+  const activation = source.slice(
+    source.indexOf('pub(crate) fn install('),
+    source.indexOf('fn install_path_monitor()'),
+  );
+  expect(activation).toContain('UIApplicationDidBecomeActiveNotification');
+  expect(activation).not.toContain('network_changed()');
+  expect(source.slice(source.indexOf('fn install_path_monitor()'))).toContain(
+    'nw_path_monitor_set_update_handler',
   );
 });

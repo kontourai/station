@@ -96,7 +96,9 @@ updater payloads; it is not the Android upload key.
 The [Cargo configuration](../../src-desktop/.cargo/config.toml) supplies Wry 0.57's
 `WRY_RUSTWEBVIEWCLIENT_CLASS_EXTENSION` when it generates `RustWebViewClient`.
 On renderer termination, the handler removes and destroys the dead WebView,
-then recreates its activity. Wry restores the saved attributes and callbacks
+then recreates its activity at most three times in a rolling 60-second window.
+The process owns the recovery budget, so activity recreation cannot reset it.
+Exhaustion displays a native error with an explicit Reload button. Wry restores the saved attributes and callbacks
 for that activity; the new page reloads existing persisted application state.
 Unpersisted input and an interrupted request's outcome are not recovered or
 resent. Verify this on an emulator with a renderer crash, then on a physical
@@ -132,7 +134,11 @@ bytes, including resources and non-native payload. This initial absolute cap
 is a packaging policy, not a measured size improvement; single-ABI Nightly
 APKs keep their existing native-library ceiling. The bootstrap enables release
 resource shrinking alongside Tauri's release minification. The activity plugin
-uses `org.json` and no longer declares the unused Jackson databind dependency.
+uses `org.json` for its own payload parsing and retains Jackson databind for
+Tauri's `parseArgs`/`@InvokeArg` runtime. Removing its direct declaration does
+not remove Tauri's transitive dependency. The plugin's `res/raw/keep.xml` retains
+the four Firebase identity strings that Firebase reads dynamically, including
+when release resource shrinking is enabled.
 Artifact size and release-resource behavior still require packaged checks.
 
 ### Triggers

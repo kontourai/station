@@ -33,6 +33,12 @@ fails. An unkeyed legacy match is not proof for retiring the send, and a weaker
 lookup already in flight cannot erase a witnessed start. Acceptance retires the
 key and removes its overlapping attempts together. Durable flush dispatches
 (`options.dispatch`) retain their separate provider-turn settlement rules.
+If a send had no live row (attachments or a failed pre-request storage write),
+an unanswered request creates an `invoking` row released for that same lookup,
+with its original delivery key, conversation and Station identity. It never
+creates a fresh pending draft. This includes network changes, fetch/proxy
+failures, native resets and response timeouts; Edit and ordinary Discard are
+refused until delivery is settled.
 While it waits, the message reads "No answer yet · sends once Station confirms
 it never arrived" on its bubble and in the outbox list, and its chat notice's and
 the list's Discard… withdraw it only after the shared confirmation, which says
@@ -56,6 +62,18 @@ with Check and Discard…, and the discard checks again that the window is gone.
 A window's own claim reads "Sending" only while its own send is in progress.
 While any send reads "Sending" this way the list looks again every few seconds,
 since a window that closes says nothing.
+If that lookup fails while released rows remain unresolved, the mounted flush
+hook checks again after 2 seconds, doubling to a 60-second cap. Only one
+visible, connected renderer owns automatic lookups for a Station in the shared
+queue. Its transactional lease expires after 15 seconds and is renewed every
+3 seconds while lookup work remains. Hiding the window, a browser offline
+event, lost connection health, unmount or an authority change releases ownership
+and cancels its retry. Other visible renderers check ownership every 3 seconds;
+queue changes still refresh their projections. Returning to visible, online and
+connected starts a check immediately with the short backoff restored. Successful
+settlement stops the schedule, and a late lookup cannot rearm a paused schedule.
+The timer only checks delivery: a resend still requires Station's answer that
+it never received the message.
 The lookup settles released rows, and rows whose app was closed, at the next
 launch or reconnect: never received → sent again with the same key; started →
 done; received → asked again later; possibly started, or the conversation runs
