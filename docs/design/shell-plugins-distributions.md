@@ -1356,8 +1356,11 @@ record on 2026-09-29. It is a proposal awaiting the owner, not a decision.
   - (d) Accept and disclose: tier 2 equals the user. The raise prompt says so,
     and nothing else changes.
 
-  *This record's proposal* is (b), with (d)'s disclosure in every raise
-  prompt. It is not an owner decision.
+  **Answered 2026-10-22:** the owner selected (b): high-risk approvals use a
+  kernel-owned channel; ordinary approvals stay in the shell. The additional
+  disclosure in every raise prompt remains this record's proposal, not part
+  of that owner answer. Implementation and approval-extraction proof remain
+  pending.
 - **OPEN-12. Terminal interim for j: answered 2026-10-20.** No interim. j
   waits for the SDK `TerminalView` (SDK-5); the Coding plugin renders it or
   opens the core closed terminal target. See
@@ -1379,8 +1382,10 @@ record on 2026-09-29. It is a proposal awaiting the owner, not a decision.
 The [consolidated delivery plan](../plans/plugin-core-delivery.md) tracks the
 single feature branch and its remaining implementation and acceptance work.
 
-The owner now requests one feature-branch PR for the epic. The slices below
-remain implementation and acceptance units within that PR. **[security]** marks a slice
+The owner requested consolidation into one feature-branch PR, #4046, then
+renewed the instruction to land existing qualified PRs on 2026-10-23. That PR
+contains an implemented subset; landing it does not complete #2993. The slices
+below remain implementation and acceptance units for the unfinished epic. **[security]** marks a slice
 that touches a security boundary and needs an independent security review
 before merge.
 

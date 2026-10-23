@@ -2,9 +2,11 @@
 
 This is the active implementation plan for [#2993](https://github.com/kontourai/station/issues/2993),
 following the [accepted design](../design/shell-plugins-distributions.md).
-The epic is unfinished. The feature branch `feat/plugin-core-epic-2993` is the
-single integration branch; its draft PR is the eventual atomic merge to main.
-Implementation commits may be reviewed separately inside that PR.
+The epic is unfinished. The feature branch `feat/plugin-core-epic-2993`
+consolidates the implemented repository-binding, panel-state and bootstrap work
+in #4046. The owner renewed the instruction to land existing PRs on 2026-10-23;
+#4046 may land its qualified subset without closing #2993. The remaining rows
+below still require implementation and acceptance.
 
 ## Consolidated source
 
@@ -19,8 +21,9 @@ The branch preserves the normal merge histories of:
 These statements identify source, not combined qualification or delivery.
 Previous focused, hosted and diagnostic receipts remain tied to their original
 revisions. The combined branch needs its own checks and final acceptance.
-The public-key secret-scan disposition remains an explicit pending decision;
-consolidation does not authorize changing its baseline.
+The owner approved the exact historical public-key secret-scan fingerprint on
+2026-10-22. Its attestation is recorded in `.gitleaksignore`; no rule, path or
+future occurrence is exempted.
 
 ## Remaining implementation and acceptance
 
@@ -42,9 +45,9 @@ owners. This branch consumes their published contracts and coordinated source;
 it must not build a second terminal or pane-command implementation. Coding has
 no interim terminal under the accepted owner decision.
 
-OPEN-11 still requires the owner's approval-channel choice. It does not block
-independent layout work, but approval extraction cannot claim completion before
-that decision is implemented and tested.
+OPEN-11 was answered on 2026-10-22: high-risk approval decisions use a
+kernel-owned channel; ordinary approvals stay in the shell. Approval extraction
+still requires implementation and tests for that boundary.
 
 ## Completion rule
 
