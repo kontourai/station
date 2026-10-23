@@ -880,9 +880,6 @@ describe('useOutboundQueueFlush', () => {
         setItem: async (_key, value) => {
           stored = value;
         },
-        updateItem: async (_key, updater) => {
-          stored = updater(stored);
-        },
       });
       projectOutboundQueueEntries(await outboundDispatch.open());
     }
@@ -893,7 +890,14 @@ describe('useOutboundQueueFlush', () => {
       });
     };
 
-    it.each(['hidden', 'browser offline', 'connection unreachable'] as const)(
+    it.each([
+      'hidden',
+      'browser offline',
+      'connection unreachable',
+      'pagehide',
+      'pagehide then hidden pageshow',
+      'pagehide then reconnect',
+    ] as const)(
       'pauses lookup backoff while %s and resumes immediately at two seconds',
       async (pause) => {
         vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
@@ -920,12 +924,28 @@ describe('useOutboundQueueFlush', () => {
             } else if (pause === 'browser offline') {
               online = false;
               window.dispatchEvent(new Event('offline'));
+            } else if (pause.startsWith('pagehide')) {
+              window.dispatchEvent(new Event('pagehide'));
             } else {
               connection.status = 'error';
               view.rerender();
             }
           });
           await settleImports();
+          if (pause === 'pagehide then reconnect') {
+            act(() => {
+              connection.status = 'error';
+              view.rerender();
+            });
+            await settleImports();
+            act(() => {
+              connection.status = 'connected';
+              view.rerender();
+              window.dispatchEvent(new Event('online'));
+            });
+            await settleImports();
+          }
+          expect(vi.getTimerCount()).toBe(0);
           await act(async () => {
             await vi.advanceTimersByTimeAsync(120_000);
           });
@@ -941,12 +961,32 @@ describe('useOutboundQueueFlush', () => {
             } else if (pause === 'browser offline') {
               online = true;
               window.dispatchEvent(new Event('online'));
+            } else if (
+              pause === 'pagehide' ||
+              pause === 'pagehide then reconnect'
+            ) {
+              window.dispatchEvent(new Event('pageshow'));
+            } else if (pause === 'pagehide then hidden pageshow') {
+              visibility = 'hidden';
+              window.dispatchEvent(new Event('pageshow'));
             } else {
               connection.status = 'connected';
               view.rerender();
             }
           });
           await settleImports();
+          if (pause === 'pagehide then hidden pageshow') {
+            await act(async () => {
+              await vi.advanceTimersByTimeAsync(120_000);
+            });
+            await settleImports();
+            expect(getTurnDelivery).toHaveBeenCalledTimes(2);
+            await act(async () => {
+              visibility = 'visible';
+              document.dispatchEvent(new Event('visibilitychange'));
+            });
+            await settleImports();
+          }
           expect(getTurnDelivery).toHaveBeenCalledTimes(3);
           await act(async () => {
             await vi.advanceTimersByTimeAsync(1_999);
@@ -967,7 +1007,7 @@ describe('useOutboundQueueFlush', () => {
       },
     );
 
-    it('takes over a disappeared renderer after its persisted lease expires', async () => {
+    it('ignores an already-persisted reconciliation lease and retries locally', async () => {
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
       await orphanedLiveRow([
         {
@@ -979,15 +1019,6 @@ describe('useOutboundQueueFlush', () => {
       getTurnDelivery.mockRejectedValue(new Error('lookup unavailable'));
       const view = renderHook(() => useOutboundQueueFlush('http://api.test'));
       try {
-        await settleImports();
-        await act(async () => {
-          await vi.advanceTimersByTimeAsync(14_999);
-        });
-        await settleImports();
-        expect(getTurnDelivery).not.toHaveBeenCalled();
-        await act(async () => {
-          await vi.advanceTimersByTimeAsync(1);
-        });
         await settleImports();
         expect(getTurnDelivery).toHaveBeenCalledTimes(1);
         await act(async () => {
@@ -1152,7 +1183,7 @@ describe('useOutboundQueueFlush', () => {
       }
     });
 
-    it.each(['unmount', 'authority change'] as const)(
+    it.each(['unmount', 'authority change', 'pagehide'] as const)(
       'a failed lookup settling after %s cannot rearm its retry',
       async (change) => {
         vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
@@ -1174,6 +1205,8 @@ describe('useOutboundQueueFlush', () => {
           await settleImports();
           expect(getTurnDelivery).toHaveBeenCalledTimes(1);
           if (change === 'unmount') view.unmount();
+          else if (change === 'pagehide')
+            window.dispatchEvent(new Event('pagehide'));
           else view.rerender({ apiBase: 'http://other-station.test' });
           rejectLookup(new Error('late lookup failure'));
           await settleImports();

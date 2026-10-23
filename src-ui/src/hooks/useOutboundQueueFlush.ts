@@ -12,7 +12,6 @@
  * owns.
  */
 import { useConnectionStatus } from '@kontourai/station-connect';
-import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
 import {
@@ -156,8 +155,7 @@ export function useOutboundQueueFlush(apiBase: string): void {
   const reconcileRetryDelayMs = useRef(0);
   const reconciliationAllowed = useRef(false);
   const availabilityGeneration = useRef(0);
-  const reconciliationOwned = useRef(false);
-  const reconciliationOwner = useRef<string | undefined>(undefined);
+  const pageHidden = useRef(false);
   const reconcileScopeRef = useRef<object | undefined>(undefined);
   const reconcileScope = useMemo(
     () => ({
@@ -170,121 +168,52 @@ export function useOutboundQueueFlush(apiBase: string): void {
     [apiBase, environmentId, namespace, authorityStatus, status],
   );
   useEffect(() => {
-    let active = true;
-    const owner = randomCorrelationId();
-    reconciliationOwner.current = owner;
-    let heartbeat: ReturnType<typeof setTimeout> | undefined;
-    let checking = false;
-    let checkAgain = false;
-    let firstCheck = true;
-    let visible = document.visibilityState !== 'hidden';
-    let online = navigator.onLine !== false;
-    let stop = () => {};
     reconcileScopeRef.current = reconcileScope;
     const resetRetry = () => {
       if (reconcileRetryTimer.current)
         clearTimeout(reconcileRetryTimer.current);
       reconcileRetryTimer.current = undefined;
       reconcileRetryDelayMs.current = 0;
-      reconciliationOwned.current = false;
     };
-    const eligible = () =>
-      active && reconcileScope.status === 'connected' && visible && online;
-    reconciliationAllowed.current = eligible();
-    void import('../lib/outboundQueue').then(({ outboundDispatch }) => {
-      if (!active) return;
-      const checkOwner = async () => {
-        if (!eligible()) return;
-        if (checking) {
-          checkAgain = true;
-          return;
-        }
-        checking = true;
-        const generation = availabilityGeneration.current;
-        if (heartbeat) clearTimeout(heartbeat);
-        heartbeat = undefined;
-        try {
-          const ownership = await outboundDispatch.claimReconciliation(
-            owner,
-            stationRef.current,
-          );
-          if (!eligible() || generation !== availabilityGeneration.current) {
-            await outboundDispatch.releaseReconciliation(owner);
-            return;
-          }
-          const wasOwner = reconciliationOwned.current;
-          reconciliationOwned.current = ownership === 'owner';
-          if (ownership !== 'owner') resetRetry();
-          if ((ownership === 'owner' && !wasOwner) || firstCheck)
-            triggerFlushRef.current(true);
-          firstCheck = false;
-          if (ownership !== 'idle')
-            heartbeat = setTimeout(() => {
-              void checkOwner();
-            }, OWNER_RECHECK_MS);
-          else await outboundDispatch.releaseReconciliation(owner);
-        } catch {
-          resetRetry();
-          if (firstCheck && eligible()) triggerFlushRef.current(true);
-          firstCheck = false;
-          // Storage recovery is still observed through queue changes and the
-          // normal connection/visibility resume signals.
-        } finally {
-          checking = false;
-          if (checkAgain) {
-            checkAgain = false;
-            void checkOwner();
-          }
-        }
-      };
-      const onAvailability = () => {
-        const wasAllowed = reconciliationAllowed.current;
-        visible = document.visibilityState !== 'hidden';
-        online = navigator.onLine !== false;
-        reconciliationAllowed.current = eligible();
-        if (wasAllowed !== reconciliationAllowed.current)
-          availabilityGeneration.current += 1;
-        if (!reconciliationAllowed.current) {
-          if (heartbeat) clearTimeout(heartbeat);
-          heartbeat = undefined;
-          resetRetry();
-          void outboundDispatch.releaseReconciliation(owner).catch(() => {});
-        } else if (!wasAllowed) {
-          resetRetry();
-          firstCheck = true;
-          void checkOwner();
-        }
-      };
-      const stops = [
-        outboundDispatch.subscribe(() => {
-          void checkOwner();
-        }),
-        outboundDispatch.subscribeRemoteChange(() => {
-          void checkOwner();
-        }),
-      ];
-      document.addEventListener('visibilitychange', onAvailability);
-      window.addEventListener('offline', onAvailability);
-      window.addEventListener('online', onAvailability);
-      stop = () => {
-        for (const unsubscribe of stops) unsubscribe();
-        document.removeEventListener('visibilitychange', onAvailability);
-        window.removeEventListener('offline', onAvailability);
-        window.removeEventListener('online', onAvailability);
-        void outboundDispatch.releaseReconciliation(owner).catch(() => {});
-      };
+    const onAvailability = () => {
+      const wasAllowed = reconciliationAllowed.current;
+      reconciliationAllowed.current =
+        reconcileScope.status === 'connected' &&
+        !pageHidden.current &&
+        document.visibilityState !== 'hidden' &&
+        navigator.onLine !== false;
+      if (wasAllowed !== reconciliationAllowed.current)
+        availabilityGeneration.current += 1;
+      if (!reconciliationAllowed.current) resetRetry();
+      else if (!wasAllowed) {
+        resetRetry();
+        triggerFlushRef.current(true);
+      }
+    };
+    const onPageHide = () => {
+      pageHidden.current = true;
       onAvailability();
-      void checkOwner();
-    });
+    };
+    const onPageShow = () => {
+      pageHidden.current = false;
+      onAvailability();
+    };
+    document.addEventListener('visibilitychange', onAvailability);
+    window.addEventListener('offline', onAvailability);
+    window.addEventListener('online', onAvailability);
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('pageshow', onPageShow);
+    onAvailability();
     return () => {
-      active = false;
       availabilityGeneration.current += 1;
       reconcileScopeRef.current = undefined;
-      reconciliationOwner.current = undefined;
       reconciliationAllowed.current = false;
-      if (heartbeat) clearTimeout(heartbeat);
       resetRetry();
-      stop();
+      document.removeEventListener('visibilitychange', onAvailability);
+      window.removeEventListener('offline', onAvailability);
+      window.removeEventListener('online', onAvailability);
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('pageshow', onPageShow);
     };
   }, [reconcileScope]);
 
@@ -306,8 +235,7 @@ export function useOutboundQueueFlush(apiBase: string): void {
         reconciliationAllowed.current &&
         document.visibilityState !== 'hidden' &&
         navigator.onLine !== false;
-      const owner = reconciliationOwner.current;
-      if (!current() || !owner) return;
+      if (!current()) return;
       const station = stationRef.current;
       if (flushing) {
         // Only a request for a change the running pass cannot have seen (a
@@ -331,31 +259,15 @@ export function useOutboundQueueFlush(apiBase: string): void {
           // become pending and go out below, with their original key.
           // A send-only pass asks Station nothing and leaves the retry
           // schedule as it was.
-          const ownership =
-            mode === 'full'
-              ? await outboundDispatch.claimReconciliation(owner, station)
-              : 'other';
-          if (!current()) {
-            await outboundDispatch.releaseReconciliation(owner);
-            return;
-          }
           const reconciled =
-            ownership === 'owner'
+            mode === 'full'
               ? await outboundDispatch.reconcile(
-                  async (turn) => {
-                    // Ownership can expire while a renderer is suspended or a
-                    // previous lookup awaits. Revalidate before each request.
-                    const lease = await outboundDispatch.claimReconciliation(
-                      owner,
-                      station,
-                    );
-                    if (!current() || lease !== 'owner')
+                  (turn) => {
+                    if (!current())
                       throw new Error('Automatic delivery observation paused');
                     return lookupTurnDelivery(apiBase)(turn);
                   },
-                  {
-                    station,
-                  },
+                  { station },
                 )
               : undefined;
           if (!current()) return;
@@ -372,19 +284,12 @@ export function useOutboundQueueFlush(apiBase: string): void {
               )
               .catch(() => undefined);
           if (!current()) return;
-          const retryOwnership = reconciled
-            ? await outboundDispatch.claimReconciliation(owner, station)
-            : undefined;
-          if (!current()) return;
           if (reconciled) {
             if (reconcileRetryTimer.current)
               clearTimeout(reconcileRetryTimer.current);
             reconcileRetryTimer.current = undefined;
             const lookupFailed = reconciled.lookupFailed > 0;
-            if (
-              retryOwnership === 'owner' &&
-              (lookupFailed || reconciled.received > 0)
-            ) {
+            if (lookupFailed || reconciled.received > 0) {
               reconcileRetryDelayMs.current = Math.min(
                 Math.max(
                   reconcileRetryDelayMs.current * 2,
