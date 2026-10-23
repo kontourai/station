@@ -55,7 +55,49 @@ const receiptSchema = z
   })
   .strict();
 
-export class OperatorSetupConflict extends Error {}
+const operatorSetupRefusalMessages = {
+  preview_too_large:
+    'Setup preview is too large to retain safely. Shorten the command or input list.',
+  receipt_identity_mismatch:
+    'Setup receipt identity does not match its operation.',
+  project_identity_changed_preview:
+    'Project identity changed. Preview setup again.',
+  invalid_input_path:
+    'Choose execution-directory-relative input files without traversal or .git.',
+  input_outside_root: 'Setup inputs must remain inside the execution root.',
+  invalid_input_file:
+    'Setup inputs must be regular files, at most 1 MiB each and 8 MiB total.',
+  input_changed: 'Setup input changed while reading. Preview again.',
+  repository_unavailable: 'Setup requires a readable verified repository.',
+  execution_root_changed:
+    'Project execution root changed. Preview setup again.',
+  posix_required:
+    'Reviewed setup requires POSIX process groups on this host. Use the operator terminal on Windows.',
+  preview_id_conflict:
+    'This setup ID already names another preview. Create a new preview.',
+  history_limit:
+    'The retained setup history limit was reached. No command was started.',
+  preview_not_found: 'Setup preview not found for this Project.',
+  project_identity_changed: 'Project identity changed.',
+  execution_root_unavailable:
+    'Project execution root is unavailable or changed.',
+  authority_ended: 'Setup authority ended.',
+} as const;
+
+export type OperatorSetupRefusalCode =
+  keyof typeof operatorSetupRefusalMessages;
+
+export function operatorSetupRefusalMessage(
+  code: OperatorSetupRefusalCode,
+): string {
+  return operatorSetupRefusalMessages[code];
+}
+
+export class OperatorSetupConflict extends Error {
+  constructor(readonly code: OperatorSetupRefusalCode) {
+    super(operatorSetupRefusalMessage(code));
+  }
+}
 type Preview = z.input<typeof operatorSetupPreviewSchema>;
 type Context = { projectId: string; cwd: string };
 const digest = (value: string | Buffer) =>
@@ -84,9 +126,7 @@ export class OperatorSetupService {
       Buffer.byteLength(JSON.stringify(receipt, null, 2), 'utf8') + reserve >
       65536
     )
-      throw new OperatorSetupConflict(
-        'Setup preview is too large to retain safely. Shorten the command or input list.',
-      );
+      throw new OperatorSetupConflict('preview_too_large');
     this.store(receipt.id).write(receipt);
   }
 
@@ -95,18 +135,14 @@ export class OperatorSetupService {
     if (record === null) return null;
     const parsed = receiptSchema.parse(record);
     if (parsed.id !== id)
-      throw new OperatorSetupConflict(
-        'Setup receipt identity does not match its operation.',
-      );
+      throw new OperatorSetupConflict('receipt_identity_mismatch');
     return parsed;
   }
 
   private async observe(slug: string, expectedId: string, paths: string[]) {
     const context = await this.resolveContext(slug);
     if (context.projectId !== expectedId)
-      throw new OperatorSetupConflict(
-        'Project identity changed. Preview setup again.',
-      );
+      throw new OperatorSetupConflict('project_identity_changed_preview');
     const cwd = await realpath(context.cwd);
     const inputs: OperatorSetupReceipt['inputs'] = [];
     let total = 0;
@@ -119,9 +155,7 @@ export class OperatorSetupService {
             (p) => !p || p === '.' || p === '..' || p.toLowerCase() === '.git',
           )
       )
-        throw new OperatorSetupConflict(
-          'Choose execution-directory-relative input files without traversal or .git.',
-        );
+        throw new OperatorSetupConflict('invalid_input_path');
       const target = resolve(cwd, path);
       let sha256: string | null = null;
       try {
@@ -133,9 +167,7 @@ export class OperatorSetupService {
           inside.startsWith(`..${sep}`) ||
           isAbsolute(inside)
         )
-          throw new OperatorSetupConflict(
-            'Setup inputs must remain inside the execution root.',
-          );
+          throw new OperatorSetupConflict('input_outside_root');
         const file = await open(
           canonical,
           constants.O_RDONLY |
@@ -150,15 +182,11 @@ export class OperatorSetupService {
             stat.size > 1024 * 1024 ||
             total > 8 * 1024 * 1024
           )
-            throw new OperatorSetupConflict(
-              'Setup inputs must be regular files, at most 1 MiB each and 8 MiB total.',
-            );
+            throw new OperatorSetupConflict('invalid_input_file');
           const bytes = Buffer.alloc(stat.size + 1);
           const { bytesRead } = await file.read(bytes, 0, bytes.length, 0);
           if (bytesRead !== stat.size)
-            throw new OperatorSetupConflict(
-              'Setup input changed while reading. Preview again.',
-            );
+            throw new OperatorSetupConflict('input_changed');
           sha256 = digest(bytes.subarray(0, bytesRead));
         } finally {
           await file.close();
@@ -187,18 +215,13 @@ export class OperatorSetupService {
           )
         ).stdout.trim(),
     );
-    if (!source.ok)
-      throw new OperatorSetupConflict(
-        'Setup requires a readable verified repository.',
-      );
+    if (!source.ok) throw new OperatorSetupConflict('repository_unavailable');
     const current = await this.resolveContext(slug);
     if (
       current.projectId !== expectedId ||
       (await realpath(current.cwd)) !== cwd
     )
-      throw new OperatorSetupConflict(
-        'Project execution root changed. Preview setup again.',
-      );
+      throw new OperatorSetupConflict('execution_root_changed');
     return {
       cwd,
       inputs,
@@ -211,9 +234,7 @@ export class OperatorSetupService {
 
   async preview(slug: string, raw: Preview, assertCurrent: () => void) {
     if (process.platform === 'win32')
-      throw new OperatorSetupConflict(
-        'Reviewed setup requires POSIX process groups on this host. Use the operator terminal on Windows.',
-      );
+      throw new OperatorSetupConflict('posix_required');
     const request = operatorSetupPreviewSchema.parse(raw);
     const observed = await this.observe(
       slug,
@@ -234,9 +255,7 @@ export class OperatorSetupService {
           existing.timeoutSeconds !== request.timeoutSeconds ||
           existing.inputDigest !== observed.inputDigest
         )
-          throw new OperatorSetupConflict(
-            'This setup ID already names another preview. Create a new preview.',
-          );
+          throw new OperatorSetupConflict('preview_id_conflict');
         assertCurrent();
         return this.get(slug, request.id, assertCurrent);
       }
@@ -244,9 +263,7 @@ export class OperatorSetupService {
       let count = 0;
       for await (const entry of directory) {
         if (entry.name.endsWith('.json') && ++count >= 1000)
-          throw new OperatorSetupConflict(
-            'The retained setup history limit was reached. No command was started.',
-          );
+          throw new OperatorSetupConflict('history_limit');
       }
       const receipt: OperatorSetupReceipt = {
         id: request.id,
@@ -273,11 +290,9 @@ export class OperatorSetupService {
   ): Promise<OperatorSetupReceipt> {
     const receipt = this.read(id);
     if (!receipt || receipt.projectSlug !== slug)
-      throw new OperatorSetupConflict(
-        'Setup preview not found for this Project.',
-      );
+      throw new OperatorSetupConflict('preview_not_found');
     if (this.projectId(slug) !== receipt.projectId)
-      throw new OperatorSetupConflict('Project identity changed.');
+      throw new OperatorSetupConflict('project_identity_changed');
     assertCurrent();
     if (receipt.phase === 'running')
       return this.active.has(id) ? receipt : { ...receipt, phase: 'uncertain' };
@@ -292,7 +307,7 @@ export class OperatorSetupService {
     } catch {
       assertCurrent();
       if (this.projectId(slug) !== receipt.projectId)
-        throw new OperatorSetupConflict('Project identity changed.');
+        throw new OperatorSetupConflict('project_identity_changed');
       return { ...receipt, phase: 'stale' };
     }
     assertCurrent();
@@ -313,9 +328,7 @@ export class OperatorSetupService {
   ): Promise<OperatorSetupReceipt> {
     const saved = this.read(id);
     if (!saved || saved.projectSlug !== slug)
-      throw new OperatorSetupConflict(
-        'Setup preview not found for this Project.',
-      );
+      throw new OperatorSetupConflict('preview_not_found');
     const lock = join(
       this.home,
       'operator-setup',

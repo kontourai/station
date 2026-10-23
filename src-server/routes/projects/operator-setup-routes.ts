@@ -6,6 +6,7 @@ import {
   OperatorSetupConflict,
   OperatorSetupService,
   operatorSetupPreviewSchema,
+  operatorSetupRefusalMessage,
 } from '../../services/projects/operator-setup-service.js';
 import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import { createProjectSessionDirectoryResolver } from '../../services/projects/project-session-directory.js';
@@ -23,9 +24,7 @@ export function createOperatorSetupRoutes(
       const project = storage.getProject(slug);
       const cwd = await resolveDirectory(slug);
       if (!cwd || storage.getProject(slug).id !== project.id)
-        throw new OperatorSetupConflict(
-          'Project execution root is unavailable or changed.',
-        );
+        throw new OperatorSetupConflict('execution_root_unavailable');
       return { projectId: project.id, cwd };
     },
     (slug) => storage.getProject(slug).id,
@@ -52,7 +51,7 @@ export function createOperatorSetupRoutes(
         !isOperatorInPersonNotAgent(c.req.raw) ||
         !isCurrent(c.req.raw)
       )
-        throw new OperatorSetupConflict('Setup authority ended.');
+        throw new OperatorSetupConflict('authority_ended');
     };
     try {
       current();
@@ -72,7 +71,7 @@ export function createOperatorSetupRoutes(
           success: false,
           error:
             error instanceof OperatorSetupConflict
-              ? error.message
+              ? operatorSetupRefusalMessage(error.code)
               : 'Setup could not be verified. Existing files were preserved; inspect the retained operation before retrying.',
         },
         error instanceof OperatorSetupConflict ? 409 : 503,

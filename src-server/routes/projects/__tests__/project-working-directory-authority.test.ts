@@ -33,6 +33,10 @@ import { mayRunCommandsOnHostCurrently } from '../../../security/coding-authorit
 import { isRuntimeRequestPrincipalCurrent } from '../../../security/runtime-request-security.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import { readCheckoutRemotes } from '../../../services/projects/checkout-remote-reader.js';
+import {
+  OperatorSetupConflict,
+  OperatorSetupService,
+} from '../../../services/projects/operator-setup-service.js';
 import { ProjectBindingsStore } from '../../../services/projects/project-binding-store.js';
 import { ProjectIdentityService } from '../../../services/projects/project-identity-service.js';
 import { ProjectManifestStore } from '../../../services/projects/project-manifest-store.js';
@@ -969,3 +973,66 @@ test('a directory choice waiting for publication refuses a removed coding grant 
   expect(response.status).not.toBe(200);
   expect(readFileSync(path)).toEqual(before);
 });
+
+test('secured setup refuses an unknown operation with a fixed domain message', async () => {
+  const f = await fixture();
+  await f.send(f.operator.credential, 'POST', '', {
+    name: 'Setup',
+    slug: 'setup',
+    workingDirectory: f.folderA,
+  });
+  const response = await f.send(
+    f.operator.credential,
+    'POST',
+    `/setup/operator-setup/${randomUUID()}/run`,
+    { authorize: true },
+  );
+  expect(response).toEqual({
+    status: 409,
+    body: {
+      success: false,
+      error: 'Setup preview not found for this Project.',
+    },
+  });
+});
+
+test.each(['domain', 'unexpected'] as const)(
+  'secured setup never publishes caught %s error text',
+  async (kind) => {
+    const f = await fixture();
+    await f.send(f.operator.credential, 'POST', '', {
+      name: 'Setup',
+      slug: 'setup',
+      workingDirectory: f.folderA,
+    });
+    const error =
+      kind === 'domain'
+        ? new OperatorSetupConflict('preview_not_found')
+        : new Error();
+    error.message = 'stdout: secret-token at /private/setup/credentials';
+    const spy = vi
+      .spyOn(OperatorSetupService.prototype, 'get')
+      .mockRejectedValueOnce(error);
+    try {
+      const response = await f.send(
+        f.operator.credential,
+        'GET',
+        `/setup/operator-setup/${randomUUID()}`,
+        {},
+      );
+      expect(spy).toHaveBeenCalledOnce();
+      expect(response).toEqual({
+        status: kind === 'domain' ? 409 : 503,
+        body: {
+          success: false,
+          error:
+            kind === 'domain'
+              ? 'Setup preview not found for this Project.'
+              : 'Setup could not be verified. Existing files were preserved; inspect the retained operation before retrying.',
+        },
+      });
+    } finally {
+      spy.mockRestore();
+    }
+  },
+);
