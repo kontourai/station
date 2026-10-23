@@ -11,6 +11,11 @@ and a separate authenticated OTel Collector, Prometheus, Tempo and Grafana.
 the diagnostic services from [`compose.diagnostics.yaml`](compose.diagnostics.yaml).
 The Grafana dashboard is [`dashboards/station.json`](dashboards/station.json).
 The [developer profile](#developer-profile) runs the diagnostic half alone.
+The trace transform clears typed span-event and span-link slices with `nil`.
+An empty OTTL list (`[]`) is not a typed slice in the pinned Collector and
+causes runtime rejection even when configuration validation succeeds. Keep
+`error_mode: propagate`; do not turn projection failures into accepted exports.
+
 Product observations never enter the diagnostic stores. Neither path supplies
 personal usage accounting, person identity or an analytics source grant.
 Station's normal install enables none of these services or destinations.
