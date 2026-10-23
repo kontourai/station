@@ -95,3 +95,17 @@
   outline: 2px solid var(--k-focus);
   outline-offset: var(--k-space-1);
 }
+
+.project-sources__group {
+  padding-block: var(--k-space-4);
+  border-top: 1px solid var(--k-line);
+}
+.project-sources__group > summary {
+  min-height: 44px;
+  align-content: center;
+  font-weight: 500;
+}
+.project-sources__hint {
+  color: var(--k-text-muted);
+  margin-block: var(--k-space-2) var(--k-space-4);
+}

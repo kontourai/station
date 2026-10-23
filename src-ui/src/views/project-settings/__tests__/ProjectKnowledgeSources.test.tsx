@@ -133,11 +133,9 @@ test('a connected default-format store prevents another managed alias', () => {
     />,
   );
   expect(
-    screen.queryByRole('button', { name: 'Create managed store' }),
+    screen.queryByRole('button', { name: 'Create document library' }),
   ).toBeNull();
-  expect(
-    screen.getByText(/A default-format store is already connected/),
-  ).toBeTruthy();
+  expect(screen.getByText(/A document library is connected/)).toBeTruthy();
 });
 
 test('a removed store restores managed creation despite a retained creation result', () => {
@@ -149,7 +147,7 @@ test('a removed store restores managed creation despite a retained creation resu
     />,
   );
   expect(
-    screen.queryByRole('button', { name: 'Create managed store' }),
+    screen.queryByRole('button', { name: 'Create document library' }),
   ).toBeNull();
   state.roots = [];
   view.rerender(
@@ -160,11 +158,9 @@ test('a removed store restores managed creation despite a retained creation resu
     />,
   );
   expect(
-    screen.getByRole('button', { name: 'Create managed store' }),
+    screen.getByRole('button', { name: 'Create document library' }),
   ).toBeTruthy();
-  expect(
-    screen.queryByText(/A default-format store is already connected/),
-  ).toBeNull();
+  expect(screen.queryByText(/A document library is connected/)).toBeNull();
 });
 
 test('legacy attachment confirms member visibility and pins the exact registration and current Project', async () => {
@@ -204,7 +200,7 @@ test('a read-only connection can inspect its source without management actions',
   expect(screen.getByText('Notes')).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Disconnect' })).toBeNull();
   expect(
-    screen.queryByRole('button', { name: 'Create managed store' }),
+    screen.queryByRole('button', { name: 'Create document library' }),
   ).toBeNull();
   expect(screen.queryByRole('button', { name: 'Check source' })).toBeNull();
   expect(screen.queryByLabelText('Path on the Station host')).toBeNull();

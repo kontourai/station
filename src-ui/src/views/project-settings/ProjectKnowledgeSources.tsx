@@ -80,7 +80,7 @@ export function ProjectKnowledgeSources({
         ...(name.trim() ? { displayName: name.trim() } : {}),
       });
       setNotice(
-        `Registered ${result.displayName}. Open Project knowledge to add or browse records.`,
+        `Connected ${result.displayName}. You can add documents or browse its records.`,
       );
       setChecked(undefined);
     } catch (cause) {
@@ -108,8 +108,8 @@ export function ProjectKnowledgeSources({
     );
   return (
     <PageSection
-      title="Knowledge stores"
-      description="Create a Station-managed store or connect a supported store on the Station host. Registration alone does not confirm indexing or Agent access."
+      title="Documents and knowledge"
+      description="Keep useful documents with this Project. Agents can read permitted content when you ask; adding a library does not guarantee search or indexing is ready."
     >
       {roots.isPending ? (
         <p>Loading sources…</p>
@@ -132,8 +132,18 @@ export function ProjectKnowledgeSources({
                 <li key={root.id}>
                   <div>
                     <strong>{root.displayName}</strong>
-                    <p>{root.adapterId}</p>
-                    <code>{root.storeRoot}</code>
+                    <p className="project-sources__hint">
+                      Project document library
+                    </p>
+                    <details className="project-sources__diagnostics">
+                      <summary>Library details</summary>
+                      <p>Format: {root.adapterId}</p>
+                      <code>{root.storeRoot}</code>
+                      <p>
+                        Registration is separate from successful reading or
+                        indexing.
+                      </p>
+                    </details>
                   </div>
                   {canManage && (
                     <Button
@@ -150,7 +160,7 @@ export function ProjectKnowledgeSources({
               ))}
             </ul>
           ) : (
-            <p>No knowledge stores registered for this project.</p>
+            <p>No document library is connected yet.</p>
           )}
           {legacyRoots.length > 0 &&
             canManage &&
@@ -203,8 +213,8 @@ export function ProjectKnowledgeSources({
                 (root) => root.adapterId === 'kit-default-store',
               ) ? (
                 <p>
-                  A default-format store is already connected. Use it from
-                  Project knowledge, or connect another store path below.
+                  A document library is connected. Add documents above, browse
+                  its records, or connect another existing library below.
                 </p>
               ) : (
                 <Button
@@ -212,79 +222,85 @@ export function ProjectKnowledgeSources({
                   pending={create.isPending}
                   onClick={() => void add(false)}
                 >
-                  Create managed store
+                  Create document library
                 </Button>
               )}
-              <h3>Connect a store path</h3>
-              {adapters.isError ? (
-                <div role="alert">
-                  <p>{userFacingErrorMessage(adapters.error)}</p>
-                  <Button onClick={() => void adapters.refetch()}>
-                    Retry store formats
-                  </Button>
-                </div>
-              ) : (
+              <details className="project-sources__diagnostics">
+                <summary>Connect an existing library on this Station</summary>
+                {adapters.isError ? (
+                  <div role="alert">
+                    <p>{userFacingErrorMessage(adapters.error)}</p>
+                    <Button onClick={() => void adapters.refetch()}>
+                      Retry store formats
+                    </Button>
+                  </div>
+                ) : (
+                  <label>
+                    Store format
+                    <select
+                      value={adapterId}
+                      disabled={busy || adapters.isPending}
+                      onChange={(event) => {
+                        setAdapterId(event.target.value);
+                        setChecked(undefined);
+                      }}
+                    >
+                      {adapters.data
+                        ?.filter(
+                          (adapter) => adapter.id !== 'conversation-store',
+                        )
+                        .map((adapter) => (
+                          <option key={adapter.id} value={adapter.id}>
+                            {adapter.displayName}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                )}
                 <label>
-                  Store format
-                  <select
-                    value={adapterId}
-                    disabled={busy || adapters.isPending}
+                  Path on the Station host
+                  <input
+                    value={path}
+                    disabled={busy}
                     onChange={(event) => {
-                      setAdapterId(event.target.value);
+                      setPath(event.target.value);
                       setChecked(undefined);
                     }}
-                  >
-                    {adapters.data
-                      ?.filter((adapter) => adapter.id !== 'conversation-store')
-                      .map((adapter) => (
-                        <option key={adapter.id} value={adapter.id}>
-                          {adapter.displayName}
-                        </option>
-                      ))}
-                  </select>
+                  />
                 </label>
-              )}
-              <label>
-                Path on the Station host
-                <input
-                  value={path}
-                  disabled={busy}
-                  onChange={(event) => {
-                    setPath(event.target.value);
-                    setChecked(undefined);
-                  }}
-                />
-              </label>
-              <div className="project-sources__actions">
-                <Button
-                  disabled={
-                    busy ||
-                    !capabilities.data?.canCheckHostPaths ||
-                    !path.trim() ||
-                    !adapters.data?.some((adapter) => adapter.id === adapterId)
-                  }
-                  pending={validate.isPending}
-                  onClick={() => void check()}
-                >
-                  Check source
-                </Button>
-                <Button
-                  disabled={
-                    busy ||
-                    checked?.path !== path ||
-                    checked?.adapterId !== adapterId
-                  }
-                  onClick={() => void add(true)}
-                >
-                  Connect store
-                </Button>
-              </div>
-              {checked?.path === path && checked?.adapterId === adapterId && (
-                <p role="status">
-                  Source accepted for registration. This does not confirm that
-                  the path exists or that records can be read.
-                </p>
-              )}
+                <div className="project-sources__actions">
+                  <Button
+                    disabled={
+                      busy ||
+                      !capabilities.data?.canCheckHostPaths ||
+                      !path.trim() ||
+                      !adapters.data?.some(
+                        (adapter) => adapter.id === adapterId,
+                      )
+                    }
+                    pending={validate.isPending}
+                    onClick={() => void check()}
+                  >
+                    Check source
+                  </Button>
+                  <Button
+                    disabled={
+                      busy ||
+                      checked?.path !== path ||
+                      checked?.adapterId !== adapterId
+                    }
+                    onClick={() => void add(true)}
+                  >
+                    Connect store
+                  </Button>
+                </div>
+                {checked?.path === path && checked?.adapterId === adapterId && (
+                  <p role="status">
+                    Source accepted for registration. This does not confirm that
+                    the path exists or that records can be read.
+                  </p>
+                )}
+              </details>
             </div>
           )}
           {!canManage && !checkingPermissions && !capabilities.isError && (
