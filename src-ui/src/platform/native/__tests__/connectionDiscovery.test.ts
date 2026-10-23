@@ -35,6 +35,7 @@ describe('native LAN provider', () => {
     'does not begin a scan when admission returns %s',
     async (status) => {
       prepare.mockResolvedValue({ status });
+      invoke.mockResolvedValue({ status: 'available', candidates: [station] });
       const result = await discoverConnectionCandidates();
       expect(result.providers[0].status).toBe(status);
       expect(result.candidates).toEqual([]);
@@ -50,6 +51,7 @@ describe('native LAN provider', () => {
           finish = resolve;
         }),
     );
+    invoke.mockResolvedValue({ status: 'available', candidates: [station] });
     const owner = new AbortController();
     const result = discoverConnectionCandidates({ signal: owner.signal });
     owner.abort();
