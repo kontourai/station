@@ -1486,3 +1486,9 @@ mod tests {
         assert!(keys.backend().lock().is_empty());
     }
 }
+
+#[cfg(all(test, not(mobile)))]
+#[test]
+fn keyring_service_is_registered() {
+    crate::native_secure_entry::assert_registered_service(CANDIDATE_KEYRING_SERVICE);
+}

@@ -8,8 +8,15 @@
  * "Engines 0" beside a list of three engines.
  */
 
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { chromium } from '@playwright/test';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  chromiumIsInstalled,
+  resolveCssImports,
+} from '../../../tests/helpers/css-cascade-fixture';
 
 const state: {
   connections: unknown[];
@@ -272,3 +279,49 @@ describe('ConnectionsSectionFrame', () => {
     expect(screen.getByTestId('chooser')).toBeTruthy();
   });
 });
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+
+/**
+ * The section tabs sat against the sidebar edge on a split-pane section: a
+ * flush frame drops its body inset, and the tab strip went with it while the
+ * title above kept the header's. Lays the frame's real tab strip out in
+ * Chromium under the real frame and tab stylesheets.
+ */
+describe.skipIf(!chromiumIsInstalled(resolve(HERE, '../../../')))(
+  'the section tabs line up with the page title',
+  () => {
+    test.each([1440, 390])('at %ipx', async (width) => {
+      const { container } = render(
+        <ConnectionsSectionFrame sectionId="engines">
+          <div />
+        </ConnectionsSectionFrame>,
+      );
+      const strip = container.querySelector('[role="tablist"]')!.outerHTML;
+      const css = [
+        '../components/page-frame/page-frame.css',
+        '../views/page-layout.css',
+      ]
+        .map((path) => resolveCssImports(resolve(HERE, path)))
+        .join('\n');
+      const browser = await chromium.launch();
+      try {
+        const tab = await browser.newPage({ viewport: { width, height: 800 } });
+        await tab.setContent(
+          `<!doctype html><html><head><style>${css}</style></head><body style="margin:0"><div class="page-frame page-frame--flush"><div class="page-frame__header"><div class="page__header"><div class="page__header-text"><h1 class="page__title">Engines</h1></div></div></div><div class="page-frame__body">${strip}</div></div></body></html>`,
+        );
+        const left = await tab.evaluate(() => ({
+          title: document.querySelector('.page__title')!.getBoundingClientRect()
+            .left,
+          firstTab: document
+            .querySelector('[role="tab"]')!
+            .getBoundingClientRect().left,
+        }));
+        expect(left.firstTab).toBe(left.title);
+        expect(left.firstTab).toBeGreaterThan(0);
+      } finally {
+        await browser.close();
+      }
+    });
+  },
+);

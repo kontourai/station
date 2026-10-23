@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { loadOrCreateAgentRegistry } from '../../../domain/agent-registry.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
@@ -15,6 +16,10 @@ let providerEntries: Array<{
   type?: string;
   provider: any;
 }> = [];
+
+// The registry routes await the login-shell PATH capture before detection;
+// these route cases do not exercise detection, so they skip the shell spawn.
+vi.stubEnv('STATION_DISABLE_LOGIN_PATH_RESOLVE', '1');
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   acpOps: { add: vi.fn() },
@@ -39,7 +44,22 @@ const { createACPRoutes, listUnconnectedACPRegistryEntries } = await import(
 const { CodexAdapter } = await import(
   '../../../providers/adapters/codex-adapter.js'
 );
+const { addACPManagerConnection, removeACPManagerConnection } = await import(
+  '../../../services/acp/acp-manager-orchestration.js'
+);
+const { EngineCredentials, registerEngineCredentials } = await import(
+  '../../../services/acp/engine-credentials.js'
+);
+const { EngineSignInService, registerEngineSignIn } = await import(
+  '../../../services/acp/engine-sign-in.js'
+);
+const { recordEngineAuthenticated, engineSignInStatus, resetEngineAuthStatus } =
+  await import('../../../services/acp/engine-auth-status.js');
+const { getACPManagerStatus } = await import(
+  '../../../services/acp/acp-manager-view.js'
+);
 const homes: string[] = [];
+const makeTempDir = trackTempDirs();
 
 /**
  * Choosing what a connection runs takes the operator in person (or a device
@@ -91,6 +111,64 @@ function createMockRuntimeContext() {
       async <T>(operation: (beginMutation: () => void) => Promise<T>) =>
         operation(beginAgentConfigurationMutation),
     ),
+  };
+}
+
+/**
+ * A bridge whose add/status path is the real manager orchestration and
+ * status view, with only the engine process replaced: each probe settles to
+ * `outcome` the way `ACPProbe.runProbe` does (stamping `lastProbeAt` and
+ * `lastError`). `outcome` is read per probe, so a test can flip it between
+ * an initial add and a retry.
+ */
+function probeOutcomeBridge(outcome: {
+  ok: boolean;
+  lastError?: { phase: string; message: string };
+}) {
+  const probes = new Map<string, any>();
+  const configs = new Map<string, any>();
+  const removeConnection = (id: string) =>
+    removeACPManagerConnection({ id, probes, configs });
+  const createProbe = () => {
+    const probe = {
+      lastProbeAt: 0,
+      lastError: null as { phase: string; message: string } | null,
+      handshakeObservedAt: 0,
+      getModes: () => [],
+      getConfigOptions: () => [],
+      getCapabilities: () => undefined,
+      getHandshakeObservedAt: () => probe.handshakeObservedAt,
+      isAvailable: () => probe.handshakeObservedAt > 0 && !probe.lastError,
+      isProbeInFlight: () => false,
+      async probe() {
+        probe.lastProbeAt = Date.now();
+        if (outcome.ok) {
+          probe.handshakeObservedAt = probe.lastProbeAt;
+          probe.lastError = null;
+        } else {
+          probe.lastError = outcome.lastError ?? null;
+        }
+        return outcome.ok;
+      },
+      async dispose() {},
+    };
+    return probe;
+  };
+  return {
+    addConnection: vi.fn((config: any) =>
+      addACPManagerConnection({
+        config,
+        probes,
+        configs,
+        logger: {},
+        managedWorkspaceHomeDir: tmpdir(),
+        createProbe,
+        removeConnection,
+      }),
+    ),
+    removeConnection: vi.fn(removeConnection),
+    reconnect: vi.fn().mockResolvedValue(false),
+    getStatus: () => getACPManagerStatus(probes, configs, 0),
   };
 }
 
@@ -694,11 +772,15 @@ describe('ACP Routes', () => {
     ];
     const ctx = createMockRuntimeContext();
     ctx.configLoader.loadACPConfig.mockResolvedValue({
-      connections: [{ id: 'kiro', command: 'kiro-cli' }],
+      connections: [{ id: 'kiro', name: 'My Kiro', command: 'kiro-cli' }],
     });
     const app = asOperator(createACPRoutes(ctx as any));
     const res = await app.request('/registry/kiro/install', { method: 'POST' });
     expect(res.status).toBe(409);
+    // A person's sentence naming the engine already saved, not an id.
+    expect((await json(res)).error).toBe(
+      'My Kiro is already saved with different settings. Use Edit setup on it, or remove it first.',
+    );
   });
 
   test('POST /registry/:id/install repairs a persisted config after registry commit failure', {
@@ -948,6 +1030,108 @@ describe('ACP Routes', () => {
     });
   });
 
+  // A failed first add registers no identity, so GET /connections never lists
+  // the connection. The response is the only place the setup dialog can read
+  // the probe's outcome; without it the dialog waited on a list row that
+  // could never arrive.
+  test('POST /registry/:id/install answers a failed first add with the probe status and reason', async () => {
+    providerEntries = [
+      {
+        source: 'acpConnectionRegistry:core',
+        builtin: true,
+        provider: {
+          listAvailable: () => [{ id: 'muse', name: 'Muse', command: 'muse' }],
+        },
+      },
+    ];
+    const { ctx } = await createFilesystemRuntimeContext();
+    const outcome = {
+      ok: false,
+      lastError: { phase: 'initialize', message: 'Timed out after 10000ms' },
+    };
+    ctx.acpBridge = probeOutcomeBridge(outcome);
+    const app = asOperator(createACPRoutes(ctx));
+
+    const failed = await json(
+      await app.request('/registry/muse/install', { method: 'POST' }),
+    );
+
+    expect(failed).toMatchObject({
+      success: true,
+      data: {
+        id: 'muse',
+        status: 'unavailable',
+        lastError: { phase: 'initialize', message: 'Timed out after 10000ms' },
+      },
+    });
+    // The whole body, pinned: src-ui's ACPAddConnectionModal test drives the
+    // dialog with this exact shape (`failedFirstAddResponse`).
+    expect(failed.data).toEqual({
+      id: 'muse',
+      name: 'Muse',
+      command: 'muse',
+      args: [],
+      icon: '🔌',
+      enabled: true,
+      status: 'unavailable',
+      modes: [],
+      sessionId: null,
+      mcpServers: [],
+      configOptions: [],
+      currentModel: null,
+      advertisedModels: [],
+      providerRoutingCurrent: true,
+      lastError: { phase: 'initialize', message: 'Timed out after 10000ms' },
+    });
+    expect(failed.agent).toBeUndefined();
+    expect((await json(await app.request('/connections'))).data).toEqual([]);
+
+    // Retry check re-posts the same entry; once the probe handshakes the
+    // engine registers, its Agent materializes, and the list serves it.
+    outcome.ok = true;
+    const retried = await json(
+      await app.request('/registry/muse/install', { method: 'POST' }),
+    );
+
+    expect(retried).toMatchObject({
+      success: true,
+      data: { id: 'muse', status: 'available' },
+      agent: { created: true, data: { slug: 'muse' } },
+    });
+    expect(retried.data.lastError).toBeUndefined();
+    expect((await json(await app.request('/connections'))).data).toMatchObject([
+      { id: 'muse', status: 'available' },
+    ]);
+  });
+
+  test('POST /connections answers a failed first add with the probe status and reason', async () => {
+    const { ctx } = await createFilesystemRuntimeContext();
+    ctx.acpBridge = probeOutcomeBridge({
+      ok: false,
+      lastError: { phase: 'spawn', message: 'spawn muse ENOENT' },
+    });
+    const app = asOperator(createACPRoutes(ctx));
+
+    const body = await json(
+      await app.request('/connections', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: 'muse', command: 'muse', name: 'Muse' }),
+      }),
+    );
+
+    expect(body).toMatchObject({
+      success: true,
+      data: {
+        id: 'muse',
+        command: 'muse',
+        status: 'unavailable',
+        lastError: { phase: 'spawn', message: 'spawn muse ENOENT' },
+      },
+    });
+    expect((await json(await app.request('/connections'))).data).toEqual([]);
+  });
+
   test('POST /connections creates no Agent when the probe rejects', async () => {
     const { ctx, configLoader } = await createFilesystemRuntimeContext();
     ctx.acpBridge.addConnection.mockRejectedValue(
@@ -1077,7 +1261,7 @@ describe('ACP Routes', () => {
   test('POST /connections returns 409 for duplicate', async () => {
     const ctx = createMockRuntimeContext();
     ctx.configLoader.loadACPConfig.mockResolvedValue({
-      connections: [{ id: 'test', command: 'x' }],
+      connections: [{ id: 'test', name: 'Test Engine', command: 'x' }],
     });
     const app = asOperator(createACPRoutes(ctx as any));
     const res = await app.request('/connections', {
@@ -1086,6 +1270,9 @@ describe('ACP Routes', () => {
       body: JSON.stringify({ id: 'test', command: 'kiro-cli' }),
     });
     expect(res.status).toBe(409);
+    expect((await json(res)).error).toBe(
+      'Test Engine already uses the ID "test". Choose a different ID under Advanced, or use Edit setup on Test Engine.',
+    );
     expect(ctx.beginAgentConfigurationMutation).not.toHaveBeenCalled();
   });
 
@@ -1194,6 +1381,80 @@ describe('ACP Routes', () => {
     expect(response.status).toBe(500);
     expect(ctx.acpBridge.removeConnection).not.toHaveBeenCalled();
     expect(ctx.acpBridge.addConnection).not.toHaveBeenCalled();
+  });
+
+  test('deleting a connection removes its stored keys and forgets its sign-in', async () => {
+    const home = makeTempDir('station-acp-delete-keys-');
+    const keys = new EngineCredentials(home);
+    registerEngineCredentials(keys);
+    const signIn = new EngineSignInService({ terminal: null });
+    const forget = vi.spyOn(signIn, 'forget');
+    registerEngineSignIn(signIn);
+    try {
+      const command = '/usr/local/bin/droid';
+      await keys.set('droid', 'FACTORY_API_KEY', 'fk-delete-me', [
+        'FACTORY_API_KEY',
+      ]);
+      await keys.set('other', 'FACTORY_API_KEY', 'fk-keep-me', [
+        'FACTORY_API_KEY',
+      ]);
+      const ctx = createMockRuntimeContext();
+      let stored = {
+        connections: [
+          { id: 'droid', name: 'Droid', command, enabled: true },
+          { id: 'other', name: 'Other', command, enabled: true },
+        ],
+      };
+      ctx.configLoader.loadACPConfig.mockImplementation(async () =>
+        structuredClone(stored),
+      );
+      ctx.configLoader.saveACPConfig.mockImplementation(async (next) => {
+        stored = structuredClone(next) as typeof stored;
+      });
+      const app = asOperator(createACPRoutes(ctx as any));
+
+      recordEngineAuthenticated(stored.connections[0]);
+      const res = await app.request('/connections/droid', { method: 'DELETE' });
+
+      expect(res.status).toBe(200);
+      expect(forget).toHaveBeenCalledWith('droid');
+      expect((await engineSignInStatus({ id: 'droid', command })).state).toBe(
+        'unknown',
+      );
+      expect(keys.envFor('droid', ['FACTORY_API_KEY'])).toEqual({});
+      expect(keys.envFor('other', ['FACTORY_API_KEY'])).toEqual({
+        FACTORY_API_KEY: 'fk-keep-me',
+      });
+    } finally {
+      registerEngineCredentials(null);
+      registerEngineSignIn(null);
+    }
+  });
+
+  test('changing the invocation retires sign-in evidence before rechecking the connection', async () => {
+    const ctx = createMockRuntimeContext();
+    const original = { id: 'pi', name: 'Pi', command: 'pi-acp', enabled: true };
+    ctx.configLoader.loadACPConfig.mockResolvedValue({
+      connections: [original],
+    });
+    recordEngineAuthenticated(original);
+    const signIn = new EngineSignInService({ terminal: null });
+    const forget = vi.spyOn(signIn, 'forget');
+    registerEngineSignIn(signIn);
+    try {
+      const app = asOperator(createACPRoutes(ctx as any));
+      const res = await app.request('/connections/pi', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: 'goose', args: ['acp'] }),
+      });
+      expect(res.status).toBe(200);
+      expect(forget).toHaveBeenCalledExactlyOnceWith('pi');
+      expect((await engineSignInStatus(original)).state).toBe('unknown');
+    } finally {
+      registerEngineSignIn(null);
+      resetEngineAuthStatus();
+    }
   });
 
   test('serializes ACP connection updates and deletion', async () => {
@@ -1353,7 +1614,7 @@ describe('ACP Routes', () => {
     expect(response.status).toBe(502);
     const body = await json(response);
     expect(body.success).toBe(false);
-    expect(body.error).toBe('The ACP connection could not be reconnected.');
+    expect(body.error).toBe('Could not check Kiro.');
     expect(body.phase).toBe('spawn');
     // Secret-redacted and path-stripped: the raw credential shape and the
     // absolute path from the probe failure never reach the client.
@@ -1414,7 +1675,7 @@ describe('ACP Routes', () => {
     expect(response.status).toBe(502);
     expect(await json(response)).toEqual({
       success: false,
-      error: 'The ACP connection could not be reconnected.',
+      error: 'Could not check Kiro.',
     });
   });
 
@@ -1452,7 +1713,7 @@ describe('ACP Routes', () => {
     expect(response.status).toBe(502);
     const body = await json(response);
     expect(body.success).toBe(false);
-    expect(body.error).toBe('The ACP connection could not be reconnected.');
+    expect(body.error).toBe('Could not check Muse.');
     expect(body.detail).toContain('[REDACTED]');
     expect(body.detail).not.toContain('sk-test1234');
   });

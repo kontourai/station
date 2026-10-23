@@ -6,6 +6,7 @@
 
 import {
   type ACPConnectionRegistryEntry,
+  type ACPEngineAuthDescriptor,
   validateACPEngineDescriptor,
 } from '@kontourai/station-contracts/acp';
 import type { IACPConnectionRegistryProvider } from '../../providers/provider-interfaces.js';
@@ -63,10 +64,17 @@ const CONFUSABLE_SKELETON: Readonly<Record<string, string>> = {
 };
 
 /** The form two names are compared in: NFKC, case-folded, confusables mapped, spacing collapsed. */
-function nameSkeleton(name: unknown): string {
+export function nameSkeleton(name: unknown): string {
   // Entries come from plugin code, so a missing or non-string name is possible.
   if (typeof name !== 'string') return '';
-  return [...name.normalize('NFKC').toLowerCase()]
+  // Characters that render as nothing are dropped, so they cannot make two
+  // names that look alike compare different.
+  return [
+    ...name
+      .normalize('NFKC')
+      .replace(/\p{Default_Ignorable_Code_Point}/gu, '')
+      .toLowerCase(),
+  ]
     .map((char) => CONFUSABLE_SKELETON[char] ?? char)
     .join('')
     .replace(/\s+/g, ' ')
@@ -191,4 +199,32 @@ export function registryLaunchEnvFor(
       executableName(entry.command, platform) === name,
   );
   return match?.entry.launchEnv ? { ...match.entry.launchEnv } : undefined;
+}
+
+/**
+ * The built-in sign-in descriptor for a connection's executable, keyed like
+ * {@link registryLaunchEnvFor}. Built-in only: a status command is a program
+ * Station runs on its own, so plugin descriptors never supply one.
+ */
+export function registryAuthFor(
+  connection: { command: string },
+  platform: string = process.platform,
+): { command: string; auth: ACPEngineAuthDescriptor } | undefined {
+  const name = executableName(connection.command, platform);
+  const match = listValidatedACPRegistryEntries({ detect: false }).find(
+    ({ entry, builtin }) =>
+      builtin && entry.auth && executableName(entry.command, platform) === name,
+  );
+  return match?.entry.auth
+    ? { command: match.entry.command, auth: match.entry.auth }
+    : undefined;
+}
+
+/** Whether `argv0` names the same program as `command`, by executable name. */
+export function namesSameExecutable(
+  argv0: string,
+  command: string,
+  platform: string = process.platform,
+): boolean {
+  return executableName(argv0, platform) === executableName(command, platform);
 }

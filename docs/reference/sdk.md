@@ -4868,6 +4868,18 @@ See the [commands guide](../guides/commands.md)
 for scope and limits.
 
 
+## Engine sign-in queries
+
+The additive `@kontourai/station-sdk/engine-sign-in` entry reads and drives
+sign-in for an engine run as a command (`/acp/connections/:id/sign-in*`):
+`useEngineSignInQuery`, `useEngineSignInCheckMutation`,
+`useEngineSignInAttemptQuery` (polls every 2 seconds while a sign-in runs),
+`useEngineSignInMutation` (start by method id, or cancel) and
+`useEngineCredentialMutation` (set a key value or clear it; the value is never
+read back). Responses are parsed strictly against
+`@kontourai/station-contracts/engine-sign-in`, and every caller supplies a
+captured `ApiRequestScope`.
+
 ## Engine account queries
 
 The additive `@kontourai/station-sdk/engine-accounts` entry exposes account,
