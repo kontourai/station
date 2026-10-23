@@ -600,6 +600,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // point as one bounded single-shot node child; everything else in the file
   // exercises pure decision composition.
   'scripts/__tests__/gate-for.test.ts',
+  'scripts/__tests__/code-hygiene.test.ts',
   // Bounded Git fixtures and CLI children exercise documentation catch-up.
   'scripts/__tests__/documentation-impact.test.ts',
   // Bounded Git fixtures run the freshness check and review-record CLIs.

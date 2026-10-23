@@ -1,0 +1,9 @@
+{
+  "revision": "080166ff602a569573bda3153c6d86ce8854d1bb",
+
+  "notes": [
+    {"path":"docs/guides/code-hygiene.md","note":"Reviewed the single JSDoc return annotation added to the native Veritas plan adapter after hosted scripts typechecking exposed lost inference through JSON.parse. Runtime plan invocation, fail-closed envelope validation, selected guidance, evidence routing and pre-push composition are unchanged. The annotation derives guidance fields from the published buildExplainGuidance contract and adds matched paths; scripts typecheck and all 10 gate-for caller tests passed. Existing code hygiene and verification explanations need no prose changes; this does not claim hosted qualification.","inputs":["docs/guides/code-hygiene.md","scripts/gate-for.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Reviewed the single JSDoc return annotation added to the native Veritas plan adapter after hosted scripts typechecking exposed lost inference through JSON.parse. Runtime plan invocation, fail-closed envelope validation, selected guidance, evidence routing and pre-push composition are unchanged. The annotation derives guidance fields from the published buildExplainGuidance contract and adds matched paths; scripts typecheck and all 10 gate-for caller tests passed. Existing code hygiene and verification explanations need no prose changes; this does not claim hosted qualification.","inputs":["docs/guides/code-quality.md"]}
+  ]
+}

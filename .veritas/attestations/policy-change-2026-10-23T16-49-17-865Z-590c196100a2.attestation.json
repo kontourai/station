@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-10-23T16-49-17-865Z-590c196100a2",
+  "kind": "policy-change",
+  "actor": {
+    "id": "brian",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": null,
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-10-23T16:49:17.865Z",
+  "repoStandardsHash": "sha256:d1eb07634f8dd2485fea0ef9a3573e34dd2442f348a320c7232427b9b1a5f436",
+  "repoMapHash": "sha256:880200056f4882de872f20ab5b8cf9731cff57cdee584690a42a04d810d0fa48",
+  "repoMapHashAlgorithm": "public-policy-v1",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-10-23T13-49-12-198Z-80cd9447a673",
+  "validUntilDays": 90,
+  "notes": "Adopt registry-published Veritas 1.12.1 RepoStandards and native ChangePlan; preserve all existing requirements; require explained suppressions and deterministic timing in pure contract tests. Installed detector catch/restoration proof passed on a clean committed baseline.",
+  "authorizing": {
+    "kind": "explicit-statement",
+    "statement": "Owner instructed Full send after approving publication, Station adoption, native resource standards and strong code hygiene policies."
+  },
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-10-23T13-49-12-198Z-80cd9447a673",
+    "approvalRef": "t3-thread://v1/12ac6680-20bf-41a7-89d1-80ca514588bb",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-10-23T16-49-17-865Z-590c196100a2",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "e6ffd07290f620a18206e78f7b6ac05c65f06c6c2acfbc31fe93fbafb31617e5",
+        "validUntil": "2027-01-21T16:49:17.865Z"
+      },
+      "createdAt": "2026-10-23T16:49:17.865Z",
+      "updatedAt": "2026-10-23T16:49:17.865Z",
+      "status": "proposed",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "weak",
+        "reviewerAuthority": "none",
+        "evidenceStrength": "weak",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-10-23T16-49-17-865Z-590c196100a2",
+      "claimId": "veritas.attestation.policy-change-2026-10-23T16-49-17-865Z-590c196100a2",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Adopt registry-published Veritas 1.12.1 RepoStandards and native ChangePlan; preserve all existing requirements; require explained suppressions and deterministic timing in pure contract tests. Installed detector catch/restoration proof passed on a clean committed baseline.",
+      "observedAt": "2026-10-23T16:49:17.865Z",
+      "collectedBy": "brian",
+      "integrityRef": "e6ffd07290f620a18206e78f7b6ac05c65f06c6c2acfbc31fe93fbafb31617e5",
+      "metadata": {
+        "actor": {
+          "id": "brian",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-10-23T16:49:17.865Z",
+        "validUntil": "2027-01-21T16:49:17.865Z",
+        "contentHash": "e6ffd07290f620a18206e78f7b6ac05c65f06c6c2acfbc31fe93fbafb31617e5"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-10-23T16-49-17-865Z-590c196100a2.proposed",
+      "claimId": "veritas.attestation.policy-change-2026-10-23T16-49-17-865Z-590c196100a2",
+      "status": "proposed",
+      "actor": "brian",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-10-23T16-49-17-865Z-590c196100a2"
+      ],
+      "createdAt": "2026-10-23T16:49:17.865Z"
+    }
+  },
+  "recordIntegrity": {
+    "algorithm": "veritas-attestation-record-v1",
+    "digest": "cb79a9d60d5ee05255c5c2d852271981e0321aad914d7b5a4c13499b7e8bf8ac"
+  }
+}

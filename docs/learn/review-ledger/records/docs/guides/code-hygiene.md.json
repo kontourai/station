@@ -22,7 +22,15 @@
 
     ".github/workflows/docs-freshness-sweep.yml",
 
-    "package.json#/scripts"
+    "package.json#/scripts",
+
+    "config/code-hygiene.oxlint.json",
+
+    "scripts/__tests__/code-hygiene.test.ts",
+
+    ".veritas/repo-standards/default.repo-standards.json",
+
+    "scripts/gate-for.mjs"
   ],
 
   "checks": []

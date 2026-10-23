@@ -1,0 +1,9 @@
+{
+  "revision": "d6247fb07793b18c6b945fac3ffc1da9882251cf",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Verified installed registry Veritas1.12.1 CLI and public hygiene plugin export, matching lock integrity, native ChangePlan guidance, and schema validation. Reviewed the corrected contract-path glob against a real bad-case detector test and baseline/injected/restored suppression and clock proof with byte-exact restoration. New policy-change attestation records owner authorization; hosted/Nightly/native evidence remains separate.","inputs":[".veritas/README.md","config/code-hygiene.oxlint.json"]},
+
+    {"path":"docs/guides/code-hygiene.md","note":"Reviewed current guide against the installed public plugin, corrected recursive contract-test glob, required suppression checks including Biome, and separate advisory comments. Real detector controls and clean-tree fault restoration passed. Distinguishes source/test syntax policy from behavior, integration timing, source authority and future hosted qualification.","inputs":["docs/guides/code-hygiene.md","config/code-hygiene.oxlint.json"]}
+  ]
+}

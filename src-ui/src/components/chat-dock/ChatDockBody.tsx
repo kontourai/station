@@ -1062,7 +1062,7 @@ export function ChatDockBody({
     activeSession.messages,
     settings.ttsReadbackEnabled,
     tts.speak,
-  ]); // eslint-disable-line react-hooks/exhaustive-deps
+  ]);
 
   const [removingMessages, setRemovingMessages] = useState<Set<string>>(
     new Set(),

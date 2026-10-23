@@ -19,5 +19,6 @@
   "app-builds": "enforced",
   "fallow-advisory": "advisory",
   "style-standard": "enforced",
-  "documentation-truth": "enforced"
+  "documentation-truth": "enforced",
+  "code-hygiene": "scoped"
 }

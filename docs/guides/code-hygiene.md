@@ -2,13 +2,56 @@
 
 Code that waits for a caller, compatibility code that must go away later, and
 dated evidence all need an owner and an end. Without one, nobody can tell
-paused work from abandoned work. This guide defines the markers that record
-that ownership and the advisory checks that report when it lapses.
+paused work from abandoned work. This guide defines required source/test policies and the ownership markers
+whose advisory reports identify unfinished work.
 
-The checks are implemented in `scripts/hygiene-report.mjs` and
+The ownership-marker reports below are implemented in `scripts/hygiene-report.mjs` and
 `scripts/lib/hygiene/`. Each check derives its answer from the tracked tree,
 the TypeScript syntax tree, or live GitHub issue state. None compares the
 repository against a pinned list.
+
+## Executable source and contract-test policies
+
+Station pins the registry-published Veritas 1.12.1 package and Oxlint 1.88.0.
+The public `@kontourai/veritas/hygiene/oxlint` plugin is configured by
+`config/code-hygiene.oxlint.json`; the `code-hygiene` Repo Standard selects its
+`npm run lint:hygiene` Evidence Check. That check is required in readiness,
+including the existing hosted readiness lane. It checks source, tests, packages,
+scripts and examples for unexplained Biome, ESLint, Oxlint and TypeScript
+suppressions. Obsolete ESLint directives should be removed; live suppressions must explain the reason.
+An explanation is reviewer context, not an authorized policy exception.
+
+Pure contract tests under `packages/contracts/src/**/*.test.ts` additionally
+reject direct real clocks, zero-argument `new Date()` and timer waits. Use fixed
+fixtures or caller-supplied time. Integration, performance and lifecycle tests
+outside that scope retain real timing where their behavior requires it. The
+syntax rule is not complete alias/wrapper analysis. Existing behavioral tests
+still establish correctness.
+
+`npm run lint:hygiene:comments` adds advisory comment findings. It is not a
+required gate: comment heuristics need human judgment and this adoption does not
+bulk-delete rationale or baselines. Node namespace-import style is not enabled.
+
+Preview before editing with `npm run veritas:plan -- <paths...>`. This delegates
+to the published `veritas plan` CLI and returns guidance and check selection
+without executing checks. `gate:for` consumes the same native `ChangePlan` for
+Veritas guidance and retains Station's own pre-push and documentation selectors.
+
+## Resource standards migration
+
+The reviewed `.veritas/repo-standards/default.repo-standards.json` now uses
+`apiVersion: veritas.kontour.ai/v1alpha1`, `kind: RepoStandards`, `metadata.name`
+and `spec.requirements`. Existing requirement IDs, levels, evidence bindings and
+assertions are preserved; consumers read through Veritas's public
+`loadRepoStandards`, not a second local envelope parser. Repo Map and durable
+readiness output formats remain unchanged. Migrating protected policy requires
+a fresh policy-change attestation; a loader's compatibility support does not
+supply approval.
+
+The adoption tests execute the installed detector and real Station configuration
+against known-bad and benign source. Full-check qualification, a clean committed
+baseline, injected failure and byte-exact restoration are recorded separately;
+a source test does not establish native/device or Nightly qualification.
 
 ## Mark unfinished work
 

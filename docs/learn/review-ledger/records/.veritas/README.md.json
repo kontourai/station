@@ -104,7 +104,15 @@
 
     "package.json#/scripts/veritas:readiness:diff",
 
-    "package.json#/scripts/veritas:shadow"
+    "package.json#/scripts/veritas:shadow",
+
+    "config/code-hygiene.oxlint.json",
+
+    "scripts/__tests__/code-hygiene.test.ts",
+
+    "package.json#/scripts/veritas:plan",
+
+    "package.json#/scripts/lint:hygiene"
   ],
 
   "checks": [

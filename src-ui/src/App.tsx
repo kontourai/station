@@ -281,7 +281,6 @@ function App() {
     return () => {
       window.removeEventListener('popstate', handlePathChange);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lastProject, lastProjectLayout]);
 
   const handleAuthError = async (): Promise<boolean> => Promise.resolve(false);
