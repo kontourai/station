@@ -436,6 +436,8 @@ async function qualifyRestoreFence(
       (SELECT md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb)::text) FROM station_telemetry.events t) AS events,
       (SELECT md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb)::text) FROM station_telemetry.commits t) AS commits,
       (SELECT md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb)::text) FROM station_telemetry.migrations t) AS migrations,
+      (SELECT md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb)::text) FROM station_telemetry.publisher_keys t) AS publisher_keys,
+      (SELECT md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb)::text) FROM station_telemetry.lite_sources t) AS lite_sources,
       (SELECT md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb)::text) FROM station_telemetry.lite_noise_key t) AS noise,
       (SELECT md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb)::text) FROM station_telemetry.lite_publications t) AS publications,
       (SELECT md5(coalesce(jsonb_agg(to_jsonb(t) ORDER BY to_jsonb(t)::text),'[]'::jsonb)::text) FROM station_telemetry.lite_published t) AS published`)
@@ -856,6 +858,7 @@ async function qualifyReceiver(snapshot, buildManifest, activeEntrypoints) {
       for (const socket of sockets) socket.destroy();
       await new Promise((resolve) => transport.close(resolve));
     }
+    assert.equal((await probe(otherKey)).status, 200);
     await qualifyRestoreFence(
       url.href,
       operatorKey,
@@ -865,6 +868,7 @@ async function qualifyReceiver(snapshot, buildManifest, activeEntrypoints) {
     );
     await store.refreshCredentials();
     assert.equal((await send(batch)).status, 401);
+    assert.equal((await probe(otherKey)).status, 401);
     checks.push(
       'one-shot product restore fence revokes copied credentials, settles idempotently, and preserves data/migrations/publisher state',
     );
