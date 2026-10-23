@@ -518,13 +518,14 @@ describe('retained Project authority at recovery provider effects', () => {
           held.release();
         }
       }
-      expect(await recovering).toMatchObject({
+      const outcome = await recovering;
+      expect(coldEngine.startSession).not.toHaveBeenCalled();
+      expect(coldEngine.sendTurn).not.toHaveBeenCalled();
+      expect(outcome).toMatchObject({
         message: expect.stringContaining(
           'no longer an authorized Project resource',
         ),
       });
-      expect(coldEngine.startSession).not.toHaveBeenCalled();
-      expect(coldEngine.sendTurn).not.toHaveBeenCalled();
       expect(coldStore.readSessionByThread(f.threadId)).toMatchObject({
         resumeCursor: { cursor: 'retained-provider' },
       });

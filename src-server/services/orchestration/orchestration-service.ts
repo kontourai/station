@@ -3377,8 +3377,8 @@ export class OrchestrationService {
     // `adapter.sendTurn` that bypasses dispatch — so a thread whose
     // persisted binding carries portable consent refuses HERE, before any
     // provider effect, instead of replaying a portable session the current
-    // offer never authorized. Unmarked (legacy/ordinary) sessions pass
-    // through byte-identical.
+    // offer never authorized. Ordinary retained Project authority is checked
+    // separately after restart preparation, immediately before provider start.
     {
       const unadmittedConsent = this.persistedPortableConsentOfThread(
         input.threadId,
@@ -12832,11 +12832,10 @@ export class OrchestrationService {
       // client that never supplied one) keeps recovering with none — and the
       // engine keeps inheriting the server process's directory. Fill the gap
       // from the replayed `metadata.projectSlug`. Deliberately only when the
-      // persisted cwd is ABSENT: a session that already has one is not the
-      // archive#1011 case, and re-validating it here would close otherwise healthy
-      // sessions whose directory is momentarily unavailable (an unmounted
-      // volume, a not-yet-restored worktree) — recovery has always been
-      // tolerant there and this fix is not the place to change that.
+      // persisted cwd is ABSENT: never replace an existing coordinate with
+      // today's default root. Qualified retained Sessions are reauthorized
+      // after preparation by assertRetainedWorkspaceAuthorized; unqualified
+      // legacy Sessions retain their existing recovery rules.
       resolveSessionCwd: async (input) => {
         const resolved = input.cwd
           ? input
@@ -12916,8 +12915,8 @@ export class OrchestrationService {
     // Without admission the spawn refuses BEFORE any adapter start/adopt/
     // process spawn. The refusal retains the persisted record and
     // resumeCursor untouched — the session stays dormant and re-routable,
-    // never quarantined or closed. Legacy/unmarked recovery is
-    // byte-identical.
+    // never quarantined or closed. Ordinary retained Project authority is
+    // checked separately at the provider start inside recovery preparation.
     const recoveredAdmitted = receiverAdmission?.admitted
       ? { ...receiverAdmission.admitted }
       : undefined;
