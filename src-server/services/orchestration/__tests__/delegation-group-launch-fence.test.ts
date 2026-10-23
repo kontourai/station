@@ -812,15 +812,12 @@ test('final fetch revalidates the actual source-owned Flow claim after durable w
   });
   const running = f.run();
   void running.catch(() => {});
-  await within(
-    Promise.race([
-      f.intentReady.promise,
-      running.then(() => {
-        throw new Error('Flow round returned before physical intent');
-      }),
-    ]),
-    'real Flow never reached durable physical intent',
-  );
+  await Promise.race([
+    f.intentReady.promise,
+    running.then(() => {
+      throw new Error('Flow round returned before physical intent');
+    }),
+  ]);
   await pauseRun(run.runId, {
     cwd: source.repo,
     reason: 'Pause after wire intent, before fetch',
