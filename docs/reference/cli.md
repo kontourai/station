@@ -2218,7 +2218,9 @@ directories at `repository-acquisitions/<request UUID>/checkout-N`, and the
 browser's `browser/chromium` and `browser/profiles`: an update neither copies
 nor rolls them back. Acquisition receipts and mutation files remain backed-up
 Station state. Checkout edits and new attempts made during a trial remain in
-place after rollback; a deleted checkout is not recreated. For `workspaces/` this is an accepted gap, not a
+place after rollback; a deleted checkout is not recreated. If a saved file or
+link conflicts with a preserved directory, rollback refuses before removing
+Station state and requires operator reconciliation. For `workspaces/` this is an accepted gap, not a
 claim that it holds no Station data: Station writes `.station/` stores into
 each project (diff comments, trust bundles, review-evidence receipts,
 survey-review sessions, flow-review evidence), and a rolled-back update leaves

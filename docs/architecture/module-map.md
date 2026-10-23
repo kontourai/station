@@ -2268,7 +2268,10 @@ metadata. Adjacent acquisition receipts, import originals, setup outcomes and
 creation requests remain state; Room databases join the SQLite checkpoint list.
 Rollback does not undo later external effects or grant execution authority, and
 cross-home copies can retain machine-local paths. Full home backup still includes
-in-home checkout bytes; update snapshots omit them.
+in-home checkout bytes; update snapshots omit them. Restore checks saved file/link
+collisions with preserved directories before removing state; a conflict requires
+operator reconciliation. Older admissible POSIX snapshots keep raw filename
+segments when excluding checkout descendants, including literal backslashes.
 
 **Ownership and backup.** [StationHomeLifecycle](../../packages/shared/src/station-home-lifecycle.ts)
 tracks runtime owners by PID and birth identity and gives maintenance exclusive
