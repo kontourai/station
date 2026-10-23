@@ -191,11 +191,13 @@ the attempt unresolved rather than prove that nothing ran.
 8. **Bind.** The step 7 receipt is bound to the claim with the admitted
    facts. The claim keeps that first matched check; the handle carries the
    step 9 receipt.
-9. **Recheck.** Immediately before the session start, after the admission
-   recheck, the adapter runs again. On the reattach path (the reserved
-   session already exists, so nothing starts) the same recheck runs before
-   the claim advances and before the turn. A change since step 7 refuses
-   with the same codes; the claim is still pre-effect.
+9. **Recheck.** On a new-session path, the adapter runs again after the
+   admission recheck and immediately before session start. On reattach, the
+   reserved session already exists: the adapter runs before the claim advances
+   to `session-started`; admission is checked again later before the initial
+   turn. A version change since step 7 refuses with the same codes. The version
+   check does not fence changes during the later claim writes or admission
+   checks.
 10. **Execute** through the existing session start and initial turn. The
     handle receipt's `checkedAt` is the step 9 check.
 
@@ -203,8 +205,7 @@ A successful refused-state transition records its refusal code and drops any
 bound preparation receipt. The attempt lookup then reports that code. If the
 transition cannot be recorded, the earlier durable claim remains held and
 does not authorize resend; see [claim state meanings](../guides/delegation-attempt-claims.md#state-meanings).
-Two
-refusals are never on a claim: `execution_preparation_attempt_required`
+Two refusals are never on a claim: `execution_preparation_attempt_required`
 (there is no attempt) and a sender's `execution_preparation_unsupported`
 (nothing was sent). Continuation turns on an already-running prepared task
 are not re-verified.

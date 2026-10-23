@@ -35,10 +35,11 @@ export interface ExecutionPreparationRequirement {
 }
 
 /**
- * Typed refusals, each raised before any session or provider effect. A
- * receiver records every refusal it raises after reserving the #485 claim
- * on that claim; `execution_preparation_attempt_required` (no attempt to
- * record on) and a sender's `execution_preparation_unsupported` (nothing
+ * Preparation refusals precede a new session start or initial-turn dispatch;
+ * a reserved session may already exist on reattach. A receiver attempts to
+ * record refusals raised after reserving the #485 claim on that claim.
+ * `execution_preparation_attempt_required` (no attempt to record on) and a
+ * sender's `execution_preparation_unsupported` (nothing
  * was sent) are never on a claim.
  */
 export type ExecutionPreparationRefusalCode =
