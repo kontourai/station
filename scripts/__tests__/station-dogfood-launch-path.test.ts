@@ -142,10 +142,7 @@ describe('Station dogfood client launch path', () => {
         'src-server/providers/adapters/claude-adapter.ts',
         /= 'claude';/,
       ],
-      codex: [
-        'src-server/providers/adapters/codex-adapter.ts',
-        /= 'codex';/,
-      ],
+      codex: ['src-server/providers/adapters/codex-adapter.ts', /= 'codex';/],
     };
     for (const command of SUPPORTED_CLIENT_COMMANDS) {
       if (acpCommands.has(command)) continue;
