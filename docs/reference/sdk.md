@@ -3562,11 +3562,25 @@ are also exported from `@kontourai/station-sdk/client`.
 
 An assessment producer uses the existing authenticated orchestration routes;
 the SDK intentionally provides no convenience client for this write protocol.
+Station Control exposes `get_answer_assessment_target`,
+`publish_answer_assessment`, and `remove_answer_assessment` over the same routes.
+These tools act as the caller's recorded owner; publication and removal are
+mutating operations. A producer copies the exact target/profile into its
+frozen bundle, publishes with `expectedRevision`, and rereads the target after
+a conflict. Removal retains the historical answer and frozen source artifact;
+it does not remove an explicit Task curation override. Tool completion is
+never a substitute for Surface assessment.
 All requests address one exact `StationAnswerBinding` (`sessionId`, `turnId`,
 and its answer identity), and route responses are private and non-cacheable.
 The current producer module rejects hosted authority and requires a readable
 answer bound to a Project in personal mode. Authentication alone does not make
 every answer an eligible assessment target.
+
+Basis reads report hosted assessments as `not-captured`, without reading the
+personal assessment store. A malformed assessment index or one larger than
+1 MiB reports `corrupt` ("Cannot be read"). Guarded filesystem read failures
+remain `unavailable` so a later read can recover. Mutation endpoints still
+refuse an unreadable index with `503`; they never replace it with an empty one.
 
 - `GET /api/orchestration/sessions/:sessionId/turns/:turnId/assessment/target`
   returns `{ expectedAnswer, profile, revision, active }`. The producer must
@@ -3593,6 +3607,16 @@ accepts an optional `reviewedSource` association, whose exact claim, revision,
 Project and principal must match the publication. See the
 [route schema](../../src-server/routes/orchestration/orchestration.ts) and
 [assessment owner](../../src-server/services/evidence/answer-assessment-module.ts).
+
+`keepAnswerInTask(taskId, { sessionId, turnId }, requestScope)` and
+`useKeepAnswerInTaskMutation()` retain the exact inspected answer as a Task
+reference. The client sends only that tuple and the selected Task, validates
+the returned reference identity, and rejects changed authority. The hook
+invalidates the selected Task's Basis, turn references and graph after success.
+The connected inspector asks the person to choose a Task; opening inspection
+alone does not Keep anything. Keeping preserves identity, not a semantic
+support claim. See the [client](../../packages/sdk/src/client/task-basis.ts)
+and [hook](../../packages/sdk/src/task-basis.ts).
 
 `ApiRequestScope` contains only `apiBase` and a non-secret `authorityKey`.
 The host captures it before invocation from Connect's public request-authority
@@ -4843,6 +4867,18 @@ retries by default; `config.retry` can override that policy.
 See the [commands guide](../guides/commands.md)
 for scope and limits.
 
+
+## Engine sign-in queries
+
+The additive `@kontourai/station-sdk/engine-sign-in` entry reads and drives
+sign-in for an engine run as a command (`/acp/connections/:id/sign-in*`):
+`useEngineSignInQuery`, `useEngineSignInCheckMutation`,
+`useEngineSignInAttemptQuery` (polls every 2 seconds while a sign-in runs),
+`useEngineSignInMutation` (start by method id, or cancel) and
+`useEngineCredentialMutation` (set a key value or clear it; the value is never
+read back). Responses are parsed strictly against
+`@kontourai/station-contracts/engine-sign-in`, and every caller supplies a
+captured `ApiRequestScope`.
 
 ## Engine account queries
 

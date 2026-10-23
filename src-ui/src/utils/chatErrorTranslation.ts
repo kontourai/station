@@ -8,6 +8,7 @@ import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   ENGINE_SESSION_BINDING_DEAD_CODE,
+  ENGINE_SIGN_IN_REQUIRED_CODE,
   ENGINE_TURN_FAILED_CODE,
   MODEL_NOT_ADVERTISED_CODE,
   MUSE_TURN_IDLE_TIMEOUT_CODE,
@@ -537,6 +538,17 @@ export function translateChatError(
     };
   }
 
+  // The engine itself answered that it needs a sign-in. The server's text
+  // names the engine; nothing is temporary until the user signs in.
+  if (code === ENGINE_SIGN_IN_REQUIRED_CODE) {
+    return {
+      title: 'Sign in to this engine',
+      body: text || 'This engine needs you to sign in before it can run.',
+      hint: "Sign in from the engine's page in Connections, then start a new chat.",
+      retryable: false,
+    };
+  }
+
   if (code === STATION_AGENT_TURN_FAILED_CODE) {
     return {
       title: 'This turn did not complete',
@@ -704,6 +716,7 @@ export function translateProjectedRuntimeError(
   if (
     code !== ENGINE_SESSION_BINDING_DEAD_CODE &&
     code !== ENGINE_TURN_FAILED_CODE &&
+    code !== ENGINE_SIGN_IN_REQUIRED_CODE &&
     code !== STATION_AGENT_TURN_FAILED_CODE
   )
     return null;

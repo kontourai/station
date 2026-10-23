@@ -46,17 +46,21 @@ interface Recorded {
   method: string;
   path: string;
   internal: boolean;
+  body?: unknown;
 }
 const recorded: Recorded[] = [];
 let server: ReturnType<typeof serve>;
 
 beforeAll(async () => {
   const app = new Hono();
-  app.all('*', (c) => {
+  app.all('*', async (c) => {
     recorded.push({
       method: c.req.method,
       path: c.req.path,
       internal: c.req.header(INTERNAL_API_TOKEN_HEADER) !== undefined,
+      ...(c.req.path.endsWith('/assessment') && c.req.method !== 'GET'
+        ? { body: await c.req.json() }
+        : {}),
     });
     // The public handshake the dispatch code reads first to learn which
     // environment is "current".
@@ -155,6 +159,13 @@ const ARGS: Record<string, Record<string, unknown>> = {
   board_unpin: { reference: { kind: 'session', id: 's' }, name: 'w' },
   board_move: { reference: { kind: 'session', id: 's' }, name: 'w' },
   board_read: { reference: { kind: 'session', id: 's' } },
+  schedule_wake_up: { minutes: 5, note: 'check the build' },
+  cancel_wake_up: { id: 'w' },
+  propose_job: {
+    name: 'nightly',
+    schedule: { kind: 'every', everyMs: 3_600_000 },
+    prompt: 'p',
+  },
   declare_pull_request: {
     provider: 'github',
     host: 'github.com',
@@ -246,6 +257,21 @@ const ARGS: Record<string, Record<string, unknown>> = {
   update_plugin: { name: 'p' },
   remove_plugin: { name: 'p' },
   get_basis: { scope: 'answer', sessionId: 'session-1', turnId: 'turn-1' },
+  get_answer_assessment_target: { sessionId: 'session-1', turnId: 'turn-1' },
+  publish_answer_assessment: {
+    sessionId: 'session-1',
+    turnId: 'turn-1',
+    publicationId: 'publish-1',
+    expectedAnswer: {},
+    bundle: {},
+    claimId: 'claim-1',
+    expectedRevision: 0,
+  },
+  remove_answer_assessment: {
+    sessionId: 'session-1',
+    turnId: 'turn-1',
+    expectedRevision: 1,
+  },
   get_task_basis: { taskId: 't' },
   get_session_inventory: {
     operation: 'open',
@@ -272,6 +298,81 @@ function policyServerIds(name: string): readonly PolicyServerId[] {
 }
 
 describe('the authority table routes are the routes the tools call', () => {
+  test('assessment producer tools carry exact CAS input and refuse oversized publication before owner I/O', async () => {
+    const options = claudeInProcessStationControlOptions(() => resolveRecord);
+    const instance = options.createInProcessStationControl(
+      'assessment-producer',
+    );
+    const { transport, request } = memoryTransport();
+    await instance.connect(transport);
+    try {
+      await request(1, 'initialize', {
+        protocolVersion: '2025-06-18',
+        capabilities: {},
+        clientInfo: { name: 'engine', version: '1' },
+      });
+      const target = { sessionId: 'station:1792425046978', turnId: 'turn-a' };
+      const publication = {
+        expectedAnswer: { exact: 'answer' },
+        publicationId: 'publish-a',
+        bundle: { frozen: 'artifact' },
+        claimId: 'claim-a',
+        expectedRevision: 1,
+      };
+      recorded.length = 0;
+      await request(2, 'tools/call', {
+        name: 'get_answer_assessment_target',
+        arguments: target,
+      });
+      expect(recorded).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            method: 'GET',
+            path: '/api/orchestration/sessions/station%3A1792425046978/turns/turn-a/assessment/target',
+            internal: true,
+          }),
+        ]),
+      );
+      await request(3, 'tools/call', {
+        name: 'publish_answer_assessment',
+        arguments: { ...target, ...publication },
+      });
+      expect(recorded).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            method: 'PUT',
+            body: publication,
+            internal: true,
+          }),
+        ]),
+      );
+      await request(4, 'tools/call', {
+        name: 'remove_answer_assessment',
+        arguments: { ...target, expectedRevision: 2 },
+      });
+      expect(recorded).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            method: 'DELETE',
+            body: { expectedRevision: 2 },
+            internal: true,
+          }),
+        ]),
+      );
+      recorded.length = 0;
+      const refused = await request(5, 'tools/call', {
+        name: 'publish_answer_assessment',
+        arguments: { ...target, ...publication, bundle: 'x'.repeat(1_048_577) },
+      });
+      expect(refused).toMatchObject({ result: { isError: true } });
+      expect(recorded.some((entry) => entry.path.endsWith('/assessment'))).toBe(
+        false,
+      );
+    } finally {
+      await instance.close();
+    }
+  });
+
   test('every internal request each tool sends resolves to a leaf that tool owns', async () => {
     const options = claudeInProcessStationControlOptions(() => resolveRecord);
     const servers: Record<PolicyServerId, () => InProcessStationControlServer> =

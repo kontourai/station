@@ -69,16 +69,16 @@ jobs:
       # Head sha in the identity for the same reason as fast-checks (#1445).
       group: ci-fast-plan-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event.pull_request.head.sha || github.sha }}-${{ github.event.pull_request.base.sha }}
       cancel-in-progress: true
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     # The legacy path below runs the whole ci:fast lane here, so the fence
     # covers its fifteen-minute budget + actionlint (5) + install (15) +
     # Chromium (20) + planning (5) + ~3 minutes of unbounded setup = 63;
     # ci-workflow-contract.test.ts pins the sum.
     timeout-minutes: 65
     outputs:
-      # Exactly 'true' or 'false', from the base-controlled detection step.
-      # The aggregator fails on anything else.
+      # Exact-plan validation is separate from full-corpus completion.
       legacy: ${{ steps.mode.outputs.legacy }}
+      integration-ready: ${{ steps.merge-decision.outputs.integration-ready }}
       full-regression: ${{ steps.merge-decision.outputs.full-regression }}
       shards: ${{ steps.plan.outputs.shards }}
       shard-count: ${{ steps.plan.outputs.shard-count }}
@@ -94,8 +94,7 @@ jobs:
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
-        with: { install: false }
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -196,20 +195,15 @@ jobs:
           overwrite: true
           retention-days: 14
 
-      # The authoritative plan is already on this runner; no second install,
-      # planner, artifact reader or cross-workflow trust is needed.
-      # Old candidates may lack this decision CLI: failure leaves no output,
-      # which the base-controlled full-regression guard treats as full.
+      # Missing, foreign or invalid plan evidence blocks integration. Broader
+      # obligations stay explicit; exhaustive qualification runs on main.
       - name: Decide merge integration from the authoritative plan
         id: merge-decision
         if: ${{ always() && !cancelled() && github.event_name == 'merge_group' }}
         env:
           HEAD_SHA: ${{ github.sha }}
           PLAN_BASE: ${{ github.event.merge_group.base_sha }}
-        run: |
-          if ! node scripts/merge-queue-regression-decision.mjs --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --head="$HEAD_SHA" --base="$PLAN_BASE"; then
-            echo 'full-regression=true' >> "$GITHUB_OUTPUT"
-          fi
+        run: node scripts/merge-queue-regression-decision.mjs --plan="$RUNNER_TEMP/fast-checks-plan/fast-checks-plan.json" --head="$HEAD_SHA" --base="$PLAN_BASE"
 
   fast-checks-shard:
     name: fast-checks shard ${{ matrix.shard }}
@@ -241,7 +235,8 @@ jobs:
         github.event.pull_request.head.sha || github.sha, github.event.pull_request.base.sha) }}
       queue: max
       cancel-in-progress: false
-    runs-on: ubuntu-22.04
+    # Managed workload proofs require scope OOM policy (systemd >= 253).
+    runs-on: ubuntu-24.04
     # The twenty-minute shard budget (FAST_CHECKS_SHARD_BUDGET_MS, enforced
     # by the shard runner) + actionlint (5) + install (15) + zsh (5) +
     # Chromium (20) + ~3 minutes of unbounded setup = 68;
@@ -268,8 +263,7 @@ jobs:
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
-        with: { install: false }
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -410,7 +404,7 @@ jobs:
         github.event.pull_request.base.sha) }}
       queue: max
       cancel-in-progress: false
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     # The declared bounds sum to 53 minutes: actionlint install (5), a
     # bounded 20-minute Chromium installation, the fifteen-minute raw
     # ci:fast budget (#2577, statics only here since #2709), the 10-minute
@@ -430,8 +424,7 @@ jobs:
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
-        with: { install: false }
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -453,8 +446,6 @@ jobs:
 
       - run: npm run dependencies:ci
 
-      - name: Dependency advisory floor
-        run: npm run audit:policy
 
       # fast-checks' changed-test selection can include real-Chromium
       # touch-target checks (NotificationContainer, station#3513) whenever
@@ -643,7 +634,7 @@ jobs:
       # provisional. ci-workflow-governance pins the name and trigger.
       - name: Mark fast-checks provisional
         if: ${{ steps.verify.outputs.provisional == 'true' }}
-        run: echo "fast-checks deferred ci-fast/test-full; Merge-queue regression runs full regression before merge"
+        run: echo "fast-checks deferred ci-fast/test-full; full regression is deferred to main and release qualification"
 
   source-policy:
     name: Publish source admission
@@ -800,8 +791,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
-        with: { install: false }
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -820,7 +810,7 @@ jobs:
     if: ${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name != github.repository }}
     permissions:
       contents: read
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     # Contains the fifteen-minute raw ci:fast budget (#2577) plus setup
     # (checkout, actionlint, dependencies:ci; ~2 minutes observed on
     # fast-checks). ci-workflow-contract.test.ts requires at least lane +
@@ -835,8 +825,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
-        with: { install: false }
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -904,8 +893,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
-        with: { install: false }
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -990,8 +978,7 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
 
       - name: Setup pinned pnpm
-        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
-        with: { install: false }
+        uses: kontourai/station/.github/actions/setup-verified-pnpm@4c7804d0d71f4e18d7a0da62fb6db43973481a20
 
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
@@ -1025,31 +1012,17 @@ jobs:
           fi
           git diff --check "$BASE_SHA" HEAD
 
-  # Fail-closed: runs unless the decision is exactly 'false', so a failed or
-  # missing plan job runs the full regression instead of skipping it.
-  merge-integration-full-regression:
-    needs: fast-checks-plan
-    if: ${{ always() && !cancelled() && github.event_name == 'merge_group' && (needs.fast-checks-plan.result != 'success' || needs.fast-checks-plan.outputs.full-regression != 'false') }}
-    permissions:
-      contents: read
-      actions: read
-    uses: ./.github/workflows/full-regression.yml
-    with:
-      capacity_class: integration
-      source_sha: ${{ github.sha }}
-      allow_reuse: true
-
   merge-queue-regression:
     name: Merge-queue regression
     if: always() && github.event_name == 'merge_group'
-    needs: [diff, fast-checks-plan, merge-integration-full-regression, fast-checks]
+    needs: [diff, fast-checks-plan, fast-checks]
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     steps:
-      - name: Require the candidate diff and the planned regression
+      - name: Require the candidate diff and bounded integration evidence
         env:
           NEEDS: ${{ toJSON(needs) }}
         run: |
           echo "$NEEDS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
-          echo "$NEEDS" | jq -r 'if .["fast-checks-plan"].outputs["full-regression"] == "false" then "no deferred lane: fast path" else "full regression: \(.["merge-integration-full-regression"].result)" end'
-          echo "$NEEDS" | jq -e '.["fast-checks"].result == "success" and .diff.result == "success" and (.["merge-integration-full-regression"].result == "success" or (.["fast-checks-plan"].result == "success" and .["fast-checks-plan"].outputs["full-regression"] == "false" and .["merge-integration-full-regression"].result == "skipped"))' > /dev/null
+          echo "Bounded integration only; full qualification runs on main and before release"
+          echo "$NEEDS" | jq -e '.["fast-checks"].result == "success" and .diff.result == "success" and .["fast-checks-plan"].result == "success" and .["fast-checks-plan"].outputs["integration-ready"] == "true"' > /dev/null

@@ -244,7 +244,9 @@
 
     "packages/sdk/src/client/plugin-telemetry.ts",
 
-    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts"
+    "src-server/routes/operations/__tests__/telemetry-events.routes.test.ts",
+
+    "packages/contracts/src/engine-sign-in.ts"
   ],
 
   "checks": [

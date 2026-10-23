@@ -161,6 +161,44 @@ describe('buildCliRuntimePrerequisites', () => {
     );
   });
 
+  test('an unverified sign-in stays optional, while a detector that does answer still decides', async () => {
+    const build = (state: 'authenticated' | 'unauthenticated' | 'unknown') =>
+      buildCliRuntimePrerequisites({
+        command: 'node',
+        displayName: 'Test CLI',
+        versionArgs: ['--version'],
+        installStep: 'Install it.',
+        authStep: 'Sign in.',
+        findBinary: findInstalledTestBinary,
+        runCommand: async () => ({ stdout: 'v1.0.0', stderr: '', code: 0 }),
+        detectAuthState: async () => state,
+        unverifiedAuthDescription: 'Sign-in is not checked.',
+      });
+
+    expect(await build('unknown')).toContainEqual(
+      expect.objectContaining({
+        id: 'node-auth',
+        status: 'error',
+        category: 'optional',
+        description: 'Sign-in is not checked.',
+      }),
+    );
+    expect(await build('authenticated')).toContainEqual(
+      expect.objectContaining({
+        id: 'node-auth',
+        status: 'installed',
+        category: 'required',
+      }),
+    );
+    expect(await build('unauthenticated')).toContainEqual(
+      expect.objectContaining({
+        id: 'node-auth',
+        status: 'missing',
+        category: 'required',
+      }),
+    );
+  });
+
   test('records a completed version-probe failure on the CLI prerequisite', async () => {
     const prerequisites = await buildCliRuntimePrerequisites({
       command: 'node',

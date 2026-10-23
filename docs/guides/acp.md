@@ -272,15 +272,17 @@ expiry** — so a long Station chat previously received `{}` *as its refreshed
 token* and then failed downstream in a confusing way.
 
 Station holds `STATION_INTERNAL_API_TOKEN` and model-connection credentials
-in the same process; an external agent is a less-trusted principal. And
-Station holds no credential belonging to an engine at all: **Station does
-not become an engine's auth host.** Answering that request is not a feature
-to be added carefully — it is the thing that cannot be built.
+in the same process; an external agent is a less-trusted principal.
+Station does not read or bridge an engine's own login tokens or answer its
+credential callbacks. **Station does not become an engine's auth host.**
+A person may separately save an API key for a connection; Station stores it
+in its engine credential store and passes it through that connection's process
+environment (see [Sign an engine in](connections.md#sign-an-engine-in)).
 
 After refusing the credential callback on the wire, the adapter attempts at
 most one bounded re-establishment from its own validated resume cursor. It
 requires the same connection/fingerprint and live `loadSession` support; it
-does not read, refresh, or forward an engine credential. A missing safe cursor,
+does not read, refresh, or forward the engine's own login tokens. A missing safe cursor,
 failed recovery, or repeated refusal falls back to one `runtime.warning` per
 session per method (`code: acp.credential-request-refused`) telling the user
 to sign in with the engine's own CLI and start a new chat, since a fresh
@@ -550,6 +552,7 @@ ACP connections are configured in `<station-home>/config/acp.json`:
 | `icon` | | Emoji or string shown next to the agent name. Defaults to `🔌`. |
 | `cwd` | | Working directory for a Session that has no workspace of its own; a Session's own working directory takes precedence. A leading `~` is expanded and a relative path is resolved. When unset, Station prepares a private managed workspace instead of inheriting its own directory. A [station-control dispatch](self-configuring-agent.md#dispatch-authority) with no workspace from an Agent in the global space, or in a Project with no working directory, starts here and is scoped by this directory; an Agent in a Project with a working directory starts it in that Project instead. |
 | `enabled` | ✓ | Set to `false` to disable without removing the config. |
+| `publicRegistry` | | Set by Station on a connection added from the public agent registry: `{ id, version }` of the listing it was added from. Used only to report a later listing change. |
 
 ### Catalogue descriptors
 
@@ -563,16 +566,18 @@ and any a plugin contributes. Besides the launch fields above, an entry
 | Field | Description |
 |---|---|
 | `install` | Per platform (`darwin`, `linux`, `win32`): a copyable `command`, an https `docsUrl`, and a `note`. Station shows it and never runs it. The response adds `hostInstall`, the recipe for the platform Station runs on. |
-| `launchEnv` | Built-in entries only. Non-secret variables set when Station starts a connection whose executable has the entry's command name, by name or full path (`/opt/homebrew/bin/goose` gets Goose's; on Windows `C:\tools\Goose.EXE` matches too, case-insensitively and without `.exe`/`.cmd`/`.bat`). Names must start with an engine-scoped prefix (`GOOSE_`, `DROID_`, `FACTORY_`). The environment Station already launches with wins a conflict. |
+| `launchEnv` | Built-in entries only. Non-secret variables set when Station starts a connection whose executable has the entry's command name, by name or full path (`/opt/homebrew/bin/goose` gets Goose's; on Windows `C:\tools\Goose.EXE` matches too, case-insensitively and without `.exe`/`.cmd`/`.bat`). Names must start with an engine-scoped prefix (`GOOSE_`, `DROID_`, `FACTORY_`, `AUGMENT_`). The environment Station already launches with wins a conflict. |
 | `platforms` | The host platforms the entry launches on; absent means all. Elsewhere it is reported as not detected and `POST /acp/registry/:id/install` refuses it. |
-| `auth` | `statusCommand` (argv), `signInHint`, `credentialEnvVars` (names only) and `hiddenAuthMethodIds`. Data only, not yet applied: nothing runs or reads these yet. |
+| `auth` | Sign-in, matched like `launchEnv` and read from built-in entries only. `statusCommand` (argv) runs only with a `statusRule` (`signedInJsonField`, `signedOutText`, `signedOutExitCodes`, `signedInText`, `exitZeroMeansSignedIn`); anything the rule does not name reads as unknown. `signInHint`; `credentialEnvVars`, the variables whose values a person may store for a connection; `hiddenAuthMethodIds`, advertised methods Station does not offer; `subscriptionTermsNotices` (`provider`, https `termsUrl`, optional `authMethodIds`). See [Sign an engine in](connections.md#sign-an-engine-in). |
 | `homepageUrl` | An https link to the engine's docs. Data only; nothing renders it yet. |
 
 `validateACPEngineDescriptor` checks these fields and the entry's `name`,
 `description` and `sourceName`. An entry that fails is left out of the
 catalogue and logged rather than shown with some fields dropped: an unknown
 platform, a URL that is not https, an over-long value, text with
-control characters, line breaks or bidi override marks, a `launchEnv` name
+control characters, line breaks, bidi override marks or characters that render
+as nothing (zero-width and directional marks, the byte order mark, tag
+characters, variation selectors), a `launchEnv` name
 without an engine-scoped prefix (so `NODE_OPTIONS`, `LD_PRELOAD`, `PATH` or a
 proxy variable is refused), or one that looks like a credential (a `KEY`,
 `TOKEN`, `SECRET`, `PASSWORD`, `AUTH` or `SESSION` segment, or a name the entry
@@ -596,6 +601,82 @@ is running (including during the startup capture), and a failed re-read keeps
 the `PATH` Station already had. **Check again** uses it; a device without that
 scope is told so and still gets the plain list.
 
+### Public agent registry
+
+When this Station reads the public agent registry
+([public-agent-registry.ts](../../src-server/services/acp/public-agent-registry.ts)),
+`GET /acp/registry` also lists its listings with `source: 'registry'`, mapped
+by
+[public-agent-registry-catalog.ts](../../src-server/services/acp/public-agent-registry-catalog.ts).
+The registry is a catalogue source of the routes, not an
+`acpConnectionRegistry` provider: a provider is either a built-in, whose
+`launchEnv` is trusted, or a plugin, whose clashing ids are refused, and a
+listing is neither.
+
+- The index at `https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json`
+  is fetched with no credentials, a 10-second timeout and no redirects; an
+  answer from any other address is refused. An index over 1 MiB
+  (counted as it arrives), listing more than 500 agents, not JSON, or not
+  format version 1 is refused whole; the last good copy, saved in
+  `<station-home>/cache/public-agent-registry/registry.json`, stays in use. A
+  listing with a malformed id, an over-long or control-character field, a
+  non-https URL, an https URL with a user name or password, or a malformed
+  distribution is refused with every reason.
+  Unknown fields and unknown platform keys are ignored.
+- A listing whose id is a built-in's, or one of `antigravity-acp`,
+  `github-copilot-cli` and `pi-acp`, adds a `publicRegistry` object (id,
+  version, publishers, licence, links, distributions) to the built-in entry and
+  is not listed again. Nothing else on the built-in changes. `claude-acp` and
+  `codex-acp` are listed unavailable, naming the native engine. A listing
+  whose name reads as a built-in's, as "Station" or as "Kontour", or whose id
+  a plugin entry holds, is refused. A plugin entry's own `publicRegistry` is dropped.
+- What can run is bounded by a reviewed list in Station's source,
+  `REVIEWED_REGISTRY_LISTINGS` in
+  [public-agent-registry-catalog.ts](../../src-server/services/acp/public-agent-registry-catalog.ts):
+  for each reviewed registry id, the program and exact arguments its vendor
+  documents, with the citation. Today it holds `cortex-code` (`cortex acp
+  serve`), `crow-cli` (`crow-cli acp`), `stakpak` (`stakpak acp`) and `vtcode`
+  (`vtcode acp`). A listing is connectable only when all of these hold:
+  - its id is on the reviewed list;
+  - it has a `binary` build for the host's `os-arch` key (`darwin-aarch64`,
+    `linux-x86_64`, `windows-x86_64`, …);
+  - the program name in that build's `cmd` (`./dist-package\cursor-agent.cmd`
+    is `cursor-agent`; only `.exe`, `.cmd` and `.bat` are dropped, and only on
+    Windows is case ignored) is the reviewed program;
+  - its arguments are at most 4, each a plain word or flag
+    (`^--?[a-z][a-z0-9-]*(=[A-Za-z0-9._:/-]*)?$` or `^[a-z][a-z0-9-]*$`), and
+    equal to the reviewed ones.
+
+  Then `command` is the reviewed program, looked up on `PATH`, and `args` are
+  the reviewed arguments. Station never downloads a program, never runs `npx`
+  or `uvx`, and runs nothing without the confirm step below. Every other
+  listing, a listing not yet reviewed included, is listed with an empty
+  `command`, `detected: false` and `publicRegistry.unavailableReason`. A
+  build's `env` is returned as `publicRegistry.recommendedEnv` and never
+  applied (VT Code reads the same switches from its own `vtcode.toml`).
+- `POST /acp/registry/:id/install` for a listing requires the `coding:exec`
+  grant on a paired device (`403 command-not-granted`) and a JSON body
+  `{ "confirmCommand": { "command", "args" } }` equal to the listing's
+  `hostLaunch`; otherwise it answers `409` with
+  `code: 'registry-listing-not-confirmed'` and saves nothing. An unavailable
+  listing answers `400` with its reason. The saved connection records
+  `publicRegistry: { id, version }`.
+- For an added connection with that record, a listing whose version, or whose
+  command or arguments, differ from the saved ones gets `publicRegistry.update`.
+  The saved connection is not changed. Changing the connection's `command`
+  or `args` removes its `publicRegistry` record, so it is no longer compared.
+- Reading `GET /acp/registry` or `GET /acp/registry/source` starts a
+  background download when the copy in use is more than 24 hours old (or
+  dated in the future), at most
+  once every 15 minutes after a failed attempt. `GET /acp/registry/source`
+  returns `ACPPublicRegistrySourceStatus`: `origin` (`network`, `cache` or
+  `none`), `fetchedAt`, `checkedAt`, `lastError`, `refreshing` and the refused
+  listings with their reasons. `POST /acp/registry/source/refresh` downloads
+  now (`orchestration:operate`), joining one already running and reusing a
+  result less than 30 seconds old. `STATION_PUBLIC_AGENT_REGISTRY` set to `off`,
+  `0`, `false` or `no` (any case), or the deterministic first-run mode, turns the source off; the status then reads
+  `enabled: false`.
+
 ### Runtime API
 
 Connections are managed at runtime via the REST API — unchanged by this cutover, since it only manages connection lifecycle, not chat turns:
@@ -609,6 +690,16 @@ POST   /acp/connections/:id/reconnect  Request an availability probe
 GET    /acp/status                     Get status of all connections
 GET    /acp/registry                   List catalogue engines, with host detection and install recipe
 POST   /acp/registry/recheck           Re-read the login-shell PATH, then list as GET does (orchestration:operate)
+POST   /acp/registry/:id/install       Add a catalogue entry as a connection; a public listing needs its confirmed command
+GET    /acp/registry/source            Where the public agent registry listing comes from, and how fresh it is
+POST   /acp/registry/source/refresh    Download the public agent registry index now (orchestration:operate)
+GET    /acp/connections/:id/sign-in    Sign-in status, offered methods and key names (orchestration:read)
+POST   /acp/connections/:id/sign-in/check   Run the status command and a sign-in handshake again (orchestration:operate)
+POST   /acp/connections/:id/sign-in/start   Start a sign-in by method id (engine:login; a terminal method also coding:exec and terminal:operate)
+GET    /acp/connections/:id/sign-in/attempt Read the running or last sign-in, with links the engine printed (engine:login)
+DELETE /acp/connections/:id/sign-in/attempt Cancel it (engine:login)
+PUT    /acp/connections/:id/credentials/:name  Store a key for one of the engine's credentialEnvVars (engine:login)
+DELETE /acp/connections/:id/credentials/:name  Remove it (engine:login)
 ```
 
 Creating a connection, or changing its `command`, `args` or `cwd`, chooses a
@@ -656,7 +747,7 @@ If the binary is installed but not on the server's PATH, use an absolute path in
 
 ### Probe does not establish availability
 
-Check server logs for `[ACPProcess]` entries and `ACPProbe failed` warnings. Common causes:
+The reason shown in Station (`lastError.message`) is written for people: it names the engine, says a time-out as the wait that ran out ("didn't answer within a minute"), and says a command that cannot be found or run, including one with its arguments typed into the command, in words. The raw error is in the server log. Check server logs for `[ACPProcess]` entries and `ACPProbe failed` warnings. Common causes:
 
 - The subprocess exits immediately — run the command manually to see its output
 - The runtime doesn't speak ACP ndjson on stdio — verify it implements the ACP SDK server side
@@ -664,7 +755,26 @@ Check server logs for `[ACPProcess]` entries and `ACPProbe failed` warnings. Com
 
 ### Agent not appearing in the New Chat picker
 
-Every configured connection should surface as one External agent with the same clean ID, even while disabled, unprobed, unavailable, or in error. If it is missing, inspect `config/agent-registry.json` and the connection lifecycle error; probe state should change availability, never Agent existence.
+A connection surfaces as an External agent with the same clean ID once its probe has handshaked at least once. Adding or installing a connection saves its config first and registers the engine and its Agent only when that probe succeeds; a failed first add keeps the config, answers with the probe's `status` and `lastError`, and stays out of `GET /api/acp/connections`. Repeat the same add (the setup dialog's **Retry check**) after fixing the cause: it re-probes and registers on success. Saved connections that never registered are listed by `GET /api/acp/connections/unregistered` (shown as **Not connected yet** cards), and `POST /api/acp/connections/:id/check` re-probes one from its saved config, also after a restart, registering it on success; an edit through `PUT /api/acp/connections/:id` re-probes and registers the same way. When the first probe of a never-connected engine runs out of the request budget (a cold start), the add answers `status: probing` and the same probe continues in the background on the cold first-contact budget, outside the configuration queue; `GET /api/acp/status` reports its progress. A background probe that gives a saved, unregistered connection its first handshake (that continuation or the periodic sweep) registers the engine and its Agent through the configuration queue, and only if the saved config still matches the config it probed; otherwise the result is dropped. A registry reload keeps a continuation that is still running for an unchanged config. Startup probes only registered connections, so after a restart a saved, never-registered connection is not checked until something adds it to the probe set again: adding it again, its **Retry check**, or a registry reload, which re-reads every saved connection (from then on the periodic check can register it). Once registered, probe state changes availability, never Agent existence. If a connection that has handshaked is missing, inspect `config/agent-registry.json` and the connection lifecycle error.
+
+### Sign-in shows as not checked
+
+The login prerequisite reads only the engine's documented status command
+([engine-auth-status.ts](../../src-server/services/acp/engine-auth-status.ts),
+supplied as `detectAuthState`). Without one, or when it is inconclusive, the
+row says sign-in is not checked; that row is optional and never blocks a chat.
+A command answer of signed out is a required, missing prerequisite. A
+successful probe proves the engine started a session, not that it is signed
+in: some engines refuse only at the first prompt. An `auth_required` refusal
+(from a chat or a probe) and a finished Station sign-in are shown in the
+engine's sign-in panel but never gate readiness, because only a later answered
+prompt clears a refusal.
+
+The sign-in handshake is a separate short-lived process that advertises
+`clientCapabilities.auth.terminal`, so an engine may list `type: "terminal"`
+methods; their `args` and `env` stay on the server. A terminal method is never
+passed to `authenticate`
+([engine-sign-in.ts](../../src-server/services/acp/engine-sign-in.ts)).
 
 ### A previous ACP session cannot be restored
 
@@ -727,6 +837,17 @@ before it can refuse: Station does not refuse from the connection list's cached
 model options, because those come from a probe session that can differ from the
 session a start actually creates. A refusal whose process teardown cannot be
 confirmed stays an uncertain start.
+
+An engine that answers `session/new` or `session/load` with ACP's
+`auth_required` error (code `-32000` with a message beginning "Authentication
+required", the ACP SDK's `RequestError.authRequired` shape; any other `-32000`
+stays a generic error) is refused the same settled way, with the
+`engine-sign-in-required` code (kind `auth`): the announced session ends with
+that cause and the thread is not fenced. The same error on a prompt is that
+turn's `runtime.error` with the same code. Chat shows **Sign in to this engine**
+with the engine's own words, and a **Sign in** action that opens the engine's
+page. Any other `session/new` failure keeps the
+uncertain-start behaviour.
 
 OpenCode's own model listing and Station's ACP model listing are different
 observations. Station obtains model options through its ACP connection. An

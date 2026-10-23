@@ -4,6 +4,11 @@ Canonical cross-package contract ownership for Station.
 
 Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shared across `src-server`, `packages/sdk`, `packages/cli`, plugins, or tests. New code should import these modules directly instead of reaching through `@kontourai/station-shared`.
 
+`LayoutPanelsRecord` holds device-local side/lower-panel state by layout host
+scope and conversation. `LAYOUT_PANELS_LAYOUT_BOUND` and
+`LAYOUT_PANELS_SESSION_BOUND` bound retention. The v3 device envelope retires the
+pre-release Coding-only panel preference; it does not preserve those old sizes.
+
 ## Ownership rules
 
 - This package owns stable cross-package types and constants. Existing domain
@@ -51,7 +56,8 @@ conversation access. Filesystem preparation stays in the server.
 | Module | Owns |
 |---|---|
 | `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota, optional identity/credit/model/spending/breakdown metadata and bounded capture-audit projections, plus provider-owned login; runtime validation stays in SDK consumers |
-| `@kontourai/station-contracts/acp` | ACP connection config, ACP connection status values, and engine catalogue entries with their install/launch/sign-in descriptor and its validator (`validateACPEngineDescriptor`) |
+| `@kontourai/station-contracts/engine-sign-in` | Sign-in for engines run as commands: status with its source, offered methods (id, name, kind, terms note), key names (never values), the running attempt and what the caller may do |
+| `@kontourai/station-contracts/acp` | ACP connection config, ACP connection status values, and engine catalogue entries with their install/launch/sign-in descriptor and its validator (`validateACPEngineDescriptor`), and the public agent registry's listing facts and source status |
 | `@kontourai/station-contracts/engine-capability-matrix` | Per-engine capability and delivery declarations, and for ACP who decides which actions ask (`acpApprovalControl`: `station` for an engine whose approval rules Station sets at launch, today OpenCode, `engine` otherwise) |
 | `@kontourai/station-contracts/agent` | Agent specs, metadata, tools, slash commands, the versioned Agent audience and the member Agent view |
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
@@ -92,7 +98,7 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header, input events, control lease, stream params, their strict wire parsers and the length-prefixed binary record envelope |
 | `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state referencing a server-owned browser session, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads |
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
-| `@kontourai/station-contracts/layout` | Layout definitions, tabs, skills, templates; a catalog contribution's optional, server-issued `lifecycleGeneration` (identity only, never a permission), which a reinstall or an enablement change replaces and which never repeats; `null` is history the server cannot vouch for, under which a host admits nothing |
+| `@kontourai/station-contracts/layout` | Layout definitions, tabs, skills, templates, and repository workspace binding (`workspaceBinding: 'repository'`); legacy Coding records retain their repository binding. A catalog contribution's optional, server-issued `lifecycleGeneration` is identity only, never a permission; a reinstall or an enablement change replaces it and it never repeats. `null` is history the server cannot vouch for, under which a host admits nothing |
 | `@kontourai/station-contracts/personal-board` | Declarative dashboard sections, saved/proposed Board document and revisioned authoring inputs |
 | `@kontourai/station-contracts/local-accounts` | Operator-only account projections, sign-in/session actions and one-time recovery results |
 | `@kontourai/station-contracts/notification` | Notification payloads and actions |
@@ -175,6 +181,17 @@ optional `turnId` for this. The Session resource summary has no turn, so it neve
 appears in a current-answer inventory. See the
 [parser](../../packages/contracts/src/session-inventory.ts).
 
+Client protocol 3 admits these lineage rows in the server inventory. Older or
+undeclared HTTP clients retain contribution-only groups and typed gaps; the
+server never strips rows after computing a continuation digest. Inventory
+continuations bind the client dialect as well as scope and authority. Output
+pages filter the durable declaration index by the exact turn before paging,
+and their signed cursors cannot be reused for another turn or Whole Session.
+Decisions come from exact-turn request events. Delegations require an explicit
+child Session handle and parent turn/tool identity; provider-only child IDs
+stay an owner gap. These reads select descriptors, not tool bodies or metadata.
+
+
 `AgentTools.mcpMode` selects additive (`add`) or replacement (`replace`) MCP
 configuration; omission preserves the prior engine-specific behavior.
 `AgentTools.mcpLoading` optionally selects Claude's native on-demand or eager
@@ -204,9 +221,32 @@ queued follow-ups on it until a turn starts or the user sends one.
 
 `ConnectionRecoveryProjection.outcomeReason` says why a usage-limit stop did
 not resume on its own: `auto-resume-off`, `superseded`, `request-pending`,
-`session-ended`, or `user-canceled` (the user chose Cancel auto-resume). The
-chat banner reads it through the Session API's
+`session-ended`, or `user-canceled` (the user chose Cancel auto-resume). Its
+`autoResumeChoice` (`resume` or `hold`) is the person's choice for that one
+stop, which decides `autoResume` in place of the setting. The chat banner
+reads it through the Session API's
 [usage-limit routes](session-api.md#usage-limit-recovery-sessionsthreadidusage-limit).
+
+`@kontourai/station-contracts/agent-schedule` owns what an agent schedules
+for itself and what it only proposes: `AgentWakeUp`, `AgentJobProposal`,
+`ConversationAgentSchedule`, their bounds (`AGENT_WAKE_UP_MAX_HORIZON_MS`,
+`AGENT_WAKE_UP_MIN_DELAY_MS`, `AGENT_WAKE_UP_MAX_PENDING_PER_CONVERSATION`,
+`AGENT_WAKE_UP_NOTE_MAX_CHARS`, `AGENT_JOB_PROPOSAL_MAX_OPEN_PER_CONVERSATION`,
+and the hourly create limits `AGENT_WAKE_UP_MAX_CREATED_PER_WINDOW` and
+`AGENT_JOB_PROPOSAL_MAX_CREATED_PER_WINDOW` over
+`AGENT_SCHEDULE_RATE_WINDOW_MS`), `jobMatchesProposal`, the comparison the
+scheduler's approval uses, and `isStationCheckBackTurn`, which tells a
+transcript that a turn is a check-back Station sent (its internal origin and
+a send key `parseWakeUpClientTurnId` accepts). A wake-up waiting for a
+person's approval is in state `needs_approval`.
+
+`@kontourai/station-contracts/station-control-refusal` owns the refusal view
+a transcript shows for a station-control tool (`StationControlRefusalView`:
+code, sentence, out-of-scope reason), `parseStationControlRefusal`, which
+reads it only from a station-control tool's whole result, and
+`stationControlToolName`. A history window carries it whole on
+`ToolCompletedEvent.stationControlRefusal`, read before the window cut the
+output to an excerpt; a sentence over its bound is not carried.
 
 `ORCHESTRATION_STREAM_ACTIVITY_EVENT` names an idless SSE frame carrying the
 current conversation activity after a burst of coalesced runtime events. It
@@ -312,6 +352,7 @@ No existing diagnostic code is renamed or removed.
 | `engine-decision-not-sent` | `warning` | `false` |
 | `engine-decision-unacknowledged` | `warning` | `false` |
 | `engine-session-binding-dead` | `session_gone` | `false` |
+| `engine-sign-in-required` | `auth` | `false` |
 | `engine-turn-failed` | `provider_error` | `false` |
 | `execution_engine_changed` | `conflict` | `false` |
 | `foreground_message_indeterminate` | `indeterminate` | `false` |
@@ -568,7 +609,10 @@ builds the Muse adapter with neither `turnIdleTimeoutMs`
 nor `turnTimeoutMs`), so production Muse turns carry no Station-imposed
 bound. A turn that goes silent is surfaced instead: the stall watchdog's
 `progressSilence` (below) shows "No progress from <engine> for 4m" and the stall notice with a
-Stop button, and the user decides. On the exec fallback, Stop signals the
+Stop button, and the user decides. The watchdog's window is not armed while a
+tool call is open (`tool.started` without its `tool.completed`); the last
+call's completion re-arms it, so a long silent tool run is shown as the running
+tool, not as silence. On the exec fallback, Stop signals the
 child's process group and settles the turn `turn.aborted`; the serve transport
 uses its interrupt protocol, described below. The following idle/total timer
 details describe the [exec adapter](../../src-server/providers/adapters/muse-adapter.ts).
@@ -708,6 +752,12 @@ refused again. An ACP session whose requested model the engine's own fresh
 `session/new` options did not offer (`ACP model value unsupported`, or no model
 option at all) is refused by the adapter with `SessionStartRefusedError`,
 carrying `MODEL_NOT_ADVERTISED_CODE` (`model_not_advertised`, from `provider`).
+An engine that answers `session/new` (or `session/load`) with ACP's
+`auth_required` error (code `-32000` with a message beginning "Authentication
+required", as the ACP SDK builds it) is refused the same way, carrying
+`ENGINE_SIGN_IN_REQUIRED_CODE` (`engine-sign-in-required`, kind `auth`, from
+`provider`); the same error on a prompt is that turn's `runtime.error` with the
+same code, and chat renders both as a prompt to sign in to the engine.
 That type is how an adapter tells the start boundary that its start is settled:
 the boundary is released and the receipt is `rejected`, where every other
 adapter failure at start stays an indeterminate start that fences the thread. An

@@ -104,9 +104,16 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  advisory:
+    needs: preflight
+    uses: ./.github/workflows/release-advisory.yml
+    with:
+      audit_id: tagged-stage
+      source_sha: ${{ needs.preflight.outputs.sha }}
+
   full-regression:
     name: Tagged release exact-SHA full regression
-    needs: [preflight]
+    needs: [preflight, advisory]
     uses: ./.github/workflows/full-regression.yml
     with:
       capacity_class: release
@@ -213,6 +220,16 @@ jobs:
           done
           printf '%s' "$TAURI_SIGNING_PUBLIC_KEY" > "$RUNNER_TEMP/station-updater.pub"
           node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/tauri.release.conf.json" --updater-public-key-file "$RUNNER_TEMP/station-updater.pub" --updater-endpoint "${{ needs.preflight.outputs.desktop_updater_endpoint }}"
+      - name: Install the hash-pinned macOS DMG layout tool
+        shell: bash
+        run: |
+          set -euo pipefail
+          # dmgbuild writes the installer window layout headlessly. Wheels only,
+          # every hash pinned, no dependency resolution; see native-releases.md.
+          python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else "dmgbuild requires Python 3.10 or newer; found " + sys.version)'
+          python3 -m venv "$RUNNER_TEMP/station-dmgbuild"
+          "$RUNNER_TEMP/station-dmgbuild/bin/python" -m pip install --disable-pip-version-check --no-input --no-cache-dir --require-hashes --only-binary :all: --no-deps -r ops/release/dmg/requirements.txt
+          test -x "$RUNNER_TEMP/station-dmgbuild/bin/dmgbuild"
       - name: Import macOS Developer ID certificate
         env:
           APPLE_DEVELOPER_ID_CERTIFICATE_BASE64: ${{ secrets.APPLE_DEVELOPER_ID_CERTIFICATE_BASE64 }}
@@ -257,7 +274,7 @@ jobs:
           printf '%s' "$APPLE_API_PRIVATE_KEY" > "$notary_key"
           chmod 600 "$notary_key"
           bundle_id="${{ needs.preflight.outputs.beta_desktop_config && 'io.kontourai.station.beta' || 'io.kontourai.station' }}"
-          node ops/release/macos-notarized-artifacts.mjs --app "$app" --identity "$APPLE_DEVELOPER_ID_SIGNING_IDENTITY" --notary-key "$notary_key" --notary-key-id "$APPLE_API_KEY_ID" --notary-issuer "$APPLE_API_ISSUER_ID" --assets-dir release-assets --release-tag "$RELEASE_TAG" --architecture "${{ matrix.target == 'aarch64-apple-darwin' && 'aarch64' || 'x86_64' }}" --bundle-id "$bundle_id" --deadline-epoch "${{ steps.macos_release_deadline.outputs.epoch }}"
+          node ops/release/macos-notarized-artifacts.mjs --app "$app" --identity "$APPLE_DEVELOPER_ID_SIGNING_IDENTITY" --notary-key "$notary_key" --notary-key-id "$APPLE_API_KEY_ID" --notary-issuer "$APPLE_API_ISSUER_ID" --assets-dir release-assets --release-tag "$RELEASE_TAG" --architecture "${{ matrix.target == 'aarch64-apple-darwin' && 'aarch64' || 'x86_64' }}" --bundle-id "$bundle_id" --deadline-epoch "${{ steps.macos_release_deadline.outputs.epoch }}" --dmgbuild "$RUNNER_TEMP/station-dmgbuild/bin/dmgbuild"
           archive="release-assets/station-${RELEASE_TAG}-macos-${{ matrix.target == 'aarch64-apple-darwin' && 'aarch64' || 'x86_64' }}.app.tar.gz"
           manifest_path=$(tar -tzf "$archive" | grep '/Contents/Resources/dist-server/station-build.json$')
           test "$(printf '%s\n' "$manifest_path" | sed '/^$/d' | wc -l | tr -d ' ')" = 1

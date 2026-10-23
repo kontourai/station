@@ -362,7 +362,6 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/composer-file-mentions.spec.ts',
     'tests/attention-file-replies.spec.ts',
     'tests/dialog-return-focus.spec.ts',
-    'tests/banner-stack-bound.spec.ts',
     'tests/server-older-banner.spec.ts',
     'tests/toggle-contrast.spec.ts',
     'tests/agent-editor-geometry.spec.ts',
@@ -1389,17 +1388,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      '#2675: the "server is older than this app" banner, rendered by the real ServerOlderLaunchCheck through the real BannerHost with the real index.css token layers, in both themes at desktop and 390px phone width: the one-click "Update server" offer and the manual-remedy variant fit without a horizontal page scroll, and clicking the update moves the same banner to the service update\'s progress. Captures each state for a person to look at. Same real-source-bundled-with-esbuild technique as banner-stack-bound.spec.ts; only the SDK core-update hooks and the connected-server context are stubbed; no live instance or server.',
-    exceptions: [],
-  },
-  {
-    path: 'tests/banner-stack-bound.spec.ts',
-    bucket: 'product',
-    surface: 'Shell',
-    tierTarget: 'full',
-    primary: true,
-    rationale:
-      'station#3432: proves in a real browser that the collapsed connectionBlocking band and the expanded banner stack actually overflow and scroll (scrollHeight > clientHeight, a real wheel event moves scrollTop, the last control stays hit-testable at its own center) rather than silently compressing content to fit — a gap jsdom cannot see, since mobile-chrome-safety.test.ts can only confirm the CSS text declares max-height/overflow-y/pointer-events, never that they engage. Same real-source-bundled-with-esbuild technique as dialog-return-focus.spec.ts, with the real BannerHost.css attached as an actual stylesheet.',
+      'The real unified Updates panel and ServerOlderLaunchCheck, bundled from production with SDK fixtures, preserve server offers, manual installation guidance, and progress in both themes at desktop and phone widths. No live instance or native updater runs.',
     exceptions: [],
   },
   {
@@ -1737,6 +1726,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Real isolated Station lifecycle proof for durable Task workspace binding, inline local references and diff inspection, Direct/Deliver/Learn/Operate authority and unavailable-state boundaries (including hostile owner-shaped metadata), task switching isolation, plus a real Ollama-generated project answer pinned through the keyboard-safe Task basis UI and reopened after same-home restart.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/basis-answer-lifecycle.spec.ts',
+    bucket: 'extended',
+    surface: 'Basis / exact answer retention',
+    tierTarget: 'full',
+    primary: false,
+    rationale:
+      'An isolated real Station, local model fixture, exact answer inspection before Keep, authenticated Task retention, Surface producer publication, process restart, and assessment revocation without rewriting the retained answer. No paid provider or protected route mocks.',
     exceptions: [],
   },
   {

@@ -197,16 +197,22 @@ describe('routeSurfaceIdentity', () => {
     const modelEdit = { type: 'connections-model-edit', id: 'p1' } as const;
     const engines = { type: 'connections-engines' } as const;
     const engineEdit = { type: 'connections-engine-edit', id: 'e1' } as const;
+    const engineNew = {
+      type: 'connections-engine-new',
+      providerId: 'p1',
+    } as const;
     const tools = { type: 'connections-tools' } as const;
     const toolEdit = { type: 'connections-tool-edit', id: 't1' } as const;
 
     expect(routeIdentity(models)).not.toBe(routeIdentity(modelEdit));
     expect(routeIdentity(engines)).not.toBe(routeIdentity(engineEdit));
+    expect(routeIdentity(engines)).not.toBe(routeIdentity(engineNew));
     expect(routeIdentity(tools)).not.toBe(routeIdentity(toolEdit));
     expect(routeSurfaceIdentity(models)).toBe(routeSurfaceIdentity(modelEdit));
     expect(routeSurfaceIdentity(engines)).toBe(
       routeSurfaceIdentity(engineEdit),
     );
+    expect(routeSurfaceIdentity(engines)).toBe(routeSurfaceIdentity(engineNew));
     expect(routeSurfaceIdentity(tools)).toBe(routeSurfaceIdentity(toolEdit));
     expect(routeSurfaceIdentity(models)).not.toBe(
       routeSurfaceIdentity(engines),
@@ -227,14 +233,5 @@ describe('routeSurfaceIdentity', () => {
     for (const view of [list, agentNew, editA, editB]) {
       expect(routeSurfaceIdentity(view)).toBe('agents');
     }
-  });
-
-  test('does not broaden surface identity to a new ACP engine', () => {
-    const acpNew = {
-      type: 'connections-engine-new',
-      providerId: 'p1',
-    } as const;
-
-    expect(routeSurfaceIdentity(acpNew)).toBe(routeIdentity(acpNew));
   });
 });

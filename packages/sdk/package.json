@@ -74,7 +74,8 @@
     "./native-device-proof": "./src/client/native-device-proof.ts",
     "./application-session-native": "./src/client/application-session-native.ts",
     "./device-code-login": "./src/device-code-login.ts",
-    "./engine-accounts": "./src/engine-accounts.ts"
+    "./engine-accounts": "./src/engine-accounts.ts",
+    "./engine-sign-in": "./src/engine-sign-in.ts"
   },
   "scripts": {
     "build": "tsc && npm run copy-assets",
@@ -126,7 +127,7 @@
     "@types/react": "^19.3.0",
     "typescript": "7.0.2",
     "typescript-api": "npm:typescript@5.9.3",
-    "vitest": "4.1.11"
+    "vitest": "4.1.12"
   },
   "overrides": {
     "nanoid": "3.3.18"

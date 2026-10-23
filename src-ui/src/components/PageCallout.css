@@ -1,12 +1,4 @@
-/*
- * Page callouts (#1582 C4).
- *
- * The border colour is NOT written here. It resolves through the
- * `--tone-border-*` custom properties declared in `index.css`, which
- * `BannerHost.css` consumes for the same four tones — so "info" is one
- * colour in this product, defined once, and a change to the scale reaches
- * both surfaces or neither.
- */
+/* Page callout borders use the shared theme-aware --tone-border-* scale. */
 
 .page-callout-stack {
   display: flex;

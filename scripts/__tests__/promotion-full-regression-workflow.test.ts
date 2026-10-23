@@ -20,6 +20,7 @@ type WorkflowStep = {
 };
 
 type WorkflowJob = {
+  concurrency?: { group: string; 'cancel-in-progress': boolean };
   if?: string;
   needs?: string | string[];
   uses?: string;
@@ -222,12 +223,63 @@ describe('promotion full-regression workflow', () => {
     }
   });
 
+  test('qualifies coalesced main pushes without adding a packaging wave per merge', () => {
+    const main = workflow('main-qualification.yml');
+    expect(main.on?.push).toEqual({ branches: ['main'] });
+    expect(main.on?.schedule).toEqual([{ cron: '17 */6 * * *' }]);
+    const qualification = main.jobs?.qualification;
+    expect(qualification?.if).toBe("github.ref == 'refs/heads/main'");
+    expect(qualification?.with?.source_sha).toBe(
+      githubExpression('github.sha'),
+    );
+    const groupExpression = qualification?.concurrency?.group;
+    if (!groupExpression)
+      throw new Error('Main qualification admission is missing');
+    const group = (event: string, run: number) =>
+      Function(
+        'github',
+        'format',
+        `return (${groupExpression.slice(3, -2)});`,
+      )({ event_name: event, run_id: run }, (template: string, value: number) =>
+        template.replace('{0}', String(value)),
+      );
+    // A running push A and pending push B share their coalescing group.
+    expect(group('push', 1)).toBe(group('push', 2));
+    // A pending scheduled/manual request S must not be displaced by push B.
+    for (const event of ['schedule', 'workflow_dispatch']) {
+      expect(group(event, 3)).not.toBe(group('push', 2));
+      expect(group(event, 3)).not.toBe(group(event, 4));
+    }
+    expect(qualification?.concurrency?.['cancel-in-progress']).toBe(false);
+    // Evaluate the actual downstream admission condition at the event boundary.
+    // Push must never fan out delivery; source failure/skip must never do so.
+    const condition = main.jobs?.['delivery-validation'].if;
+    if (!condition) throw new Error('Delivery admission is missing');
+    for (const event of ['push', 'schedule', 'workflow_dispatch']) {
+      for (const result of ['success', 'failure', 'cancelled', 'skipped']) {
+        const allowed = Function(
+          'github',
+          'needs',
+          `return (${condition});`,
+        )({ event_name: event }, { qualification: { result } });
+        expect(allowed, `${event}/${result}`).toBe(
+          event !== 'push' && result === 'success',
+        );
+      }
+    }
+  });
+
   test('bounds the workflow DAG to the admitted profile without canceling distinct queued sources', () => {
     const reusable = workflow('full-regression.yml');
     const delivery = workflow('delivery-validation.yml');
     const scheduled = workflow('main-qualification.yml');
     expect(scheduled).not.toHaveProperty('concurrency');
-    expect(scheduled.jobs?.qualification).not.toHaveProperty('concurrency');
+    expect(scheduled.jobs?.qualification.concurrency).toEqual({
+      group: githubExpression(
+        "github.event_name == 'push' && 'station-main-qualification-push' || format('station-main-qualification-deliberate-{0}', github.run_id)",
+      ),
+      'cancel-in-progress': false,
+    });
     expect(delivery.concurrency).toEqual({
       group: 'station-background-compute',
       queue: 'max',
@@ -238,10 +290,9 @@ describe('promotion full-regression workflow', () => {
       queue: 'max',
       'cancel-in-progress': false,
     });
-    expect(
-      workflow('ci.yml').jobs?.['merge-integration-full-regression'].with
-        ?.capacity_class,
-    ).toBe('integration');
+    expect(workflow('ci.yml').jobs).not.toHaveProperty(
+      'merge-integration-full-regression',
+    );
     for (const file of [
       'release.yml',
       'publish-release.yml',
@@ -421,7 +472,7 @@ describe('promotion full-regression workflow', () => {
   test('gates every tagged release producer before artifact work starts', () => {
     const release = workflow('release.yml');
     const full = release.jobs?.['full-regression'] ?? {};
-    expect(full.needs).toEqual(['preflight']);
+    expect(full.needs).toEqual(['preflight', 'advisory']);
     expect(full.uses).toBe('./.github/workflows/full-regression.yml');
     expect(full.with?.source_sha).toBe(
       githubExpression('needs.preflight.outputs.sha'),

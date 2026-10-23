@@ -1,0 +1,9 @@
+{
+  "revision": "55521d7a20817836166ea4a2c89a28df744207dc",
+
+  "notes": [
+    {"path":"docs/plans/plugin-core-delivery.md","note":"Reviewed the owner-selected OPEN-11 boundary against the explicit answer: high-risk approvals on a kernel-owned channel, ordinary approvals in shell; disclosure remains proposed. Recorded exact historical public-key approval already implemented in .gitleaksignore and qualified locally/hosted. The renewed landing instruction applies to the consolidated implemented subset in #4046; #2993 and every remaining acceptance row stay unfinished. No new runtime capability or epic completion is asserted.","inputs":["docs/plans/plugin-core-delivery.md"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"Reviewed the owner-selected OPEN-11 boundary against the explicit answer: high-risk approvals on a kernel-owned channel, ordinary approvals in shell; disclosure remains proposed. Recorded exact historical public-key approval already implemented in .gitleaksignore and qualified locally/hosted. The renewed landing instruction applies to the consolidated implemented subset in #4046; #2993 and every remaining acceptance row stay unfinished. No new runtime capability or epic completion is asserted.","inputs":["docs/design/shell-plugins-distributions.md"]}
+  ]
+}
