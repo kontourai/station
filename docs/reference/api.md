@@ -1713,6 +1713,43 @@ owns the protocol, saved authority and failure limits.
 
 ---
 
+## Report groups
+
+The personal host mounts `/api/orchestration/report-groups` for bounded,
+independent advisory reports using configured Station Agents and the qualified
+sealed SDK profile. This is separate from CLI session groups' logical start
+allowance. It does not establish Flow-backed joins, context ACKs or acceptance.
+Hosted mode and unavailable private storage return `report_groups_unavailable`.
+
+- `POST /` accepts `operationId`, `projectSlug`, optional `resourceId`,
+  `deadlineAt`, `maxConcurrent`, aggregate `budget` (`inputTokens`, `outputTokens`,
+  `costMicros`) and 1–16 `members` (`seatId`, `agentId`, `brief`,
+  `maxOutputTokens`). JSON is bounded to 256 KiB. It executes under the request
+  lifetime; an exact retry observes the durable operation without launching
+  again. A changed intent refuses. An interrupted request may have reserved or
+  started work; it is not permission to use a new operation ID to resend it.
+- `GET /` returns up to eight `groups`, `hasMore` and nullable `nextGroupId`.
+  Supply `afterGroupId` for the next page. `GET /:groupId` returns the retained
+  projection, or `null` when absent.
+- `POST /:groupId/cancel` accepts `operationKey` and `expectedRevision`.
+  Cancellation closes admission, revokes the retained root and requests exact
+  nonterminal member interrupts. Exact replay is effect-free. A missing
+  acknowledgement leaves `pending`; cancellation never implies physical stop,
+  an accounting refund or semantic acceptance.
+
+Every operation requires current local operator grant authority. Browser
+bootstrap credentials do not suffice. Responses use `Cache-Control: no-store`
+and `{success, data}` or a bounded error code. Views allowlist group/member and
+attempt identities, retained observation/terminal references, integer tariff
+allocations and nullable known usage. They disclose no grant, host path,
+credential witness, prompt or private admission record. Raw results require
+separately authorized canonical task/session reads. Historical reads and exact
+replay survive profile expiry; fresh paid execution still requires a current
+profile. The current narrow Anthropic profile and its exclusions are described
+in the [child-work plan](../plans/child-work-epic.md#authenticated-report-group-preparation).
+Events/streams, SDK/CLI/UI adoption, cancellation finalization and live provider
+qualification remain open for this report-group surface.
+
 ## Connections
 
 The [connection routes](../../src-server/routes/connections/connections.ts)

@@ -1,4 +1,3 @@
-// UNWIRED(#91): private historical custody; public serving and cancellation composition remain required.
 import { createHash } from 'node:crypto';
 import type { AuthorizationLedger } from '@kontourai/dispatch';
 import { createDelegationAuthorityServiceV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
@@ -557,6 +556,30 @@ export class StationReportGroupCustody {
         ? reportInterruptReference(retained.record)
         : null,
     };
+  }
+
+  async list(context: RuntimeSourceRequestContext) {
+    const authorized = await this.#context(context, 'GET');
+    const records = await this.owners.persistence.listReportAdmissions(
+      authorized.current,
+    );
+    const result = [];
+    for (const record of records) {
+      this.#verify(record);
+      if (
+        record.data.root.issuer_host_id !== authorized.lease.hostContextId ||
+        record.data.root.authenticated_principal_ref.id !==
+          authorized.principal.id
+      )
+        continue;
+      const entry = await this.#inspect(authorized, record.data.spec.groupId);
+      if (!entry) refuse();
+      result.push(entry);
+    }
+    authorized.current();
+    return result.sort((a, b) =>
+      a.admission.spec.groupId.localeCompare(b.admission.spec.groupId),
+    );
   }
 
   async findOperation(

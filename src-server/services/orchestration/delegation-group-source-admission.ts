@@ -1,5 +1,3 @@
-// UNWIRED #91: private source owners still require boot issuance and managed transport composition.
-
 import { createHash, randomUUID } from 'node:crypto';
 import {
   closeSync,

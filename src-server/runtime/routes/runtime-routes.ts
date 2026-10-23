@@ -21,6 +21,7 @@ import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createEnsembleInspectionRoutes } from '../../routes/orchestration/ensemble-inspection.js';
 import { createEnsemblePreparationRoutes } from '../../routes/orchestration/ensemble-preparation.js';
 import { createHtmlReplyRoutes } from '../../routes/orchestration/html-replies.js';
+import { createReportGroupRoutes } from '../../routes/orchestration/report-groups.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
 import { createProjectRoomRoutes } from '../../routes/projects/project-room-routes.js';
 import { createProjectSharedTaskRoutes } from '../../routes/projects/project-shared-tasks.js';
@@ -135,6 +136,7 @@ import {
 import { EnsembleInspectionService } from '../../services/orchestration/ensemble-inspection.js';
 import { authenticateEnsembleSessionGroup } from '../../services/orchestration/ensemble-session-group-authentication.js';
 import { sessionOwnerStampFor } from '../../services/orchestration/session-owner-attribution.js';
+import { StationReportGroupRuntime } from '../../services/orchestration/station-report-group-runtime.js';
 import type {
   ProjectMembershipAuthority,
   ProjectMembershipService,
@@ -5700,6 +5702,36 @@ export function configureRuntimeRoutes(
   }
 
   const runtimeContext = context.buildRuntimeContext();
+  let reportGroups: StationReportGroupRuntime | null = null;
+  if (isPersonalHost) {
+    try {
+      reportGroups = new StationReportGroupRuntime({
+        runtime: {
+          configLoader: context.configLoader,
+          agentService: context.agentService,
+          storageAdapter: context.storageAdapter,
+          environmentSecurityService: context.environmentSecurityService,
+          requestSecurity: context.environmentSecurityService,
+          runtime: {
+            getAgentConfigurationRevision:
+              context.getAgentConfigurationRevision,
+            commitAgentConfigurationRead: (revision, work) =>
+              context
+                .buildRuntimeContext()
+                .commitAgentConfigurationRead(revision, work),
+          },
+        },
+        orchestration: context.orchestrationService,
+        rawFetch: fetch,
+      });
+    } catch {
+      context.logger.warn('Report group private storage is unavailable.');
+    }
+  }
+  context.app.route(
+    '/api/orchestration/report-groups',
+    createReportGroupRoutes(reportGroups),
+  );
 
   context.app.route(
     '/api/agents',

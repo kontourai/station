@@ -1,4 +1,3 @@
-// UNWIRED(#91): request serving must compose this issuer with actual rounds/task custody.
 import { createHash } from 'node:crypto';
 import { constants, lstatSync } from 'node:fs';
 import { open } from 'node:fs/promises';

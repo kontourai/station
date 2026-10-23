@@ -1,4 +1,3 @@
-// UNWIRED(#91): private caller composition only; no route, qualification or execution activation.
 import { realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { canonicalJson } from '@kontourai/relay';

@@ -3423,6 +3423,13 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'DELETE',
       path: '/api/orchestration/conversations/:conversationId/context-boundary/:idempotencyKey',
     },
+    { method: 'GET', path: '/api/orchestration/report-groups' },
+    { method: 'POST', path: '/api/orchestration/report-groups' },
+    { method: 'GET', path: '/api/orchestration/report-groups/:groupId' },
+    {
+      method: 'POST',
+      path: '/api/orchestration/report-groups/:groupId/cancel',
+    },
     { method: 'GET', path: '/api/orchestration/session-groups' },
     { method: 'POST', path: '/api/orchestration/session-groups' },
     { method: 'POST', path: '/api/orchestration/session-groups/from-ensemble' },
@@ -3436,6 +3443,8 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       path: '/api/orchestration/session-groups/:groupId/events/stream',
     },
     { method: 'POST', path: '/api/orchestration/session-groups/:groupId/run' },
+    // Sync mutates only the credential-owned local group through its current operator fence.
+    { method: 'POST', path: '/api/orchestration/session-groups/:groupId/sync' },
     {
       method: 'POST',
       path: '/api/orchestration/session-groups/:groupId/cancel',

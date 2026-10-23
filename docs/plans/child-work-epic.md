@@ -942,15 +942,23 @@ model access and same-session ACK acceptance remain separate obligations.
 
 ## Authenticated report-group preparation
 
+Personal-host boot now mounts an allowlisted report-group create/get/list/cancel
+surface with one private custody root. The primary execution proof runs through
+HTTP and runtime construction, including fresh runtime replay after profile
+expiry, response privacy and current credential rotation. Ingress stamps and
+provider responses are controlled; no live acceptance is inferred. Provider
+qualification is lazy and cannot block historical reads. Events, client adoption,
+Flow topology and same-session continuation remain open.
+
 Private custody now composes a fresh operator cancellation with the published
 rounds journal and V3 authority. It retains exact member interrupt receipts for
 nonterminal attempts and keeps missing acknowledgements pending. Exact command
 replay performs no effects. Completed attempts retain their terminal receipts,
 usage and reservations; cancellation does not mean acceptance, a refund or a
 new physical-stop claim. Explicit pending-cancellation recovery still requires
-the unpublished 9.5.0 contract, and public serving remains unwired.
+the unpublished 9.5.0 contract.
 
-A private execution runner now composes the actual preparation, signed custody,
+The execution runner composes the actual preparation, signed custody,
 canonical task dispatch, sealed SDK transport and published AccountingV1 rounds.
 It derives usage from retained raw provider evidence and records bounded private
 observations; terminal proof joins the exact canonical session/turn event to that
@@ -958,7 +966,7 @@ evidence. Historical operation lookup precedes preparation, so exact replay can
 observe an expired-profile group without another source seal or physical attempt.
 The controlled two-seat fixture exercises this owner directly; it is not live
 provider evidence. The mode remains independent advisory, not acceptance, and
-boot/public serving, Flow frontier/join and session-context ACK remain open.
+Flow frontier/join and session-context ACK remain open.
 
 
 The private report-group preparer now derives one controller and its child

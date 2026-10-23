@@ -1,4 +1,3 @@
-// UNWIRED(#91): not mounted or issued by production; actual caller/runtime composition remains pending.
 import { timingSafeEqual } from 'node:crypto';
 import {
   type CurrentRuntimeRequestPrincipalSecurity,

@@ -1,4 +1,3 @@
-// UNWIRED(#91): boot/routes, Flow topology and session-context continuation remain required.
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import type { AuthorizationLedger } from '@kontourai/dispatch';
@@ -52,7 +51,9 @@ export class StationReportGroupExecution {
   readonly #claimed = new WeakSet<PreparedStationReportGroup>();
   constructor(
     private readonly owners: {
-      preparation: StationReportGroupPreparation;
+      preparation:
+        | StationReportGroupPreparation
+        | (() => Promise<StationReportGroupPreparation>);
       custody: StationReportGroupCustody;
       persistence: StationDelegationPersistence;
       orchestration: OrchestrationService;
@@ -65,7 +66,7 @@ export class StationReportGroupExecution {
 
   async execute(context: RuntimeSourceRequestContext, sent: unknown) {
     const input = parseStationReportGroupInput(sent);
-    const { preparation, custody, persistence, orchestration } = this.owners;
+    const { custody, persistence, orchestration } = this.owners;
     const existing = await custody.findOperationForMutation(
       context,
       input.operationId,
@@ -75,6 +76,10 @@ export class StationReportGroupExecution {
         refuse();
       return { replayed: true, group: existing };
     }
+    const preparation =
+      typeof this.owners.preparation === 'function'
+        ? await this.owners.preparation()
+        : this.owners.preparation;
     const handle = await preparation.prepare(context, input);
     if (this.#claimed.has(handle)) refuse();
     this.#claimed.add(handle);

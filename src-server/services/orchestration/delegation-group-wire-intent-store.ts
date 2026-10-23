@@ -1,4 +1,3 @@
-// UNWIRED #91: boot custody, private issuance and managed transport composition remain required.
 import { createHash } from 'node:crypto';
 import {
   closeSync,

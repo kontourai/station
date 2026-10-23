@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  'c7eb25d0c5a6d5452bdc5b2d4126134c810e78293ad604f8de17a9de5d08adbb';
+  '28fef6807216b03f51e65a4d5f152a6143d2220c5162e7cc3aadf420693a312a';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -453,7 +453,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     title: 'Sessions, engines, and recovery',
     summary:
       'How a message becomes an engine invocation, how output becomes a durable record, and how Station handles stop, reconnect, and uncertainty.',
-    body: 'How a message becomes an engine invocation, how output becomes a durable record, and how Station handles stop, reconnect, and uncertainty.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Where is the boundary between accepting a command and knowing an engine accepted it?\n- Can a reconnect replay output without replaying an external effect?\n- Which states distinguish failure, cancellation, and an unknown outcome?\n\nRead module topics with get_station_docs_topic:\n- architecture-sessionquerymodule: SessionQueryModule\n- architecture-conversationsessionlineage: ConversationSessionLineage\n- architecture-sessioncommandmodule: SessionCommandModule\n- architecture-clisessiongroups: CliSessionGroups\n- architecture-skillexperienceruntime: SkillExperienceRuntime\n- architecture-sessionlifecyclemodule: SessionLifecycleModule\n- architecture-sessionturnboundaryauthority: SessionTurnBoundaryAuthority\n- architecture-turndeduplicator: TurnDeduplicator\n- architecture-sessionmessagedelivery: SessionMessageDelivery\n- architecture-sessiondigest: SessionDigest\n- architecture-adoptionledger: AdoptionLedger\n- architecture-recoveryledger-and-private-credentialapplicationfactoryhandle: RecoveryLedger and private CredentialApplicationFactory/Handle\n- architecture-credentialrecoverymodule: CredentialRecoveryModule\n- architecture-outbounddispatchmodule: OutboundDispatchModule\n- architecture-session-inventory-sources: Session inventory Sources\n- architecture-workspace-checkpoints: Workspace checkpoints\n\nCanonical reading:\n- docs/architecture.md#data-flow-chat-request\n- docs/reference/session-api.md\n- docs/design/orchestration-decomposition-map.md\n- docs/guides/agent-configuration.md\n- docs/guides/acp.md\n- docs/user/workspace-checkpoints.md',
+    body: 'How a message becomes an engine invocation, how output becomes a durable record, and how Station handles stop, reconnect, and uncertainty.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Where is the boundary between accepting a command and knowing an engine accepted it?\n- Can a reconnect replay output without replaying an external effect?\n- Which states distinguish failure, cancellation, and an unknown outcome?\n\nRead module topics with get_station_docs_topic:\n- architecture-sessionquerymodule: SessionQueryModule\n- architecture-conversationsessionlineage: ConversationSessionLineage\n- architecture-sessioncommandmodule: SessionCommandModule\n- architecture-stationreportgroupruntime: StationReportGroupRuntime\n- architecture-clisessiongroups: CliSessionGroups\n- architecture-skillexperienceruntime: SkillExperienceRuntime\n- architecture-sessionlifecyclemodule: SessionLifecycleModule\n- architecture-sessionturnboundaryauthority: SessionTurnBoundaryAuthority\n- architecture-turndeduplicator: TurnDeduplicator\n- architecture-sessionmessagedelivery: SessionMessageDelivery\n- architecture-sessiondigest: SessionDigest\n- architecture-adoptionledger: AdoptionLedger\n- architecture-recoveryledger-and-private-credentialapplicationfactoryhandle: RecoveryLedger and private CredentialApplicationFactory/Handle\n- architecture-credentialrecoverymodule: CredentialRecoveryModule\n- architecture-outbounddispatchmodule: OutboundDispatchModule\n- architecture-session-inventory-sources: Session inventory Sources\n- architecture-workspace-checkpoints: Workspace checkpoints\n\nCanonical reading:\n- docs/architecture.md#data-flow-chat-request\n- docs/reference/session-api.md\n- docs/design/orchestration-decomposition-map.md\n- docs/guides/agent-configuration.md\n- docs/guides/acp.md\n- docs/user/workspace-checkpoints.md',
     tags: ['architecture', 'execution'],
     parentId: 'architecture',
     sourcePath: 'docs/learn/atlas.json',
@@ -491,6 +491,17 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     parentId: 'architecture-execution',
     sourcePath: 'docs/architecture/module-map.md',
     sourceAnchor: 'sessioncommandmodule',
+  },
+  {
+    id: 'architecture-stationreportgroupruntime',
+    title: 'StationReportGroupRuntime',
+    summary:
+      'Interface, composition, invariants, and documented evidence for StationReportGroupRuntime.',
+    body: 'Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## StationReportGroupRuntime\n\n[StationReportGroupRuntime](../../src-server/services/orchestration/station-report-group-runtime.ts)\ncomposes one private personal-host custody root with signed admissions, published\nAccountingV1 rounds/V3 authority, canonical reserved task dispatch and sealed SDK\ntransport. [Report routes](../../src-server/routes/orchestration/report-groups.ts)\nserve allowlisted create/get/list/cancel projections; boot mounts an unavailable\nsurface on hosted deployments or failed private-storage admission. Qualification\nis deferred until a new operation needs preparation, so profile expiry does not\nblock historical reads or replay. Current operator authority is checked through\nawaits and again before HTTP release. This mode is independent advisory;\nFlow-backed topology, context sync, event transport and client adoption remain\nopen. Provider responses in the focused HTTP owner test are controlled fixtures,\nnot live acceptance or billing qualification.',
+    tags: ['architecture', 'execution', 'StationReportGroupRuntime'],
+    parentId: 'architecture-execution',
+    sourcePath: 'docs/architecture/module-map.md',
+    sourceAnchor: 'stationreportgroupruntime',
   },
   {
     id: 'architecture-clisessiongroups',

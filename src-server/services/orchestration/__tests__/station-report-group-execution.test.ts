@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { FileAuthorizationLedger } from '@kontourai/dispatch';
+import { Hono } from 'hono';
 import { test, vi } from 'vitest';
 import { createGateTestRegistry } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
+import { createReportGroupRoutes } from '../../../routes/orchestration/report-groups.js';
 import { AnthropicSealedPreparation } from '../../../runtime/conversation/anthropic-sealed-preparation.js';
 import {
   bindRuntimeLocalOperator,
@@ -12,21 +12,22 @@ import {
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
 import { ApprovalRegistry } from '../../approvals/approval-registry.js';
-import { FileFinalWireIntentStore } from '../delegation-group-wire-intent-store.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
-import { StationReportGroupExecution } from '../station-report-group-execution.js';
+import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
 import {
   installControl,
   NOW,
   newGrant,
-  requestFor,
   setup,
 } from './delegation-source-fixtures/report.js';
 
-test('report execution owner runs the issued roster through canonical tasks and actual retained tariffs, and fresh replay only reads', async () => {
+type View = NonNullable<Awaited<ReturnType<StationReportGroupRuntime['get']>>>;
+type Operation = Awaited<ReturnType<StationReportGroupRuntime['create']>>;
+
+test('report HTTP owner runs configured seats through canonical tasks and retained tariffs; expired-profile replay reads without qualification or resend', async () => {
   const wallNow = Date.now;
   const h = await setup();
   const startedAt = wallNow();
@@ -56,65 +57,106 @@ test('report execution owner runs the issued roster through canonical tasks and 
       resolveSkillDir: async () => null,
     }),
   });
-  const dispatchRoot = join(h.f.root, 'actual-report-dispatch');
-  mkdirSync(dispatchRoot, { mode: 0o700 });
   const owners = {
-    preparation: h.owner,
-    custody: h.custody,
-    persistence: h.custodyOwners.persistence,
+    runtime: h.preparationOwners.runtime,
     orchestration,
-    dispatchLedger: new FileAuthorizationLedger({ root: dispatchRoot }),
-    wireIntents: new FileFinalWireIntentStore(h.f.root),
+    rawFetch: h.rawFetch,
   };
-  const prepares = vi.spyOn(h.owner, 'prepare');
+  const qualifies = vi.spyOn(AnthropicSealedPreparation, 'create');
+  const stampedPrincipal = getRuntimeAuthenticatedRequestPrincipal(h.f.req);
+  assert.ok(stampedPrincipal && stampedPrincipal.kind !== 'internal');
+  const principal = { ...stampedPrincipal };
+  function appFor(runtime: StationReportGroupRuntime | null) {
+    const app = new Hono();
+    // Controlled ingress stamps; current credential and scope checks remain real owners.
+    app.use('*', async (c, next) => {
+      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+        ...principal,
+        credential:
+          c.req.header('Authorization')?.replace(/^Bearer /, '') ?? '',
+      });
+      if (c.req.header('X-Test-Operator') === 'yes')
+        bindRuntimeLocalOperator(c.req.raw);
+      await next();
+    });
+    app.route(
+      '/api/orchestration/report-groups',
+      createReportGroupRoutes(runtime),
+    );
+    return app;
+  }
+  let app = appFor(new StationReportGroupRuntime(owners));
   const abort = new AbortController();
-  const stamped = requestFor(h, 'POST');
-  const controlled = new Request(stamped, { signal: abort.signal });
-  const principal = getRuntimeAuthenticatedRequestPrincipal(stamped);
-  assert.ok(principal);
-  setRuntimeAuthenticatedRequestPrincipal(controlled, principal);
-  bindRuntimeLocalOperator(controlled);
+  const send = (
+    method: 'GET' | 'POST',
+    path = '',
+    body?: unknown,
+    credential = h.f.paired.credential,
+    operator = true,
+  ) =>
+    app.request(
+      `http://report-control.test/api/orchestration/report-groups${path}`,
+      {
+        method,
+        signal: abort.signal,
+        headers: {
+          Authorization: `Bearer ${credential}`,
+          'Content-Type': 'application/json',
+          ...(operator ? { 'X-Test-Operator': 'yes' } : {}),
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      },
+    );
   let watchdog: ReturnType<typeof setTimeout> | undefined;
   try {
-    const runner = new StationReportGroupExecution(owners);
-    const result = await Promise.race([
-      runner.execute(h.f.context(controlled), h.input),
+    assert.equal(qualifies.mock.calls.length, 0);
+    assert.equal(
+      (await send('POST', '', h.input, undefined, false)).status,
+      503,
+    );
+    const response = await Promise.race([
+      send('POST', '', h.input),
       new Promise<never>((_resolve, reject) => {
         watchdog = setTimeout(() => {
-          const status = {
-            rawCalls: h.rawFetch.mock.calls.length,
-            sessions: eventStore.readSessions().map((session) => ({
-              threadId: session.threadId,
-              events: eventStore
-                .listEvents(session.threadId)
-                .map((event) => event.payload.method),
-            })),
-          };
           abort.abort();
-          reject(Error(`report execution stalled: ${JSON.stringify(status)}`));
+          reject(Error('report HTTP execution deadline'));
         }, h.input.deadlineAt - Date.now());
       }),
     ]);
     if (watchdog) clearTimeout(watchdog);
+    const body = (await response.json()) as {
+      success: boolean;
+      data: Operation;
+    };
+    assert.equal(response.status, 200, JSON.stringify(body));
+    assert.equal(body.success, true);
+    const result = body.data;
     assert.equal(result.replayed, false);
-    assert.ok(result.group?.authority && result.group.group);
+    assert.equal(result.group.execution, 'returned');
+    assert.equal(result.group.acceptance, 'unassessed');
+    assert.equal(result.group.members.length, 2);
     assert.equal(h.rawFetch.mock.calls.length, 2);
     assert.equal(relay.mock.calls.length, 0);
-    assert.equal(result.group.authority.invocations.length, 2);
-    for (const invocation of result.group.authority.invocations) {
-      assert.deepEqual(invocation.usage, {
+    for (const member of result.group.members) {
+      assert.equal(member.attempts.length, 1);
+      assert.deepEqual(member.attempts[0].usage, {
         inputTokens: 4,
         outputTokens: 2,
         costMicros: 42,
       });
-      assert.equal(invocation.terminal, true);
+      assert.equal(member.attempts[0].accountingTerminal, true);
+      assert.ok(member.attempts[0].terminal);
     }
-    assert.equal(result.group.group.attempts.length, 2);
-    assert.equal(result.group.group.acceptance, 'unassessed');
-    assert.ok(
-      result.group.group.attempts.every((attempt) => attempt.terminal !== null),
-    );
-    assert.equal(prepares.mock.calls.length, 1);
+    for (const privateValue of [
+      'synthetic-not-a-live-key',
+      'credentialDigest',
+      'authenticated_principal_ref',
+      'Configured report-only instructions',
+      'Review correctness',
+      h.f.root,
+    ])
+      assert.ok(!JSON.stringify(body).includes(privateValue), privateValue);
+    assert.equal(qualifies.mock.calls.length, 1);
     vi.mocked(Date.now).mockReturnValue(Date.parse('2026-10-24T01:04:42Z'));
     await assert.rejects(() => AnthropicSealedPreparation.create(), {
       code: 'stale_contract',
@@ -124,77 +166,88 @@ test('report execution owner runs the issued roster through canonical tasks and 
       h.f.paired.device.id,
       'operator-credential',
     );
-    const restarted = new StationReportGroupExecution(owners);
-    const replay = await restarted.execute(
-      h.f.context(requestFor(h, 'POST', returning.credential)),
+    app = appFor(new StationReportGroupRuntime(owners));
+    assert.equal(qualifies.mock.calls.length, 2);
+    const replayResponse = await send(
+      'POST',
+      '',
       h.input,
+      returning.credential,
     );
-    assert.equal(prepares.mock.calls.length, 1);
-    assert.equal(replay.replayed, true);
-    assert.deepEqual(replay.group, result.group);
-    assert.equal(h.rawFetch.mock.calls.length, 2);
-    await assert.rejects(
-      () =>
-        restarted.execute(
-          h.f.context(requestFor(h, 'POST', returning.credential)),
-          {
-            ...h.input,
-            members: h.input.members.map((member, index) =>
-              index === 0
-                ? { ...member, brief: 'Changed request must not reseal' }
-                : member,
-            ),
-          },
-        ),
-      { code: 'group_execution_unavailable' },
+    assert.equal(replayResponse.status, 200);
+    const replay = (await replayResponse.json()) as { data: Operation };
+    assert.equal(replay.data.replayed, true);
+    assert.deepEqual(replay.data.group, result.group);
+    assert.equal(qualifies.mock.calls.length, 2);
+    const changed = await send(
+      'POST',
+      '',
+      { ...h.input, maxConcurrent: 1 },
+      returning.credential,
     );
-    assert.equal(h.rawFetch.mock.calls.length, 2);
-    const groupId = result.group.admission.spec.groupId;
-    const cancelCommand = {
-      operationKey: 'cancel-completed',
-      expectedRevision: result.group.group.revision,
-    };
-    const interrupt = vi.spyOn(orchestration, 'dispatchWithReceipt');
-    for (const request of [
-      requestFor(h, 'GET', returning.credential),
-      requestFor(h, 'POST'),
-    ]) {
-      await assert.rejects(() =>
-        h.custody.cancel(
-          h.f.context(request),
-          groupId,
-          cancelCommand,
-          orchestration,
-          owners.dispatchLedger,
-        ),
-      );
-    }
-    const cancel = () =>
-      h.custody.cancel(
-        h.f.context(requestFor(h, 'POST', returning.credential)),
-        groupId,
-        cancelCommand,
-        orchestration,
-        owners.dispatchLedger,
-      );
-    const canceled = await cancel();
-    assert.equal(canceled.replayed, false);
-    assert.equal(canceled.projection.cancellation, 'requested');
-    assert.equal(canceled.projection.acceptance, 'unassessed');
-    const canceledReplay = await cancel();
-    assert.equal(canceledReplay.replayed, true);
-    assert.deepEqual(canceledReplay.projection, canceled.projection);
-    const afterCancel = await h.custody.inspect(
-      h.f.context(requestFor(h, 'GET', returning.credential)),
-      groupId,
+    assert.equal(changed.status, 503);
+    const groupId = result.group.groupId;
+    assert.equal((await send('GET', `/${groupId}`)).status, 503);
+    const inspected = await send(
+      'GET',
+      `/${groupId}`,
+      undefined,
+      returning.credential,
     );
-    assert.equal(afterCancel?.authority?.cancelled, true);
+    assert.equal(inspected.headers.get('Cache-Control'), 'no-store');
     assert.deepEqual(
-      afterCancel?.authority?.invocations,
-      result.group.authority.invocations,
+      ((await inspected.json()) as { data: View }).data,
+      result.group,
     );
+    const list = await send('GET', '', undefined, returning.credential);
+    assert.deepEqual(
+      ((await list.json()) as { data: { groups: View[] } }).data.groups,
+      [result.group],
+    );
+    const interrupt = vi.spyOn(orchestration, 'dispatchWithReceipt');
+    const command = {
+      operationKey: 'cancel-completed',
+      expectedRevision: result.group.revision,
+    };
+    const cancelResponse = await send(
+      'POST',
+      `/${groupId}/cancel`,
+      command,
+      returning.credential,
+    );
+    assert.equal(cancelResponse.status, 200);
+    const canceled = (await cancelResponse.json()) as {
+      data: { cancellation: string; replayed: boolean };
+    };
+    assert.equal(canceled.data.cancellation, 'requested');
+    assert.equal(canceled.data.replayed, false);
+    const repeated = await send(
+      'POST',
+      `/${groupId}/cancel`,
+      command,
+      returning.credential,
+    );
+    assert.equal(
+      ((await repeated.json()) as { data: { replayed: boolean } }).data
+        .replayed,
+      true,
+    );
+    const after = await send(
+      'GET',
+      `/${groupId}`,
+      undefined,
+      returning.credential,
+    );
+    const afterView = ((await after.json()) as { data: View }).data;
+    assert.equal(afterView.authorityRevoked, true);
+    assert.deepEqual(afterView.members, result.group.members);
     assert.equal(interrupt.mock.calls.length, 0);
     assert.equal(h.rawFetch.mock.calls.length, 2);
+    app = appFor(null);
+    assert.equal(
+      (await send('GET', '', undefined, returning.credential)).status,
+      503,
+    );
   } finally {
     if (watchdog) clearTimeout(watchdog);
     abort.abort();

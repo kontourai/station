@@ -17,7 +17,6 @@ import {
 
 const claimedAttempts = new WeakSet<object>();
 
-// UNWIRED #91: private issuance and the AccountingV1 settlement caller remain required.
 /** Consume a prepared sealed source only inside the durable reservation's final fetch. */
 export async function runReservedSdkSourceAttempt(input: {
   persistence: StationDelegationPersistence;

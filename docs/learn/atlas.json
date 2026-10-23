@@ -43,6 +43,7 @@
         "SessionQueryModule",
         "ConversationSessionLineage",
         "SessionCommandModule",
+        "StationReportGroupRuntime",
         "CliSessionGroups",
         "SkillExperienceRuntime",
         "SessionLifecycleModule",

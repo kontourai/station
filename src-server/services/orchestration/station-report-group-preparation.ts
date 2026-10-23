@@ -1,4 +1,3 @@
-// UNWIRED(#91): root preparation is private; rounds/task serving and context ACK remain required.
 import { createHash, randomUUID } from 'node:crypto';
 import {
   type DelegationAuthorityV2,
