@@ -1,0 +1,7 @@
+{
+  "revision": "29c8b001c170dacc57201109e40c9af8df032e9d",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed the changed private report custody, delivery and revocation claims through committed ce67b2970c7 and 29c8b001c17. Fresh GET resolves exact reserved task/client-turn delivery only after signed admission and actual attempts/invocations join; started foreign sessions refuse. Fresh operation-scoped POST revokes only the exact retained v3 authority using current request custody, independently of original preparation expiry or closure. Known usage and unknown nonterminal reservations remain unchanged; group journal and descendant effects are not claimed. Owner16/types/lint passed. Delivery-session mutant compiled, produced one intended failure with15 controls and exact restore16 passed. Revocation-action mutant compiled and produced2 intended failures with14 controls; exact restoration rerun remains in progress. Independent pinned source reviews found no blockers; tests were not independently repeated. Public serving, complete cancellation, provider/native/billing and full epic acceptance remain open.","inputs":["docs/plans/child-work-epic.md"]}
+  ]
+}
