@@ -13,6 +13,9 @@ declare global {
       typeof import('@kontourai/station-connect').useConnections
     >;
     fixtureMounted?: boolean;
+    liveNonceRan?: boolean;
+    holdReconnectOnline?: boolean;
+    reconnectOnlineObserved?: boolean;
     reading: typeof import('../lib/offlineReading');
   }
 }
@@ -169,6 +172,17 @@ test('opt-in text survives an offline reload under CSP, stays read-only, and cle
   const context = await browser.newContext();
   context.setDefaultTimeout(5000);
   try {
+    await context.addInitScript(() => {
+      window.addEventListener(
+        'online',
+        (event) => {
+          if (!window.holdReconnectOnline) return;
+          event.stopImmediatePropagation();
+          window.reconnectOnlineObserved = true;
+        },
+        { capture: true },
+      );
+    });
     await context.addCookies([
       { name: 'private-cookie', value: 'not-for-cache', url: origin },
     ]);
@@ -270,9 +284,7 @@ test('opt-in text survives an offline reload under CSP, stays read-only, and cle
     expect(await page.locator('body').textContent()).not.toMatch(
       /tool-secret|private ambient/,
     );
-    expect(
-      await page.evaluate(() => (window as any).liveNonceRan),
-    ).toBeUndefined();
+    expect(await page.evaluate(() => window.liveNonceRan)).toBeUndefined();
     const keys = await page.evaluate(async () =>
       Promise.all(
         (await caches.keys()).map(async (name) => ({
@@ -297,7 +309,38 @@ test('opt-in text survives an offline reload under CSP, stays read-only, and cle
     await page.reload();
     await page.getByText(/No offline copies available/).waitFor();
     await page.waitForFunction(() => window.fixtureMounted);
+    expect(
+      await page.evaluate(
+        () => !!document.querySelector('meta[name="station-offline-shell"]'),
+      ),
+    ).toBe(true);
+    expect(await page.evaluate(() => window.liveNonceRan)).toBeUndefined();
+    // Chromium restores pages before workers. Hold its online notification
+    // until both transports are restored, then deliver it to the real owner.
+    await page.evaluate(() => {
+      window.holdReconnectOnline = true;
+      window.reconnectOnlineObserved = false;
+    });
     await context.setOffline(false);
+    await page.waitForFunction(() => window.reconnectOnlineObserved);
+    await Promise.all([
+      page.waitForEvent('framenavigated', {
+        predicate: (frame) => frame === page.mainFrame(),
+      }),
+      page.evaluate(() => {
+        window.holdReconnectOnline = false;
+        window.dispatchEvent(new Event('online'));
+      }),
+    ]);
+    await page.waitForLoadState('domcontentloaded');
+    expect(
+      await page.evaluate(() => ({
+        offlineShell: !!document.querySelector(
+          'meta[name="station-offline-shell"]',
+        ),
+        liveNonceRan: window.liveNonceRan,
+      })),
+    ).toEqual({ offlineShell: false, liveNonceRan: true });
     await page.getByRole('heading', { name: 'Live app' }).waitFor();
     expect(await page.getByRole('main').count()).toBe(1);
   } finally {
