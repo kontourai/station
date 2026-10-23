@@ -250,6 +250,52 @@ describe('StationFixtureOwner', () => {
   });
 
   it.each([
+    [false, 'S'],
+    [true, 'S'],
+    [false, 't'],
+  ])(
+    'diagnoses a denied Linux cwd without accepting it (reused=%s,state=%s)',
+    (reused, state) => {
+      let statReads = 0;
+      const stat = (start: string) => {
+        const fields = Array<string>(20).fill('0');
+        fields[0] = state;
+        fields[1] = '2';
+        fields[6] = '2097152';
+        fields[19] = start;
+        return `1 (private-fixture-token) ${fields.join(' ')}`;
+      };
+      const observed = observeFixtureCwds(
+        [tmpdir()],
+        () => ({
+          signal: null,
+          status: 0,
+          stdout: 'p1\nfcwd\nn/proc/1/cwd (readlink: Permission denied)\n',
+        }),
+        {
+          platform: 'linux',
+          birth: (pid) => `linux:boot:${pid === process.pid ? '2' : '3'}`,
+          readProcFile: (path) => {
+            if (path === '/proc/1/stat')
+              return stat(++statReads === 2 && reused ? '4' : '3');
+            if (path === '/proc/1/status')
+              return 'Name:\tprivate-fixture-token\nTgid:\t1\nUid:\t1000\t1000\t1000\t1000\n';
+            if (path === '/proc/sys/kernel/random/boot_id') return 'boot';
+            if (path === '/proc/sys/kernel/osrelease') return '6.8.0-test';
+            throw new Error('private-fixture-token');
+          },
+        },
+      );
+      expect(observed).toMatchObject({
+        source: 'none',
+        reason: 'lsof-malformed-output',
+        diagnostic: `class=birth-not-earlier;pid=1;proc-state=${state};proc-ppid=2;proc-tgid=1;proc-flags=2097152;proc-uid=1000:1000:1000:1000;proc-birth=newer;proc-origin=unbound;proc-birth-samples-stable=${!reused};kernel=6.8.0-test`,
+      });
+      expect(JSON.stringify(observed)).not.toContain('private-fixture-token');
+    },
+  );
+
+  it.each([
     ['empty output', ''],
     ['missing cwd name', 'p123\nfcwd\n'],
     ['name before cwd descriptor', 'p123\nn/tmp\n'],

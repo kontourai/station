@@ -142,7 +142,61 @@ function isWithinRoot(path: string, root: string): boolean {
 type CwdProcessObservation = {
   platform: NodeJS.Platform;
   birth: (pid: number) => string | null;
+  readProcFile?: (path: string) => string;
 };
+
+function describeDeniedLinuxProcess(
+  pid: number,
+  workerBirth: string | null,
+  read: (path: string) => string,
+): string {
+  try {
+    const stat = () => {
+      const value = read(`/proc/${pid}/stat`);
+      if (!value.startsWith(`${pid} (`)) throw new Error('invalid pid');
+      const fields = value
+        .slice(value.lastIndexOf(')') + 1)
+        .trim()
+        .split(/\s+/);
+      if (
+        !/^[RSDZTtWXxKWPIN]$/.test(fields[0] ?? '') ||
+        !/^\d{1,10}$/.test(fields[1] ?? '') ||
+        !/^\d{1,20}$/.test(fields[6] ?? '') ||
+        !/^\d{1,20}$/.test(fields[19] ?? '')
+      )
+        throw new Error('invalid stat');
+      return fields;
+    };
+    const before = stat();
+    const boot = read('/proc/sys/kernel/random/boot_id').trim();
+    const status = read(`/proc/${pid}/status`);
+    const tgid = /^Tgid:[ \t]*(\d{1,10})$/m.exec(status)?.[1];
+    const uid =
+      /^Uid:[ \t]*(\d{1,10})[ \t]+(\d{1,10})[ \t]+(\d{1,10})[ \t]+(\d{1,10})$/m.exec(
+        status,
+      );
+    const kernel = read('/proc/sys/kernel/osrelease').trim();
+    if (!tgid || !uid || !/^[A-Za-z0-9._+-]{1,100}$/.test(kernel))
+      return 'proc=malformed';
+    const after = stat();
+    const stable =
+      before[19] === after[19] &&
+      boot === read('/proc/sys/kernel/random/boot_id').trim();
+    const worker = /^linux:([^:]+):(\d+)$/.exec(workerBirth ?? '');
+    const age = !worker
+      ? 'unknown'
+      : boot !== worker[1]
+        ? 'different-boot'
+        : BigInt(before[19]) < BigInt(worker[2])
+          ? 'older'
+          : before[19] === worker[2]
+            ? 'same-tick'
+            : 'newer';
+    return `proc-state=${before[0]};proc-ppid=${before[1]};proc-tgid=${tgid};proc-flags=${before[6]};proc-uid=${uid.slice(1).join(':')};proc-birth=${age};proc-origin=unbound;proc-birth-samples-stable=${stable};kernel=${kernel}`;
+  } catch {
+    return 'proc=unavailable';
+  }
+}
 
 function fixtureBirthRejection(
   pid: number,
@@ -197,7 +251,9 @@ export function observeFixtureCwds(
     source: 'none',
     reason: 'lsof-malformed-output',
     ...(processObservation
-      ? { diagnostic: `class=${kind};pid=${pid ?? 'none'}` }
+      ? {
+          diagnostic: `class=${kind};pid=${pid ?? 'none'}${kind === 'birth-not-earlier' && pid !== undefined && processObservation.platform === 'linux' && processObservation.readProcFile ? `;${describeDeniedLinuxProcess(pid, workerBirth, processObservation.readProcFile)}` : ''}`,
+        }
       : {}),
   });
   for (const line of result.stdout.split('\n')) {
@@ -278,6 +334,7 @@ export class StationFixtureOwner {
         observeFixtureCwds(roots, runFixtureCwdLsof, {
           platform: process.platform,
           birth: lookupProcessBirthFingerprint,
+          readProcFile: (path) => readFileSync(path, 'utf8'),
         }));
   }
 
