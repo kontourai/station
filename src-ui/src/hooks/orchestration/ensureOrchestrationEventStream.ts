@@ -608,12 +608,18 @@ export function ensureOrchestrationEventStream(
           }
         // Overflow compaction replaces non-durable list and inbox hints too.
         if (client) {
-          const currentAuthority = streamQueryClients.findLast(
-            (entry) =>
+          let currentAuthority: string | undefined;
+          for (let index = streamQueryClients.length - 1; index >= 0; index--) {
+            const entry = streamQueryClients[index];
+            if (
               entry.apiBase === apiBase &&
               entry.queryClient === client &&
-              entry.authorityKey !== undefined,
-          )?.authorityKey;
+              entry.authorityKey !== undefined
+            ) {
+              currentAuthority = entry.authorityKey;
+              break;
+            }
+          }
           const scope =
             currentAuthority === undefined
               ? [apiBase]
