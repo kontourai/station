@@ -1899,6 +1899,45 @@ token and physical-attempt caps are unavailable; portable Flow lineage is
 unbound and work acceptance is unassessed. The separate reserved direct-API
 source/tariff owners do not establish those guarantees for CLI sessions.
 
+## Reserved Station source execution
+
+The [reserved-turn owner](../../src-server/runtime/conversation/reserved-station-turn.ts)
+issues an in-memory opaque port over an already prepared sealed SDK attempt.
+It binds the current principal, session, client turn, exact input, model and
+options, and consumes the attempt once. The port is server-internal;
+[delegation](../../src-server/tools/station-control-delegation.ts) and the
+[orchestration service](../../src-server/services/orchestration/orchestration-service.ts)
+carry it outside public DTOs. Remote execution, staged files, tenant execution
+and other engines refuse this mode.
+
+The [Station adapter](../../src-server/providers/adapters/station-agent-adapter.ts)
+records a reserved identity on session start and in its resume cursor. A matching
+reserved send enters the SDK owner before the ordinary `/chat` branch; an
+ordinary send into that session refuses, including after adapter recovery.
+The public reserved-metadata filter prevents client options from selecting this
+mode. The service reads the raw stored session-start marker only for binding
+and stop restrictions; the marker cannot issue a port or authorize a request.
+
+The [reserved SDK attempt](../../src-server/runtime/conversation/reserved-sdk-source-attempt.ts)
+passes through the durable physical launch fence and awaits
+[host evidence retention](../../src-server/services/orchestration/delegation-group-persistence.ts)
+before returning integer token usage and tariff-derived micros. Canonical
+adapter events then carry buffered output and an evidence reference, not raw
+provider JSON. The mode offers no tools, approval requests or continuation.
+[Cooperative stop](../../src-server/services/orchestration/cooperative-stop.ts)
+preserves an exact-turn unconfirmed result only for this recorded mode;
+ordinary sessions keep their logical stop deadline and teardown. Cancellation
+and logical terminal events do not prove physical termination or release an
+unknown paid reservation.
+
+The [controlled owner test](../../src-server/services/orchestration/__tests__/delegation-group-sdk-source-wire-owner.test.ts)
+composes published Flow accounting, the real adapter, orchestration service and
+SQLite event store under synthetic provider responses. Production preparation,
+provider qualification issuance and rounds serving remain unwired. Existing v2
+journals retain their controller and charges; new rounds require separate
+custody. This integration does not enable the public paid group capability or
+establish live provider, billing or whole-epic acceptance.
+
 ## SessionLifecycleModule
 
 Marking a Session complete can race a new turn. The [lifecycle module](../../src-server/services/orchestration/session-lifecycle-module.ts) coordinates the transition with provider invocation and reruns its checks after completion preparation, so an old view cannot close newly active work.
