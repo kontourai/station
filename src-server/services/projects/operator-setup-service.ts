@@ -77,6 +77,17 @@ export class OperatorSetupService {
     );
   }
 
+  private publish(receipt: OperatorSetupReceipt, reserve = 0) {
+    if (
+      Buffer.byteLength(JSON.stringify(receipt, null, 2), 'utf8') + reserve >
+      65536
+    )
+      throw new OperatorSetupConflict(
+        'Setup preview is too large to retain safely. Shorten the command or input list.',
+      );
+    this.store(receipt.id).write(receipt);
+  }
+
   private read(id: string): OperatorSetupReceipt | null {
     const record = this.store(id).read();
     if (record === null) return null;
@@ -207,7 +218,6 @@ export class OperatorSetupService {
       request.expectedProjectId,
       request.inputPaths,
     );
-    const store = this.store(request.id);
     await mkdir(dirname(storePath(this.home, request.id)), { recursive: true });
     const release = await acquireFileMutationLockAsync(
       join(this.home, 'operator-setup', 'registry.mutation'),
@@ -245,7 +255,7 @@ export class OperatorSetupService {
         updatedAt: new Date().toISOString(),
       };
       assertCurrent();
-      store.write(receipt);
+      this.publish(receipt, 1024);
       return receipt;
     } finally {
       await release();
@@ -297,7 +307,6 @@ export class OperatorSetupService {
     id: string,
     assertCurrent: () => void,
   ): Promise<OperatorSetupReceipt> {
-    const store = this.store(id);
     const saved = this.read(id);
     if (!saved || saved.projectSlug !== slug)
       throw new OperatorSetupConflict(
@@ -318,7 +327,7 @@ export class OperatorSetupService {
         updatedAt: new Date().toISOString(),
       };
       assertCurrent();
-      store.write(running);
+      this.publish(running, 1024);
       this.active.add(id);
       let phase: 'succeeded' | 'failed' = 'succeeded';
       let exitCode = 0;
@@ -366,7 +375,7 @@ export class OperatorSetupService {
         ...(observedDigest ? { observedDigest } : {}),
         updatedAt: new Date().toISOString(),
       };
-      store.write(receipt);
+      this.publish(receipt);
       return receipt;
     } finally {
       this.active.delete(id);

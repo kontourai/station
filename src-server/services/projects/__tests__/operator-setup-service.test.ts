@@ -232,3 +232,34 @@ test('a setup-created FIFO is refused as an input rather than blocking outcome i
     f.service.preview('setup', { ...request, id: randomUUID() }, () => {}),
   ).rejects.toThrow('regular files');
 });
+
+test('serialized UTF-8 admission preserves readable receipts and rejects oversized escaped previews before any effect', async () => {
+  const f = await fixture();
+  const good = await f.service.preview('setup', f.request, () => {});
+  const original = readFileSync(
+    join(f.home, 'operator-setup', `${good.id}.json`),
+  );
+  const input = `${'\u0001'.repeat(180)}/${'\u0002'.repeat(180)}/input.txt`;
+  mkdirSync(join(f.cwd, '\u0001'.repeat(180), '\u0002'.repeat(180)), {
+    recursive: true,
+  });
+  writeFileSync(join(f.cwd, input), 'small file');
+  const request = {
+    ...f.request,
+    id: randomUUID(),
+    inputPaths: Array.from({ length: 32 }, () => input),
+  };
+  await expect(f.service.preview('setup', request, () => {})).rejects.toThrow(
+    'too large to retain safely',
+  );
+  expect(existsSync(join(f.home, 'operator-setup', `${request.id}.json`))).toBe(
+    false,
+  );
+  expect(
+    readFileSync(join(f.home, 'operator-setup', `${good.id}.json`)),
+  ).toEqual(original);
+  expect(existsSync(join(f.cwd, 'effect.txt'))).toBe(false);
+  expect(await f.service.get('setup', good.id, () => {})).toMatchObject({
+    phase: 'previewed',
+  });
+});
