@@ -28,6 +28,8 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-10-22T17:01:18Z | nightly-desktop | 0.1.11-nightly.2486.4 | `d650fa2` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39806934605) |
+| 2026-10-22T17:01:14Z | nightly-android | 0.1.11-nightly.2486.4 | `d650fa2` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39806934605) |
 | 2026-10-22T15:49:57Z | nightly-npm | 0.11.0-nightly.2486.39806934605 | `d650fa2` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/39806934605) |
 | 2026-10-22T06:17:39Z | nightly-desktop | 0.1.11-nightly.2486.3 | `a6e8f37` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39727706028) |
 | 2026-10-22T06:17:37Z | nightly-android | 0.1.11-nightly.2486.3 | `a6e8f37` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/39727706028) |
@@ -325,6 +327,36 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-10-22T17:01:18Z · nightly-desktop · 0.1.11-nightly.2486.4
+
+- Ship SHA: `d650fa2d34d02ce00f1252c4f7b642eb75d914e5`
+- Artifact built at: `2026-10-22T15:49:22.528Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 39806934605)
+
+### Changelog
+
+Commits since `a6e8f37` ([full sha](https://github.com/kontourai/station/commit/a6e8f37663391132bae4e8e35772c2e9e8a53099)):
+
+**Other**
+
+- [#4004](https://github.com/kontourai/station/pull/4004) test(acp): profile-driven fake engine and engine qualification conformance
+
+## 2026-10-22T17:01:14Z · nightly-android · 0.1.11-nightly.2486.4
+
+- Ship SHA: `d650fa2d34d02ce00f1252c4f7b642eb75d914e5`
+- Artifact built at: `2026-10-22T15:48:28.831Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 39806934605)
+
+### Changelog
+
+Commits since `a6e8f37` ([full sha](https://github.com/kontourai/station/commit/a6e8f37663391132bae4e8e35772c2e9e8a53099)):
+
+**Other**
+
+- [#4004](https://github.com/kontourai/station/pull/4004) test(acp): profile-driven fake engine and engine qualification conformance
 
 ## 2026-10-22T15:49:57Z · nightly-npm · 0.11.0-nightly.2486.39806934605
 

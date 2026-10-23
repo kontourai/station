@@ -1,0 +1,7 @@
+{
+  "revision": "e62ca9b380dcc617d1aa1d22e9d8993c7cf51058",
+
+  "notes": [
+    {"path":"docs/guides/native-releases.md","note":"Reviewed the macOS installer disk image section after adding light label plates to the DMG art: the observation is scoped to a mounted image on macOS 26 in Dark Mode (Finder painted names near-black), Light Mode labels are dark too, the mounted layout check still proves structure only, and the regeneration steps (render-background.swift plus tiffutil) reproduce the committed TIFF byte for byte.","inputs":["docs/guides/native-releases.md"]}
+  ]
+}
