@@ -585,10 +585,11 @@ function collectEntries(
     )) {
       const segments = [...parentSegments, entry.name];
       if (isTransient(segments)) continue;
-      if (update && isExternalStationHomePath(segments)) continue;
       assertSegment(entry.name);
       const path = join(directory, entry.name);
       let stats = lstatSync(path);
+      if (update && isExternalStationHomePath(segments, stats.isDirectory()))
+        continue;
       if (stats.isSymbolicLink()) {
         if (!update)
           fail(
@@ -1254,8 +1255,13 @@ export interface StationHomeUpdateRestoreOptions
 }
 
 /** Whether an update leaves this home path to its owner (live or external). */
-function outsideUpdate(segments: readonly string[]): boolean {
-  return isTransient(segments) || isExternalStationHomePath(segments);
+function outsideUpdate(
+  segments: readonly string[],
+  isDirectory = false,
+): boolean {
+  return (
+    isTransient(segments) || isExternalStationHomePath(segments, isDirectory)
+  );
 }
 
 /**
@@ -1267,10 +1273,10 @@ function removeUpdateState(directory: string, parentSegments: string[]): void {
   for (const name of readdirSync(directory)) {
     const segments = [...parentSegments, name];
     if (parentSegments.length === 0 && isLiveStationHomeRoot(name)) continue;
-    if (isExternalStationHomePath(segments)) continue;
     const path = join(directory, name);
+    const stats = lstatSync(path);
+    if (isExternalStationHomePath(segments, stats.isDirectory())) continue;
     if (containsExternalStationHomePath(segments)) {
-      const stats = lstatSync(path);
       if (stats.isDirectory() && !stats.isSymbolicLink()) {
         removeUpdateState(path, segments);
         continue;
@@ -1371,7 +1377,7 @@ export function restoreStationHomeUpdateBackup(
     )
       fail('restored home does not match the validated backup');
     // Only what this restore wrote: never the user's repositories.
-    syncDirectoryTree(homeDir, outsideUpdate);
+    syncDirectoryTree(homeDir, (segments) => outsideUpdate(segments, true));
     return { manifest };
   } catch (error) {
     if (error instanceof StationHomeArchiveError) throw error;

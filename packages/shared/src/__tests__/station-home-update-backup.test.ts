@@ -16,6 +16,8 @@ import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../../src-server/domain/file-storage-adapter.js';
 import { ProjectCreationService } from '../../../../src-server/services/projects/project-creation-service.js';
+import { RepositoryAcquisitionService } from '../../../../src-server/services/projects/repository-acquisition-service.js';
+import { execGitSync } from '../../../../src-server/utils/git-exec.js';
 import {
   createStationHomeBackup,
   createStationHomeUpdateBackup,
@@ -51,6 +53,28 @@ function serviceHome(): { root: string; home: string; backupDir: string } {
   mkdirSync(join(home, 'logs'), { recursive: true });
   writeFileSync(join(home, 'logs', 'default.log'), 'before\n');
   return { root, home, backupDir: join(root, 'update-backups', 'u1') };
+}
+
+function acquisitionHome() {
+  const fixture = serviceHome();
+  const source = join(fixture.root, 'source');
+  execGitSync(['init', '--initial-branch=main', source]);
+  writeFileSync(join(source, 'README.md'), 'original repository bytes\n');
+  execGitSync(['add', '.'], { cwd: source });
+  execGitSync(
+    [
+      '-c',
+      'user.name=Fixture',
+      '-c',
+      'user.email=fixture@example.test',
+      'commit',
+      '-m',
+      'seed',
+    ],
+    { cwd: source },
+  );
+  mkdirSync(join(fixture.root, 'update-backups'));
+  return { ...fixture, source };
 }
 
 function sha(path: string): string {
@@ -106,6 +130,202 @@ describe('update backup and in-place restore (#2675 D)', () => {
     expect(restarted.get(id)).toEqual(before);
     expect(await restarted.create(id, request, publish)).toEqual(before);
     expect(publications).toBe(1);
+  });
+
+  it('preserves user edits in a real acquired Project checkout while restoring receipts', async () => {
+    const fixture = acquisitionHome();
+    const acquisitions = new RepositoryAcquisitionService(fixture.home);
+    const request = {
+      requestId: randomUUID().toUpperCase(),
+      sourceUrl: fixture.source,
+    };
+    const acquired = await acquisitions.acquire(request);
+    expect(acquired.phase).toBe('ready');
+    const storage = new FileStorageAdapter(fixture.home);
+    const now = new Date().toISOString();
+    const project = {
+      id: randomUUID(),
+      slug: 'acquired',
+      name: 'Acquired',
+      createdAt: now,
+      updatedAt: now,
+      ...(await acquisitions.projectSource(request.requestId)),
+    };
+    await storage.createProject(project);
+    const receipt = join(
+      fixture.home,
+      'repository-acquisitions',
+      request.requestId,
+      'operation.json',
+    );
+    const receiptBefore = readFileSync(receipt);
+    const userFile = join(acquired.checkoutPath, 'README.md');
+    const human = createStationHomeBackup({
+      homeDir: fixture.home,
+      outputDir: join(fixture.root, 'human-backup'),
+    });
+    const userPath = [
+      'repository-acquisitions',
+      request.requestId,
+      'checkout-1',
+      'README.md',
+    ];
+    expect(
+      human.manifest.files.some(
+        (file) => file.path.join('/') === userPath.join('/'),
+      ),
+    ).toBe(true);
+    const { manifest } = createStationHomeUpdateBackup({
+      homeDir: fixture.home,
+      backupDir: fixture.backupDir,
+    });
+    writeFileSync(userFile, 'user edits during trial\n');
+    writeFileSync(
+      join(acquired.checkoutPath, 'untracked.txt'),
+      'new user work\n',
+    );
+    writeFileSync(receipt, '{}');
+    restoreStationHomeUpdateBackup({
+      homeDir: fixture.home,
+      backupDir: fixture.backupDir,
+    });
+    expect(
+      readFileSync(userFile, 'utf8'),
+      'rollback must preserve user edits',
+    ).toBe('user edits during trial\n');
+    expect(
+      readFileSync(join(acquired.checkoutPath, 'untracked.txt'), 'utf8'),
+    ).toBe('new user work\n');
+    expect(existsSync(join(fixture.backupDir, 'home', ...userPath))).toBe(
+      false,
+    );
+    expect(
+      manifest.files.some((file) => file.path.join('/') === userPath.join('/')),
+    ).toBe(false);
+    expect(readFileSync(receipt)).toEqual(receiptBefore);
+    expect(
+      new RepositoryAcquisitionService(fixture.home).get(request.requestId),
+    ).toEqual(acquired);
+    expect(
+      new FileStorageAdapter(fixture.home).getProject('acquired')
+        .workingDirectory,
+    ).toBe(acquired.checkoutPath);
+  });
+
+  it('restores a real started-effect receipt while preserving a later retry checkout', async () => {
+    const fixture = acquisitionHome();
+    const service = new RepositoryAcquisitionService(fixture.home);
+    const request = { requestId: randomUUID(), sourceUrl: fixture.source };
+    const directory = join(
+      fixture.home,
+      'repository-acquisitions',
+      request.requestId,
+    );
+    const checkout = join(directory, 'checkout-1');
+    await expect(
+      service.acquire(request, false, () => {
+        if (existsSync(join(checkout, '.git')))
+          throw new Error('authority lost after clone');
+      }),
+    ).rejects.toThrow('authority lost after clone');
+    const started = service.get(request.requestId);
+    expect(started?.phase).toBe('acquiring');
+    expect(existsSync(join(checkout, '.git'))).toBe(true);
+    createStationHomeUpdateBackup({
+      homeDir: fixture.home,
+      backupDir: fixture.backupDir,
+    });
+    const retry = await service.acquire(request, true);
+    expect(retry.phase).toBe('ready');
+    expect(retry.attempt).toBe(2);
+    writeFileSync(join(checkout, 'retained.txt'), 'first attempt work');
+    writeFileSync(join(retry.checkoutPath, 'README.md'), 'second attempt work');
+    restoreStationHomeUpdateBackup({
+      homeDir: fixture.home,
+      backupDir: fixture.backupDir,
+    });
+    const restarted = new RepositoryAcquisitionService(fixture.home);
+    expect(restarted.get(request.requestId)).toEqual(started);
+    expect(await restarted.acquire(request)).toEqual(started);
+    expect(readFileSync(join(checkout, 'retained.txt'), 'utf8')).toBe(
+      'first attempt work',
+    );
+    expect(readFileSync(join(retry.checkoutPath, 'README.md'), 'utf8')).toBe(
+      'second attempt work',
+    );
+  });
+
+  it('preserves orphan checkout directories but restores adjacent state, files and links without following them', () => {
+    const fixture = serviceHome();
+    mkdirSync(join(fixture.root, 'update-backups'));
+    const root = join(fixture.home, 'repository-acquisitions');
+    const id = '00000000-0000-0000-0000-000000000000';
+    const directory = join(root, id);
+    const orphan = join(directory, 'checkout-9');
+    mkdirSync(orphan, { recursive: true });
+    writeFileSync(join(orphan, 'work.txt'), 'legacy work');
+    const state = [
+      [id, 'checkout-1'],
+      [id, 'checkout-1.json'],
+      [id, 'checkout-0', 'work.txt'],
+      [id, 'checkout-01', 'work.txt'],
+      [id, 'checkout-2.previous'],
+      [id, 'operation.json'],
+      [id, 'operation.mutation'],
+      ['not-a-uuid', 'checkout-1', 'work.txt'],
+    ];
+    for (const segments of state) {
+      const path = join(root, ...segments);
+      mkdirSync(join(path, '..'), { recursive: true });
+      writeFileSync(path, 'state before');
+    }
+    const outside = join(fixture.root, 'outside');
+    mkdirSync(outside);
+    writeFileSync(join(outside, 'work.txt'), 'outside work');
+    const linkedCheckout = join(directory, 'checkout-3');
+    const linkedParent = join(root, randomUUID());
+    symlinkSync(outside, linkedCheckout, 'dir');
+    symlinkSync(outside, linkedParent, 'dir');
+    const missing = join(directory, 'checkout-4');
+    mkdirSync(missing);
+    writeFileSync(join(missing, 'work.txt'), 'removed work');
+    const { manifest } = createStationHomeUpdateBackup({
+      homeDir: fixture.home,
+      backupDir: fixture.backupDir,
+    });
+    for (const segments of state) {
+      expect(
+        manifest.files.some(
+          (file) =>
+            file.path.join('/') ===
+            ['repository-acquisitions', ...segments].join('/'),
+        ),
+      ).toBe(true);
+      writeFileSync(join(root, ...segments), 'trial state');
+    }
+    const future = join(root, randomUUID(), 'checkout-12');
+    mkdirSync(future, { recursive: true });
+    writeFileSync(join(future, 'work.txt'), 'future work');
+    writeFileSync(join(orphan, 'work.txt'), 'legacy edits');
+    rmSync(linkedCheckout);
+    symlinkSync('missing-target', linkedCheckout, 'dir');
+    rmSync(missing, { recursive: true });
+    restoreStationHomeUpdateBackup({
+      homeDir: fixture.home,
+      backupDir: fixture.backupDir,
+    });
+    for (const segments of state)
+      expect(readFileSync(join(root, ...segments), 'utf8')).toBe(
+        'state before',
+      );
+    expect(readFileSync(join(orphan, 'work.txt'), 'utf8')).toBe('legacy edits');
+    expect(readFileSync(join(future, 'work.txt'), 'utf8')).toBe('future work');
+    expect(existsSync(missing)).toBe(false);
+    expect(readlinkSync(linkedCheckout)).toBe(outside);
+    expect(readlinkSync(linkedParent)).toBe(outside);
+    expect(readFileSync(join(outside, 'work.txt'), 'utf8')).toBe(
+      'outside work',
+    );
   });
 
   it('backs up state including the schema marker and leaves live roots out', () => {

@@ -103,8 +103,7 @@ export const STATION_HOME_ROOTS: Readonly<
   prompts: 'state',
   'proposed-changes.json': 'state',
   'pull-request-guides': 'state',
-  // Acquisition receipts and retained checkouts used by Projects live together.
-  // These private repository bytes are not a disposable download cache.
+  // Durable receipts are state; nested working copies are external below.
   'repository-acquisitions': 'state',
   runtime: 'state',
   'runtime-auth-health.json': 'state',
@@ -176,6 +175,10 @@ export function isLiveStationHomeRoot(name: string): boolean {
  *   (browser-session-registry.ts), in Chromium's format, which hold its
  *   `Singleton*` symbolic links and can grow to gigabytes.
  *
+ * Acquisition working copies under `repository-acquisitions/<uuid>/checkout-N`
+ * follow the same policy dynamically; their receipts remain state. Only real
+ * checkout directories qualify at the walk, never a file or a symbolic link.
+ *
  * The rest of `browser/` (sessions.json, local-targets.json,
  * project-settings.json) is Station's and stays `state`.
  */
@@ -198,12 +201,35 @@ function startsWith(
   );
 }
 
+// Matches RepositoryAcquisitionService's UUID request IDs and checkout-${attempt}
+// layout, independently of receipts: missing receipts must not expose user work.
+function acquisitionCheckoutParent(segments: readonly string[]): boolean {
+  return (
+    segments[0] === 'repository-acquisitions' &&
+    (segments.length === 1 ||
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        segments[1],
+      ))
+  );
+}
+
 /** Whether a home path is, or is inside, an `external` path. */
 export function isExternalStationHomePath(
   segments: readonly string[],
+  isDirectory = false,
 ): boolean {
-  return STATION_HOME_EXTERNAL_PATHS.some((external) =>
-    startsWith(segments, external),
+  return (
+    STATION_HOME_EXTERNAL_PATHS.some((external) =>
+      startsWith(segments, external),
+    ) ||
+    (segments.length >= 3 &&
+      acquisitionCheckoutParent(segments) &&
+      /^checkout-[1-9][0-9]*$/.test(segments[2]) &&
+      (segments.length > 3 || isDirectory) &&
+      segments.every(
+        (segment) =>
+          segment !== '.' && segment !== '..' && !/[\\/\0]/.test(segment),
+      ))
   );
 }
 
@@ -211,9 +237,14 @@ export function isExternalStationHomePath(
 export function containsExternalStationHomePath(
   segments: readonly string[],
 ): boolean {
-  return STATION_HOME_EXTERNAL_PATHS.some(
-    (external) =>
-      external.length > segments.length && startsWith(external, segments),
+  return (
+    STATION_HOME_EXTERNAL_PATHS.some(
+      (external) =>
+        external.length > segments.length && startsWith(external, segments),
+    ) ||
+    (segments.length > 0 &&
+      segments.length < 3 &&
+      acquisitionCheckoutParent(segments))
   );
 }
 
