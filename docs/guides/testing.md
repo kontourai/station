@@ -475,6 +475,13 @@ back to standard JSON's excerpt with an explicit `primaryErrorUnavailable`.
 Standard JSON remains authoritative for test outcomes. The existing verdict
 rules still check counts, parsing, child status and provenance.
 
+Suite-hook errors are retained separately as `suites` in the companion report
+and the execution's `structuredErrorReport`, with `omittedSuites` recording
+entries excluded by the count or byte limit. The reporter also writes the
+retained suites' redacted primary messages and stacks to stderr. A setup failure
+can therefore retain its cause even when every assertion is skipped; those
+diagnostics do not count as failed assertions or change the run's verdict.
+
 Before temporary reports are removed, a failing unsharded run writes redacted
 standard and companion JSON under
 `.kontourai/test-impact/failed-reports/<test-changed-request-key>/`, within the
