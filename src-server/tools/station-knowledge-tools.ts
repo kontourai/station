@@ -108,7 +108,7 @@ export function registerKnowledgeDataTools(server: StationControlToolRegistry) {
   }
   server.tool(
     'list_knowledge_roots',
-    'List accessible Knowledge stores.',
+    'List accessible Knowledge stores. isCurrentProject marks the calling session’s recorded Project when available. For questions about this Project, select that store rather than a similarly named record from another Project; the marker is orientation, not an access grant.',
     {},
     async () =>
       jsonToolResult(
@@ -116,14 +116,35 @@ export function registerKnowledgeDataTools(server: StationControlToolRegistry) {
           listKnowledgeRoots(
             resolveControlApiBase(),
             controlRequestOptions(),
-          ).then((roots) =>
-            roots.map(({ id, displayName, scope, adapterId }) => ({
-              id,
-              displayName,
-              scope,
-              adapterId,
-            })),
-          ),
+          ).then(async (roots) => {
+            const caller = await getStationControlCaller();
+            const projectId =
+              caller?.projectIdSource === 'session-record'
+                ? caller.localProjectId
+                : undefined;
+            return roots.map(
+              ({
+                id,
+                displayName,
+                scope,
+                adapterId,
+                projectId: rootProjectId,
+              }) => ({
+                id,
+                displayName,
+                scope,
+                adapterId,
+                ...(rootProjectId ? { projectId: rootProjectId } : {}),
+                ...(projectId
+                  ? {
+                      isCurrentProject: rootProjectId === projectId,
+                      currentProjectId: projectId,
+                      currentProjectSlug: caller?.projectSlug,
+                    }
+                  : {}),
+              }),
+            );
+          }),
         ),
       ),
   );

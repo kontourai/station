@@ -64,6 +64,28 @@ beforeAll(async () => {
     // environment is "current".
     if (c.req.path === '/.well-known/station/v1')
       return c.json({ environmentId: 'environment-current' });
+    if (c.req.path === '/api/knowledge/roots')
+      return c.json({
+        success: true,
+        data: [
+          {
+            id: 'other-root',
+            displayName: 'Same policy',
+            scope: { kind: 'project', projectSlug: 'other-project' },
+            projectId: 'other-id',
+            adapterId: 'kit-default-store',
+            storeRoot: '/private/other',
+          },
+          {
+            id: 'current-root',
+            displayName: 'Same policy',
+            scope: { kind: 'project', projectSlug: 'project-a' },
+            projectId: 'local-project-a',
+            adapterId: 'kit-default-store',
+            storeRoot: '/private/current',
+          },
+        ],
+      });
     return c.json({ success: true, data: {} });
   });
   let resolvePort!: (value: number) => void;
@@ -319,6 +341,29 @@ describe('the authority table routes are the routes the tools call', () => {
           name,
           arguments: ARGS[name] ?? {},
         });
+        if (name === 'list_knowledge_roots') {
+          const envelope = JSON.parse(
+            result.result.content.find(
+              (part: { type: string }) => part.type === 'text',
+            ).text,
+          );
+          expect(envelope.success).toBe(true);
+          expect(envelope.data).toEqual([
+            expect.objectContaining({
+              id: 'other-root',
+              projectId: 'other-id',
+              isCurrentProject: false,
+            }),
+            expect.objectContaining({
+              id: 'current-root',
+              projectId: 'local-project-a',
+              isCurrentProject: true,
+              currentProjectId: 'local-project-a',
+              currentProjectSlug: 'project-a',
+            }),
+          ]);
+          expect(JSON.stringify(envelope)).not.toContain('/private/');
+        }
         const internal = recorded.filter((entry) => entry.internal);
         const policy =
           STATION_CONTROL_TOOL_POLICY[
