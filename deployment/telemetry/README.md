@@ -460,9 +460,29 @@ Snapshot preservation does not preserve authority changes made later. An
 additional control revoked a source after the backup: the original receiver
 refused it, but the older restored database still accepted its credential.
 Managed restore therefore needs current-authority reconciliation or source
-credential invalidation before receiver activation. That activation fence is
-not implemented yet. Do not treat raw snapshot restoration as safe reactivation;
-post-snapshot revocations and public publication state require separate proof.
+credential invalidation before receiver activation. The product-only one-shot
+command below now performs that invalidation. Keep all receivers stopped and
+start only the restored PostgreSQL service first; use a compatible artifact
+that implements the command:
+
+```sh
+docker compose --env-file /absolute/private/telemetry.env \
+  -f deployment/telemetry/compose.yaml run --rm --no-deps receiver \
+  node dist/main.mjs --fence-product-sources-after-restore
+```
+
+This invocation publishes no service ports. Require successful process exit and
+the `station-product-restore-fence/v1` receipt with `scope: product-sources-only`.
+It validates the existing schema without migrations, revokes all active copied
+product-source credentials atomically, closes its pool and exits without an
+HTTP listener or maintenance timers. Observations, receipts and existing
+revocation timestamps remain intact. Source enrollment is explicit afterward.
+
+The command reports publisher state as `unreconciled`: it does not alter
+publisher keys, noise keys or publication records, nor prove that an old public
+privacy snapshot is safe. Managed restore orchestration and public-state
+reconciliation remain unfinished. Do not treat raw snapshot restoration or this
+product-only fence as a complete restore/installation qualification.
 
 Do not remove volumes with `down -v`, edit migration records or strip new grant
 fields to make an older binary start. An incompatible upgrade/rollback must
