@@ -14,6 +14,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dump, load } from 'js-yaml';
 import { readReceiverArtifactManifest } from '../packages/telemetry-broker/artifact-manifest.mjs';
+import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const DEPLOYMENT = [
@@ -243,10 +244,7 @@ export async function verifyTelemetryCompanion(directory) {
   return manifest;
 }
 
-if (
-  process.argv[1] &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url)
-) {
+if (invokedDirectly(import.meta.url)) {
   const [action, directory, ...extra] = process.argv.slice(2);
   if (!['pack', 'verify'].includes(action) || !directory || extra.length)
     throw new Error(
