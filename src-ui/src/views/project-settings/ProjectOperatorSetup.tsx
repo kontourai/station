@@ -153,7 +153,7 @@ export function ProjectOperatorSetup({
         onChange={(event) => setCommand(event.target.value)}
       />
       <label htmlFor={pathsId}>
-        Input files to track, one repository-relative path per line
+        Input files to track, one execution-directory-relative path per line
       </label>
       <textarea
         id={pathsId}

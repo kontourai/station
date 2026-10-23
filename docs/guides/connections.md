@@ -1239,7 +1239,7 @@ See the [API contract](../reference/api.md#repository-acquisition).
 
 Repository acquisition and attachment run no setup. After creating the Project,
 open **Project settings → Sources → Review and run setup**. Enter a command you
-trust, its deadline (1–600 seconds; 30 by default), and the repository-relative
+trust, its deadline (1–600 seconds; 30 by default), and the execution-directory-relative
 files that affect it. Include manifests, lockfiles and any invoked scripts.
 **Preview setup** records the exact command, deadline, current execution root,
 Git commit and file hashes; absent declared inputs are recorded too. Nothing

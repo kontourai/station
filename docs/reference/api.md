@@ -223,7 +223,7 @@ Local-operator-only `POST /api/projects/:slug/operator-setup/preview` accepts
 `{id, expectedProjectId, command, inputPaths, timeoutSeconds?}`. `id` is a UUID;
 `timeoutSeconds` is 1–600 (default 30). It records the command/deadline, exact
 local Project ID, resolved execution directory, Git commit and declared input
-hashes without executing. Inputs are repository-relative regular files (32,
+hashes without executing. Inputs are execution-directory-relative regular files (32,
 1 MiB each, 8 MiB total); missing inputs are recorded as absent. A different
 intent cannot reuse an ID. Oversized receipts refuse before persistence with
 room reserved for the eventual outcome. History is capped at 1,000 operations.

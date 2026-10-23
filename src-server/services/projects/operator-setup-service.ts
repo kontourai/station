@@ -120,7 +120,7 @@ export class OperatorSetupService {
           )
       )
         throw new OperatorSetupConflict(
-          'Choose repository-relative input files without traversal or .git.',
+          'Choose execution-directory-relative input files without traversal or .git.',
         );
       const target = resolve(cwd, path);
       let sha256: string | null = null;
