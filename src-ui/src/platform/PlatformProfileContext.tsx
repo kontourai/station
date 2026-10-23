@@ -426,6 +426,19 @@ export function PlatformBootstrap({ children }: { children: ReactNode }) {
     };
   }, [profile]);
 
+  useEffect(() => {
+    if (!profile?.isMobile || !profile.isTauri) return;
+    let disposed = false;
+    let unregister: (() => void) | undefined;
+    void import('./native/connectionDiscovery').then((module) => {
+      if (!disposed) unregister = module.registerNativeConnectionDiscovery();
+    });
+    return () => {
+      disposed = true;
+      unregister?.();
+    };
+  }, [profile]);
+
   // A dev build sits next to a real install under a near-identical name, so
   // tint the whole app rather than relying on the launcher icon alone. Toggled
   // rather than only added: the profile can resolve after a release-build

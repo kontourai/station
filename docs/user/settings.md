@@ -64,6 +64,15 @@ Each host's menu also offers **Share devices…**, **Disable hub**, **Edit** and
 [mobile device workspace guide](https://github.com/kontourai/station/blob/main/docs/guides/mobile-device-workspace.md)
 explains what you can do with the devices once a host is ready.
 
+## Nearby Stations
+
+On the computer running Station, **Settings → Pairing → Discover this Station
+nearby** makes its name and local address visible to nearby devices. It starts
+off and only the computer's local operator can change it. The status below the
+switch says whether publication succeeded; enabling it does not change your
+network or firewall. Connecting still needs your approval. See
+[Connect your phone](getting-started.md#connect-your-phone).
+
 ## Link to a setting
 
 Every Settings row has a stable address of the form

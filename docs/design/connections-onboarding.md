@@ -30,6 +30,13 @@ work-blocking restrictions also appear in the workspace. Routine reconnects use
 the connection indicator. Setup-return guidance is inline on the current page,
 and short action outcomes use toasts. No global banner stack is mounted.
 
+A fresh phone without a real saved Station instead shows the QR-first welcome
+before the protected workspace mounts. Its connection manager and pending
+pairing owner retain their stable recovery lifetime. Once a saved Station exists,
+including an offline one, the normal Station control and details own recovery.
+Selected-Station changes fence live toast callbacks through the scoped provider;
+this does not clear or replay an uncertain one-time pairing exchange.
+
 ## Intent-first work entry
 
 Home accepts the task before configuration choices. A submitted request uses the

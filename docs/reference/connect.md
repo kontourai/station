@@ -934,6 +934,31 @@ return isDetecting
 
 ---
 
+### One-time exchange recovery
+
+`completePendingPairing` atomically commits an IndexedDB claim before sending an
+exchange. Strict transaction durability must be supported; unavailable storage
+blocks the send. Independent tabs share this authority on nonsecure HTTP origins
+without depending on Web Locks. Redirects are refused. A lost response, abort,
+invalid response or failed local credential/profile custody retains an
+`indeterminate` hold. Ordinary pending-slot clear/save does not erase it.
+
+Only the exact unconsumed `request_not_confirmed` 409 or `rate_limited` 429
+response permits a retry. Held attempts survive expiry. Completed/retired
+receipts are retained until their original offer expiry, with the host remaining
+the expiry authority. `restoreHeldPairingExchanges` returns `{status, held}`;
+available empty inventory differs from unavailable/corrupt or partial recovery.
+Explicit retirement follows operator review/revocation and does not itself revoke
+remote access. Browser storage or device loss is outside this persistence guarantee.
+
+The optional `renderPairingEndpointSuggestions` modal slot accepts host-owned
+content with `{apiBase, request, onSuggest}`. Station's host UI fetches the
+permission-protected raw endpoint inventory with React Query and shows an exact
+HTTPS address with an explicit Use action. It never overwrites entered/remembered
+addresses automatically. Host QR creation requires reachable HTTPS/nonloopback;
+the decoder retains HTTPS and strict HTTP loopback compatibility. Native LAN
+HTTP uses the separate direct access flow instead of secret QR invitations.
+
 ### Connection candidate providers
 
 Native shells and trusted host adapters can register LAN DNS-SD, tailnet, or
@@ -977,7 +1002,23 @@ interface UseConnectionCandidatesResult {
 Candidate URLs are reduced to HTTP/HTTPS origins. URLs containing credentials,
 invalid names, and malformed results are discarded. Tailnet candidates
 rank ahead of LAN and desktop-host hints, and duplicate origins collapse to one
-suggestion. A failing provider is isolated from healthy providers.
+suggestion. A failing provider is isolated from healthy providers. Provider registration is
+reactive: removal or replacement cancels stale scan results. Scans default to an
+18-second outer deadline. Providers distinguish available, empty,
+permission-required, permission-denied, unavailable, timed-out, cancelled and failed.
+
+Native iOS and Android 14+ shells register the system DNS-SD provider for
+`_station._tcp.local.`. It validates TXT version/transport and resolved private
+host/port hints, cancels on background or disposal, and sends no HTTP probes.
+Android 17 first runs native permission admission, without creating a scan.
+Returning from its local-network prompt leaves an explicit **Check again**;
+permission completion cannot publish candidates or begin browsing. Missing
+permission is refused by `discover` itself. Hide/pause cancellation remains
+mandatory for an actual scan. Earlier Android versions keep QR/manual connection paths. The host publishes only
+when its local operator enables discovery; current publication uses the bound API
+port and private IPv4 interface. Selecting a result enters the existing access
+review, including explicit exact-origin consent for LAN HTTP and host approval.
+It never navigates directly to an advertised page or grants trust.
 
 **example**
 
@@ -988,7 +1029,7 @@ const { candidates, refresh } = useConnectionCandidates();
 
 Plain browsers do not register a provider by default and never enumerate a
 guessed subnet or probe a hard-coded port. Manual address and pairing-code
-entry remain available under Advanced connection options.
+entry remain available under Other ways to connect.
 
 The former `useNetworkDiscovery` and `DiscoveredServer` exports remain as
 deprecated source-compatibility adapters. The hook reads the same registered

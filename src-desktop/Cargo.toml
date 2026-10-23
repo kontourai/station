@@ -139,6 +139,7 @@ tauri-plugin-keyring-store = { version = "=0.2.0", default-features = false }
 # (docs/design/notification-delivery.md). The iOS native half is compiled
 # only with STATION_IOS_LIVE_ACTIVITY=1 (plugins/agent-activity/build.rs).
 tauri-plugin-station-agent-activity = { path = "plugins/agent-activity" }
+tauri-plugin-station-discovery = { path = "plugins/station-discovery" }
 
 [target."cfg(target_os = \"android\")".dependencies]
 # Android's per-UID resolver is the authority for VPN DNS (including

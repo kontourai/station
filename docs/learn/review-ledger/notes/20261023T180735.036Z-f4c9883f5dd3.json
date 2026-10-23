@@ -1,0 +1,7 @@
+{
+  "revision": "0c435e38fefb68faaffb6f4ee71534494fb6fe07",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed only retirement of the exact GHSA-vfj7-8cjw-p6xm exception after GitHub marked it withdrawn on 2026-10-23T12:53:02Z. Live advisory metadata and the real audit:policy invocation confirm the identity is absent; the policy first rejected the unused exception and passes after removal. Existing dependency graph, runtime controls, other exceptions and residuals are unchanged. This is metadata maintenance, not a new brace-expansion safety or endpoint reachability claim; historical #3150 remains the investigation record. Current source integration and native/provider/visual qualification are separate.","inputs":["docs/guides/dependency-security.md","scripts/dependency-advisory-exceptions.json","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]}
+  ]
+}

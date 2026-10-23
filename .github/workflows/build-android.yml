@@ -10,6 +10,11 @@ name: "Main: Android build"
 # this build, mirroring desktop-rust.yml's convention.
 on:
   workflow_dispatch:
+    inputs:
+      isolated_onboarding:
+        description: 'Build a separate onboarding Dev app; non-main refs only'
+        type: boolean
+        default: false
   push:
     branches: [main]
     paths:
@@ -56,6 +61,31 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Select Android verification identity
+        id: identity
+        env:
+          ISOLATED_ONBOARDING: ${{ inputs.isolated_onboarding || false }}
+        run: |
+          if [ "$ISOLATED_ONBOARDING" = true ]; then
+            if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ] || [ "$GITHUB_REF" = refs/heads/main ]; then
+              echo "::error::An isolated onboarding app requires a non-main manual dispatch."
+              exit 1
+            fi
+            {
+              echo 'config=tauri.android.onboarding.conf.json'
+              echo 'package_id=io.kontourai.station.onboarding.debug'
+              echo 'artifact_name=station-android-onboarding-debug'
+            } >> "$GITHUB_OUTPUT"
+          elif [ "$ISOLATED_ONBOARDING" = false ]; then
+            {
+              echo 'config=tauri.android.dev.conf.json'
+              echo 'package_id=io.kontourai.station.debug'
+              echo 'artifact_name=station-android-debug'
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo '::error::Invalid isolated_onboarding value.'
+            exit 1
+          fi
       - name: Setup pinned pnpm
         uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
         with: { install: false }
@@ -111,7 +141,7 @@ jobs:
         run: node scripts/reset-android-generated-project.mjs
       - name: Initialize Tauri Android project
         working-directory: src-desktop
-        run: npx tauri android init --ci --skip-targets-install --config tauri.conf.json --config tauri.android.dev.conf.json
+        run: npx tauri android init --ci --skip-targets-install --config tauri.conf.json --config tauri.android.dev.conf.json --config "${{ steps.identity.outputs.config }}"
       - name: Apply Dev Android launcher, splash, and label resources
         run: node scripts/apply-android-channel-icons.mjs dev
       - name: Apply native credential bootstrap to the generated namespace
@@ -132,7 +162,7 @@ jobs:
         run: df -h /
       - name: Build Android debug APK and AAB
         working-directory: src-desktop
-        run: STATION_CLIENT_BUILD_REUSE=1 RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384" npx tauri android build --debug --apk --aab --config tauri.conf.json --config tauri.android.dev.conf.json
+        run: STATION_CLIENT_BUILD_REUSE=1 RUSTFLAGS="-C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-Wl,-z,common-page-size=16384" npx tauri android build --debug --apk --aab --config tauri.conf.json --config tauri.android.dev.conf.json --config "${{ steps.identity.outputs.config }}"
         env:
           NDK_HOME: "${{ env.ANDROID_HOME }}/ndk/27.0.12077973"
       # Observational only: runs even when the build failed so the hosted log
@@ -151,20 +181,31 @@ jobs:
       # and still not reach the APK. This is the only thing that derives "this
       # APK can say where it came from" rather than asserting it.
       - name: Verify the APK carries its build provenance
+        env:
+          EXPECTED_ANDROID_PACKAGE: ${{ steps.identity.outputs.package_id }}
         run: |
           apk=src-desktop/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
           node scripts/read-android-build-provenance.mjs "$apk"
           aapt="$ANDROID_HOME/build-tools/$ANDROID_BUILD_TOOLS_VERSION/aapt"
+          actual_package=$("$aapt" dump badging "$apk" | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
+          if [ "$actual_package" != "$EXPECTED_ANDROID_PACKAGE" ]; then
+            echo "::error::Packaged Android identity $actual_package does not match $EXPECTED_ANDROID_PACKAGE."
+            exit 1
+          fi
+          sha256sum "$apk"
+          echo "Verified Android package: $actual_package"
           "$aapt" dump xmltree "$apk" AndroidManifest.xml | grep -E 'android:usesCleartextTraffic.*0xffffffff'
-      # Name matches what android-test.yml's `Main: Android tests` workflow_run
+      # The default name matches what android-test.yml's `Main: Android tests` workflow_run
       # chain downloads (two `download-artifact` steps, name:
       # station-android-debug) — this workflow's completion is what triggers
       # that chain. The two names had drifted apart (this job previously
       # uploaded as station-android-unsigned-verification): the chain was
       # wired but silently unexercised, so the mismatch was never observed.
+      # Isolated builds use a separate artifact and cannot run on main; the
+      # normal android-test workflow_run chain skips non-main build refs.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: station-android-debug
+          name: ${{ steps.identity.outputs.artifact_name }}
           path: |
             src-desktop/gen/android/app/build/outputs/apk/universal/debug/*.apk
             src-desktop/gen/android/app/build/outputs/bundle/debug/*.aab

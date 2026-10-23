@@ -140,6 +140,10 @@
 
     "src-server/services/telemetry-producers/telemetry-producer-store.ts",
 
+    "packages/connect/src/core/pendingPairingExchangeJournal.ts",
+
+    "src-server/services/connections/lan-discovery.ts",
+
     "src-server/routes/knowledge/knowledge-document-import-routes.ts",
 
     "src-server/routes/projects/project-s3-source-routes.ts",

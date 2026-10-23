@@ -30,6 +30,10 @@ const PACKAGED_LIBRARY_PERMISSIONS = new Map([
   ],
   ['android.permission.WAKE_LOCK', 'firebase-messaging'],
   ['android.permission.ACCESS_NETWORK_STATE', 'firebase-messaging'],
+  [
+    'android.permission.ACCESS_LOCAL_NETWORK',
+    'station-discovery (explicit Android 17 LAN permission admission)',
+  ],
 ]);
 // androidx.core declares `${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`,
 // signature-level and private to the app; the prefix differs per channel.

@@ -1268,37 +1268,44 @@ application route, pairs a Device or grants Project access. See the
 ## PendingPairingCompletion
 
 [The completion owner](../../packages/connect/src/core/pendingPairingCompletion.ts)
-shares one pending pairing exchange across screens, then hands the accepted credential
-to the first caller's durable completion policy.
+shares one exact pending exchange across screens and hands the accepted credential
+to the first subscriber's durable completion policy.
 
-**Intent and Interface.** `completePendingPairing(pending, { completePaired, signal?,
-onProgress? })` returns one total `PendingPairingCompletion`: paired, post-exchange
-failure, declined, expired, unavailable, identity changed, failed, or aborted.
-`completePaired` is caller-owned durable local completion and also returns a total
-result.
+**Intent and Interface.** `completePendingPairing(pending, { completePaired,
+signal?, isCurrent?, onProgress? })` returns a total outcome, including `paired`,
+`indeterminate` when an exchange may have been consumed, and `not-started` when
+local recovery storage cannot admit a send. The cached dynamic loader shares an
+in-flight import and permits a failed import to be loaded again without spending
+the request.
 
-**Contract.** A flight is exact to endpoint, request kind, offer, proof, request,
-expected environment, browser session, client instance and required account binding. Its
-first subscriber owns completion policy; later subscribers join rather than compete. The
-public entrypoint first uses a cached dynamic loader, so initial application startup
-does not pay for polling/retry code. One in-flight import is shared; a rejected import
-clears only the loader cache, leaves the persisted bearer request untouched, and makes a
-later call retry before any exchange starts. After load, retry delays are bounded,
-respect rate limiting, and wake only after their floor. A subscriber may abort without
-cancelling a flight another subscriber needs. Terminal remote results clear the stored
-pending exchange best-effort and local cleanup cannot reject a classified completion. A
-successful exchange spends the remote proof; later local persistence failure is
-`post-exchange-failed`, not permission to exchange again. Subscriber abort does not
-reverse that completed exchange.
+**Contract.** The [exchange journal](../../packages/connect/src/core/pendingPairingExchangeJournal.ts)
+serializes claims across tabs with an origin-and-request-kind IndexedDB
+readwrite transaction. Strict durability support is required and transaction
+completion precedes the send. The caller's signal, exact intent and currentness
+are checked after that asynchronous claim. The first subscriber owns durable
+completion; later subscribers share it rather than competing.
 
-**Seam, Implementation, callers, and tests.** The package entrypoint publishes the
-cached `completePendingPairing` loader. Its implementation is
-`createPendingPairingCompletion`; that constructor is an Implementation-private test
-seam for exchange, clock, waiting, and local-clear Adapters. Production callers are the
-Connect pairing flows. Real loader and Interface coverage is
-`packages/connect/src/__tests__/pendingPairingCompletion.test.ts`. **Do not
-reintroduce:** eager pairing import at shell startup, per-screen polling, competing
-`completePaired` policies, or caller-owned retry timing.
+Only exact `request_not_confirmed` 409 and `rate_limited` 429 responses release a
+proven unconsumed claim for bounded retry. A lost response, redirect refusal,
+malformed response, changed environment or failed local custody leaves the
+attempt held; abort and expiry do not erase that uncertainty. Approved access
+must reach durable local custody before a successful receipt permits pending-slot
+cleanup. Held entries survive ordinary clear/save and reload. Completed and
+explicitly retired receipts remain through the original offer expiry; the server
+remains the expiry authority. Recovery inventory distinguishes available empty,
+unavailable and corrupt/partial results. Explicit retirement follows review of
+paired devices on the computer and does not revoke remote access. Persistence
+relies on browser storage and does not promise recovery after site-data deletion
+or storage/device loss.
+
+**Callers and evidence.** Join and `PendingPairingReconciler` supply local custody
+and currentness. `pendingPairingCompletion.test.ts` covers coordinator behavior;
+`pendingPairingExchangeJournal.test.ts` exercises the storage authority; the real
+Chromium `scripts/__tests__/pending-pairing-journal.browser.test.ts` covers
+independent tabs on a nonsecure HTTP origin. These checks do not establish native
+WebView or physical-device persistence. Do not reintroduce per-screen polling,
+transport-error replay, competing completion policies or a localStorage admission
+lock.
 
 ## SessionQueryModule
 
