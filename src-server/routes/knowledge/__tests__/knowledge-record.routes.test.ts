@@ -6,6 +6,7 @@ import type {
   KnowledgeAdapterDescriptor,
   KnowledgeStoreRoot,
 } from '@kontourai/station-contracts/knowledge-store';
+import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { ReadOnlyStoreError } from '../../../knowledge-store/errors.js';
@@ -82,6 +83,26 @@ describe('knowledge-record routes', () => {
     const body = await readJson<{ success: boolean; data: KitRecord }>(res);
     return { res, body };
   }
+
+  test('record authorization does not intercept sibling graph sync', async () => {
+    const authorize = vi.fn(async () => false);
+    const app = new Hono();
+    app.route(
+      '/',
+      createKnowledgeRecordRoutes({ store, mayUseRoot: authorize }),
+    );
+    app.post('/roots/:rootId/graph/neo4j-sync', (c) =>
+      c.json({ success: true }),
+    );
+    const response = await app.request(`/roots/${rootId}/graph/neo4j-sync`, {
+      method: 'POST',
+    });
+    expect(response.status).toBe(200);
+    expect(authorize).not.toHaveBeenCalled();
+    const denied = await app.request(`/roots/${rootId}/graph`);
+    expect(denied.status).toBe(403);
+    expect(authorize).toHaveBeenCalledOnce();
+  });
 
   test('guarded reads refuse a missing initial root before later registration can bypass delivery checks', async () => {
     const getRoot = vi.spyOn(store, 'getRoot');

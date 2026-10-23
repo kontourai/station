@@ -7799,6 +7799,23 @@ export function configureRuntimeRoutes(
     '/api/knowledge',
     createNeo4jGraphRoutes({
       store: context.knowledgeStoreProvider,
+      mayUseRoot: async (request, root, action) => {
+        const authority = projectMembershipAuthority(request);
+        await authority.current();
+        if (
+          action === 'sync' &&
+          root.scope.kind !== 'project' &&
+          root.adapterId === CONVERSATION_STORE_ADAPTER_ID
+        ) {
+          await authority.operator();
+          return mayUseKnowledgeRoot(request, root, 'view');
+        }
+        return mayUseKnowledgeRoot(
+          request,
+          root,
+          action === 'sync' ? 'edit' : 'view',
+        );
+      },
       runAsIndexer: runAsKnowledgeIndexer,
       mayBuildSessionBackedRoot,
     }),
