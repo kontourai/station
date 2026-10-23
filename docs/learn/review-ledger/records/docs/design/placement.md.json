@@ -156,6 +156,14 @@
 
     "src-ui/src/__tests__/ChatMessageList.subagentCards.test.tsx",
 
+    "src-ui/src/lib/layout-panels-record.ts",
+
+    "src-ui/src/hooks/useLayoutSessionPanels.ts",
+
+    "src-ui/src/hooks/__tests__/useLayoutSessionPanels.test.tsx",
+
+    "src-ui/src/lib/__tests__/layout-panels-record.test.ts",
+
     "src-ui/src/components/chat/SubagentTranscriptCard.tsx",
 
     "src-ui/src/components/chat/SubagentTranscriptCard.css",
