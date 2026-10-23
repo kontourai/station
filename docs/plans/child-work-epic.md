@@ -1040,7 +1040,7 @@ corroborates those joins and the positive probe's recorded source hashes; it
 performed no independent execution.
 
 A separate background control emits partial bytes and stops the exact child.
-Its first stronger recovery check lacked a completed parent terminal because
+Its first stronger recovery check lacked a completed parent terminal after
 the harness immediately shut down; that 8/9 result remains failed. A new run
 waits for canonical completion of the exact parent turn before teardown: six
 runtime checks and nine fresh-process recovery checks pass. The child remains
