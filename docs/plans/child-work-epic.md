@@ -26,8 +26,10 @@ normally before publication. Open one PR when the combined work is ready.
   qualification remains open.
 - **#2868:** projectless rows show labeled directory context. Delegation
   initiation uses the first turn's recorded origin; authenticated actor kind
-  stays separate from the self-reported client surface. No external
-  orchestrator is inferred from text or User-Agent.
+  stays separate from the self-reported client surface. Activity rows and origin
+  filters, Session metadata and receipt summaries mark known client surfaces
+  as `(reported)` too. No external orchestrator is inferred from text or
+  User-Agent.
 - **Native activity:** Codex child-owned tool items project bounded tool names
   through the shared activity UI. The inspected Muse protocol has no child
   tool stream; its missing value stays absent.
@@ -995,3 +997,23 @@ fails before the repair and when immediate deletion is restored (1 red,
 24 controls); exact restoration passes 42 tests. Independent source review
 finds no introduced findings. Abandoned concurrent-render options and same-key
 consumers with different stores remain outside that scoped lifecycle repair.
+
+## Reported-origin presentation qualification
+
+At `e88d5e8db21`, the shared origin labels distinguish server-derived actor
+kind from client-reported surface in Activity rows/filters and Session details.
+Missing provenance, unknown surfaces, imported-engine attribution and Agent
+message labels retain their separate behavior. Origin filter keys are local
+component state, so this wording change needs no persisted-filter migration.
+The mounted Session-detail regression fails on the earlier source (1 red,
+23 controls); the repaired three-file selection passes 48 tests. Removing the
+shared suffix causes three intended failures with 44 controls; byte-exact
+restoration passes 48. UI typechecking, Biome and independent source review pass.
+
+Canonical lifecycle identity and the controlled browser journey bind to the
+same source. Chromium verifies the reported row, Session metadata and receipt
+labels, plus retained row/output after reload and explicit reselection. Activity
+row selection itself is component state and is not automatically restored by
+reload. This journey sends no new model request. A 390px browser viewport is
+not a second physical-device receipt for this later wording change; the earlier
+B10 evidence remains pinned to its own APK and server revisions.
