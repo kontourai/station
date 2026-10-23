@@ -132,7 +132,7 @@ sh -c 'set -eu; file=$(mktemp &quot;${TMPDIR:-/tmp}/station-install.XXXXXX&quot;
 <ol>
 <li>Open <strong>Customize → Connections</strong>.
 </li>
-<li>On the <strong>Models</strong> tab choose a detected service or <strong>Add model connection</strong>; on the <strong>Engines</strong> tab choose a detected engine or <strong>Add engine</strong>. During first run, a detected Engine can be ticked to connect it and create its External agent in the same confirmed action.
+<li>On the <strong>Models</strong> tab choose a detected service or <strong>Add model connection</strong>; on the <strong>Engines</strong> tab choose a detected engine or <strong>Add engine</strong>. During first run, a detected Engine can be ticked to connect it and create its External agent in the same confirmed action. An engine that is starting for the first time can be reported as still starting rather than failed: its Agent is added if it connects while Station is running; otherwise set it up again later.
 </li>
 <li>Follow its setup action until it reports <strong>Ready</strong>.
 </li>
