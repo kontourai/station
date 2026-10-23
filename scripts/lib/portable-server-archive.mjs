@@ -19,6 +19,10 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  packageTelemetryCompanion,
+  verifyTelemetryCompanion,
+} from '../package-telemetry-companion.mjs';
 import { stageBundledRegistry } from './bundled-registry.mjs';
 import { createPackagedReleaseManifest } from './container-release-metadata.mjs';
 import {
@@ -423,6 +427,7 @@ async function stagePortableServerTree({
   target,
   nodeDistributionBytes,
   release,
+  includeTelemetryCompanion,
 }) {
   const uiIndex = join(projectRoot, 'dist-ui', 'index.html');
   if (!existsSync(uiIndex)) {
@@ -461,6 +466,17 @@ async function stagePortableServerTree({
     recursive: true,
   });
   stageBundledRegistry({ projectRoot, outputRoot: stageRoot });
+  if (includeTelemetryCompanion) {
+    const output = join(stageRoot, '.companion-package');
+    const candidate = await packageTelemetryCompanion(output, { projectRoot });
+    const manifest = await verifyTelemetryCompanion(candidate.directory);
+    if (manifest.source !== release.sha)
+      throw new Error(
+        'Companion payload source differs from the server archive',
+      );
+    renameSync(candidate.directory, join(stageRoot, 'telemetry-companion'));
+    rmSync(output, { recursive: true });
+  }
   stageNodeRuntime(target, nodeDistributionBytes, join(stageRoot, 'runtime'));
   stageLaunchers(projectRoot, stageRoot);
   // As in a source release (whose tarball is the repository), the archive
@@ -565,6 +581,7 @@ export async function buildPortableServerArchive({
   nodeDistribution,
   keepStage = false,
   expectedRing,
+  includeTelemetryCompanion = false,
 }) {
   const target = resolvePortableServerTarget(
     platform,
@@ -605,6 +622,7 @@ export async function buildPortableServerArchive({
       target,
       nodeDistributionBytes: distributionBytes,
       release,
+      includeTelemetryCompanion,
     });
     const archivePath = createPortableArchive({
       stageParent,

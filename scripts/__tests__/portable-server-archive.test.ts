@@ -16,6 +16,10 @@ import {
 } from '../../packages/cli/src/commands/lifecycle.js';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import { STATION_DOCS_INPUT_PATHS } from '../generate-station-docs.mjs';
+import {
+  execFileSyncBounded,
+  spawnSyncBounded,
+} from '../lib/bounded-capture.mjs';
 import { stageDesktopNodeRuntime } from '../lib/desktop-node-runtime.mjs';
 import {
   archiveTool,
@@ -404,7 +408,51 @@ describe('portable server archive workflow', () => {
     );
     expect(steps[build].run).toContain('--ref "$RELEASE_REF"');
     expect(steps[build].run).toContain('--ring "$RELEASE_RING"');
+    expect(steps[build].run).toContain('--with-telemetry-companion');
+    const smoke = steps.find(
+      (step) => step.name === 'Smoke the archive with no Node.js on PATH',
+    );
+    expect(smoke?.run).toContain('--require-telemetry-companion');
   });
+});
+
+it('the archive smoke refuses a missing required companion before launching the server', () => {
+  const root = makeTempDir('portable-missing-companion-');
+  const stage = join(root, 'station-server');
+  mkdirSync(stage);
+  writeFileSync(
+    join(stage, '.station-release.json'),
+    JSON.stringify({
+      schemaVersion: 2,
+      sha: 'a'.repeat(40),
+      ref: 'v0.1.11',
+      createdAt: '2026-10-23T00:00:00.000Z',
+      channel: 'stable',
+      releaseChannel: 'stable',
+      prerelease: false,
+    }),
+  );
+  const archive = join(root, 'server.tar.gz');
+  execFileSyncBounded(
+    archiveTool(),
+    ['-czf', archive, '-C', root, 'station-server'],
+    { windowsHide: true },
+  );
+  const result = spawnSyncBounded(
+    process.execPath,
+    [
+      'scripts/smoke-portable-server-archive.mjs',
+      '--archive',
+      archive,
+      '--require-telemetry-companion',
+    ],
+    { cwd: repoRoot, encoding: 'utf8', windowsHide: true, timeout: 30_000 },
+  );
+  expect(result.error).toBeUndefined();
+  expect(result.status).toBe(1);
+  expect(result.stderr).toContain(
+    'archive is missing its required telemetry companion payload',
+  );
 });
 
 describe('portable archive workflow paths filter', () => {

@@ -71,11 +71,15 @@ function imagePins(document) {
   return pins;
 }
 
-export async function packageTelemetryCompanion(output) {
+export async function packageTelemetryCompanion(
+  output,
+  { projectRoot = ROOT } = {},
+) {
   output = resolve(output);
+  projectRoot = resolve(projectRoot);
   const receiver = await readReceiverArtifactManifest(
-    join(ROOT, 'packages/telemetry-broker/dist'),
-    ROOT,
+    join(projectRoot, 'packages/telemetry-broker/dist'),
+    projectRoot,
   );
   const snapshots = new Map(
     [...receiver.bundles].map(([name, value]) => [`dist/${name}`, value]),
@@ -87,7 +91,7 @@ export async function packageTelemetryCompanion(output) {
   for (const file of DEPLOYMENT)
     snapshots.set(
       `deployment/${file}`,
-      await bytes(join(ROOT, 'deployment/telemetry', file)),
+      await bytes(join(projectRoot, 'deployment/telemetry', file)),
     );
   const compose = load(snapshots.get('deployment/compose.yaml').toString());
   const diagnostics = load(
@@ -102,7 +106,7 @@ export async function packageTelemetryCompanion(output) {
     'deployment/compose.yaml',
     Buffer.from(dump(compose, { noRefs: true })),
   );
-  const dockerfile = await bytes(join(ROOT, 'Dockerfile'));
+  const dockerfile = await bytes(join(projectRoot, 'Dockerfile'));
   const nodeImage = dockerfile
     .toString()
     .match(/^FROM (\S+@sha256:[a-f0-9]{64}) AS telemetry-runtime$/m)?.[1];

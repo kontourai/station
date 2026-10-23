@@ -51,6 +51,7 @@ import {
   stationLogReport,
 } from './lib/portable-smoke-diagnostics.mjs';
 import { parseStopHint } from './lib/station-stop-hint.mjs';
+import { verifyTelemetryCompanion } from './package-telemetry-companion.mjs';
 
 const WINDOWS = process.platform === 'win32';
 const MAX_PATH = 260;
@@ -67,6 +68,7 @@ const { values } = parseArgs({
     'work-dir': { type: 'string' },
     'long-path': { type: 'boolean', default: false },
     keep: { type: 'boolean', default: false },
+    'require-telemetry-companion': { type: 'boolean', default: false },
   },
   strict: true,
 });
@@ -757,6 +759,17 @@ async function main() {
     const release = JSON.parse(
       readFileSync(join(root, '.station-release.json'), 'utf8'),
     );
+    const companionRoot = join(root, 'telemetry-companion');
+    if (values['require-telemetry-companion'] && !existsSync(companionRoot))
+      fail('archive is missing its required telemetry companion payload');
+    if (existsSync(companionRoot)) {
+      const companion = await verifyTelemetryCompanion(companionRoot);
+      if (companion.source !== release.sha)
+        fail('companion payload source differs from the archive release');
+      log(
+        'companion payload integrity verified; build-only, not installation qualification',
+      );
+    }
     if (process.platform === 'linux') reportLinuxLibcFloor(root);
     if (
       readFileSync(join(root, 'lib', 'station-cli.mjs'), 'utf8').startsWith(

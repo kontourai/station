@@ -41,6 +41,16 @@ It does not authorize installation, change consent or configure a destination.
 The managed in-Station lifecycle and qualified release descriptor remain
 pending; these commands do not implement that journey.
 
+Portable-server builds can include this candidate with
+`build:portable-server -- --with-telemetry-companion` after the receiver build.
+The archive workflow selects that option and requires the extracted payload in
+its smoke check (`--require-telemetry-companion`). The companion's source must
+match the server release SHA. Existing signed server manifests authenticate the
+whole archive, including these bytes; no additional signing key is introduced.
+That authenticates a build candidate, not a qualified companion deployment.
+The lifecycle installer must still require companion-specific runtime evidence
+before accepting it for installation.
+
 
 The root Dockerfile's explicit `telemetry-runtime` target bundles the receiver
 with its JavaScript dependencies and an existing Station release provenance

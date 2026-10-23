@@ -113,6 +113,23 @@ test.skipIf(process.platform === 'win32')(
   },
 );
 
+test.skipIf(process.platform === 'win32')(
+  'rejects a linked package root even when its payload is valid',
+  async () => {
+    const root = makeTempDir('companion-root-link-');
+    const { directory } = await packageTelemetryCompanion(join(root, 'output'));
+    await expect(verifyTelemetryCompanion(directory)).resolves.toHaveProperty(
+      'scope',
+      'build-only',
+    );
+    const alias = join(root, 'linked');
+    await symlink(directory, alias, 'dir');
+    await expect(verifyTelemetryCompanion(alias)).rejects.toThrow(
+      'real directory',
+    );
+  },
+);
+
 test('rejects a descriptor that disagrees with the packaged receiver or images', async () => {
   const { directory } = await packageTelemetryCompanion(
     join(makeTempDir('companion-descriptor-'), 'output'),

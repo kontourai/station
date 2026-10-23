@@ -31,6 +31,7 @@ const { values } = parseArgs({
     'node-distribution': { type: 'string' },
     'keep-stage': { type: 'boolean', default: false },
     'allow-unverified-source': { type: 'boolean', default: false },
+    'with-telemetry-companion': { type: 'boolean', default: false },
   },
   strict: true,
 });
@@ -61,6 +62,8 @@ try {
   if (!values['allow-unverified-source']) {
     assertBuildSourceIsCheckout({ sha, git });
   }
+  if (values['with-telemetry-companion'] && values['allow-unverified-source'])
+    throw new Error('Companion payloads require verified checkout source');
   const { archivePath, descriptorPath, descriptor } =
     await buildPortableServerArchive({
       projectRoot,
@@ -74,6 +77,7 @@ try {
         ? { nodeDistribution: resolve(values['node-distribution']) }
         : {}),
       keepStage: values['keep-stage'],
+      includeTelemetryCompanion: values['with-telemetry-companion'],
       ...(values.ring ? { expectedRing: values.ring } : {}),
     });
   console.log(`Created ${archivePath}`);
