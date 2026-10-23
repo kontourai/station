@@ -220,8 +220,8 @@ async function childSummary(threadId: string, projectSlug?: string) {
 describe('a conversation in a worktree outside the project folder (#3386)', () => {
   test('continues in that worktree, under the project, confined to it', async () => {
     writeFileSync(join(lane, 'inside.txt'), 'in the worktree');
-    writeFileSync(join(dir, 'outside.txt'), 'beside the worktree');
-    symlinkSync(join(dir, 'outside.txt'), join(lane, 'escape.txt'));
+    writeFileSync(join(lane, '..', 'outside.txt'), 'beside the worktree');
+    symlinkSync(join(lane, '..', 'outside.txt'), join(lane, 'escape.txt'));
     const source = attached(lane);
 
     const result = (await adopt(source)) as { threadId: string };
