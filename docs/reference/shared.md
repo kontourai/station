@@ -476,10 +476,11 @@ interface ToolMetadata {
 
 ### `LayoutConfig`
 
-Full layout definition for project-scoped layouts.
+Stored layout definition with Project, principal, or instance ownership.
 
 ```ts
 interface LayoutConfig {
+  workspaceBinding?: 'repository';
   id: string;
   projectSlug?: string;
   owner?: LayoutOwner;
@@ -500,6 +501,7 @@ File-based layout definition (not project-scoped). Used by plugins.
 
 ```ts
 interface LayoutDefinition {
+  workspaceBinding?: 'repository';
   name: string;
   slug: string;
   icon?: string;
@@ -513,6 +515,11 @@ interface LayoutDefinition {
   globalSkills?: LayoutSkill[];
 }
 ```
+
+`workspaceBinding` selects Project-derived repository resolution. It grants no
+file access and does not supply a Project subject to personal layouts. See
+[layout management](api.md#layout-management) for write admission and legacy
+Coding behavior.
 
 ### `LayoutTab`
 
