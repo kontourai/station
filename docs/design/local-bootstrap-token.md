@@ -28,8 +28,10 @@ paired credential when called directly on loopback.
 
 But that secret is **boot-lifetime and reusable**. Handing it to a browser
 through a URL fragment — the only channel the CLI opener has to the page it just
-launched — would plant a standing credential in the address bar, history, and
-any `Referer`. So the opener cannot forward the secret itself.
+launched — would place a standing credential in the address bar, browser
+history and client-readable URL state. Fragments are not sent in HTTP `Referer`
+headers, but client-side code and copied URLs can still disclose them. So the
+opener cannot forward the secret itself.
 
 ## Design
 
