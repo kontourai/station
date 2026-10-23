@@ -1,0 +1,62 @@
+name: "Repo: CI throughput health"
+
+on:
+  schedule:
+    - cron: '41 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+  issues: write
+
+concurrency:
+  group: ci-throughput-health
+  cancel-in-progress: false
+
+jobs:
+  report:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/heads/${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+      - name: Check whether throughput outcome work remains open
+        id: active
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          state=$(gh api repos/kontourai/station/issues/3101 --jq .state)
+          echo "open=$([ "$state" = open ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - name: Record the completed observation window without starting verification
+        if: steps.active.outputs.open == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Six-hour windows end two hours behind the UTC cadence boundary.
+          # Long-running/unattributed work still makes the snapshot INCOMPLETE.
+          until=$(node -e 'const h=3600000; process.stdout.write(new Date(Math.floor(Date.now()/(6*h))*6*h-2*h).toISOString())')
+          set +e
+          node scripts/ci-health.mjs --hours=6 --until="$until" --issue=3101 --record --json > "$RUNNER_TEMP/ci-throughput.json"
+          code=$?
+          set -e
+          cat "$RUNNER_TEMP/ci-throughput.json" >> "$GITHUB_STEP_SUMMARY"
+          exit "$code"
+      - name: Retain the measured snapshot, including incomplete results
+        if: always() && steps.active.outputs.open == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ci-throughput-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ci-throughput.json
+          if-no-files-found: error
+          retention-days: 30

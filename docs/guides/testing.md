@@ -234,9 +234,13 @@ cancellation rechecks the PR head and run attempt. The PR-head path never cancel
 merge-group, main-push, manual diagnostic or publication runs.
 
 A new merge-group Source request also retires older Source candidates for the
-same leading PR, only when a live GitHub queue ref proves the replacement and
-its commit contains the current PR head. The old queue ref must be absent or
-point elsewhere. Complete job inventories and fresh owner/run/attempt/ref reads
+same leading PR, only when a live GitHub queue ref and GitHub's merge-queue entry
+bind the replacement commit and its base to the current same-repository PR head.
+The entry identity and source binding are re-read before each cancellation.
+This supports squash candidates: the raw PR head need not be an ancestor of the
+synthetic commit. A missing, mismatched, changed or unmergeable entry cannot
+authorize retirement. GraphQL errors remain errors, not an empty queue.
+The old queue ref must be absent or point elsewhere. Complete job inventories and fresh owner/run/attempt/ref reads
 fence each normal cancellation; an active old ref, changed owner or attempt,
 unknown runner metadata or API failure prevents it. This path can normally
 cancel an assigned runner doing obsolete work, but never force-cancels. A 202
@@ -247,6 +251,14 @@ For the one-candidate throughput trial and its before/after measurements, use
 [the throughput epic](https://github.com/kontourai/station/issues/3101). The live
 ruleset is the configuration authority; fewer speculative builds do not prove
 higher delivery throughput.
+
+`Repo: CI throughput health` records one metadata-only snapshot on issue #3101
+every six hours while that outcome issue remains open. It installs no project
+dependencies and starts no tests, retries, cancellations or merges. Its six-hour
+observation windows end two hours behind the cadence boundary; unfinished or
+unattributed work remains explicitly incomplete and fails the report job.
+Snapshots are retained for 30 days. This reporting does not establish a speedup,
+close the issue automatically or replace manual-intervention outcome review.
 
 Missing PR attribution leaves ordinary PR runs alone; API failures stop the sweep. GitHub has no atomic head-conditional
 cancellation API, so the final head read bounds rather than eliminates the race
@@ -279,6 +291,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`build-android.yml`](../../.github/workflows/build-android.yml) | Build Android verification artifact | **Main: Android build** | main pushes (path filtered); manual dispatch. |
 | [`build-ios.yml`](../../.github/workflows/build-ios.yml) | Build iOS verification artifact | **PR: iOS build** | PR events; merge queue; manual dispatch. |
 | [`ci-extended.yml`](../../.github/workflows/ci-extended.yml) | CI Extended | **Tool: CI extended** | manual dispatch. |
+| [`ci-throughput-health.yml`](../../.github/workflows/ci-throughput-health.yml) | — | **Repo: CI throughput health** | UTC schedule: `41 */6 * * *`; manual dispatch; reports only while #3101 is open. |
 | [`ci.yml`](../../.github/workflows/ci.yml) | CI | **PR: CI** | PR events; merge queue; main pushes; manual dispatch. |
 | [`codex-pr-review.yml`](../../.github/workflows/codex-pr-review.yml) | Advisory PR review | **PR: Advisory review** | after `PR: Secret scan`. |
 | [`container-smoke.yml`](../../.github/workflows/container-smoke.yml) | Container smoke | **Main: Container smoke** | main pushes; manual dispatch. |

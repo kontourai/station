@@ -1,0 +1,7 @@
+{
+  "revision": "9fb4ae262c2612357edc4e31c8ee769b1089d0fd",
+
+  "notes": [
+    {"path":"docs/design/session-tape-replay.md","note":"No claims bind to Codex adapter auth or readiness; the diff touches only the getPrerequisites auth derivation.","inputs":["docs/design/session-tape-replay.md","packages/contracts/src/engine-capability-matrix.ts","src-server/providers/adapters/acp-steer.ts","src-server/providers/adapters/codex-adapter.ts","src-ui/src/__tests__/ChatMessageList.reasoning.test.tsx","src-ui/src/components/chat/ChatSettingsPanel.tsx","src-ui/src/components/chat/ReasoningSection.tsx","src-ui/src/contexts/active-chats-state.ts","src-ui/src/hooks/orchestration/eventHandlers.ts","src-ui/src/hooks/orchestration/queueDrain.ts","src-ui/src/hooks/orchestration/replay/controller.ts","src-ui/src/hooks/orchestration/replay/limits.ts","src-ui/src/hooks/orchestration/replay/player.ts","src-ui/src/hooks/orchestration/replay/recorder.ts","src-ui/src/hooks/orchestration/replay/render-observation.ts","src-ui/src/hooks/orchestration/replay/replay-registry.ts","src-ui/src/hooks/orchestration/replay/scroll-observation.ts","src-ui/src/hooks/orchestration/replay/tape-file.ts","src-ui/src/hooks/orchestration/replay/tape-validation.ts","src-ui/src/hooks/orchestration/replay/timeline.ts","src-ui/src/index.css","tests/chat-replay.spec.ts"]}
+  ]
+}
