@@ -8,7 +8,7 @@
   },
   "overrides": [
     {
-      "files": ["packages/contracts/src/**/*.test.ts"],
+      "files": ["**/packages/contracts/src/**/*.test.ts"],
       "rules": {
         "repo-hygiene/deterministic-unit-tests": "error"
       }
