@@ -72,6 +72,7 @@ function ProjectRoomSession({
   storageKey,
 }: ProjectRoomProps & { storageKey: string }) {
   const editorId = useId();
+  const composer = useRef<HTMLTextAreaElement>(null);
   const room = useProjectRoom(requestScope, slug, projectId);
   const view = room.discovery.data;
   const [tab, setTab] = useState<'conversation' | 'notes'>('conversation');
@@ -424,7 +425,18 @@ function ProjectRoomSession({
               prompt={text}
               checkpointSeq={view.checkpoint.lastSeq}
               replyTo={replyTo}
-              blocked={!!proposal || room.send.isPending}
+              blocked={!restored || !!proposal || room.send.isPending}
+              prepareRecap={() => {
+                setText(`Recap Project ${slug} (Project ID: ${projectId}; Room ID: ${view.roomId}).
+
+Summarize this Project, its Tasks, this Room's discussion and shared notes, and related Project sources that current authority and available tools allow you to inspect. Cite evidence IDs and source citations for factual claims; distinguish observed facts from uncertainty.
+
+Report observed freshness and coverage, including timestamps or checkpoints when available, and unavailable, private, or partial sources and gaps. Do not claim access beyond current permissions or infer completion from missing evidence. Do not automatically promote this recap into memory or shared notes.`);
+                setNotice(
+                  'Recap prompt prepared. Review or edit it, then choose Bring an Agent and Ask in room.',
+                );
+                composer.current?.focus();
+              }}
               refresh={() => {
                 void room.discovery.refetch();
                 void room.history.refetch();
@@ -454,6 +466,7 @@ function ProjectRoomSession({
               )}
               <label htmlFor={`message-${editorId}`}>Message the project</label>
               <textarea
+                ref={composer}
                 id={`message-${editorId}`}
                 value={text}
                 readOnly={!!proposal || room.send.isPending}
@@ -605,6 +618,7 @@ function ProjectRoomAgentPanel({
   checkpointSeq,
   replyTo,
   blocked,
+  prepareRecap,
   refresh,
 }: {
   requestScope: ApiRequestScope;
@@ -617,6 +631,7 @@ function ProjectRoomAgentPanel({
   checkpointSeq: number;
   replyTo?: string;
   blocked: boolean;
+  prepareRecap(): void;
   refresh(): void;
 }) {
   const guard = {
@@ -847,19 +862,37 @@ function ProjectRoomAgentPanel({
           }
         />
       ) : (
-        <Button
-          disabled={
-            blocked ||
-            !ready ||
-            stopped ||
-            !prompt.trim() ||
-            new TextEncoder().encode(prompt).length >
-              PROJECT_ROOM_LIMITS.textBytes
-          }
-          onClick={() => setOpen(true)}
-        >
-          Bring an Agent
-        </Button>
+        <div className="project-room__actions">
+          <Button
+            size="sm"
+            disabled={blocked || !ready || stopped || !!prompt || !!replyTo}
+            title={
+              prompt || replyTo
+                ? 'Keep or clear your current draft and reply before preparing a recap.'
+                : 'Prepare a recap prompt to review before asking an Agent.'
+            }
+            onClick={() => {
+              if (blocked || !ready || stopped || retained || prompt || replyTo)
+                return;
+              prepareRecap();
+            }}
+          >
+            Recap Project
+          </Button>
+          <Button
+            disabled={
+              blocked ||
+              !ready ||
+              stopped ||
+              !prompt.trim() ||
+              new TextEncoder().encode(prompt).length >
+                PROJECT_ROOM_LIMITS.textBytes
+            }
+            onClick={() => setOpen(true)}
+          >
+            Bring an Agent
+          </Button>
+        </div>
       )}
       {open && (
         <Dialog

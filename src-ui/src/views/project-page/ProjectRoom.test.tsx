@@ -312,6 +312,12 @@ test('reload offers exact retained retry without automatically resending, then a
   const composer = await screen.findByRole('textbox', {
     name: 'Message the project',
   });
+  await waitFor(() =>
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Recap Project' })
+        .disabled,
+    ).toBe(false),
+  );
   fireEvent.change(composer, { target: { value: 'Team update' } });
   await waitFor(() =>
     expect(
@@ -322,10 +328,20 @@ test('reload offers exact retained retry without automatically resending, then a
   fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
   await screen.findByText(/Send not confirmed/);
   expect(writes).toHaveLength(1);
+  expect(
+    screen.getByRole<HTMLButtonElement>('button', { name: 'Recap Project' })
+      .disabled,
+  ).toBe(true);
   a.unmount();
   const b = mount();
   await screen.findByRole('button', { name: 'Retry same message' });
   expect(writes).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Recap Project' }));
+  expect(
+    screen.getByRole<HTMLTextAreaElement>('textbox', {
+      name: 'Message the project',
+    }).value,
+  ).toBe('Team update');
   fireEvent.click(screen.getByRole('button', { name: 'Retry same message' }));
   await waitFor(() => expect(writes).toHaveLength(2));
   expect(writes[1]).toEqual(writes[0]);
@@ -595,6 +611,138 @@ async function askAgent() {
   });
   fireEvent.click(screen.getByRole('button', { name: 'Ask in room' }));
 }
+test('Recap Project prepares a reviewable scoped prompt and requests only the explicitly chosen Agent on Ask', async () => {
+  mount();
+  const recap = await screen.findByRole<HTMLButtonElement>('button', {
+    name: 'Recap Project',
+  });
+  await waitFor(() => expect(recap.disabled).toBe(false));
+  await act(async () => {
+    fireEvent.click(recap);
+  });
+  const composer = screen.getByRole<HTMLTextAreaElement>('textbox', {
+    name: 'Message the project',
+  });
+  const prompt = `Recap Project team (Project ID: project; Room ID: ${roomId}).
+
+Summarize this Project, its Tasks, this Room's discussion and shared notes, and related Project sources that current authority and available tools allow you to inspect. Cite evidence IDs and source citations for factual claims; distinguish observed facts from uncertainty.
+
+Report observed freshness and coverage, including timestamps or checkpoints when available, and unavailable, private, or partial sources and gaps. Do not claim access beyond current permissions or infer completion from missing evidence. Do not automatically promote this recap into memory or shared notes.`;
+  expect(composer.value).toBe(prompt);
+  expect(document.activeElement).toBe(composer);
+  expect(screen.getByText(/Recap prompt prepared/)).toBeTruthy();
+  expect(screen.queryByRole('dialog')).toBeNull();
+  expect(agentWrites).toEqual([]);
+  expect(writes).toEqual([]);
+  expect(sessionStorage.length).toBe(0);
+  const reviewedPrompt = `${prompt}\n\nFocus on open blockers.`;
+  fireEvent.change(composer, { target: { value: reviewedPrompt } });
+  fireEvent.click(screen.getByRole('button', { name: 'Bring an Agent' }));
+  const dialog = await screen.findByRole('dialog', { name: 'Bring an Agent' });
+  expect(
+    within(dialog).getByText(reviewedPrompt, { normalizer: (value) => value }),
+  ).toBeTruthy();
+  const ask = within(dialog).getByRole<HTMLButtonElement>('button', {
+    name: 'Ask in room',
+  });
+  expect(ask.disabled).toBe(true);
+  await act(async () => {
+    fireEvent.change(within(dialog).getByRole('combobox', { name: 'Agent' }), {
+      target: { value: 'researcher' },
+    });
+  });
+  expect(ask.disabled).toBe(false);
+  expect(agentWrites).toEqual([]);
+  fireEvent.click(ask);
+  await screen.findByText(
+    'Agent is working. Its answer will appear in the Room.',
+  );
+  expect(agentWrites).toEqual([
+    {
+      expectedProjectId: 'project',
+      expectedRoomId: roomId,
+      expectedActorId: 'ada',
+      intentId: expect.any(String),
+      agentId: 'researcher',
+      text: reviewedPrompt,
+    },
+  ]);
+  expect(agentRetentions).toEqual([true]);
+  expect(writes).toEqual([]);
+});
+
+test('Recap Project preserves an unrelated draft and reply; human discussion never requests an Agent', async () => {
+  messages = [
+    {
+      roomId,
+      messageId: randomCorrelationId(),
+      intentId: randomCorrelationId(),
+      seq: 1,
+      actor,
+      createdAt: at,
+      text: 'Team question',
+    },
+  ];
+  mount();
+  await screen.findByText('Team question');
+  const composer = screen.getByRole<HTMLTextAreaElement>('textbox', {
+    name: 'Message the project',
+  });
+  const recap = screen.getByRole<HTMLButtonElement>('button', {
+    name: 'Recap Project',
+  });
+  await waitFor(() => expect(recap.disabled).toBe(false));
+  fireEvent.click(screen.getByRole('button', { name: 'Reply to Ada' }));
+  expect(recap.disabled).toBe(true);
+  fireEvent.click(recap);
+  expect(composer.value).toBe('');
+  expect(screen.getByRole('button', { name: 'Cancel reply' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel reply' }));
+  fireEvent.change(composer, { target: { value: 'Keep my draft' } });
+  expect(recap.disabled).toBe(true);
+  fireEvent.click(recap);
+  expect(composer.value).toBe('Keep my draft');
+  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  await waitFor(() => expect(composer.value).toBe(''));
+  expect(writes).toEqual([expect.objectContaining({ text: 'Keep my draft' })]);
+  expect(agentWrites).toEqual([]);
+  expect(recap.disabled).toBe(false);
+  fireEvent.click(recap);
+  const recapText = composer.value;
+  fireEvent.click(screen.getByRole('button', { name: 'Send message' }));
+  await waitFor(() => expect(composer.value).toBe(''));
+  expect(writes).toHaveLength(2);
+  expect(writes[1].text).toBe(recapText);
+  expect(agentWrites).toEqual([]);
+});
+
+test.each([
+  { discuss: true, execute: false },
+  { discuss: false, execute: true },
+])(
+  'Recap Project retires when current capabilities become %j',
+  async (capabilities) => {
+    const ui = mount();
+    const recap = await screen.findByRole<HTMLButtonElement>('button', {
+      name: 'Recap Project',
+    });
+    await waitFor(() => expect(recap.disabled).toBe(false));
+    discuss = capabilities.discuss;
+    execute = capabilities.execute;
+    await act(async () => {
+      await ui.client.invalidateQueries({ queryKey: ['project-room'] });
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: 'Recap Project' }),
+      ).toBeNull(),
+    );
+    expect(screen.queryByRole('button', { name: 'Bring an Agent' })).toBeNull();
+    expect(agentWrites).toEqual([]);
+    expect(writes).toEqual([]);
+  },
+);
+
 test('lost Agent acknowledgement reload retries immutable intent, never automatically launches or cancels', async () => {
   agentLostAck = true;
   const ui = mount();
@@ -606,6 +754,7 @@ test('lost Agent acknowledgement reload retries immutable intent, never automati
   await screen.findByRole('button', { name: 'Retry same Agent request' });
   expect(agentWrites).toHaveLength(1);
   expect(agentOperations).toEqual([]);
+  expect(screen.queryByRole('button', { name: 'Recap Project' })).toBeNull();
   fireEvent.change(
     screen.getByRole('textbox', { name: 'Message the project' }),
     { target: { value: 'Different discussion' } },
