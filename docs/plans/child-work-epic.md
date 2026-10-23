@@ -939,13 +939,17 @@ worktree at `57f02040`; `36de11b1` joins their independent, paid Flow and
 session-bound context-sync paths to AccountingV1. The combined source builds,
 passes documentation checks and 20 focused cases. A compiling recipient-return
 mutation loses sync accounting as intended; exact restoration passes the three
-accounting cases. At that checkpoint, independent review of the combined Flow
-source was still running;
-the Station response composition review passed within its stated fixture scope.
-The earlier rounds review failed without a completed verdict. The interrupted
-full-readiness process left no terminal receipt and is being requalified on the
-same Flow head; the earlier accounting-only readiness pass does not qualify it.
-Everything remains unpublished, and Station still consumes published 9.3.0.
+accounting cases. The independent combined-source review subsequently completed with no P1/P2:
+34 review-owned checks cover storage-only finalization, session drift,
+renewal/adoption and retained-tariff accounting, with a compiling mutation and
+byte-exact restoration. Physical-launch drift was source-reviewed; real host
+custody, provider/billing, publication and Station integration were not verified.
+The Station response composition review passed within its stated fixture scope.
+The earlier rounds review failed without a completed verdict. At `17827e72`,
+the upstream CI registration repair preserves the reviewed production/docs/package
+bytes. Full readiness is being requalified; the earlier accounting-only pass
+does not qualify the combined source. Everything remains unpublished, and
+Station still consumes published 9.3.0.
 Tariff-derived integer micros must retain
 their cost basis and must not be silently converted to provider-reported Relay
 dollars. A candidate public API or a successful synthetic SDK response is not a
@@ -983,3 +987,11 @@ This uses adb loopback forwarding, not tailnet transport qualification, and
 reopens the earlier controlled task without a new provider invocation. YouTube
 was restored; the owned proof app and forwards were removed. It does not close
 whole-epic or new-provider-run acceptance.
+
+The follow-up `e7c029fb479` preserves the hook registry entry through synchronous
+Strict Mode unsubscribe/resubscribe by deferring final deletion to a microtask
+and rechecking both references and entry identity. The later-consumer test
+fails before the repair and when immediate deletion is restored (1 red,
+24 controls); exact restoration passes 42 tests. Independent source review
+finds no introduced findings. Abandoned concurrent-render options and same-key
+consumers with different stores remain outside that scoped lifecycle repair.

@@ -1,0 +1,7 @@
+{
+  "revision": "77f5e7471f5987e5bb4eab861cd9502f46e4dcb9",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"Reviewed e7c029fb479 hook registry lifecycle delta: final unsubscribe stops health immediately but deletes its registry entry in a microtask only if refs remain zero and the registry still names that entry. Root Strict Mode synchronous resubscription and a later consumer retain the registered coordinator. Real hook regression fails before repair and under immediate-delete mutant (1 red/24 controls); byte-exact restore 42/42 across hook/coordinator files. Connect typecheck/Biome pass; independent source review reports no introduced findings. Same-key different-store/options and abandoned concurrent render ownership are pre-existing broader limits, not qualified by this patch.","inputs":["docs/reference/connect.md"]}
+  ]
+}
