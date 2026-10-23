@@ -180,14 +180,22 @@ const DATA_HANDLERS: Record<
 
 function refreshEngineReadiness(queryClient: QueryClient): void {
   queryClient.invalidateQueries({ queryKey: ['agents'] });
+  queryClient.invalidateQueries({ queryKey: ['model-picker-catalog'] });
   // Connection hooks do not refetch on mount, so refresh their inactive
   // caches too before a person returns to a picker or connection detail.
+  queryClient.invalidateQueries({
+    queryKey: ['connections'],
+    refetchType: 'all',
+    predicate: ({ queryKey }) =>
+      queryKey.length <= 2 ||
+      (queryKey.length === 3 &&
+        queryKey[1] === 'engines' &&
+        queryKey[2] === 'catalog'),
+  });
   for (const key of [
-    'connections',
     'acp-connections',
     'acp-unregistered-connections',
     'acp-connection-registry',
-    'model-picker-catalog',
   ]) {
     queryClient.invalidateQueries({ queryKey: [key], refetchType: 'all' });
   }

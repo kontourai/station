@@ -3,7 +3,7 @@
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { waitFor } from '@testing-library/react';
-import { expect, test } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { invalidateQueriesForServerEvent } from '../hooks/useServerEvents';
 
 test.each([SERVER_EVENTS.AGENTS_CHANGED, SERVER_EVENTS.ACP_STATUS])(
@@ -39,6 +39,15 @@ test.each([SERVER_EVENTS.AGENTS_CHANGED, SERVER_EVENTS.ACP_STATUS])(
     const unsubscribe = observers.map((observer) =>
       observer.subscribe(() => {}),
     );
+    const usageKey = ['connections', 'agent', 'oc', 'credential-usage'];
+    const readUsage = vi.fn(async () => 'Spent a credential');
+    client.setQueryData(usageKey, 'Only refresh when requested');
+    const usageObserver = new QueryObserver(client, {
+      queryKey: usageKey,
+      queryFn: readUsage,
+    });
+    const stopUsage = usageObserver.subscribe(() => {});
+    stopUsage();
     try {
       await Promise.all(observers.map((observer) => observer.refetch()));
       expect(
@@ -55,7 +64,7 @@ test.each([SERVER_EVENTS.AGENTS_CHANGED, SERVER_EVENTS.ACP_STATUS])(
         });
       }
 
-      unsubscribe.slice(1).forEach((stop) => stop());
+      unsubscribe.slice(1, -1).forEach((stop) => stop());
       readiness = 'Ready after leaving Connections';
       invalidateQueriesForServerEvent(event, client);
       await waitFor(() => {
@@ -63,6 +72,8 @@ test.each([SERVER_EVENTS.AGENTS_CHANGED, SERVER_EVENTS.ACP_STATUS])(
           Array(queryKeys.length).fill(readiness),
         );
       });
+      expect(readUsage).not.toHaveBeenCalled();
+      expect(client.getQueryData(usageKey)).toBe('Only refresh when requested');
     } finally {
       unsubscribe.forEach((stop) => stop());
       client.clear();
