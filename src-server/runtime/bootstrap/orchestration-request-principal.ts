@@ -107,6 +107,10 @@ export interface OrchestrationRequestPrincipalDeps {
     'resolvePrincipal'
   >;
   hostedTenantRegistry?: unknown;
+  currentRelationshipAccountDevice?(
+    request: Request,
+    binding: Extract<DevicePrincipalBinding, { kind: 'account' }>,
+  ): boolean;
   /**
    * #2893 pilot: the shared native current-Device resolver. A proven native
    * request resolves ONLY to its Device's matching authenticated account
@@ -250,7 +254,8 @@ export function createOrchestrationRequestPrincipalResolver(
       verifiedPerson &&
       binding &&
       isAccountDeviceBinding(binding) &&
-      device?.credentialKind === 'personal-token'
+      (device?.credentialKind === 'personal-token' ||
+        deps.currentRelationshipAccountDevice?.(c.req.raw, binding) === true)
     )
       return verifiedPerson;
     return resolveStationPrincipal(

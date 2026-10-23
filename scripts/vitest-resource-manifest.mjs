@@ -134,6 +134,13 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Real second-process Task/share writers contend with the publication fence.
+  'src-server/services/projects/project-room-agent-task-context.test.ts',
+  // Reviewed setup launches real bounded commands and verifies durable outcomes.
+  'src-server/services/projects/__tests__/operator-setup-service.test.ts',
+  // Repository acquisition drives real hardened Git clone and checkout processes.
+  'src-server/services/projects/__tests__/repository-acquisition-service.test.ts',
+  'src-server/routes/projects/__tests__/project-working-directory-authority.test.ts',
   'packages/agent-runtime/src/__tests__/body-process.test.ts',
   'src-server/runtime/mcp/__tests__/mcp-ui-network.process.test.ts',
   // Real temporary Git repositories; isolated home per case.

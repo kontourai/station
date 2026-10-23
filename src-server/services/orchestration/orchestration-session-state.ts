@@ -1630,6 +1630,8 @@ function recoveryFailureEventId(threadId: string, message: string): string {
  * spawned 36 seconds after boot for conversations nobody had opened.
  */
 export interface RecoveredSessionStartOptions {
+  /** Production composition reauthorizes the retained Project after preparation. */
+  assertRetainedWorkspaceAuthorized?: (threadId: string) => Promise<void>;
   /** Production composition joins the same durable start/turn authority. */
   invokeSessionStart?: (
     threadId: string,
@@ -1806,6 +1808,7 @@ export async function startRecoveredOrchestrationSession(options: {
     const admissionLease = await deps.admitEngineStart?.(startInput.threadId);
     let recovered: ProviderSession;
     try {
+      await deps.assertRetainedWorkspaceAuthorized?.(startInput.threadId);
       // #2873: a respawn re-resolves the folder an agent's dispatch recorded
       // and refuses a different result, before any adapter call.
       assertDispatchCwdUnmoved(startInput, startInput.cwd);

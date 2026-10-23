@@ -316,6 +316,12 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
       mkdirSync(storeRoot, { recursive: true });
       const root = await knowledge.createRoot({
         scope,
+        ...(scope.kind === 'project'
+          ? {
+              projectId:
+                scope.projectSlug === aProject.slug ? aProject.id : bProject.id,
+            }
+          : {}),
         adapterId: 'kit-default-store',
         storeRoot,
         displayName: marker,
@@ -799,7 +805,7 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     expect((await basis(BOUND_OPERATOR, 'a-chat')).success).toBe(true);
   });
 
-  test('native Knowledge uses the real MCP route and captures only in its owner’s writable store', async () => {
+  test('native Knowledge reads its owner’s store through the real MCP route and refuses capture on member ingress', async () => {
     const { base, knowledge } = await setup();
     const port = Number(new URL(base).port);
     const custody = new MCPLocalConnectionCustody();
@@ -854,12 +860,15 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
       title: 'Native capture',
       body: 'Stored content',
     });
-    expect(added.success).toBe(true);
-    const stored = await (await knowledge.adapterFor(roots.data[0].id)).get(
-      added.data.id,
-    );
-    expect(stored?.body).toBe('Stored content');
-    expect(stored?.provenance.session_id).toBeUndefined();
+    expect(added).toMatchObject({
+      success: false,
+      error: 'Knowledge store access denied.',
+    });
+    expect(
+      (
+        await (await knowledge.adapterFor(roots.data[0].id)).listByType('raw')
+      ).map((record) => record.title),
+    ).toEqual(['B-PROJECT-NOTE']);
     const privateRoot = (await knowledge.listRoots()).find(
       (root) => root.displayName === 'A-PROJECT-NOTE',
     )!;
@@ -876,7 +885,7 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     ).toEqual(['A-PROJECT-NOTE']);
   });
 
-  test('Knowledge data access follows the owner’s store and Project edit authority', async () => {
+  test('Knowledge member ingress reads its owner’s store and refuses all record writes', async () => {
     const { knowledge } = await setup();
     const allRoots = await knowledge.listRoots();
     const own = allRoots.find((root) => root.displayName === 'B-PROJECT-NOTE')!;
@@ -924,17 +933,20 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
         `/api/knowledge/roots/${encodeURIComponent(own.id)}/records`,
         { method: 'POST', body: JSON.stringify(input) },
       );
-      expect(added.success).toBe(true);
+      expect(added).toMatchObject({
+        success: false,
+        error: 'Knowledge store access denied.',
+      });
       const read = await asTool(
         caller,
-        `/api/knowledge/roots/${encodeURIComponent(own.id)}/records/${encodeURIComponent(added.data.id)}`,
+        `/api/knowledge/roots/${encodeURIComponent(own.id)}/records/${encodeURIComponent(listed.data[0].id)}`,
       );
-      expect(read.data.body).toBe('Owner content');
-      await (await knowledge.adapterFor(own.id)).retire(
-        added.data.id,
-        'retired',
-        { agent: 'test', rationale: 'Fixture capture completed' },
-      );
+      expect(read.data.body).toBe('B-PROJECT-NOTE knowledge body');
+      expect(
+        (await (await knowledge.adapterFor(own.id)).listByType('raw')).map(
+          (record) => record.title,
+        ),
+      ).toEqual(['B-PROJECT-NOTE']);
     }
     expect((await asTool('raw-token', '/api/knowledge/roots')).code).toBe(
       'station_control_caller_required',

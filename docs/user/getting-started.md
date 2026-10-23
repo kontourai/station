@@ -18,9 +18,21 @@ without adding a model API key:
 3. On Home, choose **Codex** in the Agent picker, write a request, and choose
    **Start**. You can start without a Project. The detected Codex Agent is
    enough; creating a custom Agent is optional.
-4. When you want to work with files, choose **Open local project** on Home and
-   select the folder. Station recommends **Coding** for a Git repository.
-   Choose **Create** to open it directly.
+4. Choose **New Project** on Home, enter a name, and choose **Repository or
+   folder**, **Documents and knowledge**, **Connected tools**, or **Blank
+   Project**. Documents opens Files & connections after creation; connected tools opens
+   the Project's Tools section. Neither asks for a folder or repository.
+   Blank also permits an optional installed layout. For a repository, open
+   **Start from a Git repository**, paste its HTTPS/SSH URL or choose **GitHub** or **GitLab**
+   under **Repository provider**, using an account signed in on the Station host. Choose
+   **Acquire repository**, then **Use this checkout**. Creating the Project rechecks
+   that working copy and retains its source and exact commit. Acquisition currently
+   requires the Station operator and uses that host's Git credentials.
+   Station recommends **Coding** for a Git repository; you can choose another
+   layout or none. Choose **Create** to open
+   the Project. Operator setup is saved across reloads; reopen **New Project** to
+   check and continue the same Project, intent and starter. See [repository setup and recovery](https://github.com/kontourai/station/blob/main/docs/guides/connections.md#start-a-project-from-a-repository)
+   and [document import](https://github.com/kontourai/station/blob/main/docs/guides/knowledge.md#import-documents-from-your-computer).
 5. To talk to the built-in **Station** assistant using the same Codex account,
    open **Settings → General → Built-in agent engine → Change…**, choose
    **Codex**, choose **Use this engine**, then **Save**. Select **Station** in
@@ -358,7 +370,7 @@ Choose the simplest path for what you want to do:
 
 ## Start Your First Chat
 
-Home, the chat dock and operator Project pages use the same start composer. Write
+Home and the chat dock use the same start composer. Write
 what you want done and choose **Start**. You do not need to choose anything
 first; the controls show what **Start** will use:
 
@@ -397,12 +409,13 @@ Cancel returns to your message, including edits made in the task chooser.
 Follow a started task in Activity. A foreground chat stays on its existing
 Station; choosing a remote task destination does not move that chat.
 
-An operator's Project page has the same composer in a compact form above its
-activity. Its Project is fixed, so starting there uses that Project even when
-the chat dock is bound elsewhere. A missing Project blocks starting and keeps
-the message. This does not change Home's remembered Project. To inspect or
-change this Station's local folder, open **Settings** on the Project page;
-the folder is workspace configuration rather than the Project's identity.
+The Project page opens on **Overview**. **Project room** is shared discussion
+with people in that Project; use **Bring an Agent** for an explicit request
+whose answer returns to the room. Direct Agent conversations stay in the chat
+dock. **Tasks** separates current work, backlog and history; **Files & connections**
+holds the Project's context. To change where new Agent work starts, open the
+workspace controls under Files & connections. A local folder is execution
+configuration rather than the Project's identity.
 
 Choosing on a chip starts nothing, and Station remembers it. The Agent is
 remembered for each project and for **No project** on this browser and

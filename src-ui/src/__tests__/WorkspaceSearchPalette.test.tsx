@@ -112,10 +112,17 @@ function page(text = 'Canonical historical A text', nextContinuation?: string) {
     },
   };
 }
-function Harness({ onClose = vi.fn() }: { onClose?: () => void }) {
+function Harness({
+  onClose = vi.fn(),
+  projectId,
+}: {
+  onClose?: () => void;
+  projectId?: string;
+}) {
   const [query, setQuery] = useState('cobalt');
   return (
     <WorkspaceSearchPalette
+      projectId={projectId}
       query={query}
       onQueryChange={setQuery}
       onClose={onClose}
@@ -123,14 +130,14 @@ function Harness({ onClose = vi.fn() }: { onClose?: () => void }) {
     />
   );
 }
-function mount(onClose?: () => void) {
+function mount(onClose?: () => void, projectId?: string) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   clients.push(client);
   return render(
     <QueryClientProvider client={client}>
-      <Harness onClose={onClose} />
+      <Harness onClose={onClose} projectId={projectId} />
     </QueryClientProvider>,
   );
 }
@@ -351,4 +358,19 @@ test('a new query never inherits completed source or empty verdicts during debou
   expect(
     await screen.findByText('No matching work on this Station'),
   ).toBeTruthy();
+});
+
+test('Project search sends its scope to the authoritative search route', async () => {
+  const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    expect(new URL(String(input)).pathname).toBe('/api/search');
+    expect(JSON.parse(String(init?.body)).filters.projectId).toBe('alpha');
+    return reply(search());
+  });
+  vi.stubGlobal('fetch', fetch);
+  mount(undefined, 'alpha');
+  expect(screen.getByRole('heading', { name: 'Search Project' })).toBeTruthy();
+  await waitFor(() => expect(fetch).toHaveBeenCalled());
+  await waitFor(() =>
+    expect(screen.getByRole('option', { name: /Agent response/ })).toBeTruthy(),
+  );
 });

@@ -15,6 +15,17 @@ of shipped adapters or a current price quote. The
 checks private local home/database ownership and filesystem permissions; it
 does not turn the default local stores into tenant-safe PostgreSQL repositories.
 
+## Project sources
+
+Project **Sources** composes repository bindings, canonical document stores and
+experimental read-only S3 prefixes without turning every source into an
+execution directory. Each source keeps its own admission and readiness state.
+S3 is default-off pending real AWS acceptance; explicit Project sharing of a
+host AWS profile is separate from principal-owned connected-tool credentials.
+See [Knowledge sources](knowledge.md#project-settings--sources) for the current
+workflow and [the source API](../reference/api.md#experimental-project-s3-sources)
+for bounded S3 reads.
+
 ## Start with one useful integration
 
 Choose a concrete outcome, such as presenting a project's agent work in your

@@ -2853,6 +2853,13 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // Personal task-room reads disclose only the already-paired operator's
     // own task projection. Mutations are closed room commands and inherit
     // orchestration:operate from /api/tasks.
+    { method: 'GET', path: '/api/tasks/:taskId/children' },
+    { method: 'POST', path: '/api/tasks/:taskId/children' },
+    { method: 'PUT', path: '/api/tasks/:taskId/parent' },
+    { method: 'GET', path: '/api/tasks/:taskId/work-chats' },
+    { method: 'GET', path: '/api/tasks/:taskId/work-chats/:conversationId' },
+    { method: 'POST', path: '/api/tasks/:taskId/work-chats' },
+    { method: 'DELETE', path: '/api/tasks/:taskId/work-chats' },
     { method: 'GET', path: '/api/tasks/:taskId/kept-pull-requests' },
     { method: 'PATCH', path: '/api/tasks/:taskId/title' },
     { method: 'GET', path: '/api/tasks/:taskId/room' },
@@ -3267,9 +3274,41 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/api/knowledge/index/rebuild' },
     { method: 'POST', path: '/api/knowledge/index/search' },
     { method: 'POST', path: '/api/knowledge/migrate' },
+    { method: 'GET', path: '/api/knowledge/capabilities' },
+    { method: 'GET', path: '/api/knowledge/s3-sources/capabilities' },
+    { method: 'GET', path: '/api/knowledge/s3-sources/profiles' },
+    { method: 'GET', path: '/api/knowledge/s3-sources/projects/:projectSlug' },
+    { method: 'POST', path: '/api/knowledge/s3-sources/projects/:projectSlug' },
+    {
+      method: 'POST',
+      path: '/api/knowledge/s3-sources/projects/:projectSlug/:sourceId/disconnect',
+    },
+    {
+      method: 'GET',
+      path: '/api/knowledge/s3-sources/projects/:projectSlug/:sourceId/objects',
+    },
+    {
+      method: 'GET',
+      path: '/api/knowledge/s3-sources/projects/:projectSlug/:sourceId/object',
+    },
+    { method: 'POST', path: '/api/knowledge/document-imports' },
+    {
+      method: 'GET',
+      path: '/api/knowledge/roots/:rootId/document-imports/:requestId',
+    },
+    {
+      method: 'POST',
+      path: '/api/knowledge/roots/:rootId/document-imports/:requestId/resume',
+    },
+    {
+      method: 'GET',
+      path: '/api/knowledge/roots/:rootId/document-imports/:requestId/originals/:index',
+    },
     { method: 'GET', path: '/api/knowledge/roots' },
     { method: 'POST', path: '/api/knowledge/roots' },
     { method: 'DELETE', path: '/api/knowledge/roots/:id' },
+    { method: 'POST', path: '/api/knowledge/roots/:id/disconnect' },
+    { method: 'POST', path: '/api/knowledge/roots/:id/attach-project' },
     {
       method: 'GET',
       path: '/api/knowledge/roots/:rootId/records/:id/source-observation',
@@ -3619,6 +3658,24 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // this entry.
     { method: 'POST', path: '/api/projects/:slug/bind' },
     { method: 'GET', path: '/api/projects/:slug/conversations' },
+    // Room actions compose these transport tiers with current Project membership.
+    { method: 'GET', path: '/api/projects/:slug/room' },
+    { method: 'POST', path: '/api/projects/:slug/room/init' },
+    { method: 'GET', path: '/api/projects/:slug/room/messages' },
+    { method: 'POST', path: '/api/projects/:slug/room/messages' },
+    { method: 'PUT', path: '/api/projects/:slug/room/note' },
+    { method: 'POST', path: '/api/projects/:slug/room/presence' },
+    { method: 'GET', path: '/api/projects/:slug/room/events' },
+    { method: 'POST', path: '/api/projects/:slug/room/agents' },
+    { method: 'GET', path: '/api/projects/:slug/room/agents/:requestId' },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/room/agents/:requestId/cancel',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/room/agents/:requestId/reconcile',
+    },
     // Epic #2323 S3: plugin draft preview. Status and a retained revision's
     // bytes are reads of this Project's own draft (read tier). Starting a
     // lease runs builds on this host, so it stays at the family's operate
@@ -3789,6 +3846,24 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/projects/:slug/work-items/claim' },
     { method: 'GET', path: '/api/projects/:slug/workflow/tasks' },
     { method: 'GET', path: '/api/projects/:slug/workflow/tasks/:taskSlug' },
+    // Creation receipts and host Git acquisition remain operator-only at their
+    // owning routes; the paired transport uses the ordinary Project tier.
+    { method: 'GET', path: '/api/projects/creation-requests' },
+    { method: 'GET', path: '/api/projects/creation-requests/:id' },
+    { method: 'POST', path: '/api/projects/repository-acquisitions' },
+    { method: 'GET', path: '/api/projects/repository-acquisitions' },
+    { method: 'POST', path: '/api/projects/:slug/identity/repositories' },
+    { method: 'POST', path: '/api/projects/repository-acquisitions/:id/reuse' },
+    { method: 'GET', path: '/api/projects/repository-providers/:provider' },
+    { method: 'GET', path: '/api/projects/repository-acquisitions/:id' },
+    { method: 'POST', path: '/api/projects/repository-acquisitions/:id/retry' },
+    {
+      method: 'POST',
+      path: '/api/projects/repository-acquisitions/:id/cancel',
+    },
+    { method: 'POST', path: '/api/projects/:slug/operator-setup/preview' },
+    { method: 'GET', path: '/api/projects/:slug/operator-setup/:id' },
+    { method: 'POST', path: '/api/projects/:slug/operator-setup/:id/run' },
     { method: 'GET', path: '/api/projects/icon-candidates' },
     { method: 'GET', path: '/api/projects/layouts/available' },
     { method: 'GET', path: '/api/proposed-changes' },

@@ -728,3 +728,67 @@ describe('maintained Station-local email/password provider', () => {
     ).toEqual({ kind: 'invalid', reason: 'revoked' });
   }, 30_000);
 });
+
+test.each([
+  'revoked',
+  'disabled',
+  'expired',
+  'pending enrollment',
+  'subject mismatch',
+])(
+  'synchronous local session witness refuses %s after a real provider login',
+  async (change) => {
+    const h = await usernameHarness();
+    const authenticated = await h.service.loginVirtualSession(
+      usernameLoginRequest('markeruser'),
+    );
+    if (authenticated.kind !== 'authenticated')
+      throw new Error('Missing local session');
+    const request = await localAccountCookieRequest(
+      h.provider,
+      h.stateDirectory,
+      authenticated.session.sessionId,
+      h.secret,
+    );
+    expect((await h.service.authenticate(request)).kind).toBe('authenticated');
+    const current = h.service.captureCurrentSession(request);
+    expect(current()).toBe(true);
+    if (change === 'revoked')
+      await h.service.revokeSessionReference(
+        authenticated.session.sessionId,
+        request.signal,
+      );
+    if (change === 'disabled')
+      h.administration.setDisabled(authenticated.session.subject, true);
+    if (change === 'expired' || change === 'pending enrollment') {
+      const database = new DatabaseSync(
+        join(h.stateDirectory, 'local-accounts.sqlite'),
+      );
+      try {
+        if (change === 'expired')
+          database
+            .prepare('UPDATE session SET expiresAt = ? WHERE id = ?')
+            .run(
+              new Date(Date.now() - 1).toISOString(),
+              authenticated.session.sessionId,
+            );
+        else
+          database
+            .prepare(
+              'UPDATE session SET stationPendingEnrollmentId = ? WHERE id = ?',
+            )
+            .run('pending-witness-refusal', authenticated.session.sessionId);
+      } finally {
+        database.close();
+      }
+    }
+    if (change === 'subject mismatch') {
+      expect(
+        h.provider.isVerifiedSessionCurrent!({
+          ...authenticated.session,
+          subject: 'another-person',
+        }),
+      ).toBe(false);
+    } else expect(current()).toBe(false);
+  },
+);

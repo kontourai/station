@@ -97,7 +97,7 @@ export function HomeActionSection({
   showPrimary = true,
 }: HomeActionSectionProps) {
   const profile = usePlatformProfile();
-  const showLocalProject = hasLocalStationForProfile(profile);
+  const canChooseFolder = hasLocalStationForProfile(profile);
   // The sidebar's colours, from the one project list it shows.
   const accents = useProjectAccents();
   const continuationSlug = continuation
@@ -119,17 +119,16 @@ export function HomeActionSection({
         title="Explore agents"
         onClick={() => onNavigate({ type: 'agents' })}
       />
-      {showLocalProject ? (
-        <HomeActionCard
-          label="Project"
-          // "This Station", not "this computer": the folder lives on the
-          // Station host, which is a different machine when this UI runs as
-          // a remote client (e.g. the phone app paired to a desktop).
-          title="Open local project"
-          detail="Add a folder on this Station"
-          onClick={() => onNavigate({ type: 'project-new' })}
-        />
-      ) : null}
+      <HomeActionCard
+        label="Project"
+        title="New Project"
+        detail={
+          canChooseFolder
+            ? 'Repository, folder, documents or tools'
+            : 'Repository, documents, tools or blank'
+        }
+        onClick={() => onNavigate({ type: 'project-new' })}
+      />
       {continuation && (
         <HomeActionCard
           className="home-view__action--quiet"

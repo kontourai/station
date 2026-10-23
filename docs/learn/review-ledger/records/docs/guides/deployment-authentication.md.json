@@ -92,7 +92,11 @@
 
     "src-server/routes/tool-library.ts",
 
-    "src-server/runtime/routes/tool-library-runtime.ts"
+    "src-server/runtime/routes/tool-library-runtime.ts",
+
+    "packages/contracts/src/deployment-authentication.ts",
+
+    "src-server/runtime/routes/task-relationship-authority.ts"
   ],
 
   "checks": [
