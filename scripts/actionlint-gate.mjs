@@ -74,6 +74,7 @@ const WORKFLOW_DIR = join(REPO_ROOT, '.github', 'workflows');
 const GITHUB_HOSTED_RUNNER_IMAGES = new Set([
   'ubuntu-latest',
   'ubuntu-22.04',
+  'ubuntu-24.04',
   // GitHub's partner arm64 hosted image (free for public repositories),
   // used by node-pty-prebuilds.yml to build the linux-arm64 artifact (#1245).
   'ubuntu-22.04-arm',
@@ -1719,11 +1720,11 @@ function forkSmokeIsolationFindings(file, job) {
       message:
         'fork-smoke must use the exact fork-only pull_request_target guard',
     });
-  if (job?.['runs-on'] !== 'ubuntu-22.04')
+  if (job?.['runs-on'] !== 'ubuntu-24.04')
     findings.push({
       file,
       jobId: FORK_SMOKE_JOB.jobId,
-      message: 'fork-smoke must run only on ubuntu-22.04',
+      message: 'fork-smoke must run only on ubuntu-24.04',
     });
   if (!hasOnlyReadContentsPermission(job.permissions))
     findings.push({
@@ -2416,8 +2417,10 @@ function fastChecksShardingFindings(file, jobs) {
         jobId,
         `${jobId} must declare only permissions: { contents: read }`,
       );
-    if (job['runs-on'] !== 'ubuntu-22.04')
-      finding(jobId, `${jobId} must run on a hosted ubuntu-22.04 image`);
+    const image =
+      jobId === FAST_CHECKS_AGGREGATE_JOB ? 'ubuntu-22.04' : 'ubuntu-24.04';
+    if (job['runs-on'] !== image)
+      finding(jobId, `${jobId} must run on a hosted ${image} image`);
     if (!hasExplicitCheckout(job, FAST_CHECKOUT_REPOSITORY, FAST_CHECKOUT_REF))
       finding(
         jobId,
@@ -3103,7 +3106,7 @@ function baseControlledPrWorkflowFindings(file, document, prCapable = false) {
     const exactDeliveryCall = isReviewedDeliveryCall(file, jobId, job);
     const runner = classifyRunner(job);
     // The exact calls have no runner of their own. This rule does not follow
-    // them into full-regression.yml, whose jobs run on ubuntu-22.04 today, or
+    // them into full-regression.yml, which pins its own hosted images, or
     // the reviewed remote docs-gate.yml, which runs on ubuntu-latest.
     if (
       !runner.hosted &&

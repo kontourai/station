@@ -242,7 +242,8 @@ jobs:
     name: Process-heavy corpus ${{ matrix.slice }}
     needs: resolve
     if: needs.resolve.outputs.reuse_run == ''
-    runs-on: ubuntu-22.04
+    # Managed workload proofs require scope OOM policy (systemd >= 253).
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:
       fail-fast: false

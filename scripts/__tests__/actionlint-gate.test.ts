@@ -412,19 +412,22 @@ describe('persistent runner policy', () => {
     });
   });
 
-  test('rejects a self-hosted fork-smoke job', () => {
-    expect(
-      persistentRunnerPolicyFindings(
-        primaryCiFixture((forkSmoke) => {
-          forkSmoke['runs-on'] = ['self-hosted', 'Linux'];
-        }),
-      ),
-    ).toContainEqual({
-      file: '.github/workflows/ci.yml',
-      jobId: 'fork-smoke',
-      message: 'fork-smoke must run only on ubuntu-22.04',
-    });
-  });
+  test.each(['ubuntu-22.04', ['self-hosted', 'Linux']])(
+    'rejects an unsupported fork-smoke runner %j',
+    (runner) => {
+      expect(
+        persistentRunnerPolicyFindings(
+          primaryCiFixture((forkSmoke) => {
+            forkSmoke['runs-on'] = runner;
+          }),
+        ),
+      ).toContainEqual({
+        file: '.github/workflows/ci.yml',
+        jobId: 'fork-smoke',
+        message: 'fork-smoke must run only on ubuntu-24.04',
+      });
+    },
+  );
 
   test.each([
     [
@@ -2185,12 +2188,20 @@ describe('persistent runner policy', () => {
       'fast-checks-shard must declare only permissions: { contents: read }',
     ],
     [
-      'a self-hosted plan',
+      'an unpinned plan',
       'fast-checks-plan',
       (job: Record<string, unknown>) => {
         job['runs-on'] = 'ubuntu-latest';
       },
-      'fast-checks-plan must run on a hosted ubuntu-22.04 image',
+      'fast-checks-plan must run on a hosted ubuntu-24.04 image',
+    ],
+    [
+      'a plan on systemd 249',
+      'fast-checks-plan',
+      (job: Record<string, unknown>) => {
+        job['runs-on'] = 'ubuntu-22.04';
+      },
+      'fast-checks-plan must run on a hosted ubuntu-24.04 image',
     ],
     [
       'an aggregator checkout that persists credentials',

@@ -361,7 +361,7 @@ describe('primary CI workflow governance', () => {
       // biome-ignore lint/suspicious/noTemplateCurlyInString: GitHub expression syntax is literal workflow data.
       "${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}",
     );
-    expect(fastChecks?.['runs-on']).toBe('ubuntu-22.04');
+    expect(fastChecks?.['runs-on']).toBe('ubuntu-24.04');
     // The fence is the gate's constant, not a second literal (#2577: this pin
     // stayed at 45 when the fence moved). ci-workflow-contract.test.ts proves
     // the value covers the ci:fast budget plus the job's bounded steps; this
@@ -395,7 +395,7 @@ describe('primary CI workflow governance', () => {
       "${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name != github.repository }}",
     );
     expect(forkSmoke?.permissions).toEqual({ contents: 'read' });
-    expect(forkSmoke?.['runs-on']).toBe('ubuntu-22.04');
+    expect(forkSmoke?.['runs-on']).toBe('ubuntu-24.04');
     expect(JSON.stringify(forkSmoke)).not.toContain('secrets.');
     expect(JSON.stringify(forkSmoke)).not.toContain('actions/cache@');
     expect(JSON.stringify(forkSmoke)).not.toContain('actions/upload-artifact@');
