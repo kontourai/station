@@ -20,6 +20,7 @@ type WorkflowStep = {
 };
 
 type WorkflowJob = {
+  concurrency?: { group: string; 'cancel-in-progress': boolean };
   if?: string;
   needs?: string | string[];
   uses?: string;
@@ -222,12 +223,46 @@ describe('promotion full-regression workflow', () => {
     }
   });
 
+  test('qualifies coalesced main pushes without adding a packaging wave per merge', () => {
+    const main = workflow('main-qualification.yml');
+    expect(main.on?.push).toEqual({ branches: ['main'] });
+    expect(main.on?.schedule).toEqual([{ cron: '17 */6 * * *' }]);
+    const qualification = main.jobs?.qualification;
+    expect(qualification?.if).toBe("github.ref == 'refs/heads/main'");
+    expect(qualification?.with?.source_sha).toBe(
+      githubExpression('github.sha'),
+    );
+    expect(qualification?.concurrency).toEqual({
+      group: 'station-main-qualification-latest',
+      'cancel-in-progress': false,
+    });
+    // Evaluate the actual downstream admission condition at the event boundary.
+    // Push must never fan out delivery; source failure/skip must never do so.
+    const condition = main.jobs?.['delivery-validation'].if;
+    if (!condition) throw new Error('Delivery admission is missing');
+    for (const event of ['push', 'schedule', 'workflow_dispatch']) {
+      for (const result of ['success', 'failure', 'cancelled', 'skipped']) {
+        const allowed = Function(
+          'github',
+          'needs',
+          `return (${condition});`,
+        )({ event_name: event }, { qualification: { result } });
+        expect(allowed, `${event}/${result}`).toBe(
+          event !== 'push' && result === 'success',
+        );
+      }
+    }
+  });
+
   test('bounds the workflow DAG to the admitted profile without canceling distinct queued sources', () => {
     const reusable = workflow('full-regression.yml');
     const delivery = workflow('delivery-validation.yml');
     const scheduled = workflow('main-qualification.yml');
     expect(scheduled).not.toHaveProperty('concurrency');
-    expect(scheduled.jobs?.qualification).not.toHaveProperty('concurrency');
+    expect(scheduled.jobs?.qualification.concurrency).toEqual({
+      group: 'station-main-qualification-latest',
+      'cancel-in-progress': false,
+    });
     expect(delivery.concurrency).toEqual({
       group: 'station-background-compute',
       queue: 'max',
@@ -238,10 +273,9 @@ describe('promotion full-regression workflow', () => {
       queue: 'max',
       'cancel-in-progress': false,
     });
-    expect(
-      workflow('ci.yml').jobs?.['merge-integration-full-regression'].with
-        ?.capacity_class,
-    ).toBe('integration');
+    expect(workflow('ci.yml').jobs).not.toHaveProperty(
+      'merge-integration-full-regression',
+    );
     for (const file of [
       'release.yml',
       'publish-release.yml',

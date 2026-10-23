@@ -1,6 +1,8 @@
 name: "Main: Qualification"
 
 on:
+  push:
+    branches: [main]
   schedule:
     - cron: '17 */6 * * *'
   workflow_dispatch:
@@ -14,9 +16,14 @@ permissions:
   contents: read
   actions: read
 
+# Keep the admitted run; replace only the waiting revision as main advances.
+# This group covers source qualification, not downstream delivery validation.
 jobs:
   qualification:
     if: github.ref == 'refs/heads/main'
+    concurrency:
+      group: station-main-qualification-latest
+      cancel-in-progress: false
     uses: ./.github/workflows/full-regression.yml
     with:
       capacity_class: background
@@ -25,5 +32,5 @@ jobs:
 
   delivery-validation:
     needs: [qualification]
-    if: needs.qualification.result == 'success'
+    if: github.event_name != 'push' && needs.qualification.result == 'success'
     uses: ./.github/workflows/delivery-validation.yml

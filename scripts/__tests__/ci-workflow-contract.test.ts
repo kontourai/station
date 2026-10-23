@@ -899,6 +899,8 @@ describe('CI verification workflow contracts', () => {
     // Reason strings are the contract. "Publishes" means there is nothing to
     // verify before merge; "reduced PR lane" names where the PR signal lives.
     const declared: Record<string, string> = {
+      '.github/workflows/main-qualification.yml':
+        'coalesced exhaustive qualification of merged main; bounded affected tests and browser/static integration run in PR CI',
       '.github/workflows/pages.yml':
         'publishes GitHub Pages from merged main; nothing to pre-verify',
       '.github/workflows/publish-packages.yml':
@@ -1817,6 +1819,9 @@ describe('CI verification workflow contracts', () => {
     expect(plan.outputs).toEqual({
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
       legacy: '${{ steps.mode.outputs.legacy }}',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      'integration-ready':
+        '${{ steps.merge-decision.outputs.integration-ready }}',
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
       'full-regression': '${{ steps.merge-decision.outputs.full-regression }}',
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.

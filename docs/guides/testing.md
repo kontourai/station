@@ -313,7 +313,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`issue-lifecycle.yml`](../../.github/workflows/issue-lifecycle.yml) | Issue lifecycle | **Repo: Issue lifecycle** | issue events: opened, reopened, labeled; new issue comments. |
 | [`landing-automation.yml`](../../.github/workflows/landing-automation.yml) | Landing automation | **Repo: Landing automation** | PR events; after `PR: CI`. |
 | [`main-health.yml`](../../.github/workflows/main-health.yml) | Main pipeline health | **Main: Health** | after `Nightly`, `Nightly: Gallery`, `Main: Container smoke`, `PR: Secret scan`, `Repo: Dependency advisory`, `Main: Android tests`. |
-| [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | UTC schedule: `17 */6 * * *`; manual dispatch. |
+| [`main-qualification.yml`](../../.github/workflows/main-qualification.yml) | Main qualification | **Main: Qualification** | main pushes (source qualification only); UTC schedule: `17 */6 * * *`; manual dispatch. |
 | [`merge-queue-regression.yml`](../../.github/workflows/merge-queue-regression.yml) | Merge integration | **Diagnostic (manual): Merge integration** | manual full-corpus diagnosis, never a required check; automatic integration belongs to `PR: CI`. |
 | [`native-store-preflight.yml`](../../.github/workflows/native-store-preflight.yml) | Native store credential preflight | **Tool: Native store preflight** | manual dispatch. |
 | [`nightly-fleet-staging.yml`](../../.github/workflows/nightly-fleet-staging.yml) | Nightly fleet staging | **Nightly: Fleet staging** | reused by `Nightly`. |
@@ -475,8 +475,8 @@ diagnosable bundle, and `incompleteReasons` names every shortfall in words
 rather than leaving a bare `complete: false`. `complete` is derived from the
 recorded deferral: a run that defers `ci-fast` or `test-full`, or selects
 targets and executes no test, is incomplete. Hosted `fast-checks` still passes
-such a plan, since `Merge-queue regression` runs full regression before merge,
-but it reports the pass as provisional with a warning that names the deferred
+such a plan when its bounded mapped tests and invariants pass, but it reports
+the pass as provisional with a warning that names the deferred
 lanes, and the required `Source verification policy` status stays success with
 a provisional note in its description. An E2E, desktop or pre-push deferral is owned outside the selection and
 leaves the run complete.
@@ -1721,55 +1721,48 @@ candidate diff and the incident-owner integration pause. The separately required
 `fast-checks` owns affected tests, fixed invariants, all typecheck lanes and
 critical browser smoke; security and relevant platform checks remain required.
 
-On each merge-queue candidate, `fast-checks-plan` computes one plan against
-the queue base. The merge decision consumes those same local bytes; test
-shards consume that run's uploaded plan. There is no second planner install
-or cross-workflow artifact lookup.
+On each merge-queue candidate, `fast-checks-plan` computes one affected-test
+plan against the queue base. The decision consumes those same local bytes;
+test shards consume that run's uploaded plan. There is no second planner or
+full-corpus call on the merge queue's critical path.
+
 [`merge-queue-regression-decision.mjs`](../../scripts/merge-queue-regression-decision.mjs)
-then chooses a path:
+validates the plan, exact candidate SHA and base, including its explicit
+coverage deferrals. The required aggregate accepts only successful diff,
+plan and `fast-checks` jobs plus an exact `integration-ready=true` output.
+Missing, invalid, foreign, cancelled or unavailable evidence blocks integration;
+it does not start an expensive fallback corpus. An old candidate without the
+validation CLI must integrate current main before it can supply that evidence.
 
-- **Full regression.** The plan defers to the `ci-fast` or `test-full` lane,
-  or it names a `mergeQueueRegression` path. Narrower deferred lanes, such as a
-  packaging leg, take the fast path: the owner limited the scope to keep queue
-  candidates under the shared runner cap. Hosted plans retain concrete mapped
-  tests and related discovery from the other changed paths, even when a global
-  obligation remains deferred. They run through the existing resource groups
-  and shard receipts, including explicit selections above 32 files. Paths
-  explicitly deferred by supplemental edges remain deferred; unknown/global
-  paths are not expanded into an assumed-complete selection. Passing the mapped
-  tests does not discharge the broader obligation. Before related discovery,
-  hosted planning checks Vitest's resolved `forceRerunTriggers` with Vitest's
-  own matcher. Matching seeds (including nested package manifests by default)
-  become named `test-full` obligations instead of causing Vitest to select the
-  entire corpus as fast feedback. The plan retains those paths in
-  `globalTriggeredPaths`; malformed or foreign discovery metadata fails the
-  plan. Other mapped tests still run, and global-only changes remain deferred
-  rather than gaining a completed empty-test claim. Local unsharded feedback
-  keeps its existing discovery behavior and bounded selection limits. A
-  `mergeQueueRegression` path, such as the SDK transport or the orchestration
-  event store, leaves its consumers to the queue on purpose. The candidate
-  runs the hosted [full regression](../../.github/workflows/full-regression.yml)
-  on its own SHA, with exact-source reuse allowed. The required check passes
-  only when that run and `fast-checks` pass.
-- **Fast path.** Any other candidate, including one deferred only to a narrower
-  lane, skips the full regression. The check
-  reports `no deferred lane: fast path`.
+Hosted plans retain concrete mapped tests and related discovery from other
+changed paths even when a global obligation remains deferred. Those tests run
+through the existing resource groups and digest-bound shard receipts. Global
+Vitest rerun triggers become explicit `test-full` obligations instead of
+expanding every feedback run to the whole corpus. Unknown paths and consumer
+coverage marked by the legacy `mergeQueueRegressionPaths` field remain deferred.
+Passing bounded integration does not discharge those obligations, and an empty
+deferred selection is not reported as a completed test corpus. The source
+policy's provisional marker remains visible.
 
-The decision fails closed. A missing, unreadable or invalid plan runs the full
-regression, and so does a plan for another head or base. If the planner or its
-install fails, or the decision step writes nothing, the full regression runs
-too. The fast path requires both a successful plan job and an exact `false`
-decision; an earlier false output cannot hide a failed planner. Old candidates
-without the decision CLI also take the full path. Pull requests do not run
-this regression. The former merge-integration workflow remains available as
-a manual full-corpus diagnostic.
+[Main: Qualification](../../.github/workflows/main-qualification.yml) runs the
+exhaustive corpus after pushes to main, every six hours, or manually. Its
+qualification caller preserves the admitted run and keeps one pending request;
+a later arriving request replaces the waiting one. This coalesces intervening
+main revisions without cancelling the running corpus or claiming that skipped
+revisions passed. GitHub arrival order is not a commit-recency guarantee; the
+schedule also qualifies its current main event SHA. Exact-source successful
+reuse remains available. Release qualification uses its separate class and
+still requires the full exact-source receipt.
 
-[Main: Qualification](../../.github/workflows/main-qualification.yml) runs every
-six hours or manually outside the queue, testing combined merged changes.
-After a successful corpus it runs all delivery families. Nightly uses its own
-source usability gate and schedule. A full-qualification failure collects the
-available independent failures and starts one bounded repair episode. See
+Push-triggered qualification does not start packaging/delivery families. The
+scheduled/manual run does so only after successful source qualification.
+Nightly retains its separate usability gate and cadence. A real full-corpus
+failure remains red and updates the existing bounded qualification repair
+episode; it does not become integration success or a release receipt. See
 [qualification and repair](releasing.md#one-repair-sweep-per-failure-episode).
+The manual merge-integration workflow remains available for explicit corpus
+diagnosis. Hosted scheduling, cost reductions and throughput require live
+run evidence; this topology alone is not a measured improvement.
 
 Never `gh pr update-branch` a bot-owned PR: let the bot regenerate its branch.
 An opted-in `station-autoland` PR can be armed by deterministic landing automation
@@ -1821,8 +1814,7 @@ not every way to wait.
 ### Test quarantine
 
 The historical `QUARANTINED_VITEST_FILES` list remains a diagnostic exclusion
-mechanism for explicitly requested corpus runs. The merge-queue full regression
-for deferred candidates, scheduled qualification and release qualification never
+mechanism for explicitly requested corpus runs. Hosted main/release full qualification never
 exclude these files: a known flake remains visible and blocks promotion until resolved.
 
 **When to quarantine.** Only a test that is flaky, not broken: the *same
@@ -2291,8 +2283,8 @@ that each allocated shard ran its exact slice. An unexpected skip, cancellation,
 missing receipt, or receipt for another plan or head fails the check. A deferred
 selection (the selector's exit 3) is reported and passes only when its executed
 mapped tests pass; a real assertion or infrastructure failure is not converted
-into deferral. The unresolved obligation still controls merge-queue full
-regression. This catches mapped caller failures before queue admission without
+into deferral. The unresolved obligation remains for main/release full
+qualification. This catches mapped caller failures before queue admission without
 claiming that the PR completed global verification.
 Local `npm run ci:fast` and fork-smoke still run the whole lane unsharded.
 Transitionally, a pull request branched before the sharded lane (no

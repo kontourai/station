@@ -72,13 +72,11 @@ const SCOPED_INSTRUCTION_EDGES = Object.freeze(
  * that exercise the transport's OWN behaviour — streams, authentication and
  * native transport order, credential wake, timeouts, origin headers, failure
  * mapping, request authority, portability. The transport's CONSUMERS' unit
- * and component suites leave the fast lane — and still run before merge:
+ * and component suites leave the fast lane — and run in main/release full qualification:
  * `mergeQueueRegression: true` puts the path in the fast-checks plan's
- * `mergeQueueRegressionPaths`, and the required `Merge-queue regression`
- * check runs the full-regression corpus on any merge-queue candidate whose
- * plan names one (scripts/merge-queue-regression-decision.mjs). Fast feedback
- * covers the module's own behaviour; the queue covers everything that
- * imports it.
+ * `mergeQueueRegressionPaths` (legacy schema name). The integration check
+ * records that remaining coverage explicitly; it does not run the full
+ * corpus. Main/release qualification covers everything that imports it.
  *
  * Deliberately NOT a `test-full` lane. Any lane switches the whole diff to
  * deferred execution (`executionSelection` in `run-changed-verification.mjs`):
@@ -113,8 +111,8 @@ const SDK_TRANSPORT_EDGES = Object.freeze(
       mergeQueueRegression: true,
       reason:
         'SDK transport: own-behaviour suites; its import graph is too broad ' +
-        'for the fast lane, so consumers are covered by the merge-queue ' +
-        'full regression (#2301)',
+        'for the fast lane, so consumers are covered by ' +
+        'main/release full qualification (#2301)',
     }),
   ),
 );
@@ -131,8 +129,8 @@ const SDK_TRANSPORT_EDGES = Object.freeze(
  * and unmeasured against the window. Revisit only if a barrel-only change
  * overruns. Each module here gets the same shape as the
  * transport: the suites that exercise the module's own behaviour run in the
- * fast lane, and its consumers run in the required merge-queue full
- * regression. Tests-only edges, never a lane (see SDK_TRANSPORT_EDGES).
+ * fast lane, and its consumers run in main/release full
+ * qualification. Tests-only edges, never a lane (see SDK_TRANSPORT_EDGES).
  */
 const SDK_BROAD_MODULE_EDGES = Object.freeze([
   Object.freeze({
@@ -145,7 +143,7 @@ const SDK_BROAD_MODULE_EDGES = Object.freeze([
     ]),
     reason:
       'SDK error-message mapping: own-behaviour suites; consumers run in ' +
-      'the merge-queue full regression (#2326)',
+      'the main/release full qualification (#2326)',
   }),
   Object.freeze({
     pattern: 'packages/sdk/src/client/chatHttpError.ts',
@@ -158,13 +156,13 @@ const SDK_BROAD_MODULE_EDGES = Object.freeze([
     ]),
     reason:
       'SDK chat HTTP error: own-behaviour suites; consumers run in the ' +
-      'merge-queue full regression (#2326)',
+      'main/release full qualification (#2326)',
   }),
   // The client barrel has NO suite of its own: nothing asserts which modules
   // it re-exports (publicBarrel.test.ts covers the PACKAGE root barrel, not
   // this one). The portability scan only proves its import syntax stays
   // portable. A dropped re-export is caught by the consumers that import it,
-  // which run in the merge-queue full regression — before merge, not here.
+  // which run in the main/release full qualification — outside the merge queue.
   Object.freeze({
     pattern: 'packages/sdk/src/client/index.ts',
     mergeQueueRegression: true,
@@ -173,7 +171,7 @@ const SDK_BROAD_MODULE_EDGES = Object.freeze([
     ]),
     reason:
       'SDK client barrel: portability scan only (no own export-contract ' +
-      'suite exists); consumers run in the merge-queue full regression (#2326)',
+      'suite exists); consumers run in the main/release full qualification (#2326)',
   }),
 ]);
 
@@ -188,7 +186,7 @@ const SDK_BROAD_MODULE_EDGES = Object.freeze([
  * its session work-item, revision-evidence, credential-application and
  * recovery ledgers, the transcript search queries, and the attachment route
  * through the real runtime wiring. Its consumers run in the required
- * merge-queue full regression, as do these store suites, which leave the
+ * main/release full qualification, as do these store suites, which leave the
  * fast lane: the resource-heavy event-store-batched-projection.large and
  * event-store-wal-preservation.process (either would take most of the lane),
  * and the adoption-ledger, turn-deduplicator and session-attachment-barrier
@@ -217,8 +215,8 @@ const ORCHESTRATION_STORE_EDGES = Object.freeze([
     ]),
     reason:
       'orchestration event store: own-behaviour suites; its import graph is ' +
-      'too broad for the fast lane, so consumers run in the merge-queue full ' +
-      'regression (#2610)',
+      'too broad for the fast lane, so consumers run in ' +
+      'main/release full qualification (#2610)',
   }),
   Object.freeze({
     pattern: 'src-server/services/orchestration/transcript-search-queries.ts',
@@ -230,7 +228,7 @@ const ORCHESTRATION_STORE_EDGES = Object.freeze([
     ]),
     reason:
       'transcript search queries: own-behaviour suites; reached through the ' +
-      'event store, so consumers run in the merge-queue full regression (#2610)',
+      'event store, so consumers run in the main/release full qualification (#2610)',
   }),
 ]);
 
@@ -253,7 +251,7 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
     // so its related graph is most of the UI and server corpus, and a
     // matrix-only change ran fast-checks past its 12-minute budget with zero
     // failures. The suites that exercise the matrix's own declarations run
-    // here; its consumers run in the required merge-queue full regression.
+    // here; its consumers run in main/release full qualification.
     pattern: 'packages/contracts/src/engine-capability-matrix.ts',
     mergeQueueRegression: true,
     tests: [
@@ -270,7 +268,7 @@ export const GOVERNED_REPO_DATA_EDGES = Object.freeze([
     reason:
       'engine capability declarations: own-behaviour suites; the import ' +
       'graph is too broad for the fast lane, so consumers run in the ' +
-      'merge-queue full regression (#2458)',
+      'main/release full qualification (#2458)',
   },
   {
     pattern: 'src-server/services/orchestration/attached-session-adoption.ts',
@@ -2182,7 +2180,7 @@ const spawnedScriptEdgeCache = new Map();
  * entry shim such as `scripts/lib/module-entry.mjs` is imported by most
  * spawned scripts: a one-line edit selected 75 files and took `test:changed`
  * past ci:fast's 900 s budget (#2621). The deferral keeps the coverage (the
- * merge queue's full regression runs them) without the inline cost.
+ * main/release full qualification runs them) without the inline cost.
  */
 export const SPAWNED_SCRIPT_FANOUT_LIMIT = 16;
 const SPAWNED_SCRIPT_DEFERRAL_REASON =
@@ -2335,9 +2333,9 @@ export function buildTestImpactManifest(options) {
 
 /**
  * Changed paths whose consumers the fast lane deliberately leaves to the
- * merge queue: a path an unconditional `mergeQueueRegression` edge owns. The
- * fast-checks plan records them, and a merge-queue candidate that names any
- * runs the full regression (scripts/merge-queue-regression-decision.mjs).
+ * full-qualification corpus: a path an unconditional `mergeQueueRegression`
+ * edge owns. The legacy field stays in the fast-checks plan so bounded
+ * integration reports its deferred consumer coverage truthfully.
  *
  * @param {readonly string[]} paths
  * @param {readonly ImpactEdge[]} [manifest]
