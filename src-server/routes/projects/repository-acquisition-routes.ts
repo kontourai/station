@@ -60,11 +60,11 @@ export function createRepositoryAcquisitionRoutes(
     }
   });
   app.use('/repository-acquisitions', async (c, next) => {
-    if (!isOperatorInPersonNotAgent(c.req.raw)) return denied(c);
+    if (!mayDiscover(c.req.raw) || c.req.raw.signal.aborted) return denied(c);
     return next();
   });
   app.use('/repository-acquisitions/*', async (c, next) => {
-    if (!isOperatorInPersonNotAgent(c.req.raw)) return denied(c);
+    if (!mayDiscover(c.req.raw) || c.req.raw.signal.aborted) return denied(c);
     return next();
   });
   app.get('/repository-acquisitions', async (c) => {
@@ -113,24 +113,38 @@ export function createRepositoryAcquisitionRoutes(
     '/repository-acquisitions',
     validate(repositoryAcquisitionRequestSchema),
     async (c) => {
+      const current = () => mayDiscover(c.req.raw) && !c.req.raw.signal.aborted;
       try {
-        const data = await service.acquire(getBody(c));
-        return c.json({ success: true, data });
+        const data = await service.acquire(getBody(c), false, () => {
+          if (!current())
+            throw new Error('Repository acquisition authority ended.');
+        });
+        if (!current()) return denied(c);
+        return guardProjectResponse(c.json({ success: true, data }), async () =>
+          current(),
+        );
       } catch (error) {
+        if (!current()) return denied(c);
         return failure(c, error);
       }
     },
   );
   app.get('/repository-acquisitions/:id', async (c) => {
+    const current = () => mayDiscover(c.req.raw) && !c.req.raw.signal.aborted;
+    if (!current()) return denied(c);
     try {
       const data = service.get(param(c, 'id'));
       return data
-        ? c.json({ success: true, data })
+        ? guardProjectResponse(
+            c.json({ success: true, data }),
+            async () => mayDiscover(c.req.raw) && !c.req.raw.signal.aborted,
+          )
         : c.json(
             { success: false, error: 'Repository acquisition was not found.' },
             404,
           );
     } catch (error) {
+      if (!mayDiscover(c.req.raw) || c.req.raw.signal.aborted) return denied(c);
       return failure(c, error);
     }
   });
@@ -143,7 +157,10 @@ export function createRepositoryAcquisitionRoutes(
       });
       if (!current()) return denied(c);
       return data
-        ? c.json({ success: true, data })
+        ? guardProjectResponse(
+            c.json({ success: true, data }),
+            async () => mayDiscover(c.req.raw) && !c.req.raw.signal.aborted,
+          )
         : c.json(
             { success: false, error: 'Repository acquisition was not found.' },
             404,
@@ -154,16 +171,25 @@ export function createRepositoryAcquisitionRoutes(
     }
   });
   app.post('/repository-acquisitions/:id/retry', async (c) => {
+    const current = () => mayDiscover(c.req.raw) && !c.req.raw.signal.aborted;
+    if (!current()) return denied(c);
     try {
-      const current = service.get(param(c, 'id'));
-      if (!current)
+      const saved = service.get(param(c, 'id'));
+      if (!saved)
         return c.json(
           { success: false, error: 'Repository acquisition was not found.' },
           404,
         );
-      const data = await service.acquire(current.request, true);
-      return c.json({ success: true, data });
+      const data = await service.acquire(saved.request, true, () => {
+        if (!current())
+          throw new Error('Repository acquisition authority ended.');
+      });
+      if (!current()) return denied(c);
+      return guardProjectResponse(c.json({ success: true, data }), async () =>
+        current(),
+      );
     } catch (error) {
+      if (!mayDiscover(c.req.raw) || c.req.raw.signal.aborted) return denied(c);
       return failure(c, error);
     }
   });

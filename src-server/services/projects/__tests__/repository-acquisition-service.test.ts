@@ -9,9 +9,11 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
+import { createRepositoryAcquisitionRoutes } from '../../../routes/projects/repository-acquisition-routes.js';
 import * as gitExec from '../../../utils/git-exec.js';
 import { execGitSync } from '../../../utils/git-exec.js';
 import {
@@ -431,3 +433,154 @@ test('matching retained checkouts are explicitly reverified without cloning and 
     'operator edits',
   );
 });
+
+function mounted(f: ReturnType<typeof fixture>, current: () => boolean) {
+  const app = new Hono().route(
+    '/',
+    createRepositoryAcquisitionRoutes(f.home, current),
+  );
+  return {
+    app,
+    acquire: (request: { requestId: string; sourceUrl: string }) =>
+      app.request('/repository-acquisitions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(request),
+      }),
+  };
+}
+
+test.each(['operation', 'publication'])(
+  'mounted acquisition loses authority during %s lock wait without launching Git',
+  async (lock) => {
+    const f = fixture();
+    const request = { requestId: randomUUID(), sourceUrl: f.source };
+    const directory = join(
+      f.home,
+      'repository-acquisitions',
+      request.requestId,
+    );
+    mkdirSync(directory, { recursive: true });
+    const release = await acquireFileMutationLockAsync(
+      join(directory, `${lock}.mutation`),
+    );
+    let allowed = true;
+    let admitted!: () => void;
+    const admission = new Promise<void>((resolve) => {
+      admitted = resolve;
+    });
+    const route = mounted(f, () => {
+      admitted();
+      return allowed;
+    });
+    const git = vi.spyOn(gitExec, 'execGit');
+    const pending = route.acquire(request);
+    await admission;
+    allowed = false;
+    await release();
+    const response = await pending;
+    expect(response.status).toBe(403);
+    expect(await response.text()).not.toContain(directory);
+    expect(git).not.toHaveBeenCalled();
+    expect(f.service.get(request.requestId)).toBeNull();
+    allowed = true;
+    const renewed = await route.acquire(request);
+    expect(renewed.status).toBe(200);
+    expect((await renewed.json()).data.phase).toBe('ready');
+  },
+);
+
+test('mounted clone revocation preserves uncertain bytes and exact explicit retry recovers with renewed authority', async () => {
+  const f = fixture();
+  const request = { requestId: randomUUID(), sourceUrl: f.source };
+  let allowed = true;
+  const route = mounted(f, () => allowed);
+  const original = gitExec.execGit;
+  let cloned!: () => void;
+  let resume!: () => void;
+  const observed = new Promise<void>((resolve) => {
+    cloned = resolve;
+  });
+  const hold = new Promise<void>((resolve) => {
+    resume = resolve;
+  });
+  const git = vi
+    .spyOn(gitExec, 'execGit')
+    .mockImplementation(async (args, options) => {
+      const result = await original(args, options);
+      if (args.includes('clone')) {
+        cloned();
+        await hold;
+      }
+      return result;
+    });
+  const pending = route.acquire(request);
+  await observed;
+  allowed = false;
+  resume();
+  const refused = await pending;
+  expect(refused.status).toBe(403);
+  expect(await refused.text()).not.toContain(f.home);
+  expect(git.mock.calls).toHaveLength(1);
+  const uncertain = new RepositoryAcquisitionService(f.home).get(
+    request.requestId,
+  )!;
+  expect(uncertain.phase).toBe('acquiring');
+  expect(existsSync(join(uncertain.checkoutPath, '.git'))).toBe(true);
+  expect(existsSync(join(uncertain.checkoutPath, 'README.md'))).toBe(false);
+  expect(
+    (await route.app.request(`/repository-acquisitions/${request.requestId}`))
+      .status,
+  ).toBe(403);
+  expect(
+    (
+      await route.app.request(
+        `/repository-acquisitions/${request.requestId}/retry`,
+        { method: 'POST' },
+      )
+    ).status,
+  ).toBe(403);
+  allowed = true;
+  const duplicate = await route.acquire(request);
+  expect((await duplicate.json()).data).toEqual(uncertain);
+  expect(git.mock.calls).toHaveLength(1);
+  const recovered = await route.app.request(
+    `/repository-acquisitions/${request.requestId}/retry`,
+    { method: 'POST' },
+  );
+  const ready = (await recovered.json()).data;
+  expect(ready.phase).toBe('ready');
+  expect(ready.request).toEqual(request);
+  expect(ready.attempt).toBe(2);
+  expect(ready.resolvedCommit).toBe(f.commit);
+  expect(ready.checkoutPath).not.toBe(uncertain.checkoutPath);
+  expect(existsSync(join(uncertain.checkoutPath, '.git'))).toBe(true);
+  expect(readFileSync(join(ready.checkoutPath, 'README.md'), 'utf8')).toBe(
+    'first revision',
+  );
+});
+
+test.each(['create', 'inspect', 'cancel', 'retry'])(
+  'mounted %s metadata is withheld on revocation before body release',
+  async (action) => {
+    const f = fixture();
+    let allowed = true;
+    const route = mounted(f, () => allowed);
+    const request = {
+      requestId: randomUUID(),
+      sourceUrl: f.source,
+      sourceRef: 'missing',
+    };
+    if (action !== 'create') await f.service.acquire(request);
+    const response =
+      action === 'create'
+        ? await route.acquire(request)
+        : await route.app.request(
+            `/repository-acquisitions/${request.requestId}${action === 'inspect' ? '' : `/${action}`}`,
+            { method: action === 'inspect' ? 'GET' : 'POST' },
+          );
+    expect(response.status).toBe(200);
+    allowed = false;
+    await expect(response.text()).rejects.toThrow('authorization ended');
+  },
+);

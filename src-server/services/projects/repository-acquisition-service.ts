@@ -244,12 +244,14 @@ export class RepositoryAcquisitionService {
     id: string,
     assertCurrent: () => void = () => {},
   ): Promise<RepositoryAcquisition | null> {
+    assertCurrent();
     z.string().uuid().parse(id);
     if (!this.get(id)) return null;
     const release = await acquireFileMutationLockAsync(
       join(this.root, id, 'publication.mutation'),
     );
     try {
+      assertCurrent();
       const current = this.get(id);
       if (!current) return null;
       if (current.phase === 'ready')
@@ -267,12 +269,14 @@ export class RepositoryAcquisitionService {
 
   private async publish(
     record: RepositoryAcquisition,
+    assertCurrent: () => void,
   ): Promise<RepositoryAcquisition> {
     const id = record.request.requestId;
     const release = await acquireFileMutationLockAsync(
       join(this.root, id, 'publication.mutation'),
     );
     try {
+      assertCurrent();
       const current = this.get(id);
       if (current?.phase === 'cancelled') return current;
       this.store(id).write(record);
@@ -432,7 +436,9 @@ export class RepositoryAcquisitionService {
   async acquire(
     raw: RepositoryAcquisitionRequest,
     retry = false,
+    assertCurrent: () => void = () => {},
   ): Promise<RepositoryAcquisition> {
+    assertCurrent();
     const request = repositoryAcquisitionRequestSchema.parse(raw);
     validateSource(request);
     const directory = join(this.root, request.requestId);
@@ -441,6 +447,7 @@ export class RepositoryAcquisitionService {
       join(directory, 'operation.mutation'),
     );
     try {
+      assertCurrent();
       const previous = this.get(request.requestId);
       if (previous && !isDeepStrictEqual(previous.request, request)) {
         throw new RepositoryAcquisitionConflict(
@@ -462,7 +469,7 @@ export class RepositoryAcquisitionService {
         checkoutPath,
         updatedAt: new Date().toISOString(),
       };
-      const admitted = await this.publish(acquiring);
+      const admitted = await this.publish(acquiring, assertCurrent);
       if (admitted.phase === 'cancelled') return admitted;
       let ready: RepositoryAcquisition;
       try {
@@ -477,14 +484,17 @@ export class RepositoryAcquisitionService {
         ];
         if (request.sourceRef) args.push('--branch', request.sourceRef);
         args.push('--', request.sourceUrl, checkoutPath);
+        assertCurrent();
         await execGit(args, {
           cwd: directory,
           timeout: 120000,
           hardening: { allowFileProtocol: isLocalGitSource(request.sourceUrl) },
         });
+        assertCurrent();
         const afterClone = this.get(request.requestId);
         if (afterClone?.phase === 'cancelled') return afterClone;
         const remotes = await readCheckoutRemotes(checkoutPath);
+        assertCurrent();
         const canonicalRemote = normalizeGitOrigin(request.sourceUrl);
         if (
           !remotes.ok ||
@@ -502,9 +512,11 @@ export class RepositoryAcquisitionService {
             timeout: 10000,
           })
         ).stdout.trim();
+        assertCurrent();
         if (!/^[a-f0-9]{40,64}$/.test(commit))
           throw new Error('Commit could not be resolved.');
         const config = await checkRepositoryConfig(checkoutPath, 'read');
+        assertCurrent();
         if (!config.ok) throw new Error('Checkout configuration was refused.');
         await execGit(['checkout', '--detach', commit, '--'], {
           cwd: checkoutPath,
@@ -512,7 +524,9 @@ export class RepositoryAcquisitionService {
           // Acquisition materializes bytes; installed filters require separate setup consent.
           env: { GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_NOSYSTEM: '1' },
         });
+        assertCurrent();
         const selectedDirectory = await workingDirectory(acquiring);
+        assertCurrent();
         ready = {
           ...acquiring,
           phase: 'ready',
@@ -522,6 +536,8 @@ export class RepositoryAcquisitionService {
           updatedAt: new Date().toISOString(),
         };
       } catch {
+        // Keep the started-effect receipt uncertain until an authorized explicit retry.
+        assertCurrent();
         const failed: RepositoryAcquisition = {
           ...acquiring,
           phase: 'failed',
@@ -529,10 +545,10 @@ export class RepositoryAcquisitionService {
             'Repository acquisition failed. Check source access and the requested branch or tag, then retry explicitly.',
           updatedAt: new Date().toISOString(),
         };
-        return await this.publish(failed);
+        return await this.publish(failed, assertCurrent);
       }
       // A publication failure must preserve uncertainty about the completed clone.
-      return await this.publish(ready);
+      return await this.publish(ready, assertCurrent);
     } finally {
       await release();
     }
