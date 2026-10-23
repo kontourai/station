@@ -1833,6 +1833,16 @@ This is separate from CLI session groups' logical start allowance. A returned
 report does not establish context ACKs or work acceptance.
 Hosted mode and unavailable private storage return `report_groups_unavailable`.
 
+The Flow-bound serving composition is not runtime-qualified. Its controlled
+concurrent HTTP test currently refuses before provider fetch: Station loads Flow
+5.2.2 while Flow Agents 9.5.1 loads a separate Flow 5.2.0 module, and their
+same-process mutation-lock registries conflict. Upstream Flow Agents #1540 is the
+published dependency-alignment prerequisite; landing or publication alone will
+not establish installed module deduplication or successful serving. Independent
+advisory receipts do not qualify this path. The full group capability remains
+disabled while this failure and the remaining continuation/live obligations are
+open.
+
 - `POST /` accepts `operationId`, `projectSlug`, optional `resourceId`,
   `deadlineAt`, `maxConcurrent`, aggregate `budget` (`inputTokens`, `outputTokens`,
   `costMicros`) and 1–16 `members` (`seatId`, `agentId`, `brief`,

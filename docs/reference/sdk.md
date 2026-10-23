@@ -5575,7 +5575,10 @@ report surface, separate from CLI session groups. Optional create `flow` selecto
 bind a run ID and exact seat-to-step map; workspace and grants remain server-owned.
 Views distinguish independent advisory and retained Flow topology. Flow owns
 frontier, claims, joins and gates; reports grant no gate acceptance. See the
-[Flow selector and continuation limits](api.md#report-groups).
+[Flow selector and continuation limits](api.md#report-groups). Parsing and views
+do not qualify Flow execution: the current concurrent HTTP composition fails
+before provider fetch with separate installed Flow module lock registries. The
+API reference records the alignment prerequisite and remaining runtime proof.
 
 Create accepts configured Agent IDs, immutable operator intent and explicit
 aggregate token/inference-micro budgets. The server resolves runtime/model
