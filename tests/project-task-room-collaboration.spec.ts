@@ -86,7 +86,7 @@ async function liveFixtureCommand(
   expected = 'updated',
 ) {
   // Explicit server fixture seam for the retained cursor/watch protocol. The
-  // product journey below uses implicit presence and the visible Brief/Chat tabs.
+  // product journey below uses implicit presence and the visible Plan/Conversation tabs.
   const response = await page.evaluate(
     async ({ taskId, command }) => {
       const result = await fetch(
@@ -138,7 +138,7 @@ async function expectAgentPresence(
     page,
     taskId,
     { command: 'heartbeat' },
-    'refreshed',
+    'updated',
   );
   const agent = live.participants.find(
     (participant) =>
@@ -419,7 +419,7 @@ test.describe
           owner,
           taskId,
           { command: 'heartbeat' },
-          'refreshed',
+          'updated',
         );
         expect(
           stoppedAfterEdit.panes.find((pane) => pane.paneId === paneId)?.state,
@@ -458,7 +458,7 @@ test.describe
           owner,
           taskId,
           { command: 'heartbeat' },
-          'refreshed',
+          'updated',
         );
         expect(
           stoppedAfterInput.panes.find((pane) => pane.paneId === paneId)?.state,
