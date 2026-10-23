@@ -3,6 +3,7 @@ import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
+import { UNKNOWN_CLIENT_ORIGIN } from '@kontourai/station-contracts/client-origin';
 import { PROJECT_ROOM_LIMITS } from '@kontourai/station-contracts/project-room';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -13,6 +14,7 @@ import {
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { mapTurnFinishReason } from '../../providers/adapters/codex-adapter-events.js';
 import { projectRoomAgentExecution } from '../../runtime/routes/project-room-agent-runtime.js';
+import { ClientOriginTurnPropagation } from '../orchestration/client-origin-propagation.js';
 import { EventBus } from '../orchestration/event-bus.js';
 import { EventStore } from '../orchestration/event-store.js';
 import { OrchestrationService } from '../orchestration/orchestration-service.js';
@@ -377,332 +379,374 @@ describe('Project Room explicit agent participation', () => {
       f.room.store.history(f.authority.scope).messages.map((m) => m.text),
     ).toEqual([text]);
   });
-  it('canonical orchestration enforces compute admission, terminal cancellation, and private Session capture identity', async () => {
-    for (const outcome of ['published', 'cancelled', 'revoked']) {
-      const revokeAtSpawn = outcome === 'revoked';
-      const f = fixture();
-      const adapter = new GateTestAdapter();
-      const live = new Set<string>();
-      vi.spyOn(adapter, 'hasSession').mockImplementation(
-        async () => live.size > 0,
-      );
-      const originalStart = adapter.startSession.bind(adapter);
-      const start = vi
-        .spyOn(adapter, 'startSession')
-        .mockImplementation(async (input) => {
-          const session = await originalStart(input);
-          live.add(input.threadId);
-          adapter.events.push({
-            eventId: randomUUID(),
-            provider: 'claude',
-            threadId: input.threadId,
-            method: 'session.started',
-            sessionId: input.threadId,
-            createdAt: session.createdAt,
-            metadata: input.metadata,
+  it.each(['invocation', 'legacy-early', 'legacy-late'])(
+    'canonical orchestration enforces Room publication, cancellation, and private Session identity (%s)',
+    async (routing) => {
+      for (const outcome of ['published', 'cancelled', 'revoked']) {
+        const revokeAtSpawn = outcome === 'revoked';
+        const f = fixture();
+        const adapter = new GateTestAdapter();
+        const live = new Set<string>();
+        vi.spyOn(adapter, 'hasSession').mockImplementation(
+          async () => live.size > 0,
+        );
+        const originalStart = adapter.startSession.bind(adapter);
+        const start = vi
+          .spyOn(adapter, 'startSession')
+          .mockImplementation(async (input) => {
+            const session = await originalStart(input);
+            live.add(input.threadId);
+            adapter.events.push({
+              eventId: randomUUID(),
+              provider: 'claude',
+              threadId: input.threadId,
+              method: 'session.started',
+              sessionId: input.threadId,
+              createdAt: session.createdAt,
+              metadata: input.metadata,
+            });
+            await vi.waitFor(() =>
+              expect(events.findSessionOwnerUserId(input.threadId)).toBe(
+                'owner',
+              ),
+            );
+            return { ...session, metadata: input.metadata, cwd: input.cwd };
           });
-          await vi.waitFor(() =>
-            expect(events.findSessionOwnerUserId(input.threadId)).toBe('owner'),
-          );
-          return { ...session, metadata: input.metadata, cwd: input.cwd };
+        const originalSend = adapter.sendTurn.bind(adapter);
+        const send = vi
+          .spyOn(adapter, 'sendTurn')
+          .mockImplementation(async (input) => {
+            if (routing === 'legacy-early') {
+              const eventId = randomUUID();
+              const apply = vi.spyOn(
+                ClientOriginTurnPropagation.prototype,
+                'apply',
+              );
+              adapter.events.push({
+                eventId,
+                provider: 'claude',
+                threadId: input.threadId,
+                createdAt: new Date().toISOString(),
+                method: 'turn.started',
+                turnId: 'turn-1',
+                clientTurnId: 'adapter-spoofed-key',
+              });
+              // Ensure the event reaches propagation before provider acceptance.
+              await vi.waitFor(() =>
+                expect(
+                  apply.mock.calls.some(([event]) => event.eventId === eventId),
+                ).toBe(true),
+              );
+              apply.mockRestore();
+            }
+            return originalSend(input);
+          });
+        const events = new EventStore(
+          join(f.authority.executionRoot, 'events.sqlite'),
+        );
+        const resolveAgent = createSessionAgentResolver({
+          loadAgentSpec: async () => ({
+            name: 'Real registry label',
+            prompt: '',
+          }),
+          resolveToolServer: async () => null,
+          resolveSkillDir: async () => null,
         });
-      const send = vi.spyOn(adapter, 'sendTurn');
-      const events = new EventStore(
-        join(f.authority.executionRoot, 'events.sqlite'),
-      );
-      const resolveAgent = createSessionAgentResolver({
-        loadAgentSpec: async () => ({
-          name: 'Real registry label',
-          prompt: '',
-        }),
-        resolveToolServer: async () => null,
-        resolveSkillDir: async () => null,
-      });
-      const sessions = new OrchestrationService({
-        adapterRegistry: createGateTestRegistry(adapter),
-        eventBus: new EventBus(),
-        eventStore: events,
-        adoptionLedger: events.createAdoptionLedger(),
-        resolveSessionAgent: async (input) => {
-          if (revokeAtSpawn) f.revoke();
-          return resolveAgent(input);
-        },
-        logger: { debug() {}, warn() {} },
-      });
-      const execution = projectRoomAgentExecution({
-        assertExecutionRoot: async () => {},
-        agents: {
-          async getAgent() {
-            return {
+        const sessions = new OrchestrationService({
+          adapterRegistry: createGateTestRegistry(adapter),
+          eventBus: new EventBus(),
+          eventStore: events,
+          adoptionLedger: events.createAdoptionLedger(),
+          resolveSessionAgent: async (input) => {
+            if (revokeAtSpawn) f.revoke();
+            return resolveAgent(input);
+          },
+          logger: { debug() {}, warn() {} },
+        });
+        const execution = projectRoomAgentExecution({
+          assertExecutionRoot: async () => {},
+          agents: {
+            async getAgent() {
+              return {
+                name: 'Real registry label',
+                prompt: '',
+                execution: { agentConnectionId: engineConnectionId('claude') },
+              };
+            },
+          },
+          sessions,
+          executionTargets: {
+            resolveEnvironmentAccess: async () => ({
+              kind: 'current',
+              apiBase: 'http://isolated.invalid',
+              environmentId: 'local',
+              environmentName: 'Local',
+            }),
+            getAgent: async () => ({
               name: 'Real registry label',
               prompt: '',
               execution: { agentConnectionId: engineConnectionId('claude') },
-            };
+            }),
+            getConnection: async () => ({
+              id: 'claude',
+              name: 'Claude',
+              kind: 'agent',
+              type: 'claude',
+              enabled: true,
+              status: 'ready',
+              capabilities: ['agent-runtime'],
+              config: { provider: 'claude' },
+              prerequisites: [],
+            }),
+            getProject: async () => undefined,
+            getProviderAdapter: () => adapter,
           },
-        },
-        sessions,
-        executionTargets: {
-          resolveEnvironmentAccess: async () => ({
-            kind: 'current',
-            apiBase: 'http://isolated.invalid',
-            environmentId: 'local',
-            environmentName: 'Local',
+          authorityForOwner: (id) =>
+            sessionReadAuthorityFromRequest(id, undefined, undefined),
+          commandContext: (id) => ({
+            userId: id,
+            clientOrigin: UNKNOWN_CLIENT_ORIGIN,
           }),
-          getAgent: async () => ({
-            name: 'Real registry label',
-            prompt: '',
-            execution: { agentConnectionId: engineConnectionId('claude') },
-          }),
-          getConnection: async () => ({
-            id: 'claude',
-            name: 'Claude',
-            kind: 'agent',
-            type: 'claude',
-            enabled: true,
-            status: 'ready',
-            capabilities: ['agent-runtime'],
-            config: { provider: 'claude' },
-            prerequisites: [],
-          }),
-          getProject: async () => undefined,
-          getProviderAdapter: () => adapter,
-        },
-        authorityForOwner: (id) =>
-          sessionReadAuthorityFromRequest(id, undefined, undefined),
-        commandContext: (id) => ({ userId: id }),
-      });
-      let launchError: unknown;
-      const launch = execution.launch;
-      execution.launch = async (...args) => {
-        try {
-          await launch(...args);
-        } catch (error) {
-          launchError = error;
-          throw error;
-        }
-      };
-      const runtime = createProjectRoomAgentRuntime(
-        f.authority.executionRoot,
-        f.room.store,
-        execution,
-      );
-      cleanup.push(
-        () => {
-          events.close();
-        },
-        () => sessions.shutdown(),
-        () => runtime.close(),
-      );
-      if (revokeAtSpawn)
-        await expect(
-          runtime.module.request(f.authority, f.input),
-        ).rejects.toThrow('revoked');
-      else {
-        const handle = await runtime.module.request(f.authority, f.input);
-        expect(launchError).toBeUndefined();
-        const sessionId = start.mock.calls[0][0].threadId;
-        const base = {
-          invocationId: send.mock.calls[0][0].invocationId,
-          provider: 'claude',
-          threadId: sessionId,
-          createdAt: new Date().toISOString(),
+        });
+        let launchError: unknown;
+        const launch = execution.launch;
+        execution.launch = async (...args) => {
+          try {
+            await launch(...args);
+          } catch (error) {
+            launchError = error;
+            throw error;
+          }
         };
-        adapter.events.push({
-          ...base,
-          eventId: randomUUID(),
-          method: 'turn.started',
-          turnId: 'turn-1',
-          prompt: 'Room prompt',
-        });
-        adapter.events.push({
-          ...base,
-          eventId: randomUUID(),
-          method: 'content.text-delta',
-          turnId: 'turn-1',
-          itemId: 'answer',
-          delta: 'Canonical selected answer',
-        });
-        adapter.events.push({
-          ...base,
-          eventId: randomUUID(),
-          method: 'turn.completed',
-          turnId: 'turn-1',
-          finishReason: mapTurnFinishReason(
-            outcome === 'cancelled' ? 'interrupted' : 'completed',
-          ),
-          outputText: 'Canonical selected answer',
-        });
-        await vi.waitFor(async () =>
-          expect(
-            (await runtime.module.reconcile(f.authority, handle.requestId))
-              .state,
-          ).toBe(outcome === 'cancelled' ? 'uncertain' : 'published'),
+        const runtime = createProjectRoomAgentRuntime(
+          f.authority.executionRoot,
+          f.room.store,
+          execution,
         );
-        expect(
-          f.room.store
-            .history(f.authority.scope)
-            .messages.map((message) => message.text),
-        ).toEqual(outcome === 'cancelled' ? [] : ['Canonical selected answer']);
-        if (outcome === 'cancelled') {
-          expect(
-            runtime.module.inspect(f.authority, handle.requestId).failure,
-          ).toBe('execution_failed');
-        } else {
+        cleanup.push(
+          () => {
+            events.close();
+          },
+          () => sessions.shutdown(),
+          () => runtime.close(),
+        );
+        if (revokeAtSpawn)
+          await expect(
+            runtime.module.request(f.authority, f.input),
+          ).rejects.toThrow('revoked');
+        else {
+          const handle = await runtime.module.request(f.authority, f.input);
+          expect(launchError).toBeUndefined();
+          const sessionId = start.mock.calls[0][0].threadId;
+          const base = {
+            ...(routing === 'invocation'
+              ? { invocationId: send.mock.calls[0][0].invocationId }
+              : {}),
+            provider: 'claude',
+            threadId: sessionId,
+            createdAt: new Date().toISOString(),
+          };
+          if (routing !== 'legacy-early')
+            adapter.events.push({
+              ...base,
+              eventId: randomUUID(),
+              clientTurnId: 'adapter-spoofed-key',
+              method: 'turn.started',
+              turnId: 'turn-1',
+              prompt: 'Room prompt',
+            });
+          adapter.events.push({
+            ...base,
+            eventId: randomUUID(),
+            method: 'content.text-delta',
+            turnId: 'turn-1',
+            itemId: 'answer',
+            delta: 'Canonical selected answer',
+          });
           adapter.events.push({
             ...base,
             eventId: randomUUID(),
             method: 'turn.completed',
             turnId: 'turn-1',
-            finishReason: 'cancelled',
+            finishReason: mapTurnFinishReason(
+              outcome === 'cancelled' ? 'interrupted' : 'completed',
+            ),
+            outputText: 'Canonical selected answer',
           });
+          await vi.waitFor(async () =>
+            expect(
+              (await runtime.module.reconcile(f.authority, handle.requestId))
+                .state,
+            ).toBe(outcome === 'cancelled' ? 'uncertain' : 'published'),
+          );
           expect(
-            (await runtime.module.reconcile(f.authority, handle.requestId))
-              .state,
-          ).toBe('published');
+            f.room.store
+              .history(f.authority.scope)
+              .messages.map((message) => message.text),
+          ).toEqual(
+            outcome === 'cancelled' ? [] : ['Canonical selected answer'],
+          );
+          if (outcome === 'cancelled') {
+            expect(
+              runtime.module.inspect(f.authority, handle.requestId).failure,
+            ).toBe('execution_failed');
+          } else {
+            adapter.events.push({
+              ...base,
+              eventId: randomUUID(),
+              method: 'turn.completed',
+              turnId: 'turn-1',
+              finishReason: 'cancelled',
+            });
+            expect(
+              (await runtime.module.reconcile(f.authority, handle.requestId))
+                .state,
+            ).toBe('published');
+          }
         }
-      }
-      if (outcome === 'published') {
-        const privateId = randomUUID();
-        const privateCorrelation = randomUUID();
-        await sessions.startSessionInternal(
-          {
-            type: 'start-session',
-            input: {
-              threadId: privateId,
-              provider: 'claude',
-              cwd: f.authority.executionRoot,
-              persistSession: true,
-              metadata: {
-                userId: 'owner',
-                agentSlug: 'agent',
-                executionAgentId: 'agent',
+        if (outcome === 'published') {
+          const privateId = randomUUID();
+          const privateCorrelation = randomUUID();
+          await sessions.startSessionInternal(
+            {
+              type: 'start-session',
+              input: {
+                threadId: privateId,
+                provider: 'claude',
+                cwd: f.authority.executionRoot,
+                persistSession: true,
+                metadata: {
+                  userId: 'owner',
+                  agentSlug: 'agent',
+                  executionAgentId: 'agent',
+                },
               },
             },
-          },
-          { userId: 'owner' },
-        );
-        await sessions.dispatch(
-          {
-            type: 'sendTurn',
-            input: {
-              threadId: privateId,
-              input: 'unrelated private prompt',
-              clientTurnId: privateCorrelation,
+            { userId: 'owner' },
+          );
+          await sessions.dispatch(
+            {
+              type: 'sendTurn',
+              input: {
+                threadId: privateId,
+                input: 'unrelated private prompt',
+                clientTurnId: privateCorrelation,
+              },
             },
-          },
-          { userId: 'owner' },
-        );
-        const privateBase = {
-          eventId: randomUUID(),
-          invocationId: send.mock.calls.at(-1)![0].invocationId,
-          provider: 'claude',
-          threadId: privateId,
-          createdAt: new Date().toISOString(),
-          turnId: 'private-turn',
-        };
-        adapter.events.push({
-          ...privateBase,
-          method: 'turn.started',
-          prompt: 'unrelated private prompt',
-        });
-        adapter.events.push({
-          ...privateBase,
-          eventId: randomUUID(),
-          method: 'content.text-delta',
-          itemId: 'private-answer',
-          delta: 'private transcript sentinel',
-        });
-        adapter.events.push({
-          ...privateBase,
-          eventId: randomUUID(),
-          method: 'turn.completed',
-          finishReason: 'stop',
-          outputText: 'private transcript sentinel',
-        });
-        const readAuthority = sessionReadAuthorityFromRequest(
-          'owner',
-          undefined,
-          undefined,
-        );
-        await vi.waitFor(async () =>
-          expect(
-            (
-              await sessions.sessionQueries.readAssistantTurn(
-                {
-                  type: 'assistant-turn',
-                  threadId: privateId,
-                  turnId: 'private-turn',
-                },
-                readAuthority,
-              )
-            ).status,
-          ).toBe('found'),
-        );
-        const pending = await runtime.module.request(f.authority, {
-          ...f.input,
-          intentId: randomUUID(),
-        });
-        const db = new DatabaseSync(
-          join(
-            f.authority.executionRoot,
-            'security',
-            'project-room-agent.sqlite',
-          ),
-        );
-        try {
-          const capture = JSON.parse(
-            String(
-              db
-                .prepare(
-                  'SELECT record FROM project_room_agent_captures WHERE request_id=?',
+            { userId: 'owner' },
+          );
+          const privateBase = {
+            eventId: randomUUID(),
+            invocationId: send.mock.calls.at(-1)![0].invocationId,
+            provider: 'claude',
+            threadId: privateId,
+            createdAt: new Date().toISOString(),
+            turnId: 'private-turn',
+          };
+          adapter.events.push({
+            ...privateBase,
+            method: 'turn.started',
+            prompt: 'unrelated private prompt',
+          });
+          adapter.events.push({
+            ...privateBase,
+            eventId: randomUUID(),
+            method: 'content.text-delta',
+            itemId: 'private-answer',
+            delta: 'private transcript sentinel',
+          });
+          adapter.events.push({
+            ...privateBase,
+            eventId: randomUUID(),
+            method: 'turn.completed',
+            finishReason: 'stop',
+            outputText: 'private transcript sentinel',
+          });
+          const readAuthority = sessionReadAuthorityFromRequest(
+            'owner',
+            undefined,
+            undefined,
+          );
+          await vi.waitFor(async () =>
+            expect(
+              (
+                await sessions.sessionQueries.readAssistantTurn(
+                  {
+                    type: 'assistant-turn',
+                    threadId: privateId,
+                    turnId: 'private-turn',
+                  },
+                  readAuthority,
                 )
-                .get(pending.requestId)!.record,
+              ).status,
+            ).toBe('found'),
+          );
+          const pending = await runtime.module.request(f.authority, {
+            ...f.input,
+            intentId: randomUUID(),
+          });
+          const db = new DatabaseSync(
+            join(
+              f.authority.executionRoot,
+              'security',
+              'project-room-agent.sqlite',
             ),
           );
-          capture.sessionId = privateId;
-          capture.correlationId = privateCorrelation;
-          const { digest: _, ...payload } = capture;
-          capture.digest = createHash('sha256')
-            .update(JSON.stringify(payload))
-            .digest('hex');
-          db.prepare(
-            'UPDATE project_room_agent_captures SET record=? WHERE request_id=?',
-          ).run(JSON.stringify(capture), pending.requestId);
-        } finally {
-          db.close();
+          try {
+            const capture = JSON.parse(
+              String(
+                db
+                  .prepare(
+                    'SELECT record FROM project_room_agent_captures WHERE request_id=?',
+                  )
+                  .get(pending.requestId)!.record,
+              ),
+            );
+            capture.sessionId = privateId;
+            capture.correlationId = privateCorrelation;
+            const { digest: _, ...payload } = capture;
+            capture.digest = createHash('sha256')
+              .update(JSON.stringify(payload))
+              .digest('hex');
+            db.prepare(
+              'UPDATE project_room_agent_captures SET record=? WHERE request_id=?',
+            ).run(JSON.stringify(capture), pending.requestId);
+          } finally {
+            db.close();
+          }
+          const read = vi.spyOn(sessions, 'readSession');
+          const transcript = vi.spyOn(
+            sessions.sessionQueries,
+            'readAssistantTurn',
+          );
+          const dispatch = vi.spyOn(sessions, 'dispatch');
+          await expect(
+            runtime.module.reconcile(f.authority, pending.requestId),
+          ).rejects.toThrow();
+          await expect(
+            runtime.module.cancel(f.authority, pending.requestId),
+          ).rejects.toThrow();
+          expect(read).not.toHaveBeenCalled();
+          expect(transcript).not.toHaveBeenCalled();
+          expect(dispatch).not.toHaveBeenCalled();
+          expect(
+            f.room.store
+              .history(f.authority.scope)
+              .messages.map((message) => message.text),
+          ).toEqual(['Canonical selected answer']);
+          read.mockRestore();
+          transcript.mockRestore();
+          dispatch.mockRestore();
         }
-        const read = vi.spyOn(sessions, 'readSession');
-        const transcript = vi.spyOn(
-          sessions.sessionQueries,
-          'readAssistantTurn',
+        expect(start).toHaveBeenCalledTimes(
+          revokeAtSpawn ? 0 : outcome === 'published' ? 3 : 1,
         );
-        const dispatch = vi.spyOn(sessions, 'dispatch');
-        await expect(
-          runtime.module.reconcile(f.authority, pending.requestId),
-        ).rejects.toThrow();
-        await expect(
-          runtime.module.cancel(f.authority, pending.requestId),
-        ).rejects.toThrow();
-        expect(read).not.toHaveBeenCalled();
-        expect(transcript).not.toHaveBeenCalled();
-        expect(dispatch).not.toHaveBeenCalled();
-        expect(
-          f.room.store
-            .history(f.authority.scope)
-            .messages.map((message) => message.text),
-        ).toEqual(['Canonical selected answer']);
-        read.mockRestore();
-        transcript.mockRestore();
-        dispatch.mockRestore();
+        expect(send).toHaveBeenCalledTimes(
+          revokeAtSpawn ? 0 : outcome === 'published' ? 3 : 1,
+        );
       }
-      expect(start).toHaveBeenCalledTimes(
-        revokeAtSpawn ? 0 : outcome === 'published' ? 3 : 1,
-      );
-      expect(send).toHaveBeenCalledTimes(
-        revokeAtSpawn ? 0 : outcome === 'published' ? 3 : 1,
-      );
-    }
-  });
+    },
+  );
   it('loss of launch acknowledgement survives restart without replay and publishes exactly one selected answer', async () => {
     const f = fixture();
     f.fail();
