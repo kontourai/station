@@ -508,7 +508,15 @@
 
     "src-server/routes/projects/project-s3-source-routes.ts",
 
-    "src-server/services/projects/repository-provider-catalog.ts"
+    "src-server/services/projects/repository-provider-catalog.ts",
+
+    "src-server/services/projects/operator-setup-service.ts",
+
+    "src-server/routes/projects/operator-setup-routes.ts",
+
+    "src-server/utils/process-group-exec.ts",
+
+    "src-ui/src/views/project-settings/ProjectOperatorSetup.tsx"
   ],
 
   "checks": [

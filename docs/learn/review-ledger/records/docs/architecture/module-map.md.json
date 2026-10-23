@@ -1186,7 +1186,15 @@
 
     "src-server/services/projects/repository-provider-catalog.ts",
 
-    "src-server/services/projects/repository-acquisition-service.ts"
+    "src-server/services/projects/repository-acquisition-service.ts",
+
+    "src-server/services/projects/operator-setup-service.ts",
+
+    "src-server/routes/projects/operator-setup-routes.ts",
+
+    "src-server/utils/process-group-exec.ts",
+
+    "src-ui/src/views/project-settings/ProjectOperatorSetup.tsx"
   ],
 
   "checks": [

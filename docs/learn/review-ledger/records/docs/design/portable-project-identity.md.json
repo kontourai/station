@@ -26,7 +26,15 @@
 
     "src-ui/src/components/modals/NewProjectModalContent.tsx",
 
-    "src-ui/src/hooks/useNewProjectModalState.ts"
+    "src-ui/src/hooks/useNewProjectModalState.ts",
+
+    "src-server/services/projects/operator-setup-service.ts",
+
+    "src-server/routes/projects/operator-setup-routes.ts",
+
+    "src-server/utils/process-group-exec.ts",
+
+    "src-ui/src/views/project-settings/ProjectOperatorSetup.tsx"
   ],
 
   "checks": [

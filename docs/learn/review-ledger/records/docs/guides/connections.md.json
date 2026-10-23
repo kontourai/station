@@ -356,7 +356,15 @@
 
     "src-ui/src/components/modals/RepositoryProviderPicker.tsx",
 
-    "src-ui/src/hooks/useProjectCreationRecovery.ts"
+    "src-ui/src/hooks/useProjectCreationRecovery.ts",
+
+    "src-server/services/projects/operator-setup-service.ts",
+
+    "src-server/routes/projects/operator-setup-routes.ts",
+
+    "src-server/utils/process-group-exec.ts",
+
+    "src-ui/src/views/project-settings/ProjectOperatorSetup.tsx"
   ],
 
   "checks": [
