@@ -46,6 +46,24 @@ It does not authorize installation, change consent or configure a destination.
 The managed in-Station lifecycle and qualified release descriptor remain
 pending; these commands do not implement that journey.
 
+### Station host prerequisite API
+
+`GET /api/operator/telemetry-companion/prerequisites` is an operator-only,
+uncached read of the selected local container host. Paired callers additionally
+need `home:control`; that scope does not replace operator authorization. The
+route checks current operator authority before probing and before returning its
+result. It does not start Docker, pull images, create services or enable export.
+
+The probe requires a local Unix socket or Windows named-pipe context, Linux
+containers on amd64 or arm64, and Compose 2.24 or later. It pins the selected
+endpoint for the daemon query instead of resolving a possibly changed context
+again. Each CLI invocation has a five-second deadline and bounded output.
+Missing CLI, unavailable daemon, remote context, unsupported host and unavailable
+Compose are separate typed results; raw daemon errors and socket paths are not
+returned. A successful prerequisite read proves host capability only. Qualified
+artifact admission, installation, storage readiness and pane controls remain
+separate work.
+
 Portable-server builds can include this candidate with
 `build:portable-server -- --with-telemetry-companion` after the receiver build.
 The archive workflow selects that option and requires the extracted payload in

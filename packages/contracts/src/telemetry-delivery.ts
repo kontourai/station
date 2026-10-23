@@ -1,3 +1,25 @@
+/** A request-local host probe, never installation or release authority. */
+export type TelemetryCompanionPrerequisites = {
+  checkedAt: string;
+} & (
+  | {
+      kind: 'available';
+      containerHost: 'local';
+      architecture: 'amd64' | 'arm64';
+      dockerVersion: string;
+      composeVersion: string;
+    }
+  | {
+      kind: 'unavailable';
+      reason:
+        | 'container-runtime-missing'
+        | 'container-daemon-unavailable'
+        | 'remote-container-context'
+        | 'container-host-unsupported'
+        | 'compose-unavailable';
+    }
+);
+
 export type TelemetryRequestFailureCode =
   | 'request_failed'
   | 'request_timeout'

@@ -4818,6 +4818,16 @@ open. A backed-up stream epoch is not a restore fence. See
 
 ## ProductTelemetryReceiver
 
+The Station-side [companion route](../../src-server/routes/system/telemetry-companion-routes.ts)
+is mounted under `/api/operator/telemetry-companion`. Its prerequisite read uses
+the current operator authority at both sides of the asynchronous
+[local container probe](../../src-server/services/telemetry-companion.ts), with
+an additional `home:control` pairing scope. The bounded probe pins the selected
+local Docker endpoint and returns the shared telemetry-delivery capability
+shape. It launches no deployment and grants no artifact, export, source or
+personal analytics authority. Installation and ingestion readiness are separate
+from this host-capability observation.
+
 **Purpose.** The optional [receiver](../../packages/telemetry-broker/README.md)
 accepts the shared disclosed product envelope. Its
 [HTTP owner](../../packages/telemetry-broker/src/app.ts) separates source ingest

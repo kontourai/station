@@ -41,6 +41,14 @@ references describe cleanup and uncertain delivery outcomes.
 
 ## Modules
 
+`@kontourai/station-contracts/telemetry-delivery` owns
+`TelemetryCompanionPrerequisites`, the request-local local-container capability
+result used by the operator companion prerequisite API. Its `available` branch
+describes the observed Docker/Compose versions and container architecture; it is
+not an artifact qualification, installation or ingestion-readiness receipt.
+The unavailable branch names the missing capability without returning host paths
+or raw subprocess output. See the [companion profile](../../deployment/telemetry/README.md#station-host-prerequisite-api).
+
 The authored `@kontourai/station-contracts/usage-export` module defines the
 individual/personal-account request and retained-observation page, including
 UTC window, stream epoch, fixed high watermark and unknown history coverage.

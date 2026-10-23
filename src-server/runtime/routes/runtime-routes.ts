@@ -32,6 +32,7 @@ import {
 import { createNativeRelaySurfaceRoutes } from '../../routes/system/native-relay-surface-routes.js';
 import { createRelayEnrollmentRoutes } from '../../routes/system/relay-enrollment-routes.js';
 import { createRelayManagementRoutes } from '../../routes/system/relay-management-routes.js';
+import { createTelemetryCompanionRoutes } from '../../routes/system/telemetry-companion-routes.js';
 import { createToolLibraryRoutes } from '../../routes/tool-library.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
@@ -150,6 +151,7 @@ import {
   isGuideExcerptLimitError,
 } from '../../services/pull-requests/pull-request-review-guide-normalize.js';
 import { PullRequestReviewGuideStore } from '../../services/pull-requests/pull-request-review-guide-store.js';
+import { readTelemetryCompanionPrerequisites } from '../../services/telemetry-companion.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { canonicalPath } from '../../utils/path-containment.js';
 import { STATION_KNOWLEDGE_MCP_PATH } from '../mcp/station-control-mcp-token.js';
@@ -6032,6 +6034,14 @@ export function configureRuntimeRoutes(
       context.deploymentAuthentication,
       (request) => projectMembershipAuthority(request).operator(),
     ),
+  );
+  context.app.route(
+    '/api/operator/telemetry-companion',
+    createTelemetryCompanionRoutes({
+      requireOperator: (request) =>
+        projectMembershipAuthority(request).operator(),
+      prerequisites: readTelemetryCompanionPrerequisites,
+    }),
   );
   context.app.use('/api/projects/:slug/access/*', async (c, next) => {
     roomRequestPrincipals.set(
