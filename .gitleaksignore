@@ -76,11 +76,20 @@ b78eecc87b8c0ac3c0ef4b864c9f73855b659e30:tests/input-request.spec.ts:generic-api
 # Exact historical location only; fresh same-path controls remain scanned.
 881b20de853d8c3a7de9489121644c21c7d4aabd:docs/learn/review-ledger/notes/20261007T183700.092Z-5b40e95b2203.json:generic-api-key:73
 
+# #4003: a test's literal conversation-inbox key (`tq-` plus a 40-hex digest
+# of a Task id, its creation time, a record key, version and action), held in
+# a variable named `key`, not a credential. Renamed in a later commit of the
+# same branch; this pins only that historical location.
+8268c2a446857167b3bf27f1bc928bd307ff419c:src-server/services/orchestration/__tests__/task-question-wake.test.ts:generic-api-key:488
 # #4017 / #4046: Brian approved this exact fingerprint on 2026-10-22.
 # Attestation: public EC verification root, identical to the pinned upstream installer;
 # protects against malicious registry archives and grants no credential authority.
 # One historical noncredential match only; no file, rule or future-match exemption.
 2ff3dcfaff17eea0197f260fa06781a7d0071b41:.github/actions/setup-verified-pnpm/bootstrap.mjs:generic-api-key:25
+
+# Byte-identical public EC verification root in the #4046 squash commit.
+# Exact historical location only; no file, rule or future-match exemption.
+69ada7f1f6c54fa851b774ceb8ceb9e92c803623:.github/actions/setup-verified-pnpm/bootstrap.mjs:generic-api-key:25
 
 # Brian approved this exact historical synthetic fixture on 2026-10-22.
 # No provider-issued credential; current fixture is explicit noncredential text.

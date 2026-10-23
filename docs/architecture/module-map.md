@@ -1702,6 +1702,51 @@ pin the bounds. Their presence is not an executed receipt against a real engine.
 See [agent configuration](../guides/self-configuring-agent.md#project-activity)
 for the tool-level behavior.
 
+## WorkClaimStore
+
+A Session in a Project says what it is on so peers do not duplicate it.
+[WorkClaimStore](../../src-server/services/orchestration/work-claims.ts) holds
+those claims in the orchestration database for Station Control's `claim_work`,
+`renew_claim` and `release_claim`, the claims `list_project_activity` shows per
+row, and the UI's Session-row chip.
+
+**Interface.** `EventStore.createWorkClaimStore({ maxActivePerClaimant })`
+returns `claim`, `renew`, `release` and `listUnexpired(query)`, where a query
+narrows by scope, Task and claimant Sessions or conversations.
+`createActiveWorkClaimReader` and `composeActiveWorkClaimReader` add the
+claimant's liveness, read from the runtime's Session state
+(`readWorkClaimantStates`), and expose `listActiveClaims({ projectId, taskId? })`
+(`projectId: null` is the global space), the read a Task brief composes. It
+applies no caller's authority; a route that answers a caller decides that
+caller's reach first.
+
+**Invariants.** A claim is information, not exclusion: no claim refuses
+another. The claimant is the verified caller's Session and its conversation,
+never an argument, and only that claimant renews or releases it. "Active" is
+derived when read and never stored: unreleased, unexpired, and its claimant
+(the conversation's current Session) not ended (`workClaimSessionEnded`:
+closed, dead or completed, or no record). A claim keeps the scope its claimant
+had when it claimed. Bounds are refusals: a claimant's active claims, the paths
+of a claim and the UI's read each have a maximum.
+
+**Composition and evidence.** The
+[routes](../../src-server/routes/orchestration/session-work-claims.ts) take the
+claimant and scope from the verified station-control caller and stamp the Task
+from the Session's room execution binding; the
+[activity route](../../src-server/routes/orchestration/session-project-activity.ts)
+attaches each row's claims in the caller's scope. Claims are Station-local
+because the pinned Flow Agents assignment contract is exclusive, has no renewal,
+and stores its record beside the repository, and host-provider selection is
+still open upstream (kontourai/flow-agents#1436); this store is the seam a
+Flow-backed one would stand behind. The
+[mounted tests](../../src-server/runtime/routes/__tests__/runtime-routes-station-control-work-claims.test.ts)
+drive every caller kind against same-Project, other-Project, global and
+other-owner targets, and the
+[store tests](../../src-server/services/orchestration/__tests__/work-claims.test.ts)
+pin expiry, renewal, release, the bound and the Task scope. See
+[agent configuration](../guides/self-configuring-agent.md#work-claims) for the
+tool-level behavior.
+
 ## ConversationSessionLineage
 
 A conversation is the continuing human thread; an execution Session is the engine instance serving part of it. [Lineage](../../src-server/services/orchestration/conversation-session-lineage.ts) records their immutable order. [Continuation policy](../../src-server/services/orchestration/conversation-lineage.ts) decides whether to reuse the current Session or reserve a successor.
@@ -2904,6 +2949,16 @@ batch to 384 operations. Text has separate 256 Ki code-unit and 256 KiB UTF-8
 limits; atom IDs and selections are checked too. These are admission ceilings,
 not a promise that every maximum-sized edit has acceptable interactive latency.
 
+**Identities.** RGA siblings render in ascending atom-ID order, so a
+mid-document insert lands in place only when its atoms sort below the
+predecessor's existing children. The planner passes the planning state's lowest
+atom ID to `nextIntentId`, and both server callers mint `lowSortingIntentId`:
+`!`, a fixed-width base-36 counter one below that ID's, and a random suffix.
+Derived from document state alone, it holds across restarts and writers;
+UUID-era IDs sort above `!`. Any other identity stays correct, but the planner
+may then delete and reinsert the retained suffix
+([#4008](https://github.com/kontourai/station/issues/4008)).
+
 **Callers.** `ProjectTaskRoomRuntime.editPlan()` and `publishAgentDocumentEdit()`
 use this capability on the server. Browser edits receive an opaque intent ID
 and digest plus text/selection preview, never atoms, operations or a writer
@@ -2951,7 +3006,18 @@ and attestation sizes have separate limits. Import checks entry count before a
 cycle-safe escaped-JSON byte traversal, then validates identity, restored state,
 parent closure, scope and every authority binding as one batch. Arrays/objects
 and nested byte budgets are bounded, including sparse arrays and surrogate
-escaping. Missing compatible attribution is `attribution_unverified`; a portable
+escaping; element and member counts are bounded by the byte budget itself, not
+a fixed count (a 4,096-element cap refused Task documents of more than 4,096
+atoms, [#4007](https://github.com/kontourai/station/issues/4007)). The room
+working-state worker applies the same bounds before it commits a write
+(`revisionEvidenceAdmission`), counting stored receipts plus every publication
+admitted but not yet frozen, so a room write is refused as `document-full` or
+`evidence-ledger-full` instead of being admitted and then never frozen.
+A Task document's capacity is therefore per document (about 5,400 plain
+characters ever typed, deleted ones included) and also bounded by this
+Station-wide ledger: 256 receipts / 4 MiB, each holding a full snapshot of the
+document it records. A few hundred small saves, or a few saves of a large
+document, fill it for every Task; retiring receipts is [#4055](https://github.com/kontourai/station/issues/4055). Missing compatible attribution is `attribution_unverified`; a portable
 file alone grants no trust. Returned records, exports and projections are cloned.
 
 [EventStore](../../src-server/services/orchestration/event-store.ts) composes the
@@ -3990,7 +4056,7 @@ A Task remains a durable work record before and after an engine runs. The [dispa
 and [proposal card](../../src-ui/src/components/chat/TaskProposalCard.tsx) own
 Station's conversational intake. [Task routes](../../src-server/routes/orchestration/tasks.ts)
 authorize the exact completed source turn and require its parsed proposal to match the acceptance payload; `TaskGraphService.createTask`
-commits the Goal sentence and source Session link in one store mutation, without assigning an Agent or execution Session. The room runtime then seeds the complete proposal markdown through its human edit-plan/batch authority. A failed seed returns a visible recovery error; retrying reuses the Task and preserves populated documents. The normal shared start composer owns New Task's existing project/agent chips and removable mode; New Task from this sends immediately in the source conversation. A persisted chat flag supplies shaping context on every turn until acceptance or explicit mode removal. Successful brief seeding marks the source link so a reloaded card opens the accepted Task; a failed seed keeps acceptance retryable.
+commits the Goal sentence and source Session link in one store mutation, without assigning an Agent or execution Session. The room runtime then seeds the complete proposal markdown through its human edit-plan/batch authority. A transient seed failure returns a visible recovery error; retrying reuses the Task and preserves populated documents. Document-capacity refusals require a shorter proposal; revision-history refusals require available history capacity. A history refusal after creation names the existing Task so the card can offer Open Task. The normal shared start composer owns New Task's existing project/agent chips and removable mode; New Task from this sends immediately in the source conversation. A persisted chat flag supplies shaping context on every turn until acceptance or explicit mode removal. Successful brief seeding marks the source link so a reloaded card opens the accepted Task; a transient seed failure keeps acceptance retryable.
 The [VoltAgent adapter](../../src-server/runtime/frameworks/voltagent-adapter.ts) binds model-only input composition to the registered Agent as well as its wrapper, so shaping instructions reach the model while authored messages remain unchanged in storage. The real Agent/model/file-store proof lives in `src-server/runtime/frameworks/__tests__/voltagent-model-input.test.ts`.
 The source link also deduplicates repeated acceptance. Tests in
 `task-proposal-acceptance.test.ts`, `TaskProposalFlow.test.tsx` and
@@ -3999,7 +4065,7 @@ prompt seam makes no Builder Kit invocation or breakdown-gate claim; a
 published shaping-result contract and selected-Agent delivery proof are still
 needed for that adapter.
 
-**Behavior.** Dispatch accepts task identity and intent rather than a bag of graph/orchestration dependencies. It owns admission, scoped claim, workspace resolution, provider start or a seeded Session, deadline/abort settlement, telemetry, and release. A `dispatched` outcome may contain `outcome: seeded` without an engine start; read the result rather than treating the outer tag as completed execution. A missing task is `not-found`, not a duplicate/idempotency claim. When a provider claim may have succeeded after deadline, the result is indeterminate rather than retryable. TaskGraph graph mutations remain durable. Production composition supplies Project and workflow readers at construction; the constructor itself permits them to be absent, and dependent operations must report unavailable state or omit optional workflow correlation.
+**Behavior.** Dispatch accepts task identity and intent rather than a bag of graph/orchestration dependencies. It owns admission, scoped claim, workspace resolution, provider start or a seeded Session, deadline/abort settlement, telemetry, and release. A `dispatched` outcome may contain `outcome: seeded` without an engine start; read the result rather than treating the outer tag as completed execution. A dispatch runs as the Task's Agent (the dispatch's `agentId`, else the Task's), resolved before the reservation by the foreground `/chat` resolver (`resolveTaskDispatchAgentStart`); one that names no provider starts that Agent's engine, so the Session records the Environment and Agent binding its later turns and inbox entries are checked against. An engine start with no Agent, an unknown one, or a provider other than its engine is refused as `failed` with nothing written. Only a dispatch with no Agent, or one asking for `task-dispatch` (external monitors), seeds; a seeded dispatch naming an unknown Agent is refused (#4005). A missing task is `not-found`, not a duplicate/idempotency claim. When a provider claim may have succeeded after deadline, the result is indeterminate rather than retryable. TaskGraph graph mutations remain durable. Production composition supplies Project and workflow readers at construction; the constructor itself permits them to be absent, and dependent operations must report unavailable state or omit optional workflow correlation.
 
 **Code and evidence.** `StationRuntime` composes `TaskGraphService` after concrete project and workflow dependencies exist, then publishes `composeTaskDispatcher(taskGraph, adapters)` to runtime routes and capabilities. The dispatcher Implementation owns private task-graph Adapter contributions. Evidence includes `src-server/services/projects/__tests__/task-dispatcher.test.ts`, `task-dispatch-composition.test.ts`, `task-graph-service.dispatch-claim.test.ts`, task route tests, and cold-start/runtime tests. See [Task dispatch](../design/task-dispatcher.md). **Do not reintroduce:** `TaskGraphService.dispatchTask`, post-construction project/workflow setters, or a route that reaches graph execution details directly.
 
@@ -4027,6 +4093,12 @@ does not authorize relationship mutations. Linking neither publishes a Task or p
 conversation nor grants execution.
 
 **Close-out on merge (#3161).** A person can opt a Task in to closing when its pull requests merge (`TaskRecord.closeOnMerge`, `PUT /api/tasks/:taskId/close-on-merge`; no Station Control tool reaches that route). [`task-close-out.ts`](../../src-server/services/projects/task-close-out.ts) is a reconciliation, not a loop: when the conversation pull request refresh observes a merged pull request for a viewer holding the operate tier (the scope `PATCH /api/tasks/:taskId/status` needs; never a Station Control tool call), it reads each pull request kept on the Tasks that kept it, at its exact identity and four at a time, and `TaskGraphService.completeTaskOnMerge` moves a Task to `done` only if every kept pull request is `MERGED`, the Task is the same incarnation (`createdAt`) the reads were for, no pull request was kept since (matched by declaration and target, since one turn's declarations share an event), and `canTransitionTaskStatus` allows `done` (never from todo, ready, triage or blocked). A pull request closed without merging never completes a Task. Nothing re-runs it: a merge is noticed when an operate-tier viewer next refreshes that conversation, and nothing reconciles without one. A pull request declared through Station Control waits in memory for its turn's terminal event (a turn-lifetime lease, not the native 60 seconds) and is lost if Station restarts first. The tests in `task-close-out.test.ts` and `runtime-routes-declare-pull-request-engine.test.ts` cover it.
+
+**Start Task from a tracker item (#4003, in delivery).** `POST /api/tasks/from-work-item` takes a `github:owner/repo#N` ref that the Project's board lists (the runtime re-reads the board through `WorkItemProviderService`; a ref the board does not list is refused before the open-Task lookup and before the tracker is read). `parseGitHubWorkItemRef` lowercases owner and repository, and refs compare by `workItemRefKey`. `TaskGraphService.createTaskForWorkItem` returns the item's open Task, in any Project, with `existing: true` (another Project's as `{id, projectId}` only), checked under the store's mutation lock; otherwise it records the Task with `sourceProvider: 'github'`, the ref, `workItemObservedAt` and `workItemProvenance: 'project-board'`. Every create that names a work item keeps one open Task per item under that lock (`TaskWorkItemTakenError`, `409` from `POST /api/tasks`): across Projects only for board-checked GitHub refs, within the Project (compared through `localProjectIdFor`) for every other ref, and `POST /api/tasks` takes a `github:` ref only when the board lists it, recording the same provenance. Dispatch, `get_task_brief` and the Task header read the tracker only for a ref with that provenance. The room runtime seeds the Task document from [`work-item-task-brief.ts`](../../src-server/services/work-item-providers/work-item-task-brief.ts): the issue body and its last three comments, quoted so tracker headings never become document headings, plus a link back, cut to 3,000 characters with a visible marker (the room refused a single-batch document of about 3,650 characters). `GET /api/tasks/:taskId/work-item` re-reads the item for the Task header, with comments created after `workItemObservedAt`; the header reads it when the Task opens and nothing polls. Both routes are personal-only, and no Station Control tool names them. Reads go through the runtime's one [`GitHubWorkItemObserver`](../../src-server/services/work-item-providers/github-work-item-observer.ts) (the `workItemObserver` route context): the host's `gh` login, started in an empty directory with prompts off, a deadline, a caller's abort signal, an output bound and `--hostname github.com`, with an observed answer kept 30 s per ref and comments-since mark. GitHub Enterprise hosts and pull requests are `unsupported`. Evidence: `github-work-item-observer.test.ts` (a fake `gh` at the process seam), `task-from-work-item.routes.test.ts`, `work-item-ref.test.ts`, and the `ProjectTasksSection` and `TaskWorkspaceView` UI tests. See [Tracker-backed Tasks](../design/tracker-backed-tasks.md).
+
+**Task memory and the Task brief (#4003, in delivery).** Task memory is the judgment layer above the facts the event store derives. [`task-memory-store.ts`](../../src-server/services/orchestration/task-memory-store.ts) (`EventStore.taskMemoryStore()`, migration [`020-task-memory.ts`](../../src-server/domain/migrations/020-task-memory.ts)) keeps every revision of one bounded Task summary and every version of keyed decisions, questions and dead ends, in two append-only tables whose CHECKs and triggers hold the shape. Each write runs in one `BEGIN IMMEDIATE` transaction with the caller's authority re-check, the base-revision or record-state read, the live-record cap and the insert; bounds are refusals, never cuts. Shapes, defaults and refusal wording are the [`task-memory` contract](../../packages/contracts/src/task-memory.ts). `ProjectTaskRoomRuntime` owns authority: a Session writes the Task its immutable room execution binding names while it is that Task's lead or a recorded independent request, through `task_summary_update` and `task_record` ([tools](../../src-server/tools/station-control-task-memory-tools.ts), [routes](../../src-server/routes/orchestration/task-memory.ts)); a person reads and writes through the room's request authority (`/api/tasks/:taskId/room/memory`, `…/summary`, `…/summary/revisions`, `…/records`). Neither reaches Task status or the Task document. [`task-brief.ts`](../../src-server/services/projects/task-brief.ts) renders everything agents, people or a tracker wrote as quoted lines under a label naming who wrote it, and composes the digest-pinned brief from the Task, the observed work item, the summary, standing records, open questions, recent dead ends, a line per Session from the session digest facts ([`readSessionDigestHead`](../../src-server/services/orchestration/session-digest.ts), the same fold as `get_session_digest`) with each Session's active Task-scoped claims (`listActiveClaims({ projectId, taskId })` from [`work-claims.ts`](../../src-server/services/orchestration/work-claims.ts)), and counted omissions; [`task-brief-source.ts`](../../src-server/services/projects/task-brief-source.ts) gathers it for dispatch and for `get_task_brief`, whose `include` option lists every record or the summary history. `GET /api/tasks` adds `openQuestionCount`, which the Home and inbox Task fold (`taskLifecycleLabel`, `buildWorkFacts`) turns into "Task · Needs answer" in Needs you. The Task workspace shows it in [`TaskMemoryPanel`](../../src-ui/src/views/task-workspace/TaskMemoryPanel.tsx). Evidence: `task-memory-store.test.ts`, `project-task-room-task-memory.test.ts`, `runtime-routes-task-memory-engine.test.ts` (the real Station Control MCP connection), `task-brief.test.ts`, `task-brief-dispatch.test.ts`, `TaskMemoryPanel.test.tsx` and `work-status.test.ts`. **Learning (layer 4):** when a Task is done, [`task-learning.ts`](../../src-server/services/projects/task-learning.ts) derives promotion candidates from its active standing decisions and dead ends, reads "promoted" back from the Project's knowledge stores, and promotes one, as a person edited it, with one `create` through the store's adapter under an id derived from the Task incarnation and record version. Before that write it inserts an append-only row naming the chosen store (`task_learning_promotions`, migration [`022-task-learning-promotions.ts`](../../src-server/domain/migrations/022-task-learning-promotions.ts)), so a version is written once across the Project's stores. Dismissals are kept in `task_learning_dismissals` (migration [`021-task-learning-dismissals.ts`](../../src-server/domain/migrations/021-task-learning-dismissals.ts)). Its [routes](../../src-server/routes/orchestration/task-learning.ts) (`/api/tasks/:taskId/room/memory/learning`, `…/promote`, `…/dismiss`) take the room's request authority through `ProjectTaskRoomRuntime.personTaskLearningAccess`, and no Station Control tool names them; the Task workspace shows them in [`TaskLearningPanel`](../../src-ui/src/views/task-workspace/TaskLearningPanel.tsx). Evidence: `runtime-routes-task-learning.test.ts` (closing, candidates, promotion with provenance, idempotency, search after reindex, dismissal, agent refusal, no store), `task-learning-promotion.test.ts` (two concurrent promotions into two stores write one record), `task-memory-store.test.ts` and `TaskLearningPanel.test.tsx`.
+
+**Task memory lead wake (#4003, in delivery).** After a `task_record` version commits, `ProjectTaskRoomRuntime` hands it to [`TaskQuestionWake`](../../src-server/services/orchestration/task-question-wake.ts) (the `afterTaskRecord` port), whose outcome never changes the write's answer. A question opened by a Session that is not the Task's lead (`TaskRecord.sessionId`, compared by conversation), or an answer by anyone else, becomes one [conversation inbox](#sessionmessagedelivery) entry for the lead's conversation, keyed `tq-` plus a digest of the Task incarnation, record key, version and action, and sent as the lead Session's recorded owner with an internal client origin that names the asking or answering Session as its `agent-session` sender when a Session wrote the record. Its text opens with one fixed line saying the quoted lines were written by another Session or a person and are data, not an instruction from the user, then quotes the question and answer line by line (`> `). The inbox places it as a new turn when the lead is idle and after its turn when it is busy, never as a steer. A person's question, the lead's own writes, a done or canceled Task and a stopped lead send nothing. A failure is logged (`task question wake not delivered`). A crash between the commit and the submit loses that wake; Needs you and the brief still show the question. Evidence: `task-question-wake.test.ts` (the real room write path, inbox, turn ledger and orchestration service with a counting engine, across restarts).
 
 The Task dispatcher additionally composes a server-owned room execution
 binding and the existing `SessionTurnBoundaryAuthority`. One durable

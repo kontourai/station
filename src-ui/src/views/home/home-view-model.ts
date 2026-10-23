@@ -9,9 +9,11 @@ import {
   isFirstSendFailure,
   SESSION_STATUS_WORDS,
 } from '@kontourai/station-contracts/session-attention';
+import { taskAwaitsAnswer } from '@kontourai/station-contracts/task-memory';
 import type {
   OrchestrationSessionSummary,
   SessionControlMode,
+  TaskListRecord,
   TaskRecord,
 } from '@kontourai/station-sdk';
 import {
@@ -47,6 +49,7 @@ export interface HomeWorkItem {
   kindLabel:
     | 'Durable Task'
     | `Task · ${(typeof TASK_STATUS_LABELS)[TaskRecord['status']]}`
+    | typeof TASK_AWAITS_ANSWER_LABEL
     | 'Direct chat'
     | 'Session'
     | 'Remote session'
@@ -290,7 +293,7 @@ export function buildHomeWorkItems({
 }: {
   chats: Record<string, ChatUIState>;
   sessions: OrchestrationSessionSummary[];
-  tasks?: TaskRecord[];
+  tasks?: TaskListRecord[];
   retainTaskChildren?: boolean;
   agents: AgentSummary[];
   /**
@@ -540,7 +543,7 @@ function mergeHomeWorkItems(
   taskItems: HomeWorkItem[],
   chatItems: HomeWorkItem[],
   orchestrationItems: HomeWorkItem[],
-  tasks: TaskRecord[],
+  tasks: TaskListRecord[],
   currentSessionIdByConversation: ReadonlyMap<string, string>,
   retainTaskChildren: boolean,
 ): HomeWorkItem[] {
@@ -867,11 +870,21 @@ const TASK_STATUS_LABELS = {
   canceled: 'Canceled',
 } as const satisfies Record<TaskRecord['status'], string>;
 
-function buildDurableTaskItem(task: TaskRecord): HomeWorkItem {
+/**
+ * #4003: a live Task with an open Task-memory question. Its word is the
+ * question's, whatever its status says, because the answer is what a person
+ * can act on; the status returns once the question is answered.
+ */
+export const TASK_AWAITS_ANSWER_LABEL =
+  `Task · ${SESSION_STATUS_WORDS.answer}` as const;
+
+function buildDurableTaskItem(task: TaskListRecord): HomeWorkItem {
   return {
     id: task.id,
     kind: 'task',
-    kindLabel: `Task · ${TASK_STATUS_LABELS[task.status]}`,
+    kindLabel: taskAwaitsAnswer(task)
+      ? TASK_AWAITS_ANSWER_LABEL
+      : `Task · ${TASK_STATUS_LABELS[task.status]}`,
     title: task.title,
     projectLabel: task.projectId || 'Project unavailable',
     projectSlug: task.projectId || undefined,
@@ -883,8 +896,14 @@ function buildDurableTaskItem(task: TaskRecord): HomeWorkItem {
   };
 }
 
-function taskLifecycleLabel(task: TaskRecord): HomeWorkItem['lifecycleLabel'] {
-  if (['blocked', 'review', 'verification'].includes(task.status))
+function taskLifecycleLabel(
+  task: TaskListRecord,
+): HomeWorkItem['lifecycleLabel'] {
+  // #4003: an open Task-memory question waits on a person as review does.
+  if (
+    ['blocked', 'review', 'verification'].includes(task.status) ||
+    taskAwaitsAnswer(task)
+  )
     return 'Needs attention';
   if (task.status === 'in_progress') return 'Running';
   if (task.status === 'done') return 'Completed';

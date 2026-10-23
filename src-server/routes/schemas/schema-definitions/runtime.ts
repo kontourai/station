@@ -12,7 +12,17 @@ import {
   collectChatInputFileParts,
 } from '../../../../src-shared/chat-input-limits.js';
 import { validateCredentialProfileEnv } from '../../../services/connections/connection-env.js';
+import { TASK_BRIEF_MAX_CHARS } from '../../../services/projects/task-brief.js';
 import { chatInputLimitRefusals } from '../../../telemetry/metrics.js';
+
+/**
+ * The ordinary ambient context bound (4000, as the orchestration seam's own
+ * `ambientContext` field) plus a Task brief (epic #4003). The Station engine
+ * relays a turn's composed ambient context to this route, and a Session
+ * dispatched for a Task carries its brief there on the first turn; at the
+ * old 4000 bound that first turn was refused.
+ */
+const CHAT_AMBIENT_CONTEXT_MAX_CHARS = 4000 + 1 + TASK_BRIEF_MAX_CHARS;
 
 // ACP
 export const acpConnectionSchema = z.object({
@@ -416,7 +426,7 @@ export const chatSchema = z.object({
   }),
   // Ambient, model-facing context (timezone, geolocation, …) composed into
   // the model input server-side; never part of the persisted user turn.
-  ambientContext: z.string().max(4000).optional(),
+  ambientContext: z.string().max(CHAT_AMBIENT_CONTEXT_MAX_CHARS).optional(),
   options: z
     .object({ model: modelSelectorSchema.optional() })
     .passthrough()

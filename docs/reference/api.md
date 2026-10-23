@@ -404,9 +404,120 @@ or the grant.
 `POST /api/tasks` accepts an optional `shapingSource: { sessionId, turnId }`
 when a person accepts a chat proposal. The normal `title` carries the proposal title; `description`
 carries the Goal sentence, and `proposalBrief` carries the accepted markdown for the shared Task document. Station requires an authorized, normally completed
-assistant turn in the same Project (or a conversation without a Project), parses its `station-task-proposal` block using the shared contract, and requires an exact title, Goal and brief match. Inline edits are not supported; mismatches return 409 before creation. Missing document authority/runtime availability returns 503 before creation. Station then commits the Task and its `spawned_session` link together. Reaccepting the
+assistant turn in the same Project (or a conversation without a Project), parses its `station-task-proposal` block using the shared contract, and requires an exact title, Goal and brief match. Inline edits are not supported; mismatches return 409 before creation. A brief longer than a Task document can hold (about 5,400 characters of plain text, against the 12,000-character proposal limit) returns 413 `task-document-full` before creation. When the Station-wide revision ledger (256 receipts / 4 MiB, a full document snapshot per save, [#4055](https://github.com/kontourai/station/issues/4055)) has no room for the brief, acceptance returns 507 `revision-history-full` before creation; if the ledger fills between that check and the seed, the 507 says the Task was created without its brief and names it in `details.taskId`. Neither promises a retry. Re-accepting an already-accepted source skips that pre-check and reuses its existing Task. If its brief still needs seeding, a capacity refusal names that Task in `details.taskId`. Missing document authority/runtime availability returns 503 before creation. Station then commits the Task and its `spawned_session` link together. Reaccepting the
 same source returns the existing Task; acceptance leaves `sessionId` and `agentId` unset. The user-sourced link records `shapingTurnId`, and `proposalBriefSaved: true` only after successful seeding. Changing its destination Project is
-refused. This is Station proposal acceptance, not a Builder Kit gate receipt. Seeding uses the room runtime's human edit-plan/batch authority. A seed failure returns 503 with a recovery message after the Task and Session link have persisted; retrying the same source reuses that Task and seeds only an empty document. Concurrent accepts that commit the matching brief both succeed. A successful response is returned after seeding. This is recoverable creation across the graph and document stores, not a cross-store transaction.
+refused. This is Station proposal acceptance, not a Builder Kit gate receipt. Seeding uses the room runtime's human edit-plan/batch authority. A transient seed failure returns 503 with a recovery message after the Task and Session link have persisted; retrying the same source reuses that Task and seeds only an empty document. Concurrent accepts that commit the matching brief both succeed. A successful response is returned after seeding. This is recoverable creation across the graph and document stores, not a cross-store transaction.
+
+## Start a Task from a tracker item
+
+`POST /api/tasks/from-work-item` takes `{projectId, workItemRef, agentId?,
+workspaceBinding?}`, where `workItemRef` is a `github:owner/repo#N` issue the
+Project's board lists; owner and repository compare case-insensitively and
+are stored lowercase. The board is checked first. When the issue already has
+a Task that is not done or canceled, the response is `200` with
+`existing: true` and that Task, or, when it is in another Project, only
+`{id, projectId}` with `elsewhere: true`.
+Otherwise Station re-reads the issue through the host's `gh` login, creates a
+Task seeded with the issue body and its latest comments, and answers `201`
+with `briefSaved` saying whether that copy reached the Task document. A ref
+that is not a github.com issue is `422`, a ref the board does not list is
+`404`, and a failed read is `404` (not found), `422` (unsupported) or `503`
+(no `gh` login, or unavailable).
+
+`POST /api/tasks` with a `workItemRef` in the `github:` namespace accepts it
+only when it is a github.com issue ref (else `422`) and the Project's board
+lists it (else `404`), and records `workItemProvenance: "project-board"`.
+Any create naming a work item that already has a Task that is not done or
+canceled is `409` `work_item_has_open_task`, with `data: {taskId,
+projectId}`. A board-checked GitHub ref is matched across Projects (against
+other board-checked Tasks); every other ref only within the same Project.
+`workItemRef` is at most 512 characters and `sourceProvider` at most 128.
+
+`GET /api/tasks/:taskId/work-item` re-reads the linked item for the Task
+header, returning comments created after the Task's `workItemObservedAt`.
+It reads only a ref with `workItemProvenance: "project-board"`; any other
+answers `unsupported` without reading the tracker.
+Both routes are personal-runtime only (hosted requests get `404`), and no
+Station Control tool names them. See
+[Tracker-backed Tasks](../design/tracker-backed-tasks.md).
+
+## Task memory
+
+Task memory (#4003) is a Task's summary and keyed records; see
+[Tracker-backed Tasks](../design/tracker-backed-tasks.md#task-memory). A
+person reads and writes it with the Task room's request authority. These are
+personal-runtime routes; hosted tenancy composes no Task room.
+
+- `GET /api/tasks/:taskId/room/memory` returns `station.task-memory/v1`: the
+  current `summary` (absent until the first write), every key's newest record
+  version in any state, and the limits.
+- `GET /api/tasks/:taskId/room/memory/summary/revisions?limit=1..100` returns
+  the newest summary revisions and the total.
+- `PUT /api/tasks/:taskId/room/memory/summary` takes `{text, baseRevision}`.
+  A stale `baseRevision` is `409` with `code: "task_summary_stale_base"` and
+  the `current` revision; over 4,000 characters is `400`
+  (`task_summary_too_long`).
+- `POST /api/tasks/:taskId/room/memory/records` takes `{kind, key, action?,
+  text?, importance?, reason?}`. An invalid key is `400`
+  (`task_record_key_invalid`); a live-record cap, a missing record or a state
+  that does not allow the action is `409`.
+  A recorded answer also queues one message for the Task's lead Session
+  ([lead wake](../design/tracker-backed-tasks.md#lead-wake)). The response
+  does not report it, and a failed delivery does not change the response.
+
+Agents write through Station Control: `task_summary_update` and
+`task_record` (REST sides `POST /api/orchestration/station-control/task-summary`
+and `…/task-record`, internal-only, keyed on the verified caller's own bound
+Task). `GET /api/orchestration/station-control/task-brief` takes an optional
+`include=all_records|summary_history`. `GET /api/tasks` adds
+`openQuestionCount` to a Task with open questions.
+
+### Lessons from a done Task
+
+When a Task is done, its active, standing decisions and dead ends are
+candidates for the Project's knowledge store; see
+[Tracker-backed Tasks](../design/tracker-backed-tasks.md#learning-promoting-a-done-tasks-lessons).
+Same authority as the routes above. No Station Control tool names these
+routes, so an agent's request is refused (`403`,
+`station_control_route_unmapped`) before they run.
+
+- `GET /api/tasks/:taskId/room/memory/learning` returns
+  `station.task-learning/v1`: `offered` (the Task is done), the Project's
+  writable knowledge `stores` (empty when it has none), and each candidate
+  with its `knowledgeRecordId` and `review` (`open`, `promoted` with its
+  `rootId`, or `dismissed`). A Task that is not done has no candidates.
+- `POST /api/tasks/:taskId/room/memory/learning/promote` takes `{kind, key,
+  version, rootId, title, text}` and creates one `raw` knowledge record in
+  that Project store through its adapter: the edited `text` as the body,
+  category `task-learning.decisions` or `task-learning.dead-ends`, and
+  `provenance` with `agent: "station-task-learning"`, the authoring Session's
+  `session_id`, and a `note` naming the person, Task, Task creation time,
+  record version and work item. `201` with `status: "promoted"`; a version
+  already in any Project store is `200` with `status: "already-promoted"` and
+  writes nothing. `409` codes: `task_learning_not_done`,
+  `task_learning_not_a_candidate` (not the current active standing version),
+  `task_learning_dismissed`, `task_learning_no_store`.
+- `POST /api/tasks/:taskId/room/memory/learning/dismiss` takes `{kind, key,
+  version}` and records the dismissal; a second one answers
+  `status: "already-dismissed"`. A version with a recorded promotion is
+  `409` `task_learning_promoted`, and nothing is written. A dismissal is
+  checked first and wins: a dismissed version reads `dismissed` whatever
+  the stores hold. Otherwise a version reads as `review.state` `promoted`
+  whenever its record, written by Station's Task Learning for this Task, is
+  in any of the Project's current stores. Otherwise, with a recorded promotion, it is
+  `pending` when the recorded store is still one of the Project's
+  (promoting finishes it there), or `promotion-store-gone` when it is not,
+  a closed review. The recorded store is matched by its adapter and its
+  directory's native real path. Promote decides by the same rule, so
+  promoting a `promotion-store-gone` version is `409`
+  `task_learning_store_gone`, and promoting a `promoted` one is `200`
+  `already-promoted`. When a record not written by Task Learning already
+  uses the version's id, promote is `409` `task_learning_id_taken`.
+  `POST /api/knowledge/roots/:rootId/records` refuses (`400`) a
+  `provenance.agent` of `station-task-learning`, which is reserved.
+
+A promoted record is searchable once its store is reindexed
+(`POST /api/knowledge/index/rebuild`); promotion does not index it.
 
 ## Shared Project Room
 
@@ -4007,8 +4118,10 @@ read as the calling Session's owner.
 The list returns `{sessions, nextCursor}`: the Sessions of the caller's own
 Project (or the global space), newest activity first, one per conversation, each
 `{sessionId, conversationId?, title?, projectSlug?, engine, agent?, status,
-turnRunning, lastActivityAt, workingDirectory?, worktree?, self?}`. `status` is
-the status ladder's word. `limit` is 1 to 50 (default 25); anything else is
+turnRunning, lastActivityAt, workingDirectory?, worktree?, self?, claims?}`.
+`status` is the status ladder's word. `claims` (present only when there are
+any) are the Session's active work claims, below: `{claimId, workItemRef?,
+paths?, note?, taskId?, claimedAt, expiresAt}`. `limit` is 1 to 50 (default 25); anything else is
 `project_activity_limit_out_of_range`, and a `cursor` the list did not return is
 `project_activity_cursor_invalid`. The caller's own conversation (its current
 Session, marked `self`) is listed whatever its scope, as its digest is read.
@@ -4032,6 +4145,53 @@ A Session the caller may not see (another Project, another person, an unconfined
 Session for a caller that is not a bound operator, another Station) answers `404`
 `session_not_found`, identical to one that does not exist. See the
 [route](../../src-server/routes/orchestration/session-project-activity.ts).
+
+### Station Control Work Claims
+
+`POST /api/orchestration/work-claims` with `{workItemRef?, paths?, note?,
+ttlSeconds?}`, `POST /api/orchestration/work-claims/:claimId/renew` with
+`{ttlSeconds?}` and `POST /api/orchestration/work-claims/:claimId/release` with
+`{note?}` are the routes behind the station-control `claim_work`, `renew_claim`
+and `release_claim` tools. Each answers only a station-control tool call with a
+verified caller (anything else gets `403` `station_control_caller_required`), and
+each answers `{claim}`: `{claimId, sessionId, conversationId?, scope, taskId?,
+workItemRef?, paths?, note?, claimedAt, renewedAt, expiresAt, releasedAt?,
+releaseNote?}`
+([`WorkClaimView`](../../packages/contracts/src/work-claims.ts)).
+
+A claim is a Session's declaration of what it is on, so other Sessions in its
+Project do not duplicate it; it locks nothing, and two Sessions may claim the
+same item. The claimant is the calling Session (and its conversation): a body
+naming any other field, such as a Session, is refused (`400`
+`invalid_request`). A claim names a work item (`workItemRef`, one line of at
+most 200 characters), paths (at most 20, each at most 512 characters,
+`work_claim_too_many_paths` past that), or both (neither is
+`work_claim_subject_required`), with an optional one-line `note` of at most 500
+characters. It lasts `ttlSeconds` (60 to 14400, default 1800) and is active
+until it expires, its claimant releases it, or the claimant Session ends
+(Station closed it, its runtime is gone, or it completed); none of that is
+stored, it is decided when read. Claiming a work item the claimant already
+holds renews that claim and replaces its note and paths. A Session holds at most
+10 active claims (`409` `work_claim_limit_reached`).
+
+A claim belongs to the claimant's scope: its Project, or the global space. A
+caller whose Project Station cannot confirm is refused (`409`
+`work_claim_scope_unreadable`), and claiming answers the same scope rule as
+every Session-aimed call (`403` `station_control_out_of_scope` for a caller
+that is not a bound operator in a Session that runs unconfined). A Session
+dispatched for a Task in that Project stamps the Task id on its claims. Only
+the claimant, or a later Session of its conversation, renews or releases a
+claim; anyone else's claim id answers `404` `claim_not_found`. Renewing a
+released or expired claim, or releasing a released one, is `409`
+`claim_not_active`.
+
+`GET /api/orchestration/work-claims` is the Station UI's read: `{claims}`, the
+active claims of the Sessions the requesting person may read, refused for a
+station-control caller. More than 500 such claims is `422`
+`work_claims_too_many`; claims the person may not see, and those of ended
+Sessions, do not count. See the
+[routes](../../src-server/routes/orchestration/session-work-claims.ts) and the
+[store](../../src-server/services/orchestration/work-claims.ts).
 
 ### Agent Conversation Title
 

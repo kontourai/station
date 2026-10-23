@@ -1,0 +1,7 @@
+{
+  "revision": "26661fc97bf4ee1fdd6ccf1939f02d85cfb09e7c",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-checked the Learning paragraph after the refusal fix: task-learning.ts now returns which field is invalid and the route words the sentence. The paragraph's claims (derived candidates, read-back promotion, one create per version, dismissals in migration 018, room authority, no Station Control tool) are unchanged.","inputs":["docs/architecture/module-map.md","src-server/routes/orchestration/task-learning.ts","src-server/services/projects/task-learning.ts"]}
+  ]
+}
