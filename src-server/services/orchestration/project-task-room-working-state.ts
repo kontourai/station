@@ -64,6 +64,18 @@ export interface ProjectTaskRoomWorkingState {
   readRevisionPublication(input: {
     scope: { projectId: string; taskId: string; documentId: string };
   }): Promise<RevisionPublicationRead>;
+  /**
+   * The Station-wide revision ledger as room admission counts it: stored
+   * receipts plus every admitted publication not yet frozen (#4007).
+   */
+  revisionLedgerUsage?(): Promise<
+    | {
+        readonly kind: 'available';
+        readonly count: number;
+        readonly recordBytes: number;
+      }
+    | { readonly kind: 'unavailable' }
+  >;
   markRevisionPublication(input: {
     scope: { projectId: string; taskId: string; documentId: string };
     intentId: string;
@@ -119,7 +131,16 @@ export interface WorkingSettlement {
     | 'unavailable';
   readonly revision?: string;
   readonly text?: string;
-  readonly reason?: 'revision-publication-pending';
+  /**
+   * With `rejected`. `document-full`: this document's revision evidence would
+   * exceed its record bounds. `evidence-ledger-full`: the Station-wide
+   * revision evidence ledger has no room for it. Both are refused before
+   * anything is written, so they never leave a publication pending (#4007).
+   */
+  readonly reason?:
+    | 'revision-publication-pending'
+    | 'document-full'
+    | 'evidence-ledger-full';
 }
 
 export interface RevisionPublication {
@@ -303,6 +324,11 @@ export function createProjectTaskRoomWorkingState(
         type: 'receipt',
         ...input,
       }),
+    revisionLedgerUsage: () =>
+      request<
+        | { kind: 'available'; count: number; recordBytes: number }
+        | { kind: 'unavailable' }
+      >({ type: 'revision-ledger-usage' }),
     readRevisionPublication: (
       input: Parameters<
         ProjectTaskRoomWorkingState['readRevisionPublication']

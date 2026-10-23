@@ -1,3 +1,9 @@
+import type {
+  KnowledgeDocumentImportInput,
+  KnowledgeDocumentImportReceipt,
+  KnowledgeSourceCapabilities,
+} from '@kontourai/station-contracts/knowledge-store';
+
 /**
  * K3 knowledge-index management fetchers: the client for the two explicit,
  * user/CLI-triggered index-management verbs
@@ -10,6 +16,11 @@
  * module family's portability contract (`./index.ts`'s header comment).
  */
 
+import type {
+  ProjectS3ObjectPage,
+  ProjectS3ObjectRead,
+  ProjectS3Source,
+} from '@kontourai/station-contracts/project';
 import { envelopeError } from './api-error-message';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
 
@@ -20,6 +31,152 @@ interface KnowledgeEnvelope<T> {
   code?: 'knowledge_migration_failed';
   /** `POST /api/knowledge/index/search` only. */
   index?: KnowledgeSearchIndexReport;
+}
+
+export interface AttachProjectS3SourceInput {
+  shareWithProject: true;
+  id: string;
+  expectedProjectId: string;
+  displayName: string;
+  accountId: string;
+  region: string;
+  bucket: string;
+  prefix: string;
+  profile: string;
+}
+export async function getProjectS3Capabilities(
+  base: string,
+  opts: ClientRequestOptions,
+): Promise<{ enabled: boolean; canManage: boolean }> {
+  return unwrapKnowledgeResponse(
+    await getJson(`${base}/api/knowledge/s3-sources/capabilities`, opts),
+  );
+}
+export async function getProjectS3Profiles(
+  base: string,
+  opts: ClientRequestOptions,
+): Promise<{ available: boolean; profiles: string[] }> {
+  return unwrapKnowledgeResponse(
+    await getJson(`${base}/api/knowledge/s3-sources/profiles`, opts),
+  );
+}
+function s3Path(base: string, projectSlug: string, sourceId?: string) {
+  return `${base}/api/knowledge/s3-sources/projects/${encodeURIComponent(projectSlug)}${sourceId ? `/${encodeURIComponent(sourceId)}` : ''}`;
+}
+export async function listProjectS3Sources(
+  base: string,
+  projectSlug: string,
+  opts: ClientRequestOptions,
+): Promise<ProjectS3Source[]> {
+  return unwrapKnowledgeResponse(
+    await getJson(s3Path(base, projectSlug), opts),
+  );
+}
+export async function attachProjectS3Source(
+  base: string,
+  projectSlug: string,
+  input: AttachProjectS3SourceInput,
+  opts: ClientRequestOptions,
+): Promise<ProjectS3Source> {
+  return unwrapKnowledgeResponse(
+    await mutateJson(s3Path(base, projectSlug), 'POST', opts, input),
+  );
+}
+export async function disconnectProjectS3Source(
+  base: string,
+  projectSlug: string,
+  source: ProjectS3Source,
+  opts: ClientRequestOptions,
+): Promise<void> {
+  await unwrapKnowledgeResponse(
+    await mutateJson(
+      `${s3Path(base, projectSlug, source.id)}/disconnect`,
+      'POST',
+      opts,
+      { expectedSource: source },
+    ),
+  );
+}
+export async function listProjectS3Objects(
+  base: string,
+  projectSlug: string,
+  sourceId: string,
+  cursor: string | undefined,
+  opts: ClientRequestOptions,
+): Promise<ProjectS3ObjectPage> {
+  return unwrapKnowledgeResponse(
+    await getJson(
+      `${s3Path(base, projectSlug, sourceId)}/objects${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ''}`,
+      opts,
+    ),
+  );
+}
+export async function readProjectS3Object(
+  base: string,
+  projectSlug: string,
+  sourceId: string,
+  key: string,
+  etag: string,
+  opts: ClientRequestOptions,
+): Promise<ProjectS3ObjectRead> {
+  const query = new URLSearchParams({ key, etag });
+  return unwrapKnowledgeResponse(
+    await getJson(
+      `${s3Path(base, projectSlug, sourceId)}/object?${query}`,
+      opts,
+    ),
+  );
+}
+
+export async function importKnowledgeDocuments(
+  apiBase: string,
+  input: KnowledgeDocumentImportInput,
+  opts: ClientRequestOptions,
+): Promise<KnowledgeDocumentImportReceipt> {
+  return unwrapKnowledgeResponse(
+    await mutateJson(
+      `${apiBase}/api/knowledge/document-imports`,
+      'POST',
+      opts,
+      input,
+    ),
+  );
+}
+
+export async function getKnowledgeDocumentImport(
+  apiBase: string,
+  rootId: string,
+  requestId: string,
+  opts: ClientRequestOptions,
+): Promise<KnowledgeDocumentImportReceipt> {
+  return unwrapKnowledgeResponse(
+    await getJson(
+      `${apiBase}/api/knowledge/roots/${encodeURIComponent(rootId)}/document-imports/${encodeURIComponent(requestId)}`,
+      opts,
+    ),
+  );
+}
+
+export async function resumeKnowledgeDocumentImport(
+  apiBase: string,
+  input: {
+    expectedRoot: KnowledgeStoreRoot;
+    requestId: string;
+    retryUncertain: boolean;
+  },
+  opts: ClientRequestOptions,
+): Promise<KnowledgeDocumentImportReceipt> {
+  return unwrapKnowledgeResponse(
+    await mutateJson(
+      `${apiBase}/api/knowledge/roots/${encodeURIComponent(input.expectedRoot.id)}/document-imports/${encodeURIComponent(input.requestId)}/resume`,
+      'POST',
+      opts,
+      {
+        expectedRoot: input.expectedRoot,
+        retryUncertain: input.retryUncertain,
+      },
+    ),
+  );
 }
 
 /**
@@ -159,6 +316,8 @@ import type {
  * the server defaults `storeRoot` server-side (personal/project scope) when omitted. */
 export interface CreateKnowledgeRootInput {
   scope: KnowledgeRootScope;
+  /** Required by current Stations for Project registration; comparison only, not stored authority. */
+  expectedProjectId?: string;
   adapterId: string;
   storeRoot?: string;
   displayName?: string;
@@ -251,12 +410,14 @@ export async function listKnowledgeAdapters(
 export async function deleteKnowledgeRoot(
   apiBase: string,
   rootId: string,
-  opts?: ClientRequestOptions,
+  opts?: ClientRequestOptions & { expectedRoot?: KnowledgeStoreRoot },
 ): Promise<void> {
+  const { expectedRoot, ...transportOptions } = opts ?? {};
   const response = await mutateJson(
-    `${apiBase}/api/knowledge/roots/${encodeURIComponent(rootId)}`,
-    'DELETE',
-    opts,
+    `${apiBase}/api/knowledge/roots/${encodeURIComponent(rootId)}${expectedRoot ? '/disconnect' : ''}`,
+    expectedRoot ? 'POST' : 'DELETE',
+    opts ? transportOptions : undefined,
+    expectedRoot ? { expectedRoot } : undefined,
   );
   await unwrapKnowledgeResponse<void>(response);
 }
@@ -532,4 +693,34 @@ export async function syncKnowledgeGraphNeo4j(
     opts,
   );
   return unwrapKnowledgeResponse<KnowledgeGraphNeo4jSyncStats>(response);
+}
+
+export interface AttachKnowledgeRootProjectInput {
+  expectedRoot: KnowledgeStoreRoot;
+  projectSlug: string;
+  projectId: string;
+}
+/** Explicitly bind one legacy registration; retained store files are unchanged. */
+export async function attachKnowledgeRootProject(
+  apiBase: string,
+  input: AttachKnowledgeRootProjectInput,
+  opts?: ClientRequestOptions,
+): Promise<KnowledgeStoreRoot> {
+  const response = await mutateJson(
+    `${apiBase}/api/knowledge/roots/${encodeURIComponent(input.expectedRoot.id)}/attach-project`,
+    'POST',
+    opts,
+    input,
+  );
+  return unwrapKnowledgeResponse<KnowledgeStoreRoot>(response);
+}
+
+/** Read current caller management capabilities without granting them. */
+export async function getKnowledgeSourceCapabilities(
+  apiBase: string,
+  opts?: ClientRequestOptions,
+): Promise<KnowledgeSourceCapabilities> {
+  return unwrapKnowledgeResponse<KnowledgeSourceCapabilities>(
+    await getJson(`${apiBase}/api/knowledge/capabilities`, opts),
+  );
 }

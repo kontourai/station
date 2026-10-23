@@ -1062,6 +1062,9 @@ describe('executeForegroundMessage', () => {
     expect(result).toMatchObject({
       conversationId: 'conversation:existing',
       sessionId: 'conversation:existing:session:1',
+      resolution: {
+        workspace: { kind: 'directory', cwd: '/durable/original-workspace' },
+      },
     });
   });
 
@@ -1826,7 +1829,16 @@ describe('executeForegroundMessage', () => {
           },
           deps,
         ),
-      ).resolves.toBeDefined();
+      ).resolves.toMatchObject({
+        resolution: {
+          workspace: {
+            kind: 'project',
+            projectSlug: 'station',
+            cwd: repoPath,
+            workspaceIsolation: { mode: 'worktree' },
+          },
+        },
+      });
       deps.getProject = vi.fn(async () => ({
         workingDirectory: repoPath,
         defaultWorkspaceIsolation: 'shared' as const,

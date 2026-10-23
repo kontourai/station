@@ -123,6 +123,9 @@ import {
   POSITIVE_TURN_START_INDEX,
   POSITIVE_TURN_START_SQL,
 } from '../../domain/migrations/019-positive-turn-start-index.js';
+import { TASK_MEMORY_MIGRATION } from '../../domain/migrations/020-task-memory.js';
+import { TASK_LEARNING_DISMISSALS_MIGRATION } from '../../domain/migrations/021-task-learning-dismissals.js';
+import { TASK_LEARNING_PROMOTIONS_MIGRATION } from '../../domain/migrations/022-task-learning-promotions.js';
 import {
   type CanonicalProposedChangeLookup,
   type RevisionAttributionAuthority,
@@ -320,6 +323,10 @@ import {
   turnDedupKey,
 } from './sqlite-turn-dedup-persistence.js';
 import {
+  createSqliteTaskMemoryStore,
+  type TaskMemoryStore,
+} from './task-memory-store.js';
+import {
   createSqliteThreadInboxStore,
   type ThreadInboxStore,
 } from './thread-inbox.js';
@@ -350,6 +357,11 @@ import {
   type VoiceTurnRuns,
   type VoiceTurnRunsReader,
 } from './voice-turn-runs.js';
+import {
+  createSqliteWorkClaimStore,
+  WORK_CLAIMS_SCHEMA,
+  type WorkClaimStore,
+} from './work-claims.js';
 import {
   SESSION_WORK_ITEM_READ_MAX_OBSERVATIONS,
   SESSION_WORK_ITEM_READ_MAX_SERIALIZED_BYTES,
@@ -2154,6 +2166,7 @@ export class EventStore {
   private sessionControlKeys?: SessionControlRequestKeys;
   private delegationResults?: DelegationResultStore;
   private threadInbox?: ThreadInboxStore;
+  private taskMemory?: TaskMemoryStore;
   private agentSchedule?: AgentScheduleStore;
   private resumeChoices?: UsageLimitResumeChoices;
   private mcpAppResourceResolver?: (toolRef: string) => string | undefined;
@@ -2335,6 +2348,8 @@ export class EventStore {
       this.db.exec(CONVERSATION_CONTEXT_BOUNDARY_MIGRATION);
       ensureConversationContextBoundaryColumns(this.db);
       this.db.exec(SESSION_WORK_ITEM_ASSOCIATIONS_MIGRATION);
+      // #3413 B: the claims agents declare on their work.
+      this.db.exec(WORK_CLAIMS_SCHEMA);
       this.db.exec(OPERATIONAL_EVENT_OUTBOX_MIGRATION);
       this.db.exec(PROJECT_TASK_ROOM_RUNTIME_MIGRATION);
       initializeProjectTaskRoomSourceSeals(this.db);
@@ -2401,6 +2416,13 @@ export class EventStore {
       ensureOrchestrationEventStoreColumns(this.db);
       migrateSessionParentMentions(this.db);
       ensurePositiveTurnStartIndex(this.db);
+      // #4003: Task memory (summary revisions and keyed records), apart from
+      // the room document.
+      this.db.exec(TASK_MEMORY_MIGRATION);
+      // #4003 layer 4: dismissed promotion candidates.
+      this.db.exec(TASK_LEARNING_DISMISSALS_MIGRATION);
+      // #4003 layer 4: the store each promoted record version went to.
+      this.db.exec(TASK_LEARNING_PROMOTIONS_MIGRATION);
       this.db
         .prepare(
           `INSERT OR IGNORE INTO orchestration_stream_identity(singleton, high_water)
@@ -11618,6 +11640,14 @@ export class EventStore {
     return this.skillExperienceSnapshots;
   }
 
+  /** #3413 B: the work-claim store over this database (`work-claims.ts`). */
+  createWorkClaimStore(options: {
+    maxActivePerClaimant: number;
+    now?: () => number;
+  }): WorkClaimStore {
+    return createSqliteWorkClaimStore(this.db, options);
+  }
+
   createAdoptionLedger(): AdoptionLedger {
     return createAdoptionLedger({
       coordinator: createSqliteAdoptionCoordinator({
@@ -12790,6 +12820,12 @@ export class EventStore {
         ),
     );
     return this.threadInbox;
+  }
+
+  /** #4003: Task memory (summary and keyed records). Authority is the caller's. */
+  taskMemoryStore(): TaskMemoryStore {
+    this.taskMemory ??= createSqliteTaskMemoryStore(this.db);
+    return this.taskMemory;
   }
 
   /** #3157: a person's resume choice per usage-limit stop. */

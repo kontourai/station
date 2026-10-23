@@ -2752,6 +2752,21 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'GET',
       path: '/api/orchestration/session-activity/:sessionId/digest',
     },
+    // #3413 part B work claims. The three POST leaves are agent-only at the
+    // route (403 `station_control_caller_required` without a verified
+    // station-control caller), and the claimant is that caller's own Session.
+    // The GET leaf is the UI's read, owner-scoped to the Sessions the
+    // requester may read.
+    { method: 'POST', path: '/api/orchestration/work-claims' },
+    {
+      method: 'POST',
+      path: '/api/orchestration/work-claims/:claimId/renew',
+    },
+    {
+      method: 'POST',
+      path: '/api/orchestration/work-claims/:claimId/release',
+    },
+    { method: 'GET', path: '/api/orchestration/work-claims' },
     // #3161 `declare_pull_request`'s REST side. Internal-only at the route: a
     // request the runtime boundary did not accept as Station's own internal
     // principal gets a 404 whatever its scope, and the session it records on
@@ -2762,6 +2777,16 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/station-control/declare-pull-request',
     },
+    // Epic #4003 `get_task_brief`'s REST side. Internal-only at the route
+    // (404 otherwise) and keyed on the verified station-control caller's own
+    // Task binding, so a paired credential reaches nothing through it.
+    { method: 'GET', path: '/api/orchestration/station-control/task-brief' },
+    // #4003 `task_summary_update` and `task_record`'s REST side.
+    // Internal-only at the route like the leaf above; the Task they write is
+    // the verified caller Session's own bound Task, and each write is one
+    // bounded Task-memory revision or record version.
+    { method: 'POST', path: '/api/orchestration/station-control/task-summary' },
+    { method: 'POST', path: '/api/orchestration/station-control/task-record' },
     // `schedule_wake_up`, `list_wake_ups`, `cancel_wake_up` and `propose_job`:
     // internal-only at the route (404 to anything the runtime boundary did not
     // accept as Station's own internal principal), acting only on the
@@ -2853,6 +2878,13 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // Personal task-room reads disclose only the already-paired operator's
     // own task projection. Mutations are closed room commands and inherit
     // orchestration:operate from /api/tasks.
+    { method: 'GET', path: '/api/tasks/:taskId/children' },
+    { method: 'POST', path: '/api/tasks/:taskId/children' },
+    { method: 'PUT', path: '/api/tasks/:taskId/parent' },
+    { method: 'GET', path: '/api/tasks/:taskId/work-chats' },
+    { method: 'GET', path: '/api/tasks/:taskId/work-chats/:conversationId' },
+    { method: 'POST', path: '/api/tasks/:taskId/work-chats' },
+    { method: 'DELETE', path: '/api/tasks/:taskId/work-chats' },
     { method: 'GET', path: '/api/tasks/:taskId/kept-pull-requests' },
     { method: 'PATCH', path: '/api/tasks/:taskId/title' },
     { method: 'GET', path: '/api/tasks/:taskId/room' },
@@ -2875,6 +2907,32 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // merge. It mutates only that Task's own record, so the task family's
     // operate tier is the intended scope; no station-control tool reaches it.
     { method: 'PUT', path: '/api/tasks/:taskId/close-on-merge' },
+    // #4003 Start Task on a board item, and the Task's linked-item header.
+    // Both read one tracker item through the Station host's own `gh` login.
+    // The POST reads only a ref the Project's board offers when it is
+    // called, and creates a Task like `POST /api/tasks` at its operate tier.
+    // The GET reads only a Task ref that entered through such a board check
+    // (`TaskRecord.workItemProvenance`), and answers `unsupported` for any
+    // other. The board check is a membership test on the board's current
+    // listing, not proof the requester may see that repository on GitHub.
+    // No station-control tool names either route.
+    { method: 'POST', path: '/api/tasks/from-work-item' },
+    { method: 'GET', path: '/api/tasks/:taskId/work-item' },
+    // #4003 Task memory from the Task workspace: the summary and records of
+    // the exact Task the paired caller's room authority resolves, read at
+    // the read tier and written (one bounded revision or record version,
+    // every earlier one kept) at the operate tier.
+    { method: 'GET', path: '/api/tasks/:taskId/room/memory' },
+    { method: 'GET', path: '/api/tasks/:taskId/room/memory/summary/revisions' },
+    { method: 'PUT', path: '/api/tasks/:taskId/room/memory/summary' },
+    { method: 'POST', path: '/api/tasks/:taskId/room/memory/records' },
+    // #4003 layer 4: a done Task's promotion candidates, read at the read
+    // tier; promoting one (a single knowledge record in a store of the
+    // Task's own Project, never twice for one record version) or dismissing
+    // one (one append-only row) at the operate tier.
+    { method: 'GET', path: '/api/tasks/:taskId/room/memory/learning' },
+    { method: 'POST', path: '/api/tasks/:taskId/room/memory/learning/promote' },
+    { method: 'POST', path: '/api/tasks/:taskId/room/memory/learning/dismiss' },
     { method: 'DELETE', path: '/api/tasks/:taskId/outputs/:outputId' },
     {
       method: 'POST',
@@ -3267,9 +3325,41 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/api/knowledge/index/rebuild' },
     { method: 'POST', path: '/api/knowledge/index/search' },
     { method: 'POST', path: '/api/knowledge/migrate' },
+    { method: 'GET', path: '/api/knowledge/capabilities' },
+    { method: 'GET', path: '/api/knowledge/s3-sources/capabilities' },
+    { method: 'GET', path: '/api/knowledge/s3-sources/profiles' },
+    { method: 'GET', path: '/api/knowledge/s3-sources/projects/:projectSlug' },
+    { method: 'POST', path: '/api/knowledge/s3-sources/projects/:projectSlug' },
+    {
+      method: 'POST',
+      path: '/api/knowledge/s3-sources/projects/:projectSlug/:sourceId/disconnect',
+    },
+    {
+      method: 'GET',
+      path: '/api/knowledge/s3-sources/projects/:projectSlug/:sourceId/objects',
+    },
+    {
+      method: 'GET',
+      path: '/api/knowledge/s3-sources/projects/:projectSlug/:sourceId/object',
+    },
+    { method: 'POST', path: '/api/knowledge/document-imports' },
+    {
+      method: 'GET',
+      path: '/api/knowledge/roots/:rootId/document-imports/:requestId',
+    },
+    {
+      method: 'POST',
+      path: '/api/knowledge/roots/:rootId/document-imports/:requestId/resume',
+    },
+    {
+      method: 'GET',
+      path: '/api/knowledge/roots/:rootId/document-imports/:requestId/originals/:index',
+    },
     { method: 'GET', path: '/api/knowledge/roots' },
     { method: 'POST', path: '/api/knowledge/roots' },
     { method: 'DELETE', path: '/api/knowledge/roots/:id' },
+    { method: 'POST', path: '/api/knowledge/roots/:id/disconnect' },
+    { method: 'POST', path: '/api/knowledge/roots/:id/attach-project' },
     {
       method: 'GET',
       path: '/api/knowledge/roots/:rootId/records/:id/source-observation',
@@ -3619,6 +3709,24 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // this entry.
     { method: 'POST', path: '/api/projects/:slug/bind' },
     { method: 'GET', path: '/api/projects/:slug/conversations' },
+    // Room actions compose these transport tiers with current Project membership.
+    { method: 'GET', path: '/api/projects/:slug/room' },
+    { method: 'POST', path: '/api/projects/:slug/room/init' },
+    { method: 'GET', path: '/api/projects/:slug/room/messages' },
+    { method: 'POST', path: '/api/projects/:slug/room/messages' },
+    { method: 'PUT', path: '/api/projects/:slug/room/note' },
+    { method: 'POST', path: '/api/projects/:slug/room/presence' },
+    { method: 'GET', path: '/api/projects/:slug/room/events' },
+    { method: 'POST', path: '/api/projects/:slug/room/agents' },
+    { method: 'GET', path: '/api/projects/:slug/room/agents/:requestId' },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/room/agents/:requestId/cancel',
+    },
+    {
+      method: 'POST',
+      path: '/api/projects/:slug/room/agents/:requestId/reconcile',
+    },
     // Epic #2323 S3: plugin draft preview. Status and a retained revision's
     // bytes are reads of this Project's own draft (read tier). Starting a
     // lease runs builds on this host, so it stays at the family's operate
@@ -3789,6 +3897,24 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/projects/:slug/work-items/claim' },
     { method: 'GET', path: '/api/projects/:slug/workflow/tasks' },
     { method: 'GET', path: '/api/projects/:slug/workflow/tasks/:taskSlug' },
+    // Creation receipts and host Git acquisition remain operator-only at their
+    // owning routes; the paired transport uses the ordinary Project tier.
+    { method: 'GET', path: '/api/projects/creation-requests' },
+    { method: 'GET', path: '/api/projects/creation-requests/:id' },
+    { method: 'POST', path: '/api/projects/repository-acquisitions' },
+    { method: 'GET', path: '/api/projects/repository-acquisitions' },
+    { method: 'POST', path: '/api/projects/:slug/identity/repositories' },
+    { method: 'POST', path: '/api/projects/repository-acquisitions/:id/reuse' },
+    { method: 'GET', path: '/api/projects/repository-providers/:provider' },
+    { method: 'GET', path: '/api/projects/repository-acquisitions/:id' },
+    { method: 'POST', path: '/api/projects/repository-acquisitions/:id/retry' },
+    {
+      method: 'POST',
+      path: '/api/projects/repository-acquisitions/:id/cancel',
+    },
+    { method: 'POST', path: '/api/projects/:slug/operator-setup/preview' },
+    { method: 'GET', path: '/api/projects/:slug/operator-setup/:id' },
+    { method: 'POST', path: '/api/projects/:slug/operator-setup/:id/run' },
     { method: 'GET', path: '/api/projects/icon-candidates' },
     { method: 'GET', path: '/api/projects/layouts/available' },
     { method: 'GET', path: '/api/proposed-changes' },

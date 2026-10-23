@@ -1,0 +1,19 @@
+{
+  "revision": "e31e6ee09aace2608b4ab0fb6ca9381f752af611",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-read for the #4003 governance fix: tasks.ts changed only by answering POST /api/tasks's 409 work_item_has_open_task with a fixed string ('This work item already has an open Task.') instead of the error's message, which had the same wording. Status, code and data are unchanged, so this document's statements hold.","inputs":["docs/architecture/module-map.md","src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Re-read for the #4003 governance fix: tasks.ts changed only by answering POST /api/tasks's 409 work_item_has_open_task with a fixed string ('This work item already has an open Task.') instead of the error's message, which had the same wording. Status, code and data are unchanged, so this document's statements hold.","inputs":["docs/design/chat-composer.md","src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Re-read for the #4003 governance fix: tasks.ts changed only by answering POST /api/tasks's 409 work_item_has_open_task with a fixed string ('This work item already has an open Task.') instead of the error's message, which had the same wording. Status, code and data are unchanged, so this document's statements hold.","inputs":["docs/reference/api.md","src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Re-read for the #4003 governance fix: tasks.ts changed only by answering POST /api/tasks's 409 work_item_has_open_task with a fixed string ('This work item already has an open Task.') instead of the error's message, which had the same wording. Status, code and data are unchanged, so this document's statements hold.","inputs":["docs/reference/sdk.md","src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/reference/task-basis-mcp-app.md","note":"Re-read for the #4003 governance fix: tasks.ts changed only by answering POST /api/tasks's 409 work_item_has_open_task with a fixed string ('This work item already has an open Task.') instead of the error's message, which had the same wording. Status, code and data are unchanged, so this document's statements hold.","inputs":["docs/reference/task-basis-mcp-app.md","src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Re-read for the #4003 governance fix: tasks.ts changed only by answering POST /api/tasks's 409 work_item_has_open_task with a fixed string ('This work item already has an open Task.') instead of the error's message, which had the same wording. Status, code and data are unchanged, so this document's statements hold.","inputs":["docs/user/getting-started.md","src-server/routes/orchestration/tasks.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Re-read for the #4003 governance fix: tasks.ts changed only by answering POST /api/tasks's 409 work_item_has_open_task with a fixed string ('This work item already has an open Task.') instead of the error's message, which had the same wording. Status, code and data are unchanged, so this document's statements hold.","inputs":["packages/sdk/README.md","src-server/routes/orchestration/tasks.ts"]}
+  ]
+}

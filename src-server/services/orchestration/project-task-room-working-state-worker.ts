@@ -4,17 +4,25 @@ import { PROJECT_TASK_ROOM_RUNTIME_MIGRATION } from '../../domain/migrations/006
 import { PROJECT_TASK_ROOM_REVISION_PUBLICATION_MIGRATION } from '../../domain/migrations/008-project-task-room-revision-publication.js';
 import { ensureProjectTaskRoomRevisionAttributionColumn } from '../../domain/migrations/009-project-task-room-revision-attribution.js';
 import {
+  type RevisionEvidenceAdmissionRefusal,
+  revisionEvidenceAdmission,
+  revisionEvidenceRecordBytesUpperBound,
+  revisionEvidenceSnapshotBytes,
+} from '../../domain/revision-bound-evidence.js';
+import {
   DEFAULT_RETAINED_WORKING_STATE_OPERATIONS,
   SharedWorkingState,
   type TextDocumentOperation,
   type WorkingStateSnapshot,
 } from '../../domain/shared-working-state.js';
+import { TASK_ROOM_INSERT_RESERVE_BYTES } from '../../domain/task-room-document-capacity.js';
 import { applyWalJournalMode } from '../../utils/sqlite-wal.js';
 import { projectTaskRoomRevisionPublicationId } from './project-task-room-document-id.js';
 import {
   initializeProjectTaskRoomSourceSeals,
   readProjectTaskRoomSourceSeal,
 } from './project-task-room-source-seal.js';
+import { readRevisionEvidenceLedgerUsage } from './sqlite-revision-evidence-persistence.js';
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require('node:sqlite') as {
@@ -47,6 +55,92 @@ const maxWorkingSnapshotBytes = Number.isSafeInteger(
   : MAX_REVISION_PUBLICATION_SNAPSHOT_BYTES;
 const MAX_REVISION_PUBLICATION_CORRELATION_BYTES = 2 * 1024;
 const MAX_REVISION_PUBLICATION_TEXT_BYTES = 512;
+/**
+ * Upper bound for a not-yet-frozen publication's record. Its frozen text is
+ * never larger than the snapshot, which carries every character's JSON value;
+ * the slack covers scope, actor and correlation at six bytes per stored byte.
+ */
+function pendingRecordBytesUpperBound(snapshotBytes: number) {
+  return (
+    revisionEvidenceRecordBytesUpperBound({
+      snapshotBytes: 2 * snapshotBytes,
+      text: '',
+      scope: null,
+      actor: null,
+      correlation: null,
+    }) +
+    6 *
+      (6 * MAX_REVISION_PUBLICATION_TEXT_BYTES +
+        MAX_REVISION_PUBLICATION_CORRELATION_BYTES)
+  );
+}
+/**
+ * Stored receipts plus every publication admitted but not yet frozen, each
+ * of those at its upper bound. Publications already frozen are in the
+ * ledger; the rest are reserved (#4007).
+ */
+function reservedRevisionLedger(): {
+  readonly count: number;
+  readonly recordBytes: number;
+} {
+  const ledger = readRevisionEvidenceLedgerUsage(db);
+  const pending = db
+    .prepare(
+      'SELECT snapshot_bytes FROM project_task_room_revision_publication_outbox WHERE evidence_revision IS NULL',
+    )
+    .all() as Array<{ snapshot_bytes: number }>;
+  return {
+    count: ledger.count + pending.length,
+    recordBytes: pending.reduce(
+      (total, row) =>
+        total + pendingRecordBytesUpperBound(Number(row.snapshot_bytes)),
+      ledger.recordBytes,
+    ),
+  };
+}
+/**
+ * The room's half of the one shared check (#4007): this write is admitted
+ * only if the revision evidence it publishes fits both its own record bounds
+ * and the Station-wide receipt ledger, counting every publication admitted
+ * but not yet frozen. Settles are serialised under BEGIN IMMEDIATE, and room
+ * publications are the ledger's only writer, so no admitted write can find
+ * the ledger full when its publication drains.
+ */
+function revisionPublicationRefusal(
+  value: any,
+  state: SharedWorkingState,
+  snapshotBytes: number,
+): RevisionEvidenceAdmissionRefusal | null {
+  // Freeze's own measure: a shape it would refuse is refused here instead.
+  const evidenceBytes = revisionEvidenceSnapshotBytes(state.snapshot());
+  if (evidenceBytes === null) return 'document-full';
+  const text = state.text();
+  return revisionEvidenceAdmission({
+    snapshotBytes: Math.max(snapshotBytes, evidenceBytes),
+    textBytes: Buffer.byteLength(text, 'utf8'),
+    recordBytes: revisionEvidenceRecordBytesUpperBound({
+      snapshotBytes,
+      text,
+      scope: value.scope,
+      actor: {
+        actorId: value.actorId,
+        kind: value.actorKind ?? 'human',
+        ...(value.actorLabel ? { displayLabel: value.actorLabel } : {}),
+      },
+      correlation: {
+        projectId: value.scope?.projectId,
+        taskId: value.scope?.taskId,
+        ...(value.publicationCorrelation ?? {}),
+      },
+    }),
+    reserveBytes: (value.operations as TextDocumentOperation[]).some(
+      (operation) => operation.kind === 'insert',
+    )
+      ? TASK_ROOM_INSERT_RESERVE_BYTES
+      : 0,
+    ledger: reservedRevisionLedger(),
+  });
+}
 const send = (id: number, result: unknown) =>
   parentPort?.postMessage({ id, result });
 let watchCount = 0;
@@ -399,6 +493,13 @@ async function handle(message: any) {
           : { kind: 'conflict' },
       );
     }
+    if (value.type === 'revision-ledger-usage') {
+      try {
+        return send(id, { kind: 'available', ...reservedRevisionLedger() });
+      } catch {
+        return send(id, { kind: 'unavailable' });
+      }
+    }
     if (value.type === 'read-revision-publication') {
       return send(id, readRevisionPublication(value.scope));
     }
@@ -684,9 +785,24 @@ async function handle(message: any) {
         const snapshot = state.snapshot();
         const snapshotJson = JSON.stringify(snapshot);
         const snapshotBytes = Buffer.byteLength(snapshotJson, 'utf8');
+        // Deterministic: no retry of this write can fit, so name it (#4007).
+        if (snapshotBytes > maxWorkingSnapshotBytes) {
+          db.exec('ROLLBACK');
+          return send(id, { kind: 'rejected', reason: 'document-full' });
+        }
+        if (value.suppressRevisionPublicationForDiagnostic !== true) {
+          const refusal = revisionPublicationRefusal(
+            value,
+            state,
+            snapshotBytes,
+          );
+          if (refusal) {
+            db.exec('ROLLBACK');
+            return send(id, { kind: 'rejected', reason: refusal });
+          }
+        }
         if (
           snapshotBytes < 1 ||
-          snapshotBytes > maxWorkingSnapshotBytes ||
           !boundedText(value.intentId) ||
           !boundedText(value.actorId) ||
           (value.actorLabel !== undefined && !boundedText(value.actorLabel))

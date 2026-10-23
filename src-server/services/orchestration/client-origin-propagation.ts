@@ -104,11 +104,17 @@ export class ClientOriginTurnPropagation {
   readonly #early = new Map<string, CanonicalRuntimeEvent>();
   readonly #legacyPending = new Map<
     string,
-    Pick<TurnAttribution, 'principal' | 'clientOrigin' | 'invocationId'>
+    Pick<
+      TurnAttribution,
+      'principal' | 'clientOrigin' | 'invocationId' | 'clientTurnId'
+    >
   >();
   readonly #legacyAccepted = new Map<
     string,
-    Pick<TurnAttribution, 'principal' | 'clientOrigin' | 'invocationId'>
+    Pick<
+      TurnAttribution,
+      'principal' | 'clientOrigin' | 'invocationId' | 'clientTurnId'
+    >
   >();
   readonly #legacyEarly = new Map<string, CanonicalRuntimeEvent>();
 
@@ -132,7 +138,11 @@ export class ClientOriginTurnPropagation {
       return false;
     this.#inFlight.set(threadId, attribution);
     if (principal !== undefined || clientOrigin !== undefined)
-      this.#legacyPending.set(threadId, { principal, clientOrigin });
+      this.#legacyPending.set(threadId, {
+        principal,
+        clientOrigin,
+        clientTurnId,
+      });
     return true;
   }
 
@@ -347,11 +357,17 @@ export class ClientOriginTurnPropagation {
 
   #routeLegacy(
     event: CanonicalRuntimeEvent,
-    routing: Pick<TurnAttribution, 'principal' | 'clientOrigin'>,
+    routing: Pick<
+      TurnAttribution,
+      'principal' | 'clientOrigin' | 'clientTurnId'
+    >,
   ): CanonicalRuntimeEvent {
-    const result = withPrincipal(
-      withClientOrigin(event, routing.clientOrigin),
-      routing.principal,
+    const result = withClientTurnId(
+      withPrincipal(
+        withClientOrigin(event, routing.clientOrigin),
+        routing.principal,
+      ),
+      routing.clientTurnId,
     );
     this.#trusted.add(result);
     return result;

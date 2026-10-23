@@ -125,6 +125,7 @@ const PEER_ENVIRONMENT_ID = 'env-authority-peer';
 let peerServer: ReturnType<typeof serve>;
 const peerReceived: Array<{ path: string; body: any }> = [];
 const dispatchBodies: Array<Record<string, any>> = [];
+let securityNow = Date.now();
 const hits: string[] = [];
 /** The headers each stub route last received, by its label. */
 const lastHeaders = new Map<string, Headers>();
@@ -196,11 +197,17 @@ beforeAll(async () => {
     logger: quietLogger(),
     eventBus: { emit: vi.fn() } as unknown as EventBus,
     security: {
+      // This file walks every tool route several times as one internal
+      // principal, so the production budget (300 mutations a minute per
+      // principal) 429s the later tests once enough tool routes exist (#4003's
+      // Task brief, memory and claim routes crossed it). The budget itself is
+      // pinned in runtime-mutation-budget.test.ts.
+      maxMutationsPerWindow: 10_000,
       verifyCredential: (candidate: string) =>
         candidate === OPERATOR_CREDENTIAL,
       resolveGrantedScope: () => 'orchestration:read orchestration:operate',
       resolveCredentialAuthority: () => 'operator-credential',
-      now: () => Date.now(),
+      now: () => securityNow,
       maxFailures: 1_000,
       windowMs: 60_000,
       audit: () => {},
@@ -358,6 +365,8 @@ afterAll(async () => {
 });
 
 beforeEach(() => {
+  // Each authority case owns a fresh mutation-budget window.
+  securityNow += 60_001;
   __resetStationControlMcpTokensForTests();
   __resetStationControlStdioEntryForTests();
   hits.length = 0;
@@ -1706,11 +1715,17 @@ describe('a tool’s call to a saved Environment (#2377 slice C2b)', () => {
     async (channel, prefix) => {
       peerReceived.length = 0;
       dispatchBodies.length = 0;
-      await callTool(channel, nextSession(prefix), 'delegate_task', {
-        prompt: 'Draft the plan',
-        agent: 'writer',
-        environmentId: PEER_ENVIRONMENT_ID,
-      });
+      const response = await callTool(
+        channel,
+        nextSession(prefix),
+        'delegate_task',
+        {
+          prompt: 'Draft the plan',
+          agent: 'writer',
+          environmentId: PEER_ENVIRONMENT_ID,
+        },
+      );
+      expect(response.isError, JSON.stringify(response.result)).not.toBe(true);
       expect(peerReceived).toEqual([]);
       expect(dispatchBodies).toHaveLength(1);
       expect(dispatchBodies[0]!.target.environment).toEqual({

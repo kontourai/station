@@ -130,6 +130,11 @@ import { ReceiverExecutionRefusal } from '../../projects/project-contribution-se
 import { ProjectManifestStore } from '../../projects/project-manifest-store.js';
 import type { CwdShadowSample } from '../../projects/project-resource-shadow.js';
 import { createProjectSessionDirectoryResolver } from '../../projects/project-session-directory.js';
+import {
+  FIXTURE_TASK_AGENT,
+  fixtureAgentStartResolver,
+  fixtureTaskAgentSessionResolver,
+} from '../../projects/__tests__/task-dispatch-test-helpers.js';
 import { composeTaskDispatcher } from '../../projects/task-dispatch-composition.js';
 import { TaskGraphService } from '../../projects/task-graph-service.js';
 import type { AdoptionLedger } from '../adoption-ledger.js';
@@ -774,6 +779,8 @@ const OrchestrationService: new (
   options: ConstructorParameters<typeof RawOrchestrationService>[0],
 ) => InternalObserver = internalObserver as never;
 
+const TASK_DISPATCH_AGENT = FIXTURE_TASK_AGENT;
+
 describe('OrchestrationService', () => {
   let bedrock: FakeAdapter;
   let claude: FakeAdapter;
@@ -829,6 +836,11 @@ describe('OrchestrationService', () => {
       }),
       workflowSidecarService,
       logger: { debug: vi.fn(), warn: vi.fn() },
+      // #4005: a Task dispatch's engine start runs as the Task's Agent, so
+      // the start names `TASK_DISPATCH_AGENT` and the production resolver
+      // must attach its authored definition. Every other start passes
+      // through untouched, as it did with no resolver.
+      resolveSessionAgent: fixtureTaskAgentSessionResolver,
     });
   });
 
@@ -1690,7 +1702,7 @@ describe('OrchestrationService', () => {
   // recorded owner would be invisible to the dispatcher itself.
   test.each([
     ['an engine start', 'claude'],
-    ['the default seeded dispatch', undefined],
+    ['a seeded dispatch (no Agent)', undefined],
   ] as const)(
     'a Task session started by %s records its dispatcher as owner',
     async (_label, provider) => {
@@ -1708,13 +1720,19 @@ describe('OrchestrationService', () => {
           }),
         },
       });
+      // #4005: the dispatched start is bound to its Project, which the
+      // service resolves.
+      configuredProjects.push({ slug: 'owned-project', workingDirectory: tmp });
       const task = await graph.createTask({
         projectId: 'owned-project',
         title: 'Owned dispatch',
-        agentId: 'codex',
+        // #4005: with an Agent the dispatch starts its engine; the seeded
+        // variant is a Task with no Agent.
+        ...(provider ? { agentId: TASK_DISPATCH_AGENT } : {}),
       });
       const dispatcher = composeTaskDispatcher(graph, {
         orchestrationService: service,
+        resolveAgentStart: fixtureAgentStartResolver('claude'),
       });
       const dispatched = await dispatcher.dispatch(task.id, {
         ownerUserId: 'human:device:phone',
@@ -1757,7 +1775,7 @@ describe('OrchestrationService', () => {
   // operator's to read but acts for no one, on both dispatch paths.
   test.each([
     ['an engine start', 'claude'],
-    ['the default seeded dispatch', undefined],
+    ['a seeded dispatch (no Agent)', undefined],
   ] as const)(
     'an unattributed Task session started by %s is readable by its owner and acts for no one',
     async (_label, provider) => {
@@ -1775,13 +1793,19 @@ describe('OrchestrationService', () => {
           }),
         },
       });
+      // #4005: the dispatched start is bound to its Project, which the
+      // service resolves.
+      configuredProjects.push({ slug: 'unattributed-project', workingDirectory: tmp });
       const task = await graph.createTask({
         projectId: 'unattributed-project',
         title: 'Agent dispatch',
-        agentId: 'codex',
+        // #4005: with an Agent the dispatch starts its engine; the seeded
+        // variant is a Task with no Agent.
+        ...(provider ? { agentId: TASK_DISPATCH_AGENT } : {}),
       });
       const dispatched = await composeTaskDispatcher(graph, {
         orchestrationService: service,
+        resolveAgentStart: fixtureAgentStartResolver('claude'),
       }).dispatch(task.id, {
         ownerUserId: 'human:local:operator',
         ownerAttribution: 'unattributed-agent',
@@ -1830,10 +1854,13 @@ describe('OrchestrationService', () => {
           }),
         },
       });
+      // #4005: the dispatched start is bound to its Project, which the
+      // service resolves.
+      configuredProjects.push({ slug: 'recovery-project', workingDirectory: tmp });
       const task = await graph.createTask({
         projectId: 'recovery-project',
         title: 'Recover finalization',
-        agentId: 'codex',
+        agentId: TASK_DISPATCH_AGENT,
       });
       if (uncertain)
         claude.startSession.mockRejectedValueOnce(
@@ -1841,7 +1868,10 @@ describe('OrchestrationService', () => {
         );
       const dispatcher = composeTaskDispatcher(
         graph,
-        { orchestrationService: service },
+        {
+          orchestrationService: service,
+          resolveAgentStart: fixtureAgentStartResolver('claude'),
+        },
         {
           prepareAgentStarted: async () => {
             throw new Error('crash before publication acknowledgement');
@@ -2021,9 +2051,13 @@ describe('OrchestrationService', () => {
         }),
       },
     });
+    // #4005: the dispatched start is bound to its Project, which the
+    // service resolves.
+    configuredProjects.push({ slug: 'transfer-project', workingDirectory: tmp });
     const task = await graph.createTask({
       projectId: 'transfer-project',
       title: 'Bound execution',
+      agentId: TASK_DISPATCH_AGENT,
       workItemRef: 'github:example/transfer#1',
     });
     const releaseClaim = deferred<void>();
@@ -2034,6 +2068,7 @@ describe('OrchestrationService', () => {
       graph,
       {
         orchestrationService: service,
+        resolveAgentStart: fixtureAgentStartResolver('claude'),
         resolveProjectWorkspace: () => tmp,
         assignmentClaimService: {
           claim: vi.fn(async () => {
@@ -4933,6 +4968,25 @@ describe('OrchestrationService', () => {
       });
     });
 
+    test('starts and stamps an admitted secondary workspace when the default resolver is unavailable', async () => {
+      configuredProjects.push({ id: 'local-project-1', slug: 'local', workingDirectory: join(tmp, 'unavailable-primary') });
+      const resolver = vi.fn(async () => { throw new Error('primary unavailable'); });
+      const runtime = new OrchestrationService({
+        adapterRegistry: createRegistry([claude]), eventBus, eventStore,
+        listProjects: () => configuredProjects,
+        resolveProjectSessionDirectory: resolver,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+      });
+      const outcome = await runtime.startSessionInternal(
+        { type: 'start-session', input: { threadId: 'portable-secondary', provider: 'claude', cwd: tmp, metadata: { projectSlug: 'local' } } },
+        { userId: 'owner-user' },
+        { receiverExecutionAdmission: admittedFor('portable-secondary', tmp) },
+      );
+      if (outcome.status !== 'accepted') throw new Error(outcome.message);
+      expect(claude.startSession).toHaveBeenCalledWith(expect.objectContaining({ cwd: tmp, metadata: expect.objectContaining({ localProjectId: 'local-project-1' }) }));
+      expect(resolver).not.toHaveBeenCalled();
+    });
+
     test('an offer withdrawn while the start is queued refuses before the adapter runs', async () => {
       configuredProjects.push({ slug: 'local', workingDirectory: tmp });
       let entered = false;
@@ -7362,8 +7416,9 @@ describe('OrchestrationService', () => {
         expect(raw.clientOrigin).toBeUndefined();
       } else expect(raw).toMatchObject({ principal, clientOrigin: origin });
       expect(raw.invocationId).toBeUndefined();
-      expect('clientTurnId' in raw).toBe(false);
       if (raw.method !== 'turn.started') throw new Error('start prerequisite');
+      if (timing === 'cancelled') expect('clientTurnId' in raw).toBe(false);
+      else expect(raw.clientTurnId).toBe('B-key');
       expect(raw.metadata?.stationSkillExperience).toBeUndefined();
       expect(old.principal).toBeUndefined();
       expect(old.clientOrigin).toBeUndefined();
@@ -18387,22 +18442,23 @@ describe('OrchestrationService', () => {
       return { engine, start, boundPath, oldPath, storage, project };
     }
 
-    test('uses the current binding instead of the legacy workingDirectory', async () => {
-      const { engine, start, boundPath } = await fixture();
+    test('uses the current binding and stamps its Project identity instead of the legacy workingDirectory', async () => {
+      const { engine, start, boundPath, project } = await fixture();
       await start();
       expect(engine.startSession).toHaveBeenCalledWith(
-        expect.objectContaining({ cwd: boundPath }),
+        expect.objectContaining({ cwd: boundPath, metadata: expect.objectContaining({ localProjectId: project.id }) }),
       );
+      expect(engine.startSession.mock.calls[0][0].metadata).not.toHaveProperty('localProjectIdRefused');
     });
 
     test('starts the engine in the portable repo-relative directory on the destination binding', async () => {
       const relativeRoot = join('apps', 'web');
-      const { engine, start, boundPath } = await fixture(true, relativeRoot);
+      const { engine, start, boundPath, project } = await fixture(true, relativeRoot);
       const expected = join(boundPath, relativeRoot);
       mkdirSync(expected, { recursive: true });
       await start();
       expect(engine.startSession).toHaveBeenCalledWith(
-        expect.objectContaining({ cwd: realpathSync(expected) }),
+        expect.objectContaining({ cwd: realpathSync(expected), metadata: expect.objectContaining({ localProjectId: project.id }) }),
       );
     });
 
@@ -21497,13 +21553,16 @@ describe('OrchestrationService', () => {
     await dynamicService.shutdown();
   });
 
-  test('preserves accepted turn truth when its adapter is replaced during send', async () => {
+  test('retains no-replay truth when adapter retirement precedes its send acknowledgement', async () => {
     const sending = new FakeAdapter('claude');
+    const replacement = new FakeAdapter('claude');
+    const ledger = eventStore.createTurnDeduplicator();
     const registry = createReplaceableRegistry([sending]);
     const dynamicService = new OrchestrationService({
       adapterRegistry: registry,
       eventBus,
       eventStore,
+      turnDeduplicator: ledger,
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
     await dynamicService.dispatch({
@@ -21519,16 +21578,28 @@ describe('OrchestrationService', () => {
 
     const turn = dynamicService.dispatchWithReceipt({
       type: 'sendTurn',
-      input: { threadId: 'send-race', input: 'hello' },
+      input: {
+        threadId: 'send-race',
+        input: 'hello',
+        clientTurnId: 'send-race-key',
+      },
     });
     await vi.waitFor(() => expect(sending.sendTurn).toHaveBeenCalledOnce());
-    registry.register(new FakeAdapter('claude'));
+    registry.register(replacement);
     sent.resolve({ threadId: 'send-race', turnId: 'stale-turn' });
 
-    await expect(turn).resolves.toMatchObject({
-      receipt: expect.objectContaining({ status: 'accepted' }),
-      result: { threadId: 'send-race', turnId: 'stale-turn' },
+    // Session retirement removes custody before the late adapter ACK.
+    await expect(turn).rejects.toMatchObject({
+      code: 'foreground_message_indeterminate',
+      outcome: 'indeterminate',
+      retryable: false,
     });
+    expect(
+      ledger.inspect({
+        threadId: 'send-race',
+        clientTurnId: 'send-race-key',
+      }),
+    ).toEqual({ state: 'indeterminate' });
     await waitFor(
       () =>
         eventStore
@@ -21536,6 +21607,18 @@ describe('OrchestrationService', () => {
           .find((session) => session.threadId === 'send-race')?.status,
       (status) => status === 'closed',
     );
+    await expect(
+      dynamicService.dispatchWithReceipt({
+        type: 'sendTurn',
+        input: {
+          threadId: 'send-race',
+          input: 'hello',
+          clientTurnId: 'send-race-key',
+        },
+      }),
+    ).rejects.toBeInstanceOf(OrchestrationCommandDispatchError);
+    expect(sending.sendTurn).toHaveBeenCalledOnce();
+    expect(replacement.sendTurn).not.toHaveBeenCalled();
     await dynamicService.shutdown();
   });
 

@@ -36,13 +36,16 @@ A durable Project-owned work identity that can retain a workspace binding and ex
 _Avoid_: chat or Session
 
 **Task workspace**:
-The broader `/tasks/:taskId` Workspace Surface composition for one Task's identity, references, local files and diffs, receipts, and exact execution correlation. It may contain several Workspace Panes; it is not itself one Pane.
+The broader `/tasks/:taskId` Workspace Surface composition for one Task's identity, references, linked tracker item, Task memory, local files and diffs, receipts, and exact execution correlation. It may contain several Workspace Panes; it is not itself one Pane.
 _Avoid_: Session detail
 
 **Task experience**:
-A named inspection mode inside the Task workspace Details tab. Chat, Brief and
-Results retain the shared room independently of that selection. Direct mounts
-Station's local inspection composition. Deliver, Learn and Operate name external product boundaries.
+A named inspection mode inside the Task workspace Details tab. Overview,
+Conversation, Work chats and Plan remain independent of that selection.
+Overview shows status, completion criteria, subtasks and kept deliverables;
+Conversation hosts the shared Task room, Work chats links canonical Agent
+conversations, and Plan edits the shared document. Direct mounts Station's
+local inspection composition. Deliver, Learn and Operate name external product boundaries.
 The current UI shows those optional modes when an enabled installed plugin
 declares the corresponding capability; selecting one renders an explanatory
 boundary and alternative link, not a product renderer or verified owner state.

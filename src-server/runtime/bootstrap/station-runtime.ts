@@ -1,4 +1,5 @@
 import type { DeploymentAuthenticationConfiguration } from '@kontourai/station-contracts/deployment-authentication';
+import { isProjectKnowledgeRoot } from '@kontourai/station-contracts/knowledge-store';
 import { sessionLifecycleOutcome } from '@kontourai/station-contracts/session-lifecycle';
 import { getBrandingProvider } from '../../providers/registries/registry.js';
 import { ClaudeTranscriptSessionSource } from '../../providers/sessions/claude-transcript-session-source.js';
@@ -43,9 +44,14 @@ import { ToolLibraryService } from '../../services/plugins/tool-library-service.
 import { deriveWorkspaceHomeRoleStatus } from '../../services/plugins/workspace-home-role-service.js';
 import { createProjectMembershipRuntime } from '../../services/projects/project-membership-runtime.js';
 import { createProjectNativeToolLoader } from '../../services/projects/project-native-tools.js';
+import { hasProjectS3Sources } from '../../services/projects/project-s3-sources.js';
 import { projectMcpServers } from '../../services/projects/project-tools.js';
 import { NativeRelayEnrollmentJournal } from '../../services/relay/native-relay-enrollment-journal.js';
 import { ConnectionSigningKeyStore } from '../../services/ssh/connection-signing-key-store.js';
+import {
+  GitHubWorkItemObserver,
+  type WorkItemObserver,
+} from '../../services/work-item-providers/github-work-item-observer.js';
 import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { currentNativeForegroundRelay } from '../conversation/native-foreground-invocation.js';
@@ -80,7 +86,10 @@ import {
   resolveEngineCapabilityMatrix,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
-import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import {
+  INTERNAL_SESSION_READ_SCOPE,
+  sessionReadAuthorityFromRequest,
+} from '@kontourai/station-contracts/tenancy';
 import type { ConnectionReadinessEvidence } from '@kontourai/station-contracts/tool';
 import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
 import {
@@ -174,6 +183,7 @@ import type { MCPService } from '../../services/plugins/mcp-service.js';
 import { FocusPresence } from '../../services/presence/focus-presence.js';
 import type { FileTreeService } from '../../services/projects/file-tree-service.js';
 import type { LayoutService } from '../../services/projects/layout-service.js';
+import { localProjectIdFor } from '../../services/projects/project-local-id.js';
 import { ProjectResourceResolver } from '../../services/projects/project-resource-resolver.js';
 import type { ProjectService } from '../../services/projects/project-service.js';
 import {
@@ -181,6 +191,7 @@ import {
   type WorkspacePathResolver,
 } from '../../services/projects/project-workspace-path.js';
 import type { ProposedChangeService } from '../../services/projects/proposed-change-service.js';
+import { composeTaskBriefSource } from '../../services/projects/task-brief-source.js';
 import { composeTaskDispatcher } from '../../services/projects/task-dispatch-composition.js';
 import type { TaskDispatcher } from '../../services/projects/task-dispatcher.js';
 import { TaskGraphService } from '../../services/projects/task-graph-service.js';
@@ -287,7 +298,11 @@ export async function loadStablePreToolPolicySpec(options: {
 import { recordAdoptedBuiltinEngine } from './builtin-engine-adoption.js';
 import { primeEnginePrerequisites } from './engine-prerequisite-priming.js';
 import { adoptDetectedNativeEngines } from './native-engine-adoption.js';
-import { isHostedTenantExecutionRequired } from './runtime-tenant-context.js';
+import {
+  currentTenantExecutionContext,
+  isHostedTenantExecutionRequired,
+  loadHostedTenantRegistryFromEnvironment,
+} from './runtime-tenant-context.js';
 
 const CONFIGURATION_RECONCILIATION_DELAYS_MS = [250, 1_000, 5_000] as const;
 /**
@@ -422,7 +437,11 @@ import {
   type RuntimeSearch,
 } from '../../services/search/runtime-search.js';
 import type { ServerUpdateCoordinator } from '../../services/server-update/server-update-coordinator.js';
-import { continueExecutionTargetMessage } from '../../tools/station-control-delegation.js';
+import {
+  assertTaskDispatchAgentExists,
+  continueExecutionTargetMessage,
+  resolveTaskDispatchAgentStart,
+} from '../../tools/station-control-delegation.js';
 import { buildRuntimeContext as createRuntimeContext } from '../agents/runtime-context-builder.js';
 import { bootstrapRuntimeDefaultAgent } from '../agents/runtime-default-agent.js';
 import { replaceRuntimeTemplateVariables } from '../agents/runtime-template-variables.js';
@@ -1011,6 +1030,7 @@ export class StationRuntime {
   });
   private ollamaAdapter = new OllamaAdapter();
   private orchestrationService!: OrchestrationService;
+  private projectRoomRuntime?: { close(): Promise<void> };
   private resourcePosture?: import('../../services/infra/resource-posture.js').RuntimeResourcePostureProbe;
   private attachedSessionFollowService?: AttachedSessionFollowService;
   private consoleBridgeService?: ConsoleBridgeService;
@@ -1057,6 +1077,9 @@ export class StationRuntime {
   >;
   private readonly resolveTaskDispatchWorkspace: WorkspacePathResolver;
   private taskDispatcher!: TaskDispatcher;
+  /** #4003: the one exact-identity tracker reader (host `gh` login). */
+  private readonly workItemObserver: WorkItemObserver =
+    new GitHubWorkItemObserver();
   private terminalService!: TerminalService;
   private terminalWsServer!: TerminalWebSocketServer;
   private terminalWsStarted = false;
@@ -1524,6 +1547,8 @@ export class StationRuntime {
       // same composition seam for the identical reason.
       this.taskGraphService = new TaskGraphService(projectHomeDir, {
         projectService: this.projectService,
+        localProjectIdFor: (identity) =>
+          localProjectIdFor(this.projectService, identity),
         workflowSidecarReader: new WorkflowSidecarService({
           logger: this.logger,
         }),
@@ -3600,7 +3625,9 @@ export class StationRuntime {
           this.deploymentAuthentication = undefined;
           this.localAccounts = undefined;
         });
-        await retire(() => {
+        await retire(async () => {
+          await this.projectRoomRuntime?.close();
+          this.projectRoomRuntime = undefined;
           this.projectMembership?.close();
           this.projectMembership = undefined;
         });
@@ -3872,11 +3899,11 @@ export class StationRuntime {
             const roots = await this.knowledgeStoreProvider.listRoots();
             return projectMcpServers(
               project,
-              roots.some(
-                (root) =>
-                  root.scope.kind === 'project' &&
-                  root.scope.projectSlug === slug,
-              ),
+              roots.some((root) => isProjectKnowledgeRoot(root, project.id)) ||
+                hasProjectS3Sources(
+                  this.configLoader.getProjectHomeDir(),
+                  project.id,
+                ),
             );
           },
           skillService: this.skillService,
@@ -3987,12 +4014,59 @@ export class StationRuntime {
             // method returns. Publish the Dispatcher at that composition seam,
             // after its concrete orchestration Adapter exists and before any
             // route or capability can read runtime context.
+            const briefTenantRegistry =
+              loadHostedTenantRegistryFromEnvironment();
             this.taskDispatcher = composeTaskDispatcher(
               this.taskGraphService,
               {
                 orchestrationService: this.orchestrationService,
                 assignmentClaimService: this.taskDispatchAssignmentClaims,
                 resolveProjectWorkspace: this.resolveTaskDispatchWorkspace,
+                // Epic #4003: the brief a dispatched Session's first turn
+                // carries. The room runtime is composed later; read lazily.
+                taskBrief: composeTaskBriefSource({
+                  taskGraph: this.taskGraphService,
+                  eventStore: this.orchestrationEventStore,
+                  sessionReadModel: this.orchestrationService,
+                  // The dispatched Session's owner reads its brief: the
+                  // runtime routes' `readAuthorityForExecution`, with tenancy.
+                  localProjectIdFor: (identity) =>
+                    localProjectIdFor(this.projectService, identity),
+                  readAuthorityForUser: (userId) => {
+                    const execution = currentTenantExecutionContext();
+                    return sessionReadAuthorityFromRequest(
+                      userId,
+                      execution ? { tenantId: execution.tenantId } : undefined,
+                      briefTenantRegistry,
+                    );
+                  },
+                  roomRuntime: () => this.projectTaskRoomRuntime,
+                  // The same reader the routes get (`workItemObserver` in
+                  // the route context), so dispatch and get_task_brief
+                  // read the tracker one way.
+                  workItemObserver: this.workItemObserver,
+                  logger: this.logger,
+                }),
+                // #4005: an engine-started Task Session runs as the Task's
+                // Agent, resolved through the foreground `/chat` resolver so
+                // it carries the binding its turns are checked against. Its
+                // loopback reads run as server code, as `/chat`'s do.
+                resolveAgentStart: (input) =>
+                  runAsStationServer(() =>
+                    resolveTaskDispatchAgentStart(
+                      input,
+                      this.orchestrationService,
+                    ),
+                  ),
+                // A seeded dispatch records its Agent; refuse one this
+                // Station does not have.
+                assertAgentExists: (agentId) =>
+                  runAsStationServer(() =>
+                    assertTaskDispatchAgentExists(
+                      agentId,
+                      this.orchestrationService,
+                    ),
+                  ),
               },
               {
                 prepareAgentStarted: (result) => {
@@ -4446,6 +4520,7 @@ export class StationRuntime {
       notificationService,
       kitLifecycleReady,
       projectTaskRoomRuntime,
+      projectRoomRuntime,
       browserService,
       deviceToolchainService,
       deviceSessions,
@@ -4456,6 +4531,9 @@ export class StationRuntime {
       notificationDeliveryRouter,
       serverUpdate,
     } = configureRuntimeRoutes({
+      retainProjectRoomRuntime: (runtime) => {
+        this.projectRoomRuntime = runtime;
+      },
       relayInvitationOwner: this.relayInvitationOwner,
       projectMembership: this.projectMembership?.service,
       projectSharedTasks: this.projectMembership?.sharedTasks,
@@ -4512,6 +4590,7 @@ export class StationRuntime {
       taskGraphService: this.taskGraphService,
       runtimeSearch: this.runtimeSearch,
       taskDispatcher: this.taskDispatcher,
+      workItemObserver: this.workItemObserver,
       terminalService: this.terminalService,
       actionOperations: this.actionOperations,
       delegationAttemptClaims: this.delegationAttemptClaims,
@@ -4573,6 +4652,7 @@ export class StationRuntime {
     this.notificationService = notificationService;
     this.kitLifecycleReady = kitLifecycleReady;
     this.projectTaskRoomRuntime = projectTaskRoomRuntime;
+    this.projectRoomRuntime = projectRoomRuntime;
     this.browserService = browserService;
     this.deviceToolchainService = deviceToolchainService;
     this.deviceSessions = deviceSessions;
@@ -4601,6 +4681,8 @@ export class StationRuntime {
         agentSpecs: this.agentSpecs,
         getProject: (slug) => this.projectService.getProject(slug),
         listRoots: () => this.knowledgeStoreProvider.listRoots(),
+        hasAdditionalKnowledgeSources: (projectId) =>
+          hasProjectS3Sources(this.configLoader.getProjectHomeDir(), projectId),
         loadTools: (slug, spec) =>
           this.framework.loadTools(slug, spec, {
             configLoader: this.configLoader,
@@ -5119,6 +5201,8 @@ export class StationRuntime {
       failures.push(error);
     }
     try {
+      await this.projectRoomRuntime?.close();
+      this.projectRoomRuntime = undefined;
       this.projectMembership?.close();
       this.projectMembership = undefined;
     } catch (error) {

@@ -138,6 +138,13 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/runtime/bootstrap/__tests__/server-compile-cache.process.test.ts',
   'packages/cli/src/__tests__/passive-cli.test.ts',
   'scripts/__tests__/server-scenario.test.ts',
+  // Real second-process Task/share writers contend with the publication fence.
+  'src-server/services/projects/project-room-agent-task-context.test.ts',
+  // Reviewed setup launches real bounded commands and verifies durable outcomes.
+  'src-server/services/projects/__tests__/operator-setup-service.test.ts',
+  // Repository acquisition drives real hardened Git clone and checkout processes.
+  'src-server/services/projects/__tests__/repository-acquisition-service.test.ts',
+  'src-server/routes/projects/__tests__/project-working-directory-authority.test.ts',
   'packages/agent-runtime/src/__tests__/body-process.test.ts',
   'src-server/runtime/mcp/__tests__/mcp-ui-network.process.test.ts',
   // Real temporary Git repositories; isolated home per case.
@@ -1164,6 +1171,12 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // #2363: plants repo-local git config and runs plain git beside Station's
   // hardened runner against real temp repositories.
   'src-server/utils/__tests__/git-exec.hardening.test.ts',
+  // #4003: runs the GitHub work-item observer against a fake `gh`
+  // executable, through the real process-group runner.
+  'src-server/services/work-item-providers/__tests__/github-work-item-observer.test.ts',
+  // #4003: get_task_brief's production route composition re-reads the
+  // tracker through the real observer and a fake `gh` executable.
+  'src-server/runtime/routes/__tests__/runtime-routes-station-control-task-brief.test.ts',
   // #2363: the coding git routes over real repositories, a real bare remote
   // and plain git as the control for every planted config.
   'src-server/routes/projects/__tests__/coding-git-security.routes.test.ts',

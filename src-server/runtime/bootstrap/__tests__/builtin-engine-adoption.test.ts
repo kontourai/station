@@ -1,3 +1,4 @@
+import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import { describe, expect, test, vi } from 'vitest';
 import { recordAdoptedBuiltinEngine } from '../builtin-engine-adoption.js';
 
@@ -42,7 +43,7 @@ describe('recordAdoptedBuiltinEngine', () => {
 
     await recordAdoptedBuiltinEngine({
       configLoader,
-      explicitConnectionId: 'claude',
+      explicitConnectionId: engineConnectionId('claude'),
       binding: bindingFor('opencode'),
     });
 

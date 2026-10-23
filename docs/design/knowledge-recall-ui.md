@@ -91,8 +91,10 @@ is disclosed rather than fetched under an invented authority.
 ## Lifecycle and cache integrity
 
 A root id alone is not enough to detect changed registration metadata. The
-metadata key includes id, scope, adapter, store root, display name, and creation
-time; changes trigger graph and canonical-record revalidation. It is not an
+metadata key includes id, scope, adapter, store root, display name, creation
+time and, when present, durable `projectId` and server-issued `registrationId`.
+Legacy roots retain their original encoding when both optional fields are absent.
+Changes trigger graph and canonical-record revalidation. It is not an
 immutable incarnation, owner revision, or authorization grant: identically
 restored metadata can produce the same key. Canonical record queries also
 revalidate when the selected record changes; server read authority remains

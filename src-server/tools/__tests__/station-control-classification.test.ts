@@ -8,7 +8,7 @@
  * the fail-safe default, and refused by the server guard, until it has one).
  */
 
-import { describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import {
   bareControlToolName,
@@ -37,7 +37,16 @@ function registeredToolNames(): string[] {
   ];
 }
 
+beforeEach(() => vi.stubEnv('STATION_EXPERIMENTAL_S3_SOURCES', '1'));
+afterEach(() => vi.unstubAllEnvs());
+
 describe('station-control tool classification', () => {
+  test('default-off S3 tools are not advertised to Agents', () => {
+    vi.stubEnv('STATION_EXPERIMENTAL_S3_SOURCES', '');
+    expect(
+      stationKnowledgeToolCatalog().some((tool) => tool.name.includes('_s3_')),
+    ).toBe(false);
+  });
   test('every registered tool is explicitly classified', () => {
     const names = registeredToolNames();
     expect(names.length).toBeGreaterThan(30);
@@ -68,13 +77,19 @@ describe('station-control tool classification', () => {
     );
     // #2584: notify_user writes (one bounded inbox record), so it is not
     // labelled a reader; it is auto-approved as a bounded write.
+    // #4003: task_summary_update and task_record write one bounded revision
+    // or record version of the caller's own Task's memory.
     expect(boundedWrite).toEqual([
       'notify_user',
       'html_render',
       'html_preview',
+      'task_summary_update',
+      'task_record',
     ]);
     expect(SC_AUTO_APPROVED_TOOLS).toEqual([
       ...SC_READ_ONLY_TOOLS,
+      'station-control_task_summary_update',
+      'station-control_task_record',
       'station-control_html_render',
       'station-control_html_preview',
       'station-control_notify_user',

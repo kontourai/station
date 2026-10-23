@@ -106,7 +106,9 @@
 
     "scripts/fallow-ceiling.mjs",
 
-    "scripts/fallow-baseline.mjs"
+    "scripts/fallow-baseline.mjs",
+
+    "scripts/agent-instructions-manifest.mjs"
   ],
 
   "checks": [

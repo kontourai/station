@@ -2817,18 +2817,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "src-ui/src/views/ProjectPage.tsx",
-      "rule": "as-any",
-      "fingerprint": "48a7c098addcf5179bf2c95c06e4b195b7b33b743107a1d0e17ebf13e73e7189",
-      "reason": "legacy-cast"
-    },
-    {
-      "file": "src-ui/src/views/ProjectPage.tsx",
-      "rule": "as-any",
-      "fingerprint": "41b78178d8c4896c1c370a5d7afaf6bbb44ceaa4c5b6623ae8224647a6b94354",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "src-ui/src/views/agent-editor/AgentEditorStateViews.tsx",
       "rule": "as-any",
       "fingerprint": "46109da6537786e534b06a008b104327a219bdf3ba3c5ab47f7829ec8217243a",

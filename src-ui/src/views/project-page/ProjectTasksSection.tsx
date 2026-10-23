@@ -1,5 +1,6 @@
 import type { StartTaskStarterLaunchResult } from '@kontourai/station-contracts/starter-work';
 import { taskStatusLabel } from '@kontourai/station-contracts/task-graph';
+import { workItemRefKey } from '@kontourai/station-contracts/work-item-provider';
 import { resolveWorkflowTaskMatch } from '@kontourai/station-contracts/workflow';
 import {
   type GitStatusResult,
@@ -11,6 +12,7 @@ import {
   useDispatchTaskMutation,
   useLaunchStartTaskStarterMutation,
   useQueryClient,
+  useStartTaskFromWorkItemMutation,
   useTaskClaimQuery,
   useTaskGraphQuery,
   useTasksQuery,
@@ -32,6 +34,7 @@ import { requestTaskShaping } from '../../lib/task-shaping';
 import { isPlainLeftClick } from '../../utils/attentionOpen';
 import { ProjectTaskSharingControl } from './ProjectTaskSharingControl';
 import '../ProjectPage.css';
+import './ProjectTasksSection.css';
 
 /** Human-readable label for a claim actor (roadmap archive#584, part of epic
  * archive#580, S4) — used by both the local-task guard and the provider-item badge. */
@@ -76,10 +79,11 @@ function isNamespacedWorkItemRef(ref: string): boolean {
  * Provider-backed work items to render alongside local tasks (archive#583, part of
  * epic archive#580, S3). Local-kind provider results are excluded — the local task
  * list above already renders those TaskRecords directly — and any item
- * whose (namespaced) `workItemRef` already matches a local task's
+ * whose (namespaced) `workItemRef` already matches an open local task's
  * `workItemRef` is excluded too, so a task that has already joined its
- * upstream work item doesn't render twice. Read-only this slice: no
- * dispatch/write for these rows (S4/FA2-post-bump territory).
+ * upstream work item doesn't render twice. A done or canceled Task no longer
+ * holds its item (#4003 cardinality), so that item shows again and can start
+ * a new Task. The tracker item itself stays read-only.
  */
 function externalProviderItems(
   providers: Array<{ identity: { kind: string }; items: ProviderWorkItem[] }>,
@@ -87,8 +91,11 @@ function externalProviderItems(
 ): ProviderWorkItem[] {
   const localWorkItemRefs = new Set(
     localTasks.flatMap((task) =>
-      task.workItemRef && isNamespacedWorkItemRef(task.workItemRef)
-        ? [task.workItemRef]
+      task.workItemRef &&
+      isNamespacedWorkItemRef(task.workItemRef) &&
+      task.status !== 'done' &&
+      task.status !== 'canceled'
+        ? [workItemRefKey(task.workItemRef)]
         : [],
     ),
   );
@@ -99,7 +106,8 @@ function externalProviderItems(
       (item) =>
         !item.workItemRef ||
         !isNamespacedWorkItemRef(item.workItemRef) ||
-        !localWorkItemRefs.has(item.workItemRef),
+        // GitHub refs compare case-insensitively (#4003 review F5).
+        !localWorkItemRefs.has(workItemRefKey(item.workItemRef)),
     );
 }
 
@@ -146,12 +154,32 @@ export function ProjectTasksSection({
     refetch: refetchTasks,
   } = useTasksQuery(slug);
   const sortedTasks = sortTasks(tasks as TaskRecord[]);
+  const [collection, setCollection] = useState<'now' | 'backlog' | 'history'>(
+    'now',
+  );
+  const collections = {
+    now: sortedTasks.filter((task) =>
+      ['ready', 'in_progress', 'blocked', 'review', 'verification'].includes(
+        task.status,
+      ),
+    ),
+    backlog: sortedTasks.filter((task) =>
+      ['todo', 'triage'].includes(task.status),
+    ),
+    history: sortedTasks.filter((task) =>
+      ['done', 'canceled'].includes(task.status),
+    ),
+  };
+  const visibleTasks = collections[collection];
   const [title, setTitle] = useState('');
   const [selectedTaskId, setSelectedTaskId] = useState('');
+  const [showRecordDetails, setShowRecordDetails] = useState(false);
   const [selectedProviderItemId, setSelectedProviderItemId] = useState('');
   const createTaskMutation = useCreateTaskMutation();
   const dispatchTaskMutation = useDispatchTaskMutation();
   const launchStarterMutation = useLaunchStartTaskStarterMutation();
+  const startFromWorkItemMutation = useStartTaskFromWorkItemMutation();
+  const [startFromWorkItemError, setStartFromWorkItemError] = useState('');
   const starterOperationId = useRef<string | null>(null);
   const selectedTask = sortedTasks.find((task) => task.id === selectedTaskId);
   const { data: taskGraph } = useTaskGraphQuery(selectedTaskId, {
@@ -362,12 +390,61 @@ export function ProjectTasksSection({
     await invalidateTasks(result.task.id);
   }
 
+  /**
+   * Start Task on a board item (#4003): the server observes the item, creates
+   * the Task with the item's body and latest comments as its brief, or answers
+   * with the item's open Task, which this opens instead.
+   */
+  async function startTaskFromProviderItem(item: ProviderWorkItem) {
+    if (!item.workItemRef) return;
+    setStartFromWorkItemError('');
+    let result: Awaited<
+      ReturnType<typeof startFromWorkItemMutation.mutateAsync>
+    >;
+    try {
+      result = await startFromWorkItemMutation.mutateAsync({
+        projectId: slug,
+        workItemRef: item.workItemRef,
+        agentId: agents?.[0],
+        workspaceBinding: {
+          workingDirectory: projectWorkingDirectory,
+          repoRoot: gitStatus?.isRepo ? gitStatus.repoRoot : undefined,
+          worktreePath: gitStatus?.isRepo ? gitStatus.repoRoot : undefined,
+          branch: gitStatus?.isRepo ? gitStatus.branch : undefined,
+          sourceSurface: 'ui',
+        },
+      });
+    } catch (error) {
+      setStartFromWorkItemError(describeReadFailure(error));
+      return;
+    }
+    // The item's open Task is in another Project: say so here, and stay on
+    // this board rather than open a Task this Project does not hold.
+    if ('elsewhere' in result && result.elsewhere) {
+      setStartFromWorkItemError(
+        'This item already has an open Task in another Project.',
+      );
+      return;
+    }
+    if (result.existing)
+      toastStore.show('This item already has an open Task. Opening it.');
+    else if (!result.briefSaved)
+      toastStore.show(
+        'The Task was created, but the item’s description could not be copied into it. Open the item to read it.',
+        undefined,
+        12_000,
+      );
+    await invalidateTasks(result.task.id);
+    navigate(`/tasks/${encodeURIComponent(result.task.id)}`);
+  }
+
   function selectLocalTask(taskId: string) {
     setSelectedProviderItemId('');
     setSelectedTaskId(taskId);
   }
 
   function selectProviderItem(itemId: string) {
+    setStartFromWorkItemError('');
     setSelectedTaskId('');
     setSelectedProviderItemId(itemId);
   }
@@ -376,19 +453,34 @@ export function ProjectTasksSection({
   const binding = selectedTask?.workspaceBinding;
 
   return (
-    <section className="project-page__tasks">
+    <section className="project-page__tasks project-tasks-section">
       <div className="project-page__section-header">
         <span className="project-page__section-label">Tasks</span>
         <Button size="sm" onClick={() => void refetchTasks()}>
           Refresh Tasks
         </Button>
       </div>
-      {presentation === 'board' ? (
-        <p>
-          Follow the work by its recorded status. Open a task to discuss it,
-          inspect contributions, and keep results.
-        </p>
-      ) : null}
+      {presentation === 'list' && (
+        <nav
+          className="project-tasks-section__collections"
+          aria-label="Task collection"
+        >
+          {(['now', 'backlog', 'history'] as const).map((id) => (
+            <Button
+              key={id}
+              active={collection === id}
+              aria-pressed={collection === id}
+              onClick={() => {
+                setCollection(id);
+                setShowRecordDetails(false);
+              }}
+            >
+              {{ now: 'Now', backlog: 'Backlog', history: 'History' }[id]} ·{' '}
+              {collections[id].length}
+            </Button>
+          ))}
+        </nav>
+      )}
 
       {starterId !== 'start-task' ? (
         <Button
@@ -478,7 +570,7 @@ export function ProjectTasksSection({
         )}
 
       <div
-        className={`project-page__task-grid${presentation === 'board' ? ' project-page__task-grid--board' : ''}`}
+        className={`project-page__task-grid${presentation === 'board' ? ' project-page__task-grid--board' : ' project-tasks-section__list-layout'}`}
       >
         <div className="project-page__task-list">
           {tasksError ? (
@@ -508,29 +600,62 @@ export function ProjectTasksSection({
                   onSelect={selectLocalTask}
                 />
               ) : (
-                sortedTasks.map((task) => (
-                  <button
-                    className={`project-page__task-row ${
-                      task.id === selectedTaskId
-                        ? 'project-page__task-row--active'
-                        : ''
-                    }`}
-                    key={task.id}
-                    type="button"
-                    onClick={() => selectLocalTask(task.id)}
-                  >
-                    <span className="project-page__task-row-title">
-                      {task.title}
-                    </span>
-                    <span className="project-page__task-row-meta">
-                      <StatusBadge
-                        tone="neutral"
-                        status={taskStatusLabel(task.status)}
-                      />
-                      {task.priority !== 'normal' && ` · ${task.priority}`}
-                    </span>
-                  </button>
+                visibleTasks.map((task) => (
+                  <div className="project-tasks-section__outcome" key={task.id}>
+                    <a
+                      className="project-tasks-section__open"
+                      href={`/tasks/${encodeURIComponent(task.id)}`}
+                      onClick={(event) => {
+                        if (!isPlainLeftClick(event)) return;
+                        event.preventDefault();
+                        navigate(`/tasks/${encodeURIComponent(task.id)}`);
+                      }}
+                    >
+                      <span className="project-tasks-section__title">
+                        {task.title}
+                      </span>
+                      <span className="project-page__task-row-meta">
+                        <StatusBadge
+                          tone="neutral"
+                          status={taskStatusLabel(task.status)}
+                        />
+                        {task.agentId?.trim() && (
+                          <span>Agent: {task.agentId}</span>
+                        )}
+                        {task.priority !== 'normal' && (
+                          <span>{task.priority}</span>
+                        )}
+                      </span>
+                      <span className="project-tasks-section__next">
+                        Open Task
+                      </span>
+                    </a>
+                    <Button
+                      size="sm"
+                      aria-label={`Details for ${task.title}`}
+                      aria-expanded={
+                        showRecordDetails && selectedTaskId === task.id
+                      }
+                      onClick={() => {
+                        selectLocalTask(task.id);
+                        setShowRecordDetails(true);
+                      }}
+                    >
+                      Details
+                    </Button>
+                  </div>
                 ))
+              )}
+              {presentation === 'list' && visibleTasks.length === 0 && (
+                <p className="project-tasks-section__collection-empty">
+                  {
+                    {
+                      now: 'Nothing active right now.',
+                      backlog: 'The backlog is clear.',
+                      history: 'Completed and canceled Tasks appear here.',
+                    }[collection]
+                  }
+                </p>
               )}
               {providerItems.map((item) => (
                 <button
@@ -561,7 +686,21 @@ export function ProjectTasksSection({
           )}
         </div>
 
-        <div className="project-page__task-detail">
+        <div
+          className="project-page__task-detail"
+          hidden={
+            presentation === 'list' &&
+            !showRecordDetails &&
+            !selectedProviderItem
+          }
+        >
+          {presentation === 'list' &&
+            showRecordDetails &&
+            !selectedProviderItem && (
+              <Button size="sm" onClick={() => setShowRecordDetails(false)}>
+                Close details
+              </Button>
+            )}
           {selectedProviderItem ? (
             <>
               <div className="project-page__task-detail-header">
@@ -599,10 +738,33 @@ export function ProjectTasksSection({
                       </div>
                     )}
                 </div>
+                {selectedProviderItem.workItemRef ? (
+                  <div className="project-page__task-detail-actions project-page__task-detail-actions--start">
+                    <Button
+                      className="project-page__start-task"
+                      variant="primary"
+                      pending={startFromWorkItemMutation.isPending}
+                      pendingLabel="Starting…"
+                      onClick={() =>
+                        void startTaskFromProviderItem(selectedProviderItem)
+                      }
+                    >
+                      Start Task
+                    </Button>
+                  </div>
+                ) : null}
               </div>
-              <div className="project-page__task-empty">
-                Linked work item — dispatch is not available for this item yet.
-              </div>
+              {startFromWorkItemError ? (
+                <p className="project-page__task-detail-meta" role="alert">
+                  Couldn’t start a Task from this item. {startFromWorkItemError}
+                </p>
+              ) : (
+                <div className="project-page__task-empty">
+                  {selectedProviderItem.workItemRef
+                    ? 'Start Task copies this item’s description and latest comments into a new Task, or opens the item’s open Task.'
+                    : 'This item has no tracker reference, so a Task can’t be started from it.'}
+                </div>
+              )}
             </>
           ) : selectedTask ? (
             <>

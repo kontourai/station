@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { copyFileSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -56,7 +57,7 @@ async function installBatchHold(page: Page, pattern: string) {
 }
 
 async function documentReceipt(
-  response: Awaited<ReturnType<Page['waitForResponse']>>,
+  response: Pick<Awaited<ReturnType<Page['waitForResponse']>>, 'json'>,
 ) {
   const value: unknown = await response.json();
   if (
@@ -79,6 +80,20 @@ async function documentReceipt(
   };
 }
 
+function waitForDocumentReceipt(page: Page) {
+  // Query cancellation can abort a 200 after headers. Only a complete body
+  // establishes the authoritative document used by the mounted browser.
+  return page
+    .waitForResponse(
+      async (response) =>
+        response.request().method() === 'GET' &&
+        new URL(response.url()).pathname.endsWith('/room/document') &&
+        response.status() === 200 &&
+        (await response.finished()) === null,
+    )
+    .then(documentReceipt);
+}
+
 async function liveFixtureCommand(
   page: Page,
   taskId: string,
@@ -86,7 +101,7 @@ async function liveFixtureCommand(
   expected = 'updated',
 ) {
   // Explicit server fixture seam for the retained cursor/watch protocol. The
-  // product journey below uses implicit presence and the visible Brief/Chat tabs.
+  // product journey below uses implicit presence and the visible Plan/Conversation tabs.
   const response = await page.evaluate(
     async ({ taskId, command }) => {
       const result = await fetch(
@@ -115,7 +130,7 @@ async function liveFixtureCommand(
 
 function participants(page: Page) {
   return page
-    .getByRole('region', { name: 'Here now' })
+    .getByRole('region', { name: 'Present in this Task' })
     .getByRole('list', { name: 'Live room participants' })
     .getByRole('listitem');
 }
@@ -137,8 +152,11 @@ async function expectAgentPresence(
   sessionId: string,
   runId: string,
 ) {
-  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
-  const here = page.getByRole('region', { name: 'Here now', exact: true });
+  await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+  const here = page.getByRole('region', {
+    name: 'Present in this Task',
+    exact: true,
+  });
   await expect(here).toHaveAttribute('data-viewer-actor-id', /\S+/);
   const viewerActorId = await here.getAttribute('data-viewer-actor-id');
   if (!viewerActorId) throw new Error('Viewer actor identity is unavailable');
@@ -159,7 +177,9 @@ async function expectAgentPresence(
   expect(agent?.work.runId).toBe(runId);
   if (!agent) throw new Error('Published Agent is missing');
   await expect(
-    page.locator(`.task-room-rail [data-actor-id="${agent.actor.actorId}"]`),
+    page
+      .getByRole('region', { name: 'Present in this Task' })
+      .locator(`[data-actor-id="${agent.actor.actorId}"]`),
   ).toContainText(agent.actor.label);
   return live;
 }
@@ -266,9 +286,12 @@ test.describe
           repository,
           'room-refusal',
         );
+        await page
+          .getByRole('tab', { name: 'Conversation', exact: true })
+          .click();
 
         const alert = page
-          .getByRole('region', { name: 'Task room conversation' })
+          .getByRole('region', { name: 'Present in this Task' })
           .getByRole('alert')
           .filter({ hasText: 'Presence could not join this Task.' });
         await expect(alert).toBeVisible();
@@ -298,7 +321,9 @@ test.describe
         await page.unroute(pattern);
         await page.reload();
         await expect(
-          page.getByRole('region', { name: 'Here now' }).getByRole('listitem'),
+          page
+            .getByRole('region', { name: 'Present in this Task' })
+            .getByRole('listitem'),
         ).toHaveCount(1);
         await expect(alert).toHaveCount(0);
         expect(refused).toBe(1);
@@ -340,45 +365,14 @@ test.describe
         operatorCredential,
         'Collaboration peer',
       );
-      const ownerStorage = await owner.context().storageState();
-      const peerStorage = {
-        ...ownerStorage,
-        cookies: ownerStorage.cookies.filter(
-          (cookie) =>
-            !/^(?:__Host-)?station-device(?:-[a-f0-9]+)?$/.test(cookie.name),
-        ),
-        origins: ownerStorage.origins.map((origin) => ({
-          ...origin,
-          localStorage: origin.localStorage
-            .filter(
-              (entry) =>
-                entry.name !== 'station-connect-connections-credentials',
-            )
-            .map((entry) =>
-              entry.name === 'station-connect-connections'
-                ? {
-                    ...entry,
-                    value: JSON.stringify(
-                      (
-                        JSON.parse(entry.value) as Array<
-                          Record<string, unknown>
-                        >
-                      ).map((profile) => ({
-                        ...profile,
-                        credentialState: 'device-session',
-                      })),
-                    ),
-                  }
-                : entry,
-            ),
-        })),
-      };
-      const peerContext = await browser.newContext({
-        storageState: peerStorage,
-      });
+      const cookieScope = createHash('sha256')
+        .update(paired.environmentId)
+        .digest('hex')
+        .slice(0, 16);
+      const peerContext = await browser.newContext();
       await peerContext.addCookies([
         {
-          name: 'station-device',
+          name: `station-device-${cookieScope}`,
           value: paired.credential,
           url: live.ui,
           httpOnly: true,
@@ -403,8 +397,11 @@ test.describe
             status: 200,
           });
           await expect(
-            context.getByRole('tab', { name: 'Chat', exact: true }),
-          ).toHaveAttribute('aria-selected', 'true', { timeout: 15_000 });
+            context.getByRole('tab', { name: 'Overview', exact: true }),
+          ).toHaveAttribute('aria-selected', 'true');
+          await context
+            .getByRole('tab', { name: 'Conversation', exact: true })
+            .click();
           await expect(
             context.getByRole('textbox', { name: 'Message the Task' }),
           ).toBeVisible();
@@ -438,8 +435,8 @@ test.describe
           targetActorId: peerActorId,
         });
         await Promise.all([
-          owner.getByRole('tab', { name: 'Brief', exact: true }).click(),
-          peer.getByRole('tab', { name: 'Brief', exact: true }).click(),
+          owner.getByRole('tab', { name: 'Plan', exact: true }).click(),
+          peer.getByRole('tab', { name: 'Plan', exact: true }).click(),
         ]);
         await Promise.all([
           owner
@@ -458,8 +455,8 @@ test.describe
           'updated',
         );
         expect(
-          stoppedAfterEdit.panes.filter((pane) => pane.paneId === paneId),
-        ).toEqual([]);
+          stoppedAfterEdit.panes.find((pane) => pane.paneId === paneId),
+        ).toBeUndefined();
 
         await expect(
           peer.getByRole('textbox', { name: 'Task brief' }),
@@ -497,12 +494,12 @@ test.describe
           'updated',
         );
         expect(
-          stoppedAfterInput.panes.filter((pane) => pane.paneId === paneId),
-        ).toEqual([]);
+          stoppedAfterInput.panes.find((pane) => pane.paneId === paneId),
+        ).toBeUndefined();
 
         await Promise.all([
-          owner.getByRole('tab', { name: 'Chat', exact: true }).click(),
-          peer.getByRole('tab', { name: 'Chat', exact: true }).click(),
+          owner.getByRole('tab', { name: 'Conversation', exact: true }).click(),
+          peer.getByRole('tab', { name: 'Conversation', exact: true }).click(),
         ]);
         await peer
           .getByRole('textbox', { name: 'Message the Task' })
@@ -515,8 +512,8 @@ test.describe
           'revision-evidence-v1:',
         );
         await Promise.all([
-          owner.getByRole('tab', { name: 'Brief', exact: true }).click(),
-          peer.getByRole('tab', { name: 'Brief', exact: true }).click(),
+          owner.getByRole('tab', { name: 'Plan', exact: true }).click(),
+          peer.getByRole('tab', { name: 'Plan', exact: true }).click(),
         ]);
 
         const sharedBase = 'Owner and peer share this durable text.';
@@ -584,17 +581,33 @@ test.describe
           .getByRole('button', { name: 'Retry identical batch' })
           .click();
         expect((await duplicateRequest).postData()).toBe(heldOwnerBatch.body);
-        const duplicateEnvelope = (await duplicateResponse).json() as Promise<{
+        const duplicateReceipt = await duplicateResponse;
+        expect(duplicateReceipt.status()).toBe(200);
+        const duplicateEnvelope = duplicateReceipt.json() as Promise<{
           data?: { kind?: string };
         }>;
         await expect(duplicateEnvelope).resolves.toMatchObject({
           data: { kind: 'duplicate' },
         });
+        // Independent authenticated receipt; this read does not publish into
+        // the browser query cache or trigger editor convergence.
+        const retryDocument = await owner.request.get(
+          `${live.ui}/api/tasks/${encodeURIComponent(taskId)}/room/document`,
+        );
+        expect(retryDocument.status()).toBe(200);
+        const retryAuthoritative = await documentReceipt(retryDocument);
+        expect(retryAuthoritative.text).toBe(converged);
         await expect(
           owner
             .getByRole('region', { name: 'Task room editor' })
             .getByRole('status'),
         ).toHaveText('Saved');
+        await expect(ownerDocument).toHaveValue(retryAuthoritative.text);
+        await expect(ownerDocument).toHaveAttribute(
+          'data-station-working-revision',
+          retryAuthoritative.revision,
+        );
+        await expect(peerDocument).toHaveValue(retryAuthoritative.text);
 
         // Drop both real browser networks so the existing SSE clients must
         // reconnect. Their reconnect snapshots drive document queries; no
@@ -604,41 +617,44 @@ test.describe
           peerContext.setOffline(true),
         ]);
         await new Promise((resolve) => setTimeout(resolve, 250));
-        const ownerReconnectedDocument = owner.waitForResponse(
-          (response) =>
-            response.request().method() === 'GET' &&
-            new URL(response.url()).pathname.endsWith('/room/document') &&
-            response.status() === 200,
-        );
-        const peerReconnectedDocument = peer.waitForResponse(
-          (response) =>
-            response.request().method() === 'GET' &&
-            new URL(response.url()).pathname.endsWith('/room/document') &&
-            response.status() === 200,
-        );
+        const ownerReconnectedDocument = waitForDocumentReceipt(owner);
+        const peerReconnectedDocument = waitForDocumentReceipt(peer);
         await Promise.all([
           owner.context().setOffline(false),
           peerContext.setOffline(false),
         ]);
         const [ownerDurable, peerDurable] = await Promise.all([
-          ownerReconnectedDocument.then(documentReceipt),
-          peerReconnectedDocument.then(documentReceipt),
+          ownerReconnectedDocument,
+          peerReconnectedDocument,
         ]);
         expect(ownerDurable).toEqual(peerDurable);
         expect(ownerDurable).toMatchObject({
           revision: expect.stringMatching(/^swsr-v1:[0-9a-f]{64}$/),
           text: converged,
         });
-        for (const context of [owner, peer]) {
+        for (const page of [owner, peer]) {
           await expect(
-            context.getByRole('tab', { name: 'Brief', exact: true }),
-          ).toHaveAttribute('aria-selected', 'true', { timeout: 15_000 });
-          await expect(
-            context.getByRole('region', { name: 'Task room editor' }),
-          ).toContainText(converged);
-          await context
-            .getByRole('button', { name: 'Edit brief', exact: true })
-            .click();
+            page.getByRole('tab', { name: 'Plan', exact: true }),
+          ).toHaveAttribute('aria-selected', 'true');
+          expect(new URL(page.url()).searchParams.get('taskView')).toBe('plan');
+          const panel = page.getByRole('tabpanel', {
+            name: 'Plan',
+            exact: true,
+          });
+          await expect(panel).toBeVisible();
+          // A protected-tree remount starts the fresh editor in preview mode.
+          // Prove the selected view displays the durable text before editing.
+          const mode = panel.getByRole('button', {
+            name: /^(Edit|View) brief$/,
+          });
+          if ((await mode.textContent()) === 'Edit brief') {
+            await expect(
+              panel
+                .getByText(converged, { exact: true })
+                .filter({ visible: true }),
+            ).toBeVisible();
+            await mode.click();
+          }
         }
         await expect(ownerDocument).toHaveValue(converged);
         await expect(peerDocument).toHaveValue(converged);
@@ -646,6 +662,8 @@ test.describe
 
         const agentText =
           'The Station agent settled this authoritative shared edit.';
+        // Controlled fake-agent publication through the dispatcher fixture;
+        // this does not exercise a real provider turn.
         const agentEdit = await publishTaskRoomAgentEdit(
           taskRoomControlSocket,
           {
@@ -674,8 +692,26 @@ test.describe
         await expect(await rawHistory(owner)).toContainText(
           agentEdit.sessionId,
         );
-        await owner.getByRole('tab', { name: 'Chat', exact: true }).click();
-        await peer.getByRole('tab', { name: 'Brief', exact: true }).click();
+        await owner
+          .getByRole('tab', { name: 'Conversation', exact: true })
+          .click();
+        await peer.getByRole('tab', { name: 'Plan', exact: true }).click();
+
+        const peerEditor = peer.getByRole('textbox', {
+          name: 'Task brief',
+          exact: true,
+          includeHidden: true,
+        });
+        const peerComposer = peer.getByRole('textbox', {
+          name: 'Message the Task',
+          exact: true,
+          includeHidden: true,
+        });
+        await expect(peerEditor).toHaveCount(1);
+        await expect(peerEditor).toBeAttached();
+        await expect(peerComposer).toHaveCount(1);
+        await expect(peerComposer).toBeAttached();
+        await expect(peerComposer).toBeHidden();
 
         const revoked = await fetch(
           `${live.api}/api/pairing/devices/${encodeURIComponent(paired.device.id)}`,
@@ -690,14 +726,15 @@ test.describe
           .fill('Revocation check.');
         await owner.getByRole('button', { name: 'Send to task room' }).click();
         await expect(
-          peer.getByRole('button', { name: 'Request access', exact: true }),
+          peer
+            .getByRole('status')
+            .filter({ hasText: /^Request access to reconnect to / }),
         ).toBeVisible();
         await expect(
-          peer.getByRole('textbox', { name: 'Task brief' }),
-        ).toHaveCount(0);
-        await expect(
-          peer.getByRole('textbox', { name: 'Message the Task' }),
-        ).toHaveCount(0);
+          peer.getByRole('button', { name: 'Review Station', exact: true }),
+        ).toBeVisible();
+        await expect(peerEditor).toHaveCount(0);
+        await expect(peerComposer).toHaveCount(0);
 
         await owner.screenshot({
           path: testInfo.outputPath('project-task-room-owner.png'),
@@ -710,7 +747,23 @@ test.describe
 
         await stopStation(live);
         await startStation(live, false);
+        const restartedJoin = owner.waitForResponse(
+          (response) =>
+            response.request().method() === 'POST' &&
+            new URL(response.url()).pathname.endsWith('/room/live') &&
+            response.request().postDataJSON()?.command === 'join',
+        );
         await owner.goto(taskUrl);
+        // Presence is implicit: await the browser's own join before issuing a
+        // fixture heartbeat, without injecting or retrying a membership command.
+        const joinedResponse = await restartedJoin;
+        expect(joinedResponse.status()).toBe(200);
+        const joinedEnvelope = (await joinedResponse.json()) as {
+          data?: { result?: { outcome?: string } };
+        };
+        expect(['joined', 'refreshed']).toContain(
+          joinedEnvelope.data?.result?.outcome,
+        );
         const restartedRoomProbe = await owner.evaluate(async (id) => {
           const response = await fetch(
             `/api/tasks/${encodeURIComponent(id)}/room`,
@@ -729,7 +782,7 @@ test.describe
         );
         expect(restartedPresence.cursors).toEqual([]);
         expect(restartedPresence.panes).toEqual([]);
-        await owner.getByRole('tab', { name: 'Brief', exact: true }).click();
+        await owner.getByRole('tab', { name: 'Plan', exact: true }).click();
         await owner
           .getByRole('button', { name: 'Edit brief', exact: true })
           .click();
@@ -742,7 +795,9 @@ test.describe
         await expect(
           owner.getByRole('button', { name: 'Stop watching' }),
         ).toHaveCount(0);
-        await owner.getByRole('tab', { name: 'Chat', exact: true }).click();
+        await owner
+          .getByRole('tab', { name: 'Conversation', exact: true })
+          .click();
         await expect(
           owner.getByRole('list', { name: 'Task room history' }),
         ).toContainText('Peer is working in the same Task room.');

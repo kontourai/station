@@ -15,7 +15,7 @@ For usage context, see [docs/guides/agent-configuration.md](../guides/agent-conf
 `toolDefaults: { mcpServers?: string[], knowledge?: boolean }`. The server list
 contains up to 32 configured MCP IDs, each at most 128 characters. Omitted
 `knowledge` enables delivery of `station-knowledge` when a registered Project
-store exists; `false` disables that Project addition.
+store or enabled attached S3 source exists; `false` disables that Project addition.
 
 These defaults add servers while retaining Agent availability restrictions,
 approval patterns and an explicit harness replacement mode. They grant no

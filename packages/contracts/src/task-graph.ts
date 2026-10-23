@@ -518,6 +518,61 @@ export function parseTaskGateEvaluationReference(
   }
 }
 
+/** Exact Task incarnation; IDs alone never authorize a relationship. */
+export interface TaskIdentity {
+  taskId: string;
+  taskCreatedAt: string;
+}
+
+export interface TaskParentMutationInput {
+  operationId: string;
+  child: TaskIdentity;
+  expectedRevision: number;
+  parent: TaskIdentity | null;
+}
+
+export interface TaskChildCreateInput {
+  operationId: string;
+  parent: TaskIdentity;
+  task: Pick<
+    TaskCreateInput,
+    'projectId' | 'title' | 'description' | 'priority' | 'skillName' | 'agentId'
+  >;
+}
+
+export interface TaskParentMutationResult {
+  child: TaskIdentity;
+  parent: TaskIdentity | null;
+  previousParent: TaskIdentity | null;
+  revision: number;
+}
+
+export interface TaskWorkChatMutationInput {
+  operationId: string;
+  task: TaskIdentity;
+  conversationId: string;
+  expectedRevision: number;
+  linked: boolean;
+}
+
+export interface TaskWorkChatMutationResult {
+  task: TaskIdentity;
+  conversationId: string;
+  linked: boolean;
+  revision: number;
+}
+
+/** Only currently readable children appear; no hidden count or sentinel. */
+export interface TaskChildrenResult {
+  task: TaskIdentity;
+  children: TaskRecord[];
+}
+
+export interface TaskWorkChatsResult {
+  task: TaskIdentity;
+  chats: { conversationId: string; revision: number }[];
+}
+
 export interface TaskRecord {
   id: string;
   projectId: string;
@@ -545,6 +600,21 @@ export interface TaskRecord {
    * issue URL or id). Absent for tasks created directly in Station. */
   workItemRef?: string;
   /**
+   * When Station last read `workItemRef` into this Task (#4003): set by the
+   * observation that seeded the brief on Start Task, and advanced by each
+   * dispatch whose tracker read observed the item. Comments created after
+   * it are the item's "new comments". Absent until one of those reads.
+   */
+  workItemObservedAt?: string;
+  /**
+   * How `workItemRef` entered the Task (#4003 review F4). `project-board`:
+   * the create checked that the Project's board offered exactly this ref
+   * (Start Task, or `POST /api/tasks` with a `github:` ref). Station reads
+   * the tracker for a Task's ref only when this is set; a ref without it is
+   * shown, never observed with the host's tracker login.
+   */
+  workItemProvenance?: 'project-board';
+  /**
    * A person's opt-in (#3161): move this Task to `done` once every pull
    * request kept on it is merged at its provider. Only a person sets it
    * (`PUT /api/tasks/:taskId/close-on-merge`); no agent tool does, and the
@@ -552,6 +622,9 @@ export interface TaskRecord {
    * Absent means off.
    */
   closeOnMerge?: boolean;
+  /** Deliverable hierarchy, independent of execution Sessions and status. */
+  parent?: TaskIdentity;
+  relationshipRevision?: number;
 }
 
 export interface TaskCreateInput {

@@ -40,7 +40,7 @@ export interface WorkItemRouteDeps {
 }
 
 export function createWorkItemRoutes(
-  workItemProviderService: WorkItemProviderService,
+  workItemProviderService: Pick<WorkItemProviderService, 'listWorkItems'>,
   deps: WorkItemRouteDeps,
 ) {
   const app = new Hono<{ Variables: { cwd: string; slug: string } }>();

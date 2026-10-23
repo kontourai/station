@@ -1,0 +1,7 @@
+{
+  "revision": "67cd997b9601d5c495605ccf3b750107a70985a6",
+
+  "notes": [
+    {"path":"docs/learn/media/shared-task-document.png","note":"Re-reviewed for #4007/#4008: the capture shows the Brief tab view mode of a seeded Task document. This lane changed TaskRoomEditorPane only in the rejection message it shows for document-full / evidence-ledger-full, and the runtime only in edit-id minting; neither changes this rendered view. Confirmed in a live isolated run (Brief tab, edit, mid-document insert, over-capacity refusal) that the view-mode layout is unchanged.","inputs":["docs/learn/media/shared-task-document.png","src-server/services/orchestration/project-task-room-runtime.ts","src-ui/src/workspace-panes/TaskRoomEditorPane.tsx"]}
+  ]
+}

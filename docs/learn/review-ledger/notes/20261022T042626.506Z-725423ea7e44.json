@@ -1,0 +1,9 @@
+{
+  "revision": "6c3335b91a7ab15c7a1b5448936e0a8cc60b5cd4",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Edited in #4003 review round 7: the Learning paragraph now says a dismissal is checked first and wins, that a record counts as promoted only when Station's Task Learning wrote it for this Task, and that the recorded store is matched by its directory's native real path. Checked against readTaskLearning (dismissal before promotionState), isTaskLearningRecord (provenance.agent and the note's task line) and storeIdentity (realpathSync.native) in task-learning.ts.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Re-read for #4003 review round 7: api.md changed only in the Task Learning paragraph (dismissal first, provenance-checked records, native real path). This guide links the API reference as a whole and describes no Task Learning route, so it still holds.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
+  ]
+}

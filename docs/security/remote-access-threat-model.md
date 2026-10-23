@@ -139,6 +139,39 @@ malformed identity never produce verified provenance.
 | Terminal or voice `WS /__station/health` | Identity-only; no business session | Identity-only; no business session | Identity-only; no business session |
 | Other terminal or voice WebSocket paths | Existing local flow | Closed before session allocation | Requires the first-frame protocol below |
 
+Account-bound Knowledge access is limited to GET/HEAD source capabilities,
+root and adapter listings, record listings/details, graph reads and exact
+import-original downloads. Originals require current durable Project membership
+and the original source registration; receipt observation remains operator-only.
+The runtime resolves the same current
+account and Project membership used by Project reads before admitting a root.
+Personal file roots are withheld; the conversation projection retains its
+per-caller session reader. Registry/path management and HTTP member writes
+remain denied. No additional index, migration or host-path capability follows
+from this read allowlist.
+
+When the default-off experimental S3 flag is enabled, separate Knowledge leaves
+admit current Project readers to source metadata, a bounded selected-prefix page
+and one ETag-pinned object. A source is an explicit operator grant to use a named
+host AWS profile for that Project's prefix; it is not a fallback to another
+person's connected account. Profile discovery, attachment and disconnect remain
+operator-only. Bucket owner/prefix/size/time limits and current authority are
+checked in the source owner and again at response release. S3 never grants a
+mount, execution path or object write/delete. Real AWS acceptance remains
+outstanding; see [the experimental source contract](../guides/knowledge.md#experimental-read-only-s3-prefixes).
+
+Task relationship routes compose current transport authority with a live local-account
+session or supported account-bound Device standing witness. Account members may read
+only individually shared Task incarnations in a currently readable Project; a shared
+parent does not reveal private children or their count. Work chats additionally require
+current canonical Conversation lineage and reader access. Ordinary account membership
+does not authorize relationship mutations. Linking neither publishes a Task or private
+conversation nor grants execution.
+
+Previously verified cookie sessions require the provider's synchronous live witness at
+relationship commit/delivery seams; missing support, revoked/expired sessions and
+pending enrollment fail closed. A historical authenticated result alone is insufficient.
+
 The account-authentication exception is specified in the
 [deployment authentication guide](../guides/deployment-authentication.md).
 With authentication unconfigured, that router reports unavailable (`501`),
