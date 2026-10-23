@@ -1,3 +1,4 @@
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   existsSync,
@@ -1990,3 +1991,46 @@ test('a second Apple ticket transport failure still refuses DMG admission', asyn
   ).toBe(false);
   expect(release.removed).toContain('/scratch');
 });
+
+// dmgbuild never checks its ditto copy; the settings hook is the guard. Load
+// the real settings file and run its hook with subprocess.run captured, so a
+// removed hook, a weakened codesign call, or a dropped `check=True` turns red.
+const python3 = spawnSync('python3', ['-I', '-c', 'import sys; print(sys.version_info >= (3, 10))'], {
+  encoding: 'utf8',
+  windowsHide: true,
+});
+test.skipIf(python3.stdout?.trim() !== 'True')(
+  'the dmgbuild settings hook verifies the copied app signature strictly before signing',
+  () => {
+    const settings = fileURLToPath(new URL('./dmg/dmgbuild-settings.py', import.meta.url));
+    const probe = [
+      'import json, subprocess, sys',
+      'calls = []',
+      'subprocess.run = lambda args, **kw: calls.append({"args": args, "check": kw.get("check"), "timeout": kw.get("timeout")})',
+      'scope = {"defines": {"app": "/staged/Station.app", "background": "/art/background.tiff"}}',
+      'exec(compile(open(sys.argv[1]).read(), sys.argv[1], "exec"), scope)',
+      'hook = scope.get("create_hook")',
+      'assert callable(hook), "create_hook missing"',
+      'hook("/Volumes/dmg.mount", {})',
+      'print(json.dumps(calls))',
+    ].join('\n');
+    const result = spawnSync('python3', ['-I', '-c', probe, settings], {
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual([
+      {
+        args: [
+          '/usr/bin/codesign',
+          '--verify',
+          '--deep',
+          '--strict',
+          '/Volumes/dmg.mount/Station.app',
+        ],
+        check: true,
+        timeout: 600,
+      },
+    ]);
+  },
+);
