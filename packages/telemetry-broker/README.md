@@ -11,6 +11,10 @@ author endpoint, or authorizes collecting telemetry from an installation.
 
 The qualified storage profile is PostgreSQL 16 with `fsync` and
 `full_page_writes` enabled. Each transaction sets `synchronous_commit=on`.
+Transactions use a local `pg_catalog` search path while accessing explicitly
+qualified application tables. Schema validation therefore does not depend on
+the login role's default search path, including the deployment role named
+`station_telemetry`. The caller's session setting is restored after the transaction.
 HTTP 202 means PostgreSQL acknowledged the transaction's commit; a disconnected
 or timed-out commit returns a failure. Retrying the same source/event UUID with
 the same observation does not insert another event. Reusing an ID with different
