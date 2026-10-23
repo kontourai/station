@@ -102,9 +102,13 @@ those local drafts.
 ## Delegated work and session groups
 
 A delegated task can finish while its conversation stays open for follow-up.
-Running work and an idle conversation are different states. A working directory
-without a registered Project is shown as a directory; it does not imply Project
-membership. CLI initiation is recorded separately from any caller-provided name.
+Home, Sessions and the inbox distinguish **Needs you**, **Running** and **Idle**.
+Running covers a turn or reported child work in flight. Idle conversations remain
+open without being called completed; observed terminal outcomes can enter
+**Just finished**. A working directory without a registered Project is shown as
+a directory; it does not imply Project membership. Client surfaces such as CLI
+are marked as reported, separately from the server-authenticated actor. Station
+does not infer an external orchestrator from task text or a User-Agent.
 
 Child-work reports say where their text came from: **Returned result**,
 **Provider summary**, **Child message**, or **Provider error**. An older summary
