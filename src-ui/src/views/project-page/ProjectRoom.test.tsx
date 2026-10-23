@@ -43,6 +43,13 @@ let conflict: boolean;
 let writes: Array<Record<string, unknown>>;
 let streams: ReadableStreamDefaultController<Uint8Array>[];
 let selectedAuthority: string;
+let agentWrites: Array<Record<string, unknown>>;
+let agentOperations: string[];
+let agentLostAck: boolean;
+let agentDenied: boolean;
+let agentHandle: Record<string, unknown> | undefined;
+let execute: boolean;
+let discuss: boolean;
 function fixture() {
   vi.stubGlobal(
     'fetch',
@@ -50,6 +57,76 @@ function fixture() {
       const url = new URL(input);
       const body = init?.body ? JSON.parse(String(init.body)) : undefined;
       const ok = (data: unknown) => Response.json({ success: true, data });
+      if (url.pathname === '/api/agents')
+        return ok([
+          { slug: 'researcher', name: 'Researcher', available: true },
+          { slug: 'offline', name: 'Offline', available: false },
+        ]);
+      if (url.pathname.endsWith('/room/agents')) {
+        agentWrites.push(body);
+        const stored = Object.values(sessionStorage).map((raw) => {
+          try {
+            return JSON.parse(String(raw));
+          } catch {
+            return undefined;
+          }
+        });
+        expect(
+          stored.some(
+            (item) => JSON.stringify(item?.intent) === JSON.stringify(body),
+          ),
+        ).toBe(true);
+        agentHandle = {
+          intentId: body.intentId,
+          agentId: body.agentId,
+          text: body.text,
+          ...(body.replyTo ? { replyTo: body.replyTo } : {}),
+          roomId,
+          requestId: body.intentId,
+          actor,
+          state: 'started',
+          createdAt: at,
+          updatedAt: at,
+        };
+        if (agentLostAck) {
+          agentLostAck = false;
+          throw new TypeError('Lost Agent acknowledgement');
+        }
+        return ok(agentHandle);
+      }
+      if (url.pathname.includes('/room/agents/')) {
+        const operation = url.pathname.split('/').at(-1)!;
+        agentOperations.push(operation);
+        if (agentDenied)
+          return Response.json(
+            { success: false, error: 'Access changed' },
+            { status: 403 },
+          );
+        if (operation === 'reconcile') {
+          const messageId = randomCorrelationId();
+          messages.push({
+            intentId: randomCorrelationId(),
+            text: 'Shared Agent answer',
+            roomId,
+            messageId,
+            seq: messages.length + 1,
+            actor: {
+              id: 'researcher',
+              kind: 'agent',
+              displayName: 'Researcher',
+            },
+            createdAt: at,
+          });
+          agentHandle = {
+            ...agentHandle,
+            state: 'published',
+            publishedMessageId: messageId,
+          };
+        }
+        if (operation === 'cancel')
+          agentHandle = { ...agentHandle, state: 'cancelled' };
+        return ok(agentHandle);
+      }
       if (url.pathname.endsWith('/init')) {
         initializationBodies.push(body);
         if (failInitialization) {
@@ -160,7 +237,7 @@ function fixture() {
         roomId,
         actor,
         presence: [],
-        capabilities: { view: true, discuss: true, edit: true, execute: true },
+        capabilities: { view: true, discuss, edit: true, execute },
         checkpoint: { roomId, lastSeq: messages.length },
         note,
       });
@@ -184,6 +261,13 @@ function mount(authority = 'one') {
 }
 beforeEach(() => {
   sessionStorage.clear();
+  agentWrites = [];
+  agentOperations = [];
+  agentLostAck = false;
+  agentDenied = false;
+  agentHandle = undefined;
+  execute = true;
+  discuss = true;
   messages = [];
   writes = [];
   streams = [];
@@ -242,7 +326,10 @@ test('reload offers exact retained retry without automatically resending, then a
       }).value,
     ).toBe(''),
   );
-  expect(screen.queryByRole('button', { name: 'Bring an Agent' })).toBeNull();
+  expect(
+    screen.getByRole<HTMLButtonElement>('button', { name: 'Bring an Agent' })
+      .disabled,
+  ).toBe(true);
   loseAck = true;
   fireEvent.change(
     screen.getByRole('textbox', { name: 'Message the project' }),
@@ -359,7 +446,7 @@ test('two independent mounted query contexts receive the shared stream through r
   expect(writes).toHaveLength(1);
 });
 
-test('loads an older bounded window and exposes actual reply context to the optional Agent bridge', async () => {
+test('loads older history and explicitly requests an available Agent with actual reply context', async () => {
   messages = Array.from({ length: 30 }, (_, index) => ({
     roomId,
     intentId: randomCorrelationId(),
@@ -372,7 +459,6 @@ test('loads an older bounded window and exposes actual reply context to the opti
     createdAt: at,
     text: `Update ${index + 1}`,
   }));
-  const onRequestAgent = vi.fn();
   const client = new QueryClient();
   render(
     <QueryClientProvider client={client}>
@@ -380,7 +466,6 @@ test('loads an older bounded window and exposes actual reply context to the opti
         slug="team"
         projectId="project"
         requestScope={requestScope}
-        onRequestAgent={onRequestAgent}
       />
     </QueryClientProvider>,
   );
@@ -395,16 +480,37 @@ test('loads an older bounded window and exposes actual reply context to the opti
     { target: { value: 'Please investigate this' } },
   );
   fireEvent.click(screen.getByRole('button', { name: 'Bring an Agent' }));
-  await waitFor(() =>
-    expect(onRequestAgent).toHaveBeenCalledWith({
-      prompt: 'Please investigate this',
+  const picker = await screen.findByRole('combobox', { name: 'Agent' });
+  expect(screen.queryByRole('option', { name: 'Offline' })).toBeNull();
+  expect(agentWrites).toHaveLength(0);
+  fireEvent.change(picker, { target: { value: 'researcher' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Ask in room' }));
+  await screen.findByText('Agent request: started');
+  expect(agentWrites).toEqual([
+    expect.objectContaining({
+      agentId: 'researcher',
+      text: 'Please investigate this',
       replyTo: messages[29].messageId,
+      expectedActorId: actor.id,
+      expectedRoomId: roomId,
+      expectedProjectId: 'project',
     }),
+  ]);
+  fireEvent.click(screen.getByRole('button', { name: 'Inspect request' }));
+  await waitFor(() => expect(agentOperations).toHaveLength(1));
+  await waitFor(() =>
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Check answer' })
+        .disabled,
+    ).toBe(false),
   );
+  fireEvent.click(screen.getByRole('button', { name: 'Check answer' }));
+  await screen.findByText('Shared Agent answer');
+  expect(agentWrites).toHaveLength(1);
   expect(writes).toHaveLength(0);
 });
 
-test('preview opens the full room without replacing its draft and exposes shared notes beside the title', async () => {
+test('preview opens the full room without replacing its draft and tabs guard shared notes', async () => {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -433,9 +539,9 @@ test('preview opens the full room without replacing its draft and exposes shared
       name: 'Message the project',
     }).value,
   ).toBe('Keep this draft');
-  expect(screen.queryByRole('button', { name: 'Bring an Agent' })).toBeNull();
-  fireEvent.click(screen.getByLabelText('Room menu'));
-  fireEvent.click(screen.getByRole('button', { name: 'Shared notes' }));
+  expect(screen.getByRole('button', { name: 'Bring an Agent' })).toBeTruthy();
+  expect(screen.queryByLabelText('Room menu')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Notes' }));
   expect(screen.getByRole('dialog')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: /^Discard$/ }));
   expect(
@@ -461,4 +567,65 @@ test('an unprovisioned room requires an explicit open and keeps failed initializ
     { expectedProjectId: 'project' },
     { expectedProjectId: 'project' },
   ]);
+});
+
+async function askAgent() {
+  fireEvent.change(
+    await screen.findByRole('textbox', { name: 'Message the project' }),
+    { target: { value: 'Investigate together' } },
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Bring an Agent' }));
+  fireEvent.change(await screen.findByRole('combobox', { name: 'Agent' }), {
+    target: { value: 'researcher' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Ask in room' }));
+}
+test('lost Agent acknowledgement reload retries immutable intent, never automatically launches or cancels', async () => {
+  agentLostAck = true;
+  const ui = mount();
+  await askAgent();
+  await screen.findByText(/Agent request not confirmed/);
+  const first = agentWrites[0];
+  ui.unmount();
+  const second = mount();
+  await screen.findByRole('button', { name: 'Retry same Agent request' });
+  expect(agentWrites).toHaveLength(1);
+  expect(agentOperations).toEqual([]);
+  fireEvent.change(
+    screen.getByRole('textbox', { name: 'Message the project' }),
+    { target: { value: 'Different discussion' } },
+  );
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Retry same Agent request' }),
+  );
+  await screen.findByText('Agent request: started');
+  expect(agentWrites).toEqual([first, first]);
+  fireEvent.click(screen.getByRole('button', { name: 'More Agent actions' }));
+  fireEvent.click(
+    screen.getByRole('menuitem', { name: 'Cancel Agent request' }),
+  );
+  await screen.findByText('Agent request: cancelled');
+  expect(agentOperations).toEqual(['cancel']);
+  second.unmount();
+  expect(agentOperations).toEqual(['cancel']);
+});
+test('Agent handles retire on authority loss and permission-only readers cannot invoke', async () => {
+  const ui = mount();
+  await askAgent();
+  await screen.findByText('Agent request: started');
+  agentDenied = true;
+  fireEvent.click(screen.getByRole('button', { name: 'Inspect request' }));
+  await screen.findByText('Agent request access changed. Check Room access.');
+  expect(screen.queryByText('Agent request: started')).toBeNull();
+  expect(
+    Object.values(sessionStorage).some((raw) =>
+      String(raw).includes('researcher'),
+    ),
+  ).toBe(false);
+  ui.unmount();
+  execute = false;
+  mount();
+  await screen.findByRole('textbox', { name: 'Message the project' });
+  expect(screen.queryByRole('button', { name: 'Bring an Agent' })).toBeNull();
+  expect(agentWrites).toHaveLength(1);
 });

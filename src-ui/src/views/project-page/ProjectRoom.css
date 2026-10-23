@@ -94,31 +94,31 @@
   flex-wrap: wrap;
   gap: var(--k-space-3);
 }
-.project-room__menu {
-  position: relative;
-}
-.project-room__menu summary {
-  display: flex;
-  align-items: center;
-  min-height: 44px;
-  padding-inline: var(--k-space-3);
-  cursor: pointer;
-  border: 1px solid var(--k-line);
-  border-radius: var(--k-radius-control);
-}
-.project-room__menu[open] {
-  padding: var(--k-space-2);
-  background: var(--k-panel-raised);
-  border: 1px solid var(--k-line-strong);
-  border-radius: var(--k-radius-control);
-}
-.project-room__menu summary:focus-visible {
-  outline: 2px solid var(--k-focus-ring);
-  outline-offset: var(--k-space-1);
-}
 .project-room--full {
   min-height: 65vh;
 }
 .project-room--full .project-room__composer {
   margin-top: auto;
+}
+
+.project-room__agent {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-3);
+}
+.project-room__agent-select {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-block: var(--k-space-2);
+  padding: var(--k-space-2);
+  background: var(--k-panel);
+  color: var(--k-text);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-control);
+  font: inherit;
+}
+.project-room__agent-select:focus-visible {
+  outline: 2px solid var(--k-focus-ring);
+  outline-offset: var(--k-space-1);
 }

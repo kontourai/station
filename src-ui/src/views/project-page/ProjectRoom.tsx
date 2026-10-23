@@ -1,14 +1,24 @@
-import { PROJECT_ROOM_LIMITS } from '@kontourai/station-contracts/project-room';
+import {
+  isProjectRoomUuid,
+  PROJECT_ROOM_LIMITS,
+} from '@kontourai/station-contracts/project-room';
 import {
   type ApiRequestScope,
+  isProjectRoomAccessError,
+  type ProjectRoomAgentHandle,
+  type ProjectRoomAgentIntent,
   type ProjectRoomMessageIntent,
+  ProjectRoomProtocolError,
+  parseProjectRoomAgentIntent,
   parseProjectRoomMessageIntent,
   useProjectRoom,
+  useProjectRoomAgent,
 } from '@kontourai/station-sdk/project-rooms';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
+import { Dialog } from '../../components/Dialog';
 import { Empty, SkeletonBlock } from '../../components/state';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import './ProjectRoom.css';
@@ -19,10 +29,6 @@ export interface ProjectRoomProps {
   requestScope: ApiRequestScope;
   variant?: 'preview' | 'full';
   onOpenRoom?(): void;
-  onRequestAgent?(input: {
-    prompt: string;
-    replyTo?: string;
-  }): void | Promise<void>;
 }
 function scopeKey(props: ProjectRoomProps) {
   return JSON.stringify([
@@ -40,6 +46,9 @@ export function ProjectRoom(props: ProjectRoomProps) {
       // Authority switches retire the prior browser's retained proposal.
       try {
         sessionStorage.removeItem(`station-project-room:${previous.current}`);
+        sessionStorage.removeItem(
+          `station-project-room:${previous.current}:agent`,
+        );
       } catch {
         /* Sending requires successful storage separately. */
       }
@@ -60,7 +69,6 @@ function ProjectRoomSession({
   requestScope,
   variant = 'full',
   onOpenRoom,
-  onRequestAgent,
   storageKey,
 }: ProjectRoomProps & { storageKey: string }) {
   const editorId = useId();
@@ -77,7 +85,6 @@ function ProjectRoomSession({
     revision: number;
     sourceMessageIds: string[];
   }>();
-  const [agentPending, setAgentPending] = useState(false);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -136,10 +143,20 @@ function ProjectRoomSession({
     setNoteDraft(undefined);
     try {
       sessionStorage.removeItem(storageKey);
+      sessionStorage.removeItem(`${storageKey}:agent`);
     } catch {
       /* Content is already hidden and sending stopped. */
     }
   }, [room.stopped, storageKey]);
+  useEffect(() => {
+    if (view && (!view.capabilities.discuss || !view.capabilities.execute)) {
+      try {
+        sessionStorage.removeItem(`${storageKey}:agent`);
+      } catch {
+        /* Agent controls are already unavailable. */
+      }
+    }
+  }, [view, storageKey]);
   const actorId = view?.actor.id;
   const discoveredActor = useRef<string | undefined>(undefined);
   useEffect(() => {
@@ -151,6 +168,7 @@ function ProjectRoomSession({
       setNoteDraft(undefined);
       try {
         sessionStorage.removeItem(storageKey);
+        sessionStorage.removeItem(`${storageKey}:agent`);
       } catch {
         /* Sending still requires storage. */
       }
@@ -286,15 +304,6 @@ function ProjectRoomSession({
       <header className="project-room__header">
         <div className="project-room__title">
           <h3># Project room</h3>
-          <details className="project-room__menu">
-            <summary aria-label="Room menu">Room ▾</summary>
-            <Button onClick={() => guard(() => setTab('conversation'))}>
-              Conversation
-            </Button>
-            <Button onClick={() => guard(() => setTab('notes'))}>
-              Shared notes
-            </Button>
-          </details>
         </div>
         {variant === 'preview' && onOpenRoom && (
           <Button onClick={onOpenRoom}>Open room</Button>
@@ -403,6 +412,24 @@ function ProjectRoomSession({
               </li>
             ))}
           </ol>
+          {view.capabilities.discuss && view.capabilities.execute && (
+            <ProjectRoomAgentPanel
+              key={`${view.roomId}:${view.actor.id}`}
+              requestScope={requestScope}
+              slug={slug}
+              projectId={projectId}
+              roomId={view.roomId}
+              actorId={view.actor.id}
+              storageKey={`${storageKey}:agent`}
+              prompt={text}
+              replyTo={replyTo}
+              blocked={!!proposal || room.send.isPending}
+              refresh={() => {
+                void room.discovery.refetch();
+                void room.history.refetch();
+              }}
+            />
+          )}
           {view.capabilities.discuss ? (
             <form
               className="project-room__composer"
@@ -474,34 +501,6 @@ function ProjectRoomSession({
                       }
                     >
                       Discard retained message
-                    </Button>
-                  ) : onRequestAgent && view.capabilities.execute ? (
-                    <Button
-                      type="button"
-                      pending={agentPending}
-                      disabled={!!proposal || !text.trim()}
-                      onClick={async () => {
-                        setAgentPending(true);
-                        try {
-                          await onRequestAgent({
-                            prompt: text,
-                            ...(replyTo ? { replyTo } : {}),
-                          });
-                          if (mounted.current) {
-                            setText('');
-                            setReplyTo(undefined);
-                          }
-                        } catch {
-                          if (mounted.current)
-                            setNotice(
-                              'The Agent request was not confirmed. Check the room before trying again.',
-                            );
-                        } finally {
-                          if (mounted.current) setAgentPending(false);
-                        }
-                      }}
-                    >
-                      Bring an Agent
                     </Button>
                   ) : undefined
                 }
@@ -591,5 +590,306 @@ function ProjectRoomSession({
       )}
       <DiscardModal />
     </section>
+  );
+}
+
+function ProjectRoomAgentPanel({
+  requestScope,
+  slug,
+  projectId,
+  roomId,
+  actorId,
+  storageKey,
+  prompt,
+  replyTo,
+  blocked,
+  refresh,
+}: {
+  requestScope: ApiRequestScope;
+  slug: string;
+  projectId: string;
+  roomId: string;
+  actorId: string;
+  storageKey: string;
+  prompt: string;
+  replyTo?: string;
+  blocked: boolean;
+  refresh(): void;
+}) {
+  const guard = {
+    expectedRoomId: roomId,
+    expectedProjectId: projectId,
+    expectedActorId: actorId,
+  };
+  const [open, setOpen] = useState(false);
+  const [agentId, setAgentId] = useState('');
+  const [retained, setRetained] = useState<{
+    intent: ProjectRoomAgentIntent;
+    requestId?: string;
+  }>();
+  const [handle, setHandle] = useState<ProjectRoomAgentHandle>();
+  const [ready, setReady] = useState(false);
+  const [notice, setNotice] = useState('');
+  const [stopped, setStopped] = useState(false);
+  const mounted = useRef(true);
+  const busy = useRef(false);
+  const agent = useProjectRoomAgent(requestScope, slug, guard, !stopped);
+  useEffect(() => {
+    mounted.current = true;
+    try {
+      const raw = sessionStorage.getItem(storageKey);
+      if (raw) {
+        const saved = JSON.parse(raw);
+        const intent = parseProjectRoomAgentIntent(saved.intent);
+        if (
+          intent.expectedRoomId === roomId &&
+          intent.expectedProjectId === projectId &&
+          intent.expectedActorId === actorId
+        ) {
+          if (
+            saved.requestId !== undefined &&
+            !isProjectRoomUuid(saved.requestId)
+          )
+            throw new Error('Invalid request');
+          setRetained({
+            intent,
+            ...(saved.requestId ? { requestId: saved.requestId } : {}),
+          });
+          setNotice(
+            'Previous Agent request retained. Inspect it or retry the exact request.',
+          );
+        } else sessionStorage.removeItem(storageKey);
+      }
+      setReady(true);
+    } catch {
+      setNotice('Agent request storage unavailable.');
+    }
+    return () => {
+      mounted.current = false;
+    };
+  }, [storageKey, roomId, projectId, actorId]);
+  const available =
+    agent.catalog.isSuccess &&
+    agent.catalog.data?.catalogState !== 'reconciling'
+      ? (agent.catalog.data?.agents.filter((a) => a.available === true) ?? [])
+      : [];
+  async function act(action: 'request' | 'inspect' | 'reconcile' | 'cancel') {
+    if (!ready || stopped || busy.current) return;
+    let saved = retained;
+    if (!saved) {
+      if (
+        action !== 'request' ||
+        blocked ||
+        !available.some((a) => a.slug === agentId)
+      )
+        return;
+      saved = {
+        intent: parseProjectRoomAgentIntent({
+          ...guard,
+          intentId: randomCorrelationId(),
+          agentId,
+          text: prompt,
+          ...(replyTo ? { replyTo } : {}),
+        }),
+      };
+    }
+    try {
+      sessionStorage.setItem(storageKey, JSON.stringify(saved));
+      setRetained(saved);
+    } catch {
+      setNotice('Enable session storage before requesting an Agent.');
+      return;
+    }
+    busy.current = true;
+    setOpen(false);
+    try {
+      const result = await agent.request.mutateAsync(
+        action === 'request'
+          ? saved.intent
+          : { requestId: saved.requestId!, action },
+      );
+      if (!mounted.current) return;
+      if (
+        result.intentId !== saved.intent.intentId ||
+        result.agentId !== saved.intent.agentId ||
+        result.text !== saved.intent.text ||
+        result.replyTo !== saved.intent.replyTo ||
+        result.actor.id !== actorId
+      )
+        throw new ProjectRoomProtocolError('Agent request changed.');
+      setHandle(result);
+      const next = { intent: saved.intent, requestId: result.requestId };
+      setRetained(next);
+      sessionStorage.setItem(storageKey, JSON.stringify(next));
+      setOpen(false);
+      setNotice('');
+      if (result.state === 'published') refresh();
+    } catch (error) {
+      if (!mounted.current) return;
+      if (
+        isProjectRoomAccessError(error) ||
+        error instanceof ProjectRoomProtocolError
+      ) {
+        setStopped(true);
+        setRetained(undefined);
+        setHandle(undefined);
+        sessionStorage.removeItem(storageKey);
+        setNotice('Agent request access changed. Check Room access.');
+      } else
+        setNotice(
+          'Agent request not confirmed. Retry the same request or inspect its handle.',
+        );
+    } finally {
+      busy.current = false;
+    }
+  }
+  const terminal =
+    handle?.state === 'published' || handle?.state === 'cancelled';
+  return (
+    <div className="project-room__agent">
+      {notice && <p role="status">{notice}</p>}
+      {handle && (
+        <p role="status">
+          Agent request: {handle.state}
+          {handle.failure ? ` · ${handle.failure.replaceAll('_', ' ')}` : ''}
+        </p>
+      )}
+      {retained ? (
+        <ActionRow
+          overflowLabel="More Agent actions"
+          primary={
+            terminal ? (
+              <Button
+                onClick={() => {
+                  sessionStorage.removeItem(storageKey);
+                  setRetained(undefined);
+                  setHandle(undefined);
+                  setNotice('');
+                }}
+              >
+                New Agent request
+              </Button>
+            ) : retained.requestId ? (
+              <Button
+                pending={agent.request.isPending}
+                disabled={stopped}
+                onClick={() => void act('reconcile')}
+              >
+                Check answer
+              </Button>
+            ) : (
+              <Button
+                pending={agent.request.isPending}
+                disabled={stopped}
+                onClick={() => void act('request')}
+              >
+                Retry same Agent request
+              </Button>
+            )
+          }
+          secondary={
+            retained.requestId && !terminal ? (
+              <Button
+                disabled={agent.request.isPending || stopped}
+                onClick={() => void act('inspect')}
+              >
+                Inspect request
+              </Button>
+            ) : undefined
+          }
+          overflow={
+            retained.requestId && !terminal
+              ? [
+                  {
+                    key: 'cancel',
+                    label: 'Cancel Agent request',
+                    disabled: agent.request.isPending || stopped,
+                    onSelect: () => {
+                      void act('cancel');
+                    },
+                  },
+                ]
+              : []
+          }
+        />
+      ) : (
+        <Button
+          disabled={
+            blocked ||
+            !ready ||
+            stopped ||
+            !prompt.trim() ||
+            new TextEncoder().encode(prompt).length >
+              PROJECT_ROOM_LIMITS.textBytes
+          }
+          onClick={() => setOpen(true)}
+        >
+          Bring an Agent
+        </Button>
+      )}
+      {open && (
+        <Dialog
+          title="Bring an Agent"
+          closeLabel="Close Agent selection"
+          onClose={() => setOpen(false)}
+          footer={
+            <Button
+              variant="primary"
+              pending={agent.request.isPending}
+              disabled={
+                !available.some((a) => a.slug === agentId) ||
+                blocked ||
+                stopped ||
+                !prompt.trim() ||
+                new TextEncoder().encode(prompt).length >
+                  PROJECT_ROOM_LIMITS.textBytes
+              }
+              onClick={() => void act('request')}
+            >
+              Ask in room
+            </Button>
+          }
+        >
+          {agent.catalog.isPending ? (
+            <SkeletonBlock label="Loading Agents" />
+          ) : agent.catalog.isError ? (
+            <p role="alert">
+              Agents unavailable.{' '}
+              <Button onClick={() => void agent.catalog.refetch()}>
+                Try again
+              </Button>
+            </p>
+          ) : agent.catalog.data?.catalogState === 'reconciling' ? (
+            <p role="status">
+              Agents are updating.{' '}
+              <Button onClick={() => void agent.catalog.refetch()}>
+                Refresh Agents
+              </Button>
+            </p>
+          ) : !available.length ? (
+            <p>No available Agents.</p>
+          ) : (
+            <label>
+              Agent
+              <select
+                className="project-room__agent-select"
+                value={agentId}
+                onChange={(event) => setAgentId(event.target.value)}
+              >
+                <option value="">Choose an Agent</option>
+                {available.map((a) => (
+                  <option key={a.slug} value={a.slug}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+          <p className="project-room__text">
+            {retained?.intent.text ?? prompt}
+          </p>
+        </Dialog>
+      )}
+    </div>
   );
 }

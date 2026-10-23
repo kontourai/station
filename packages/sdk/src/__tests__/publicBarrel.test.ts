@@ -81,6 +81,8 @@ const PUBLIC_QUERY_DOMAINS = [
  * inline reason.
  */
 const INTERNAL_QUERY_DOMAINS: Record<string, string> = {
+  projectRoomAgents:
+    'Agent request hooks are published through projectRooms on the documented project-rooms subpath, outside the eager root entry.',
   projectRooms:
     'shared Project room hooks are published only from the documented project-rooms subpath; keep the room stream and strict parsers outside the eager root entry.',
   sessionStructuralSharing:

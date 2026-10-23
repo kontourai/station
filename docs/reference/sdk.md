@@ -260,10 +260,18 @@ session storage before sending. A lost acknowledgement or reload offers an
 explicit retry of that exact payload and UUID; it never automatically resends.
 Changing authority, Project, or discovered actor retires the prior draft.
 Shared notes use revision compare-and-swap and preserve a conflicting draft for
-comparison. Agent requests appear only when the host supplies an actual
-`onRequestAgent({ prompt, replyTo? })` callback. The host owns Agent selection,
-execution, and posting the result; the room does not fabricate a private chat
-or a Task hierarchy.
+comparison. With both discussion and execution capabilities, Bring an Agent
+selects from the current scoped catalog's available Agents. `useProjectRoomAgent`
+and the React-free `projectRoomAgentRequest` client use the same explicit request
+scope. The UI retains the exact guarded Agent intent before requesting execution;
+a lost acknowledgement offers only an explicit exact retry. Once a handle is
+known, Inspect request reads its state, Check answer reconciles and publishes a
+completed answer into shared history, and Cancel Agent request fences publication.
+These actions never relaunch a known handle. Reconciliation is explicit, with no
+browser polling or implicit cancellation on unmount. Handles exclude private
+Session and execution correlation IDs. Authority or capability loss retires the
+retained browser request. Direct Agent conversations remain in the dock; Room
+requests do not create a Task hierarchy.
 
 The client tests exercise fetch responses and rejection bounds; the mounted UI
 tests exercise two independent query contexts, SSE invalidation and revocation,
