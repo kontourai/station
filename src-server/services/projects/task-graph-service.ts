@@ -1809,12 +1809,7 @@ export class TaskGraphService {
     )
       throw new TaskRelationshipError('invalid');
     const fingerprint = relationshipFingerprint('create-child', input);
-    const now = new Date().toISOString();
-    const workspaceBinding = await this.captureWorkspaceBinding(
-      input.task,
-      now,
-      'api',
-    );
+    const { task: preparedTask } = await this.prepareTaskRecord(input.task);
     return this.mutateStore((data) => {
       const parent = requireRelationshipTask(data.tasks, input.parent);
       authorizeRelationship(authority, [parent]);
@@ -1826,20 +1821,9 @@ export class TaskGraphService {
         return { data, result: { task, relationship: prior } };
       }
       const task: TaskRecord = {
-        id: crypto.randomUUID(),
-        projectId: input.task.projectId.trim(),
-        title: input.task.title.trim(),
-        description: normalizeText(input.task.description),
-        priority: input.task.priority ?? 'normal',
-        status: 'todo',
-        createdBy: normalizeText(input.task.createdBy) || 'user',
-        createdAt: now,
-        updatedAt: now,
-        workspaceBinding,
+        ...preparedTask,
         parent: input.parent,
         relationshipRevision: 1,
-        ...(input.task.agentId ? { agentId: input.task.agentId } : {}),
-        ...(input.task.skillName ? { skillName: input.task.skillName } : {}),
       };
       authorizeRelationship(authority, [parent, task]);
       validateParentChain(data.tasks, task, parent, authority);
@@ -1980,12 +1964,11 @@ export class TaskGraphService {
       }));
   }
 
-  async createTask(
+  private async prepareTaskRecord(
     input: TaskCreateInput,
     clientOrigin?: ClientOrigin,
     taskId: string = crypto.randomUUID(),
-    authorize?: () => boolean,
-  ): Promise<TaskRecord> {
+  ) {
     const sourceSurface = metricSourceSurface(
       input.workspaceBinding?.sourceSurface,
     );
@@ -2028,6 +2011,18 @@ export class TaskGraphService {
       sourceProvider: normalizeText(input.sourceProvider) || undefined,
       workItemRef: normalizeText(input.workItemRef) || undefined,
     };
+
+    return { task, workspaceBinding, sourceSurface };
+  }
+
+  async createTask(
+    input: TaskCreateInput,
+    clientOrigin?: ClientOrigin,
+    taskId: string = crypto.randomUUID(),
+    authorize?: () => boolean,
+  ): Promise<TaskRecord> {
+    const { task, workspaceBinding, sourceSurface } =
+      await this.prepareTaskRecord(input, clientOrigin, taskId);
 
     const persisted = await this.mutateStore((data) => {
       const source = input.shapingSource;

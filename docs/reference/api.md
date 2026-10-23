@@ -407,6 +407,40 @@ assistant turn in the same Project (or a conversation without a Project), parses
 same source returns the existing Task; acceptance leaves `sessionId` and `agentId` unset. The user-sourced link records `shapingTurnId`, and `proposalBriefSaved: true` only after successful seeding. Changing its destination Project is
 refused. This is Station proposal acceptance, not a Builder Kit gate receipt. Seeding uses the room runtime's human edit-plan/batch authority. A seed failure returns 503 with a recovery message after the Task and Session link have persisted; retrying the same source reuses that Task and seeds only an empty document. Concurrent accepts that commit the matching brief both succeed. A successful response is returned after seeding. This is recoverable creation across the graph and document stores, not a cross-store transaction.
 
+## Task deliverables and linked work chats
+
+The dedicated `createTaskRelationshipRoutes` factory is mounted by runtime
+composition at `/api/tasks`; the factory alone does not enable these endpoints.
+It requires request-derived Task/Project authority and current canonical
+Conversation reader capabilities. The relationship lane's mounted-route tests
+exercise a real TaskGraph store, without qualifying production composition.
+
+| Relative route | Body or query | Success data |
+| --- | --- | --- |
+| `GET /:taskId/children` | `taskCreatedAt` query | `{ task, children: TaskRecord[] }` |
+| `POST /:taskId/children` | `{ operationId, parent, task }` | `{ task: TaskRecord, relationship }` |
+| `PUT /:taskId/parent` | `{ operationId, child, parent, expectedRevision }` | `{ child, parent, previousParent, revision }` |
+| `GET /:taskId/work-chats` | `taskCreatedAt` query | `{ task, chats: [{ conversationId, revision }] }` |
+| `GET /:taskId/work-chats/:conversationId` | `taskCreatedAt` query | `{ task, conversationId, linked, revision }` |
+| `POST /:taskId/work-chats` | `{ operationId, task, conversationId, expectedRevision }` | linked association result |
+| `DELETE /:taskId/work-chats` | same body | unlinked association result |
+
+`task`, `child`, and `parent` identities use `{ taskId, taskCreatedAt }`;
+`parent: null` detaches. Child-create's `task` is the creation payload
+(`projectId`, `title`, optional `description`, `priority`, `skillName`, `agentId`).
+Operation IDs retain exact retry receipts. Changed payloads or stale revisions
+conflict; replaying a successful attach after detach cannot restore it.
+A candidate work-chat read retains the revision after unlink for explicit relink.
+
+The success envelope is `{ success: true, data }`. Refusals expose a generic
+message with `invalid` (400), `conflict` (409), or `unavailable` (404); unexpected
+store failures return 503. Lists omit unreadable children/chats without hidden
+counts. Relationships neither execute Agents nor publish Tasks/private chats,
+and child completion does not change parent status. Canonical Conversation IDs
+open through the existing chat inbox resolver, independently of dispatch Session
+identity. See [Task contracts](contracts.md#task-deliverable-and-work-chat-relationships)
+and [SDK Task mutations](sdk.md#task-mutations).
+
 ## Personal Task room agent requests
 
 `GET /api/tasks/:taskId/room/agent-requests` returns the authorized, versioned
