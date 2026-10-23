@@ -6,7 +6,7 @@
 import { TURN_COMPLETION_NOTIFICATION_SOURCE } from '@kontourai/station-contracts/notification';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { applyServerUpdateStateEvent, fetchSSE } from '@kontourai/station-sdk';
-import { useQueryClient } from '@tanstack/react-query';
+import { type QueryClient, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef } from 'react';
 import {
   useApiBase,
@@ -178,16 +178,25 @@ const DATA_HANDLERS: Record<
   },
 };
 
+function refreshEngineReadiness(queryClient: QueryClient): void {
+  queryClient.invalidateQueries({ queryKey: ['agents'] });
+  // Connection hooks do not refetch on mount, so refresh their inactive
+  // caches too before a person returns to a picker or connection detail.
+  for (const key of [
+    'connections',
+    'acp-connections',
+    'acp-unregistered-connections',
+    'acp-connection-registry',
+    'model-picker-catalog',
+  ]) {
+    queryClient.invalidateQueries({ queryKey: [key], refetchType: 'all' });
+  }
+}
+
 const EVENT_HANDLERS: Record<string, (queryClient: any) => void> = {
-  [SERVER_EVENTS.AGENTS_CHANGED]: (qc) => {
-    qc.invalidateQueries({ queryKey: ['agents'] });
-    qc.invalidateQueries({ queryKey: ['connections', 'engines'] });
-    qc.invalidateQueries({ queryKey: ['acp-connections'] });
-  },
+  [SERVER_EVENTS.AGENTS_CHANGED]: refreshEngineReadiness,
   [SERVER_EVENTS.ACP_STATUS]: (qc) => {
-    qc.invalidateQueries({ queryKey: ['agents'] });
-    qc.invalidateQueries({ queryKey: ['acp-connections'] });
-    qc.invalidateQueries({ queryKey: ['connections', 'engines'] });
+    refreshEngineReadiness(qc);
     qc.invalidateQueries({ queryKey: ['system-status'] });
   },
   [SERVER_EVENTS.CONFIG_CHANGED]: (qc) => {

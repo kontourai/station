@@ -7,7 +7,7 @@ import { expect, test } from 'vitest';
 import { invalidateQueriesForServerEvent } from '../hooks/useServerEvents';
 
 test.each([SERVER_EVENTS.AGENTS_CHANGED, SERVER_EVENTS.ACP_STATUS])(
-  '%s refreshes visible agent and engine readiness without remounting',
+  '%s refreshes visible readiness and cached connection views before reentry',
   async (event) => {
     const client = new QueryClient({
       defaultOptions: {
@@ -20,11 +20,16 @@ test.each([SERVER_EVENTS.AGENTS_CHANGED, SERVER_EVENTS.ACP_STATUS])(
       },
     });
     let readiness = 'OpenCode could not start';
-    const observers = [
+    const queryKeys = [
       ['agents'],
       ['connections', 'engines'],
+      ['connections', 'oc'],
       ['acp-connections'],
-    ].map(
+      ['acp-unregistered-connections'],
+      ['acp-connection-registry'],
+      ['model-picker-catalog'],
+    ];
+    const observers = queryKeys.map(
       (queryKey) =>
         new QueryObserver(client, {
           queryKey,
@@ -38,7 +43,7 @@ test.each([SERVER_EVENTS.AGENTS_CHANGED, SERVER_EVENTS.ACP_STATUS])(
       await Promise.all(observers.map((observer) => observer.refetch()));
       expect(
         observers.map((observer) => observer.getCurrentResult().data),
-      ).toEqual(Array(3).fill('OpenCode could not start'));
+      ).toEqual(Array(queryKeys.length).fill('OpenCode could not start'));
 
       for (const next of ['Ready', 'OpenCode initialization timed out']) {
         readiness = next;
@@ -46,9 +51,18 @@ test.each([SERVER_EVENTS.AGENTS_CHANGED, SERVER_EVENTS.ACP_STATUS])(
         await waitFor(() => {
           expect(
             observers.map((observer) => observer.getCurrentResult().data),
-          ).toEqual(Array(3).fill(next));
+          ).toEqual(Array(queryKeys.length).fill(next));
         });
       }
+
+      unsubscribe.slice(1).forEach((stop) => stop());
+      readiness = 'Ready after leaving Connections';
+      invalidateQueriesForServerEvent(event, client);
+      await waitFor(() => {
+        expect(queryKeys.map((key) => client.getQueryData(key))).toEqual(
+          Array(queryKeys.length).fill(readiness),
+        );
+      });
     } finally {
       unsubscribe.forEach((stop) => stop());
       client.clear();

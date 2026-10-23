@@ -40,8 +40,9 @@ saved settings from a check that actually reached the provider:
 Select the action on the row. Station keeps transport, process, and connection-kind details
 out of the overview; they remain available only where setup or diagnosis needs them.
 
-For an unavailable engine, open **Connections → Engines → the affected engine**
-and choose **Retry check** to retry its startup handshake. Engine repair actions
+For an unavailable ACP engine such as OpenCode, open
+**Connections → Engines → the affected engine** and choose **Retry check** to
+retry its startup handshake. Engine repair actions
 in Agents and New Chat open that connection directly. A past successful chat
 check does not hide a concrete failure observed in the engine's current state.
 
