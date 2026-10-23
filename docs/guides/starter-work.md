@@ -61,11 +61,12 @@ never creates another Task.
 4. Keep gate state, evidence, route-backs, and receipts with the work as it
    progresses.
 
-The Project's **Tasks** layout groups local Tasks by their recorded status:
-Backlog, In progress, Blocked, Review, Done, and Canceled. Select a card and
-choose **Open Task** to enter its workspace. **Refresh tasks** reads the current
-Task records; status is not a percentage complete or proof that an agent is
-running. Connected provider items retain their separate read-only behavior.
+The Project’s **Tasks** list shows each local Task’s title, recorded status,
+and assigned Agent when known. Select its title or **Open Task** to enter its
+Task Room. **Details** opens inspection and dispatch controls; the optional board
+continues to group Tasks by status. **Refresh tasks** reads current Task records.
+Status is not a percentage complete or proof that an Agent is running. Connected
+provider items retain their separate read-only behavior.
 The Task workspace opens on **Chat** and makes the viewer present. **Brief** is
 the autosaved shared plan; its Goal and checklist appear beside desktop Chat.
 **Results** collects kept answers, file outputs and pull requests. **Details**
