@@ -4,7 +4,7 @@ import {
   mkdir,
   mkdtemp,
   open,
-  readdir,
+  opendir,
   rename,
   rm,
   rmdir,
@@ -179,12 +179,17 @@ export async function verifyTelemetryCompanion(directory) {
     throw new Error('Invalid build-only companion manifest');
   const actual = [];
   async function inventory(path, prefix = '') {
-    for (const entry of await readdir(path, { withFileTypes: true })) {
+    for await (const entry of await opendir(path)) {
       const name = `${prefix}${entry.name}`;
-      if (entry.isDirectory())
+      if (entry.isDirectory()) {
+        if (!FILES.some((file) => file.startsWith(`${name}/`)))
+          throw new Error('Companion package contains an unexpected directory');
         await inventory(join(path, entry.name), `${name}/`);
-      else if (entry.isFile()) actual.push(name);
-      else
+      } else if (entry.isFile()) {
+        actual.push(name);
+        if (actual.length > FILES.length + 1)
+          throw new Error('Companion package inventory exceeds its bound');
+      } else
         throw new Error(
           'Companion packages cannot contain links or special files',
         );
@@ -201,6 +206,40 @@ export async function verifyTelemetryCompanion(directory) {
     if (value.length !== file.bytes || digest(value) !== file.sha256)
       throw new Error(`Companion package digest mismatch: ${file.path}`);
   }
+  const receiver = JSON.parse(
+    (await bytes(join(directory, 'dist/artifact-manifest.json'))).toString(),
+  );
+  if (
+    receiver.kind !== 'station-product-receiver-build' ||
+    receiver.scope !== 'build-only' ||
+    receiver.provenance?.head !== manifest.source ||
+    receiver.provenance?.dirty === true
+  )
+    throw new Error('Companion source differs from its receiver build');
+  const compose = load(
+    (await bytes(join(directory, 'deployment/compose.yaml'))).toString(),
+  );
+  const diagnostics = load(
+    (
+      await bytes(join(directory, 'deployment/compose.diagnostics.yaml'))
+    ).toString(),
+  );
+  const runtimeImage = (await bytes(join(directory, 'Dockerfile')))
+    .toString()
+    .match(/^FROM (\S+@sha256:[a-f0-9]{64})$/m)?.[1];
+  const images = [
+    ...new Set([
+      ...imagePins(compose),
+      ...imagePins(diagnostics),
+      runtimeImage,
+    ]),
+  ].sort();
+  if (
+    !runtimeImage ||
+    compose.services?.receiver?.build !== undefined ||
+    JSON.stringify(images) !== JSON.stringify(manifest.images)
+  )
+    throw new Error('Companion image inventory differs from its deployment');
   return manifest;
 }
 

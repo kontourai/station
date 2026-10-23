@@ -53,7 +53,7 @@ test('packages the real receiver and standalone pinned deployment without claimi
   ).toContain('USER node');
 });
 
-test('rejects changed bundles, extra payloads, links and a manifest promoted to release scope', async () => {
+test('rejects changed bundles, extra payloads and a manifest promoted to release scope', async () => {
   const { directory } = await packageTelemetryCompanion(
     join(makeTempDir('companion-integrity-'), 'output'),
   );
@@ -70,16 +70,6 @@ test('rejects changed bundles, extra payloads, links and a manifest promoted to 
     'inventory differs',
   );
   await rm(extra);
-  await rm(bundlePath);
-  await symlink(
-    join(process.cwd(), 'packages/telemetry-broker/dist/main.mjs'),
-    bundlePath,
-  );
-  await expect(verifyTelemetryCompanion(directory)).rejects.toThrow(
-    'links or special files',
-  );
-  await rm(bundlePath);
-  await writeFile(bundlePath, original);
   const manifestPath = join(directory, 'companion-manifest.json');
   const manifest = await readFile(manifestPath);
   await writeFile(
@@ -103,4 +93,50 @@ test('never replaces an existing installation directory', async () => {
     code: 'EEXIST',
   });
   expect(await readFile(join(output, 'retained-data'), 'utf8')).toBe('keep');
+});
+
+test.skipIf(process.platform === 'win32')(
+  'rejects a linked receiver bundle',
+  async () => {
+    const { directory } = await packageTelemetryCompanion(
+      join(makeTempDir('companion-link-'), 'output'),
+    );
+    const bundlePath = join(directory, 'dist/main.mjs');
+    await rm(bundlePath);
+    await symlink(
+      join(process.cwd(), 'packages/telemetry-broker/dist/main.mjs'),
+      bundlePath,
+    );
+    await expect(verifyTelemetryCompanion(directory)).rejects.toThrow(
+      'links or special files',
+    );
+  },
+);
+
+test('rejects a descriptor that disagrees with the packaged receiver or images', async () => {
+  const { directory } = await packageTelemetryCompanion(
+    join(makeTempDir('companion-descriptor-'), 'output'),
+  );
+  const path = join(directory, 'companion-manifest.json');
+  const original = await readFile(path);
+  const manifest = JSON.parse(original.toString());
+  await writeFile(
+    path,
+    JSON.stringify({ ...manifest, source: '0'.repeat(40) }),
+  );
+  await expect(verifyTelemetryCompanion(directory)).rejects.toThrow(
+    'source differs',
+  );
+  await writeFile(
+    path,
+    JSON.stringify({ ...manifest, images: [...manifest.images].reverse() }),
+  );
+  await expect(verifyTelemetryCompanion(directory)).rejects.toThrow(
+    'image inventory differs',
+  );
+  await writeFile(path, original);
+  await expect(verifyTelemetryCompanion(directory)).resolves.toHaveProperty(
+    'scope',
+    'build-only',
+  );
 });
