@@ -198,6 +198,85 @@ describe('StationFixtureOwner', () => {
   });
 
   it.each([
+    ['witnessed kernel workqueue', {}, 'lsof'],
+    ['missing workqueue flag', { flags: '2097152' }, 'none'],
+    ['missing kernel-thread flag', { flags: '32' }, 'none'],
+    ['io worker', { flags: '69238896' }, 'none'],
+    ['user worker', { flags: '69255264' }, 'none'],
+    ['reused candidate', { afterStart: '4' }, 'none'],
+    ['unbound original birth', { beforeStart: '4', afterStart: '4' }, 'none'],
+    ['changed flags', { afterFlags: '2097152' }, 'none'],
+    ['different parent', { parent: '4' }, 'none'],
+    ['namespace user PID 2', { rootFlags: '0' }, 'none'],
+    ['reused parent identity', { rootAfterStart: '4' }, 'none'],
+    ['changed parent flags', { rootAfterFlags: '0' }, 'none'],
+    ['newer parent identity', { rootStart: '3' }, 'none'],
+    ['different boot', { boot: 'other' }, 'none'],
+    ['changed boot', { afterBoot: 'other' }, 'none'],
+    ['unavailable metadata', { unavailable: true }, 'none'],
+  ])('bounds an unreadable cwd by %s', (_name, change, expected) => {
+    const sample = {
+      flags: '69238880',
+      afterFlags: '69238880',
+      beforeStart: '3',
+      afterStart: '3',
+      parent: '2',
+      rootFlags: '2097152',
+      rootAfterFlags: '2097152',
+      rootStart: '1',
+      rootAfterStart: '1',
+      boot: 'boot',
+      afterBoot: 'boot',
+      unavailable: false,
+      ...change,
+    };
+    let reads = 0;
+    let rootReads = 0;
+    let bootReads = 0;
+    const stat = (
+      pid: number,
+      parent: string,
+      flags: string,
+      start: string,
+    ) => {
+      const fields = Array<string>(20).fill('0');
+      fields[0] = 'I';
+      fields[1] = parent;
+      fields[6] = flags;
+      fields[19] = start;
+      return `${pid} (private-fixture-token) ${fields.join(' ')}`;
+    };
+    const observed = observeFixtureCwds(
+      [tmpdir()],
+      () => ({
+        signal: null,
+        status: 0,
+        stdout: `p${process.pid}\nfcwd\nn${realpathSync(tmpdir())}\np123\nfcwd\nn/proc/123/cwd (readlink: Permission denied)\n`,
+      }),
+      {
+        platform: 'linux',
+        birth: (pid) => `linux:boot:${pid === process.pid ? '2' : '3'}`,
+        readProcFile: (path) => {
+          if (sample.unavailable) throw new Error('private-fixture-token');
+          if (path === '/proc/123/stat')
+            return ++reads === 1
+              ? stat(123, sample.parent, sample.flags, sample.beforeStart)
+              : stat(123, sample.parent, sample.afterFlags, sample.afterStart);
+          if (path === '/proc/2/stat')
+            return ++rootReads === 1
+              ? stat(2, '0', sample.rootFlags, sample.rootStart)
+              : stat(2, '0', sample.rootAfterFlags, sample.rootAfterStart);
+          if (path === '/proc/sys/kernel/random/boot_id')
+            return ++bootReads === 1 ? sample.boot : sample.afterBoot;
+          throw new Error('private-fixture-token');
+        },
+      },
+    );
+    expect(observed.source).toBe(expected);
+    expect(JSON.stringify(observed)).not.toContain('private-fixture-token');
+  });
+
+  it.each([
     [null, '/proc/1/cwd (readlink: Permission denied)'],
     ['linux:boot:2', '/proc/1/cwd (readlink: No such file or directory)'],
     ['linux:boot:2', 'relative (readlink: Permission denied)'],

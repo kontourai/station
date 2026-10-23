@@ -145,29 +145,73 @@ type CwdProcessObservation = {
   readProcFile?: (path: string) => string;
 };
 
+function readLinuxCwdProcessStat(pid: number, read: (path: string) => string) {
+  const value = read(`/proc/${pid}/stat`);
+  if (!value.startsWith(`${pid} (`)) throw new Error('invalid pid');
+  const fields = value
+    .slice(value.lastIndexOf(')') + 1)
+    .trim()
+    .split(/\s+/);
+  if (
+    !/^[RSDZTtWXxKWPIN]$/.test(fields[0] ?? '') ||
+    !/^\d{1,10}$/.test(fields[1] ?? '') ||
+    !/^\d{1,20}$/.test(fields[6] ?? '') ||
+    !/^\d{1,20}$/.test(fields[19] ?? '')
+  )
+    throw new Error('invalid stat');
+  return fields;
+}
+
+function witnessedKernelWorkqueue(
+  pid: number,
+  originalBirth: string,
+  workerBirth: string,
+  read: ((path: string) => string) | undefined,
+): boolean {
+  if (!read || pid <= 2) return false;
+  try {
+    const boot = read('/proc/sys/kernel/random/boot_id').trim();
+    const worker = /^linux:([^:]+):(\d+)$/.exec(workerBirth);
+    if (!worker || boot !== worker[1]) return false;
+    const candidate = readLinuxCwdProcessStat(pid, read);
+    const candidateFlags = BigInt(candidate[6]);
+    // Linux 6.17 workqueue.c creates workers through kthreadd; ordinary
+    // fork/clone clears these bits. IO/user workers remain user lineage.
+    if (
+      candidate[1] !== '2' ||
+      (candidateFlags & 0x00200020n) !== 0x00200020n ||
+      (candidateFlags & 0x00004010n) !== 0n ||
+      originalBirth !== `linux:${boot}:${candidate[19]}`
+    )
+      return false;
+    const parent = readLinuxCwdProcessStat(2, read);
+    if (
+      parent[1] !== '0' ||
+      (BigInt(parent[6]) & 0x00200000n) === 0n ||
+      BigInt(parent[19]) >= BigInt(worker[2])
+    )
+      return false;
+    const candidateAfter = readLinuxCwdProcessStat(pid, read);
+    const parentAfter = readLinuxCwdProcessStat(2, read);
+    return (
+      [1, 6, 19].every(
+        (field) =>
+          candidate[field] === candidateAfter[field] &&
+          parent[field] === parentAfter[field],
+      ) && boot === read('/proc/sys/kernel/random/boot_id').trim()
+    );
+  } catch {
+    return false;
+  }
+}
+
 function describeDeniedLinuxProcess(
   pid: number,
   workerBirth: string | null,
   read: (path: string) => string,
 ): string {
   try {
-    const stat = () => {
-      const value = read(`/proc/${pid}/stat`);
-      if (!value.startsWith(`${pid} (`)) throw new Error('invalid pid');
-      const fields = value
-        .slice(value.lastIndexOf(')') + 1)
-        .trim()
-        .split(/\s+/);
-      if (
-        !/^[RSDZTtWXxKWPIN]$/.test(fields[0] ?? '') ||
-        !/^\d{1,10}$/.test(fields[1] ?? '') ||
-        !/^\d{1,20}$/.test(fields[6] ?? '') ||
-        !/^\d{1,20}$/.test(fields[19] ?? '')
-      )
-        throw new Error('invalid stat');
-      return fields;
-    };
-    const before = stat();
+    const before = readLinuxCwdProcessStat(pid, read);
     const boot = read('/proc/sys/kernel/random/boot_id').trim();
     const status = read(`/proc/${pid}/status`);
     const tgid = /^Tgid:[ \t]*(\d{1,10})$/m.exec(status)?.[1];
@@ -178,7 +222,7 @@ function describeDeniedLinuxProcess(
     const kernel = read('/proc/sys/kernel/osrelease').trim();
     if (!tgid || !uid || !/^[A-Za-z0-9._+-]{1,100}$/.test(kernel))
       return 'proc=malformed';
-    const after = stat();
+    const after = readLinuxCwdProcessStat(pid, read);
     const stable =
       before[19] === after[19] &&
       boot === read('/proc/sys/kernel/random/boot_id').trim();
@@ -210,7 +254,15 @@ function fixtureBirthRejection(
   if (!worker) return 'birth-worker-invalid';
   if (!candidate) return 'birth-candidate-invalid';
   if (candidate[1] !== worker[1]) return 'birth-boot-mismatch';
-  if (BigInt(candidate[2]) >= BigInt(worker[2])) return 'birth-not-earlier';
+  if (BigInt(candidate[2]) >= BigInt(worker[2]))
+    return witnessedKernelWorkqueue(
+      pid,
+      candidate[0],
+      worker[0],
+      observation.readProcFile,
+    )
+      ? null
+      : 'birth-not-earlier';
   return observation.birth(pid) === before ? null : 'birth-changed';
 }
 
@@ -283,7 +335,8 @@ export function observeFixtureCwds(
     const reportedCwd = line.slice(1).replace(/ \(deleted\)$/, '');
     if (/ \(readlink: [^\n]*\)$/.test(reportedCwd)) {
       // Fixture descendants cannot predate the worker that launched them.
-      // Unavailable, reused or contemporaneous identities remain unknown.
+      // Unavailable or reused identities remain unknown; contemporaneous
+      // identities need an independently witnessed kernel-workqueue lineage.
       const rejection = !processObservation
         ? 'scope-absent'
         : reportedCwd !== `/proc/${pid}/cwd (readlink: Permission denied)`
