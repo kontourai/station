@@ -111,6 +111,7 @@ export function ProjectDocumentImport({
     canManage ? saved?.rootId : undefined,
     canManage ? saved?.requestId : undefined,
   );
+  const currentReceipt = receipt.isPlaceholderData ? undefined : receipt.data;
   const eligible = roots.filter(
     (root) =>
       root.projectId === projectId &&
@@ -230,9 +231,10 @@ export function ProjectDocumentImport({
       !saved ||
       !savedRoot ||
       busy ||
+      receipt.isPlaceholderData ||
       receipt.isError ||
       receipt.isFetching ||
-      !receipt.data
+      !currentReceipt
     )
       return;
     setError(undefined);
@@ -309,7 +311,7 @@ export function ProjectDocumentImport({
             </p>
           ) : (
             <>
-              {receipt.isPending ? (
+              {receipt.isPending || receipt.isPlaceholderData ? (
                 <SkeletonBlock count={1} label="Checking saved import" />
               ) : receipt.isError ? (
                 <p role="alert">
@@ -318,9 +320,9 @@ export function ProjectDocumentImport({
                 </p>
               ) : (
                 <>
-                  <p>Import status: {receipt.data?.phase}</p>
+                  <p>Import status: {currentReceipt?.phase}</p>
                   <ul>
-                    {receipt.data?.documents.map((file) => (
+                    {currentReceipt?.documents.map((file) => (
                       <li key={file.recordId}>
                         {file.filename}: {file.phase}
                       </li>
@@ -339,8 +341,8 @@ export function ProjectDocumentImport({
                   </Button>
                 }
                 secondary={
-                  receipt.data &&
-                  ['pending', 'partial'].includes(receipt.data.phase) ? (
+                  currentReceipt &&
+                  ['pending', 'partial'].includes(currentReceipt.phase) ? (
                     <Button
                       disabled={
                         busy ||
@@ -355,7 +357,7 @@ export function ProjectDocumentImport({
                   ) : undefined
                 }
                 overflow={[
-                  ...(receipt.data?.documents.some(
+                  ...(currentReceipt?.documents.some(
                     (file) => file.phase === 'uncertain',
                   )
                     ? [
@@ -479,6 +481,7 @@ export function ProjectDocumentImport({
           !canManage ||
           busy ||
           !savedRoot ||
+          receipt.isPlaceholderData ||
           receipt.isError ||
           receipt.isFetching
         }

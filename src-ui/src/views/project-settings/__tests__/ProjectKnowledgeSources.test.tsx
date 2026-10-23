@@ -15,6 +15,7 @@ const state = vi.hoisted(() => ({
   manage: true,
   capabilitiesError: false,
   checkingPermissions: false,
+  placeholderPermissions: false,
   create: vi.fn(),
   attach: vi.fn(),
   validate: vi.fn(),
@@ -40,6 +41,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useKnowledgeSourceCapabilitiesQuery: () => ({
     isError: state.capabilitiesError,
     isFetching: state.checkingPermissions,
+    isPlaceholderData: state.placeholderPermissions,
     error: new Error('Permissions unavailable'),
     data: {
       canManageSources: state.manage,
@@ -67,6 +69,7 @@ beforeEach(() => {
   state.manage = true;
   state.capabilitiesError = false;
   state.checkingPermissions = false;
+  state.placeholderPermissions = false;
   state.roots = [root];
   state.validate.mockResolvedValue({ ok: true });
   state.create.mockResolvedValue(root);
@@ -278,45 +281,50 @@ test.each([
   },
 );
 
-test('an open confirmation waits for a fresh permission check before becoming actionable', () => {
-  const view = render(
-    <ProjectKnowledgeSources
-      slug="acme"
-      projectId="project-acme"
-      authority={authority}
-    />,
-  );
-  fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
-  state.checkingPermissions = true;
-  view.rerender(
-    <ProjectKnowledgeSources
-      slug="acme"
-      projectId="project-acme"
-      authority={authority}
-    />,
-  );
-  const dialog = screen.getByRole('dialog', {
-    name: 'Disconnect knowledge source?',
-  });
-  expect(
-    within(dialog)
-      .getByRole('button', { name: 'Disconnect' })
-      .hasAttribute('disabled'),
-  ).toBe(true);
-  expect(
-    within(dialog).getByText('Checking source management permission…'),
-  ).toBeTruthy();
-  state.checkingPermissions = false;
-  view.rerender(
-    <ProjectKnowledgeSources
-      slug="acme"
-      projectId="project-acme"
-      authority={authority}
-    />,
-  );
-  expect(
-    within(dialog)
-      .getByRole('button', { name: 'Disconnect' })
-      .hasAttribute('disabled'),
-  ).toBe(false);
-});
+test.each(['fetching', 'placeholder'])(
+  'an open confirmation waits for %s permissions before becoming actionable',
+  (status) => {
+    const view = render(
+      <ProjectKnowledgeSources
+        slug="acme"
+        projectId="project-acme"
+        authority={authority}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+    state.checkingPermissions = status === 'fetching';
+    state.placeholderPermissions = status === 'placeholder';
+    view.rerender(
+      <ProjectKnowledgeSources
+        slug="acme"
+        projectId="project-acme"
+        authority={authority}
+      />,
+    );
+    const dialog = screen.getByRole('dialog', {
+      name: 'Disconnect knowledge source?',
+    });
+    expect(
+      within(dialog)
+        .getByRole('button', { name: 'Disconnect' })
+        .hasAttribute('disabled'),
+    ).toBe(true);
+    expect(
+      within(dialog).getByText('Checking source management permission…'),
+    ).toBeTruthy();
+    state.checkingPermissions = false;
+    state.placeholderPermissions = false;
+    view.rerender(
+      <ProjectKnowledgeSources
+        slug="acme"
+        projectId="project-acme"
+        authority={authority}
+      />,
+    );
+    expect(
+      within(dialog)
+        .getByRole('button', { name: 'Disconnect' })
+        .hasAttribute('disabled'),
+    ).toBe(false);
+  },
+);

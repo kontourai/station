@@ -32,13 +32,18 @@ export function ProjectKnowledgeSources({
   const roots = useKnowledgeRootsQuery({
     requestScope: authority,
     requireRequestScope: true,
+    keepPreviousData: false,
   });
   const adapters = useKnowledgeAdaptersQuery({
     requestScope: authority,
     requireRequestScope: true,
+    keepPreviousData: false,
   });
   const capabilities = useKnowledgeSourceCapabilitiesQuery(authority);
-  const checkingPermissions = capabilities.isPending || capabilities.isFetching;
+  const checkingPermissions =
+    capabilities.isPending ||
+    capabilities.isFetching ||
+    capabilities.isPlaceholderData;
   const canManage =
     !checkingPermissions &&
     !capabilities.isError &&
@@ -320,6 +325,9 @@ export function ProjectKnowledgeSources({
             </p>
           )}
         </>
+      )}
+      {checkingPermissions && (
+        <p role="status">Checking source management permission…</p>
       )}
       {capabilities.isError && (
         <div role="alert">

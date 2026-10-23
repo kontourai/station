@@ -34,6 +34,7 @@ export function ProjectWorkspaceSelection({
   const resolution = useProjectResolutionQuery(slug, {
     requestScope: authority,
     requireRequestScope: true,
+    keepPreviousData: false,
   });
   const [draft, setDraft] = useState<Draft | null>(null);
   const repoInput = useId(),

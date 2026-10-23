@@ -600,6 +600,7 @@ export function ResourcesSection({
     useProjectResolutionQuery(slug, {
       requestScope,
       requireRequestScope: embedded,
+      keepPreviousData: false,
     });
 
   return (

@@ -22,6 +22,7 @@ const state = vi.hoisted(() => ({
   data: undefined as KnowledgeDocumentImportReceipt | undefined,
   error: false,
   fetching: false,
+  placeholder: false,
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   useImportKnowledgeDocumentsMutation: () => ({ mutateAsync: state.upload }),
@@ -32,6 +33,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     data: state.data,
     isError: state.error,
     isFetching: state.fetching,
+    isPlaceholderData: state.placeholder,
     refetch: state.refetch,
   }),
 }));
@@ -57,7 +59,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
   state.data = undefined;
-  state.error = state.fetching = false;
+  state.error = state.fetching = state.placeholder = false;
   vi.stubGlobal('crypto', webcrypto);
 });
 afterEach(() => {
@@ -239,4 +241,41 @@ test('recovery survives a new live activation without resending the import', () 
   expect(screen.getByText(/Saved import:/)).toBeTruthy();
   expect(state.upload).not.toHaveBeenCalled();
   expect(state.resume).not.toHaveBeenCalled();
+});
+
+test('held import receipts cannot authorize continuation or an already open uncertain retry', () => {
+  saved();
+  const view = render(<ProjectDocumentImport {...props} />);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'More saved import actions' }),
+  );
+  fireEvent.click(
+    screen.getByRole('menuitem', { name: 'Review uncertain retry' }),
+  );
+  state.placeholder = true;
+  view.rerender(<ProjectDocumentImport {...props} />);
+  const confirm = screen.getByRole('button', {
+    name: 'Retry missing documents',
+  });
+  expect(confirm.hasAttribute('disabled')).toBe(true);
+  fireEvent.click(confirm);
+  expect(state.resume).not.toHaveBeenCalled();
+  expect(screen.queryByText('Import status: uncertain')).toBeNull();
+  expect(screen.getByText(/Saved import:/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  state.data = { ...state.data!, phase: 'partial' };
+  view.rerender(<ProjectDocumentImport {...props} />);
+  expect(
+    screen.queryByRole('button', { name: 'Continue saved import' }),
+  ).toBeNull();
+  state.placeholder = false;
+  view.rerender(<ProjectDocumentImport {...props} />);
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Continue saved import' }),
+  );
+  expect(state.resume).toHaveBeenCalledWith({
+    expectedRoot: root,
+    requestId: state.data.requestId,
+    retryUncertain: false,
+  });
 });

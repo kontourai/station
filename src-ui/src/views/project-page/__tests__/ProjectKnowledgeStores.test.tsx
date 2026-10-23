@@ -9,6 +9,7 @@ const state = vi.hoisted(() => ({
   manage: true,
   error: false,
   graphError: false,
+  placeholderPermissions: false,
   create: vi.fn(),
   recall: vi.fn(),
 }));
@@ -21,6 +22,7 @@ vi.mock('../../../contexts/ApiBaseContext', () => ({
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
   useKnowledgeSourceCapabilitiesQuery: () => ({
+    isPlaceholderData: state.placeholderPermissions,
     data: {
       canManageSources: state.manage,
       canAttachLegacy: state.manage,
@@ -58,6 +60,7 @@ beforeEach(() => {
   state.manage = true;
   state.error = false;
   state.graphError = false;
+  state.placeholderPermissions = false;
   state.create.mockClear();
   state.recall.mockClear();
 });
@@ -190,4 +193,22 @@ test('a read-only Project connection does not offer store creation', () => {
   render(<ProjectKnowledgeStores slug="demo" projectId="project-demo" />);
   expect(screen.queryByRole('button', { name: 'Create store' })).toBeNull();
   expect(state.create).not.toHaveBeenCalled();
+});
+
+test('held permissions cannot authorize store creation', () => {
+  state.placeholderPermissions = true;
+  const view = render(
+    <ProjectKnowledgeStores slug="demo" projectId="project-demo" />,
+  );
+  expect(screen.queryByRole('button', { name: 'Create store' })).toBeNull();
+  expect(screen.getByRole('status').textContent).toContain(
+    'Checking store permissions',
+  );
+  expect(state.create).not.toHaveBeenCalled();
+  state.placeholderPermissions = false;
+  view.rerender(
+    <ProjectKnowledgeStores slug="demo" projectId="project-demo" />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Create store' }));
+  expect(state.create).toHaveBeenCalledOnce();
 });

@@ -33,6 +33,7 @@ function StoreRecords({
     return useKnowledgeGraphQuery(rootId, {
       requestScope: authority,
       requireRequestScope: true,
+      keepPreviousData: false,
     });
   }
   function useScopedRecord(
@@ -42,6 +43,7 @@ function StoreRecords({
     return useKnowledgeRecordQuery(rootId, recordId, {
       requestScope: authority,
       requireRequestScope: true,
+      keepPreviousData: false,
     });
   }
   const authorityKey = knowledgeRootIncarnationKey(root);
@@ -117,6 +119,7 @@ function ScopedProjectKnowledgeStores({
   const roots = useKnowledgeRootsQuery({
     requestScope: authority,
     requireRequestScope: true,
+    keepPreviousData: false,
   });
   const create = useCreateKnowledgeRootMutation(authority);
   const capabilities = useKnowledgeSourceCapabilitiesQuery(authority);
@@ -148,6 +151,7 @@ function ScopedProjectKnowledgeStores({
           !roots.isError &&
           !capabilities.isError &&
           !capabilities.isPending &&
+          !capabilities.isPlaceholderData &&
           !capabilities.isFetching &&
           capabilities.data?.canManageSources ? (
             <Button
@@ -166,6 +170,9 @@ function ScopedProjectKnowledgeStores({
           ) : undefined
         }
       />
+      {capabilities.isPlaceholderData && (
+        <p role="status">Checking store permissions…</p>
+      )}
       {roots.isLoading ? (
         <Skeleton variant="line" />
       ) : roots.isError ? (
