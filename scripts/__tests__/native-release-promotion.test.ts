@@ -789,7 +789,7 @@ describe('one-revision native promotion contract', () => {
       default: 'build-and-upload',
     });
     expect(ios.if).toBe('$' + "{{ inputs.delivery != 'upload' }}");
-    expect(iosUpload.needs).toBe('deliver');
+    expect(iosUpload.needs).toEqual(['deliver', 'advisory']);
     expect(iosUpload.if).toContain("inputs.delivery != 'build'");
     expect(iosUpload.if).toContain("needs.deliver.result == 'success'");
     expect(iosUpload.if).toContain(

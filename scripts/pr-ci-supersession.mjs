@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { github, listGithub } from './qualification-evidence.mjs';
 
-// Only read-only PR verification is disposable. Publishers, merge candidates,
-// manual diagnostics and landing/repair automation retain their own lifetimes.
+// Read-only verification is disposable after exact supersession. Merge candidates
+// additionally require a live replacement and a destroyed/displaced old ref.
 const WORKFLOWS = new Set([
   '.github/workflows/ci.yml',
   '.github/workflows/build-ios.yml',
@@ -434,9 +434,245 @@ async function settleObsoleteCancellation(run, pr, number, repository) {
   );
 }
 
+const GROUP_BRANCH = /^gh-readonly-queue\/main\/pr-([1-9][0-9]*)-[0-9a-f]{40}$/;
+
+async function groupRef(branch) {
+  const path = `git/ref/heads/${branch}`;
+  try {
+    const ref = await github(path);
+    if (ref.ref !== `refs/heads/${branch}` || !SHA.test(ref.object?.sha ?? ''))
+      throw new Error('Ambiguous merge candidate ref');
+    return ref.object.sha;
+  } catch (error) {
+    // Only an authoritative 404 means destroyed. Auth/transport failures never do.
+    if (error.message === `GitHub GET ${path}: HTTP 404`) return null;
+    throw error;
+  }
+}
+
+function sameGroupRun(live, run, workflow, repository) {
+  return (
+    Number.isSafeInteger(live.id) &&
+    live.id > 0 &&
+    live.id === run.id &&
+    live.run_attempt === run.run_attempt &&
+    Number.isSafeInteger(live.run_attempt) &&
+    live.run_attempt > 0 &&
+    live.workflow_id === workflow.id &&
+    live.path === workflow.path &&
+    live.event === 'merge_group' &&
+    live.head_repository?.full_name === repository &&
+    live.head_sha === run.head_sha &&
+    SHA.test(live.head_sha ?? '') &&
+    live.head_branch === run.head_branch &&
+    GROUP_BRANCH.test(live.head_branch ?? '')
+  );
+}
+
+// Queue squash commits intentionally do not retain the original PR head ancestry.
+// GitHub's live entry binds the current PR head to its synthetic commit instead.
+async function queueSourceBinding(number, source, run, repository) {
+  const endpoint =
+    process.env.GITHUB_GRAPHQL_URL ||
+    `${process.env.GITHUB_API_URL || 'https://api.github.com'}/graphql`;
+  const url = new URL(endpoint);
+  if (
+    url.protocol !== 'https:' &&
+    !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+  )
+    throw new Error('GitHub GraphQL must use HTTPS');
+  const [owner, name] = repository.split('/');
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    redirect: 'error',
+    signal: AbortSignal.timeout(30_000),
+    headers: {
+      'Content-Type': 'application/json',
+      ...(process.env.GH_TOKEN
+        ? { Authorization: `Bearer ${process.env.GH_TOKEN}` }
+        : {}),
+    },
+    body: JSON.stringify({
+      query: `query($owner:String!,$name:String!,$number:Int!) {
+      repository(owner:$owner,name:$name) { pullRequest(number:$number) {
+        mergeQueueEntry { id state headCommit { oid } baseCommit { oid }
+          pullRequest { number headRefOid baseRefName headRepository { nameWithOwner } }
+        }
+      } }
+    }`,
+      variables: { owner, name, number },
+    }),
+  });
+  if (!response.ok)
+    throw new Error(`GitHub queue authority: HTTP ${response.status}`);
+  const result = await response.json();
+  if (result.errors?.length)
+    throw new Error('GitHub queue authority query failed');
+  const pr = result.data?.repository?.pullRequest;
+  if (pr === null) return null;
+  if (!pr || !Object.hasOwn(pr, 'mergeQueueEntry'))
+    throw new Error('Incomplete GitHub queue authority response');
+  const entry = pr.mergeQueueEntry;
+  const base = run.head_branch.slice(-40);
+  if (
+    !entry ||
+    typeof entry.id !== 'string' ||
+    !entry.id ||
+    !['QUEUED', 'AWAITING_CHECKS', 'MERGEABLE', 'LOCKED'].includes(
+      entry.state,
+    ) ||
+    entry.headCommit?.oid !== run.head_sha ||
+    entry.baseCommit?.oid !== base ||
+    entry.pullRequest?.number !== number ||
+    entry.pullRequest.headRefOid !== source ||
+    entry.pullRequest.baseRefName !== 'main' ||
+    entry.pullRequest.headRepository?.nameWithOwner !== repository
+  )
+    return null;
+  return JSON.stringify([
+    entry.id,
+    run.head_sha,
+    base,
+    number,
+    source,
+    repository,
+  ]);
+}
+
+async function retireReplacedGroups(trigger, repository) {
+  const workflow = await github('actions/workflows/ci.yml');
+  if (
+    workflow.path !== '.github/workflows/ci.yml' ||
+    workflow.name !== 'PR: CI'
+  )
+    throw new Error('Untrusted merge-candidate workflow');
+  const replacement = await github(`actions/runs/${trigger.id}`);
+  if (!sameGroupRun(replacement, trigger, workflow, repository)) {
+    console.log(
+      'Merge retirement skipped: trigger no longer matches its live run attempt',
+    );
+    return;
+  }
+  const number = Number(GROUP_BRANCH.exec(replacement.head_branch)[1]);
+  const owner = await github(`pulls/${number}`);
+  if (
+    owner.state !== 'open' ||
+    owner.base?.ref !== 'main' ||
+    owner.head?.repo?.full_name !== repository ||
+    !SHA.test(owner.head?.sha ?? '')
+  )
+    return;
+  if ((await groupRef(replacement.head_branch)) !== replacement.head_sha) {
+    console.log(
+      'Merge retirement skipped: replacement queue ref is absent or changed',
+    );
+    return;
+  }
+  const authority = await queueSourceBinding(
+    number,
+    owner.head.sha,
+    replacement,
+    repository,
+  );
+  if (!authority) {
+    console.log(
+      `Merge retirement skipped for #${number}: no live queue entry binds this candidate to the current PR head`,
+    );
+    return;
+  }
+  let requested = 0;
+  const runs = [];
+  for (const status of ['queued', 'pending', 'in_progress']) {
+    runs.push(
+      ...(await completeListing(
+        `actions/workflows/${workflow.id}/runs?event=merge_group&status=${status}`,
+        'workflow_runs',
+      )),
+    );
+  }
+  for (const run of new Map(runs.map((run) => [run.id, run])).values()) {
+    if (
+      !sameGroupRun(run, run, workflow, repository) ||
+      Number(GROUP_BRANCH.exec(run.head_branch)[1]) !== number ||
+      run.head_sha === replacement.head_sha ||
+      run.id === replacement.id ||
+      !(Date.parse(run.created_at) < Date.parse(replacement.created_at))
+    )
+      continue;
+    const live = await github(`actions/runs/${run.id}`);
+    if (
+      !sameGroupRun(live, run, workflow, repository) ||
+      !LIVE_RUN_STATES.has(live.status)
+    )
+      continue;
+    const jobs = await completeListing(
+      `actions/runs/${run.id}/attempts/${run.run_attempt}/jobs`,
+      'jobs',
+    );
+    if (
+      !jobs.every(
+        (job) =>
+          job.run_id === run.id &&
+          job.run_attempt === run.run_attempt &&
+          job.head_sha === run.head_sha &&
+          Object.hasOwn(job, 'runner_id') &&
+          (job.runner_id === null ||
+            (Number.isSafeInteger(job.runner_id) && job.runner_id >= 0)),
+      )
+    )
+      throw new Error('Ambiguous obsolete merge-candidate jobs');
+    const latest = await github(`actions/runs/${replacement.id}`);
+    const currentOwner = await github(`pulls/${number}`);
+    const finalRun = await github(`actions/runs/${run.id}`);
+    if (
+      !sameGroupRun(latest, replacement, workflow, repository) ||
+      !sameGroupRun(finalRun, run, workflow, repository) ||
+      !LIVE_RUN_STATES.has(finalRun.status) ||
+      currentOwner.state !== 'open' ||
+      currentOwner.base?.ref !== 'main' ||
+      currentOwner.head?.sha !== owner.head.sha ||
+      currentOwner.head?.repo?.full_name !== repository
+    )
+      continue;
+    if (
+      (await groupRef(replacement.head_branch)) !== replacement.head_sha ||
+      (await groupRef(run.head_branch)) === run.head_sha
+    )
+      continue;
+    if (
+      (await queueSourceBinding(number, owner.head.sha, latest, repository)) !==
+      authority
+    ) {
+      console.log(
+        `Merge retirement skipped for #${number}: queue entry changed during reconciliation`,
+      );
+      return;
+    }
+    await github(`actions/runs/${run.id}/cancel`, {
+      method: 'POST',
+      responseBody: 'none',
+    });
+    requested++;
+    const settled = await github(`actions/runs/${run.id}`);
+    const terminal =
+      sameGroupRun(settled, run, workflow, repository) &&
+      settled.status === 'completed';
+    console.log(
+      `Replaced merge candidate #${number}: run ${run.id}/${run.run_attempt}, ${run.head_sha}; replacement ${replacement.id}/${replacement.run_attempt}, ${replacement.head_sha}; normal cancellation ${terminal ? `terminal ${settled.conclusion}` : 'requested, terminal state not verified'}`,
+    );
+  }
+  console.log(
+    `Merge retirement #${number}: ${requested} normal cancellation request(s); candidates with live refs or mismatched identities were preserved`,
+  );
+}
+
 async function main() {
   const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
   const repository = process.env.GITHUB_REPOSITORY;
+  if (event.workflow_run?.event === 'merge_group') {
+    await retireReplacedGroups(event.workflow_run, repository);
+    return;
+  }
   const numbers = event.pull_request
     ? [event.pull_request.number]
     : (event.workflow_run?.pull_requests ?? []).map((pr) => pr.number);

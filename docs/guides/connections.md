@@ -1001,7 +1001,9 @@ discovery lists what the proxy serves.
 The Engine's login readiness is checked under the same `env` and `configHome`:
 a proxy token such as `ANTHROPIC_AUTH_TOKEN` counts as signed in, an
 empty-string value masks the inherited key, and Codex's login probe reads the
-configured `CODEX_HOME`. On macOS, Claude readiness reads its selected
+configured `CODEX_HOME`. A connection routed through a model proxy counts as
+signed in through the proxy's injected provider key, so no Codex CLI login is
+needed there. On macOS, Claude readiness reads its selected
 Keychain namespace first, using `CLAUDE_SECURESTORAGE_CONFIG_DIR` before
 `CLAUDE_CONFIG_DIR`. It consults the selected credential file only when the
 Keychain entry is absent. An unreadable or malformed secure-store result stays

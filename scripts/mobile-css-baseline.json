@@ -1,5 +1,5 @@
 {
-  "pageLocalMediaQueryCeiling": 105,
+  "pageLocalMediaQueryCeiling": 102,
   "pageLocal": {
     "src-ui/src/components/Checkbox.css": {
       "count": 1,
@@ -100,10 +100,6 @@
     "src-ui/src/components/monitoring/InsightsDashboard.css": {
       "count": 1,
       "reason": "The insights tab and pill strips become horizontal scrollers and its grids single-column, so nothing forces a horizontal page scroll."
-    },
-    "src-ui/src/components/notifications/BannerHost.css": {
-      "count": 3,
-      "reason": "Three blocks, three different jobs: the reduced-motion `display: none` for an exiting banner (an end state, not a duration); the DESKTOP-only inset that keeps the overlay clear of a side dock; and the mobile grid that moves the actions onto their own row."
     },
     "src-ui/src/components/notifications/NotificationContainer.css": {
       "count": 2,
