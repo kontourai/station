@@ -134,7 +134,11 @@
 
     "src-ui/src/hooks/useNewProjectSubmit.ts",
 
-    "src-ui/src/hooks/useProjectCreationRecovery.ts"
+    "src-ui/src/hooks/useProjectCreationRecovery.ts",
+
+    "src-ui/src/views/task-workspace/TaskRoomPage.tsx",
+
+    "src-server/services/projects/task-graph-service.ts"
   ],
 
   "checks": [

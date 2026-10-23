@@ -722,7 +722,21 @@
 
     "src-ui/src/views/project-page/ProjectRoom.tsx",
 
-    "packages/sdk/src/engine-sign-in.ts"
+    "packages/sdk/src/engine-sign-in.ts",
+
+    "packages/sdk/src/client/task-relationships.ts",
+
+    "packages/sdk/src/query-domains/taskRelationships.ts",
+
+    "packages/sdk/src/client/project-room-agents.ts",
+
+    "packages/sdk/src/query-domains/projectRoomAgents.ts",
+
+    "src-server/services/projects/project-room-agent-module.ts",
+
+    "src-server/services/projects/project-room-agent-publication.ts",
+
+    "src-server/routes/projects/project-room-routes.ts"
   ],
 
   "checks": [

@@ -34,7 +34,11 @@
 
     "src-server/utils/process-group-exec.ts",
 
-    "src-ui/src/views/project-settings/ProjectOperatorSetup.tsx"
+    "src-ui/src/views/project-settings/ProjectOperatorSetup.tsx",
+
+    "src-server/services/projects/project-identity-service.ts",
+
+    "src-ui/src/hooks/useNewProjectSubmit.ts"
   ],
 
   "checks": [

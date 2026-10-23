@@ -382,7 +382,13 @@
 
     "src-ui/src/components/acp-connections/ACPConnectionSetupPanel.tsx",
 
-    "src-ui/src/components/acp-connections/useACPConnectionSetupOwner.ts"
+    "src-ui/src/components/acp-connections/useACPConnectionSetupOwner.ts",
+
+    "src-server/utils/git-exec.ts",
+
+    "src-server/services/projects/project-identity-service.ts",
+
+    "src-ui/src/components/modals/NewProjectModalContent.tsx"
   ],
 
   "checks": [

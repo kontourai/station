@@ -516,7 +516,25 @@
 
     "src-server/utils/process-group-exec.ts",
 
-    "src-ui/src/views/project-settings/ProjectOperatorSetup.tsx"
+    "src-ui/src/views/project-settings/ProjectOperatorSetup.tsx",
+
+    "src-server/utils/git-exec.ts",
+
+    "src-server/routes/orchestration/task-relationships.ts",
+
+    "src-server/services/projects/task-graph-service.ts",
+
+    "src-server/runtime/routes/task-relationship-authority.ts",
+
+    "src-server/services/projects/project-room-store.ts",
+
+    "src-server/services/projects/project-room-agent-module.ts",
+
+    "src-server/services/projects/project-room-agent-publication.ts",
+
+    "src-server/routes/projects/project-room-routes.ts",
+
+    "src-ui/src/views/project-page/ProjectRoom.tsx"
   ],
 
   "checks": [

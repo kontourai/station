@@ -38,7 +38,9 @@
 
     "src-server/runtime/routes/project-room-access.ts",
 
-    "src-server/runtime/routes/__tests__/project-room-access.test.ts"
+    "src-server/runtime/routes/__tests__/project-room-access.test.ts",
+
+    "src-server/runtime/routes/runtime-routes.ts"
   ],
 
   "checks": [
