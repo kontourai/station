@@ -1,6 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
@@ -11,6 +10,7 @@ import {
   createGateTestRegistry,
   GateTestAdapter,
 } from '../../__test-utils__/orchestration-gate-test-harness.js';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { mapTurnFinishReason } from '../../providers/adapters/codex-adapter-events.js';
 import { projectRoomAgentExecution } from '../../runtime/routes/project-room-agent-runtime.js';
 import { EventBus } from '../orchestration/event-bus.js';
@@ -24,13 +24,14 @@ import {
 import { createProjectRoomRuntime } from './project-room-store.js';
 
 describe('Project Room explicit agent participation', () => {
+  const makeTempDir = trackTempDirs();
   const cleanup: (() => void | Promise<void>)[] = [];
   afterEach(async () => {
     for (const close of cleanup.reverse()) await close();
     cleanup.length = 0;
   });
   function fixture() {
-    const home = realpathSync(mkdtempSync(join(tmpdir(), 'room-agent-')));
+    const home = realpathSync(makeTempDir('room-agent-'));
     const room = createProjectRoomRuntime(home);
     let current = true;
     const authority = {
@@ -73,7 +74,6 @@ describe('Project Room explicit agent participation', () => {
     };
     let runtime = createProjectRoomAgentRuntime(home, room.store, execution);
     cleanup.push(
-      () => rmSync(home, { recursive: true, force: true }),
       () => room.close(),
       () => runtime.close(),
     );
