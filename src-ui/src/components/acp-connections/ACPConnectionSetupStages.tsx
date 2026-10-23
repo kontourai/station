@@ -1,294 +1,214 @@
-import { Fragment, type RefObject } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import type { ACPConnectionRegistryEntry } from '../../hooks/useACPConnections';
-import { resolveProviderChoicePresentation } from '../../views/provider-settings/providerCatalog';
-import { RegistryEntryInstallHint } from '../engine-install/RegistryEntryInstallHint';
-import { registryEntryDiscovery } from '../engine-install/registryEntryDiscovery';
+import { ActionRow, type OverflowAction } from '../ActionRow';
+import { Button } from '../Button';
+import { DetailHeader } from '../DetailHeader';
 import {
-  ResponsiveDialogCloseButton,
-  ResponsiveSurfaceActions,
-} from '../ResponsiveDialogSurface';
+  PublicRegistryFacts,
+  publicRegistryCommandLine,
+} from '../engine-install/PublicRegistry';
+import { RegistryEntryInstallHint } from '../engine-install/RegistryEntryInstallHint';
+import { EngineSignInDisclosure } from '../engine-sign-in/EngineSignInDisclosure';
 import type { ACPConnectionDraft } from './types';
 import type {
+  ACPConnectionSetupAttempt,
   ACPConnectionSetupErrorKind,
   ACPConnectionSetupStage,
 } from './useACPConnectionSetup';
 
 export function ACPConnectionSetupHeader({
   stage,
-  onClose,
+  editing = false,
+  engineName,
 }: {
   stage: ACPConnectionSetupStage;
-  onClose: () => void;
+  editing?: boolean;
+  /** The catalogue choice being connected; absent for a custom engine. */
+  engineName?: string;
 }) {
-  const custom = stage === 'custom';
   const subtitle =
-    stage === 'confirm'
-      ? 'Review what connecting this engine changes.'
-      : stage === 'checking'
-        ? 'Station is checking this engine now.'
-        : stage === 'result'
-          ? 'Here is the current readiness result.'
-          : stage === 'error'
-            ? 'Your setup is still here. Try again or edit it.'
-            : 'Choose an engine to set up, or enter a custom command.';
-  return (
-    <div className="acp-add-dialog__header">
-      <div>
-        <h3 id="add-provider-title">
-          {custom ? 'Custom engine' : 'Add engine'}
-        </h3>
-        <p className="acp-add-dialog__subtitle">{subtitle}</p>
-      </div>
-      <ResponsiveDialogCloseButton label="Close add engine" onClick={onClose} />
-    </div>
-  );
+    editing && stage === 'custom'
+      ? "Change this engine's setup, then check it."
+      : stage === 'confirm'
+        ? 'Review what connecting this engine changes.'
+        : stage === 'checking'
+          ? 'Station is checking this engine now.'
+          : stage === 'result'
+            ? 'Here is the current readiness result.'
+            : stage === 'error'
+              ? 'Your setup is still here. Try again or edit it.'
+              : 'Enter the command that starts your engine.';
+  const title = editing
+    ? 'Edit engine'
+    : engineName
+      ? `Connect ${engineName}`
+      : 'Custom engine';
+  return <DetailHeader title={title} subtitle={subtitle} />;
 }
 
-export function ACPConnectionSetupActions({
-  stage,
-  hasRegistryEntries,
-  isCustom,
-  canSubmit,
-  ready,
-  errorKind,
-  confirmLabel,
-  onCatalog,
-  onCustom,
-  onConfirm,
-  onRetryMutation,
-  onSubmit,
-  onRetryRefresh,
-  onClose,
-}: {
+/** The two labelled actions and the overflow one setup stage offers. */
+interface SetupActionSlots {
+  primary?: ReactNode;
+  secondary?: ReactNode;
+  overflow?: OverflowAction[];
+}
+
+export interface ACPConnectionSetupActionProps {
   stage: ACPConnectionSetupStage;
-  hasRegistryEntries: boolean;
   isCustom: boolean;
   canSubmit: boolean;
+  /** False while the chosen engine is not installed: there is nothing to connect yet. */
+  canConfirm: boolean;
   ready: boolean;
+  /** The result failed its probe; re-running the add re-probes it. */
+  canRetryCheck: boolean;
+  /** The engine's first start continues on the server after closing. */
+  firstContact?: boolean;
   errorKind: ACPConnectionSetupErrorKind | null;
   confirmLabel: string;
-  onCatalog: () => void;
-  onCustom: () => void;
+  engineName: string;
+  /** Back to the catalogue. Absent where the flow was not opened from one. */
+  onBack?: () => void;
   onConfirm: () => void;
-  onRetryMutation: () => void;
   onSubmit: () => void;
+  onRetryMutation: () => void;
+  onRetryCheck: () => void;
   onRetryRefresh: () => void;
-  onClose: () => void;
-}) {
+  onEditSetup: () => void;
+  onDone: () => void;
+  /** Ready: start a chat with this engine. Absent: only Done is offered. */
+  onStartChat?: () => void;
+  startChatPending?: boolean;
+}
+
+function action(label: string, onClick: () => void, primary = false) {
   return (
-    <ResponsiveSurfaceActions className="acp-add-dialog__actions">
-      <ACPConnectionSetupEntryActions
-        stage={stage}
-        hasRegistryEntries={hasRegistryEntries}
-        canSubmit={canSubmit}
-        confirmLabel={confirmLabel}
-        onCatalog={onCatalog}
-        onConfirm={onConfirm}
-        onSubmit={onSubmit}
-        onClose={onClose}
-      />
-      <ACPConnectionSetupCompletionActions
-        stage={stage}
-        isCustom={isCustom}
-        ready={ready}
-        errorKind={errorKind}
-        onCatalog={onCatalog}
-        onCustom={onCustom}
-        onRetryMutation={onRetryMutation}
-        onRetryRefresh={onRetryRefresh}
-        onClose={onClose}
-      />
-    </ResponsiveSurfaceActions>
+    <Button variant={primary ? 'primary' : 'secondary'} onClick={onClick}>
+      {label}
+    </Button>
   );
 }
 
-function ACPConnectionSetupEntryActions({
-  stage,
-  hasRegistryEntries,
-  canSubmit,
-  confirmLabel,
-  onCatalog,
-  onConfirm,
-  onSubmit,
-  onClose,
-}: {
-  stage: ACPConnectionSetupStage;
-  hasRegistryEntries: boolean;
-  canSubmit: boolean;
-  confirmLabel: string;
-  onCatalog: () => void;
-  onConfirm: () => void;
-  onSubmit: () => void;
-  onClose: () => void;
-}) {
-  if (stage !== 'custom' && stage !== 'catalog' && stage !== 'confirm') {
-    return null;
-  }
-  return (
-    <>
-      {stage === 'confirm' && hasRegistryEntries && (
-        <button
-          type="button"
-          className="button button--secondary"
-          onClick={onCatalog}
-        >
-          Back
-        </button>
-      )}
-      {stage === 'custom' && hasRegistryEntries && (
-        <button
-          type="button"
-          className="button button--secondary"
-          onClick={onCatalog}
-        >
-          Back
-        </button>
-      )}
-      <button
-        type="button"
-        className="button button--secondary"
-        onClick={onClose}
-      >
-        Cancel
-      </button>
-      {stage === 'custom' && (
-        <button
-          type="button"
-          className="button button--primary"
-          disabled={!canSubmit}
-          onClick={onSubmit}
+function entryActions(props: ACPConnectionSetupActionProps): SetupActionSlots {
+  const leave = props.onBack
+    ? action('Back', props.onBack)
+    : action('Cancel', props.onDone);
+  if (props.stage === 'custom') {
+    return {
+      secondary: leave,
+      primary: (
+        <Button
+          variant="primary"
+          disabled={!props.canSubmit}
+          onClick={props.onSubmit}
         >
           Check engine
-        </button>
-      )}
-      {stage === 'confirm' && (
-        <button
-          type="button"
-          className="button button--primary"
-          onClick={onConfirm}
-        >
-          {confirmLabel}
-        </button>
-      )}
-    </>
-  );
+        </Button>
+      ),
+    };
+  }
+  return {
+    secondary: leave,
+    primary: props.canConfirm
+      ? action(props.confirmLabel, props.onConfirm, true)
+      : undefined,
+  };
 }
 
-function ACPConnectionSetupCompletionActions({
-  stage,
-  isCustom,
-  ready,
-  errorKind,
-  onCatalog,
-  onCustom,
-  onRetryMutation,
-  onRetryRefresh,
-  onClose,
-}: {
-  stage: ACPConnectionSetupStage;
-  isCustom: boolean;
-  ready: boolean;
-  errorKind: ACPConnectionSetupErrorKind | null;
-  onCatalog: () => void;
-  onCustom: () => void;
-  onRetryMutation: () => void;
-  onRetryRefresh: () => void;
-  onClose: () => void;
-}) {
-  if (stage !== 'result' && stage !== 'error') return null;
-  const edit = isCustom ? onCustom : onCatalog;
-  return (
-    <>
-      {(stage === 'error' || !ready) && (
-        <button
-          type="button"
-          className="button button--secondary"
-          onClick={edit}
-        >
-          {isCustom ? 'Edit setup' : 'Choose another engine'}
-        </button>
-      )}
-      {stage === 'error' && errorKind === 'mutation' && (
-        <button
-          type="button"
-          className="button button--primary"
-          onClick={onRetryMutation}
-        >
-          Try again
-        </button>
-      )}
-      {stage === 'error' && errorKind === 'refresh' && (
-        <button
-          type="button"
-          className="button button--primary"
-          onClick={onRetryRefresh}
-        >
-          Retry refresh
-        </button>
-      )}
-      <button
-        type="button"
-        className="button button--secondary"
-        onClick={onClose}
+function readyActions(props: ACPConnectionSetupActionProps): SetupActionSlots {
+  return {
+    secondary: action('Done', props.onDone),
+    primary: props.onStartChat ? (
+      <Button
+        variant="primary"
+        pending={props.startChatPending}
+        pendingLabel="Starting…"
+        onClick={props.onStartChat}
       >
-        Done
-      </button>
-    </>
-  );
+        {`Start a chat with ${props.engineName}`}
+      </Button>
+    ) : undefined,
+  };
 }
 
-export function ACPConnectionCatalogStage({
-  entries,
-  onSelect,
-  onCustom,
-}: {
-  entries: ACPConnectionRegistryEntry[];
-  onSelect: (entry: ACPConnectionRegistryEntry) => void;
-  onCustom: () => void;
-}) {
+/**
+ * A failed result or error: the repair is primary. A custom engine keeps
+ * Edit setup beside it; a catalogue engine keeps Done, with choosing another
+ * engine one step further in.
+ */
+function repairActions(props: ACPConnectionSetupActionProps): SetupActionSlots {
+  const primary =
+    props.stage === 'result'
+      ? props.canRetryCheck
+        ? action('Retry check', props.onRetryCheck, true)
+        : undefined
+      : props.errorKind === 'mutation'
+        ? action('Try again', props.onRetryMutation, true)
+        : props.errorKind === 'refresh'
+          ? action('Retry refresh', props.onRetryRefresh, true)
+          : undefined;
+  const done: OverflowAction = {
+    key: 'done',
+    label: 'Done',
+    onSelect: props.onDone,
+  };
+  if (props.isCustom) {
+    return {
+      primary,
+      secondary: action('Edit setup', props.onEditSetup),
+      overflow: [done],
+    };
+  }
+  return {
+    primary,
+    secondary: action('Done', props.onDone),
+    overflow: props.onBack
+      ? [
+          {
+            key: 'another',
+            label: 'Choose another engine',
+            onSelect: props.onBack,
+          },
+        ]
+      : [],
+  };
+}
+
+function setupActionSlots(
+  props: ACPConnectionSetupActionProps,
+): SetupActionSlots {
+  switch (props.stage) {
+    case 'custom':
+    case 'confirm':
+      return entryActions(props);
+    case 'checking':
+      // Leaving does not cancel anything: the add's request finishes, and a
+      // first start keeps running on the server while Station runs.
+      return {
+        secondary: action(
+          props.firstContact ? 'Keep checking in background' : 'Close',
+          props.onDone,
+        ),
+      };
+    case 'result':
+      return props.ready ? readyActions(props) : repairActions(props);
+    case 'error':
+      return repairActions(props);
+  }
+}
+
+export function ACPConnectionSetupActions(
+  props: ACPConnectionSetupActionProps,
+) {
+  const slots = setupActionSlots(props);
   return (
-    <div className="acp-add-dialog__catalog">
-      {entries.map((entry) => {
-        const presentation = resolveProviderChoicePresentation({
-          id: entry.id,
-          kind: 'command',
-          type: 'acp',
-          name: entry.name,
-          enabled: true,
-          status: 'unknown',
-          setup: null,
-          discovery: registryEntryDiscovery(entry),
-          description: entry.description,
-          href: '',
-        });
-        return (
-          <Fragment key={entry.id}>
-            <button
-              type="button"
-              className="acp-add-dialog__choice"
-              onClick={() => onSelect(entry)}
-            >
-              <span className="acp-add-dialog__choice-name">{entry.name}</span>
-              <span className="acp-add-dialog__choice-detail">
-                {presentation.detail}
-              </span>
-            </button>
-            <RegistryEntryInstallHint entry={entry} />
-          </Fragment>
-        );
-      })}
-      {entries.length > 0 && <div className="acp-add-dialog__divider" />}
-      <button
-        type="button"
-        className="acp-add-dialog__choice"
-        onClick={onCustom}
-      >
-        <span className="acp-add-dialog__choice-name">Custom engine</span>
-        <span className="acp-add-dialog__choice-detail">
-          Enter a name and command first; optional details stay advanced.
-        </span>
-      </button>
-    </div>
+    <ActionRow
+      className="engine-setup__actions"
+      overflowLabel={`More actions for ${props.engineName}`}
+      primary={slots.primary}
+      secondary={slots.secondary}
+      overflow={slots.overflow}
+    />
   );
 }
 
@@ -300,9 +220,35 @@ export function ACPConnectionCatalogStage({
  */
 export function ACPConnectionConfirmStage({
   entry,
+  installed,
 }: {
   entry: ACPConnectionRegistryEntry;
+  /**
+   * False when the host lookup did not find the engine: it is installed
+   * first, and the connect step is offered once a re-check finds it.
+   */
+  installed: boolean;
 }) {
+  // A public listing is confirmed by its exact command line; the server
+  // refuses the add when the listing no longer matches it.
+  const listing =
+    entry.source === 'registry' ? entry.publicRegistry : undefined;
+  const launch = listing?.hostLaunch;
+  if (!installed) {
+    return (
+      <div className="acp-add-dialog__confirm">
+        <p className="acp-add-dialog__confirm-lead">
+          <strong>{entry.name}</strong> is not installed on the computer Station
+          runs on.
+        </p>
+        <p className="acp-add-dialog__confirm-note">
+          Install it, then choose Check again. You can connect it once Station
+          finds it.
+        </p>
+        <RegistryEntryInstallHint entry={entry} />
+      </div>
+    );
+  }
   return (
     <div className="acp-add-dialog__confirm">
       <p className="acp-add-dialog__confirm-lead">
@@ -317,27 +263,63 @@ export function ACPConnectionConfirmStage({
           connects.
         </li>
         <li>
-          Runs <code>{entry.command}</code> to check whether it is ready.
+          Runs{' '}
+          <code>
+            {launch ? publicRegistryCommandLine(launch) : entry.command}
+          </code>{' '}
+          to check whether it is ready.
         </li>
       </ul>
+      {listing ? (
+        <div className="acp-add-dialog__confirm-registry">
+          <p>
+            {entry.name} is listed in the public registry, not by Station.
+            Station runs the copy of <code>{launch?.command}</code> it finds on
+            the computer it runs on and does not download anything.
+          </p>
+          <PublicRegistryFacts listing={listing} />
+          {listing.recommendedEnv ? (
+            <p>
+              The registry also recommends these settings, which Station does
+              not apply:{' '}
+              {Object.entries(listing.recommendedEnv)
+                .map(([name, value]) => `${name}=${value}`)
+                .join(', ')}
+              .
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       <p className="acp-add-dialog__confirm-note">
         You can remove the connection and its agent at any time.
       </p>
-      <RegistryEntryInstallHint entry={entry} />
     </div>
   );
+}
+
+/**
+ * A command with whitespace that does not look like a path is most often a
+ * program plus its arguments typed into one field; a path to a program may
+ * itself contain spaces.
+ */
+function commandHasArguments(command: string): boolean {
+  const value = command.trim();
+  return /\s/.test(value) && !/^([~/.]|[A-Za-z]:[\\/])/.test(value);
 }
 
 export function ACPConnectionCustomStage({
   draft,
   advancedOpen,
   nameInputRef,
+  idLocked = false,
   onDraftChange,
   onAdvancedChange,
 }: {
   draft: ACPConnectionDraft;
   advancedOpen: boolean;
   nameInputRef: RefObject<HTMLInputElement | null>;
+  /** A saved connection's id cannot change (it names its engine). */
+  idLocked?: boolean;
   onDraftChange: (field: keyof ACPConnectionDraft, value: string) => void;
   onAdvancedChange: (open: boolean) => void;
 }) {
@@ -349,6 +331,7 @@ export function ACPConnectionCustomStage({
     <label>
       {label}
       <input
+        disabled={field === 'id' && idLocked}
         value={draft[field]}
         onChange={(event) => onDraftChange(field, event.target.value)}
         placeholder={placeholder}
@@ -367,6 +350,12 @@ export function ACPConnectionCustomStage({
         />
       </label>
       {input('Command', 'command', 'gemini')}
+      {commandHasArguments(draft.command) && (
+        <p className="acp-add-dialog__field-note">
+          This looks like a program and its arguments. Put arguments in Advanced
+          → Arguments and keep only the program here.
+        </p>
+      )}
       <details
         className="acp-add-dialog__advanced"
         open={advancedOpen}
@@ -388,10 +377,16 @@ export function ACPConnectionSetupStatus({
   error,
   reason,
   pending,
+  firstContact = false,
+  attempt = 'add',
+  engineName,
+  connectionId,
 }: {
   stage: ACPConnectionSetupStage;
   label?: string;
   error: string | null;
+  /** The saved connection, so "Setup required" can offer its sign-in. */
+  connectionId?: string;
   /**
    * CI-R8: the probe's own most recent failure, when it has one. "This
    * provider needs more setup before it can run work" named nothing and both
@@ -400,15 +395,29 @@ export function ACPConnectionSetupStatus({
    */
   reason?: { message: string; phase: string } | null;
   pending: boolean;
+  /** The engine's first start is still running in the background. */
+  firstContact?: boolean;
+  /** A first add, a re-check, or a saved edit: they are said differently. */
+  attempt?: ACPConnectionSetupAttempt;
+  engineName?: string;
 }) {
+  const engine = engineName ?? 'this engine';
   if (stage === 'checking') {
     return (
       <div className="acp-add-dialog__result" role="status" aria-live="polite">
         <strong>Checking</strong>
         <span>
-          {pending
-            ? 'Adding the engine and checking its readiness.'
-            : 'Waiting for the refreshed connection result.'}
+          {firstContact
+            ? attempt === 'add'
+              ? `Starting ${engine} for the first time. A first start can take up to a minute.`
+              : `Starting ${engine}. A first start can take up to a minute.`
+            : !pending
+              ? 'Waiting for the refreshed connection result.'
+              : attempt === 'recheck'
+                ? `Checking ${engine} again.`
+                : attempt === 'edit'
+                  ? `Saving your changes and checking ${engine}.`
+                  : 'Adding the engine and checking its readiness.'}
         </span>
       </div>
     );
@@ -417,7 +426,7 @@ export function ACPConnectionSetupStatus({
     const detail =
       label === 'Ready'
         ? 'This engine is ready to use.'
-        : label === 'Setup needed'
+        : label === 'Setup required'
           ? 'This engine needs more setup before it can run work — its Agent is added when it connects.'
           : label === 'Off'
             ? 'This engine is configured but turned off.'
@@ -429,22 +438,33 @@ export function ACPConnectionSetupStatus({
         {label !== 'Ready' && reason && (
           <>
             <span className="acp-add-dialog__result-reason">
-              {`${reason.phase}: ${reason.message}`}
+              {reason.message}
             </span>
-            <span className="acp-add-dialog__result-action">
-              {/*
-                Derived from the phase the probe actually failed in, not
-                guessed from the message: before `initialize` the command
-                never ran, and after it the command is running and answering.
-                Anything more specific would be a claim about a failure
-                Station cannot classify.
-*/}
-              {reason.phase === 'spawn' ||
-              reason.phase === 'workspace preparation'
-                ? 'Station could not start this engine’s command. Install it and make it runnable on the computer Station runs on, then check it again.'
-                : 'The command started but did not finish connecting. Resolve what it reported above in the engine itself, then check it again.'}
-            </span>
+            {/*
+              Derived from the phase the probe actually failed in, not guessed
+              from the message. A command that never launched is reported by
+              the server with its own remedy (acp-process.ts), so no second
+              hint repeats it; after launch the command is running and
+              answering, so the remedy lies in the engine.
+            */}
+            {reason.phase === 'workspace preparation' ? (
+              <span className="acp-add-dialog__result-action">
+                Station could not prepare a folder for this engine. Check its
+                working directory under Advanced, then check it again.
+              </span>
+            ) : reason.phase !== 'spawn' ? (
+              <span className="acp-add-dialog__result-action">
+                The command started but did not finish connecting. Resolve what
+                it reported above in the engine itself, then check it again.
+              </span>
+            ) : null}
           </>
+        )}
+        {label === 'Setup required' && connectionId && (
+          <EngineSignInDisclosure
+            connectionId={connectionId}
+            engineName={engine}
+          />
         )}
       </div>
     );

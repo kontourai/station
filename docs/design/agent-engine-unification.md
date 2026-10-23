@@ -508,11 +508,23 @@ generations, or identity-ledger records. A persisted default Agent is not an ord
 custom Agent: it cannot be renamed, rebound, imported over, or directly deleted.
 
 - A fresh compatible home contains the non-deletable `station` Agent.
-- Every configured external agent-runtime connection owns exactly one persisted
+- Every registered external agent-runtime connection owns exactly one persisted
   same-text default Agent, including command-backed engines. Model-only connections
   own none.
-- Default existence never depends on readiness. Availability is derived separately
-  and returned with an actionable typed reason.
+- A command-backed connection registers its identity and default Agent only once its
+  probe has handshaked. Adding, installing, or editing a connection saves its config
+  first; when the probe fails, the config stays and nothing is registered. The add
+  and install responses carry the probe's status and `lastError` reason, and
+  repeating the same add re-probes and registers it. A first add whose probe ran
+  out of time on a never-connected engine answers `probing` and continues on the
+  cold first-contact budget in the background, outside the configuration queue; a
+  background probe that first handshakes a saved, unregistered connection (that
+  continuation, or the periodic sweep) registers it through the queue only if the
+  saved config still matches the config it probed. Startup probes only registered
+  connections, so after a restart a never-registered connection is checked again
+  only once it is re-added, re-checked, or re-read by a registry reload. After registration, readiness
+  never removes the default: availability is derived separately and returned with
+  an actionable typed reason.
 - A namespace/owner collision fails before mutation. Station never suffixes, adopts,
   or manufactures an alternative ID.
 - Deleting an engine connection removes only its owned default. Custom dependents

@@ -1,0 +1,7 @@
+{
+  "revision": "4936bb10e25fd9dc74bb9693df37530f86594ee3",
+
+  "notes": [
+    {"path":"docs/design/connection-list-recovery.md","note":"Rechecked after merging main (with #4025) into #4022: the design names #4022 at 4cbc5b79f57 as its inspected prerequisite, and the three cited sources (packages/cli/src/commands/profile-store.ts, src-desktop/src/lib.rs, src-desktop/src/native_device_custody.rs) are byte-identical to that commit in the merged tree, so the source findings (shared root marker, genesis and profile locks, CAS, custody account inputs, CLI missing-file projection) and the proposal-only status still hold.","inputs":["docs/design/connection-list-recovery.md","src-desktop/src/native_device_custody.rs","packages/cli/src/commands/profile-store.ts","src-desktop/src/lib.rs"]}
+  ]
+}

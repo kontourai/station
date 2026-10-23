@@ -1,0 +1,7 @@
+{
+  "revision": "3c7a9f9fe67249e5e9decd1ff4fce8d8964a358d",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Copy pass: the Starting pill detail now reads 'Received. You can close the app.' (deliveryLabels.ts), and the pill/bubble paragraph quotes it; checked the other received labels are unchanged.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

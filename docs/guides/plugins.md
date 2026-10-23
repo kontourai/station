@@ -222,7 +222,12 @@ runtime connection discovery; consult its caller's shape before contributing it.
 An `acpConnectionRegistry` provider returns engine catalogue entries, which may
 carry the install, launch-variable and sign-in descriptor described in the
 [ACP guide](acp.md#catalogue-descriptors); an entry whose descriptor fails
-validation is left out.
+validation is left out. An entry cannot present itself as a public agent
+registry listing: its `source` and `publicRegistry` are set by Station.
+An entry is refused when its `name`, `description` or `sourceName` contains a
+character that renders as nothing (a Unicode default-ignorable code point),
+which includes emoji built with a zero-width joiner or a variation selector
+such as `❤️`; use plain text there and put a symbol in `icon` instead.
 The examples below cover selected contracts; registration alone does not make
 an arbitrary object usable by one of these callers.
 

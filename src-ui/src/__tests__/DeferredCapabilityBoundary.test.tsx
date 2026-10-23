@@ -7,11 +7,16 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { lazy } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { DeferredCapabilityBoundary } from '../components/DeferredCapabilityBoundary';
-import { BannerHost } from '../components/notifications/BannerHost';
+import {
+  StationDetailsHost,
+  WorkspaceStationState,
+} from '../components/notifications/StationConditions';
+import { openStationDetails } from '../components/notifications/stationDetailsEvents';
 import {
   BANNER_IDS,
   BANNER_PRIORITY,
@@ -26,6 +31,14 @@ const connection = vi.hoisted(() => ({
 
 vi.mock('@kontourai/station-connect', () => ({
   useConnectionStatus: () => ({ status: connection.status }),
+  useConnections: () => ({
+    apiBase: 'https://station.test',
+    activeConnection: {
+      id: 'station',
+      name: 'Studio Station',
+      url: 'https://station.test',
+    },
+  }),
 }));
 
 const copy = {
@@ -55,13 +68,13 @@ describe('DeferredCapabilityBoundary', () => {
         <DeferredCapabilityBoundary id="connection-recovery" copy={copy}>
           <Never />
         </DeferredCapabilityBoundary>
-        <BannerHost />
+        <WorkspaceStationState />
+        <StationDetailsHost />
       </>,
     );
 
     expect(screen.getByText('Usable Station workspace')).toBeTruthy();
     expect(bannerStore.getSnapshot()).toEqual([]);
-    expect(screen.queryByTestId('banner-host')).toBeNull();
     // An empty store is not silence: a Suspense fallback rendering its own
     // notice bypasses the store entirely, which is exactly the hand-rolled
     // surface this issue retired. Assert nothing is announced at all.
@@ -72,7 +85,7 @@ describe('DeferredCapabilityBoundary', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
-  test('keeps the shell mounted and presents a failed capability through the banner store', async () => {
+  test('keeps the shell mounted and exposes capability repair through Station details', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
 
     render(
@@ -81,7 +94,8 @@ describe('DeferredCapabilityBoundary', () => {
         <DeferredCapabilityBoundary id="connection-recovery" copy={copy}>
           <BrokenCapability />
         </DeferredCapabilityBoundary>
-        <BannerHost />
+        <WorkspaceStationState />
+        <StationDetailsHost />
       </>,
     );
 
@@ -95,7 +109,13 @@ describe('DeferredCapabilityBoundary', () => {
       message: copy.failure,
       dismissible: false,
     });
-    expect(screen.getByRole('button', { name: 'Reload Station' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Review Station' }));
+    expect(
+      within(screen.getByRole('dialog', { name: 'Station details' })).getByRole(
+        'button',
+        { name: 'Reload Station' },
+      ),
+    ).toBeTruthy();
   });
 
   test('reports a rejected import as persistent capability failure', async () => {
@@ -108,7 +128,8 @@ describe('DeferredCapabilityBoundary', () => {
         <DeferredCapabilityBoundary id="connection-recovery" copy={copy}>
           <Failing />
         </DeferredCapabilityBoundary>
-        <BannerHost />
+        <WorkspaceStationState />
+        <StationDetailsHost />
       </>,
     );
 
@@ -136,7 +157,8 @@ describe('DeferredCapabilityBoundary', () => {
           copy={copy}
           load={load}
         />
-        <BannerHost />
+        <WorkspaceStationState />
+        <StationDetailsHost />
       </>,
     );
 
@@ -153,7 +175,8 @@ describe('DeferredCapabilityBoundary', () => {
           copy={copy}
           load={load}
         />
-        <BannerHost />
+        <WorkspaceStationState />
+        <StationDetailsHost />
       </>,
     );
 
@@ -173,16 +196,23 @@ describe('DeferredCapabilityBoundary', () => {
           copy={copy}
           load={load}
         />
-        <BannerHost />
+        <WorkspaceStationState />
+        <StationDetailsHost />
       </>,
     );
 
     await waitFor(() => expect(bannerStore.getSnapshot()).toHaveLength(1));
     expect(bannerStore.getSnapshot()[0]?.badge).toBe(copy.failureTitle);
-    expect(screen.getByRole('button', { name: 'Reload Station' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Review Station' }));
+    expect(
+      within(screen.getByRole('dialog', { name: 'Station details' })).getByRole(
+        'button',
+        { name: 'Reload Station' },
+      ),
+    ).toBeTruthy();
   });
 
-  test('keeps two failed boundary instances in independent banners', async () => {
+  test('keeps independent capability failures readable and repairable in Station details', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     const extensionCopy = {
       failureTitle: EXTENSIONS_UNAVAILABLE_LABEL,
@@ -200,7 +230,8 @@ describe('DeferredCapabilityBoundary', () => {
         >
           <BrokenCapability />
         </DeferredCapabilityBoundary>
-        <BannerHost />
+        <WorkspaceStationState />
+        <StationDetailsHost />
       </>,
     );
 
@@ -209,11 +240,13 @@ describe('DeferredCapabilityBoundary', () => {
       `${BANNER_IDS.deferredCapability}:connection-recovery`,
       `${BANNER_IDS.deferredCapability}:extension-registry`,
     ]);
-    // archive#3308: the host collapses the stack — front banner plus a cap
-    // for the second; expanding renders both as independent banners.
-    expect(screen.getAllByRole('alert')).toHaveLength(1);
-    fireEvent.click(screen.getByTestId('banner-stack-cap'));
-    expect(screen.getAllByRole('alert')).toHaveLength(2);
+    act(openStationDetails);
+    const details = screen.getByRole('dialog', { name: 'Station details' });
+    expect(within(details).getByText(copy.failure)).toBeTruthy();
+    expect(within(details).getByText(extensionCopy.failure)).toBeTruthy();
+    expect(
+      within(details).getAllByRole('button', { name: 'Reload Station' }),
+    ).toHaveLength(2);
   });
 
   test('an extension bootstrap failure can notify without occupying the global banner', async () => {

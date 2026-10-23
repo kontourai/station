@@ -62,6 +62,10 @@ export interface MessagePart {
   cancelled?: boolean;
   isError?: boolean;
   progressMessage?: string;
+  /** A station-control refusal, whole (see `ToolCompletedEvent`). */
+  stationControlRefusal?: import('@kontourai/station-contracts/station-control-refusal').StationControlRefusalView;
+  /** When the call's `tool.started` was created (ISO); a running row's elapsed time. */
+  startedAt?: string;
   /** Engine output was deliberately narrowed before publication. */
   outputTruncated?: true;
   /**
@@ -160,6 +164,11 @@ export interface ConversationMessage {
     sender?: ClientOriginSender;
     /** That steer was delivered by cancelling the running step (see `TurnStartedEvent`). */
     steerInterruptedRun?: true;
+    /**
+     * A check-back Station sent (`isStationCheckBackTurn`): sent as the
+     * person, written by nobody. Shown as Station's, not the person's.
+     */
+    stationCheckBack?: true;
     /** Durable source event for an authored user row, never an optimistic id. */
     sourceEventId?: string;
     /** The model Station requested — NOT a runtime-confirmed observation. See `reportedModel`. */
@@ -186,6 +195,23 @@ export interface ConversationMessage {
     sessionId?: string;
     /** True only for a terminal successful assistant response. */
     answerEligible?: boolean;
+    /**
+     * How this row's turn ended, on the turn's last row, when the projection
+     * was asked to mark ended turns (`markEndedTurns`). Absent while open.
+     */
+    turnEnded?: 'completed' | 'aborted';
+    /**
+     * The abort's `reason`, raw, on a row that ended `aborted` with nothing
+     * to draw: the one place that reason survives, since it is not drawn as
+     * text in the row.
+     */
+    turnEndedReason?: string;
+    /**
+     * Who stopped that row's turn, when Station recorded it: a person's
+     * Stop, Station's stall detection, or recovery after Station restarted
+     * mid-turn (`recoveryTerminal`). Never inferred from `turnEndedReason`.
+     */
+    turnStoppedBy?: 'person' | 'stall' | 'restart';
     /**
      * station#1410: the turn's provenance envelope, re-derived from the
      * durable orchestration event stream on every read. A projection, not a

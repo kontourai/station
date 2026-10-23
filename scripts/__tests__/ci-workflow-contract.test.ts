@@ -1721,7 +1721,7 @@ describe('CI verification workflow contracts', () => {
     // ui-bundle-delta-report.test.ts (deltaBuildEnv).
   });
 
-  it('fences every job that runs ci:fast around the lane budget plus its other bounded steps', () => {
+  it('runs every complete ci:fast lane on a supported runner with enough time for bounded steps', () => {
     // #2577: the lane budget and each job fence are separate literals. Raising
     // the lane alone lets a job be killed before the coordinator's own
     // deadline fires and writes its receipt, so each fence must contain the
@@ -1731,7 +1731,11 @@ describe('CI verification workflow contracts', () => {
     // are found by what they run, not by name, so a new caller (fork-smoke
     // was the one first missed) is covered without editing this test.
     type Step = { run?: string; 'timeout-minutes'?: number };
-    type Job = { 'timeout-minutes'?: number; steps?: Step[] };
+    type Job = {
+      'runs-on'?: string;
+      'timeout-minutes'?: number;
+      steps?: Step[];
+    };
     const runsCiFast = (step: Step) =>
       typeof step.run === 'string' &&
       /(^|[\s;&|])npm run ci:fast(?![\w:-])/.test(step.run);
@@ -1752,6 +1756,7 @@ describe('CI verification workflow contracts', () => {
     ]);
     const unboundedAllowanceMs = 3 * 60_000;
     for (const { id, job } of callers) {
+      expect(job['runs-on'], id).toBe('ubuntu-24.04');
       const steps = job.steps ?? [];
       const lane = steps.filter(runsCiFast);
       expect(lane, id).toHaveLength(1);
@@ -2082,7 +2087,7 @@ describe('CI verification workflow contracts', () => {
       `timeout-minutes: ${FAST_CHECKS_JOB_TIMEOUT_MINUTES}`,
     );
     expect(fastChecks).toContain("needs.classify.outputs.heavy == 'true'");
-    expect(fastChecks).toContain('runs-on: ubuntu-22.04');
+    expect(fastChecks).toContain('runs-on: ubuntu-24.04');
     expect(fastChecks).not.toContain('self-hosted');
     expect(fastChecks).not.toContain('physical-host-capacity@');
     expect(fastChecks).toContain('STATION_CI_FAST_BASE');
@@ -3367,6 +3372,7 @@ describe('hosted qualification workflow covers the full regression', () => {
   };
   type Defaults = { run?: { shell?: string } };
   type Job = {
+    'runs-on'?: string;
     name?: string;
     if?: string;
     needs?: string[];
@@ -3479,6 +3485,7 @@ describe('hosted qualification workflow covers the full regression', () => {
   });
 
   it('splits process-heavy into slices that cover the group exactly once', () => {
+    expect(document().jobs['process-heavy']['runs-on']).toBe('ubuntu-24.04');
     const heavy = selections(document().jobs).filter(({ text }) =>
       phaseIds(text).includes('test-full-process-heavy'),
     );

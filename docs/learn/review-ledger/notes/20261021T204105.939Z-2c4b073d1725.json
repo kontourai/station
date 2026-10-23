@@ -1,0 +1,7 @@
+{
+  "revision": "788e3b6b45e9e724dc29ec2f59c5e06b47f4f50d",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Merge of #3991: cwdManagedWorkspace contract field and event-store changes (shutdown retention predicate beside main's invocation clauses) checked; the page's Chat workspace claim (server decides, UI never matches the path) matches contracts orchestration.ts and the merged source. Source review only.","inputs":["docs/design/placement.md","src-server/services/orchestration/event-store.ts","packages/contracts/src/orchestration.ts"]}
+  ]
+}

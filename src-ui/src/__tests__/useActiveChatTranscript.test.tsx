@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import { TURN_INTERRUPTED_MESSAGE } from '@kontourai/station-shared/runtime-event-projection';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { ChatSession } from '../types';
@@ -1116,6 +1117,143 @@ describe('useActiveChatTranscript', () => {
     });
     // No bytes came down this path; the reference is the only way back to them.
     expect(filePart?.url).toBeUndefined();
+  });
+
+  test('a turn that ended with nothing to show keeps a row saying how it ended, and why when Station stopped it', async () => {
+    const stallText =
+      'Stopped after the turn-stall window elapsed with no observed progress, then the cooperative cancel budget expired.';
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 20,
+      hasMore: false,
+      events: [
+        event('e1', 'turn.started', { turnId: 'turn-1', prompt: 'quiet' }),
+        event('e2', 'turn.completed', { turnId: 'turn-1' }),
+        // The person's Stop: Station's record says so, whatever the reason.
+        event('e3', 'turn.started', { turnId: 'turn-2', prompt: 'stop me' }),
+        event('e4', 'session.stop-settled', {
+          turnId: 'turn-2',
+          outcome: 'forced',
+          initiatedBy: 'user',
+        }),
+        event('e5', 'turn.aborted', {
+          turnId: 'turn-2',
+          reason: 'Stopped after the cooperative cancel budget expired.',
+        }),
+        // Stall detection stopped it cooperatively: the engine's abort says
+        // only "interrupted", and Station's record lands after it.
+        event('e6', 'turn.started', { turnId: 'turn-3', prompt: 'stall' }),
+        event('e7', 'turn.aborted', {
+          turnId: 'turn-3',
+          reason: 'interrupted',
+        }),
+        event('e8', 'session.stop-settled', {
+          turnId: 'turn-3',
+          outcome: 'cooperative',
+          initiatedBy: 'stall',
+        }),
+        // Forced after a stall: the long reason is the tooltip.
+        event('e9', 'turn.started', { turnId: 'turn-4', prompt: 'stall 2' }),
+        event('e10', 'session.stop-settled', {
+          turnId: 'turn-4',
+          outcome: 'forced',
+          initiatedBy: 'stall',
+        }),
+        event('e11', 'turn.aborted', { turnId: 'turn-4', reason: stallText }),
+        // Recovery after Station restarted mid-turn.
+        event('e12', 'turn.started', { turnId: 'turn-5', prompt: 'crash' }),
+        event('e13', 'turn.aborted', {
+          turnId: 'turn-5',
+          reason: TURN_INTERRUPTED_MESSAGE,
+          recoveryTerminal: true,
+        }),
+        // Recovery's notice right after it: the row already says it.
+        event('e13n', 'session.state-changed', {
+          interruptedTurnBoundary: { boundaryId: 'boundary-5' },
+          reason: TURN_INTERRUPTED_MESSAGE,
+        }),
+        // A cut-off turn that drew something ends its row with the same
+        // sentence, so its notice goes too.
+        event('e13x', 'turn.started', { turnId: 'turn-5c', prompt: 'crash 3' }),
+        event('e13y', 'content.text-delta', {
+          turnId: 'turn-5c',
+          delta: 'partial answer',
+        }),
+        event('e13z', 'turn.aborted', {
+          turnId: 'turn-5c',
+          reason: TURN_INTERRUPTED_MESSAGE,
+          recoveryTerminal: true,
+        }),
+        event('e13w', 'session.state-changed', {
+          interruptedTurnBoundary: { boundaryId: 'boundary-5c' },
+          reason: TURN_INTERRUPTED_MESSAGE,
+        }),
+        // Recovery's marker decides it, not the reason's wording.
+        event('e13a', 'turn.started', { turnId: 'turn-5b', prompt: 'crash 2' }),
+        event('e13b', 'turn.aborted', {
+          turnId: 'turn-5b',
+          reason: 'interrupted',
+          recoveryTerminal: true,
+        }),
+        // An engine's own token.
+        event('e14', 'turn.started', { turnId: 'turn-6', prompt: 'early' }),
+        event('e15', 'turn.aborted', {
+          turnId: 'turn-6',
+          reason: 'engine-ended-before-start',
+        }),
+        // A notice no row above already says stays.
+        event('e15n', 'session.state-changed', {
+          interruptedTurnBoundary: { boundaryId: 'boundary-6' },
+          reason: TURN_INTERRUPTED_MESSAGE,
+        }),
+        // Still open: no row until it draws something.
+        event('e16', 'turn.started', { turnId: 'turn-7', prompt: 'open' }),
+      ],
+    });
+
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    await waitFor(() => expect(result.current.messages).toHaveLength(18));
+    const { endedTurnMarker, endedTurnStopDetail } = await import(
+      '../components/chat/message-bubble/visibleContent'
+    );
+    expect(
+      result.current.messages
+        .filter((message) => message.role === 'assistant')
+        .map((message) => [
+          message.turnId,
+          message.contentParts?.length ?? 0,
+          endedTurnMarker(message),
+          endedTurnStopDetail(message),
+        ]),
+    ).toEqual([
+      ['turn-1', 0, 'No reply', undefined],
+      // The engine's reason is not drawn as text in its place.
+      ['turn-2', 0, 'Stopped', undefined],
+      ['turn-3', 0, 'Stopped', { text: 'No progress for too long' }],
+      [
+        'turn-4',
+        0,
+        'Stopped',
+        { text: 'No progress for too long', title: stallText },
+      ],
+      ['turn-5', 0, 'Stopped', { text: 'Station restarted mid-turn' }],
+      ['turn-5c', 2, 'Stopped', undefined],
+      ['turn-5b', 0, 'Stopped', { text: 'Station restarted mid-turn' }],
+      ['turn-6', 0, 'Stopped', { text: 'The agent exited before starting' }],
+    ]);
+    expect(
+      result.current.messages.filter((message) => message.role === 'user'),
+    ).toHaveLength(10);
+    // The restart is said once per turn: the empty row's line, or the notice.
+    const notices = result.current.messages.filter((message) =>
+      message.content?.includes('[TURN_INTERRUPTED]'),
+    );
+    expect(notices).toHaveLength(1);
+    const after =
+      result.current.messages[result.current.messages.indexOf(notices[0]!) - 1];
+    expect(after?.turnId).toBe('turn-6');
   });
 
   test('station#3415: a durable mid-turn compaction reaches the dock as a system row after its one-row turn', async () => {
@@ -3302,5 +3440,126 @@ describe('useActiveChatTranscript live failure marker (UX audit V3)', () => {
     expect(carriers[0]?.content).toBe(
       '[SYSTEM_EVENT] [CHAT_ERROR] The response stream failed.',
     );
+  });
+});
+
+// The open turn renders from the projection when its `turn.started` is in the
+// window. Its started-without-outcome calls are in flight only because the
+// server says the turn is still open; the hook is what tells the projection.
+describe('useActiveChatTranscript — calls of the open turn', () => {
+  beforeEach(() => {
+    resetSequencedLiveEventsForTests();
+    vi.clearAllMocks();
+    fetchWindow.mockReset();
+    recoveryBudget.clear();
+    fetchCapability.mockResolvedValue(true);
+    fetchConversationWindow.mockImplementation((...args: unknown[]) =>
+      fetchWindow(...args),
+    );
+  });
+
+  const mountWithOpenCall = async (
+    id: string,
+    turnOpen: boolean,
+    serverTurnId = 'turn-open',
+  ) => {
+    activeChatsStore.initChat(id, {
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Open call',
+      conversationId: id,
+      orchestrationSessionStarted: true,
+    });
+    if (turnOpen) {
+      activeChatsStore.updateChat(id, {
+        conversationActivity: {
+          conversationId: id,
+          asOfSequence: 2,
+          openTurn: {
+            turnId: serverTurnId,
+            threadId: id,
+            startedAt: '2026-09-24T00:00:00.000Z',
+          },
+        },
+        orchestrationTurnOpen: true,
+        openTurnId: serverTurnId,
+      });
+    }
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 2,
+      hasMore: false,
+      events: [
+        {
+          ...event('e1', 'turn.started', {
+            threadId: id,
+            turnId: 'turn-open',
+            prompt: 'Run the tests',
+          }),
+          sequence: 1,
+        },
+        {
+          ...event('e2', 'tool.started', {
+            threadId: id,
+            turnId: 'turn-open',
+            toolCallId: 'cmd-1',
+            toolName: 'Bash',
+            arguments: { command: 'npm test' },
+          }),
+          sequence: 2,
+        },
+      ],
+    });
+    const session = {
+      ...baseSession,
+      ...activeChatsStore.getSnapshot()[id],
+      id,
+    } as ChatSession;
+    const view = renderHook(() =>
+      useActiveChatTranscript(`http://${id}.test`, session),
+    );
+    await waitFor(() => expect(view.result.current.settled).toBe(true));
+    const part = view.result.current.messages
+      .flatMap((message) => message.contentParts ?? [])
+      .find((candidate) => candidate.toolCallId === 'cmd-1');
+    return { view, part };
+  };
+
+  test('a call still open in the live open turn projects as running', async () => {
+    const id = 'open-call-live';
+    const { view, part } = await mountWithOpenCall(id, true);
+    try {
+      expect(view.result.current.openTurnProjected).toBe(true);
+      expect(part?.state).toBe('running');
+      expect(part?.startedAt).toBe('2026-08-09T00:00:02.000Z');
+    } finally {
+      view.unmount();
+      activeChatsStore.removeChat(id);
+    }
+  });
+
+  test('the same call reads as unproven when the server reports no open turn', async () => {
+    const id = 'open-call-dead';
+    const { view, part } = await mountWithOpenCall(id, false);
+    try {
+      expect(view.result.current.openTurnProjected).toBe(false);
+      expect(part?.state).toBe('call');
+    } finally {
+      view.unmount();
+      activeChatsStore.removeChat(id);
+    }
+  });
+
+  test('the window’s unterminated turn is not the server’s open one: its calls are not claimed running', async () => {
+    // The window ends inside turn A ('turn-open', no terminal in this read)
+    // while the server says turn B is the one executing.
+    const id = 'open-call-other-turn';
+    const { view, part } = await mountWithOpenCall(id, true, 'turn-b');
+    try {
+      expect(part?.state).toBe('call');
+    } finally {
+      view.unmount();
+      activeChatsStore.removeChat(id);
+    }
   });
 });

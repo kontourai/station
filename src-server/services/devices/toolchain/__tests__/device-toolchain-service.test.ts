@@ -59,6 +59,7 @@ function setup(options: { configuredHubUrl?: string } = {}) {
   });
   const spawned: string[][] = [];
   const supervisor = new DeviceHubSupervisor({
+    resolveRuntime: async () => ({ nodePath: '/usr/bin/node' }),
     resolveLaunch: () => {
       const entry = toolchain.installedEntry('expo-device-hub');
       return entry

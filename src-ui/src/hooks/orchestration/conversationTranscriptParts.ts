@@ -32,12 +32,16 @@ export function conversationPartToContentParts(
     result: part.result,
     output: part.output,
     ...(part.htmlReply ? { htmlReply: part.htmlReply } : {}),
+    ...(part.stationControlRefusal
+      ? { stationControlRefusal: part.stationControlRefusal }
+      : {}),
     ...(part.outputTruncated ? { outputTruncated: true } : {}),
     error: part.error,
     cancelled: part.cancelled,
     state: part.state,
     isError: part.isError,
     progressMessage: part.progressMessage,
+    ...(part.startedAt !== undefined ? { startedAt: part.startedAt } : {}),
     runtimeError: part.runtimeError,
     runtimeErrorCode: part.runtimeErrorCode,
     needsApproval: part.needsApproval,

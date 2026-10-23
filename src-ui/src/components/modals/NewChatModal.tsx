@@ -91,7 +91,10 @@ import {
 import { ModelPickerDialogFrame } from '../session/ModelPickerDialogFrame';
 import { SkillExperiencePicker } from '../skill-experiences/SkillExperiencePicker';
 import { describeReadFailure, Empty, ErrorState, SkeletonList } from '../state';
-import { AutomaticEnginePreparation } from './AutomaticEnginePreparation';
+import {
+  AutomaticEnginePreparation,
+  preparationFeedbackText,
+} from './AutomaticEnginePreparation';
 import {
   GLOBAL_CONTEXT,
   modelPickerProviders,
@@ -367,6 +370,8 @@ export function NewChatModal({
   // useCallback so the setter is referentially stable and can be an honest
   // effect dependency (archive#3021) — the previous render-scoped arrow forced a
   // reasoned lint suppression on the effect below.
+  // An app whose first start is still running (not a failure to prepare).
+  const [startingNotice, setStartingNotice] = useState<string | null>(null);
   const setSelectFeedback = useCallback(
     (text: string | null) =>
       setSelectFeedbackState((current) =>
@@ -1359,6 +1364,12 @@ export function NewChatModal({
         : undefined) ??
       flatList.find((agent) => agentFixRoute(agent)) ??
       flatList[0];
+    // The prepared app is still on its first start and has no Agent yet, so
+    // nothing in the list stands for it; its notice outranks whichever agent
+    // (often the built-in Station agent) the list falls back to.
+    const preparedStillStarting =
+      Boolean(startingNotice) &&
+      !flatList.some((agent) => agent.engineId === preparedEngineId);
     const canEnableAgent = flatList.some(
       (agent) =>
         resolveNewChatAgentEnable(agent) && agentFixRoute(agent) === 'enable',
@@ -1424,11 +1435,13 @@ export function NewChatModal({
                 (!initialAuthority.current ||
                   initialAuthority.current.isCurrent())
               }
-              onComplete={(engineId, failure) => {
+              onComplete={(engineId, failure, notice) => {
                 setDiscoveryInProgress(false);
                 setPreparedEngineId(engineId);
                 setDiscoveryCompleted(true);
-                if (failure) setSelectFeedback(failure);
+                if (failure)
+                  setSelectFeedback(preparationFeedbackText(failure, notice));
+                else setStartingNotice(notice ?? null);
               }}
             />
           ) : preparing ||
@@ -1439,6 +1452,17 @@ export function NewChatModal({
               count={1}
               label={
                 enableInFlight ? 'Preparing your AI app' : 'Opening your chat'
+              }
+            />
+          ) : preparedStillStarting ? (
+            <Empty
+              variant="compact"
+              label="Your AI app is still starting"
+              description={startingNotice}
+              action={
+                <Button onClick={() => beginSetup('/connections/engines')}>
+                  Open engines
+                </Button>
               }
             />
           ) : needsAttention ? (

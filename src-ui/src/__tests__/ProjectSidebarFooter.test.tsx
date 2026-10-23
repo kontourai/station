@@ -188,13 +188,14 @@ describe('ProjectSidebarFooter', () => {
     showSurfaceStub.mockReset();
   });
 
-  test('groups Live work, the account, Schedule, Customize and Settings in the footer', () => {
+  test('groups Updates, Live work, the account, Schedule, Customize and Settings in the footer', () => {
     renderFooter();
     expect(
       screen
         .getAllByRole('button')
         .map((button) => button.getAttribute('aria-label')),
     ).toEqual([
+      'Updates',
       'Who is here: nobody is publishing live work',
       'Profile and settings',
       'Schedule',

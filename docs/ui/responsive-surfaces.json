@@ -31,11 +31,6 @@
       "evidence": "tests/connect-modal.spec.ts"
     },
     {
-      "path": "src-ui/src/components/acp-connections/ACPAddConnectionModal.tsx",
-      "strategy": "covered",
-      "evidence": "src-ui/src/__tests__/ACPAddConnectionModal.test.tsx"
-    },
-    {
       "path": "src-ui/src/components/acp-connections/ACPConnectionDetailModal.tsx",
       "strategy": "covered",
       "contract": "ResponsiveDialogSurface",

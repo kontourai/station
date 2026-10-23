@@ -362,7 +362,7 @@ test.describe('Orchestration Chat Flow', () => {
     // The active tool owns its progress; a second working/progress footer
     // would duplicate it and consume space in the compact transcript.
     await expect(page.locator('.streaming-activity')).toHaveCount(0);
-    await expect(page.locator('.tool-call__pulse')).toHaveCount(1);
+    await expect(page.locator('.tool-call__label--active')).toHaveCount(1);
     await expect(
       page.getByRole('button', { name: 'Running ls' }),
     ).toBeVisible();
@@ -490,7 +490,7 @@ test.describe('Orchestration Chat Flow', () => {
     // ongoing activity (archive#2652 redesign). The final message is
     // retained in the row's expanded detail, asserted after the turn
     // settles below.
-    await expect(page.locator('.tool-call__pulse')).toHaveCount(0);
+    await expect(page.locator('.tool-call__label--active')).toHaveCount(0);
     await expect(page.locator('.tool-call__progress')).toBeHidden();
     await emitMockOrchestrationEvent(page, 'orchestration:event', {
       event: {

@@ -1,12 +1,15 @@
 import { useConnections } from '@kontourai/station-connect';
 import type { ToolPolicyDelivery } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
+import { ENGINE_SIGN_IN_REQUIRED_CODE } from '@kontourai/station-contracts/provider';
 import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
+import { stationControlToolName } from '@kontourai/station-contracts/station-control-refusal';
 import {
   inspectOrchestrationSteerInput,
   type OrchestrationSessionSummary,
   steerOrchestrationTurn,
 } from '@kontourai/station-sdk';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import React, {
   useCallback,
   useEffect,
@@ -83,6 +86,8 @@ import {
   transcriptShowsFailureSurface,
 } from '../../utils/sessionFailure';
 import { steerRefusalMessage } from '../../utils/steerTurn';
+import { turnToolsRunning } from '../../utils/turn-tools-running';
+import { requestsWaitingOnUser } from '../../utils/waiting-approvals';
 import { Button } from '../Button';
 import { ChatEmptyState } from '../chat/ChatEmptyState';
 import type { ChatInputArea } from '../chat/ChatInputArea';
@@ -91,15 +96,22 @@ import { durableMentionAuthority } from '../chat/composer-mentions';
 import { EphemeralMessage } from '../chat/EphemeralMessage';
 import type { ForkTurnSource } from '../chat/fork-turn-source';
 import { preloadMarkdownRenderer } from '../chat/LazyMarkdown';
+import { outboxNeedsReview } from '../chat/pendingMessages';
+import type { OutboxRows } from '../chat/QueuedMessages';
 import { SystemEventMessage } from '../chat/SystemEventMessage';
 import { preloadToolCallBatch } from '../chat/ToolCallBatchBoundary';
+import { hasActiveToolCall } from '../chat/tool-call-labels';
 import { markTranscriptPhase } from '../chat/transcriptLayoutTrace';
-import { ConversationStats } from '../conversation-stats/ConversationStats';
+import {
+  ContextPercentage,
+  ConversationStats,
+} from '../conversation-stats/ConversationStats';
 import ProgressSilenceObservation from '../home/ProgressSilenceObservation';
 import { LazyBoundary } from '../LazyBoundary';
 import { resolveNewChatAgentEnable } from '../modals/new-chat-agent-enable';
 import { SessionFailureAlert } from '../session-failure/SessionFailureAlert';
 import { ErrorState, SkeletonList } from '../state';
+import { AgentScheduleNotes } from './AgentScheduleNotes';
 import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
 import {
   type RetryAttachment,
@@ -108,6 +120,36 @@ import {
 } from './retry-attachments';
 import { UsageLimitBanner } from './UsageLimitBanner';
 import { useChatStatusPill } from './useChatStatusPill';
+
+/** The station-control tools that change what a chat has scheduled. */
+const SCHEDULE_TOOLS = new Set([
+  'schedule_wake_up',
+  'cancel_wake_up',
+  'propose_job',
+]);
+
+/**
+ * When the chat's schedule may have changed: a turn started or ended (a
+ * check-back sent, a stop), or the running turn finished a scheduling tool
+ * call. Not every streamed event: the summary's event count moves on every
+ * delta, and each move re-read the schedule.
+ */
+export function agentScheduleRefreshKey(
+  openTurnId: string | undefined,
+  parts:
+    | readonly { type?: string; toolName?: string; state?: string }[]
+    | undefined,
+): string {
+  const scheduled = (parts ?? []).filter(
+    (part) =>
+      part.type === 'tool-invocation' &&
+      SCHEDULE_TOOLS.has(stationControlToolName(part.toolName) ?? '') &&
+      part.state !== 'call' &&
+      part.state !== 'running' &&
+      part.state !== 'partial-call',
+  ).length;
+  return `${openTurnId ?? 'idle'}:${scheduled}`;
+}
 
 const loadChatInputArea = () =>
   import('../chat/ChatInputArea').then((module) => ({
@@ -212,12 +254,7 @@ const loadSourceQuoteDrafts = () =>
 // floats over the transcript. Its own chunk, loaded only for a Project chat.
 const loadFloatOverChat = () => import('../../float-over-chat/FloatOverChat');
 
-const loadQueuedMessages = () =>
-  import('../chat/QueuedMessages').then(({ QueuedMessages }) => ({
-    default: QueuedMessages,
-  }));
-
-// station#3706: lazy for the same reason as the queue above — most sessions
+// station#3706: lazy because most sessions
 // never hold a refused follow-up, so the chunk loads only when one exists.
 const loadUnsentMessages = () =>
   import('../chat/UnsentMessages').then(({ UnsentMessages }) => ({
@@ -260,6 +297,8 @@ interface ChatDockBodyProps {
   chatFontSize: number;
   dockHeight: number;
   showStatsPanel: boolean;
+  /** Whether the composer shows this chat's context meter. */
+  showContextMeter?: boolean;
   showReasoning: boolean;
   showToolDetails: boolean;
   modelSupportsAttachments: boolean;
@@ -449,6 +488,7 @@ export function ChatDockBody({
   chatFontSize,
   dockHeight,
   showStatsPanel,
+  showContextMeter = false,
   showReasoning,
   showToolDetails,
   modelSupportsAttachments,
@@ -1297,33 +1337,42 @@ export function ChatDockBody({
             action={
               activeSession.replay
                 ? undefined
-                : translation?.retryable === false &&
-                    chatErrorCode !== SESSION_START_INDETERMINATE_CODE &&
-                    onNewChat
+                : chatErrorCode === ENGINE_SIGN_IN_REQUIRED_CODE &&
+                    activeSession.agentConnectionId
                   ? {
-                      label: 'Switch agent',
+                      label: 'Sign in',
                       onClick: () =>
-                        void Promise.resolve(onNewChat()).catch(
-                          surfaceRecoveryFailure,
+                        navigate(
+                          `/connections/engines/${encodeURIComponent(activeSession.agentConnectionId ?? '')}`,
                         ),
                     }
-                  : translation?.terminalSession && onNewChat && retryTurn
+                  : translation?.retryable === false &&
+                      chatErrorCode !== SESSION_START_INDETERMINATE_CODE &&
+                      onNewChat
                     ? {
-                        label: 'New chat',
+                        label: 'Switch agent',
                         onClick: () =>
-                          void runRecoveredTurn(retryTurn, onNewChat),
+                          void Promise.resolve(onNewChat()).catch(
+                            surfaceRecoveryFailure,
+                          ),
                       }
-                    : canRetry && retryTurn
+                    : translation?.terminalSession && onNewChat && retryTurn
                       ? {
-                          label: 'Send again',
+                          label: 'New chat',
                           onClick: () =>
-                            void runRecoveredTurn(
-                              retryTurn,
-                              (text, attachments) =>
-                                sendRef.current(text, attachments),
-                            ),
+                            void runRecoveredTurn(retryTurn, onNewChat),
                         }
-                      : undefined
+                      : canRetry && retryTurn
+                        ? {
+                            label: 'Send again',
+                            onClick: () =>
+                              void runRecoveredTurn(
+                                retryTurn,
+                                (text, attachments) =>
+                                  sendRef.current(text, attachments),
+                              ),
+                          }
+                        : undefined
             }
           />
         );
@@ -1336,6 +1385,8 @@ export function ChatDockBody({
       removingMessages,
       activeSession.id,
       activeSession.replay,
+      activeSession.agentConnectionId,
+      navigate,
       renderedSession.messages,
       chatInput.input,
       clearEphemeralMessages,
@@ -1346,6 +1397,114 @@ export function ChatDockBody({
     ],
   );
 
+  // This browser's outbox: rows in the one pending-message list above the
+  // composer, not a list of its own.
+  const outboundTurns = activeSession.outboundQueuedTurns ?? [];
+  // Send on a copy a closed window held. While a turn runs or this window's
+  // queue holds follow-ups, it joins that queue (whose durable copy then takes
+  // the key over), so it sends in the queue's order and takes its number;
+  // otherwise it goes now. An open window's copy is released as before: that
+  // window's queue holds it too, and one message has one sender.
+  const sendHeldCopy = async (turn: {
+    clientTurnId: string;
+    content: string;
+    heldByClosedWindow?: true;
+  }) => {
+    // The queue as stored, not as this render saw it: a second click lands
+    // before the re-render.
+    const latest: Pick<
+      ChatSession,
+      'queuedMessages' | 'queuedMessageMetadata'
+    > =
+      activeChatsStore.getChatForExecutionSession(activeSession.id) ??
+      activeSession;
+    if (
+      turn.heldByClosedWindow &&
+      (isTurnInFlight(activeSession) || latest.queuedMessages.length)
+    ) {
+      // One key, one queue entry: a repeat click, or a window restored from
+      // the back/forward cache and read as closed, finds it already queued.
+      if (
+        latest.queuedMessageMetadata?.some(
+          (entry) => entry.id === turn.clientTurnId,
+        )
+      )
+        return;
+      updateChat(activeSession.id, {
+        queuedMessages: [...latest.queuedMessages, turn.content],
+        queuedMessageMetadata: [
+          ...(latest.queuedMessageMetadata ??
+            latest.queuedMessages.map(() => ({
+              id: randomCorrelationId(),
+              mode: 'queue' as const,
+            }))),
+          // Its own key: the queue's durable copy takes the held row over.
+          { id: turn.clientTurnId, mode: 'queue' },
+        ],
+      });
+      return;
+    }
+    const { outboundDispatch } = await import('../../lib/outboundQueue');
+    await outboundDispatch.sendHeld(turn.clientTurnId);
+  };
+  const outboxRows: OutboxRows | undefined = outboundTurns.length
+    ? {
+        count: outboundTurns.length,
+        needsReview: outboundTurns.some(outboxNeedsReview),
+        notSent: outboundTurns.some((turn) => turn.status === 'failed'),
+        node: (
+          <LazyBoundary
+            load={loadOutboundQueuedMessages}
+            pending={
+              <SkeletonList
+                count={1}
+                withIcon={false}
+                label="Loading offline messages"
+              />
+            }
+            componentProps={{
+              sessionId: activeSession.id,
+              turns: outboundTurns,
+              onSendHeld: sendHeldCopy,
+              messages: renderedSession.messages,
+              onError: (error: string) => surfaceRecoveryFailure(error),
+              // The "x" discards the same queued turn as the notice's Discard;
+              // once none is left, the notice has nothing to explain.
+              onDiscarded: (remaining: number) => {
+                const kept = ephemeralAfterQueueDiscard(
+                  ephemeralMessages,
+                  remaining,
+                );
+                if (!kept) return;
+                if (kept.length === 0) clearEphemeralMessages(activeSession.id);
+                else updateChat(activeSession.id, { ephemeralMessages: kept });
+              },
+              onRetry: async (clientTurnId: string) => {
+                try {
+                  const { outboundDispatch } = await import(
+                    '../../lib/outboundQueue'
+                  );
+                  await outboundDispatch.retry(clientTurnId);
+                } catch (error) {
+                  surfaceRecoveryFailure(
+                    `Could not retry the durable offline turn: ${error instanceof Error ? error.message : String(error)}`,
+                  );
+                }
+              },
+              onStartNewChat:
+                onNewChat ??
+                (() => {
+                  updateChat(activeSession.id, {
+                    status: 'error',
+                    error:
+                      'New chat is unavailable in this view — open the conversation from the dock and try again.',
+                  });
+                }),
+            }}
+          />
+        ),
+      }
+    : undefined;
   return (
     <>
       {showStatsPanel && (
@@ -1553,26 +1712,38 @@ export function ChatDockBody({
           }}
         />
       ) : null}
-      {activeSession.conversationId && !activeSession.replay ? (
+      {/* One pending-message list: this browser's queue, its outbox and what
+          Station holds for the conversation (#3868). It renders nothing while
+          all are empty, and stays mounted so its rows can animate in and out. */}
+      {activeSession.queuedMessages.length ||
+      outboxRows ||
+      !activeSession.replay ? (
         <LazyBoundary
-          key={activeSession.conversationId}
+          // The chat's own id: a new chat gaining its conversation id is the
+          // same list, not a new one to mount (and replay its rows' entry).
+          key={activeSession.id}
           load={loadConversationInboxMessages}
           pending={null}
-          componentProps={{ conversationId: activeSession.conversationId }}
-        />
-      ) : null}
-      {activeSession.queuedMessages.length ? (
-        <LazyBoundary
-          load={loadQueuedMessages}
-          pending={null}
           componentProps={{
+            conversationId: activeSession.replay
+              ? undefined
+              : activeSession.conversationId,
+            conversationActive: isExecutionActive,
             sessionId: activeSession.id,
             messages: activeSession.queuedMessages,
             metadata: activeSession.queuedMessageMetadata,
-            waitingForTools: activeSession.streamingMessage?.contentParts?.some(
-              (part) =>
-                part.type === 'tool-invocation' && part.state === 'running',
-            ),
+            outbox: outboxRows,
+            // The pill's fact when the server's turn record is here (it
+            // survives a reload; the live parts do not), unless the user
+            // owes an approval, which the turn waits on instead. The live
+            // parts only without that record.
+            waitingForTools: activeSession.conversationActivity
+              ? turnToolsRunning(activeSession.conversationActivity) &&
+                requestsWaitingOnUser({
+                  pendingApprovals: activeSession.pendingApprovals ?? [],
+                  answeredApprovals: activeSession.answeredApprovals,
+                }).length === 0
+              : hasActiveToolCall(activeSession.streamingMessage?.contentParts),
             sendNowPending:
               activeSession.queueSendNowPending ||
               activeSession.queueDrainSettling,
@@ -1834,56 +2005,6 @@ export function ChatDockBody({
           }}
         />
       ) : null}
-      {activeSession.outboundQueuedTurns?.length ? (
-        <LazyBoundary
-          load={loadOutboundQueuedMessages}
-          pending={
-            <SkeletonList
-              count={1}
-              withIcon={false}
-              label="Loading offline messages"
-            />
-          }
-          componentProps={{
-            sessionId: activeSession.id,
-            turns: activeSession.outboundQueuedTurns,
-            messages: renderedSession.messages,
-            onError: (error: string) => surfaceRecoveryFailure(error),
-            // The "x" discards the same queued turn as the notice's Discard;
-            // once none is left, the notice has nothing to explain.
-            onDiscarded: (remaining: number) => {
-              const kept = ephemeralAfterQueueDiscard(
-                ephemeralMessages,
-                remaining,
-              );
-              if (!kept) return;
-              if (kept.length === 0) clearEphemeralMessages(activeSession.id);
-              else updateChat(activeSession.id, { ephemeralMessages: kept });
-            },
-            onRetry: async (clientTurnId: string) => {
-              try {
-                const { outboundDispatch } = await import(
-                  '../../lib/outboundQueue'
-                );
-                await outboundDispatch.retry(clientTurnId);
-              } catch (error) {
-                surfaceRecoveryFailure(
-                  `Could not retry the durable offline turn: ${error instanceof Error ? error.message : String(error)}`,
-                );
-              }
-            },
-            onStartNewChat:
-              onNewChat ??
-              (() => {
-                updateChat(activeSession.id, {
-                  status: 'error',
-                  error:
-                    'New chat is unavailable in this view — open the conversation from the dock and try again.',
-                });
-              }),
-          }}
-        />
-      ) : null}
       {/*
         station#3213. The session detail's own failure banner, rendered here
         rather than respelled — same component, same fold, so one failure
@@ -1914,6 +2035,16 @@ export function ChatDockBody({
         session={activeSession}
         summary={activeOrchestrationSession}
       />
+      {/* What an agent scheduled here: check-backs and job proposals. */}
+      {activeSession.conversationId && !activeSession.replay ? (
+        <AgentScheduleNotes
+          conversationId={activeSession.conversationId}
+          refreshKey={agentScheduleRefreshKey(
+            activeSession.conversationActivity?.openTurn?.turnId,
+            activeSession.streamingMessage?.contentParts,
+          )}
+        />
+      ) : null}
       {agent?.available === false &&
         activeSession.modelSource !== 'session override' && (
           <div
@@ -2194,6 +2325,18 @@ export function ChatDockBody({
           )}
           <DeferredChatInputArea
             activity={statusPill}
+            contextMeter={
+              showContextMeter && activeSession.conversationId ? (
+                <ContextPercentage
+                  agentSlug={activeSession.agentSlug}
+                  conversationId={activeSession.conversationId}
+                  apiBase={apiBase}
+                  messageCount={activeSession.messages.length}
+                  liveUsage={activeSession.liveUsage}
+                  onClick={() => setShowStatsPanel(true)}
+                />
+              ) : undefined
+            }
             activityRef={setScrollControlsTarget}
             hasQuotedContext={chatInput.quotes.length > 0}
             draftText={chatInput.quotedDraftText}

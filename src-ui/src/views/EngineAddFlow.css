@@ -1,0 +1,58 @@
+/*
+ * The Add engine catalogue in the Engines detail pane. A row wraps its action
+ * under the engine's name when the pane is too narrow for both, so a phone
+ * needs no rule of its own here.
+ */
+.engine-catalog__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-2);
+  margin: 0;
+  padding: var(--k-space-4) var(--space-12);
+  list-style: none;
+}
+
+.engine-catalog__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--k-space-3);
+  padding: var(--k-space-3) var(--k-space-4);
+  border: 1px solid var(--border-primary);
+  border-radius: var(--radius-card, 0.75rem);
+  background: var(--bg-secondary);
+}
+
+.engine-catalog__identity {
+  display: flex;
+  flex: 1 1 18rem;
+  align-items: flex-start;
+  gap: var(--k-space-3);
+  min-width: 0;
+}
+
+.engine-catalog__info {
+  display: grid;
+  flex: 1;
+  gap: var(--k-space-1);
+  min-width: 0;
+}
+
+.engine-catalog__name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--k-space-2);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.engine-catalog__detail {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  overflow-wrap: anywhere;
+}
+
+.engine-catalog__action {
+  margin-left: auto;
+}
