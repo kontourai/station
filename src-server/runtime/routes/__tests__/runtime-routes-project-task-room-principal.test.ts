@@ -225,6 +225,7 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
         readTaskView: (id: string) =>
           id === taskRecord.id ? taskRecord : null,
         listTasks: () => [],
+        readSessionRelations: (sessionId: string) => ({ sessionId, links: [] }),
         updateTaskStatus: async (_id: string, status: TaskRecord['status']) =>
           Object.assign(taskRecord, {
             status,
