@@ -1,0 +1,7 @@
+{
+  "revision": "3b334c6840a8d2cdea08ed4a9eaebc4f828849d9",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the final EventStore change retaining the current turn's own successful completion in bounded single and batched facts, including a delayed completion for another turn. It supports the documented completed-turn presentation and does not change continuation admission or composer control ownership. Focused EventStore, lifecycle and session-state suites pass; no new live-provider qualification is claimed.","inputs":["docs/design/chat-composer.md","src-server/services/orchestration/event-store.ts"]}
+  ]
+}
