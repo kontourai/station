@@ -1086,7 +1086,9 @@ export class AcpToolUpdateSupervisor {
    *
    * No `turnId`, exactly like every other event this supervisor publishes: it
    * has never tracked one, and inventing `activeTurnId` here would attribute
-   * a call to whichever turn happened to be last. The folds handle a terminal
+   * a call to whichever turn happened to be last. The adapter's publisher
+   * names the turn (and invocation) each call started in; a call that started
+   * outside a send's turn stays unattributed, and the folds handle a terminal
    * with no turn identity (station#1569 item 2).
    */
   settleUnresolvedAtSessionEnd(): void {

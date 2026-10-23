@@ -32,9 +32,13 @@ export function useWorkingChatFocus({
       setPending(null);
       return;
     }
+    // Focus may move to the chosen chat only from where the choice was made
+    // (a control marked `data-working-chat-origin`, the dock's More menu) or
+    // from nowhere; focus the user put anywhere else stays put.
     const mayRestoreFocus = (element: EventTarget | null) =>
       element === document.body ||
-      (element instanceof Element && !!element.closest('.chat-dock__activity'));
+      (element instanceof Element &&
+        !!element.closest('[data-working-chat-origin]'));
     const dialogOpen = () =>
       Array.from(
         document.querySelectorAll(

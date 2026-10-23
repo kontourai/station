@@ -130,6 +130,7 @@ export type ChatContentPart = {
   result?: any;
   output?: any;
   htmlReply?: import('@kontourai/station-contracts/html-reply').HtmlReplyReference;
+  stationControlRefusal?: import('@kontourai/station-contracts/station-control-refusal').StationControlRefusalView;
   error?: string;
   errorText?: string;
   state?: string;
@@ -153,6 +154,8 @@ export type ChatContentPart = {
     | 'user-denied'
     | 'policy-denied';
   activityAt?: string;
+  /** See `MessagePart.startedAt`. */
+  startedAt?: string;
   progressMessage?: string;
   /** Station narrowed engine-supplied tool material before this projection. */
   outputTruncated?: true;
@@ -174,6 +177,8 @@ export type ChatMessage = {
   timestamp?: number;
   /** See `ChatMessage.steerInterruptedRun` in types.ts. */
   steerInterruptedRun?: boolean;
+  /** See `ChatMessage.stationCheckBack` in types.ts. */
+  stationCheckBack?: boolean;
   /** See `ChatMessage.sender` in types.ts. */
   sender?: ClientOriginSender;
   model?: string;
@@ -387,6 +392,8 @@ export type ChatUIState = {
     waitingForStation?: string;
     /** Held by another window or a closed one; sent only by the user. */
     heldElsewhere?: true;
+    /** The window holding this copy is proven closed. */
+    heldByClosedWindow?: true;
     /**
      * Pending, but an earlier row of the same chat was not sent: the outbox
      * keeps a chat's order, so this one waits until that one is retried or

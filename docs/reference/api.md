@@ -3269,6 +3269,37 @@ apply prompt limits and schedule validation. The response is
 `{success: true, data: {output}}`, where output is the provider's result text;
 it is not proof that a future run completed.
 
+A person approves an agent's job proposal (`propose_job`) by sending this
+route the proposed job with its `proposalId`. The route then creates the job
+only when the request is a person's own (a request that may be an agent's
+answers 403 `person-approval-required`), the person may send to the
+proposal's conversation (404 `job_proposal_not_found` otherwise), the
+proposal is still open (409 `job_proposal_settled`), and the body is exactly
+the proposed `name`, `schedule`, `prompt` and `agent` with nothing more (409
+`job_proposal_mismatch`). Admission claims the proposal (a Decline after it
+changes nothing); the route then creates the job and records the proposal
+approved, or gives it back to `open` if creating it failed. The
+`proposalId` is never passed to the scheduler. A hosted Station approves no
+proposal (404).
+
+### Agent check-backs and job proposals in a conversation
+
+`GET /api/orchestration/agent-schedule/:conversationId` answers a
+`ConversationAgentSchedule`: the conversation's waiting check-backs
+(`wakeUps`), its open job proposals, up to 20 jobs approved from it (`jobs`,
+by name), and a usage-limit stop waiting for a known reset
+(`usageLimitResume`). It needs a person who may read every Session of the
+conversation.
+`POST .../wake-ups/:wakeUpId/cancel` (or `/decline`, the same act) cancels a
+check-back, `POST .../wake-ups/:wakeUpId/approve` approves one waiting for a
+person (`needs_approval`; 409 `wake_up_settled` once it is decided or due,
+503 `wake_up_unavailable` while check-back delivery is stopped, as during
+shutdown; it stays `needs_approval`),
+and `POST .../job-proposals/:proposalId/decline` declines a proposal; each
+needs a person who may send to the conversation, and answers 404 to anyone
+else. An agent's request reaches none of them. The agent's own side is the station-control tools in
+[the self-configuring agent guide](../guides/self-configuring-agent.md#wake-an-agent-later).
+
 ### Update Job
 
 `PUT /scheduler/jobs/:target` accepts supported partial job options, including

@@ -144,7 +144,8 @@ unwatched session's idle grace. Remote-host agent tools, automatic pane reveal,
 and agent shutdown are not included yet.
 
 Only a credential minted for `sdk-in-process` currently supplies bound assurance.
-Codex's `url-token` and ACP's `http-header-token` paths remain refused as
+Codex's `url-token` and ACP's `http-header-token` sessions are not offered the
+device tools in their tool list, and a call from them is still refused as
 `caller-not-bound`; a stdio connection with no verified caller is refused as
 `caller-required`. Tool visibility grants no authority. The separate toolchain
 **Agent access** setting is the explicit operator opt-in for both managed

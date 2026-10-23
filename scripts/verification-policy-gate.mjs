@@ -1,8 +1,11 @@
-import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { validateE2EManifest } from '../tests/e2e-manifest.mjs';
 import { instructionGateErrors } from './agent-instructions-gate.mjs';
+import {
+  CAPTURE_MAX_BYTES,
+  execFileSyncBounded,
+} from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import { FAST_STATIC_COMMANDS } from './run-ci-fast.mjs';
 import {
@@ -718,12 +721,15 @@ export function verificationPolicyErrors({
  */
 export function discoverTrackedVitestTestFiles({
   rootDir = root,
-  execFile = execFileSync,
+  // The listing grows with every tracked file and passed the 1 MiB default
+  // capture on a Windows runner (ENOBUFS); see scripts/lib/bounded-capture.mjs.
+  execFile = execFileSyncBounded,
 } = {}) {
   const output = execFile('git', ['ls-files', '-z'], {
     cwd: rootDir,
     encoding: 'utf8',
     windowsHide: true,
+    maxBuffer: CAPTURE_MAX_BYTES,
   });
   const files = String(output)
     .split('\0')
