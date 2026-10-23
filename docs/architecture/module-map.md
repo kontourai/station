@@ -1958,6 +1958,20 @@ The public reserved-metadata filter prevents client options from selecting this
 mode. The service reads the raw stored session-start marker only for binding
 and stop restrictions; the marker cannot issue a port or authorize a request.
 
+The [credential observation owner](../../src-server/runtime/conversation/provider-credential-observation.ts)
+can mint an opaque private SDK credential lease from the actual local-grant
+request and witnessed provider record. The SDK owner accepts that lease instead
+of a caller key, rechecks current authority/configuration before use, and joins
+its provider/connection/credential revisions to the resolved provider contract.
+The captured wire must carry the same key immediately before source consumption
+and raw fetch. Serialization of a lease or private credential view discloses no
+key; a copied observation or JSON object cannot reconstruct the capability.
+Custom endpoint overrides refuse this official-endpoint mode.
+
+This lease authenticates a credential source, not model entitlement or a tariff.
+The existing qualified provider contract remains independently required, and
+production request preparation still has to compose both owners.
+
 The [reserved SDK attempt](../../src-server/runtime/conversation/reserved-sdk-source-attempt.ts)
 passes through the durable physical launch fence and awaits
 [host evidence retention](../../src-server/services/orchestration/delegation-group-persistence.ts)

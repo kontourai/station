@@ -3,6 +3,12 @@ import { join } from 'node:path';
 import { trackTempDirs } from '../../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../../domain/config-loader.js';
 import { FileStorageAdapter } from '../../../../domain/file-storage-adapter.js';
+import { captureEnvironmentLocalGrantObservationOwner } from '../../../../runtime/conversation/local-grant-observation-owner.js';
+import {
+  type ObservedSdkProviderCredential,
+  ProviderCredentialObservationStore,
+  readObservedSdkProviderCredential,
+} from '../../../../runtime/conversation/provider-credential-observation.js';
 import {
   bindRuntimeLocalOperator,
   setRuntimeAuthenticatedRequestPrincipal,
@@ -126,6 +132,7 @@ export async function fixture(
     paired: { credential: paired.credential, device: { id: paired.device.id } },
     request,
     storage,
+    loader,
     manifestPath,
     owner,
     req,
@@ -135,4 +142,45 @@ export async function fixture(
 export function code(expected: string) {
   return (error: unknown) =>
     error instanceof SourceRefusal && error.code === expected;
+}
+
+export async function sdkCredentialFixture(
+  f: Awaited<ReturnType<typeof fixture>>,
+  provider: 'anthropic' | 'google',
+): Promise<{
+  credential: ObservedSdkProviderCredential;
+  observed: ReturnType<typeof readObservedSdkProviderCredential>;
+  store: ProviderCredentialObservationStore;
+}> {
+  await f.storage.saveProviderConnection({
+    id: 'connection-1',
+    name: 'Synthetic SDK fixture',
+    type: provider,
+    enabled: true,
+    capabilities: ['llm'],
+    config: {
+      apiKey: ['synthetic', 'not', 'credential'].join('-'),
+      baseUrl:
+        provider === 'anthropic'
+          ? 'https://api.anthropic.com/v1'
+          : 'https://generativelanguage.googleapis.com/v1beta',
+    },
+  });
+  const authority = await captureEnvironmentLocalGrantObservationOwner(
+    f.req,
+    f.environment,
+    f.environment,
+  );
+  const store = new ProviderCredentialObservationStore(f.home, {
+    authority,
+    adapter: f.storage,
+    captureConfigurationFence: () =>
+      f.loader.capturePreparationConfigurationFence(['worker']),
+    // Controlled source/config projection only; no boot runtime qualification is implied.
+    captureRuntimeFence: () =>
+      f.loader.capturePreparationConfigurationFence(['worker']),
+  });
+  const credential = store.captureSdkCredential(f.req, 'connection-1');
+  const observed = readObservedSdkProviderCredential(credential, provider);
+  return { credential, observed, store };
 }

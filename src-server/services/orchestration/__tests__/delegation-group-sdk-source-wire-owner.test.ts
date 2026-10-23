@@ -18,11 +18,11 @@ import { fixture as qualification } from './delegation-source-fixtures/qualifica
 import {
   code,
   fixture,
+  sdkCredentialFixture,
   selection,
   subject,
 } from './delegation-source-fixtures/source.js';
 
-const fixtureSdkCredential = () => 'synthetic-not-a-credential';
 const sdkCode = (code: string) => (e: unknown) =>
   e instanceof SdkSourceRefusal && e.code === code;
 function mockResponse(provider: 'anthropic' | 'google') {
@@ -79,13 +79,20 @@ async function sdkFixture(
     },
   });
   const q = qualification(provider);
+  const credentialOwner = await sdkCredentialFixture(f, provider);
+  Object.assign(q.binding, {
+    connectionId: credentialOwner.observed.connectionId,
+    connectionRevision: credentialOwner.observed.connectionRevision,
+    credentialRevision: credentialOwner.observed.credentialRevision,
+  });
+  q.publishFixture();
   let starts = 0;
   let sentBody = '';
   const abort = new AbortController();
   const configuration = {
     provider,
     modelId: 'fixture-model',
-    apiKey: fixtureSdkCredential(),
+    credential: credentialOwner.credential,
     brief: 'inspect exactly this source',
     instructions: 'report only',
     maxOutputTokens: 10,
@@ -110,6 +117,7 @@ async function sdkFixture(
     ...f,
     q,
     sdkOwner: owner,
+    credentialOwner,
     configuration,
     sealed,
     abort,
@@ -531,7 +539,7 @@ test.each(['tools', 'cwd', 'filesystem', 'validate'] as const)(
     const options = {
       provider: 'anthropic' as const,
       modelId: 'fixture-model',
-      apiKey: fixtureSdkCredential(),
+      credential: JSON.parse('{}'),
       brief: 'brief',
       instructions: 'instructions',
       maxOutputTokens: 10,
@@ -717,6 +725,88 @@ for (const [provider, protocol] of [
     });
     await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
   });
+
+for (const provider of ['anthropic', 'google'] as const)
+  test(`SDK ${provider} refuses credential rotation after durable wire intent without releasing unknown accounting`, async () => {
+    const f = await sdkFixture(provider);
+    const prepared = await f.owner.prepareSdkSnapshot(
+      f.context(),
+      subject,
+      f.sealed.capability,
+      f.sdkOwner,
+    );
+    const { wire } = inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+    const driver = await publicFenceFixture(
+      f,
+      prepared.source,
+      f.sdkOwner,
+      prepared.sdkHandle,
+      wire,
+      () => {
+        const path = join(f.home, 'config', 'providers.json');
+        const rows = JSON.parse(readFileSync(path, 'utf8'));
+        rows.find(
+          (row: { id: string }) => row.id === 'connection-1',
+        ).config.apiKey = 'rotated-synthetic-key';
+        writeFileSync(path, JSON.stringify(rows));
+      },
+      {
+        provider,
+        protocol: 'rounds',
+        contract: f.configuration.contract,
+        now: () => 1000,
+      },
+    );
+    await driver.run();
+    assert.equal(driver.intentCount, 1);
+    assert.equal(f.starts, 0);
+    assert.equal(driver.observed.length, 0);
+    const ledger = await driver.ledger();
+    assert.equal(ledger.invocations[0].usage, null);
+    assert.equal(ledger.invocations[0].terminal, false);
+    await assert.rejects(() => driver.reserveAnother(), {
+      code: 'active_slot_exhausted',
+    });
+    await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
+  });
+
+test('SDK preparation refuses serialized credentials, wrong providers and qualified credential mismatches', async () => {
+  const f = await sdkFixture();
+  assert.equal(JSON.stringify(f.credentialOwner.credential), '{}');
+  assert.ok(
+    !JSON.stringify(f.credentialOwner.observed).includes(
+      'synthetic-not-credential',
+    ),
+  );
+  assert.throws(
+    () =>
+      createPreparedSdkSourceWireOwner({
+        ...f.configuration,
+        credential: JSON.parse('{}'),
+      }),
+    { code: 'observation_unavailable' },
+  );
+  assert.throws(
+    () =>
+      createPreparedSdkSourceWireOwner({
+        ...f.configuration,
+        provider: 'google',
+      }),
+    { code: 'unsupported_source' },
+  );
+  f.q.binding.credentialRevision = 'another-credential';
+  f.q.publishFixture();
+  assert.throws(
+    () =>
+      createPreparedSdkSourceWireOwner({
+        ...f.configuration,
+        contract: f.q.resolve(),
+      }),
+    { code: 'binding_mismatch' },
+  );
+  assert.equal(f.starts, 0);
+  f.owner.releaseSnapshot(f.sealed.capability);
+});
 
 test('failed durable provider evidence publication retains the unknown reservation', async () => {
   const f = await sdkFixture('anthropic');

@@ -66,6 +66,40 @@ export interface ProviderCredentialObservation {
   readonly kind: 'credential-source-observation';
 }
 
+const sdkCredentialBrand = Symbol('observed SDK provider credential');
+export type ObservedSdkProviderCredential = Readonly<{
+  [sdkCredentialBrand]: true;
+}>;
+type SdkCredentialValue = Readonly<{
+  provider: 'anthropic' | 'google';
+  connectionId: string;
+  connectionRevision: string;
+  credentialRevision: string;
+  hostContextId: string;
+  apiKey: string;
+}>;
+const sdkCredentials = new WeakMap<
+  ObservedSdkProviderCredential,
+  () => SdkCredentialValue
+>();
+
+/** Private preparation/SDK seam; a serialized observation or caller-supplied key cannot enter it. */
+export function readObservedSdkProviderCredential(
+  credential: ObservedSdkProviderCredential,
+  expectedProvider: 'anthropic' | 'google',
+): SdkCredentialValue {
+  const read = sdkCredentials.get(credential);
+  if (!read) fail('observation_unavailable');
+  try {
+    const value = read();
+    if (value.provider !== expectedProvider) fail('unsupported_source');
+    return value;
+  } catch (error) {
+    if (error instanceof ProviderCredentialObservationError) throw error;
+    return fail('observation_unavailable');
+  }
+}
+
 type DirectoryWitness = { dev: string; ino: string; uid: string; mode: string };
 type FileWitness = DirectoryWitness & {
   size: string;
@@ -342,8 +376,9 @@ function parseRecord(bytes: Buffer): PrivateRecord {
 }
 
 /** POSIX/current-UID credential SOURCE observations only. Every operation needs
- * current local-grant authority. No provider credential is returned, no grant,
- * catalog/tariff qualification or entitlement is issued. Same-UID/root tampering
+ * current local-grant authority. Observation DTOs contain no provider credential.
+ * A private opaque SDK lease can supply its witnessed key to the SDK owner;
+ * it issues no grant, catalog/tariff qualification or entitlement. Same-UID/root tampering
  * and filesystem rollback require stronger external authority and are NOT solved.
  */
 export class ProviderCredentialObservationStore {
@@ -631,6 +666,60 @@ export class ProviderCredentialObservationStore {
       if (error instanceof ProviderCredentialObservationError) throw error;
       return fail('observation_unavailable');
     }
+  }
+
+  captureSdkCredential(
+    request: Request,
+    connectionId: string,
+    lifetimeMs = 15 * 60 * 1000,
+  ): ObservedSdkProviderCredential {
+    const observation = this.capture(request, connectionId, lifetimeMs);
+    const read = (): SdkCredentialValue => {
+      if (request.signal.aborted) fail('authorization_unavailable');
+      this.revalidate(request, observation.observationId);
+      const record = this.#record(observation.observationId);
+      const selected = this.#sources.adapter
+        .listProviderConnections()
+        .find((row) => row.id === record.connectionId);
+      if (
+        !selected ||
+        (selected.type !== 'anthropic' && selected.type !== 'google') ||
+        sha(canonical(selected)) !== record.source.selectedConnectionSha256
+      )
+        fail('observation_obsolete');
+      const baseUrl =
+        selected.type === 'anthropic'
+          ? 'https://api.anthropic.com/v1'
+          : 'https://generativelanguage.googleapis.com/v1beta';
+      if (
+        selected.config.baseUrl !== undefined &&
+        selected.config.baseUrl !== baseUrl
+      )
+        fail('unsupported_source');
+      if (selected.config.baseURL !== undefined) fail('unsupported_source');
+      const apiKey = string(selected.config.apiKey, 16384);
+      if (sha(apiKey) !== record.source.staticKeySha256)
+        fail('observation_obsolete');
+      const result: SdkCredentialValue = {
+        provider: selected.type,
+        connectionId: record.connectionId,
+        connectionRevision: record.source.selectedConnectionSha256,
+        credentialRevision: record.source.staticKeySha256,
+        hostContextId: record.hostContextId,
+        apiKey,
+      };
+      Object.defineProperty(result, 'apiKey', { enumerable: false });
+      Object.freeze(result);
+      this.revalidate(request, observation.observationId);
+      if (request.signal.aborted) fail('authorization_unavailable');
+      return result;
+    };
+    read();
+    const credential: ObservedSdkProviderCredential = Object.freeze({
+      [sdkCredentialBrand]: true,
+    });
+    sdkCredentials.set(credential, read);
+    return credential;
   }
 
   revoke(request: Request, observationId: string): void {

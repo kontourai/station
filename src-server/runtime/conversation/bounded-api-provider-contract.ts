@@ -643,6 +643,25 @@ function current(
   return state.facts;
 }
 
+/** Credential/source observation is separate from provider qualification; both must match. */
+export function assertBoundedApiCredentialBinding(
+  handle: ResolvedBoundedApiProviderContract,
+  observed: Pick<
+    BoundedApiProviderBinding,
+    'provider' | 'connectionId' | 'connectionRevision' | 'credentialRevision'
+  >,
+  nowMs: number,
+): void {
+  const facts = current(handle, nowMs);
+  for (const key of [
+    'provider',
+    'connectionId',
+    'connectionRevision',
+    'credentialRevision',
+  ] as const)
+    if (facts.binding[key] !== observed[key]) fail('binding_mismatch');
+}
+
 function wireHeaders(
   provider: BoundedApiProvider,
   wire: BoundedApiFinalWire,

@@ -910,6 +910,14 @@ reserved SDK transport selects it explicitly; it does not reinterpret a legacy
 journal. Context-sync launch admission and authenticated recipient continuity
 remain open. Controlled provider fixtures are not live provider qualification.
 
+The private SDK owner now consumes an opaque credential lease from the real
+credential-observation store rather than a caller API key. Current local-grant,
+provider-file, configuration/runtime witnesses and the observed contract
+credential revisions are rechecked; the wire key is checked again before source
+consume/raw fetch. This supplies a credential-source handoff, not provider
+entitlement, tariff approval or a production serving issuer. Raw keys are not
+returned in observation DTOs or lease serialization.
+
 ## Controlled reserved Station turn integration
 
 The internal reserved-turn port now reaches the real Station adapter through

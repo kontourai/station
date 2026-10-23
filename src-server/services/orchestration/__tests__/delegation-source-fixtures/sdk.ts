@@ -1,6 +1,6 @@
 import * as sdk from '../../delegation-group-sdk-source-wire-owner.js';
 import { fixture as qualification } from './qualification.js';
-import { fixture, selection, subject } from './source.js';
+import { fixture, sdkCredentialFixture, selection, subject } from './source.js';
 
 export { fixture, sdk, selection, subject };
 export function deferred<T>() {
@@ -64,12 +64,19 @@ export async function setup(
 ) {
   const f = existing ?? (await fixture());
   const q = qualification(provider);
+  const credentialOwner = await sdkCredentialFixture(f, provider);
+  Object.assign(q.binding, {
+    connectionId: credentialOwner.observed.connectionId,
+    connectionRevision: credentialOwner.observed.connectionRevision,
+    credentialRevision: credentialOwner.observed.credentialRevision,
+  });
+  q.publishFixture();
   let starts = 0;
   const abort = new AbortController();
   const configuration = {
     provider,
     modelId: 'fixture-model',
-    apiKey: ['synthetic', 'not', 'credential'].join('-'),
+    credential: credentialOwner.credential,
     brief: 'R4 bounded source report',
     instructions: 'text only',
     maxOutputTokens: 10,
