@@ -19,6 +19,7 @@ import { observeListeningPidsByPort } from '../../station-dogfood-health.mjs';
 import {
   assertRuntimeRecoveryCredentials,
   type RuntimeRecoveryReceipt,
+  type RuntimeRecoveryRequest,
   readRuntimeRecoveryProcess,
 } from './runtime-recovery-linux-bootstrap.mjs';
 
@@ -483,7 +484,10 @@ export class StationFixtureOwner {
   }
 
   /** Only the copied runtime-recovery fixture's plain CLI path qualifies. */
-  writeRuntimeRecoveryStationShim(releasePath: string, instance: string): void {
+  writeRuntimeRecoveryStationShim(
+    releasePath: string,
+    instance: string,
+  ): RuntimeRecoveryRequest | undefined {
     const release = realpathSync(releasePath);
     const root = [...this.#fixtureRoots].find((candidate) =>
       isWithinRoot(release, candidate),
@@ -495,6 +499,7 @@ export class StationFixtureOwner {
     const workspace = fileURLToPath(new URL('../../../', import.meta.url));
     const quote = (value: string) => "'" + value.replaceAll("'", "'\\''") + "'";
     let command = `${quote(process.execPath)} ${quote(join(workspace, 'node_modules/tsx/dist/cli.mjs'))} ${quote(join(workspace, 'scripts/station-cli.ts'))}`;
+    let request: RuntimeRecoveryRequest | undefined;
     if (this.#processObservation.platform === 'linux') {
       const read = this.#processObservation.readProcFile;
       if (!read)
@@ -528,7 +533,7 @@ export class StationFixtureOwner {
           'Runtime recovery closure requires the copied listener-only fixture',
         );
       const runtimeDigest = createHash('sha256').update(runtime).digest('hex');
-      const request = {
+      request = {
         version: 1,
         root,
         release,
@@ -558,6 +563,7 @@ export class StationFixtureOwner {
     const launch = this.#runtimeRecoveryLaunches.get(release);
     if (launch) launch.shim = contents;
     chmodSync(shim, 0o755);
+    return request ? { ...request } : undefined;
   }
 
   #runtimeRecoveryReceipts(launch: RuntimeRecoveryLaunch) {

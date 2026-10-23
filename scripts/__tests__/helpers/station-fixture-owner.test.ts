@@ -1,9 +1,8 @@
 import {
   appendFileSync,
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
-  readdirSync,
-  readFileSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -236,21 +235,16 @@ describe('StationFixtureOwner', () => {
       });
       owner.registerFixtureRoot(root);
       mkdirSync(join(release, 'dist-server-phone'));
-      writeFileSync(
+      copyFileSync(
+        new URL('../fixtures/dogfood-runtime-fixture.mjs', import.meta.url),
         join(release, 'dist-server-phone/command-station.js'),
-        readFileSync(
-          new URL('../fixtures/dogfood-runtime-fixture.mjs', import.meta.url),
-        ),
       );
-      owner.writeRuntimeRecoveryStationShim(release, 'phone');
-      const requestName = readdirSync(release).find((entry) =>
-        entry.endsWith('.json'),
-      );
-      if (!requestName)
+      const request = owner.writeRuntimeRecoveryStationShim(release, 'phone');
+      if (!request)
         throw new Error('Missing runtime recovery launch request');
-      const requestPath = join(release, requestName);
-      const request: RuntimeRecoveryRequest = JSON.parse(
-        readFileSync(requestPath, 'utf8'),
+      const requestPath = join(
+        release,
+        `.station-fixture-${request.scopeNonce}.json`,
       );
       const receipt = attestRuntimeRecoveryLaunch(
         request,
