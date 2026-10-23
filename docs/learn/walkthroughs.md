@@ -35,10 +35,11 @@ It predates the Overview-first Project space and shared Project Room; use
 [the getting-started guide](../user/getting-started.md) for the current controls.
 The Task
 document capture was replaced after actual single-user save/send/reopen checks.
-The current Task
-workspace leads with the objective and shared room, keeps technical identity
-in **Details › Workspace & branch**, and gives the editor and message field
-responsive width. The captures above do not verify agent participation,
+The current Task workspace opens on **Overview**. **Conversation** opens the
+shared discussion, **Plan** opens the document, and **Work chats** links separately
+authorized Agent conversations. **Details › Task identity and workspace** holds
+technical identity and the **Local workspace** section. The older captures do
+not qualify the current layout or its responsive behavior. The captures above do not verify agent participation,
 two-human collaboration, or every issue in #2844. The [shared-work delivery ledger](../plans/shared-work-delivery.md)
 records the broader channel, board, agent and preview work still to deliver.
 

@@ -15,11 +15,19 @@
 > in runtime composition. An explicit
 > local binding overrides legacy `workingDirectory`; missing, drifted or
 > unverifiable Git checkouts refuse execution. Directory-less local-only
-> Projects retain their organizational/global behavior. Caller-supplied paths
-> must fit the resolved root unless the existing owned-worktree admission
-> authorizes them. Recovery fills an absent cwd using the same resolver and
-> preserves an already persisted cwd. This does not prove receiving-Station
-> authorization, compute consent, execution leases or physical fleet delivery.
+> Projects retain their organizational/global behavior. New caller-supplied paths
+> must fit the resolved root unless an existing server-owned workspace admission
+> authorizes them. A qualified retained Session keeps its original canonical cwd
+> only while a currently verified attached resource still contains it and the
+> persisted local Project ID still matches that Project incarnation. Station
+> rechecks this authority before start, send and recovery effects, including
+> after Skill preparation; it does not move the conversation to a new default.
+> A refused identity or a missing verified identity cannot be healed from the
+> current slug. Legacy, adopted and owned-worktree Sessions keep their separate
+> admission rules. Recovery fills an absent cwd through the existing resolver;
+> preserving a recorded cwd does not waive current authorization. These checks
+> do not prove receiving-Station authorization, compute consent, execution leases
+> or physical fleet delivery.
 > The dated migration inventory below is historical; live scope is tracked in
 > [#106](https://github.com/kontourai/station/issues/106) and
 > [#483](https://github.com/kontourai/station/issues/483).
