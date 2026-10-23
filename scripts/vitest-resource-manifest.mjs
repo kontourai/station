@@ -919,6 +919,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // against temp desktop roots holding each capability bypass shape, and
   // asserts its exit status. Single-shot, no Station boot.
   'scripts/__tests__/native-platform-boundary.process.test.ts',
+  'scripts/__tests__/desktop-runtime-pruning.test.ts',
   'scripts/__tests__/server-build-portability.test.ts',
   // #2648: the lease resolves its own exact process identity, which shells
   // out to `ps`. Single-shot, no Station boot, no wall-clock assertion.

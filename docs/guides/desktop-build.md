@@ -97,7 +97,33 @@ ships compiled JavaScript plus its external runtime dependencies, native
 libraries, schemas, skills, and licenses. Desktop staging omits backend source
 maps while retaining them in the original build output for diagnostics. It also
 removes reviewed SDK source/test trees and unused browser Cedar WASM variants.
-Claude's SDK executable remains available as the existing runtime fallback.
+RxJS keeps its Node CommonJS exports (also used by Node ESM imports), metadata
+and license; its browser distributions and TypeScript sources are omitted.
+node-pty keeps the prebuilds matching the bundled Node's platform and
+architecture. Desktop and portable packages carry their own pinned Node, so
+alternate host-Node architectures do not need another copy of those bindings.
+The stager and [pruning tests](../../scripts/__tests__/desktop-runtime-pruning.test.ts)
+own these rules. File-count reductions are packaging evidence; they do not
+measure Windows Defender scans or first-launch time.
+
+### Claude executable trade-off
+
+Keep the SDK's platform executable in the default package. The
+[Claude adapter](../../src-server/providers/adapters/claude-adapter.ts) already
+prefers a spawnable installed Claude when its version is suitable and otherwise
+uses the SDK copy. Retaining that copy preserves executable availability on a
+fresh offline install; provider authentication and model access are separate
+prerequisites. Preferring an installed executable alone does not reduce bundle
+or updater download size.
+
+Fetching the fallback on first use could remove most of that binary's weight
+from every full update, but introduces network availability, proxy, disk and
+verification failures before an agent can start. A future opt-in distribution
+would need a version/platform/architecture manifest with independently pinned
+checksums, verification before atomic executable installation, interrupted
+fetch recovery, explicit offline guidance, and platform signing/notarization
+review. It must keep the bundled default until that journey and fallback are
+qualified. This lane adds no downloader or reduced-function default.
 
 A service and a desktop-owned backend use the same backend implementation but
 have different process owners. Desktop starts a backend only after winning the

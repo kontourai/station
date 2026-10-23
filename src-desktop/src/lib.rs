@@ -14456,12 +14456,13 @@ If a stable instance is running, this launch will focus its window and exit.",
                             offer_legacy_profile_store_recovery(app.handle(), station_root.clone());
                             return Ok(());
                         }
-                        let (title, message) = if supervisor_identity_failed {
-                            ("Station could not establish supervisor identity", "Station could not verify its desktop process identity. Review the desktop logs, then relaunch Station.")
-                        } else {
-                            desktop_home_preparation_failure_copy(&error)
-                        };
-                        exit_desktop_home_preparation_failure(app.handle(), title, message, &error);
+                        let (title, message) = desktop_home_preparation_failure_copy(&error);
+                        exit_desktop_home_preparation_failure(
+                            app.handle(),
+                            if supervisor_identity_failed { "Station could not establish supervisor identity" } else { title },
+                            if supervisor_identity_failed { "Station could not verify its desktop process identity. Review the desktop logs, then relaunch Station." } else { message },
+                            &error,
+                        );
                         return Ok(());
                     }
                 };

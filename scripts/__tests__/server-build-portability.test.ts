@@ -624,7 +624,7 @@ async function runPortLeaseChild(
 function assertRealRuntimePrune(release: string) {
   const modules = join(release, 'node_modules');
   const host = `${process.platform}-${process.arch}`;
-  const sameOs = (entry: string) => entry.startsWith(`${process.platform}-`);
+  const sameTarget = (entry: string) => entry === host;
   const sourcePty = join(repoRoot, 'node_modules', 'node-pty');
   const stagedPty = join(modules, 'node-pty');
   const sourcePrebuilds = join(sourcePty, 'prebuilds');
@@ -632,13 +632,11 @@ function assertRealRuntimePrune(release: string) {
   if (existsSync(sourcePrebuilds)) {
     const source = readdirSync(sourcePrebuilds).sort();
     // The rule must have something to remove on this host.
-    expect(source.some((entry) => !sameOs(entry))).toBe(true);
+    expect(source.some((entry) => !sameTarget(entry))).toBe(true);
     const kept = existsSync(stagedPrebuilds)
       ? readdirSync(stagedPrebuilds).sort()
       : [];
-    // Every arch of this OS survives (the desktop app runs the user's own
-    // node, whose arch can differ from the build's); no other OS does.
-    expect(kept).toEqual(source.filter(sameOs));
+    expect(kept).toEqual(source.filter(sameTarget));
     expect(kept.includes(host)).toBe(source.includes(host));
   }
   // The loader resolves the native module from whatever survived the prune,
@@ -938,11 +936,12 @@ describe('server build package portability', () => {
   });
 
   it('pins the declarative prune rule lists (#2694)', () => {
-    // Every id here has its own behavioural test below. A new rule must add
+    // Every id has a behavioral keeper here or in desktop-runtime-pruning. A new rule must add
     // one; a dropped rule fails its test rather than only this list.
     expect(RUNTIME_PACKAGE_PRUNE_RULES.map((rule) => rule.id)).toEqual([
       'compiled-sdk-development-sources',
       'cedar-node-runtime-only',
+      'rxjs-node-runtime-only',
       'node-pty-foreign-prebuilds',
       'flow-agents-harness-bundles',
     ]);
@@ -1041,67 +1040,6 @@ describe('server build package portability', () => {
     expect(
       existsSync(join(project, 'dist-server/command-station.js.map')),
     ).toBe(true);
-  });
-
-  it('stages every arch of the target OS node-pty prebuilds and no other OS (node-pty-foreign-prebuilds)', () => {
-    const root = makeTempDir('station-runtime-pty-');
-    const project = join(root, 'project');
-    const files: Record<string, string> = {
-      'lib/utils.js': 'module.exports = {};',
-      'build/Release/pty.node': 'source build',
-      LICENSE: 'MIT',
-    };
-    for (const prebuild of [
-      'darwin-arm64',
-      'darwin-x64',
-      'linux-x64',
-      'win32-arm64',
-      'win32-x64',
-    ]) {
-      files[`prebuilds/${prebuild}/pty.node`] = prebuild;
-    }
-    writeFixturePackage(
-      join(project, 'node_modules/node-pty'),
-      { name: 'node-pty', version: '1.1.0' },
-      files,
-    );
-    // A different package with the same layout is not node-pty's to prune.
-    writeFixturePackage(
-      join(project, 'node_modules/other-native'),
-      { name: 'other-native', version: '1.0.0' },
-      { 'prebuilds/darwin-x64/addon.node': 'other' },
-    );
-    for (const [platform, arch] of [
-      ['win32', 'x64'],
-      ['linux', 'arm64'],
-    ] as const) {
-      const output = join(root, `release-${platform}-${arch}`);
-      stageDesktopServerRuntime({
-        projectRoot: project,
-        outputRoot: output,
-        packages: ['node-pty', 'other-native'],
-        platform,
-        arch,
-      });
-      const pty = join(output, 'node_modules/node-pty');
-      const kept = readdirSync(join(pty, 'prebuilds'));
-      // Both win32 arches: an x64 MSI can run under an arm64 node on
-      // Windows-on-ARM. linux has only the one arch in the fixture.
-      expect(kept.sort()).toEqual(
-        platform === 'win32' ? ['win32-arm64', 'win32-x64'] : ['linux-x64'],
-      );
-      expect(existsSync(join(pty, 'build/Release/pty.node'))).toBe(true);
-      expect(existsSync(join(pty, 'lib/utils.js'))).toBe(true);
-      expect(existsSync(join(pty, 'LICENSE'))).toBe(true);
-      expect(
-        existsSync(
-          join(
-            output,
-            'node_modules/other-native/prebuilds/darwin-x64/addon.node',
-          ),
-        ),
-      ).toBe(true);
-    }
   });
 
   it('drops flow-agents harness bundles and their esbuild edge but keeps what Station reads', () => {
