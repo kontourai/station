@@ -1206,55 +1206,82 @@ describe('lifecycle instance state', () => {
     }
   });
 
-  it('fails a managed stop without signaling a reused PID or arbitrary port owner', async () => {
-    ensureDir(TEST_CWD);
-    const journal = join(TEST_ROOT, 'reused-lifecycle.jsonl');
-    writeInstanceState({
-      instanceName: 'reused',
-      serverPid: 42001,
-      uiPid: null,
-      bootId: '11111111-1111-4111-8111-111111111111',
-      lifecycleJournal: journal,
-      serverFingerprint: {
-        pid: 42001,
-        startToken: 'managed-start',
-        commandDigest: 'a'.repeat(64),
-      },
-      build: {
-        branch: 'main',
-        builtAt: '2026-07-10T12:00:00.000Z',
-        sha: 'a'.repeat(40),
-      },
-    });
-    const killProcessTree = vi.fn();
-    const killSpy = vi
-      .spyOn(process, 'kill')
-      .mockImplementation((() => true) as typeof process.kill);
-    const { lifecycle } = await loadLifecycleModule({
-      childProcessMock: { execSync: vi.fn(() => '99999\n') },
-      platformOverrides: {
-        killProcessTree,
-        sleepSync: vi.fn(),
-        inspectProcessFingerprint: (pid: number) => ({
-          pid,
-          startToken: 'unrelated-start',
-          commandDigest: 'b'.repeat(64),
-        }),
-      },
-    });
-    try {
-      expect(() => lifecycle.stop({ instanceName: 'reused' })).toThrow(
-        'process fingerprint mismatch',
-      );
-      expect(killProcessTree).not.toHaveBeenCalled();
-      expect(readLifecycleEvents(journal).at(-1)).toMatchObject({
-        type: 'stop_result',
-        result: 'failed',
+  it.each(['stop', 'forced restart'] as const)(
+    'fails %s without signaling a reused PID or rotating its runtime log',
+    async (operation) => {
+      ensureDir(TEST_CWD);
+      ensureBuildOutputs('reused');
+      const runtimeLog = join(TEST_ROOT, 'refused-runtime.log');
+      writeFileSync(runtimeLog, 'retain runtime diagnostics');
+      const journal = join(TEST_ROOT, 'reused-lifecycle.jsonl');
+      writeInstanceState({
+        instanceName: 'reused',
+        serverPid: 42001,
+        uiPid: null,
+        serverPort: 3242,
+        uiPort: 5274,
+        bootId: '11111111-1111-4111-8111-111111111111',
+        lifecycleJournal: journal,
+        serverFingerprint: {
+          pid: 42001,
+          startToken: 'managed-start',
+          commandDigest: 'a'.repeat(64),
+        },
+        build: {
+          branch: 'main',
+          builtAt: '2026-07-10T12:00:00.000Z',
+          sha: 'a'.repeat(40),
+        },
       });
-    } finally {
-      killSpy.mockRestore();
-    }
-  });
+      const killProcessTree = vi.fn();
+      const spawn = vi.fn();
+      const killSpy = vi
+        .spyOn(process, 'kill')
+        .mockImplementation((() => true) as typeof process.kill);
+      const { lifecycle } = await loadLifecycleModule({
+        childProcessMock: { execSync: vi.fn(() => ''), spawn },
+        platformOverrides: {
+          killProcessTree,
+          sleepSync: vi.fn(),
+          inspectProcessFingerprint: (pid: number) => ({
+            pid,
+            startToken: 'unrelated-start',
+            commandDigest: 'b'.repeat(64),
+          }),
+        },
+      });
+      try {
+        if (operation === 'stop') {
+          expect(() => lifecycle.stop({ instanceName: 'reused' })).toThrow(
+            'process fingerprint mismatch',
+          );
+        } else {
+          await expect(
+            lifecycle.start({
+              instanceName: 'reused',
+              force: true,
+              serverPort: 3242,
+              uiPort: 5274,
+              logFile: runtimeLog,
+              rotateLogOnRestart: true,
+            }),
+          ).rejects.toThrow('process fingerprint mismatch');
+        }
+        expect(killProcessTree).not.toHaveBeenCalled();
+        expect(spawn).not.toHaveBeenCalled();
+        expect(readFileSync(runtimeLog, 'utf8')).toBe(
+          'retain runtime diagnostics',
+        );
+        expect(existsSync(`${runtimeLog}.previous`)).toBe(false);
+        expect(readLifecycleEvents(journal).at(-1)).toMatchObject({
+          type: 'stop_result',
+          result: 'failed',
+        });
+      } finally {
+        killSpy.mockRestore();
+      }
+    },
+  );
 
   it("keeps the state record and refuses to stop when a live process's identity cannot be verified (#2332 item 2)", async () => {
     // A null fingerprint observation (unreadable /proc, a `ps` without a
