@@ -159,6 +159,13 @@ const ARGS: Record<string, Record<string, unknown>> = {
   board_unpin: { reference: { kind: 'session', id: 's' }, name: 'w' },
   board_move: { reference: { kind: 'session', id: 's' }, name: 'w' },
   board_read: { reference: { kind: 'session', id: 's' } },
+  schedule_wake_up: { minutes: 5, note: 'check the build' },
+  cancel_wake_up: { id: 'w' },
+  propose_job: {
+    name: 'nightly',
+    schedule: { kind: 'every', everyMs: 3_600_000 },
+    prompt: 'p',
+  },
   declare_pull_request: {
     provider: 'github',
     host: 'github.com',

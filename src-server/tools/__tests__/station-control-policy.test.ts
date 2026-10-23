@@ -110,7 +110,13 @@ const DECISION_1_PERSON_ONLY = [
   'install_registry_integration',
   'create_provider',
 ];
-const DECISION_1_PERSON_ONLY_WITH_TRUST_ALL_TOOLS = ['add_job', 'update_job'];
+// `propose_job` never proposes a job that trusts every tool: the person
+// chooses that themselves.
+const DECISION_1_PERSON_ONLY_WITH_TRUST_ALL_TOOLS = [
+  'add_job',
+  'update_job',
+  'propose_job',
+];
 // Slice C: dispatch keeps today's effective policy (any verified caller).
 const SLICE_C_DISPATCH = [
   'send_message',

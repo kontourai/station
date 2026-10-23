@@ -9,6 +9,10 @@ import type {
 } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
+  FORCED_STOP_REASON,
+  STALL_FORCED_STOP_REASON,
+} from '@kontourai/station-shared/runtime-event-projection';
+import {
   isProviderInterruptTurnResult,
   type ProviderAdapterShape,
 } from '../../providers/adapter-shape.js';
@@ -511,9 +515,7 @@ export class CooperativeStop {
       createdAt: new Date().toISOString(),
       method: 'turn.aborted',
       reason:
-        initiatedBy === 'stall'
-          ? 'Stopped after the turn-stall window elapsed with no observed progress, then the cooperative cancel budget expired.'
-          : 'Stopped after the cooperative cancel budget expired.',
+        initiatedBy === 'stall' ? STALL_FORCED_STOP_REASON : FORCED_STOP_REASON,
     });
     this.persistResumableStoppedSession(adapter.provider, threadId);
     await adapter.stopSession(threadId);

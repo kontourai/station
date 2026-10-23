@@ -5076,7 +5076,15 @@ export function createOrchestrationRoutes(
     });
   });
 
-  for (const action of ['resume', 'cancel'] as const) {
+  // `resume-at-reset` and `hold`: the person's choice, on this one stop, of
+  // what happens at the reset ("Resume at <reset>" / "Don't resume"), in
+  // place of the auto-resume setting. They send nothing now.
+  for (const action of [
+    'resume',
+    'cancel',
+    'resume-at-reset',
+    'hold',
+  ] as const) {
     app.post(`/sessions/:threadId/usage-limit/${action}`, async (c) => {
       const threadId = param(c, 'threadId');
       if (deps.isRequestPrincipalCurrent?.(c.req.raw) !== true)

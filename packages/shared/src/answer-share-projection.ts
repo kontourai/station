@@ -197,7 +197,18 @@ export function projectEnvelopeForShareViewer(
     turnId: envelope.turnId,
     outcome: envelope.outcome,
     observedAt: envelope.observedAt,
-    engine: envelope.engine,
+    // The connection name an ACP turn records (`engine.value.displayName`)
+    // is the operator's own label for a connection, not a fact a share token
+    // proves standing on, so the viewer gets the provider only. Projected
+    // field by field so a later engine field is dropped, not forwarded.
+    engine:
+      envelope.engine.state === 'observed'
+        ? {
+            state: 'observed',
+            value: { provider: envelope.engine.value.provider },
+            observedFrom: envelope.engine.observedFrom,
+          }
+        : envelope.engine,
     requestedModel: envelope.requestedModel,
     reportedModel: envelope.reportedModel,
     tools: envelope.tools,
