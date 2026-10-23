@@ -6,7 +6,7 @@ import {
 
 describe('ProposedChange contract', () => {
   test('validates a canonical pending change', () => {
-    const now = new Date().toISOString();
+    const now = new Date(0).toISOString();
     const change: ProposedChange = {
       id: 'change-1',
       sessionId: 'session-1',
@@ -40,7 +40,7 @@ describe('ProposedChange contract', () => {
       baseSnapshot: { content: null },
       proposedSnapshot: { content: 'next' },
       createdAt: 'not-a-date',
-      updatedAt: new Date().toISOString(),
+      updatedAt: new Date(0).toISOString(),
       sourceRuntime: '',
       status: 'pending',
       decisions: [],

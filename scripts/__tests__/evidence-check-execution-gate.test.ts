@@ -9,6 +9,8 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+// @ts-expect-error -- Veritas publishes ESM without declarations.
+import { loadRepoStandards } from '@kontourai/veritas';
 import { afterEach, describe, expect, test } from 'vitest';
 
 const repoRoot = fileURLToPath(new URL('../../', import.meta.url));
@@ -19,11 +21,8 @@ const realRepoMap = JSON.parse(
 const realMapping = JSON.parse(
   readFileSync(join(repoRoot, 'scripts/evidence-check-execution.json'), 'utf8'),
 );
-const realStandards = JSON.parse(
-  readFileSync(
-    join(repoRoot, '.veritas/repo-standards/default.repo-standards.json'),
-    'utf8',
-  ),
+const realStandards = loadRepoStandards(
+  join(repoRoot, '.veritas/repo-standards/default.repo-standards.json'),
 );
 const temporaryRoots: string[] = [];
 
@@ -92,6 +91,7 @@ function baseScripts() {
     'test:connected-agents': pass,
     'proof:session-transition-contract': pass,
     'proof:bounded-work-contract': pass,
+    'lint:hygiene': pass,
     'veritas:readiness': 'npm exec -- veritas readiness --working-tree',
     'proof:sdk-builds': pass,
     'proof:app-builds': pass,
