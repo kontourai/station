@@ -59,6 +59,7 @@ let serviceProgressOptions:
     }
   | undefined;
 const applyReset = vi.fn();
+const applyMutate = vi.fn();
 /** #3851: the pushed server update state, the action mutation and the turns. */
 const serverUpdateQuery: { data: ServerUpdateState | undefined } = {
   data: undefined,
@@ -99,7 +100,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   ) => {
     applyOptions = options;
     return {
-      mutate: vi.fn(),
+      mutate: applyMutate,
       reset: applyReset,
       isPending: false,
       error: null,
@@ -209,10 +210,46 @@ afterEach(() => {
   serviceProgressState.isError = false;
   serviceProgressOptions = undefined;
   applyReset.mockReset();
+  applyMutate.mockReset();
+  runningTurnsQuery.data = undefined;
+  runningTurnsQuery.isSuccess = false;
   queryState.dataUpdatedAt = 1_786_000_000_000;
 });
 
 describe('CoreUpdateCheck affordances by applyMethod (AC5)', () => {
+  test('a source update names affected turns and waits for explicit confirmation before applying', () => {
+    runningTurnsQuery.data = { turns: [], hiddenCount: 2 };
+    runningTurnsQuery.isSuccess = true;
+    renderWith(behindCheckout());
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Update server checkout' }),
+    );
+    expect(applyMutate).not.toHaveBeenCalled();
+    expect(screen.getByText('2 turns you cannot see')).toBeTruthy();
+    expect(screen.getByText(/disconnects every client/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Later' }));
+    expect(applyMutate).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Update server checkout' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Update and restart' }));
+    expect(applyMutate).toHaveBeenCalledTimes(1);
+  });
+  test('changing the selected server invalidates an open source-update confirmation', () => {
+    const mounted = renderWith(behindCheckout());
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Update server checkout' }),
+    );
+    expect(screen.getByRole('alertdialog')).toBeTruthy();
+    mounted.rerender(
+      <CoreUpdateCheck
+        apiBase="http://localhost:3141"
+        context={makeContext({ scopeKey: 'scope-b' })}
+      />,
+    );
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(applyMutate).not.toHaveBeenCalled();
+  });
   test('a reinstall bundle with a differing stamp shows the S10 source-ref facts, never an apply button or release claim', () => {
     renderWith({
       installKind: 'desktop-bundle',
@@ -1196,6 +1233,7 @@ describe('a prebuilt release archive (#2675 D3)', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Update server to 0.8.0-preview.2' }),
     );
+    fireEvent.click(screen.getByRole('button', { name: 'Update and restart' }));
     act(() => {
       applyOptions?.onSuccess?.({
         success: true,
@@ -1309,6 +1347,7 @@ describe('a prebuilt release archive (#2675 D3)', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Update server to 0.8.0-preview.2' }),
     );
+    fireEvent.click(screen.getByRole('button', { name: 'Update and restart' }));
     act(() => {
       applyOptions?.onSuccess?.({
         success: true,
@@ -1498,6 +1537,50 @@ describe('download, then a confirmed restart (#3851)', () => {
     });
   });
 
+  test.each(['connection', 'version'] as const)(
+    'a staged confirmation closes when its %s changes',
+    (change) => {
+      serverUpdateQuery.data = pushed({
+        state: 'staged',
+        requestId: 'r-1',
+        version: STAGED,
+        stagedAt: '2026-10-19T10:00:00.000Z',
+      });
+      const view = renderWith(stagedService());
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: `Restart server to update to ${STAGED}`,
+        }),
+      );
+      expect(screen.getByRole('alertdialog')).toBeTruthy();
+      const nextVersion = change === 'version' ? '0.8.0-preview.3' : STAGED;
+      serverUpdateQuery.data = pushed({
+        state: 'staged',
+        requestId: 'r-2',
+        version: nextVersion,
+        stagedAt: '2026-10-19T10:01:00.000Z',
+      });
+      view.rerender(
+        <CoreUpdateCheck
+          apiBase="http://localhost:3141"
+          context={makeContext({
+            scopeKey: change === 'connection' ? 'scope-b' : 'scope-a',
+          })}
+        />,
+      );
+      expect(screen.queryByRole('alertdialog')).toBeNull();
+      expect(serverUpdateActions).toEqual([]);
+      fireEvent.click(
+        screen.getByRole('button', {
+          name: `Restart server to update to ${nextVersion}`,
+        }),
+      );
+      expect(screen.getByRole('alertdialog').textContent).toContain(
+        nextVersion,
+      );
+    },
+  );
+
   test('an update-when-idle intent says so and can be cancelled', () => {
     serverUpdateQuery.data = pushed(
       {
@@ -1556,7 +1639,7 @@ describe('download, then a confirmed restart (#3851)', () => {
     ).toBeTruthy();
   });
 
-  test('a server without stagedUpdates keeps the one-click update', () => {
+  test('a server without stagedUpdates keeps the legacy update offer', () => {
     renderWith(stagedService({ stagedUpdates: undefined }));
     expect(
       screen.getByRole('button', { name: `Update server to ${STAGED}` }),
