@@ -30,12 +30,20 @@ export function ProjectSearch({ projectId }: { projectId: string }) {
             },
           }}
           pending={
-            <Dialog title="Search Project" onClose={() => setOpen(false)}>
+            <Dialog
+              title="Search Project"
+              closeLabel="Close search"
+              onClose={() => setOpen(false)}
+            >
               <SkeletonBlock label="Opening search" />
             </Dialog>
           }
           unavailable={(retry) => (
-            <Dialog title="Search Project" onClose={() => setOpen(false)}>
+            <Dialog
+              title="Search Project"
+              closeLabel="Close search"
+              onClose={() => setOpen(false)}
+            >
               <ErrorState
                 title="Search unavailable"
                 action={<Button onClick={retry}>Retry</Button>}
