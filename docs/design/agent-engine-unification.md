@@ -574,6 +574,13 @@ here because leaving it implicit is what produced archive#3662:
   reload-writes-its-own-inputs loop archive#3063/#1588 exist to prevent. A home
   the process cannot write keeps the previous behavior: the adoption stays
   implicit for that boot.
+  Cold startup completes that resolution before capturing the agent-construction
+  configuration revision. It rereads the stored config and permits only an
+  unchanged choice or the exact absent-to-resolved-engine adoption; a concurrent
+  different engine, explicit Station choice, or other app setting refuses startup
+  without overwriting the newer value. Provider and selected-package changes
+  across resolution, and configuration changes during construction, still refuse
+  startup (`runtime-cold-start-custom-agent.test.ts`).
 - **It is resolved per boot, not persisted onto the Agent.**
   `resolveBuiltinAgentEngineBinding` weighs live readiness, control-plane capability
   and per-connection runtime observation, and fails safe to Station's own engine *for

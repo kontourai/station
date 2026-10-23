@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from 'node:util';
 import type { ACPConfig } from '@kontourai/station-contracts/acp';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { AppConfig } from '@kontourai/station-contracts/config';
@@ -405,6 +406,7 @@ export async function initializeRuntime(
   logger.debug('Initializing Station Runtime...');
 
   const appConfig = await configLoader.loadAppConfig();
+  const initialStoredAppConfig = structuredClone(appConfig);
   // The orchestration service starts before the model catalog is composed.
   // Keep this tiny forwarding seam stable, then install the real catalog
   // authority below before adapter streams can emit usage events.
@@ -909,17 +911,53 @@ export async function initializeRuntime(
   // inputs is the archive#1588/#3063 reload-loop anti-pattern.
   await materializeBuiltinIntegrations(deps.configLoader);
 
+  const beforeEngineResolution = deps.captureAgentConfigurationRevisions?.();
+  const builtinEngineBinding =
+    await deps.resolveBuiltinEngineBinding?.(appConfig);
+  const afterEngineResolution = deps.captureAgentConfigurationRevisions?.();
+  const adoptedAppConfig = await configLoader.loadAppConfig();
+  const { builtinAgentEngineConnectionId: initialChoice, ...initialSettings } =
+    initialStoredAppConfig;
+  const { builtinAgentEngineConnectionId: adoptedChoice, ...adoptedSettings } =
+    adoptedAppConfig;
+  if (
+    !isDeepStrictEqual(initialSettings, adoptedSettings) ||
+    (adoptedChoice !== initialChoice &&
+      !(
+        initialChoice === undefined &&
+        builtinEngineBinding &&
+        adoptedChoice === builtinEngineBinding.connectionId
+      ))
+  ) {
+    throw new Error(
+      'Runtime configuration changed while resolving the startup engine.',
+    );
+  }
+  appConfig.builtinAgentEngineConnectionId = adoptedChoice;
+
   const registryPolicyApplication =
     await deps.registryTrustPolicyAuthority?.captureApplication();
   const configurationBefore = deps.captureAgentConfigurationRevisions?.();
+  if (
+    beforeEngineResolution &&
+    afterEngineResolution &&
+    configurationBefore &&
+    (beforeEngineResolution.provider !== configurationBefore.provider ||
+      beforeEngineResolution.selectedPackageFingerprint !==
+        configurationBefore.selectedPackageFingerprint ||
+      afterEngineResolution.appConfig !== configurationBefore.appConfig)
+  ) {
+    throw new Error(
+      'Runtime configuration changed while startup agents were being constructed.',
+    );
+  }
   const agents = await initializeRuntimeAgents({
     configLoader: deps.configLoader as any,
     logger,
     bootstrapDefaultAgent: async () =>
       (await bootstrapRuntimeDefaultAgent({
         appConfig,
-        builtinEngineBinding:
-          await deps.resolveBuiltinEngineBinding?.(appConfig),
+        builtinEngineBinding,
         configLoader: deps.configLoader as any,
         framework,
         logger,

@@ -35,6 +35,7 @@
 import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
   parseHostedTenantRegistry,
@@ -1806,6 +1807,88 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       )
       .toBe('closed');
   });
+
+  it.each([
+    'adopt',
+    'station-choice',
+    'other-engine',
+    'other-setting',
+  ] as const)(
+    'preserves startup engine adoption authority: %s',
+    async (scenario) => {
+      home = await createSchemaHome('station-coldstart-engine-adoption-');
+      runtime = new StationRuntime({
+        projectHomeDir: home,
+        port: TEST_PORT,
+        host: '127.0.0.1',
+      });
+      replaceTerminalListener(runtime);
+      const connectionId = engineConnectionId('claude');
+      const subject = runtime as unknown as {
+        configLoader: ConfigLoader;
+        listEngineConnections(): Promise<
+          Array<{
+            id: ReturnType<typeof engineConnectionId>;
+            type: string;
+            name: string;
+            enabled: boolean;
+            status: string;
+            capabilities: string[];
+          }>
+        >;
+      };
+      const loader = subject.configLoader;
+      let changed = false;
+      const resolve = vi
+        .spyOn(subject, 'listEngineConnections')
+        .mockImplementation(async () => {
+          if (!changed && scenario !== 'adopt') {
+            changed = true;
+            await loader.mutateAppConfig(() =>
+              scenario === 'station-choice'
+                ? { builtinAgentEngineConnectionId: null }
+                : scenario === 'other-engine'
+                  ? {
+                      builtinAgentEngineConnectionId:
+                        engineConnectionId('codex'),
+                    }
+                  : { systemPrompt: 'Concurrent authored prompt' },
+            );
+          }
+          return [
+            {
+              id: connectionId,
+              type: 'claude',
+              name: 'Claude',
+              enabled: true,
+              status: 'ready',
+              capabilities: ['agent-runtime'],
+            },
+          ];
+        });
+      try {
+        if (scenario === 'adopt') {
+          await expect(runtime.initialize()).resolves.toBeUndefined();
+        } else {
+          await expect(runtime.initialize()).rejects.toThrow(
+            'Runtime configuration changed while resolving the startup engine.',
+          );
+        }
+        const stored = await loader.loadAppConfig();
+        expect(stored.builtinAgentEngineConnectionId).toBe(
+          scenario === 'station-choice'
+            ? null
+            : scenario === 'other-engine'
+              ? engineConnectionId('codex')
+              : connectionId,
+        );
+        if (scenario === 'other-setting')
+          expect(stored.systemPrompt).toBe('Concurrent authored prompt');
+      } finally {
+        resolve.mockRestore();
+      }
+    },
+  );
 
   it('settles async route-service readiness before capturing agent configuration', async () => {
     home = await createSchemaHome('station-coldstart-route-ready-');
