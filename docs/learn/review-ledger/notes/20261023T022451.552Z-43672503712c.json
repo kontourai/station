@@ -1,0 +1,7 @@
+{
+  "revision": "d985a2cbe9f49e8c66d2c136d3261b8e8dcdce59",
+
+  "notes": [
+    {"path":"docs/user/native-recovery.md","note":"Reviewed the CLI-only delta since 42b6272cc4f against Check the local diagnosis. Group/Ensemble and telemetry registration, group JSON errors and chat error reporting do not change doctor or service routing. The new localObservation exception applies only to ensemble and home recovery-plan; doctor/service retain timeout and credential-store setup. Source doctor still calls lifecycle doctor; bundled doctor still calls target-command without --json; service status remains the installed-service path. Traced current registration plus target-command reachability/credential/service inspection. No prose change needed. No native implementation/build/device review or packaged recovery proof performed; existing platform evidence limits remain.","inputs":["docs/user/native-recovery.md","packages/cli/src/cli.ts"]}
+  ]
+}
