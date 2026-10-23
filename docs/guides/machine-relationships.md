@@ -269,9 +269,13 @@ and omit local paths, provider/model configuration, knowledge settings, and
 layouts. See [deployment authentication](deployment-authentication.md#browser-invitation-entry)
 and its linked source owners for the current guest boundaries.
 
-Shared editing and execution are separate capabilities. The broader target
-includes discuss/edit/run/approval/admin participation and approved execution
-offers; viewing a shared Task does not open the owner's fleet or private work.
+Project Rooms support shared discussion, presence, revision-checked notes and
+explicit Agent requests. Each action requires current Project membership and
+independent transport permission. Agent execution also requires current host
+execution permission and a verified Project execution root. Room participation
+does not grant general Project mutation, repository setup, fleet access or
+access to private work. Broader execution offers and independent-human
+qualification remain separate work.
 
 A Device connects to a Station and authenticates as a principal. Several
 Devices may represent one person through an explicitly approved binding; a
