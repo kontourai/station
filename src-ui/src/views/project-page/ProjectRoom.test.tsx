@@ -487,7 +487,7 @@ test('loads older history and explicitly requests an available Agent with actual
   expect(agentWrites).toHaveLength(0);
   fireEvent.change(picker, { target: { value: 'researcher' } });
   fireEvent.click(screen.getByRole('button', { name: 'Ask in room' }));
-  await screen.findByText('Agent request: started');
+  await screen.findByText('Agent is working. Its answer will appear in the Room.');
   expect(agentWrites).toEqual([
     expect.objectContaining({
       agentId: 'researcher',
@@ -600,14 +600,14 @@ test('lost Agent acknowledgement reload retries immutable intent, never automati
   fireEvent.click(
     screen.getByRole('button', { name: 'Retry same Agent request' }),
   );
-  await screen.findByText('Agent request: started');
+  await screen.findByText('Agent is working. Its answer will appear in the Room.');
   expect(agentWrites).toEqual([first, first]);
   expect(agentRetentions).toEqual([true, true]);
   fireEvent.click(screen.getByRole('button', { name: 'More Agent actions' }));
   fireEvent.click(
     screen.getByRole('menuitem', { name: 'Cancel Agent request' }),
   );
-  await screen.findByText('Agent request: cancelled');
+  await screen.findByText('Agent request cancelled.');
   expect(
     agentOperations.filter((operation) =>
       ['cancel', 'reconcile'].includes(operation),
@@ -623,11 +623,11 @@ test('lost Agent acknowledgement reload retries immutable intent, never automati
 test('Agent handles retire on authority loss and permission-only readers cannot invoke', async () => {
   const ui = mount();
   await askAgent();
-  await screen.findByText('Agent request: started');
+  await screen.findByText('Agent is working. Its answer will appear in the Room.');
   agentDenied = true;
   fireEvent.click(screen.getByRole('button', { name: 'Inspect request' }));
   await screen.findByText('Agent request access changed. Check Room access.');
-  expect(screen.queryByText('Agent request: started')).toBeNull();
+  expect(screen.queryByText('Agent is working. Its answer will appear in the Room.')).toBeNull();
   expect(
     Object.values(sessionStorage).some((raw) =>
       String(raw).includes('researcher'),
@@ -652,7 +652,7 @@ test('a pushed completed answer updates the Agent handle without a manual reconc
     target: { value: 'researcher' },
   });
   fireEvent.click(screen.getByRole('button', { name: 'Ask in room' }));
-  await screen.findByText('Agent request: started');
+  await screen.findByText('Agent is working. Its answer will appear in the Room.');
   await waitFor(() => expect(streams.length).toBeGreaterThan(0));
   const messageId = randomCorrelationId();
   agentHandle = {
@@ -678,7 +678,7 @@ test('a pushed completed answer updates the Agent handle without a manual reconc
       );
   });
   await screen.findByText('Completed shared answer');
-  await screen.findByText('Agent request: published');
+  await screen.findByText('Agent answer shared in the Room.');
   expect(agentWrites).toHaveLength(1);
   expect(agentOperations).not.toContain('reconcile');
 });

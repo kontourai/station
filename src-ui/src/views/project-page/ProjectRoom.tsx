@@ -766,8 +766,15 @@ function ProjectRoomAgentPanel({
       {notice && <p role="status">{notice}</p>}
       {handle && (
         <p role="status">
-          Agent request: {handle.state}
-          {handle.failure ? ` · ${handle.failure.replaceAll('_', ' ')}` : ''}
+          {handle.failure
+            ? `Agent request needs attention: ${handle.failure.replaceAll('_', ' ')}`
+            : {
+                reserved: 'Agent request accepted.',
+                started: 'Agent is working. Its answer will appear in the Room.',
+                published: 'Agent answer shared in the Room.',
+                uncertain: 'Agent start could not be confirmed. Check its answer before retrying.',
+                cancelled: 'Agent request cancelled.',
+              }[handle.state]}
         </p>
       )}
       {retained ? (
