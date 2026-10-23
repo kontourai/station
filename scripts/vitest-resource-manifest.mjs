@@ -131,6 +131,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Reviewed setup launches real bounded commands and verifies durable outcomes.
+  'src-server/services/projects/__tests__/operator-setup-service.test.ts',
   // Repository acquisition drives real hardened Git clone and checkout processes.
   'src-server/services/projects/__tests__/repository-acquisition-service.test.ts',
   'src-server/routes/projects/__tests__/project-working-directory-authority.test.ts',

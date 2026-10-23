@@ -783,3 +783,77 @@ test('secured cancellation withholds publication when current operator authority
   );
   expect(inspected.body.data).toEqual(failed.body.data);
 });
+
+test.skipIf(process.platform === 'win32')(
+  'reviewed setup requires the operator at actual secured ingress and an explicit unchanged preview',
+  async () => {
+    const f = await fixture();
+    execGitSync(['init', '--initial-branch=main'], { cwd: f.folderA });
+    writeFileSync(join(f.folderA, 'setup-input.txt'), 'reviewed input');
+    execGitSync(['add', '.'], { cwd: f.folderA });
+    execGitSync(
+      [
+        '-c',
+        'user.name=Fixture',
+        '-c',
+        'user.email=fixture@example.test',
+        'commit',
+        '-m',
+        'seed',
+      ],
+      { cwd: f.folderA },
+    );
+    await f.send(f.operator.credential, 'POST', '', {
+      name: 'Setup',
+      slug: 'setup',
+      workingDirectory: f.folderA,
+    });
+    const request = {
+      id: randomUUID(),
+      expectedProjectId: f.stored('setup').id,
+      command: 'exit 0',
+      inputPaths: ['setup-input.txt'],
+    };
+    const path = '/setup/operator-setup';
+    expect(
+      (
+        await f.send(
+          f.pair('standard', [PAIRING_SCOPE_CODING_EXEC]),
+          'POST',
+          `${path}/preview`,
+          request,
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (await f.sendInternally(false, 'POST', `${path}/preview`, request))
+        .status,
+    ).toBe(403);
+    const preview = await f.send(
+      f.operator.credential,
+      'POST',
+      `${path}/preview`,
+      request,
+    );
+    expect(preview).toMatchObject({
+      status: 200,
+      body: { data: { phase: 'previewed', command: 'exit 0' } },
+    });
+    expect(
+      (
+        await f.send(
+          f.operator.credential,
+          'POST',
+          `${path}/${request.id}/run`,
+          {},
+        )
+      ).status,
+    ).toBe(400);
+    writeFileSync(join(f.folderA, 'setup-input.txt'), 'later edit');
+    expect(
+      await f.send(f.operator.credential, 'POST', `${path}/${request.id}/run`, {
+        authorize: true,
+      }),
+    ).toMatchObject({ status: 200, body: { data: { phase: 'stale' } } });
+  },
+);

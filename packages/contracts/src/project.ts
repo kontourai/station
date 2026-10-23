@@ -479,3 +479,25 @@ export interface RepositoryAcquisition {
   error?: string;
   updatedAt: string;
 }
+
+/** Local operator setup; this is not a portable preparation guarantee. */
+export interface OperatorSetupReceipt {
+  id: string;
+  projectId: string;
+  projectSlug: string;
+  cwd: string;
+  command: string;
+  inputs: Array<{ path: string; sha256: string | null }>;
+  sourceCommit: string;
+  inputDigest: string;
+  phase:
+    | 'previewed'
+    | 'running'
+    | 'uncertain'
+    | 'succeeded'
+    | 'failed'
+    | 'stale';
+  updatedAt: string;
+  exitCode?: number;
+  observedDigest?: string;
+}

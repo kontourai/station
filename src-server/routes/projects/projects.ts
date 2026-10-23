@@ -137,6 +137,7 @@ import {
   withDerivedWorkingDirectory,
   withoutPersistedWorkingDirectory,
 } from './layout-working-directory.js';
+import { createOperatorSetupRoutes } from './operator-setup-routes.js';
 import { createProjectIdentityRoutes } from './project-identity-routes.js';
 import { admitProjectLayoutWrite } from './project-layout-admission.js';
 import { createRepositoryAcquisitionRoutes } from './repository-acquisition-routes.js';
@@ -526,6 +527,14 @@ export function createProjectRoutes(
   deps: ProjectRouteDeps = {},
 ) {
   const app = new Hono();
+  app.route(
+    '/',
+    createOperatorSetupRoutes(
+      projectHomeDir,
+      storageAdapter,
+      deps.repositoryDiscoveryCurrent,
+    ),
+  );
   const acquisitions = new RepositoryAcquisitionService(projectHomeDir);
   const creationRequests = new ProjectCreationService(
     projectHomeDir,

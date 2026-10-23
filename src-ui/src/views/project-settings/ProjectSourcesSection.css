@@ -39,3 +39,15 @@
   flex-wrap: wrap;
   gap: var(--k-space-3);
 }
+
+.project-sources__form textarea {
+  width: 100%;
+  min-height: 88px;
+  resize: vertical;
+}
+.project-sources__form pre,
+.project-sources__form li {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
