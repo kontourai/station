@@ -1,8 +1,14 @@
 import type { GitStatusResult } from '@kontourai/station-sdk';
-import { memo, type ReactNode, useLayoutEffect } from 'react';
+import {
+  type CSSProperties,
+  memo,
+  type ReactNode,
+  useLayoutEffect,
+} from 'react';
 import type { WorkStatusTone } from '../../views/home/work-status';
 import { BranchGlyph, FolderGlyph } from '../icons/Glyph';
 import { useConversationPullRequestLinks } from '../pull-requests/useConversationPullRequestLinks';
+import { SessionScheduledSection } from './SessionScheduledSection';
 import { SESSION_CONTEXT_CARD_WIDTH } from './sessionContextCardModel';
 import './SessionContextCard.css';
 
@@ -13,12 +19,19 @@ import './SessionContextCard.css';
  * row's status line, the Background tasks count, the composer's pending
  * queue — and every action opens a surface that already exists. The card adds
  * no read of its own except the pull request links, which share the one
- * cache entry Chat details and the Coding pull requests panel read.
+ * cache entry Chat details and the Coding pull requests panel read, and the
+ * Scheduled section, which shares the chat's agent-schedule entry.
  */
 export interface SessionContextCardProps {
   workspace: {
     projectName: string | null;
     directory: string | null;
+    /**
+     * `directory` is a folder Station created for this chat
+     * (`OrchestrationSessionSummary.cwdManagedWorkspace`): the row names it
+     * "Chat workspace" and keeps the path for the tooltip only.
+     */
+    managed?: boolean;
     /** Open in Coding, or the project page where there is no coding layout. */
     action?: { label: string; onSelect: () => void };
   } | null;
@@ -43,6 +56,9 @@ export interface SessionContextCardProps {
     onOpen: (trigger: HTMLElement) => void;
   };
 }
+
+/** A folder Station made for this chat, named instead of shown as its hash path. */
+const MANAGED_WORKSPACE_LABEL = 'Chat workspace';
 
 const directoryName = (path: string) =>
   path
@@ -186,15 +202,33 @@ export function SessionContextRows({
             onSelect={run(workspace.action?.onSelect)}
             actionLabel={
               workspace.action
-                ? `${workspace.action.label} — ${workspace.projectName ?? workspace.directory}`
+                ? `${workspace.action.label} — ${workspace.projectName ?? (workspace.managed ? MANAGED_WORKSPACE_LABEL : workspace.directory)}`
                 : undefined
             }
           >
-            <span className="session-context-card__primary">
+            <span
+              className="session-context-card__primary"
+              title={
+                workspace.managed && !workspace.projectName
+                  ? (workspace.directory ?? undefined)
+                  : undefined
+              }
+            >
               {workspace.projectName ??
-                directoryName(workspace.directory as string)}
+                (workspace.managed
+                  ? MANAGED_WORKSPACE_LABEL
+                  : directoryName(workspace.directory as string))}
             </span>
-            {workspace.directory ? (
+            {workspace.directory && workspace.managed ? (
+              workspace.projectName ? (
+                <span
+                  className="session-context-card__secondary"
+                  title={workspace.directory}
+                >
+                  {MANAGED_WORKSPACE_LABEL}
+                </span>
+              ) : null
+            ) : workspace.directory ? (
               <span
                 className="session-context-card__secondary session-context-card__path"
                 title={workspace.directory}
@@ -277,6 +311,9 @@ export function SessionContextRows({
           />
         ) : null}
       </ul>
+      {conversationId ? (
+        <SessionScheduledSection conversationId={conversationId} wrap={wrap} />
+      ) : null}
       {inventory ? (
         <div className="session-context-card__footer">
           <button
@@ -304,9 +341,17 @@ export function SessionContextRows({
  */
 function SessionContextCardImpl({
   onPresentChange,
+  exiting = false,
   ...props
 }: SessionContextCardProps & {
   onPresentChange?: (present: boolean) => void;
+  /**
+   * Leaving: kept mounted for one motion beat (`SESSION_CONTEXT_EXIT_MS`)
+   * while it fades in place, so it does not vanish mid-sentence; inert
+   * while it does, because it is already gone as far as the user is
+   * concerned.
+   */
+  exiting?: boolean;
 }) {
   useLayoutEffect(() => {
     onPresentChange?.(true);
@@ -314,9 +359,16 @@ function SessionContextCardImpl({
   }, [onPresentChange]);
   return (
     <aside
-      className="session-context-card"
+      className={`session-context-card${exiting ? ' session-context-card--exiting' : ''}`}
       aria-label="This chat"
-      style={{ width: SESSION_CONTEXT_CARD_WIDTH }}
+      aria-hidden={exiting || undefined}
+      inert={exiting || undefined}
+      style={
+        {
+          width: SESSION_CONTEXT_CARD_WIDTH,
+          '--session-context-card-width': `${SESSION_CONTEXT_CARD_WIDTH}px`,
+        } as CSSProperties
+      }
     >
       <h2 className="session-context-card__title">This chat</h2>
       <SessionContextRows {...props} />

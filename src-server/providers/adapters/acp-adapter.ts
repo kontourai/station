@@ -59,6 +59,7 @@ import {
 } from '@kontourai/station-contracts/provider';
 import type { TenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { Prerequisite, ToolDef } from '@kontourai/station-contracts/tool';
+import { TURN_ENGINE_DISPLAY_NAME_METADATA_KEY } from '@kontourai/station-contracts/turn-provenance';
 import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
 import { toolRequestNeedsPerson } from '@kontourai/station-shared/tool-request-preview';
 import {
@@ -500,12 +501,30 @@ interface AcpPendingRequest {
    * which would let one reach an OpenCode configuration path unasked.
    */
   governedEdit?: true;
+  /**
+   * The stamped turn the request opened in, if any. Its `request.opened` and
+   * every `request.resolved` for it name this turn and send, so the
+   * execution coordinator owns them and the stall watch pauses while a
+   * person decides.
+   */
+  origin?: AcpTurnOrigin;
 }
+
+type AcpTurnOrigin = {
+  readonly turnId: string;
+  readonly invocationId: string;
+};
 
 export interface AcpSessionRecord {
   session: ProviderSession;
   process: ACPProcess;
   connectionId: string;
+  /**
+   * The connection's configured name when this session started (the name the
+   * chat header shows). Stamped on each turn so its provenance names the
+   * engine instead of the generic `acp` provider.
+   */
+  connectionName?: string;
   /** The connection's display name: what copy calls this engine. */
   engineName: string;
   command: string;
@@ -543,6 +562,19 @@ export interface AcpSessionRecord {
   preToolPolicy?: StagedPreToolPolicyEvaluator;
   delegation?: InvocationContext['delegation'];
   activeTurnId?: string;
+  /**
+   * The invocation Station assigned the send that opened `turnId`. Every
+   * event of that turn carries it: the turn's boundary row retires only on
+   * a terminal naming that invocation, and a row left behind reads as a
+   * turn still running to everything that waits for the chat to idle. A
+   * steer continues the turn, so it keeps the original send's invocation.
+   */
+  activeTurnOrigin?: AcpTurnOrigin;
+  /**
+   * The turn each open tool call started in, so its progress and terminal
+   * name that turn even when they arrive after it ended.
+   */
+  toolCallOrigins?: Map<string, AcpTurnOrigin | null>;
   stopping?: boolean;
   /** At most one engine re-establishment is attempted for this session. */
   credentialRecoveryAttempted?: boolean;
@@ -1124,6 +1156,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       session,
       process: undefined as unknown as ACPProcess,
       connectionId: config.id,
+      ...(config.name.trim() ? { connectionName: config.name.trim() } : {}),
       engineName: config.name.trim() || config.id,
       command: config.command,
       args: config.args,
@@ -1164,7 +1197,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     };
     record.toolUpdateSupervisor = new AcpToolUpdateSupervisor(
       session,
-      (event) => this.publish(event),
+      (event) => this.publishForTurn(record, event),
       this.toolUpdateBudget,
     );
 
@@ -2211,6 +2244,10 @@ export class AcpAdapter implements ProviderAdapterShape {
       }
     }
     record.activeTurnId = turnId;
+    record.activeTurnOrigin =
+      input.invocationId === undefined
+        ? undefined
+        : { turnId, invocationId: input.invocationId };
     record.session.status = 'running';
     record.session.updatedAt = new Date().toISOString();
     // archive#4084: start this turn's error-notification window clean —
@@ -2235,6 +2272,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       threadId: input.threadId,
       createdAt: new Date().toISOString(),
       turnId,
+      ...this.turnOrigin(record, turnId),
       method: 'turn.started',
       // Transcript-facing: the typed text, never the composed model input.
       prompt: input.displayInput ?? input.input,
@@ -2252,6 +2290,9 @@ export class AcpAdapter implements ProviderAdapterShape {
           input.modelId ?? record.session.model,
           input.modelOptions,
         ),
+        ...(record.connectionName
+          ? { [TURN_ENGINE_DISPLAY_NAME_METADATA_KEY]: record.connectionName }
+          : {}),
         // Carries the server-owned
         // `firstTurnInstructionsComposed` marker onto THIS turn's own
         // persisted record — see the constant's doc comment in
@@ -2328,6 +2369,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       threadId,
       createdAt: new Date().toISOString(),
       turnId: targetTurnId,
+      ...this.turnOrigin(record, targetTurnId),
       method: 'turn.aborted',
       reason: 'interrupted',
     });
@@ -2422,6 +2464,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       provider: this.provider,
       threadId,
       createdAt: new Date().toISOString(),
+      ...pending.origin,
       requestId,
       method: 'request.resolved',
       status: mapAcpDecisionToApprovalStatus(decision),
@@ -2560,6 +2603,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         provider: this.provider,
         threadId,
         createdAt: new Date().toISOString(),
+        ...pending.origin,
         requestId,
         method: 'request.resolved',
         status: mapAcpDecisionToApprovalStatus('cancel'),
@@ -2601,6 +2645,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           provider: this.provider,
           threadId,
           createdAt: new Date().toISOString(),
+          ...pending.origin,
           requestId,
           method: 'request.resolved',
           status: mapAcpDecisionToApprovalStatus('cancel'),
@@ -2861,11 +2906,13 @@ export class AcpAdapter implements ProviderAdapterShape {
       }
 
       const requestId = crypto.randomUUID();
+      const origin = this.requestOrigin(record);
       this.publish({
         eventId: crypto.randomUUID(),
         provider: this.provider,
         threadId: record.session.threadId,
         createdAt: new Date().toISOString(),
+        ...origin,
         requestId,
         method: 'request.opened',
         requestType: 'approval',
@@ -2896,6 +2943,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           ...(toolName ? { toolName } : {}),
           ...(needsPerson ? { needsPerson: true as const } : {}),
           ...(governedEdit ? { governedEdit: true as const } : {}),
+          ...(origin ? { origin } : {}),
         });
       });
 
@@ -3162,7 +3210,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       provider: this.provider,
       session: record.session,
       activeTurnId: record.activeTurnId,
-      publish: (event) => this.publish(event),
+      publish: (event) => this.publishForTurn(record, event),
       state: record,
       toolUpdateSupervisor: record.toolUpdateSupervisor,
     };
@@ -3421,6 +3469,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           threadId,
           createdAt: new Date().toISOString(),
           turnId,
+          ...this.turnOrigin(record, turnId),
           method: 'turn.aborted',
           reason: this.isCurrentGeneration(threadId, record.generation)
             ? 'engine-restarted'
@@ -3437,6 +3486,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         provider: this.provider,
         threadId,
         createdAt: new Date().toISOString(),
+        ...pending.origin,
         requestId,
         method: 'request.resolved',
         status: mapAcpDecisionToApprovalStatus('cancel'),
@@ -3575,7 +3625,9 @@ export class AcpAdapter implements ProviderAdapterShape {
       !record.stopping
     ) {
       record.cursorTodos = plan.todos;
-      this.publish({
+      // A plan approved mid-turn belongs to that turn, so it carries the
+      // send's invocation like any other engine-reported plan.
+      this.publishForTurn(record, {
         eventId: crypto.randomUUID(),
         provider: this.provider,
         threadId: record.session.threadId,
@@ -3607,11 +3659,13 @@ export class AcpAdapter implements ProviderAdapterShape {
     if (record.stopping) return Promise.resolve({ decision: 'cancel' });
     const requestId = crypto.randomUUID();
     const eventId = crypto.randomUUID();
+    const origin = this.requestOrigin(record);
     this.publish({
       eventId,
       provider: this.provider,
       threadId: record.session.threadId,
       createdAt: new Date().toISOString(),
+      ...origin,
       requestId,
       method: 'request.opened',
       requestType: 'approval',
@@ -3630,6 +3684,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         needsPerson: true,
         eventId,
         inputRequest: request.form,
+        ...(origin ? { origin } : {}),
       });
     });
   }
@@ -3666,7 +3721,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       provider: this.provider,
       session: record.session,
       activeTurnId: record.activeTurnId,
-      publish: (event) => this.publish(event),
+      publish: (event) => this.publishForTurn(record, event),
       state: record,
       toolUpdateSupervisor: record.toolUpdateSupervisor,
     };
@@ -3677,12 +3732,85 @@ export class AcpAdapter implements ProviderAdapterShape {
     this.events.push(event);
   }
 
+  /**
+   * Publishes an engine-reported event with the invocation of the turn it
+   * belongs to, as the other adapters' shared origin spread does: the
+   * activity fold and the execution coordinator credit a delta, a tool or a
+   * stop to a turn only when the event names that turn's invocation. A tool
+   * call keeps the turn it started in, so a call that outlives its turn is
+   * never credited to the next one.
+   */
+  private publishForTurn(
+    record: AcpSessionRecord,
+    event: CanonicalRuntimeEvent,
+  ): void {
+    if (event.invocationId !== undefined) {
+      this.publish(event);
+      return;
+    }
+    const origin = record.activeTurnOrigin;
+    const current =
+      origin && record.activeTurnId === origin.turnId ? origin : undefined;
+    if (
+      event.method === 'tool.started' ||
+      event.method === 'tool.progress' ||
+      event.method === 'tool.completed'
+    ) {
+      const calls = (record.toolCallOrigins ??= new Map());
+      // Recorded at first sight, with no origin when no stamped turn is
+      // open: the supervisor re-emits `tool.started` on a metadata update,
+      // and that must not adopt whichever send is open by then.
+      if (event.method === 'tool.started' && !calls.has(event.toolCallId))
+        calls.set(event.toolCallId, current ?? null);
+      const call = calls.get(event.toolCallId);
+      if (event.method === 'tool.completed') calls.delete(event.toolCallId);
+      this.publish(
+        call
+          ? {
+              ...event,
+              turnId: event.turnId ?? call.turnId,
+              invocationId: call.invocationId,
+            }
+          : event,
+      );
+      return;
+    }
+    this.publish(
+      current && event.turnId === current.turnId
+        ? { ...event, invocationId: current.invocationId }
+        : event,
+    );
+  }
+
   private requireSession(threadId: string): AcpSessionRecord {
     const record = this.sessions.get(threadId);
     if (!record || record.stopping) {
       throw new Error(`Unknown ACP session: ${threadId}`);
     }
     return record;
+  }
+
+  /**
+   * The stamped turn a request opening now belongs to: the active turn, when
+   * Station's send opened it. A request raised outside such a turn names no
+   * turn and no send.
+   */
+  private requestOrigin(record: AcpSessionRecord): AcpTurnOrigin | undefined {
+    const origin = record.activeTurnOrigin;
+    return origin && record.activeTurnId === origin.turnId
+      ? { turnId: origin.turnId, invocationId: origin.invocationId }
+      : undefined;
+  }
+
+  /** The send's invocation, for events of the exact turn it opened. */
+  private turnOrigin(
+    record: AcpSessionRecord,
+    turnId: string,
+  ): { invocationId?: string } {
+    const origin = record.activeTurnOrigin;
+    return origin?.turnId === turnId
+      ? { invocationId: origin.invocationId }
+      : {};
   }
 
   private ownsActiveTurn(
@@ -3723,6 +3851,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           threadId,
           createdAt: new Date().toISOString(),
           turnId,
+          ...this.turnOrigin(record, turnId),
           method: 'turn.completed',
           ...mapAcpStopReasonToTurnCompletion(response.stopReason),
         });
@@ -3749,6 +3878,7 @@ export class AcpAdapter implements ProviderAdapterShape {
             threadId,
             createdAt: new Date().toISOString(),
             turnId,
+            ...this.turnOrigin(record, turnId),
             method: 'runtime.error',
             ...providerFailure('quota_exhausted'),
             severity: 'error',
@@ -3764,6 +3894,7 @@ export class AcpAdapter implements ProviderAdapterShape {
             threadId,
             createdAt: new Date().toISOString(),
             turnId,
+            ...this.turnOrigin(record, turnId),
             method: 'runtime.error',
             ...providerFailure('provider_error'),
             severity: 'error',

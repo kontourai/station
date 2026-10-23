@@ -338,6 +338,7 @@ import { createTelemetryRoutes } from '../../routes/operations/telemetry-events.
 import { createUsageTelemetryDisclosureRoutes } from '../../routes/operations/usage-telemetry-disclosure.js';
 import { createVoiceRoutes } from '../../routes/operations/voice.js';
 import { createOperatorPasskeyHostRoutes } from '../../routes/operator-passkeys/operator-passkey-host-routes.js';
+import { createAgentScheduleRoutes } from '../../routes/orchestration/agent-schedule.js';
 import { fullAccessGrantForRequest } from '../../routes/orchestration/approval-authority.js';
 import { createAttachmentStagingRoutes } from '../../routes/orchestration/attachment-staging.js';
 import { createAttachmentRoutes } from '../../routes/orchestration/attachments.js';
@@ -350,6 +351,7 @@ import {
   createOrchestrationRoutes,
   isForegroundDispatchHandle,
   isForegroundIndeterminateShape,
+  resolveDispatchActor,
 } from '../../routes/orchestration/orchestration.js';
 import { createProjectTaskRoomRoutes } from '../../routes/orchestration/project-task-rooms.js';
 import { createRunRoutes } from '../../routes/orchestration/runs.js';
@@ -778,6 +780,10 @@ import type {
   AgentConfigurationMutationRunner,
   RuntimeContext,
 } from '../types.js';
+import {
+  agentWakeUpConversation,
+  composeAgentSchedule,
+} from './agent-schedule-composition.js';
 import {
   API_DOCS_LAUNCH_HEADERS,
   renderApiDocsLaunchPage,
@@ -2081,6 +2087,12 @@ export function configureRuntimeRoutes(
           changes,
           () => schedulerService.listJobs(),
           unattendedGrantStore,
+        ),
+      // A wake-up a cancel names: the conversation it was recorded for.
+      wakeUpConversation: (wakeUpId) =>
+        agentWakeUpConversation(
+          context.orchestrationEventStore?.agentScheduleStore(),
+          wakeUpId,
         ),
       // Slices C1, C2a and C3: the thread a scoped `/commands` command names.
       commandThread: (threadId) =>
@@ -4936,6 +4948,43 @@ export function configureRuntimeRoutes(
     }
   })();
 
+  // Agent wake-ups ride the thread inbox: due ones are handed to it, so the
+  // same placement rules (wait for a running turn, the live continuation's
+  // permission rule, no stored full-access grant) apply. Without an inbox
+  // (hosted), the tool answers that check-backs are unavailable.
+  const agentSchedule = composeAgentSchedule({
+    store: context.orchestrationEventStore?.agentScheduleStore(),
+    threadInbox,
+    scope: stationControlDispatchScope,
+    orchestration: context.orchestrationService,
+    hosted: hostedTenantRegistry !== undefined,
+    isInternalRequest: isStationInternalRequest,
+    isRequestPrincipalCurrent,
+    requestUserId: (c) => resolveOrchestrationRequestPrincipal(c).id,
+    readAuthorityFor: (c, userId) =>
+      sessionReadAuthorityFromRequest(
+        userId,
+        getTenantRequestContext(c.req.raw),
+        hostedTenantRegistry,
+      ),
+    tenantFor: (c) => tenantExecutionContextForRequest(c.req.raw),
+    dispatchActor: (c) =>
+      resolveDispatchActor(
+        {
+          resolvePrincipal: resolveOrchestrationRequestPrincipal,
+          resolveAgentDispatchActor,
+        },
+        c,
+      ),
+    agentProject: async (agentSlug) =>
+      (await context.agentService.getAgent(agentSlug)).project,
+    logger: context.logger,
+  });
+  const agentWakeUps = agentSchedule.delivery;
+  context.app.route(
+    '/api/orchestration',
+    createAgentScheduleRoutes(agentSchedule.routeDeps),
+  );
   context.app.route(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
@@ -7674,6 +7723,8 @@ export function configureRuntimeRoutes(
     createSchedulerRoutes(schedulerService, context.logger, {
       // Mode only: the scheduler is hidden when hosted, whoever asks.
       readAuthorityForRequest,
+      // A person approving an agent's `propose_job`.
+      jobProposals: agentSchedule.jobProposals,
     }),
   );
   context.app.route(
@@ -7815,6 +7866,15 @@ export function configureRuntimeRoutes(
       );
   // #3568: follow-ups a restart left queued or mid-send. Never part of
   // readiness, like the delegated results above.
+  // Wake-ups a restart left pending: re-armed, and any now due handed over.
+  if (agentWakeUps)
+    void kitLifecycleReady
+      .then(() => agentWakeUps.reconcile())
+      .catch((error: unknown) =>
+        context.logger.warn('agent wake-up reconcile failed', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      );
   if (threadInbox)
     void kitLifecycleReady
       .then(() => threadInbox.reconcile())

@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
-import { useConversationStatus } from '../../contexts/ConversationsContext';
 import { useStats } from '../../contexts/StatsContext';
 import { getContextWindowColor } from './utils';
+import './ContextPercentage.css';
 
 interface ContextPercentageProps {
   agentSlug: string;
@@ -33,6 +33,15 @@ function contextPercentage(
   return Math.round((contextTokens / contextWindowTokens) * 10_000) / 100;
 }
 
+/**
+ * The composer's context meter: a short track and the rounded share of the
+ * context window used. It sits in the composer's meta row beside the model it
+ * measures; the exact figure is the tooltip, the breakdown is the stats panel
+ * it opens.
+ *
+ * The track has its own width. It used to be `flex: 1` inside a shrink-to-fit
+ * button, so it resolved to 0px and the meter read "Context:  (4.0%)".
+ */
 export function ContextPercentage({
   agentSlug,
   conversationId,
@@ -42,7 +51,6 @@ export function ContextPercentage({
   onClick,
 }: ContextPercentageProps) {
   const { stats, refetch } = useStats(agentSlug, conversationId, apiBase, true);
-  const { status } = useConversationStatus(agentSlug, conversationId);
   const percentage =
     contextPercentage(
       liveUsage?.contextTokens,
@@ -50,7 +58,6 @@ export function ContextPercentage({
     ) ??
     contextPercentage(stats?.contextWindowPercentage, 100) ??
     null;
-  const isActive = status !== 'idle';
 
   useEffect(() => {
     if (messageCount !== undefined && messageCount > 0) {
@@ -60,63 +67,28 @@ export function ContextPercentage({
 
   if (percentage === null) return null;
 
+  const label = `Context ${percentage.toFixed(1)}% used`;
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={!onClick}
-      className="context-indicator"
-      style={{
-        pointerEvents: onClick ? 'auto' : 'none',
-        cursor: onClick ? 'pointer' : 'default',
-        background: 'var(--accent-subtle)',
-        transition: 'background 0.2s',
-        border: 'none',
-        width: '100%',
-        padding: 0,
-      }}
-      onMouseEnter={(e) => {
-        if (onClick) {
-          e.currentTarget.style.background = 'var(--accent-medium)';
-        }
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = 'var(--accent-subtle)';
-      }}
+      className="context-meter"
+      aria-label={label}
+      title={label}
     >
-      <div className="context-indicator-content">
-        <span>Context:</span>
-        <div
+      <span className="context-meter__track" aria-hidden="true">
+        <span
+          className="context-meter__fill"
           style={{
-            flex: 1,
-            maxWidth: '80px',
-            height: '3px',
-            background: 'var(--border-primary)',
-            borderRadius: '2px',
-            overflow: 'hidden',
+            transform: `scaleX(${Math.min(percentage, 100) / 100})`,
+            background: getContextWindowColor(percentage),
           }}
-        >
-          <div
-            style={{
-              width: `${Math.min(percentage, 100)}%`,
-              height: '100%',
-              background: getContextWindowColor(percentage),
-              transition: 'width 0.3s',
-            }}
-          />
-        </div>
-        <span>({(percentage ?? 0).toFixed(1)}%)</span>
-        {isActive && (
-          <span
-            style={{
-              fontSize: '8px',
-              animation: 'pulse 1.5s ease-in-out infinite',
-            }}
-          >
-            ●
-          </span>
-        )}
-      </div>
+        />
+      </span>
+      <span className="context-meter__value" aria-hidden="true">
+        {Math.round(percentage)}%
+      </span>
     </button>
   );
 }

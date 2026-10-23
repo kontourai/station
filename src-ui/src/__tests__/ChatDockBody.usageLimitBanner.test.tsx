@@ -285,7 +285,7 @@ describe('ChatDockBody usage-limit banner (#3157)', () => {
     });
     const banner = await screen.findByTestId('usage-limit-banner');
     expect(banner.textContent).toContain('Usage limit reached · Resets');
-    expect(banner.textContent).toContain('Auto-resume is off.');
+    expect(banner.textContent).not.toContain('automatically');
     expect(requested).toEqual([
       `http://localhost:3242/api/orchestration/sessions/${SESSION}/usage-limit`,
     ]);

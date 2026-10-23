@@ -465,6 +465,7 @@ import {
 import { SessionTranscriptReads } from './session-transcript-reads.js';
 import {
   createInMemorySessionTurnBoundaryAuthority,
+  ORCHESTRATION_SHUTDOWN_EXIT_REASON,
   runSessionStartWithBoundary,
   type SessionTurnBoundaryAuthority,
   type SessionTurnBoundaryTransition,
@@ -3086,6 +3087,7 @@ export class OrchestrationService {
           this.credentialProfileRecovery.isRestarting(threadId),
         autoResume: async () =>
           (await options.resolveUsageLimitAutoResume?.()) === true,
+        resumeChoices: options.eventStore.usageLimitResumeChoices?.(),
         onOutcome: ({ failureKind, decision, outcome }) => {
           this.usageTelemetry?.trackSessionRecovery({
             failure_kind: failureKind,
@@ -3887,7 +3889,7 @@ export class OrchestrationService {
             this.finalizeStoppedAdapterSessions(
               adapter,
               currentSessions.get(adapter) ?? new Map(),
-              'orchestration_shutdown',
+              ORCHESTRATION_SHUTDOWN_EXIT_REASON,
             );
           }, `${adapter.provider} adapter shutdown`),
         ),
@@ -4818,7 +4820,7 @@ export class OrchestrationService {
     // #3157: a waiting usage-limit resume says whether the setting would let
     // it run unattended now; the coordinator applies it only at the reset.
     const recovery = latestRecovery
-      ? await this.projectRecovery(latestRecovery)
+      ? await this.projectRecovery(latestRecovery, threadId)
       : undefined;
     // See `listSessionReadModel`: a continuation child folds only its own
     // events, which start at the second prompt.
@@ -4855,9 +4857,10 @@ export class OrchestrationService {
 
   private async projectRecovery(
     latest: ConnectionRecoveryProjection,
+    threadId: string,
   ): Promise<ConnectionRecoveryProjection> {
     return latest.usageLimit && latest.outcome === 'armed'
-      ? await this.withUsageLimitAutoResume(latest)
+      ? await this.withUsageLimitAutoResume(latest, threadId)
       : latest;
   }
 
@@ -4871,7 +4874,9 @@ export class OrchestrationService {
   ): Promise<ConnectionRecoveryProjection | null> {
     this.initialize();
     const latest = this.recoveryCoordinator?.latestProjection(threadId);
-    return latest?.usageLimit ? await this.projectRecovery(latest) : null;
+    return latest?.usageLimit
+      ? await this.projectRecovery(latest, threadId)
+      : null;
   }
 
   /**
@@ -4882,7 +4887,7 @@ export class OrchestrationService {
    */
   async actOnUsageLimitRecovery(
     threadId: string,
-    action: 'resume' | 'cancel',
+    action: 'resume' | 'cancel' | 'resume-at-reset' | 'hold',
   ): Promise<{
     result: UsageLimitRecoveryActionResult;
     recovery: ConnectionRecoveryProjection | null;
@@ -4892,7 +4897,12 @@ export class OrchestrationService {
     const result: UsageLimitRecoveryActionResult = coordinator
       ? action === 'resume'
         ? await coordinator.resumeUsageLimitNow(threadId)
-        : await coordinator.cancelUsageLimitWaiting(threadId)
+        : action === 'cancel'
+          ? await coordinator.cancelUsageLimitWaiting(threadId)
+          : await coordinator.chooseUsageLimitResume(
+              threadId,
+              action === 'hold' ? 'hold' : 'resume',
+            )
       : { kind: 'not-waiting' };
     return { result, recovery: await this.readUsageLimitRecovery(threadId) };
   }
@@ -4903,7 +4913,16 @@ export class OrchestrationService {
    */
   private async withUsageLimitAutoResume(
     recovery: ConnectionRecoveryProjection,
+    threadId: string,
   ): Promise<ConnectionRecoveryProjection> {
+    // A person's choice on this stop decides it in place of the setting.
+    const choice = this.recoveryCoordinator?.usageLimitResumeChoice(threadId);
+    if (choice)
+      return {
+        ...recovery,
+        autoResume: choice === 'resume',
+        autoResumeChoice: choice,
+      };
     try {
       return {
         ...recovery,
@@ -12290,6 +12309,8 @@ export class OrchestrationService {
     const session = deriveReadModelSession({
       event: projectedEvent,
       sessionReadModel: this.sessionReadModel,
+      readPersistedSession: (threadId) =>
+        eventStore?.readSessionByThread(threadId),
     });
     const declaredOutputs =
       projectedEvent.method === 'turn.completed' &&

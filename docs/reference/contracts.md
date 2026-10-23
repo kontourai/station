@@ -204,9 +204,32 @@ queued follow-ups on it until a turn starts or the user sends one.
 
 `ConnectionRecoveryProjection.outcomeReason` says why a usage-limit stop did
 not resume on its own: `auto-resume-off`, `superseded`, `request-pending`,
-`session-ended`, or `user-canceled` (the user chose Cancel auto-resume). The
-chat banner reads it through the Session API's
+`session-ended`, or `user-canceled` (the user chose Cancel auto-resume). Its
+`autoResumeChoice` (`resume` or `hold`) is the person's choice for that one
+stop, which decides `autoResume` in place of the setting. The chat banner
+reads it through the Session API's
 [usage-limit routes](session-api.md#usage-limit-recovery-sessionsthreadidusage-limit).
+
+`@kontourai/station-contracts/agent-schedule` owns what an agent schedules
+for itself and what it only proposes: `AgentWakeUp`, `AgentJobProposal`,
+`ConversationAgentSchedule`, their bounds (`AGENT_WAKE_UP_MAX_HORIZON_MS`,
+`AGENT_WAKE_UP_MIN_DELAY_MS`, `AGENT_WAKE_UP_MAX_PENDING_PER_CONVERSATION`,
+`AGENT_WAKE_UP_NOTE_MAX_CHARS`, `AGENT_JOB_PROPOSAL_MAX_OPEN_PER_CONVERSATION`,
+and the hourly create limits `AGENT_WAKE_UP_MAX_CREATED_PER_WINDOW` and
+`AGENT_JOB_PROPOSAL_MAX_CREATED_PER_WINDOW` over
+`AGENT_SCHEDULE_RATE_WINDOW_MS`), `jobMatchesProposal`, the comparison the
+scheduler's approval uses, and `isStationCheckBackTurn`, which tells a
+transcript that a turn is a check-back Station sent (its internal origin and
+a send key `parseWakeUpClientTurnId` accepts). A wake-up waiting for a
+person's approval is in state `needs_approval`.
+
+`@kontourai/station-contracts/station-control-refusal` owns the refusal view
+a transcript shows for a station-control tool (`StationControlRefusalView`:
+code, sentence, out-of-scope reason), `parseStationControlRefusal`, which
+reads it only from a station-control tool's whole result, and
+`stationControlToolName`. A history window carries it whole on
+`ToolCompletedEvent.stationControlRefusal`, read before the window cut the
+output to an excerpt; a sentence over its bound is not carried.
 
 `ORCHESTRATION_STREAM_ACTIVITY_EVENT` names an idless SSE frame carrying the
 current conversation activity after a burst of coalesced runtime events. It
@@ -568,7 +591,10 @@ builds the Muse adapter with neither `turnIdleTimeoutMs`
 nor `turnTimeoutMs`), so production Muse turns carry no Station-imposed
 bound. A turn that goes silent is surfaced instead: the stall watchdog's
 `progressSilence` (below) shows "No progress from <engine> for 4m" and the stall notice with a
-Stop button, and the user decides. On the exec fallback, Stop signals the
+Stop button, and the user decides. The watchdog's window is not armed while a
+tool call is open (`tool.started` without its `tool.completed`); the last
+call's completion re-arms it, so a long silent tool run is shown as the running
+tool, not as silence. On the exec fallback, Stop signals the
 child's process group and settles the turn `turn.aborted`; the serve transport
 uses its interrupt protocol, described below. The following idle/total timer
 details describe the [exec adapter](../../src-server/providers/adapters/muse-adapter.ts).

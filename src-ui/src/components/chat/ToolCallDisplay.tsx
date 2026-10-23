@@ -1,4 +1,9 @@
 import {
+  parseStationControlRefusal,
+  type StationControlRefusalView,
+  stationControlRefusalView,
+} from '@kontourai/station-contracts/station-control-refusal';
+import {
   hasHiddenCharacters,
   revealHiddenCharacters,
 } from '@kontourai/station-shared/display-reveal';
@@ -53,10 +58,12 @@ import {
   RequestSheetTrigger,
   useRequestSheet,
 } from './RequestSheet';
+import { ToolCallElapsed } from './ToolCallElapsed';
 import { TranscriptAppTools } from './TranscriptAppTools';
 import {
   callLabel,
   classifyToolCall,
+  isToolCallActive,
   isToolCallAwaitingApproval,
   type ToolCallKind,
   toolCallPhase,
@@ -90,8 +97,12 @@ export interface ToolCallData {
   output?: any;
   error?: string;
   errorText?: string;
+  /** A station-control refusal, kept whole by Station (history reads). */
+  stationControlRefusal?: StationControlRefusalView;
   state?: string;
   progressMessage?: string;
+  /** When the call started (ISO), for a running row's elapsed time. */
+  startedAt?: string;
   outputTruncated?: boolean;
   needsApproval?: boolean;
   approvalId?: string;
@@ -183,8 +194,13 @@ function ToolCallRow({
     toolCall.needsApproval && toolCall.approvalId
       ? `${toolCall.approvalThreadId ?? ''}:${toolCall.approvalId}`
       : undefined;
+  // Only a request still awaiting its answer restores a remembered toggle:
+  // a call that went on to fail (or settle at all) opens collapsed, like
+  // every other settled row, even if its approval card had been expanded.
   const [userExpanded, setUserExpanded] = useState<boolean | null>(() =>
-    toggleKey ? (approvalToggles.get(toggleKey) ?? null) : null,
+    toggleKey && isToolCallAwaitingApproval(toolCall)
+      ? (approvalToggles.get(toggleKey) ?? null)
+      : null,
   );
 
   const id = toolCall.toolCallId || '';
@@ -203,6 +219,13 @@ function ToolCallRow({
   const args = display.args;
   const result = display.result;
   const error = display.error;
+  // A station-control refusal: the one Station kept whole on a history
+  // read (where the output is an excerpt), else the live call's own whole
+  // result. Only a station-control tool's result is ever read as one.
+  const refusal =
+    stationControlRefusalView(toolCall.stationControlRefusal) ??
+    parseStationControlRefusal(toolName, error) ??
+    parseStationControlRefusal(toolName, result);
   const cancelled = toolCall.cancelled || toolCall.state === 'cancelled';
   // station#1558: a call whose SESSION ended before any result arrived. Both
   // write paths stamp the same state — `runtime-event-projection.ts` on
@@ -226,7 +249,9 @@ function ToolCallRow({
   const denied =
     approvalStatus === 'user-denied' || approvalStatus === 'policy-denied';
   const phase = toolCallPhase(toolCall);
-  const running = phase === 'running';
+  // The one "executing now" rule (`isToolCallActive`): verb, highlight and
+  // live progress line all follow it.
+  const running = isToolCallActive(toolCall);
   // Every other unresolved outcome already carries a badge below (Cancelled,
   // User denied, Blocked by Station; a plain failure is its own `failed`
   // phase with a Failed badge). This is the one that does not: dispatched,
@@ -269,9 +294,16 @@ function ToolCallRow({
       </span>
       {/* Right-to-left words isolated, as in the details, so the label and
           the details show the same word order. */}
-      <span className="tool-call__label">{isolateRightToLeft(label, 0)}</span>
+      <span
+        className={
+          running
+            ? 'tool-call__label tool-call__label--active'
+            : 'tool-call__label'
+        }
+      >
+        {isolateRightToLeft(label, 0)}
+      </span>
       {purpose && <span className="tool-call__purpose">Why: {purpose}</span>}
-      {running && <span className="tool-call__pulse" aria-hidden="true" />}
       {failed &&
         approvalStatus !== 'policy-denied' &&
         approvalStatus !== 'user-denied' && (
@@ -318,6 +350,10 @@ function ToolCallRow({
           Output truncated
         </span>
       )}
+      {running && !awaitingApproval ? (
+        // The same elapsed time a batch's running rows show.
+        <ToolCallElapsed startedAt={toolCall.startedAt} />
+      ) : null}
       {awaitingApproval && (
         <span
           className="tool-call__awaiting"
@@ -383,6 +419,8 @@ function ToolCallRow({
           args={args}
           result={result}
           error={error}
+          refusal={refusal}
+          failed={failed}
           cancelled={cancelled}
           unresolved={unresolved}
           approvalStatus={approvalStatus}
@@ -430,6 +468,8 @@ function ToolCallRow({
                   args={args}
                   result={result}
                   error={error}
+                  refusal={refusal}
+                  failed={failed}
                   cancelled={cancelled}
                   unresolved={unresolved}
                   approvalStatus={approvalStatus}
@@ -870,6 +910,8 @@ function ToolCallDetails({
   args,
   result,
   error,
+  refusal,
+  failed,
   cancelled,
   unresolved,
   approvalStatus,
@@ -882,6 +924,10 @@ function ToolCallDetails({
   args: any;
   result?: any;
   error?: string;
+  refusal?: StationControlRefusalView;
+  /** The call reached a failure terminal (`state: 'error'`), which an engine
+   * can report with its output and no separate error text. */
+  failed?: boolean;
   cancelled?: boolean;
   /** station#1558 — the session ended with this call still open. */
   unresolved?: boolean;
@@ -939,18 +985,19 @@ function ToolCallDetails({
   // The truthful terminal status — claimed only when a terminal outcome was
   // actually observed (a result or an error); an unresolved call gets no
   // status line rather than an invented one.
-  const status = error
-    ? 'Failed'
-    : cancelled
-      ? 'Cancelled'
-      : // station#1558: checked BEFORE the `result` arm — the unresolved
-        // row's `result` is the sentence explaining that there is no
-        // result, and reading it as one would print "Success".
-        unresolved
-        ? 'No result was reported'
-        : result !== undefined
-          ? 'Success'
-          : null;
+  const status =
+    error || failed
+      ? 'Failed'
+      : cancelled
+        ? 'Cancelled'
+        : // station#1558: checked BEFORE the `result` arm — the unresolved
+          // row's `result` is the sentence explaining that there is no
+          // result, and reading it as one would print "Success".
+          unresolved
+          ? 'No result was reported'
+          : result !== undefined
+            ? 'Success'
+            : null;
 
   const showArgs = commandValue === undefined || hasRemainingArgs;
   // #3382: the raw views are what an approval is decided from, so a bidi
@@ -964,33 +1011,10 @@ function ToolCallDetails({
         ? 'These arguments contain hidden characters, shown below as «U+…».'
         : undefined;
 
-  return (
-    <div className="tool-call__details">
-      {hiddenWarning && (
-        <p className="tool-call__hidden-warning" role="note">
-          {hiddenWarning}
-        </p>
-      )}
-      {commandValue !== undefined && (
-        <div className="tool-call__section">
-          <strong>Command:</strong>
-          <pre className="tool-call__code tool-call__code--command" dir="ltr">
-            <RevealedText text={commandValue} />
-          </pre>
-        </div>
-      )}
-      {showArgs && (
-        <div className="tool-call__section">
-          <strong>Arguments:</strong>
-          <pre className="tool-call__code" dir="ltr">
-            {typeof argsJson === 'string' ? (
-              <RevealedText text={argsJson} />
-            ) : (
-              argsJson
-            )}
-          </pre>
-        </div>
-      )}
+  // A station-control refusal's sentence is written for a person, so that
+  // is what the row shows first.
+  const rawOutcome = (
+    <>
       {result !== undefined && (
         <div className="tool-call__section">
           <strong>Response:</strong>
@@ -1025,6 +1049,51 @@ function ToolCallDetails({
           <strong>Error:</strong>
           <pre className="tool-call__code tool-call__code--error">{error}</pre>
         </div>
+      )}
+    </>
+  );
+
+  return (
+    <div className="tool-call__details">
+      {hiddenWarning && (
+        <p className="tool-call__hidden-warning" role="note">
+          {hiddenWarning}
+        </p>
+      )}
+      {commandValue !== undefined && (
+        <div className="tool-call__section">
+          <strong>Command:</strong>
+          <pre className="tool-call__code tool-call__code--command" dir="ltr">
+            <RevealedText text={commandValue} />
+          </pre>
+        </div>
+      )}
+      {showArgs && (
+        <div className="tool-call__section">
+          <strong>Arguments:</strong>
+          <pre className="tool-call__code" dir="ltr">
+            {typeof argsJson === 'string' ? (
+              <RevealedText text={argsJson} />
+            ) : (
+              argsJson
+            )}
+          </pre>
+        </div>
+      )}
+      {refusal ? (
+        <>
+          <div className="tool-call__section tool-call__section--error">
+            <strong>Refused:</strong>
+            <p className="tool-call__refusal">{refusal.message}</p>
+          </div>
+          {/* The envelope the agent received stays one click away. */}
+          <details className="tool-call__raw">
+            <summary>Raw response</summary>
+            {rawOutcome}
+          </details>
+        </>
+      ) : (
+        rawOutcome
       )}
       {status && (
         <div

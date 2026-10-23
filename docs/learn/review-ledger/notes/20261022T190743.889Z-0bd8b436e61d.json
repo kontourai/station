@@ -1,0 +1,7 @@
+{
+  "revision": "3ffb938742ac0d4ff5a175ff2a78952a6db7d4e3",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"ACP request.opened/resolved now name the open send's turn and invocation when raised in a stamped turn, and the turn's engine display name comes from the trimmed connection name. Checked the doc's ACP request, approval-settlement, Cursor question copy and connection-name claims; none states request stamping or untrimmed names, and the prompt-end settlement order is unchanged.","inputs":["docs/reference/api.md","src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}
