@@ -1746,8 +1746,10 @@ policy's provisional marker remains visible.
 
 [Main: Qualification](../../.github/workflows/main-qualification.yml) runs the
 exhaustive corpus after pushes to main, every six hours, or manually. Its
-qualification caller preserves the admitted run and keeps one pending request;
-a later arriving request replaces the waiting one. This coalesces intervening
+qualification caller coalesces only pushes: it preserves the admitted push
+and keeps one pending push, replaced by a later arriving push. Scheduled/manual
+requests use distinct admission groups, so a push cannot discard their delivery
+or explicit force request. This coalesces intervening
 main revisions without cancelling the running corpus or claiming that skipped
 revisions passed. GitHub arrival order is not a commit-recency guarantee; the
 schedule also qualifies its current main event SHA. Exact-source successful

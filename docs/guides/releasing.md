@@ -99,8 +99,10 @@ floor and relevant iOS checks retain their integration protections.
 Background qualification and optional delivery enter the shared GitHub-native
 `station-background-compute` group before allocating their runners. That inner
 group retains up to 100 pending requests; overflow is cancelled, never qualified.
-Main qualification now has an outer caller group that keeps the admitted run
-and one pending request, replaced by a later arriving request. It does not
+Main qualification coalesces pushes in an outer caller group, keeping the
+admitted push and one pending push replaced by a later arriving push. Scheduled
+and manual runs have unique caller groups; pushes cannot discard their delivery
+or explicit force requests. It does not
 cancel the running corpus; replaced revisions have no completion claim. This
 coalesces main work without accumulating one exhaustive run per merge. Arrival
 order does not guarantee source recency. Release qualification retains its

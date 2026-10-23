@@ -232,10 +232,25 @@ describe('promotion full-regression workflow', () => {
     expect(qualification?.with?.source_sha).toBe(
       githubExpression('github.sha'),
     );
-    expect(qualification?.concurrency).toEqual({
-      group: 'station-main-qualification-latest',
-      'cancel-in-progress': false,
-    });
+    const groupExpression = qualification?.concurrency?.group;
+    if (!groupExpression)
+      throw new Error('Main qualification admission is missing');
+    const group = (event: string, run: number) =>
+      Function(
+        'github',
+        'format',
+        `return (${groupExpression.slice(3, -2)});`,
+      )({ event_name: event, run_id: run }, (template: string, value: number) =>
+        template.replace('{0}', String(value)),
+      );
+    // A running push A and pending push B share their coalescing group.
+    expect(group('push', 1)).toBe(group('push', 2));
+    // A pending scheduled/manual request S must not be displaced by push B.
+    for (const event of ['schedule', 'workflow_dispatch']) {
+      expect(group(event, 3)).not.toBe(group('push', 2));
+      expect(group(event, 3)).not.toBe(group(event, 4));
+    }
+    expect(qualification?.concurrency?.['cancel-in-progress']).toBe(false);
     // Evaluate the actual downstream admission condition at the event boundary.
     // Push must never fan out delivery; source failure/skip must never do so.
     const condition = main.jobs?.['delivery-validation'].if;
@@ -260,7 +275,9 @@ describe('promotion full-regression workflow', () => {
     const scheduled = workflow('main-qualification.yml');
     expect(scheduled).not.toHaveProperty('concurrency');
     expect(scheduled.jobs?.qualification.concurrency).toEqual({
-      group: 'station-main-qualification-latest',
+      group: githubExpression(
+        "github.event_name == 'push' && 'station-main-qualification-push' || format('station-main-qualification-deliberate-{0}', github.run_id)",
+      ),
       'cancel-in-progress': false,
     });
     expect(delivery.concurrency).toEqual({

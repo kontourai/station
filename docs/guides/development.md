@@ -571,8 +571,9 @@ locally merely because `main` moved.
 
 The reusable hosted workflow `.github/workflows/full-regression.yml` qualifies
 one exact source SHA through every canonical phase and the Android viewport suite.
-`Main: Qualification` runs after main pushes (one admitted run and one
-replaceable pending request), every six hours or manually. Push runs qualify
+`Main: Qualification` runs after main pushes (one admitted push and one
+replaceable pending push), every six hours or manually. Scheduled/manual
+requests retain distinct admission groups and cannot be displaced by a push. Push runs qualify
 source only; scheduled/manual success then runs all five packaging/platform
 validation families. Replaced pending revisions have no qualification claim. Optional
 PR delivery families run in sequence after core fast checks, selected by a
