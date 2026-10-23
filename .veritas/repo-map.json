@@ -530,18 +530,26 @@
         "timeoutMs": 1200000,
         "method": "validation",
         "summary": "Run the existing documentation contracts, including strict recorded document/source freshness. Passing does not establish semantic review of unrecorded claims or dependencies."
+      },
+      {
+        "id": "code-hygiene",
+        "command": "npm run lint:hygiene",
+        "method": "validation",
+        "summary": "Published Veritas Oxlint policy pack: explained suppressions across source/tests and deterministic clocks/timer waits in pure contract tests. Comment heuristics remain a separate advisory scan."
       }
     ],
     "requiredEvidenceCheckIds": [
       "repo-governance",
       "style-standard",
-      "documentation-truth"
+      "documentation-truth",
+      "code-hygiene"
     ],
     "defaultEvidenceCheckIds": [
       "repo-governance",
       "verification-policy",
       "style-standard",
-      "documentation-truth"
+      "documentation-truth",
+      "code-hygiene"
     ],
     "evidenceCheckRoutes": [
       {
