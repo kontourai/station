@@ -114,7 +114,7 @@ async function liveFixtureCommand(
 
 function participants(page: Page) {
   return page
-    .getByRole('region', { name: 'Here now' })
+    .getByRole('region', { name: 'Present in this Task' })
     .getByRole('list', { name: 'Live room participants' })
     .getByRole('listitem');
 }
@@ -257,7 +257,7 @@ test.describe
           .click();
 
         const alert = page
-          .getByRole('region', { name: 'Task room conversation' })
+          .getByRole('region', { name: 'Present in this Task' })
           .getByRole('alert')
           .filter({ hasText: 'Presence could not join this Task.' });
         await expect(alert).toBeVisible();
@@ -287,7 +287,7 @@ test.describe
         await page.unroute(pattern);
         await page.reload();
         await expect(
-          page.getByRole('region', { name: 'Here now' }).getByRole('listitem'),
+          page.getByRole('region', { name: 'Present in this Task' }).getByRole('listitem'),
         ).toHaveCount(1);
         await expect(alert).toHaveCount(0);
         expect(refused).toBe(1);
