@@ -1,0 +1,7 @@
+{
+  "revision": "132a6d18aac76b41a95d74a100c98c6566ed100d",
+
+  "notes": [
+    {"path":"deployment/telemetry/README.md","note":"Reviewed the companion CLI entry guard repair at132a6d18aac. The hosted module-entry scan was reproduced locally; a real symlinked CLI invocation also incorrectly exited0 without validating an invalid package. Using the existing invokedDirectly helper restores actual execution through aliases without changing pack/verify payload semantics, source binding, consent or installation authority. All47 tests across the exact scan, helper and package suites passed. The documented commands remain accurate; receiver/store evidence stays revision-bound and is not upgraded by this CLI-only repair.","inputs":["deployment/telemetry/README.md","scripts/__tests__/package-telemetry-companion.test.ts","scripts/package-telemetry-companion.mjs"]}
+  ]
+}
