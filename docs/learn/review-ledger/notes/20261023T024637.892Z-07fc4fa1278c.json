@@ -1,0 +1,7 @@
+{
+  "revision": "357c711b97308ad75ac2206394c48d722fdd7046",
+
+  "notes": [
+    {"path":"examples/station-sessions-mcp/README.md","note":"Reviewed the changed runtime route composition against the example warning. Runtime still mounts createOrchestrationRoutes under /api/orchestration; GET /sessions obtains readAuthorityFor from resolved request principal and tenant before listSessions. The unchanged example server fetches base+/orchestration/sessions without an auth header and converts non-OK, invalid data and exceptions to []; the README continues to disclose that false-empty limitation and unqualified snapshot journey. Group transport and unrelated runtime additions do not repair that reader. Added the direct session-route owner for the canonical-route claim. Source review only; no MCP process, network, provider or live Station journey executed.","inputs":["examples/station-sessions-mcp/README.md","src-server/runtime/routes/runtime-routes.ts","src-server/routes/orchestration/orchestration.ts"]}
+  ]
+}

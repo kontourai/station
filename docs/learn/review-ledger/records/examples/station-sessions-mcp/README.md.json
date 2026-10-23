@@ -16,7 +16,9 @@
 
     "examples/station-sessions-mcp/server.mjs",
 
-    "src-server/runtime/routes/runtime-routes.ts"
+    "src-server/runtime/routes/runtime-routes.ts",
+
+    "src-server/routes/orchestration/orchestration.ts"
   ],
 
   "checks": [
