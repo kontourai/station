@@ -439,6 +439,11 @@
       "entry": "src-server/services/projects/repository-acquisition-service.ts :: workingDirectory :: return { ...record, workingDirectory: source.workingDirectory };",
       "category": 2,
       "reason": "reuse returns projectSource output. projectSource obtains this value from workingDirectory(record), which resolves the checkoutPath/subdirectory, validates its realpath and directory shape, and verifies the checkout before returning an absolute directory. This DTO projection never reads a raw ProjectConfig path."
+    },
+    {
+      "entry": "src-server/services/projects/project-session-directory.ts :: workingDirectory :: currentProject.workingDirectory !== project.workingDirectory ||",
+      "category": 1,
+      "reason": "Raw metadata equality detects a Project edit while asynchronous resource verification is in flight. This comparison never accesses a filesystem; ProjectResourceResolver separately expands and verifies the execution resource. Expanding both values here could hide a stored-byte change."
     }
   ]
 }

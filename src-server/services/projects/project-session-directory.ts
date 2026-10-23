@@ -63,6 +63,7 @@ export function createProjectSessionDirectoryResolver(
           manifest && resourceId
             ? bindings.findBinding(manifest.id, resourceId)
             : undefined;
+        // Compare stored bytes for concurrent edits; the resolver owns path expansion.
         if (
           currentProject.id !== retained.localProjectId ||
           currentProject.workingDirectory !== project.workingDirectory ||
