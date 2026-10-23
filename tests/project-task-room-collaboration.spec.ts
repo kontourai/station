@@ -132,7 +132,7 @@ async function expectAgentPresence(
   sessionId: string,
   runId: string,
 ) {
-  await page.getByRole('tab', { name: 'Chat', exact: true }).click();
+  await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
   const live = await liveFixtureCommand(
     page,
     taskId,
@@ -390,8 +390,11 @@ test.describe
             status: 200,
           });
           await expect(
-            context.getByRole('tab', { name: 'Chat', exact: true }),
+            context.getByRole('tab', { name: 'Overview', exact: true }),
           ).toHaveAttribute('aria-selected', 'true');
+          await context
+            .getByRole('tab', { name: 'Conversation', exact: true })
+            .click();
           await expect(
             context.getByRole('textbox', { name: 'Message the Task' }),
           ).toBeVisible();
@@ -425,8 +428,8 @@ test.describe
           targetActorId: peerActorId,
         });
         await Promise.all([
-          owner.getByRole('tab', { name: 'Brief', exact: true }).click(),
-          peer.getByRole('tab', { name: 'Brief', exact: true }).click(),
+          owner.getByRole('tab', { name: 'Plan', exact: true }).click(),
+          peer.getByRole('tab', { name: 'Plan', exact: true }).click(),
         ]);
         await Promise.all([
           owner
@@ -488,8 +491,8 @@ test.describe
         ).toBe('paused');
 
         await Promise.all([
-          owner.getByRole('tab', { name: 'Chat', exact: true }).click(),
-          peer.getByRole('tab', { name: 'Chat', exact: true }).click(),
+          owner.getByRole('tab', { name: 'Conversation', exact: true }).click(),
+          peer.getByRole('tab', { name: 'Conversation', exact: true }).click(),
         ]);
         await peer
           .getByRole('textbox', { name: 'Message the Task' })
@@ -502,8 +505,8 @@ test.describe
           'revision-evidence-v1:',
         );
         await Promise.all([
-          owner.getByRole('tab', { name: 'Brief', exact: true }).click(),
-          peer.getByRole('tab', { name: 'Brief', exact: true }).click(),
+          owner.getByRole('tab', { name: 'Plan', exact: true }).click(),
+          peer.getByRole('tab', { name: 'Plan', exact: true }).click(),
         ]);
 
         const sharedBase = 'Owner and peer share this durable text.';
@@ -648,8 +651,10 @@ test.describe
         await expect(await rawHistory(owner)).toContainText(
           agentEdit.sessionId,
         );
-        await owner.getByRole('tab', { name: 'Chat', exact: true }).click();
-        await peer.getByRole('tab', { name: 'Brief', exact: true }).click();
+        await owner
+          .getByRole('tab', { name: 'Conversation', exact: true })
+          .click();
+        await peer.getByRole('tab', { name: 'Plan', exact: true }).click();
 
         const revoked = await fetch(
           `${live.api}/api/pairing/devices/${encodeURIComponent(paired.device.id)}`,
@@ -674,7 +679,9 @@ test.describe
         await expect(
           peer.getByRole('textbox', { name: 'Task brief' }),
         ).toHaveAttribute('readonly', '');
-        await peer.getByRole('tab', { name: 'Chat', exact: true }).click();
+        await peer
+          .getByRole('tab', { name: 'Conversation', exact: true })
+          .click();
         await expect(
           peer.getByRole('textbox', { name: 'Message the Task' }),
         ).toBeDisabled();
@@ -707,7 +714,7 @@ test.describe
           agentEdit.sessionId,
           agentEdit.runId,
         );
-        await owner.getByRole('tab', { name: 'Brief', exact: true }).click();
+        await owner.getByRole('tab', { name: 'Plan', exact: true }).click();
         await owner
           .getByRole('button', { name: 'Edit brief', exact: true })
           .click();
@@ -720,7 +727,9 @@ test.describe
         await expect(
           owner.getByRole('button', { name: 'Stop watching' }),
         ).toHaveCount(0);
-        await owner.getByRole('tab', { name: 'Chat', exact: true }).click();
+        await owner
+          .getByRole('tab', { name: 'Conversation', exact: true })
+          .click();
         await expect(
           owner.getByRole('list', { name: 'Task room history' }),
         ).toContainText('Peer is working in the same Task room.');
