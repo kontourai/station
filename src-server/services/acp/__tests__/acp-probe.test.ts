@@ -13,7 +13,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { acpProviderRoutingStatus } from '../../connections/connection-service-helpers.js';
 import { getACPManagerStatus } from '../acp-manager-view.js';
 import { ACPProbe, MAX_CLEANUP_RETRY_ATTEMPTS } from '../acp-probe.js';
-import { ACPProcess } from '../acp-process.js';
+import { ACPCommandNotFoundError, ACPProcess } from '../acp-process.js';
 
 describe('ACPProbe', () => {
   test.each([
@@ -191,6 +191,127 @@ process.stdin.on('data', (chunk) => {
     expect(process.destroy).toHaveBeenCalledOnce();
     await expect(probe.dispose()).resolves.toBeUndefined();
     expect(process.newSession).not.toHaveBeenCalled();
+  });
+
+  // A command that is not installed never starts, so its failure belongs to
+  // the launch, not to `initialize`: the setup surfaces choose "install it"
+  // over "it started but did not finish connecting" from this phase.
+  test('attributes a command that could not be launched to spawn, and a started one that failed to initialize', async () => {
+    const config = {
+      id: 'kiro',
+      name: 'Kiro',
+      command: 'kiro-cli',
+      enabled: true,
+    };
+    const base = {
+      newSession: vi.fn(),
+      destroy: vi.fn().mockResolvedValue(undefined),
+      survivesCleanup: () => false,
+      releaseIfConfirmedGone: () => {},
+    };
+    const missing = new ACPProbe(
+      config,
+      { warn: vi.fn() },
+      '/tmp/project',
+      () =>
+        ({
+          ...base,
+          start: vi.fn(() =>
+            Promise.reject(new ACPCommandNotFoundError('kiro-cli')),
+          ),
+        }) as unknown as ACPProcess,
+      10,
+    );
+    await expect(missing.probe()).resolves.toBe(false);
+    expect(missing.lastError).toMatchObject({ phase: 'spawn' });
+
+    const spawnRefused = new ACPProbe(
+      config,
+      { warn: vi.fn() },
+      '/tmp/project',
+      () =>
+        ({
+          ...base,
+          start: vi.fn(() =>
+            Promise.reject(
+              Object.assign(new Error('spawn kiro-cli EACCES'), {
+                code: 'EACCES',
+                syscall: 'spawn kiro-cli',
+              }),
+            ),
+          ),
+        }) as unknown as ACPProcess,
+      10,
+    );
+    await expect(spawnRefused.probe()).resolves.toBe(false);
+    expect(spawnRefused.lastError).toMatchObject({ phase: 'spawn' });
+
+    const exited = new ACPProbe(
+      config,
+      { warn: vi.fn() },
+      '/tmp/project',
+      () =>
+        ({
+          ...base,
+          start: vi.fn(() =>
+            Promise.reject(new Error('ACP process exited with code 1')),
+          ),
+        }) as unknown as ACPProcess,
+      10,
+    );
+    await expect(exited.probe()).resolves.toBe(false);
+    expect(exited.lastError).toMatchObject({ phase: 'initialize' });
+
+    await Promise.all([
+      missing.dispose(),
+      spawnRefused.dispose(),
+      exited.dispose(),
+    ]);
+  });
+
+  // The first-contact continuation retries only a cold start: a
+  // never-connected engine that ran out of time, not one that failed.
+  test('reports a first contact that timed out, and not one that failed outright', async () => {
+    const hung = {
+      start: vi.fn(() => new Promise(() => {})),
+      newSession: vi.fn(),
+      destroy: vi.fn().mockResolvedValue(undefined),
+      survivesCleanup: () => false,
+      releaseIfConfirmedGone: () => {},
+    };
+    const config = {
+      id: 'kiro',
+      name: 'Kiro',
+      command: 'kiro-cli',
+      enabled: true,
+    };
+    const timedOut = new ACPProbe(
+      config,
+      { warn: vi.fn() },
+      '/tmp/project',
+      () => hung as unknown as ACPProcess,
+      10,
+    );
+    await expect(timedOut.probe()).resolves.toBe(false);
+    expect(timedOut.firstContactTimedOut()).toBe(true);
+
+    const failing = {
+      ...hung,
+      start: vi.fn(() => Promise.reject(new Error('exited with code 1'))),
+    };
+    const failed = new ACPProbe(
+      config,
+      { warn: vi.fn() },
+      '/tmp/project',
+      () => failing as unknown as ACPProcess,
+      10,
+    );
+    await expect(failed.probe()).resolves.toBe(false);
+    expect(failed.firstContactTimedOut()).toBe(false);
+
+    await timedOut.dispose();
+    await failed.dispose();
+    expect(timedOut.firstContactTimedOut()).toBe(false);
   });
 
   test('bounds asynchronous command discovery before a process is spawned', async () => {
@@ -2283,7 +2404,9 @@ describe('ACPProbe cold/warm deadline split (station#3404)', () => {
       await expect(pending).resolves.toBe(false);
       expect(proc.destroy).toHaveBeenCalled();
       expect(probe.lastError?.phase).toBe('initialize');
-      expect(probe.lastError?.message).toContain('60000ms probe budget');
+      expect(probe.lastError?.message).toBe(
+        "OpenCode didn't answer within a minute.",
+      );
       await probe.dispose();
     } finally {
       vi.useRealTimers();
@@ -2332,7 +2455,9 @@ describe('ACPProbe cold/warm deadline split (station#3404)', () => {
       await vi.advanceTimersByTimeAsync(1_001);
       expect(procs[1].proc.destroy).toHaveBeenCalled();
       await expect(pending).resolves.toBe(false);
-      expect(probe.lastError?.message).toContain('1000ms probe budget');
+      expect(probe.lastError?.message).toBe(
+        "OpenCode didn't answer within 1 second.",
+      );
       await probe.dispose();
     } finally {
       vi.useRealTimers();
@@ -2393,7 +2518,9 @@ describe('ACPProbe cold/warm deadline split (station#3404)', () => {
 
       await vi.advanceTimersByTimeAsync(1_001);
       await expect(pending).resolves.toBe(false);
-      expect(probe.lastError?.message).toContain('60000ms probe budget');
+      expect(probe.lastError?.message).toBe(
+        "OpenCode didn't answer within a minute.",
+      );
       await probe.dispose();
     } finally {
       vi.useRealTimers();
@@ -2419,7 +2546,9 @@ describe('ACPProbe cold/warm deadline split (station#3404)', () => {
       // test timeout rather than naming the guard that failed.
       expect(proc.destroy).toHaveBeenCalled();
       await expect(pending).resolves.toBe(false);
-      expect(probe.lastError?.message).toContain('1000ms probe budget');
+      expect(probe.lastError?.message).toBe(
+        "OpenCode didn't answer within 1 second.",
+      );
       await probe.dispose();
     } finally {
       vi.useRealTimers();
@@ -2465,12 +2594,11 @@ describe('ACPProbe cold/warm deadline split (station#3404)', () => {
       expect(proc.destroy).toHaveBeenCalled();
       await expect(pending).resolves.toBe(false);
       expect(probe.lastError?.phase).toBe('session creation');
-      expect(probe.lastError?.message).toContain('probe budget');
-      const remaining = Number(
-        /within its (\d+)ms share/.exec(probe.lastError?.message ?? '')?.[1],
+      // The reason people read names the whole budget; the teardown at
+      // 1,001ms above is what proves the deadline was shared.
+      expect(probe.lastError?.message).toBe(
+        "OpenCode didn't answer within 1 second.",
       );
-      expect(remaining).toBeGreaterThan(0);
-      expect(remaining).toBeLessThan(1_000);
       await probe.dispose();
     } finally {
       vi.useRealTimers();
@@ -2562,7 +2690,9 @@ describe('ACPProbe cold/warm deadline split (station#3404)', () => {
       await vi.advanceTimersByTimeAsync(1_001);
       expect(spawned[3].destroy).toHaveBeenCalled();
       await expect(pending).resolves.toBe(false);
-      expect(probe.lastError?.message).toContain('1000ms probe budget');
+      expect(probe.lastError?.message).toBe(
+        "OpenCode didn't answer within 1 second.",
+      );
       await probe.dispose();
     } finally {
       vi.useRealTimers();

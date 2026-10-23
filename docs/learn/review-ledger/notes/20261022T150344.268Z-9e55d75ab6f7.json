@@ -1,0 +1,7 @@
+{
+  "revision": "3cdc8d6c0b6ccd166d5ce8d989a7c2b17fbe0282",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Re-reviewed the merged engine setup stage against the Agent configuration claims. Public registry engines remain a separate catalogue group; confirmation displays the exact reviewed host command, registry facts and unapplied recommended environment before connection creation. Existing install hints and detection remain. This does not change saved Agent execution bindings, tool approval delivery or guardrails described here; the ACP and connections guides own registry acquisition details. Verified 474 focused source/catalog/route/contract/SDK/UI tests at merge 4c3c24b6d9c; duplicate-import cleanup 3cdc8d6c0b6 is behavior neutral. No real provider sign-in or execution verified.","inputs":["docs/guides/agent-configuration.md","src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx"]}
+  ]
+}

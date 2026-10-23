@@ -40,8 +40,7 @@ type Scenario =
   | 'portal-surface'
   | 'portal-menu'
   | 'native-tab'
-  | 'approval'
-  | 'add-connection';
+  | 'approval';
 
 const HARNESS_SOURCE = `
 import { useRef, useState } from 'react';
@@ -50,7 +49,6 @@ import { createPortal } from 'react-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { RequestInspectionDialog } from './src-ui/src/components/attention/RequestInspectionDialog';
-import { ACPAddConnectionModal } from './src-ui/src/components/acp-connections/ACPAddConnectionModal';
 import { ResponsiveDialogSurface } from './src-ui/src/components/ResponsiveDialogSurface';
 import { ConnectionStore } from './packages/connect/src/core/ConnectionStore';
 import { ConnectionsProvider } from './packages/connect/src/react/ConnectionsContext';
@@ -346,7 +344,6 @@ function TabScenario() {
   const inputs = <><input aria-label="Inner first" /><input aria-label="Inner second" /><input aria-label="Inner third" /></>;
   return <><button id="trigger" onClick={() => setOpen(true)}>Open</button>{open && (
     window.__scenario === 'approval' ? <QueryClientProvider client={new QueryClient()}><RequestInspectionDialog reference={{threadId:'thread',requestId:'request',requestEventId:'event'}} authority={scope} onClose={() => setOpen(false)} /></QueryClientProvider> :
-    window.__scenario === 'add-connection' ? <ACPAddConnectionModal initialProviderId="custom" onAdd={() => {}} onCancel={() => setOpen(false)} /> :
     <ResponsiveDialogSurface layer="dialog" ariaLabel="Outer tab dialog" historyMode="none" onClose={() => setOpen(false)}>
       <button>Outer first</button>
       {window.__scenario === 'portal-surface' ? <ResponsiveDialogSurface layer="dialog" ariaLabel="Inner tab dialog" historyMode="none" onClose={() => {}}>{inputs}</ResponsiveDialogSurface> :
@@ -362,7 +359,6 @@ const scenarios = {
   'portal-menu': TabScenario,
   'native-tab': TabScenario,
   approval: TabScenario,
-  'add-connection': TabScenario,
   collapsing: CollapsingSection,
   inert: InertSurvivor,
   'follow-up': FollowUpDialog,
@@ -428,7 +424,7 @@ test.afterAll(async () => {
 });
 
 async function mount(page: Page, scenario: Scenario) {
-  if (['connect-modal', 'approval', 'add-connection'].includes(scenario)) {
+  if (['connect-modal', 'approval'].includes(scenario)) {
     // The real `ConnectionsProvider` this scenario mounts calls
     // `crypto.randomUUID()` unguarded on its first render. That needs a
     // secure context, and a fresh page's `about:blank` (what every other
@@ -684,17 +680,6 @@ for (const width of [390, 1280]) {
       await page.keyboard.press('Tab');
       await expect(
         page.getByRole('button', { name: 'Deny', exact: true }),
-      ).toBeFocused();
-    });
-    test('add connection tabs from expanded Advanced to its ID input', async ({
-      page,
-    }) => {
-      await mount(page, 'add-connection');
-      await page.locator('#trigger').click();
-      await page.getByText('Advanced', { exact: true }).click();
-      await page.keyboard.press('Tab');
-      await expect(
-        page.getByRole('textbox', { name: 'ID', exact: true }),
       ).toBeFocused();
     });
   });

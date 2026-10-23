@@ -51,7 +51,8 @@ conversation access. Filesystem preparation stays in the server.
 | Module | Owns |
 |---|---|
 | `@kontourai/station-contracts/engine-accounts` | Secret-free engine account, quota, optional identity/credit/model/spending/breakdown metadata and bounded capture-audit projections, plus provider-owned login; runtime validation stays in SDK consumers |
-| `@kontourai/station-contracts/acp` | ACP connection config, ACP connection status values, and engine catalogue entries with their install/launch/sign-in descriptor and its validator (`validateACPEngineDescriptor`) |
+| `@kontourai/station-contracts/engine-sign-in` | Sign-in for engines run as commands: status with its source, offered methods (id, name, kind, terms note), key names (never values), the running attempt and what the caller may do |
+| `@kontourai/station-contracts/acp` | ACP connection config, ACP connection status values, and engine catalogue entries with their install/launch/sign-in descriptor and its validator (`validateACPEngineDescriptor`), and the public agent registry's listing facts and source status |
 | `@kontourai/station-contracts/engine-capability-matrix` | Per-engine capability and delivery declarations, and for ACP who decides which actions ask (`acpApprovalControl`: `station` for an engine whose approval rules Station sets at launch, today OpenCode, `engine` otherwise) |
 | `@kontourai/station-contracts/agent` | Agent specs, metadata, tools, slash commands, the versioned Agent audience and the member Agent view |
 | `@kontourai/station-contracts/agent-plugin` | Agent Plugins 1.0 schema identities, name grammar, and Station extension declarations |
@@ -335,6 +336,7 @@ No existing diagnostic code is renamed or removed.
 | `engine-decision-not-sent` | `warning` | `false` |
 | `engine-decision-unacknowledged` | `warning` | `false` |
 | `engine-session-binding-dead` | `session_gone` | `false` |
+| `engine-sign-in-required` | `auth` | `false` |
 | `engine-turn-failed` | `provider_error` | `false` |
 | `execution_engine_changed` | `conflict` | `false` |
 | `foreground_message_indeterminate` | `indeterminate` | `false` |
@@ -734,6 +736,12 @@ refused again. An ACP session whose requested model the engine's own fresh
 `session/new` options did not offer (`ACP model value unsupported`, or no model
 option at all) is refused by the adapter with `SessionStartRefusedError`,
 carrying `MODEL_NOT_ADVERTISED_CODE` (`model_not_advertised`, from `provider`).
+An engine that answers `session/new` (or `session/load`) with ACP's
+`auth_required` error (code `-32000` with a message beginning "Authentication
+required", as the ACP SDK builds it) is refused the same way, carrying
+`ENGINE_SIGN_IN_REQUIRED_CODE` (`engine-sign-in-required`, kind `auth`, from
+`provider`); the same error on a prompt is that turn's `runtime.error` with the
+same code, and chat renders both as a prompt to sign in to the engine.
 That type is how an adapter tells the start boundary that its start is settled:
 the boundary is released and the receipt is `rejected`, where every other
 adapter failure at start stays an indeterminate start that fences the thread. An

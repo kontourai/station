@@ -165,7 +165,13 @@ function isEngineLoginLeaf(request: { method: string; path: string }): boolean {
     (['GET', 'POST', 'DELETE'].includes(request.method) &&
       /^\/api\/connections\/agent\/[^/]+\/enrolment\/[^/]+\/device-code$/.test(
         path,
-      ))
+      )) ||
+    (request.method === 'POST' &&
+      /^\/acp\/connections\/[^/]+\/sign-in\/start$/.test(path)) ||
+    (['GET', 'DELETE'].includes(request.method) &&
+      /^\/acp\/connections\/[^/]+\/sign-in\/attempt$/.test(path)) ||
+    (['PUT', 'DELETE'].includes(request.method) &&
+      /^\/acp\/connections\/[^/]+\/credentials\/[^/]+$/.test(path))
   );
 }
 
@@ -1155,6 +1161,28 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       origin: 'explicit',
     }),
   ),
+  // Engine sign-in (acp-sign-in.ts): starting, reading or cancelling one, and
+  // setting or clearing an engine key, sign an engine into an account, the
+  // decision `engine:login` exists for (see the device-code leaves). The
+  // attempt read is gated too because it carries the sign-in link. The view
+  // and its re-check inherit the `/acp` family's read and operate tiers.
+  ...(['sign-in/start', 'sign-in/attempt'] as const).map(
+    (leaf): PairingScopeRouteRule => ({
+      id: `/acp/connections/:id/${leaf}:engine-login`,
+      method: '*',
+      prefix: `/acp/connections/:id/${leaf}`,
+      exact: true,
+      scope: PAIRING_SCOPE_ENGINE_LOGIN,
+      origin: 'explicit',
+    }),
+  ),
+  {
+    id: '/acp/connections/:id/credentials:engine-login',
+    method: '*',
+    prefix: '/acp/connections/:id/credentials',
+    scope: PAIRING_SCOPE_ENGINE_LOGIN,
+    origin: 'explicit',
+  },
   // Re-detecting engines re-runs the host user's login shell (bounded and
   // rate-limited), so it is an operate-tier POST, never part of the read-tier
   // catalogue GET beside it.
@@ -1162,6 +1190,16 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     id: '/acp/registry/recheck:operate',
     method: 'POST',
     prefix: '/acp/registry/recheck',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+    origin: 'explicit',
+  },
+  // Downloading the public agent registry makes this Station reach out to
+  // the network on request, so it takes the same operate tier as the re-check.
+  {
+    id: '/acp/registry/source/refresh:operate',
+    method: 'POST',
+    prefix: '/acp/registry/source/refresh',
     exact: true,
     scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
     origin: 'explicit',
@@ -2912,7 +2950,19 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'DELETE', path: '/acp/connections/:id' },
     { method: 'PUT', path: '/acp/connections/:id' },
     { method: 'POST', path: '/acp/connections/:id/reconnect' },
+    // Same sensitivity as their siblings: the unregistered read is
+    // GET /acp/connections' projection for saved connections that never
+    // registered, and check re-probes a saved command (choosing none) and
+    // registers it, as a repeated POST /acp/connections does.
+    { method: 'GET', path: '/acp/connections/unregistered' },
+    { method: 'POST', path: '/acp/connections/:id/check' },
+    // The sign-in view names methods and key NAMES, never a link or a value;
+    // its re-check runs the engine's status command and a handshake, as
+    // check does.
+    { method: 'GET', path: '/acp/connections/:id/sign-in' },
+    { method: 'POST', path: '/acp/connections/:id/sign-in/check' },
     { method: 'GET', path: '/acp/registry' },
+    { method: 'GET', path: '/acp/registry/source' },
     { method: 'POST', path: '/acp/registry/:id/install' },
     { method: 'GET', path: '/acp/status' },
     { method: 'GET', path: '/api/tool-library/accounts/:id' },
