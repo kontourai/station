@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { copyFileSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -287,7 +288,9 @@ test.describe
         await page.unroute(pattern);
         await page.reload();
         await expect(
-          page.getByRole('region', { name: 'Present in this Task' }).getByRole('listitem'),
+          page
+            .getByRole('region', { name: 'Present in this Task' })
+            .getByRole('listitem'),
         ).toHaveCount(1);
         await expect(alert).toHaveCount(0);
         expect(refused).toBe(1);
@@ -330,12 +333,19 @@ test.describe
         'Collaboration peer',
       );
       const ownerStorage = await owner.context().storageState();
+      const cookieScope = createHash('sha256')
+        .update(paired.environmentId)
+        .digest('hex')
+        .slice(0, 16);
+      const sessionCookie = ownerStorage.cookies.find(
+        (cookie) => cookie.name === `station-device-${cookieScope}`,
+      );
+      if (!sessionCookie)
+        throw new Error('Owner Device session cookie is missing');
       const peerStorage = {
         ...ownerStorage,
         cookies: ownerStorage.cookies.filter(
-          (cookie) =>
-            cookie.name !== 'station-device' &&
-            cookie.name !== '__Host-station-device',
+          (cookie) => cookie.name !== sessionCookie.name,
         ),
         origins: ownerStorage.origins.map((origin) => ({
           ...origin,
@@ -367,13 +377,7 @@ test.describe
         storageState: peerStorage,
       });
       await peerContext.addCookies([
-        {
-          name: 'station-device',
-          value: paired.credential,
-          url: live.ui,
-          httpOnly: true,
-          sameSite: 'Strict',
-        },
+        { ...sessionCookie, value: paired.credential },
       ]);
       const peer = await peerContext.newPage();
       try {

@@ -459,6 +459,7 @@ export async function pairBrowserDevice(
   if (!exchange.ok)
     throw new Error(`Pairing exchange failed (${exchange.status})`);
   return (await exchange.json()) as {
+    environmentId: string;
     credential: string;
     device: { id: string; name: string };
   };
