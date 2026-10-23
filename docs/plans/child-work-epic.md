@@ -983,6 +983,9 @@ does not claim group cancellation, interrupt delivery or physical stop.
 The private per-seat request now requires revoked authority and an accepted
 session/turn from canonical delivery lookup. It persists a host-signed interrupt
 intent before the exact canonical command and a bounded acknowledgement after it.
+Native settlement runs outside the file lock. Reads/replay remain available with
+an unknown intent while it is in flight, and acknowledgement re-reads the latest
+ledger and compares the exact original intent before updating that seat.
 A lost response leaves the intent unknown and reconnect cannot resend it; only
 a retained acknowledgement receives a request reference. Historical receipt reads
 verify the original admission and signed member identity independently of live

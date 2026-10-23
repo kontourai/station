@@ -27,8 +27,8 @@ import {
 import { canonicalJson } from '@kontourai/relay';
 import { expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
+import type { ReportInterruptRecord } from '../station-report-group-cancellation.js';
 
 const makeTempDir = trackTempDirs();
 
@@ -709,4 +709,104 @@ test('v2 and new-rounds authority publication share exclusive custody before eit
   }
   expect((await observed)?.code).toBe('delegation_authority_custody_conflict');
   expect(crossed).toBe(false);
+});
+
+test('interrupt intent reads and replay remain available during settlement and later acknowledgement preserves concurrent seats', async () => {
+  const root = makeTempDir('report-interrupt-lock-');
+  const store = new StationDelegationPersistence(root);
+  const current = (): undefined => undefined;
+  const intent: ReportInterruptRecord = {
+    intent: {
+      groupId: 'group:interrupt',
+      operationId: 'cancel',
+      hostId: 'host',
+      principalId: 'operator',
+      admissionSignature: 'A'.repeat(43),
+      seatId: 'left',
+      taskId: 'task:left',
+      clientTurnId: 'client:left',
+      sessionId: 'task:left',
+      turnId: 'turn:left',
+    },
+    acknowledgement: null,
+    signature: 'A'.repeat(43),
+  };
+  let signalEntered!: () => void;
+  const entered = new Promise<void>((resolve) => {
+    signalEntered = resolve;
+  });
+  let releaseAck!: () => void;
+  const acknowledgementGate = new Promise<void>((resolve) => {
+    releaseAck = resolve;
+  });
+  let effects = 0;
+  const first = store.recordReportInterrupt(intent, current, async () => {
+    effects++;
+    signalEntered();
+    await acknowledgementGate;
+    return {
+      ...intent,
+      acknowledgement: { outcome: 'no-active-turn', threadId: 'task:left' },
+    };
+  });
+  await entered;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const concurrent = (async () => {
+    expect(
+      await store.readReportInterrupt('group:interrupt', 'left', current),
+    ).toEqual(intent);
+    const replay = await store.recordReportInterrupt(
+      intent,
+      current,
+      async () => {
+        effects++;
+        throw Error('replay must not issue');
+      },
+    );
+    expect(replay).toEqual({ record: intent, replayed: true });
+    const right: ReportInterruptRecord = {
+      ...intent,
+      intent: {
+        ...intent.intent,
+        seatId: 'right',
+        taskId: 'task:right',
+        sessionId: 'task:right',
+        turnId: 'turn:right',
+        clientTurnId: 'client:right',
+      },
+    };
+    await store.recordReportInterrupt(right, current, async () => ({
+      ...right,
+      acknowledgement: {
+        outcome: 'no-active-turn',
+        threadId: 'task:right',
+      },
+    }));
+  })();
+  try {
+    await Promise.race([
+      concurrent,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () =>
+            reject(Error('interrupt intent unavailable until effect settled')),
+          10_000,
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+    releaseAck();
+    await first;
+    await concurrent;
+  }
+  expect(effects).toBe(1);
+  expect(
+    (await store.readReportInterrupt('group:interrupt', 'left', current))
+      ?.acknowledgement?.threadId,
+  ).toBe('task:left');
+  expect(
+    (await store.readReportInterrupt('group:interrupt', 'right', current))
+      ?.acknowledgement?.threadId,
+  ).toBe('task:right');
 });

@@ -305,7 +305,7 @@ export class StationDelegationPersistence {
     );
     const domain = this.#reportInterrupts,
       file = address(intent.intent.groupId);
-    return domain.locked(finalizeCurrent, async () => {
+    const claimed = await domain.locked(finalizeCurrent, async () => {
       const bytes = readBytes(join(domain.directory, file), 128 * 1024);
       const ledger =
         bytes === null
@@ -347,14 +347,32 @@ export class StationDelegationPersistence {
           same(reportInterruptLedgerSchema.parse(JSON.parse(retained)), ledger),
         'report_interrupt_intent_unconfirmed',
       );
-      assertCurrent(finalizeCurrent);
-      const acknowledged = reportInterruptRecordSchema.parse(await issue());
+      return { record: intent, replayed: false };
+    });
+    if (claimed.replayed) return claimed;
+    assertCurrent(finalizeCurrent);
+    const acknowledged = reportInterruptRecordSchema.parse(await issue());
+    requirePersistence(
+      same(acknowledged.intent, intent.intent) &&
+        acknowledged.acknowledgement !== null,
+      'report_interrupt_ack_invalid',
+    );
+    return domain.locked(finalizeCurrent, async () => {
+      const bytes = readBytes(join(domain.directory, file), 128 * 1024);
+      requirePersistence(bytes !== null, 'report_interrupt_intent_unconfirmed');
+      const ledger = reportInterruptLedgerSchema.parse(JSON.parse(bytes));
       requirePersistence(
-        same(acknowledged.intent, intent.intent) &&
-          acknowledged.acknowledgement !== null,
-        'report_interrupt_ack_invalid',
+        ledger.groupId === intent.intent.groupId,
+        'report_interrupt_group_conflict',
       );
-      ledger.entries[ledger.entries.length - 1] = acknowledged;
+      const index = ledger.entries.findIndex(
+        (entry) => entry.intent.seatId === intent.intent.seatId,
+      );
+      requirePersistence(
+        index >= 0 && same(ledger.entries[index], intent),
+        'report_interrupt_intent_changed',
+      );
+      ledger.entries[index] = acknowledged;
       await domain.publish(file, ledger, 128 * 1024, finalizeCurrent);
       const confirmed = readBytes(join(domain.directory, file), 128 * 1024);
       requirePersistence(

@@ -2025,7 +2025,10 @@ interrupts a descendant. The private per-seat interrupt operation requires that
 revocation plus exact accepted-turn delivery. It durably retains a
 [host-signed intent](../../src-server/services/orchestration/station-report-group-cancellation.ts)
 before canonical interrupt dispatch and retains only the closed acknowledgement
-vocabulary afterward. Missing acknowledgement remains unknown; reconnect and
+vocabulary afterward. The file lock covers intent publication and a later
+compare-and-commit of acknowledgement, not native settlement. Concurrent reads
+and exact replay can observe the unknown intent; another seat's acknowledgement
+is preserved when the first request later settles. Missing acknowledgement remains unknown; reconnect and
 changed operation keys cannot resend or rebind the recorded seat. A completed
 request reference is returned only for a retained acknowledgement, not for intent.
 Fresh historical GET reads verify the signed receipt against its original
