@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { FileAuthorizationLedger } from '@kontourai/dispatch';
 import { createDelegationAuthorityServiceV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
 import { test, vi } from 'vitest';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
@@ -721,10 +722,18 @@ test('lost canonical interrupt acknowledgement stays unknown on fresh-request re
     h.owner.close(handle);
     const grant = newGrant(h);
     const groupId = prepared.spec.groupId;
-    const revoked = await h.custody.revokeExecutionAuthority(
-      h.f.context(requestFor(h, 'POST', grant.credential)),
+    const before = await h.custody.inspect(
+      h.f.context(requestFor(h, 'GET', grant.credential)),
       groupId,
     );
+    assert.ok(before?.group && before.authority);
+    const cancelCommand = {
+      operationKey: 'cancel-left',
+      expectedRevision: before.group.revision,
+    };
+    const dispatchLedger = new FileAuthorizationLedger({
+      root: join(h.f.root, 'dispatch'),
+    });
     const dispatch = driver.orchestration.dispatchWithReceipt.bind(
       driver.orchestration,
     );
@@ -738,16 +747,25 @@ test('lost canonical interrupt acknowledgement stays unknown on fresh-request re
       });
     await assert.rejects(
       () =>
-        h.custody.requestMemberInterrupt(
+        h.custody.cancel(
           h.f.context(requestFor(h, 'POST', grant.credential)),
           groupId,
-          'left',
-          'cancel-left',
+          cancelCommand,
           driver.orchestration,
+          dispatchLedger,
         ),
       /controlled lost interrupt acknowledgement/,
     );
     const reader = new StationReportGroupCustody(h.custodyOwners);
+    const replayedCancel = await reader.cancel(
+      h.f.context(requestFor(h, 'POST', grant.credential)),
+      groupId,
+      cancelCommand,
+      driver.orchestration,
+      dispatchLedger,
+    );
+    assert.equal(replayedCancel.replayed, true);
+    assert.equal(replayedCancel.projection.cancellation, 'pending');
     const replay = await reader.requestMemberInterrupt(
       h.f.context(requestFor(h, 'POST', grant.credential)),
       groupId,
@@ -790,9 +808,11 @@ test('lost canonical interrupt acknowledgement stays unknown on fresh-request re
       h.f.context(requestFor(h, 'GET', grant.credential)),
       groupId,
     );
+    assert.equal(after?.authority?.cancelled, true);
+    assert.equal(after?.group?.cancellation, 'pending');
     assert.deepEqual(
       after?.authority?.invocations,
-      revoked.authority.invocations,
+      before.authority.invocations,
     );
     assert.equal(h.rawFetch.mock.calls.length, 1);
   } finally {

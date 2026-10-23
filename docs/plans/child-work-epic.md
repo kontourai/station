@@ -942,6 +942,14 @@ model access and same-session ACK acceptance remain separate obligations.
 
 ## Authenticated report-group preparation
 
+Private custody now composes a fresh operator cancellation with the published
+rounds journal and V3 authority. It retains exact member interrupt receipts for
+nonterminal attempts and keeps missing acknowledgements pending. Exact command
+replay performs no effects. Completed attempts retain their terminal receipts,
+usage and reservations; cancellation does not mean acceptance, a refund or a
+new physical-stop claim. Explicit pending-cancellation recovery still requires
+the unpublished 9.5.0 contract, and public serving remains unwired.
+
 A private execution runner now composes the actual preparation, signed custody,
 canonical task dispatch, sealed SDK transport and published AccountingV1 rounds.
 It derives usage from retained raw provider evidence and records bounded private

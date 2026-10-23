@@ -1,5 +1,11 @@
 // UNWIRED(#91): private historical custody; public serving and cancellation composition remain required.
+import { createHash } from 'node:crypto';
+import type { AuthorizationLedger } from '@kontourai/dispatch';
 import { createDelegationAuthorityServiceV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
+import {
+  createDelegationRoundsController,
+  type DelegationRoundsHost,
+} from '@kontourai/flow-agents/delegation-group-rounds';
 import { canonicalJson } from '@kontourai/relay';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { createOrchestrationRequestPrincipalResolver } from '../../runtime/bootstrap/orchestration-request-principal.js';
@@ -224,6 +230,108 @@ export class StationReportGroupCustody {
     if (!after?.authority?.cancelled) refuse();
     authorized.current();
     return { ...after, authority: after.authority };
+  }
+
+  async cancel(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    command: { operationKey: string; expectedRevision: number },
+    orchestration: OrchestrationService,
+    dispatchLedger: AuthorizationLedger,
+  ) {
+    command = Object.freeze({
+      operationKey: command.operationKey,
+      expectedRevision: command.expectedRevision,
+    });
+    id(command.operationKey);
+    const authorized = await this.#context(context, 'POST');
+    const before = await this.#inspect(authorized, groupId);
+    if (!before?.group || !before.authority) refuse();
+    const root = before.admission.root;
+    const service = createDelegationAuthorityServiceV3(
+      this.owners.persistence.roundsAuthorityStore(authorized.current),
+      {
+        now: () => new Date().toISOString(),
+        authorize: async (action, candidate) => {
+          authorized.current();
+          return (
+            ['cancel', 'inspect'].includes(action) && same(candidate, root)
+          );
+        },
+        confirmExecution: async () => false,
+        authenticateRenewal: async () => null,
+      },
+      { maxRenewals: 0 },
+    );
+    const host: DelegationRoundsHost = {
+      authorize: async ({ action, groupId: candidate, current }) => {
+        authorized.current();
+        return ['cancel', 'replay', 'get', 'record'].includes(action) &&
+          candidate === groupId &&
+          (!current || same(current.spec, before.admission.spec))
+          ? root.authenticated_principal_ref
+          : null;
+      },
+      executionHost: () => refuse(),
+      prepareRequest: async () => refuse(),
+      retainObservation: async () => refuse(),
+      confirmTerminal: async () => refuse(),
+      requestDescendantCancellation: async (spec) => {
+        const state = await this.#inspect(authorized, groupId);
+        if (
+          !state?.group ||
+          !state.authority?.cancelled ||
+          !same(spec, state.admission.spec)
+        )
+          refuse();
+        const receipts = [];
+        for (const attempt of state.group.attempts) {
+          authorized.current();
+          if (attempt.terminal) {
+            receipts.push({
+              invocationId: attempt.invocationId,
+              terminal: attempt.terminal,
+            });
+            continue;
+          }
+          const requested = await this.requestMemberInterrupt(
+            context,
+            groupId,
+            attempt.seatId,
+            command.operationKey,
+            orchestration,
+          );
+          authorized.current();
+          if (!requested.reference) refuse();
+          receipts.push({
+            invocationId: attempt.invocationId,
+            request: requested.reference,
+          });
+        }
+        authorized.current();
+        return {
+          domain: 'station.report-cancellation.v1',
+          id: groupId,
+          digest: `sha256:${createHash('sha256')
+            .update(canonicalJson([groupId, command.operationKey, receipts]))
+            .digest('hex')}`,
+        };
+      },
+    };
+    const controller = createDelegationRoundsController({
+      store: this.owners.persistence.roundsStore(authorized.current),
+      authorityService: service,
+      dispatchLedger,
+      host,
+    });
+    const result = await controller.cancel({
+      kind: 'cancel',
+      groupId,
+      ...command,
+      controller: before.admission.spec.controller,
+    });
+    authorized.current();
+    return result;
   }
 
   async inspectDelivery(

@@ -149,6 +149,52 @@ test('report execution owner runs the issued roster through canonical tasks and 
       { code: 'group_execution_unavailable' },
     );
     assert.equal(h.rawFetch.mock.calls.length, 2);
+    const groupId = result.group.admission.spec.groupId;
+    const cancelCommand = {
+      operationKey: 'cancel-completed',
+      expectedRevision: result.group.group.revision,
+    };
+    const interrupt = vi.spyOn(orchestration, 'dispatchWithReceipt');
+    for (const request of [
+      requestFor(h, 'GET', returning.credential),
+      requestFor(h, 'POST'),
+    ]) {
+      await assert.rejects(() =>
+        h.custody.cancel(
+          h.f.context(request),
+          groupId,
+          cancelCommand,
+          orchestration,
+          owners.dispatchLedger,
+        ),
+      );
+    }
+    const cancel = () =>
+      h.custody.cancel(
+        h.f.context(requestFor(h, 'POST', returning.credential)),
+        groupId,
+        cancelCommand,
+        orchestration,
+        owners.dispatchLedger,
+      );
+    const canceled = await cancel();
+    assert.equal(canceled.replayed, false);
+    assert.equal(canceled.projection.cancellation, 'requested');
+    assert.equal(canceled.projection.acceptance, 'unassessed');
+    const canceledReplay = await cancel();
+    assert.equal(canceledReplay.replayed, true);
+    assert.deepEqual(canceledReplay.projection, canceled.projection);
+    const afterCancel = await h.custody.inspect(
+      h.f.context(requestFor(h, 'GET', returning.credential)),
+      groupId,
+    );
+    assert.equal(afterCancel?.authority?.cancelled, true);
+    assert.deepEqual(
+      afterCancel?.authority?.invocations,
+      result.group.authority.invocations,
+    );
+    assert.equal(interrupt.mock.calls.length, 0);
+    assert.equal(h.rawFetch.mock.calls.length, 2);
   } finally {
     if (watchdog) clearTimeout(watchdog);
     abort.abort();
