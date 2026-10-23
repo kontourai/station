@@ -124,13 +124,11 @@ test('iOS recovery clock and network epoch follow monotonic and path APIs', () =
   expect(source).not.toContain('SystemTime');
   expect(source).toContain('.terminated(Instant::now(),');
   expect(source).toContain('state.foreground(Instant::now())');
-  const activation = source.slice(
-    source.indexOf('pub(crate) fn install('),
-    source.indexOf('fn install_path_monitor()'),
-  );
+  const activation = source.slice(source.indexOf('pub(crate) fn install('));
   expect(activation).toContain('UIApplicationDidBecomeActiveNotification');
   expect(activation).not.toContain('network_changed()');
-  expect(source.slice(source.indexOf('fn install_path_monitor()'))).toContain(
+  expect(activation).toContain('super::ios_network_path::start(&app)');
+  expect(readFileSync('src-desktop/src/ios_network_path.rs', 'utf8')).toContain(
     'nw_path_monitor_set_update_handler',
   );
 });
