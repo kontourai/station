@@ -234,9 +234,13 @@ cancellation rechecks the PR head and run attempt. The PR-head path never cancel
 merge-group, main-push, manual diagnostic or publication runs.
 
 A new merge-group Source request also retires older Source candidates for the
-same leading PR, only when a live GitHub queue ref proves the replacement and
-its commit contains the current PR head. The old queue ref must be absent or
-point elsewhere. Complete job inventories and fresh owner/run/attempt/ref reads
+same leading PR, only when a live GitHub queue ref and GitHub's merge-queue entry
+bind the replacement commit and its base to the current same-repository PR head.
+The entry identity and source binding are re-read before each cancellation.
+This supports squash candidates: the raw PR head need not be an ancestor of the
+synthetic commit. A missing, mismatched, changed or unmergeable entry cannot
+authorize retirement. GraphQL errors remain errors, not an empty queue.
+The old queue ref must be absent or point elsewhere. Complete job inventories and fresh owner/run/attempt/ref reads
 fence each normal cancellation; an active old ref, changed owner or attempt,
 unknown runner metadata or API failure prevents it. This path can normally
 cancel an assigned runner doing obsolete work, but never force-cancels. A 202
@@ -247,6 +251,14 @@ For the one-candidate throughput trial and its before/after measurements, use
 [the throughput epic](https://github.com/kontourai/station/issues/3101). The live
 ruleset is the configuration authority; fewer speculative builds do not prove
 higher delivery throughput.
+
+`Repo: CI throughput health` records one metadata-only snapshot on issue #3101
+every six hours while that outcome issue remains open. It installs no project
+dependencies and starts no tests, retries, cancellations or merges. Its six-hour
+observation windows end two hours behind the cadence boundary; unfinished or
+unattributed work remains explicitly incomplete and fails the report job.
+Snapshots are retained for 30 days. This reporting does not establish a speedup,
+close the issue automatically or replace manual-intervention outcome review.
 
 Missing PR attribution leaves ordinary PR runs alone; API failures stop the sweep. GitHub has no atomic head-conditional
 cancellation API, so the final head read bounds rather than eliminates the race
@@ -279,6 +291,7 @@ also serve release/Nightly callers and the shared delivery-validation workflow.
 | [`build-android.yml`](../../.github/workflows/build-android.yml) | Build Android verification artifact | **Main: Android build** | main pushes (path filtered); manual dispatch. |
 | [`build-ios.yml`](../../.github/workflows/build-ios.yml) | Build iOS verification artifact | **PR: iOS build** | PR events; merge queue; manual dispatch. |
 | [`ci-extended.yml`](../../.github/workflows/ci-extended.yml) | CI Extended | **Tool: CI extended** | manual dispatch. |
+| [`ci-throughput-health.yml`](../../.github/workflows/ci-throughput-health.yml) | — | **Repo: CI throughput health** | UTC schedule: `41 */6 * * *`; manual dispatch; reports only while #3101 is open. |
 | [`ci.yml`](../../.github/workflows/ci.yml) | CI | **PR: CI** | PR events; merge queue; main pushes; manual dispatch. |
 | [`codex-pr-review.yml`](../../.github/workflows/codex-pr-review.yml) | Advisory PR review | **PR: Advisory review** | after `PR: Secret scan`. |
 | [`container-smoke.yml`](../../.github/workflows/container-smoke.yml) | Container smoke | **Main: Container smoke** | main pushes; manual dispatch. |
@@ -674,7 +687,7 @@ npm run verify:static             # lint, ratchets, and typecheck
 npm run verify                    # broad diagnostic escalation when explicitly required
 npm run test:focused -- <file...> # exact-file focused runs (never ad hoc `npx vitest` — it can resolve a sibling worktree's config; see AGENTS.md)
 npm run test:coverage             # with coverage report
-npm run install:playwright        # install repo-local Chromium once (E2E specs AND test:full's BannerHost touch-target check)
+npm run install:playwright        # install repo-local Chromium once (E2E specs AND test:full's NotificationContainer touch-target check)
 npm run install:playwright:ci     # CI runners: Chromium into the ambient PLAYWRIGHT_BROWSERS_PATH, bounded retry, no root (station#1648)
 npm run test:e2e:product          # promoted product Playwright suite via ./station temp-home instance
 npm run test:e2e:starter-clean-install  # fresh-home Starter journey; inherited telemetry is disabled
@@ -1367,14 +1380,16 @@ hostile same-user/path-swap or power-loss archive guarantee is made.
 runner applies Station's approved patch step explicitly; it does not trust a
 root `postinstall` hook. `node_modules/playwright/package.json` declares no
 install script of its own. `npm run test:full` and `npm run full:regression`'s
-ordinary Vitest corpus include `BannerHost.touch-target.test.tsx`
-(station#3453), which launches a real repo-local Chromium to measure
+ordinary Vitest corpus include `NotificationContainer.touch-target.test.tsx`
+(archive#3513), which launches a real repo-local Chromium to measure
 cascade-resolved layout — not an E2E spec, so it is easy to assume it needs
 nothing beyond `npm run dependencies:ci`. It does not silently skip when the browser is
 missing (this repo's "no conditional green exits" browser-test doctrine
 applies to it too): it fails loud, naming the missing precondition and the
-fix. Run `npm run install:playwright` once per fresh worktree, before either
-lane, to avoid that failure. The reusable `.github/workflows/full-regression.yml` provides the browser
+fix. Run `npm run install:playwright` once per fresh worktree. For a direct
+`test:focused` invocation of that fixture, set `PLAYWRIGHT_BROWSERS_PATH=0`
+to select the repo-local browser; the suite runner sets this itself. The reusable
+`.github/workflows/full-regression.yml` provides the browser
 prerequisite for hosted completion; do not infer it from dependency installation.
 
 `npm test` is the named focused pre-push test tier. Station's own

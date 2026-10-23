@@ -1,0 +1,9 @@
+{
+  "revision": "42066b60d03e793e8125130b1eb26a69c5e97cb0",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Reviewed the remote-auth recovery test navigation change against StationSwitcherMenu, StationDetailsHost, and OnboardingGate pending-request cancellation. The test now opens Station details, cancels and requires the action to disappear, then closes details before the manager. Existing credential storage, authentication authority, endpoint proof, remote plugin isolation and phone geometry assertions remain intact. Both complete documents remain accurate; no prose change. E2E typecheck and fixture guard pass; all five remote-auth browser cases pass. Browser fixtures and phone viewport do not qualify real remote backend or physical-device behavior.","inputs":["docs/testing/browser-smoke.md","tests/connect-remote-auth-recovery.spec.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the remote-auth recovery test navigation change against StationSwitcherMenu, StationDetailsHost, and OnboardingGate pending-request cancellation. The test now opens Station details, cancels and requires the action to disappear, then closes details before the manager. Existing credential storage, authentication authority, endpoint proof, remote plugin isolation and phone geometry assertions remain intact. Both complete documents remain accurate; no prose change. E2E typecheck and fixture guard pass; all five remote-auth browser cases pass. Browser fixtures and phone viewport do not qualify real remote backend or physical-device behavior.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/connect-remote-auth-recovery.spec.ts"]}
+  ]
+}

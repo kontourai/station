@@ -87,6 +87,7 @@ import {
 import {
   buildCliRuntimePrerequisites,
   type CliCommandResult,
+  parseCliAuthState,
   runCliCommand,
 } from '../auth/cli-auth.js';
 import {
@@ -879,6 +880,27 @@ export class CodexAdapter implements ProviderAdapterShape {
       authArgs: ['login', 'status'],
       runCommand: (command, args, signal) =>
         runCommand(command, args, signal, connectionEnv),
+      // Readiness judges the credentials a fresh session would launch with,
+      // resolved exactly as a spawn resolves them. A proxy-routed connection
+      // authenticates through its env: the launch injects the
+      // `model_providers.station-proxy` provider whose `env_key` is
+      // `STATION_ENGINE_PROXY_KEY`, so the CLI's own login state is
+      // irrelevant there — `codex login status` cannot see the proxy and
+      // reports "Not logged in" for a connection that works. The Claude
+      // adapter makes the same decision through its connection env. Without
+      // a proxy route, keep the plain probe under the connection env, where
+      // a configured configHome (→ CODEX_HOME) is the account it reports on.
+      detectAuthState: async () => {
+        const launch = await this.resolveConnectionLaunch();
+        if (launch.route) return 'authenticated';
+        const result = await runCommand(
+          'codex',
+          ['login', 'status'],
+          options?.signal,
+          launch.env,
+        );
+        return result ? parseCliAuthState(result, 'codex') : 'unknown';
+      },
       ...(this.options.findBinary
         ? { findBinary: this.options.findBinary }
         : {}),

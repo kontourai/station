@@ -315,8 +315,11 @@ as the committed `ops/release/dmg/background.tiff`. `Applications` must be a
 symbolic link whose target is exactly `/Applications`. The application must be
 a real directory. Any extra, missing or differently typed entry fails the
 release before the mounted signature, bundle identity and Gatekeeper checks
-run. `dmgbuild` ignores the exit status of its internal `ditto` copy, so those
-later mounted checks remain the guard against an incomplete application copy.
+run. `dmgbuild` ignores the exit status of its internal `ditto` copy, so the
+settings file's `create_hook` runs `codesign --verify --deep --strict` on the
+copied application inside the still-writable image. A failed or partial copy
+makes `dmgbuild` detach the image and exit nonzero before signing or
+notarization; the later mounted checks still run.
 This check proves the image's structure, not how Finder draws it: window
 geometry stays outside its scope. In a mounted image on macOS 26 with the system in
 Dark Mode, Finder still painted the application and Applications names
