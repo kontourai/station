@@ -57,11 +57,14 @@ export function ProjectRepositoryAttachment({
     },
   });
   return (
-    <section aria-label="Add repository source">
+    <section
+      className="project-sources__form"
+      aria-label="Add repository source"
+    >
       <h3>Add a repository</h3>
       <p>
-        Acquire or reuse a verified working copy, then attach it to this
-        Project. Existing resources and files are preserved.
+        Choose a repository to add to this Project. You can download a working
+        copy or reuse one on this Station. Existing files stay in place.
       </p>
       {identity.isError ? (
         <p role="alert">
@@ -85,7 +88,7 @@ export function ProjectRepositoryAttachment({
           <p>
             Selected working copy: <code>{selection.path}</code>
           </p>
-          <label htmlFor={checkboxId}>
+          <label className="project-sources__consent" htmlFor={checkboxId}>
             <input
               id={checkboxId}
               type="checkbox"
@@ -102,8 +105,8 @@ export function ProjectRepositoryAttachment({
             </p>
           )}
           <p>
-            The optional code selection changes the execution root explicitly.
-            It does not remove or replace the primary resource.
+            Choosing it for code work changes where new Agent sessions start.
+            Other sources stay attached.
           </p>
           <Button
             type="button"

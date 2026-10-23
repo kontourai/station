@@ -23,16 +23,39 @@
   display: grid;
   gap: var(--k-space-2);
 }
-.project-sources__form input,
-.project-sources__form select {
+.project-sources__form > .button {
+  justify-self: start;
+}
+.project-sources
+  :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) {
+  box-sizing: border-box;
+  min-width: 0;
   min-height: 44px;
   width: 100%;
+  padding: var(--k-space-2) var(--k-space-3);
+  border: 1px solid var(--k-line-strong);
+  border-radius: var(--k-radius-sm);
+  background: var(--k-panel);
+  color: var(--k-text);
+  font: inherit;
+}
+.project-sources :where(input, select, textarea):focus-visible {
+  outline: 2px solid var(--k-focus-ring);
+  outline-offset: 2px;
+}
+.project-sources :where(input, select, textarea):disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .project-sources__form code {
   overflow-wrap: anywhere;
 }
-.project-sources__form input[type="checkbox"] {
-  width: 44px;
+.project-sources input[type="checkbox"] {
+  width: var(--k-space-4);
+  height: var(--k-space-4);
+  min-height: var(--k-space-4);
+  accent-color: var(--k-action);
+  flex-shrink: 0;
 }
 .project-sources__actions {
   display: flex;
@@ -57,10 +80,4 @@
   align-items: center;
   gap: var(--k-space-3);
   min-height: 44px;
-}
-.project-sources__consent input[type="checkbox"] {
-  width: var(--k-space-4);
-  min-height: var(--k-space-4);
-  height: var(--k-space-4);
-  flex-shrink: 0;
 }
