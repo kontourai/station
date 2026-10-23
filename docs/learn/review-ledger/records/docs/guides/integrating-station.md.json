@@ -32,7 +32,15 @@
 
     "packages/cli/src/commands/service-run.ts",
 
-    "packages/cli/src/commands/service-liveness.ts"
+    "packages/cli/src/commands/service-liveness.ts",
+
+    "src-server/services/knowledge/knowledge-document-import-service.ts",
+
+    "src-server/routes/knowledge/knowledge-document-import-routes.ts",
+
+    "src-server/services/projects/project-s3-sources.ts",
+
+    "src-server/routes/projects/project-s3-source-routes.ts"
   ],
 
   "checks": [

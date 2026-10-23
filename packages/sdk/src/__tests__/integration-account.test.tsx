@@ -4,13 +4,18 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { _setApiBase } from '../api';
+import { setClientCredentialResolver } from '../client/http';
 import {
+  useDisconnectIntegrationAccountMutation,
   useFinishIntegrationOAuthMutation,
   useIntegrationAccountQuery,
   useStartIntegrationOAuthMutation,
 } from '../query-domains/catalog';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  setClientCredentialResolver(undefined);
+  vi.unstubAllGlobals();
+});
 
 test('remote sign-in keeps project scope and removes callback variables after its observer leaves', async () => {
   _setApiBase('http://station.test');
@@ -83,5 +88,52 @@ test('remote sign-in keeps project scope and removes callback variables after it
         ),
     ).toBe(false),
   );
+  client.clear();
+});
+
+test('a retained account action cannot dispatch under a different authority at the same Station', async () => {
+  const captured = { apiBase: 'http://station.test', authorityKey: 'alice' };
+  let active = captured;
+  _setApiBase(captured.apiBase);
+  setClientCredentialResolver(() => ({
+    origin: active.apiBase,
+    requestAuthority: { ...active, isCurrent: () => true },
+  }));
+  const fetch = vi
+    .fn()
+    .mockResolvedValue(Response.json({ success: true, data: {} }));
+  vi.stubGlobal('fetch', fetch);
+  const client = new QueryClient({
+    defaultOptions: { mutations: { retry: false } },
+  });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  );
+  const hook = renderHook(
+    () => ({
+      start: useStartIntegrationOAuthMutation(),
+      finish: useFinishIntegrationOAuthMutation(),
+      disconnect: useDisconnectIntegrationAccountMutation(),
+    }),
+    { wrapper },
+  );
+  active = { ...captured, authorityKey: 'bob' };
+  await act(async () => {
+    const input = { id: 'reports', requestScope: captured };
+    await expect(
+      hook.result.current.start.mutateAsync(input),
+    ).rejects.toThrow();
+    await expect(
+      hook.result.current.finish.mutateAsync({
+        ...input,
+        callbackUrl: 'http://localhost/?code=alice',
+      }),
+    ).rejects.toThrow();
+    await expect(
+      hook.result.current.disconnect.mutateAsync(input),
+    ).rejects.toThrow();
+  });
+  expect(fetch).not.toHaveBeenCalled();
+  hook.unmount();
   client.clear();
 });

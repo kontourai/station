@@ -529,13 +529,25 @@ export async function applyProjectLayout(
   apiBase: string,
   projectSlug: string,
   layoutId: string,
-  opts?: ClientRequestOptions,
+  opts?: ClientRequestOptions & {
+    creationRequestId?: string;
+    retryUncertain?: boolean;
+  },
 ): Promise<any> {
+  const { creationRequestId, retryUncertain, ...transportOptions } = opts ?? {};
   const response = await mutateJson(
     `${apiBase}/api/projects/${encodeURIComponent(projectSlug)}/layouts/apply`,
     'POST',
-    opts,
-    { layoutId },
+    opts ? transportOptions : undefined,
+    {
+      layoutId,
+      ...(creationRequestId
+        ? {
+            creationRequestId,
+            retryUncertain: retryUncertain === true,
+          }
+        : {}),
+    },
   );
   return unwrapOrThrow(response);
 }

@@ -450,3 +450,15 @@ describe('deployment authentication identity boundary', () => {
     );
   });
 });
+
+test('cached external authentication without a synchronous witness cannot authorize a commit seam', async () => {
+  const service = new DeploymentAuthenticationService(provider(), () => now);
+  const request = new Request(
+    'https://station.example.test/api/tasks/task/children',
+    { headers: { Cookie: 'fixture_account=credential' } },
+  );
+  expect((await service.authenticate(request)).kind).toBe('authenticated');
+  expect(service.current(request)?.kind).toBe('authenticated');
+  expect(service.captureCurrentSession(request)()).toBe(false);
+  await service.close();
+});

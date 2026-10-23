@@ -1,0 +1,7 @@
+{
+  "revision": "719597da23bdca962ccd2de3ecdaa467c9d4ecf7",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed Home New Project entry against actual shared project-new navigation: repository, host-folder and blank starts are offered without hiding the entry on remote/mobile clients. Directory controls retain their profile boundary and server mutations retain their authorization. Home50 passed, actual authenticated Chromium on prior a00 exercised acquire/adopt/create with exact provenance and no page errors; new Home copy runtime is being rebuilt. No knowledge/S3, provider picker, native-phone or Agent-turn completion claim.","inputs":["docs/user/getting-started.md","src-server/services/projects/project-service.ts","packages/contracts/src/project.ts","src-ui/src/components/home/HomeActionSection.tsx"]}
+  ]
+}

@@ -15,6 +15,22 @@ Independent-person acceptance is tracked separately in [#497](https://github.com
 Optional configured OIDC choices use the same local account/session owner (see below); the official hosted identity service is tracked in [#489](https://github.com/kontourai/station/issues/489).
 Optional provider integration does not make hosted identity a core prerequisite.
 
+The server provider may implement `isVerifiedSessionCurrent(session)`, a synchronous
+live witness for a previously verified session. It must re-read session existence, exact
+subject and timestamps, expiry and account policy, and reject pending enrollment. It
+does not authenticate a caller-supplied session ID and is not part of the public
+descriptor. The local-account provider implements it; adapters without it fail closed at
+synchronous authority seams. `captureCurrentSession` also pins the verified identity and
+cookie and refuses continuation-only authority.
+
+Task relationship routes compose current transport authority with a live local-account
+session or supported account-bound Device standing witness. Account members may read
+only individually shared Task incarnations in a currently readable Project; a shared
+parent does not reveal private children or their count. Work chats additionally require
+current canonical Conversation lineage and reader access. Ordinary account membership
+does not authorize relationship mutations. Linking neither publishes a Task or private
+conversation nor grants execution.
+
 ## Enable local accounts without email
 
 Choose this built-in configuration instead of an authentication module:
@@ -272,9 +288,14 @@ and unsharing stay operator-only. Protected reads set
 portable Project incarnation. Membership is rechecked before delivery and each
 streamed chunk. The audited administration endpoints below and the scoped
 [Project agent and tool-library routes](../reference/api.md#project-tool-library)
-are the additional Project mutations admitted here. Admins and Owners may author
+are additional Project mutations admitted here. Admins and Owners may author
 constrained agents and request permitted tool sources; only Owners change
-Project tool policy. Member agent execution remains refused. Unrelated personal configuration,
+Project tool policy. Exact Project Room leaves separately admit discussion,
+presence, note edits and explicit Agent requests under their current membership
+actions and transport permission. A Room Agent request also requires Project
+`view`, host execution permission and a verified Project execution root; its Task
+context contains only already-shared summaries, even for an operator. Direct
+Agent/orchestration HTTP member turns remain refused. Unrelated personal configuration,
 plugin, terminal, coding, secret and orchestration surfaces remain denied even
 if the Device scope is broader. Existing unbound local/operator Devices retain
 their prior behavior. Existing Tailnet person bindings remain a separate

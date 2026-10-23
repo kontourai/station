@@ -1,0 +1,32 @@
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -13257,7 +13257,12 @@
+       });
+     }
+     if (options?.persistInput !== false) {
+-      this.handleSequentialBackgroundOperations(context8, input, userId, conversationId);
++      // Station must not let a fast response overtake its input in durable history.
++      const ensuredConversation = await this.ensureConversationExists(context8, userId, conversationId, input);
++      if (!ensuredConversation) {
++        throw new Error(`Failed to ensure conversation exists before input persistence for conversation ${conversationId}`);
++      }
++      await this.saveCurrentInput(context8, input, userId, conversationId);
+     }
+     return { messages, conversationId };
+   }
+--- a/dist/index.mjs
++++ b/dist/index.mjs
+@@ -13075,7 +13075,12 @@
+       });
+     }
+     if (options?.persistInput !== false) {
+-      this.handleSequentialBackgroundOperations(context8, input, userId, conversationId);
++      // Station must not let a fast response overtake its input in durable history.
++      const ensuredConversation = await this.ensureConversationExists(context8, userId, conversationId, input);
++      if (!ensuredConversation) {
++        throw new Error(`Failed to ensure conversation exists before input persistence for conversation ${conversationId}`);
++      }
++      await this.saveCurrentInput(context8, input, userId, conversationId);
+     }
+     return { messages, conversationId };
+   }

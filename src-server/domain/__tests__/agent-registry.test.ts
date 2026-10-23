@@ -800,19 +800,20 @@ describe('agent identity mutation lock (#2646 review MEDIUM)', () => {
     // the contender's wait keeps timers firing and the handoff completes.
     const releaseHolder = await acquireAgentIdentityMutationLockAtHome(home);
     let ticks = 0;
+    let observedProgress!: () => void;
+    const progress = new Promise<void>((resolve) => {
+      observedProgress = resolve;
+    });
     const ticker = setInterval(() => {
       ticks += 1;
+      if (ticks === 4) observedProgress();
     }, 10);
     try {
       const contention = acquireAgentIdentityMutationLockAtHome(home);
-      // The handoff itself rides the event loop: if acquisition busy-waited
-      // synchronously, this timer could never fire and the contender would
-      // starve against a lock nobody can release.
-      const handoff = setTimeout(() => {
-        void releaseHolder();
-      }, 200);
+      // Release only after timers have progressed while the lock is held.
+      await progress;
+      await releaseHolder();
       const releaseContender = await contention;
-      clearTimeout(handoff);
       expect(ticks).toBeGreaterThanOrEqual(4);
       await releaseContender();
     } finally {

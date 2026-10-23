@@ -123,6 +123,9 @@ const UNREPORTED_PATH_READING_SUITES: readonly string[] = Object.freeze([
   // Read back what the fake engine records and the engine key file, both in
   // temp directories, never repository source. Their imports of the sign-in
   // service, routes and ACP adapter select them for changes.
+  // Reads setup inputs/effects/receipts created in its isolated temp home;
+  // its service/resolver imports own selection, not a production source-text pin.
+  'src-server/services/projects/__tests__/operator-setup-service.test.ts',
   'src-server/services/acp/__tests__/engine-sign-in.process.test.ts',
   'src-server/routes/connections/__tests__/acp-sign-in.routes.test.ts',
   // Reads the receipt its child Playwright run writes into a temp root

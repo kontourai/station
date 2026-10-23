@@ -24,11 +24,13 @@ export default function WorkspaceSearchPalette({
   onQueryChange,
   onClose,
   onCommands,
+  projectId,
 }: {
   query: string;
   onQueryChange: (query: string) => void;
   onClose: () => void;
   onCommands: () => void;
+  projectId?: string;
 }) {
   const scope = useHostRequestAuthorityScope();
   const [debounced, setDebounced] = useState('');
@@ -64,9 +66,12 @@ export default function WorkspaceSearchPalette({
     () => ({
       version: UNIFIED_SEARCH_V1,
       query: debounced,
-      filters: { kinds: ['task', 'message'] as ('task' | 'message')[] },
+      filters: {
+        kinds: ['task', 'message'] as ('task' | 'message')[],
+        ...(projectId ? { projectId } : {}),
+      },
     }),
-    [debounced],
+    [debounced, projectId],
   );
   const search = useUnifiedSearchQuery(request, {
     requestScope: scope,
@@ -171,13 +176,17 @@ export default function WorkspaceSearchPalette({
     );
   return (
     <Dialog
-      title="Workspace search (this Station)"
+      title={projectId ? 'Search Project' : 'Workspace search (this Station)'}
       initialFocusRef={inputRef}
       initialFocusPolicy="always"
       closeLabel="Close workspace search"
       onClose={onClose}
       size="lg"
-      subtitle="Interim local search: Tasks and indexed messages. Other sources remain in command and legacy search."
+      subtitle={
+        projectId
+          ? 'Tasks and indexed messages'
+          : 'Interim local search: Tasks and indexed messages. Other sources remain in command and legacy search.'
+      }
       footer={
         <Button
           variant="secondary"

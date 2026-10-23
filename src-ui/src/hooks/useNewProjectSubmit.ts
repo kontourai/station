@@ -1,11 +1,15 @@
 import type { EnvironmentRef } from '@kontourai/station-contracts/execution-target';
+import type { ProjectStartIntent } from '@kontourai/station-contracts/project';
 import {
   applyProjectLayout,
   useCreateProjectMutation,
   useFileSystemBrowseQuery,
 } from '@kontourai/station-sdk';
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useEffect } from 'react';
+import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { userFacingErrorMessage } from '../utils/errorText';
+import { useProjectCreationRecovery } from './useProjectCreationRecovery';
+import { useProjectDraftState } from './useProjectDraftState';
 import { trackRecentLayout } from './useRecentLayouts';
 
 interface ProjectDraft {
@@ -14,6 +18,7 @@ interface ProjectDraft {
   icon?: string;
   description?: string;
   workingDirectory?: string;
+  repositoryAcquisitionId?: string;
   defaultEnvironment?: EnvironmentRef;
 }
 
@@ -45,12 +50,16 @@ interface RejectedSlug {
 }
 
 interface CreatedProject {
+  startIntent?: ProjectStartIntent;
+  recoveryKey?: string;
   slug: string;
   layoutId: string | null;
   layoutSlug?: string;
+  creationRequestId?: string;
 }
 
 interface UseNewProjectSubmitOptions {
+  startIntent?: ProjectStartIntent;
   apiBase: string;
   isOpen: boolean;
   /** The slug the draft currently derives; a refusal older than it is stale. */
@@ -74,7 +83,11 @@ interface UseNewProjectSubmitOptions {
     name: string;
     slug: string;
   }) => Promise<string | null>;
-  onComplete: (slug: string, layoutSlug?: string) => void;
+  onComplete: (
+    slug: string,
+    layoutSlug?: string,
+    startIntent?: ProjectStartIntent,
+  ) => void;
 }
 
 /**
@@ -87,24 +100,65 @@ export function useNewProjectSubmit({
   derivedSlug,
   normalizedDirectory,
   starterLayoutId,
+  startIntent = 'workspace',
   verifySlugAvailability,
   onComplete,
 }: UseNewProjectSubmitOptions) {
-  const createProjectMutation = useCreateProjectMutation();
+  const authority = useHostRequestAuthorityScope();
+  const recoveryKey =
+    authority &&
+    JSON.stringify([
+      authority.apiBase,
+      authority.draftRecoveryKey ?? authority.authorityKey,
+    ]);
+  const livePartition =
+    authority && JSON.stringify([authority.apiBase, authority.authorityKey]);
+  const createProjectMutation = useCreateProjectMutation(authority);
   const { refetch: validateDirectory } = useFileSystemBrowseQuery(
     normalizedDirectory || undefined,
     { enabled: false },
   );
-  const [createdProject, setCreatedProject] = useState<CreatedProject | null>(
-    null,
+  const [createdProject, setCreatedProject] =
+    useProjectDraftState<CreatedProject | null>(null, recoveryKey);
+  const [applyingStarter, setApplyingStarter] = useProjectDraftState(
+    false,
+    livePartition,
   );
-  const [applyingStarter, setApplyingStarter] = useState(false);
-  const [checkingDirectory, setCheckingDirectory] = useState(false);
-  const [checkingSlug, setCheckingSlug] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [checkingDirectory, setCheckingDirectory] = useProjectDraftState(
+    false,
+    livePartition,
+  );
+  const [checkingSlug, setCheckingSlug] = useProjectDraftState(
+    false,
+    livePartition,
+  );
+  const [error, setError] = useProjectDraftState<string | null>(
+    null,
+    livePartition,
+  );
   const [rejectedDirectory, setRejectedDirectory] =
-    useState<RejectedDirectory | null>(null);
-  const [rejectedSlug, setRejectedSlug] = useState<RejectedSlug | null>(null);
+    useProjectDraftState<RejectedDirectory | null>(null, livePartition);
+  const [rejectedSlug, setRejectedSlug] =
+    useProjectDraftState<RejectedSlug | null>(null, livePartition);
+  const recovery = useProjectCreationRecovery(
+    isOpen,
+    createProjectMutation.isPending || applyingStarter,
+  );
+  const outcome = recovery.outcome;
+  const recoveredProject: CreatedProject | null =
+    outcome?.phase === 'created' && outcome.project && recovery.pending
+      ? {
+          slug: outcome.project.slug,
+          layoutId: recovery.pending.starterLayoutId,
+          startIntent: recovery.pending.startIntent ?? 'workspace',
+          ...(outcome.starter?.phase === 'applied'
+            ? { layoutSlug: outcome.starter.layoutSlug }
+            : {}),
+          recoveryKey,
+          creationRequestId: recovery.pending.requestId,
+        }
+      : null;
+  const resumable = recoveredProject ?? createdProject;
 
   useEffect(() => {
     if (!isOpen) {
@@ -116,7 +170,16 @@ export function useNewProjectSubmit({
       setRejectedDirectory(null);
       setRejectedSlug(null);
     }
-  }, [isOpen]);
+  }, [
+    isOpen,
+    setCreatedProject,
+    setApplyingStarter,
+    setCheckingDirectory,
+    setCheckingSlug,
+    setError,
+    setRejectedDirectory,
+    setRejectedSlug,
+  ]);
 
   /**
    * 4-HOME-008. Returns the message to show against the Working Directory
@@ -160,9 +223,15 @@ export function useNewProjectSubmit({
     event.preventDefault();
     setError(null);
     try {
-      let project = createdProject;
+      if (createdProject && createdProject.recoveryKey !== recoveryKey)
+        throw new Error(
+          'Station access changed. Return to the Station account that created this Project to finish its starter.',
+        );
+      let project = resumable;
+      const retained = recovery.pending;
+      const selectedDraft = retained?.draft ?? draft;
       if (!project) {
-        if (normalizedDirectory) {
+        if (!retained && normalizedDirectory) {
           setCheckingDirectory(true);
           const directoryProblem = await checkDirectory().finally(() =>
             setCheckingDirectory(false),
@@ -177,7 +246,7 @@ export function useNewProjectSubmit({
           setRejectedDirectory(null);
         }
 
-        if (verifySlugAvailability) {
+        if (!retained && verifySlugAvailability) {
           setCheckingSlug(true);
           const slugProblem = await verifySlugAvailability(draft).finally(() =>
             setCheckingSlug(false),
@@ -189,14 +258,49 @@ export function useNewProjectSubmit({
           setRejectedSlug(null);
         }
 
-        const created = await createProjectMutation.mutateAsync(draft);
+        if (authority && !authority.isCurrent())
+          throw new Error(
+            'Station access changed. Retry this Project on the selected Station.',
+          );
+        if (outcome?.phase === 'uncertain' || outcome?.phase === 'unavailable')
+          throw new Error(
+            'The saved Project creation is unresolved or unavailable. Inspect its result or set this setup aside before starting another.',
+          );
+        const pending = await recovery.prepare(
+          selectedDraft,
+          starterLayoutId,
+          startIntent,
+        );
+        const created = await createProjectMutation.mutateAsync(
+          pending
+            ? {
+                ...pending.draft,
+                creationRequestId: pending.requestId,
+                starterLayoutId: pending.starterLayoutId,
+              }
+            : selectedDraft,
+        );
         // Retained with the created identity so a retry applies the SAME
         // starter this attempt chose, even if the picker moves underneath.
-        project = { slug: created.slug, layoutId: starterLayoutId };
+        project = {
+          slug: created.slug,
+          layoutId: pending ? pending.starterLayoutId : starterLayoutId,
+          startIntent: pending?.startIntent ?? startIntent,
+          recoveryKey,
+          ...(pending ? { creationRequestId: pending.requestId } : {}),
+        };
         setCreatedProject(project);
       }
 
-      if (project.layoutId) {
+      if (
+        project.recoveryKey !== recoveryKey ||
+        (authority && !authority.isCurrent())
+      ) {
+        throw new Error(
+          'Station access changed. Return to the Station account that created this Project to finish its starter.',
+        );
+      }
+      if (project.layoutId && !project.layoutSlug) {
         const layoutId = project.layoutId;
         setApplyingStarter(true);
         try {
@@ -204,6 +308,18 @@ export function useNewProjectSubmit({
             apiBase,
             project.slug,
             layoutId,
+            {
+              ...(authority ? { requestScope: authority } : {}),
+              ...(project.creationRequestId
+                ? {
+                    creationRequestId: project.creationRequestId,
+                    retryUncertain: Boolean(
+                      outcome?.phase === 'created' &&
+                        outcome.starter?.phase === 'uncertain',
+                    ),
+                  }
+                : {}),
+            },
           );
           project = { ...project, layoutSlug: layout.slug };
           setCreatedProject(project);
@@ -213,7 +329,14 @@ export function useNewProjectSubmit({
         }
       }
 
-      onComplete(project.slug, project.layoutSlug);
+      if (authority && !authority.isCurrent())
+        throw new Error(
+          'Station access changed after setup. Return to the Station account that created this Project.',
+        );
+      if (project.creationRequestId) recovery.clear(project.creationRequestId);
+      if (project.startIntent && project.startIntent !== 'workspace')
+        onComplete(project.slug, project.layoutSlug, project.startIntent);
+      else onComplete(project.slug, project.layoutSlug);
     } catch (err: unknown) {
       setError(
         err instanceof Error ? userFacingErrorMessage(err) : String(err),
@@ -222,7 +345,26 @@ export function useNewProjectSubmit({
   }
 
   return {
-    hasCreatedProject: createdProject !== null,
+    hasCreatedProject: resumable !== null,
+    canOpenCreatedProject: Boolean(
+      resumable && (!resumable.layoutId || resumable.layoutSlug),
+    ),
+    hasRecoveryIntent: Boolean(recovery.pending) || recovery.corrupt,
+    recovery,
+    recoveryBusy: Boolean(recovery.pending && recovery.operation.isFetching),
+    setAsideRecovery() {
+      try {
+        recovery.clear();
+        setCreatedProject(null);
+        setError(null);
+      } catch (error) {
+        setError(
+          error instanceof Error
+            ? userFacingErrorMessage(error)
+            : String(error),
+        );
+      }
+    },
     error,
     /**
      * The folder this submission PROVED inaccessible (a server 4xx verdict),

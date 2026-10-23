@@ -31,7 +31,7 @@ export default function MemoryTab() {
     isError: rootsError,
     error: rootsFailure,
     refetch: refetchRoots,
-  } = useKnowledgeRootsQuery();
+  } = useKnowledgeRootsQuery({ keepPreviousData: false });
   const { data: status, isError: statusUnavailable } =
     useGlobalKnowledgeStatusQuery();
   const [selectedRootId, setSelectedRootId] = useState<string | null>(null);
@@ -48,7 +48,7 @@ export default function MemoryTab() {
     isError: graphError,
     error: graphFailure,
     refetch: refetchGraph,
-  } = useKnowledgeGraphQuery(rootId);
+  } = useKnowledgeGraphQuery(rootId, { keepPreviousData: false });
 
   const stats = status?.stats;
 

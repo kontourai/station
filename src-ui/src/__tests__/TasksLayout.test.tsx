@@ -89,9 +89,6 @@ test('creates a Starter Task from the board with the Project workspace and git b
     dispatch: { state: 'dispatched' },
   });
   render(<TasksLayout projectSlug="demo" layoutSlug="tasks" config={{}} />);
-  expect(
-    screen.getByText(/Follow the work by its recorded status/),
-  ).toBeTruthy();
   fireEvent.change(screen.getByRole('textbox', { name: 'Task title' }), {
     target: { value: 'Board Task' },
   });

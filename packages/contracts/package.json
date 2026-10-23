@@ -25,6 +25,7 @@
     "LICENSE"
   ],
   "exports": {
+    "./project-room-browser": "./src/project-room-browser.ts",
     "./pull-request-review-guide": "./src/pull-request-review-guide.ts",
     "./tool-library": "./src/tool-library.ts",
     "./plugin-telemetry": "./src/plugin-telemetry.ts",
@@ -131,6 +132,7 @@
     "./plugin-foreground-work": "./src/plugin-foreground-work.ts",
     "./project": "./src/project.ts",
     "./project-membership": "./src/project-membership.ts",
+    "./project-room": "./src/project-room.ts",
     "./project-shared-task": "./src/project-shared-task.ts",
     "./project-identity": "./src/project-identity.ts",
     "./project-task-room": "./src/project-task-room.ts",

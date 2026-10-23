@@ -127,6 +127,15 @@ export interface DeploymentAuthenticationDescriptor {
 
 export interface DeploymentAuthenticationProvider
   extends DeploymentAuthenticationDescriptor {
+  /**
+   * Optional synchronous live witness for a previously verified session. Must
+   * re-read session existence, exact subject, expiry and account policy, and
+   * refuse pending enrollment. Never authenticates a caller-supplied session id.
+   * Adapters without this capability cannot authorize synchronous commit seams.
+   */
+  isVerifiedSessionCurrent?(
+    session: Readonly<VerifiedAuthenticationSession>,
+  ): boolean;
   /** Private server hooks. Session ids come from a previously verified result, never caller claims. */
   sessionReferences?: {
     /** Must read current session/account state, including revocation, without a cookie cache. */

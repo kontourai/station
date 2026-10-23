@@ -6,6 +6,7 @@ import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { setClientCredentialResolver } from '../client/http';
 import {
+  useCreateProjectMutation,
   useProjectQuery,
   useProjectsQuery,
   useReorderProjectsMutation,
@@ -435,4 +436,45 @@ describe('Project query durable authority identity (#481)', () => {
       ),
     ).toHaveLength(1);
   });
+});
+
+test('Project create sends acquisition identity only under its captured host authority', async () => {
+  let active = scopeA;
+  setClientCredentialResolver(() => {
+    const captured = active;
+    return {
+      origin: captured.apiBase,
+      requestAuthority: { ...captured, isCurrent: () => active === captured },
+    };
+  });
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValue(response({ slug: 'acquired' }));
+  vi.stubGlobal('fetch', fetch);
+  const client = new QueryClient({
+    defaultOptions: { mutations: { retry: false } },
+  });
+  const observer = renderHook(() => useCreateProjectMutation(scopeA), {
+    wrapper: wrapper(client),
+  });
+  const input = {
+    name: 'Acquired',
+    slug: 'acquired',
+    repositoryAcquisitionId: 'b594014d-8271-4960-a0dd-25f25ca94781',
+  };
+  await act(async () => {
+    await expect(
+      observer.result.current.mutateAsync(input),
+    ).resolves.toMatchObject({ slug: 'acquired' });
+  });
+  expect(String(fetch.mock.calls[0]?.[0])).toBe(
+    'http://station.test/api/projects',
+  );
+  expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual(input);
+  active = scopeB;
+  await act(async () => {
+    await expect(observer.result.current.mutateAsync(input)).rejects.toThrow();
+  });
+  expect(fetch).toHaveBeenCalledTimes(1);
+  client.clear();
 });

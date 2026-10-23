@@ -70,6 +70,8 @@ interface CredentialProfileRecoveryDeps {
     provider: EngineId,
     modelOptions: Record<string, unknown> | undefined,
   ) => Promise<Record<string, unknown> | undefined>;
+  /** Re-read server-owned retained Project authority after replay preparation. */
+  assertRetainedWorkspaceAuthorized: (threadId: string) => Promise<void>;
   /**
    * #2493: the session's standing confinement (its start stamp, or a
    * recorded `never`), which this replay's direct `adapter.sendTurn` must
@@ -216,6 +218,7 @@ export class CredentialProfileRecovery {
         adapter.provider,
         input.modelOptions,
       );
+      await this.deps.assertRetainedWorkspaceAuthorized(input.threadId);
       result = await adapter.sendTurn({
         threadId: input.threadId,
         input: composeAmbientTurnText(input.ambientContext, input.input),

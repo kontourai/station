@@ -110,7 +110,7 @@ export function ProjectTaskRoomPresence({
           </li>
         ))}
       </ul>
-      {!compact && room?.presenceError && (
+      {room?.presenceError && (
         <p className="task-room-inline-status" role="alert">
           {room.presenceError}{' '}
           <Button variant="ghost" size="sm" onClick={room.retryPresence}>

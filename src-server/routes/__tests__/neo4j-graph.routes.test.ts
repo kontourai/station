@@ -89,6 +89,93 @@ describe('neo4j-graph routes', () => {
     });
   }
 
+  describe('root authority', () => {
+    test('view permission does not authorize sync', async () => {
+      const actions: string[] = [];
+      const app = createNeo4jGraphRoutes({
+        store,
+        getConnection: () => connection,
+        resolveDriver: async () => ({ ok: true, driver }),
+        mayUseRoot: async (_request, _root, action) => {
+          actions.push(action);
+          return action === 'view';
+        },
+      });
+      const response = await app.request(`/roots/${rootId}/graph/neo4j-sync`, {
+        method: 'POST',
+      });
+      expect(response.status).toBe(403);
+      expect(actions).toEqual(['sync']);
+      expect(driver.runCalls).toHaveLength(0);
+    });
+
+    test('revocation during driver resolution prevents index work', async () => {
+      let allowed = true;
+      const app = createNeo4jGraphRoutes({
+        store,
+        getConnection: () => connection,
+        mayUseRoot: async () => allowed,
+        resolveDriver: async () => {
+          allowed = false;
+          return { ok: true, driver };
+        },
+      });
+      const response = await app.request(`/roots/${rootId}/graph/neo4j-sync`, {
+        method: 'POST',
+      });
+      expect(response.status).toBe(403);
+      expect(driver.runCalls).toHaveLength(0);
+    });
+
+    for (const [suffix, method] of [
+      ['', 'GET'],
+      ['/shortest-path?fromId=a&toId=b', 'GET'],
+      ['-sync', 'POST'],
+    ] as const) {
+      test(`revocation holds queued ${method} ${suffix || 'graph'} bytes`, async () => {
+        let allowed = true;
+        const app = createNeo4jGraphRoutes({
+          store,
+          getConnection: () => connection,
+          mayUseRoot: async () => allowed,
+          resolveDriver: async () => ({ ok: true, driver }),
+        });
+        const response = await app.request(
+          `/roots/${rootId}/graph/neo4j${suffix}`,
+          { method },
+        );
+        expect(response.status).toBe(200);
+        expect(response.headers.get('Cache-Control')).toBe('no-store');
+        allowed = false;
+        await expect(response.text()).rejects.toThrow('authorization ended');
+      });
+
+      test(`replacement holds ${method} ${suffix || 'graph'} response`, async () => {
+        const app = createNeo4jGraphRoutes({
+          store,
+          getConnection: () => connection,
+          mayUseRoot: async () => true,
+          resolveDriver: async () => {
+            const root = await store.getRoot(rootId);
+            if (!root) throw new Error('Missing test root');
+            persistence.saveKnowledgeStoreRoot({
+              ...root,
+              registrationId: 'replacement-registration',
+            });
+            return { ok: true, driver };
+          },
+        });
+        const response = await app.request(
+          `/roots/${rootId}/graph/neo4j${suffix}`,
+          { method },
+        );
+        expect(response.status).toBe(method === 'POST' ? 403 : 404);
+        expect(await response.text()).not.toContain('nodes');
+        if (method === 'POST') expect(driver.runCalls).toHaveLength(0);
+      });
+    }
+  });
+
   describe('configuration gating', () => {
     test('no connection configured -> 503 on sync', async () => {
       const app = unconfiguredApp();

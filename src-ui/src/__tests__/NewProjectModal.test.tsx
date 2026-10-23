@@ -2,15 +2,30 @@
  * @vitest-environment jsdom
  */
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
   fireEvent,
-  render,
+  render as renderView,
   screen,
   waitFor,
   within,
 } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+
+const queryClients: QueryClient[] = [];
+function render(ui: Parameters<typeof renderView>[0]) {
+  const client = new QueryClient();
+  queryClients.push(client);
+  return renderView(ui, {
+    wrapper: ({ children }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    ),
+  });
+}
+afterEach(() => {
+  for (const client of queryClients.splice(0)) client.clear();
+});
 
 const platformProfileState = vi.hoisted(() => ({
   profile: {
@@ -34,11 +49,30 @@ function resetPlatformProfile() {
   };
 }
 
+const authorityState = vi.hoisted(() => ({
+  key: 'new-project-test-authority',
+  recoveryKey: 'creating-account',
+}));
+beforeEach(() => {
+  authorityState.key = 'new-project-test-authority';
+  authorityState.recoveryKey = 'creating-account';
+});
+
+const savedCreationFixture = vi.hoisted(() => ({
+  enabled: false,
+  realPath: false,
+}));
+beforeEach(() => {
+  savedCreationFixture.enabled = false;
+  savedCreationFixture.realPath = false;
+});
+
 const createProjectMock = vi.fn();
 const applyProjectLayoutMock = vi.fn();
 const validateDirectoryMock = vi.fn();
 const setProjectMock = vi.fn();
 const setLayoutMock = vi.fn();
+const navigateMock = vi.fn();
 const onCloseMock = vi.fn();
 const reposQueryState = vi.hoisted(() => ({
   data: undefined as
@@ -69,6 +103,15 @@ const projectsQueryState = vi.hoisted(() => ({
 const createProjectMutationState = vi.hoisted(() => ({ isPending: false }));
 const availableLayoutsQueryMock = vi.hoisted(() => vi.fn());
 const layoutCatalogTelemetry = vi.hoisted(() => ({ track: vi.fn() }));
+const repositoryFixture = vi.hoisted(() => ({
+  enabled: false,
+  mutate: vi.fn(),
+}));
+beforeEach(() => {
+  repositoryFixture.enabled = false;
+  repositoryFixture.mutate.mockReset();
+});
+
 const StationHttpError = vi.hoisted(
   () =>
     class StationHttpError extends Error {
@@ -111,7 +154,67 @@ const reviewLayout = {
   lifecycle: { state: 'installed' },
 };
 
-vi.mock('@kontourai/station-sdk', () => ({
+vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
+  ...(await importOriginal<object>()),
+  mutateJson: (...args: unknown[]) => repositoryFixture.mutate(...args),
+  getJson: async (url: string) => {
+    if (
+      repositoryFixture.enabled &&
+      url ===
+        'http://localhost:3000/api/projects/repository-providers/github?page=1'
+    )
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            provider: 'github',
+            account: { id: '42', login: 'operator' },
+            page: 1,
+            hasMore: false,
+            observedAt: '2026-10-22T00:00:00Z',
+            repositories: [
+              {
+                id: '7',
+                fullName: 'org/research',
+                visibility: 'private',
+                webUrl: 'https://github.com/org/research',
+                httpsCloneUrl: 'https://github.com/org/research.git',
+                sshCloneUrl: 'git@github.com:org/research.git',
+                defaultBranch: 'release',
+              },
+            ],
+          },
+        }),
+      );
+    if (url === 'http://localhost:3000/api/projects/creation-requests')
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: { available: savedCreationFixture.enabled },
+        }),
+      );
+    if (
+      savedCreationFixture.enabled &&
+      url ===
+        'http://localhost:3000/api/projects/creation-requests/1c1e8d6c-a5f4-4305-9c21-6d86a8cf94df'
+    )
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: {
+            requestId: '1c1e8d6c-a5f4-4305-9c21-6d86a8cf94df',
+            projectId: 'reserved-project',
+            phase: 'created',
+            project: {
+              id: 'reserved-project',
+              slug: 'saved-project',
+              name: 'Saved project',
+            },
+          },
+        }),
+      );
+    throw new Error(`Unexpected fixture request: ${url}`);
+  },
   applyProjectLayout: (...args: unknown[]) => applyProjectLayoutMock(...args),
   useAvailableProjectLayoutsQuery: (config: unknown) => {
     availableLayoutsQueryMock(config);
@@ -143,17 +246,22 @@ vi.mock('@kontourai/station-sdk', () => ({
 vi.mock('../contexts/ApiBaseContext', async (importOriginal) => ({
   ...(await importOriginal<object>()),
   useApiBase: () => ({ apiBase: 'http://localhost:3000' }),
-  useHostRequestAuthorityScope: () => ({
-    apiBase: 'http://localhost:3000',
-    authorityKey: 'new-project-test-authority',
-    isCurrent: () => true,
-  }),
+  useHostRequestAuthorityScope: () => {
+    const key = authorityState.key;
+    return {
+      apiBase: 'http://localhost:3000',
+      authorityKey: key,
+      draftRecoveryKey: authorityState.recoveryKey,
+      isCurrent: () => authorityState.key === key,
+    };
+  },
 }));
 
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({
     setProject: setProjectMock,
     setLayout: setLayoutMock,
+    navigate: navigateMock,
   }),
 }));
 
@@ -161,30 +269,102 @@ vi.mock('../platform/PlatformProfileContext', () => ({
   usePlatformProfile: () => platformProfileState.profile,
 }));
 
-vi.mock('../components/PathAutocomplete', () => ({
-  PathAutocomplete: ({
-    value,
-    onChange,
-    placeholder,
-  }: {
-    value: string;
-    onChange: (value: string) => void;
-    placeholder: string;
-  }) => (
-    <input
-      aria-label="Project folder"
-      value={value}
-      placeholder={placeholder}
-      onChange={(event) => onChange(event.target.value)}
-    />
-  ),
-}));
+vi.mock('../components/PathAutocomplete', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../components/PathAutocomplete')>();
+  return {
+    ...actual,
+    PathAutocomplete: ({
+      value,
+      onChange,
+      placeholder,
+      ...rest
+    }: Parameters<typeof actual.PathAutocomplete>[0]) =>
+      savedCreationFixture.realPath ? (
+        <actual.PathAutocomplete
+          value={value}
+          onChange={onChange}
+          placeholder={placeholder}
+          {...rest}
+        />
+      ) : (
+        <input
+          aria-label="Project folder"
+          value={value}
+          placeholder={placeholder}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      ),
+  };
+});
 
 import { NewProjectModal } from '../components/modals/NewProjectModal';
 
 describe('NewProjectModal starter layout picker', () => {
+  test('real path mounting keeps initial name focus and preserves focus on the selected intent', () => {
+    savedCreationFixture.realPath = true;
+    render(<NewProjectModal isOpen onClose={onCloseMock} />);
+    expect(document.activeElement).toBe(
+      screen.getByPlaceholderText('My Project'),
+    );
+    const knowledge = screen.getByRole('radio', {
+      name: /Documents and knowledge/,
+    });
+    knowledge.focus();
+    fireEvent.click(knowledge);
+    const workspace = screen.getByRole('radio', {
+      name: /Repository or folder/,
+    });
+    workspace.focus();
+    fireEvent.click(workspace);
+    expect(screen.getByPlaceholderText('/path/to/project')).toBeTruthy();
+    expect(document.activeElement).toBe(workspace);
+  });
+  test('knowledge intent skips workspace setup and opens Sources after creation', async () => {
+    render(<NewProjectModal isOpen onClose={onCloseMock} />);
+    fireEvent.change(screen.getByPlaceholderText('My Project'), {
+      target: { value: 'Research' },
+    });
+    fireEvent.click(
+      screen.getByRole('radio', { name: /Documents and knowledge/ }),
+    );
+    expect(screen.queryByRole('button', { name: 'Browse all' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await waitFor(() =>
+      expect(navigateMock).toHaveBeenCalledWith('/projects/my-project/edit', {
+        section: 'resources',
+      }),
+    );
+    expect(
+      createProjectMock.mock.calls[0]![0].workingDirectory,
+    ).toBeUndefined();
+    expect(createProjectMock.mock.calls[0]![0]).not.toHaveProperty(
+      'repositoryAcquisitionId',
+    );
+    expect(applyProjectLayoutMock).not.toHaveBeenCalled();
+    expect(setProjectMock).toHaveBeenCalledWith('my-project');
+  });
+  test('connected-tools intent preserves the entered name and opens tool setup', async () => {
+    render(<NewProjectModal isOpen onClose={onCloseMock} />);
+    fireEvent.change(screen.getByPlaceholderText('My Project'), {
+      target: { value: 'Support' },
+    });
+    fireEvent.click(screen.getByRole('radio', { name: /Connected tools/ }));
+    expect(screen.getByPlaceholderText('My Project')).toHaveProperty(
+      'value',
+      'Support',
+    );
+    expect(screen.queryByRole('button', { name: 'Browse all' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await waitFor(() =>
+      expect(navigateMock).toHaveBeenCalledWith('/projects/my-project/edit', {
+        section: 'tools',
+      }),
+    );
+  });
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
     resetPlatformProfile();
     createProjectMock.mockReset();
     createProjectMock.mockResolvedValue({ slug: 'my-project' });
@@ -201,6 +381,7 @@ describe('NewProjectModal starter layout picker', () => {
     });
     setProjectMock.mockReset();
     setLayoutMock.mockReset();
+    navigateMock.mockReset();
     onCloseMock.mockReset();
     reposQueryState.data = undefined;
     reposQueryState.isFetching = false;
@@ -493,6 +674,102 @@ describe('NewProjectModal starter layout picker', () => {
     expect(buttons[0].textContent).toContain('2 tabs');
   });
 
+  test.each(['typed', 'provider'] as const)(
+    'layout browsing retains the unacquired %s repository draft in memory and authority changes retire it',
+    async (source) => {
+      repositoryFixture.enabled = true;
+      const view = render(<NewProjectModal isOpen onClose={onCloseMock} />);
+      fireEvent.click(screen.getByText('Start from a Git repository'));
+      let url = 'https://user:private-token@github.com/org/draft.git';
+      if (source === 'provider') {
+        fireEvent.change(screen.getByLabelText('Repository provider'), {
+          target: { value: 'github' },
+        });
+        await screen.findByLabelText('Clone protocol');
+        fireEvent.change(screen.getByLabelText('Clone protocol'), {
+          target: { value: 'ssh' },
+        });
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Use org/research' }),
+        );
+        url = 'git@github.com:org/research.git';
+      } else {
+        fireEvent.change(screen.getByLabelText('Repository URL'), {
+          target: { value: url },
+        });
+      }
+      fireEvent.change(screen.getByLabelText('Branch or tag (optional)'), {
+        target: { value: 'release-candidate' },
+      });
+      fireEvent.change(
+        screen.getByLabelText('Repository subdirectory (optional)'),
+        { target: { value: 'packages/app' } },
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Browse all' }));
+      expect(
+        screen.queryByRole('button', { name: 'Acquire repository' }),
+      ).toBeNull();
+      expect(
+        screen.queryByRole('textbox', { name: 'Repository URL' }),
+      ).toBeNull();
+      fireEvent.click(
+        source === 'provider'
+          ? screen.getByRole('button', { name: 'Back to project' })
+          : within(
+              screen.getByRole('dialog', { name: /Browse installed layouts/ }),
+            ).getByRole('button', { name: /Coding/ }),
+      );
+      expect(screen.getByLabelText('Repository URL')).toHaveProperty(
+        'value',
+        url,
+      );
+      expect(screen.getByLabelText('Branch or tag (optional)')).toHaveProperty(
+        'value',
+        'release-candidate',
+      );
+      expect(
+        screen.getByLabelText('Repository subdirectory (optional)'),
+      ).toHaveProperty('value', 'packages/app');
+      if (source === 'provider') {
+        expect(screen.getByLabelText('Repository provider')).toHaveProperty(
+          'value',
+          'github',
+        );
+        expect(screen.getByLabelText('Clone protocol')).toHaveProperty(
+          'value',
+          'ssh',
+        );
+      }
+      expect(repositoryFixture.mutate).not.toHaveBeenCalled();
+      const stored =
+        Object.values(localStorage).join('') +
+        Object.values(sessionStorage).join('');
+      expect(stored).not.toContain(url);
+      expect(stored).not.toContain('private-token');
+      // Retire the mounted form's local source under a new live authority,
+      // even when its durable account recovery partition remains the same.
+      authorityState.key = 'replacement-live-authority';
+      view.rerender(<NewProjectModal isOpen onClose={onCloseMock} />);
+      expect(screen.getByLabelText('Repository URL')).toHaveProperty(
+        'value',
+        '',
+      );
+      expect(screen.getByLabelText('Branch or tag (optional)')).toHaveProperty(
+        'value',
+        '',
+      );
+      expect(
+        screen.getByLabelText('Repository subdirectory (optional)'),
+      ).toHaveProperty('value', '');
+      expect(screen.getByLabelText('Repository provider')).toHaveProperty(
+        'value',
+        '',
+      );
+      expect(screen.queryByText(/Signed in as operator/)).toBeNull();
+      expect(repositoryFixture.mutate).not.toHaveBeenCalled();
+    },
+  );
+
   test('keeps every project draft field mounted while browsing and selecting a layout', () => {
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
     fireEvent.change(screen.getByLabelText('Project folder'), {
@@ -551,6 +828,11 @@ describe('NewProjectModal starter layout picker', () => {
         'http://localhost:3000',
         'my-project',
         'plugin:review',
+        {
+          requestScope: expect.objectContaining({
+            authorityKey: 'new-project-test-authority',
+          }),
+        },
       ),
     );
     expect(JSON.parse(localStorage.getItem('recentLayouts') ?? '[]')).toEqual([
@@ -634,6 +916,11 @@ describe('NewProjectModal starter layout picker', () => {
         'http://localhost:3000',
         'repo',
         'builtin:coding',
+        {
+          requestScope: expect.objectContaining({
+            authorityKey: 'new-project-test-authority',
+          }),
+        },
       ),
     );
     await waitFor(() =>
@@ -688,11 +975,125 @@ describe('NewProjectModal starter layout picker', () => {
     expect(screen.queryByText(/Validation failed/)).toBeNull();
   });
 
+  test('reopening saved setup restores its immutable form and visible starter before continuing', async () => {
+    savedCreationFixture.enabled = true;
+    projectsQueryState.data = [
+      { slug: 'saved-project', name: 'Saved project' },
+    ];
+    localStorage.setItem(
+      JSON.stringify([
+        'project-creation',
+        'http://localhost:3000',
+        'creating-account',
+      ]),
+      JSON.stringify({
+        requestId: '1c1e8d6c-a5f4-4305-9c21-6d86a8cf94df',
+        draft: {
+          name: 'Saved project',
+          slug: 'saved-project',
+          description: 'Retained description',
+          workingDirectory: '/saved/repository',
+        },
+        starterLayoutId: 'plugin:review',
+      }),
+    );
+    render(<NewProjectModal isOpen onClose={onCloseMock} />);
+    await screen.findByText(
+      'Saved setup: Saved project. Station checks the same request before continuing.',
+    );
+    await waitFor(() =>
+      expect(
+        (screen.getByPlaceholderText('My Project') as HTMLInputElement).value,
+      ).toBe('Saved project'),
+    );
+    expect(
+      (screen.getByLabelText(/Project folder/) as HTMLInputElement).value,
+    ).toBe('/saved/repository');
+    expect(screen.getByText('Starter: Review')).toBeTruthy();
+    expect(screen.queryByText(/may already exist/)).toBeNull();
+    await screen.findByText(
+      'Project created. Retry the selected starter layout to finish setup.',
+    );
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole('button', { name: 'Retry layout' })
+          .matches(':disabled'),
+      ).toBe(false),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Retry layout' }));
+    await waitFor(() =>
+      expect(applyProjectLayoutMock).toHaveBeenCalledWith(
+        'http://localhost:3000',
+        'saved-project',
+        'plugin:review',
+        expect.objectContaining({
+          creationRequestId: '1c1e8d6c-a5f4-4305-9c21-6d86a8cf94df',
+        }),
+      ),
+    );
+    expect(createProjectMock).not.toHaveBeenCalled();
+    await waitFor(() => expect(onCloseMock).toHaveBeenCalled());
+  });
+
+  test('restored private fields and starter remain confined when the live modal changes accounts', async () => {
+    savedCreationFixture.enabled = true;
+    localStorage.setItem(
+      JSON.stringify([
+        'project-creation',
+        'http://localhost:3000',
+        'creating-account',
+      ]),
+      JSON.stringify({
+        requestId: '1c1e8d6c-a5f4-4305-9c21-6d86a8cf94df',
+        draft: {
+          name: 'Private A project',
+          slug: 'saved-project',
+          description: 'Private A description',
+          workingDirectory: '/private/account-a',
+        },
+        starterLayoutId: 'plugin:review',
+      }),
+    );
+    const view = render(<NewProjectModal isOpen onClose={onCloseMock} />);
+    await waitFor(() =>
+      expect(
+        (screen.getByPlaceholderText('My Project') as HTMLInputElement).value,
+      ).toBe('Private A project'),
+    );
+    authorityState.key = 'account-b-epoch';
+    authorityState.recoveryKey = 'account-b';
+    view.rerender(<NewProjectModal isOpen onClose={onCloseMock} />);
+    expect(
+      (screen.getByPlaceholderText('My Project') as HTMLInputElement).value,
+    ).toBe('');
+    expect(
+      (screen.getByLabelText(/Project folder/) as HTMLInputElement).value,
+    ).toBe('');
+    expect(
+      (screen.getByLabelText(/Description/) as HTMLTextAreaElement).value,
+    ).toBe('');
+    expect(screen.queryByText('Starter: Review')).toBeNull();
+    expect(createProjectMock).not.toHaveBeenCalled();
+    authorityState.key = 'creating-account-new-epoch';
+    authorityState.recoveryKey = 'creating-account';
+    view.rerender(<NewProjectModal isOpen onClose={onCloseMock} />);
+    await waitFor(() =>
+      expect(
+        (screen.getByPlaceholderText('My Project') as HTMLInputElement).value,
+      ).toBe('Private A project'),
+    );
+    expect(
+      (screen.getByLabelText(/Project folder/) as HTMLInputElement).value,
+    ).toBe('/private/account-a');
+    expect(screen.getByText('Starter: Review')).toBeTruthy();
+  });
+
   test('retries a failed starter apply without creating the project again', async () => {
     applyProjectLayoutMock.mockRejectedValueOnce(
       new Error('Starter could not apply'),
     );
-    render(<NewProjectModal isOpen onClose={onCloseMock} />);
+    const view = render(<NewProjectModal isOpen onClose={onCloseMock} />);
     fireEvent.click(screen.getByRole('button', { name: 'Browse all' }));
     fireEvent.click(
       within(
@@ -728,6 +1129,21 @@ describe('NewProjectModal starter layout picker', () => {
       screen.getByRole('button', { name: 'Retry layout' }).matches(':disabled'),
     ).toBe(false);
 
+    authorityState.key = 'other-account-epoch';
+    authorityState.recoveryKey = 'other-account';
+    view.rerender(<NewProjectModal isOpen onClose={onCloseMock} />);
+    expect(screen.queryByRole('button', { name: 'Retry layout' })).toBeNull();
+    expect(
+      (screen.getByPlaceholderText('My Project') as HTMLInputElement).value,
+    ).toBe('');
+    expect(
+      screen.getByRole('button', { name: 'Create' }).matches(':disabled'),
+    ).toBe(true);
+    expect(applyProjectLayoutMock).toHaveBeenCalledTimes(1);
+    expect(createProjectMock).toHaveBeenCalledTimes(1);
+    authorityState.key = 'creating-account-new-epoch';
+    authorityState.recoveryKey = 'creating-account';
+    view.rerender(<NewProjectModal isOpen onClose={onCloseMock} />);
     fireEvent.click(screen.getByRole('button', { name: 'Retry layout' }));
 
     await waitFor(() =>
@@ -735,6 +1151,9 @@ describe('NewProjectModal starter layout picker', () => {
     );
     expect(createProjectMock).toHaveBeenCalledTimes(1);
     expect(applyProjectLayoutMock).toHaveBeenCalledTimes(2);
+    expect(applyProjectLayoutMock.mock.calls[1]?.[3]).toMatchObject({
+      requestScope: { authorityKey: 'creating-account-new-epoch' },
+    });
     expect(JSON.parse(localStorage.getItem('recentLayouts') ?? '[]')).toEqual([
       'plugin:review',
     ]);
@@ -770,6 +1189,7 @@ describe('NewProjectModal starter layout picker', () => {
 describe('NewProjectModal copy density and layout browser placement (station#1825 items 3-4)', () => {
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
     resetPlatformProfile();
     createProjectMock.mockReset();
     createProjectMock.mockResolvedValue({ slug: 'my-project' });
@@ -826,7 +1246,7 @@ describe('NewProjectModal copy density and layout browser placement (station#182
     ).toBeTruthy();
   });
 
-  test('item 4: the layout browser swaps in as the modal body — Create is not present while browsing, and the browser is never appended after it', () => {
+  test('item 4: layout browsing hides and disables the draft form while keeping the browser actions last', () => {
     render(<NewProjectModal isOpen onClose={onCloseMock} />);
 
     // Before browsing: exactly one dialog, Create present, no browser markup
@@ -838,13 +1258,10 @@ describe('NewProjectModal copy density and layout browser placement (station#182
 
     fireEvent.click(screen.getByRole('button', { name: 'Browse all' }));
 
-    // The defect this fixes: the old nested-dialog implementation kept the
-    // project form (and its Create button) mounted underneath, with the
-    // browse panel appended after it. A genuine swap removes the form
-    // entirely while browsing — there is no "primary action" for this step
-    // other than the browser's own trailing action.
     expect(screen.queryByRole('button', { name: 'Create' })).toBeNull();
-    expect(document.querySelector('.new-project-modal__form')).toBeNull();
+    const retainedForm = document.querySelector('.new-project-modal__form');
+    expect(retainedForm).toHaveProperty('hidden', true);
+    expect(retainedForm?.hasAttribute('inert')).toBe(true);
 
     const panel = screen.getByRole('dialog', {
       name: /Browse installed layouts/,
@@ -867,6 +1284,9 @@ describe('NewProjectModal copy density and layout browser placement (station#182
     const formEl = document.querySelector(
       '.new-project-modal__form',
     ) as HTMLElement;
+    expect(formEl).toBe(retainedForm);
+    expect(formEl.hidden).toBe(false);
+    expect(formEl.hasAttribute('inert')).toBe(false);
     expect(restoredPanel.lastElementChild).toBe(formEl);
     expect(formEl.lastElementChild?.contains(createButton)).toBe(true);
   });
@@ -875,6 +1295,7 @@ describe('NewProjectModal copy density and layout browser placement (station#182
 describe('NewProjectModal layout browser dismissal scope (station#1825 item 4, review round 2)', () => {
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
     resetPlatformProfile();
     createProjectMock.mockReset();
     createProjectMock.mockResolvedValue({ slug: 'my-project' });
@@ -1012,15 +1433,6 @@ describe('NewProjectModal layout browser dismissal scope (station#1825 item 4, r
 
     fireEvent.click(screen.getByRole('button', { name: 'Back to project' }));
 
-    // This test's own top-of-file mock replaces `PathAutocomplete` with a
-    // bare `<input>` carrying no autofocus behavior of its own, so it cannot
-    // exercise the real-app effect-ordering race the production comment
-    // documents (a `useLayoutEffect` here loses to `PathAutocomplete`'s own
-    // deeper passive `useEffect`, verified live in a real browser — fixed by
-    // matching effect types so this ancestor's callback runs after). What
-    // this test CAN and does prove: focus deliberately lands on an explicit,
-    // owned target — never `document.body` — regardless of what any
-    // descendant field does.
     expect(document.activeElement).not.toBe(document.body);
     expect(document.activeElement).toBe(
       screen.getByRole('heading', { name: 'New Project' }),
@@ -1031,6 +1443,7 @@ describe('NewProjectModal layout browser dismissal scope (station#1825 item 4, r
 describe('NewProjectModal refusals (4-HOME-007, 4-HOME-008, SHELL-01)', () => {
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
     resetPlatformProfile();
     createProjectMock.mockReset();
     createProjectMock.mockResolvedValue({ slug: 'my-project' });

@@ -140,8 +140,8 @@ function ConnectObsidianVault() {
 
 export function KnowledgeStoreSection() {
   const { navigate } = useNavigation();
-  const rootsQuery = useKnowledgeRootsQuery();
-  const adaptersQuery = useKnowledgeAdaptersQuery();
+  const rootsQuery = useKnowledgeRootsQuery({ keepPreviousData: false });
+  const adaptersQuery = useKnowledgeAdaptersQuery({ keepPreviousData: false });
   const createRoot = useCreateKnowledgeRootMutation();
 
   const adapterDisplayName = (adapterId: string) =>

@@ -3,11 +3,13 @@ import { isAbsolute, resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import {
+  isLocalCloneSource,
   type ProjectAttachRequest,
   type ProjectAttachResult,
   type ProjectExecutionRootMutationRequest,
   type ProjectIdentityView,
   type ProjectPortableIdentity,
+  type ProjectRepoResource,
   selectPrimaryResource,
 } from '@kontourai/station-contracts/project-identity';
 import {
@@ -27,12 +29,14 @@ import {
 } from '../../domain/storage-adapter.js';
 import { expandTilde } from '../../utils/paths.js';
 import type { CheckoutRemoteReader } from './checkout-remote-reader.js';
+import type { ProjectBindingsStore } from './project-binding-store.js';
 import { compareProjectGitRemotes } from './project-git-remote-comparison.js';
 import type { ProjectManifestStore } from './project-manifest-store.js';
 import {
   defaultedProjectWorkingDirectory,
   type ProjectService,
 } from './project-service.js';
+import type { RepositoryAcquisitionService } from './repository-acquisition-service.js';
 
 type ProjectIdentityManifestPort = Pick<ProjectManifestStore, 'readRecord'> &
   Partial<Pick<ProjectManifestStore, 'ensureProjectManifest'>>;
@@ -126,11 +130,172 @@ export class ProjectIdentityService {
     }
   }
 
+  async attachRepository(
+    slug: string,
+    input: {
+      expectedIdentity: unknown;
+      expectedLocalProjectId: string;
+      acquisitionId: string;
+      useForCode: boolean;
+    },
+    deps: {
+      acquisitions: Pick<RepositoryAcquisitionService, 'get' | 'projectSource'>;
+      bindings: Pick<
+        ProjectBindingsStore,
+        'findBinding' | 'upsertProjectBinding' | 'confirmProjectBinding'
+      >;
+      assertCurrent: () => void;
+    },
+  ): Promise<ProjectIdentityView> {
+    deps.assertCurrent();
+    const expected = parseProjectPortableIdentity(input.expectedIdentity);
+    const revision = this.storage.projectRevision(slug);
+    if (revision.value.id !== input.expectedLocalProjectId)
+      throw new FileStorageConflictError(
+        'The local Project changed before repository attachment.',
+      );
+    if (!revision.replaceManifest || !revision.withCurrentRead)
+      throw new FileStorageUnavailableError(
+        'Current Project identity mutation is unavailable.',
+      );
+    const record = this.manifests.readRecord(slug);
+    if (!record)
+      throw new ProjectIdentityNotPreparedError(
+        'Prepare Project identity before attaching a repository.',
+      );
+    const current = parseProjectPortableIdentity(record);
+    const acquisition = deps.acquisitions.get(input.acquisitionId);
+    if (
+      acquisition?.phase !== 'ready' ||
+      !acquisition.canonicalRemote ||
+      isLocalCloneSource(acquisition.canonicalRemote)
+    )
+      throw new ProjectIdentityValidationError(
+        'Choose a verified remote repository acquisition.',
+      );
+    const resourceId = acquisition.canonicalRemote;
+    const previousBinding =
+      deps.bindings.findBinding(current.id, resourceId) ?? null;
+    if (previousBinding && previousBinding.path !== acquisition.checkoutPath)
+      throw new FileStorageConflictError(
+        'A different checkout is already bound. Use repair explicitly.',
+      );
+    if (!expected.repos.length && !input.useForCode)
+      throw new FileStorageConflictError(
+        'This Project has no existing resource to preserve. Explicitly choose whether to use the repository for code work before attaching it.',
+      );
+    const primary = selectPrimaryResource(expected.repos);
+    if (expected.repos.length && !primary.ok)
+      throw new FileStorageConflictError(
+        'Choose an unambiguous primary resource before adding a repository.',
+      );
+    if (expected.repos.some((resource) => resource.id === resourceId)) {
+      if (
+        !isDeepStrictEqual(current, expected) ||
+        previousBinding?.path !== acquisition.checkoutPath ||
+        (input.useForCode &&
+          (current.executionRoot?.repoId !== resourceId ||
+            current.executionRoot.path !==
+              (acquisition.request.subdirectory ?? '.')))
+      )
+        throw new FileStorageConflictError(
+          'This repository is already declared with a different selection. Use repair explicitly.',
+        );
+      await deps.acquisitions.projectSource(input.acquisitionId);
+      return revision.withCurrentRead(async () => {
+        deps.assertCurrent();
+        const latest = this.manifests.readRecord(slug);
+        if (
+          !latest ||
+          !isDeepStrictEqual(parseProjectPortableIdentity(latest), current)
+        )
+          throw new FileStorageConflictError(
+            'Project identity changed during recovery.',
+          );
+        await deps.bindings.confirmProjectBinding(
+          current.id,
+          resourceId,
+          previousBinding,
+          deps.assertCurrent,
+        );
+        return identityView(revision.value, current);
+      });
+    }
+    const repos: ProjectRepoResource[] = expected.repos.map((resource) => ({
+      ...resource,
+      role:
+        primary.ok && resource.id === primary.resource.id
+          ? 'primary'
+          : 'secondary',
+    }));
+    repos.push({
+      kind: 'git',
+      id: resourceId,
+      canonicalRemote: resourceId,
+      role: repos.length ? 'secondary' : 'primary',
+    });
+    const candidate = parseProjectPortableIdentity({
+      ...expected,
+      repos,
+      ...(input.useForCode
+        ? {
+            executionRoot: {
+              repoId: resourceId,
+              path: acquisition.request.subdirectory ?? '.',
+            },
+          }
+        : {}),
+      updatedAt: this.now().toISOString(),
+    });
+    const retryCandidate = { ...candidate, updatedAt: current.updatedAt };
+    const alreadyAttached = isDeepStrictEqual(current, retryCandidate);
+    if (!isDeepStrictEqual(current, expected) && !alreadyAttached)
+      throw new FileStorageConflictError(
+        'Project resources changed before repository attachment.',
+      );
+    await deps.acquisitions.projectSource(input.acquisitionId);
+    deps.assertCurrent();
+    await revision.withCurrentRead(async () => {
+      const latest = this.manifests.readRecord(slug);
+      if (
+        !latest ||
+        !isDeepStrictEqual(parseProjectPortableIdentity(latest), current)
+      )
+        throw new FileStorageConflictError(
+          'Project identity changed during repository verification.',
+        );
+      if (alreadyAttached && previousBinding?.path !== acquisition.checkoutPath)
+        throw new FileStorageConflictError(
+          'The attached repository has a different binding. Use repair explicitly.',
+        );
+      await deps.bindings.upsertProjectBinding(
+        {
+          projectId: current.id,
+          resourceId,
+          kind: 'git-checkout',
+          path: acquisition.checkoutPath,
+          remotes: [acquisition.request.sourceUrl],
+          verifiedAt: Date.now(),
+          state: 'bound',
+        },
+        { expectedBinding: previousBinding, assertCurrent: deps.assertCurrent },
+      );
+    });
+    deps.assertCurrent();
+    await revision.replaceManifest(
+      record,
+      alreadyAttached ? current : candidate,
+      deps.assertCurrent,
+    );
+    return identityView(revision.value, alreadyAttached ? current : candidate);
+  }
+
   async updateExecutionRoot(
     slug: string,
     input: Omit<ProjectExecutionRootMutationRequest, 'expectedIdentity'> & {
       expectedIdentity: unknown;
     },
+    assertCurrent: () => void = () => {},
   ): Promise<ProjectIdentityView> {
     const expectedIdentity = parseProjectPortableIdentity(
       input.expectedIdentity,
@@ -157,7 +322,18 @@ export class ProjectIdentityService {
         'This Project has no portable identity. Prepare it explicitly before selecting an execution root.',
       );
     const current = parseProjectPortableIdentity(record);
-    if (!isDeepStrictEqual(current, expectedIdentity))
+    const { executionRoot: _previousRoot, ...expectedBase } = expectedIdentity;
+    const replayCandidate = parseProjectPortableIdentity({
+      ...expectedBase,
+      ...(input.executionRoot === null
+        ? {}
+        : { executionRoot: input.executionRoot }),
+      updatedAt: current.updatedAt,
+    });
+    if (
+      !isDeepStrictEqual(current, expectedIdentity) &&
+      !isDeepStrictEqual(current, replayCandidate)
+    )
       throw new FileStorageConflictError(
         'Project identity changed before the execution root could update.',
       );
@@ -174,7 +350,8 @@ export class ProjectIdentityService {
             : { executionRoot: input.executionRoot }),
           updatedAt: this.now().toISOString(),
         });
-    await revision.replaceManifest(record, candidate);
+    assertCurrent();
+    await revision.replaceManifest(record, candidate, assertCurrent);
     return identityView(revision.value, candidate);
   }
 

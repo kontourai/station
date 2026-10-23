@@ -10,13 +10,16 @@
  * engines record what Station handed them and publish `session.started` with
  * the start metadata, as the real adapters do.
  */
+
 import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import {
   mkdirSync,
   realpathSync,
   renameSync,
   rmSync,
   symlinkSync,
+  writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
@@ -27,6 +30,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { materializeEngineAgent } from '../../../domain/agent-registry.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
+import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { ensureStationHomeSchemaSync } from '../../../domain/home-schema-gate.js';
 import type {
   ProviderAdapterMetadata,
@@ -44,6 +48,9 @@ import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
+import { ProjectBindingsStore } from '../../../services/projects/project-binding-store.js';
+import { ProjectManifestStore } from '../../../services/projects/project-manifest-store.js';
+import { createProjectSessionDirectoryResolver } from '../../../services/projects/project-session-directory.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
 import { createStarterSessionOwner } from '../../../services/starter-work/starter-session-owner.js';
 import { createLogger } from '../../../utils/logger.js';
@@ -82,7 +89,7 @@ function repository(path: string): string {
  */
 function dockFollowUp(
   agent: string,
-  conversationId: string,
+  conversationId: string | undefined,
   projectSlug: string | undefined,
   message: string,
 ) {
@@ -116,7 +123,8 @@ type Engine = 'claude' | 'codex';
 function installStationDiscovery(
   loader: ConfigLoader,
   security: EnvironmentSecurityService,
-  projects: () => Array<{ slug: string; workingDirectory: string }>,
+  projects: () => Array<{ slug: string; workingDirectory?: string }>,
+  resolveDirectory?: (slug: string) => Promise<string | undefined>,
 ): void {
   fetchMock.mockImplementation(async (input) => {
     const url = String(input);
@@ -138,7 +146,15 @@ function installStationDiscovery(
         (candidate) => candidate.slug === decodeURIComponent(project),
       );
       return found
-        ? json({ success: true, data: found })
+        ? json({
+            success: true,
+            data: {
+              ...found,
+              ...(resolveDirectory
+                ? { workingDirectory: await resolveDirectory(found.slug) }
+                : {}),
+            },
+          })
         : json({ success: false, error: 'Project not found' }, 404);
     }
     const connection = url.match(/\/api\/connections\/([^/]+)$/)?.[1];
@@ -166,9 +182,13 @@ class AdoptingEngine implements ProviderAdapterShape {
   readonly adoptions: ProviderSessionAdoptInput[] = [];
   readonly starts: Array<{ threadId: string; cwd?: string }> = [];
   readonly turns: Array<{ threadId: string; input: string }> = [];
+  readonly turnWorkingDirectories: string[] = [];
   private readonly sessions = new Map<string, ProviderSession>();
 
-  constructor(readonly provider: Engine) {
+  constructor(
+    readonly provider: Engine,
+    private readonly probeWorkingDirectory = false,
+  ) {
     this.metadata = {
       displayName: provider,
       description: `${provider} adopted-dock test engine`,
@@ -239,6 +259,18 @@ class AdoptingEngine implements ProviderAdapterShape {
   }
 
   async sendTurn(input: { threadId: string; input: string }) {
+    if (this.probeWorkingDirectory) {
+      const cwd = this.sessions.get(input.threadId)?.cwd;
+      if (!cwd)
+        throw new Error('The engine has no workspace to execute this turn in.');
+      this.turnWorkingDirectories.push(
+        execFileSync(process.execPath, ['-p', 'process.cwd()'], {
+          cwd,
+          encoding: 'utf8',
+          windowsHide: true,
+        }).trim(),
+      );
+    }
     this.turns.push({ threadId: input.threadId, input: input.input });
     return {
       threadId: input.threadId,
@@ -293,7 +325,11 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
 });
 
-async function fixture(options: { engineAgent: boolean }) {
+async function fixture(options: {
+  engineAgent: boolean;
+  boundResources?: boolean;
+  unqualifiedProject?: boolean;
+}) {
   vi.stubEnv('STATION_HOSTED_TENANT_REGISTRY_FILE', undefined);
   const root = realpathSync.native(makeTempDir('station-adopted-dock-'));
   const home = join(root, 'home');
@@ -326,18 +362,82 @@ async function fixture(options: { engineAgent: boolean }) {
     { slug: 'station', workingDirectory: project },
     { slug: 'other', workingDirectory: otherProject },
   ];
-  const projects = () => projectList;
+  const storage = new FileStorageAdapter(home);
+  const manifests = new ProjectManifestStore(home, storage);
+  const bindings = new ProjectBindingsStore(home);
+  const firstRepo = 'github.com/example/first';
+  const secondRepo = 'gitlab.com/example/second';
+  if (options.boundResources) {
+    git(project, 'remote', 'add', 'origin', `https://${firstRepo}.git`);
+    git(otherProject, 'remote', 'add', 'origin', `https://${secondRepo}.git`);
+    await storage.createProject({
+      id: randomUUID(),
+      slug: 'station',
+      name: 'Station',
+      workingDirectory: project,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    await manifests.ensureProjectManifest(storage.getProject('station'));
+    const record = manifests.readRecord('station')!;
+    await storage.projectRevision('station').replaceManifest!(record, {
+      ...record,
+      repos: [
+        ...record.repos,
+        {
+          kind: 'git',
+          id: secondRepo,
+          canonicalRemote: secondRepo,
+          role: 'secondary',
+        },
+      ],
+      executionRoot: { repoId: firstRepo, path: '.' },
+    });
+    for (const [resourceId, path] of [
+      [firstRepo, project],
+      [secondRepo, otherProject],
+    ])
+      await bindings.upsertProjectBinding({
+        projectId: record.id,
+        resourceId,
+        kind: 'git-checkout',
+        path,
+        remotes: [resourceId],
+        verifiedAt: Date.now(),
+        state: 'bound',
+      });
+  }
+  const resolveDirectory = options.boundResources
+    ? createProjectSessionDirectoryResolver(home, storage)
+    : undefined;
+  const projects = () =>
+    options.boundResources
+      ? storage
+          .listProjects()
+          .map((project) =>
+            options.unqualifiedProject
+              ? { ...project, id: undefined }
+              : project,
+          )
+      : projectList;
+  const selectSecond = async () => {
+    const record = manifests.readRecord('station')!;
+    await storage.projectRevision('station').replaceManifest!(record, {
+      ...record,
+      executionRoot: { repoId: secondRepo, path: '.' },
+    });
+  };
   /** The operator edits the Station's projects. */
   const setProjects = (next: typeof projectList) => {
     projectList = next;
   };
-  installStationDiscovery(loader, security, projects);
+  installStationDiscovery(loader, security, projects, resolveDirectory);
 
   const store = new EventStore(join(root, 'orchestration.sqlite'));
   const eventBus = new EventBus();
   const engines = {
-    claude: new AdoptingEngine('claude'),
-    codex: new AdoptingEngine('codex'),
+    claude: new AdoptingEngine('claude', options.boundResources),
+    codex: new AdoptingEngine('codex', options.boundResources),
   };
   const registry: IProviderAdapterRegistry = {
     register() {},
@@ -350,6 +450,7 @@ async function fixture(options: { engineAgent: boolean }) {
     eventStore: store,
     adoptionLedger: store.createAdoptionLedger(),
     listProjects: projects,
+    resolveProjectSessionDirectory: resolveDirectory,
     // The production session-agent resolver (`runtime-initialize.ts`) over
     // the real Agent store: a fresh engine start runs as an authored Agent.
     resolveSessionAgent: createSessionAgentResolver({
@@ -514,6 +615,12 @@ async function fixture(options: { engineAgent: boolean }) {
 
   return {
     root,
+    storage,
+    manifests,
+    bindings,
+    firstRepo,
+    secondRepo,
+    selectSecond,
     operator,
     security,
     loader,
@@ -619,6 +726,16 @@ describe('#3429: a continued attached conversation opens in the dock', () => {
       expect(followUp.body.data).toMatchObject({
         conversationId: child,
         sessionId: child,
+        resolution: {
+          workspace: projectSlug
+            ? {
+                kind: 'project',
+                projectSlug,
+                cwd,
+                workspaceIsolation: { mode: 'shared' },
+              }
+            : { kind: 'directory', cwd },
+        },
       });
       // It reached the continuation's own engine session, which runs in the
       // conversation's folder: nothing was started anywhere else, and the
@@ -1137,4 +1254,251 @@ describe('#3429: a continued attached conversation opens in the dock', () => {
     );
     expect(opened.status).toBe(404);
   });
+});
+
+describe('#4074: attached repository selection preserves existing Sessions', () => {
+  async function started() {
+    const f = await fixture({ engineAgent: true, boundResources: true });
+    const response = await f.request('/api/orchestration/chat', {
+      ...dockFollowUp('claude', undefined, 'station', 'first turn'),
+      clientTurnId: 'first-turn',
+    });
+    expect(response.status, response.text).toBe(200);
+    const conversation = response.body.data.conversationId as string;
+    await vi.waitFor(() =>
+      expect(f.store.readSessionByThread(conversation)?.cwd).toBe(f.project),
+    );
+    await f.selectSecond();
+    return { f, conversation, first: response.body.data };
+  }
+
+  test('old Session and cold successor execute in the original repository; a new Session executes in the selected repository', async () => {
+    const { f, conversation, first } = await started();
+    const firstRetry = await f.request('/api/orchestration/chat', {
+      ...dockFollowUp('claude', conversation, 'station', 'first turn'),
+      clientTurnId: 'first-turn',
+    });
+    expect(firstRetry.status, firstRetry.text).toBe(200);
+    expect(firstRetry.body.data).toMatchObject({
+      sessionId: first.sessionId,
+      providerTurnId: first.providerTurnId,
+      resolution: { workspace: first.resolution.workspace },
+    });
+    expect(first.resolution.workspace).toEqual({
+      kind: 'project',
+      projectSlug: 'station',
+      cwd: f.project,
+      workspaceIsolation: { mode: 'shared' },
+    });
+    const follow = await f.request(
+      '/api/orchestration/chat',
+      dockFollowUp('claude', conversation, 'station', 'old follow-up'),
+    );
+    expect(follow.status, follow.text).toBe(200);
+    expect(follow.body.data.resolution.workspace).toEqual(
+      first.resolution.workspace,
+    );
+    for (const workspace of [
+      { kind: 'directory', cwd: f.otherProject },
+      { kind: 'project', projectSlug: 'other' },
+      { kind: 'project', projectSlug: 'station', cwd: f.ownFolder },
+    ]) {
+      const refused = await f.request('/api/orchestration/chat', {
+        ...dockFollowUp(
+          'claude',
+          conversation,
+          'station',
+          'private wrong workspace',
+        ),
+        target: {
+          environment: { kind: 'current' },
+          agent: 'claude',
+          workspace,
+        },
+      });
+      expect(refused.status, refused.text).toBe(400);
+    }
+    const oldExecution = follow.body.data.sessionId as string;
+    expect(
+      f.engines.claude.starts.find((start) => start.threadId === oldExecution)
+        ?.cwd,
+    ).toBe(f.project);
+    f.engines.claude.exit(oldExecution);
+    await vi.waitFor(() =>
+      expect(f.store.readSessionByThread(oldExecution)?.status).toBe('closed'),
+    );
+    const cold = await f.request(
+      '/api/orchestration/chat',
+      dockFollowUp('claude', conversation, undefined, 'cold follow-up'),
+    );
+    expect(cold.status, cold.text).toBe(200);
+    expect(cold.body.data.resolution.workspace).toEqual(
+      first.resolution.workspace,
+    );
+    expect(
+      f.engines.claude.starts.find(
+        (start) => start.threadId === cold.body.data.sessionId,
+      )?.cwd,
+    ).toBe(f.project);
+    const fresh = await f.request(
+      '/api/orchestration/chat',
+      dockFollowUp('claude', undefined, 'station', 'new conversation'),
+    );
+    expect(fresh.status, fresh.text).toBe(200);
+    expect(fresh.body.data.resolution.workspace).toEqual({
+      kind: 'project',
+      projectSlug: 'station',
+      cwd: f.otherProject,
+      workspaceIsolation: { mode: 'shared' },
+    });
+    expect(
+      f.engines.claude.starts.find(
+        (start) => start.threadId === fresh.body.data.sessionId,
+      )?.cwd,
+    ).toBe(f.otherProject);
+    expect(f.engines.claude.turns.map((turn) => turn.input)).toEqual([
+      'first turn',
+      'old follow-up',
+      expect.stringContaining('cold follow-up'),
+      'new conversation',
+    ]);
+    expect(f.engines.claude.turnWorkingDirectories).toEqual([
+      f.project,
+      f.project,
+      f.project,
+      f.otherProject,
+    ]);
+    expect(f.store.readSessionByThread(conversation)?.cwd).toBe(f.project);
+  });
+
+  test('a Session whose start refused Project identity cannot acquire it on continuation', async () => {
+    const f = await fixture({
+      engineAgent: true,
+      boundResources: true,
+      unqualifiedProject: true,
+    });
+    const conversation = `conversation:${randomUUID()}`;
+    const environmentId = (await f.security.readExistingRecord()).environmentId;
+    await f.service.dispatch({
+      type: 'startSession',
+      input: {
+        threadId: conversation,
+        provider: 'claude',
+        cwd: f.project,
+        metadata: {
+          projectSlug: 'station',
+          userId: 'operator',
+          agentSlug: 'claude',
+          targetKind: 'agent',
+          targetId: 'claude',
+          connectionId: 'claude',
+          environmentId,
+          workspaceIsolation: { mode: 'shared' },
+        },
+      },
+    });
+    await vi.waitFor(() =>
+      expect(
+        f.service.firstStartedMetadataOfThread(conversation)
+          ?.localProjectIdRefused,
+      ).toBe(true),
+    );
+    expect(
+      f.service.firstStartedMetadataOfThread(conversation),
+    ).not.toHaveProperty('localProjectId');
+    await f.selectSecond();
+    for (const projectSlug of ['station', undefined]) {
+      const refused = await f.request(
+        '/api/orchestration/chat',
+        dockFollowUp(
+          'claude',
+          conversation,
+          projectSlug,
+          'private unqualified follow-up',
+        ),
+      );
+      expect(refused.status, refused.text).toBe(400);
+    }
+    expect(f.engines.claude.turns).toEqual([]);
+    expect(JSON.stringify(f.store.listEvents())).not.toContain(
+      'private unqualified follow-up',
+    );
+  });
+
+  test.each([
+    'revoked',
+    'unbound',
+    'drifted',
+    'symlink',
+    'changed Project',
+  ] as const)(
+    '%s refuses before publishing private follow-up text',
+    async (change) => {
+      const { f, conversation } = await started();
+      const record = f.manifests.readRecord('station')!;
+      if (change === 'revoked')
+        await f.storage.projectRevision('station').replaceManifest!(record, {
+          ...record,
+          repos: record.repos
+            .filter((repo) => repo.id !== f.firstRepo)
+            .map((repo) => ({ ...repo, role: 'primary' as const })),
+        });
+      if (change === 'unbound') {
+        await f.storage.projectRevision('station').replace({
+          ...f.storage.getProject('station'),
+          workingDirectory: undefined,
+        });
+        const current = f.bindings.read();
+        writeFileSync(
+          f.bindings.path,
+          JSON.stringify({
+            ...current,
+            bindings: current.bindings.filter(
+              (binding) => binding.resourceId !== f.firstRepo,
+            ),
+          }),
+        );
+      }
+      if (change === 'drifted')
+        git(
+          f.project,
+          'remote',
+          'set-url',
+          'origin',
+          'https://github.com/example/unknown.git',
+        );
+      if (change === 'symlink') {
+        renameSync(f.project, `${f.project}-original`);
+        symlinkSync(f.otherProject, f.project, 'dir');
+      }
+      if (change === 'changed Project') {
+        const original = f.storage.getProject('station');
+        await f.storage.deleteProject('station');
+        await f.storage.createProjectWithIdentity(
+          { ...original, id: randomUUID() },
+          record,
+        );
+      }
+      const starts = f.engines.claude.starts.length;
+      for (const projectSlug of ['station', undefined]) {
+        const refused = await f.request(
+          '/api/orchestration/chat',
+          dockFollowUp(
+            'claude',
+            conversation,
+            projectSlug,
+            'private denied follow-up',
+          ),
+        );
+        expect(refused.status, refused.text).toBe(400);
+      }
+      expect(f.engines.claude.starts).toHaveLength(starts);
+      expect(f.engines.claude.turns.map((turn) => turn.input)).toEqual([
+        'first turn',
+      ]);
+      expect(JSON.stringify(f.store.listEvents())).not.toContain(
+        'private denied follow-up',
+      );
+    },
+  );
 });

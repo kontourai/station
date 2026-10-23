@@ -1,0 +1,7 @@
+{
+  "revision": "7e1e2bab144f4eb32b9bd69eedf7dd2d5ac7ce0d",
+
+  "notes": [
+    {"path":"docs/guides/knowledge.md","note":"Reviewed Sources management against 7e1e2bab144: Settings composition, host-path validation, exact registry disconnect and retained files, SDK authority capture, real FileStorage concurrent-create and stale-disconnect tests (green; owner guards fault-injected red then byte-exact restored green). Registration is not indexing or Agent usability proof; browser/provider/native qualification remains separate.","inputs":["docs/guides/knowledge.md","packages/contracts/src/knowledge-store.ts","packages/sdk/src/client/knowledge.ts","packages/sdk/src/query-domains/knowledgeStores.ts","src-server/knowledge-store/knowledge-store-provider.ts","src-server/routes/knowledge/knowledge-store-routes.ts","src-ui/src/__tests__/ProjectSettingsView.test.tsx"]}
+  ]
+}

@@ -8,7 +8,9 @@ import {
   useBindProjectResourceMutation,
   useProjectResolutionQuery,
 } from '@kontourai/station-sdk';
-import { useState } from 'react';
+import type { ApiRequestScope } from '@kontourai/station-sdk/client';
+import { createContext, useContext, useState } from 'react';
+import { NewProjectRepositorySource } from '../../components/modals/NewProjectRepositorySource';
 import { PageSection } from '../../components/PageSection';
 import { Empty, ErrorState, SkeletonList } from '../../components/state';
 import { userFacingErrorMessage } from '../../utils/errorText';
@@ -61,6 +63,10 @@ const RECORD_COPY: Record<'binding' | 'working-directory', string> = {
   'working-directory': "the project's working directory",
 };
 
+const ResourceRequestScope = createContext<ApiRequestScope | undefined>(
+  undefined,
+);
+
 function PathSlot({ slot, value }: { slot: ResourceSlotKind; value: string }) {
   return (
     <div className={`resources-section__slot resources-section__slot--${slot}`}>
@@ -98,107 +104,95 @@ function PointAtCheckoutForm({
   submitLabel: string;
 }) {
   const [path, setPath] = useState(initialPath);
+  const [acquiring, setAcquiring] = useState(false);
   const [refusal, setRefusal] = useState<string | null>(null);
   // The write succeeded and the follow-up re-read did not. NOT a refusal:
   // the binding IS recorded, and titling this "that checkout was not
   // recorded" would be a false negative about durable state (the route's
   // phase boundary exists for the same reason).
   const [gap, setGap] = useState<string | null>(null);
-  const bind = useBindProjectResourceMutation(slug, {
-    onSuccess: (outcome) => {
-      setRefusal(null);
-      setGap('gap' in outcome ? outcome.gap : null);
+  const requestScope = useContext(ResourceRequestScope);
+  const bind = useBindProjectResourceMutation(
+    slug,
+    {
+      onSuccess: (outcome) => {
+        setRefusal(null);
+        setGap('gap' in outcome ? outcome.gap : null);
+      },
+      onError: (error: Error) => {
+        setGap(null);
+        setRefusal(userFacingErrorMessage(error));
+      },
     },
-    onError: (error: Error) => {
-      setGap(null);
-      setRefusal(userFacingErrorMessage(error));
-    },
-  });
+    requestScope,
+  );
   // Unique per resource: a multi-repo project renders several of these at once,
   // and a duplicated id would point every `<label>` at the first input.
   const inputId = `project-resource-bind-${slug}-${resourceId}`;
 
-  /*
-   * DELIBERATE GAP — there is no "Clone it" action below, and none is named.
-   * §10 promises "the single-repo bind/clone convenience"; this ships
-   * the bind half only, as an accepted gap with the reason recorded here
-   * (archive#1502 2).
-   *
-   * CORRECTION to the reason this comment first gave. It claimed the canonical
-   * remote "is NOT in the answer". It is: `ProjectGitRepoResource.id` is
-   * documented and validator-enforced as ALWAYS EQUAL to `canonicalRemote`, so
-   * an `unbound` git resource's `resourceId` already IS the remote. Reaching
-   * for `manifest.repos` is not required and the selection-ambiguity trap is
-   * not what blocks this. Leaving a wrong reason in place would send the next
-   * reader down the wrong path with a correct conclusion attached to it.
-   *
-   * THE ACTUAL REASON — a canonical remote is not a clone URL, and the
-   * difference is a false claim waiting to happen. `normalizeGitOrigin` strips
-   * the scheme, the credentials, and the SSH form, so `github.com/acme/api`
-   * has to be turned back into a URL by GUESSING one (`https://…` by
-   * convention). When that guessed URL is refused for a private repo the
-   * member reaches over SSH, Station would be holding an authorization failure
-   * against a URL IT chose — and §3.6's `unresolvable` says "Nothing local;
-   * the gap is upstream (permissions)", which would be false: the local
-   * repairs (use the SSH remote, point at an existing checkout) both exist.
-   * Manufacturing `unresolvable` out of a guess is the exact dishonesty §3.6
-   * rule 2 ("asserted, never inferred") exists to prevent, and it would arrive
-   * through the one state archive#1425 says it cares most about.
-   *
-   * So this offers the half it can perform truthfully and says nothing about
-   * the half it cannot. A clone action needs a resource-level clone SOURCE
-   * (an un-canonicalized URL the manifest author actually wrote, or a
-   * per-member preferred protocol) — a contract addition, not a UI one.
-   * Filed for, where a resource's remote becomes legible here anyway.
-   */
   return (
-    <form
-      className="resources-section__repair"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (!path.trim()) return;
-        setRefusal(null);
-        setGap(null);
-        bind.mutate({ path: path.trim(), resourceId });
-      }}
-    >
-      <label className="editor-label" htmlFor={inputId}>
-        Point at an existing checkout
-      </label>
-      <div className="resources-section__repair-row">
-        <input
-          id={inputId}
-          className="editor-input resources-section__repair-input"
-          type="text"
-          value={path}
-          placeholder="/path/to/checkout"
-          onChange={(event) => setPath(event.target.value)}
-        />
-        <button
-          type="submit"
-          className="editor-btn editor-btn--primary"
-          disabled={bind.isPending || !path.trim()}
-        >
-          {bind.isPending ? 'Checking…' : submitLabel}
-        </button>
-      </div>
-      <span className="editor-hint">
-        Station checks the directory before it records anything. It is never
-        re-pointed for you.
-      </span>
-      {refusal && (
-        <ErrorState
-          variant="compact"
-          title="That checkout was not recorded"
-          description={refusal}
-        />
-      )}
-      {gap && (
-        <p className="resources-section__gap" role="status">
-          {gap}
-        </p>
-      )}
-    </form>
+    <div>
+      <NewProjectRepositorySource
+        onBusyChange={setAcquiring}
+        onUseCheckout={(selectedPath) => {
+          setPath(selectedPath);
+          setRefusal(null);
+          setGap(null);
+        }}
+      />
+      <p className="editor-hint">
+        Acquire or reuse a copy, then explicitly record it for this resource
+        below. Station rechecks the current resource identity before binding;
+        selecting a copy does not change the primary resource.
+      </p>
+      <form
+        className="resources-section__repair"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!path.trim() || acquiring) return;
+          setRefusal(null);
+          setGap(null);
+          bind.mutate({ path: path.trim(), resourceId });
+        }}
+      >
+        <label className="editor-label" htmlFor={inputId}>
+          Point at an existing checkout
+        </label>
+        <div className="resources-section__repair-row">
+          <input
+            id={inputId}
+            className="editor-input resources-section__repair-input"
+            type="text"
+            value={path}
+            placeholder="/path/to/checkout"
+            onChange={(event) => setPath(event.target.value)}
+          />
+          <button
+            type="submit"
+            className="editor-btn editor-btn--primary"
+            disabled={bind.isPending || acquiring || !path.trim()}
+          >
+            {bind.isPending ? 'Checking…' : submitLabel}
+          </button>
+        </div>
+        <span className="editor-hint">
+          Station checks the directory before it records anything. It is never
+          re-pointed for you.
+        </span>
+        {refusal && (
+          <ErrorState
+            variant="compact"
+            title="That checkout was not recorded"
+            description={refusal}
+          />
+        )}
+        {gap && (
+          <p className="resources-section__gap" role="status">
+            {gap}
+          </p>
+        )}
+      </form>
+    </div>
   );
 }
 
@@ -593,44 +587,58 @@ function PrimarySelection({
   );
 }
 
-export function ResourcesSection({ slug }: { slug: string }) {
+export function ResourcesSection({
+  slug,
+  requestScope,
+  embedded = false,
+}: {
+  slug: string;
+  requestScope?: ApiRequestScope;
+  embedded?: boolean;
+}) {
   const { data, isLoading, isError, error, isFetching, refetch } =
-    useProjectResolutionQuery(slug);
+    useProjectResolutionQuery(slug, {
+      requestScope,
+      requireRequestScope: embedded,
+      keepPreviousData: false,
+    });
 
   return (
-    <PageSection
-      id="section-resources"
-      className="project-settings__section resources-section"
-      eyebrow="Project code"
-      title="Resources"
-      description="Where this Station finds the code this project points at, and what it can do about it when that changes."
-    >
-      {isLoading ? (
-        <SkeletonList count={2} />
-      ) : isError ? (
-        <ErrorState
-          title="Could not read this project's resources"
-          description={userFacingErrorMessage(error)}
-          action={
-            <button
-              type="button"
-              className="editor-btn"
-              onClick={() => refetch()}
-            >
-              Retry
-            </button>
-          }
-        />
-      ) : data ? (
-        <ResolutionBody
-          slug={slug}
-          view={data}
-          onReverify={() => refetch()}
-          reverifying={Boolean(isFetching)}
-        />
-      ) : (
-        <SkeletonList count={2} />
-      )}
-    </PageSection>
+    <ResourceRequestScope.Provider value={requestScope}>
+      <PageSection
+        id={embedded ? undefined : 'section-resources'}
+        className="project-settings__section resources-section"
+        eyebrow="Project code"
+        title={embedded ? 'Repositories' : 'Resources'}
+        description="Where this Station finds the code this project points at, and what it can do about it when that changes."
+      >
+        {isLoading ? (
+          <SkeletonList count={2} />
+        ) : isError ? (
+          <ErrorState
+            title="Could not read this project's resources"
+            description={userFacingErrorMessage(error)}
+            action={
+              <button
+                type="button"
+                className="editor-btn"
+                onClick={() => refetch()}
+              >
+                Retry
+              </button>
+            }
+          />
+        ) : data ? (
+          <ResolutionBody
+            slug={slug}
+            view={data}
+            onReverify={() => refetch()}
+            reverifying={Boolean(isFetching)}
+          />
+        ) : (
+          <SkeletonList count={2} />
+        )}
+      </PageSection>
+    </ResourceRequestScope.Provider>
   );
 }

@@ -8,7 +8,7 @@
  * the fail-safe default, and refused by the server guard, until it has one).
  */
 
-import { describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import {
   bareControlToolName,
@@ -37,7 +37,16 @@ function registeredToolNames(): string[] {
   ];
 }
 
+beforeEach(() => vi.stubEnv('STATION_EXPERIMENTAL_S3_SOURCES', '1'));
+afterEach(() => vi.unstubAllEnvs());
+
 describe('station-control tool classification', () => {
+  test('default-off S3 tools are not advertised to Agents', () => {
+    vi.stubEnv('STATION_EXPERIMENTAL_S3_SOURCES', '');
+    expect(
+      stationKnowledgeToolCatalog().some((tool) => tool.name.includes('_s3_')),
+    ).toBe(false);
+  });
   test('every registered tool is explicitly classified', () => {
     const names = registeredToolNames();
     expect(names.length).toBeGreaterThan(30);

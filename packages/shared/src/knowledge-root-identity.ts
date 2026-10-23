@@ -1,6 +1,6 @@
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
 
-/** Registration metadata precondition only: not authorization, an immutable incarnation, or an owner revision. Identically restored metadata can share a key. */
+/** Registration metadata precondition, including the issued registration ID when present. Not authorization, a record version, or an owner revision; restored metadata can retain a key. */
 export const KNOWLEDGE_ROOT_IDENTITY_HEADER =
   'x-station-knowledge-root-identity';
 export const KNOWLEDGE_ROOT_IDENTITY_MAX_CHARS = 8_192;
@@ -14,5 +14,7 @@ export function knowledgeRootIncarnationKey(root: KnowledgeStoreRoot): string {
     root.storeRoot,
     root.displayName,
     root.createdAt,
+    ...(root.projectId || root.registrationId ? [root.projectId ?? null] : []),
+    ...(root.registrationId ? [root.registrationId] : []),
   ]);
 }

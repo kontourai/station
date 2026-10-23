@@ -41,6 +41,14 @@ import type {
   EngineId,
   ProviderSession,
 } from '@kontourai/station-contracts/provider';
+import type {
+  TaskChildCreateInput,
+  TaskIdentity,
+  TaskParentMutationInput,
+  TaskParentMutationResult,
+  TaskWorkChatMutationInput,
+  TaskWorkChatMutationResult,
+} from '@kontourai/station-contracts/task-graph';
 import { looksLikeWorkflowTaskSlugRef } from '@kontourai/station-contracts/workflow';
 import {
   acquireFileMutationLockAsync,
@@ -86,9 +94,25 @@ import {
   type TaskDispatchRemoteSessions,
   type TaskDispatchTelemetry,
 } from './task-dispatcher.js';
+import {
+  authorizeRelationship,
+  relationshipProject,
+  requireRelationshipTask,
+  sameTask,
+  type TaskRelationshipAuthority,
+  TaskRelationshipError,
+  type TaskRelationshipReceipt,
+  type TaskWorkChatRecord,
+  taskIdentity,
+  validateParentChain,
+  validateRelationshipState,
+  validTaskIdentity,
+} from './task-relationship-state.js';
 
 interface TaskGraphStoreData {
   tasks: PersistedTaskRecord[];
+  workChats: TaskWorkChatRecord[];
+  relationshipReceipts: TaskRelationshipReceipt[];
   links: RelationGraphLink[];
   dispatches: TaskDispatchRecord[];
   /** Private, non-projected exact narrative revision retained by a Task Keep. */
@@ -460,11 +484,15 @@ const DISPATCH_RESERVATION_LEASE_MS = 5 * 60 * 1000;
 const TASK_GRAPH_ROOT_KEYS = ['tasks', 'links', 'dispatches'] as const;
 const TASK_GRAPH_ROOT_ALLOWED_KEYS = [
   ...TASK_GRAPH_ROOT_KEYS,
+  'workChats',
+  'relationshipReceipts',
   'answerNarrativePins',
   'declaredPullRequestKeeps',
   'declaredPullRequestKeepTombstones',
 ] as const;
 const TASK_RECORD_KEYS = [
+  'parent',
+  'relationshipRevision',
   'id',
   'projectId',
   'title',
@@ -736,6 +764,14 @@ function validateTaskGraphStoreData(
     );
   if (problems.length > 0)
     throw new TaskGraphStoreShapeError(filePath, problems);
+
+  problems.push(
+    ...validateRelationshipState(
+      value.tasks as unknown[],
+      value.workChats,
+      value.relationshipReceipts,
+    ),
+  );
 
   const taskIds = new Set<string>();
   const reservationSessionIds = new Set<string>();
@@ -1360,6 +1396,9 @@ function validateTaskGraphStoreData(
       | 'declaredPullRequestKeeps'
       | 'declaredPullRequestKeepTombstones'
     >),
+    workChats: (value.workChats ?? []) as TaskWorkChatRecord[],
+    relationshipReceipts: (value.relationshipReceipts ??
+      []) as TaskRelationshipReceipt[],
     answerNarrativePins: pins as PersistedTaskAnswerNarrativePin[],
     declaredPullRequestKeeps: keeps as PersistedDeclaredPullRequestKeep[],
     declaredPullRequestKeepTombstones:
@@ -1398,11 +1437,49 @@ function buildProjectResourceResolver(
   });
 }
 
+function relationshipFingerprint(kind: string, input: unknown): string {
+  const canonical = (value: unknown): unknown =>
+    Array.isArray(value)
+      ? value.map(canonical)
+      : value && typeof value === 'object'
+        ? Object.fromEntries(
+            Object.entries(value)
+              .sort(([a], [b]) => a.localeCompare(b))
+              .map(([key, item]) => [key, canonical(item)]),
+          )
+        : value;
+  return crypto
+    .createHash('sha256')
+    .update(JSON.stringify([kind, canonical(input)]))
+    .digest('hex');
+}
+function relationshipReplay(
+  data: TaskGraphStoreData,
+  operationId: string,
+  fingerprint: string,
+) {
+  if (
+    typeof operationId !== 'string' ||
+    !operationId.trim() ||
+    operationId !== operationId.trim() ||
+    operationId.length > 160
+  )
+    throw new TaskRelationshipError('invalid');
+  const prior = data.relationshipReceipts.find(
+    (receipt) => receipt.operationId === operationId,
+  );
+  if (prior && prior.fingerprint !== fingerprint)
+    throw new TaskRelationshipError('conflict');
+  return prior?.result;
+}
+
 function createTaskGraphStore(storePath: string, maxReadBytes?: number) {
   return new JsonFileStore<TaskGraphStoreData>(
     storePath,
     {
       tasks: [],
+      workChats: [],
+      relationshipReceipts: [],
       links: [],
       dispatches: [],
       answerNarrativePins: [],
@@ -1587,6 +1664,24 @@ export class TaskGraphService {
     }
   }
 
+  /** Short read/publication fence. Lock order: TaskGraph, sharing DB, Room DB.
+   * The callback must be synchronous; never hold this lock over provider work.
+   */
+  async withTaskReadFence<T>(operation: () => T): Promise<T> {
+    const release = await this.acquireMutationLock(
+      `${this.storePath}.mutation`,
+    );
+    try {
+      this.loadStore();
+      const result = operation();
+      if (result && typeof (result as { then?: unknown }).then === 'function')
+        throw new Error('Task publication fence requires synchronous work');
+      return result;
+    } finally {
+      await release();
+    }
+  }
+
   private readStore(): TaskGraphStoreData {
     return this.loadStore();
   }
@@ -1663,12 +1758,244 @@ export class TaskGraphService {
     };
   }
 
-  async createTask(
+  /** All relationship state shares the cross-process TaskGraph lock and receipts. */
+  async setTaskParent(
+    input: TaskParentMutationInput,
+    authority: TaskRelationshipAuthority,
+  ): Promise<TaskParentMutationResult> {
+    if (
+      !validTaskIdentity(input.child) ||
+      (input.parent !== null && !validTaskIdentity(input.parent)) ||
+      !Number.isSafeInteger(input.expectedRevision) ||
+      input.expectedRevision < 0
+    )
+      throw new TaskRelationshipError('invalid');
+    return this.mutateStore((data) => {
+      const child = requireRelationshipTask(data.tasks, input.child);
+      const parent = input.parent
+        ? requireRelationshipTask(data.tasks, input.parent)
+        : undefined;
+      const previous = child.parent
+        ? requireRelationshipTask(data.tasks, child.parent)
+        : undefined;
+      authorizeRelationship(authority, [
+        child,
+        ...(parent ? [parent] : []),
+        ...(previous ? [previous] : []),
+      ]);
+      const fingerprint = relationshipFingerprint('parent', input);
+      const prior = relationshipReplay(data, input.operationId, fingerprint);
+      if (prior) {
+        if (!('child' in prior)) throw new TaskRelationshipError('conflict');
+        return { data, result: prior };
+      }
+      if ((child.relationshipRevision ?? 0) !== input.expectedRevision)
+        throw new TaskRelationshipError('conflict');
+      if (parent) validateParentChain(data.tasks, child, parent, authority);
+      const result: TaskParentMutationResult = {
+        child: input.child,
+        parent: input.parent,
+        previousParent: child.parent ?? null,
+        revision: (child.relationshipRevision ?? 0) + 1,
+      };
+      child.parent = input.parent ?? undefined;
+      child.relationshipRevision = result.revision;
+      data.relationshipReceipts.push({
+        operationId: input.operationId,
+        fingerprint,
+        result,
+      });
+      authorizeRelationship(authority, [
+        child,
+        ...(parent ? [parent] : []),
+        ...(previous ? [previous] : []),
+      ]);
+      return { data, result };
+    });
+  }
+
+  async createChildTask(
+    input: TaskChildCreateInput,
+    authority: TaskRelationshipAuthority,
+  ): Promise<{ task: TaskRecord; relationship: TaskParentMutationResult }> {
+    if (!validTaskIdentity(input.parent))
+      throw new TaskRelationshipError('invalid');
+    if (
+      Object.keys(input.task).some(
+        (key) =>
+          ![
+            'projectId',
+            'title',
+            'description',
+            'priority',
+            'skillName',
+            'agentId',
+          ].includes(key),
+      ) ||
+      validateTaskCreateInput(input.task).length
+    )
+      throw new TaskRelationshipError('invalid');
+    const fingerprint = relationshipFingerprint('create-child', input);
+    const { task: preparedTask } = await this.prepareTaskRecord(input.task);
+    return this.mutateStore((data) => {
+      const parent = requireRelationshipTask(data.tasks, input.parent);
+      authorizeRelationship(authority, [parent]);
+      const prior = relationshipReplay(data, input.operationId, fingerprint);
+      if (prior) {
+        if (!('child' in prior)) throw new TaskRelationshipError('conflict');
+        const task = requireRelationshipTask(data.tasks, prior.child);
+        authorizeRelationship(authority, [parent, task]);
+        return { data, result: { task, relationship: prior } };
+      }
+      const task: TaskRecord = {
+        ...preparedTask,
+        parent: input.parent,
+        relationshipRevision: 1,
+      };
+      authorizeRelationship(authority, [parent, task]);
+      validateParentChain(data.tasks, task, parent, authority);
+      const result: TaskParentMutationResult = {
+        child: taskIdentity(task),
+        parent: input.parent,
+        previousParent: null,
+        revision: 1,
+      };
+      data.tasks.push(task);
+      data.relationshipReceipts.push({
+        operationId: input.operationId,
+        fingerprint,
+        result,
+      });
+      return { data, result: { task, relationship: result } };
+    });
+  }
+
+  async setTaskWorkChat(
+    input: TaskWorkChatMutationInput,
+    authority: TaskRelationshipAuthority,
+  ): Promise<TaskWorkChatMutationResult> {
+    if (
+      !validTaskIdentity(input.task) ||
+      typeof input.conversationId !== 'string' ||
+      !input.conversationId.trim() ||
+      input.conversationId !== input.conversationId.trim() ||
+      input.conversationId.length > 4096 ||
+      typeof input.linked !== 'boolean' ||
+      !Number.isSafeInteger(input.expectedRevision) ||
+      input.expectedRevision < 0
+    )
+      throw new TaskRelationshipError('invalid');
+    return this.mutateStore((data) => {
+      const task = requireRelationshipTask(data.tasks, input.task);
+      const project = authorizeRelationship(authority, [task]);
+      if (!authority.canReadConversation(input.conversationId, project))
+        throw new TaskRelationshipError('unavailable');
+      const fingerprint = relationshipFingerprint('work-chat', input);
+      const prior = relationshipReplay(data, input.operationId, fingerprint);
+      if (prior) {
+        if (!('conversationId' in prior))
+          throw new TaskRelationshipError('conflict');
+        return { data, result: prior };
+      }
+      const existing = data.workChats.find(
+        (chat) =>
+          sameTask(chat.task, input.task) &&
+          chat.conversationId === input.conversationId,
+      );
+      if ((existing?.revision ?? 0) !== input.expectedRevision)
+        throw new TaskRelationshipError('conflict');
+      const result: TaskWorkChatMutationResult = {
+        task: input.task,
+        conversationId: input.conversationId,
+        linked: input.linked,
+        revision: (existing?.revision ?? 0) + 1,
+      };
+      if (existing) Object.assign(existing, result);
+      else data.workChats.push(structuredClone(result));
+      data.relationshipReceipts.push({
+        operationId: input.operationId,
+        fingerprint,
+        result,
+      });
+      authorizeRelationship(authority, [task]);
+      if (!authority.canReadConversation(input.conversationId, project))
+        throw new TaskRelationshipError('unavailable');
+      return { data, result };
+    });
+  }
+
+  listTaskChildren(
+    identity: TaskIdentity,
+    authority: TaskRelationshipAuthority,
+  ): TaskRecord[] {
+    const data = this.readStore();
+    const parent = requireRelationshipTask(data.tasks, identity);
+    relationshipProject(authority, [parent]);
+    if (!authority.canReadTask(parent))
+      throw new TaskRelationshipError('unavailable');
+    return data.tasks
+      .filter((task) => task.parent && sameTask(task.parent, identity))
+      .filter((task) => {
+        try {
+          relationshipProject(authority, [parent, task]);
+          return authority.canReadTask(task);
+        } catch {
+          return false;
+        }
+      })
+      .map((task) => ({ ...task, parent: undefined }));
+  }
+
+  /** Exact candidate lookup retains the unlink tombstone revision for relinking. */
+  readTaskWorkChat(
+    identity: TaskIdentity,
+    conversationId: string,
+    authority: TaskRelationshipAuthority,
+  ): TaskWorkChatMutationResult {
+    const data = this.readStore();
+    const task = requireRelationshipTask(data.tasks, identity);
+    const project = relationshipProject(authority, [task]);
+    if (
+      !authority.canReadTask(task) ||
+      !authority.canReadConversation(conversationId, project)
+    )
+      throw new TaskRelationshipError('unavailable');
+    const existing = data.workChats.find(
+      (chat) =>
+        sameTask(chat.task, identity) && chat.conversationId === conversationId,
+    );
+    return existing
+      ? structuredClone(existing)
+      : { task: identity, conversationId, linked: false, revision: 0 };
+  }
+
+  listTaskWorkChats(
+    identity: TaskIdentity,
+    authority: TaskRelationshipAuthority,
+  ): { conversationId: string; revision: number }[] {
+    const data = this.readStore();
+    const task = requireRelationshipTask(data.tasks, identity);
+    const project = relationshipProject(authority, [task]);
+    if (!authority.canReadTask(task))
+      throw new TaskRelationshipError('unavailable');
+    return data.workChats
+      .filter(
+        (chat) =>
+          chat.linked &&
+          sameTask(chat.task, identity) &&
+          authority.canReadConversation(chat.conversationId, project),
+      )
+      .map((chat) => ({
+        conversationId: chat.conversationId,
+        revision: chat.revision,
+      }));
+  }
+
+  private async prepareTaskRecord(
     input: TaskCreateInput,
     clientOrigin?: ClientOrigin,
     taskId: string = crypto.randomUUID(),
-    authorize?: () => boolean,
-  ): Promise<TaskRecord> {
+  ) {
     const sourceSurface = metricSourceSurface(
       input.workspaceBinding?.sourceSurface,
     );
@@ -1712,6 +2039,18 @@ export class TaskGraphService {
       workItemRef: normalizeText(input.workItemRef) || undefined,
     };
 
+    return { task, workspaceBinding, sourceSurface };
+  }
+
+  async createTask(
+    input: TaskCreateInput,
+    clientOrigin?: ClientOrigin,
+    taskId: string = crypto.randomUUID(),
+    authorize?: () => boolean,
+  ): Promise<TaskRecord> {
+    const { task, workspaceBinding, sourceSurface } =
+      await this.prepareTaskRecord(input, clientOrigin, taskId);
+
     const persisted = await this.mutateStore((data) => {
       const source = input.shapingSource;
       const acceptedTaskId = source
@@ -1754,7 +2093,7 @@ export class TaskGraphService {
                   targetId: input.shapingSource.sessionId,
                   relationType: 'spawned_session' as const,
                   confidence: 1,
-                  createdAt: now,
+                  createdAt: task.createdAt,
                   source: 'user' as const,
                   ...(clientOrigin ? { clientOrigin } : {}),
                   metadata: { shapingTurnId: input.shapingSource.turnId },

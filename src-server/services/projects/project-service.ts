@@ -392,9 +392,12 @@ export class ProjectService {
     return this.storageAdapter.getProject(slug);
   }
 
-  async createProject(config: ProjectCreate): Promise<ProjectConfig> {
+  async createProject(
+    config: ProjectCreate,
+    reservedId?: string,
+  ): Promise<ProjectConfig> {
     assertWritableProjectIcon(config.icon);
-    const project = await this.prepareProjectConfig(config);
+    const project = await this.prepareProjectConfig(config, reservedId);
     await this.storageAdapter.createProject(project);
     // The manifest is derived from the project record that was just written,
     // so it is created AFTER the project exists on disk. `ensureProjectManifest`
@@ -453,6 +456,7 @@ export class ProjectService {
 
   private async prepareProjectConfig(
     config: ProjectCreate,
+    reservedId?: string,
   ): Promise<ProjectConfig> {
     // #2144 slice 2, same rule as `updateProject`: `null` on a
     // settings-override field means "no override", not "store null". The two
@@ -528,7 +532,7 @@ export class ProjectService {
       ...input,
       name,
       slug,
-      id: randomUUID(),
+      id: reservedId ?? randomUUID(),
       knowledgeNamespaces: [...BUILTIN_KNOWLEDGE_NAMESPACES],
       createdAt: now,
       updatedAt: now,

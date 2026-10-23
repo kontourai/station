@@ -1,0 +1,7 @@
+{
+  "revision": "ba80db9cdc89551d2591059b04eacd9633607745",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed Task relationship identity/revision and receipt contracts against task-graph.ts, TaskGraphService and dedicated relationship routes. 77 focused owner/sibling tests passed, plus replay-disabling mutation failed and byte-exact restore passed. Production runtime mount and canonical Conversation reader wiring remain parent integration prerequisites; no UI/provider qualification.","inputs":["docs/reference/contracts.md","packages/contracts/package.json","packages/contracts/package.json#/exports"]}
+  ]
+}

@@ -1,0 +1,13 @@
+{
+  "revision": "2b8457c598111db1f4e65a8f397e9023487e8f47",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Reviewed final Home entry at93d4ad94c49: generic New Project is available across profiles, but folder choice is advertised only on web/desktop using the same platform predicate as the modal directory picker. Native mobile offers repository or blank workspace. Home51 and UI typecheck passed; actual Chromium at719 opened Home card, kept eight Tab moves inside modal and captured390x844 layout. Earlier a00 browser acquired/adopted/created with exact stored source/commit and no page errors. Native/runtime provider evidence remains NOT_VERIFIED.","inputs":["docs/user/getting-started.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed process-heavy classification change: acquisition service tests and existing authority route tests now execute real hardened Git clone/checkout. Both are inPROCESS_HEAVY under the canonical manifest and focused runner; no worker count, scheduler, deadline or lane ownership changed. Shared worker policy and verification guidance remain accurate. Manifest focused27 was recorded for acquisition; this note does not claim broad integration completion.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Reviewed manifest-dependent package guidance: the source change adds Station project acquisition/authority tests to process-heavy scheduling and does not alter agent-runtime entrypoints, payload preparation, schema projection or package public custody contracts. Existing agent-runtime classifications remain unchanged; no package behavior/prose change.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed real-Git acquisition/authority manifest classification against required process ownership and focused-runner guidance. New durable creation service tests use real filesystem storage without child processes and keep ordinary scheduling. No scheduler, subprocess launch policy, gate exception or scripts instruction changed. Scoped script instructions remain accurate.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

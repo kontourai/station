@@ -128,6 +128,8 @@ interface JsonFileWriteOptions extends JsonSerializationOptions {
   beforeCommit?: () => void | Promise<void>;
   /** Check current effect authority after staging, without yielding before publication. */
   finalizeCommit?: () => undefined;
+  /** Synchronous admission immediately before the atomic rename is invoked. */
+  assertCurrent?: () => void;
 }
 
 function serializeJsonFile(
@@ -169,6 +171,7 @@ export async function publishJsonFileWithOwnedLock(
     | 'label'
     | 'beforeCommit'
     | 'finalizeCommit'
+    | 'assertCurrent'
     | 'indent'
     | 'trailingNewline'
   >,
@@ -189,6 +192,7 @@ export async function publishJsonFileWithOwnedLock(
     } finally {
       await descriptor.close();
     }
+    options?.assertCurrent?.();
     if (options?.finalizeCommit) {
       const result: unknown = options.finalizeCommit();
       if (result !== undefined) {

@@ -585,10 +585,11 @@ function collectEntries(
     )) {
       const segments = [...parentSegments, entry.name];
       if (isTransient(segments)) continue;
-      if (update && isExternalStationHomePath(segments)) continue;
       assertSegment(entry.name);
       const path = join(directory, entry.name);
       let stats = lstatSync(path);
+      if (update && isExternalStationHomePath(segments, stats.isDirectory()))
+        continue;
       if (stats.isSymbolicLink()) {
         if (!update)
           fail(
@@ -1254,8 +1255,13 @@ export interface StationHomeUpdateRestoreOptions
 }
 
 /** Whether an update leaves this home path to its owner (live or external). */
-function outsideUpdate(segments: readonly string[]): boolean {
-  return isTransient(segments) || isExternalStationHomePath(segments);
+function outsideUpdate(
+  segments: readonly string[],
+  isDirectory = false,
+): boolean {
+  return (
+    isTransient(segments) || isExternalStationHomePath(segments, isDirectory)
+  );
 }
 
 /**
@@ -1267,16 +1273,58 @@ function removeUpdateState(directory: string, parentSegments: string[]): void {
   for (const name of readdirSync(directory)) {
     const segments = [...parentSegments, name];
     if (parentSegments.length === 0 && isLiveStationHomeRoot(name)) continue;
-    if (isExternalStationHomePath(segments)) continue;
     const path = join(directory, name);
+    const stats = lstatSync(path);
+    if (isExternalStationHomePath(segments, stats.isDirectory())) continue;
     if (containsExternalStationHomePath(segments)) {
-      const stats = lstatSync(path);
       if (stats.isDirectory() && !stats.isSymbolicLink()) {
         removeUpdateState(path, segments);
         continue;
       }
     }
     rmSync(path, { recursive: true, force: true });
+  }
+}
+
+function updateRestorePathKey(segments: readonly string[]): string {
+  // Match the manifest's conservative case/NFC alias checks on every volume.
+  return JSON.stringify(
+    segments.map((segment) => segment.normalize('NFC').toLowerCase()),
+  );
+}
+
+/** Refuse saved files/links at retained containers or inside external directories. */
+function assertUpdateRestoreTargets(
+  directory: string,
+  targets: ReadonlySet<string>,
+  targetAncestors: ReadonlyMap<string, ReadonlySet<string>>,
+  parentSegments: string[] = [],
+): void {
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    if (!entry.isDirectory() || entry.isSymbolicLink()) continue;
+    const segments = [...parentSegments, entry.name];
+    const external = isExternalStationHomePath(segments, true);
+    if (!external && !containsExternalStationHomePath(segments)) continue;
+    const key = updateRestorePathKey(segments);
+    const spellings = targetAncestors.get(key);
+    const renamedContainer =
+      !external &&
+      spellings !== undefined &&
+      [...spellings].some((spelling) => spelling !== JSON.stringify(segments));
+    if (
+      targets.has(key) ||
+      (external && spellings !== undefined) ||
+      renamedContainer
+    )
+      fail('backup entry conflicts with a preserved home directory');
+    // Only inspect state containers, never descend into a user's checkout.
+    if (!external)
+      assertUpdateRestoreTargets(
+        join(directory, entry.name),
+        targets,
+        targetAncestors,
+        segments,
+      );
   }
 }
 
@@ -1337,20 +1385,41 @@ export function restoreStationHomeUpdateBackup(
     const homeStats = lstatSync(homeDir);
     if (!homeStats.isDirectory() || homeStats.isSymbolicLink())
       fail('Station home must be a regular directory');
+    // Resolve and reconcile the whole plan before removing any Station state.
+    const contentRoot = join(backupDir, 'home');
+    const files = restorable.map((file) => ({
+      file,
+      source: pathFor(contentRoot, file.path),
+      target: pathFor(homeDir, file.path),
+    }));
+    const symlinks = links.map((link) => ({
+      link,
+      path: pathFor(homeDir, link.path),
+    }));
+    const targets = new Set<string>();
+    const targetAncestors = new Map<string, Set<string>>();
+    for (const entry of [...restorable, ...links]) {
+      targets.add(updateRestorePathKey(entry.path));
+      // Segment slices keep aliases bounded: checkout-1 never owns checkout-10.
+      for (let length = 1; length < entry.path.length; length += 1) {
+        const ancestor = entry.path.slice(0, length);
+        const key = updateRestorePathKey(ancestor);
+        const spellings = targetAncestors.get(key) ?? new Set<string>();
+        spellings.add(JSON.stringify(ancestor));
+        targetAncestors.set(key, spellings);
+      }
+    }
+    assertUpdateRestoreTargets(homeDir, targets, targetAncestors);
     removeUpdateState(homeDir, []);
     fsyncDirectorySync(homeDir);
     options.afterRemove?.();
-    const contentRoot = join(backupDir, 'home');
-    for (const file of restorable) {
-      const source = pathFor(contentRoot, file.path);
-      const target = pathFor(homeDir, file.path);
+    for (const { file, source, target } of files) {
       mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
       copyFileSync(source, target, constants.COPYFILE_EXCL);
       if (process.platform !== 'win32') chmodSync(target, file.mode);
       syncFile(target);
     }
-    for (const link of links) {
-      const path = pathFor(homeDir, link.path);
+    for (const { link, path } of symlinks) {
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
       symlinkSync(link.target, path, symlinkType(link));
     }
@@ -1371,7 +1440,7 @@ export function restoreStationHomeUpdateBackup(
     )
       fail('restored home does not match the validated backup');
     // Only what this restore wrote: never the user's repositories.
-    syncDirectoryTree(homeDir, outsideUpdate);
+    syncDirectoryTree(homeDir, (segments) => outsideUpdate(segments, true));
     return { manifest };
   } catch (error) {
     if (error instanceof StationHomeArchiveError) throw error;

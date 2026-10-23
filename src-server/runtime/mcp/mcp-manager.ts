@@ -64,6 +64,7 @@ import {
   withStationControlRuntimeEnv,
 } from '../bootstrap/station-control-runtime-env.js';
 import { currentAuthorizedTurnCorrelation } from '../conversation/authorized-turn-correlation.js';
+import { currentNativeForegroundRelay } from '../conversation/native-foreground-invocation.js';
 import {
   type MCPToolNameMappingEntry,
   matchesToolPattern as matchMCPToolPattern,
@@ -902,7 +903,7 @@ function createPrincipalScopedMCPTools(
     for (const owner of toolServerCredentialCandidates(
       toolDef,
       principalId,
-      spec.project,
+      currentNativeForegroundRelay()?.project.slug ?? spec.project,
     )) {
       const provider = new StationToolServerOAuthProvider(
         toolServerCredentialStoreFor(homeDir, owner),

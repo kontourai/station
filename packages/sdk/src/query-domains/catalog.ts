@@ -5,6 +5,7 @@ import type {
 import type { LayoutCatalogItem } from '@kontourai/station-contracts/distribution';
 import type { LayoutComponentRef } from '@kontourai/station-contracts/layout';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
+import type { ApiRequestScope } from '../client/http';
 import {
   type MutationOptions,
   type QueryConfig,
@@ -22,6 +23,7 @@ import {
   type KitStandardView,
   type RegistrySourceAction,
   requestIntegration,
+  requestIntegrationAccount,
   requestRegistryCatalogAction,
   requestRegistryIntegrationAction,
   requestRegistryLayoutAction,
@@ -370,29 +372,53 @@ export function useReconnectIntegrationMutation(
   );
 }
 
-export function useIntegrationAccountQuery(id: string, projectSlug?: string) {
+export function useIntegrationAccountQuery(
+  id: string,
+  projectSlug?: string,
+  requestScope?: ApiRequestScope,
+) {
   return useApiQuery<
     import('@kontourai/station-contracts/tool').ToolAccountStatus
   >(
-    ['integration-account', id, projectSlug ?? null],
+    [
+      'integration-account',
+      id,
+      projectSlug ?? null,
+      requestScope?.apiBase ?? null,
+      requestScope?.authorityKey ?? null,
+    ],
     () =>
-      requestIntegration(
+      requestIntegrationAccount(
         `/${encodeURIComponent(id)}/account${projectSlug ? `?projectSlug=${encodeURIComponent(projectSlug)}` : ''}`,
+        requestScope,
       ),
-    { cancelWhenInactive: true },
+    { cancelWhenInactive: true, staleTime: 0, refetchOnMount: 'always' },
   );
 }
 
 export function useStartIntegrationOAuthMutation() {
   return useApiMutation(
-    ({ id, projectSlug }: { id: string; projectSlug?: string }) =>
-      requestIntegration<{ authorizationUrl: string }>(
+    ({ id, projectSlug, requestScope }: IntegrationAccountInput) =>
+      requestIntegrationAccount<{ authorizationUrl: string }>(
         `/${encodeURIComponent(id)}/oauth/authorize`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mode: 'remote', projectSlug }),
-        },
+        requestScope,
+        'POST',
+        { mode: 'remote', projectSlug },
+      ),
+    { invalidateKeys: [['integration-account'], ['integrations']] },
+  );
+}
+
+/** Disconnects only the authenticated caller's selected integration account. */
+export function useDisconnectIntegrationAccountMutation() {
+  return useApiMutation(
+    ({ id, projectSlug, requestScope }: IntegrationAccountInput) =>
+      requestIntegrationAccount<
+        import('@kontourai/station-contracts/tool').ToolAccountStatus
+      >(
+        `/${encodeURIComponent(id)}/account${projectSlug ? `?projectSlug=${encodeURIComponent(projectSlug)}` : ''}`,
+        requestScope,
+        'DELETE',
       ),
     { invalidateKeys: [['integration-account'], ['integrations']] },
   );
@@ -404,21 +430,30 @@ export function useFinishIntegrationOAuthMutation() {
       id,
       callbackUrl,
       projectSlug,
+      requestScope,
     }: {
       id: string;
       callbackUrl: string;
       projectSlug?: string;
+      requestScope?: ApiRequestScope;
     }) =>
-      requestIntegration(`/${encodeURIComponent(id)}/oauth/callback`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ callbackUrl, projectSlug }),
-      }),
+      requestIntegrationAccount(
+        `/${encodeURIComponent(id)}/oauth/callback`,
+        requestScope,
+        'POST',
+        { callbackUrl, projectSlug },
+      ),
     {
       invalidateKeys: [['integration-account'], ['integrations']],
       evictSettledVariables: true,
     },
   );
+}
+
+interface IntegrationAccountInput {
+  id: string;
+  projectSlug?: string;
+  requestScope?: ApiRequestScope;
 }
 
 export function useSetIntegrationEnabledMutation(

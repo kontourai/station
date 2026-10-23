@@ -154,8 +154,8 @@ vi.mock('../views/project-settings/KnowledgeSection', () => ({
 // port's pin, and the section's own behavior (§3.6's states, §4.1's
 // not-backing path) is covered by `project-settings/__tests__/
 // ResourcesSection.test.tsx` against its own SDK mock.
-vi.mock('../views/project-settings/ResourcesSection', () => ({
-  ResourcesSection: () => <section>Resources section</section>,
+vi.mock('../views/project-settings/ProjectSourcesSection', () => ({
+  ProjectSourcesSection: () => <section>Sources section</section>,
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({

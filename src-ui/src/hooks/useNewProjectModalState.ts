@@ -4,7 +4,11 @@ import {
   type ProjectMetadata,
 } from '@kontourai/station-contracts/project';
 import { useProjectIconCandidatesQuery } from '@kontourai/station-sdk';
-import { useApiBase } from '../contexts/ApiBaseContext';
+import { useEffect, useRef } from 'react';
+import {
+  useApiBase,
+  useHostRequestAuthorityScope,
+} from '../contexts/ApiBaseContext';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useScopedProjectsQuery } from '../contexts/ProjectsContext';
 import { useNewProjectDraft } from './useNewProjectDraft';
@@ -52,8 +56,15 @@ function useCachedSlugConflictNotice(
 
 export function useNewProjectModalState(isOpen: boolean, onClose: () => void) {
   const { apiBase } = useApiBase();
-  const { setProject, setLayout } = useNavigation();
-  const draft = useNewProjectDraft(isOpen);
+  const { setProject, setLayout, navigate } = useNavigation();
+  const authority = useHostRequestAuthorityScope();
+  const partition = authority
+    ? JSON.stringify([
+        authority.apiBase,
+        authority.draftRecoveryKey ?? authority.authorityKey,
+      ])
+    : undefined;
+  const draft = useNewProjectDraft(isOpen, partition);
   // Local artwork discovery reads the folder's own files, so it stays on the
   // deliberate "the user finished a folder path" signal. Repo discovery owns
   // its own, wider gate (`useNewProjectStarter`), because its answer is what
@@ -62,6 +73,7 @@ export function useNewProjectModalState(isOpen: boolean, onClose: () => void) {
   const starter = useNewProjectStarter({
     isOpen,
     normalizedDirectory: draft.normalizedDirectory,
+    partition,
   });
   const iconCandidates = useProjectIconCandidatesQuery(
     draft.normalizedDirectory || undefined,
@@ -114,13 +126,41 @@ export function useNewProjectModalState(isOpen: boolean, onClose: () => void) {
     derivedSlug: draft.derivedSlug,
     normalizedDirectory: draft.normalizedDirectory,
     starterLayoutId: starter.selectedLayoutId,
+    startIntent: draft.startIntent,
     verifySlugAvailability,
-    onComplete: (slug, layoutSlug) => {
-      if (layoutSlug) setLayout(slug, layoutSlug);
+    onComplete: (slug, layoutSlug, intent) => {
+      if (intent === 'knowledge' || intent === 'connections') {
+        setProject(slug);
+        navigate(`/projects/${slug}/edit`, {
+          section: intent === 'knowledge' ? 'resources' : 'tools',
+        });
+      } else if (layoutSlug) setLayout(slug, layoutSlug);
       else setProject(slug);
       onClose();
     },
   });
+
+  const restoredRequest = useRef<string | null>(null);
+  const pending = submission.recovery.pending;
+  useEffect(() => {
+    if (!isOpen || !pending) {
+      restoredRequest.current = null;
+      return;
+    }
+    const marker = JSON.stringify([partition, pending.requestId]);
+    if (restoredRequest.current === marker) return;
+    restoredRequest.current = marker;
+    draft.setName(pending.draft.name);
+    draft.setStartIntent(pending.startIntent ?? 'workspace');
+    draft.setNameTouched(true);
+    draft.setIcon(pending.draft.icon ?? '');
+    draft.setDescription(pending.draft.description ?? '');
+    draft.setDirectory(pending.draft.workingDirectory ?? '');
+    draft.setDefaultEnvironment(
+      pending.draft.defaultEnvironment ?? { kind: 'current' },
+    );
+    starter.selectLayout(pending.starterLayoutId);
+  }, [isOpen, pending, partition, draft, starter]);
 
   return { apiBase, draft, iconCandidates, nameAdvisory, starter, submission };
 }

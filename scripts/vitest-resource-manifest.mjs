@@ -138,6 +138,13 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/shared/src/__tests__/json-file-storage.test.ts',
   'src-server/services/orchestration/__tests__/delegation-group-binding-store.test.ts',
   'src-server/services/orchestration/__tests__/delegation-group-binding-service.test.ts',
+  // Real second-process Task/share writers contend with the publication fence.
+  'src-server/services/projects/project-room-agent-task-context.test.ts',
+  // Reviewed setup launches real bounded commands and verifies durable outcomes.
+  'src-server/services/projects/__tests__/operator-setup-service.test.ts',
+  // Repository acquisition drives real hardened Git clone and checkout processes.
+  'src-server/services/projects/__tests__/repository-acquisition-service.test.ts',
+  'src-server/routes/projects/__tests__/project-working-directory-authority.test.ts',
   'packages/agent-runtime/src/__tests__/body-process.test.ts',
   'src-server/runtime/mcp/__tests__/mcp-ui-network.process.test.ts',
   // Real temporary Git repositories; isolated home per case.

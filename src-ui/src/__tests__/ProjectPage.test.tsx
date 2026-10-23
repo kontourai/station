@@ -647,13 +647,14 @@ describe('ProjectPage (#762 query-failure regression)', () => {
     expect(sdkMocks.refetch).toHaveBeenCalledTimes(1);
   });
 
-  test('offers both add actions under one Open section', async () => {
+  test('keeps workspace add actions in the expandable workspace section', async () => {
     await renderProjectPage();
 
     expect(
       screen.queryByRole('heading', { name: 'Workspace panes' }),
     ).toBeNull();
-    expect(screen.getByText('Open')).toBeTruthy();
+    fireEvent.click(screen.getByText('Open workspace'));
+    expect(screen.getByText('Workspace views')).toBeTruthy();
     expect(screen.getByRole('button', { name: '+ Add layout' })).toBeTruthy();
     expect(screen.getByRole('button', { name: '+ Add pane' })).toBeTruthy();
     // #765 F4: plain copy — no internal migration narrative in product copy.

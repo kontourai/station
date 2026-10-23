@@ -12,19 +12,31 @@ import type {
   KitRecord,
   KitRecordType,
   KnowledgeAdapterDescriptor,
+  KnowledgeDocumentImportInput,
+  KnowledgeDocumentImportReceipt,
+  KnowledgeSourceCapabilities,
   KnowledgeStoreRoot,
 } from '@kontourai/station-contracts/knowledge-store';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { _getApiBase } from '../api';
 import {
+  isApiRequestScope,
+  StationRequestAuthorityError,
+} from '../client/http';
+import {
+  type AttachKnowledgeRootProjectInput,
+  attachKnowledgeRootProject,
   type CreateKnowledgeRecordInput,
   type CreateKnowledgeRootInput,
   createKnowledgeRecord,
   createKnowledgeRoot,
   deleteKnowledgeRoot,
+  getKnowledgeDocumentImport,
   getKnowledgeGraph,
   getKnowledgeGraphNeo4j,
   getKnowledgeRecord,
+  getKnowledgeSourceCapabilities,
+  importKnowledgeDocuments,
   type KnowledgeGraph,
   type KnowledgeGraphNeo4jSyncStats,
   type KnowledgeSearchResult,
@@ -36,6 +48,7 @@ import {
   type MigratePreIndexKnowledgeOptions,
   type MigratePreIndexKnowledgeResult,
   migratePreIndexKnowledge,
+  resumeKnowledgeDocumentImport,
   type SearchKnowledgeIndexOptions,
   searchKnowledgeIndex,
   syncKnowledgeGraphNeo4j,
@@ -54,44 +67,183 @@ import { type QueryConfig, useApiQuery } from '../query-core';
 const KNOWLEDGE_ROOTS_QUERY_KEY = ['knowledge', 'roots'] as const;
 const KNOWLEDGE_ADAPTERS_QUERY_KEY = ['knowledge', 'adapters'] as const;
 
+export function useKnowledgeDocumentImportQuery(
+  scope: ApiRequestScope,
+  rootId: string | undefined,
+  requestId: string | undefined,
+) {
+  return useApiQuery<KnowledgeDocumentImportReceipt>(
+    [
+      'knowledge',
+      'document-import',
+      scope.apiBase,
+      scope.authorityKey,
+      rootId ?? null,
+      requestId ?? null,
+    ],
+    () => {
+      if (!isApiRequestScope(scope) || !rootId || !requestId)
+        throw new StationRequestAuthorityError();
+      return getKnowledgeDocumentImport(scope.apiBase, rootId, requestId, {
+        requestScope: scope,
+      });
+    },
+    {
+      enabled: isApiRequestScope(scope) && Boolean(rootId && requestId),
+      staleTime: 0,
+      keepPreviousData: false,
+      refetchOnMount: 'always',
+      retry: false,
+    },
+  );
+}
+
+export function useImportKnowledgeDocumentsMutation(scope: ApiRequestScope) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: KnowledgeDocumentImportInput) => {
+      if (!isApiRequestScope(scope)) throw new StationRequestAuthorityError();
+      return importKnowledgeDocuments(scope.apiBase, input, {
+        requestScope: scope,
+      });
+    },
+    retry: false,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['knowledge'] }),
+  });
+}
+
+export function useResumeKnowledgeDocumentImportMutation(
+  scope: ApiRequestScope,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: {
+      expectedRoot: KnowledgeStoreRoot;
+      requestId: string;
+      retryUncertain: boolean;
+    }) => {
+      if (!isApiRequestScope(scope)) throw new StationRequestAuthorityError();
+      return resumeKnowledgeDocumentImport(scope.apiBase, input, {
+        requestScope: scope,
+      });
+    },
+    retry: false,
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['knowledge'] }),
+  });
+}
+
+interface KnowledgeStoreQueryConfig<T> extends QueryConfig<T> {
+  requestScope?: ApiRequestScope;
+  requireRequestScope?: boolean;
+}
+function capturedScope(scope?: ApiRequestScope): ApiRequestScope | undefined {
+  return isApiRequestScope(scope)
+    ? { apiBase: scope.apiBase, authorityKey: scope.authorityKey }
+    : undefined;
+}
+function requireValidScope(
+  candidate: ApiRequestScope | undefined,
+  scope: ApiRequestScope | undefined,
+) {
+  if (candidate !== undefined && !scope)
+    throw new StationRequestAuthorityError();
+}
+
 /** `GET /api/knowledge/roots` — every registered knowledge-store root. */
 export function useKnowledgeRootsQuery(
-  config?: QueryConfig<KnowledgeStoreRoot[]>,
+  config?: KnowledgeStoreQueryConfig<KnowledgeStoreRoot[]>,
 ) {
+  const scope = capturedScope(config?.requestScope);
+  const required = Boolean(
+    config?.requireRequestScope || config?.requestScope !== undefined,
+  );
   return useApiQuery<KnowledgeStoreRoot[]>(
-    [...KNOWLEDGE_ROOTS_QUERY_KEY],
+    [
+      ...KNOWLEDGE_ROOTS_QUERY_KEY,
+      ...(scope
+        ? [scope.apiBase, scope.authorityKey]
+        : required
+          ? ['missing-authority']
+          : []),
+    ],
     async () => {
-      const apiBase = await _getApiBase();
-      return listKnowledgeRoots(apiBase);
+      if (required && !scope) throw new StationRequestAuthorityError();
+      const apiBase = scope?.apiBase ?? (await _getApiBase());
+      return listKnowledgeRoots(
+        apiBase,
+        scope ? { requestScope: scope } : undefined,
+      );
     },
-    config,
+    {
+      ...config,
+      enabled: (!required || Boolean(scope)) && (config?.enabled ?? true),
+      ...(scope
+        ? {
+            staleTime: 0,
+            refetchOnMount: 'always' as const,
+            keepPreviousData: false,
+          }
+        : {}),
+    },
   );
 }
 
 /** `GET /api/knowledge/adapters` — every registered adapter descriptor
  * (id/displayName only). */
 export function useKnowledgeAdaptersQuery(
-  config?: QueryConfig<
+  config?: KnowledgeStoreQueryConfig<
     Pick<KnowledgeAdapterDescriptor, 'id' | 'displayName'>[]
   >,
 ) {
+  const scope = capturedScope(config?.requestScope);
+  const required = Boolean(
+    config?.requireRequestScope || config?.requestScope !== undefined,
+  );
   return useApiQuery<Pick<KnowledgeAdapterDescriptor, 'id' | 'displayName'>[]>(
-    [...KNOWLEDGE_ADAPTERS_QUERY_KEY],
+    [
+      ...KNOWLEDGE_ADAPTERS_QUERY_KEY,
+      ...(scope
+        ? [scope.apiBase, scope.authorityKey]
+        : required
+          ? ['missing-authority']
+          : []),
+    ],
     async () => {
-      const apiBase = await _getApiBase();
-      return listKnowledgeAdapters(apiBase);
+      if (required && !scope) throw new StationRequestAuthorityError();
+      const apiBase = scope?.apiBase ?? (await _getApiBase());
+      return listKnowledgeAdapters(
+        apiBase,
+        scope ? { requestScope: scope } : undefined,
+      );
     },
-    { staleTime: 5 * 60 * 1000, ...config },
+    {
+      staleTime: 5 * 60 * 1000,
+      ...config,
+      enabled: (!required || Boolean(scope)) && (config?.enabled ?? true),
+      ...(scope
+        ? {
+            staleTime: 0,
+            refetchOnMount: 'always' as const,
+            keepPreviousData: false,
+          }
+        : {}),
+    },
   );
 }
 
 /** `POST /api/knowledge/roots` — register a new root, then refresh the root list. */
-export function useCreateKnowledgeRootMutation() {
+export function useCreateKnowledgeRootMutation(requestScope?: ApiRequestScope) {
+  const scope = capturedScope(requestScope);
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (input: CreateKnowledgeRootInput) => {
-      const apiBase = await _getApiBase();
-      return createKnowledgeRoot(apiBase, input);
+      requireValidScope(requestScope, scope);
+      const apiBase = scope?.apiBase ?? (await _getApiBase());
+      return createKnowledgeRoot(
+        apiBase,
+        input,
+        scope ? { requestScope: scope } : undefined,
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -107,23 +259,41 @@ export function useCreateKnowledgeRootMutation() {
  * `result.reason` verbatim on `ok:false` — see `../client/knowledge.ts`'s
  * `validateKnowledgeRoot` docblock for the honesty contract this preserves.
  */
-export function useValidateKnowledgeRootMutation() {
+export function useValidateKnowledgeRootMutation(
+  requestScope?: ApiRequestScope,
+) {
+  const scope = capturedScope(requestScope);
   return useMutation({
     mutationFn: async (input: ValidateKnowledgeRootInput) => {
-      const apiBase = await _getApiBase();
-      return validateKnowledgeRoot(apiBase, input);
+      requireValidScope(requestScope, scope);
+      const apiBase = scope?.apiBase ?? (await _getApiBase());
+      return validateKnowledgeRoot(
+        apiBase,
+        input,
+        scope ? { requestScope: scope } : undefined,
+      );
     },
   });
 }
 
 /** `DELETE /api/knowledge/roots/:id` — deregister a root (never deletes
  * store files), then refresh the root list. */
-export function useDeleteKnowledgeRootMutation() {
+export function useDeleteKnowledgeRootMutation(requestScope?: ApiRequestScope) {
+  const scope = capturedScope(requestScope);
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (rootId: string) => {
-      const apiBase = await _getApiBase();
-      return deleteKnowledgeRoot(apiBase, rootId);
+    mutationFn: async (
+      input: string | { rootId: string; expectedRoot: KnowledgeStoreRoot },
+    ) => {
+      const rootId = typeof input === 'string' ? input : input.rootId;
+      requireValidScope(requestScope, scope);
+      const apiBase = scope?.apiBase ?? (await _getApiBase());
+      return deleteKnowledgeRoot(apiBase, rootId, {
+        ...(scope ? { requestScope: scope } : {}),
+        ...(typeof input === 'string'
+          ? {}
+          : { expectedRoot: input.expectedRoot }),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -215,15 +385,39 @@ export function useKnowledgeRecordsByTypeQuery(
 export function useKnowledgeRecordQuery(
   rootId: string | undefined,
   id: string | undefined,
-  config?: QueryConfig<KitRecord>,
+  config?: KnowledgeStoreQueryConfig<KitRecord>,
 ) {
+  const scope = capturedScope(config?.requestScope);
+  const required = Boolean(
+    config?.requireRequestScope || config?.requestScope !== undefined,
+  );
   return useApiQuery<KitRecord>(
-    [...knowledgeRecordQueryKey(rootId ?? '', id ?? '')],
+    [
+      ...knowledgeRecordQueryKey(rootId ?? '', id ?? ''),
+      ...(scope
+        ? [scope.apiBase, scope.authorityKey]
+        : required
+          ? ['missing-authority']
+          : []),
+    ],
     async () => {
-      const apiBase = await _getApiBase();
-      return getKnowledgeRecord(apiBase, rootId as string, id as string);
+      if (required && !scope) throw new StationRequestAuthorityError();
+      const apiBase = scope?.apiBase ?? (await _getApiBase());
+      return getKnowledgeRecord(
+        apiBase,
+        rootId as string,
+        id as string,
+        scope ? { requestScope: scope } : undefined,
+      );
     },
-    { enabled: Boolean(rootId && id), ...config },
+    {
+      ...config,
+      enabled:
+        Boolean(rootId && id) &&
+        (!required || Boolean(scope)) &&
+        (config?.enabled ?? true),
+      ...(required ? { keepPreviousData: false } : {}),
+    },
   );
 }
 
@@ -231,15 +425,38 @@ export function useKnowledgeRecordQuery(
  * graph pane. */
 export function useKnowledgeGraphQuery(
   rootId: string | undefined,
-  config?: QueryConfig<KnowledgeGraph>,
+  config?: KnowledgeStoreQueryConfig<KnowledgeGraph>,
 ) {
+  const scope = capturedScope(config?.requestScope);
+  const required = Boolean(
+    config?.requireRequestScope || config?.requestScope !== undefined,
+  );
   return useApiQuery<KnowledgeGraph>(
-    [...knowledgeGraphQueryKey(rootId ?? '')],
+    [
+      ...knowledgeGraphQueryKey(rootId ?? ''),
+      ...(scope
+        ? [scope.apiBase, scope.authorityKey]
+        : required
+          ? ['missing-authority']
+          : []),
+    ],
     async () => {
-      const apiBase = await _getApiBase();
-      return getKnowledgeGraph(apiBase, rootId as string);
+      if (required && !scope) throw new StationRequestAuthorityError();
+      const apiBase = scope?.apiBase ?? (await _getApiBase());
+      return getKnowledgeGraph(
+        apiBase,
+        rootId as string,
+        scope ? { requestScope: scope } : undefined,
+      );
     },
-    { enabled: Boolean(rootId), ...config },
+    {
+      ...config,
+      enabled:
+        Boolean(rootId) &&
+        (!required || Boolean(scope)) &&
+        (config?.enabled ?? true),
+      ...(required ? { keepPreviousData: false } : {}),
+    },
   );
 }
 
@@ -398,4 +615,54 @@ export function useLearningSourceObservationQuery(
     isLoading:
       !query.isFetchedAfterMount || query.isLoading || query.isFetching,
   };
+}
+
+/** Bind a legacy Project root only after explicit operator confirmation. */
+export function useAttachKnowledgeRootProjectMutation(
+  requestScope?: ApiRequestScope,
+) {
+  const scope = capturedScope(requestScope);
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: AttachKnowledgeRootProjectInput) => {
+      requireValidScope(requestScope, scope);
+      const apiBase = scope?.apiBase ?? (await _getApiBase());
+      return attachKnowledgeRootProject(
+        apiBase,
+        input,
+        scope ? { requestScope: scope } : undefined,
+      );
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: [...KNOWLEDGE_ROOTS_QUERY_KEY],
+      });
+    },
+  });
+}
+
+export function useKnowledgeSourceCapabilitiesQuery(
+  requestScope: ApiRequestScope | undefined,
+) {
+  const scope = capturedScope(requestScope);
+  return useApiQuery<KnowledgeSourceCapabilities>(
+    [
+      'knowledge',
+      'source-capabilities',
+      scope?.apiBase ?? 'missing-authority',
+      scope?.authorityKey ?? 'missing-authority',
+    ],
+    async () => {
+      if (!scope) throw new StationRequestAuthorityError();
+      return getKnowledgeSourceCapabilities(scope.apiBase, {
+        requestScope: scope,
+      });
+    },
+    {
+      enabled: Boolean(scope),
+      staleTime: 0,
+      refetchOnMount: 'always',
+      keepPreviousData: false,
+    },
+  );
 }

@@ -22,11 +22,33 @@ export type KnowledgeRootScope =
 export interface KnowledgeStoreRoot {
   id: string; // stable id, e.g. 'root:personal', 'root:project-<slug>[:<name>]'
   scope: KnowledgeRootScope;
+  /** Durable Project identity; absent on legacy registrations, never inferred from slug for member access. */
+  projectId?: string;
+  /** Server-issued generation for a registration created or explicitly attached by the provider. */
+  registrationId?: string;
   adapterId: string; // which registered adapter serves this root
   storeRoot: string; // absolute path handed to the adapter constructor — the Kit's
   // real published axis (store-contract.md §8: `{ storeRoot: string }`)
   displayName: string;
   createdAt: string; // ISO-8601
+}
+
+export interface KnowledgeSourceCapabilities {
+  canManageSources: boolean;
+  canAttachLegacy: boolean;
+  canCheckHostPaths: boolean;
+}
+
+/** A name match never establishes ownership after Project rename or replacement. */
+export function isProjectKnowledgeRoot(
+  root: KnowledgeStoreRoot,
+  projectId: string | undefined,
+): boolean {
+  return (
+    root.scope.kind === 'project' &&
+    Boolean(projectId) &&
+    root.projectId === projectId
+  );
 }
 
 // ── Record envelope (store-contract.md §1, §4, Addendum A.2/A.3, B.1) ──────
@@ -275,9 +297,20 @@ export interface KnowledgeStoreProvider {
   listRoots(): Promise<KnowledgeStoreRoot[]>;
   getRoot(rootId: string): Promise<KnowledgeStoreRoot | null>;
   createRoot(
-    input: Omit<KnowledgeStoreRoot, 'id' | 'createdAt'>,
+    input: Omit<KnowledgeStoreRoot, 'id' | 'createdAt' | 'registrationId'>,
   ): Promise<KnowledgeStoreRoot>;
-  removeRoot(rootId: string): Promise<void>; // deregisters only — NEVER deletes store files
+  attachRootToProject?(
+    expected: KnowledgeStoreRoot,
+    projectSlug: string,
+    projectId: string,
+  ): Promise<KnowledgeStoreRoot>;
+  removeRoot(rootId: string, expected?: KnowledgeStoreRoot): Promise<void>; // deregisters only — NEVER deletes store files
+
+  /** Hold the exact registry registration across a bounded adapter operation. */
+  readonly withRootRevision?: <T>(
+    expected: KnowledgeStoreRoot,
+    operation: (adapter: KnowledgeStoreAdapter) => Promise<T>,
+  ) => Promise<T>;
 
   // Adapter registry (additive provider pattern; plugins may contribute)
   registerAdapter(descriptor: KnowledgeAdapterDescriptor): void;
@@ -305,4 +338,28 @@ export interface KnowledgeStoreProvider {
   onRecordsChanged(
     listener: (event: { rootId: string; recordIds: string[] }) => void,
   ): () => void;
+}
+
+export const KNOWLEDGE_DOCUMENT_MAX_BYTES = 262144;
+export const KNOWLEDGE_DOCUMENT_BATCH_MAX_BYTES = 1048576;
+export const KNOWLEDGE_DOCUMENT_BATCH_MAX_FILES = 8;
+export interface KnowledgeDocumentImportInput {
+  requestId: string;
+  expectedRoot: KnowledgeStoreRoot;
+  documents: { filename: string; contentBase64: string }[];
+  retryUncertain?: boolean;
+}
+export interface KnowledgeDocumentImportReceipt {
+  requestId: string;
+  rootId: string;
+  registrationId: string;
+  phase: 'pending' | 'imported' | 'partial' | 'uncertain' | 'unavailable';
+  documents: {
+    filename: string;
+    bytes: number;
+    sha256: string;
+    recordId: string;
+    phase: 'pending' | 'imported' | 'uncertain' | 'unavailable';
+    originalAvailable: boolean;
+  }[];
 }

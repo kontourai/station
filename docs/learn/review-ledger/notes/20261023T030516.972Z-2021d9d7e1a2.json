@@ -1,0 +1,7 @@
+{
+  "revision": "555bb717549341ef4288a687195470c7f92e7b32",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed the Shared Project room section against project-rooms transport, projectRooms query lifecycle, ProjectRoom UI, and eight passing focused tests. Confirmed explicit authority, guarded writes, bounded history, explicit retained-intent retry, CAS notes, optional host Agent callback, and stated integration/browser limits. Existing unrelated SDK claims were not re-audited in this lane.","inputs":["docs/reference/sdk.md","packages/sdk/package.json","packages/sdk/package.json#/exports","packages/sdk/src/__tests__/publicBarrel.test.ts","src-server/routes/projects/project-identity-routes.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/projects/project-identity-service.ts","src-server/services/projects/project-membership-service.ts","packages/sdk/src/client/project-rooms.ts","packages/sdk/src/query-domains/projectRooms.ts","src-ui/src/views/project-page/ProjectRoom.tsx"]}
+  ]
+}

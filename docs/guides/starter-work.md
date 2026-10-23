@@ -12,6 +12,13 @@ The [route](../../src-server/routes/starter-work.ts) validates the request;
 keeps the durable correlation. Runtime composition mounts this personal-home
 feature only where those owners are available. Hosted tenant execution has no
 personal-home Starter route.
+
+New Project's start intent is a separate setup choice. **Documents and
+knowledge** and **Connected tools** create a Project without a folder/starter
+prompt, then open Sources or Tools. **Repository or folder** keeps the existing
+starter recommendation; **Blank Project** may select a layout explicitly. The
+creation recovery pointer retains this intent alongside its selected starter.
+Neither an intent nor an installed layout is a dispatched Task or readiness proof.
 All Starter launch routes require the home’s first-run status to be completed.
 
 The technical behavior below accompanies the shorter
@@ -54,16 +61,21 @@ never creates another Task.
 4. Keep gate state, evidence, route-backs, and receipts with the work as it
    progresses.
 
-The Project's **Tasks** layout groups local Tasks by their recorded status:
-Backlog, In progress, Blocked, Review, Done, and Canceled. Select a card and
-choose **Open Task** to enter its workspace. **Refresh tasks** reads the current
-Task records; status is not a percentage complete or proof that an agent is
-running. Connected provider items retain their separate read-only behavior.
-The Task workspace opens on **Chat** and makes the viewer present. **Brief** is
-the autosaved shared plan; its Goal and checklist appear beside desktop Chat.
-**Results** collects kept answers, file outputs and pull requests. **Details**
+The Project’s **Tasks** list shows each local Task’s title, recorded status,
+and assigned Agent when known. Select its title or **Open Task** to enter its
+Task Room. **Details** opens inspection and dispatch controls; the optional board
+continues to group Tasks by status. The list separates **Now** (ready, active,
+blocked or awaiting review), **Backlog**, and **History**. These views do not
+change status. **Refresh tasks** reads current Task records.
+Status is not a percentage complete or proof that an Agent is running. Connected
+provider items retain their separate read-only behavior.
+The Task workspace opens on **Overview** with status, completion criteria,
+subtasks, decisions, blockers and kept deliverables. **Conversation** opens its
+shared discussion. **Plan** edits the autosaved document that supplies the goal
+and checklist. **Work chats** links canonical conversations that can open in
+the chat inbox; a link grants no transcript or execution access. **Details**
 contains identity, local workspace metadata, Basis, references and inspection.
-On narrow screens **About** holds the desktop rail context.
+Subtask completion does not automatically complete its parent.
 
 If the workspace is not ready, Station keeps the relevant Connections action
 visible. Run `station doctor` for a local diagnosis.

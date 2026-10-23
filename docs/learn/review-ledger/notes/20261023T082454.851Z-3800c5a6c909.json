@@ -1,0 +1,7 @@
+{
+  "revision": "9fb96c2ee71da64816f5c86bbcd335a343a355fc",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Final behavior-neutral source annotation review at63ed3911f05: retained directory resolver now explains raw workingDirectory metadata equality, which detects concurrent edits while ProjectResourceResolver separately owns tilde expansion and filesystem verification. Added exact category1 stored-path disposition, no expansion bypass or production behavior change. Prior qualified-session/current-resource/receipt/taskview/capture claim review remains unchanged; no provider evidence renewed.","inputs":["docs/architecture/module-map.md","src-server/services/projects/project-session-directory.ts"]}
+  ]
+}

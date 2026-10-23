@@ -3250,7 +3250,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           { method: 'DELETE', headers: peerHeaders },
           REMOTE_TAILNET_ENV,
         );
-        expect(removed.status, await removed.clone().text()).toBe(403);
+        expect(removed.status, await removed.clone().text()).toBe(404);
         expect(await knowledgeProvider!.getRoot('root:conversations')).not.toBe(
           null,
         );

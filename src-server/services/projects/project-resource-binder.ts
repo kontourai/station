@@ -101,15 +101,25 @@ type BindProjectResourceResult =
 /** The subset of `ProjectBindingsStore` this action writes through. */
 export interface ProjectBindingWriter {
   hostAliases(): Record<string, string>;
-  upsertProjectBinding(input: {
-    projectId: string;
-    resourceId: string;
-    kind: ProjectBinding['kind'];
-    path: string;
-    remotes: string[];
-    verifiedAt: number;
-    state: ProjectBinding['state'];
-  }): Promise<ProjectBinding>;
+  findBinding?(
+    projectId: string,
+    resourceId: string,
+  ): ProjectBinding | undefined;
+  upsertProjectBinding(
+    input: {
+      projectId: string;
+      resourceId: string;
+      kind: ProjectBinding['kind'];
+      path: string;
+      remotes: string[];
+      verifiedAt: number;
+      state: ProjectBinding['state'];
+    },
+    admission?: {
+      expectedBinding: ProjectBinding | null;
+      assertCurrent: () => void;
+    },
+  ): Promise<ProjectBinding>;
 }
 
 /** The subset of `ProjectManifestStore` this action reads. */
@@ -212,6 +222,13 @@ export async function bindProjectResource(
   const target = selectBindTarget(manifest, resourceId);
   if (!target.ok) return target;
   const resource = target.resource;
+  const bindingAdmission = deps.bindings.findBinding
+    ? {
+        expectedBinding:
+          deps.bindings.findBinding(manifest.id, resource.id) ?? null,
+        assertCurrent: () => {},
+      }
+    : undefined;
 
   // Decision 2: the operator's path. Decision 3: absolutized for the reads,
   // stored verbatim below.
@@ -259,15 +276,18 @@ export async function bindProjectResource(
     // directory against (§3.2), so DIRECTORY existence is the whole of the
     // available verification — the same bar `ProjectResourceResolver` applies
     // when it returns `bound` for one.
-    const binding = await deps.bindings.upsertProjectBinding({
-      projectId: manifest.id,
-      resourceId: resource.id,
-      kind: 'local-directory',
-      path: requestedPath,
-      remotes: [],
-      verifiedAt: now(),
-      state: 'bound',
-    });
+    const binding = await deps.bindings.upsertProjectBinding(
+      {
+        projectId: manifest.id,
+        resourceId: resource.id,
+        kind: 'local-directory',
+        path: requestedPath,
+        remotes: [],
+        verifiedAt: now(),
+        state: 'bound',
+      },
+      bindingAdmission,
+    );
     return { ok: true, binding };
   }
 
@@ -320,16 +340,19 @@ export async function bindProjectResource(
     return { ok: false, code: 'remotes-do-not-intersect', reason };
   }
 
-  const binding = await deps.bindings.upsertProjectBinding({
-    projectId: manifest.id,
-    resourceId: resource.id,
-    kind: 'git-checkout',
-    // Decision 3: verbatim. `remotes` raw — the store canonicalizes them
-    // because they are the matching key.
-    path: requestedPath,
-    remotes: remotes.remotes.map((remote) => remote.url),
-    verifiedAt: now(),
-    state: 'bound',
-  });
+  const binding = await deps.bindings.upsertProjectBinding(
+    {
+      projectId: manifest.id,
+      resourceId: resource.id,
+      kind: 'git-checkout',
+      // Decision 3: verbatim. `remotes` raw — the store canonicalizes them
+      // because they are the matching key.
+      path: requestedPath,
+      remotes: remotes.remotes.map((remote) => remote.url),
+      verifiedAt: now(),
+      state: 'bound',
+    },
+    bindingAdmission,
+  );
   return { ok: true, binding };
 }

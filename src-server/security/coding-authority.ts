@@ -93,6 +93,20 @@ export function mayRunCommandsOnHost(
   );
 }
 
+/** Re-read a credential's scope for delayed command or folder publication. */
+export function mayRunCommandsOnHostCurrently(
+  request: Request,
+  security: { resolveGrantedScope: (credential: string) => string | undefined },
+): boolean {
+  const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+  return mayRunCommandsOnHost(
+    request,
+    principal && principal.kind !== 'internal'
+      ? security.resolveGrantedScope(principal.credential)
+      : undefined,
+  );
+}
+
 /**
  * The refusal code for choosing a folder on this computer without the
  * authority to run commands there. One code for every route that takes a

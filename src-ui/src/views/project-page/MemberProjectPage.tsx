@@ -14,6 +14,9 @@ import {
 import { ToolLibraryClientContext } from '../agent-editor/ToolLibraryContext';
 import { AccessSection } from '../project-settings/AccessSection';
 import { ProjectAgentsPanel } from '../project-settings/ProjectAgentsPanel';
+import { ProjectNavigation, useProjectDestination } from './ProjectNavigation';
+import { ProjectRoom } from './ProjectRoom';
+import '../ProjectPage.css';
 import { MemberProjectHeader } from './ProjectPageHeader';
 import '../project-page-frame.css';
 
@@ -28,6 +31,10 @@ export function MemberProjectPage({
   requestScope: NonNullable<RequestScope>;
   accessWriteDisabledReason?: string;
 }) {
+  const { destination, selectDestination } = useProjectDestination(
+    project.slug,
+  );
+  const overview = destination === 'overview' || destination === 'sources';
   const [selectedShareId, setSelectedShareId] = useState<string | null>(null);
   const [toolsProjectId, setToolsProjectId] = useState<string>();
   const sharedWork = useScopedMemberProjectSharedTasksQuery(
@@ -39,8 +46,8 @@ export function MemberProjectPage({
   );
 
   return (
-    <div className="project-page">
-      <div className="project-page__inner">
+    <div className="project-page project-page--space">
+      <div className="project-page__inner project-page__space">
         {/* The one icon rule every surface uses. It refuses a URL or a path,
             so the native relay view never issues a raw image request outside
             the broker; a validated data: image is inline bytes and draws.
@@ -52,92 +59,109 @@ export function MemberProjectPage({
           onRefresh={() => void sharedWork.refetch()}
           refreshDisabled={!requestScope.isCurrent() || sharedWork.isFetching}
         />
-        {project.actions.includes('manage-members') && (
-          <details>
-            <summary>Project access</summary>
-            <AccessSection
+        <ProjectNavigation slug={project.slug} member />
+        <section className="project-page__content">
+          <div hidden={!overview && destination !== 'room'}>
+            <ProjectRoom
               slug={project.slug}
               projectId={project.id}
-              allowEnableSharing={false}
-              writeDisabledReason={accessWriteDisabledReason}
+              requestScope={requestScope}
+              variant={destination === 'room' ? 'full' : 'preview'}
+              onOpenRoom={() => selectDestination('room')}
             />
-          </details>
-        )}
-        {project.actions.includes('manage-members') &&
-          (toolsProjectId === project.id ? (
-            <ToolLibraryClientContext.Provider
-              value={{
-                apiBase: requestScope.apiBase,
-                options: { requestScope },
-              }}
-            >
-              <ProjectAgentsPanel project={project} />
-            </ToolLibraryClientContext.Provider>
-          ) : (
-            <Button onClick={() => setToolsProjectId(project.id)}>
-              Agents and tools
-            </Button>
-          ))}
-        <section aria-labelledby="member-project-shared-work-title">
-          <h2 id="member-project-shared-work-title">Shared work</h2>
-          {sharedWork.isPending ? (
-            <SkeletonBlock count={2} label="Loading shared work" />
-          ) : sharedWork.isError ? (
-            <ErrorState
-              title="Shared work is unavailable"
-              description={
-                sharedWork.error instanceof Error &&
-                'status' in sharedWork.error &&
-                [401, 403, 404].includes(Number(sharedWork.error.status))
-                  ? 'Your access may have changed. Refresh the Project to check again.'
-                  : 'Station could not load the work shared with this account.'
-              }
-              action={
-                <Button
-                  onClick={() => void sharedWork.refetch()}
-                  disabled={!requestScope.isCurrent() || sharedWork.isFetching}
-                >
-                  Try again
-                </Button>
-              }
-            />
-          ) : sharedWork.data.length === 0 ? (
-            <Empty
-              variant="compact"
-              label="There is no shared work in this Project yet."
-            />
-          ) : (
-            <ul aria-label="Shared work items">
-              {sharedWork.data.map((item) => (
-                <li key={`${item.shareId}:${item.task.id}`}>
-                  <strong>{item.task.title}</strong>
-                  <StatusBadge
-                    tone="neutral"
-                    status={taskStatusLabel(item.task.status)}
-                  />
+          </div>
+          {project.actions.includes('manage-members') && (
+            <details>
+              <summary>Project access</summary>
+              <AccessSection
+                slug={project.slug}
+                projectId={project.id}
+                allowEnableSharing={false}
+                writeDisabledReason={accessWriteDisabledReason}
+              />
+            </details>
+          )}
+          {project.actions.includes('manage-members') &&
+            (toolsProjectId === project.id ? (
+              <ToolLibraryClientContext.Provider
+                value={{
+                  apiBase: requestScope.apiBase,
+                  options: { requestScope },
+                }}
+              >
+                <ProjectAgentsPanel project={project} />
+              </ToolLibraryClientContext.Provider>
+            ) : (
+              <Button onClick={() => setToolsProjectId(project.id)}>
+                Agents and tools
+              </Button>
+            ))}
+          <section
+            hidden={!overview && destination !== 'tasks'}
+            aria-labelledby="member-project-shared-work-title"
+          >
+            <h2 id="member-project-shared-work-title">Shared work</h2>
+            {sharedWork.isPending ? (
+              <SkeletonBlock count={2} label="Loading shared work" />
+            ) : sharedWork.isError ? (
+              <ErrorState
+                title="Shared work is unavailable"
+                description={
+                  sharedWork.error instanceof Error &&
+                  'status' in sharedWork.error &&
+                  [401, 403, 404].includes(Number(sharedWork.error.status))
+                    ? 'Your access may have changed. Refresh the Project to check again.'
+                    : 'Station could not load the work shared with this account.'
+                }
+                action={
                   <Button
-                    aria-expanded={selectedShareId === item.shareId}
-                    onClick={() =>
-                      setSelectedShareId((current) =>
-                        current === item.shareId ? null : item.shareId,
-                      )
+                    onClick={() => void sharedWork.refetch()}
+                    disabled={
+                      !requestScope.isCurrent() || sharedWork.isFetching
                     }
                   >
-                    {selectedShareId === item.shareId
-                      ? 'Hide shared item details'
-                      : `Read shared item: ${item.task.title}`}
+                    Try again
                   </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-          {selectedWork ? (
-            <SharedWorkDetails
-              project={project}
-              sharedTask={selectedWork}
-              requestScope={requestScope}
-            />
-          ) : null}
+                }
+              />
+            ) : sharedWork.data.length === 0 ? (
+              <Empty
+                variant="compact"
+                label="There is no shared work in this Project yet."
+              />
+            ) : (
+              <ul aria-label="Shared work items">
+                {sharedWork.data.map((item) => (
+                  <li key={`${item.shareId}:${item.task.id}`}>
+                    <strong>{item.task.title}</strong>
+                    <StatusBadge
+                      tone="neutral"
+                      status={taskStatusLabel(item.task.status)}
+                    />
+                    <Button
+                      aria-expanded={selectedShareId === item.shareId}
+                      onClick={() =>
+                        setSelectedShareId((current) =>
+                          current === item.shareId ? null : item.shareId,
+                        )
+                      }
+                    >
+                      {selectedShareId === item.shareId
+                        ? 'Hide shared item details'
+                        : `Read shared item: ${item.task.title}`}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {selectedWork ? (
+              <SharedWorkDetails
+                project={project}
+                sharedTask={selectedWork}
+                requestScope={requestScope}
+              />
+            ) : null}
+          </section>
         </section>
       </div>
     </div>

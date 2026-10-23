@@ -1,0 +1,48 @@
+.project-tasks-section .project-tasks-section__list-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.project-tasks-section__outcome {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-3);
+  padding-inline: var(--k-space-3);
+  border-bottom: 1px solid var(--k-line);
+}
+
+.project-tasks-section__open {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: var(--k-space-2);
+  padding-block: var(--k-space-4);
+  color: var(--k-text);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.project-tasks-section__title {
+  font-size: var(--k-text-md);
+  font-weight: 600;
+}
+
+.project-tasks-section__open .project-page__task-row-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+  color: var(--k-text-muted);
+}
+
+.project-tasks-section__next {
+  color: var(--k-action);
+  font-size: var(--k-text-sm);
+}
+
+.project-tasks-section__open:focus-visible {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+
+.project-tasks-section__outcome > button {
+  min-height: 44px;
+}

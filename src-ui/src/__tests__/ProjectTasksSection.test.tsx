@@ -41,7 +41,7 @@ let tasks: Array<{
   projectId: string;
   title: string;
   priority: 'normal';
-  status: 'todo' | 'ready';
+  status: 'todo' | 'ready' | 'in_progress' | 'done';
   createdAt: string;
   updatedAt: string;
   description: string;
@@ -203,7 +203,7 @@ describe('ProjectTasksSection', () => {
         projectId: 'project-alpha',
         title: 'Existing task',
         priority: 'normal',
-        status: 'todo',
+        status: 'ready',
         description: '',
         createdBy: 'user',
         agentId: 'agent-one',
@@ -226,6 +226,29 @@ describe('ProjectTasksSection', () => {
     expect(useWorkItemsQuery).toHaveBeenCalledWith('project-alpha', {
       enabled: false,
     });
+  });
+
+  test('opens the exact Task from the flat list without starting an agent', () => {
+    tasks[0] = { ...tasks[0], id: 'task/one ?' };
+    render(<ProjectTasksSection slug="project-alpha" />);
+    const entry = screen.getByRole('link', {
+      name: /Existing task.*Open Task/,
+    });
+    expect(entry.getAttribute('href')).toBe('/tasks/task%2Fone%20%3F');
+    expect(entry.textContent).toContain('Agent: agent-one');
+    expect(screen.queryByRole('button', { name: 'Dispatch' })).toBeNull();
+    fireEvent.click(entry, { metaKey: true });
+    expect(navigate).not.toHaveBeenCalled();
+    fireEvent.click(entry);
+    expect(navigate).toHaveBeenCalledExactlyOnceWith('/tasks/task%2Fone%20%3F');
+    expect(dispatchTask).not.toHaveBeenCalled();
+    expect(createTask).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Details for Existing task' }),
+    );
+    expect(screen.getByRole('button', { name: 'Dispatch' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close details' }));
+    expect(screen.queryByRole('button', { name: 'Dispatch' })).toBeNull();
   });
 
   test('opens the selected board task and refreshes its canonical records without dispatching', () => {
@@ -422,6 +445,39 @@ describe('ProjectTasksSection', () => {
     window.history.pushState({}, '', '/');
   });
 
+  test('keeps backlog and completed work out of Now and opens the selected outcome', () => {
+    tasks = [
+      {
+        ...tasks[0],
+        id: 'active',
+        title: 'Active outcome',
+        status: 'in_progress',
+      },
+      { ...tasks[0], id: 'planned', title: 'Planned outcome', status: 'todo' },
+      {
+        ...tasks[0],
+        id: 'finished',
+        title: 'Finished outcome',
+        status: 'done',
+      },
+    ];
+    render(<ProjectTasksSection slug="project-alpha" />);
+    expect(screen.getByRole('link', { name: /Active outcome/ })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /Planned outcome/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: /Finished outcome/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Backlog · 1' }));
+    expect(screen.getByRole('link', { name: /Planned outcome/ })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /Active outcome/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'History · 1' }));
+    fireEvent.click(screen.getByRole('link', { name: /Finished outcome/ }));
+    expect(navigate).toHaveBeenCalledWith('/tasks/finished');
+    expect(tasks.map((task) => task.status)).toEqual([
+      'in_progress',
+      'todo',
+      'done',
+    ]);
+  });
+
   test('New Task offers shaping in the exact project without creating a Task', () => {
     const listener = vi.fn();
     window.addEventListener('station:shape-task', listener);
@@ -441,6 +497,9 @@ describe('ProjectTasksSection', () => {
     (agentId) => {
       tasks[0] = { ...tasks[0], agentId };
       render(<ProjectTasksSection slug="project-alpha" />);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Details for Existing task' }),
+      );
 
       const button = screen.getByRole<HTMLButtonElement>('button', {
         name: 'Dispatch',
@@ -454,7 +513,7 @@ describe('ProjectTasksSection', () => {
       expect(reason.textContent).toContain('See Project settings › Agents.');
       fireEvent.click(button);
       expect(dispatchTask).not.toHaveBeenCalled();
-      expect(tasks[0].status).toBe('todo');
+      expect(tasks[0].status).toBe('ready');
       const settingsLink = screen.getByRole('link', {
         name: 'Project settings › Agents',
       });
@@ -473,13 +532,16 @@ describe('ProjectTasksSection', () => {
   test('keeps the linked Session identity inside Details', () => {
     tasks[0] = { ...tasks[0], sessionId: 'session:fixture-linked-run' };
     render(<ProjectTasksSection slug="project-alpha" />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Details for Existing task' }),
+    );
     expect(screen.queryByText('Session session:fixture-linked-run')).toBeNull();
     const identity = screen.getByText('session:fixture-linked-run', {
       exact: true,
     });
     const details = identity.closest('details');
     expect(details?.open).toBe(false);
-    fireEvent.click(screen.getByText('Details', { exact: true }));
+    fireEvent.click(details!.querySelector('summary')!);
     expect(details?.open).toBe(true);
     expect(details?.contains(identity)).toBe(true);
   });
@@ -513,6 +575,9 @@ describe('ProjectTasksSection', () => {
       />,
     );
 
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Details for Existing task' }),
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Open Task' }));
     expect(navigate).toHaveBeenCalledWith('/tasks/task-1');
 
@@ -907,6 +972,9 @@ describe('ProjectTasksSection', () => {
       };
 
       render(<ProjectTasksSection slug="project-alpha" />);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Details for Existing task' }),
+      );
 
       expect(screen.getByTestId('task-claim-badge').textContent).toContain(
         'flow-agents-cli:cli-session-9',
@@ -924,6 +992,9 @@ describe('ProjectTasksSection', () => {
       taskClaim = { state: 'claimed-by-me' };
 
       render(<ProjectTasksSection slug="project-alpha" />);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Details for Existing task' }),
+      );
 
       expect(screen.getByTestId('task-claim-badge').textContent).toBe(
         'Claimed by you',
@@ -942,6 +1013,9 @@ describe('ProjectTasksSection', () => {
       } as any;
 
       render(<ProjectTasksSection slug="project-alpha" />);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Details for Existing task' }),
+      );
 
       expect(screen.queryByTestId('task-claim-badge')).toBeNull();
       expect(

@@ -10,6 +10,46 @@
   backdrop-filter: blur(10px);
 }
 
+.new-project-modal__intents {
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+.new-project-modal__intents legend {
+  margin-bottom: var(--k-space-3);
+  font-weight: 600;
+}
+.new-project-modal__intent-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: var(--k-space-3);
+}
+.new-project-modal__intent {
+  display: flex;
+  gap: var(--k-space-2);
+  align-items: flex-start;
+  padding: var(--k-space-3);
+  min-height: 44px;
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  cursor: pointer;
+}
+.new-project-modal__intent:has(input:checked) {
+  border-color: var(--k-action);
+}
+.new-project-modal__intent:focus-within {
+  outline: 2px solid var(--k-focus);
+  outline-offset: 2px;
+}
+.new-project-modal__intent strong,
+.new-project-modal__intent small {
+  display: block;
+}
+.new-project-modal__intent small {
+  margin-top: var(--k-space-1);
+  color: var(--k-text-muted);
+}
+
 .new-project-modal {
   width: min(720px, 100%);
   max-height: min(92vh, 920px);

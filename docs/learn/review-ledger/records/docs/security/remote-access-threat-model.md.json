@@ -138,7 +138,17 @@
 
     "src-server/services/plugins/tool-library-service.ts",
 
-    "src-server/services/telemetry-producers/telemetry-producer-store.ts"
+    "src-server/services/telemetry-producers/telemetry-producer-store.ts",
+
+    "src-server/routes/knowledge/knowledge-document-import-routes.ts",
+
+    "src-server/routes/projects/project-s3-source-routes.ts",
+
+    "packages/contracts/src/deployment-authentication.ts",
+
+    "src-server/runtime/routes/task-relationship-authority.ts",
+
+    "src-server/services/projects/project-s3-sources.ts"
   ],
 
   "checks": [

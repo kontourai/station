@@ -1,24 +1,55 @@
-import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
+import {
+  isProjectKnowledgeRoot,
+  type KnowledgeStoreRoot,
+} from '@kontourai/station-contracts/knowledge-store';
 import {
   KnowledgeRecallBrowser,
   knowledgeRootIncarnationKey,
   useCreateKnowledgeRootMutation,
+  useKnowledgeGraphQuery,
   useKnowledgeRecallGraph,
+  useKnowledgeRecordQuery,
   useKnowledgeRootsQuery,
+  useKnowledgeSourceCapabilitiesQuery,
 } from '@kontourai/station-sdk';
+import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { InfoTip } from '../../components/InfoTip';
 import { PageRow } from '../../components/PageRow';
-import { ErrorState, Skeleton } from '../../components/state';
+import { ErrorState, Skeleton, SkeletonBlock } from '../../components/state';
+import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { errorText } from '../../utils/errorText';
 import './ProjectKnowledgeStores.css';
 
-function StoreRecords({ root }: { root: KnowledgeStoreRoot }) {
+function StoreRecords({
+  root,
+  authority,
+}: {
+  root: KnowledgeStoreRoot;
+  authority: ApiRequestScope;
+}) {
+  function useScopedGraph(rootId: string | undefined) {
+    return useKnowledgeGraphQuery(rootId, {
+      requestScope: authority,
+      requireRequestScope: true,
+      keepPreviousData: false,
+    });
+  }
+  function useScopedRecord(
+    rootId: string | undefined,
+    recordId: string | undefined,
+  ) {
+    return useKnowledgeRecordQuery(rootId, recordId, {
+      requestScope: authority,
+      requireRequestScope: true,
+      keepPreviousData: false,
+    });
+  }
   const authorityKey = knowledgeRootIncarnationKey(root);
-  const graph = useKnowledgeRecallGraph(root.id, authorityKey);
+  const graph = useKnowledgeRecallGraph(root.id, authorityKey, useScopedGraph);
   if (graph.isAuthorityLoading) return <Skeleton variant="block" />;
-  if (graph.isError && !graph.data)
+  if (graph.isError)
     return (
       <ErrorState
         title="Could not load records"
@@ -32,11 +63,18 @@ function StoreRecords({ root }: { root: KnowledgeStoreRoot }) {
       rootId={root.id}
       authorityKey={authorityKey}
       graph={graph.data}
+      useRecordQuery={useScopedRecord}
     />
   ) : null;
 }
 
-function Store({ root }: { root: KnowledgeStoreRoot }) {
+function Store({
+  root,
+  authority,
+}: {
+  root: KnowledgeStoreRoot;
+  authority: ApiRequestScope;
+}) {
   const [open, setOpen] = useState(false);
   return (
     <details
@@ -44,19 +82,56 @@ function Store({ root }: { root: KnowledgeStoreRoot }) {
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary>{root.displayName}</summary>
-      {open && <StoreRecords root={root} />}
+      {open && <StoreRecords root={root} authority={authority} />}
     </details>
   );
 }
 
-export function ProjectKnowledgeStores({ slug }: { slug: string }) {
-  const roots = useKnowledgeRootsQuery();
-  const create = useCreateKnowledgeRootMutation();
+export function ProjectKnowledgeStores({
+  slug,
+  projectId,
+}: {
+  slug: string;
+  projectId?: string;
+}) {
+  const authority = useHostRequestAuthorityScope();
+  return authority ? (
+    <ScopedProjectKnowledgeStores
+      key={`${projectId}:${slug}:${authority.apiBase}:${authority.authorityKey}`}
+      slug={slug}
+      projectId={projectId}
+      authority={authority}
+    />
+  ) : (
+    <p>Connect to this Station to read project knowledge.</p>
+  );
+}
+
+function ScopedProjectKnowledgeStores({
+  slug,
+  projectId,
+  authority,
+}: {
+  slug: string;
+  projectId?: string;
+  authority: ApiRequestScope;
+}) {
+  const roots = useKnowledgeRootsQuery({
+    requestScope: authority,
+    requireRequestScope: true,
+    keepPreviousData: false,
+  });
+  const create = useCreateKnowledgeRootMutation(authority);
+  const capabilities = useKnowledgeSourceCapabilitiesQuery(authority);
   const stores =
-    roots.data?.filter(
-      (root) =>
-        root.scope.kind === 'project' && root.scope.projectSlug === slug,
-    ) ?? [];
+    roots.data?.filter((root) => isProjectKnowledgeRoot(root, projectId)) ?? [];
+  if (!projectId)
+    return (
+      <p>
+        Project identity is unavailable. Reload the Project before reading its
+        stores.
+      </p>
+    );
   return (
     <div className="project-knowledge-stores">
       <PageRow
@@ -71,12 +146,20 @@ export function ProjectKnowledgeStores({ slug }: { slug: string }) {
           </>
         }
         control={
-          !stores.length && !roots.isLoading && !roots.isError ? (
+          !stores.length &&
+          !roots.isLoading &&
+          !roots.isError &&
+          !capabilities.isError &&
+          !capabilities.isPending &&
+          !capabilities.isPlaceholderData &&
+          !capabilities.isFetching &&
+          capabilities.data?.canManageSources ? (
             <Button
               size="sm"
               onClick={() =>
                 create.mutate({
                   scope: { kind: 'project', projectSlug: slug },
+                  expectedProjectId: projectId,
                   adapterId: 'kit-default-store',
                 })
               }
@@ -87,9 +170,12 @@ export function ProjectKnowledgeStores({ slug }: { slug: string }) {
           ) : undefined
         }
       />
+      {capabilities.isPlaceholderData && (
+        <SkeletonBlock count={1} label="Checking store permissions" />
+      )}
       {roots.isLoading ? (
         <Skeleton variant="line" />
-      ) : roots.isError && !roots.data ? (
+      ) : roots.isError ? (
         <ErrorState
           title="Could not load stores"
           description={errorText(roots.error)}
@@ -97,7 +183,11 @@ export function ProjectKnowledgeStores({ slug }: { slug: string }) {
         />
       ) : (
         stores.map((root) => (
-          <Store key={knowledgeRootIncarnationKey(root)} root={root} />
+          <Store
+            key={knowledgeRootIncarnationKey(root)}
+            root={root}
+            authority={authority}
+          />
         ))
       )}
       {create.isError && (

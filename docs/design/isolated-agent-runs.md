@@ -41,7 +41,7 @@ these fixtures do not establish a live engine or packaged-release journey.
 
 ## Purpose
 
-Normal chat sessions should keep using the current project checkout and runtime connection. Long-running autonomous work is different: Ralph, team execution, scheduled code work, and future project-task runs may need isolation so agent edits, temp homes, ports, and cleanup do not disturb the user's primary workspace.
+New chat Sessions use the selected Project directory and runtime connection. Qualified existing Sessions keep their recorded directory while its attached resource remains authorized. Long-running autonomous work is different: Ralph, team execution, scheduled code work, and future project-task runs may need isolation so agent edits, temp homes, ports, and cleanup do not disturb the user's primary workspace.
 
 This note captures a survey-inspired isolation pattern without making git worktrees mandatory.
 

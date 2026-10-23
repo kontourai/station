@@ -38,6 +38,8 @@
  * treatment of an id-shaped value.
  */
 
+import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
+import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge-root-identity';
 import { Hono } from 'hono';
 import { isSafePathSegment } from '../../knowledge-index/path-safety.js';
 import type { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
@@ -59,10 +61,16 @@ import {
   knowledgeRootReadKind,
   UNSHARED_GRAPH_SYNC_FORBIDDEN_ERROR,
 } from '../../knowledge-store/session-backed-roots.js';
+import { guardProjectResponse } from '../../services/projects/project-response-guard.js';
 import { errorMessage } from '../schemas/schemas.js';
 
 interface Neo4jGraphRouteDeps {
   store: KnowledgeStoreProvider;
+  mayUseRoot?: (
+    request: Request,
+    root: KnowledgeStoreRoot,
+    action: 'view' | 'sync',
+  ) => Promise<boolean>;
   /** Re-checked per request — never captured once at route-construction time —
    * same "connection may change after startup" discipline
    * `knowledge-index-routes.ts`'s `getEmbedder` already established. Defaults to
@@ -192,6 +200,40 @@ export function createNeo4jGraphRoutes(deps: Neo4jGraphRouteDeps) {
   const runAsIndexer =
     deps.runAsIndexer ?? (<T>(build: () => Promise<T>) => build());
 
+  const rootAuthorities = new WeakMap<Request, () => Promise<boolean>>();
+  app.use('/roots/:rootId/graph/*', async (c, next) => {
+    if (!deps.mayUseRoot) return next();
+    const expected = await deps.store.getRoot(c.req.param('rootId'));
+    if (!expected)
+      return c.json(
+        { success: false, error: KNOWLEDGE_ROOT_NOT_FOUND_ERROR },
+        404,
+      );
+    const action = c.req.method === 'POST' ? 'sync' : 'view';
+    const mayUseRoot = deps.mayUseRoot;
+    const current = async () => {
+      try {
+        const root = await deps.store.getRoot(expected.id);
+        return Boolean(
+          root &&
+            knowledgeRootIncarnationKey(root) ===
+              knowledgeRootIncarnationKey(expected) &&
+            (await mayUseRoot(c.req.raw, root, action)),
+        );
+      } catch {
+        return false;
+      }
+    };
+    if (!(await current()))
+      return c.json(
+        { success: false, error: 'Knowledge graph access denied.' },
+        403,
+      );
+    rootAuthorities.set(c.req.raw, current);
+    await next();
+    if (c.res.ok) c.res = await guardProjectResponse(c.res, current);
+  });
+
   // POST /roots/:rootId/graph/neo4j-sync — idempotent sync trigger.
   app.post('/roots/:rootId/graph/neo4j-sync', async (c) => {
     try {
@@ -224,6 +266,12 @@ export function createNeo4jGraphRoutes(deps: Neo4jGraphRouteDeps) {
           403,
         );
       }
+      const current = rootAuthorities.get(c.req.raw);
+      if (current && !(await current()))
+        return c.json(
+          { success: false, error: 'Knowledge graph access denied.' },
+          403,
+        );
       const driver = driverResult.driver;
       const stats = await runAsIndexer(() =>
         syncRootToNeo4j({

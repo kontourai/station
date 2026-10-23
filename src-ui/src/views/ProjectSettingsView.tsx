@@ -46,7 +46,7 @@ import { AccessSection } from './project-settings/AccessSection';
 import { AgentsSection } from './project-settings/AgentsSection';
 import { KnowledgeSection } from './project-settings/KnowledgeSection';
 import { LayoutsSection } from './project-settings/LayoutsSection';
-import { ResourcesSection } from './project-settings/ResourcesSection';
+import { ProjectSourcesSection } from './project-settings/ProjectSourcesSection';
 import { ToolsSection } from './project-settings/ToolsSection';
 import type { ProjectForm } from './project-settings/types';
 import {
@@ -65,7 +65,7 @@ const PROJECT_SETTINGS_SECTIONS = [
   ['agents', 'Agents'],
   ['tools', 'Tools'],
   ['layouts', 'Layouts'],
-  ['resources', 'Resources'],
+  ['resources', 'Sources'],
   ['access', 'People and access'],
   ['knowledge', 'Project knowledge'],
   ['danger', 'Danger zone'],
@@ -670,13 +670,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
 
         <LayoutsSection slug={slug} />
 
-        {/*
-          station#1502 slice 4 — §3.6's resolution states and their repair
-          actions. Mounted HERE and nowhere else: `ProjectPage.tsx` stays
-          byte-unchanged so the first-run journey `tests/first-run-live.spec.ts`
-          pins is provably untouched without an e2e run.
-*/}
-        <ResourcesSection slug={slug} />
+        <ProjectSourcesSection slug={slug} projectId={project?.id} />
         {project && <AccessSection slug={slug} projectId={project.id} />}
 
         {/* Knowledge */}

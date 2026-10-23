@@ -11,6 +11,15 @@ For the precise vocabulary used below, see [docs/glossary.md](../glossary.md).
 
 See the [application walkthrough](../learn/walkthroughs.md#connections) for a captured example and its evidence limits.
 
+## S3 source profiles
+
+Experimental Project S3 sources use an explicitly selected named AWS profile on
+the Station host. They remain default-off pending real AWS acceptance and are
+configured in Project **Sources**, separately from model connections and personal
+connected-tool accounts. Sharing a prefix explicitly lets current Project readers
+use that host profile for bounded reads; it does not copy its credentials to
+members or choose a person's account by fallback. See [the S3 source guide](knowledge.md#experimental-read-only-s3-prefixes).
+
 ## Read the connection list
 
 Each row shows one readiness state and a next action. Model connections distinguish
@@ -1305,6 +1314,160 @@ binding and model. It does not edit the saved Agent.
 
 ---
 
+## Start a Project from a repository
+
+In **New Project**, open **Start from a Git repository**, enter the explicit
+HTTPS or SSH repository URL, and optionally choose a branch or tag and a
+repository-relative subdirectory such as `apps/web`. Choose
+**Acquire repository**, then **Use this checkout** to put the working copy into
+the Project draft. Station uses the repository name for an untouched name field.
+Create the Project and select its starter through the usual form. At creation,
+Station rechecks the checkout's origin, commit and unchanged files, then retains
+the acquisition source and exact commit on the Project. If files changed, Station
+preserves them and asks you to reacquire or deliberately choose the folder.
+
+Acquisition uses this host's Git credentials and currently requires the Station
+operator. URLs containing HTTPS user information, passwords, query strings or
+fragments are refused. An absolute local mirror path is also supported.
+Station verifies the clone's origin, resolves its commit and checks it out in
+detached state. For a monorepo, the selected subdirectory becomes the Project
+working directory while the receipt retains the repository root and exact commit.
+The directory must exist inside the checkout; traversal, Git metadata directories
+and symlink redirects are refused and rechecked at Project creation. It does not install dependencies or execute repository setup.
+
+**Choose from GitHub** and **Choose from GitLab** list accessible public/private
+repositories through this host's signed-in `gh` or `glab` account. A page holds
+at most 30 entries and shows the observed account, visibility and default branch.
+Choose HTTPS or SSH explicitly; selection fills editable URL/ref fields using
+the provider's returned clone transport. It does not clone automatically or
+establish that the host's separate Git credentials can access that repository.
+Discovery checks the account before and after listing, withholds late results
+after Station authority changes, and never reads or returns provider tokens.
+If the CLI or sign-in is unavailable, sign in on the host with `gh auth login`
+or `glab auth login`, retry, or paste a Git URL. Self-hosted forges remain an
+explicit-URL flow; the account pickers target `github.com` and `gitlab.com`.
+
+**Find existing checkouts** lists up to 20 retained acquisitions matching the
+entered repository identity, requested ref and subdirectory. These are historical
+observations until **Check and reuse** rechecks the checkout's current origin,
+pinned commit and unchanged files. Reuse selects the retained operation without
+cloning, fetching a moved branch or overwriting edits. Drift is refused; acquire
+a fresh copy or deliberately choose an existing folder instead. The displayed
+commit is the version being reused, not a new remote-branch observation.
+
+The browser retains the operation ID in session storage, partitioned by Station
+and account. Reopening the form checks that operation; a lost response does not
+automatically clone again. **Check operation** reads the recorded result.
+**Retry acquisition** explicitly starts a new attempt in a different owned
+directory, preserving earlier attempts and their edits. An interrupted operation
+can remain acquiring until inspected, cancelled or explicitly retried.
+**Cancel acquisition** durably prevents that operation from producing a usable
+checkout; retries of its ID remain cancelled. Files are preserved. An in-flight
+Git command may finish within its existing deadline; cancellation does not claim
+that the remote command was terminated. A completed verified checkout cannot be
+cancelled. **Choose another source** clears the browser selection; it does not
+delete a working copy.
+
+For the Station operator, **Create** also saves the immutable Project draft and
+selected starter before sending. Reopening New Project, including after a page
+reload, checks the same server request. **Continue creation** resumes an
+unrecorded request; **Retry layout** retains the saved starter and checks for an
+already-applied layout before an explicit retry. **Check setup** only inspects.
+An unknown creation outcome stays held. An unavailable/deleted result is not
+silently replaced. **Set aside this setup** clears only the browser selection;
+it keeps Projects, checkouts and server receipts. The chosen start intent is
+retained with this browser setup, so a knowledge start still opens Sources after
+reload rather than switching to repository setup. Recovery is partitioned by
+Station/account and requires current request authority at every action.
+Other callers keep the existing creation path; this durable flow currently
+requires the operator. Unreadable browser storage prevents dispatch.
+
+Acquisition rechecks current operator and request authority after lock waits and
+asynchronous preparation, immediately before Git launch after credential configuration,
+before publishing its receipt, and before releasing the response. If authority ends
+after work has started, the retained outcome can remain uncertain; a refusal does not
+prove that an already launched Git process stopped. Inspect the saved operation under
+current authority before explicitly retrying.
+
+The receipt records a completed acquisition, not continuing checkout integrity,
+build readiness or a successful Agent turn. Project creation separately rechecks
+the receipt and records historical provenance; later checkout changes still need
+the normal workspace checks. Operator-assisted import uses host Git credentials.
+Provider OAuth, Project-scoped forge grants and collaboration onboarding are
+tracked separately in [the authorization epic](https://github.com/kontourai/station/issues/4068);
+importing a repository does not grant an Agent remote credentials.
+Project Settings → Sources combines repository repair with knowledge-store
+registration, refresh and disconnect. A repository repair row offers the same
+acquisition and retained-checkout picker. **Use this checkout** fills the repair
+path; the separate bind action verifies the current declared resource before
+recording its location. Selection does not change the primary resource. See [knowledge sources](knowledge.md#project-settings--sources).
+**Add a repository** also works for blank and knowledge-first Projects. Acquire
+or reuse a copy, choose **Use this checkout**, then confirm **Attach repository**.
+The existing primary resource, working directory and knowledge configuration are
+preserved. The optional **Use this repository for code work in this Project**
+checkbox explicitly selects its verified repository-relative execution root;
+it is unchecked initially and does not promote or remove an existing primary resource.
+An identity with no existing resources requires an explicit code-work choice,
+because its first repository would otherwise become the execution fallback.
+Changing where Agent work starts affects new Sessions. An existing qualified
+Session keeps its original directory while that directory remains a verified
+resource of the same Project incarnation. Detaching or changing that resource,
+replacing its directory with a symlink, or replacing the Project can prevent
+continuation; Station does not silently move the chat to the new default.
+Older Sessions without verified Project identity cannot gain that authority
+from the current slug.
+
+Attachment checks the expected portable identity and immutable local Project ID.
+A changed Project or binding is refused instead of overwriting it. If the
+response is lost, **Retry saved attachment** repeats the same selection. A
+binding can be recorded before manifest publication; inspect Sources after an
+uncertain result. Retrying the same intent recovers it without another clone.
+This attaches repository resources; it does not run setup or grant remote Git
+credentials to an Agent.
+
+See the [API contract](../reference/api.md#repository-acquisition).
+
+## Review local repository setup
+
+Repository acquisition and attachment run no setup. After creating the Project,
+open **Project settings → Sources → Optional repository setup**, then review
+setup. Enter a command you
+trust, its deadline (1–600 seconds; 30 by default), and the execution-directory-relative
+files that affect it. Include manifests, lockfiles and any invoked scripts.
+**Preview setup** records the exact command, deadline, current execution root,
+Git commit and file hashes; absent declared inputs are recorded too. Nothing
+runs at preview. Check these facts, then select **I authorize this exact command
+on this Station** and **Run reviewed setup**.
+
+This is an operator action using this host account, network and credentials.
+Do not put secrets in command text. It is not a sandbox, collaborator grant or
+portable recipe. Reviewed setup currently requires POSIX process groups;
+Windows operators can use their terminal. Output is bounded to 1 MiB per stream
+and is not retained. On the reviewed deadline, the runner stops the process
+group. When the shell exits it also retires same-group background children.
+Processes that deliberately leave that group are outside this control.
+
+Station retains an operation before starting the command. **Check setup outcome**
+reads it; reload or a lost response does not run it again. A failed command can
+leave partial effects. After an abrupt server exit, the outcome is **uncertain**
+and a command may still be running: inspect the workspace and processes before
+explicitly starting a new preview. The live runner's deadline does not survive
+a forcibly killed server. Station never rolls back files or retries a started
+operation automatically.
+
+Changed declared inputs, Git HEAD or execution root make a preview stale; a
+successful receipt also becomes stale when its observed post-command inputs
+change. Existing Agent edits are preserved. The check does not track environment,
+remote dependencies or undeclared files, and cannot fence a concurrent writer
+after inspection. A successful exit certifies only that command's observed
+outcome, not build/test readiness or protected execution. Each input is a regular
+file of at most 1 MiB, with 32 files and 8 MiB total per preview. Receipts have a
+64 KiB serialized limit, including reserved outcome space; history is limited to
+1,000 operations per Station. The browser retains its setup selection by Station
+and account. Portable preparation and reproducible recipes remain owned by
+[#2875](https://github.com/kontourai/station/issues/2875) and
+[#3759](https://github.com/kontourai/station/issues/3759).
+
 ## Developer services and computers
 
 Connections has one clear home for each relationship:
@@ -1317,6 +1480,17 @@ Connections has one clear home for each relationship:
 - **Tools** manages MCP tool-server integrations and their prerequisites.
   Installing a CLI or saving an integration does not by itself prove its login
   or tool availability.
+  For a saved integration configured to use personal accounts, **Your account**
+  shows whether tools use your account, a Project-specific account, an explicitly
+  allowed shared account, or no account. Choose **Connect your account**, then
+  **Open sign-in page**. Complete consent and paste the full redirected localhost
+  URL into **Redirected URL**, even if that localhost page does not load. Choose
+  **Finish sign-in** to submit it through Station's authenticated callback route.
+  The field clears on submission. **Disconnect your account** removes your
+  account for this integration without deleting the integration or another
+  person's account. Save definition changes before managing the account.
+  These controls expose the existing remote manual OAuth flow; they do not add
+  hosted, unattended or membership-revocation support to personal credentials.
 - **Knowledge** manages Knowledge sources; see the [Knowledge guide](knowledge.md).
 - When an agent tool depends on a disconnected tool server, **Repair
   connection** opens that exact server. Station does not label the tool
@@ -1326,6 +1500,12 @@ Connections has one clear home for each relationship:
   materialized only while a fresh child is established; Station-control and
   non-stdio transports reject authored bindings. A stored legacy credential is
   removed only after a fresh bound child succeeds.
+  Native foreground invocations select Project-narrowed credentials using the
+  trusted invocation's active Project, including for a global Agent whose tools
+  were already loaded. The authored Agent's Project ownership is unchanged.
+  Calls without that foreground context retain the authored-Project fallback;
+  global background/scheduled Project credential context is not established by
+  this path. Disconnect is checked again by subsequent retained-tool calls.
 
 ## Pairing scopes on this computer
 
