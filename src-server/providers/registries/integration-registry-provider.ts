@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
-import type { Dirent } from 'node:fs';
-import { readdir, readFile } from 'node:fs/promises';
+import { type Dirent, constants as fsConstants } from 'node:fs';
+import { access, readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import type { RegistryItem } from '@kontourai/station-contracts/catalog';
@@ -90,10 +90,17 @@ export async function readDiskIntegrations(
       // binary presence from the same command the overlay actually spawns
       // with, so station-control/station-docs don't list as 'missing binary'
       // in the registry the moment the stripped schema lands on disk.
-      const command =
-        def.command ??
-        builtinIntegrationRuntimeSpawnCommand(String(def.id ?? entry.name));
-      const present = await commandExists(command);
+      const runtimeCommand = builtinIntegrationRuntimeSpawnCommand(
+        String(def.id ?? entry.name),
+      );
+      const command = def.command ?? runtimeCommand;
+      const present =
+        command === process.execPath && command === runtimeCommand
+          ? await access(command, fsConstants.X_OK).then(
+              () => true,
+              () => false,
+            )
+          : await commandExists(command);
       const iconAsset = await iconAssets.resolve(entry.name);
       items.push({
         id: def.id || entry.name,

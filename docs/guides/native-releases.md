@@ -495,9 +495,13 @@ callers. Package-layout checks alone therefore do not establish a working
 AppImage startup; this source mismatch needs repair and an actual Linux launch.
 
 The staged server and `node_modules` are adjacent for ordinary Node module
-resolution once the correct entrypoint is selected. The host resolves `node`
-from its login-shell PATH; the dependency tree is bundled, not the Node
-executable. The [staging helper](../../scripts/lib/desktop-server-runtime.mjs)
+resolution once the correct entrypoint is selected. Desktop releases also ship
+the pinned `station-node` executable through Tauri's `externalBin`; `.deb` and
+`.rpm` place it under `usr/bin/station-node`, without claiming `/usr/bin/node`.
+The host uses the executable beside its own binary and preserves the user's
+PATH. See [packaged runtime](desktop-build.md#packaged-runtime) for the pinned
+archive, license and separate macOS Node signature. The
+[staging helper](../../scripts/lib/desktop-server-runtime.mjs)
 refuses missing or over-budget runtime inputs. That is packaging evidence,
 not proof that the current AppImage can start or execute a staged Agent.
 

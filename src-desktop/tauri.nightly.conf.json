@@ -21,11 +21,12 @@
     ]
   },
   "bundle": {
+    "externalBin": ["binaries/station-node"],
     "macOS": {
       "infoPlist": "Info.nightly.plist"
     },
     "resources": {
-      "../dist-server": "dist-server",
+      "../dist-desktop-runtime/dist-server": "dist-server",
       "../dist-desktop-runtime/node_modules": "node_modules",
       "../schemas": "schemas",
       "../dist-desktop-runtime/examples": "examples"

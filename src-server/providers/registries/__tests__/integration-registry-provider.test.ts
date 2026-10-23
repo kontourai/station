@@ -164,7 +164,7 @@ describe('integration-registry-provider helpers', () => {
     // Post-#3063 the persisted built-in files carry NO command/args — the
     // spawn identity is overlaid at load time. The registry's disk scan must
     // derive binary presence from the same spawn command the overlay uses
-    // (`node`, which necessarily exists wherever this suite runs), not
+    // (the current Node executable), not
     // conclude 'missing binary' from the stripped file.
     const homeDir = createHomeDir();
     for (const id of ['station-control', 'station-docs']) {
@@ -190,18 +190,25 @@ describe('integration-registry-provider helpers', () => {
     );
   });
 
-  test('station#3063: a third-party integration without a command still reports missing binary', async () => {
-    const homeDir = createHomeDir();
-    const dir = join(homeDir, 'integrations', 'command-less-tool');
-    mkdirSync(dir, { recursive: true });
-    writeFileSync(
-      join(dir, 'integration.json'),
-      JSON.stringify({ id: 'command-less-tool', displayName: 'No Command' }),
-    );
+  test.each([undefined, process.execPath])(
+    'a third-party integration with untrusted command %s reports missing binary',
+    async (command) => {
+      const homeDir = createHomeDir();
+      const dir = join(homeDir, 'integrations', 'command-less-tool');
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, 'integration.json'),
+        JSON.stringify({
+          id: 'command-less-tool',
+          displayName: 'No Command',
+          command,
+        }),
+      );
 
-    const items = await readDiskIntegrations(homeDir);
-    expect(items[0].status).toBe('missing binary');
-  });
+      const items = await readDiskIntegrations(homeDir);
+      expect(items[0].status).toBe('missing binary');
+    },
+  );
 
   test('readDiskIntegrations passes through a manifest-declared icon (issue #691)', async () => {
     const homeDir = createHomeDir();

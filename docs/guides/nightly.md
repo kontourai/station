@@ -411,7 +411,10 @@ The same `setup.exe` serves as the initial installer and update payload; its
 `.sig` is generated and checked with the Tauri updater key. The app installs
 per user and uses the separate `io.kontourai.station.nightly` identity and
 `station-nightly.exe` process name, so NSIS does not close Stable during an update.
-Station's desktop server currently requires Node 24 on the user's PATH.
+Desktop releases carry the pinned `station-node` executable; the installed app
+does not require system Node. Development builds still use the developer's
+Node. See [packaged runtime](desktop-build.md#packaged-runtime) for staging and
+macOS signing requirements.
 
 `nightly-native-stage.yml` builds Windows from the same source SHA and reserved
 version as macOS and Android. `scripts/build-windows-nightly.ps1` uses

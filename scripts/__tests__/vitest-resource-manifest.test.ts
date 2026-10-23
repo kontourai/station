@@ -46,6 +46,8 @@ const REVIEWED_RESOURCE_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/orchestration/__tests__/credential-recovery-module.test.ts',
   'src-server/runtime/bootstrap/__tests__/native-engine-adoption.test.ts',
   'src-ui/src/__tests__/vite-sdk-client-alias.test.ts',
+  // The installer and supervisor start real Node children indirectly.
+  'src-server/services/devices/toolchain/__tests__/device-tool-runtime.process.test.ts',
   // #699: buildPlugin starts esbuild's service child; no direct import.
   'packages/shared/src/__tests__/plugin-build.test.ts',
 ]);

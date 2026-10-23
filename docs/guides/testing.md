@@ -916,12 +916,17 @@ pulls in (listed as `desktop-rust` in `scripts/classify-ci-change.mjs`). The
 classifier is taken from the base commit, and every failure to classify
 compiles. The job, and so the required check, runs either way. TypeScript is
 not re-checked on Windows; `ci:fast`'s typecheck aggregate owns that verdict.
+After a relevant compile, the same job runs the real Credential Manager
+recovery test. It creates uniquely named Station entries, verifies their raw
+`account.service` targets are included in the history search, checks that
+the credential-history observation reports those entries, and deletes only its own entries.
 
 The floor also runs the [Windows resource-staging keeper](../../scripts/__tests__/windows-resource-staging.test.ts) before Cargo. It
 executes the workflow's PowerShell staging body in a temporary directory and
-checks the configured resource-source directories at the Cargo boundary,
-including bundled examples. This proves directory staging, not Rust compilation
-or bundled file contents. The same focused step runs the
+checks the configured resource-source directories and private Node sidecar at
+the Cargo boundary, including bundled examples. The fixture uses a cached,
+digest-pinned test distribution to execute the production preparation script.
+This proves staging, not Rust compilation or installed-app execution. The same focused step runs the
 [Tauri context caller tests](../../scripts/__tests__/tauri-context.test.ts),
 checking real installed npm/local Tauri versions and explicit missing
 prerequisites on Windows. The report caller tests have an 80-second harness
