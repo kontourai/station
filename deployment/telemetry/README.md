@@ -233,6 +233,13 @@ These are pending qualification commands, not recorded successes. All published
 ports bind numeric loopback: product 44481, authenticated OTLP HTTP 44482 and
 authenticated Grafana 44484. PostgreSQL, Prometheus and Tempo publish no host
 port. Dedicated internal product/diagnostic networks separate their stores.
+The receiver additionally joins `product-ingress`; Collector and Grafana join
+`diagnostics-ingress`. These separate regular bridges enable the explicit
+loopback port publications. PostgreSQL, Prometheus and Tempo do not join an
+ingress bridge. The front-end services have outbound network connectivity;
+the profile does not claim a network-level egress deny for them. Authentication,
+separate credentials and disabled Grafana reporting remain required. Neither
+bridge joins the product and diagnostic namespaces together.
 Use an explicitly owned SSH forward or separately qualified private TLS ingress
 to reach the profile from another computer; do not change a binding to `0.0.0.0`
 as a connectivity workaround. Existing user ports 3141 and 3000 remain outside

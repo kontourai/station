@@ -27,7 +27,7 @@ services:
         read_only: true
         bind: {create_host_path: false}
     ports: ["127.0.0.1:${TELEMETRY_OTLP_PORT:-44482}:4318"]
-    networks: [diagnostics]
+    networks: [diagnostics, diagnostics-ingress]
     depends_on: [tempo]
     cpus: 1.0
     mem_limit: 512m
@@ -82,7 +82,7 @@ services:
         read_only: true
         bind: {create_host_path: false}
     ports: ["127.0.0.1:${TELEMETRY_GRAFANA_PORT:-44484}:3000"]
-    networks: [diagnostics]
+    networks: [diagnostics, diagnostics-ingress]
     depends_on: [prometheus, tempo]
     tmpfs: [/tmp:size=16m]
     cpus: 0.5
@@ -91,6 +91,8 @@ services:
 networks:
   diagnostics:
     internal: true
+  diagnostics-ingress:
+    internal: false
 
 volumes:
   prometheus-data:
