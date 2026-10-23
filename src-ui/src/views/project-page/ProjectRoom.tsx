@@ -883,7 +883,7 @@ function ProjectRoomAgentPanel({
               </Button>
             </p>
           ) : !available.length ? (
-            <p>No available Agents.</p>
+            <Empty label="Agents unavailable" />
           ) : (
             <label>
               Agent
