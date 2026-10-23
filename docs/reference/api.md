@@ -1850,6 +1850,12 @@ Hosted mode and unavailable private storage return `report_groups_unavailable`.
   most 60 seconds. Resume with the same query or `Last-Event-ID`; report,
   group and member cursor domains cannot be interchanged. Each read/write
   rechecks authority. Observation never resumes execution.
+  Each explicit subscription occupies its own fetch-SSE connection during that
+  lifetime. It uses a group/revision cursor, not the orchestration stream's
+  global event sequence or replay/snapshot protocol. The inspector uses scoped
+  metadata polling and explicit result reads rather than opening this stream.
+  This adds no connection-pool capacity or latency guarantee; see the historical
+  [transport decision](../adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md).
 - `GET /:groupId/members/:seatId/results/:invocationId?afterOffset=0` reads
   a retained report or failure after canonical member-session read admission.
   Result pages carry at most 16,384 UTF-16 code units, `nextOffset`, `hasMore`,
@@ -1889,8 +1895,13 @@ strict response and cursor validation; the [CLI](cli.md#qualified-report-groups)
 consumes it. The Ensemble inspector also lists retained groups and explicitly
 loads authorized raw reports through scoped SDK queries. It displays unresolved
 reservations and unconfirmed termination separately from reported output.
-UI creation/cancellation controls, Flow topology/context continuation and live
-provider qualification remain open for this report-group surface.
+The inspector also provides explicit budgeted paid-report submission,
+cancellation requests, and pending-cancellation receipt checks. Each mounted
+form allows one attempt, uses scoped authority, and never retries automatically.
+Receipt checks retain the original cancellation key and never resend interrupts.
+An unknown response remains unknown; cancellation is separate from physical
+termination and accounting. Flow topology/context continuation and live-provider
+qualification remain open for this report-group surface.
 
 ## Connections
 
