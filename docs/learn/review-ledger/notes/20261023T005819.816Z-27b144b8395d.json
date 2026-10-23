@@ -1,0 +1,7 @@
+{
+  "revision": "2f131c30435cd7a31f776af90b85c54c8899b7bd",
+
+  "notes": [
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Independent source audit read complete historical/accepted design and relevant current posture service delta/callers at293f386482b, preserving dated Section3 and historical tests. Found and corrected Section4.5 current-as-built mismatch: ACP supports approvalMode only when connection acpApprovalControl is station, with native session mode separate and OpenCode governance refusal retained. Root verified support predicate, approvalKnobForThread and unsupported-option filtering plus start/turn binding. Retain orchestration-service dependency: its posture routing is materially relevant. This note renews affected current routing/support claims only, not all1308lines as current authorization or adapter/confinement/provider/kernel proof; complete authorization routes, UI/plugin/persistence and historical execution receipts remain outside this round.","inputs":["docs/design/approval-posture-server-ordered.md","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}
