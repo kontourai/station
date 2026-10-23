@@ -1664,6 +1664,24 @@ export class TaskGraphService {
     }
   }
 
+  /** Short read/publication fence. Lock order: TaskGraph, sharing DB, Room DB.
+   * The callback must be synchronous; never hold this lock over provider work.
+   */
+  async withTaskReadFence<T>(operation: () => T): Promise<T> {
+    const release = await this.acquireMutationLock(
+      `${this.storePath}.mutation`,
+    );
+    try {
+      this.loadStore();
+      const result = operation();
+      if (result && typeof (result as { then?: unknown }).then === 'function')
+        throw new Error('Task publication fence requires synchronous work');
+      return result;
+    } finally {
+      await release();
+    }
+  }
+
   private readStore(): TaskGraphStoreData {
     return this.loadStore();
   }

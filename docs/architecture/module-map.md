@@ -987,6 +987,15 @@ main WebView has committed its React mount. The ticket binds generation,
 instance ID, child boot ID and API base. A native page-start callback permits
 identity proof but is not proof that the renderer mounted.
 
+**Packaged runtime.** Desktop's registry helper and owned backend use the private
+`station-node` executable beside the app, without changing the user's PATH.
+Before claiming a home, Desktop validates the shared saved-connection list.
+An unmarked legacy runtime root can offer explicit empty-list creation only
+when filesystem and credential inspection find no saved-connection history;
+confirmation revalidates under shared locks. Missing metadata after prior
+initialization stays a restore-backup refusal. See [desktop build](../guides/desktop-build.md#packaged-runtime)
+and [missing saved connections](../user/native-recovery.md#missing-saved-connections).
+
 **Identity and reveal.** [Tauri composition](../../src-desktop/src/lib.rs) owns
 the current ticket, credential-bearing profile selected for the exact channel
 home, OS-held credential and authenticated `/api/system/identity` check.
@@ -1392,7 +1401,9 @@ not the check before the engine starts. The
 drives both dispatch routes into a real `OrchestrationService` with a recording
 engine double, and the
 [runtime wiring test](../../src-server/runtime/bootstrap/__tests__/runtime-initialize-connection-default-cwd.test.ts)
-covers the connection reader; the credential-profile restart has no test.
+covers the connection reader. The retained-workspace recovery suite exercises
+credential restart, direct replay and cold materialization with a recording
+provider; it does not qualify a real provider or remote device.
 Their presence is not a new executed or remote-device receipt. See
 [agent configuration](../guides/self-configuring-agent.md#dispatch-authority) for tool-level
 restrictions and caller binding.
@@ -2719,6 +2730,17 @@ The Room's **Recap Project** action prepares an editable scoped prompt without
 dispatch. The normal Agent picker and explicit request remain the execution
 owner; the prompt asks for citations, observed freshness, coverage and gaps.
 
+Explicit Room Agent requests capture only Task summaries already shared to the
+Project, even for an operator. The immutable snapshot includes Task/share
+identities, title, status and observation time, with shared-subset coverage;
+it includes no private Task counts, descriptions or inferred goals. At most
+16 summaries and 4 KiB of Task evidence fit within the existing context budget.
+Unavailable or omitted evidence is labeled rather than treated as an empty
+Project. Exact share and Task incarnations are checked before dispatch and
+publication. Short owner fences coordinate TaskGraph, sharing and Room writes;
+no such lock spans provider execution. Unsharing can withhold a pending answer,
+but does not retroactively redact text already published in the Room.
+
 The operator and member Project pages mount the scoped Room. Focused store,
 access, SDK and UI tests cover those owners; production mounting, provider-backed
 execution and two-principal browser acceptance require separate runtime evidence.
@@ -3853,7 +3875,7 @@ provider effect just to obtain a clean log.
 
 ## Whole Task Basis collection
 
-Whole Task Basis shows the answers, tool results, and Process receipts deliberately kept with a Task. It does not combine them into one trust score. The [collection view](../../packages/basis-pane/src/task-basis-collection-view.ts) supplies Station’s navigation and labels; Surface supplies each answer’s meaning.
+Whole Task Basis shows the answers, tool results, and Process receipts deliberately kept with a Task. Immutable Task Outputs with recorded declaration provenance appear in the exact producing answer's outcomes. The private Output owner supplies that Session/turn join; matching names, paths or digests never establish it. Manual Outputs and Outputs from other turns remain in the unassociated kept collection. The public Output record keeps its existing shape. It does not combine them into one trust score. The [collection view](../../packages/basis-pane/src/task-basis-collection-view.ts) supplies Station’s navigation and labels; Surface supplies each answer’s meaning.
 
 **Interface.** `buildStationTaskBasisCollectionView` in the first-party
 Basis Pane package accepts an explicitly declared full authorized collection or
@@ -4414,8 +4436,12 @@ identities and bounded responses.
 for a configured local endpoint, an already-consented managed helper, or an
 operator-managed SSH host. Hosted tenant execution does not mount this path.
 Resolving a connection may start a consented helper; helper installation and
-process ownership remain with the toolchain/host services. There is no peer
-Station device transport merely because the resolver is extensible.
+process ownership remain with the toolchain/host services. Managed device tools
+resolve a user-installed Node.js 24 or later and its matching npm through
+[device-tool-runtime.ts](../../src-server/services/devices/toolchain/device-tool-runtime.ts).
+Missing prerequisites block device setup with guidance; the desktop's private
+Node continues to run bundled Station services. There is no peer Station device
+transport merely because the resolver is extensible.
 
 [Mobile-device routes](../../src-server/routes/mobile-device.ts) check current
 request authority and device access before calling the helper, then recheck
@@ -4472,14 +4498,21 @@ Before starting an engine, Station must resolve what a Project means on this com
 
 `createProjectSessionDirectoryResolver` in
 `src-server/services/projects/project-session-directory.ts` composes the
-existing manifest and live resource resolver for new engine starts. Runtime
-initialization installs it in OrchestrationService; recovery awaits it only
-when the recorded session has no cwd. Bound resources return their local path;
-only a directory-less organizational Project may default without a checkout.
-Missing, drifted, ambiguous and unverifiable resources stop before engine
-invocation. The caller retains path containment and owned-worktree admission.
-Real Git/binding-to-engine tests live in `orchestration-service.test.ts`.
-Resolution is an observation, not a filesystem lease or a compute grant.
+existing manifest and live resource resolver for new engine starts and retained
+qualified Sessions. New Sessions use the selected execution root. A continuation
+keeps its recorded canonical cwd only when its persisted local Project ID still
+matches and that directory remains inside a currently verified attached resource.
+Read-binding, successor-start and send-turn admission recheck this authority.
+Credential-profile restart and cold materialization recheck after recovery
+preparation, before provider start; direct credential replay rechecks before
+sending the turn. Changing the Project default does not move an existing Session. An unstamped or
+explicitly refused Project incarnation is never inferred from a matching slug.
+Missing, unbound, drifted, ambiguous or replaced resources and changed symlink
+coordinates stop before engine invocation. Only a directory-less organizational
+Project may start without a checkout. The caller retains current compute,
+transport, path-containment and owned-worktree admission. Mounted continuation
+and real Git/binding-to-engine tests cover these owners; provider acceptance is
+separate. Resolution is an observation, not a filesystem lease or a compute grant.
 
 ## Workspace checkpoints
 

@@ -225,7 +225,7 @@ describe('source verification reconciler API boundary', () => {
     {
       conclusion: 'success',
       description:
-        'All exact-owner source proofs succeeded (provisional: ci-fast/test-full deferred to Merge-queue regression)',
+        'All exact-owner source proofs succeeded (provisional: ci-fast/test-full deferred to full qualification)',
     },
     {
       conclusion: 'skipped',

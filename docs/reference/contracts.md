@@ -4,6 +4,11 @@ Canonical cross-package contract ownership for Station.
 
 Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shared across `src-server`, `packages/sdk`, `packages/cli`, plugins, or tests. New code should import these modules directly instead of reaching through `@kontourai/station-shared`.
 
+`LayoutPanelsRecord` holds device-local side/lower-panel state by layout host
+scope and conversation. `LAYOUT_PANELS_LAYOUT_BOUND` and
+`LAYOUT_PANELS_SESSION_BOUND` bound retention. The v3 device envelope retires the
+pre-release Coding-only panel preference; it does not preserve those old sizes.
+
 ## Ownership rules
 
 - This package owns stable cross-package types and constants. Existing domain
@@ -93,7 +98,7 @@ conversation access. Filesystem preparation stays in the server.
 | `@kontourai/station-contracts/live-surface` | Host-neutral live surface (#90): frame header, input events, control lease, stream params, their strict wire parsers and the length-prefixed binary record envelope |
 | `@kontourai/station-contracts/workspace-browser-pane` | Browser pane v2 (#90): per-device pane state referencing a server-owned browser session, its v1→v2 migration, and the `/api/browser/*` wire views the pane reads |
 | `@kontourai/station-contracts/learning-review` | Owner-neutral learning lifecycle projections and explicit access gaps |
-| `@kontourai/station-contracts/layout` | Layout definitions, tabs, skills, templates; a catalog contribution's optional, server-issued `lifecycleGeneration` (identity only, never a permission), which a reinstall or an enablement change replaces and which never repeats; `null` is history the server cannot vouch for, under which a host admits nothing |
+| `@kontourai/station-contracts/layout` | Layout definitions, tabs, skills, templates, and repository workspace binding (`workspaceBinding: 'repository'`); legacy Coding records retain their repository binding. A catalog contribution's optional, server-issued `lifecycleGeneration` is identity only, never a permission; a reinstall or an enablement change replaces it and it never repeats. `null` is history the server cannot vouch for, under which a host admits nothing |
 | `@kontourai/station-contracts/personal-board` | Declarative dashboard sections, saved/proposed Board document and revisioned authoring inputs |
 | `@kontourai/station-contracts/local-accounts` | Operator-only account projections, sign-in/session actions and one-time recovery results |
 | `@kontourai/station-contracts/notification` | Notification payloads and actions |
@@ -175,6 +180,17 @@ turn lineage: only `observed-during` or `produced-by`, carrying the scope's
 optional `turnId` for this. The Session resource summary has no turn, so it never
 appears in a current-answer inventory. See the
 [parser](../../packages/contracts/src/session-inventory.ts).
+
+Client protocol 3 admits these lineage rows in the server inventory. Older or
+undeclared HTTP clients retain contribution-only groups and typed gaps; the
+server never strips rows after computing a continuation digest. Inventory
+continuations bind the client dialect as well as scope and authority. Output
+pages filter the durable declaration index by the exact turn before paging,
+and their signed cursors cannot be reused for another turn or Whole Session.
+Decisions come from exact-turn request events. Delegations require an explicit
+child Session handle and parent turn/tool identity; provider-only child IDs
+stay an owner gap. These reads select descriptors, not tool bodies or metadata.
+
 
 `AgentTools.mcpMode` selects additive (`add`) or replacement (`replace`) MCP
 configuration; omission preserves the prior engine-specific behavior.
@@ -1332,6 +1348,17 @@ may publish the exact completed answer after current requester, Project, executi
 and capture checks. Observation credentials are not durable; restart requires fresh
 authorized recovery. SSE is an interchangeable notification transport,
 not the owner of message order, durability, authority or Task hierarchy.
+
+Explicit Room Agent requests capture only Task summaries already shared to the
+Project, even for an operator. The immutable snapshot includes Task/share
+identities, title, status and observation time, with shared-subset coverage;
+it includes no private Task counts, descriptions or inferred goals. At most
+16 summaries and 4 KiB of Task evidence fit within the existing context budget.
+Unavailable or omitted evidence is labeled rather than treated as an empty
+Project. Exact share and Task incarnations are checked before dispatch and
+publication. Short owner fences coordinate TaskGraph, sharing and Room writes;
+no such lock spans provider execution. Unsharing can withhold a pending answer,
+but does not retroactively redact text already published in the Room.
 
 See [Room HTTP operations](api.md#shared-project-room) and the
 [SDK](sdk.md#shared-project-room).

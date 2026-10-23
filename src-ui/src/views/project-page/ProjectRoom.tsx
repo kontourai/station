@@ -18,6 +18,7 @@ import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
+import { LazyMarkdown } from '../../components/chat/LazyMarkdown';
 import { Dialog } from '../../components/Dialog';
 import { Empty, SkeletonBlock } from '../../components/state';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
@@ -399,7 +400,13 @@ function ProjectRoomSession({
                       ?.actor.displayName ?? 'an earlier message'}
                   </p>
                 )}
-                <p className="project-room__text">{message.text}</p>
+                {message.actor.kind === 'agent' ? (
+                  <div className="project-room__answer">
+                    <LazyMarkdown>{message.text}</LazyMarkdown>
+                  </div>
+                ) : (
+                  <p className="project-room__text">{message.text}</p>
+                )}
                 {view.capabilities.discuss && (
                   <Button
                     variant="ghost"

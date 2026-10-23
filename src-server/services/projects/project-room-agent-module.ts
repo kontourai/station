@@ -11,12 +11,20 @@ import {
 } from '@kontourai/station-contracts/project-room';
 import { z } from 'zod/v3';
 import { openPrivateSqlite } from '../../utils/private-sqlite.js';
+import {
+  type ProjectRoomTaskContext,
+  ROOM_TASK_CONTEXT_LIMITS,
+  type RoomTaskSnapshot,
+  roomTaskSnapshotSchema,
+  sameRoomTaskScope,
+} from './project-room-agent-task-context.js';
 import { ProjectRoomStore } from './project-room-store.js';
 
 export interface ProjectRoomAgentAuthority {
   scope: ProjectMembershipScope;
   requester: ProjectRoomActor;
   executionRoot: string;
+  taskContext?: ProjectRoomTaskContext;
   /** Must reject changed incarnation, membership execute, compute grant, or root. Synchronous at SQLite commit. */
   assertCurrent(): void;
   /** Refresh request/account authority after asynchronous provider work. */
@@ -32,6 +40,8 @@ export interface ProjectRoomAgentCapture {
   agentLabel: string;
   checkpoint: { roomId: string; lastSeq: number };
   context: string;
+  /** Missing on legacy captures means unavailable, never an empty inventory. */
+  taskSnapshot?: RoomTaskSnapshot;
   digest: string;
 }
 export interface ProjectRoomAgentExecution {
@@ -107,6 +117,7 @@ const captureSchema = z
       .refine(
         (value) => Buffer.byteLength(value) <= PROJECT_ROOM_LIMITS.textBytes,
       ),
+    taskSnapshot: roomTaskSnapshotSchema.optional(),
     digest: z.string().regex(/^[a-f0-9]{64}$/),
   })
   .strict();
@@ -157,6 +168,14 @@ export class ProjectRoomAgentModule {
       capture.checkpoint.roomId !== request.roomId
     )
       throw new Error('Project room agent capture unavailable');
+    const frame = JSON.parse(capture.context.split('\n')[0]!);
+    if (
+      capture.taskSnapshot
+        ? !sameRoomTaskScope(capture.scope, capture.taskSnapshot.project) ||
+          JSON.stringify(frame.tasks) !== JSON.stringify(capture.taskSnapshot)
+        : frame.tasks !== undefined
+    )
+      throw new Error('Project room agent capture unavailable');
     this.check(authority, capture);
     return capture;
   }
@@ -179,6 +198,46 @@ export class ProjectRoomAgentModule {
           capture.executionRoot !== authority.executionRoot))
     )
       throw new Error('Project room agent authority unavailable');
+  }
+  private evidence(
+    authority: ProjectRoomAgentAuthority,
+    capture: ProjectRoomAgentCapture,
+  ) {
+    if (!capture.taskSnapshot) return;
+    if (!authority.taskContext) {
+      if (capture.taskSnapshot.items.length)
+        throw new Error('Project room Task evidence unavailable');
+      return;
+    }
+    const result: unknown = authority.taskContext.assertCurrent(
+      capture.taskSnapshot,
+    );
+    if (result !== undefined)
+      throw new Error('Project room Task authority unavailable');
+  }
+  private async refreshEvidence(
+    authority: ProjectRoomAgentAuthority,
+    capture: ProjectRoomAgentCapture,
+  ) {
+    await authority.refresh?.();
+    if (capture.taskSnapshot)
+      await authority.taskContext?.refresh(capture.taskSnapshot);
+    this.check(authority, capture);
+    this.evidence(authority, capture);
+  }
+  private async withEvidence<T>(
+    authority: ProjectRoomAgentAuthority,
+    capture: ProjectRoomAgentCapture,
+    operation: () => T,
+  ): Promise<T> {
+    const publish = () => {
+      this.check(authority, capture);
+      this.evidence(authority, capture);
+      return operation();
+    };
+    return capture.taskSnapshot && authority.taskContext
+      ? authority.taskContext.withCurrent(capture.taskSnapshot, publish)
+      : publish();
   }
   inspect(
     authority: ProjectRoomAgentAuthority,
@@ -258,8 +317,16 @@ export class ProjectRoomAgentModule {
       };
       checkpoint: ProjectRoomAgentCapture['checkpoint'];
       coverage: { note: string; history: string };
+      tasks: RoomTaskSnapshot;
     } = {
       request: value.text,
+      tasks: {
+        version: 1,
+        observedAt: new Date().toISOString(),
+        project: structuredClone(authority.scope),
+        coverage: 'omitted_budget',
+        items: [],
+      },
       note: null,
       checkpoint: first.checkpoint,
       coverage: {
@@ -287,22 +354,6 @@ export class ProjectRoomAgentModule {
         frame.coverage.note = 'omitted_budget';
       }
     }
-    const selected: unknown[] = [];
-    for (const message of messages.reverse()) {
-      const candidate = {
-        actor: message.actor,
-        text: message.text,
-        messageId: message.messageId,
-        seq: message.seq,
-      };
-      if (
-        Buffer.byteLength(serialize([candidate, ...selected])) >
-        PROJECT_ROOM_LIMITS.textBytes
-      )
-        break;
-      selected.unshift(candidate);
-    }
-    const context = serialize(selected);
     const request = this.store.reserveRequest(
       authority.scope,
       authority.requester,
@@ -321,6 +372,62 @@ export class ProjectRoomAgentModule {
     await authority.refresh?.();
     this.check(authority);
 
+    const summaries = await authority.taskContext?.capture();
+    frame.tasks.observedAt = new Date().toISOString();
+    frame.tasks.coverage = summaries ? 'shared_subset' : 'unavailable';
+    if (summaries) {
+      for (const summary of summaries) {
+        if (!sameRoomTaskScope(summary.project, authority.scope))
+          throw new Error('Project room Task scope unavailable');
+        const item = {
+          shareId: summary.shareId,
+          taskId: summary.task.id,
+          taskCreatedAt: summary.task.createdAt,
+          title: summary.task.title,
+          status: summary.task.status,
+        };
+        // Budget using the longer coverage spelling before admitting a row.
+        const candidate: RoomTaskSnapshot = {
+          ...frame.tasks,
+          coverage: 'bounded_subset',
+          items: [...frame.tasks.items, item],
+        };
+        const previous = frame.tasks;
+        frame.tasks = candidate;
+        if (
+          frame.tasks.items.length > ROOM_TASK_CONTEXT_LIMITS.items ||
+          Buffer.byteLength(JSON.stringify(candidate)) >
+            ROOM_TASK_CONTEXT_LIMITS.bytes ||
+          Buffer.byteLength(serialize([])) > PROJECT_ROOM_LIMITS.textBytes
+        ) {
+          frame.tasks = {
+            ...previous,
+            coverage: previous.items.length
+              ? 'bounded_subset'
+              : 'omitted_budget',
+          };
+          break;
+        }
+        frame.tasks.coverage = 'shared_subset';
+      }
+    }
+    frame.tasks = roomTaskSnapshotSchema.parse(frame.tasks);
+    const selected: unknown[] = [];
+    for (const message of messages.reverse()) {
+      const candidate = {
+        actor: message.actor,
+        text: message.text,
+        messageId: message.messageId,
+        seq: message.seq,
+      };
+      if (
+        Buffer.byteLength(serialize([candidate, ...selected])) >
+        PROJECT_ROOM_LIMITS.textBytes
+      )
+        break;
+      selected.unshift(candidate);
+    }
+    const context = serialize(selected);
     const capture: ProjectRoomAgentCapture = {
       scope: captureSchema.shape.scope.parse(authority.scope),
       requester: captureSchema.shape.requester.parse(authority.requester),
@@ -331,34 +438,45 @@ export class ProjectRoomAgentModule {
       agentLabel: agent.label,
       checkpoint: first.checkpoint,
       context,
+      taskSnapshot: frame.tasks,
       digest: '',
     };
     capture.digest = captureDigest(capture);
+    captureSchema.parse(capture);
     // The unique capture is a durable launch fence. A crash before markStarted
     // leaves a reserved handle requiring operator reconciliation, never automatic replay.
-    const inserted = this.db
-      .prepare(
-        'INSERT OR IGNORE INTO project_room_agent_captures VALUES (?, ?)',
-      )
-      .run(request.requestId, JSON.stringify(capture));
-    if (!inserted.changes) return this.inspect(authority, request.requestId);
     const recheck = () => {
       this.check(authority, capture);
+      this.evidence(authority, capture);
       const current = this.store.getRequest(authority.scope, request.requestId);
       if (current.state !== 'started' && current.state !== 'uncertain')
         throw new Error('Project room agent request unavailable');
     };
-    this.store.markStarted(authority.scope, request.requestId, () =>
-      this.check(authority, capture),
-    );
-    this.store.bindSession(
-      authority.scope,
-      request.requestId,
-      capture.sessionId,
-      recheck,
-    );
+    const inserted = await this.withEvidence(authority, capture, () => {
+      const inserted = this.db
+        .prepare(
+          'INSERT OR IGNORE INTO project_room_agent_captures VALUES (?, ?)',
+        )
+        .run(request.requestId, JSON.stringify(capture));
+      if (!inserted.changes) return false;
+      this.store.markStarted(authority.scope, request.requestId, () =>
+        this.check(authority, capture),
+      );
+      this.store.bindSession(
+        authority.scope,
+        request.requestId,
+        capture.sessionId,
+        recheck,
+      );
+      return true;
+    });
+    if (!inserted) return this.inspect(authority, request.requestId);
     try {
-      await this.execution.launch(capture, recheck, authority.refresh);
+      await this.refreshEvidence(authority, capture);
+      recheck();
+      await this.execution.launch(capture, recheck, () =>
+        this.refreshEvidence(authority, capture),
+      );
     } catch {
       this.failure(request.requestId, 'launch_uncertain');
       const current = this.store.getRequest(authority.scope, request.requestId);
@@ -391,6 +509,7 @@ export class ProjectRoomAgentModule {
     const current = () => {
       this.capture(authority, id);
       this.check(authority, capture);
+      this.evidence(authority, capture);
       if (
         !['started', 'uncertain'].includes(
           this.store.getRequest(authority.scope, id).state,
@@ -398,7 +517,7 @@ export class ProjectRoomAgentModule {
       )
         throw new Error('Project room agent request unavailable');
     };
-    await authority.refresh?.();
+    await this.refreshEvidence(authority, capture);
     current();
     if (answer && 'failed' in answer) {
       this.failure(id, 'execution_failed');
@@ -418,22 +537,28 @@ export class ProjectRoomAgentModule {
           this.store.markUncertain(authority.scope, id, current);
         return this.inspect(authority, id);
       }
-      const message = this.store.append(
-        authority.scope,
-        { kind: 'agent', id: capture.agentId, displayName: capture.agentLabel },
-        {
-          intentId: stableIntent(id, answer.turnId),
-          text: answer.text,
-          ...(request.replyTo ? { replyTo: request.replyTo } : {}),
-        },
-        current,
-      );
-      this.store.finishPublished(
-        authority.scope,
-        id,
-        message.messageId,
-        current,
-      );
+      await this.withEvidence(authority, capture, () => {
+        const message = this.store.append(
+          authority.scope,
+          {
+            kind: 'agent',
+            id: capture.agentId,
+            displayName: capture.agentLabel,
+          },
+          {
+            intentId: stableIntent(id, answer.turnId),
+            text: answer.text,
+            ...(request.replyTo ? { replyTo: request.replyTo } : {}),
+          },
+          current,
+        );
+        this.store.finishPublished(
+          authority.scope,
+          id,
+          message.messageId,
+          current,
+        );
+      });
     }
     return this.inspect(authority, id);
   }

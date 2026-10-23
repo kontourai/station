@@ -270,6 +270,37 @@ function harness(
 const STREAM = `/hosts/local/hub/vendor/serve-sim/helper/${SHARED}/stream.mjpeg`;
 
 describe('the hub proxy when a host is busy (#1973 D2)', () => {
+  test('blocked runtime guidance stays operator-only', async () => {
+    const h = harness({
+      status: {
+        ...STATUS,
+        hubProcess: {
+          state: 'blocked',
+          detail: 'Install Node.js 24 or later with npm.',
+        },
+      },
+    });
+    const operator = await h.request('GET', '/toolchain', 'operator');
+    expect(operator.status).toBe(200);
+    expect(await readJson(operator)).toMatchObject({
+      data: {
+        hubProcess: {
+          state: 'blocked',
+          detail: 'Install Node.js 24 or later with npm.',
+        },
+      },
+    });
+    const admin = await h.request(
+      'GET',
+      '/toolchain?projectSlug=alpha',
+      'admin-alpha',
+    );
+    expect(admin.status).toBe(200);
+    expect(await readJson(admin)).toMatchObject({
+      data: { hubProcess: { state: 'blocked', detail: '' } },
+    });
+  });
+
   test('an admin\u2019s proxied request whose emulator cannot be named yet is a retryable 503, never a 403', async () => {
     const h = harness();
     const response = await h.request(

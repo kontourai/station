@@ -447,6 +447,17 @@ observation nor reconciliation launches the Agent again. Inspect request is read
 the UI refreshes it when the Room checkpoint changes. There is no browser answer-polling
 loop or implicit cancellation on unmount.
 
+Explicit Room Agent requests capture only Task summaries already shared to the
+Project, even for an operator. The immutable snapshot includes Task/share
+identities, title, status and observation time, with shared-subset coverage;
+it includes no private Task counts, descriptions or inferred goals. At most
+16 summaries and 4 KiB of Task evidence fit within the existing context budget.
+Unavailable or omitted evidence is labeled rather than treated as an empty
+Project. Exact share and Task incarnations are checked before dispatch and
+publication. Short owner fences coordinate TaskGraph, sharing and Room writes;
+no such lock spans provider execution. Unsharing can withhold a pending answer,
+but does not retroactively redact text already published in the Room.
+
 Messages and shared notes notify after commit. SSE coalesces wakes and does not
 repeat unchanged content while idle. Twenty-second heartbeat comments and a
 shared consistency check are separate from bounded two-second authority checks.
@@ -1271,6 +1282,20 @@ Standalone `/layouts` endpoints were removed during project-layout convergence.
 Use the [Project layout routes](../../src-server/routes/projects/projects.ts)
 under `/api/projects/:slug/layouts`, or the separate [personal Board](#personal-boards)
 routes for principal-owned layouts.
+
+Project layouts may declare `workspaceBinding: 'repository'`. The server derives
+`config.workingDirectory` from the owning Project (or the named `config.repoId`),
+never from a second persisted path in the layout. A named repository with no
+local binding yields no path; it does not fall back to another repository.
+Create and update reject a supplied path that differs from the derived value;
+an equal value is accepted and stripped before storage. This declaration grants
+no filesystem or terminal permission.
+
+A stored `type: 'coding'` layout remains repository-bound without an installed
+Coding plugin. Reads project the explicit binding; its next write preserves it,
+including when its type changes. Other layouts keep their own configuration
+unless they declare the binding. Request and persisted-record parsers reject
+unknown bindings and `null`.
 
 
 ---

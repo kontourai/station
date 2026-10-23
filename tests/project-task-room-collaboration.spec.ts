@@ -21,6 +21,7 @@ import {
   createTaskFromProject,
   type LiveStation,
   pairBrowserDevice,
+  prepareLiveStationBuild,
   publishTaskRoomAgentEdit,
   startStation,
   stopStation,
@@ -138,8 +139,12 @@ async function rawHistory(page: Page) {
   const disclosure = page
     .locator('details')
     .filter({ has: page.getByText('Raw room history', { exact: true }) });
-  await disclosure.locator('summary').click();
-  return disclosure.locator('pre');
+  const summary = disclosure.locator('summary');
+  if ((await disclosure.getAttribute('open')) !== null) await summary.click();
+  await summary.click();
+  const history = disclosure.locator('pre');
+  await expect(history).toBeVisible();
+  return history;
 }
 async function expectAgentPresence(
   page: Page,
@@ -148,6 +153,16 @@ async function expectAgentPresence(
   runId: string,
 ) {
   await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+  const here = page.getByRole('region', {
+    name: 'Present in this Task',
+    exact: true,
+  });
+  await expect(here).toHaveAttribute('data-viewer-actor-id', /\S+/);
+  const viewerActorId = await here.getAttribute('data-viewer-actor-id');
+  if (!viewerActorId) throw new Error('Viewer actor identity is unavailable');
+  await expect(
+    here.locator(`[data-actor-id=${JSON.stringify(viewerActorId)}]`),
+  ).toBeVisible();
   const live = await liveFixtureCommand(
     page,
     taskId,
@@ -166,6 +181,7 @@ async function expectAgentPresence(
       .getByRole('region', { name: 'Present in this Task' })
       .locator(`[data-actor-id="${agent.actor.actorId}"]`),
   ).toContainText(agent.actor.label);
+  return live;
 }
 
 test.describe
@@ -188,7 +204,8 @@ test.describe
         'station-room-acceptance-home-',
         'room-acceptance',
       );
-      await startStation(live, true, {
+      await prepareLiveStationBuild(live);
+      await startStation(live, false, {
         taskRoomControlSocket,
         logFile: testInfo.outputPath(`${live.instance}.log`),
       });
@@ -693,22 +710,14 @@ test.describe
           .fill('Revocation check.');
         await owner.getByRole('button', { name: 'Send to task room' }).click();
         await expect(
-          peer.getByText(
-            'Task room authorization ended. The last readable document remains read-only.',
-          ),
+          peer.getByRole('button', { name: 'Request access', exact: true }),
         ).toBeVisible();
         await expect(
           peer.getByRole('textbox', { name: 'Task brief' }),
-        ).toHaveValue(agentText);
-        await expect(
-          peer.getByRole('textbox', { name: 'Task brief' }),
-        ).toHaveAttribute('readonly', '');
-        await peer
-          .getByRole('tab', { name: 'Conversation', exact: true })
-          .click();
+        ).toHaveCount(0);
         await expect(
           peer.getByRole('textbox', { name: 'Message the Task' }),
-        ).toBeDisabled();
+        ).toHaveCount(0);
 
         await owner.screenshot({
           path: testInfo.outputPath('project-task-room-owner.png'),
@@ -748,12 +757,14 @@ test.describe
           throw new Error(
             `restarted room endpoint ${restartedRoomProbe.status}: ${restartedRoomProbe.body}`,
           );
-        await expectAgentPresence(
+        const restartedPresence = await expectAgentPresence(
           owner,
           taskId,
           agentEdit.sessionId,
           agentEdit.runId,
         );
+        expect(restartedPresence.cursors).toEqual([]);
+        expect(restartedPresence.panes).toEqual([]);
         await owner.getByRole('tab', { name: 'Plan', exact: true }).click();
         await owner
           .getByRole('button', { name: 'Edit brief', exact: true })

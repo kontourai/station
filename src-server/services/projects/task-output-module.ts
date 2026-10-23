@@ -159,6 +159,24 @@ export class TaskOutputModule {
       .map(stripStoredOutput);
   }
 
+  /** Private Basis observation; public Output reads retain their v1 shape. */
+  async listForBasis(
+    taskId: string,
+  ): Promise<
+    readonly (TaskOutputRecord & { declaredBy?: TaskOutputDeclarationSource })[]
+  > {
+    this.assertPersonal();
+    const task = this.captureTask(taskId);
+    const { store } = await this.withLock(() => this.reconcileStoreLocked());
+    this.assertTaskIdentity(task);
+    return store.outputs
+      .filter((output) => belongsToTask(output, task))
+      .map((output) => ({
+        ...stripStoredOutput(output),
+        ...(output.declaredBy ? { declaredBy: { ...output.declaredBy } } : {}),
+      }));
+  }
+
   async read(taskId: string, outputId: string): Promise<TaskOutputRecord> {
     this.assertPersonal();
     const task = this.captureTask(taskId);

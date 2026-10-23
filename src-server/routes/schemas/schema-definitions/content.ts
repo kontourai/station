@@ -334,6 +334,7 @@ export const projectLayoutCreateSchema = z
     slug: z.string().min(1),
     name: z.string().min(1),
     type: z.string().optional(),
+    workspaceBinding: z.literal('repository').optional(),
     config: layoutConfigSchema.optional(),
   })
   .passthrough();

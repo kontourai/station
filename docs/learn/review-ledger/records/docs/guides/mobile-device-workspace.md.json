@@ -120,7 +120,15 @@
 
     "src-server/services/devices/device-automation.ts",
 
-    "src-server/tools/station-control-device-tools.ts"
+    "src-server/tools/station-control-device-tools.ts",
+
+    "src-server/services/devices/toolchain/device-tool-runtime.ts",
+
+    "src-server/services/devices/toolchain/device-hub-supervisor.ts",
+
+    "src-server/services/devices/toolchain/__tests__/device-tool-runtime.process.test.ts",
+
+    "src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx"
   ],
 
   "checks": [

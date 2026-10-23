@@ -50,7 +50,7 @@ test('mounted dedicated routes persist real hierarchy/chat mutations and deny st
     task: { projectId: 'project', title: 'private deliverable' },
   });
   expect(created.status).toBe(200);
-  const { data } = await created.json();
+  const { data } = (await created.json()) as { data: { task: typeof parent } };
   const child = taskIdentity(data.task);
   expect(graph.readTask(child.taskId)?.parent).toEqual(taskIdentity(parent));
   const link = {
@@ -63,11 +63,15 @@ test('mounted dedicated routes persist real hierarchy/chat mutations and deny st
     (await request(`${child.taskId}/work-chats`, 'POST', link)).status,
   ).toBe(200);
   const list = `/api/tasks/${child.taskId}/work-chats?taskCreatedAt=${encodeURIComponent(child.taskCreatedAt)}`;
-  expect((await (await app.request(list)).json()).data.chats).toEqual([
-    { conversationId: 'conversation', revision: 1 },
-  ]);
+  expect(
+    ((await (await app.request(list)).json()) as { data: { chats: unknown[] } })
+      .data.chats,
+  ).toEqual([{ conversationId: 'conversation', revision: 1 }]);
   chatReadable = false;
-  expect((await (await app.request(list)).json()).data.chats).toEqual([]);
+  expect(
+    ((await (await app.request(list)).json()) as { data: { chats: unknown[] } })
+      .data.chats,
+  ).toEqual([]);
   chatReadable = true;
   readable = false;
   const children = await app.request(
@@ -92,7 +96,7 @@ test('mounted dedicated routes persist real hierarchy/chat mutations and deny st
   const status = await app.request(
     `/api/tasks/${child.taskId}/work-chats/conversation?taskCreatedAt=${encodeURIComponent(child.taskCreatedAt)}`,
   );
-  expect((await status.json()).data).toMatchObject({
+  expect(((await status.json()) as { data: unknown }).data).toMatchObject({
     revision: 2,
     linked: false,
   });

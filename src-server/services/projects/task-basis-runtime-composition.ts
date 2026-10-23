@@ -55,6 +55,7 @@ export function createTaskBasisRuntimeComposition(input: {
   gateEvaluationReferences?: TaskGateEvaluationReferenceRead;
   reportCompositionInvariant?: (
     error: StationBasisCompositionInvariantError,
+    taskId?: string,
   ) => void;
 }) {
   const taskOutputs = new TaskOutputModule({
@@ -70,7 +71,7 @@ export function createTaskBasisRuntimeComposition(input: {
   const taskBasis = createTaskBasisQueryModule({
     taskGraph: input.taskGraphService,
     sessionQueries: input.sessionQueries,
-    outputs: taskOutputs,
+    outputs: { list: (taskId) => taskOutputs.listForBasis(taskId) },
     toolResultReferences: taskToolResultReferences,
     gateEvaluationReferences: input.gateEvaluationReferences,
     readAssessment: input.readAssessment,

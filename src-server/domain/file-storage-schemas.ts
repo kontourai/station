@@ -142,6 +142,7 @@ const layoutSchema = z
     projectSlug: nonEmptyString.optional(),
     owner: layoutOwnerSchema.optional(),
     type: nonEmptyString,
+    workspaceBinding: z.literal('repository').optional(),
     name: nonEmptyString,
     slug: nonEmptyString,
     icon: optionalString,

@@ -960,6 +960,13 @@ alone does not override that result. **Refresh models** refreshes the catalog.
 
 Model requests use the proxy; the engine and its tools still run on this Station.
 
+A routed connection authenticates with that proxy key: readiness reports the
+saved key as the engine's credential (shown as **Proxy key**) and does not
+require the CLI's own login. Without a route the engine's CLI login is the
+credential, and a missing login blocks launch. The readiness answer, the launch
+gate, and the connection list all read that one derivation from the engine
+adapter, so they cannot disagree.
+
 The engine stores `config.proxyConnectionId`, referring to the saved Model
 connection. Its current key is resolved on each launch and never copied into
 engine settings. Codex uses provider arguments while keeping its config home.
@@ -1402,6 +1409,14 @@ checkbox explicitly selects its verified repository-relative execution root;
 it is unchecked initially and does not promote or remove an existing primary resource.
 An identity with no existing resources requires an explicit code-work choice,
 because its first repository would otherwise become the execution fallback.
+Changing where Agent work starts affects new Sessions. An existing qualified
+Session keeps its original directory while that directory remains a verified
+resource of the same Project incarnation. Detaching or changing that resource,
+replacing its directory with a symlink, or replacing the Project can prevent
+continuation; Station does not silently move the chat to the new default.
+Older Sessions without verified Project identity cannot gain that authority
+from the current slug.
+
 Attachment checks the expected portable identity and immutable local Project ID.
 A changed Project or binding is refused instead of overwriting it. If the
 response is lost, **Retry saved attachment** repeats the same selection. A

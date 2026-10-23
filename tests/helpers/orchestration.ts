@@ -782,7 +782,7 @@ export async function emitMockOrchestrationEvent(
  * button, so a spec fails if either stops existing.
  */
 export async function openHeaderSettings(page: Page): Promise<void> {
-  const avatar = page.getByRole('button', { name: 'Profile and settings' });
+  const avatar = page.getByRole('button', { name: /^Profile and settings:/ });
   const drawerToggle = page.getByRole('button', { name: 'Toggle menu' });
   // WAIT BEFORE BRANCHING. Asking `isVisible()` the instant after `goto` answers
   // "has the toolbar rendered yet", not "which breakpoint is this" — a first

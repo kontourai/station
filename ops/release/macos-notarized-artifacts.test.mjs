@@ -156,6 +156,17 @@ function fixture({
         return { status: 0, stdout: `${appVersion}\n`, stderr: '' };
       return { status: 0, stdout: 'io.kontourai.station', stderr: '' };
     }
+    if (
+      program === 'codesign' &&
+      args.includes('--entitlements') &&
+      args.at(-1).endsWith('/station-node')
+    )
+      return {
+        status: 0,
+        stdout:
+          '<plist><dict><key>com.apple.security.cs.allow-jit</key><true/></dict></plist>',
+        stderr: '',
+      };
     if (program === 'codesign' && args[0] === '-dvv') {
       return {
         status: 0,
@@ -178,7 +189,7 @@ function fixture({
   return {
     calls,
     embeddedMacos: {
-      lstat: () => ({ isSymbolicLink: () => false }),
+      lstat: () => ({ isSymbolicLink: () => false, isFile: () => true }),
       magic: () => false,
       realpath: (file) => file,
     },
@@ -398,6 +409,31 @@ test('uses a visible phase for each injected command and preserves the canonical
     expect.objectContaining({ phase: 'embedded Mach-O inventory file scan' }),
   ]);
   expect(calls.some(([program]) => program === 'node')).toBe(false);
+  const nodeSigning = calls.findIndex(
+    ([program, args]) =>
+      program === 'codesign' &&
+      args.includes('--force') &&
+      args.at(-1) === '/app/Station.app/Contents/MacOS/station-node',
+  );
+  const outerSigning = calls.findIndex(
+    ([program, args]) =>
+      program === 'codesign' &&
+      args.includes('--force') &&
+      args.at(-1) === '/app/Station.app',
+  );
+  expect(nodeSigning).toBeGreaterThanOrEqual(0);
+  expect(outerSigning).toBeGreaterThan(nodeSigning);
+  expect(calls[nodeSigning][1]).toEqual([
+    '--force',
+    '--sign',
+    'Developer ID',
+    '--options',
+    'runtime',
+    '--timestamp',
+    '--entitlements',
+    expect.stringContaining('Node.entitlements.plist'),
+    '/app/Station.app/Contents/MacOS/station-node',
+  ]);
   expect(calls).toContainEqual([
     'codesign',
     ['-d', '--entitlements', '-', '--xml', '/app/Station.app'],
@@ -1372,7 +1408,7 @@ test('retries a bounded embedded timestamp signing failure once without rewrappi
   const baseRun = release.run;
   let embeddedSignAttempts = 0;
   release.embeddedMacos = {
-    lstat: () => ({ isSymbolicLink: () => false }),
+    lstat: () => ({ isSymbolicLink: () => false, isFile: () => true }),
     magic: (candidate) => candidate === file,
     realpath: (candidate) => candidate,
   };

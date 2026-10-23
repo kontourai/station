@@ -53,7 +53,7 @@ export function createProjectIdentityRoutes(
     action: (
       service: ProjectIdentityService,
     ) => Promise<ProjectIdentityView | ProjectAttachResult>,
-  ) {
+  ): Promise<Response> {
     if (!service)
       return c.json(
         {
@@ -201,7 +201,7 @@ export function createProjectIdentityRoutes(
   app.put(
     '/:slug/identity/execution-root',
     validate(executionRootMutationSchema),
-    (c) => {
+    async (c): Promise<Response> => {
       const input: z.infer<typeof executionRootMutationSchema> = getBody(c);
       // Setting a path chooses a folder; clearing the root does not.
       const refused =
@@ -218,7 +218,7 @@ export function createProjectIdentityRoutes(
             'Workspace selection authority ended.',
           );
       };
-      return run(c, async (owner) => {
+      const response = await run(c, async (owner) => {
         current();
         const result = await owner.updateExecutionRoot(
           param(c, 'slug'),
@@ -227,16 +227,15 @@ export function createProjectIdentityRoutes(
         );
         current();
         return result;
-      }).then((response) =>
-        guardProjectResponse(response, async () => {
-          try {
-            current();
-            return true;
-          } catch {
-            return false;
-          }
-        }),
-      );
+      });
+      return guardProjectResponse(response, async () => {
+        try {
+          current();
+          return true;
+        } catch {
+          return false;
+        }
+      });
     },
   );
   app.post('/attach', validate(attachSchema), (c) => {

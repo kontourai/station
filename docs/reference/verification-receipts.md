@@ -443,7 +443,8 @@ owns `src-desktop/target/`, because both
 `verify:desktop-rust` (`cd src-desktop && cargo test`) and the mobile compiler
 run Cargo with `src-desktop` as their working directory, where Cargo creates
 `target/`; it preserves `dist-server/` and `dist-desktop-runtime/` for the
-desktop script's setup output. The `verify-e2e-full`
+desktop script's setup output. It also owns `src-desktop/binaries/`, where
+the prerequisite script stages the pinned private Node executable before Cargo. The `verify-e2e-full`
 lane owns the instance-named `dist-server-e2e-*/` and `dist-ui-e2e-*/`
 directories its runner creates per invocation (the same
 `dist-(server|ui)-e2e-*` prefixes the runner's own sweep reclaims), expressed
@@ -456,7 +457,7 @@ the artifact-path contract.
 
 The [testing guide](../guides/testing.md#available-escalation-lanes) owns when
 to run each lane. Ordinary pull requests use focused local evidence, normal
-push hooks and required hosted PR and merge-queue checks. Scheduled main qualification and tagged Preview/Stable promotions own
+push hooks and required hosted PR and merge-queue checks. Coalesced main-push qualification, scheduled main qualification and tagged Preview/Stable promotions own
 canonical full-regression completion. Nightly uses a distinct exact-source
 usability gate and does not emit full qualification evidence. A local `full:regression` run is an
 explicit diagnostic escalation, not a routine response to upstream movement.
@@ -575,9 +576,12 @@ Its captured Git filename list is bounded to 16 MiB; a missing before revision,
 invalid range, checkout failure, or overflow fails closed instead of reporting
 docs-only.
 
-Heavy jobs own lane-specific concurrency groups only after classification. A
-docs-only push therefore runs the independent PR: Secret scan and classifier but
-does not enter or cancel fast, full-regression, browser, or container work.
+Within `PR: CI` and container smoke, heavy jobs own lane-specific concurrency
+groups only after classification. A docs-only push runs their classifier and
+the independent secret scan without entering or cancelling their heavy lanes.
+The independent main-qualification workflow may still enqueue that exact main
+revision in its coalescing source-qualification group; it never treats a
+replaced pending revision as qualified.
 Manual dispatches fail closed to heavy verification. The local deterministic
 policy gate is `npm run gate:ci-change-classifier`; its fixtures include more
 than 300 docs files both with and without a runtime file beyond position 300.

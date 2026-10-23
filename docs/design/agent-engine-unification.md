@@ -538,13 +538,29 @@ here because leaving it implicit is what produced archive#3662:
 - **`AppConfig.builtinAgentEngineConnectionId` is the authority** for which engine
   runs the reserved `station` identity. It is a Settings field with its own editor
   (`BuiltinEngineRow`), not an Agent field.
+- **An unchosen home records its adoption once.** When nothing has ever been
+  chosen and readiness resolves to exactly one capable engine, that adoption is
+  written to `builtinAgentEngineConnectionId` (`recordAdoptedBuiltinEngine`,
+  `src-server/runtime/bootstrap/builtin-engine-adoption.ts`). Without it the
+  "sensible default" was recomputed on every boot and every reload, so the
+  moment a *second* capable engine became ready the ambiguity rule below
+  withdrew the first: on 2026-10-22 the built-in assistant stopped running on
+  OpenCode because Claude Code's credentials had been repaired. The write is
+  existence-gated — it runs only while the key is absent, and writing removes
+  its own condition — so it converges after one pass and cannot become the
+  reload-writes-its-own-inputs loop archive#3063/#1588 exist to prevent. A home
+  the process cannot write keeps the previous behavior: the adoption stays
+  implicit for that boot.
 - **It is resolved per boot, not persisted onto the Agent.**
   `resolveBuiltinAgentEngineBinding` weighs live readiness, control-plane capability
   and per-connection runtime observation, and fails safe to Station's own engine *for
   that resolution only*. Writing the resolution into `agents/station/agent.json` would
   let one boot with an unready engine destroy the user's stored choice, and would
   freeze out the recovery where the same stored choice starts resolving again the
-  moment evidence arrives (archive#1549).
+  moment evidence arrives (archive#1549). That is why the recorded choice lives in
+  `AppConfig`, where a resolution can never rewrite it, and why an engine that is
+  merely unready or ambiguous resolves to Station for THIS boot without the stored
+  choice being touched.
 - **The persisted record therefore never carries `execution.agentConnectionId`**, and
   that is enforced twice, not merely asserted:
   - **A submitted binding is REFUSED at the service seam.** `AgentService`'s

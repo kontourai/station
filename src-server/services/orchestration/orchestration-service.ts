@@ -968,6 +968,7 @@ interface OrchestrationServiceOptions {
   /** Destination-local resource resolution for new starts and missing-cwd recovery. */
   resolveProjectSessionDirectory?: (
     slug: string,
+    retained?: { localProjectId: string; cwd: string },
   ) => Promise<string | undefined>;
   /**
    * #2873: the directory an engine connection starts a session in when the
@@ -1854,6 +1855,7 @@ export class OrchestrationService {
   /** Shared receiver-local path observation used by target planning and start admission. */
   readonly resolveProjectSessionDirectory?: (
     slug: string,
+    retained?: { localProjectId: string; cwd: string },
   ) => Promise<string | undefined>;
   /** This Station's default workspace mode for a project that names none. */
   readonly resolveStationDefaultWorkspaceIsolation?: () => Promise<
@@ -2919,6 +2921,9 @@ export class OrchestrationService {
         this.internalStops.reportRedispatchFailed(threadId, turnId, provider),
       replayModelOptions: (threadId, provider, modelOptions) =>
         this.replayModelOptionsWithPosture(threadId, provider, modelOptions),
+      assertRetainedWorkspaceAuthorized: async (threadId) => {
+        await this.authorizedConversationWorkspace(threadId);
+      },
       replayConfinement: (threadId) =>
         this.approvalPosture.standingConfinement(
           threadId,
@@ -3372,8 +3377,8 @@ export class OrchestrationService {
     // `adapter.sendTurn` that bypasses dispatch — so a thread whose
     // persisted binding carries portable consent refuses HERE, before any
     // provider effect, instead of replaying a portable session the current
-    // offer never authorized. Unmarked (legacy/ordinary) sessions pass
-    // through byte-identical.
+    // offer never authorized. Ordinary retained Project authority is checked
+    // separately after restart preparation, immediately before provider start.
     {
       const unadmittedConsent = this.persistedPortableConsentOfThread(
         input.threadId,
@@ -3501,6 +3506,7 @@ export class OrchestrationService {
       );
       let session: ProviderSession;
       try {
+        await this.authorizedConversationWorkspace(input.threadId);
         // #2873: a respawn re-resolves the recorded folder like any start.
         assertDispatchCwdUnmoved(startInput, startInput.cwd);
         session = await withTenantExecutionContext(tenantExecutionContext, () =>
@@ -6439,6 +6445,7 @@ export class OrchestrationService {
             internal?.foregroundInvocationAdmission?.provisionedWorkspace ??
             readExecutionWorkspaceBinding(internal?.executionWorkspace) ??
             internal?.receiverExecutionAdmission?.admitted ??
+            (await this.retainedSessionAdmittedWorkspace(publicStartInput)) ??
             (await this.adoptedChildAdmittedWorkspace(publicStartInput));
           let startInput = await resolveStartSessionCwd(
             normalizeOmittedModelId(
@@ -6696,6 +6703,7 @@ export class OrchestrationService {
               // yields: the start boundary below claims synchronously. It
               // runs outside that boundary, which would record a throw as
               // an uncertain start.
+              await this.retainedSessionAdmittedWorkspace(input);
               const binding = context.dispatchCwdAdmission
                 ? await this.dispatchCwdBinding(input, internal)
                 : undefined;
@@ -7288,6 +7296,7 @@ export class OrchestrationService {
           // point every first and successor turn crosses. No registration
           // means the normal Task/chat path is byte-for-byte unchanged.
           this.assertTurnAdmitted(submittedInput.threadId);
+          await this.authorizedConversationWorkspace(submittedInput.threadId);
           const current = await this.readSession(
             submittedInput.threadId,
             INTERNAL_SESSION_READ_SCOPE,
@@ -8234,7 +8243,10 @@ export class OrchestrationService {
                     // whose persisted binding carries portable consent
                     // refuses here instead of executing a portable session
                     // the current offer never authorized.
-                    const invokeWithReceiverAdmission = () => {
+                    const invokeWithReceiverAdmission = async () => {
+                      await this.authorizedConversationWorkspace(
+                        turnInput.threadId,
+                      );
                       const turnAdmission =
                         internal?.receiverExecutionAdmission;
                       const admittedSnapshot = turnAdmission?.admitted
@@ -9854,6 +9866,74 @@ export class OrchestrationService {
     const recorded = recordedDispatchCanonicalCwd(input.metadata);
     const current = admission.recheck(...binding);
     if (current !== recorded) throw dispatchCwdMovedError(recorded, current);
+  }
+
+  /** Reauthorize the durable conversation coordinate, never a caller-supplied cwd. */
+  async authorizedConversationWorkspace(
+    threadId: string,
+  ): Promise<{ projectSlug: string; cwd: string } | undefined> {
+    const store = this.options.eventStore;
+    const resolveDirectory = this.options.resolveProjectSessionDirectory;
+    if (!store || !resolveDirectory) return undefined;
+    const conversationId =
+      store.conversationForSession(threadId)?.conversationId ?? threadId;
+    const metadata = this.firstStartedMetadataOfThread(conversationId);
+    const localProjectId = metadata?.[SESSION_LOCAL_PROJECT_ID_METADATA_KEY];
+    const projectSlug = metadata?.projectSlug;
+    const cwd = store.readSessionByThread(conversationId)?.cwd;
+    if (
+      metadata?.[SESSION_LOCAL_PROJECT_ID_REFUSED_METADATA_KEY] === true &&
+      typeof projectSlug === 'string'
+    ) {
+      if (await resolveDirectory(projectSlug))
+        throw new Error('The Session has no verified Project identity.');
+      return undefined;
+    }
+    // Legacy/adopted conversations retain their existing admission rules.
+    // In particular an unbound conversation cannot acquire a Project here.
+    if (
+      typeof localProjectId !== 'string' ||
+      typeof projectSlug !== 'string' ||
+      !cwd ||
+      metadata?.worktree
+    )
+      return undefined;
+    if (typeof metadata?.cwd === 'string' && metadata.cwd !== cwd)
+      throw new Error('The continued Session workspace binding changed.');
+    const execution = store.readSessionByThread(threadId);
+    if (execution && execution.cwd !== cwd)
+      throw new Error('The continued Session workspace binding changed.');
+    const current = await resolveDirectory(projectSlug, {
+      localProjectId,
+      cwd,
+    });
+    if (current !== cwd || canonicalPath(cwd) !== cwd)
+      throw new Error(
+        'The Session workspace is no longer an authorized Project resource.',
+      );
+    return { projectSlug, cwd };
+  }
+
+  private async retainedSessionAdmittedWorkspace(
+    input: ProviderSessionStartInput,
+  ): Promise<
+    { threadId: string; projectSlug: string; cwd: string } | undefined
+  > {
+    const retained = await this.authorizedConversationWorkspace(input.threadId);
+    if (!retained) return undefined;
+    const conversationId =
+      this.options.eventStore?.conversationForSession(input.threadId)
+        ?.conversationId ?? input.threadId;
+    const originalEnvironment =
+      this.firstStartedMetadataOfThread(conversationId)?.environmentId;
+    if (originalEnvironment !== input.metadata?.environmentId)
+      throw new Error('The continued Session Environment binding changed.');
+    if (
+      input.metadata?.projectSlug !== retained.projectSlug ||
+      input.cwd !== retained.cwd
+    )
+      throw new Error('The continued Session workspace binding changed.');
+    return { threadId: input.threadId, ...retained };
   }
 
   /**
@@ -12706,6 +12786,9 @@ export class OrchestrationService {
     admission?: SessionCommandInternalOptions['sessionStartAdmission'],
   ): RecoveredSessionStartOptions {
     return {
+      assertRetainedWorkspaceAuthorized: async (threadId) => {
+        await this.authorizedConversationWorkspace(threadId);
+      },
       invokeSessionStart: (threadId, invoke) =>
         this.runEngineSessionStart(threadId, invoke, admission),
       eventStore: this.options.eventStore,
@@ -12749,11 +12832,10 @@ export class OrchestrationService {
       // client that never supplied one) keeps recovering with none — and the
       // engine keeps inheriting the server process's directory. Fill the gap
       // from the replayed `metadata.projectSlug`. Deliberately only when the
-      // persisted cwd is ABSENT: a session that already has one is not the
-      // archive#1011 case, and re-validating it here would close otherwise healthy
-      // sessions whose directory is momentarily unavailable (an unmounted
-      // volume, a not-yet-restored worktree) — recovery has always been
-      // tolerant there and this fix is not the place to change that.
+      // persisted cwd is ABSENT: never replace an existing coordinate with
+      // today's default root. Qualified retained Sessions are reauthorized
+      // after preparation by assertRetainedWorkspaceAuthorized; unqualified
+      // legacy Sessions retain their existing recovery rules.
       resolveSessionCwd: async (input) => {
         const resolved = input.cwd
           ? input
@@ -12833,8 +12915,8 @@ export class OrchestrationService {
     // Without admission the spawn refuses BEFORE any adapter start/adopt/
     // process spawn. The refusal retains the persisted record and
     // resumeCursor untouched — the session stays dormant and re-routable,
-    // never quarantined or closed. Legacy/unmarked recovery is
-    // byte-identical.
+    // never quarantined or closed. Ordinary retained Project authority is
+    // checked separately at the provider start inside recovery preparation.
     const recoveredAdmitted = receiverAdmission?.admitted
       ? { ...receiverAdmission.admitted }
       : undefined;

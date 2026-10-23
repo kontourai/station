@@ -1,0 +1,7 @@
+{
+  "revision": "89fe4546f29e6c7e432242b40c097f90b845d0d1",
+
+  "notes": [
+    {"path":"src-server/AGENTS.md","note":"Reviewed the server-scope router after the development guide gained the sign-in handoff subsection: the server scope rules (route seam, logging seam, process launch windowsHide, batched reads) are unchanged by a guide section about operator handoff; no prose change.","inputs":["src-server/AGENTS.md","docs/guides/development.md"]}
+  ]
+}

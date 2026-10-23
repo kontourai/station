@@ -493,7 +493,9 @@ test.each(['operation', 'publication'])(
     allowed = true;
     const renewed = await route.acquire(request);
     expect(renewed.status).toBe(200);
-    expect((await renewed.json()).data.phase).toBe('ready');
+    expect(
+      ((await renewed.json()) as { data: { phase: string } }).data.phase,
+    ).toBe('ready');
   },
 );
 
@@ -549,13 +551,19 @@ test('mounted clone revocation preserves uncertain bytes and exact explicit retr
   ).toBe(403);
   allowed = true;
   const duplicate = await route.acquire(request);
-  expect((await duplicate.json()).data).toEqual(uncertain);
+  expect(((await duplicate.json()) as { data: unknown }).data).toEqual(
+    uncertain,
+  );
   expect(git.mock.calls).toHaveLength(1);
   const recovered = await route.app.request(
     `/repository-acquisitions/${request.requestId}/retry`,
     { method: 'POST' },
   );
-  const ready = (await recovered.json()).data;
+  const ready = (
+    (await recovered.json()) as {
+      data: NonNullable<ReturnType<RepositoryAcquisitionService['get']>>;
+    }
+  ).data;
   expect(ready.phase).toBe('ready');
   expect(ready.request).toEqual(request);
   expect(ready.attempt).toBe(2);
