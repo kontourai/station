@@ -164,8 +164,9 @@ When a persisted transcript reference exists,
 client entry reads bounded recorded messages. `threadId` is the reporting
 Session and `childId` its child-work identity. `page` accepts message `offset`
 and `limit` (1–50, default 30). The server resolves the reference from authorized
-facts; callers never supply a file path. Unreadable/missing transcripts return
-404; unavailable engine records return 503.
+facts; callers never supply a file path. A Session the caller cannot read, a
+missing child or absent transcript reference returns 404. A retained reference
+whose engine transcript is missing or unreadable returns 503.
 
 `useChildWorkTranscriptQuery({threadId, childId, enabled?}, apiBase?)` from the
 SDK root loads 30 messages per page and exposes `fetchNextPage` using
