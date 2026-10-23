@@ -2082,7 +2082,7 @@ describe('CI verification workflow contracts', () => {
       `timeout-minutes: ${FAST_CHECKS_JOB_TIMEOUT_MINUTES}`,
     );
     expect(fastChecks).toContain("needs.classify.outputs.heavy == 'true'");
-    expect(fastChecks).toContain('runs-on: ubuntu-22.04');
+    expect(fastChecks).toContain('runs-on: ubuntu-24.04');
     expect(fastChecks).not.toContain('self-hosted');
     expect(fastChecks).not.toContain('physical-host-capacity@');
     expect(fastChecks).toContain('STATION_CI_FAST_BASE');
@@ -3367,6 +3367,7 @@ describe('hosted qualification workflow covers the full regression', () => {
   };
   type Defaults = { run?: { shell?: string } };
   type Job = {
+    'runs-on'?: string;
     name?: string;
     if?: string;
     needs?: string[];
@@ -3479,6 +3480,7 @@ describe('hosted qualification workflow covers the full regression', () => {
   });
 
   it('splits process-heavy into slices that cover the group exactly once', () => {
+    expect(document().jobs['process-heavy']['runs-on']).toBe('ubuntu-24.04');
     const heavy = selections(document().jobs).filter(({ text }) =>
       phaseIds(text).includes('test-full-process-heavy'),
     );
