@@ -1,0 +1,7 @@
+{
+  "revision": "c70584138a4bd1b63f77faacf5e693fefd9fdf52",
+
+  "notes": [
+    {"path":"docs/plans/child-work-epic.md","note":"Reviewed the new Remaining Flow-bound execution admission subsection only against station-report-group-preparation.ts (unbound issuance), delegation-group-launch-fence.ts (retained claim check and final fetch), delegation-group-source-admission.ts (Project/resource capture and chat scope), runtime-routes.ts and routes/evidence/flow-runs.ts (Project Flow evaluate route), and published Flow 5.2.2 validation and mutation-lock APIs. Records remaining requirements; no Flow-bound runtime or live acceptance is claimed, and this note does not certify historical sections or resolve their outstanding reviews.","inputs":["docs/plans/child-work-epic.md","src-server/runtime/conversation/reserved-sdk-source-attempt.ts","src-server/services/orchestration/delegation-group-persistence.ts"]}
+  ]
+}
