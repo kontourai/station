@@ -36,7 +36,9 @@ import type { BuiltinAgentEngineBinding } from '@kontourai/station-contracts/eng
  * exist to prevent.
  */
 export interface BuiltinEngineAdoptionRecorder {
-  updateAppConfig(updates: Partial<AppConfig>): Promise<AppConfig>;
+  mutateAppConfig(
+    mutate: (current: Readonly<AppConfig>) => Partial<AppConfig>,
+  ): Promise<AppConfig>;
 }
 
 export async function recordAdoptedBuiltinEngine(options: {
@@ -51,9 +53,11 @@ export async function recordAdoptedBuiltinEngine(options: {
   const { configLoader, explicitConnectionId, binding, logger } = options;
   if (!binding || explicitConnectionId !== undefined) return;
   try {
-    await configLoader.updateAppConfig({
-      builtinAgentEngineConnectionId: binding.connectionId,
-    });
+    await configLoader.mutateAppConfig((current) =>
+      current.builtinAgentEngineConnectionId === undefined
+        ? { builtinAgentEngineConnectionId: binding.connectionId }
+        : {},
+    );
   } catch (error) {
     // A home the process cannot write (read-only mount, a refused atomic
     // replace) must still run on the binding readiness resolved. The adoption

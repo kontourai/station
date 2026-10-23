@@ -567,7 +567,9 @@ here because leaving it implicit is what produced archive#3662:
   moment a *second* capable engine became ready the ambiguity rule below
   withdrew the first: on 2026-10-22 the built-in assistant stopped running on
   OpenCode because Claude Code's credentials had been repaired. The write is
-  existence-gated — it runs only while the key is absent, and writing removes
+  existence-gated — it rechecks absence inside ConfigLoader's locked app
+  mutation, so an engine or explicit Station choice committed after readiness
+  was captured is preserved. It runs only while the key is absent, and writing removes
   its own condition — so it converges after one pass and cannot become the
   reload-writes-its-own-inputs loop archive#3063/#1588 exist to prevent. A home
   the process cannot write keeps the previous behavior: the adoption stays
