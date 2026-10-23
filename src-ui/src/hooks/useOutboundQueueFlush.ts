@@ -123,7 +123,7 @@ let flushing = false;
  * passed the row or chat that changed, so it runs once more when it ends
  * instead of the request being dropped.
  */
-let flushRequestedWhileFlushing = false;
+let flushRequestedWhileFlushing: (() => void) | undefined;
 /** Failed lookups keep sends fenced; retry observation with capped backoff. */
 const LOOKUP_RETRY_FIRST_MS = 2_000;
 const LOOKUP_RETRY_MAX_MS = 60_000;
@@ -186,7 +186,8 @@ export function useOutboundQueueFlush(apiBase: string): void {
         // Only a request for a change the running pass cannot have seen (a
         // chat that just became writable). Queue notifications are not: the
         // pass makes them itself, and rerunning on them would never settle.
-        if (rerunIfBusy) flushRequestedWhileFlushing = true;
+        if (rerunIfBusy)
+          flushRequestedWhileFlushing = () => triggerFlushRef.current(true);
         return;
       }
       flushing = true;
@@ -330,8 +331,9 @@ export function useOutboundQueueFlush(apiBase: string): void {
         .finally(() => {
           flushing = false;
           if (flushRequestedWhileFlushing) {
-            flushRequestedWhileFlushing = false;
-            triggerFlushRef.current(true);
+            const requested = flushRequestedWhileFlushing;
+            flushRequestedWhileFlushing = undefined;
+            requested();
           }
         });
     },
@@ -592,14 +594,9 @@ export function useOutboundQueueFlush(apiBase: string): void {
     };
   }, []);
 
-  const hasFlushedOnMountRef = useRef(false);
   useEffect(() => {
-    // A queue populated by a prior session (survived a restart) with the
-    // connection already confirmed reachable by the time this mounts has no
-    // offline→online transition to catch above — try once on mount too.
-    if (!hasFlushedOnMountRef.current && status === 'connected') {
-      hasFlushedOnMountRef.current = true;
-      triggerFlush();
-    }
+    // A connected mount must join an older mount's in-flight pass, then run
+    // under its own lifetime if that pass was cancelled during the handoff.
+    if (status === 'connected') triggerFlush(true);
   }, [status, triggerFlush]);
 }

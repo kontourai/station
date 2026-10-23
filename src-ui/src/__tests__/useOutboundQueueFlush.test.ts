@@ -3,6 +3,7 @@
  */
 
 import { act, renderHook, waitFor } from '@testing-library/react';
+import { createElement, StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import {
@@ -928,6 +929,57 @@ describe('useOutboundQueueFlush', () => {
         view.unmount();
         vi.useRealTimers();
       }
+    });
+
+    it('a connected StrictMode mount still reconciles after its first effect lifetime ends', async () => {
+      await orphanedLiveRow();
+      getTurnDelivery.mockImplementation(
+        async (_apiBase, conversationId, clientTurnId) => ({
+          outcome: 'started',
+          conversationId,
+          clientTurnId,
+          sessionId: 'session-1',
+          turnId: 'provider-turn-orphan',
+        }),
+      );
+      renderHook(() => useOutboundQueueFlush('http://api.test'), {
+        wrapper: ({ children }) => createElement(StrictMode, null, children),
+      });
+      await waitFor(async () =>
+        expect(await outboundDispatch.snapshot()).toEqual([]),
+      );
+      expect(sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('a new mount recovers after the old mount unmounts during its lookup', async () => {
+      await orphanedLiveRow();
+      let rejectLookup!: (error: Error) => void;
+      getTurnDelivery
+        .mockImplementationOnce(
+          () =>
+            new Promise((_resolve, reject) => {
+              rejectLookup = reject;
+            }),
+        )
+        .mockImplementation(async (_apiBase, conversationId, clientTurnId) => ({
+          outcome: 'started',
+          conversationId,
+          clientTurnId,
+          sessionId: 'session-1',
+          turnId: 'provider-turn-orphan',
+        }));
+      const first = renderHook(() => useOutboundQueueFlush('http://api.test'));
+      await settleImports();
+      expect(getTurnDelivery).toHaveBeenCalledTimes(1);
+      first.unmount();
+      const next = renderHook(() => useOutboundQueueFlush('http://api.test'));
+      rejectLookup(new Error('late failure from the old mount'));
+      await waitFor(async () =>
+        expect(await outboundDispatch.snapshot()).toEqual([]),
+      );
+      expect(getTurnDelivery).toHaveBeenCalledTimes(2);
+      expect(sendMessage).not.toHaveBeenCalled();
+      next.unmount();
     });
 
     it('backs failed lookups off to 60 seconds and cancels on unmount', async () => {
