@@ -1,14 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import {
+  cpSync,
   mkdirSync,
-  mkdtempSync,
   realpathSync,
-  rmSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import type { AgentExecutionConfig } from '@kontourai/station-contracts/agent';
 import type { ConnectionRecoveryIntent } from '@kontourai/station-contracts/connection-recovery';
 import type { Prerequisite } from '@kontourai/station-contracts/tool';
@@ -18,6 +16,8 @@ import {
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { awaitSessionRecoveryCompleted } from '../../../__test-utils__/session-runtime-barriers.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { ConfigLoader } from '../../../domain/config-loader.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import type {
   ProviderAdapterMetadata,
@@ -25,7 +25,16 @@ import type {
   ProviderSessionStartInput,
 } from '../../../providers/adapter-shape.js';
 import { execGitSync } from '../../../utils/git-exec.js';
+import { SkillService } from '../../agents/skill-service.js';
 import { createRuntimeResourcePostureController } from '../../infra/resource-posture.js';
+import { AgentPluginLoader } from '../../plugins/agent-plugin-loader.js';
+import {
+  pluginActivationDescriptorDigest,
+  verifyPluginActivation,
+} from '../../plugins/plugin-activation-plan.js';
+import { computePluginContentDigest } from '../../plugins/plugin-content-integrity.js';
+import { createLocalPluginInstallationService } from '../../plugins/plugin-installation-local.js';
+import { readPluginManifestFile } from '../../plugins/plugin-manifest-loader.js';
 import {
   ProjectBindingsStore,
   projectBindingStorePath,
@@ -106,7 +115,7 @@ function pause() {
 }
 
 describe('retained Project authority at recovery provider effects', () => {
-  const homes: string[] = [];
+  const makeTempDir = trackTempDirs();
   const runtimes: OrchestrationService[] = [];
   const stores: EventStore[] = [];
   const pauses: ReturnType<typeof pause>[] = [];
@@ -114,16 +123,11 @@ describe('retained Project authority at recovery provider effects', () => {
     for (const held of pauses.splice(0)) held.release();
     for (const runtime of runtimes.splice(0)) await runtime.shutdown();
     for (const store of stores.splice(0)) store.close();
-    for (const home of homes.splice(0))
-      rmSync(home, { recursive: true, force: true });
     vi.restoreAllMocks();
   });
 
   async function fixture(identity: 'qualified' | 'refused' = 'qualified') {
-    const home = realpathSync(
-      mkdtempSync(join(tmpdir(), 'station-retained-recovery-')),
-    );
-    homes.push(home);
+    const home = realpathSync(makeTempDir('station-retained-recovery-'));
     const bound = join(home, 'bound');
     const replacement = join(home, 'replacement');
     const remote = 'https://github.com/example/retained-recovery.git';
@@ -317,6 +321,136 @@ describe('retained Project authority at recovery provider effects', () => {
       expect(coldEngine.startSession).not.toHaveBeenCalled();
       return { cold, coldEngine, coldStore };
     };
+    const installExperience = async () => {
+      const source = join(home, 'experience-source');
+      cpSync(resolve('examples/visual-skill-experience'), source, {
+        recursive: true,
+      });
+      const plugins = join(home, 'plugins');
+      mkdirSync(plugins);
+      const journal = store.createPackageMcpAdmissionJournal();
+      const manifest = await readPluginManifestFile(
+        join(source, 'plugin.json'),
+      );
+      const digest = computePluginContentDigest(
+        dirname(source),
+        basename(source),
+      )!;
+      await createLocalPluginInstallationService(
+        plugins,
+        journal,
+        source,
+      ).install({
+        installation: manifest.name,
+        expected: null,
+        artifact: { digest },
+        origin: 'b'.repeat(64),
+        activationPlan: {
+          version: 1,
+          artifactDigest: digest,
+          sourceDigest: digest,
+          descriptorDigest: pluginActivationDescriptorDigest(manifest),
+          origin: 'b'.repeat(64),
+          consent: {
+            kind: 'no-operator-decision',
+            caller: 'retained-recovery-fixture',
+          },
+          previous: null,
+          agents: [],
+          ownedDependencies: [],
+        },
+      });
+      const installed = journal.currentInstallation(manifest.name);
+      if (installed.state !== 'observed')
+        throw new Error('Missing Skill installation');
+      const permit = journal.claimActivation(installed.installation);
+      await verifyPluginActivation(permit, journal, async () => {});
+      expect(journal.completeActivation(permit)).toEqual({ state: 'applied' });
+      const loader = new AgentPluginLoader({
+        projectHomeDir: home,
+        journal: () => journal,
+      });
+      let admissionPause: ReturnType<typeof pause> | undefined;
+      const skills = new SkillService(
+        new ConfigLoader({ projectHomeDir: home }),
+        { info: vi.fn(), warn: vi.fn(), debug: vi.fn() },
+        {
+          canonicalSources: () => loader.skillSources(),
+          experienceInventory: () => loader.listSkillExperiences(),
+          experienceSource: (identity, effect, permission) =>
+            loader.withSkillExperience(
+              identity,
+              async (definition, content) => {
+                // Hold the real installed-source lease before entering the service effect.
+                await admissionPause?.wait();
+                return effect(definition, content);
+              },
+              permission,
+            ),
+        },
+      );
+      await skills.discoverSkills(home);
+      skills.enableExperienceExecution();
+      expect(runtime.registerSkillExperienceSource(skills)).toBe(true);
+      const inventory = await skills.listSkillExperiences();
+      expect(inventory.diagnostics).toEqual([]);
+      expect(inventory.experiences).toHaveLength(1);
+      const send = engine.sendTurn.getMockImplementation()!;
+      engine.sendTurn.mockImplementation(async (input) => {
+        const accepted = { ...(await send(input)), turnId: randomUUID() };
+        engine.events.push({
+          eventId: randomUUID(),
+          provider: engine.provider,
+          threadId,
+          turnId: accepted.turnId,
+          method: 'turn.started',
+          invocationId: input.invocationId,
+          createdAt: new Date().toISOString(),
+          metadata: input.metadata,
+          prompt: input.displayInput ?? input.input,
+        });
+        engine.events.push({
+          eventId: randomUUID(),
+          provider: engine.provider,
+          threadId,
+          turnId: accepted.turnId,
+          method: 'turn.completed',
+          createdAt: new Date().toISOString(),
+        });
+        return accepted;
+      });
+      await runtime.dispatchWithReceipt(
+        {
+          type: 'sendTurn',
+          input: {
+            threadId,
+            input: 'Start the experience',
+            clientTurnId: randomUUID(),
+          },
+        },
+        undefined,
+        {
+          skillExperience: {
+            identity: inventory.experiences[0].identity,
+            inputs: { idea: 'Retained Project safety' },
+          },
+        },
+      );
+      expect(engine.sendTurn).toHaveBeenCalledTimes(1);
+      await vi.waitFor(() => {
+        expect(store.listSkillExperienceEvents(threadId)).toHaveLength(1);
+        expect(
+          store
+            .listEvents(threadId)
+            .some((event) => event.payload.method === 'turn.completed'),
+        ).toBe(true);
+      });
+      engine.sendTurn.mockClear();
+      return () => {
+        admissionPause = hold();
+        return admissionPause;
+      };
+    };
     return {
       runtime,
       engine,
@@ -331,8 +465,59 @@ describe('retained Project authority at recovery provider effects', () => {
       hold,
       recoveryDispatch,
       dormant,
+      installExperience,
     };
   }
+
+  test.each(['authorized', 'revoked'] as const)(
+    'ordinary send after retained Skill admission keeps Project authority %s',
+    async (authority) => {
+      const f = await fixture();
+      const holdAdmission = await f.installExperience();
+      const held = holdAdmission();
+      const sending = f.runtime
+        .dispatch({
+          type: 'sendTurn',
+          input: { threadId: f.threadId, input: 'Continue the experience' },
+        })
+        .then(
+          (result) => ({ result }),
+          (error: unknown) => ({ error }),
+        );
+      await Promise.race([
+        held.entered,
+        sending.then(() => {
+          throw new Error('Send settled before real Skill source admission');
+        }),
+      ]);
+      try {
+        expect(f.engine.sendTurn).not.toHaveBeenCalled();
+        if (authority === 'revoked') await f.revoke();
+      } finally {
+        held.release();
+      }
+      const outcome = await sending;
+      expect(f.engine.startSession).not.toHaveBeenCalled();
+      if (authority === 'revoked') {
+        expect(f.engine.sendTurn).not.toHaveBeenCalled();
+        expect(outcome).toMatchObject({
+          error: {
+            message: expect.stringContaining(
+              'no longer an authorized Project resource',
+            ),
+          },
+        });
+      } else {
+        expect(f.engine.sendTurn).toHaveBeenCalledTimes(1);
+        expect(f.engine.sendTurn.mock.calls[0][0].input).toContain(
+          'Retained Project safety',
+        );
+        expect(outcome).toMatchObject({
+          result: { turnId: expect.any(String) },
+        });
+      }
+    },
+  );
 
   test('credential restart and direct replay succeed while the retained resource remains bound', async () => {
     const f = await fixture();

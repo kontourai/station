@@ -7884,7 +7884,7 @@ export class OrchestrationService {
                           throw new ForegroundInvocationUnavailableError();
                         const sendAdapter = () => {
                           assertInputRequestCurrent();
-                          const effect = (prompt?: string) => {
+                          const effect = async (prompt?: string) => {
                             if (prompt) {
                               experienceContext = prompt;
                               turnInput = {
@@ -7895,6 +7895,22 @@ export class OrchestrationService {
                                 input: `${prompt}\n\n${turnInput.input}`,
                               };
                             }
+                            const experienceEventId =
+                              this.skillExperienceRuntime?.current(
+                                turnInput.threadId,
+                              )?.id;
+                            // Skill and native preparation can outlive the Project binding.
+                            await this.authorizedConversationWorkspace(
+                              turnInput.threadId,
+                            );
+                            if (
+                              this.skillExperienceRuntime?.current(
+                                turnInput.threadId,
+                              )?.id !== experienceEventId
+                            )
+                              throw new SkillExperienceUnavailableError(
+                                'The current Skill experience changed before dispatch.',
+                              );
                             assertInputRequestCurrent();
                             this.assertAdapterCurrent(adapter);
                             if (boundary.prepareIntent) {
