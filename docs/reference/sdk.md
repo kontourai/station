@@ -5593,4 +5593,11 @@ billing acceptance. The [CLI report commands](cli.md#qualified-report-groups)
 consume this client. `finalizeReportGroupCancel` requires the original cancel
 operation key and a distinct explicit recovery command/revision. It confirms
 retained requests without resending interrupts; missing or mismatched receipts
-remain pending. UI adoption, Flow joins and continuation remain open.
+remain pending. The Ensemble inspector uses `useReportGroupsQuery` and
+`useReportGroupResultQuery` for explicit report reads. Their query keys include
+the API base and authority key; current authority is checked before and after
+requests. Closing the view cancels reads, and errors stop polling. Raw reports
+are assembled from at most 64 pages before rendering, with consistent model
+and usage metadata and no persistent report cache. The UI labels unresolved
+accounting and termination without promoting them to acceptance. UI creation
+and cancellation controls, Flow joins and continuation remain open.

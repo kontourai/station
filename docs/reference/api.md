@@ -1886,8 +1886,11 @@ this source-only exclusion. The current narrow Anthropic profile and its exclusi
 in the [child-work plan](../plans/child-work-epic.md#authenticated-report-group-preparation).
 The [SDK client](sdk.md#qualified-report-groups) exposes these operations with
 strict response and cursor validation; the [CLI](cli.md#qualified-report-groups)
-consumes it. UI adoption, Flow topology/context continuation and live provider
-qualification remain open for this report-group surface.
+consumes it. The Ensemble inspector also lists retained groups and explicitly
+loads authorized raw reports through scoped SDK queries. It displays unresolved
+reservations and unconfirmed termination separately from reported output.
+UI creation/cancellation controls, Flow topology/context continuation and live
+provider qualification remain open for this report-group surface.
 
 ## Connections
 

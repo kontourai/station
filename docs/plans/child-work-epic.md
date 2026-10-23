@@ -940,6 +940,18 @@ Its fixed evidence expiry and installed-SDK hashes fail closed; startup does not
 refresh them. Google remains unqualified by this profile. Boot request serving,
 model access and same-session ACK acceptance remain separate obligations.
 
+## Report-group operator reads
+
+The Ensemble inspector now exposes retained report groups through scoped SDK
+query hooks. It reads metadata only when expanded and raw output only when the
+operator opens a member report. The reader assembles bounded UTF-16 pages before
+rendering, rejects inconsistent model/usage metadata and renders output as text.
+Closing the view cancels pending reads; authority loss hides the old projection
+and refuses late output. Labels preserve unresolved reservations, unconfirmed
+termination and unassessed acceptance. This read surface adds no paid dispatch,
+cancellation, Flow topology or provider qualification. UI creation/cancellation
+and the remaining Flow/continuation work are still open.
+
 ## Authenticated report-group preparation
 
 The sealed source owner now separates the published Flow runtime root from

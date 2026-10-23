@@ -10,6 +10,7 @@ import { CliSessionGroupsPanel } from './CliSessionGroupsPanel';
 import { EnsembleCliGroupForm } from './EnsembleCliGroupForm';
 import { EnsembleInspectionResult } from './EnsembleInspectionResult';
 import { EnsemblePresetUpload } from './EnsemblePresetUpload';
+import { ReportGroupsPanel } from './ReportGroupsPanel';
 import './EnsembleInspectionView.css';
 
 export function EnsembleInspectionView() {
@@ -41,6 +42,12 @@ export function EnsembleInspectionView() {
         />
       ) : (
         <p role="alert">Current Station authority is unavailable.</p>
+      )}
+      {scope && (
+        <ReportGroupsPanel
+          key={`reports:${scope.apiBase}:${scope.authorityKey}`}
+          scope={scope}
+        />
       )}
       {scope && (
         <CliSessionGroupsPanel

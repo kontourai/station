@@ -581,6 +581,10 @@ export {
   useRejectProposedChangeMutation,
 } from './query-domains/proposedChanges';
 export {
+  useReportGroupResultQuery,
+  useReportGroupsQuery,
+} from './query-domains/reportGroups';
+export {
   fetchIndependentReviewReceipts,
   reviewEvidenceQueryKey,
   useReviewEvidenceQuery,

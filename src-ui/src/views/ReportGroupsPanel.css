@@ -1,0 +1,14 @@
+.report-groups li,
+.report-groups section {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.report-groups__result {
+  max-height: 32rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: var(--k-space-3);
+  background: var(--k-bg);
+}

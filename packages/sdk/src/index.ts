@@ -1436,6 +1436,10 @@ export {
   usePullRequestQuery,
   usePullRequestsQuery,
 } from './query-domains/pullRequests';
+export {
+  useReportGroupResultQuery,
+  useReportGroupsQuery,
+} from './query-domains/reportGroups';
 export type {
   SetupImportItem,
   SetupImportPreview,
