@@ -2,6 +2,7 @@ import {
   cancelReportGroup,
   createReportGroup,
   finalizeReportGroupCancel,
+  getClientRequestTimeout,
   getReportGroup,
   listReportGroups,
   parseReportGroupInput,
@@ -90,7 +91,14 @@ export async function runReportGroupCommand(
   const interrupt = () => stop.abort();
   process.once('SIGINT', interrupt);
   try {
-    const options = { signal: stop.signal };
+    const finiteRead =
+      action !== 'report-create' &&
+      !isCancellation &&
+      !(action === 'report-events' && parsed.flags.follow === true);
+    const options = {
+      signal: stop.signal,
+      ...(finiteRead ? { timeoutMs: getClientRequestTimeout() ?? null } : {}),
+    };
     if (action === 'report-events' && parsed.flags.follow === true) {
       let failure: unknown;
       const stream = subscribeReportGroupEvents(

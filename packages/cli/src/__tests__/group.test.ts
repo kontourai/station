@@ -1,5 +1,9 @@
 import assert from 'node:assert/strict';
-import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
+import {
+  StationRequestTimeoutError,
+  setClientCredentialResolver,
+  setClientRequestTimeout,
+} from '@kontourai/station-sdk/client';
 import { afterEach, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs';
 import { reportCliError, runCli } from '../cli';
@@ -213,6 +217,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
   setClientCredentialResolver(undefined);
+  setClientRequestTimeout(undefined);
   vi.useRealTimers();
 });
 
@@ -690,4 +695,115 @@ test('report create SIGINT aborts one request without sending cancel or retry an
     'https://station.test/api/orchestration/report-groups',
   );
   assert.equal(process.listenerCount('SIGINT'), listeners);
+});
+
+test.each([
+  ['report-list'],
+  ['report-get', 'report'],
+  ['report-events', 'report'],
+  ['report-result', 'report', 'one', 'attempt'],
+])(
+  'finite report read %s retains its configured deadline with SIGINT installed',
+  async (...args) => {
+    setClientRequestTimeout(20);
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    let dispatched!: () => void;
+    const started = new Promise<void>((resolve) => {
+      dispatched = resolve;
+    });
+    const request = vi.fn<typeof fetch>(
+      async (_url, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init!.signal!.addEventListener(
+            'abort',
+            () => reject(init!.signal!.reason),
+            { once: true },
+          );
+          dispatched();
+        }),
+    );
+    vi.stubGlobal('fetch', request);
+    const listeners = process.listenerCount('SIGINT');
+    let settled = false;
+    const running = runGroupCommand(
+      'https://station.test',
+      parseCoreArgs(args),
+    ).then(
+      () => {
+        settled = true;
+        return undefined;
+      },
+      (error: unknown) => {
+        settled = true;
+        return error;
+      },
+    );
+    let guard: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await started;
+      const outcome = await Promise.race([
+        running,
+        new Promise<'pending'>((resolve) => {
+          guard = setTimeout(() => resolve('pending'), 500);
+        }),
+      ]);
+      assert.ok(outcome instanceof StationRequestTimeoutError, String(outcome));
+      assert.equal(outcome.mutation, false);
+      assert.equal(request.mock.calls.length, 1);
+      assert.equal(process.listenerCount('SIGINT'), listeners);
+    } finally {
+      if (guard) clearTimeout(guard);
+      if (!settled) process.emit('SIGINT');
+      await running;
+    }
+  },
+);
+
+test('a finite report read respects a disabled host deadline while retaining SIGINT cancellation', async () => {
+  vi.useFakeTimers();
+  setClientRequestTimeout(undefined);
+  let dispatched!: () => void;
+  const started = new Promise<void>((resolve) => {
+    dispatched = resolve;
+  });
+  let settled = false;
+  const request = vi.fn<typeof fetch>(
+    async (_url, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        init!.signal!.addEventListener(
+          'abort',
+          () => reject(init!.signal!.reason),
+          { once: true },
+        );
+        dispatched();
+      }),
+  );
+  vi.stubGlobal('fetch', request);
+  const listeners = process.listenerCount('SIGINT');
+  const running = runGroupCommand(
+    'https://station.test',
+    parseCoreArgs(['report-get', 'report']),
+  ).then(
+    () => {
+      settled = true;
+    },
+    (error: unknown) => {
+      settled = true;
+      return error;
+    },
+  );
+  try {
+    await started;
+    await vi.advanceTimersByTimeAsync(60_000);
+    assert.equal(settled, false);
+    process.emit('SIGINT');
+    const outcome = await running;
+    assert.ok(outcome instanceof Error);
+    assert.equal(outcome instanceof StationRequestTimeoutError, false);
+    assert.equal(request.mock.calls.length, 1);
+    assert.equal(process.listenerCount('SIGINT'), listeners);
+  } finally {
+    if (!settled) process.emit('SIGINT');
+    await running;
+  }
 });
