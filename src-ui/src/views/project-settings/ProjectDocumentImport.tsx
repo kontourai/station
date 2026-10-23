@@ -18,6 +18,13 @@ import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { SkeletonBlock } from '../../components/state';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
+import {
+  readDocumentImportRecovery,
+  readLegacyDocumentImportRecovery,
+  removeDocumentImportRecovery,
+  removeLegacyDocumentImportRecovery,
+  writeDocumentImportRecovery,
+} from '../../lib/project-onboarding-recovery';
 import { userFacingErrorMessage } from '../../utils/errorText';
 
 const pointerSchema = z.object({
@@ -34,21 +41,17 @@ const pointerSchema = z.object({
     .max(8),
 });
 type Pointer = z.infer<typeof pointerSchema>;
-function retainedPointers(prefix: string): Pointer[] {
+function retainedPointers(
+  authority: ApiRequestScope & { draftRecoveryKey?: string },
+  projectId: string,
+): Pointer[] {
   const pointers: Pointer[] = [];
-  try {
-    for (let index = 0; index < localStorage.length; index += 1) {
-      const key = localStorage.key(index);
-      if (key !== prefix && !key?.startsWith(`${prefix}:`)) continue;
-      try {
-        const value = localStorage.getItem(key);
-        if (value) pointers.push(pointerSchema.parse(JSON.parse(value)));
-      } catch {
-        /* Preserve unreadable entries for manual recovery. */
-      }
+  for (const value of readDocumentImportRecovery(authority, projectId)) {
+    try {
+      pointers.push(pointerSchema.parse(JSON.parse(value)));
+    } catch {
+      // Preserve unreadable entries for manual recovery.
     }
-  } catch {
-    return pointers;
   }
   return pointers;
 }
@@ -73,18 +76,19 @@ export function ProjectDocumentImport({
   canManage: boolean;
   sourcesAvailable?: boolean;
 }) {
-  const storageKey = `station.document-import:${JSON.stringify([authority.apiBase, authority.draftRecoveryKey ?? authority.authorityKey, projectId])}`;
   const [saved, setSaved] = useState<Pointer | undefined>(() => {
     try {
-      return retainedPointers(storageKey)[0];
+      return retainedPointers(authority, projectId)[0];
     } catch {
       return undefined;
     }
   });
-  const [pointers, setPointers] = useState(() => retainedPointers(storageKey));
+  const [pointers, setPointers] = useState(() =>
+    retainedPointers(authority, projectId),
+  );
   useEffect(() => {
     const refresh = () => {
-      const retained = retainedPointers(storageKey);
+      const retained = retainedPointers(authority, projectId);
       setPointers(retained);
       setSaved(
         (current) =>
@@ -94,7 +98,7 @@ export function ProjectDocumentImport({
     };
     window.addEventListener('storage', refresh);
     return () => window.removeEventListener('storage', refresh);
-  }, [storageKey]);
+  }, [authority, projectId]);
   const [rootId, setRootId] = useState('');
   const [preview, setPreview] = useState<Preview[]>([]);
   const [preparing, setPreparing] = useState(false);
@@ -198,11 +202,13 @@ export function ProjectDocumentImport({
         files: preview.map(({ filename, sha256 }) => ({ filename, sha256 })),
       };
       // Persist identity before sending; a lost acknowledgement must not create a new request.
-      localStorage.setItem(
-        `${storageKey}:${pointer.requestId}`,
+      writeDocumentImportRecovery(
+        authority,
+        projectId,
+        pointer.requestId,
         JSON.stringify(pointer),
       );
-      setPointers(retainedPointers(storageKey));
+      setPointers(retainedPointers(authority, projectId));
       setSaved(pointer);
       const documents = preview.map(({ filename, contentBase64 }) => ({
         filename,
@@ -244,15 +250,15 @@ export function ProjectDocumentImport({
   function setAside() {
     try {
       if (!saved) return;
-      localStorage.removeItem(`${storageKey}:${saved.requestId}`);
+      removeDocumentImportRecovery(authority, projectId, saved.requestId);
       // Older versions used one shared slot; remove it only when it still names this import.
-      const legacy = localStorage.getItem(storageKey);
+      const legacy = readLegacyDocumentImportRecovery(authority, projectId);
       if (
         legacy &&
         pointerSchema.parse(JSON.parse(legacy)).requestId === saved.requestId
       )
-        localStorage.removeItem(storageKey);
-      const remaining = retainedPointers(storageKey);
+        removeLegacyDocumentImportRecovery(authority, projectId);
+      const remaining = retainedPointers(authority, projectId);
       setPointers(remaining);
       setSaved(remaining[0]);
       setError(undefined);
@@ -275,7 +281,7 @@ export function ProjectDocumentImport({
               value={saved.requestId}
               disabled={busy}
               onChange={(event) => {
-                const pointer = retainedPointers(storageKey).find(
+                const pointer = retainedPointers(authority, projectId).find(
                   (item) => item.requestId === event.target.value,
                 );
                 if (pointer) setSaved(pointer);

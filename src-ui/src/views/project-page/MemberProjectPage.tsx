@@ -60,7 +60,7 @@ export function MemberProjectPage({
           refreshDisabled={!requestScope.isCurrent() || sharedWork.isFetching}
         />
         <ProjectNavigation slug={project.slug} member />
-        <main className="project-page__content">
+        <section className="project-page__content">
           <div hidden={!overview && destination !== 'room'}>
             <ProjectRoom
               slug={project.slug}
@@ -162,7 +162,7 @@ export function MemberProjectPage({
               />
             ) : null}
           </section>
-        </main>
+        </section>
       </div>
     </div>
   );

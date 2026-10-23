@@ -330,7 +330,7 @@ function ProjectOperatorPage({
         />
 
         <ProjectNavigation slug={slug} projectId={project.id} />
-        <main className="project-page__content">
+        <section className="project-page__content">
           <section
             hidden={destination !== 'overview'}
             aria-label="Project overview"
@@ -523,7 +523,7 @@ function ProjectOperatorPage({
               />
             )}
           </section>
-        </main>
+        </section>
         <ProjectAddLayoutModal
           show={showAddLayout}
           available={available}

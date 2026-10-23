@@ -6,9 +6,16 @@ import type {
 import { getJson, readEnvelopeOrThrow } from '@kontourai/station-sdk';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useQuery } from '@tanstack/react-query';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { z } from 'zod/v3';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
+import {
+  type ProjectRecoveryScope,
+  projectCreationRecoveryIdentity,
+  readProjectCreationRecovery,
+  removeProjectCreationRecovery,
+  writeProjectCreationRecovery,
+} from '../lib/project-onboarding-recovery';
 
 const pendingSchema = z
   .object({
@@ -41,15 +48,15 @@ const pendingSchema = z
 type ProjectCreationDraft = z.infer<typeof pendingSchema>['draft'];
 type PendingCreation = z.infer<typeof pendingSchema>;
 
-function retained(key: string | undefined): {
+function retained(scope: ProjectRecoveryScope | undefined): {
   pending: PendingCreation | null;
   corrupt: boolean;
   raw: string | null;
 } {
   let raw: string | null = null;
-  if (!key) return { pending: null, corrupt: false, raw };
+  if (!scope) return { pending: null, corrupt: false, raw };
   try {
-    raw = localStorage.getItem(key);
+    raw = readProjectCreationRecovery(scope);
     if (!raw) return { pending: null, corrupt: false, raw };
     if (raw.length > 65536)
       throw new Error('Saved creation request exceeds its bound.');
@@ -66,18 +73,27 @@ function retained(key: string | undefined): {
 /** Browser identity survives reload; only the server's exact receipt can establish an effect. */
 export function useProjectCreationRecovery(isOpen: boolean, sending: boolean) {
   const scope = useHostRequestAuthorityScope();
-  const key = scope
-    ? JSON.stringify([
-        'project-creation',
-        scope.apiBase,
-        scope.draftRecoveryKey ?? scope.authorityKey,
-      ])
+  const apiBase = scope?.apiBase;
+  const recoveryKey = scope?.draftRecoveryKey ?? scope?.authorityKey;
+  const recoveryScope = useMemo(
+    () =>
+      apiBase !== undefined && recoveryKey !== undefined
+        ? { apiBase, authorityKey: recoveryKey }
+        : undefined,
+    [apiBase, recoveryKey],
+  );
+  const key = recoveryScope
+    ? projectCreationRecoveryIdentity(recoveryScope)
     : undefined;
-  const [state, setState] = useState(() => ({ key, ...retained(key) }));
-  const current = state.key === key ? state : { key, ...retained(key) };
+  const [state, setState] = useState(() => ({
+    key,
+    ...retained(recoveryScope),
+  }));
+  const current =
+    state.key === key ? state : { key, ...retained(recoveryScope) };
   useEffect(() => {
-    setState({ key, ...retained(key) });
-  }, [key]);
+    setState({ key, ...retained(recoveryScope) });
+  }, [key, recoveryScope]);
   const capability = useQuery({
     queryKey: [
       'project-creation-available',
@@ -194,8 +210,8 @@ export function useProjectCreationRecovery(isOpen: boolean, sending: boolean) {
         throw new Error(
           'Project setup is too large to retain. Shorten its description and try again.',
         );
-      if (!key) throw new Error('Station recovery identity is unavailable.');
-      const existing = retained(key);
+      if (!scope) throw new Error('Station recovery identity is unavailable.');
+      const existing = retained(recoveryScope);
       if (existing.corrupt)
         throw new Error(
           'The saved creation request could not be read. Clear it explicitly before creating another Project.',
@@ -213,7 +229,7 @@ export function useProjectCreationRecovery(isOpen: boolean, sending: boolean) {
         setState({ key, ...existing });
         return existing.pending;
       }
-      localStorage.setItem(key, JSON.stringify(pending));
+      writeProjectCreationRecovery(scope, JSON.stringify(pending));
       setState({ key, pending, corrupt: false, raw: JSON.stringify(pending) });
       return pending;
     },
@@ -222,7 +238,7 @@ export function useProjectCreationRecovery(isOpen: boolean, sending: boolean) {
         throw new Error(
           'Station access changed. Return to the creating account.',
         );
-      const existing = retained(key);
+      const existing = retained(recoveryScope);
       const matches = current.corrupt
         ? current.raw !== null &&
           current.raw === existing.raw &&
@@ -234,7 +250,7 @@ export function useProjectCreationRecovery(isOpen: boolean, sending: boolean) {
           'Saved setup changed in another tab. Inspect the newer request before setting it aside.',
         );
       }
-      if (key && matches) localStorage.removeItem(key);
+      if (scope && matches) removeProjectCreationRecovery(scope);
       setState({ key, pending: null, corrupt: false, raw: null });
     },
   };
