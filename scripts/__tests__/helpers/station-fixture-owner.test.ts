@@ -198,17 +198,19 @@ describe('StationFixtureOwner', () => {
   });
 
   it.each([
-    [null, 'Permission denied'],
-    ['linux:boot:2', 'No such file or directory'],
+    [null, '/proc/1/cwd (readlink: Permission denied)'],
+    ['linux:boot:2', '/proc/1/cwd (readlink: No such file or directory)'],
+    ['linux:boot:2', 'relative (readlink: Permission denied)'],
+    ['linux:boot:2', '/proc/9/cwd (readlink: Permission denied)'],
   ])(
     'refuses incomplete worker identity or other readlink errors',
-    (workerBirth, error) => {
+    (workerBirth, name) => {
       const observed = observeFixtureCwds(
         [tmpdir()],
         () => ({
           signal: null,
           status: 0,
-          stdout: `p${process.pid}\nfcwd\nn${realpathSync(tmpdir())}\np1\nfcwd\nn/proc/1/cwd (readlink: ${error})\n`,
+          stdout: `p${process.pid}\nfcwd\nn${realpathSync(tmpdir())}\np1\nfcwd\nn${name}\n`,
         }),
         {
           platform: 'linux',

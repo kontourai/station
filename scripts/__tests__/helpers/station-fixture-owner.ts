@@ -215,7 +215,7 @@ export function observeFixtureCwds(
       // Unavailable, reused or contemporaneous identities remain unknown.
       if (
         !processObservation ||
-        !reportedCwd.endsWith(' (readlink: Permission denied)') ||
+        reportedCwd !== `/proc/${pid}/cwd (readlink: Permission denied)` ||
         !predatesFixtureWorker(pid, workerBirth, processObservation)
       )
         return { source: 'none', reason: 'lsof-malformed-output' };
