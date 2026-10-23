@@ -112,7 +112,7 @@ export function runFixtureCwdLsof(
   // bounds the tool and its internal timeout machinery as a final backstop.
   const result = spawnLsof(
     'lsof',
-    ['-n', '-P', '-S', '2', '-a', '-d', 'cwd', '-Fn'],
+    ['-n', '-P', '-S', '2', '-a', '-d', 'cwd', '-Ffn'],
     {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -181,7 +181,10 @@ export function observeFixtureCwds(
       return { source: 'none', reason: 'lsof-malformed-output' };
     }
     const reportedCwd = line.slice(1).replace(/ \(deleted\)$/, '');
-    if (!isAbsolute(reportedCwd)) {
+    if (
+      !isAbsolute(reportedCwd) ||
+      / \(readlink: [^\n]*\)$/.test(reportedCwd)
+    ) {
       return { source: 'none', reason: 'lsof-malformed-output' };
     }
     const cwd = canonicalExistingPath(reportedCwd);

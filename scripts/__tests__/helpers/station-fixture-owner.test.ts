@@ -65,7 +65,7 @@ describe('StationFixtureOwner', () => {
     expect(calls).toEqual([
       [
         'lsof',
-        ['-n', '-P', '-S', '2', '-a', '-d', 'cwd', '-Fn'],
+        ['-n', '-P', '-S', '2', '-a', '-d', 'cwd', '-Ffn'],
         {
           encoding: 'utf8',
           stdio: ['ignore', 'pipe', 'pipe'],
@@ -159,6 +159,10 @@ describe('StationFixtureOwner', () => {
     ['name before cwd descriptor', 'p123\nn/tmp\n'],
     ['cwd descriptor before pid', 'fcwd\nn/tmp\n'],
     ['relative cwd name', 'p123\nfcwd\nnrelative\n'],
+    [
+      'unresolved cwd name',
+      'p123\nfcwd\nn/proc/1/cwd (readlink: Permission denied)\n',
+    ],
     ['new pid before prior name', 'p123\nfcwd\np456\nfcwd\nn/tmp\n'],
   ])('fails closed for malformed lsof %s', (_case, stdout) => {
     expect(
