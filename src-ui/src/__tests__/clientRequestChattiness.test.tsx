@@ -670,7 +670,7 @@ test('a Board without scope cannot observe or refetch the host cache', async () 
   expect(fetcher).toHaveBeenCalledOnce();
 });
 
-test('an open empty inbox makes only two safety reads per minute and stream changes refresh only its exact authority and conversation', async () => {
+test('an open empty inbox makes four safety reads per minute and stream changes refresh only its exact authority and conversation', async () => {
   vi.useFakeTimers();
   const apiBase = providerScope.apiBase;
   const scope = providerScope;
@@ -726,9 +726,17 @@ test('an open empty inbox makes only two safety reads per minute and stream chan
     `${apiBase}/api/orchestration/conversations/conversation/inbox`,
   );
   await act(async () => {
-    await vi.advanceTimersByTimeAsync(60_000);
+    await vi.advanceTimersByTimeAsync(14_000);
   });
-  expect(fetcher).toHaveBeenCalledTimes(3);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1_000);
+  });
+  expect(fetcher).toHaveBeenCalledTimes(2);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(45_000);
+  });
+  expect(fetcher).toHaveBeenCalledTimes(5);
   entries = [
     {
       conversationId: 'conversation',
@@ -748,13 +756,13 @@ test('an open empty inbox makes only two safety reads per minute and stream chan
     });
     await vi.advanceTimersByTimeAsync(1);
   });
-  expect(fetcher).toHaveBeenCalledTimes(4);
+  expect(fetcher).toHaveBeenCalledTimes(6);
   expect(view.result.current.entries?.[0]?.state).toBe('queued');
   expect(client.getQueryState(otherConversation)?.isInvalidated).toBe(false);
   expect(client.getQueryState(otherAuthority)?.isInvalidated).toBe(false);
   await act(async () => {
     await vi.advanceTimersByTimeAsync(2_000);
   });
-  expect(fetcher).toHaveBeenCalledTimes(5);
+  expect(fetcher).toHaveBeenCalledTimes(7);
   view.unmount();
 });
