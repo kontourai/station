@@ -1,5 +1,6 @@
 import type { ReportGroupView } from '@kontourai/station-contracts/report-group';
 import {
+  useCancelReportGroup,
   useReportGroupResultQuery,
   useReportGroupsQuery,
 } from '@kontourai/station-sdk';
@@ -49,6 +50,7 @@ function Report({
 
 function Group({ scope, group }: { scope: Scope; group: ReportGroupView }) {
   const [opened, setOpened] = useState<string>();
+  const cancel = useCancelReportGroup(scope);
   return (
     <article aria-label={`Report group ${group.groupId}`}>
       <h3>{group.operationId}</h3>
@@ -56,6 +58,34 @@ function Group({ scope, group }: { scope: Scope; group: ReportGroupView }) {
         Independent advisory · Revision {group.revision} · Execution{' '}
         {group.execution} · Cancellation {group.cancellation}
       </p>
+      <Button
+        variant="secondary"
+        disabled={
+          !scope.isCurrent() || !cancel.isIdle || group.cancellation !== 'none'
+        }
+        onClick={() =>
+          cancel.mutate({
+            groupId: group.groupId,
+            expectedRevision: group.revision,
+            operationKey: `cancel:${crypto.randomUUID()}`,
+          })
+        }
+      >
+        Request cancellation
+      </Button>
+      {cancel.isPending && <p role="status">Requesting cancellation…</p>}
+      {cancel.isSuccess && (
+        <p role="status">
+          Cancellation {cancel.data.cancellation}. Termination and accounting
+          remain separately recorded.
+        </p>
+      )}
+      {cancel.isError && (
+        <p role="alert">
+          Cancellation outcome unknown. Read the latest group state before
+          making another request.
+        </p>
+      )}
       {group.authorityRevoked && (
         <p>
           Execution authority revoked. Existing charges and unresolved

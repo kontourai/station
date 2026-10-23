@@ -948,9 +948,13 @@ operator opens a member report. The reader assembles bounded UTF-16 pages before
 rendering, rejects inconsistent model/usage metadata and renders output as text.
 Closing the view cancels pending reads; authority loss hides the old projection
 and refuses late output. Labels preserve unresolved reservations, unconfirmed
-termination and unassessed acceptance. This read surface adds no paid dispatch,
-cancellation, Flow topology or provider qualification. UI creation/cancellation
-and the remaining Flow/continuation work are still open.
+termination and unassessed acceptance. The inspector also offers an explicit
+cancellation request through the scoped SDK mutation. It sends the displayed
+revision once, disables repeat attempts in that mounted view, refuses stale
+authority, and keeps request status separate from physical termination and
+accounting. This surface adds no paid dispatch, Flow topology or provider
+qualification. UI creation, cancellation finalization and the remaining
+Flow/continuation work are still open.
 
 ## Authenticated report-group preparation
 

@@ -5599,5 +5599,11 @@ the API base and authority key; current authority is checked before and after
 requests. Closing the view cancels reads, and errors stop polling. Raw reports
 are assembled from at most 64 pages before rendering, with consistent model
 and usage metadata and no persistent report cache. The UI labels unresolved
-accounting and termination without promoting them to acceptance. UI creation
-and cancellation controls, Flow joins and continuation remain open.
+accounting and termination without promoting them to acceptance.
+Flow joins and continuation remain open. Cancellation uses
+`useCancelReportGroup`: one explicit attempt sends the displayed revision and a
+fresh operation key, disables retries, and invalidates only the current
+authority's group queries on success. A lost/refused response leaves the outcome
+unknown and the action disabled in that mounted view. The displayed cancellation
+result does not confirm termination or accounting. UI creation and cancellation
+finalization remain open.

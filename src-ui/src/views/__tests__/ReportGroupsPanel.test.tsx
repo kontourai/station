@@ -216,3 +216,81 @@ test.each([false, true])(
     expect(cached.every((query) => query.state.data === undefined)).toBe(true);
   },
 );
+
+test.each(['requested', 'refused', 'authority-loss'] as const)(
+  'operator cancellation is explicit and does not resend after %s',
+  async (outcome) => {
+    let settle!: (response: Response) => void;
+    const sent: unknown[] = [];
+    let canceled = false;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string | URL | Request, init?: RequestInit) => {
+        if (init?.method === 'POST') {
+          sent.push(JSON.parse(String(init.body)));
+          return new Promise<Response>((resolve) => {
+            settle = resolve;
+          });
+        }
+        return envelope({
+          groups: [
+            {
+              ...group,
+              cancellation: canceled ? 'requested' : 'none',
+              authorityRevoked: false,
+            },
+          ],
+          hasMore: false,
+          nextGroupId: null,
+        });
+      }),
+    );
+    const view = mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Show report groups' }));
+    const button = await screen.findByRole('button', {
+      name: 'Request cancellation',
+    });
+    expect(sent).toEqual([]);
+    fireEvent.click(button);
+    await waitFor(() => expect(sent).toHaveLength(1));
+    fireEvent.click(button);
+    expect(sent).toEqual([
+      { expectedRevision: 4, operationKey: expect.stringMatching(/^cancel:/) },
+    ]);
+    if (outcome === 'authority-loss') view.revoke();
+    canceled = true;
+    await act(async () =>
+      settle(
+        outcome === 'refused'
+          ? new Response('{}', {
+              status: 409,
+              headers: { 'content-type': 'application/json' },
+            })
+          : envelope({
+              replayed: false,
+              revision: 5,
+              cancellation: 'requested',
+            }),
+      ),
+    );
+    if (outcome === 'requested') {
+      expect(
+        await screen.findByText(
+          /Cancellation requested\. Termination and accounting remain separately recorded/,
+        ),
+      ).toBeTruthy();
+      expect(screen.getByText(/Termination unconfirmed/)).toBeTruthy();
+      expect(screen.queryByText(/Accounting reconciled/)).toBeNull();
+    } else if (outcome === 'refused') {
+      expect(await screen.findByRole('alert')).toHaveProperty(
+        'textContent',
+        'Cancellation outcome unknown. Read the latest group state before making another request.',
+      );
+      fireEvent.click(button);
+    } else {
+      expect(screen.queryByText(/Cancellation requested\./)).toBeNull();
+      expect(screen.queryByText('operator-report')).toBeNull();
+    }
+    expect(sent).toHaveLength(1);
+  },
+);

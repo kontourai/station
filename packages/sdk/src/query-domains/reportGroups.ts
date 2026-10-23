@@ -1,9 +1,14 @@
-import type { ReportGroupAmounts } from '@kontourai/station-contracts/report-group';
+import type {
+  ReportGroupAmounts,
+  ReportGroupCancelInput,
+} from '@kontourai/station-contracts/report-group';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   type ApiRequestScope,
   StationRequestAuthorityError,
 } from '../client/http';
 import {
+  cancelReportGroup,
   listReportGroups,
   readReportGroupResult,
 } from '../client/report-groups';
@@ -97,4 +102,30 @@ export function useReportGroupResultQuery(
       cancelWhenInactive: true,
     },
   );
+}
+
+/** One explicit cancellation attempt; a failed response never triggers an automatic resend. */
+export function useCancelReportGroup(scope: Scope) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationKey: ['report-group-cancel', scope.apiBase, scope.authorityKey],
+    mutationFn: async (input: ReportGroupCancelInput & { groupId: string }) => {
+      if (!scope.isCurrent()) throw new StationRequestAuthorityError();
+      const { groupId, ...command } = input;
+      const result = await cancelReportGroup(scope.apiBase, groupId, command, {
+        requestScope: scope,
+      });
+      if (!scope.isCurrent()) throw new StationRequestAuthorityError();
+      return result;
+    },
+    onSuccess: () => {
+      if (scope.isCurrent())
+        void client.invalidateQueries({
+          queryKey: ['report-groups', scope.apiBase, scope.authorityKey],
+        });
+    },
+    retry: false,
+    networkMode: 'always',
+    gcTime: 0,
+  });
 }

@@ -581,6 +581,7 @@ export {
   useRejectProposedChangeMutation,
 } from './query-domains/proposedChanges';
 export {
+  useCancelReportGroup,
   useReportGroupResultQuery,
   useReportGroupsQuery,
 } from './query-domains/reportGroups';
