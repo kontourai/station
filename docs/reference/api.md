@@ -2441,7 +2441,7 @@ See [source approval](../guides/monitoring.md#source-approval-review).
 `POST /api/analytics/source-grant-approvals/<operationId>/delivery` requires the
 approved source person, exact saved owner/tenant/set and approving Device binding,
 current read access/account standing since approval, approved phase and unexpired
-policy. It returns `{data: AnalyticsSourceCredentialDelivery}` with profile
+policy. It returns `{data: AnalyticsSourceCredentialDelivery}` with protocol
 `station-analytics-source-delivery/v1`, approval/source/intent/recipient IDs,
 revision, expiry, compact JWE and `exportAuthority:false`. The source stores the
 credential hash and ciphertext only. Repeating delivery returns identical
