@@ -1629,3 +1629,16 @@ private-file content and identity checks. Changed file/directory witnesses and
 fresh custody must reconfirm durability. Existing orphan-publication refusal
 remains.36 credential/runtime-fence cases pass; HTTP improvement is not yet
 claimed and must be measured through the unchanged serving caller.
+
+
+### Round checkpoint refusal and remaining deadline
+
+After credential durability reuse, the caller run passed40 cases and failed the
+Flow HTTP case with explicit `rounds_checkpoint_reused`, rather than the prior
+timeout. The initial loop reused its creation-policy reference for every round.
+Each round now derives its checkpoint from group/controller, current revision,
+observed Flow head, selected seat IDs and original policy. Flow still validates
+readiness, claims, budgets and checkpoint uniqueness. Server-test types pass.
+The first full run with this candidate still reached the unchanged120-second
+HTTP deadline, so successful three-seat join execution is not established.
+A matched post-change cost profile remains needed before another optimization.

@@ -612,7 +612,18 @@ export class StationReportGroupExecution {
           operationKey: `initial:${round}`,
           expectedRevision: projection.revision,
           controller: prepared.spec.controller,
-          checkpoint: prepared.root.revisions.policy,
+          checkpoint: {
+            domain: 'station.report-group-round-checkpoint.v1',
+            id: `initial:${round}`,
+            digest: digest({
+              groupId,
+              controller: prepared.spec.controller,
+              revision: projection.revision,
+              flowHead: currentSchedule?.runHead ?? null,
+              seats: seats.map((seat) => seat.seatId),
+              policy: prepared.root.revisions.policy,
+            }),
+          },
           ...(currentSchedule ? { flowHead: currentSchedule.runHead } : {}),
           seats: seats.map((seat) => ({
             seatId: seat.seatId,
