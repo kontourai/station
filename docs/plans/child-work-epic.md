@@ -1157,8 +1157,12 @@ The internal reserved-turn port now reaches the real Station adapter through
 session start, turn dispatch and canonical event persistence. It consumes the
 sealed SDK attempt once, bypasses the ordinary chat endpoint, retains evidence
 before publishing usage/completion, and refuses unreserved continuation or
-identity changes. Output is buffered; tools, approvals and continuation are
-unavailable for this mode. The metadata describes a restriction, not a grant.
+identity changes. The later text-streaming increment emits provisional canonical
+text deltas while preserving raw terminal/accounting evidence as the completion
+boundary. Buffered activations retain their delivery mode; returning streamed
+activations retain theirs without replacing the original resume identity.
+Tools and approvals remain unavailable in this mode. The metadata describes a
+restriction, not a grant.
 Cancellation requests abort without asserting provider termination; unknown
 usage retains its reservation. Ordinary sessions keep their existing logical
 stop deadline and teardown.

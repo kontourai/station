@@ -309,6 +309,7 @@ export class StationReportGroupPreparation {
             refuse();
         }
         const owner = createPreparedSdkSourceWireOwner({
+          outputDelivery: 'streamed',
           provider: selected.provider,
           modelId: selected.modelId,
           credential: selected.credential,

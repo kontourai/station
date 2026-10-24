@@ -1838,7 +1838,13 @@ The personal host mounts `/api/orchestration/report-groups` for bounded reports
 using configured Station Agents and the qualified sealed SDK profile. Requests
 can be independent advisory reports or explicitly bound to a Project Flow run.
 This is separate from CLI session groups' logical start allowance. A returned
-report does not establish context ACKs or work acceptance.
+report does not establish context ACKs or work acceptance. Qualified report
+attempts stream provisional text through their canonical member Session's
+`content.text-delta` events. Group journal SSE remains metadata-only; it does not
+carry these text chunks. Terminal result pages remain retained reads. Completion
+requires independent raw terminal/usage validation and evidence retention;
+partial text, stream EOF and client cancellation do not settle usage or prove
+provider termination. Returning turns preserve the captured Session's wire mode.
 Hosted mode and unavailable private storage return `report_groups_unavailable`.
 
 The Flow-bound serving composition is not runtime-qualified. An earlier

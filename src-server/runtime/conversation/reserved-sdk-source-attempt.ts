@@ -27,6 +27,7 @@ export async function runReservedSdkSourceAttempt(input: {
   sdkHandle: object;
   /** Session replacement fences launch; retained response evidence uses the original authority. */
   assertSessionCurrent?: WireFinalizer;
+  onTextDelta?: (text: string) => void;
   transport: Omit<
     ConstructorParameters<typeof ReservedProviderFetch>[0],
     'launch'
@@ -42,9 +43,9 @@ export async function runReservedSdkSourceAttempt(input: {
     throw new ReservedProviderUnavailable(
       'Reserved source attempt already claimed',
     );
-  const { wire } = inspectSdkSourceWire(sdkOwner, sdkHandle);
+  const { wire, outputDelivery } = inspectSdkSourceWire(sdkOwner, sdkHandle);
   claimedAttempts.add(sdkHandle);
-  const result = sdkResultPromise(sdkOwner, sdkHandle);
+  const result = sdkResultPromise(sdkOwner, sdkHandle, input.onTextDelta);
   void result.catch(() => {});
   try {
     const assertFetchCurrent = (): undefined => {
@@ -86,6 +87,7 @@ export async function runReservedSdkSourceAttempt(input: {
     });
     return Object.freeze({
       sdkResult,
+      outputDelivery,
       evidence,
       evidenceReference,
       accounting,

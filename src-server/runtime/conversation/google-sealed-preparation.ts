@@ -133,8 +133,11 @@ export class GoogleSealedPreparation {
     const body = JSON.parse(wire.body);
     const config = body.generationConfig;
     if (
-      wire.url !==
-        `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent` ||
+      !['generateContent', 'streamGenerateContent?alt=sse'].some(
+        (method) =>
+          wire.url ===
+          `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:${method}`,
+      ) ||
       wire.method !== 'POST' ||
       wire.redirect !== 'error' ||
       wire.requestOrdinal !== 1 ||

@@ -11,6 +11,7 @@ import { StationDelegationPersistence } from '../../delegation-group-persistence
 import { StationReportGroupCustody } from '../../station-report-group-custody.js';
 import { StationReportGroupPreparation } from '../../station-report-group-preparation.js';
 import { fixture } from './source.js';
+import { controlledTextStream } from './streamed-text.js';
 export const NOW = Date.parse('2026-10-24T02:00:12Z');
 afterEach(() => {
   vi.restoreAllMocks();
@@ -50,26 +51,18 @@ export async function setup(
     new Map(),
     createLogger({ name: 'report-group-fixture', level: 'error' }),
   );
-  const rawFetch = vi.fn<typeof fetch>(
-    async () =>
-      new Response(
-        JSON.stringify({
-          id: 'msg-controlled',
-          type: 'message',
-          role: 'assistant',
-          model: 'claude-sonnet-4-6',
-          content: [{ type: 'text', text: 'Controlled report' }],
-          stop_reason: 'end_turn',
-          stop_sequence: null,
-          usage: {
-            input_tokens: 4,
-            output_tokens: 2,
-            cache_read_input_tokens: 0,
-            cache_creation_input_tokens: 0,
-          },
-        }),
-        { headers: { 'content-type': 'application/json' } },
-      ),
+  const rawFetch = vi.fn<typeof fetch>(async () =>
+    controlledTextStream(
+      'anthropic',
+      'claude-sonnet-4-6',
+      'Controlled report',
+      {
+        input_tokens: 4,
+        output_tokens: 2,
+        cache_read_input_tokens: 0,
+        cache_creation_input_tokens: 0,
+      },
+    ),
   );
   const preparationOwners: ConstructorParameters<
     typeof StationReportGroupPreparation

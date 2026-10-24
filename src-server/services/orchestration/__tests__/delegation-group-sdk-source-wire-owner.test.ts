@@ -13,6 +13,7 @@ import { startRun } from '@kontourai/flow';
 import { RESERVED_SOURCE_EXECUTION_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import { onTestFinished, test, vi } from 'vitest';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
+import { boundedApiWireOptionsSha256 } from '../../../runtime/conversation/bounded-api-provider-contract.js';
 import { reservedStationSessionRecipient } from '../../../runtime/conversation/reserved-station-turn.js';
 import { RoundsFinalFetchLaunchFence } from '../delegation-group-launch-fence.js';
 import {
@@ -95,6 +96,7 @@ async function sdkFixture(
   path = '/api/orchestration/chat',
   response: () => Response | Promise<Response> = () => mockResponse(provider),
   requestSignal?: AbortSignal,
+  outputDelivery?: 'streamed',
 ) {
   const f = await fixture();
   const request = f.request(path, { signal: requestSignal });
@@ -107,11 +109,28 @@ async function sdkFixture(
     connectionRevision: credentialOwner.observed.connectionRevision,
     credentialRevision: credentialOwner.observed.credentialRevision,
   });
+  if (outputDelivery === 'streamed') {
+    if (provider === 'google')
+      q.binding.endpointUrl = q.wire.url.replace(
+        ':generateContent',
+        ':streamGenerateContent?alt=sse',
+      );
+    const body = {
+      ...q.body,
+      ...(provider === 'anthropic' ? { stream: true } : {}),
+    };
+    q.binding.optionsSha256 = boundedApiWireOptionsSha256(provider, {
+      ...q.wire,
+      url: q.binding.endpointUrl,
+      body: JSON.stringify(body),
+    });
+  }
   q.publishFixture();
   let starts = 0;
   let sentBody = '';
   const abort = new AbortController();
   const configuration = {
+    ...(outputDelivery ? { outputDelivery } : {}),
     provider,
     modelId: 'fixture-model',
     credential: credentialOwner.credential,
@@ -151,6 +170,185 @@ async function sdkFixture(
     },
   };
 }
+for (const [provider, ending] of [
+  ['anthropic', 'complete'],
+  ['google', 'complete'],
+  ['anthropic', 'missing-terminal'],
+  ['google', 'missing-terminal'],
+  ['anthropic', 'interrupted'],
+  ['google', 'interrupted'],
+] as const)
+  test(`SDK ${provider} forwards source-bound text with ${ending} evidence`, async () => {
+    let controller!: ReadableStreamDefaultController<Uint8Array>;
+    const response = new Response(
+      new ReadableStream<Uint8Array>({
+        start(value) {
+          controller = value;
+        },
+      }),
+      { headers: { 'content-type': 'text/event-stream' } },
+    );
+    const f = await sdkFixture(
+      provider,
+      '/api/orchestration/chat',
+      () => response,
+      undefined,
+      'streamed',
+    );
+    const prepared = await f.owner.prepareSdkSnapshot(
+      f.context(),
+      subject,
+      f.sealed.capability,
+      f.sdkOwner,
+    );
+    const { wire } = inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+    const driver = await publicFenceFixture(
+      f,
+      prepared.source,
+      f.sdkOwner,
+      prepared.sdkHandle,
+      wire,
+      () => {},
+      {
+        provider,
+        protocol: 'rounds',
+        contract: f.configuration.contract,
+        now: () => 1000,
+      },
+    );
+    const running = driver.run();
+    let finished = false;
+    void running
+      .finally(() => {
+        finished = true;
+      })
+      .catch(() => {});
+    await vi.waitFor(() => assert.equal(f.starts, 1), { timeout: 10000 });
+    const frame = (data: unknown) => `data: ${JSON.stringify(data)}\n\n`;
+    const prefix =
+      provider === 'anthropic'
+        ? [
+            {
+              type: 'message_start',
+              message: {
+                id: 'msg-stream',
+                type: 'message',
+                role: 'assistant',
+                model: 'fixture-model',
+                content: [],
+                stop_reason: null,
+                stop_sequence: null,
+                usage: {
+                  input_tokens: 4,
+                  output_tokens: 0,
+                  cache_read_input_tokens: 0,
+                  cache_creation_input_tokens: 0,
+                },
+              },
+            },
+            {
+              type: 'content_block_start',
+              index: 0,
+              content_block: { type: 'text', text: '' },
+            },
+            {
+              type: 'content_block_delta',
+              index: 0,
+              delta: { type: 'text_delta', text: 'OK' },
+            },
+          ]
+            .map(frame)
+            .join('')
+        : frame({
+            modelVersion: 'fixture-revision',
+            candidates: [
+              { index: 0, content: { role: 'model', parts: [{ text: 'OK' }] } },
+            ],
+          });
+    controller.enqueue(new TextEncoder().encode(prefix));
+    await vi.waitFor(
+      () =>
+        assert.deepEqual(
+          driver
+            .canonicalEvents()
+            .filter((e) => e.method === 'content.text-delta')
+            .map((e) => e.delta),
+          ['OK'],
+        ),
+      { timeout: 10000 },
+    );
+    assert.ok(
+      !driver.canonicalEvents().some((e) => e.method === 'turn.completed'),
+    );
+    assert.equal(finished, false);
+    assert.equal(f.starts, 1);
+    if (ending !== 'complete') {
+      if (ending === 'missing-terminal') controller.close();
+      else {
+        const interruption = await driver.interrupt();
+        assert.ok(interruption.result && 'outcome' in interruption.result);
+        assert.equal(interruption.result.outcome, 'termination-unconfirmed');
+      }
+      await running;
+      assert.ok(
+        !driver.canonicalEvents().some((e) => e.method === 'turn.completed'),
+      );
+      assert.equal(driver.observed.length, 0);
+      const attempt = (await driver.ledger()).invocations[0];
+      assert.equal(attempt.usage, null);
+      assert.equal(attempt.terminal, false);
+      await assert.rejects(() => driver.reserveAnother(), {
+        code: 'active_slot_exhausted',
+      });
+      await assert.rejects(() => driver.repeatAttempt());
+      assert.equal(f.starts, 1);
+      await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
+      return;
+    }
+    const suffix =
+      provider === 'anthropic'
+        ? [
+            { type: 'content_block_stop', index: 0 },
+            {
+              type: 'message_delta',
+              delta: { stop_reason: 'end_turn', stop_sequence: null },
+              usage: { output_tokens: 2 },
+            },
+            { type: 'message_stop' },
+          ]
+            .map(frame)
+            .join('')
+        : frame({
+            modelVersion: 'fixture-revision',
+            candidates: [{ index: 0, finishReason: 'STOP' }],
+            usageMetadata: {
+              promptTokenCount: 4,
+              candidatesTokenCount: 2,
+              totalTokenCount: 6,
+            },
+          });
+    controller.enqueue(new TextEncoder().encode(suffix));
+    controller.close();
+    await running;
+    const completed = driver
+      .canonicalEvents()
+      .find((e) => e.method === 'turn.completed');
+    assert.ok(
+      completed?.method === 'turn.completed',
+      String(driver.invocationFailure),
+    );
+    assert.equal(completed.outputText, 'OK');
+    const delivery =
+      completed.metadata?.[RESERVED_SOURCE_EXECUTION_METADATA_KEY];
+    assert.ok(
+      delivery && typeof delivery === 'object' && 'outputDelivery' in delivery,
+    );
+    assert.equal(delivery.outputDelivery, 'streamed');
+    assert.equal(driver.observed.length, 1);
+    assert.equal(driver.observed[0].usage.costMicros, 7);
+    assert.equal(f.starts, 1);
+    await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
+  });
 for (const provider of ['anthropic', 'google'] as const)
   test(`SDK ${provider} captures before response, embeds exact bytes, consumes once and resolves actual SDK`, async () => {
     const f = await sdkFixture(provider);

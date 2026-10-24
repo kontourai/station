@@ -1007,7 +1007,6 @@ export class StationAgentAdapter implements ProviderAdapterShape {
               [RESERVED_SOURCE_EXECUTION_METADATA_KEY]: {
                 identity: reservedSourceIdentity,
                 mode: 'sealed-source-no-tools',
-                outputDelivery: 'buffered',
                 tools: 'unavailable',
                 approvals: 'unavailable',
                 continuation: 'unavailable',
@@ -1151,6 +1150,25 @@ export class StationAgentAdapter implements ProviderAdapterShape {
           record.reservedSourceIdentity,
           record,
           controller.signal,
+          (delta) => {
+            assertReservedStationTurnCurrent(reservedTurn);
+            if (
+              record.activeTurnId !== turnId ||
+              record.activeController !== controller
+            )
+              throw new Error('Reserved stream turn changed.');
+            this.publish({
+              eventId: crypto.randomUUID(),
+              provider: this.provider,
+              threadId: input.threadId,
+              turnId,
+              itemId: turnId,
+              ...origin,
+              createdAt: this.now().toISOString(),
+              method: 'content.text-delta',
+              delta,
+            });
+          },
         );
       } catch (error) {
         this.failTurn(record, turnId, controller, origin);
@@ -1202,7 +1220,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
               [RESERVED_SOURCE_EXECUTION_METADATA_KEY]: {
                 identity: record.reservedSourceIdentity,
                 mode: 'sealed-source-no-tools',
-                outputDelivery: 'buffered',
+                outputDelivery: attempt.outputDelivery,
                 providerEvidence: attempt.evidenceReference,
               },
             },

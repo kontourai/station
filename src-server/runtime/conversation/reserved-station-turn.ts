@@ -37,6 +37,7 @@ type SessionState = Readonly<{
   isCurrent(): boolean;
   recipient: SessionRecipient;
   resumeIdentity: string;
+  outputDelivery: 'buffered' | 'streamed';
   namespace: string;
   modelId: string;
   modelOptions: string;
@@ -143,6 +144,7 @@ export function prepareReservedStationTurn(
         }) ||
       retained.namespace !== sessionNamespace(frozenAttempt) ||
       retained.modelId !== captured.modelId ||
+      retained.outputDelivery !== prepared.outputDelivery ||
       retained.modelOptions !== canonicalJson(captured.modelOptions ?? {}) ||
       retained.clientTurns.has(captured.clientTurnId) ||
       retained.clientTurns.size >= 128
@@ -268,6 +270,10 @@ export function bindReservedStationSession(
     record,
     isCurrent,
     resumeIdentity: value.identity,
+    outputDelivery: inspectSdkSourceWire(
+      value.attempt.sdkOwner,
+      value.attempt.sdkHandle,
+    ).outputDelivery,
     namespace: sessionNamespace(value.attempt),
     modelId: value.binding.modelId,
     modelOptions: canonicalJson(value.binding.modelOptions ?? {}),
@@ -306,6 +312,21 @@ export function reservedStationSessionRecipient(
   session: ReservedStationSession,
   expected: SessionState['binding'],
 ): SessionRecipient {
+  return structuredClone(currentSession(session, expected).recipient);
+}
+
+/** Preserve the actual activation's wire mode when preparing a returning turn. */
+export function reservedStationSessionOutputDelivery(
+  session: ReservedStationSession,
+  expected: SessionState['binding'],
+): 'buffered' | 'streamed' {
+  return currentSession(session, expected).outputDelivery;
+}
+
+function currentSession(
+  session: ReservedStationSession,
+  expected: SessionState['binding'],
+): SessionState {
   const value = sessions.get(session);
   if (
     !value ||
@@ -313,7 +334,7 @@ export function reservedStationSessionRecipient(
     value.isCurrent() !== true
   )
     refuse();
-  return structuredClone(value.recipient);
+  return value;
 }
 
 function assertSession(value: State, record: object): void {
@@ -331,6 +352,7 @@ export function executeReservedStationTurn(
   sessionIdentity: string | undefined,
   sessionRecord: object,
   signal: AbortSignal,
+  onTextDelta?: (text: string) => void,
 ): Promise<Result> {
   const value = state(handle);
   const expected = value.binding;
@@ -362,6 +384,11 @@ export function executeReservedStationTurn(
   value.result = runReservedSdkSourceAttempt({
     ...value.attempt,
     assertSessionCurrent,
+    onTextDelta: (text) => {
+      assertSessionCurrent();
+      signal.throwIfAborted();
+      onTextDelta?.(text);
+    },
     transport: {
       ...value.attempt.transport,
       signal: AbortSignal.any([signal, value.attempt.transport.signal]),

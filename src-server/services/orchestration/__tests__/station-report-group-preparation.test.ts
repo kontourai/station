@@ -1098,6 +1098,7 @@ test('initial Flow continuation limits are immutable intent and reserve aggregat
     );
     const qualifier = await AnthropicSealedPreparation.create();
     const freshOwner = createPreparedSdkSourceWireOwner({
+      outputDelivery: 'streamed',
       provider: 'anthropic',
       modelId: selected.modelId,
       credential: selected.credential,

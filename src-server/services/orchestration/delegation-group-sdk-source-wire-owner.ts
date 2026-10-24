@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { createAnthropic } from '@ai-sdk/anthropic';
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import type { LanguageModelV3StreamPart } from '@ai-sdk/provider';
 import { REPORT_GROUP_CONTEXT_LIMITS } from '@kontourai/station-contracts/report-group';
 import {
   assertBoundedApiCredentialBinding,
@@ -49,6 +50,7 @@ function deferred<T>() {
 }
 type OptionsBase = Readonly<{
   provider: BoundedApiProvider;
+  outputDelivery?: 'streamed';
   modelId: string;
   credential: ObservedSdkProviderCredential;
   brief: string;
@@ -90,6 +92,7 @@ type State = {
   release: boolean;
   deadline: ReturnType<typeof setTimeout>;
   abortListener?: () => void;
+  onTextDelta?: (text: string) => void;
 };
 const owners = new WeakMap<object, Options>();
 const syncContexts = new WeakMap<object, string>();
@@ -111,6 +114,7 @@ function finishDisposal(s: State) {
   s.wire = undefined;
   s.quote = undefined;
   s.response = undefined;
+  s.onTextDelta = undefined;
   s.rawResponse = undefined;
   clearTimeout(s.deadline);
   s.disposed.resolve();
@@ -154,10 +158,13 @@ function createWireOwner(input: Options, context?: string): object {
     'signal',
   ];
   expected.push('preparation' in input ? 'preparation' : 'contract');
+  if (input.outputDelivery !== undefined) expected.push('outputDelivery');
   expected.sort();
   if (
     Object.keys(input).sort().join(',') !== expected.join(',') ||
     !['anthropic', 'google'].includes(input.provider) ||
+    (input.outputDelivery !== undefined &&
+      input.outputDelivery !== 'streamed') ||
     typeof input.modelId !== 'string' ||
     !input.modelId ||
     typeof input.rawFetch !== 'function' ||
@@ -373,7 +380,8 @@ export function beginSdkSourceWire(owner: object, leaseToken: object): object {
           baseURL: 'https://generativelanguage.googleapis.com/v1beta',
           fetch: interceptor,
         });
-  const sdk = provider(o.modelId).doGenerate({
+  const model = provider(o.modelId);
+  const call: Parameters<typeof model.doGenerate>[0] = {
     prompt: [
       {
         role: 'user',
@@ -395,7 +403,43 @@ export function beginSdkSourceWire(owner: object, leaseToken: object): object {
         }
       : {}),
     abortSignal: signal,
-  });
+  };
+  const sdk =
+    o.outputDelivery === 'streamed'
+      ? model.doStream(call).then(async ({ stream }) => {
+          const text: string[] = [];
+          let bytes = 0;
+          let terminal:
+            | Extract<LanguageModelV3StreamPart, { type: 'finish' }>
+            | undefined;
+          for await (const part of stream) {
+            signal.throwIfAborted();
+            lease.assertDisclosureCurrentSync();
+            if (terminal) fail('sdk_stream_after_finish');
+            if (part.type === 'text-delta') {
+              bytes += Buffer.byteLength(part.delta);
+              if (bytes > 8 * 1024 * 1024) fail('sdk_stream_oversized');
+              text.push(part.delta);
+              s.onTextDelta?.(part.delta);
+            } else if (part.type === 'finish') terminal = part;
+            else if (
+              ![
+                'stream-start',
+                'response-metadata',
+                'text-start',
+                'text-end',
+              ].includes(part.type)
+            )
+              fail('sdk_non_text_output');
+          }
+          if (!terminal) fail('sdk_stream_incomplete');
+          return {
+            content: [{ type: 'text' as const, text: text.join('') }],
+            usage: terminal.usage,
+            finishReason: terminal.finishReason,
+          };
+        })
+      : model.doGenerate(call);
   s.result = Promise.resolve(sdk)
     .then(
       (result) => {
@@ -458,6 +502,7 @@ export function inspectSdkSourceWire(owner: object, handle: object) {
     quote: s.quote,
     contract: s.contract,
     sourceBinding: claimSdkSourceLease(s.lease).binding,
+    outputDelivery: optionsFor(owner).outputDelivery ?? 'buffered',
   });
 }
 export function assertSdkSourceWireCurrentSync(owner: object, handle: object) {
@@ -594,9 +639,17 @@ export function refuseSdkResponse(owner: object, handle: object): void {
   s.release = true;
   finishDisposal(s);
 }
-export function sdkResultPromise(owner: object, handle: object) {
+export function sdkResultPromise(
+  owner: object,
+  handle: object,
+  onTextDelta?: (text: string) => void,
+) {
   const s = stateFor(owner, handle);
   s.authorization.assertDisclosureCurrentSync();
+  if (onTextDelta) {
+    if (s.delivered || s.onTextDelta) fail('sdk_stream_consumer_unavailable');
+    s.onTextDelta = onTextDelta;
+  }
   return s.result;
 }
 export function sdkDisposalPromise(owner: object, handle: object) {

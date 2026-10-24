@@ -142,7 +142,9 @@ export class AnthropicSealedPreparation {
       headers.get('anthropic-version') !== VERSION ||
       headers.get('x-api-key') !== observed.apiKey ||
       Object.keys(body).sort().join(',') !==
-        'inference_geo,max_tokens,messages,model,service_tier' ||
+        (body.stream === true
+          ? 'inference_geo,max_tokens,messages,model,service_tier,stream'
+          : 'inference_geo,max_tokens,messages,model,service_tier') ||
       body.model !== MODEL ||
       body.inference_geo !== 'global' ||
       body.service_tier !== 'standard_only' ||

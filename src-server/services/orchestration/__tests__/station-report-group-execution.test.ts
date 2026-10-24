@@ -37,6 +37,7 @@ import {
   newGrant,
   setup,
 } from './delegation-source-fixtures/report.js';
+import { controlledTextStream } from './delegation-source-fixtures/streamed-text.js';
 
 type View = NonNullable<Awaited<ReturnType<StationReportGroupRuntime['get']>>>;
 type Operation = Awaited<ReturnType<StationReportGroupRuntime['create']>>;
@@ -83,47 +84,22 @@ test.each(['independent', 'flow', 'mixed'] as const)(
       ]);
     }
     const reportText = 'Controlled report '.repeat(1200);
-    h.rawFetch.mockImplementation(
-      async (url) =>
-        new Response(
-          JSON.stringify(
-            String(url).startsWith('https://generativelanguage.googleapis.com/')
-              ? {
-                  modelVersion: 'gemini-2.5-flash-lite',
-                  candidates: [
-                    {
-                      index: 0,
-                      finishReason: 'STOP',
-                      content: { role: 'model', parts: [{ text: reportText }] },
-                    },
-                  ],
-                  usageMetadata: {
-                    promptTokenCount: 4,
-                    candidatesTokenCount: 8000,
-                    thoughtsTokenCount: 0,
-                    totalTokenCount: 8004,
-                    cachedContentTokenCount: 0,
-                    serviceTier: 'standard',
-                  },
-                }
-              : {
-                  id: 'msg-controlled',
-                  type: 'message',
-                  role: 'assistant',
-                  model: 'claude-sonnet-4-6',
-                  content: [{ type: 'text', text: reportText }],
-                  stop_reason: 'end_turn',
-                  stop_sequence: null,
-                  usage: {
-                    input_tokens: 4,
-                    output_tokens: 8000,
-                    cache_read_input_tokens: 0,
-                    cache_creation_input_tokens: 0,
-                  },
-                },
-          ),
-          { headers: { 'content-type': 'application/json' } },
-        ),
+    h.rawFetch.mockImplementation(async (url) =>
+      String(url).startsWith('https://generativelanguage.googleapis.com/')
+        ? controlledTextStream('google', 'gemini-2.5-flash-lite', reportText, {
+            promptTokenCount: 4,
+            candidatesTokenCount: 8000,
+            thoughtsTokenCount: 0,
+            totalTokenCount: 8004,
+            cachedContentTokenCount: 0,
+            serviceTier: 'standard',
+          })
+        : controlledTextStream('anthropic', 'claude-sonnet-4-6', reportText, {
+            input_tokens: 4,
+            output_tokens: 8000,
+            cache_read_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+          }),
     );
     const input = {
       ...h.input,

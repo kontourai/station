@@ -2394,8 +2394,15 @@ before returning integer token usage and tariff-derived micros. Reserved-result
 disclosure re-reads that exact retained record under the same custody lock and
 current authority; missing or changed evidence refuses without resending or
 rewriting settled charges. Canonical
-adapter events then carry buffered output and an evidence reference, not raw
-provider JSON. The mode offers no tools, approval requests or continuation.
+adapter events carry provisional `content.text-delta` output for streamed SDK
+turns. Current disclosure, Session and active-turn checks precede every delta.
+Completion still waits for both the SDK finish and independently validated raw
+terminal/usage evidence to be retained; a truncated, failed or interrupted
+stream leaves accounting held. Terminal metadata names buffered or streamed
+delivery and the evidence reference, never raw provider JSON. The fixed personal
+report profiles select streamed text; they still offer no tools or approvals.
+Returning context turns preserve the captured live Session's delivery mode,
+resume identity, model and options; copying metadata cannot rebind them.
 [Cooperative stop](../../src-server/services/orchestration/cooperative-stop.ts)
 preserves an exact-turn unconfirmed result only for this recorded mode;
 ordinary sessions keep their logical stop deadline and teardown. Cancellation

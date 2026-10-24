@@ -6,6 +6,7 @@ import { captureEnvironmentLocalGrantObservationOwner } from '../../runtime/conv
 import { readObservedSdkProviderCredential } from '../../runtime/conversation/provider-credential-observation.js';
 import {
   prepareReservedStationTurn,
+  reservedStationSessionOutputDelivery,
   reservedStationSessionRecipient,
   reservedStationTurnResult,
 } from '../../runtime/conversation/reserved-station-turn.js';
@@ -252,7 +253,12 @@ export class StationReportRetainedTurns {
         : undefined;
       current();
       sessionCurrent();
+      const outputDelivery = reservedStationSessionOutputDelivery(
+        session,
+        scope,
+      );
       const { owner, input: brief } = createContextSyncSdkSourceWireOwner({
+        ...(outputDelivery === 'streamed' ? { outputDelivery } : {}),
         provider: selected.provider,
         modelId: selected.modelId,
         credential: selected.credential,
