@@ -338,6 +338,26 @@ test.describe('Chat inventory beside the transcript (#3882)', () => {
         .click();
       await expect(inventoryTrigger).toBeFocused();
     }
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await dock
+      .getByRole('button', { name: 'Chat inventory', exact: true })
+      .click();
+    const reopenedReader = page.getByRole('dialog', {
+      name: 'Chat inventory',
+      exact: true,
+    });
+    await reopenedReader
+      .getByRole('button', {
+        name: /^View details: Authored message, item 1 in Inputs$/,
+      })
+      .click();
+    await reopenedReader
+      .getByRole('button', { name: 'Open session', exact: true })
+      .click();
+    await expect(reopenedReader).toBeHidden();
+    await expect(
+      page.getByRole('heading', { name: 'Activity', exact: true }),
+    ).toBeVisible();
     browserHealth.assertHealthy();
   });
 });

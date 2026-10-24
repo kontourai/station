@@ -106,11 +106,17 @@ function ToolDetails({
 export function SessionInventoryItemDetails({
   item,
   requestScope,
+  onDismiss,
 }: {
   item: SessionInventoryViewItem;
   requestScope: ApiRequestScope;
+  onDismiss?(): void;
 }) {
   const showSurface = useShowSurface();
+  const openSession = (session: string) => {
+    onDismiss?.();
+    showSurface('activity', { session });
+  };
   const row = item.row;
   if (!row)
     return <p role="status">Live activity has no retained detail yet.</p>;
@@ -154,11 +160,7 @@ export function SessionInventoryItemDetails({
         <>
           <h4>Delegated work</h4>
           <p>Child session: {row.childSessionId}</p>
-          <Button
-            onClick={() =>
-              showSurface('activity', { session: row.childSessionId })
-            }
-          >
+          <Button onClick={() => openSession(row.childSessionId)}>
             Open delegated session
           </Button>
         </>
@@ -259,9 +261,7 @@ export function SessionInventoryItemDetails({
         </dl>
       </details>
       {sessionId ? (
-        <Button onClick={() => showSurface('activity', { session: sessionId })}>
-          Open session
-        </Button>
+        <Button onClick={() => openSession(sessionId)}>Open session</Button>
       ) : null}
     </section>
   );

@@ -22,6 +22,7 @@ import { commitSessionInventorySelection } from '../sessionInventorySelection';
 
 const hooks = vi.hoisted(() => ({
   inventory: vi.fn(),
+  showSurface: vi.fn(),
   input: vi.fn(),
   tool: vi.fn(),
   page: vi.fn(),
@@ -36,7 +37,7 @@ const hooks = vi.hoisted(() => ({
 }));
 
 vi.mock('../../contexts/useShowSurface', () => ({
-  useShowSurface: () => vi.fn(),
+  useShowSurface: () => hooks.showSurface,
 }));
 vi.mock('@kontourai/station-sdk/task-tool-results', () => ({
   useSessionToolResultQuery: (...args: unknown[]) => hooks.tool(...args),
@@ -298,7 +299,10 @@ describe('ConnectedSessionInventory', () => {
     });
     hooks.input.mockClear();
     hooks.tool.mockClear();
-    render(<ConnectedSessionInventory sessionId="session" />);
+    const onDismiss = vi.fn();
+    render(
+      <ConnectedSessionInventory sessionId="session" onDismiss={onDismiss} />,
+    );
     expect(
       screen.queryByText('Compare the two invoices, including tax.'),
     ).toBeNull();
@@ -331,6 +335,11 @@ describe('ConnectedSessionInventory', () => {
     expect(
       screen.queryByText('Compare the two invoices, including tax.'),
     ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Open session' }));
+    expect(onDismiss).toHaveBeenCalledOnce();
+    expect(hooks.showSurface).toHaveBeenCalledWith('activity', {
+      session: 'session',
+    });
   });
 
   test('renders only a valid structured work item as a safe keyboard link', () => {

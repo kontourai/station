@@ -117,6 +117,7 @@ export function useBasisPaneLauncher(): {
         <LazyConnectedBasisFallbackPane
           scope={fallbackState.scope}
           currentProjectId={fallbackState.currentProjectId}
+          onDismiss={closeFallback}
         />
       </Suspense>
     </Dialog>
