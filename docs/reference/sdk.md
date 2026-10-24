@@ -3969,8 +3969,7 @@ selected turns, so a completed answer is available before a long tool-progress
 history. The returned events remain in chronological order. Pass the opaque
 `nextCursor` back to load preceding events, then preceding turns; merge by
 event id and sequence. A turn-start anchor may repeat across pages; when a
-page's byte budget is spent it arrives `elided`, and a preceding page carries it
-whole.
+page's byte budget is spent it arrives `elided`, and a preceding page carries it.
 
 The opt-in reader retains the existing 150-event and response-byte bounds.
 Terminal message payloads and open requests (`request.opened`, so an approval
