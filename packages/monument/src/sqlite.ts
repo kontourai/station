@@ -170,6 +170,7 @@ export interface SqliteKernelTables {
   readonly requestKeys?: SqliteRequestKeyTable | 'unused';
   readonly turnBoundary?: SqliteTurnBoundaryTable | 'unused';
   readonly inbox?: 'unused';
+  readonly steerReceipts?: { readonly table: string } | 'unused';
 }
 
 export interface SqliteKernelStorageOptions {
@@ -237,7 +238,7 @@ export interface SqliteExecuteOptions {
   readonly withinHostTransaction?: boolean;
 }
 
-export const SQLITE_KERNEL_SCHEMA_VERSION = 4;
+export const SQLITE_KERNEL_SCHEMA_VERSION = 5;
 const DEFAULT_BUSY_TIMEOUT_MS = 5000;
 const WAL_ATTEMPTS = 5;
 
@@ -359,6 +360,15 @@ CREATE INDEX IF NOT EXISTS monument_inbox_entries_state
   ON monument_inbox_entries (state);
 `;
 
+const STEER_RECEIPTS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS monument_steer_receipts (
+  thread_id TEXT NOT NULL,
+  client_input_id TEXT NOT NULL,
+  input_digest TEXT NOT NULL,
+  confirmed_turn_id TEXT,
+  PRIMARY KEY (thread_id, client_input_id)
+);`;
+
 /** The tables an area uses: the kernel's own, or the host's bound ones. */
 interface ResolvedTables {
   readonly turnDedup:
@@ -371,6 +381,9 @@ interface ResolvedTables {
     | (SqliteTurnBoundaryTable & { readonly owned: boolean })
     | 'unused';
   readonly inbox: 'owned' | 'unused';
+  readonly steerReceipts:
+    | { readonly table: string; readonly owned: boolean }
+    | 'unused';
 }
 
 const IDENTIFIER = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -590,6 +603,12 @@ function resolveTables(tables: SqliteKernelTables = {}): ResolvedTables {
               owned: true,
             },
     inbox: tables.inbox ?? 'owned',
+    steerReceipts:
+      tables.steerReceipts === 'unused'
+        ? 'unused'
+        : tables.steerReceipts
+          ? { table: identifier(tables.steerReceipts.table), owned: false }
+          : { table: 'monument_steer_receipts', owned: true },
   };
 }
 
@@ -797,7 +816,47 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
           `bound table ${tables.turnBoundary.table} requires a primary key or non-partial unique index on boundary_id.`,
         );
     }
+    if (tables.steerReceipts !== 'unused' && !tables.steerReceipts.owned) {
+      const table = tables.steerReceipts.table;
+      requireColumns(db, table, [
+        'thread_id',
+        'client_input_id',
+        'input_digest',
+        'confirmed_turn_id',
+      ]);
+      const keyColumns = ['thread_id', 'client_input_id'];
+      const exactKey = (columns: readonly (string | null)[]) =>
+        columns.length === keyColumns.length &&
+        keyColumns.every((column) => columns.includes(column));
+      const primary = (
+        db.prepare(`PRAGMA table_info(${table})`).all() as Array<{
+          name: string;
+          pk: number;
+        }>
+      ).filter((column) => column.pk > 0);
+      const indexes = db.prepare(`PRAGMA index_list(${table})`).all() as Array<{
+        name: string;
+        unique: number;
+        partial: number;
+      }>;
+      if (
+        !exactKey(primary.map((column) => column.name)) &&
+        !indexes.some((index) => {
+          if (!index.unique || index.partial) return false;
+          const columns = db
+            .prepare(`PRAGMA index_info('${index.name.replaceAll("'", "''")}')`)
+            .all() as Array<{ name: string | null }>;
+          return exactKey(columns.map((column) => column.name));
+        })
+      )
+        throw new SqliteKernelConfigurationError(
+          `bound table ${table} requires a primary key or non-partial unique index on (thread_id, client_input_id).`,
+        );
+    }
     const owned = [
+      tables.steerReceipts !== 'unused' && tables.steerReceipts.owned
+        ? STEER_RECEIPTS_SCHEMA
+        : '',
       tables.turnDedup !== 'unused' && tables.turnDedup.owned
         ? TURN_DEDUP_SCHEMA
         : '',
@@ -862,7 +921,12 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
       ).run(String(SQLITE_KERNEL_SCHEMA_VERSION));
       return;
     }
-    if (row.value === '1' || row.value === '2' || row.value === '3') {
+    if (
+      row.value === '1' ||
+      row.value === '2' ||
+      row.value === '3' ||
+      row.value === '4'
+    ) {
       db.prepare(
         "UPDATE monument_meta SET value = ? WHERE key = 'schema_version'",
       ).run(String(SQLITE_KERNEL_SCHEMA_VERSION));
@@ -1605,6 +1669,51 @@ function sqliteTransaction(
         );
       },
     },
+    steerReceipts: {
+      get: (threadId, clientInputId) => {
+        if (tables.steerReceipts === 'unused')
+          throw new Error('Steer receipts are unused.');
+        const row = one(
+          `SELECT thread_id, client_input_id, input_digest, confirmed_turn_id FROM ${tables.steerReceipts.table} WHERE thread_id = ? AND client_input_id = ?`,
+          threadId,
+          clientInputId,
+        );
+        if (!row) return undefined;
+        if (
+          typeof row.thread_id !== 'string' ||
+          typeof row.client_input_id !== 'string' ||
+          typeof row.input_digest !== 'string' ||
+          (row.confirmed_turn_id !== null &&
+            typeof row.confirmed_turn_id !== 'string')
+        )
+          throw new Error('Invalid steer receipt row.');
+        return {
+          threadId: row.thread_id,
+          clientInputId: row.client_input_id,
+          inputDigest: row.input_digest,
+          confirmedTurnId: row.confirmed_turn_id,
+        };
+      },
+      put: (record) => {
+        if (tables.steerReceipts === 'unused')
+          throw new Error('Steer receipts are unused.');
+        run(
+          `INSERT INTO ${tables.steerReceipts.table} (thread_id, client_input_id, input_digest, confirmed_turn_id) VALUES (?, ?, ?, ?) ON CONFLICT(thread_id, client_input_id) DO UPDATE SET input_digest = excluded.input_digest, confirmed_turn_id = excluded.confirmed_turn_id`,
+          record.threadId,
+          record.clientInputId,
+          record.inputDigest,
+          record.confirmedTurnId,
+        );
+      },
+      deleteThread: (threadId) => {
+        if (tables.steerReceipts === 'unused')
+          throw new Error('Steer receipts are unused.');
+        return run(
+          `DELETE FROM ${tables.steerReceipts.table} WHERE thread_id = ?`,
+          threadId,
+        );
+      },
+    },
     requestKeys: {
       get: (id) => {
         const row = one(
@@ -1820,7 +1929,8 @@ export function openSqliteKernelStorage(
       | 'turnDedup'
       | 'turnBoundary'
       | 'requestKeys'
-      | 'inbox';
+      | 'inbox'
+      | 'steerReceipts';
     if (tables[area] === 'unused')
       throw new SqliteKernelConfigurationError(
         `${command.type}: this storage keeps no ${area} tables.`,

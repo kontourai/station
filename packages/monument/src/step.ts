@@ -146,6 +146,45 @@ function dispatch(
     },
   };
   switch (command.type) {
+    case 'steerReceipts.read': {
+      const row = tx.steerReceipts.get(command.threadId, command.clientInputId);
+      if (!row) return { kind: 'absent' };
+      return row.inputDigest === command.inputDigest &&
+        row.confirmedTurnId !== null
+        ? { kind: 'confirmed', turnId: row.confirmedTurnId }
+        : { kind: 'indeterminate' };
+    }
+    case 'steerReceipts.claim': {
+      if (tx.steerReceipts.get(command.threadId, command.clientInputId))
+        return { kind: 'occupied' };
+      tx.steerReceipts.put({
+        threadId: command.threadId,
+        clientInputId: command.clientInputId,
+        inputDigest: command.inputDigest,
+        confirmedTurnId: null,
+      });
+      return { kind: 'claimed' };
+    }
+    case 'steerReceipts.confirm': {
+      const row = tx.steerReceipts.get(command.threadId, command.clientInputId);
+      if (
+        !row ||
+        row.inputDigest !== command.inputDigest ||
+        row.confirmedTurnId !== null
+      )
+        return { kind: 'stale' };
+      tx.steerReceipts.put({
+        ...row,
+        confirmedTurnId: command.confirmedTurnId,
+      });
+      return { kind: 'applied' };
+    }
+    case 'steerReceipts.forgetThread':
+      return {
+        kind: 'applied',
+        removed: tx.steerReceipts.deleteThread(command.threadId),
+      };
+
     case 'turnDedup.claim': {
       const decision = decideTurnDedupClaim(
         tx.turnDedup.get(command.key),
@@ -674,6 +713,10 @@ export const KERNEL_COMMAND_READ_ONLY: Readonly<
   'requestKeys.recordDecision': false,
   'requestKeys.complete': false,
   'requestKeys.release': false,
+  'steerReceipts.read': true,
+  'steerReceipts.claim': false,
+  'steerReceipts.confirm': false,
+  'steerReceipts.forgetThread': false,
   'inbox.submit': false,
   'inbox.claimNext': false,
   'inbox.settle': false,

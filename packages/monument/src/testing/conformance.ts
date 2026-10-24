@@ -3921,7 +3921,7 @@ const steerReceipts: readonly KernelConformanceCase[] = [
           clientInputId: 'input',
           inputDigest: 'digest',
         };
-        session.store.failNextCommit();
+        session.store.failNextCommit(new KernelCrashError());
         await assert.rejects(
           session.run({ type: 'steerReceipts.claim', ...key }),
           KernelCrashError,
@@ -3937,7 +3937,7 @@ const steerReceipts: readonly KernelConformanceCase[] = [
           ...key,
           threadId: 'other',
         });
-        session.store.failNextCommit();
+        session.store.failNextCommit(new KernelCrashError());
         await assert.rejects(
           session.run({
             type: 'steerReceipts.confirm',

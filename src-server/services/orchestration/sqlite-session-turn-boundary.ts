@@ -127,6 +127,7 @@ export function createSqliteSessionTurnBoundaryCoordinator({
       // #3568: the inbox has its own storage on this connection
       // (`createSqliteThreadInboxStore`); this one owns boundaries only.
       inbox: 'unused',
+      steerReceipts: 'unused',
       turnBoundary: {
         table: 'orchestration_turn_boundaries',
         ownerEncoding: 'columns',

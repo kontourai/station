@@ -34,6 +34,7 @@ export const tables: SqliteKernelTables = {
   requestKeys: 'unused',
   // #3568: the inbox is another machine this storage does not own.
   inbox: 'unused',
+  steerReceipts: 'unused',
   turnBoundary: {
     table: 'orchestration_turn_boundaries',
     ownerEncoding: 'columns',
