@@ -8,17 +8,11 @@
  * installed-plugin tree, with the real grants store.
  */
 
-import {
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   projectOps: { add: vi.fn() },
@@ -42,19 +36,10 @@ const NOW = '2026-08-01T00:00:00.000Z';
 const PLUGIN = 'stack-fixture';
 const PANE_ONE = `pane:plugin%3A${PLUGIN}:stack:one`;
 const PANE_TWO = `pane:plugin%3A${PLUGIN}:stack:two`;
-const homes: string[] = [];
-
-afterEach(() => {
-  while (homes.length > 0) {
-    const dir = homes.pop();
-    if (dir) rmSync(dir, { recursive: true, force: true });
-  }
-});
+const tempHome = trackTempDirs();
 
 function home(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'station-layout-declaration-'));
-  homes.push(dir);
-  return dir;
+  return tempHome('station-layout-declaration-');
 }
 
 /** A legacy-format plugin with one layout of two plugin-component tabs. */

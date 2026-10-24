@@ -2842,10 +2842,7 @@ describe('installPluginFromSource', () => {
     ])(
       'refuses %s and installs nothing',
       async (_name, declaration, refusal) => {
-        const root = mkdtempSync(
-          join(tmpdir(), 'station-plugin-stack-install-'),
-        );
-        cleanupDirs.push(root);
+        const root = trackedTempDir('station-plugin-stack-install-');
         const source = join(root, 'source');
         writeStackSource(source, declaration);
         await expect(
@@ -2858,8 +2855,7 @@ describe('installPluginFromSource', () => {
     );
 
     test('refuses a Chat centre whose plugin does not request layout.primaryChat', async () => {
-      const root = mkdtempSync(join(tmpdir(), 'station-plugin-stack-install-'));
-      cleanupDirs.push(root);
+      const root = trackedTempDir('station-plugin-stack-install-');
       const source = join(root, 'source');
       writeStackSource(
         source,
@@ -2877,8 +2873,7 @@ describe('installPluginFromSource', () => {
     });
 
     test('installs a stack layout declaring its own two drill-ins', async () => {
-      const root = mkdtempSync(join(tmpdir(), 'station-plugin-stack-install-'));
-      cleanupDirs.push(root);
+      const root = trackedTempDir('station-plugin-stack-install-');
       const source = join(root, 'source');
       writeStackSource(source, {
         primary: 'chat',

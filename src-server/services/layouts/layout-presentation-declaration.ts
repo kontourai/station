@@ -16,7 +16,7 @@ import { enumerateLayoutDefinitionPanes } from '@kontourai/station-contracts/wor
  * may declare in this slice; opening another contributor's pane by reference
  * is the later extraction slices' work (design: "Coding capability map").
  */
-export function pluginLayoutOwnPaneIds(
+function pluginLayoutOwnPaneIds(
   definition: unknown,
   pluginName: string,
   layoutSlug: string,
