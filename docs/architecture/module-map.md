@@ -2348,6 +2348,13 @@ old source request. Closing the old preparation does not destroy a live Session,
 but it cannot resend the consumed request. Cursor copies and saved observations
 do not reconstruct that capability after replacement or restart. Future paid
 operations still need their own authenticated group, source and wire admission.
+New opt-in continuation groups use a v2 runtime observation: it binds configured
+instructions, qualified model/options, source and the fixed per-call output
+ceiling rather than the initial prompt's wire digest. A changed prompt can then
+retain the same runtime observation while its exact request wire is admitted
+separately. Legacy v1 observations remain tied to their original wire and are
+not reinterpreted. Fresh qualification also needs new request-bound custody;
+old SDK/credential observations cannot authorize a later request.
 The report resolver remains scoped to the initial authenticated preparation. Terminal observations link an immutable
 retained recipient observation; that saved reference cannot resolve a session
 after replacement or restart. This does not enable continuation or prove

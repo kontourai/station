@@ -4,6 +4,7 @@ import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
 import { createDelegationAuthorityServiceV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
+import { canonicalJson } from '@kontourai/relay';
 import { test, vi } from 'vitest';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
 import { AnthropicSealedPreparation } from '../../../runtime/conversation/anthropic-sealed-preparation.js';
@@ -11,8 +12,14 @@ import {
   captureEnvironmentLocalGrantObservationOwner,
   captureEnvironmentLocalGrantReadOwner,
 } from '../../../runtime/conversation/local-grant-observation-owner.js';
+import { RuntimeFencedCredentialObservationOwner } from '../../../runtime/conversation/runtime-fenced-credential-observation.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
-import { sdkDisposalPromise } from '../delegation-group-sdk-source-wire-owner.js';
+import {
+  createPreparedSdkSourceWireOwner,
+  disposeSdkSourceWire,
+  inspectSdkSourceWire,
+  sdkDisposalPromise,
+} from '../delegation-group-sdk-source-wire-owner.js';
 import { signReportInterrupt } from '../station-report-group-cancellation.js';
 import { StationReportGroupCustody } from '../station-report-group-custody.js';
 import {
@@ -35,6 +42,11 @@ test('authenticated preparation issues exact source/task envelopes consumed by t
     const prepared = h.owner.read(handle, h.f.req);
     assert.equal(prepared.root.issuer_host_id, h.f.record.environmentId);
     assert.equal(prepared.root.budget.max_attempts, h.input.members.length);
+    assert.equal(
+      prepared.envelopes[1].execution_binding.runtime.runtime_receipt_ref
+        .domain,
+      'station.sealed-sdk.runtime.v1',
+    );
     assert.ok(
       prepared.envelopes.slice(1).every((e) => e.budget.max_attempts === 1),
     );
@@ -988,6 +1000,79 @@ test('initial Flow continuation limits are immutable intent and reserve aggregat
     );
     assert.ok(child);
     assert.equal(child.budget.max_attempts, 3);
+    const original = h.owner.sdk(handle, h.f.req, 'left');
+    const initialWire = inspectSdkSourceWire(
+      original.owner,
+      original.sdkHandle,
+    );
+    const request = requestFor(h, 'POST');
+    const context = h.f.context(request);
+    const source = await h.f.owner.readmitSnapshot(
+      context,
+      {
+        groupId: prepared.spec.groupId,
+        workItemId: prepared.members[0].taskId,
+      },
+      child.execution_binding.source,
+    );
+    const credentialOwner = new RuntimeFencedCredentialObservationOwner(
+      h.preparationOwners.runtime,
+    );
+    const selected = await credentialOwner.captureAgentSdkCredential(
+      request,
+      'reviewer',
+    );
+    const qualifier = await AnthropicSealedPreparation.create();
+    const freshOwner = createPreparedSdkSourceWireOwner({
+      provider: 'anthropic',
+      modelId: selected.modelId,
+      credential: selected.credential,
+      preparation: qualifier,
+      brief: 'ACK SYNC controlled-context',
+      instructions: selected.instructions,
+      maxOutputTokens: 10,
+      remaining: { ...input.budget, currency: 'USD' },
+      now: Date.now,
+      signal: request.signal,
+      rawFetch: h.rawFetch,
+    });
+    let freshHandle: object | undefined;
+    try {
+      const fresh = await h.f.owner.prepareSdkSnapshot(
+        context,
+        {
+          groupId: prepared.spec.groupId,
+          workItemId: prepared.members[0].taskId,
+        },
+        source.capability,
+        freshOwner,
+      );
+      freshHandle = fresh.sdkHandle;
+      const captured = inspectSdkSourceWire(freshOwner, fresh.sdkHandle);
+      assert.notEqual(captured.wireDigest, initialWire.wireDigest);
+      assert.deepEqual(captured.contract, initialWire.contract);
+      const expected = {
+        agentId: 'reviewer',
+        provider: 'anthropic',
+        modelId: selected.modelId,
+        instructionsDigest: `sha256:${createHash('sha256').update(selected.instructions).digest('hex')}`,
+        outputTokensPerCall: 10,
+        contract: captured.contract,
+        source: captured.sourceBinding.source,
+      };
+      assert.deepEqual(child.execution_binding.runtime.runtime_receipt_ref, {
+        id: 'left',
+        domain: 'station.sealed-sdk.runtime.v2',
+        digest: `sha256:${createHash('sha256').update(canonicalJson(expected)).digest('hex')}`,
+      });
+    } finally {
+      h.f.owner.releaseSnapshot(source.capability);
+      if (freshHandle) {
+        disposeSdkSourceWire(freshOwner, freshHandle);
+        await sdkDisposalPromise(freshOwner, freshHandle);
+      }
+    }
+
     assert.equal(child.budget.max_input_tokens, 3 * 1048576);
     assert.equal(child.budget.max_output_tokens, 30);
     assert.equal(child.budget.max_cost_micros, 3 * 3145878);

@@ -419,13 +419,21 @@ export class StationReportGroupPreparation {
           grant_id: member.seatId,
           runtime: {
             runtime_receipt_ref: reference(
-              'station.sealed-sdk.runtime.v1',
+              input.continuation
+                ? 'station.sealed-sdk.runtime.v2'
+                : 'station.sealed-sdk.runtime.v1',
               member.seatId,
               {
                 agentId: selected.agentId,
                 provider: selected.provider,
                 modelId: selected.modelId,
-                wireDigest: captured.wireDigest,
+                ...(input.continuation
+                  ? {
+                      instructionsDigest: `sha256:${createHash('sha256').update(selected.instructions).digest('hex')}`,
+                      outputTokensPerCall:
+                        captured.quote.outputUpperBoundTokens,
+                    }
+                  : { wireDigest: captured.wireDigest }),
                 contract: captured.contract,
                 source: binding.source,
               },
