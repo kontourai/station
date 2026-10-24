@@ -1738,3 +1738,25 @@ selection passes, including an added configuration-change-between-captures
 control that refuses before persistence. Instrumentation was restored. The
 full Flow request deadline failure remains open until an end-to-end run proves
 otherwise.
+
+
+### Descriptor-sized private reads
+
+A later isolated Flow profile at `f9d5234906a` reached the unchanged 120-second
+request deadline after recording about 18.5 GB of zero-filled Buffer allocations,
+including 13.2 GB in buffers at least 1 MB. Private source and credential readers
+allocated their full configured byte ceilings for each small file read.
+
+The readers now size buffers from validated descriptor size plus an overflow
+byte, while preserving configured ceilings, fresh nofollow reads, full byte
+hashes and post-read descriptor/path checks. Source reads additionally require
+the bytes read to equal the captured descriptor size. No successful authority
+or content result is cached.
+
+The frozen four-file selection passes all 54 cases, including credential
+configuration/revocation controls, source/Flow claim controls, the mixed-family
+HTTP case and the Flow HTTP case under its original 120-second deadline.
+Server-test typechecking passes. This closes the reproduced controlled deadline
+failure for that selection, not a general latency SLA or live/provider/native
+acceptance. Post-repair allocation profiling and independent delta review remain
+pending.

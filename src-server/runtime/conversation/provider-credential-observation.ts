@@ -242,10 +242,10 @@ function privateRegularFile(
       signature(before) !== signature(beforePath)
     )
       fail('unsupported_source');
-    const buffer = Buffer.alloc(maxBytes + 1);
+    const buffer = Buffer.alloc(Number(before.size) + 1);
     let length = 0;
-    while (length <= maxBytes) {
-      const read = readSync(fd, buffer, length, maxBytes + 1 - length, length);
+    while (length < buffer.length) {
+      const read = readSync(fd, buffer, length, buffer.length - length, length);
       if (read === 0) break;
       length += read;
     }

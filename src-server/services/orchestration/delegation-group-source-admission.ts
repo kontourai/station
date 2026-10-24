@@ -136,7 +136,7 @@ function readRegular(path: string, max: number, privateFile = false): Buffer {
     const held = fstatSync(fd);
     if (held.dev !== before.dev || held.ino !== before.ino)
       refuse('source_changed');
-    const buffer = Buffer.alloc(max + 1);
+    const buffer = Buffer.alloc(Math.min(max, held.size) + 1);
     let length = 0;
     while (length < buffer.length) {
       const count = readSync(
@@ -150,7 +150,11 @@ function readRegular(path: string, max: number, privateFile = false): Buffer {
       length += count;
     }
     const bytes = buffer.subarray(0, length);
-    if (bytes.length > max || stamp(path) !== expected)
+    if (
+      bytes.length > max ||
+      bytes.length !== held.size ||
+      stamp(path) !== expected
+    )
       refuse('source_changed');
     return bytes;
   } finally {
