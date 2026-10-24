@@ -13687,13 +13687,21 @@ export class EventStore {
           'DELETE FROM orchestration_command_receipts WHERE thread_id = ?',
         )
         .run(threadId);
-      const steerCleanup = this.steerReceiptStorage().executeSync(
-        { type: 'steerReceipts.forgetThread', threadId },
-        { liveness: () => 'unknown' },
-        { withinHostTransaction: true },
-      );
-      if (steerCleanup.kind !== 'applied')
-        throw new Error('Steer receipt cleanup was refused.');
+      // Legacy thread ids may contain lone surrogates, but receipt keys cannot.
+      // Binding such an id to SQLite would alias a replacement-character key.
+      if (
+        !/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(
+          threadId,
+        )
+      ) {
+        const steerCleanup = this.steerReceiptStorage().executeSync(
+          { type: 'steerReceipts.forgetThread', threadId },
+          { liveness: () => 'unknown' },
+          { withinHostTransaction: true },
+        );
+        if (steerCleanup.kind !== 'applied')
+          throw new Error('Steer receipt cleanup was refused.');
+      }
       this.db
         .prepare(
           'DELETE FROM session_control_request_keys WHERE caller_session_id = ?',
