@@ -47,6 +47,13 @@ const RECEIPT_RESERVE_BYTES = 2 * 1024;
  * surfaces, grant derivations and stored-path queries read survive.
  */
 const MIN_RETAINED_STRING_BYTES = 256;
+/**
+ * How short a cut string may become: a few bytes of its head plus the
+ * marker. Only strings that were longer than
+ * {@link MIN_RETAINED_STRING_BYTES} are cut, and they go below that length
+ * only when many of them must share the budget.
+ */
+const MIN_CUT_STRING_BYTES = 128;
 /** Receipt bounds: 16 paths of at most 96 characters fit the reserve. */
 const MAX_RECEIPT_FIELDS = 16;
 const MAX_RECEIPT_FIELD_CHARS = 96;
@@ -89,11 +96,17 @@ function marker(omittedBytes: number): string {
  *   policy and command evidence read the unprojected event
  *   (`consumeAdapterEvents`).
  *
- * An event at or under its threshold is returned as the same object. Otherwise the
- * longest strings are cut to one shared byte cap (head kept, explicit marker
- * appended); short strings are untouched. An event that still cannot fit (a
- * huge form, or structure rather than text) is returned best-effort and
- * EventStore refuses it; the caller owns that outcome.
+ * An event at or under its threshold is returned as the same object.
+ * Otherwise its strings longer than 256 JSON bytes are cut to one shared byte
+ * cap (head kept, explicit marker appended), down to
+ * {@link MIN_CUT_STRING_BYTES} each if that is what reaching the budget
+ * takes; shorter strings are never cut. An event that still exceeds its
+ * budget (a large form, very many short strings, or structure rather than
+ * text) is returned at that floor. EventStore stores it if it is under the
+ * ingress ceiling, where it is shown and answerable live but a request over
+ * the window read's allowance comes back elided on reload; over the ceiling
+ * EventStore refuses it, and a refused `request.opened` is declined with the
+ * engine (`settleUnpersistableRequest` in `orchestration-service.ts`).
  */
 export function projectEventForIngress(
   event: CanonicalRuntimeEvent,
@@ -171,7 +184,7 @@ function project<T extends CanonicalRuntimeEvent>(
       (total, candidate) => total - Math.max(0, candidate.bytes - cap),
       size,
     );
-  let low = MIN_RETAINED_STRING_BYTES;
+  let low = MIN_CUT_STRING_BYTES;
   let high = candidates.reduce(
     (largest, candidate) => Math.max(largest, candidate.bytes),
     MIN_RETAINED_STRING_BYTES,

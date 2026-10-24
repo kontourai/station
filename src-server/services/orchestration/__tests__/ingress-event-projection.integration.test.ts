@@ -42,6 +42,7 @@ import {
 } from '../event-store.js';
 import {
   projectEventForIngress,
+  REQUEST_OPENED_PROJECTION_BUDGET_BYTES,
   TOOL_STARTED_PROJECTION_THRESHOLD_BYTES,
 } from '../ingress-event-projection.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -376,6 +377,44 @@ describe('oversized engine material through OrchestrationService', () => {
       expect(read).toEqual(opened);
       expect(inputRequestFromRequestEvent(read as never)).toEqual(form);
     }
+  });
+
+  test('a request of many mid-sized strings is cut far enough to read back whole on reload', async () => {
+    expect(REQUEST_OPENED_PROJECTION_BUDGET_BYTES).toBe(43_904);
+    // 220 strings of ~900 bytes: at a 256-byte floor each, this would land
+    // near 60 KB, stored but over the window read's 48,000-byte allowance.
+    const rows = Array.from(
+      { length: 220 },
+      (_, index) => `row ${index}: ${'"cell"\t'.repeat(110)}`,
+    );
+    const elicitation = htmlPreviewElicitation(19, '<p>small</p>');
+    (elicitation.params._meta.tool_params as Record<string, unknown>).rows =
+      rows;
+    child.send(elicitation);
+    const opened = await eventually(() =>
+      persisted().find((event) => event.method === 'request.opened'),
+    );
+    if (opened.method !== 'request.opened') throw new Error('unreachable');
+    expect(Buffer.byteLength(JSON.stringify(opened))).toBeLessThanOrEqual(
+      REQUEST_OPENED_PROJECTION_BUDGET_BYTES,
+    );
+    const payload = opened.payload as Record<string, any>;
+    // Short strings stay exact; every row is cut visibly, keeping its head.
+    expect(payload).toMatchObject({
+      serverName: 'station-control',
+      _meta: {
+        codex_approval_kind: 'mcp_tool_call',
+        tool_title: 'html_preview',
+        tool_params: { title: 'Report', html: '<p>small</p>' },
+      },
+    });
+    const shown = payload._meta.tool_params.rows as string[];
+    expect(shown).toHaveLength(220);
+    shown.forEach((row, index) => {
+      expect(row.startsWith(`row ${index}: `)).toBe(true);
+      expect(row).toMatch(/Station shortened this value/);
+    });
+    for (const read of readBack(opened.eventId)) expect(read).toEqual(opened);
   });
 
   test('a request within budget is stored exactly as the engine sent it', async () => {
