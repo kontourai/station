@@ -43,6 +43,13 @@ and cannot build from the caller's checkout. Verification rejects changed
 files, extra payloads, links, and special files. Keep the output outside the
 checkout so it cannot become an input to a later build.
 
+The packager uses the server-owned byte/inventory verifier in
+[`telemetry-companion-artifact.mjs`](../../src-server/services/telemetry-companion-artifact.mjs),
+then checks receiver provenance and deployment image pins. These checks retain
+the build-only boundary. New public-manifest archive installs retain their
+signed parent envelope in the sealed version directory; that retained evidence
+is not yet wired to companion lifecycle admission and grants no install permit.
+
 `companion-manifest.json` binds the exact file bytes, image digests and source
 revision. Its `build-only` scope is mandatory: this unsigned integrity record
 is neither publisher authentication nor a release qualification receipt.
