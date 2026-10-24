@@ -656,7 +656,7 @@
   min-width: 0;
   padding: 1rem;
   border: 1px solid var(--k-line);
-  border-radius: var(--radius-md);
+  border-radius: var(--k-radius-md);
   background: var(--k-panel);
   overflow-wrap: anywhere;
 }
