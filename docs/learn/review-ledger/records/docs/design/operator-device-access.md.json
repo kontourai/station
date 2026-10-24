@@ -46,7 +46,15 @@
 
     "src-server/runtime/consent/__tests__/operator-sessions.test.ts",
 
-    "tests/operator-sessions.spec.ts"
+    "tests/operator-sessions.spec.ts",
+
+    "src-server/runtime/bootstrap/account-bound-device-gate.ts",
+
+    "packages/sdk/src/query-domains/devicePairingRequests.ts",
+
+    "packages/connect/src/react/DevicePairingPanel.tsx",
+
+    "src-server/runtime/routes/__tests__/runtime-routes-device-pairing-wiring.test.ts"
   ],
 
   "checks": [

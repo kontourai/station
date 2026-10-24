@@ -12,7 +12,11 @@
 
     "tests/operator-sessions.spec.ts",
 
-    "src-ui/src/index.css"
+    "src-ui/src/index.css",
+
+    "src-server/runtime/bootstrap/runtime-http.ts",
+
+    "src-server/services/identity/operator-sessions.ts"
   ],
 
   "reviewNotes": []
