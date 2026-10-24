@@ -81,6 +81,13 @@ import {
   transferVerifiedNativeVirtualApplicationRequest,
 } from '../../services/connections/virtual-application.js';
 import { guardAccountResponse } from '../../services/identity/account-response-guard.js';
+import {
+  isOperatorSessionLeaf,
+  isOperatorSessionRead,
+  OPERATOR_SESSION_COOKIE,
+  OPERATOR_SESSION_IDLE_MS,
+  parseOperatorSessionCookie,
+} from '../../services/identity/operator-sessions.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import { RELAYED_RESPONSE_HEADER } from '../../services/remote-stations/remote-station-forwarder.js';
 import { HOST_STATION_COMPATIBILITY } from '../../services/ssh/environment-security-service.js';
@@ -1079,6 +1086,78 @@ function configureRuntimeSecurity(
         next,
       });
     }
+    // The cookie is additional READ authority on exact leaves only. Invalid
+    // sessions never fall through to a device or a pasted bearer on these leaves.
+    const operatorCookiePresent = (c.req.header('cookie') ?? '')
+      .split(';')
+      .some((part) => part.trim().startsWith(`${OPERATOR_SESSION_COOKIE}=`));
+    if (
+      isOperatorSessionLeaf(c.req.method, c.req.path) &&
+      (operatorCookiePresent ||
+        ((c.req.path === '/api/operator/session' ||
+          c.req.path === '/api/operator/passkeys') &&
+          !c.req.header('authorization')))
+    ) {
+      const refuse = () =>
+        c.json(
+          {
+            error: { code: 'operator_session_required' },
+            signInUrl: security.operatorSessions?.signInUrl ?? null,
+          },
+          401,
+        );
+      const sessionSecret = parseOperatorSessionCookie(c.req.header('cookie'));
+      const deviceCredential = parseDeviceSessionCookie(
+        c.req.header('cookie'),
+        (candidate) =>
+          security.resolveCredentialAuthority?.(candidate) ===
+          'device-credential',
+      );
+      if (
+        !isOperatorSessionRead(c.req.method, c.req.path) ||
+        !sessionSecret ||
+        !deviceCredential ||
+        hasCredentialQuery(c.req.url)
+      )
+        return refuse();
+      const session = security.operatorSessions?.resolve(
+        sessionSecret,
+        deviceCredential,
+        true,
+      );
+      if (!session) return refuse();
+      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+        kind: 'credential',
+        credential: deviceCredential,
+        authority: 'operator-session',
+        source: 'session',
+        operatorSession: {
+          sessionId: session.sessionId,
+          passkeyId: session.passkeyId,
+          boundDeviceId: session.boundDeviceId,
+          expiresAt: session.expiresAt,
+          idleExpiresAt: session.lastUsedAt + OPERATOR_SESSION_IDLE_MS,
+          isCurrent: () =>
+            !!security.operatorSessions?.resolve(
+              sessionSecret,
+              deviceCredential,
+            ),
+        },
+      });
+      (c as unknown as { set(key: string, value: unknown): void }).set(
+        RUNTIME_CREDENTIAL_AUTHORITY_VAR,
+        'operator-session',
+      );
+      setBudgetPrincipal(
+        c as unknown as PairingScopeContextStore,
+        deriveBudgetPrincipal('session', deviceCredential),
+      );
+      return next();
+    }
+    const inventorySignIn =
+      c.req.method === 'GET' && c.req.path === '/api/pairing/devices'
+        ? security.operatorSessions?.signInUrl
+        : null;
     const hasQueryCredential = hasCredentialQuery(c.req.url);
     if (hasQueryCredential) {
       const retryAfter = limiter.retryAfterSeconds(limiterKey);
@@ -1279,7 +1358,13 @@ function configureRuntimeSecurity(
           timestamp: security.now?.() ?? Date.now(),
         });
         limiter.clear(limiterKey);
-        return c.json({ error: { code: 'insufficient_scope' } }, 403);
+        return c.json(
+          {
+            error: { code: 'insufficient_scope' },
+            ...(inventorySignIn ? { signInUrl: inventorySignIn } : {}),
+          },
+          403,
+        );
       }
       if (cookieCredential) {
         deviceSessionAuthorizations.add(1, { outcome: 'allowed' });
@@ -1338,7 +1423,13 @@ function configureRuntimeSecurity(
         timestamp: security.now?.() ?? Date.now(),
       });
       limiter.clear(limiterKey);
-      return c.json({ error: { code: 'insufficient_scope' } }, 403);
+      return c.json(
+        {
+          error: { code: 'insufficient_scope' },
+          ...(inventorySignIn ? { signInUrl: inventorySignIn } : {}),
+        },
+        403,
+      );
     }
 
     if (cookieCredential) {

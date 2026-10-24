@@ -10,6 +10,7 @@ import {
 } from '@kontourai/station-contracts/environment-security';
 import type { SelfHostedBrokerNativeClientSurfaceV2 } from '@kontourai/station-contracts/self-hosted-broker';
 import type { DeploymentAuthenticationService } from '../services/identity/deployment-authentication-service.js';
+import { isOperatorSessionRead } from '../services/identity/operator-sessions.js';
 import type { ClientProtocolPolicy } from './client-protocol-admission.js';
 
 export type RuntimePeerClass = 'loopback' | 'remote' | 'absent';
@@ -21,7 +22,8 @@ export interface RuntimeCredentialActivityContext {
 
 export type RuntimeCredentialAuthority =
   | 'operator-credential'
-  | 'device-credential';
+  | 'device-credential'
+  | 'operator-session';
 export const RUNTIME_CREDENTIAL_AUTHORITY_VAR =
   'stationRuntimeCredentialAuthority';
 
@@ -68,6 +70,15 @@ export interface RuntimeAuthenticatedRequestPrincipal {
   readonly kind?: 'internal' | 'credential';
   readonly credential: string;
   readonly authority: RuntimeCredentialAuthority | undefined;
+  /** Read-only session facts stamped by HTTP admission; no host-locality or device authority. */
+  readonly operatorSession?: {
+    readonly sessionId: string;
+    readonly passkeyId: string;
+    readonly boundDeviceId: string;
+    readonly expiresAt: number;
+    readonly idleExpiresAt: number;
+    readonly isCurrent: () => boolean;
+  };
   /** Server-resolved paired-device identity; never request supplied. */
   readonly deviceId?: string;
   /**
@@ -342,6 +353,7 @@ export interface RuntimeHttpSecurityOptions {
       request: Request,
     ): import('../services/identity/native-enrollment-capability.js').NativeEnrollmentCapability;
   };
+  operatorSessions?: import('../services/identity/operator-sessions.js').OperatorSessionService;
   deploymentAuthentication?: DeploymentAuthenticationService;
   verifyCredential: (
     credential: string,
@@ -1346,6 +1358,12 @@ export function runtimeRequestPrincipalMayAccessHttpRoute(
 ): boolean {
   const principal = getRuntimeAuthenticatedRequestPrincipal(request);
   if (!principal) return false;
+  if (principal.authority === 'operator-session') {
+    return (
+      isOperatorSessionRead(route.method, route.path) &&
+      principal.operatorSession?.isCurrent() === true
+    );
+  }
   if (principal.kind === 'internal')
     return isTrustedInternalApiToken(
       request.headers.get(INTERNAL_API_TOKEN_HEADER) ?? undefined,

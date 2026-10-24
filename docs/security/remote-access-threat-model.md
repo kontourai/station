@@ -121,7 +121,26 @@ in `operator-passkey-enrollment.test.ts`:
 - The enrollment state lives in process memory; a restart drops pending
   requests, and the browser asks again.
 
-Nothing accepts an enrolled passkey yet: sign-in and step-up are later slices.
+S3 accepts enrolled passkeys for sign-in on the consent origin only. A UV
+assertion has a single-use challenge bound to the exact configured origin, RP ID
+and requesting paired-device cookie. The separate server-side session is hashed
+in the private registry and expires after 15 minutes without a successful
+session read or 12 hours absolute; background inventory reads count as activity.
+Live device/passkey revocation and the credential-rotation epoch are checked on
+every read, so a revoked binding cannot resume after restart.
+
+`__Host-station-operator` is Secure, HttpOnly, SameSite=Strict, Path=/, with no
+Domain. A hostname cookie also reaches the app on another port. That is an
+accepted read disclosure: app-origin plugin code can read
+`GET /api/pairing/devices`, `GET /api/operator/passkeys` and
+`GET /api/operator/session` while the session is live. Exact-leaf admission
+stamps `operator-session`, never `operator-credential`; an invalid session on a
+session leaf refuses instead of falling through to Device admission. App-origin
+device mutations refuse this authority in S3. Sign-out runs on the consent
+origin with its own one-use page nonce and the same exact Origin/Fetch Metadata
+checks. Per-action passkey step-up remains S4. Existing `access:devices` grants
+remain a separate administration path. Hosted tenant registries and absent
+HTTPS consent configuration disable operator sign-in.
 Revoking a passkey is a host action (`... passkeys revoke <id>`) until remote
 revoke with a step-up from another passkey (D8) lands. See
 [Enroll an operator passkey](../guides/operator-passkeys.md).
@@ -1940,7 +1959,8 @@ screen sharing, transcript capture, and redirecting credential output.
 4. Verify the remote protected connection before closing the local terminal.
 
 `./station environment credential rotate` preserves the environment ID and
-rotates only the operator bootstrap credential; independently issued device
+rotates the operator bootstrap credential and invalidates all operator sessions,
+keeping enrolled passkeys; independently issued device
 credentials remain valid until individually revoked or the environment is
 reset. It prints the new operator credential after confirmation. `--force` is
 required without an interactive terminal.

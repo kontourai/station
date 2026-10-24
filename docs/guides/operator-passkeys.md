@@ -1,10 +1,11 @@
 # Enroll an operator passkey
 
 An operator passkey lets you sign in as this Station's operator from a paired
-browser without pasting the operator credential. This guide covers **enrollment
-only**. Signing in with a passkey and approving device-access changes with one
-arrive in later slices of [#3257](https://github.com/kontourai/station/issues/3257);
-until then an enrolled passkey is stored but nothing accepts it yet.
+browser without pasting the operator credential. Enrollment requires confirmation
+on the host. Signing in grants **reads only**: paired devices and the operator's
+own passkey and current-session metadata. Device-access changes still require
+the existing host or separately granted device-administration channel; per-action
+passkey step-up is S4 of [#3257](https://github.com/kontourai/station/issues/3257).
 
 ## Before you start
 
@@ -58,6 +59,40 @@ until then an enrolled passkey is stored but nothing accepts it yet.
    losing one does not lock you out. Each passkey needs its own host
    confirmation; one confirmation enrolls one passkey.
 
+## Sign in from a paired browser
+
+1. Open **Paired devices**. A browser without inventory access offers **Sign in
+   as operator** when an HTTPS consent origin is available.
+2. Open that link, or go directly to `<consent origin>/operator/sign-in`.
+   Choose **Sign in with passkey** and complete user verification (biometric
+   or PIN). A passkey prompt on the app origin is never part of this flow.
+3. Return to Paired devices. Its next refresh loads the inventory and shows
+   the session's absolute expiry. Access-change controls are disabled for
+   this read-only operator session. The pasted-credential field stays until
+   S4; the session does not authorize changes through that field.
+4. Choose **Sign out**, then confirm on the consent-origin page to end the
+   session. Closing the browser window alone does not sign out.
+
+The session uses `__Host-station-operator`, a Secure, HttpOnly,
+SameSite=Strict cookie with Path=/ and no Domain. Cookies are scoped by hostname,
+not port: the same-host app origin receives it too. While signed in, app-origin
+plugin code can read the device inventory and the operator's passkey/session
+metadata. It cannot run a passkey ceremony or mutate with operator-session
+authority. Do not treat HttpOnly as isolation from same-origin code using the
+session to make allowed requests.
+
+The server enforces **15 minutes without a successful session read** and
+**12 hours from sign-in**. Inventory polling counts as request activity; it
+cannot extend the absolute deadline. Expiry requires a new passkey assertion.
+A different paired-device cookie cannot use the session. Revoking the bound
+device or the signing passkey, resetting the environment, or rotating the
+operator credential makes the session unusable, including after a restart.
+Rotation keeps the enrolled passkeys.
+
+Hosted tenant registries disable operator passkey routes. Stations with no
+configured HTTPS consent origin, or reachable only by IP, have no remote sign-in;
+the host channel remains available with no identity provider or passkey setup.
+
 ## Manage passkeys on the host
 
 ```bash
@@ -76,6 +111,8 @@ Passkeys are kept in `authentication/operator-passkeys.sqlite` under the
 Station home. The file is created when the first enrollment begins; a Station
 without `STATION_TRUSTED_CONSENT_ORIGIN` never creates it. It is a private file (mode 0600 in a 0700 directory) that
 holds each passkey's credential id, public key, signature counter, transports and label.
+Read-only operator sessions share this private store; their random cookie secrets
+are stored only as hashes, alongside device/passkey bindings and expiry times.
 
 ## What can go wrong
 

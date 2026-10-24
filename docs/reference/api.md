@@ -4820,6 +4820,39 @@ exchange proof or outbound bearer. See [the SDK route and lifecycle contract](sd
 and [the trust boundary](../security/remote-access-threat-model.md#server-owned-station-peer-enrollment).
 Receiver approval above does not establish Project membership or execution consent.
 
+## Operator session reads
+
+A paired browser can sign in at `<consent origin>/operator/sign-in` with an
+operator passkey. Ceremony POSTs exist only on that separate listener:
+`/operator/sign-in/options` (one-use rendered nonce) and
+`/operator/sign-in/complete` (one-use assertion challenge). They require the
+configured Host, exact Origin, `Sec-Fetch-Site: same-origin`, JSON, and a live
+paired-device cookie. Completion sets `__Host-station-operator` (Secure,
+HttpOnly, SameSite=Strict, Path=/, no Domain).
+
+The main API accepts a live device-bound operator session on exactly:
+
+| Method/path | Response |
+| --- | --- |
+| `GET /api/pairing/devices` | Existing `devices` inventory plus `operatorSession: { expiresAt, idleExpiresAt, signInUrl }`. |
+| `GET /api/operator/session` | Own current session: `signedIn`, `expiresAt`, `idleExpiresAt`, `signInUrl`, `signOutUrl`. |
+| `GET /api/operator/passkeys` | Operator's active passkeys, public metadata only. |
+
+The server enforces 15 minutes without a successful session read and a 12-hour
+absolute deadline. Device or passkey revocation, environment reset and operator
+credential rotation end the session. An expired, mismatched or invalid session
+on these leaves returns 401 `operator_session_required` and does not fall
+through to Device admission. A refused inventory read can include `signInUrl`
+when remote sign-in is configured. Same-origin plugin code can make these reads
+while signed in. The session adds no mutation authority: scope, revoke and
+record-removal requests refuse it in S3. `DELETE /api/operator/session` is
+unmapped and refused; sign out instead at the consent origin's
+`GET /operator/sign-out` and nonce-bound `POST /operator/sign-out`.
+
+See [Operator passkeys](../guides/operator-passkeys.md) for setup and recovery.
+Real DNS-origin, physical authenticator and synced/hybrid sign-in verification
+remain owner-run, **NOT_VERIFIED** by the local virtual-authenticator journey.
+
 ## Operator passkey administration (host)
 
 `GET /api/pairing/operator-passkeys` lists enrollment availability, active

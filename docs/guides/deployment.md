@@ -676,8 +676,10 @@ FQDN): the consent session cookie is host-scoped and is not sent across
 hostnames, so a different name fails closed with `unauthenticated`. Unset, the
 behavior is unchanged. The origin is never added to `ALLOWED_ORIGINS`.
 
-With this origin set, a paired browser can also enroll an operator passkey; see
-[Enroll an operator passkey](operator-passkeys.md).
+With this origin set, a paired browser can enroll an operator passkey and sign
+in for read-only device inventory access; see [Operator passkeys](operator-passkeys.md).
+The host-scoped session cookie also reaches the same-host app origin; it grants
+only the three documented reads. No passkey ceremony runs on the app origin.
 
 #### Troubleshooting the pairing path
 

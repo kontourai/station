@@ -5,9 +5,9 @@
 
   "state": "source-reviewed",
 
-  "summary": "Proposal for operator passkey sign-in and per-action step-up (#2894), retaining the dated S1 evidence and owner/open decisions. The opening current qualifications also describe S2b enrollment and separate scoped Device/launcher-browser administration; operator sessions and per-action step-up remain proposed.",
+  "summary": "Dated operator passkey and per-action step-up design, with owner decisions through 2026-10-24. S2b enrollment and S3 device-bound read sessions are implemented; S4 step-up remains proposed. Separate access:devices and launcher-browser administration retain their existing contracts.",
 
-  "limits": "Sections 2-7 describe unbuilt mechanisms (passkeys, sessions, step-up, consent-origin ceremony) and are design claims, not implementation evidence. WebAuthn RP ID statements are reasoned from the specification. No live desktop, paired-browser or tailnet run; the device-session cookie's refusal status is not verified. Line citations drift with later edits.",
+  "limits": "The dated body includes future S4-S6 routes and older source line citations. D5 two-passkey enrollment allowance is decided but not implemented and awaits an owner-filed follow-up. S3 focused and local Chromium evidence is not hosted, native, real DNS, physical authenticator, synced/hybrid or release qualification.",
 
   "sources": [
     "packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx",
@@ -30,7 +30,23 @@
 
     "packages/cli/src/commands/lifecycle.ts",
 
-    "src-server/utils/internal-api-token.ts"
+    "src-server/utils/internal-api-token.ts",
+
+    "src-server/services/identity/operator-passkey-enrollment.ts",
+
+    "src-server/services/identity/operator-passkey-registry.ts",
+
+    "src-server/services/identity/operator-sessions.ts",
+
+    "src-server/runtime/consent/operator-sign-in-routes.ts",
+
+    "src-server/runtime/bootstrap/runtime-http.ts",
+
+    "src-server/runtime/bootstrap/station-runtime.ts",
+
+    "src-server/runtime/consent/__tests__/operator-sessions.test.ts",
+
+    "tests/operator-sessions.spec.ts"
   ],
 
   "checks": [
