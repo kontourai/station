@@ -839,10 +839,9 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
         'confirmed_turn_id',
       ]) {
         const declared =
-          columns.find((column) => column.name === name)?.type.toUpperCase() ??
-          '';
+          columns.find((column) => column.name === name)?.type ?? '';
         // SQLite gives INT precedence over CHAR/CLOB/TEXT (including TEXTINT).
-        if (declared.includes('INT') || !/CHAR|CLOB|TEXT/.test(declared))
+        if (/INT/i.test(declared) || !/CHAR|CLOB|TEXT/i.test(declared))
           throw new SqliteKernelConfigurationError(
             `bound table ${table}.${name} requires TEXT affinity for exact receipt strings.`,
           );
@@ -871,7 +870,7 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
           }>
         ).filter((column) => column.key === 1);
         if (!exactKey(columns.map((column) => column.name))) continue;
-        if (columns.some((column) => column.coll?.toUpperCase() !== 'BINARY'))
+        if (columns.some((column) => !/^BINARY$/i.test(column.coll ?? '')))
           throw new SqliteKernelConfigurationError(
             `bound table ${table} requires BINARY uniqueness for steer receipt identities.`,
           );
