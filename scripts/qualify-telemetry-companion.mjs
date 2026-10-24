@@ -48,7 +48,7 @@ async function request(
   path,
   { key, operator = false, basic, body, method } = {},
 ) {
-  const headers = {};
+  const headers = { accept: 'application/json' };
   if (basic)
     headers.authorization = `Basic ${Buffer.from(basic).toString('base64')}`;
   if (key)
@@ -126,8 +126,8 @@ async function qualifyTelemetryCompanion(candidate, output) {
     effects: [],
     notVerified: [
       'real Station export',
-      'diagnostic trace query semantics',
-      'trace/product restart durability beyond the product fence',
+      'real Station trace export and trace retention beyond same-volume restart',
+      'product restart durability beyond the product fence',
       'fresh backup/restore',
       'version upgrade/rollback',
       'publisher privacy reconciliation',
@@ -546,6 +546,155 @@ async function qualifyTelemetryCompanion(candidate, output) {
       value: observedMetric[1],
     };
     await save();
+    const traceId = randomBytes(16).toString('hex');
+    const spanId = randomBytes(8).toString('hex');
+    const traceStart = String(BigInt(Date.now() - 1000) * 1_000_000n);
+    const traceEnd = String(BigInt(traceStart) + 1_000_000n);
+    const canary = `synthetic-private-canary-${owner}`;
+    const traceBody = {
+      resourceSpans: [
+        {
+          resource: {
+            attributes: [
+              {
+                key: 'service.name',
+                value: { stringValue: 'station-qualification' },
+              },
+              { key: 'host.name', value: { stringValue: canary } },
+            ],
+          },
+          scopeSpans: [
+            {
+              scope: {
+                name: 'companion-runtime-qualification',
+                attributes: [
+                  { key: 'private.scope', value: { stringValue: canary } },
+                ],
+              },
+              spans: [
+                {
+                  traceId,
+                  spanId,
+                  name: canary,
+                  traceState: canary,
+                  kind: 2,
+                  startTimeUnixNano: traceStart,
+                  endTimeUnixNano: traceEnd,
+                  attributes: [
+                    {
+                      key: 'http.request.method',
+                      value: { stringValue: 'GET' },
+                    },
+                    { key: 'http.url', value: { stringValue: canary } },
+                  ],
+                  status: { code: 2, message: canary },
+                  events: [{ timeUnixNano: traceStart, name: canary }],
+                  links: [
+                    {
+                      traceId,
+                      spanId,
+                      attributes: [
+                        { key: 'private.link', value: { stringValue: canary } },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    assert.equal(
+      (
+        await request(ports[1], '/v1/traces', {
+          key: 'wrong-key',
+          body: { resourceSpans: [] },
+        })
+      ).status,
+      401,
+    );
+    const sentTrace = await mutate(
+      ports[1],
+      '/v1/traces',
+      {
+        key: otelKey,
+        body: traceBody,
+      },
+      'send synthetic privacy trace',
+    );
+    assert.equal(sentTrace.status, 200);
+    assert.equal(Number(sentTrace.body.partialSuccess?.rejectedSpans ?? 0), 0);
+    assert(
+      !sentTrace.body.partialSuccess?.errorMessage,
+      'Collector rejected trace',
+    );
+    const tracePath = `/api/datasources/proxy/uid/station-tempo/api/v2/traces/${traceId}`;
+    assert.equal((await request(ports[2], tracePath)).status, 401);
+    const readTrace = async () => {
+      const result = await request(ports[2], tracePath, {
+        basic: `telemetry-admin:${grafanaPassword}`,
+      });
+      return (
+        result.status === 200 &&
+        result.body.trace?.resourceSpans?.length > 0 &&
+        result.body.trace
+      );
+    };
+    const projectTrace = (trace) => {
+      assert(
+        !JSON.stringify(trace).includes(canary),
+        'Private trace canary survived projection',
+      );
+      assert.equal(trace.resourceSpans.length, 1);
+      const resource = trace.resourceSpans[0];
+      assert.deepEqual(resource.resource.attributes, [
+        {
+          key: 'service.name',
+          value: { stringValue: 'station-qualification' },
+        },
+      ]);
+      assert.equal(resource.scopeSpans.length, 1);
+      const scope = resource.scopeSpans[0];
+      assert.deepEqual(scope.scope.attributes ?? [], []);
+      assert.equal(scope.spans.length, 1);
+      const span = scope.spans[0];
+      assert.equal(
+        span.traceId,
+        Buffer.from(traceId, 'hex').toString('base64'),
+      );
+      assert.equal(span.spanId, Buffer.from(spanId, 'hex').toString('base64'));
+      assert.equal(span.name, 'station.operation');
+      assert.equal(span.startTimeUnixNano, traceStart);
+      assert.equal(span.endTimeUnixNano, traceEnd);
+      assert.deepEqual(span.attributes, [
+        { key: 'http.request.method', value: { stringValue: 'GET' } },
+      ]);
+      assert.equal(span.status?.message ?? '', '');
+      assert.equal(span.traceState ?? '', '');
+      assert.deepEqual(span.events ?? [], []);
+      assert.deepEqual(span.links ?? [], []);
+      return {
+        traceId: span.traceId,
+        spanId: span.spanId,
+        start: span.startTimeUnixNano,
+        end: span.endTimeUnixNano,
+        name: span.name,
+        resource: resource.resource.attributes,
+        attributes: span.attributes,
+      };
+    };
+    const observedTrace = projectTrace(
+      await poll(
+        'Grafana queries privacy-projected diagnostic trace',
+        readTrace,
+        90_000,
+      ),
+    );
+    report.traceObservation = observedTrace;
+    await check(
+      'authenticated trace query preserves IDs/time/allowed attributes and removes synthetic private fields',
+    );
     await docker(
       [
         ...compose,
@@ -583,6 +732,17 @@ async function qualifyTelemetryCompanion(candidate, output) {
     assert.deepEqual(retainedMetric, observedMetric);
     await check(
       'same-volume diagnostic restart retains the exact historical metric query without resend',
+    );
+    const retainedTrace = projectTrace(
+      await poll(
+        'Grafana queries retained trace without resending',
+        readTrace,
+        90_000,
+      ),
+    );
+    assert.deepEqual(retainedTrace, observedTrace);
+    await check(
+      'same-volume Tempo restart retains the exact privacy-projected trace without resend',
     );
     const sourceKey = `stp_${token()}`,
       sourceId = randomUUID();
