@@ -850,7 +850,8 @@ export class LocalSourceAdmissionOwner {
       const source = Object.freeze({
         ...origin,
         source_state_id: record.snapshotDigest,
-        execution_worktree_id: `sealed-input:${provenance.id}`,
+        // Flow renewal keeps the member's physical slot while source receipts rotate.
+        execution_worktree_id: `sealed-source-slot:${sha(json([origin.repository_id, origin.execution_worktree_id, authority.principalId, boundSubject.groupId, boundSubject.workItemId]))}`,
         source_admission_receipt: Object.freeze({
           id: provenance.id,
           domain: SNAPSHOT_DOMAIN,

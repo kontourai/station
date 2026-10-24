@@ -2148,6 +2148,13 @@ report intent; it accepts no caller root, grant, receipt, model connection or
 credential. Bootstrap, agent-origin and hosted requests cannot issue this
 preparation. Every seat must observe the same source state, although each gets
 its own single-use sealed input. A deadline cannot outlive its source or profile.
+The sealed input's execution slot binds the authenticated principal, group/member
+subject and observed physical Project checkout. A new clean-source snapshot for
+that same slot retains the execution-worktree identity while replacing its
+content digest and signed receipt. A different subject or replaced physical
+checkout gets a different slot. This distinction permits a future authorized
+Flow renewal to preserve membership; it grants no renewal, extra attempts or
+Session rebind. Existing records keep their recorded identities.
 
 The preparer issues one controller envelope and bounded child envelopes using
 the published Flow validators. Each child allocation comes from its actual

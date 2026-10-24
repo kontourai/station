@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {
+  cpSync,
   mkdirSync,
   readFileSync,
   renameSync,
@@ -61,6 +62,89 @@ function canonical(v: unknown): string {
     .map(([k, x]) => `${JSON.stringify(k)}:${canonical(x)}`)
     .join(',')}}`;
 }
+
+test('fresh sealed source captures preserve one physical execution slot without sharing source or member identities', async () => {
+  const f = await fixture();
+  const first = await f.owner.captureSnapshot(f.context(), subject, selection);
+  f.owner.releaseSnapshot(first.capability);
+  writeFileSync(
+    join(f.repo, 'source.txt'),
+    'source after explicit operator change\n',
+  );
+  await f.git('add', '--', 'source.txt');
+  await f.git('commit', '-qm', 'operator source update');
+  const changed = await f.owner.captureSnapshot(
+    f.context(),
+    subject,
+    selection,
+  );
+  try {
+    assert.equal(
+      changed.source.execution_worktree_id,
+      first.source.execution_worktree_id,
+    );
+    assert.notEqual(
+      changed.source.source_state_id,
+      first.source.source_state_id,
+    );
+    assert.notEqual(
+      changed.source.source_admission_receipt.id,
+      first.source.source_admission_receipt.id,
+    );
+    assert.notEqual(
+      changed.source.source_admission_receipt.digest,
+      first.source.source_admission_receipt.digest,
+    );
+    const otherMember = await f.owner.captureSnapshot(
+      f.context(),
+      { ...subject, workItemId: 'child-2' },
+      selection,
+    );
+    try {
+      assert.notEqual(
+        otherMember.source.execution_worktree_id,
+        changed.source.execution_worktree_id,
+      );
+    } finally {
+      f.owner.releaseSnapshot(otherMember.capability);
+    }
+    const otherGroup = await f.owner.captureSnapshot(
+      f.context(),
+      { ...subject, groupId: 'group-other' },
+      selection,
+    );
+    try {
+      assert.notEqual(
+        otherGroup.source.execution_worktree_id,
+        changed.source.execution_worktree_id,
+      );
+    } finally {
+      f.owner.releaseSnapshot(otherGroup.capability);
+    }
+  } finally {
+    f.owner.releaseSnapshot(changed.capability);
+  }
+  const replaced = `${f.repo}-original`;
+  renameSync(f.repo, replaced);
+  cpSync(replaced, f.repo, { recursive: true });
+  const replacement = await f.owner.captureSnapshot(
+    f.context(),
+    subject,
+    selection,
+  );
+  try {
+    assert.notEqual(
+      replacement.source.execution_worktree_id,
+      changed.source.execution_worktree_id,
+    );
+    assert.notEqual(
+      replacement.source.repository_id,
+      changed.source.repository_id,
+    );
+  } finally {
+    f.owner.releaseSnapshot(replacement.capability);
+  }
+});
 
 test('F4 final source authorization does not invoke supplied request header callbacks after action check', async () => {
   const f = await fixture();
