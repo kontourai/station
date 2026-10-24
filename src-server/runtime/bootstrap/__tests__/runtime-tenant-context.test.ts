@@ -159,6 +159,55 @@ describe('hosted runtime tenant context', () => {
     expect(response.status).toBe(200);
   });
 
+  it('admits analytics grants only to the exact GET leaf and preserves hosted tenant ingress', async () => {
+    const app = new Hono();
+    app.use('*', createHostedTenantMiddleware(registry) as never);
+    configureRuntimeHttp({
+      app: app as never,
+      logger,
+      eventBus: { emit: vi.fn() } as unknown as EventBus,
+      security: {
+        verifyCredential: () => false,
+        resolveGrantedScope: () => undefined,
+      },
+    });
+    const path =
+      '/api/analytics/source-grant-export/21234567-89ab-4cde-8fab-0123456789ab';
+    app.all('*', (c) => c.json({ admittedToHandler: true }));
+    const environment = {
+      incoming: { socket: { remoteAddress: '127.0.0.1' } },
+    };
+    const headers = {
+      [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+      [INTERNAL_TENANT_HEADER]: 'alpha',
+      Authorization: `Bearer stax_${'s'.repeat(43)}`,
+    };
+    const admitted = await app.request(path, { headers }, environment as never);
+    expect(admitted.status).toBe(200);
+    await expect(admitted.json()).resolves.toEqual({ admittedToHandler: true });
+    for (const [url, method] of [
+      ['/api/projects', 'GET'],
+      ['/api/analytics/usage-export', 'GET'],
+      [path, 'POST'],
+      [`${path}/extra`, 'GET'],
+    ]) {
+      const refused = await app.request(
+        url,
+        { method, headers },
+        environment as never,
+      );
+      expect(refused.status).toBe(401);
+    }
+    const missingTenant = await app.request(
+      path,
+      {
+        headers: { Authorization: headers.Authorization },
+      },
+      environment as never,
+    );
+    expect(missingTenant.status).toBe(421);
+  });
+
   it('allows only a valid stage-grant PUT to bypass hosted tenant ingress', async () => {
     const app = new Hono();
     app.use(

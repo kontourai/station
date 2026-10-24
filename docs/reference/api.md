@@ -2459,8 +2459,28 @@ The reply `{data: AnalyticsStoredSourceCredential}` has source/approval/recipien
 IDs, revision, expiry, `credentialStored:true`, `sourceVerified:false` and
 `exportAuthority:false`. Plaintext stays in private receiving custody. A slot
 read also reports credential-stored phase and this metadata. Storage is not source
-identity verification or active export authority; narrow source admission,
-rotation and actual synchronization remain unfinished.
+identity verification or active export authority. Rotation and actual
+synchronization remain unfinished.
+
+### Read an approved source export
+
+`GET /api/analytics/source-grant-export/<approvalId>` is an exact alternate-auth
+leaf. It requires `Authorization: Bearer stax_<credential>` and
+`x-station-analytics-proof`, the base64url-encoded JSON delivery proof returned
+in `AnalyticsStoredSourceCredential.deliveryProof`. This static Ed25519 proof
+binds receiving-key possession and the decrypted credential hash; it is not a
+fresh per-request signature or source identity verification.
+
+Only unique `from`, `to`, `pageSize` (1–100) and `cursor` query fields are accepted.
+Scope and owners derive from the approved policy. Success returns
+`{success:true,data:UsageExportPage,grant:{sourceApprovalId,revision,scope}}`.
+Current source Device/account standing, tenant, owner set, expiry, credential
+hash and proof are checked before reading and before queued bytes release.
+Revocation refuses further pages and ends held responses. Continuations bind
+the grant generation as well as the canonical snapshot; interactive export
+cursors cannot substitute. This credential is refused by ordinary Station APIs.
+Hosted ingress tenant requirements remain in force. The receiving Station does
+not yet fetch automatically from a proposed source origin.
 
 ### Get Achievements
 

@@ -27,6 +27,7 @@ import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createRecipientCandidateRoutes } from '../../routes/operations/recipient-candidates.js';
 import { createSourceEnrollmentRoutes } from '../../routes/operations/source-enrollments.js';
 import { createSourceGrantApprovalRoutes } from '../../routes/operations/source-grant-approvals.js';
+import { createSourceGrantExportRoutes } from '../../routes/operations/source-grant-export.js';
 import { createHtmlReplyRoutes } from '../../routes/orchestration/html-replies.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
 import { createProjectRoomRoutes } from '../../routes/projects/project-room-routes.js';
@@ -3279,6 +3280,76 @@ export function configureRuntimeRoutes(
           assertCurrent,
         };
       },
+    }),
+  );
+  const sourceGrantExportStore = new SourceGrantApprovalStore(
+    context.configLoader.getProjectHomeDir(),
+  );
+  context.app.route(
+    '/api/analytics/source-grant-export',
+    createSourceGrantExportRoutes({
+      authorize: (request, approvalId, credential, proof) =>
+        sourceGrantExportStore.authorizeExport(
+          context.environmentSecurityService.devicePairing.environmentId(),
+          approvalId,
+          credential,
+          proof,
+          async (owner) => {
+            const { AuthorityObservationRejected } = await import(
+              '../../services/identity/authority-observation.js'
+            );
+            const fail = () =>
+              new AuthorityObservationRejected(403, 'authority_changed');
+            const current = context.environmentSecurityService.devicePairing
+              .listDevices()
+              .find((device) => device.id === owner.approvalCredentialId);
+            if (
+              !current?.principalBinding ||
+              current.kind !== 'device' ||
+              current.credentialKind === 'personal-token' ||
+              principalForDeviceBinding(current.principalBinding).id !==
+                owner.userId ||
+              createHash('sha256')
+                .update(JSON.stringify(current.principalBinding))
+                .digest('hex') !== owner.approvalBindingSha256 ||
+              !context.environmentSecurityService.devicePairing.credentialHoldsScope(
+                current.id,
+                'orchestration:read',
+                Date.parse(owner.approvedAt),
+              )
+            )
+              throw fail();
+            const tenant = getTenantRequestContext(request);
+            if (
+              (hostedTenantRegistry !== undefined) !==
+                (owner.mode === 'hosted') ||
+              (owner.mode === 'hosted' && tenant?.tenantId !== owner.tenantId)
+            )
+              throw fail();
+            const authority = sessionReadAuthorityFromRequest(
+              owner.userId,
+              tenant,
+              hostedTenantRegistry,
+            );
+            if (
+              JSON.stringify(
+                context.orchestrationService.usageExportOwnerIds(
+                  authority,
+                  owner.scope,
+                ),
+              ) !== JSON.stringify(owner.ownerIds)
+            )
+              throw fail();
+            return authority;
+          },
+        ),
+      read: (authority, query, authorizationContext) =>
+        context.orchestrationService.readUsageReceiptExport(
+          authority,
+          context.environmentSecurityService.devicePairing.environmentId(),
+          query,
+          authorizationContext,
+        ),
     }),
   );
   context.app.route(

@@ -16,3 +16,5 @@ Add public receiving-key candidate contracts for person/tenant-scoped analytics 
 Add `AnalyticsSourceApproval` for recorded source-user consent. Personal reviews use the existing distinct-origin consent channel with a requester-bound decision policy and exact source/key/policy revalidation. Recorded approval remains separate from source credential issuance and export activation.
 
 Add encrypted source credential delivery and receiving-custody DTOs. Approved source policies produce idempotent recipient-bound ciphertext with hash-only source storage; receiving APIs return metadata and retain plaintext privately. These stages do not activate source export or verify source identity.
+
+Add a receiving delivery-possession proof and a single scoped source export endpoint. Each read checks the current approved policy, Device/account standing, tenant, owner set and credential hash, with grant-bound continuations and queued-response revocation. The static proof grants no general API identity; receiving source verification and automatic synchronization remain separate work.

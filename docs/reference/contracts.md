@@ -116,7 +116,10 @@ source authorization remain private and server-derived.
 
 `AnalyticsSourceCredentialDelivery` carries only encrypted transport metadata and
 ciphertext. `AnalyticsStoredSourceCredential` reports receiving custody without
-plaintext, source verification or export authority. Neither shape is an
+plaintext, source verification or export authority. Its optional `deliveryProof`
+binds the receiving proof key to the decrypted credential hash and exact grant
+generation; it is static delivery evidence, not a fresh request signature.
+Neither shape is an
 authorization input by itself. The server checks approved policy and live
 source/receiving owners before delivery/materialization; actual source data
 admission remains a separate owner.

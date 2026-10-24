@@ -37,6 +37,10 @@ import {
   enrollmentOwnerSchema,
 } from './source-enrollment-protocol.js';
 import type { EnrollmentActor } from './source-enrollment-store.js';
+import {
+  createSourceDeliveryProof,
+  sourceDeliveryProofSchema,
+} from './source-export-proof.js';
 import { UsageExportRejected } from './usage-export-reader.js';
 
 const recordSchema = z
@@ -53,6 +57,7 @@ const recordSchema = z
       .object({
         envelopeSha256: z.string().regex(/^[a-f0-9]{64}$/),
         payload: sourceCredentialPayloadSchema,
+        proof: sourceDeliveryProofSchema.optional(),
       })
       .strict()
       .optional(),
@@ -224,6 +229,9 @@ export class RecipientStore {
       revision: value.revision,
       expiresAt: value.expiresAt,
       credentialStored: true,
+      ...(record.sourceCredential?.proof
+        ? { deliveryProof: record.sourceCredential.proof }
+        : {}),
       sourceVerified: false,
       exportAuthority: false,
     };
@@ -441,8 +449,14 @@ export class RecipientStore {
               'recipient_candidate_conflict',
               409,
             );
-          if (old?.envelopeSha256 === envelopeSha256)
+          if (old?.envelopeSha256 === envelopeSha256) {
+            if (!old.proof)
+              old.proof = createSourceDeliveryProof(
+                old.payload,
+                record.proofPrivateKey,
+              );
             return this.credentialView(record);
+          }
           let value: z.infer<typeof sourceCredentialPayloadSchema>;
           try {
             value = await openSourceCredential(
@@ -462,7 +476,11 @@ export class RecipientStore {
               409,
             );
           await actor.assertCurrent();
-          record.sourceCredential = { envelopeSha256, payload: value };
+          record.sourceCredential = {
+            envelopeSha256,
+            payload: value,
+            proof: createSourceDeliveryProof(value, record.proofPrivateKey),
+          };
           return this.credentialView(record);
         },
       );

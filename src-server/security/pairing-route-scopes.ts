@@ -2196,6 +2196,7 @@ export type ExternalSurfaceCapability =
   | 'mcp-token'
   | 'webhook-token'
   | 'stage-grant'
+  | 'analytics-grant'
   | 'middleware';
 
 export interface ExternalSurfaceCapabilityRule {
@@ -2228,6 +2229,16 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
       match: rule.exact ? ('exact' as const) : ('prefix' as const),
       capability: 'pairing-scope' as const,
     })),
+    {
+      id: 'analytics-grant:canonical-export',
+      transport: 'http',
+      method: 'GET',
+      prefix: '/api/analytics/source-grant-export/:approvalId',
+      match: 'exact',
+      capability: 'analytics-grant',
+      reason:
+        'opaque source credential plus receiving delivery proof; current source owner/tenant/approval checked by exact export handler; no general API identity',
+    },
     // These routes are unauthenticated at the pairing boundary, but each has
     // its own narrow proof, rate limit, loopback-secret, or share-token
     // contract. Keep every exception method-specific and exact.

@@ -4927,8 +4927,12 @@ seals an approved source credential to the receiving X25519 key. The source
 approval store keeps a hash plus recoverable ciphertext; the recipient owner
 checks owner/tenant and exact intent/context before private decryption/storage.
 Neither API returns plaintext. Custody does not verify the source or activate
-export; the narrow consumer, source transport verification and synchronization
-remain required. Existing personal-token, peer, MCP and F1 signing authorities
+export. The [narrow export controller](../../src-server/routes/operations/source-grant-export.ts)
+checks the opaque credential and receiving delivery proof against current source
+approval, Device/account standing, tenant and owner set. It shares the canonical
+usage reader, binds cursors to the grant generation and fences queued bytes on
+revocation. Source transport verification and receiving synchronization remain
+required. Existing personal-token, peer, MCP and F1 signing authorities
 are not reused as analytics credentials.
 
 ## ProductTelemetryReceiver

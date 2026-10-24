@@ -1,7 +1,12 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import {
+  parseHostedTenantRegistry,
+  sessionReadAuthorityFromRequest,
+  tenantId,
+} from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
-import { expect, test } from 'vitest';
+import { afterEach, expect, test } from 'vitest';
 import { z } from 'zod/v3';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { RecipientStore } from '../../../analytics/recipient-store.js';
@@ -10,17 +15,25 @@ import {
   sourceCredentialHash,
 } from '../../../analytics/source-credential.js';
 import { SourceEnrollmentStore } from '../../../analytics/source-enrollment-store.js';
+import { sourceDeliveryProofSchema } from '../../../analytics/source-export-proof.js';
 import {
   type SourceApprovalActor,
   SourceGrantApprovalStore,
 } from '../../../analytics/source-grant-store.js';
+import { readAuthorizedUsageExport } from '../../../analytics/usage-export-reader.js';
 import { createConsentApp } from '../../../runtime/consent/consent-listener.js';
 import { ConsentChannelService } from '../../../services/consent/consent-channel.js';
 import { AuthorityObservationRejected } from '../../../services/identity/authority-observation.js';
+import { EventStore } from '../../../services/orchestration/event-store.js';
 import { createRecipientCandidateRoutes } from '../recipient-candidates.js';
 import { createSourceGrantApprovalRoutes } from '../source-grant-approvals.js';
+import { createSourceGrantExportRoutes } from '../source-grant-export.js';
 
 const temporary = trackTempDirs();
+const stores: EventStore[] = [];
+afterEach(() => {
+  for (const store of stores.splice(0)) store.close();
+});
 const sourceId = '01234567-89ab-4cde-8fab-0123456789ab';
 const recipientId = '11234567-89ab-4cde-8fab-0123456789ab';
 const approvalId = '21234567-89ab-4cde-8fab-0123456789ab';
@@ -30,6 +43,8 @@ const now = Date.parse('2026-10-24T00:00:00.000Z');
 async function fixture() {
   const sourceHome = temporary('credential-source-'),
     receivingHome = temporary('credential-receiver-');
+  let sourceTenant = 'tenant-a';
+  let exportOwnerCheck = async () => {};
   let receivingUser = 'human:tailscale:alice',
     receivingTenant = 'tenant-a',
     approvalCurrent = true;
@@ -89,6 +104,46 @@ async function fixture() {
       approvals,
       capture: async () => actor('source-station'),
       now: () => now,
+    }),
+  );
+  const facts = new EventStore(join(sourceHome, 'facts.sqlite'));
+  stores.push(facts);
+  const registry = parseHostedTenantRegistry({
+    schemaVersion: 1,
+    tenants: [
+      { id: 'tenant-a', authority: 'source-a.example.test' },
+      { id: 'tenant-b', authority: 'source-b.example.test' },
+    ],
+  });
+  source.route(
+    '/api/analytics/source-grant-export',
+    createSourceGrantExportRoutes({
+      authorize: (_request, id, credential, proof) =>
+        approvals.authorizeExport(
+          'source-station',
+          id,
+          credential,
+          proof,
+          async (owner) => {
+            if (!approvalCurrent || owner.tenantId !== sourceTenant)
+              throw new AuthorityObservationRejected(403, 'authority_changed');
+            await exportOwnerCheck();
+            return sessionReadAuthorityFromRequest(
+              owner.userId,
+              { tenantId: tenantId(sourceTenant) },
+              registry,
+            );
+          },
+        ),
+      read: (authority, query, authorizationContext) =>
+        readAuthorizedUsageExport({
+          store: facts,
+          authority,
+          stationId: 'source-station',
+          request: query,
+          personalOwnerIds: () => undefined,
+          authorizationContext,
+        }),
     }),
   );
   const receiving = new Hono().route(
@@ -158,6 +213,13 @@ async function fixture() {
     });
   return {
     sourceHome,
+    facts,
+    onExportOwnerCheck(check: () => Promise<void>) {
+      exportOwnerCheck = check;
+    },
+    sourceTenant(value: string) {
+      sourceTenant = value;
+    },
     receivingHome,
     source,
     receiving,
@@ -285,4 +347,201 @@ test('a cancelled receiving slot refuses delivery even after source approval', a
     ).status,
   ).toBe(200);
   expect((await h.materialize(wire)).status).toBe(409);
+});
+
+test('narrow export selects canonical owner/tenant facts and fences proof, scope and queued revocation', async () => {
+  const h = await fixture();
+  const day = new Date().toISOString().slice(0, 10);
+  for (const [thread, owner, tenant] of [
+    ['own', 'human:tailscale:alice', 'tenant-a'],
+    ['other', 'human:tailscale:bob', 'tenant-a'],
+    ['foreign', 'human:tailscale:alice', 'tenant-b'],
+  ]) {
+    const time = new Date().toISOString();
+    h.facts.upsertSession({
+      threadId: thread,
+      provider: 'claude',
+      status: 'ready',
+      createdAt: time,
+      updatedAt: time,
+      tenantExecutionContext: { tenantId: tenantId(tenant), source: 'session' },
+    });
+    h.facts.appendEvent({
+      eventId: `${thread}:start`,
+      threadId: thread,
+      provider: 'claude',
+      method: 'session.started',
+      sessionId: thread,
+      createdAt: time,
+      metadata: { userId: owner },
+    });
+    h.facts.appendEvent({
+      eventId: `${thread}:usage`,
+      threadId: thread,
+      provider: 'claude',
+      method: 'token-usage.updated',
+      createdAt: time,
+      promptTokens: 7,
+    });
+  }
+  await h.approve();
+  const wire = z
+    .object({ data: sourceCredentialDeliverySchema })
+    .parse(await (await h.delivery()).json()).data;
+  const stored = z
+    .object({ data: z.object({ deliveryProof: sourceDeliveryProofSchema }) })
+    .parse(await (await h.materialize(wire)).json()).data;
+  const privateFile = z
+    .object({
+      records: z.array(
+        z.object({
+          sourceCredential: z.object({
+            payload: z.object({ credential: z.string() }),
+          }),
+        }),
+      ),
+    })
+    .parse(
+      JSON.parse(
+        await readFile(
+          join(h.receivingHome, 'security/analytics-recipients.json'),
+          'utf8',
+        ),
+      ),
+    );
+  const credential =
+    privateFile.records[0]?.sourceCredential.payload.credential;
+  if (!credential) throw new Error('Missing private credential');
+  const path = `/api/analytics/source-grant-export/${approvalId}?from=${day}&to=${day}`;
+  const headers = {
+    authorization: `Bearer ${credential}`,
+    'x-station-analytics-proof': Buffer.from(
+      JSON.stringify(stored.deliveryProof),
+    ).toString('base64url'),
+  };
+  expect((await h.source.request(path)).status).toBe(403);
+  const response = await h.source.request(path, { headers });
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({
+    data: {
+      stationId: 'source-station',
+      scope: 'individual',
+      observations: [
+        {
+          receipts: [
+            expect.objectContaining({ threadId: 'own', inputTokens: 7 }),
+          ],
+        },
+      ],
+    },
+  });
+  for (let index = 0; index < 505; index++) {
+    h.facts.appendEvent({
+      eventId: `own:page:${index}`,
+      threadId: 'own',
+      provider: 'claude',
+      method: 'token-usage.updated',
+      createdAt: new Date().toISOString(),
+      promptTokens: index + 8,
+    });
+  }
+  const pageSchema = z.object({
+    data: z.object({
+      streamEpoch: z.string(),
+      highWater: z.number(),
+      observations: z.array(z.object({ globalSequence: z.number() })),
+      nextCursor: z.string().optional(),
+    }),
+  });
+  const sequences: number[] = [];
+  let cursor: string | undefined;
+  let snapshot: { streamEpoch: string; highWater: number } | undefined;
+  do {
+    const pageResponse = await h.source.request(
+      `${path}&pageSize=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`,
+      { headers },
+    );
+    expect(pageResponse.status).toBe(200);
+    const { data } = pageSchema.parse(await pageResponse.json());
+    snapshot ??= { streamEpoch: data.streamEpoch, highWater: data.highWater };
+    expect(data).toMatchObject(snapshot);
+    sequences.push(...data.observations.map((item) => item.globalSequence));
+    cursor = data.nextCursor;
+    if (cursor && sequences.length === 100) {
+      const authority = sessionReadAuthorityFromRequest(
+        'human:tailscale:alice',
+        { tenantId: tenantId('tenant-a') },
+        parseHostedTenantRegistry({
+          schemaVersion: 1,
+          tenants: [{ id: 'tenant-a', authority: 'source-a.example.test' }],
+        }),
+      );
+      expect(() =>
+        readAuthorizedUsageExport({
+          store: h.facts,
+          authority,
+          stationId: 'source-station',
+          request: { from: day, to: day, scope: 'individual', cursor },
+          personalOwnerIds: () => undefined,
+        }),
+      ).toThrow('usage_export_authority_changed');
+    }
+    if (sequences.length > 506)
+      throw new Error('Export paging repeated observations');
+  } while (cursor);
+  expect(sequences).toHaveLength(506);
+  expect(new Set(sequences).size).toBe(506);
+  const bad = {
+    ...stored.deliveryProof,
+    claims: { ...stored.deliveryProof.claims, revision: 2 },
+  };
+  expect(
+    (
+      await h.source.request(path, {
+        headers: {
+          ...headers,
+          'x-station-analytics-proof': Buffer.from(
+            JSON.stringify(bad),
+          ).toString('base64url'),
+        },
+      })
+    ).status,
+  ).toBe(403);
+  expect(
+    (await h.source.request(`${path}&userId=human:tailscale:bob`, { headers }))
+      .status,
+  ).toBe(400);
+  h.sourceTenant('tenant-b');
+  expect((await h.source.request(path, { headers })).status).toBe(403);
+  h.sourceTenant('tenant-a');
+  const held = await h.source.request(path, { headers });
+  expect(held.status).toBe(200);
+  let signalEntered = () => {};
+  let finishCheck = () => {};
+  const entered = new Promise<void>((resolve) => {
+    signalEntered = resolve;
+  });
+  const continueCheck = new Promise<void>((resolve) => {
+    finishCheck = resolve;
+  });
+  h.onExportOwnerCheck(async () => {
+    signalEntered();
+    await continueCheck;
+  });
+  const pendingBody = held.text();
+  const refusedBody = expect(pendingBody).rejects.toThrow(
+    'Authority observation ended',
+  );
+  await entered;
+  expect(
+    (
+      await h.source.request(`${sourceBase}/${approvalId}`, {
+        method: 'DELETE',
+      })
+    ).status,
+  ).toBe(200);
+  finishCheck();
+  await refusedBody;
+  h.onExportOwnerCheck(async () => {});
+  expect((await h.source.request(path, { headers })).status).toBe(403);
 });

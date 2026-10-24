@@ -192,8 +192,8 @@ and `exportAuthority:false`. A self-signed candidate does not authenticate a
 remote person, approve Station trust, establish current source authorization or
 grant home-transfer authority. Its recipient ID is a locally derived echo, not a
 portable authorization credential. Independent destination confirmation, source
-approval, encrypted credential delivery/rotation and actual sync remain
-unfinished. No Station/F1 signing key or generic personal-token bearer is reused.
+approval and encrypted credential delivery are separate steps. Credential
+rotation and actual sync remain unfinished. No Station/F1 signing key or generic personal-token bearer is reused.
 
 ### Source approval review
 
@@ -217,8 +217,8 @@ Origin/Fetch Metadata and re-derived target guard precede the commit.
 Source cancellation or changed eligibility refuses the decision without granting
 anything. The committed `AnalyticsSourceApproval` records source-user approval
 of the exact key/policy, not remote-person authentication. It retains
-`exportAuthority:false`; source credentials, encrypted delivery, narrow export
-admission and synchronization remain unfinished. GET `/<operationId>` reads the
+`exportAuthority:false`; credential delivery and each export read require
+separate admission. Receiving synchronization remains unfinished. GET `/<operationId>` reads the
 own receipt, DELETE revokes the recorded approval, and GET `/requests/<id>` reads
 the own pending review status. The requester-only browser path needs a listening
 consent origin on the same hostname for its host-only cookie; it does not borrow
@@ -246,11 +246,28 @@ replays recover the same stored receipt.
 worked; it does not authenticate the source, prove current source permission or
 activate a data pipeline. `sourceVerified:false` and `exportAuthority:false`
 remain explicit. No source origin is contacted by materialization. Source grant
-revocation stops further delivery, while source-side per-page revocation and
-person-scoped synchronization still require the narrow export consumer. The
+revocation stops further delivery and narrow export reads, including queued
+responses. Person-scoped synchronization remains unfinished. The
 enrollment UI, source transport verification, credential rotation and actual sync
 remain unfinished. Generic personal, peer, MCP and provider credentials are not
 used for this delivery.
+
+### Scoped source export
+
+GET `/api/analytics/source-grant-export/<approvalId>` accepts only the delivered
+`stax_` credential and the receiving key's signed delivery-possession proof.
+The proof binds the credential hash, source, approval, recipient context,
+revision and expiry. It is reusable delivery evidence, not a fresh request
+signature. Neither credential nor proof grants general Station API access.
+
+The source derives scope from its saved approval, rechecks the approving Device,
+account standing, owner set and ingress tenant, and reads the canonical usage
+export. Every page and queued response rechecks current approval. Cursors bind
+the grant revision and credential hash in addition to the canonical snapshot;
+they cannot be exchanged with interactive export cursors. Retained observations
+still carry unknown coverage. Receiving custody does not authenticate a proposed
+source origin: automatic fetching, trusted source transport, enrollment UI and
+rotation remain unfinished.
 
 ## Developer diagnostics
 

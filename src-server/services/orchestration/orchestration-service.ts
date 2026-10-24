@@ -5982,6 +5982,7 @@ export class OrchestrationService {
     authority: SessionReadAuthority,
     stationId: string,
     request: import('@kontourai/station-contracts/usage-export').UsageExportRequest,
+    authorizationContext?: string,
   ) {
     this.initialize();
     const store = this.options.eventStore;
@@ -5991,6 +5992,7 @@ export class OrchestrationService {
       authority,
       stationId,
       request,
+      authorizationContext,
       personalOwnerIds: () =>
         this.options.personalConversationAccess?.ownerIds(authority.userId),
     });

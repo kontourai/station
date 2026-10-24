@@ -1067,7 +1067,8 @@ function configureRuntimeSecurity(
       requiredCapability.capability === 'public' ||
       requiredCapability.capability === 'mcp-token' ||
       requiredCapability.capability === 'webhook-token' ||
-      requiredCapability.capability === 'stage-grant'
+      requiredCapability.capability === 'stage-grant' ||
+      requiredCapability.capability === 'analytics-grant'
     ) {
       return next();
     }

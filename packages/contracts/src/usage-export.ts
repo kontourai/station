@@ -112,6 +112,19 @@ export interface AnalyticsSourceCredentialDelivery {
   exportAuthority: false;
 }
 export interface AnalyticsStoredSourceCredential {
+  deliveryProof?: {
+    claims: {
+      protocol: 'station-analytics-delivery-proof/v1';
+      sourceApprovalId: string;
+      sourceStationId: string;
+      recipientId: string;
+      recipientBindingSha256: string;
+      revision: number;
+      credentialSha256: string;
+      expiresAt: string;
+    };
+    signature: string;
+  };
   sourceApprovalId: string;
   sourceStationId: string;
   recipientId: string;

@@ -111,6 +111,8 @@ export function readAuthorizedUsageExport(input: {
   authority: SessionReadAuthority;
   stationId: string;
   request: UsageExportRequest;
+  /** Domain-specific grant generation, derived by its authenticator; never a caller identity field. */
+  authorizationContext?: string;
   /** The existing SessionAuthorization owner policy, re-read at release. */
   personalOwnerIds: () => readonly string[] | undefined;
 }): { page: UsageExportPage; assertCurrent(): void } {
@@ -149,6 +151,7 @@ export function readAuthorizedUsageExport(input: {
         ownerIds,
         request.from,
         request.to,
+        ...(input.authorizationContext ? [input.authorizationContext] : []),
       ]),
     )
     .digest('hex');

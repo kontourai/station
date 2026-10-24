@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import type {
   AnalyticsRecipientCandidate,
   AnalyticsSourceApproval,
@@ -24,6 +24,7 @@ import {
   enrollmentOwnerSchema,
 } from './source-enrollment-protocol.js';
 import type { EnrollmentActor } from './source-enrollment-store.js';
+import { verifySourceDeliveryProof } from './source-export-proof.js';
 import { UsageExportRejected } from './usage-export-reader.js';
 
 export interface SourceApprovalActor extends EnrollmentActor {
@@ -95,6 +96,17 @@ const fileSchema = z
       ),
   );
 type File = z.infer<typeof fileSchema>;
+export interface SourceGrantOwnerState {
+  sourceStationId: string;
+  userId: string;
+  mode: 'personal' | 'hosted';
+  tenantId: string | null;
+  ownerIds: string[];
+  scope: 'individual' | 'personal-account';
+  approvalCredentialId: string;
+  approvalBindingSha256: string;
+  approvedAt: string;
+}
 export class SourceApprovalRejected extends Error {
   constructor(
     readonly code:
@@ -175,6 +187,57 @@ export class SourceGrantApprovalStore {
   private initial(sourceStationId: string): File {
     return { version: 1, sourceStationId, approvals: [] };
   }
+  private checkedRecord(
+    record: File['approvals'][number],
+    sourceStationId: string,
+  ) {
+    const candidate = verifyRecipientCandidateSignature(record.candidate);
+    const view = record.view,
+      intent = record.sourceIntent,
+      claims = candidate.claims;
+    const delivery = record.delivery?.view;
+    if (
+      delivery &&
+      (delivery.sourceApprovalId !== view.operationId ||
+        delivery.sourceOperationId !== view.sourceOperationId ||
+        delivery.sourceStationId !== view.sourceStationId ||
+        delivery.destinationStationId !== view.destinationStationId ||
+        delivery.recipientId !== view.recipientId ||
+        delivery.expiresAt !== view.expiresAt)
+    )
+      throw new Error('Delivery binding changed');
+    const fingerprint = createHash('sha256')
+      .update(
+        JSON.stringify([
+          view.operationId,
+          record.owner,
+          record.approvalCredentialId,
+          record.approvalBindingSha256,
+          intent,
+          candidate,
+        ]),
+      )
+      .digest('hex');
+    if (
+      fingerprint !== record.targetSha256 ||
+      view.sourceOperationId !== intent.operationId ||
+      view.scope !== intent.scope ||
+      view.expiresAt !== intent.expiresAt ||
+      JSON.stringify(view.retention) !== JSON.stringify(intent.retention) ||
+      view.destinationStationId !== intent.proposedDestination.stationId ||
+      view.recipientId !== claims.recipientId ||
+      view.recipientPrincipalId !== claims.recipientPrincipalId ||
+      claims.recipientPrincipalId !== record.owner.userId ||
+      claims.sourceStationId !== sourceStationId ||
+      claims.sourceOperationId !== intent.operationId ||
+      claims.sourceIntentSha256 !== analyticsIntentDigest(intent) ||
+      claims.destinationStationId !== intent.proposedDestination.stationId ||
+      claims.proposedDestinationOrigin !== intent.proposedDestination.origin ||
+      Date.parse(view.approvedAt) >= claims.expiresAt ||
+      Date.parse(view.approvedAt) + 30_000 < claims.createdAt
+    )
+      throw new Error('Approval binding changed');
+  }
   private checked(file: File, actor: EnrollmentActor) {
     if (file.sourceStationId !== actor.sourceStationId)
       throw new SourceApprovalRejected('source_approval_unavailable', 503);
@@ -182,54 +245,7 @@ export class SourceGrantApprovalStore {
       for (const record of file.approvals.filter((item) =>
         this.owned(actor, item),
       )) {
-        const candidate = verifyRecipientCandidateSignature(record.candidate);
-        const view = record.view,
-          intent = record.sourceIntent,
-          claims = candidate.claims;
-        const delivery = record.delivery?.view;
-        if (
-          delivery &&
-          (delivery.sourceApprovalId !== view.operationId ||
-            delivery.sourceOperationId !== view.sourceOperationId ||
-            delivery.sourceStationId !== view.sourceStationId ||
-            delivery.destinationStationId !== view.destinationStationId ||
-            delivery.recipientId !== view.recipientId ||
-            delivery.expiresAt !== view.expiresAt)
-        )
-          throw new Error('Delivery binding changed');
-        const fingerprint = createHash('sha256')
-          .update(
-            JSON.stringify([
-              view.operationId,
-              record.owner,
-              record.approvalCredentialId,
-              record.approvalBindingSha256,
-              intent,
-              candidate,
-            ]),
-          )
-          .digest('hex');
-        if (
-          fingerprint !== record.targetSha256 ||
-          view.sourceOperationId !== intent.operationId ||
-          view.scope !== intent.scope ||
-          view.expiresAt !== intent.expiresAt ||
-          JSON.stringify(view.retention) !== JSON.stringify(intent.retention) ||
-          view.destinationStationId !== intent.proposedDestination.stationId ||
-          view.recipientId !== claims.recipientId ||
-          view.recipientPrincipalId !== claims.recipientPrincipalId ||
-          claims.recipientPrincipalId !== record.owner.userId ||
-          claims.sourceStationId !== file.sourceStationId ||
-          claims.sourceOperationId !== intent.operationId ||
-          claims.sourceIntentSha256 !== analyticsIntentDigest(intent) ||
-          claims.destinationStationId !==
-            intent.proposedDestination.stationId ||
-          claims.proposedDestinationOrigin !==
-            intent.proposedDestination.origin ||
-          Date.parse(view.approvedAt) >= claims.expiresAt ||
-          Date.parse(view.approvedAt) + 30_000 < claims.createdAt
-        )
-          throw new Error('Approval binding changed');
+        this.checkedRecord(record, file.sourceStationId);
       }
     } catch {
       throw new SourceApprovalRejected('source_approval_unavailable', 503);
@@ -274,6 +290,90 @@ export class SourceGrantApprovalStore {
       throw new SourceApprovalRejected('source_approval_unavailable', 503);
     }
   }
+  async authorizeExport<T>(
+    sourceStationId: string,
+    operationId: string,
+    credential: string,
+    proof: unknown,
+    validateOwner: (owner: SourceGrantOwnerState) => Promise<T>,
+  ) {
+    const refused = () =>
+      new AuthorityObservationRejected(403, 'authority_changed');
+    if (
+      !enrollmentOperationId.safeParse(operationId).success ||
+      !/^stax_[A-Za-z0-9_-]{43}$/.test(credential)
+    )
+      throw refused();
+    const load = () => {
+      const file = this.file.read(this.initial(sourceStationId));
+      if (file.sourceStationId !== sourceStationId) throw refused();
+      const record = file.approvals.find(
+        (item) => item.view.operationId === operationId,
+      );
+      if (
+        !record?.delivery ||
+        record.view.phase !== 'approved' ||
+        Date.parse(record.view.expiresAt) <= this.now()
+      )
+        throw refused();
+      this.checkedRecord(record, sourceStationId);
+      const expected = Buffer.from(record.delivery.credentialSha256, 'hex');
+      const observed = Buffer.from(sourceCredentialHash(credential), 'hex');
+      if (
+        expected.length !== observed.length ||
+        !timingSafeEqual(expected, observed)
+      )
+        throw refused();
+      let claims: ReturnType<typeof verifySourceDeliveryProof>;
+      try {
+        claims = verifySourceDeliveryProof(
+          proof,
+          record.candidate.claims.proofKey,
+        );
+      } catch {
+        throw refused();
+      }
+      if (
+        claims.sourceApprovalId !== operationId ||
+        claims.sourceStationId !== sourceStationId ||
+        claims.recipientId !== record.view.recipientId ||
+        claims.recipientBindingSha256 !==
+          record.candidate.claims.recipientBindingSha256 ||
+        claims.revision !== record.delivery.view.revision ||
+        claims.credentialSha256 !== record.delivery.credentialSha256 ||
+        claims.expiresAt !== record.view.expiresAt
+      )
+        throw refused();
+      return record;
+    };
+    const record = load();
+    const delivery = record.delivery;
+    if (!delivery) throw refused();
+    const snapshot = JSON.stringify(record);
+    const owner = (): SourceGrantOwnerState => ({
+      sourceStationId,
+      ...record.owner,
+      scope: record.view.scope,
+      approvalCredentialId: record.approvalCredentialId,
+      approvalBindingSha256: record.approvalBindingSha256,
+      approvedAt: record.view.approvedAt,
+    });
+    const authority = await validateOwner(owner());
+    const assertCurrent = async () => {
+      if (JSON.stringify(load()) !== snapshot) throw refused();
+      await validateOwner(owner());
+      if (JSON.stringify(load()) !== snapshot) throw refused();
+    };
+    await assertCurrent();
+    return {
+      authority,
+      scope: record.view.scope,
+      authorizationContext: `analytics:${operationId}:${delivery.view.revision}:${delivery.credentialSha256}`,
+      revision: delivery.view.revision,
+      assertCurrent,
+    };
+  }
+
   async prepareDelivery(actor: SourceApprovalActor, operationId: string) {
     if (!enrollmentOperationId.safeParse(operationId).success)
       throw new SourceApprovalRejected('source_approval_invalid', 400);
