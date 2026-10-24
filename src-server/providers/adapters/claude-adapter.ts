@@ -1473,69 +1473,83 @@ export class ClaudeAdapter implements ProviderAdapterShape {
     input: ProviderSessionStartInput,
   ): Promise<ProviderSession> {
     try {
-      return await this.prepareSessionStart(input);
-    } catch (error) {
-      this.options.revokeStationControlCallerToken?.(input.threadId);
-      throw error;
-    }
-  }
-
-  private async prepareSessionStart(
-    input: ProviderSessionStartInput,
-  ): Promise<ProviderSession> {
-    input = withoutUnconfinedFullAccess(input);
-    if (
-      input.requireNativeResumeIdentity &&
-      !claudeResumeSessionId(input.resumeCursor)
-    ) {
-      throw new Error('An exact native resume requires a valid Claude cursor.');
-    }
-    const sourceCursor = claudeSourceResumeCursor(input.resumeCursor);
-    if (sourceCursor) {
-      this.requireSourceHome(sourceCursor.sourceAffinity);
-      input = { ...input, resumeCursor: sourceCursor };
-    }
-    const { report: skillsReport, overlayDir } =
-      await this.prepareSkillsMaterialization(
-        input.cwd,
-        input.cwdDefaulted,
-        input.threadId,
-        input.agent,
+      input = withoutUnconfinedFullAccess(input);
+      if (
+        input.requireNativeResumeIdentity &&
+        !claudeResumeSessionId(input.resumeCursor)
+      ) {
+        throw new Error(
+          'An exact native resume requires a valid Claude cursor.',
+        );
+      }
+      const sourceCursor = claudeSourceResumeCursor(input.resumeCursor);
+      if (sourceCursor) {
+        this.requireSourceHome(sourceCursor.sourceAffinity);
+        input = { ...input, resumeCursor: sourceCursor };
+      }
+      const { report: skillsReport, overlayDir } =
+        await this.prepareSkillsMaterialization(
+          input.cwd,
+          input.cwdDefaulted,
+          input.threadId,
+          input.agent,
+        );
+      const resolvedHome = sourceCursor
+        ? undefined
+        : await this.resolveAppHomeEnv(input.credentialProfileRef);
+      const appHomeEnv = resolvedHome?.env;
+      // station#2072: the connection env's routing keys apply to every SDK
+      // spawn, but its config-home key must NOT apply where the app-home env
+      // is deliberately absent (adoption and source-affinity resume —
+      // archive#896 decision 2's config-root orphaning concern: running the
+      // child under a different config home would strand it there).
+      const connectionLaunch = await this.options.getConnectionLaunch?.();
+      const connectionEnv = claudeConnectionEnvForSpawn(
+        connectionLaunch
+          ? connectionLaunch.env
+          : await this.resolveConnectionEnv(),
+        !sourceCursor,
       );
-    const resolvedHome = sourceCursor
-      ? undefined
-      : await this.resolveAppHomeEnv(input.credentialProfileRef);
-    const appHomeEnv = resolvedHome?.env;
-    // station#2072: the connection env's routing keys apply to every SDK
-    // spawn, but its config-home key must NOT apply where the app-home env
-    // is deliberately absent (adoption and source-affinity resume —
-    // archive#896 decision 2's config-root orphaning concern: running the
-    // child under a different config home would strand it there).
-    const connectionLaunch = await this.options.getConnectionLaunch?.();
-    const connectionEnv = claudeConnectionEnvForSpawn(
-      connectionLaunch
-        ? connectionLaunch.env
-        : await this.resolveConnectionEnv(),
-      !sourceCursor,
-    );
-    const augmentedEnv = await this.resolveAugmentedSpawnEnv();
-    const preToolPolicy = await this.resolvePreToolPolicy(input);
-    const oauthTokens = await this.options.resolveMcpOAuth?.(input);
-    const claudeExecutable = launchedClaudeExecutable(
-      await this.resolveClaudeExecutable(),
-    );
-    const usageAccountKey = resolvedHome
-      ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
-      : undefined;
-    // #2494: a plan that engages Seatbelt confines this start, or (for a
-    // reason a check derives) runs it at Auto with nothing engaged. Every
-    // other start takes the same synchronous path as before.
-    if (input.confinementPlan?.mechanism !== 'seatbelt')
-      return this.startTrackedSession(
-        input,
-        input.persistSession === true,
-        skillsReport,
+      const augmentedEnv = await this.resolveAugmentedSpawnEnv();
+      const preToolPolicy = await this.resolvePreToolPolicy(input);
+      const oauthTokens = await this.options.resolveMcpOAuth?.(input);
+      const claudeExecutable = launchedClaudeExecutable(
+        await this.resolveClaudeExecutable(),
+      );
+      const usageAccountKey = resolvedHome
+        ? usageCredentialAccountKey(this.provider, resolvedHome.profileRef)
+        : undefined;
+      // #2494: a plan that engages Seatbelt confines this start, or (for a
+      // reason a check derives) runs it at Auto with nothing engaged. Every
+      // other start takes the same synchronous path as before.
+      if (input.confinementPlan?.mechanism !== 'seatbelt')
+        return this.startTrackedSession(
+          input,
+          input.persistSession === true,
+          skillsReport,
+          appHomeEnv,
+          connectionEnv,
+          overlayDir,
+          augmentedEnv,
+          preToolPolicy,
+          claudeExecutable,
+          usageAccountKey,
+          connectionLaunch?.route,
+          undefined,
+          oauthTokens,
+        );
+      const seatbelt = await this.prepareSeatbeltStart(input, {
         appHomeEnv,
+        connectionEnv,
+        augmentedEnv,
+        globalConfigPinned: Boolean(sourceCursor),
+        usageAccountKey,
+      });
+      const session = await this.startTrackedSession(
+        seatbelt.input,
+        seatbelt.input.persistSession === true,
+        skillsReport,
+        seatbelt.confined?.appHomeEnv ?? appHomeEnv,
         connectionEnv,
         overlayDir,
         augmentedEnv,
@@ -1543,34 +1557,16 @@ export class ClaudeAdapter implements ProviderAdapterShape {
         claudeExecutable,
         usageAccountKey,
         connectionLaunch?.route,
-        undefined,
+        seatbelt.confined,
         oauthTokens,
       );
-    const seatbelt = await this.prepareSeatbeltStart(input, {
-      appHomeEnv,
-      connectionEnv,
-      augmentedEnv,
-      globalConfigPinned: Boolean(sourceCursor),
-      usageAccountKey,
-    });
-    const session = await this.startTrackedSession(
-      seatbelt.input,
-      seatbelt.input.persistSession === true,
-      skillsReport,
-      seatbelt.confined?.appHomeEnv ?? appHomeEnv,
-      connectionEnv,
-      overlayDir,
-      augmentedEnv,
-      preToolPolicy,
-      claudeExecutable,
-      usageAccountKey,
-      connectionLaunch?.route,
-      seatbelt.confined,
-      oauthTokens,
-    );
-    if (seatbelt.fallback)
-      this.publishConfinementFallback(input.threadId, seatbelt.fallback);
-    return session;
+      if (seatbelt.fallback)
+        this.publishConfinementFallback(input.threadId, seatbelt.fallback);
+      return session;
+    } catch (error) {
+      this.options.revokeStationControlCallerToken?.(input.threadId);
+      throw error;
+    }
   }
 
   /**
