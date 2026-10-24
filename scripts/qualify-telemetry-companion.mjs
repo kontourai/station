@@ -712,10 +712,33 @@ async function qualifyTelemetryCompanion(candidate, output) {
       async ({ port, serviceName, home }) => {
         const realTraceId = randomBytes(16).toString('hex');
         const parentSpanId = randomBytes(8).toString('hex');
+        const refused = await fetch(
+          `http://127.0.0.1:${port}/api/auth/status`,
+          {
+            signal: AbortSignal.timeout(10_000),
+            redirect: 'error',
+          },
+        );
+        await refused.body?.cancel();
+        assert.equal(
+          refused.status,
+          401,
+          'Station allowed an unauthenticated probe',
+        );
+        const { credential } = JSON.parse(
+          await readFile(join(home, 'security/environment.json'), 'utf8'),
+        );
+        assert(
+          typeof credential === 'string' && credential.length > 0,
+          'Station operator credential unavailable',
+        );
         const response = await fetch(
           `http://127.0.0.1:${port}/api/auth/status`,
           {
-            headers: { traceparent: `00-${realTraceId}-${parentSpanId}-01` },
+            headers: {
+              authorization: `Bearer ${credential}`,
+              traceparent: `00-${realTraceId}-${parentSpanId}-01`,
+            },
             signal: AbortSignal.timeout(10_000),
             redirect: 'error',
           },
@@ -775,6 +798,10 @@ async function qualifyTelemetryCompanion(candidate, output) {
               attribute.key === 'service.name' &&
               attribute.value.stringValue === serviceName,
           ),
+        );
+        assert(
+          !JSON.stringify(trace).includes(credential),
+          'Station credential reached trace storage',
         );
         assert(resource, 'Station trace service identity missing');
         const attributes = Object.fromEntries(
