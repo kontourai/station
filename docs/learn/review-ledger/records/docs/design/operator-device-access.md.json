@@ -7,7 +7,7 @@
 
   "summary": "Dated operator passkey and per-action step-up design, with owner decisions through 2026-10-24. S2b enrollment and S3 device-bound read sessions are implemented; S4 step-up remains proposed. Separate access:devices and launcher-browser administration retain their existing contracts.",
 
-  "limits": "The dated body includes future S4-S6 routes and older source line citations. D5 two-passkey enrollment allowance is decided but not implemented and awaits an owner-filed follow-up. S3 focused and local Chromium evidence is not hosted, native, real DNS, physical authenticator, synced/hybrid or release qualification.",
+  "limits": "The dated body includes future S4-S6 routes and older source line citations. D5 two-passkey enrollment allowance is decided but not implemented and is tracked in #4100. S3 focused and local Chromium evidence is not hosted, native, real DNS, physical authenticator, synced/hybrid or release qualification.",
 
   "sources": [
     "packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx",
