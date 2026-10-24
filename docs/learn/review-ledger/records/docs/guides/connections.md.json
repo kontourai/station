@@ -402,7 +402,13 @@
 
     "src-server/providers/__tests__/engine-oauth-mcp.test.ts",
 
-    "packages/shared/src/tool-server-credential-store.ts"
+    "packages/shared/src/tool-server-credential-store.ts",
+
+    "src-server/routes/mcp/engine-oauth-proxy-route.ts",
+
+    "src-server/runtime/mcp/station-control-mcp-token.ts",
+
+    "src-server/services/plugins/tool-server-oauth.ts"
   ],
 
   "checks": [
