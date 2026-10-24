@@ -93,6 +93,15 @@ need `orchestration:read`; that scope does not replace operator authorization. T
 route checks current operator authority before probing and before returning its
 result. It does not start Docker, pull images, create services or enable export.
 
+`artifactEvidence=1` opts into retained-envelope evidence on an available host
+result; the SDK requests it, while legacy requests keep the original shape.
+For an installer-owned archive, the server re-verifies the retained envelope
+with pinned channel-authorized keys, checks source/version and host artifact
+selection, and verifies the local companion file inventory. The pane reports
+missing or invalid evidence explicitly. `parent-envelope-verified` is still
+build-only with `installationAuthority:false`: no original archive-byte
+authentication, runtime qualification or installation permission is inferred.
+
 The probe requires a local Unix socket or Windows named-pipe context, Linux
 containers on amd64 or arm64, and Compose 2.24 or later. It pins the selected
 endpoint for the daemon query instead of resolving a possibly changed context

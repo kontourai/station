@@ -144,6 +144,10 @@ two-observer query controls have executed; a query key grants no source access.
 Developer → Monitoring → Companion checks the selected Station's local container
 prerequisites from an operator session. It reports missing Docker/Compose,
 unsupported or remote contexts, and observed container architecture/versions.
+On capable servers it also shows retained parent-release evidence, distinguishing
+missing/invalid envelopes and payloads from a verified parent signature and
+matching build inventory. That evidence does not authenticate the original
+archive bytes or establish runtime qualification.
 The pane does not install or start the companion yet; a passed host check is
 not artifact qualification, storage readiness or delivery proof. Sending and
 personal source access remain separate choices. See the

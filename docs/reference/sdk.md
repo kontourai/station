@@ -36,6 +36,17 @@ artifact qualification or installation readiness. The Developer â†’ Monitoring â
 Companion tab consumes this read; qualified install/start controls remain
 pending. See the [host prerequisite API](../../deployment/telemetry/README.md#station-host-prerequisite-api).
 
+The SDK opts in with `artifactEvidence=1`. A capable server may include
+`artifact` on an available host result; older servers may omit it. Requests
+without that opt-in retain the original prerequisite response. Evidence can be
+unavailable for a missing/invalid retained envelope or companion payload, or
+`parent-envelope-verified` with the release version, source and signed parent
+artifact digest. That state verifies the retained signature/channel/identity
+and local build inventory, not the original archive bytes or runtime
+qualification. Its `qualification` remains `build-only` and
+`installationAuthority` must be `false`; promoted or malformed values are
+refused by the SDK.
+
 `@kontourai/station-sdk/secret-bindings` also exports
 `listTelemetrySecretBindings(apiBase, options?)` and
 `updateTelemetrySecretBindingGrant(apiBase, id, operation, input, options?)`.
