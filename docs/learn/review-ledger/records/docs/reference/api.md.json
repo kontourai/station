@@ -536,7 +536,19 @@
 
     "src-ui/src/views/project-page/ProjectRoom.tsx",
 
-    "src-ui/src/lib/project-onboarding-recovery.ts"
+    "src-ui/src/lib/project-onboarding-recovery.ts",
+
+    "src-server/analytics/source-grant-store.ts",
+
+    "src-server/analytics/source-export-proof.ts",
+
+    "src-server/analytics/recipient-store.ts",
+
+    "src-server/routes/operations/source-grant-export.ts",
+
+    "src-server/routes/operations/source-grant-approvals.ts",
+
+    "src-server/routes/operations/__tests__/source-credential-delivery.test.ts"
   ],
 
   "checks": [

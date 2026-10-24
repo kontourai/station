@@ -284,7 +284,11 @@
 
     "src-server/services/telemetry-companion-control.ts",
 
-    "src-server/routes/system/__tests__/telemetry-companion-routes.test.ts"
+    "src-server/routes/system/__tests__/telemetry-companion-routes.test.ts",
+
+    "src-server/analytics/source-export-proof.ts",
+
+    "src-server/analytics/recipient-store.ts"
   ],
 
   "checks": [
