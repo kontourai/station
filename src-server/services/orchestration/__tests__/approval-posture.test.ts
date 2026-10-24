@@ -21,6 +21,7 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { confinementProvidersForTests } from '../../../__test-utils__/confinement-providers.js';
+import { credentialRecoveryOwner } from '../../../__test-utils__/credential-recovery-owner.js';
 import { awaitSessionRecoveryCompleted } from '../../../__test-utils__/session-runtime-barriers.js';
 import type {
   ProviderAdapterMetadata,
@@ -904,18 +905,7 @@ describe('server-ordered approval posture (#2436)', () => {
     // user then tightens.
     await decide('t-recovery', 'ask', phone);
     claude.starts.length = 0;
-    await (
-      service as unknown as {
-        restartCredentialProfileRecoverySession(input: {
-          threadId: string;
-          input: string;
-          modelOptions?: Record<string, string>;
-          recoveryCorrelationId: string;
-          signal: AbortSignal;
-          credentialProfileRef?: string;
-        }): Promise<unknown>;
-      }
-    ).restartCredentialProfileRecoverySession({
+    await credentialRecoveryOwner(service).restartRecoverySession({
       threadId: 't-recovery',
       input: 'retry',
       modelOptions: { approvalMode: 'never' },
@@ -938,18 +928,7 @@ describe('server-ordered approval posture (#2436)', () => {
     }
 
     function restartForCredentialProfile(threadId: string) {
-      return (
-        service as unknown as {
-          restartCredentialProfileRecoverySession(input: {
-            threadId: string;
-            input: string;
-            modelOptions?: Record<string, string>;
-            recoveryCorrelationId: string;
-            signal: AbortSignal;
-            credentialProfileRef?: string;
-          }): Promise<unknown>;
-        }
-      ).restartCredentialProfileRecoverySession({
+      return credentialRecoveryOwner(service).restartRecoverySession({
         threadId,
         input: 'retry',
         // The source turn's own posture: exactly what a confined caller
