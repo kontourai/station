@@ -262,6 +262,7 @@ test.skipIf(process.platform === 'win32')(
       'foreign-source',
       'link',
       'image-pins',
+      'foreign-image',
     ] as const) {
       const variant = join(home, fault);
       await mkdir(variant);
@@ -286,6 +287,23 @@ test.skipIf(process.platform === 'win32')(
           JSON.stringify({
             ...candidate.manifest,
             images: [...candidate.manifest.images].reverse(),
+          }),
+        );
+      else if (fault === 'foreign-image')
+        await writeFile(
+          join(companion, 'companion-manifest.json'),
+          JSON.stringify({
+            ...candidate.manifest,
+            images: candidate.manifest.images
+              .map((image, index) =>
+                index === 0
+                  ? image.replace(
+                      /sha256:[a-f0-9]{64}$/,
+                      `sha256:${'0'.repeat(64)}`,
+                    )
+                  : image,
+              )
+              .sort(),
           }),
         );
       else {
