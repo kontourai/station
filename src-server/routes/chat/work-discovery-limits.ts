@@ -1,0 +1,4 @@
+export const WORK_DISCOVERY_DEFAULT_LIMIT = 20;
+export const WORK_DISCOVERY_MAX_LIMIT = 50;
+export const ACTIVE_WORK_DEFAULT_MINUTES = 24 * 60;
+export const ACTIVE_WORK_MAX_MINUTES = 7 * 24 * 60;

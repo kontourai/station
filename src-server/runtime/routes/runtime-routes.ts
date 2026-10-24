@@ -299,6 +299,7 @@ import {
   conversationReferenceReadDeps,
   createConversationReferenceReadRoutes,
 } from '../../routes/chat/conversation-reference-read.js';
+import { createConversationWorkSearchRoutes } from '../../routes/chat/conversation-work-search.js';
 import {
   createConversationRoutes,
   createGlobalConversationRoutes,
@@ -8371,25 +8372,34 @@ export function configureRuntimeRoutes(
       logger: context.logger,
     }),
   );
-  // #3159: the paged, read-only transcript read behind station-control's
-  // `read_conversation` — an agent's own conversation, one in its scope, or
-  // one a person referenced in its conversation.
+  const conversationReadDeps = conversationReferenceReadDeps({
+    memoryAdapters: context.memoryAdapters,
+    sessions: context.orchestrationService,
+    eventStore: context.orchestrationEventStore,
+    deviceKind: (deviceId) =>
+      context.environmentSecurityService.devicePairing
+        .listDevices()
+        .find((device) => device.id === deviceId)?.kind,
+    authorityFor: conversationReadAuthorityForRequest,
+    scope: stationControlDispatchScope,
+    logger: context.logger,
+  });
   context.app.route(
     '/api/conversations',
-    createConversationReferenceReadRoutes(
-      conversationReferenceReadDeps({
-        memoryAdapters: context.memoryAdapters,
-        sessions: context.orchestrationService,
-        eventStore: context.orchestrationEventStore,
-        deviceKind: (deviceId) =>
-          context.environmentSecurityService.devicePairing
-            .listDevices()
-            .find((device) => device.id === deviceId)?.kind,
-        authorityFor: conversationReadAuthorityForRequest,
-        scope: stationControlDispatchScope,
-        logger: context.logger,
-      }),
-    ),
+    createConversationWorkSearchRoutes({
+      read: conversationReadDeps,
+      sessions: context.orchestrationService,
+      eventStore: context.orchestrationEventStore,
+      memory:
+        context.memoryAdapters.get('default') ??
+        context.memoryAdapters.values().next().value,
+      search: context.runtimeSearch,
+      current: isRequestPrincipalCurrent,
+    }),
+  );
+  context.app.route(
+    '/api/conversations',
+    createConversationReferenceReadRoutes(conversationReadDeps),
   );
 
   const {

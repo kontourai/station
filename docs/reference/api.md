@@ -4106,6 +4106,28 @@ session's owner; a bound operator keeps the operator's reach. An id Station
 has no record of answers `conversation_not_found`; see the
 [read route](../../src-server/routes/chat/conversation-reference-read.ts).
 
+### Station Control work discovery
+
+Agent-only `GET /api/conversations/work/search?query=&projectSlug=&agent=&limit=`
+backs `search_conversations`. It searches titles and messages using existing
+owner-scoped readers, with the same transcript admission as `read_conversation`.
+`query` is 2–256 characters; `limit` defaults to 20 and must be 1–50.
+Unknown fields and out-of-range limits return `400 invalid_search_request`.
+`projectSlug` defaults to the caller's recorded Project when known. Each result
+has `{conversationId, title, agent, projectSlug, updatedAt, snippet}`; unknown
+identity fields are null. The response data is
+`{state, results, limit, resultWindow?, incompleteSources}`. Incomplete native
+search or additional matches means `state: partial`, never a conclusive miss.
+The [agent guide](../guides/self-configuring-agent.md#find-related-work-before-starting)
+explains the native search window, metadata scan bound and follow-up reads.
+
+Agent-only `GET /api/orchestration/session-activity/active-work?limit=&cursor=&activeWithinMinutes=`
+backs `list_active_work`. It returns the Project activity shape below, filtered
+to running turns or recent recorded activity. `limit` defaults to 20 (1–50),
+and `activeWithinMinutes` defaults to 1,440 (1–10,080). Neither a Project filter
+nor a cursor grants access. Both leaves require a verified Station Control
+caller and inherit `orchestration:read` without replacing object authorization.
+
 ### Station Control Project Activity
 
 `GET /api/orchestration/session-activity?limit=&cursor=` and

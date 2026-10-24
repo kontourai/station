@@ -394,6 +394,14 @@ export const STATION_CONTROL_TOOL_POLICY = {
   // and a runtime-managed conversation, and only the owner's own conversation
   // is reachable (a bound operator caller is not scoped, as for
   // `delete_conversation`).
+  search_conversations: {
+    ...SELF_READ,
+    routes: [get('/api/conversations/work/search')],
+  },
+  list_active_work: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/session-activity/active-work')],
+  },
   search_sessions: {
     ...SELF_READ,
     routes: [post('/api/search')],
