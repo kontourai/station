@@ -473,15 +473,16 @@ async function storageReady(
     .toString()
     .trim();
   if (!/^sto_[A-Za-z0-9_-]{43}$/.test(key)) return false;
+  const probeSignal = AbortSignal.any([signal, AbortSignal.timeout(5000)]);
   const response = await abortableTelemetryOperation(
     fetch(`http://127.0.0.1:${context.state.ports[0]}/v1/operator/storage`, {
       headers: { authorization: `Bearer ${key}` },
       redirect: 'manual',
-      signal,
+      signal: probeSignal,
     }),
-    signal,
+    probeSignal,
   );
-  const data = await readTelemetryJson(response, signal);
+  const data = await readTelemetryJson(response, probeSignal);
   await requireOperator();
   return (
     response.status === 200 &&
