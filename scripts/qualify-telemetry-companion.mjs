@@ -509,9 +509,13 @@ async function qualifyTelemetryCompanion(candidate, output) {
         `send synthetic delta metric ${index + 1}`,
       );
       assert.equal(result.status, 200);
+      assert.equal(
+        Number(result.body.partialSuccess?.rejectedDataPoints ?? 0),
+        0,
+      );
       assert(
-        !result.body.partialSuccess,
-        'Collector partially rejected metrics',
+        !result.body.partialSuccess?.errorMessage,
+        'Collector reported metric rejection',
       );
     }
     await poll(
@@ -520,7 +524,7 @@ async function qualifyTelemetryCompanion(candidate, output) {
         const result = await request(
           ports[2],
           `/api/datasources/proxy/uid/station-prometheus/api/v1/query?query=${encodeURIComponent(`${metricName}_total`)}`,
-          { basic: `admin:${grafanaPassword}` },
+          { basic: `telemetry-admin:${grafanaPassword}` },
         );
         return (
           result.status === 200 &&
