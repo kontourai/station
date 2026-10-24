@@ -1528,7 +1528,9 @@ be overwritten by a late refresh. This does not coordinate separate Station
 processes operating the same home.
 
 An unavailable refresh or a repeated 401 returns an MCP **needs sign-in** error
-and updates integration authorization health. Open the integration's account
+and updates integration authorization health. A conditional account marker holds
+failed credentials at needs-sign-in until fresh consent replaces them; later tool
+requests do not repeatedly send the failed refresh grant. Open the integration's account
 panel, sign in again and start a new session. A provider controls consent and
 refresh lifetimes; Station does not promise a fixed T3 Code sign-in lifetime.
 

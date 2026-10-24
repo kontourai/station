@@ -53,7 +53,7 @@ type ProxyBinding = {
   transport: string;
   current: (token?: string) => Promise<void>;
   accessToken: (rejected?: string) => Promise<string>;
-  needsSignIn: () => Promise<void>;
+  needsSignIn: (rejectedToken?: string) => Promise<void>;
   messageEndpoint?: string;
 };
 const bindings = new Map<string, ProxyBinding>();
@@ -174,7 +174,11 @@ export function createEngineMcpOAuthResolver(options: {
               )
                 throw new EngineMcpNeedsSignInError(server.id);
             },
-            needsSignIn,
+            needsSignIn: async (rejectedToken) => {
+              if (rejectedToken)
+                await provider.rejectAccessToken(rejectedToken);
+              await needsSignIn();
+            },
             accessToken: (rejected) => provider.accessToken(rejected),
           },
         });

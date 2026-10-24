@@ -209,6 +209,9 @@ test.each(['missing', 'expired-without-refresh', 'refresh-rejected'])(
     await expect(resolve([server], 'human:local:operator')).rejects.toThrow(
       "Integration 't3' needs sign-in",
     );
+    await expect(resolve([server], 'human:local:operator')).rejects.toThrow(
+      'needs sign-in',
+    );
     expect(fetchSpy).toHaveBeenCalledTimes(
       condition === 'refresh-rejected' ? 1 : 0,
     );

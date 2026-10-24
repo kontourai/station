@@ -161,6 +161,7 @@ type BoundRecord<T> = {
   issuer?: string;
   expiresAt?: number;
   accessTokenExpiresAt?: number;
+  needsSignIn?: boolean;
   value: T;
 };
 
@@ -564,7 +565,46 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
     await this.writeBound(KEYS.client, value, this.resolveIssuer(value, ctx));
   }
   async tokens(ctx?: OAuthClientInformationContext) {
-    return this.readBound<StoredOAuthTokens>(KEYS.tokens, ctx);
+    const tokens = await this.readBound<StoredOAuthTokens>(KEYS.tokens, ctx);
+    if (
+      readJson<BoundRecord<StoredOAuthTokens>>(
+        this.store,
+        this.bucket,
+        KEYS.tokens,
+      )?.needsSignIn
+    )
+      return undefined;
+    return tokens;
+  }
+
+  /** A repeated 401 retires only the exact credential the remote rejected. */
+  async rejectAccessToken(accessToken: string): Promise<void> {
+    const expected = await this.tokens();
+    if (expected?.access_token === accessToken)
+      await this.markNeedsSignInIfCurrent(expected);
+  }
+
+  private async markNeedsSignInIfCurrent(
+    expected: StoredOAuthTokens,
+  ): Promise<void> {
+    let serialized: string;
+    try {
+      serialized = this.store.get(this.bucket, KEYS.tokens);
+    } catch {
+      return;
+    }
+    const record = JSON.parse(serialized) as BoundRecord<StoredOAuthTokens>;
+    if (
+      record.resource !== this.resourceIdentity ||
+      !isDeepStrictEqual(record.value, expected)
+    )
+      return;
+    await this.store.compareAndSwap(
+      this.bucket,
+      KEYS.tokens,
+      serialized,
+      JSON.stringify({ ...record, needsSignIn: true }),
+    );
   }
   /** Existing accounts use Station's coordinator, never the SDK's independent refresh. */
   async forTransport(): Promise<AuthProvider | OAuthClientProvider> {
@@ -601,7 +641,16 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
     ]);
     const existing = accountRefreshes.get(key);
     if (existing) return existing;
-    const pending = this.resolveAccessToken(rejectedToken);
+    const pending = (async () => {
+      const observed = await this.tokens();
+      try {
+        return await this.resolveAccessToken(rejectedToken);
+      } catch (error) {
+        if (observed && error instanceof ConnectAccountRequiredError)
+          await this.markNeedsSignInIfCurrent(observed);
+        throw error;
+      }
+    })();
     accountRefreshes.set(key, pending);
     try {
       return await pending;

@@ -165,7 +165,7 @@ export function createEngineOAuthProxyRoutes(): Hono {
         response = await send();
         if (response.status === 401) {
           await response.body?.cancel();
-          await binding.needsSignIn();
+          await binding.needsSignIn(token);
           return failure(
             `Integration '${serverId}' needs sign-in. Open Connections → Tools and sign in to its account.`,
           );
