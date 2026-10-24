@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
@@ -23,6 +23,41 @@ vi.mock('../telemetry-companion.js', () => ({
   }),
 }));
 const makeTempDir = trackTempDirs();
+
+test.skipIf(process.platform === 'win32')(
+  'missing current pointer preserves an unknown lock or orphaned installation instead of reporting a clean absence',
+  async () => {
+    const home = makeTempDir('companion-index-gap-');
+    const requireOperator = async () => {};
+    docker.mockClear();
+    expect(
+      (await readTelemetryCompanionManagedState(home, requireOperator)).runtime,
+    ).toBe('not-installed');
+    const base = join(home, 'telemetry-companion');
+    await mkdir(base, { mode: 0o700 });
+    const root = join(base, 'installations');
+    await mkdir(root, { mode: 0o700 });
+    const lock = join(root, 'installation.lock');
+    await writeFile(lock, '{}', { mode: 0o600 });
+    const locked = await readTelemetryCompanionManagedState(
+      home,
+      requireOperator,
+    );
+    expect(locked.hasOperationLock).toBe(true);
+    expect(locked.runtime).toBe('unavailable');
+    await unlink(lock);
+    await mkdir(join(root, '01234567-89ab-4cde-8fab-0123456789ab'), {
+      mode: 0o700,
+    });
+    const orphan = await readTelemetryCompanionManagedState(
+      home,
+      requireOperator,
+    );
+    expect(orphan.hasOperationLock).toBe(false);
+    expect(orphan.runtime).toBe('unavailable');
+    expect(docker).not.toHaveBeenCalled();
+  },
+);
 
 test.skipIf(process.platform === 'win32')(
   'copied metadata cannot authorize another home even when its cached custody fields are forged',

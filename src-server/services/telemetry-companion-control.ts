@@ -4,6 +4,7 @@ import {
   lstat,
   mkdir,
   open,
+  readdir,
   realpath,
   unlink,
   writeFile,
@@ -512,14 +513,24 @@ export async function readTelemetryCompanionManagedState(
     storage: 'not-checked',
     observedAt: new Date().toISOString(),
   };
-  if (!installationId) return result;
+  let storeRoot: string | undefined;
   try {
-    const lock = await lstat(join(await roots(home), 'installation.lock'));
+    storeRoot = await roots(home);
+    const lock = await lstat(join(storeRoot, 'installation.lock'));
     if (!lock.isFile() || lock.isSymbolicLink())
       throw new Error('Invalid operation lock');
     result.hasOperationLock = true;
   } catch (error) {
     if (!companionErrno(error, 'ENOENT')) throw error;
+  }
+  if (!installationId) {
+    if (
+      result.hasOperationLock ||
+      (storeRoot && (await readdir(storeRoot)).length > 0)
+    )
+      result.runtime = 'unavailable';
+    await requireOperator();
+    return result;
   }
   result.installation = await readTelemetryCompanionInstallation(
     home,
