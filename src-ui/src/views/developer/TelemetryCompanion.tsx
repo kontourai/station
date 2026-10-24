@@ -50,6 +50,7 @@ function CompanionHost({
 }) {
   const query = useTelemetryCompanionPrerequisitesQuery(authority.apiBase, {
     requestScope: authority,
+    keepPreviousData: false,
   });
   return (
     <>
