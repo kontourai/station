@@ -48,21 +48,6 @@
   gap: var(--space-3);
 }
 
-/* The hit area, ALWAYS ON rather than behind a coarse-pointer query: a 32px
-   control is drawn, a 44px one is pressed. A pseudo-element instead of a
-   bigger box so the row's height and the trigger's alignment with its
-   neighbours do not change with the pointer type, and so this needs no
-   page-local responsive rule (the mobile CSS ratchet counts those). */
-.action-overflow__trigger::after {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: max(100%, 44px);
-  height: max(100%, 44px);
-  content: "";
-  transform: translate(-50%, -50%);
-}
-
 /* One rule line, before the destructive rows. `.menu-surface` deliberately has
    no per-row dividers so that the one division carrying meaning is not lost
    among six that do not; this is that one division. */

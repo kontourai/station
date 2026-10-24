@@ -10,6 +10,29 @@ const id = { callerSessionId: 'c', tool: 't', key: 'k' };
 
 /** One command of every type; the record below must name each of them. */
 const SAMPLES: Record<KernelCommand['type'], KernelCommand> = {
+  'steerReceipts.read': {
+    type: 'steerReceipts.read',
+    threadId: 't',
+    clientInputId: 'i',
+    inputDigest: 'd',
+  },
+  'steerReceipts.claim': {
+    type: 'steerReceipts.claim',
+    threadId: 't',
+    clientInputId: 'i',
+    inputDigest: 'd',
+  },
+  'steerReceipts.confirm': {
+    type: 'steerReceipts.confirm',
+    threadId: 't',
+    clientInputId: 'i',
+    inputDigest: 'd',
+    confirmedTurnId: 'turn',
+  },
+  'steerReceipts.forgetThread': {
+    type: 'steerReceipts.forgetThread',
+    threadId: 't',
+  },
   'turnDedup.claim': {
     type: 'turnDedup.claim',
     key: 'k',
@@ -230,6 +253,7 @@ const READS = [
   'inbox.list',
   'inbox.listOpen',
   'inbox.read',
+  'steerReceipts.read',
   'turnBoundary.hasPossibleEffect',
   'turnBoundary.list',
   'turnDedup.read',

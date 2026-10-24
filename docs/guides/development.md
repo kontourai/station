@@ -213,6 +213,22 @@ their existing process behavior and do not gain these limits. The developer
 scopes, recent results/peaks and slice memory/pressure measurements. An unavailable
 measurement is reported separately from enforcement state.
 
+Codex retains its own launch's systemd outcome through scope cleanup. A positively
+observed `oom-kill` produces a memory-exhaustion diagnostic and the configured
+scope budget; aggregate or host pressure can also select that scope. A signal
+alone does not prove OOM. Other unexpected exits retain their signal in the
+message. Unavailable outcome inspection leaves the cause unknown while the
+turn and interrupted tool/child rows still settle.
+
+`npm run lint:check` and `lint:fix` share one Biome slot per OS user across
+worktrees and use at most two Biome worker threads. This prevents overlapping
+repository-wide lint runs inside one engine's memory budget. The holder keeps
+Biome's PID on POSIX; on Windows an owned process tree retains the slot until
+settlement. `STATION_BIOME_SLOT_DIR` selects an explicitly shared slot directory
+when mount namespaces do not share the default temporary directory. This bounds
+these script entry points, not arbitrary commands or direct Biome invocations.
+
+
 The pinned MCP client 2.3.1 patch adds a spawn callback at the physical process
 boundary. Its protocol-negotiation sibling inherits that callback, so probe and
 session processes each own a fresh scope. Retain the patch until the upstream
