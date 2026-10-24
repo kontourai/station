@@ -3,8 +3,8 @@ import { test, vi } from 'vitest';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
 import { FileFinalWireIntentStore } from '../delegation-group-wire-intent-store.js';
-import { taskDriver } from './delegation-source-fixtures/report-task-driver.js';
 import { installControl, setup } from './delegation-source-fixtures/report.js';
+import { taskDriver } from './delegation-source-fixtures/report-task-driver.js';
 import { deferred } from './delegation-source-fixtures/sdk.js';
 
 test.each(['before-turn', 'final-fetch', 'after-response'] as const)(

@@ -140,6 +140,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/shared/src/__tests__/json-file-storage.test.ts',
   'src-server/services/orchestration/__tests__/delegation-group-binding-store.test.ts',
   'src-server/services/orchestration/__tests__/delegation-group-binding-service.test.ts',
+  // Canonical reserved turns use real Git snapshots and isolated SQLite/runtime fixtures.
+  'src-server/services/orchestration/__tests__/reserved-station-session-binding.test.ts',
   // Tiny disposable user-service/scope budgets exercise actual OOM containment.
   'src-server/services/infra/__tests__/workload-resources.process.test.ts',
   // Real second-process Task/share writers contend with the publication fence.

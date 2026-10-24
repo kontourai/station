@@ -12,23 +12,20 @@ import {
   captureEnvironmentLocalGrantReadOwner,
 } from '../../../runtime/conversation/local-grant-observation-owner.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
-import {
-  inspectSdkSourceWire,
-  sdkDisposalPromise,
-} from '../delegation-group-sdk-source-wire-owner.js';
+import { sdkDisposalPromise } from '../delegation-group-sdk-source-wire-owner.js';
 import { signReportInterrupt } from '../station-report-group-cancellation.js';
 import { StationReportGroupCustody } from '../station-report-group-custody.js';
 import {
   type PreparedStationReportGroup,
   StationReportGroupPreparation,
 } from '../station-report-group-preparation.js';
-import { taskDriver } from './delegation-source-fixtures/report-task-driver.js';
 import {
   installControl,
   newGrant,
   requestFor,
   setup,
 } from './delegation-source-fixtures/report.js';
+import { taskDriver } from './delegation-source-fixtures/report-task-driver.js';
 
 test('authenticated preparation issues exact source/task envelopes consumed by the published durable v3 authority', async () => {
   const h = await setup();
