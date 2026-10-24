@@ -1,7 +1,32 @@
+import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
-import { lstat, mkdir, open } from 'node:fs/promises';
+import { lstat, mkdir, open, realpath } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { writeJsonAtomically } from '@kontourai/station-shared/service-launcher-protocol';
+
+/** Local resource custody, not person identity or a home-transfer authorization. */
+export async function captureCompanionHomeCustody(home: string) {
+  const path = await realpath(home);
+  const entry = await lstat(path, { bigint: true });
+  const uid = process.getuid?.();
+  if (
+    !entry.isDirectory() ||
+    entry.isSymbolicLink() ||
+    uid === undefined ||
+    entry.uid !== BigInt(uid)
+  )
+    throw new Error('Companion home custody unavailable');
+  return { path, device: String(entry.dev), inode: String(entry.ino) };
+}
+
+export function companionCustodyDigest(
+  home: { path: string; device: string; inode: string },
+  daemonId: string,
+) {
+  return createHash('sha256')
+    .update(JSON.stringify({ home, daemonId }))
+    .digest('hex');
+}
 
 export function companionErrno(error: unknown, code: string): boolean {
   return error instanceof Error && 'code' in error && error.code === code;

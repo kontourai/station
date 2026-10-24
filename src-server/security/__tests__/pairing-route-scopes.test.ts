@@ -31,7 +31,11 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-test.each(['archive-preparations', 'installations'])(
+test.each([
+  'archive-preparations',
+  'installations',
+  'installations/01234567-89ab-4cde-8fab-0123456789ab/actions',
+])(
   'companion %s requires promoted management authority rather than continuity or ordinary operation',
   (operation) => {
     const route = {

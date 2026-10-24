@@ -17,6 +17,27 @@ export interface TelemetryCompanionInstallation {
   configuresSending: false;
 }
 
+/** Historical action outcome; completion is not a current liveness assertion. */
+export interface TelemetryCompanionAction {
+  protocol: 'station-companion-action/v1';
+  operationId: string;
+  installationId: string;
+  action: 'start' | 'stop';
+  phase: 'pending' | 'completed' | 'unconfirmed';
+  createdAt: string;
+  configuresSending: false;
+}
+
+export interface TelemetryCompanionManagedState {
+  supported: boolean;
+  hasOperationLock: boolean;
+  installation: TelemetryCompanionInstallation | null;
+  latestAction: TelemetryCompanionAction | null;
+  runtime: 'not-installed' | 'unavailable' | 'stopped' | 'running' | 'partial';
+  storage: 'not-checked' | 'ready' | 'unavailable';
+  observedAt: string;
+}
+
 export function isTelemetryCompanionOperationId(
   value: unknown,
 ): value is string {

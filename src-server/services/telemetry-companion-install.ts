@@ -31,6 +31,8 @@ import {
   readTelemetryCompanionVerifiedParent,
 } from './telemetry-companion-release.js';
 import {
+  captureCompanionHomeCustody,
+  companionCustodyDigest,
   companionDurableJson,
   companionErrno,
   companionPrivateDirectory,
@@ -157,6 +159,7 @@ export async function installTelemetryCompanion(
   )
     throw new Error('Invalid companion installation');
   await input.requireOperator();
+  const homeCustody = await captureCompanionHomeCustody(input.home);
   const prior = await readTelemetryCompanionInstallation(
     input.home,
     input.installationId,
@@ -308,6 +311,8 @@ export async function installTelemetryCompanion(
       state: 'intent' | 'completed' | 'unknown';
     }> = [];
     const state = {
+      homeCustody,
+      custody: '',
       owner,
       project,
       endpoint: host.endpoint,
@@ -353,6 +358,7 @@ export async function installTelemetryCompanion(
     ).stdout.trim();
     if (!/^[A-Za-z0-9:._-]{1,128}$/.test(state.daemonId))
       throw new Error('Daemon identity unavailable');
+    state.custody = companionCustodyDigest(homeCustody, state.daemonId);
     const docker = async (
       args: string[],
       label: string,
@@ -361,6 +367,11 @@ export async function installTelemetryCompanion(
     ) => {
       await input.requireOperator();
       signal.throwIfAborted();
+      if (
+        JSON.stringify(await captureCompanionHomeCustody(input.home)) !==
+        JSON.stringify(homeCustody)
+      )
+        throw new Error('Companion home custody changed');
       if (
         (await raw(['info', '--format', '{{.ID}}'], 5000)).stdout.trim() !==
         state.daemonId
@@ -451,6 +462,16 @@ export async function installTelemetryCompanion(
         `station.telemetry.owner=${owner}`,
         '--label',
         `station.telemetry.installation=${input.installationId}`,
+        '--label',
+        `station.telemetry.custody=${state.custody}`,
+        '--label',
+        `station.telemetry.source=${receipt.source}`,
+        '--label',
+        `station.telemetry.manifest=${state.manifestSha256}`,
+        '--label',
+        `station.telemetry.archive=${parent.artifact.sha256}`,
+        '--label',
+        `station.telemetry.channel=${parent.release.channel}`,
         '-t',
         image,
         snapshot,
@@ -519,6 +540,7 @@ export async function installTelemetryCompanion(
     Object.assign(state, { ports });
     Object.assign(env, {
       COMPOSE_PROJECT_NAME: project,
+      TELEMETRY_HOME_CUSTODY: state.custody,
       TELEMETRY_PRIVATE_DIR: mountedSecrets,
       TELEMETRY_RECEIVER_IMAGE: state.imageId,
       TELEMETRY_PRODUCT_PORT: String(ports[0]),
@@ -637,6 +659,14 @@ export async function installTelemetryCompanion(
       ) !== JSON.stringify([...services].sort())
     )
       throw new Error('Unexpected companion container');
+    if (
+      containers.some(
+        (container) =>
+          container.Config.Labels['station.telemetry.custody'] !==
+          state.custody,
+      )
+    )
+      throw new Error('Companion custody label unavailable');
     await input.requireOperator();
     signal.throwIfAborted();
     await companionDurableJson(join(directory, 'deployment.json'), {

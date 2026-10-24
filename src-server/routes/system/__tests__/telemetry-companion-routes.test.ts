@@ -1,12 +1,15 @@
 import type {
+  TelemetryCompanionAction,
   TelemetryCompanionArchivePreparation,
   TelemetryCompanionInstallation,
+  TelemetryCompanionManagedState,
   TelemetryCompanionPrerequisites,
 } from '@kontourai/station-contracts/telemetry-delivery';
 import { Hono } from 'hono';
 import { expect, test, vi } from 'vitest';
 import { requiredPairingScope } from '../../../security/pairing-route-scopes.js';
 import { CompanionArchivePreparationUnsupportedError } from '../../../services/telemetry-companion-archive.js';
+import { CompanionControlRefusal } from '../../../services/telemetry-companion-control.js';
 import { CompanionInstallationRefusal } from '../../../services/telemetry-companion-install.js';
 import { createTelemetryCompanionRoutes } from '../telemetry-companion-routes.js';
 
@@ -18,6 +21,33 @@ const unavailable: TelemetryCompanionPrerequisites = {
 
 function fixture(prerequisites = vi.fn(async () => unavailable)) {
   let operator = false;
+  const managedState = vi.fn(
+    async (): Promise<TelemetryCompanionManagedState> => ({
+      supported: true,
+      hasOperationLock: false,
+      installation: null,
+      latestAction: null,
+      runtime: 'not-installed',
+      storage: 'not-checked',
+      observedAt: '2026-10-24T00:00:00.000Z',
+    }),
+  );
+  const control = vi.fn(
+    async (
+      _request: Request,
+      _installationId: string,
+      _operationId: string,
+      _action: 'start' | 'stop',
+    ): Promise<TelemetryCompanionAction> => {
+      throw new CompanionControlRefusal('custody-mismatch');
+    },
+  );
+  const action = vi.fn(
+    async (
+      _installationId: string,
+      _operationId: string,
+    ): Promise<TelemetryCompanionAction | null> => null,
+  );
   const install = vi.fn(
     async (
       _request: Request,
@@ -50,6 +80,9 @@ function fixture(prerequisites = vi.fn(async () => unavailable)) {
         if (!operator) throw new Error('Operator authority required');
       },
       prerequisites,
+      managedState,
+      control,
+      action,
       install,
       installation,
       prepareArchive,
@@ -58,6 +91,9 @@ function fixture(prerequisites = vi.fn(async () => unavailable)) {
   );
   return {
     prerequisites,
+    managedState,
+    control,
+    action,
     install,
     installation,
     app,
@@ -70,6 +106,78 @@ function fixture(prerequisites = vi.fn(async () => unavailable)) {
       app.request('/api/operator/telemetry-companion/prerequisites'),
   };
 }
+
+test('managed actions accept only start/stop intent and refuse stale authority across reads or mutation results', async () => {
+  const h = fixture();
+  const installationId = '01234567-89ab-4cde-8fab-0123456789ab';
+  const operationId = '11234567-89ab-4cde-8fab-0123456789ab';
+  const path = `/api/operator/telemetry-companion/installations/${installationId}/actions`;
+  const statePath = '/api/operator/telemetry-companion/installations';
+  const post = (body: unknown) =>
+    h.app.request(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  expect((await post({ operationId, action: 'start' })).status).toBe(403);
+  expect((await h.app.request(statePath)).status).toBe(403);
+  expect(h.control).not.toHaveBeenCalled();
+  expect(h.managedState).not.toHaveBeenCalled();
+  expect(requiredPairingScope('POST', path)).toBe('telemetry:manage');
+  h.setOperator(true);
+  for (const input of [
+    { operationId, action: 'delete' },
+    { operationId, action: 'start', command: 'docker' },
+    { operationId, action: 'stop', url: 'http://caller.test' },
+    { operationId: '../escape', action: 'start' },
+  ])
+    expect((await post(input)).status).toBe(400);
+  expect(h.control).not.toHaveBeenCalled();
+  const refused = await post({ operationId, action: 'start' });
+  expect(refused.status).toBe(409);
+  expect(await refused.json()).toEqual({
+    error: { code: 'companion_control_refused', reason: 'custody-mismatch' },
+  });
+  const receipt: TelemetryCompanionAction = {
+    protocol: 'station-companion-action/v1',
+    installationId,
+    operationId,
+    action: 'start',
+    phase: 'completed',
+    createdAt: '2026-10-24T00:00:00.000Z',
+    configuresSending: false,
+  };
+  h.control.mockImplementationOnce(async () => {
+    h.setOperator(false);
+    return receipt;
+  });
+  expect((await post({ operationId, action: 'start' })).status).toBe(403);
+  h.setOperator(true);
+  h.control.mockResolvedValueOnce(receipt);
+  expect(await (await post({ operationId, action: 'start' })).json()).toEqual({
+    data: receipt,
+  });
+  expect((await h.app.request(`${path}/${operationId}`)).status).toBe(404);
+  h.action.mockImplementationOnce(async () => {
+    h.setOperator(false);
+    return receipt;
+  });
+  expect((await h.app.request(`${path}/${operationId}`)).status).toBe(403);
+  h.setOperator(true);
+  h.managedState.mockImplementationOnce(async () => {
+    h.setOperator(false);
+    return {
+      supported: true,
+      hasOperationLock: false,
+      installation: null,
+      latestAction: null,
+      runtime: 'not-installed',
+      storage: 'not-checked',
+      observedAt: '2026-10-24T00:00:00.000Z',
+    };
+  });
+  expect((await h.app.request(statePath)).status).toBe(403);
+});
 
 test('installation routes require explicit host/storage intent and current human operator authority across async results', async () => {
   const h = fixture();

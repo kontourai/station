@@ -2,6 +2,8 @@
 # compose.dev.yaml overrides it for local development. See README.md.
 
 x-service: &service
+  labels:
+    station.telemetry.custody: ${TELEMETRY_HOME_CUSTODY:-unmanaged}
   restart: unless-stopped
   read_only: true
   security_opt: [no-new-privileges:true]
@@ -92,11 +94,16 @@ services:
 
 networks:
   diagnostics:
+    labels: {station.telemetry.custody: "${TELEMETRY_HOME_CUSTODY:-unmanaged}"}
     internal: true
   diagnostics-ingress:
+    labels: {station.telemetry.custody: "${TELEMETRY_HOME_CUSTODY:-unmanaged}"}
     internal: false
 
 volumes:
   prometheus-data:
+    labels: {station.telemetry.custody: "${TELEMETRY_HOME_CUSTODY:-unmanaged}"}
   tempo-data:
+    labels: {station.telemetry.custody: "${TELEMETRY_HOME_CUSTODY:-unmanaged}"}
   grafana-data:
+    labels: {station.telemetry.custody: "${TELEMETRY_HOME_CUSTODY:-unmanaged}"}

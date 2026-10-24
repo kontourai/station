@@ -7,6 +7,8 @@ include:
   - compose.diagnostics.yaml
 
 x-service: &service
+  labels:
+    station.telemetry.custody: ${TELEMETRY_HOME_CUSTODY:-unmanaged}
   restart: unless-stopped
   read_only: true
   security_opt: [no-new-privileges:true]
@@ -85,9 +87,12 @@ services:
 
 networks:
   product:
+    labels: {station.telemetry.custody: "${TELEMETRY_HOME_CUSTODY:-unmanaged}"}
     internal: true
   product-ingress:
+    labels: {station.telemetry.custody: "${TELEMETRY_HOME_CUSTODY:-unmanaged}"}
     internal: false
 
 volumes:
   postgres-data:
+    labels: {station.telemetry.custody: "${TELEMETRY_HOME_CUSTODY:-unmanaged}"}

@@ -223,10 +223,13 @@ export function pairingScopeSatisfiesHttpRoute(
     ((verifiedOperator || verifiedHomeOperator) &&
       requiredScope === PAIRING_SCOPE_TELEMETRY_MANAGE &&
       request.method === 'POST' &&
-      [
+      ([
         '/api/operator/telemetry-companion/archive-preparations',
         '/api/operator/telemetry-companion/installations',
-      ].includes(request.path)) ||
+      ].includes(request.path) ||
+        /^\/api\/operator\/telemetry-companion\/installations\/[^/]+\/actions$/.test(
+          request.path,
+        ))) ||
     (requiredScope === PAIRING_SCOPE_ORCHESTRATION_OPERATE &&
       isProjectAccessManagementLeaf(request) &&
       pairingScopeIncludes(grantedScope, PAIRING_SCOPE_RELAY_MANAGE)) ||
@@ -561,6 +564,15 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     id: '/api/operator/telemetry-companion:installation',
     method: 'POST',
     prefix: '/api/operator/telemetry-companion/installations',
+    exact: true,
+    scope: PAIRING_SCOPE_TELEMETRY_MANAGE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/operator/telemetry-companion:control',
+    method: 'POST',
+    prefix:
+      '/api/operator/telemetry-companion/installations/:installationId/actions',
     exact: true,
     scope: PAIRING_SCOPE_TELEMETRY_MANAGE,
     origin: 'explicit',

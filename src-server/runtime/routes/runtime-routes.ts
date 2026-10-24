@@ -159,6 +159,11 @@ import {
   readTelemetryCompanionPreparationState,
 } from '../../services/telemetry-companion-archive.js';
 import {
+  controlTelemetryCompanion,
+  readTelemetryCompanionAction,
+  readTelemetryCompanionManagedState,
+} from '../../services/telemetry-companion-control.js';
+import {
   installTelemetryCompanion,
   readTelemetryCompanionInstallation,
 } from '../../services/telemetry-companion-install.js';
@@ -6075,6 +6080,28 @@ export function configureRuntimeRoutes(
     '/api/operator/telemetry-companion',
     createTelemetryCompanionRoutes({
       requireOperator: requireTelemetryCompanionOperator,
+      managedState: (request) =>
+        readTelemetryCompanionManagedState(
+          context.configLoader.getProjectHomeDir(),
+          () => requireTelemetryCompanionOperator(request),
+        ),
+      control: (request, installationId, operationId, action) =>
+        controlTelemetryCompanion(
+          context.configLoader.getProjectHomeDir(),
+          installationId,
+          {
+            operationId,
+            action,
+            requireOperator: () => requireTelemetryCompanionOperator(request),
+            signal: request.signal,
+          },
+        ),
+      action: (installationId, operationId) =>
+        readTelemetryCompanionAction(
+          context.configLoader.getProjectHomeDir(),
+          installationId,
+          operationId,
+        ),
       install: (request, installationId, preparationId) =>
         installTelemetryCompanion(resolveThisServerProvenance(), {
           home: context.configLoader.getProjectHomeDir(),
