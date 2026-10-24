@@ -209,3 +209,70 @@ compiled release refusal and all remaining qualification limits above remain.
 **EXECUTED:** Foreground `content:excluded-names`, `typecheck:server-tests`,
 `typecheck:ui` and `typecheck:connect` passed. The reported main-branch
 `runtime-http` file-preview defect was outside this fix and was not changed.
+
+## Round 2 review fixes (2026-10-24)
+
+**EXECUTED:** Source `7c31a9fda8b3b5b9ad4687ee28444c0e417ca540` passed
+464 checks across the prior six focused suites plus `oauth-store.test.ts` and
+`oauth-concurrency.test.ts`. The consent route suite owns 72 checks. Approval
+and change reviews show `Project` and `Project slug` as separate labelled items;
+the change review also separates `Before Project` and `Before Project slug`.
+The exact name `Alpha workspace (alpha)` with slug `beta` is covered at the
+consent registrar, including the prior scope on change pages.
+
+**EXECUTED:** Client and Project names use the same sanitizer and fall back to
+`(unnamed)` unless the sanitized result contains a Unicode letter or number.
+Route cases cover combining marks U+0300/U+0301, U+1D159, private-use
+U+E000/U+F8FF, unassigned U+0378 and U+FFFF, alongside the earlier invisible-name
+cases and a non-ASCII letter/number positive control. Recovery tombstone labels
+use this same name sanitizer, with store-level retirement/recovery checks.
+The approval warning now says effects occur when the client completes sign-in,
+consistent with reload and success. Foreground excluded-name scanning and the
+server-tests, UI and Connect typecheck lanes passed.
+
+### Project-lookalike fault proof
+
+**EXECUTED:** At the clean source commit above, the eight-suite baseline passed
+464/464. Restoring name-then-slug rendering in the production management service
+made the route suite fail 14 checks with 58 still passing, exit 1. The named
+`approval keeps a Project lookalike separate from its real slug` assertion
+expected separate `Project` and `Project slug` items but received
+`Project: Alpha workspace (alpha) (beta)`. The change review and crafted-name
+Project assertions also failed. These were assertion failures, with no import,
+selection, prerequisite or timeout failure.
+
+**EXECUTED:** Restoration first verified that the source still matched the
+injected bytes, then reproduced the saved original and `git show HEAD:<path>`
+byte-for-byte. The checkout was clean before the restored route suite passed
+72/72, exit 0. Restored management-service SHA-256:
+`eea0af5251baa17cd11237d1257111aa9f938ff020113e6201fc2e1088a4e752`.
+No injected fault was committed.
+
+### Recaptured identity reviews
+
+**EXECUTED:** The collaborative browser rendered actual registrar HTML served
+unchanged by a private loopback snapshot server on port 43492. The
+[390px approval](../learn/media/outside-agent-r2b-approve.png),
+[1280px approval](../learn/media/outside-agent-r2b-approve-desktop.png) and
+[390px change](../learn/media/outside-agent-r2b-change.png) were recaptured from
+the source commit above and each saved image was opened and visually inspected.
+Both Project names in the change fixture are `Alpha workspace (alpha)`;
+the independently labelled slugs are `alpha` before and `beta` after.
+The approval fixture also selects `beta`, replacing the prior supersession
+example with the exact lookalike. Narrow pages measured
+`scrollWidth = innerWidth = 390`, with readable wrapping and 44px action controls.
+Snapshots preserve the complete page at the named CSS widths; these are render
+receipts, not browser passkey assertions or a real OAuth sign-in.
+The other seven images retain their round 1 bytes and captured revisions as
+historical examples, including their older combined Project labels where shown.
+
+**EXECUTED:** The single
+`HTTP data-change effects: POST /api/projects/fixture/file-preview/visual (200)`
+case failed on fetched `origin/main` at
+`993a6f0a7c004ab9eba2d6277b3248eafd86e8ce`: it emitted `data:changed` with the
+`projects` key. Main was not merged and the #4118 defect was not changed.
+
+**REASONED:** These are presentation and shared label changes only. Canonical
+Project IDs, reviewed fingerprints and authority remain unchanged. The guarded
+404 distinction tracked in #4125 is outside this round. The compiled release
+refusal and all R3–R6 qualification limits above remain.
