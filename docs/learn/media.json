@@ -310,6 +310,123 @@
       "documents": [
         "docs/guides/operator-passkeys.md"
       ]
+    },
+    {
+      "path": "docs/learn/media/outside-agent-r2b-approve.png",
+      "kind": "image",
+      "digest": "c0dbf775ed5d0158a2094f159f76d4a571d087975360f4dd4a3ff7ab960356f0",
+      "alt": "Outside-client approve passkey review",
+      "caption": "Outside-client approve passkey review in the isolated R2b review fixture; compiled release refusal remains.",
+      "scenario": "R2b outside-client passkey review (#4115)",
+      "evidence": "EXECUTED: unedited Chromium rendering of actual consent review HTML from private-store fixture source 56c1f2383139882011cc9099fbb918f574028355; opened and visually inspected. Software WebAuthn and domain effects are separate test evidence. No browser assertion, real OAuth login, physical passkey, hosted, native, release or production qualification.",
+      "capturedRevision": "56c1f2383139882011cc9099fbb918f574028355",
+      "documents": [
+        "docs/design/outside-agent-mcp-r2b-evidence.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/outside-agent-r2b-deny.png",
+      "kind": "image",
+      "digest": "a11d2959f3f906e0e38aec52e437070d89c923f6b7f0f658e79b28e8bd92da0d",
+      "alt": "Outside-client deny passkey review",
+      "caption": "Outside-client deny passkey review in the isolated R2b review fixture; compiled release refusal remains.",
+      "scenario": "R2b outside-client passkey review (#4115)",
+      "evidence": "EXECUTED: unedited Chromium rendering of actual consent review HTML from private-store fixture source 56c1f2383139882011cc9099fbb918f574028355; opened and visually inspected. Software WebAuthn and domain effects are separate test evidence. No browser assertion, real OAuth login, physical passkey, hosted, native, release or production qualification.",
+      "capturedRevision": "56c1f2383139882011cc9099fbb918f574028355",
+      "documents": [
+        "docs/design/outside-agent-mcp-r2b-evidence.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/outside-agent-r2b-revoke.png",
+      "kind": "image",
+      "digest": "495a4ae88376b571e6b2573340d51c670660cfa5789631a5fd64f1f8008e9b4a",
+      "alt": "Outside-client revoke passkey review",
+      "caption": "Outside-client revoke passkey review in the isolated R2b review fixture; compiled release refusal remains.",
+      "scenario": "R2b outside-client passkey review (#4115)",
+      "evidence": "EXECUTED: unedited Chromium rendering of actual consent review HTML from private-store fixture source 56c1f2383139882011cc9099fbb918f574028355; opened and visually inspected. Software WebAuthn and domain effects are separate test evidence. No browser assertion, real OAuth login, physical passkey, hosted, native, release or production qualification.",
+      "capturedRevision": "56c1f2383139882011cc9099fbb918f574028355",
+      "documents": [
+        "docs/design/outside-agent-mcp-r2b-evidence.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/outside-agent-r2b-change.png",
+      "kind": "image",
+      "digest": "153a3bcc0cceae62f0cc623f73f3973eaf13adcc91b407c59d4bf46c42a252c9",
+      "alt": "Outside-client change passkey review",
+      "caption": "Outside-client change passkey review in the isolated R2b review fixture; compiled release refusal remains.",
+      "scenario": "R2b outside-client passkey review (#4115)",
+      "evidence": "EXECUTED: unedited Chromium rendering of actual consent review HTML from private-store fixture source 56c1f2383139882011cc9099fbb918f574028355; opened and visually inspected. Software WebAuthn and domain effects are separate test evidence. No browser assertion, real OAuth login, physical passkey, hosted, native, release or production qualification.",
+      "capturedRevision": "56c1f2383139882011cc9099fbb918f574028355",
+      "documents": [
+        "docs/design/outside-agent-mcp-r2b-evidence.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/outside-agent-r2b-redirect-add.png",
+      "kind": "image",
+      "digest": "d66e18d256718e3e1d5366fa7865ea46e6705b5fc949aeb9f7dc2305d71d98d2",
+      "alt": "Outside-client redirect add passkey review",
+      "caption": "Outside-client redirect add passkey review in the isolated R2b review fixture; compiled release refusal remains.",
+      "scenario": "R2b outside-client passkey review (#4115)",
+      "evidence": "EXECUTED: unedited Chromium rendering of actual consent review HTML from private-store fixture source 56c1f2383139882011cc9099fbb918f574028355; opened and visually inspected. Software WebAuthn and domain effects are separate test evidence. No browser assertion, real OAuth login, physical passkey, hosted, native, release or production qualification.",
+      "capturedRevision": "56c1f2383139882011cc9099fbb918f574028355",
+      "documents": [
+        "docs/design/outside-agent-mcp-r2b-evidence.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/outside-agent-r2b-redirect-remove.png",
+      "kind": "image",
+      "digest": "5d2ba674f1552c5176053c0b305c478207f6b10582a9c4b2a6ec80d03abb9558",
+      "alt": "Outside-client redirect remove passkey review",
+      "caption": "Outside-client redirect remove passkey review in the isolated R2b review fixture; compiled release refusal remains.",
+      "scenario": "R2b outside-client passkey review (#4115)",
+      "evidence": "EXECUTED: unedited Chromium rendering of actual consent review HTML from private-store fixture source 56c1f2383139882011cc9099fbb918f574028355; opened and visually inspected. Software WebAuthn and domain effects are separate test evidence. No browser assertion, real OAuth login, physical passkey, hosted, native, release or production qualification.",
+      "capturedRevision": "56c1f2383139882011cc9099fbb918f574028355",
+      "documents": [
+        "docs/design/outside-agent-mcp-r2b-evidence.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/outside-agent-r2b-cors-add.png",
+      "kind": "image",
+      "digest": "f09020f321c3336ac033dd8e182dccd395adda9fdc108bb683d3cc9659c2aa9b",
+      "alt": "Outside-client cors add passkey review",
+      "caption": "Outside-client cors add passkey review in the isolated R2b review fixture; compiled release refusal remains.",
+      "scenario": "R2b outside-client passkey review (#4115)",
+      "evidence": "EXECUTED: unedited Chromium rendering of actual consent review HTML from private-store fixture source 56c1f2383139882011cc9099fbb918f574028355; opened and visually inspected. Software WebAuthn and domain effects are separate test evidence. No browser assertion, real OAuth login, physical passkey, hosted, native, release or production qualification.",
+      "capturedRevision": "56c1f2383139882011cc9099fbb918f574028355",
+      "documents": [
+        "docs/design/outside-agent-mcp-r2b-evidence.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/outside-agent-r2b-cors-remove.png",
+      "kind": "image",
+      "digest": "8c37330f55347eab4ed371a644c3fd33d39e9f353282bb98db5ee1503cf41c58",
+      "alt": "Outside-client cors remove passkey review",
+      "caption": "Outside-client cors remove passkey review in the isolated R2b review fixture; compiled release refusal remains.",
+      "scenario": "R2b outside-client passkey review (#4115)",
+      "evidence": "EXECUTED: unedited Chromium rendering of actual consent review HTML from private-store fixture source 56c1f2383139882011cc9099fbb918f574028355; opened and visually inspected. Software WebAuthn and domain effects are separate test evidence. No browser assertion, real OAuth login, physical passkey, hosted, native, release or production qualification.",
+      "capturedRevision": "56c1f2383139882011cc9099fbb918f574028355",
+      "documents": [
+        "docs/design/outside-agent-mcp-r2b-evidence.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/outside-agent-r2b-approve-desktop.png",
+      "kind": "image",
+      "digest": "ccd347cfb613e314044c29e02690a1ee6d2b3ca2213d9ddb2fceb26a7f115a35",
+      "alt": "Outside-client approve desktop passkey review",
+      "caption": "Outside-client approve desktop passkey review in the isolated R2b review fixture; compiled release refusal remains.",
+      "scenario": "R2b outside-client passkey review (#4115)",
+      "evidence": "EXECUTED: unedited Chromium rendering of actual consent review HTML from private-store fixture source 56c1f2383139882011cc9099fbb918f574028355; opened and visually inspected. Software WebAuthn and domain effects are separate test evidence. No browser assertion, real OAuth login, physical passkey, hosted, native, release or production qualification.",
+      "capturedRevision": "56c1f2383139882011cc9099fbb918f574028355",
+      "documents": [
+        "docs/design/outside-agent-mcp-r2b-evidence.md"
+      ]
     }
   ]
 }

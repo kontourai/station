@@ -291,6 +291,7 @@ bearer grants no implicit access in this matrix.
 | Host `POST /api/outside-agent/host/deny` | H + request ID + expected request/client fingerprint | Denies pending request once. No code input; no grant is created. |
 | Runtime `GET /api/outside-agent/redirect-origins` and `GET /api/outside-agent/cors-origins` | H or S | Canonical origin inventory and policy revision; no mutation. |
 | Runtime `POST /api/outside-agent/redirect-origins/change` and `POST /api/outside-agent/cors-origins/change` | H with host proof, or S + canonical add/remove selection and expected policy revision | H commits with expected-state checks; S gets 202 and a distinct typed P ceremony on C. No wildcard or pattern. Device/outside tokens refused. |
+| Runtime `POST /api/outside-agent/requests/:id/denial` | S + expected request/client fingerprint | 202 and a distinct `outside-agent-denial` passkey review; confirming denies the pending OAuth request, while cancelling closes only the review. |
 | C `GET /consent/:id` (existing) | Initiating S, matching WebAuthn transaction | Escaped review and fresh render nonce/challenge. No mutation. Other S gets 404. |
 | C `POST /consent/:id/decide` (existing) | P + nonce + transaction-bound assertion for approval; initiating S + nonce for cancellation, as S4 | Only `operator-passkey` records approval intent or commits the separately reviewed management action; grant activation waits for code exchange. Exact C Origin/Host, same-origin Fetch Metadata, JSON body, UV and session freshness required. Generic consent authorities refused. |
 
@@ -1354,6 +1355,8 @@ documentation map. Keep this proposal marked as a design until those changes
 ship with their own evidence. Revision 3 changes only this design record;
 regenerating the design index produces no byte change. Current guides retain
 their shipped-behavior claims.
+
+**R2b isolated evidence:** [typed passkey targets, caught faults and inspected review pages](outside-agent-mcp-r2b-evidence.md). The compiled refusal also covers outside transactions on the shared consent listener. This receipt does not qualify R3–R6 or enable the feature.
 
 ## 12. Decisions and open owner question
 

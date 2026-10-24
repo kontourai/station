@@ -1,5 +1,5 @@
 import { domainToASCII, domainToUnicode } from 'node:url';
-// UNWIRED(#4115): R2a shared decisions; isolated composition only until R6. R2b adds S4 adapters.
+// UNWIRED(#4115): Shared host/passkey decisions; isolated composition only until R6.
 import { z } from 'zod';
 import {
   GRANT_TTL,
@@ -233,7 +233,7 @@ export class OutsideAgentManagementService {
             softwareId: safeLabel(client.metadata.software_id ?? ''),
             redirectUri: request.redirectUri,
             resource: request.resource,
-            requestedScopes: request.scopes,
+            requestedScopes: [...request.scopes].sort(),
             expectedRequestFingerprint: this.#requestFingerprint(
               request,
               client,
@@ -346,8 +346,8 @@ export class OutsideAgentManagementService {
       const target = {
         kind:
           action.operation === 'approve'
-            ? 'outside-agent-approval'
-            : 'outside-agent-denial',
+            ? ('outside-agent-approval' as const)
+            : ('outside-agent-denial' as const),
         ...base,
         requestId: request.id,
         expectedRequestVersion: request.version,
@@ -361,7 +361,7 @@ export class OutsideAgentManagementService {
         codeChallengeMethod: 'S256',
         codeChallenge: request.challenge,
         stateDigest: request.stateDigest,
-        requestedScopes: request.scopes,
+        requestedScopes: [...request.scopes].sort(),
         requestedAccessLevel: request.scopes.includes('station-control:full')
           ? 'full'
           : 'read-only',
@@ -392,11 +392,14 @@ export class OutsideAgentManagementService {
             .filter((g) => {
               const other = this.store.client(g.clientId)?.metadata;
               return (
-                other &&
-                ((client.metadata.software_id &&
-                  other.software_id === client.metadata.software_id) ||
-                  (client.metadata.client_name &&
-                    other.client_name === client.metadata.client_name))
+                supersededGrants.some(
+                  (selected) => selected.grantId === g.id,
+                ) ||
+                (other &&
+                  ((client.metadata.software_id &&
+                    other.software_id === client.metadata.software_id) ||
+                    (client.metadata.client_name &&
+                      other.client_name === client.metadata.client_name)))
               );
             })
             .map((g) => ({
@@ -470,8 +473,8 @@ export class OutsideAgentManagementService {
       const target = {
         kind:
           action.operation === 'change'
-            ? 'outside-agent-grant-change'
-            : 'outside-agent-grant-revocation',
+            ? ('outside-agent-grant-change' as const)
+            : ('outside-agent-grant-revocation' as const),
         ...base,
         grantId: grant.id,
         clientId: client.id,
@@ -481,6 +484,7 @@ export class OutsideAgentManagementService {
         expectedGrantVersion: grant.version,
         expectedGrantState: 'active',
         expectedGrantDigest: this.store.grantDigest(grant),
+        requestedScopes: [...grant.requestedScopes].sort(),
         requestedAccessLevel: grant.requestedScopes.includes(
           'station-control:full',
         )
@@ -530,8 +534,8 @@ export class OutsideAgentManagementService {
       const target = {
         kind:
           action.policy === 'redirect'
-            ? 'outside-agent-redirect-origin-change'
-            : 'outside-agent-cors-origin-change',
+            ? ('outside-agent-redirect-origin-change' as const)
+            : ('outside-agent-cors-origin-change' as const),
         ...base,
         actorPrincipalId: actor.delegatingPrincipalId,
         approverAuthorityRevision: actor.authorityRevision,
@@ -562,7 +566,7 @@ export class OutsideAgentManagementService {
       };
     }
     const target = {
-      kind: 'outside-agent-registration',
+      kind: 'outside-agent-registration' as const,
       ...base,
       actorPrincipalId: actor.delegatingPrincipalId,
       approverAuthorityRevision: actor.authorityRevision,
@@ -598,6 +602,8 @@ export class OutsideAgentManagementService {
         'clientId' in prepared.target
           ? this.store.client(prepared.target.clientId)
           : undefined;
+      const requestId =
+        'requestId' in prepared.target ? prepared.target.requestId : null;
       return {
         action: prepared.action,
         clientDetails: client
@@ -610,6 +616,12 @@ export class OutsideAgentManagementService {
           : null,
         target: prepared.target,
         fingerprint: JSON.stringify(prepared.target),
+        comparisonCode: requestId
+          ? (this.store
+              .pending()
+              .find(({ request }) => request.id === requestId)
+              ?.comparisonCode ?? null)
+          : null,
         warning: prepared.warning,
         supersessionCandidates: prepared.candidates,
         disconnectWarning:
@@ -655,3 +667,7 @@ export class OutsideAgentManagementService {
     });
   }
 }
+
+export type OutsideManagementReview = ReturnType<
+  OutsideAgentManagementService['review']
+>;

@@ -212,6 +212,15 @@ polls do not extend session lifetime. See
 [Operator passkeys](../guides/operator-passkeys.md) for the origin boundary,
 plugin-readable inventory and host recovery limits.
 
+Outside-client management (#4115) is still inert through the R6 release gate.
+The [passkey adapter](../../src-server/services/outside-agent/consent-service.ts)
+wraps [shared host decisions](../../src-server/services/outside-agent/management-service.ts)
+in [typed targets](../../src-server/services/outside-agent/consent-targets.ts).
+Its [request/status registrar](../../src-server/routes/outside-agent/consent-routes.ts)
+is composed only in isolated tests; the production consent listener additionally
+refuses outside targets on its shared review/decision paths. See the
+[R2b evidence and limits](../design/outside-agent-mcp-r2b-evidence.md).
+
 The opt-in native continuation uses a separate protocol and headers. Its
 challenge/exchange routes require server-owned provenance from an admitted
 native application peer, an approved account-bound Device and provider session
