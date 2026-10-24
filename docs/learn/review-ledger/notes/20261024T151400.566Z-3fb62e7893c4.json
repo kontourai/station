@@ -1,0 +1,7 @@
+{
+  "revision": "ec8190fa104c7d9f426594f04c92d5b29ef506cd",
+
+  "notes": [
+    {"path":"examples/station-sessions-mcp/README.md","note":"Child-work catch-up at ec8190: read the complete README, server.mjs, panel.mjs and registry integration; inspected canonical /sessions route and current read authority. The example still calls the prefix-missing path without credentials and maps failed/non-array reads to empty; issue2785 remains open. No prose change needed: README already discloses the broken reader and confines its working claim to self-contained escaped rendering. Existing render suite5/5 passed; no live Station/MCP host/browser/provider journey attempted. New group routes do not repair or broaden this example's session reader.","inputs":["examples/station-sessions-mcp/README.md","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}
