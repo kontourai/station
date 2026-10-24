@@ -6,6 +6,7 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { useOptionalPreview } from '../../contexts/PreviewContext';
 import { Button } from '../Button';
+import { SkeletonBlock } from '../state';
 import { HtmlReply } from './HtmlReply';
 import { useMarkdownLinkContext } from './MarkdownLinkContext';
 
@@ -82,7 +83,7 @@ export function WorkspaceFileReply({
               This file needs an active Project connection to preview.
             </span>
           ) : !visual ? (
-            <span role="status">Loading visual preview…</span>
+            <SkeletonBlock count={1} label="Loading visual preview" />
           ) : visual.kind === 'html' ? (
             <HtmlReply
               page={visual.page}
