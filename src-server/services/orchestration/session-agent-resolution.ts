@@ -411,7 +411,12 @@ export function createSessionAgentResolver(
               if (!toolDef) return { ok: false, reason: 'not-found' };
               if (
                 toolDef.credentialOwnership &&
-                input.provider !== 'station-agent'
+                input.provider !== 'station-agent' &&
+                !(
+                  (input.provider === 'claude' || input.provider === 'codex') &&
+                  (toolDef.transport === 'sse' ||
+                    toolDef.transport === 'streamable-http')
+                )
               )
                 return { ok: false, reason: 'engine-unsupported' };
               if (toolDef.enabled === false) {

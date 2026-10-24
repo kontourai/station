@@ -52,6 +52,9 @@ import { stationControlMcpTokenMinted } from '../../telemetry/metrics.js';
 export const STATION_CONTROL_MCP_PATH = '/mcp/station-control';
 export const STATION_KNOWLEDGE_MCP_PATH = '/mcp/station-knowledge';
 export type BuiltinStationApiMcpId = 'station-control' | 'station-knowledge';
+export type StationMcpCredentialPurpose =
+  | BuiltinStationApiMcpId
+  | `oauth-proxy:${string}`;
 
 /** Default lifetime — 12 hours: generous enough for a long-running Codex or
  * ACP session, but bounded. The token is revoked eagerly on ordinary session
@@ -134,7 +137,8 @@ export const STATION_CONTROL_MCP_HTTP_CHANNELS: readonly StationControlMcpTokenC
 
 interface StationControlMcpTokenEntry {
   sessionId: string;
-  serverId: BuiltinStationApiMcpId;
+  onRevoke?: () => void;
+  serverId: StationMcpCredentialPurpose;
   expiresAt: number;
   channel: StationControlMcpTokenChannel;
   tenantExecutionContext?: TenantExecutionContext;
@@ -144,7 +148,10 @@ interface StationControlMcpTokenEntry {
 const tokensByDigest = new Map<string, StationControlMcpTokenEntry>();
 // Reverse index so `revokeStationControlMcpToken` doesn't need to scan every
 // live entry. Each session holds one live token per built-in API server.
-const digestBySession = new Map<string, Map<BuiltinStationApiMcpId, string>>();
+const digestBySession = new Map<
+  string,
+  Map<StationMcpCredentialPurpose, string>
+>();
 
 function digest(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -167,7 +174,8 @@ export function mintStationControlMcpToken(
   ttlMs: number = DEFAULT_TTL_MS,
   tenantExecutionContext?: TenantExecutionContext,
   allowedTools?: readonly string[],
-  serverId: BuiltinStationApiMcpId = 'station-control',
+  serverId: StationMcpCredentialPurpose = 'station-control',
+  onRevoke?: () => void,
 ): MintedStationControlMcpToken {
   const replacedLiveToken =
     digestBySession.get(sessionId)?.has(serverId) ?? false;
@@ -176,6 +184,7 @@ export function mintStationControlMcpToken(
   const expiresAt = Date.now() + ttlMs;
   const tokenDigest = digest(token);
   tokensByDigest.set(tokenDigest, {
+    onRevoke,
     sessionId,
     serverId,
     expiresAt,
@@ -211,7 +220,7 @@ export function verifyStationControlMcpToken(
   candidate: string | undefined | null,
   options: {
     channels?: readonly StationControlMcpTokenChannel[];
-    serverId?: BuiltinStationApiMcpId;
+    serverId?: StationMcpCredentialPurpose;
   } = {},
 ):
   | {
@@ -222,6 +231,11 @@ export function verifyStationControlMcpToken(
   | undefined {
   const verified = verifyStationControlMcpTokenEntry(candidate);
   if (!verified) return undefined;
+  if (
+    verified.serverId.startsWith('oauth-proxy:') &&
+    options.serverId !== verified.serverId
+  )
+    return undefined;
   if (options.serverId && verified.serverId !== options.serverId)
     return undefined;
   if (options.channels && !options.channels.includes(verified.channel))
@@ -247,7 +261,7 @@ export function verifyStationControlMcpTokenEntry(
 ):
   | {
       sessionId: string;
-      serverId: BuiltinStationApiMcpId;
+      serverId: StationMcpCredentialPurpose;
       channel: StationControlMcpTokenChannel;
       allowedTools?: readonly string[];
       tenantExecutionContext?: TenantExecutionContext;
@@ -266,6 +280,7 @@ export function verifyStationControlMcpTokenEntry(
       timingSafeEqual(storedDigestBuffer, candidateDigestBuffer)
     ) {
       if (entry.expiresAt <= now) {
+        entry.onRevoke?.();
         tokensByDigest.delete(storedDigest);
         const sessionDigests = digestBySession.get(entry.sessionId);
         if (sessionDigests?.get(entry.serverId) === storedDigest)
@@ -292,12 +307,13 @@ export function verifyStationControlMcpTokenEntry(
 /** Best-effort cleanup on ordinary session stop. Never throws. */
 export function revokeStationControlMcpToken(
   sessionId: string,
-  serverId?: BuiltinStationApiMcpId,
+  serverId?: StationMcpCredentialPurpose,
 ): void {
   const sessionDigests = digestBySession.get(sessionId);
   if (!sessionDigests) return;
   for (const [id, tokenDigest] of sessionDigests) {
     if (serverId && id !== serverId) continue;
+    tokensByDigest.get(tokenDigest)?.onRevoke?.();
     tokensByDigest.delete(tokenDigest);
     sessionDigests.delete(id);
   }

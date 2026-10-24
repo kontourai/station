@@ -1474,6 +1474,106 @@ and account. Portable preparation and reproducible recipes remain owned by
 [#2875](https://github.com/kontourai/station/issues/2875) and
 [#3759](https://github.com/kontourai/station/issues/3759).
 
+## Connect an OAuth MCP server to an Agent
+
+Obtain the outside-agent MCP endpoint from the remote workspace's connection
+settings, for example `https://workspace.example/mcp`. The server must support
+OAuth and the Station host must be able to reach that address.
+
+1. In Station's **Connections → Tools**, add a remote MCP integration with
+   connection type **HTTP** (Streamable HTTP) and that URL. Save the integration.
+2. Choose **Sign in → Open sign-in page** (or **Connect your account** for a
+   source configured for personal accounts). Station discovers the
+   OAuth metadata and registers its client automatically; no client secret is
+   needed for servers that support dynamic registration.
+3. Follow the remote server's approval flow. If it requires a pairing code,
+   obtain one from the workspace's connection settings; otherwise approve from
+   an authorized signed-in browser. Choose the access level you intend to grant.
+4. Copy the complete redirected localhost URL, even if the page does not load.
+   Paste it into Station's **Redirected URL** and choose **Finish sign-in**.
+   Station accepts the code and state through its authenticated paste-back route.
+5. Attach the saved source in the Agent's **Tools** settings. Choose the
+   **Claude Code** or **Codex** engine and start a new session. The remote
+   server's tools are available within the access you granted.
+
+A custom integration uses the shared Station account by default. For sources
+configured for personal accounts, Station selects the session owner's Project account first, then their personal
+account. A shared account is used for a personal integration only when its
+settings explicitly allow that fallback. ACP engines do not support this
+connected-account delivery.
+
+Before launching Claude Code or Codex, Station checks that each known OAuth
+integration has a usable account. A missing token or an OAuth grant/client rejection
+during a required refresh refuses launch with **needs sign-in** and the deterministic
+`mcp_sign_in_required` code. No engine session has started for that refusal.
+The chat offers **Sign in to tool**, which opens **Connections → Tools**.
+
+Station gives the engine a loopback MCP proxy URL carrying a Station credential,
+scoped to that session and integration. The agent can read this proxy credential
+(including in engine configuration or argv). The route requires a loopback socket
+peer and this credential for that integration. A same-host reverse proxy or
+Tailscale Serve also presents a loopback peer; the credential remains the
+authorization gate, so this check does not prove that the original caller is local. The credential expires after 12 hours and is revoked when the
+session ends or its engine restarts. A session that reaches this limit needs a
+new engine session. Station does not put the remote access or refresh token in
+engine argv, environment or MCP configuration. Other stdio MCP children do not
+inherit the remote token. Proxy request bodies are limited to 8 MiB (HTTP 413
+on overflow); remote protocol-negotiation error bodies are limited to 64 KiB.
+Both limits refuse oversized bodies rather than truncating them.
+
+Station injects the remote bearer when forwarding HTTP or SSE traffic. It checks
+known access-token expiry before each request, refreshing within two minutes of
+expiry when possible, and retries once after a remote 401 with a refreshed token.
+Tokens with unknown expiry, including older accounts without an issue-time stamp,
+remain usable until the remote rejects them. All authenticated Station MCP clients
+and probes share one in-process refresh flight for the same account. Conditional
+publication re-reads a concurrent writer's winning credential; disconnects cannot
+be overwritten by a late refresh. This does not coordinate separate Station
+processes operating the same home.
+
+A transient refresh failure (including a server outage, network error or timeout)
+preserves the account. During early refresh, an access token that is still valid
+remains usable; an expired or rejected token returns a retryable connection error.
+After a transient failure, Station waits 30 seconds before another ordinary refresh
+for that account. Requests during this cooldown immediately reuse a still-valid token
+or fail with the retryable error without contacting the token endpoint. A remote 401
+may force one refresh during the cooldown.
+Only OAuth `invalid_grant`, `invalid_client` or `unauthorized_client` rejections,
+missing refresh material (token, discovery or client information), or repeated
+remote MCP 401 responses produce an MCP **needs sign-in** error
+and updates integration authorization health. A conditional account marker holds
+failed credentials at needs-sign-in until fresh consent replaces them; later tool
+requests do not repeatedly send the failed refresh grant. Open the integration's account
+panel, sign in again and start a new session. A provider controls consent and
+refresh lifetimes; Station does not promise a fixed remote-server sign-in lifetime.
+Non-standard token-endpoint failures, including HTTP 400 with a text body, HTTP 401
+with an empty body, malformed HTTP 200 responses and OAuth `invalid_request`,
+are treated as transient and do not request sign-in again. They preserve consent
+and show as temporarily unavailable when the access token cannot be used. You can
+reconnect manually from the integration's account panel if the failure persists.
+
+Known limitation: tool-server credentials are plaintext JSON with mode `0600` in
+`<home>/security/tool-server-credentials.json` (personal accounts use
+`tool-server-principal-credentials.json` in the same directory). A process running
+as the Station user, including an agent outside the macOS Seatbelt confinement,
+can read these files and obtain remote tokens. The proxy avoids delivering those
+tokens to engines; it does not encrypt credentials at rest or isolate them from
+same-user filesystem access. This is a pre-existing Station-wide storage property.
+
+Implementation: [account selection and proxy binding](../../src-server/services/plugins/engine-mcp-oauth.ts),
+[loopback proxy](../../src-server/routes/mcp/engine-oauth-proxy-route.ts),
+[shared refresh owner](../../src-server/services/plugins/tool-server-oauth.ts),
+[Claude delivery](../../src-server/providers/adapters/claude-mcp-passthrough.ts),
+and [Codex delivery](../../src-server/providers/adapters/codex-mcp-passthrough.ts).
+Local fixture evidence covers MCP tool calls through the proxy, account selection,
+refresh and conditional publication, mid-session expiry/401, scope refusals,
+launch refusal and confined Claude configuration delivery. These are local checks;
+live provider acceptance of the proxy design is **NOT_VERIFIED**.
+The [account sign-in capture](../learn/media/oauth-mcp-sign-in-comparison.png) and
+[tool assignment capture](../learn/media/oauth-mcp-picker-comparison.png)
+show mounted browser components with synthetic API responses. They do not show
+a live remote-server sign-in or tool call.
+
 ## Developer services and computers
 
 Connections has one clear home for each relationship:

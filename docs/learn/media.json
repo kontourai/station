@@ -123,7 +123,7 @@
       "alt": "new-chat start controls before the composer redesign at phone width.",
       "caption": "New-Chat start controls, before the redesign.",
       "scenario": "Compare shared chat and Project start controls",
-      "evidence": "Actual T3 collaborative browser at 390x844 in light theme, same isolated sample Project/home. Clean baseline c5f0c9ec70; no inline Project composer or destination control. No task submitted, provider inference, paired receiver, native shell or release qualification. Retained historical composer-redesign comparison; later account approval defaults and startup permission summaries are not shown or verified by this image.",
+      "evidence": "Actual collaborative browser at 390x844 in light theme, same isolated sample Project/home. Clean baseline c5f0c9ec70; no inline Project composer or destination control. No task submitted, provider inference, paired receiver, native shell or release qualification. Retained historical composer-redesign comparison; later account approval defaults and startup permission summaries are not shown or verified by this image.",
       "capturedRevision": "c5f0c9ec70d93d3c555f019de5910750c65f365d",
       "documents": [
         "docs/design/chat-composer.md"
@@ -136,7 +136,7 @@
       "alt": "new-chat start controls after the composer redesign at phone width.",
       "caption": "New-Chat start controls, after the redesign.",
       "scenario": "Compare shared chat and Project start controls",
-      "evidence": "Actual T3 collaborative browser at 390x844 in light theme, same isolated sample Project/home. Development preview captured after c9a03dc150. Later atomic draft protection and custom Agent purpose changes do not change this pictured resting layout. No task submitted, provider inference, paired receiver, native shell or release qualification. Retained historical composer-redesign comparison; later account approval defaults and startup permission summaries are not shown or verified by this image.",
+      "evidence": "Actual collaborative browser at 390x844 in light theme, same isolated sample Project/home. Development preview captured after c9a03dc150. Later atomic draft protection and custom Agent purpose changes do not change this pictured resting layout. No task submitted, provider inference, paired receiver, native shell or release qualification. Retained historical composer-redesign comparison; later account approval defaults and startup permission summaries are not shown or verified by this image.",
       "capturedRevision": "c9a03dc1502729ac4368dab0ae7222b59b486a4e",
       "documents": [
         "docs/design/chat-composer.md"
@@ -149,7 +149,7 @@
       "alt": "project start controls before the composer redesign at phone width.",
       "caption": "Project start controls, before the redesign.",
       "scenario": "Compare shared chat and Project start controls",
-      "evidence": "Actual T3 collaborative browser at 390x844 in light theme, same isolated sample Project/home. Clean baseline c5f0c9ec70; no inline Project composer or destination control. No task submitted, provider inference, paired receiver, native shell or release qualification. Retained historical composer-redesign comparison; later account approval defaults and startup permission summaries are not shown or verified by this image.",
+      "evidence": "Actual collaborative browser at 390x844 in light theme, same isolated sample Project/home. Clean baseline c5f0c9ec70; no inline Project composer or destination control. No task submitted, provider inference, paired receiver, native shell or release qualification. Retained historical composer-redesign comparison; later account approval defaults and startup permission summaries are not shown or verified by this image.",
       "capturedRevision": "c5f0c9ec70d93d3c555f019de5910750c65f365d",
       "documents": [
         "docs/design/chat-composer.md"
@@ -162,10 +162,36 @@
       "alt": "project start controls after the composer redesign at phone width.",
       "caption": "Project start controls, after the redesign.",
       "scenario": "Compare shared chat and Project start controls",
-      "evidence": "Actual T3 collaborative browser at 390x844 in light theme, same isolated sample Project/home. Development preview captured after c9a03dc150. Later atomic draft protection and custom Agent purpose changes do not change this pictured resting layout. No task submitted, provider inference, paired receiver, native shell or release qualification. Retained historical composer-redesign comparison; later account approval defaults and startup permission summaries are not shown or verified by this image.",
+      "evidence": "Actual collaborative browser at 390x844 in light theme, same isolated sample Project/home. Development preview captured after c9a03dc150. Later atomic draft protection and custom Agent purpose changes do not change this pictured resting layout. No task submitted, provider inference, paired receiver, native shell or release qualification. Retained historical composer-redesign comparison; later account approval defaults and startup permission summaries are not shown or verified by this image.",
       "capturedRevision": "c9a03dc1502729ac4368dab0ae7222b59b486a4e",
       "documents": [
         "docs/design/chat-composer.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/oauth-mcp-sign-in-comparison.png",
+      "kind": "image",
+      "digest": "7dbc43e6c59e2f812daaebc06dfe9f1b6f837b4897d616abc8a5248078d47b2a",
+      "alt": "The Workspace MCP sign-in panel identifies the shared Station account.",
+      "caption": "The Workspace MCP sign-in panel identifies the shared Station account.",
+      "scenario": "OAuth MCP engine setup",
+      "evidence": "EXECUTED: inspected recaptured Chrome desktop dark-theme mounted React components with synthetic local API responses and a neutral Workspace MCP fixture. The sign-in scene uses a shared-account response; the personal-source picker follows an ordinary Add click. Current component source bytes match f521b2fc806da3cbb35b3386ba623f9d9e7fa675. The left comparison retains the frozen pre-feature component fixture. No Station host, live OAuth provider, model turn, native or hosted acceptance. Browser JPEG was re-encoded as PNG without cropping, resizing or content edits.",
+      "capturedRevision": "f521b2fc806da3cbb35b3386ba623f9d9e7fa675",
+      "documents": [
+        "docs/guides/connections.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/oauth-mcp-picker-comparison.png",
+      "kind": "image",
+      "digest": "a7b86c5738a3358bf4a89d5acc7641546d976fc5a375347dbb178dcf29120fe0",
+      "alt": "The Workspace MCP personal source is attached to a Claude Code Agent.",
+      "caption": "The Workspace MCP personal source is attached to a Claude Code Agent.",
+      "scenario": "OAuth MCP engine setup",
+      "evidence": "EXECUTED: inspected recaptured Chrome desktop dark-theme mounted React components with synthetic local API responses and a neutral Workspace MCP fixture. The sign-in scene uses a shared-account response; the personal-source picker follows an ordinary Add click. Current component source bytes match f521b2fc806da3cbb35b3386ba623f9d9e7fa675. The left comparison retains the frozen pre-feature component fixture. No Station host, live OAuth provider, model turn, native or hosted acceptance. Browser JPEG was re-encoded as PNG without cropping, resizing or content edits.",
+      "capturedRevision": "f521b2fc806da3cbb35b3386ba623f9d9e7fa675",
+      "documents": [
+        "docs/guides/connections.md"
       ]
     },
     {

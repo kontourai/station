@@ -270,6 +270,7 @@ import {
   ConcurrentEngineStartCapacityError,
   type RuntimeResourcePostureProbe,
 } from '../infra/resource-posture.js';
+import { withEngineMcpAccountOwner } from '../plugins/engine-mcp-oauth.js';
 import {
   type PortableExecutionConsentIdentity,
   portableConsentOfStartedMetadata,
@@ -6867,7 +6868,15 @@ export class OrchestrationService {
                 () =>
                   this.runEngineSessionStart(
                     input.threadId,
-                    () => adapter.startSession(input),
+                    () =>
+                      withEngineMcpAccountOwner(
+                        effectiveOwnerAttribution(context) ||
+                          input.metadata?.ownerAttribution ===
+                            'unattributed-agent'
+                          ? undefined
+                          : context.userId,
+                        () => adapter.startSession(input),
+                      ),
                     internal?.sessionStartAdmission,
                   ),
               );

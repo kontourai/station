@@ -1,0 +1,15 @@
+{
+  "path": "docs/learn/media/oauth-mcp-picker-comparison.png",
+
+  "sources": [
+    "src-ui/src/views/agent-editor/AgentToolLibrary.tsx",
+
+    "src-ui/src/__tests__/AgentToolLibrary.test.tsx",
+
+    "src-ui/src/views/agent-editor/AgentToolPicker.css",
+
+    "src-ui/src/index.css"
+  ],
+
+  "reviewNotes": []
+}

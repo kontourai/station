@@ -186,7 +186,12 @@ function resolveVerifiedStationControlCaller(
   resolveRecord?: StationControlCallerRecordResolver,
 ): VerifiedStationControlCaller | null {
   const verified = verifyStationControlMcpTokenEntry(token);
-  if (!verified) return null;
+  if (
+    !verified ||
+    (verified.serverId !== 'station-control' &&
+      verified.serverId !== 'station-knowledge')
+  )
+    return null;
   let record: StationControlCallerRecord | undefined;
   let assurance: StationControlCaller['assurance'];
   try {

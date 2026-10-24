@@ -3,13 +3,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PAIRING_SCOPE_ORCHESTRATION_OPERATE } from '@kontourai/station-contracts';
 import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
+import {
+  Client,
+  StreamableHTTPClientTransport,
+} from '@modelcontextprotocol/client';
 import { createMcpHandler, McpServer } from '@modelcontextprotocol/server';
 import { Hono } from 'hono';
 import { expect, test, vi } from 'vitest';
 import { z } from 'zod';
+import { revokeStationControlMcpToken } from '../../../runtime/mcp/station-control-mcp-token.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { TaskGraphService } from '../../projects/task-graph-service.js';
+import { createEngineMcpOAuthResolver } from '../engine-mcp-oauth.js';
 
 const runtimeSupport = vi.hoisted(() => {
   const service = new Proxy({}, { get: () => () => undefined });
@@ -198,6 +204,10 @@ async function startOAuthFixture(): Promise<OAuthFixture> {
       }
       if (url.pathname === '/register') {
         const registered = (await request.json()) as Record<string, unknown>;
+        expect(registered.redirect_uris).toEqual([
+          'http://127.0.0.1:43141/integrations/oauth-proof/oauth/callback',
+        ]);
+        expect(registered.token_endpoint_auth_method).toBe('none');
         return Response.json({
           ...registered,
           client_id: 'station-runtime-proof',
@@ -206,6 +216,7 @@ async function startOAuthFixture(): Promise<OAuthFixture> {
       }
       if (url.pathname === '/token') {
         const params = new URLSearchParams(await request.text());
+        expect(params.get('resource')).toBe(`${origin}/mcp`);
         if (
           params.get('grant_type') !== 'authorization_code' ||
           params.get('code') !== 'fixture-code' ||
@@ -401,6 +412,9 @@ test('real secured stack: authenticated paste-back reaches the runtime and no pu
       'copy the full redirected loopback URL from the address bar',
     );
     const authorizationUrl = new URL(authorization.data.authorizationUrl);
+    expect(authorizationUrl.searchParams.get('resource')).toBe(
+      `${fixture.origin}/mcp`,
+    );
     const redirectUri = authorizationUrl.searchParams.get('redirect_uri');
     const state = authorizationUrl.searchParams.get('state');
     expect(redirectUri).toBe(
@@ -452,6 +466,51 @@ test('real secured stack: authenticated paste-back reaches the runtime and no pu
     expect(await replayResponse.text()).toContain('No OAuth consent flow');
 
     await service.setEnabled('oauth-proof', true);
+    const resolveEngine = createEngineMcpOAuthResolver({
+      homeDir: () => home,
+      port: () => 43141,
+      getIntegration: (id) => service.getIntegration(id),
+      needsSignIn: (id, resource) => service.markOAuthNeedsSignIn(id, resource),
+    });
+    const proxyUrls = await resolveEngine(
+      [
+        {
+          id: 'oauth-proof',
+          transport: 'streamable-http',
+          endpoint: `${fixture.origin}/mcp`,
+        },
+      ],
+      undefined,
+      undefined,
+      'proxy-engine',
+    );
+    const engineClient = new Client(
+      { name: 'engine-proxy-proof', version: '1.0.0' },
+      { versionNegotiation: { mode: 'auto' } },
+    );
+    try {
+      await engineClient.connect(
+        new StreamableHTTPClientTransport(
+          new URL(proxyUrls.get('oauth-proof')!),
+          { fetch: async (url, init) => app.request(url, init, loopbackEnv()) },
+        ),
+      );
+      expect(
+        await engineClient.callTool({
+          name: 'proof',
+          arguments: { value: 'through secured proxy' },
+        }),
+      ).toMatchObject({ content: [{ text: 'through secured proxy' }] });
+      const invalid = new URL(proxyUrls.get('oauth-proof')!);
+      invalid.searchParams.set('token', 'wrong-proxy-token');
+      expect((await app.request(invalid.href, {}, loopbackEnv())).status).toBe(
+        401,
+      );
+    } finally {
+      await engineClient.close();
+      revokeStationControlMcpToken('proxy-engine');
+    }
+
     const runtimeLogger = {
       debug: vi.fn(),
       info: vi.fn(),
