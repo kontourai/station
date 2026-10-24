@@ -26,7 +26,25 @@
 
     "src-server/routes/outside-agent/__tests__/consent-routes.test.ts",
 
-    "src-server/security/outside-agent-release-guard.ts"
+    "src-server/security/outside-agent-release-guard.ts",
+
+    "docs/learn/media/outside-agent-r2b-approve.png",
+
+    "docs/learn/media/outside-agent-r2b-deny.png",
+
+    "docs/learn/media/outside-agent-r2b-revoke.png",
+
+    "docs/learn/media/outside-agent-r2b-change.png",
+
+    "docs/learn/media/outside-agent-r2b-redirect-add.png",
+
+    "docs/learn/media/outside-agent-r2b-redirect-remove.png",
+
+    "docs/learn/media/outside-agent-r2b-cors-add.png",
+
+    "docs/learn/media/outside-agent-r2b-cors-remove.png",
+
+    "docs/learn/media/outside-agent-r2b-approve-desktop.png"
   ],
 
   "checks": [
