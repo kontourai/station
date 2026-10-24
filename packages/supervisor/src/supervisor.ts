@@ -18,6 +18,7 @@ import {
 } from './generation-manager.ts';
 import {
   GenerationRegistry,
+  processFingerprint,
   reapStaleGenerations,
 } from './generation-registry.ts';
 import {
@@ -29,6 +30,7 @@ import {
   SupervisorStartError,
   stillHolds,
 } from './instance-lock.ts';
+import { launcherGone } from './parent-watch.ts';
 import { ensurePrivateDir } from './private-dir.ts';
 import {
   type ControlEndpoint,
@@ -62,6 +64,13 @@ export interface SupervisorOptions {
   log?: (message: string) => void;
   /** Called with the process exit code once the supervisor has shut down. */
   exit?: (code: number) => void;
+  /**
+   * The launcher that supervises this supervisor (`station service run`):
+   * when it dies, drain and exit (see parent-watch.ts).
+   */
+  parentPid?: number;
+  /** How often the launcher is checked; default 5 seconds. */
+  parentCheckIntervalMs?: number;
 }
 
 /** Set by other Station supervisors (Desktop, `service run`) on their child. */
@@ -250,6 +259,8 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
   const clock = options.clock ?? systemClock;
   const processHooks = options.processHooks ?? true;
   let stopSelfCheck: () => void = () => {};
+  /** Watches to stop when the supervisor shuts down. */
+  const exitHooks: Array<() => void> = [];
 
   const onProcessExit = () => {
     for (const child of children) {
@@ -313,6 +324,7 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
     stopSelfCheck();
+    for (const hook of exitHooks) hook();
     log(`shutting down with exit code ${code}`);
     manager.closeListeners();
     await control.close();
@@ -414,6 +426,40 @@ export async function runSupervisor(options: SupervisorOptions): Promise<void> {
     await control.close();
     releaseLock();
     throw error;
+  }
+  if (options.parentPid !== undefined) {
+    const parentPid = options.parentPid;
+    const initial = await processFingerprint(parentPid);
+    const state = {
+      parentPid,
+      fingerprint: initial.status === 'ok' ? initial.value : null,
+      wasParent: process.ppid === parentPid,
+    };
+    let stopParentWatch: () => void = () => {};
+    const onLauncherGone = async () => {
+      if (shuttingDown) return;
+      log(`launcher pid ${parentPid} is gone; draining and exiting`);
+      stopParentWatch();
+      await manager.stop();
+      await shutdown(1);
+    };
+    if (initial.status === 'gone') {
+      void onLauncherGone();
+    } else {
+      stopParentWatch = startSelfCheck({
+        clock,
+        intervalMs: options.parentCheckIntervalMs ?? 5_000,
+        log,
+        check: async () => {
+          if (shuttingDown) return;
+          const observed = await processFingerprint(parentPid);
+          if (launcherGone(state, observed, process.ppid)) {
+            await onLauncherGone();
+          }
+        },
+      });
+      exitHooks.push(() => stopParentWatch());
+    }
   }
   // While serving, keep confirming the lock is ours and the socket is in place.
   stopSelfCheck = startSelfCheck({

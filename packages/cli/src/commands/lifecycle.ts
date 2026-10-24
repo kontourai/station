@@ -209,7 +209,13 @@ interface UiServerDeps {
   /** Backend-owned HTML paths that bypass the navigation SPA fallback. */
   backendNavigationPrefixes?: string[];
   readinessFile?: string;
-  identity?: { instanceId: string; sha: string; bootId: string };
+  /**
+   * The boot identity the backend must answer with. `supervised`: the backend
+   * runs under the process supervisor, whose handoffs may serve a rebuilt
+   * bundle with another sha. Its instance id and boot id, which every
+   * generation inherits from this start, are the identity then.
+   */
+  identity?: SupervisedBootIdentity;
   internalApiToken?: string;
   trustedTailscaleServeOrigin?: string;
   /** Plain validated projection: no parser or live registry crosses serialization. */
@@ -1009,10 +1015,13 @@ export function uiRequestHandler(deps: UiServerDeps) {
         response.on('end', () => {
           try {
             const upstreamIdentity = JSON.parse(raw);
+            // A supervised backend may hand off to a rebuilt bundle: its
+            // sha changes while the boot id this start minted does not.
             finish(
               response.statusCode === 200 &&
-                (upstreamIdentity?.sha ?? upstreamIdentity?.fullSha) ===
-                  identity?.sha &&
+                (identity?.supervised === true ||
+                  (upstreamIdentity?.sha ?? upstreamIdentity?.fullSha) ===
+                    identity?.sha) &&
                 upstreamIdentity?.bootId === identity?.bootId &&
                 upstreamIdentity?.instanceId === identity?.instanceId
                 ? 'ready'
@@ -1188,7 +1197,7 @@ export function buildUiServerScript(opts: {
   uiPort: number;
   host?: string;
   readinessFile?: string;
-  identity?: { instanceId: string; sha: string; bootId: string };
+  identity?: SupervisedBootIdentity;
   hostedTenantAuthorities?: Record<string, string>;
 }): string {
   const inject = buildUiBootstrapScript(
@@ -1296,9 +1305,22 @@ export interface CollectedChildStatus {
   reachable: boolean;
 }
 
+/**
+ * Which Station answered. For a supervised instance the sha is the build
+ * the record last knew, not part of the identity (see `UiServerDeps.identity`).
+ */
+interface SupervisedBootIdentity {
+  instanceId: string;
+  sha: string;
+  bootId: string;
+  supervised?: boolean;
+}
+
 export interface CollectedInstanceStatus {
   bootId?: string;
   found: boolean;
+  /** Runs under the process supervisor: its sha may change at a handoff. */
+  supervised?: boolean;
   healthy: boolean;
   instanceId: string;
   server: CollectedChildStatus;
@@ -1931,11 +1953,19 @@ function processCheckCommand(pid: number): string {
 }
 
 /**
- * How long a stopping supervisor may take: its stop drain cap (30s, voice
- * calls included) and kill grace (5s), with margin. Longer than
- * `killProcessTree`'s 5s, which would cut a draining core off.
+ * The whole budget for stopping a supervisor, request and fallback signal
+ * included. `station service run` force-exits 60 seconds into its own
+ * shutdown (SERVICE_SHUTDOWN_DEADLINE_MS), and after this the stop still
+ * spends up to about 5 seconds each on `killProcessTree` of the supervisor
+ * and of the UI process, so this leaves it room.
  */
-const SUPERVISOR_STOP_BUDGET_MS = 45_000;
+const SUPERVISOR_STOP_BUDGET_MS = 40_000;
+/**
+ * The control-channel request's share: the supervisor's stop drain cap (30s,
+ * voice calls included) and kill grace (5s), with a second of margin. Longer
+ * than `killProcessTree`'s 5s, which would cut a draining core off.
+ */
+const SUPERVISOR_STOP_REQUEST_MS = 36_000;
 
 /** The supervisor bundles that can reach a record's supervisor, newest first. */
 function supervisorBundlesFor(record: InstanceStateRecord): string[] {
@@ -1971,24 +2001,26 @@ function waitForProcessExit(pid: number, timeoutMs: number): boolean {
  * (Node's job object), so the tree kill there loses only the drain.
  */
 function stopSupervisor(record: InstanceStateRecord, pid: number): void {
+  const deadline = Date.now() + SUPERVISOR_STOP_BUDGET_MS;
+  const remaining = () => Math.max(0, deadline - Date.now());
   const asked = requestSupervisorSync(
     supervisorTarget(record),
     'stop',
-    SUPERVISOR_STOP_BUDGET_MS + 5_000,
+    SUPERVISOR_STOP_REQUEST_MS,
   );
-  if (asked.status === 'ok' && waitForProcessExit(pid, 10_000)) return;
-  if (asked.status !== 'ok') {
-    console.error(
-      `The supervisor of ${record.instanceId} did not take a stop request (${asked.detail}); signalling pid ${pid}.`,
-    );
-  }
+  if (asked.status === 'ok' && waitForProcessExit(pid, remaining())) return;
+  console.error(
+    asked.status === 'ok'
+      ? `The supervisor of ${record.instanceId} accepted the stop but is still running; signalling pid ${pid}.`
+      : `The supervisor of ${record.instanceId} did not take a stop request (${asked.detail}); signalling pid ${pid}.`,
+  );
   if (process.platform !== 'win32') {
     try {
       process.kill(pid, 'SIGTERM');
     } catch {
       // Already gone.
     }
-    if (waitForProcessExit(pid, SUPERVISOR_STOP_BUDGET_MS)) return;
+    if (waitForProcessExit(pid, remaining())) return;
   }
   killProcessTree(pid);
 }
@@ -3930,7 +3962,7 @@ function describeIdentityMismatch(
 
 async function probeIdentityOnce(
   url: string,
-  expected: { instanceId: string; sha: string; bootId: string },
+  expected: SupervisedBootIdentity,
   timeoutMs = 3_000,
   headers?: Readonly<Record<string, string>>,
 ): Promise<IdentityProbeOutcome> {
@@ -3946,7 +3978,7 @@ async function probeIdentityOnce(
     if (!response.ok) return 'unreachable';
     const actual = (await response.json()) as Partial<typeof expected>;
     return actual.instanceId === expected.instanceId &&
-      actual.sha === expected.sha &&
+      (expected.supervised === true || actual.sha === expected.sha) &&
       actual.bootId === expected.bootId
       ? 'ok'
       : 'identity-mismatch';
@@ -4183,7 +4215,12 @@ export async function collectInstanceStatus(
       },
     };
   }
-  const expected = { instanceId, sha, bootId };
+  const expected = {
+    instanceId,
+    sha,
+    bootId,
+    ...(record.supervised ? { supervised: true } : {}),
+  };
   const probeHost =
     record.host === '0.0.0.0' || record.host === '::'
       ? '127.0.0.1'
@@ -4223,6 +4260,7 @@ export async function collectInstanceStatus(
   return {
     bootId,
     found: true,
+    ...(record.supervised ? { supervised: true } : {}),
     healthy: serverProbe === 'ok' && uiProbe === 'ok',
     instanceId,
     server: {
@@ -4757,6 +4795,9 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     codeRoot: CWD,
     watch: Boolean(watch),
     lifecycleJournal: opts.lifecycleJournal,
+    ...(opts.supervisorPid !== undefined
+      ? { parentPid: opts.supervisorPid }
+      : {}),
     env: process.env,
   });
   if (!launch.supervised && launch.notice) console.error(launch.notice);
@@ -4834,6 +4875,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
             instanceId,
             sha: buildManifest?.sha ?? 'unknown',
             bootId,
+            ...(launch.supervised ? { supervised: true } : {}),
           },
           hostedTenantAuthorities: hostedTenantRegistry
             ? { ...hostedTenantRegistry.authorityToTenant }
@@ -5214,6 +5256,12 @@ export async function restart(opts: StopOptions = {}): Promise<void> {
     );
   }
   if (final.outcome === 'committed') {
+    // The new generation ran the instance's build directory as it is now:
+    // record that build, so status and the start banner's identity follow it.
+    const served = readBuildManifest(record.instanceId);
+    if (served && served.sha !== record.build?.sha) {
+      writeInstanceState({ ...record, build: served });
+    }
     console.log(
       `  ✓ Restarted: generation ${final.generation} serves${final.bootId ? ` (boot ${final.bootId})` : ''}`,
     );

@@ -3956,7 +3956,10 @@ watchdog. Under the process supervisor it builds its own instance and asks
 for a handoff instead; the generation the handoff leaves serving records the
 outcome (`verified`, or `failed` with `identity-mismatch`,
 `handoff-rolled-back` or `handoff-refused`). A refused or rolled-back handoff answers 409
-and an unanswered one 504; the server keeps running its current build. A missing installer/build failure
+and one no supervisor answers within 45 seconds 504, recorded as `failed`
+with `handoff-unanswered`; the server keeps running its current build. A
+second apply while one is building or handing off answers 409 with
+`restarting: true` and pulls nothing. A missing installer/build failure
 returns 500 **after the pull may already have landed**; it does not roll back the
 checkout or claim all dependency effects were undone.
 

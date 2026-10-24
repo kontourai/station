@@ -19,7 +19,9 @@ export type SelfUpdateRestartFailureCode =
   /** A supervised restart's handoff failed and the previous entry serves again. */
   | 'handoff-rolled-back'
   /** The supervisor refused to run a supervised restart's handoff. */
-  | 'handoff-refused';
+  | 'handoff-refused'
+  /** No supervisor answered a supervised restart's handoff request. */
+  | 'handoff-unanswered';
 
 interface SelfUpdateRestartRecordBase {
   instanceId: string;
@@ -202,7 +204,8 @@ function parseRestartRecord(value: unknown): SelfUpdateRestartRecord | null {
       record.failureCode === 'identity-mismatch' ||
       record.failureCode === 'watchdog-crashed' ||
       record.failureCode === 'handoff-rolled-back' ||
-      record.failureCode === 'handoff-refused') &&
+      record.failureCode === 'handoff-refused' ||
+      record.failureCode === 'handoff-unanswered') &&
     typeof record.pid === 'number' &&
     Number.isSafeInteger(record.pid) &&
     record.pid > 0

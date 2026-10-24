@@ -1164,6 +1164,44 @@ describe('POST /core-update under the process supervisor (#3851 handoff)', () =>
     ).toMatchObject({ status: 'pending', hash: SHA.slice(0, 7), pid: 0 });
   });
 
+  test('a second apply while the first hands off is refused without another pull', async () => {
+    const app = createApp();
+    const first = app.request('/core-update', { method: 'POST' });
+    await vi.waitFor(() =>
+      expect(channel.sent.some((m) => m.type === 'handoff.request')).toBe(true),
+    );
+    channel.deliver({ type: 'drain', deadlineMs: 1_000 });
+    expect((await first).status).toBe(200);
+    const pulls = () =>
+      vi.mocked(execGit).mock.calls.filter(([args]) => args[0] === 'pull')
+        .length;
+    const pulled = pulls();
+
+    const second = await app.request('/core-update', { method: 'POST' });
+    expect(second.status).toBe(409);
+    expect(await json(second)).toMatchObject({
+      success: false,
+      restarting: true,
+    });
+    expect(pulls()).toBe(pulled);
+  });
+
+  test('with no supervisor to answer, the restart record says so instead of staying pending', async () => {
+    // Supervised by its environment, but no link answers: as when the
+    // supervisor never replies within the handoff answer bound.
+    installListenerLink(null);
+    const response = await createApp().request('/core-update', {
+      method: 'POST',
+    });
+    expect(response.status).toBe(409);
+    expect((await json(response)).error).toContain(
+      'no supervisor runs this server',
+    );
+    expect(
+      readSelfUpdateRestartRecord(restartStateFilePath(gitRoot)),
+    ).toMatchObject({ status: 'failed', failureCode: 'handoff-unanswered' });
+  });
+
   test('a refused handoff keeps this server, says so, and records the failure', async () => {
     const response = await postWhenAsked((requestId) => ({
       type: 'handoff.refused',

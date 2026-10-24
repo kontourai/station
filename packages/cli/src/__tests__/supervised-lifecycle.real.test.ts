@@ -22,6 +22,7 @@ import { randomUUID } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -63,6 +64,48 @@ interface InstanceRecord {
   serverPid: number;
   uiPid: number;
   supervised?: boolean;
+  build?: { sha: string } | null;
+}
+
+/** Replaces the bundle's baked sha and its build stamp, as a rebuild would. */
+function rebake(from: string, to: string): void {
+  for (const file of ['command-station.js', 'station-build.json']) {
+    const path = join(SERVER_DIR, file);
+    const text = readFileSync(path, 'utf8');
+    expect(text).toContain(from);
+    writeFileSync(path, text.replaceAll(from, to));
+  }
+}
+
+/** The UI proxy's own readiness answer: 200 only for an identified backend. */
+function uiReadiness(port: number): Promise<number> {
+  return new Promise((resolveStatus) => {
+    http
+      .get(
+        { host: '127.0.0.1', port, path: '/api/system/readiness' },
+        (res) => {
+          res.resume();
+          res.on('end', () => resolveStatus(res.statusCode ?? 0));
+        },
+      )
+      .on('error', () => resolveStatus(0));
+  });
+}
+
+/**
+ * Whether a core generation booted with `sha`: each boot writes its build
+ * provenance to the home's server log, `logs/server` (boot-history.ts). The identity routes
+ * that report it need credentials this test does not hold.
+ */
+function bootedWithSha(home: string, sha: string): boolean {
+  const logs = join(home, 'logs', 'server');
+  return readdirSync(logs).some((file) => {
+    try {
+      return readFileSync(join(logs, file), 'utf8').includes(sha);
+    } catch {
+      return false;
+    }
+  });
 }
 
 function isolatedEnv(root: string, extra: NodeJS.ProcessEnv = {}) {
@@ -388,10 +431,36 @@ describe('station start, restart and stop under the process supervisor', () => {
       expect(alive(core1)).toBe(false);
       expect(readRecord().serverPid).toBe(record.serverPid);
 
+      // Restart into a genuinely different build, as `station build` would
+      // leave it: another baked sha in the bundle and its stamp. The UI
+      // proxy, which never restarts, must still find the backend ready.
+      expect(await uiReadiness(ports.ui)).toBe(200);
+      const oldSha = readRecord().build?.sha ?? '';
+      const newSha = 'd'.repeat(40);
+      rebake(oldSha, newSha);
+      const rebuilt = await station(['restart', ...target], env);
+      expect(rebuilt.code, `${rebuilt.stdout}\n${rebuilt.stderr}`).toBe(0);
+      expect(bootedWithSha(home, newSha)).toBe(true);
+      expect(readRecord().build?.sha).toBe(newSha);
+      // The proxy answers from a fresh probe: ready now, and still ready.
+      expect(await uiReadiness(ports.ui)).toBe(200);
+      await new Promise((resolveWait) => setTimeout(resolveWait, 2_000));
+      expect(await uiReadiness(ports.ui)).toBe(200);
+      const status3 = JSON.parse(
+        (await station(['supervisor', 'status', '--json', ...target], env))
+          .stdout,
+      );
+      launchedPids.add(status3.active.pid);
+
       const stopped = await station(['stop', ...target], env);
       expect(stopped.code, `${stopped.stdout}\n${stopped.stderr}`).toBe(0);
       expect(stopped.stderr).not.toContain('did not take a stop request');
-      for (const pid of [record.serverPid, core2, record.uiPid]) {
+      for (const pid of [
+        record.serverPid,
+        core2,
+        status3.active.pid as number,
+        record.uiPid,
+      ]) {
         expect(alive(pid), `pid ${pid}`).toBe(false);
       }
       expect(existsSync(RECORD)).toBe(false);
@@ -405,6 +474,52 @@ describe('station start, restart and stop under the process supervisor', () => {
       for (const port of [ports.server, ports.server + 1, ports.ui]) {
         expect(await refused(port), `port ${port}`).toBe(true);
       }
+    },
+    600_000,
+  );
+
+  it.skipIf(!POSIX)(
+    "stops a supervisor that never answers within service run's 60-second shutdown deadline",
+    async () => {
+      const root = makeHomeRoot('svs-');
+      const home = join(root, 'h');
+      const env = isolatedEnv(root);
+      const ports = await freePorts();
+      const target = [`--home=${home}`, `--instance=${INSTANCE}`];
+      const started = await station(
+        [
+          'start',
+          ...target,
+          `--port=${ports.server}`,
+          `--ui-port=${ports.ui}`,
+          '--host=127.0.0.1',
+        ],
+        env,
+      );
+      expect(started.code, `${started.stdout}\n${started.stderr}`).toBe(0);
+      const record = readRecord();
+      launchedPids.add(record.serverPid);
+      launchedPids.add(record.uiPid);
+      const status = JSON.parse(
+        (await station(['supervisor', 'status', '--json', ...target], env))
+          .stdout,
+      );
+      const core = status.active.pid as number;
+      launchedPids.add(core);
+
+      // Frozen: it accepts control connections into its backlog and never
+      // answers, and a SIGTERM waits until it is continued.
+      process.kill(record.serverPid, 'SIGSTOP');
+      const began = Date.now();
+      const stopped = await station(['stop', ...target], env);
+      const tookMs = Date.now() - began;
+      expect(stopped.code, `${stopped.stdout}\n${stopped.stderr}`).toBe(0);
+      expect(stopped.stderr).toContain('did not take a stop request');
+      // service run force-exits 60 seconds into its shutdown.
+      expect(tookMs).toBeLessThan(60_000);
+      expect(alive(record.serverPid)).toBe(false);
+      // Its core learns of the supervisor's death from the closed IPC channel.
+      await waitUntil(() => !alive(core), 30_000, 'the core exiting');
     },
     600_000,
   );

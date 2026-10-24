@@ -183,7 +183,11 @@ product decisions.
   supervisor (SIGTERM, SIGINT, SIGHUP, or the `stop` request) drains the
   active generation and exits zero. That drain, voice calls included, is capped at 30 seconds
   by default, below service managers' stop timeouts; the long voice cap
-  applies only to handoffs.
+  applies only to handoffs. A supervisor started with `--parent-pid` (as
+  `station service run` starts it) also stops when that launcher dies: it
+  records the launcher's process start fingerprint and, every 5 seconds,
+  stops once the pid is gone or belongs to another process; when the
+  fingerprint cannot be read, a POSIX parent pid that changed counts too.
 
   One supervisor runs per home and instance, enforced by lock epochs and
   process identity. The argument is written out in
@@ -675,10 +679,30 @@ verification, and fault injection.
   an isolated home, and loopback ports. `station start` records the
   supervisor, whose child serves the API and which `lsof` lists on the API
   port; `station restart` hands generation 1 to 2 under keep-alive and
-  fresh-connection HTTP load with no refused or reset connection; `station
-  stop` drains through the control channel and every process exits. A
-  second start with `STATION_DIRECT_LAUNCH=1` writes the record shape an
-  earlier CLI wrote, which `restart` refuses and `stop` still stops. The
+  fresh-connection HTTP load with no refused or reset connection; a second
+  restart into a bundle with another baked sha boots that build, records it,
+  and keeps the UI listener's readiness at 200 (the listener checks the
+  instance and boot id, not the sha, for a supervised start); `station stop`
+  drains through the control channel and every process exits. A frozen
+  supervisor (SIGSTOP) is stopped in under 60 seconds and its core exits
+  through its closed IPC channel. A start with `STATION_DIRECT_LAUNCH=1`
+  writes the record shape an earlier CLI wrote, which `restart` refuses and
+  `stop` still stops. A package test SIGKILLs the launcher of a supervisor
+  started with `--parent-pid` and sees the supervisor and its core exit. The
   in-app update's handoff is tested through its route with a real core link
   over a fake IPC channel, not through a real pull and build. These ran on
   macOS only: the journey is skipped on Windows, and no Linux host ran it.
+- **Not covered: dogfood and e2e.** Both start Station with
+  `--lifecycle-journal`, which keeps the direct start, so neither the
+  owner's daily instance nor the e2e suite runs the supervisor. Supervising
+  them is its own change, estimated at 400 to 700 lines across four files:
+  the lifecycle journal's identity (`packages/shared/src/lifecycle-events.ts`)
+  must name the supervisor and each generation so `classifyLifecycleExit`
+  can tell a generation's exit during a handoff from the instance's; the
+  dogfood reconciler's prior-exit classification
+  (`scripts/station-dogfood-reconcile.mjs`) matches events by the recorded
+  pid; dogfood health's listener ownership
+  (`scripts/station-dogfood-health.mjs`) requires the recorded pid to be the
+  only listener, where the supervisor and the core both hold the sockets;
+  and the e2e runner's teardown (`scripts/run-e2e-suite.mjs`) kills the
+  recorded pid's process group, which no longer contains the core.

@@ -1537,6 +1537,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/supervisor/src/__tests__/cli.test.ts',
   // The entry as a control client (--request) against a real supervisor child.
   'packages/supervisor/src/__tests__/client-command.test.ts',
+  // A launcher child starts a detached supervisor watching it, then is SIGKILLed.
+  'packages/supervisor/src/__tests__/parent-watch.test.ts',
   'packages/supervisor/src/__tests__/bundle.test.ts',
   // Two supervisor processes, raw control-socket clients, and an esbuild bundle run.
   'packages/supervisor/src/__tests__/protocol.test.ts',

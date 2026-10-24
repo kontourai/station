@@ -5808,7 +5808,12 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
     backendPrefixes?: string[];
     backendNavigationPrefixes?: string[];
     readinessFile?: string;
-    identity?: { instanceId: string; sha: string; bootId: string };
+    identity?: {
+      instanceId: string;
+      sha: string;
+      bootId: string;
+      supervised?: boolean;
+    };
     internalApiToken?: string;
     trustedTailscaleServeOrigin?: string;
     hostedTenantAuthorities?: Record<string, string>;
@@ -5866,6 +5871,42 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
       socket.on('error', reject);
     });
   }
+
+  test('a supervised backend that handed off to a rebuilt bundle stays ready; a direct one with another sha does not', async () => {
+    uiDir = makeTrackedUiDir('station-ui-supervised-');
+    await startUpstream((req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify(
+          req.url === '/api/system/identity'
+            ? { instanceId: 'work', bootId: 'boot-1', sha: 'b'.repeat(40) }
+            : {},
+        ),
+      );
+    });
+    const started = {
+      instanceId: 'work',
+      bootId: 'boot-1',
+      sha: 'a'.repeat(40),
+    };
+    const readiness = async (
+      identity: typeof started & { supervised?: boolean },
+    ) => {
+      const { server, port } = await startServer({ identity });
+      try {
+        return (await fetch(`http://127.0.0.1:${port}/api/system/readiness`))
+          .status;
+      } finally {
+        server.close();
+      }
+    };
+    expect(await readiness(started)).toBe(503);
+    expect(await readiness({ ...started, supervised: true })).toBe(200);
+    // The boot id still has to be this start's: a lost port race fails.
+    expect(
+      await readiness({ ...started, bootId: 'boot-2', supervised: true }),
+    ).toBe(503);
+  });
 
   afterEach(() => {
     if (uiDir && existsSync(uiDir))

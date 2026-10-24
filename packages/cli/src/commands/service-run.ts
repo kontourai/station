@@ -162,11 +162,20 @@ function defaultProcessIsAlive(pid: number): boolean {
   }
 }
 
+/**
+ * The same start of the same Station. A supervised instance keeps its boot id
+ * across handoffs while `station restart` may record a rebuilt bundle's sha,
+ * so only the boot id identifies it.
+ */
 function sameBoot(
   actual: CollectedInstanceStatus,
   expected: CollectedInstanceStatus,
 ): boolean {
-  return actual.bootId === expected.bootId && actual.sha === expected.sha;
+  if (actual.bootId !== expected.bootId) return false;
+  return (
+    (actual.supervised === true && expected.supervised === true) ||
+    actual.sha === expected.sha
+  );
 }
 
 export async function superviseService(

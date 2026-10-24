@@ -2576,6 +2576,22 @@ recorded pid with the server's own events), for a build without the supervisor
 bundle (rebuild with `station build`), and for an instance name the
 supervisor's control channel cannot carry; the last two print why.
 
+**Not yet covered by dogfood or e2e.** The dogfood reconciler and the e2e
+suite start Station with `--lifecycle-journal`, so the owner's daily instance
+and the e2e suite still run the server directly and do not exercise the
+supervisor. Their journal, listener-ownership and teardown checks assume the
+recorded pid is the serving process; making them supervisor-aware is tracked
+in the [process supervisor design](../design/process-supervisor.md#verification).
+
+Under `station service run` the supervisor is also given the launcher's pid
+(`--parent-pid`) and drains and exits when that launcher dies, as the server's
+own parent watchdog did before.
+
+A supervised instance's identity is its instance id and the boot id its
+start minted, which every core generation inherits. The UI listener checks a
+backend's readiness against those two, not the build sha, because a handoff
+may serve a rebuilt bundle; a direct start still checks the sha.
+
 ```bash
 station start
 station start --instance=smoke-a --temp-home --clean --force --port=3242 --ui-port=5274
@@ -2965,9 +2981,19 @@ A supervised instance is stopped with the supervisor's `stop` request, which
 drains the serving generation (at most 30 seconds, voice calls included) and
 exits. When nothing answers on the control channel, `stop` signals the
 supervisor instead: SIGTERM on Linux and macOS, the same drain; on Windows a
-tree kill, which ends the server without its drain. An instance started
+tree kill, which ends the server without its drain. The request and the
+signal share one 40-second budget, so a supervisor that never answers is
+killed well inside `station service run`'s 60-second shutdown deadline; its
+core then exits through its closed IPC channel. An instance started
 directly (by an earlier CLI, or with `STATION_DIRECT_LAUNCH=1`) is stopped as
 before.
+
+A CLI from before the supervisor does not know the `stop` request: it sends
+SIGTERM to the supervisor's process group, which drains, and five seconds
+later SIGKILL. The core leads its own process group, so the signal does not
+reach it; when the supervisor is killed before the drain finishes, the core
+sees its IPC channel close and shuts down within about 20 seconds. On Windows
+the older CLI's tree kill ends both at once.
 
 ### `restart`
 
@@ -2982,7 +3008,8 @@ of the same entry, printing each phase. Connections made during the swap wait
 in the supervisor's listeners instead of being refused; open connections are
 drained, not carried over. The new generation runs the build directory the
 instance started from, so `station build` followed by `station restart` serves
-the new build. If the new generation fails to come up, the supervisor rolls
+the new build. After a committed restart the instance record names the build
+the new generation runs (the build directory's `station-build.json`). If the new generation fails to come up, the supervisor rolls
 back to the previous entry and `restart` exits non-zero with the reason; a
 refused handoff (one already running, for example) does too. An instance
 started without the supervisor is refused with the `station start --force`

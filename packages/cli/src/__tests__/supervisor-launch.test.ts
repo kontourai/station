@@ -73,6 +73,14 @@ describe('planServerLaunch', () => {
     });
   });
 
+  it('tells the supervisor to watch the launcher that supervises the start', () => {
+    const launch = plan({ parentPid: 4321 });
+    expect(launch.supervised && launch.args.slice(-2)).toEqual([
+      '--parent-pid',
+      '4321',
+    ]);
+  });
+
   it(`starts directly, quietly, when ${DIRECT_LAUNCH_ENV}=1, for --watch, and with a lifecycle journal`, () => {
     for (const overrides of [
       { env: { [DIRECT_LAUNCH_ENV]: '1' } },
