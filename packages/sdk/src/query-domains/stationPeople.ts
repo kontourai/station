@@ -7,7 +7,7 @@ import type {
   StationPerson,
 } from '@kontourai/station-contracts/station-groups';
 import { authenticatedFetch } from '../client/http';
-import { rethrowDeadline } from '../client/request-deadline';
+import { rethrowDeadline, unlessDeadline } from '../client/request-deadline';
 import {
   type QueryConfig,
   resolveApiBase,
@@ -23,8 +23,8 @@ import {
  * - `/api/pairing/people` is the operator's People page. Listing is admitted
  *   for the operator credential and the desktop's local grant; changing a
  *   group and minting or revoking someone's token need the operator
- *   credential itself, so the local grant reads `401 authentication_required`
- *   there.
+ *   credential itself or an operator passkey session with per-action step-up.
+ *   The current refusal status for other callers is tracked in #4109.
  * - `/api/access/tokens` is a person managing their own tokens from a paired
  *   device tied to them. Anything else is `403 person_device_required`, which
  *   a caller treats as "this panel is not for you", never as an error.
@@ -60,10 +60,11 @@ export class StationStepUpRequiredError extends StationAccessError {
 
 async function requireCompletedWrite(response: Response): Promise<Response> {
   if (response.status === 202) {
-    const body: unknown = await response.json().catch((error: unknown) => {
-      rethrowDeadline(error);
-      throw new Error('Invalid step-up response');
-    });
+    const body: unknown = await response.json().catch(
+      unlessDeadline(() => {
+        throw new Error('Invalid step-up response');
+      }),
+    );
     const transaction = isObject(body) ? body.transaction : undefined;
     if (
       !isObject(body) ||
@@ -85,7 +86,7 @@ async function requireCompletedWrite(response: Response): Promise<Response> {
   return response;
 }
 
-/** The refusal the desktop's local grant gets for a People change. */
+/** Detects the current 401 refusal; its credential-clearing effect is tracked in #4109. */
 export function isOperatorCredentialRequired(error: unknown): boolean {
   return error instanceof StationAccessError && error.status === 401;
 }

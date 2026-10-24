@@ -4679,7 +4679,10 @@ revocation provenance uses `device-access` for a delegated administrator.
 People `GET` is admitted by the pairing family's operator/local-grant boundary;
 `access:devices` and operator sessions do not admit it. The passkey-session
 browser therefore cannot open Settings People or its token controls today. Changing a group needs the operator
-credential itself, or an operator session followed by per-action passkey step-up:
+credential (host CLI), or an operator passkey session followed by per-action
+step-up. The current refusal status for other callers, including Desktop/host
+grants, is tracked in [#4109](https://github.com/kontourai/station/issues/4109);
+the SDK currently treats that `401` as a dead credential and removes it.
 
 - `GET /api/pairing/people` returns `{ people: StationPerson[] }`: everyone
   with a group assignment, a live device tied to them, or a personal access
@@ -4728,8 +4731,11 @@ manages anyone's tokens: `GET /api/pairing/people` lists each person's
 person_not_found` unless a live device is tied to the person) mints one, and
 `DELETE /api/pairing/people/:principalId/tokens/:tokenId` revokes one. An
 operator-minted token is bounded by the person's Station group rather than
-by their devices. The desktop's local grant lists them but cannot mint or
-revoke. A token is refused (`403`) on a Project's member-administration
+by their devices. Only the operator credential (host CLI) or an operator passkey
+session with step-up can mint or revoke another person's tokens. The desktop's
+local grant lists them; its current write refusal status is tracked in
+[#4109](https://github.com/kontourai/station/issues/4109). A token is refused
+(`403`) on a Project’s member-administration
 routes (`GET /api/projects/:slug/access` and `POST
 /api/projects/:slug/access/**`).
 
@@ -4909,13 +4915,15 @@ and, for approval, an assertion bound to this transaction's exact fingerprint.
 `operator-passkey` can approve; other consent authorities and the native review
 path cannot commit these transactions. A changed expected state after a verified
 assertion closes the transaction as `target_changed`; the status read preserves
-that terminal outcome even if the old state is restored. Expired requests and
-replays refuse the commit. Passkey revocation requires a different active passkey.
+that terminal outcome even if the old state is restored. An operator session
+that ends mid-commit closes the transaction as `session_ended`, with sign-in
+guidance. Both terminal refusals record a `closed` audit event with the reason.
+Expired requests and replays refuse the commit. Passkey revocation requires a different active passkey.
 Using the passkey being revoked returns `409 { error: 'commit_refused', detail }`
 with guidance to use another passkey, keeping the transaction `pending`. Reopen
 the review for a fresh nonce. Other `commit_refused` errors and invalid assertions
 also leave it pending. Status reads report `pending`, `approved`, `denied`,
-`expired` or `target_changed`.
+`expired`, `target_changed` or `session_ended`.
 There is no step-up window, and step-up/status polling never extends the session.
 
 A successful transaction's `effect` is the direct route's response body. Token

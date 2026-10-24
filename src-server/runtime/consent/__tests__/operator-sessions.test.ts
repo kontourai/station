@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { runInNewContext } from 'node:vm';
 import { parsePairingScope } from '@kontourai/station-contracts/environment-security';
 import * as fileLocks from '@kontourai/station-shared/lifecycle-events';
 import { Hono } from 'hono';
@@ -1321,13 +1322,13 @@ async function reviewChange(
       .replaceAll('&quot;', '"')
       .replaceAll('&amp;', '&'),
   ) as { challenge: string; rpId: string };
-  return { nonce, options };
+  return { nonce, options, html };
 }
 async function commitChange(
   h: StepUpHarness,
   signed: SignedOperator,
   id: string,
-  review: Awaited<ReturnType<typeof reviewChange>>,
+  review: Pick<Awaited<ReturnType<typeof reviewChange>>, 'nonce' | 'options'>,
   counter = 2,
   input: Partial<Parameters<SoftwareAuthenticator['authenticate']>[1]> = {},
 ) {
@@ -1346,6 +1347,32 @@ async function commitChange(
       }),
     }),
   });
+}
+
+async function reviewRefusalText(
+  html: string,
+  result: Response,
+): Promise<string> {
+  let submit!: (event: unknown) => Promise<void>;
+  const status = { textContent: '', setAttribute() {} };
+  const form = {
+    action: '/consent/action/decide',
+    elements: { nonce: { value: 'rendered-nonce' } },
+    querySelectorAll: () => [],
+    after() {},
+    addEventListener: (_name: string, handler: typeof submit) => {
+      submit = handler;
+    },
+  };
+  const script = html.match(
+    /<script type="module" nonce="[^"]+">([\s\S]*?)<\/script>/,
+  )![1];
+  runInNewContext(script, {
+    document: { querySelector: () => form, createElement: () => status },
+    fetch: async () => result,
+  });
+  await submit({ preventDefault() {}, submitter: { value: 'deny' } });
+  return status.textContent;
 }
 
 describe('per-action operator passkey step-up (#3257 S4)', () => {
@@ -1487,6 +1514,7 @@ describe('per-action operator passkey step-up (#3257 S4)', () => {
                 `${path}/tokens/${existing.token.id}`,
               );
       const review = await reviewChange(h, signed, transaction.id);
+      const html = review.html;
       let enter!: () => void, release!: () => void;
       const entered = new Promise<void>((resolve) => {
         enter = resolve;
@@ -1522,10 +1550,23 @@ describe('per-action operator passkey step-up (#3257 S4)', () => {
       }
       const result = await committing;
       expect(result.status).toBe(409);
-      expect(await result.json()).toMatchObject({ error: 'target_changed' });
+      const reason = op === 'mint' ? 'target_changed' : 'session_ended';
+      expect(await result.clone().json()).toMatchObject({ error: reason });
+      expect(await reviewRefusalText(html, result)).toBe(
+        op === 'mint'
+          ? 'This changed since you asked. Nothing was applied; open a new request.'
+          : 'Your operator session ended; sign in again. Nothing was applied.',
+      );
       expect(
         h.channel.store.get(h.channel.tenantId, transaction.id)?.status,
-      ).toBe('target_changed');
+      ).toBe(reason);
+      expect(
+        h.channel.store.auditTrail(h.channel.tenantId, transaction.id),
+      ).toContainEqual({
+        at: h.clock.now,
+        event: 'closed',
+        detail: reason,
+      });
       expect(h.security.groupOf(principalId)).toBe(
         op === 'mint' ? 'admin' : 'member',
       );
@@ -1696,6 +1737,13 @@ describe('per-action operator passkey step-up (#3257 S4)', () => {
     const result = await commitChange(h, signed, t.id, r);
     expect(result.status).toBe(409);
     expect(await result.json()).toEqual({ error: 'target_changed' });
+    expect(h.channel.store.auditTrail(h.channel.tenantId, t.id)).toContainEqual(
+      {
+        at: h.clock.now,
+        event: 'closed',
+        detail: 'target_changed',
+      },
+    );
     expect(
       h.pairing.listDevices().find((d) => d.id === h.second.device.id)?.scope,
     ).toBe(changed.scope);
@@ -1717,12 +1765,54 @@ describe('per-action operator passkey step-up (#3257 S4)', () => {
       },
     });
     expect(reopened.status).toBe(409);
+    expect(await reopened.text()).toContain(
+      'This changed since you asked. Nothing was applied; open a new request.',
+    );
     const later = await commitChange(h, signed, t.id, r, 3);
     expect(await later.json()).toEqual({ error: 'not_pending' });
     expect(await (await h.read(signed.cookie, statusPath)).json()).toEqual({
       status: 'target_changed',
     });
   });
+
+  test.each([
+    ['approved', 'Applied. Return to Station.'],
+    ['denied', 'Cancelled. Nothing was applied.'],
+    ['expired', 'The review expired. Nothing was applied; open a new request.'],
+  ] as const)(
+    'reopening a %s review explains the outcome without action buttons',
+    async (outcome, message) => {
+      const h = await build(),
+        signed = await h.signIn();
+      const t = await requestChange(h, signed),
+        r = await reviewChange(h, signed, t.id);
+      if (outcome === 'expired') h.clock.now += 5 * 60_000 + 1;
+      else if (outcome === 'approved')
+        expect((await commitChange(h, signed, t.id, r)).status).toBe(200);
+      else
+        expect(
+          (
+            await h.consent.request(`/consent/${t.id}/decide`, {
+              method: 'POST',
+              headers: { ...h.headers(), cookie: signed.cookie },
+              body: JSON.stringify({ nonce: r.nonce, decision: 'deny' }),
+            })
+          ).status,
+        ).toBe(200);
+      const reopened = await h.consent.request(`/consent/${t.id}`, {
+        headers: {
+          ...h.headers(),
+          cookie: signed.cookie,
+          'sec-fetch-mode': 'navigate',
+          'sec-fetch-dest': 'document',
+        },
+      });
+      expect(reopened.status).toBe(409);
+      const html = await reopened.text();
+      expect(html).toContain(message);
+      expect(html).not.toContain('<form');
+    },
+  );
 
   test.each([
     { name: 'app origin', input: { origin: APP } },

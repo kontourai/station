@@ -8,6 +8,7 @@ vi.mock('../client/http', async (importOriginal) => ({
   authenticatedFetch: authenticatedFetchMock,
 }));
 
+import { StationRequestTimeoutError } from '../client/request-deadline';
 import {
   isOperatorCredentialRequired,
   isStationAccessUnavailable,
@@ -88,6 +89,20 @@ describe('Station people and token refusals (#3557)', () => {
     await expect(
       setStationPersonGroup('human:test:ada', 'admin', 'https://station.test'),
     ).rejects.toThrow('Invalid step-up response');
+  });
+
+  it('preserves a deadline failure while reading a pending review body', async () => {
+    const response = new Response(null, { status: 202 });
+    const deadline = new StationRequestTimeoutError(
+      'https://station.test/api/pairing/people/human:test:ada/group',
+      1000,
+      { method: 'PUT' },
+    );
+    vi.spyOn(response, 'json').mockRejectedValue(deadline);
+    authenticatedFetchMock.mockResolvedValue(response);
+    await expect(
+      setStationPersonGroup('human:test:ada', 'admin', 'https://station.test'),
+    ).rejects.toBe(deadline);
   });
 
   it('reads a People route’s string error code', async () => {

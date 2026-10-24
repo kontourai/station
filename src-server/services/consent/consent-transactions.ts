@@ -70,7 +70,8 @@ type ConsentTransactionStatus =
   | 'approved'
   | 'denied'
   | 'expired'
-  | 'target_changed';
+  | 'target_changed'
+  | 'session_ended';
 export type ConsentDecision = 'approved' | 'denied';
 
 /** Exactly what would be granted, in a canonically comparable form. */
@@ -125,6 +126,7 @@ interface ConsentAuditEvent {
     | 'created'
     | 'review-rendered'
     | 'decision-refused'
+    | 'closed'
     | 'approved'
     | 'denied'
     | 'expired';
@@ -142,7 +144,8 @@ export class ConsentCommitRefusedError extends Error {
     public readonly retryable: boolean = true,
     public readonly reason:
       | 'commit_refused'
-      | 'target_changed' = 'commit_refused',
+      | 'target_changed'
+      | 'session_ended' = 'commit_refused',
   ) {
     super(safeDetail);
     this.name = 'ConsentCommitRefusedError';
@@ -304,6 +307,7 @@ type ConsentDecideRefusalReason =
   | 'nonce_missing'
   | 'nonce_invalid'
   | 'target_changed'
+  | 'session_ended'
   | 'commit_refused'
   | 'authority_required';
 
@@ -603,16 +607,24 @@ export class ConsentTransactionStore {
       reason: ConsentDecideRefusalReason,
       detail?: string,
     ): ConsentDecideResult => {
-      if (reason === 'target_changed' && record.ceremony === 'webauthn') {
-        record.status = 'target_changed';
-        record.decidedAt = this.#now();
-        record.decidedVia = via;
-      }
       this.#pushAudit(record, {
         at: this.#now(),
         event: 'decision-refused',
         detail: detail ?? reason,
       });
+      if (
+        (reason === 'target_changed' || reason === 'session_ended') &&
+        record.ceremony === 'webauthn'
+      ) {
+        record.status = reason;
+        record.decidedAt = this.#now();
+        record.decidedVia = via;
+        this.#pushAudit(record, {
+          at: record.decidedAt,
+          event: 'closed',
+          detail: reason,
+        });
+      }
       return { ok: false, reason, status: record.status, detail };
     };
     if (
@@ -670,7 +682,14 @@ export class ConsentTransactionStore {
       const runGuarded =
         record.guardDecision ?? (<T>(fn: () => Promise<T>) => fn());
       return await runGuarded(async () => {
-        const revalidated = await record.revalidateTarget();
+        let revalidated: ConsentTargetSnapshot | null;
+        try {
+          revalidated = await record.revalidateTarget();
+        } catch (error) {
+          if (error instanceof ConsentCommitRefusedError)
+            return refuse(error.reason, error.safeDetail);
+          throw error;
+        }
         if (
           revalidated === null ||
           revalidated.kind !== record.target.kind ||

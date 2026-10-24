@@ -147,7 +147,9 @@ form.addEventListener('submit', async event => {
     form.hidden = true;
     if (!result.ok) {
       status.textContent = body.error === 'target_changed'
-        ? 'The device changed since you asked. Nothing was applied; try again with a new request.'
+        ? 'This changed since you asked. Nothing was applied; open a new request.'
+        : body.error === 'session_ended'
+          ? 'Your operator session ended; sign in again. Nothing was applied.'
         : body.error === 'commit_refused' && body.detail
           ? body.detail + ' Nothing was applied. Reopen this review to try again.'
           : body.error === 'not_pending'
@@ -159,6 +161,23 @@ form.addEventListener('submit', async event => {
     if (body.secret) { const secret = document.createElement('code'); secret.textContent = body.secret; status.after(secret); status.textContent += ' Copy this token now; it will never be shown again.'; }
   } catch (error) { form.hidden = true; status.textContent = error.message + ' Nothing further will be submitted from this page. Reopen the review to check its status.'; }
 });`;
+
+function transactionStatusText(
+  status: ConsentTransactionView['status'] | undefined,
+): string {
+  if (!status) return 'This request is closed.';
+  const messages: Record<ConsentTransactionView['status'], string> = {
+    pending: 'This request is awaiting a decision.',
+    approved: 'Applied. Return to Station.',
+    denied: 'Cancelled. Nothing was applied.',
+    expired: 'The review expired. Nothing was applied; open a new request.',
+    target_changed:
+      'This changed since you asked. Nothing was applied; open a new request.',
+    session_ended:
+      'Your operator session ended; sign in again. Nothing was applied.',
+  };
+  return messages[status];
+}
 
 function statusPage(title: string, detail: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>${PAGE_STYLE}</style></head><body><main><div class="eyebrow">Station consent</div><h1>${escapeHtml(title)}</h1><p>${escapeHtml(detail)}</p><p>You can close this page and return to Station.</p></main></body></html>`;
@@ -448,7 +467,7 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
         return c.html(
           statusPage(
             'Review unavailable',
-            'This request expired or was already decided. Open a new request.',
+            transactionStatusText(rendered.status),
           ),
           409,
         );
@@ -513,7 +532,7 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
       return c.html(
         statusPage(
           'Request already decided',
-          `This request is ${rendered.status ?? 'closed'}.`,
+          transactionStatusText(rendered.status),
         ),
       );
     }
@@ -650,7 +669,7 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
           return c.html(
             statusPage(
               'Request already decided',
-              `This request is ${result.status ?? 'closed'}.`,
+              transactionStatusText(result.status),
             ),
             409,
           );

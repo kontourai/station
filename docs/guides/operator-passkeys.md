@@ -119,10 +119,12 @@ on the host instead.
    minutes. Choose **Cancel** on the review to deny the transaction immediately;
    the panel shows **Cancelled** and a later approval is refused. Cancelling only
    the operating-system passkey prompt or closing the review applies nothing;
-   that pending request expires. A target or session that changed when a verified
-   assertion is committed closes the transaction as `target_changed`, including
-   changes detected while acquiring the mutation lock. Nothing is applied. The
-   panel says **The device changed since you asked. Nothing was applied; try again.**
+   that pending request expires. A target that changed when a verified assertion
+   is committed closes the transaction as `target_changed`, including changes
+   detected while acquiring the mutation lock. Nothing is applied. The panel says
+   **This changed since you asked. Nothing was applied; open a new request.**
+   If the operator session ended mid-commit, the terminal status is `session_ended`
+   and the message is **Your operator session ended; sign in again. Nothing was applied.**
    Restoring the old state does not reopen a refused transaction: open a new
    request against the current state. An expired session, revoked bound Device or
    revoked signing passkey cannot confirm; sign in again as needed. Do not blindly
@@ -135,8 +137,12 @@ step-up. The passkey session cannot read `GET /api/pairing/people`, so **Setting
 People** and its token controls are unavailable to that session today. The Desktop
 can list People through its independent home-possession grant, but that grant
 cannot change groups or manage other people's tokens; signing in does not elevate
-those independently admitted requests. Use an operator-credential connection for
-these controls. A person's **Your access tokens** uses separate device-bound
+those independently admitted requests. Only the operator credential (host CLI)
+or an operator passkey session with step-up can change groups and manage other
+people's tokens. The current refusal status for other callers is tracked in
+[#4109](https://github.com/kontourai/station/issues/4109): the SDK treats the
+current `401` as a dead credential and removes it. Use the host CLI for these
+controls today. A person's **Your access tokens** uses separate device-bound
 self-service routes and does not request operator step-up. A newly minted token's secret appears **once**, in the consent-origin
 commit response and review page. The transaction's later status reads contain
 only token metadata. Copy the secret then; a lost response requires revoking

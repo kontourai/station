@@ -10833,6 +10833,14 @@ export function configureDevicePairingHostRoutes(
     if (!session) return c.json({ error: 'authentication_required' }, 401);
     if (!channel?.trustedOrigin || channel.state().status !== 'listening')
       return c.json({ error: 'step_up_unavailable' }, 503);
+    const assertSessionCurrent = () => {
+      if (!session.isCurrent())
+        throw new ConsentCommitRefusedError(
+          'Your operator session ended; sign in again.',
+          false,
+          'session_ended',
+        );
+    };
     const created = channel.store.create({
       tenantId: channel.tenantId,
       target,
@@ -10848,17 +10856,16 @@ export function configureDevicePairingHostRoutes(
         approveLabel: 'Confirm with passkey',
         denyLabel: 'Cancel',
       },
-      revalidateTarget: async () =>
-        session.isCurrent() ? currentTarget() : null,
+      revalidateTarget: async () => {
+        assertSessionCurrent();
+        return currentTarget();
+      },
       commitApproval: async (passkeyId) => {
         // Recheck synchronously at the mutation seam, after the store's await.
-        if (
-          !session.isCurrent() ||
-          !passkeyId ||
-          currentTarget()?.fingerprint !== target.fingerprint
-        )
+        assertSessionCurrent();
+        if (!passkeyId || currentTarget()?.fingerprint !== target.fingerprint)
           throw new ConsentCommitRefusedError(
-            'The session or target changed. Open a new request.',
+            'This changed since you asked. Nothing was applied; open a new request.',
             false,
             'target_changed',
           );
@@ -10867,12 +10874,10 @@ export function configureDevicePairingHostRoutes(
             'Use a different passkey to revoke this one.',
           );
         return commit(passkeyId, session.sessionId, () => {
-          if (
-            !session.isCurrent() ||
-            currentTarget()?.fingerprint !== target.fingerprint
-          )
+          assertSessionCurrent();
+          if (currentTarget()?.fingerprint !== target.fingerprint)
             throw new ConsentCommitRefusedError(
-              'The session or target changed.',
+              'This changed since you asked. Nothing was applied; open a new request.',
               false,
               'target_changed',
             );

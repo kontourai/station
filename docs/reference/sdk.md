@@ -761,9 +761,13 @@ is a query error, not an empty device list.
 own tokens use `useOwnAccessTokensQuery`, `useMintOwnAccessTokenMutation` and
 `useRevokeOwnAccessTokenMutation` on `/api/access/tokens`. Refusals throw
 `StationAccessError` with the HTTP `status` and the server's `code`:
-`isOperatorCredentialRequired` is the 401 a change without the operator
-credential gets, and `isStationAccessUnavailable` is a read refused as not for
-this caller (401, 403 or 404), which a surface hides rather than shows. A mint
+`isOperatorCredentialRequired` detects the current 401 refusal. Only the operator
+credential (host CLI) or an operator passkey session with step-up can change groups
+and manage other people’s tokens. The current refusal status for other callers
+is tracked in [#4109](https://github.com/kontourai/station/issues/4109): the SDK
+treats that 401 as a dead credential and removes it.
+`isStationAccessUnavailable` is a read refused as not for this caller (401, 403 or
+404), which a surface hides rather than shows. A mint
 answers the secret once. The mint mutation holds that answer while observed, so
 call its `reset()` once the secret is captured; the settled mutation is then
 evicted at once. `setStationPersonGroup` resolves `{ person, revocations }`,

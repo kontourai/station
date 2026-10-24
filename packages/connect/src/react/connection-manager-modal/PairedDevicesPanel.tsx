@@ -189,8 +189,10 @@ export function PairedDevicesPanel({
                 transaction.status === 'denied'
                   ? 'Cancelled. Nothing was applied.'
                   : transaction.status === 'target_changed'
-                    ? 'The device changed since you asked. Nothing was applied; try again.'
-                    : 'The review expired. Nothing was applied.',
+                    ? 'This changed since you asked. Nothing was applied; open a new request.'
+                    : transaction.status === 'session_ended'
+                      ? 'Your operator session ended; sign in again. Nothing was applied.'
+                      : 'The review expired. Nothing was applied.',
               ),
             );
           }
