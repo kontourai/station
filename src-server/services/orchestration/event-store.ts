@@ -1415,13 +1415,29 @@ const SNAPSHOT_TOOL_OUTPUT_MAX_CHARS = 84;
  * `SESSION_EVENT_WINDOW_MAX_SERIALIZED_BYTES` budget still bounds each page;
  * this ceiling only decides when a single event stops being an event.
  */
-const SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES = 24_576;
+export const SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES = 24_576;
 /**
  * A `turn.completed` carries the turn's full reply text, so it gets the same
  * headroom on every window path (the newest-first path always allowed it;
  * the turn and conversation paths did not, and dropped long replies there).
  */
 const TURN_COMPLETED_SNAPSHOT_MAX_BYTES = 48_000;
+/**
+ * A `request.opened` is an open decision that a reload, or a second device,
+ * rebuilds from a window read (the approval card and toast). Reduced to its
+ * identity fields it has no request id, title or form, so it cannot be
+ * answered from there. It gets the reply's headroom, and orchestration
+ * admission projects every `request.opened` under it
+ * (`ingress-event-projection.ts`).
+ */
+export const REQUEST_OPENED_SNAPSHOT_MAX_BYTES =
+  TURN_COMPLETED_SNAPSHOT_MAX_BYTES;
+
+function windowSnapshotMaxBytes(method: string): number {
+  if (method === 'turn.completed') return TURN_COMPLETED_SNAPSHOT_MAX_BYTES;
+  if (method === 'request.opened') return REQUEST_OPENED_SNAPSHOT_MAX_BYTES;
+  return SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES;
+}
 const SESSION_EVENT_WINDOW_MAX_SERIALIZED_BYTES = 56_000;
 /** Hard complete JSON response budget for one authenticated event window. */
 export const SESSION_EVENT_WINDOW_MAX_RESPONSE_BYTES = 64_000;
@@ -9387,9 +9403,7 @@ export class EventStore {
       for (const row of rows.slice(0, SESSION_EVENT_WINDOW_MAX_EVENTS - 1)) {
         const event = snapshotEvent(
           mapPersistedEventRow(row),
-          row.method === 'turn.completed'
-            ? TURN_COMPLETED_SNAPSHOT_MAX_BYTES
-            : SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES,
+          windowSnapshotMaxBytes(row.method),
         );
         const size = Buffer.byteLength(
           JSON.stringify({
@@ -9578,9 +9592,7 @@ export class EventStore {
         .map((row) =>
           snapshotEvent(
             mapPersistedEventRow(row),
-            row.method === 'turn.completed'
-              ? TURN_COMPLETED_SNAPSHOT_MAX_BYTES
-              : SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES,
+            windowSnapshotMaxBytes(row.method),
           ),
         );
       const completed = new Set(
@@ -9789,9 +9801,7 @@ export class EventStore {
         // attachment reference back into an oversized inline payload.
         const event = snapshotEvent(
           mapPersistedEventRow(row),
-          row.method === 'turn.completed'
-            ? TURN_COMPLETED_SNAPSHOT_MAX_BYTES
-            : SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES,
+          windowSnapshotMaxBytes(row.method),
         );
         const eventBytes = Buffer.byteLength(
           JSON.stringify({

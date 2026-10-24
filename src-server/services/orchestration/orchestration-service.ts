@@ -362,6 +362,7 @@ import {
   type ForegroundInvocationAdmission,
   ForegroundInvocationUnavailableError,
 } from './foreground-invocation-admission.js';
+import { projectEventForIngress } from './ingress-event-projection.js';
 import { InternalStopSuppression } from './internal-stop-suppression.js';
 import {
   type InterruptedTurnMemoryAdapter,
@@ -411,7 +412,6 @@ import {
   RequestEventGuardError,
   readCurrentInputRequest,
 } from './request-inspection.js';
-import { projectRequestOpenedForIngress } from './request-opened-projection.js';
 import { servingInstanceIdentity } from './serving-instance.js';
 import { sessionAgentStartUnavailableReason } from './session-agent-resolution.js';
 import {
@@ -10874,12 +10874,14 @@ export class OrchestrationService {
   }
 
   /**
-   * A `request.opened` EventStore deterministically refuses even after its
-   * projection (`projectRequestOpenedForIngress`) can never be shown, so
+   * A `request.opened` EventStore deterministically refuses (its size or its
+   * structure), even after `projectEventForIngress`, can never be shown, so
    * nobody could answer it and the engine would wait on it forever. Say so on
-   * the thread and cancel it with the adapter, which answers the engine from
-   * its own raw copy of the request. Returns false for any other failure,
-   * which keeps the stream's ordinary recovery.
+   * the thread and decline it with the adapter, which answers the engine from
+   * its own raw copy of the request. A decline, not a cancel: a cancel
+   * interrupts a Claude turn, while a decline lets the agent continue and
+   * ask again differently. Returns false for any other failure, which keeps
+   * the stream's ordinary recovery.
    */
   private settleUnpersistableRequest(
     adapter: ProviderAdapterShape,
@@ -10893,7 +10895,7 @@ export class OrchestrationService {
       return false;
     const { threadId, requestId } = event;
     this.options.logger.warn(
-      'Provider request cannot be persisted; cancelling it with the engine',
+      'Provider request cannot be persisted; declining it with the engine',
       { provider: adapter.provider, threadId, requestId, error: error.message },
     );
     try {
@@ -10906,7 +10908,7 @@ export class OrchestrationService {
         severity: 'warning',
         code: 'request-too-large-to-show',
         message:
-          'The agent asked for a decision that is too large for Station to store or show, so Station cancelled it. The agent may retry with a smaller request.',
+          'The agent asked for a decision that Station cannot store or show, so Station declined it for you. The agent can continue and may ask again differently.',
         details: { requestId },
       });
     } catch (surfacingError) {
@@ -10921,13 +10923,13 @@ export class OrchestrationService {
     // is consuming.
     void Promise.resolve()
       .then(() =>
-        adapter.respondToRequest(threadId, requestId, 'cancel', {
+        adapter.respondToRequest(threadId, requestId, 'decline', {
           expectedRequestEventId: event.eventId,
         }),
       )
       .catch((cancelError) =>
         this.options.logger.warn(
-          'Failed to cancel an unpersistable request with the engine',
+          'Failed to decline an unpersistable request with the engine',
           {
             provider: adapter.provider,
             threadId,
@@ -10947,7 +10949,7 @@ export class OrchestrationService {
    * dropped `turn.completed` folds the thread as running and boot recovery
    * banners a turn that completed.
    *
-   * A `request.opened` the store refuses outright is settled with the
+   * A `request.opened` the store refuses outright is declined with the
    * engine instead (`settleUnpersistableRequest`) and reported unpublished.
    * Exhausted retries and every other failure rethrow into the loop's catch
    * unchanged. That path is observation loss, not a provider terminal: it
@@ -12409,9 +12411,9 @@ export class OrchestrationService {
   ): CanonicalRuntimeEvent | undefined {
     const originEvent = this.clientOriginTurns.apply(event);
     if (!originEvent) return undefined;
-    // Engines hand Station their request arguments verbatim, of any size; an
-    // approval the store refuses is one nobody sees and the engine waits on.
-    event = projectRequestOpenedForIngress(originEvent);
+    // Engines hand Station request and tool arguments verbatim, of any size;
+    // an approval the store refuses is one nobody sees and the engine waits on.
+    event = projectEventForIngress(originEvent);
     // Progress is a fact about the ENGINE producing output, not about what we
     // chose to publish. The turn-stall watchdog (archive#2959) observes here,
     // so it must see every raw delta as it arrives -- batching them for

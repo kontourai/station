@@ -392,6 +392,49 @@ describe('#2316 inline approval card → Claude adapter', () => {
     );
   });
 
+  test('a request EventStore refuses is declined so the turn continues, never cancelled, and is surfaced', async () => {
+    await service.dispatch(
+      {
+        type: 'startSession',
+        input: { threadId: 'claude-inline', provider: 'claude' },
+      },
+      { userId: 'owner-user' },
+    );
+    const canUseTool = sessionCanUseTool();
+    if (typeof canUseTool !== 'function') {
+      throw new Error('the Claude adapter did not hand the SDK canUseTool');
+    }
+    // Over EventStore's 512-item array limit: projection only shortens text,
+    // so this request.opened can never be stored.
+    const permission = canUseTool(
+      'mcp__bulk__import',
+      { rows: Array.from({ length: 600 }, (_, index) => index) },
+      {
+        signal: new AbortController().signal,
+        toolUseID: 'toolu-inline-unstorable',
+        suggestions: [],
+      },
+    );
+    // A decline, not a cancel: a cancel would interrupt the turn and tell
+    // the model the person cancelled.
+    const result = await permission;
+    expect(result).toMatchObject({ behavior: 'deny' });
+    expect(result).not.toHaveProperty('interrupt');
+    const events = eventStore
+      .listEvents('claude-inline')
+      .map((persisted) => persisted.payload);
+    expect(events.some((event) => event.method === 'request.opened')).toBe(
+      false,
+    );
+    expect(
+      events.find(
+        (event) =>
+          event.method === 'runtime.warning' &&
+          event.code === 'request-too-large-to-show',
+      ),
+    ).toBeDefined();
+  });
+
   test('a decline through the same command denies the tool', async () => {
     const { permission, opened } = await openBashRequest();
     await service.dispatch({

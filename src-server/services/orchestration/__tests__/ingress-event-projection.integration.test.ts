@@ -1,22 +1,25 @@
 /**
- * An engine's approval request must reach the person, whatever its size.
+ * Engine material must reach the person, whatever its size, and survive a
+ * reload.
  *
  * Production failure: Codex called `station-control/html_preview` with ~38 KB
  * of HTML. The app-server's MCP tool approval (`mcpServer/elicitation/request`)
  * embeds the tool arguments, the Codex adapter publishes the params verbatim,
  * and EventStore refused the `request.opened` at its 64 KiB ingress ceiling.
- * The approval never showed and Codex waited on it forever.
+ * The approval never showed and Codex waited on it forever. The
+ * `tool.started` carrying the same arguments was refused the same way.
  *
  * Composes the REAL `CodexAdapter` (only the app-server child is a stream
- * double) under the real `OrchestrationService` and `EventStore`, so the
- * request travels the production path: app-server line → adapter →
- * orchestration admission → EventStore → `respondToRequest` → reply on the
- * child's stdin.
+ * double) under the real `OrchestrationService` and `EventStore`, so each
+ * event travels the production path: app-server line → adapter →
+ * orchestration admission → EventStore → the conversation window read a
+ * reload uses → `respondToRequest` → reply on the child's stdin.
  */
 import { EventEmitter } from 'node:events';
 import { join } from 'node:path';
 import { PassThrough, Writable } from 'node:stream';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
+import { inputRequestFromRequestEvent } from '@kontourai/station-shared/input-request';
 import {
   afterEach,
   beforeEach,
@@ -28,13 +31,16 @@ import {
 } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { CodexAdapter } from '../../../providers/adapters/codex-adapter.js';
+import { codexInputRequest } from '../../../providers/adapters/harness-questions.js';
 import { EventBus } from '../event-bus.js';
-import { EventStore, MAX_EVENT_STORE_INGRESS_BYTES } from '../event-store.js';
-import { OrchestrationService } from '../orchestration-service.js';
 import {
-  projectRequestOpenedForIngress,
-  REQUEST_OPENED_INGRESS_BUDGET_BYTES,
-} from '../request-opened-projection.js';
+  EventStore,
+  MAX_EVENT_STORE_INGRESS_BYTES,
+  REQUEST_OPENED_SNAPSHOT_MAX_BYTES,
+  SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES,
+} from '../event-store.js';
+import { projectEventForIngress } from '../ingress-event-projection.js';
+import { OrchestrationService } from '../orchestration-service.js';
 
 const THREAD = 'codex-ingress';
 const CODEX_THREAD = 'codex-thread-ingress';
@@ -159,7 +165,7 @@ async function eventually<T>(
   }
 }
 
-describe('an oversized engine request through OrchestrationService', () => {
+describe('oversized engine material through OrchestrationService', () => {
   const makeTempDir = trackTempDirs();
   let eventStore: EventStore;
   let service: OrchestrationService;
@@ -169,7 +175,7 @@ describe('an oversized engine request through OrchestrationService', () => {
 
   beforeEach(async () => {
     eventStore = new EventStore(
-      join(makeTempDir('request-opened-ingress-'), 'orchestration.sqlite'),
+      join(makeTempDir('ingress-event-projection-'), 'orchestration.sqlite'),
     );
     child = new AnsweringCodexProcess();
     adapter = new CodexAdapter({ processFactory: () => child as never });
@@ -204,11 +210,49 @@ describe('an oversized engine request through OrchestrationService', () => {
     return eventStore.listEvents(THREAD).map((row) => row.payload);
   }
 
-  function storedBytes(event: CanonicalRuntimeEvent): number {
-    return Buffer.byteLength(JSON.stringify(event));
+  /**
+   * The event as a reload reads it: the conversation window read behind
+   * `fetchOrchestrationConversationEventWindow`, with the newest-turn options
+   * `hydrateOpenApprovalToasts` sends, and the turn-ordered path beside it.
+   */
+  function readBack(eventId: string) {
+    const reads = [
+      eventStore.listConversationEventWindowByTurn([THREAD], {
+        turnLimit: 1,
+        direction: 'newest',
+      }),
+      eventStore.listConversationEventWindowByTurn([THREAD], { turnLimit: 5 }),
+    ].map((window) =>
+      window.events.find((event) => event.payload.eventId === eventId),
+    );
+    for (const read of reads) {
+      expect(read).toBeDefined();
+      expect(read?.elided).toBeUndefined();
+    }
+    return reads.map((read) => read!.payload);
   }
 
-  test('a Codex html_preview approval with ~40 KB of HTML is shown, answered from the raw request, and the stream keeps going', async () => {
+  function expectStreamKeptRunning() {
+    expect(warn).not.toHaveBeenCalledWith(
+      'Provider adapter event stream stopped',
+      expect.anything(),
+    );
+  }
+
+  async function expectLaterEventPersisted() {
+    child.send({
+      method: 'turn/completed',
+      params: {
+        threadId: CODEX_THREAD,
+        turn: { id: 'turn-1', status: 'completed', items: [], error: null },
+      },
+    });
+    await eventually(() =>
+      persisted().find((event) => event.method === 'turn.completed'),
+    );
+  }
+
+  test('a Codex html_preview approval with ~40 KB of HTML is shown, survives a reload, is answered from the raw request, and the stream keeps going', async () => {
     const html = htmlDocument(40 * 1024);
     // The production shape exceeds the ceiling verbatim.
     expect(
@@ -221,8 +265,8 @@ describe('an oversized engine request through OrchestrationService', () => {
     );
     if (opened.method !== 'request.opened') throw new Error('unreachable');
 
-    expect(storedBytes(opened)).toBeLessThanOrEqual(
-      REQUEST_OPENED_INGRESS_BUDGET_BYTES + 1024,
+    expect(Buffer.byteLength(JSON.stringify(opened))).toBeLessThanOrEqual(
+      REQUEST_OPENED_SNAPSHOT_MAX_BYTES,
     );
     expect(opened.title).toBe('Allow station-control to run "html_preview"');
     const payload = opened.payload as Record<string, any>;
@@ -252,10 +296,9 @@ describe('an oversized engine request through OrchestrationService', () => {
     expect(payload._meta.tool_params_display[1].value).toMatch(
       /Station shortened this value/,
     );
-    expect(warn).not.toHaveBeenCalledWith(
-      'Provider adapter event stream stopped',
-      expect.anything(),
-    );
+    // A reload (or a second device) gets the whole stored request back.
+    for (const read of readBack(opened.eventId)) expect(read).toEqual(opened);
+    expectStreamKeptRunning();
 
     await service.dispatch({
       type: 'respondToRequest',
@@ -278,18 +321,46 @@ describe('an oversized engine request through OrchestrationService', () => {
           event.requestId === opened.requestId,
       ),
     );
+    await expectLaterEventPersisted();
+  });
 
-    // A later event on the same thread is still persisted.
-    child.send({
-      method: 'turn/completed',
-      params: {
-        threadId: CODEX_THREAD,
-        turn: { id: 'turn-1', status: 'completed', items: [], error: null },
-      },
-    });
-    await eventually(() =>
-      persisted().find((event) => event.method === 'turn.completed'),
+  test('a question whose request needs projection keeps its exact form, through a reload', async () => {
+    // Two questions with long option descriptions: the form alone is ~25 KB,
+    // and Codex's raw `questions` repeat it, so the request needs projection.
+    const description = `Choose "this" option\n${'detail '.repeat(140)}`;
+    const questions = [0, 1].map((index) => ({
+      id: `q${index}`,
+      header: `Question ${index}`,
+      question: `Pick option ${index}`,
+      isOther: false,
+      isSecret: false,
+      options: Array.from({ length: 12 }, (_, option) => ({
+        label: `Option ${option}`,
+        description,
+      })),
+    }));
+    const params = {
+      threadId: CODEX_THREAD,
+      turnId: 'turn-1',
+      itemId: 'ask-1',
+      questions,
+    };
+    const form = codexInputRequest(params);
+    expect(form).not.toBeNull();
+    child.send({ id: 13, method: 'item/tool/requestUserInput', params });
+
+    const opened = await eventually(() =>
+      persisted().find((event) => event.method === 'request.opened'),
     );
+    if (opened.method !== 'request.opened') throw new Error('unreachable');
+    expect(opened.payload).toMatchObject({
+      stationTruncation: { truncated: true },
+    });
+    expect(opened.payload?.inputRequest).toEqual(form);
+    for (const read of readBack(opened.eventId)) {
+      expect(read).toEqual(opened);
+      expect(inputRequestFromRequestEvent(read as never)).toEqual(form);
+    }
   });
 
   test('a request within budget is stored exactly as the engine sent it', async () => {
@@ -297,7 +368,7 @@ describe('an oversized engine request through OrchestrationService', () => {
       threadId: CODEX_THREAD,
       turnId: 'turn-1',
       itemId: 'cmd-1',
-      command: `printf '%s\\n' "${'a'.repeat(20_000)}"`,
+      command: `printf '%s\\n' "${'a'.repeat(30_000)}"`,
       reason: 'Write the "probe"\nfile',
     };
     child.send({
@@ -311,9 +382,47 @@ describe('an oversized engine request through OrchestrationService', () => {
     if (opened.method !== 'request.opened') throw new Error('unreachable');
     expect(opened.payload).toEqual(params);
     expect(opened.description).toBe(params.reason);
+    // Above the ordinary 24 KiB read ceiling, and still read back whole.
+    expect(Buffer.byteLength(JSON.stringify(opened))).toBeGreaterThan(
+      SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES,
+    );
+    for (const read of readBack(opened.eventId)) expect(read).toEqual(opened);
   });
 
-  test('a request that cannot fit even when projected is cancelled with the engine and surfaced, not left pending', async () => {
+  test('a tool call with a 75 KB argument starts a readable tool row and the stream keeps going', async () => {
+    const html = htmlDocument(75 * 1024);
+    child.send({
+      method: 'item/started',
+      params: {
+        threadId: CODEX_THREAD,
+        turnId: 'turn-1',
+        item: {
+          id: 'mcp-html',
+          type: 'mcpToolCall',
+          server: 'station-control',
+          tool: 'html_preview',
+          arguments: { title: 'Report', html },
+        },
+      },
+    });
+    const started = await eventually(() =>
+      persisted().find((event) => event.method === 'tool.started'),
+    );
+    if (started.method !== 'tool.started') throw new Error('unreachable');
+    expect(started).toMatchObject({
+      toolCallId: 'mcp-html',
+      toolName: 'station-control/html_preview',
+      arguments: { title: 'Report' },
+    });
+    const shown = (started.arguments as { html: string }).html;
+    expect(html.startsWith(shown.slice(0, shown.indexOf('\n…[')))).toBe(true);
+    expect(shown).toMatch(/Station shortened this value: \d+ more bytes/);
+    for (const read of readBack(started.eventId)) expect(read).toEqual(started);
+    expectStreamKeptRunning();
+    await expectLaterEventPersisted();
+  });
+
+  test('a form too large to store even when projected is declined with the engine and surfaced, not left pending', async () => {
     // The form is shown to the person exactly as asked, so it is never cut;
     // this one is valid but larger than the ceiling on its own.
     const description = `${'"Line"\n'.repeat(200)}`.slice(0, 1_500);
@@ -347,37 +456,53 @@ describe('an oversized engine request through OrchestrationService', () => {
       ),
     );
     expect(warning).toMatchObject({
-      message: expect.stringMatching(/too large.*cancelled/),
+      message: expect.stringMatching(/declined it for you.*can continue/),
     });
-    // The engine's request was answered (a cancelled question carries no
-    // answers), so Codex is not left waiting.
+    // The engine's request was answered (a declined question carries no
+    // answers) and recorded as a decline, so Codex is not left waiting.
     expect(await eventually(() => child.repliesTo(9)[0])).toEqual({
       jsonrpc: '2.0',
       id: 9,
       result: { answers: {} },
     });
+    expect(
+      await eventually(() =>
+        persisted().find((event) => event.method === 'request.resolved'),
+      ),
+    ).toMatchObject({ status: 'denied' });
     expect(persisted().some((event) => event.method === 'request.opened')).toBe(
       false,
     );
     // This is not a stream failure: no interruption, and later events persist.
-    expect(warn).not.toHaveBeenCalledWith(
-      'Provider adapter event stream stopped',
-      expect.anything(),
-    );
-    child.send({
-      method: 'turn/completed',
-      params: {
-        threadId: CODEX_THREAD,
-        turn: { id: 'turn-1', status: 'completed', items: [], error: null },
-      },
-    });
+    expectStreamKeptRunning();
+    await expectLaterEventPersisted();
+  });
+
+  test('an approval EventStore refuses for its structure is declined on the wire, not cancelled', async () => {
+    // Over EventStore's 512-item array limit: projection only shortens text.
+    const elicitation = htmlPreviewElicitation(15, '<p>small</p>');
+    (elicitation.params._meta.tool_params as Record<string, unknown>).rows =
+      Array.from({ length: 600 }, (_, index) => index);
+    child.send(elicitation);
+
     await eventually(() =>
-      persisted().find((event) => event.method === 'turn.completed'),
+      persisted().find(
+        (event) =>
+          event.method === 'runtime.warning' &&
+          event.code === 'request-too-large-to-show',
+      ),
     );
+    expect(await eventually(() => child.repliesTo(15)[0])).toEqual({
+      jsonrpc: '2.0',
+      id: 15,
+      result: { action: 'decline' },
+    });
+    expectStreamKeptRunning();
+    await expectLaterEventPersisted();
   });
 });
 
-describe('projectRequestOpenedForIngress', () => {
+describe('projectEventForIngress', () => {
   const base = {
     eventId: 'event-1',
     provider: 'codex' as const,
@@ -399,7 +524,7 @@ describe('projectRequestOpenedForIngress', () => {
       },
     };
     const before = JSON.stringify(event);
-    expect(projectRequestOpenedForIngress(event)).toBe(event);
+    expect(projectEventForIngress(event)).toBe(event);
     expect(JSON.stringify(event)).toBe(before);
   });
 
@@ -410,6 +535,24 @@ describe('projectRequestOpenedForIngress', () => {
       severity: 'warning' as const,
       message: 'x'.repeat(100_000),
     };
-    expect(projectRequestOpenedForIngress(event as never)).toBe(event);
+    expect(projectEventForIngress(event as never)).toBe(event);
+  });
+
+  test('the receipt stays inside its reserve however many long paths are cut', () => {
+    const key = 'k'.repeat(200);
+    const payload: Record<string, unknown> = {};
+    for (let index = 0; index < 40; index += 1)
+      payload[`${key}${index}`] = { [key]: 'v'.repeat(4_000) };
+    const projected = projectEventForIngress({ ...base, payload });
+    if (projected.method !== 'request.opened') throw new Error('unreachable');
+    const receipt = projected.payload?.stationTruncation as {
+      fields: string[];
+    };
+    expect(receipt.fields).toHaveLength(16);
+    for (const field of receipt.fields)
+      expect(field.length).toBeLessThanOrEqual(96);
+    expect(Buffer.byteLength(JSON.stringify(projected))).toBeLessThanOrEqual(
+      REQUEST_OPENED_SNAPSHOT_MAX_BYTES - 4 * 1024,
+    );
   });
 });
