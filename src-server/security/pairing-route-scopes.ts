@@ -1095,6 +1095,14 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     }),
   ),
   {
+    id: '/api/pairing/device-access-transactions/:id:read',
+    method: 'GET',
+    prefix: '/api/pairing/device-access-transactions/:id',
+    exact: true,
+    scope: PAIRING_SCOPE_ACCESS_MANAGE,
+    origin: 'explicit',
+  },
+  {
     id: '/api/pairing:manage',
     method: '*',
     prefix: '/api/pairing',

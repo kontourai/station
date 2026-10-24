@@ -143,6 +143,7 @@ async function start() {
     },
   });
   configureDevicePairingHostRoutes(api as never, pairing, {
+    consentChannel: channel,
     operatorPasskeys: passkeys,
     operatorSessions: sessions,
     verifyOperatorCredential: (credential) =>

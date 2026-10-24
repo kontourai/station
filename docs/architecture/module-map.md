@@ -200,9 +200,18 @@ behind `station environment operator passkeys`. The
 [session service](../../src-server/services/identity/operator-sessions.ts) verifies
 single-use sign-in assertions on the [consent origin](../../src-server/runtime/consent/operator-sign-in-routes.ts)
 and stores hashed, device-bound sessions in that same private registry. The HTTP
-boundary admits operator-session authority on three exact read leaves only;
-mutations refuse it. Server-side idle/absolute expiry and live pairing, passkey
-and credential-rotation checks gate every read. See
+boundary admits exact session read leaves and per-action access-change requests.
+Those writes return 202 without mutation. The
+[consent store](../../src-server/services/consent/consent-transactions.ts) owns the
+single-use transaction and target fingerprint; the separate consent listener
+requires a UV passkey assertion from its owning session before commit. Cancel
+uses that session and the render nonce on the consent origin to record terminal
+denial without a passkey; it cannot commit. Device
+scope/revoke/removal, people groups, personal tokens and different-passkey
+revocation share this boundary. Token secrets appear once in the commit response,
+never in transaction reads. Server-side idle/absolute expiry and live pairing,
+passkey and credential-rotation checks remain enforced; step-up and its status
+polls do not extend session lifetime. See
 [Operator passkeys](../guides/operator-passkeys.md) for the origin boundary,
 plugin-readable inventory and host recovery limits.
 
@@ -1863,7 +1872,7 @@ Starting a Session crosses two boundaries: an engine may start, and Station must
 
 **Interface.** `execute({ type: 'start-session', input }, context)` is the closed caller Interface. It always returns one of `accepted`, `rejected`, `failed`, or `indeterminate`, together with a receipt and `receiptStatus: persisted|unavailable`. `accepted` has a persisted accepted receipt and a session. `rejected` and `failed` report whether their terminal receipt is durable. `indeterminate` covers uncertain provider creation as well as missing accepted-receipt durability; a Session is included only when one is known. The server-only `executeInternal` also carries recovery, Task dispatch, owned-workspace, and portable-execution admission capabilities. Those options are not accepted from public command JSON.
 
-**Behavior.** The Module initializes and records dispatch before launch, then starts, attaches, and binds before persisting `accepted`. A fault before the provider call can return `failed`; a terminal receipt persistence fault returns `failed` or `rejected` with `receiptStatus: unavailable`. After a session effect, an accepted write/readback fault returns `indeterminate`, never overwrites the accepted attempt with `failed`, and must not be retried automatically. A durable readback matching command ID, thread, command type, and accepted status turns a write-success-then-throw into `accepted`. Ordering and receipt-fault classification stay inside the module. `failed` is not a universal proof that no engine started: ordinary errors in later attachment or binding work also use that outcome. Inspect the known Session and receipt rather than inferring retry safety from that word alone.
+**Behavior.** The Module initializes and records dispatch before launch, then starts, attaches, and binds before persisting `accepted`. A fault before the provider call can return `failed`; a terminal receipt persistence fault returns `failed` or `rejected` with `receiptStatus: unavailable`. After a session effect, an accepted write/readback fault returns `indeterminate`, never overwrites the accepted attempt with `failed`, and must not be retried automatically. A durable readback matching command ID, thread, command type, and accepted status turns a write-success-then-throw into `accepted`. Ordering and receipt-fault classification stay inside the module. `failed` is not a universal proof that no engine started: ordinary errors in later attachment or binding work also use that outcome. Those attachment/binding failures revoke all Session MCP credentials and attempt to stop the newly started engine. A failed or timed-out stop logs the cleanup failure, preserves ownership and the original error, and retires only a replaced adapter; unrelated Sessions on the current adapter survive. Inspect the known Session and receipt rather than inferring retry safety from that word alone.
 
 **Code and evidence.** `OrchestrationService` composes receipt, session-state, launch-policy, and binding Adapters; orchestration routes and Station Control tools use the public Module. Receipt initialization, dispatch recording, accepted persistence, terminal persistence, and exact readback are total at this Interface: warning observation is best effort and cannot make `execute` reject. Evidence lives in `src-server/services/orchestration/__tests__/session-command-module.test.ts`, `orchestration-service.test.ts`, orchestration route tests, and Station Control tool tests. **Do not reintroduce:** exported callback bags, route-specific start sequencing, an untyped command string, a receipt fault that rejects `execute`, or an automatic retry of `indeterminate`.
 
@@ -5210,7 +5219,10 @@ Before starting an engine, Station must resolve what a Project means on this com
 `createProjectSessionDirectoryResolver` in
 `src-server/services/projects/project-session-directory.ts` composes the
 existing manifest and live resource resolver for new engine starts and retained
-qualified Sessions. New Sessions use the selected execution root. A continuation
+qualified Sessions. New Project Sessions canonicalize the selected execution root
+and explicit cwd before containment, record that realpath, and reauthorize it
+before provider start. An unchanged alias such as `/tmp` pointing to
+`/private/tmp` therefore does not make the first turn fail after spawn. A continuation
 keeps its recorded canonical cwd only when its persisted local Project ID still
 matches and that directory remains inside a currently verified attached resource.
 Read-binding, successor-start and send-turn admission recheck this authority.

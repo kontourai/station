@@ -1,0 +1,7 @@
+{
+  "revision": "6ead7d8e4e4dbf52a1a6014164da8ea5a8993c74",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Inspected regenerated credential-free static documentation content after the S4 module-map correction: 119 topics, with the exact session leaves, 202-without-mutation requests, consent-origin UV transaction commit and one-time token delivery described by the canonical owner. Topic identities, exports and live-state access remain unchanged. This refresh covers the generated content delta only; it does not grant MCP operator authority or qualify remote/native runtime behavior.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

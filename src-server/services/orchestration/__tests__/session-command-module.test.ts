@@ -60,6 +60,7 @@ function moduleUnderTest(
         (() => ({ provider: 'claude', metadata: {} }) as never),
       prepareStart: async (input) => input,
       start,
+      cleanupFailedStart: vi.fn(),
       recordStarted: vi.fn(),
       ensureStartedSessionCurrent: vi.fn(),
       logStarted: vi.fn(),

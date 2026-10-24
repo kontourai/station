@@ -175,12 +175,16 @@ export class AdapterRetirement {
         threadId,
         error: errorMessage(error),
       });
-      const currentRetirement = this.adapterRetirementByAdapter.get(adapter);
-      if (currentRetirement) {
-        void currentRetirement.finally(() => this.retire(adapter));
-      } else {
-        this.retire(adapter);
-      }
+      this.retireAfterCleanupFailure(adapter);
+    }
+  }
+
+  retireAfterCleanupFailure(adapter: ProviderAdapterShape): void {
+    const currentRetirement = this.adapterRetirementByAdapter.get(adapter);
+    if (currentRetirement) {
+      void currentRetirement.finally(() => this.retire(adapter));
+    } else {
+      this.retire(adapter);
     }
   }
 

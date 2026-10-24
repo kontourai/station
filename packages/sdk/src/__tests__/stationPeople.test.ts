@@ -8,12 +8,16 @@ vi.mock('../client/http', async (importOriginal) => ({
   authenticatedFetch: authenticatedFetchMock,
 }));
 
+import { StationRequestTimeoutError } from '../client/request-deadline';
 import {
   isOperatorCredentialRequired,
   isStationAccessUnavailable,
   mintOwnAccessToken,
   mintStationPersonToken,
+  revokeStationPersonToken,
   StationAccessError,
+  StationStepUpRequiredError,
+  setStationPersonGroup,
 } from '../query-domains/stationPeople';
 
 /**
@@ -23,6 +27,83 @@ import {
  */
 describe('Station people and token refusals (#3557)', () => {
   beforeEach(() => authenticatedFetchMock.mockReset());
+
+  it.each([
+    [
+      'group',
+      () =>
+        setStationPersonGroup(
+          'human:test:ada',
+          'admin',
+          'https://station.test',
+        ),
+    ],
+    [
+      'mint',
+      () =>
+        mintStationPersonToken(
+          'human:test:ada',
+          { name: 'CI', scope: 'orchestration:read' },
+          'https://station.test',
+        ),
+    ],
+    [
+      'revoke',
+      () =>
+        revokeStationPersonToken(
+          'human:test:ada',
+          'token-1',
+          'https://station.test',
+        ),
+    ],
+  ] as const)(
+    '%s exposes a typed pending review instead of reporting success or a parse error',
+    async (_name, write) => {
+      const transaction = {
+        id: 'action-1',
+        reviewUrl: 'https://station.test:8443/consent/action-1',
+        expiresAt: 1_800_000_000_000,
+      };
+      authenticatedFetchMock.mockResolvedValue(
+        Response.json(
+          { status: 'step_up_required', transaction },
+          { status: 202 },
+        ),
+      );
+      const error = await write().catch((failure: unknown) => failure);
+      expect(error).toBeInstanceOf(StationStepUpRequiredError);
+      expect(error).toMatchObject({
+        status: 202,
+        code: 'step_up_required',
+        transaction,
+      });
+      expect(isStationAccessUnavailable(error)).toBe(false);
+      expect(isOperatorCredentialRequired(error)).toBe(false);
+    },
+  );
+
+  it('rejects a non-JSON 202 as an invalid step-up response', async () => {
+    authenticatedFetchMock.mockResolvedValue(
+      new Response('upstream pending', { status: 202 }),
+    );
+    await expect(
+      setStationPersonGroup('human:test:ada', 'admin', 'https://station.test'),
+    ).rejects.toThrow('Invalid step-up response');
+  });
+
+  it('preserves a deadline failure while reading a pending review body', async () => {
+    const response = new Response(null, { status: 202 });
+    const deadline = new StationRequestTimeoutError(
+      'https://station.test/api/pairing/people/human:test:ada/group',
+      1000,
+      { method: 'PUT' },
+    );
+    vi.spyOn(response, 'json').mockRejectedValue(deadline);
+    authenticatedFetchMock.mockResolvedValue(response);
+    await expect(
+      setStationPersonGroup('human:test:ada', 'admin', 'https://station.test'),
+    ).rejects.toBe(deadline);
+  });
 
   it('reads a People route’s string error code', async () => {
     authenticatedFetchMock.mockResolvedValue(

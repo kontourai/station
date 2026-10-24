@@ -42,9 +42,11 @@
  * ALLOWED_ORIGINS — that would make consent pages trusted callers of the
  * whole API.
  */
+import { randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 import { createAdaptorServer } from '@hono/node-server';
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import {
   assertConsentListenerRouteCoverage,
   type ConsentDecisionCredentialResolver,
@@ -60,7 +62,10 @@ import type {
   ConsentTransactionView,
 } from '../../services/consent/consent-transactions.js';
 import type { OperatorPasskeyEnrollmentService } from '../../services/identity/operator-passkey-enrollment.js';
-import type { OperatorSessionService } from '../../services/identity/operator-sessions.js';
+import {
+  type OperatorSessionService,
+  parseOperatorSessionCookie,
+} from '../../services/identity/operator-sessions.js';
 import { consentDecisionOps } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
 import { sanitizedTransportError } from '../../utils/outward-error.js';
@@ -115,7 +120,64 @@ body{margin:0;min-height:100svh;display:grid;place-items:center;padding:20px}mai
 ul{list-style:none;margin:0 0 22px;padding:0;display:grid;gap:10px}li{display:grid;gap:3px;padding:13px 14px;border:1px solid #3f4c5f;border-radius:12px;background:#17212e}li span{font-size:13px;color:#9aa9ba}
 .warning{border-left:3px solid #fb7185;padding:10px 12px;background:#fb718512;color:#fecdd3;border-radius:6px;margin-bottom:22px}.actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
 button{min-height:44px;border-radius:10px;padding:0 18px;font:inherit;font-weight:650;cursor:pointer}.deny{border:1px solid #475569;background:#111923;color:#e8edf4}.approve{border:1px solid #5eead4;background:#5eead4;color:#09211d}
+button:disabled{opacity:.45;cursor:wait}form[hidden]{display:none}
 @media(max-width:480px){main{padding:20px}.actions{display:grid;grid-template-columns:1fr}.actions form,.actions button{width:100%}}`;
+
+const STEP_UP_SCRIPT = `
+const form = document.querySelector('form');
+const status = document.createElement('p'); status.setAttribute('role','status'); form.after(status);
+const decode = value => Uint8Array.from(atob(value.replace(/-/g, '+').replace(/_/g, '/')), ch => ch.charCodeAt(0));
+const encode = value => btoa(String.fromCharCode(...new Uint8Array(value))).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');
+form.addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = event.submitter;
+  for (const item of form.querySelectorAll('button')) item.disabled = true;
+  try {
+    let response;
+    if (button.value !== 'deny') {
+      const options = JSON.parse(form.dataset.options);
+      options.challenge = decode(options.challenge);
+      options.allowCredentials = options.allowCredentials.map(item => ({...item, id:decode(item.id)}));
+      const credential = await navigator.credentials.get({publicKey:options});
+      if (!credential) throw new Error('The passkey prompt was cancelled.');
+      response = {id:credential.id, rawId:encode(credential.rawId), type:credential.type, clientExtensionResults:credential.getClientExtensionResults(), response:{authenticatorData:encode(credential.response.authenticatorData), clientDataJSON:encode(credential.response.clientDataJSON), signature:encode(credential.response.signature), userHandle:credential.response.userHandle ? encode(credential.response.userHandle) : null}};
+    }
+    const result = await fetch(form.action, {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({nonce:form.elements.nonce.value, decision:button.value, response})});
+    const body = await result.json();
+    form.hidden = true;
+    if (!result.ok) {
+      status.textContent = body.error === 'target_changed'
+        ? 'This changed since you asked. Nothing was applied; open a new request.'
+        : body.error === 'session_ended'
+          ? 'Your operator session ended; sign in again. Nothing was applied.'
+        : body.error === 'commit_refused' && body.detail
+          ? body.detail + ' Nothing was applied. Reopen this review to try again.'
+          : body.error === 'not_pending'
+            ? 'This request expired or was already decided. Nothing further was applied. Open a new request.'
+            : 'The change was refused. Nothing was applied. Reopen this review to try again.';
+      return;
+    }
+    status.textContent = body.status === 'denied' ? 'Cancelled. Nothing changed. You can close this page.' : 'Applied. Return to Station.';
+    if (body.secret) { const secret = document.createElement('code'); secret.textContent = body.secret; status.after(secret); status.textContent += ' Copy this token now; it will never be shown again.'; }
+  } catch (error) { form.hidden = true; status.textContent = error.message + ' Nothing further will be submitted from this page. Reopen the review to check its status.'; }
+});`;
+
+function transactionStatusText(
+  status: ConsentTransactionView['status'] | undefined,
+): string {
+  if (!status) return 'This request is closed.';
+  const messages: Record<ConsentTransactionView['status'], string> = {
+    pending: 'This request is awaiting a decision.',
+    approved: 'Applied. Return to Station.',
+    denied: 'Cancelled. Nothing was applied.',
+    expired: 'The review expired. Nothing was applied; open a new request.',
+    target_changed:
+      'This changed since you asked. Nothing was applied; open a new request.',
+    session_ended:
+      'Your operator session ended; sign in again. Nothing was applied.',
+  };
+  return messages[status];
+}
 
 function statusPage(title: string, detail: string): string {
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>${PAGE_STYLE}</style></head><body><main><div class="eyebrow">Station consent</div><h1>${escapeHtml(title)}</h1><p>${escapeHtml(detail)}</p><p>You can close this page and return to Station.</p></main></body></html>`;
@@ -124,12 +186,13 @@ function statusPage(title: string, detail: string): string {
 /**
  * The review page. Rendered STRICTLY from the transaction's canonical
  * description — text derived from the transaction, nothing else — with the
- * one-use nonce embedded as a hidden form field. Script-free by construction
- * and by CSP.
+ * one-use nonce embedded as a hidden form field. Passkey reviews alone add a
+ * nonce-authorized script for WebAuthn; other reviews remain script-free.
  */
 function reviewPage(
   transaction: ConsentTransactionView,
   nonce: string,
+  passkey?: { options: unknown; scriptNonce: string },
 ): string {
   const description = transaction.description;
   const items = description.items
@@ -148,12 +211,12 @@ function reviewPage(
 <h1>${escapeHtml(description.title)}</h1>
 <p>${escapeHtml(description.summary)}</p>
 <ul>${items}</ul>${warning}
-<form method="post" action="./${encodeURIComponent(transaction.id)}/decide" class="actions">
+<form method="post" action="./${encodeURIComponent(transaction.id)}/decide" class="actions" ${passkey ? `data-options="${escapeHtml(JSON.stringify(passkey.options))}"` : ''}>
 <input type="hidden" name="nonce" value="${escapeHtml(nonce)}">
 <button class="deny" type="submit" name="decision" value="deny">${escapeHtml(description.denyLabel)}</button>
 <button class="approve" type="submit" name="decision" value="approve">${escapeHtml(description.approveLabel)}</button>
 </form>
-</main></body></html>`;
+</main>${passkey ? `<script type="module" nonce="${passkey.scriptNonce}">${STEP_UP_SCRIPT}</script>` : ''}</body></html>`;
 }
 
 interface ConsentListenerDeps {
@@ -270,6 +333,90 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
     }
   });
 
+  const stepUpSession = (cookie: string | undefined) => {
+    const secret = parseOperatorSessionCookie(cookie);
+    const credential = parseDeviceSessionCookie(
+      cookie,
+      (candidate) => deps.credentials.identifyDevice(candidate) !== null,
+    );
+    const session =
+      secret && credential ? deps.sessions?.resolve(secret, credential) : null;
+    return session && secret && credential
+      ? { session, secret, credential }
+      : null;
+  };
+  app.post(
+    '/consent/:id/decide',
+    bodyLimit({ maxSize: 32 * 1024 }),
+    async (c, next) => {
+      const transaction = deps.channel.store.get(
+        deps.channel.tenantId,
+        c.req.param('id'),
+      );
+      if (transaction?.ceremony !== 'webauthn') return next();
+      c.header('Cache-Control', 'no-store');
+      const origin = deps.channel.trustedOrigin;
+      if (
+        !origin ||
+        c.req.header('host') !== new URL(origin).host ||
+        c.req.header('origin') !== origin ||
+        c.req.header('sec-fetch-site') !== 'same-origin'
+      )
+        return c.json({ error: 'origin_mismatch' }, 403);
+      if (
+        c.req.header('content-type')?.split(';')[0].trim() !==
+        'application/json'
+      )
+        return c.json({ error: 'invalid_request' }, 400);
+      const body = await c.req.json().catch(() => null);
+      const actor = stepUpSession(c.req.header('cookie'));
+      if (!actor || transaction.operatorSessionId !== actor.session.sessionId)
+        return c.json({ error: 'not_found' }, 404);
+      const denied = body?.decision === 'deny';
+      if (
+        typeof body?.nonce !== 'string' ||
+        (!denied &&
+          (typeof body?.response?.id !== 'string' || !body.response.response))
+      )
+        return c.json({ error: 'assertion_required' }, 403);
+      const result = await deps.channel.store.decide(
+        deps.channel.tenantId,
+        transaction.id,
+        denied ? 'denied' : 'approved',
+        body.nonce,
+        denied ? 'operator-session' : 'operator-passkey',
+        {
+          sessionId: actor.session.sessionId,
+          verify: (challenge) =>
+            deps.sessions!.verifyStepUp(
+              actor.secret,
+              actor.credential,
+              body.response,
+              challenge,
+            ),
+        },
+      );
+      deps.logger?.info('Operator step-up decision', {
+        id: transaction.id,
+        result: result.ok ? result.status : result.reason,
+      });
+      return result.ok
+        ? c.json({
+            status: result.status,
+            ...(result.secret ? { secret: result.secret } : {}),
+          })
+        : c.json(
+            {
+              error: result.reason,
+              ...(result.reason === 'commit_refused' && result.detail
+                ? { detail: result.detail }
+                : {}),
+            },
+            409,
+          );
+    },
+  );
+
   app.get('/consent/:id', (c) => {
     const id = c.req.param('id');
     // Review MED 3: rendering is a WRITE — it replaces the one-use nonce and
@@ -293,6 +440,53 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
           'The consent review only renders as a normal browser page navigation.',
         ),
         403,
+      );
+    }
+    const transaction = deps.channel.store.get(deps.channel.tenantId, id);
+    if (transaction?.ceremony === 'webauthn') {
+      const origin = deps.channel.trustedOrigin;
+      const actor = stepUpSession(c.req.header('cookie'));
+      if (
+        !origin ||
+        c.req.header('host') !== new URL(origin).host ||
+        !actor ||
+        actor.session.sessionId !== transaction.operatorSessionId
+      )
+        return c.html(
+          statusPage(
+            'Review unavailable',
+            'Sign in with the browser that requested this change.',
+          ),
+          403,
+        );
+      const rendered = deps.channel.store.renderReview(
+        deps.channel.tenantId,
+        id,
+      );
+      if (!rendered.ok)
+        return c.html(
+          statusPage(
+            'Review unavailable',
+            transactionStatusText(rendered.status),
+          ),
+          409,
+        );
+      const challenge = deps.channel.store.passkeyChallenge(
+        deps.channel.tenantId,
+        id,
+        rendered.nonce,
+        actor.session.sessionId,
+      )!;
+      const scriptNonce = randomUUID();
+      return c.html(
+        reviewPage(rendered.transaction, rendered.nonce, {
+          scriptNonce,
+          options: deps.sessions!.stepUpOptions(challenge),
+        }),
+        200,
+        {
+          'Content-Security-Policy': `default-src 'none'; script-src 'nonce-${scriptNonce}'; connect-src 'self'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'`,
+        },
       );
     }
     const authority = resolveListenerAuthority(
@@ -338,7 +532,7 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
       return c.html(
         statusPage(
           'Request already decided',
-          `This request is ${rendered.status ?? 'closed'}.`,
+          transactionStatusText(rendered.status),
         ),
       );
     }
@@ -475,7 +669,7 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
           return c.html(
             statusPage(
               'Request already decided',
-              `This request is ${result.status ?? 'closed'}.`,
+              transactionStatusText(result.status),
             ),
             409,
           );

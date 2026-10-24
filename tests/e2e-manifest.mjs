@@ -513,7 +513,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      'S3 real paired-browser sign-in: real pairing and enrollment, CLI host confirmation, Chromium virtual authenticator, consent-origin assertion, app-origin device-list read and mutation refusal, host revocation. Owns a private home and ephemeral listeners; no provider or runner operator-cookie substitution.',
+      'S3/S4 real paired-browser sign-in and per-action step-up: real pairing and enrollment, CLI host confirmation and independent access read-back, Chromium virtual authenticator, consent-origin review and assertion, UV refusal, non-operator mutation refusal and host revocation. Owns a private home and ephemeral listeners; no provider or runner operator-cookie substitution.',
     exceptions: [],
   },
   {

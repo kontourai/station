@@ -811,6 +811,7 @@ export {
   type StartTaskFromWorkItemResult,
   StationAccessError,
   type StationGroupChange,
+  StationStepUpRequiredError,
   type StopProviderTaskInput,
   type SurveyFlowReviewItemVM,
   type SurveyFlowReviewsVM,

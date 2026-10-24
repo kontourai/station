@@ -951,7 +951,7 @@ export type PairedDeviceRevocation =
   | { state: 'unobserved-before-revocation-provenance' }
   | {
       state: 'recorded';
-      actor: 'operator-credential' | 'device-access';
+      actor: 'operator-credential' | 'operator-passkey' | 'device-access';
       reason: 'owner-request';
     }
   | {

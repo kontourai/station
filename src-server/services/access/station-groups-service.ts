@@ -137,10 +137,22 @@ export class StationGroupsService {
    * what an unassigned person already is. Refuses anything that is not a
    * person's principal id.
    */
-  async assign(principalId: string, group: StationGroup): Promise<void> {
+  async assign(
+    principalId: string,
+    group: StationGroup,
+    expectedGroup?: StationGroup,
+    assertCurrent?: () => void,
+  ): Promise<void> {
     if (!isValidPrincipalId(principalId) || !isStationGroup(group))
       throw new StationGroupsError('invalid_assignment');
     await this.#mutate((record) => {
+      assertCurrent?.();
+      if (
+        expectedGroup !== undefined &&
+        (record.assignments[principalId] ?? DEFAULT_STATION_GROUP) !==
+          expectedGroup
+      )
+        throw new StationGroupsError('invalid_assignment');
       if (group === DEFAULT_STATION_GROUP)
         delete record.assignments[principalId];
       else record.assignments[principalId] = group;

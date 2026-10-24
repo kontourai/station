@@ -1,0 +1,15 @@
+{
+  "path": "docs/learn/media/operator-s4-step-up-cancelled.png",
+
+  "sources": [
+    "src-server/runtime/consent/consent-listener.ts",
+
+    "src-server/services/consent/consent-transactions.ts",
+
+    "src-server/runtime/consent/__tests__/operator-sessions.test.ts",
+
+    "tests/operator-sessions.spec.ts"
+  ],
+
+  "reviewNotes": []
+}

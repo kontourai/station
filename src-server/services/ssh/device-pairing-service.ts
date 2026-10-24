@@ -401,6 +401,11 @@ export type PairingRequesterPosition = 'off-box' | 'unproven';
 
 export type PairingApproval =
   | { readonly kind: 'presented-credential' }
+  | {
+      readonly kind: 'operator-passkey';
+      readonly passkeyId: string;
+      readonly sessionId: string;
+    }
   | { readonly kind: 'local-grant' }
   /** Single-use launcher capability exchanged by the Station UI. */
   | { readonly kind: 'ui-bootstrap' }
@@ -413,6 +418,7 @@ export type DeviceAccessApproval =
 
 type DeviceRevocationActor =
   | 'operator-credential'
+  | 'operator-passkey'
   | { readonly kind: 'device-access'; readonly credential: string };
 
 /**
@@ -840,6 +846,7 @@ function isValidRevocation(value: unknown, revokedAt: unknown): boolean {
     record.state === 'recorded' &&
     typeof revokedAt === 'number' &&
     (((record.actor === 'operator-credential' ||
+      record.actor === 'operator-passkey' ||
       record.actor === 'device-access') &&
       record.reason === 'owner-request') ||
       (record.actor === 'same-client-replacement' &&
@@ -2377,6 +2384,7 @@ export class DevicePairingService {
   revokeDevice(deviceId: string, actor: DeviceRevocationActor): PairedDevice {
     if (
       actor !== 'operator-credential' &&
+      actor !== 'operator-passkey' &&
       !this.deviceAccessAdministrator(actor.credential)
     )
       throw new DevicePairingError('approval_requires_operator');
@@ -2385,6 +2393,7 @@ export class DevicePairingService {
     if (!device) throw new DevicePairingError('device_not_found');
     if (
       actor !== 'operator-credential' &&
+      actor !== 'operator-passkey' &&
       this.credentialMayManagePairing(actor.credential) &&
       device.kind !== 'device'
     )
@@ -2397,7 +2406,7 @@ export class DevicePairingService {
       cascadeCredentialAliasRevocation(device, revokedAt);
       device.revocation = {
         state: 'recorded',
-        actor: actor === 'operator-credential' ? actor : 'device-access',
+        actor: typeof actor === 'string' ? actor : 'device-access',
         reason: 'owner-request',
       };
       // Revocation explicitly severs push, not just credential lookup — a
@@ -2559,6 +2568,7 @@ export class DevicePairingService {
   ): PairedDevice {
     if (
       actor !== 'operator-credential' &&
+      actor !== 'operator-passkey' &&
       !this.deviceAccessAdministrator(actor.credential)
     ) {
       throw new DevicePairingError('approval_requires_operator');
@@ -2567,6 +2577,7 @@ export class DevicePairingService {
     if (!device) throw new DevicePairingError('device_not_found');
     if (
       actor !== 'operator-credential' &&
+      actor !== 'operator-passkey' &&
       this.credentialMayManagePairing(actor.credential) &&
       device.kind !== 'device'
     )
@@ -2645,9 +2656,44 @@ export class DevicePairingService {
      */
     expectedScope?: string,
   ): PairedDevice {
+    this.validateDeviceScope(deviceId, scope, approval, expectedScope);
+    const nextRegistry = cloneRegistry(this.#registry);
+    const device = nextRegistry.devices.find((item) => item.id === deviceId)!;
+    const next = PAIRING_SCOPES.filter((token) => scope.includes(token));
+    const canonical = next.join(' ');
+    if (device.scope === canonical) return publicDevice(device);
+    const hadHomeControl = pairingScopeIncludes(
+      device.scope,
+      PAIRING_SCOPE_HOME_CONTROL,
+    );
+    const hasHomeControl = next.includes(PAIRING_SCOPE_HOME_CONTROL);
+    if (hadHomeControl !== hasHomeControl) {
+      const revision = device.homeControlGrantRevision ?? 0;
+      device.homeControlGrantRevision = revision + 1;
+    }
+    device.scope = canonical;
+    narrowCredentialAliasesToParent(device, this.#now());
+    // Persisted before it is exposed in memory, for the same reason the
+    // approval-authority setter does it: a write fault must not leave a
+    // device narrowed in this process and wide open on disk, where a restart
+    // silently restores what the operator just took away.
+    this.#persistRegistry(nextRegistry);
+    this.#registry = nextRegistry;
+    this.#notifyAccessChanged(deviceId);
+    return publicDevice(device);
+  }
+
+  /** Preflight the same grant policy before opening a passkey review. */
+  validateDeviceScope(
+    deviceId: string,
+    scope: readonly PairingScope[],
+    approval: DeviceAccessApproval,
+    expectedScope?: string,
+  ): void {
     if (
       approval.kind !== 'presented-credential' &&
       approval.kind !== 'local-grant' &&
+      approval.kind !== 'operator-passkey' &&
       !(
         approval.kind === 'device-access' &&
         this.deviceAccessAdministrator(approval.credential)
@@ -2664,8 +2710,7 @@ export class DevicePairingService {
         throw new DevicePairingError('scope_not_grantable');
       }
     }
-    const nextRegistry = cloneRegistry(this.#registry);
-    const device = nextRegistry.devices.find((item) => item.id === deviceId);
+    const device = this.#registry.devices.find((item) => item.id === deviceId);
     if (!device) throw new DevicePairingError('device_not_found');
     if (
       approval.kind === 'device-access' &&
@@ -2705,29 +2750,12 @@ export class DevicePairingService {
     }
     const next = PAIRING_SCOPES.filter((token) => scope.includes(token));
     if (next.length === 0) throw new DevicePairingError('invalid_scope');
-    const canonical = next.join(' ');
-    if (device.scope === canonical) return publicDevice(device);
-    const hadHomeControl = pairingScopeIncludes(
-      device.scope,
-      PAIRING_SCOPE_HOME_CONTROL,
-    );
-    const hasHomeControl = next.includes(PAIRING_SCOPE_HOME_CONTROL);
-    if (hadHomeControl !== hasHomeControl) {
-      const revision = device.homeControlGrantRevision ?? 0;
-      if (revision >= Number.MAX_SAFE_INTEGER - 1)
-        throw new DevicePairingError('scope_not_grantable');
-      device.homeControlGrantRevision = revision + 1;
-    }
-    device.scope = canonical;
-    narrowCredentialAliasesToParent(device, this.#now());
-    // Persisted before it is exposed in memory, for the same reason the
-    // approval-authority setter does it: a write fault must not leave a
-    // device narrowed in this process and wide open on disk, where a restart
-    // silently restores what the operator just took away.
-    this.#persistRegistry(nextRegistry);
-    this.#registry = nextRegistry;
-    this.#notifyAccessChanged(deviceId);
-    return publicDevice(device);
+    if (
+      pairingScopeIncludes(device.scope, PAIRING_SCOPE_HOME_CONTROL) !==
+        next.includes(PAIRING_SCOPE_HOME_CONTROL) &&
+      (device.homeControlGrantRevision ?? 0) >= Number.MAX_SAFE_INTEGER - 1
+    )
+      throw new DevicePairingError('scope_not_grantable');
   }
 
   setDeviceApprovalAuthority(
@@ -3302,13 +3330,16 @@ export class DevicePairingService {
    * The caller has already decided the scope is within that person's own
    * access; this checks only that it is a scope a token may carry.
    */
-  async mintPersonalToken(input: {
-    name: string;
-    binding: DevicePrincipalBinding;
-    ownerPrincipalId: string;
-    scope: string;
-    expiresAt: number | null;
-  }): Promise<MintedPersonalAccessToken> {
+  async mintPersonalToken(
+    input: {
+      name: string;
+      binding: DevicePrincipalBinding;
+      ownerPrincipalId: string;
+      scope: string;
+      expiresAt: number | null;
+    },
+    assertCurrent?: () => void,
+  ): Promise<MintedPersonalAccessToken> {
     const name = input.name.trim();
     const now = this.#now();
     // #3586: a token tied to an account is checked against the account's
@@ -3330,6 +3361,11 @@ export class DevicePairingService {
     const minted = await this.#tokens.mint(
       { ...input, name },
       MAX_PERSONAL_TOKENS_PER_PERSON,
+      () => {
+        assertCurrent?.();
+        if (!this.#accountStandingCurrent(input.binding))
+          throw new DevicePairingError('account_bound_person');
+      },
     );
     if (!minted)
       throw new DevicePairingError('identity_credential_quota_reached');
@@ -3356,6 +3392,7 @@ export class DevicePairingService {
   async revokePersonalToken(
     id: string,
     ownerPrincipalId?: string,
+    assertCurrent?: () => void,
   ): Promise<boolean> {
     if (!this.#tokens.usable()) throw new PersonalTokenUnavailableError();
     const target = this.#tokens
@@ -3366,7 +3403,7 @@ export class DevicePairingService {
           (ownerPrincipalId === undefined ||
             token.ownerPrincipalId === ownerPrincipalId),
       );
-    return target ? await this.#tokens.revoke(id) : false;
+    return target ? await this.#tokens.revoke(id, assertCurrent) : false;
   }
 
   #tokenView(token: StoredPersonalToken): PersonalAccessToken {

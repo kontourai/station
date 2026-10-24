@@ -157,6 +157,7 @@ export class PersonalTokenStore {
       expiresAt: number | null;
     },
     maxPerOwner: number,
+    assertCurrent?: () => void,
   ): Promise<{ token: StoredPersonalToken; secret: string } | undefined> {
     const secret = `stp_${randomBytes(32).toString('base64url')}`;
     const token: StoredPersonalToken = {
@@ -173,6 +174,7 @@ export class PersonalTokenStore {
     };
     let full = false;
     await this.#mutate((tokens) => {
+      assertCurrent?.();
       full =
         this.#active(tokens).filter(
           (held) => held.ownerPrincipalId === input.ownerPrincipalId,
@@ -183,15 +185,16 @@ export class PersonalTokenStore {
   }
 
   /** Revokes one token; `false` when it is unknown or no longer active. */
-  async revoke(id: string): Promise<boolean> {
+  async revoke(id: string, assertCurrent?: () => void): Promise<boolean> {
     let found = false;
-    await this.#mutate((tokens) =>
-      tokens.filter((token) => {
+    await this.#mutate((tokens) => {
+      assertCurrent?.();
+      return tokens.filter((token) => {
         if (token.id !== id) return true;
         found = true;
         return false;
-      }),
-    );
+      });
+    });
     return found;
   }
 

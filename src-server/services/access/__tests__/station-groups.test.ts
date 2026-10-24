@@ -5,6 +5,7 @@
 import { rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
+import * as fileLocks from '@kontourai/station-shared/lifecycle-events';
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { nativeActiveDevice } from '../../../runtime/bootstrap/native-device-proof-runtime.js';
@@ -99,6 +100,43 @@ const person = (login: string) =>
   humanPrincipal('tailscale-serve', login, login).id;
 
 describe('Station groups cap a device tied to a person', () => {
+  test('expected group is checked after a concurrent host assignment during mutation acquisition', async () => {
+    const { homeDir, security } = await station();
+    const groups = new StationGroupsService({
+      securityDir: join(homeDir, 'security'),
+    });
+    const principalId = person('casey@example.test');
+    let enter!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    let release!: () => void;
+    const resume = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const acquire = fileLocks.acquireFileMutationLockAsync;
+    const lock = vi
+      .spyOn(fileLocks, 'acquireFileMutationLockAsync')
+      .mockImplementationOnce(async (...args) => {
+        enter();
+        await resume;
+        return acquire(...args);
+      });
+    const pending = groups.assign(principalId, 'member', 'member');
+    const result = expect(pending).rejects.toMatchObject({
+      code: 'invalid_assignment',
+    });
+    try {
+      await entered;
+      await security.assignGroup(principalId, 'admin');
+    } finally {
+      release();
+      lock.mockRestore();
+    }
+    await result;
+    expect(groups.groupOf(principalId)).toBe('admin');
+  });
+
   test('a Member keeps Standard; every elevated grant is capped away, in every reader', async () => {
     const { security } = await station();
     const casey = pair(
