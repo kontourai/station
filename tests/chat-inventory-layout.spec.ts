@@ -355,8 +355,16 @@ test.describe('Chat inventory beside the transcript (#3882)', () => {
       .getByRole('button', { name: 'Open session', exact: true })
       .click();
     await expect(reopenedReader).toBeHidden();
+    const activity = page.getByRole('region', {
+      name: 'Activity',
+      exact: true,
+    });
+    await expect(activity).toBeVisible();
     await expect(
-      page.getByRole('heading', { name: 'Activity', exact: true }),
+      activity.getByRole('heading', {
+        name: 'Chat inventory layout.',
+        exact: true,
+      }),
     ).toBeVisible();
     browserHealth.assertHealthy();
   });
