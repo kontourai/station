@@ -13,6 +13,10 @@ import {
   stationControlRefusalBody,
 } from '../../tools/station-control-policy.js';
 import {
+  ConversationLineageTooLongError,
+  type ConversationMessageRead,
+} from './conversation-message-reader.js';
+import {
   type ConversationReferenceReadDeps,
   createConversationReadAdmission,
 } from './conversation-reference-read.js';
@@ -35,8 +39,9 @@ const schema = z
   })
   .strict();
 
-// Metadata has no search index. Refuse an oversized scan instead of answering a false miss.
+// Only admitted, filtered metadata consumes the scan budget. Indexed hits remain usable.
 const MAX_CONVERSATIONS = 2_000;
+const MAX_FILE_READS = 32;
 const snippet = (value: string, query: string) => {
   const at = value.toLowerCase().indexOf(query.toLowerCase());
   return value
@@ -135,15 +140,6 @@ export function createConversationWorkSearchRoutes(deps: {
           });
         }
       }
-      if (candidates.size > MAX_CONVERSATIONS)
-        return c.json(
-          {
-            success: false,
-            code: 'conversation_search_scan_limit',
-            error: 'Conversation metadata exceeds the search scan budget.',
-          },
-          422,
-        );
       const native = await deps.search?.search(
         {
           version: UNIFIED_SEARCH_V1,
@@ -164,7 +160,11 @@ export function createConversationWorkSearchRoutes(deps: {
         const id = deps.read.conversationIdOf(sessionId);
         if (!messageHits.has(id)) messageHits.set(id, hit.snippet);
       }
-      const incompleteSources =
+      const incompleteSources: Array<{
+        source: string;
+        state: string;
+        reason?: string;
+      }> =
         native?.sources
           .filter((source) => source.state !== 'available')
           .map((source) => ({
@@ -178,6 +178,16 @@ export function createConversationWorkSearchRoutes(deps: {
           state: 'unavailable',
           reason: 'source-unavailable',
         });
+      const markIncomplete = (source: string, reason: string) => {
+        if (
+          !incompleteSources.some(
+            (entry) => entry.source === source && entry.reason === reason,
+          )
+        )
+          incompleteSources.push({ source, state: 'partial', reason });
+      };
+      let scanned = 0;
+      let fileReads = 0;
       const results = [];
       for (const candidate of [...candidates.values()].sort(
         (a, b) =>
@@ -190,18 +200,38 @@ export function createConversationWorkSearchRoutes(deps: {
           continue;
         if (agent !== undefined && candidate.agent !== agent) continue;
         if (admit(caller, candidate.conversationId).refusal) continue;
+        if (candidate.stored || !messageHits.has(candidate.conversationId)) {
+          if (scanned >= MAX_CONVERSATIONS) {
+            markIncomplete('station.conversations', 'metadata-scan-limit');
+            continue;
+          }
+          scanned += 1;
+        }
         let matched = candidate.title
           ?.toLowerCase()
           .includes(query.toLowerCase())
           ? snippet(candidate.title, query)
           : messageHits.get(candidate.conversationId);
         if (candidate.stored) {
-          // Same sanitized owner-scoped reader as read_conversation, after the same admission.
-          const read = await deps.read.readConversationMessages(
-            c.req.raw,
-            candidate.agent ?? 'station',
-            candidate.conversationId,
-          );
+          if (fileReads >= MAX_FILE_READS) {
+            markIncomplete('station.files', 'transcript-read-limit');
+            continue;
+          }
+          fileReads += 1;
+          // Even title hits need the owner-scoped read to establish that the file still reads.
+          let read: ConversationMessageRead;
+          try {
+            read = await deps.read.readConversationMessages(
+              c.req.raw,
+              candidate.agent ?? 'station',
+              candidate.conversationId,
+            );
+          } catch (error) {
+            if (!(error instanceof ConversationLineageTooLongError))
+              throw error;
+            markIncomplete('station.files', 'conversation-lineage-too-long');
+            continue;
+          }
           if (read.source === 'empty' && read.absence !== 'no-messages')
             continue;
           if (!matched) {

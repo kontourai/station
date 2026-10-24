@@ -488,8 +488,15 @@ message hits); an incomplete source is reported in `incompleteSources`, and
 means additional matches exceeded the requested result limit; narrow the
 phrase or filters. No search continuation is issued. Titles and file-backed
 messages have no search index, so discovery scans their existing owner-scoped
-readers. More than 2,000 candidate conversations is refused with
-`conversation_search_scan_limit`; reader errors report search unavailable.
+readers. Each call scans metadata for at most 2,000 conversations after Project,
+Agent and read admission filters, and reads at most 32 file-backed conversations
+(including title hits, which still need a readable transcript). Each transcript
+read follows at most 64 Session segments. Indexed native hits remain eligible
+after the metadata scan budget is exhausted. A scan or file-read budget reached,
+or a file lineage too long to read, yields `state: partial` with an
+`incompleteSources` entry; the unreadable conversation is skipped. Other reader
+errors report search unavailable. These budgets bound matching and transcript
+reads; the existing owner metadata listing still enumerates its records.
 
 `list_active_work` uses the same rows, scope, computed status and recorded
 workspace facts as `list_project_activity`, limited to conversations with a

@@ -388,12 +388,6 @@ export const STATION_CONTROL_TOOL_POLICY = {
     routes: [del('/agents/:slug/conversations/:conversationId')],
   },
 
-  // #176: search reads as the session's owner (`POST /api/search` answers
-  // with that principal's transcripts and never another Station's). Renaming
-  // is its own leaf, not the person's `PATCH`: it refuses a title a person set
-  // and a runtime-managed conversation, and only the owner's own conversation
-  // is reachable (a bound operator caller is not scoped, as for
-  // `delete_conversation`).
   search_conversations: {
     ...SELF_READ,
     routes: [get('/api/conversations/work/search')],
@@ -402,6 +396,13 @@ export const STATION_CONTROL_TOOL_POLICY = {
     ...SELF_READ,
     routes: [get('/api/orchestration/session-activity/active-work')],
   },
+
+  // #176: search reads as the session's owner (`POST /api/search` answers
+  // with that principal's transcripts and never another Station's). Renaming
+  // is its own leaf, not the person's `PATCH`: it refuses a title a person set
+  // and a runtime-managed conversation, and only the owner's own conversation
+  // is reachable (a bound operator caller is not scoped, as for
+  // `delete_conversation`).
   search_sessions: {
     ...SELF_READ,
     routes: [post('/api/search')],

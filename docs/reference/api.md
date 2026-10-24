@@ -4117,7 +4117,13 @@ Unknown fields and out-of-range limits return `400 invalid_search_request`.
 has `{conversationId, title, agent, projectSlug, updatedAt, snippet}`; unknown
 identity fields are null. The response data is
 `{state, results, limit, resultWindow?, incompleteSources}`. Incomplete native
-search or additional matches means `state: partial`, never a conclusive miss.
+search, scan/read budgets or additional matches means `state: partial`, never a
+conclusive miss. The metadata matching budget covers 2,000 filtered, admitted
+conversations; up to 32 file transcripts are read per call. Indexed native hits
+remain eligible beyond the metadata budget. Local incomplete entries use
+`station.conversations` / `metadata-scan-limit`, or `station.files` /
+`transcript-read-limit` or `conversation-lineage-too-long`. Overlong file
+lineages are skipped; their titles are not returned.
 The [agent guide](../guides/self-configuring-agent.md#find-related-work-before-starting)
 explains the native search window, metadata scan bound and follow-up reads.
 

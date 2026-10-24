@@ -141,7 +141,9 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
     for (const close of closers.splice(0)) await close();
   });
 
-  async function setup(options: { filler?: number } = {}) {
+  async function setup(
+    options: { filler?: number; nativeSearch?: boolean } = {},
+  ) {
     __resetStationServerSelfAttestationForTests();
     const home = makeTempDir('station-control-project-activity-');
     const storage = new FileStorageAdapter(home);
@@ -560,7 +562,7 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
       monitoringEvents: [],
       orchestrationEventStore: store,
       orchestrationService: orchestration,
-      runtimeSearch,
+      runtimeSearch: options.nativeSearch === false ? undefined : runtimeSearch,
       storageAdapter: storage,
       taskGraphService: taskGraph,
       projectService: projects,
@@ -736,6 +738,175 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
       .sort();
 
   describe('work discovery through MCP tools/call', () => {
+    test('other Projects do not exhaust this caller’s admitted search scan', async () => {
+      const { tool, memory } = await setup();
+      for (let n = 0; n < 2_001; n += 1)
+        await memory.createConversation({
+          id: `other-project-${n}`,
+          userId: A,
+          resourceId: 'default',
+          title: 'Unrelated conversation',
+          metadata: { projectSlug: 'project-2' },
+        });
+      const result = await tool(bearer('a-caller'), 'search_conversations', {
+        query: 'zephyrquartz',
+      });
+      expect(result.isError, JSON.stringify(result.body)).toBe(false);
+      expect(result.body.data).toMatchObject({
+        state: 'available',
+        results: [expect.objectContaining({ conversationId: 'a-anchor' })],
+        incompleteSources: [],
+      });
+    });
+
+    test('bounds admitted metadata scans and still returns indexed hits beyond the scan window', async () => {
+      const { tool, startSession, p1 } = await setup();
+      for (let n = 0; n < 2_001; n += 1)
+        startSession(`scan-${n}`, A, p1, {
+          metadata: { delegationTitle: 'Unrelated metadata' },
+        });
+      const result = await tool(bearer('a-caller'), 'search_conversations', {
+        query: 'zephyrquartz',
+      });
+      expect(result.isError, JSON.stringify(result.body)).toBe(false);
+      expect(result.body.data).toMatchObject({
+        state: 'partial',
+        results: [expect.objectContaining({ conversationId: 'a-anchor' })],
+        incompleteSources: expect.arrayContaining([
+          {
+            source: 'station.conversations',
+            state: 'partial',
+            reason: 'metadata-scan-limit',
+          },
+        ]),
+      });
+    });
+
+    test('skips an unreadable file lineage without losing readable indexed matches', async () => {
+      const { tool, memory, store, startSession, p1, at } = await setup();
+      startSession('stored-lineage', A, p1);
+      await memory.createConversation({
+        id: 'stored-lineage',
+        userId: A,
+        resourceId: 'default',
+        title: 'zephyrquartz unreadable title',
+        metadata: { projectSlug: 'project-1' },
+      });
+      let predecessor = 'stored-lineage';
+      for (let n = 1; n <= 64; n += 1)
+        predecessor = store.reserveNextConversationSession({
+          conversationId: 'stored-lineage',
+          predecessorSessionId: predecessor,
+          proposedSessionId: `stored-lineage-${n}`,
+          createdAt: at(),
+        }).lineage.sessionId;
+      const read = await tool(bound('a-caller'), 'read_conversation', {
+        conversationId: 'stored-lineage',
+      });
+      expect(read.body).toMatchObject({
+        success: false,
+        code: 'conversation_lineage_too_long',
+      });
+      const result = await tool(bound('a-caller'), 'search_conversations', {
+        query: 'zephyrquartz',
+      });
+      expect(result.isError, JSON.stringify(result.body)).toBe(false);
+      expect(result.body.data).toMatchObject({
+        state: 'partial',
+        results: [expect.objectContaining({ conversationId: 'a-anchor' })],
+        incompleteSources: expect.arrayContaining([
+          {
+            source: 'station.files',
+            state: 'partial',
+            reason: 'conversation-lineage-too-long',
+          },
+        ]),
+      });
+    });
+
+    test('bounds file transcript reads per search and reports unsearched files as partial', async () => {
+      const { tool, memory } = await setup();
+      for (let n = 0; n < 33; n += 1) {
+        const id = `budget-${n}`;
+        await memory.createConversation({
+          id,
+          userId: A,
+          resourceId: 'default',
+          title: 'Budget file',
+          metadata: { projectSlug: 'project-1' },
+        });
+        await memory.addMessage(
+          {
+            id: `${id}-message`,
+            role: 'user',
+            parts: [{ type: 'text', text: 'filebudget match' }],
+          },
+          A,
+          id,
+        );
+      }
+      const reads = vi.spyOn(memory, 'getMessages');
+      const result = await tool(bound('a-caller'), 'search_conversations', {
+        query: 'filebudget',
+        limit: 50,
+      });
+      expect(result.isError, JSON.stringify(result.body)).toBe(false);
+      expect(result.body.data).toMatchObject({
+        state: 'partial',
+        incompleteSources: expect.arrayContaining([
+          {
+            source: 'station.files',
+            state: 'partial',
+            reason: 'transcript-read-limit',
+          },
+        ]),
+      });
+      expect(result.body.data.results).toHaveLength(32);
+      expect(new Set(reads.mock.calls.map(([, id]) => id)).size).toBe(32);
+    });
+
+    test('reports the missing native message search source instead of a conclusive miss', async () => {
+      const { tool } = await setup({ nativeSearch: false });
+      const result = await tool(bearer('a-caller'), 'search_conversations', {
+        query: 'zephyrquartz',
+      });
+      expect(result.isError, JSON.stringify(result.body)).toBe(false);
+      expect(result.body.data).toMatchObject({
+        state: 'partial',
+        results: [],
+        incompleteSources: expect.arrayContaining([
+          {
+            source: 'station.messages',
+            state: 'unavailable',
+            reason: 'source-unavailable',
+          },
+        ]),
+      });
+    });
+
+    test('skips a stale file listing that no longer reads while retaining an existing empty conversation', async () => {
+      const { tool, memory } = await setup();
+      for (const id of ['deleted-file', 'empty-file'])
+        await memory.createConversation({
+          id,
+          userId: A,
+          resourceId: 'default',
+          title: 'vacancy title',
+          metadata: { projectSlug: 'project-1' },
+        });
+      const listed = await memory.getConversationsByUserId(A);
+      await memory.deleteConversation('deleted-file');
+      // The listing precedes deletion; transcript admission must still check the current read.
+      vi.spyOn(memory, 'getConversationsByUserId').mockResolvedValue(listed);
+      const result = await tool(bound('a-caller'), 'search_conversations', {
+        query: 'vacancy',
+      });
+      expect(result.isError, JSON.stringify(result.body)).toBe(false);
+      expect(result.body.data.results).toEqual([
+        expect.objectContaining({ conversationId: 'empty-file' }),
+      ]);
+    });
+
     test('searches title and content, misses, filters agent/project, bounds results and preserves read authorization', async () => {
       const { tool, asTool, startSession, p1, memory } = await setup();
       startSession('a-title', A, p1, {
