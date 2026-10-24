@@ -1,3 +1,4 @@
+import { REPORT_GROUP_CONTINUATION_LIMITS } from '@kontourai/station-contracts/report-group';
 import { useCreateReportGroup } from '@kontourai/station-sdk';
 import {
   type ApiRequestScope,
@@ -16,6 +17,8 @@ export function ReportGroupCreateForm({
   const [expanded, setExpanded] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [members, setMembers] = useState(1);
+  const [flowEnabled, setFlowEnabled] = useState(false);
+  const [continuationEnabled, setContinuationEnabled] = useState(false);
   const [operationId] = useState(() => crypto.randomUUID());
   const [invalid, setInvalid] = useState(false);
   const { DiscardModal } = useUnsavedGuard(dirty && create.isIdle);
@@ -31,6 +34,7 @@ export function ReportGroupCreateForm({
       </Button>
       {expanded && (
         <form
+          className="report-groups__form"
           onChange={() => setDirty(true)}
           onSubmit={(event) => {
             event.preventDefault();
@@ -43,6 +47,33 @@ export function ReportGroupCreateForm({
                 operationId,
                 projectSlug: text('project'),
                 ...(text('resource') ? { resourceId: text('resource') } : {}),
+                ...(flowEnabled
+                  ? {
+                      flow: {
+                        runId: text('flowRunId'),
+                        steps: Object.fromEntries(
+                          Array.from({ length: members }, (_, i) => [
+                            text(`seat-${i}`),
+                            text(`step-${i}`),
+                          ]),
+                        ),
+                      },
+                      ...(continuationEnabled
+                        ? {
+                            continuation: {
+                              attemptsPerMember: Number(
+                                text('attemptsPerMember'),
+                              ),
+                              maxRounds: Number(text('maxRounds')),
+                              maxSyncs: Number(text('maxSyncs')),
+                              maxRenewals: Number(text('maxRenewals')),
+                              maxEvaluations: Number(text('maxEvaluations')),
+                              maxRecoveries: Number(text('maxRecoveries')),
+                            },
+                          }
+                        : {}),
+                    }
+                  : {}),
                 deadlineAt: Date.now() + Number(text('minutes')) * 60_000,
                 maxConcurrent: Number(text('concurrency')),
                 budget: {
@@ -67,28 +98,35 @@ export function ReportGroupCreateForm({
           }}
         >
           <p>
-            Submitting starts paid, independent advisory reports using
-            configured Agents. Each member receives its own brief and the
-            selected Project source. Aggregate token and inference-cost limits
-            are required. Returned reports remain unassessed. Closing this view
-            stops waiting; it does not prove physical termination or refunds.
+            Submitting starts paid reports using configured Agents. Without
+            Flow, members are independent advisory work. Each member receives
+            its own brief and the selected Project source. Aggregate token and
+            inference-cost limits are required. Returned reports remain
+            unassessed. Closing this view stops waiting; it does not prove
+            physical termination or refunds.
           </p>
           <p>
             Operation ID: <code>{operationId}</code>
           </p>
           <fieldset disabled={!current || !create.isIdle}>
             <legend>Source and limits</legend>
-            <label>
+            <label className="field">
               Project ID
-              <input name="project" required maxLength={128} />
+              <input
+                className="control"
+                name="project"
+                required
+                maxLength={128}
+              />
             </label>
-            <label>
+            <label className="field">
               Resource ID (optional)
-              <input name="resource" maxLength={128} />
+              <input className="control" name="resource" maxLength={128} />
             </label>
-            <label>
+            <label className="field">
               Deadline in minutes
               <input
+                className="control"
                 name="minutes"
                 type="number"
                 required
@@ -97,9 +135,10 @@ export function ReportGroupCreateForm({
                 defaultValue={5}
               />
             </label>
-            <label>
+            <label className="field">
               Concurrent reports
               <input
+                className="control"
                 name="concurrency"
                 type="number"
                 required
@@ -108,9 +147,10 @@ export function ReportGroupCreateForm({
                 defaultValue={1}
               />
             </label>
-            <label>
+            <label className="field">
               Aggregate input token limit
               <input
+                className="control"
                 name="inputTokens"
                 type="number"
                 required
@@ -118,9 +158,10 @@ export function ReportGroupCreateForm({
                 max={Number.MAX_SAFE_INTEGER}
               />
             </label>
-            <label>
+            <label className="field">
               Aggregate output token limit
               <input
+                className="control"
                 name="outputTokens"
                 type="number"
                 required
@@ -128,9 +169,10 @@ export function ReportGroupCreateForm({
                 max={Number.MAX_SAFE_INTEGER}
               />
             </label>
-            <label>
+            <label className="field">
               Aggregate inference cost limit (microdollars)
               <input
+                className="control"
                 name="costMicros"
                 type="number"
                 required
@@ -139,29 +181,157 @@ export function ReportGroupCreateForm({
               />
             </label>
           </fieldset>
+          <fieldset disabled={!current || !create.isIdle}>
+            <legend>Coordination</legend>
+            <label className="report-groups__choice">
+              <input
+                type="checkbox"
+                checked={flowEnabled}
+                onChange={(event) => setFlowEnabled(event.target.checked)}
+              />
+              Use an existing Flow run
+            </label>
+            <p>
+              Flow owns readiness, claims, joins and acceptance. Selecting a run
+              does not prove that this Station can currently execute it.
+            </p>
+          </fieldset>
+          <fieldset
+            hidden={!flowEnabled}
+            disabled={!current || !create.isIdle || !flowEnabled}
+          >
+            <legend>Flow run</legend>
+            <label className="field">
+              Flow run ID
+              <input
+                className="control"
+                name="flowRunId"
+                required
+                maxLength={128}
+              />
+            </label>
+            <label className="report-groups__choice">
+              <input
+                type="checkbox"
+                checked={continuationEnabled}
+                onChange={(event) =>
+                  setContinuationEnabled(event.target.checked)
+                }
+              />
+              Reserve continuation for this Flow group
+            </label>
+            <p>
+              These are immutable lifetime limits, not a grant to launch more
+              work. Returning-session serving qualification is still open; the
+              server may refuse this candidate path.
+            </p>
+          </fieldset>
+          <fieldset
+            hidden={!flowEnabled || !continuationEnabled}
+            disabled={
+              !current || !create.isIdle || !flowEnabled || !continuationEnabled
+            }
+          >
+            <legend>Continuation limits</legend>
+            {(
+              [
+                {
+                  name: 'attemptsPerMember',
+                  label: 'Attempts per member',
+                  min: 1,
+                  value: 3,
+                },
+                {
+                  name: 'maxRounds',
+                  label: 'Maximum rounds',
+                  min: 1,
+                  value: 3,
+                },
+                {
+                  name: 'maxSyncs',
+                  label: 'Maximum context operations',
+                  min: 0,
+                  value: 1,
+                },
+                {
+                  name: 'maxRenewals',
+                  label: 'Maximum authority renewals',
+                  min: 0,
+                  value: 0,
+                },
+                {
+                  name: 'maxEvaluations',
+                  label: 'Maximum evaluations',
+                  min: 0,
+                  value: 2,
+                },
+                {
+                  name: 'maxRecoveries',
+                  label: 'Maximum recoveries',
+                  min: 0,
+                  value: 0,
+                },
+              ] as const
+            ).map(({ name, label, min, value }) => (
+              <label className="field" key={name}>
+                {label}
+                <input
+                  className="control"
+                  name={name}
+                  type="number"
+                  required
+                  min={min}
+                  max={REPORT_GROUP_CONTINUATION_LIMITS[name]}
+                  defaultValue={value}
+                />
+              </label>
+            ))}
+          </fieldset>
           {Array.from({ length: members }, (_, i) => (
             <fieldset key={i} disabled={!current || !create.isIdle}>
               <legend>Report member {i + 1}</legend>
-              <label>
+              <label className="field">
                 Seat ID
                 <input
+                  className="control"
                   name={`seat-${i}`}
                   required
                   maxLength={128}
                   defaultValue={`seat-${i + 1}`}
                 />
               </label>
-              <label>
+              <label className="field" hidden={!flowEnabled}>
+                Flow step ID
+                <input
+                  className="control"
+                  name={`step-${i}`}
+                  required={flowEnabled}
+                  disabled={!flowEnabled}
+                  maxLength={128}
+                />
+              </label>
+              <label className="field">
                 Agent ID
-                <input name={`agent-${i}`} required maxLength={128} />
+                <input
+                  className="control"
+                  name={`agent-${i}`}
+                  required
+                  maxLength={128}
+                />
               </label>
-              <label>
+              <label className="field">
                 Member brief
-                <textarea name={`brief-${i}`} required maxLength={65536} />
+                <textarea
+                  className="control control--textarea"
+                  name={`brief-${i}`}
+                  required
+                  maxLength={65536}
+                />
               </label>
-              <label>
+              <label className="field">
                 Member output token limit
                 <input
+                  className="control"
                   name={`output-${i}`}
                   type="number"
                   required

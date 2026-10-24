@@ -386,7 +386,13 @@ test.each(['requested', 'pending', 'authority-loss'] as const)(
   },
 );
 
-test.each(['returned', 'refused', 'authority-loss', 'unmount'] as const)(
+test.each([
+  'returned',
+  'flow',
+  'refused',
+  'authority-loss',
+  'unmount',
+] as const)(
   'paid report creation preserves explicit intent and never resends after %s',
   async (outcome) => {
     const sent: Record<string, unknown>[] = [];
@@ -455,6 +461,46 @@ test.each(['returned', 'refused', 'authority-loss', 'unmount'] as const)(
       });
       fill('Concurrent reports', '2');
     }
+    if (outcome === 'flow') {
+      fireEvent.click(
+        screen.getByRole('checkbox', { name: 'Use an existing Flow run' }),
+      );
+      fill('Flow run ID', 'flow-run');
+      fill('Flow step ID', 'review-step');
+      fireEvent.click(
+        screen.getByRole('checkbox', {
+          name: 'Reserve continuation for this Flow group',
+        }),
+      );
+      fill('Maximum context operations', '2');
+      fireEvent.submit(
+        screen
+          .getByRole('button', { name: 'Start paid reports' })
+          .closest('form')!,
+      );
+      expect(sent).toHaveLength(0);
+      expect(screen.getByRole('alert').textContent).toContain(
+        'Check the source',
+      );
+      fill('Maximum context operations', '1');
+      fireEvent.click(
+        screen.getByRole('checkbox', { name: 'Use an existing Flow run' }),
+      );
+      expect(screen.getByLabelText('Flow run ID').matches(':disabled')).toBe(
+        true,
+      );
+      fireEvent.click(
+        screen.getByRole('checkbox', { name: 'Use an existing Flow run' }),
+      );
+      expect(screen.getByLabelText('Flow run ID')).toHaveProperty(
+        'value',
+        'flow-run',
+      );
+      expect(screen.getByLabelText('Flow step ID')).toHaveProperty(
+        'value',
+        'review-step',
+      );
+    }
     const leave = new Event('beforeunload', { cancelable: true });
     window.dispatchEvent(leave);
     expect(leave.defaultPrevented).toBe(true);
@@ -470,6 +516,19 @@ test.each(['returned', 'refused', 'authority-loss', 'unmount'] as const)(
         resourceId: 'resource-one',
         deadlineAt: expect.any(Number),
         maxConcurrent: outcome === 'returned' ? 2 : 1,
+        ...(outcome === 'flow'
+          ? {
+              flow: { runId: 'flow-run', steps: { 'seat-1': 'review-step' } },
+              continuation: {
+                attemptsPerMember: 3,
+                maxRounds: 3,
+                maxSyncs: 1,
+                maxRenewals: 0,
+                maxEvaluations: 2,
+                maxRecoveries: 0,
+              },
+            }
+          : {}),
         budget: { inputTokens: 10000, outputTokens: 1000, costMicros: 50000 },
         members: [
           {
@@ -521,7 +580,7 @@ test.each(['returned', 'refused', 'authority-loss', 'unmount'] as const)(
             }),
       ),
     );
-    if (outcome === 'returned') {
+    if (outcome === 'returned' || outcome === 'flow') {
       expect(
         await screen.findByText(
           /Report group group-a: returned\. Acceptance remains unassessed/,

@@ -165,7 +165,7 @@ export function ReportGroupSyncForm({
           </Button>
           {opened && (
             <form
-              className="report-groups__context-form"
+              className="report-groups__form"
               onChange={() => setDirty(true)}
               onSubmit={(event) => {
                 event.preventDefault();

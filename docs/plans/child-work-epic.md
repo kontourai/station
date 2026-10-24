@@ -1580,3 +1580,14 @@ case exercises this refusal without another model call, and storage tests bind
 immutable custody and per-turn receipt replay. Actual held-context interruption,
 positive returning-Session receipt recovery and provider/device acceptance remain
 open until the published initial-request contract is adopted and exercised.
+
+
+### Flow creation UI candidate
+
+Report creation now carries an explicitly selected existing Flow run and one
+step per seat. Optional continuation fields use the contract ceilings and
+strict SDK capacity validation. Coordination switches preserve unsent fields
+while excluding disabled configuration from the request. Both report forms
+share token-based controls and mobile target sizing. Mounted tests exercise
+exact Flow/continuation payload, invalid reserved capacity refusal and no resend;
+these do not establish serving availability or runtime-family diversity.

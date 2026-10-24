@@ -268,6 +268,17 @@ continuation remain unavailable on this report surface.
    retained receipts without resending interrupts. Missing receipts remain
    pending; requested cancellation does not confirm physical termination.
 
+To request Flow coordination at creation, select **Use an existing Flow run**,
+enter its run ID, and map every report seat to a **Flow step ID**. Flow owns the
+ready frontier, claims, joins and acceptance. To reserve future operations,
+select **Reserve continuation for this Flow group** and enter the immutable
+attempt/round/context/renewal/evaluation/recovery limits. Those declarations do
+not grant execution or reset the aggregate budget. The form checks the shared
+contract's capacity bounds before sending. Switching coordination off omits the
+Flow/continuation fields from the request while retaining the unsent draft.
+This Flow/continuation creation surface remains a candidate; the published
+contract and combined serving proof described in the API are still required.
+
 For retained Flow groups that declare remaining context-sync operations, the
 inspector offers **Send updated report context**. Choose the report seat, then
 **Read current Flow checkpoint**. This reads the currently authorized source
