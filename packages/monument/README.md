@@ -94,8 +94,11 @@ Both adapters run the commands in the same transaction/participant protocol as
 other kernel commands. Reads do not call unobserved participants or take a
 writer lock. SQLite schema five adds `monument_steer_receipts`; older owned
 schemas upgrade transactionally. A bound host supplies `tables.steerReceipts`
-with its existing table name and the four receipt columns. Opening verifies a
-non-partial whole-key uniqueness constraint and creates no shadow receipt table.
+with its existing table name and the four receipt columns. Opening requires non-partial whole-key uniqueness with `BINARY` collation on
+both key columns and refuses aliasing whole-key constraints such as `NOCASE`
+or `RTRIM`. Read, confirmation and deletion use explicit binary identity
+comparison even when a host column has a different default collation. The
+binding creates no shadow receipt table.
 An explicit custom-table configuration must opt in to this new machine;
 omission preserves its existing table set. Storage opened without a custom
 configuration owns the default receipt table. `'unused'` disables it explicitly.
