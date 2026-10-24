@@ -1915,10 +1915,29 @@ signed admission: an interrupted or refused admission can leave an orphan input
 that still consumes a slot. No orphan collection or transactional rollback is
 currently provided.
 
-This records initial capacity; it does not expose continuation commands or
-prepare another paid call. Fresh source/recipient admission, sync, renewal and
-retry operations remain unwired on this surface. A declared limit is not an
-invocation receipt or permission to resend an uncertain attempt.
+The candidate continuation routes are `POST /:groupId/sync` and
+`POST /:groupId/sync/finalize`. Sync accepts `operationKey`, `expectedRevision`,
+`seatId`, exact `flowHead` and private `text` (at most 64 KiB UTF-8). It reloads
+original intent, re-admits source under the returning Request, prepares a fresh
+qualified SDK request and attaches to the original live Session receipt. The
+server never opens a replacement Session or reconstructs authority from a cursor.
+Flow owns reserved attempts, exact ACK and accounting. Duplicate intent observes
+state without resending; changed intent with the same key refuses.
+
+Finalization accepts `operationKey`, `expectedRevision`, `syncOperationKey` and
+`preparedDigest`. It checks retained terminal/provider evidence and publishes a
+prepared receipt through the storage-only Flow operation, without resolving a
+runtime or calling a provider. Views expose sync state and nullable retained
+attempt observations; root accounting includes unknown sync holds as well as
+ordinary reports. Context bytes and private grants remain absent from views.
+
+This serving composition is not qualified. Its current end-to-end test fails
+before initial release because published Flow Agents 9.5.1 requires an ACK even
+before the first report creates its Session. The explicit upstream initial-request
+policy and public reservation identity contract must be published and adopted;
+the installed Flow module identity mismatch remains a separate prerequisite.
+Renewal and paid/evaluation retry serving remain unfinished. A declared limit or
+ACK is not semantic acceptance or permission to resend an uncertain attempt.
 
 The published Flow controller owns ready-frontier admission, durable claims,
 lease handling, dependency joins and gate evaluation. Station releases only
@@ -1929,8 +1948,9 @@ mutation lock. Reports are not converted into gate evidence; a required external
 gate can remain blocked. Views retain `{kind: "flow", runId}` rather than
 reconstructing topology from current files. Returned rounds do not imply that
 the whole Flow run completed. Exact operation replay remains read-only; this
-initial pass offers no evaluation-only retry, route-back continuation or context
-ACK operation. Inspect the Project Flow state for current gates and frontier.
+initial creation loop performs no evaluation-only retry, route-back continuation
+or context ACK. The explicit candidate sync operations remain subject to the
+qualification limits above. Inspect the Project Flow state for current gates and frontier.
 
 Every operation requires current local operator grant authority. Browser
 bootstrap credentials do not suffice. Responses use `Cache-Control: no-store`

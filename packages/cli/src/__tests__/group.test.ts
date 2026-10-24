@@ -517,6 +517,43 @@ test('registered report CLI resolves SDK operations with explicit credentials an
     ],
   };
   writeFileSync(file, JSON.stringify(input));
+  const syncFile = join(root, 'sync.json');
+  const syncInput = {
+    operationKey: 'sync',
+    expectedRevision: 0,
+    seatId: 'one',
+    flowHead: 'a'.repeat(64),
+    text: 'Private context',
+  };
+  writeFileSync(syncFile, JSON.stringify(syncInput));
+  const preparedDigest = `sha256:${'b'.repeat(64)}`;
+  const synced = {
+    ...reportView(),
+    topology: { kind: 'flow', runId: 'run' },
+    contextSyncs: [
+      {
+        operationKey: 'sync',
+        seatId: 'one',
+        flowHead: syncInput.flowHead,
+        state: 'acknowledged',
+        reason: 'exact_ack',
+        preparedDigest,
+        attempts: [
+          {
+            invocationId: 'sync-attempt',
+            allocation: { inputTokens: 10, outputTokens: 10, costMicros: 10 },
+            usage: { inputTokens: 1, outputTokens: 1, costMicros: 1 },
+            accountingTerminal: true,
+            terminal: {
+              id: 'proof',
+              domain: 'station.report-observation.v1',
+              digest: `sha256:${'c'.repeat(64)}`,
+            },
+          },
+        ],
+      },
+    ],
+  };
   const output: string[] = [];
   vi.spyOn(console, 'log').mockImplementation((value) => {
     output.push(String(value));
@@ -526,34 +563,36 @@ test('registered report CLI resolves SDK operations with explicit credentials an
     const data =
       path.endsWith('/report-groups') && (init?.method ?? 'GET') === 'GET'
         ? { groups: [reportView()], hasMore: false, nextGroupId: null }
-        : path.endsWith('/cancel') || path.endsWith('/cancel/finalize')
-          ? { replayed: false, revision: 1, cancellation: 'requested' }
-          : path.includes('/results/')
-            ? {
-                kind: 'result',
-                groupId: 'report',
-                seatId: 'one',
-                invocationId: 'attempt',
-                modelId: 'model',
-                text: '\u001b[31moutput',
-                afterOffset: 0,
-                nextOffset: 11,
-                hasMore: false,
-                usage: { inputTokens: 1, outputTokens: 1, costMicros: 1 },
-              }
-            : path.endsWith('/events')
+        : path.endsWith('/sync') || path.endsWith('/sync/finalize')
+          ? { replayed: false, group: synced }
+          : path.endsWith('/cancel') || path.endsWith('/cancel/finalize')
+            ? { replayed: false, revision: 1, cancellation: 'requested' }
+            : path.includes('/results/')
               ? {
+                  kind: 'result',
                   groupId: 'report',
-                  afterRevision: 0,
-                  nextRevision: 0,
-                  revision: 0,
-                  events: [],
-                  unavailable: [],
+                  seatId: 'one',
+                  invocationId: 'attempt',
+                  modelId: 'model',
+                  text: '\u001b[31moutput',
+                  afterOffset: 0,
+                  nextOffset: 11,
                   hasMore: false,
+                  usage: { inputTokens: 1, outputTokens: 1, costMicros: 1 },
                 }
-              : path.endsWith('/report')
-                ? reportView()
-                : { replayed: false, group: reportView() };
+              : path.endsWith('/events')
+                ? {
+                    groupId: 'report',
+                    afterRevision: 0,
+                    nextRevision: 0,
+                    revision: 0,
+                    events: [],
+                    unavailable: [],
+                    hasMore: false,
+                  }
+                : path.endsWith('/report')
+                  ? reportView()
+                  : { replayed: false, group: reportView() };
     return new Response(JSON.stringify({ success: true, data }));
   });
   vi.stubGlobal('fetch', fetch);
@@ -572,6 +611,15 @@ test('registered report CLI resolves SDK operations with explicit credentials an
       '--cancel-operation=stop',
       '--revision=1',
     ],
+    ['report-sync', 'report', `--file=${syncFile}`],
+    [
+      'report-finalize-sync',
+      'report',
+      '--operation=finish-sync',
+      '--revision=1',
+      '--sync-operation=sync',
+      `--prepared-digest=${preparedDigest}`,
+    ],
   ];
   for (const command of commands)
     await runCli([
@@ -582,8 +630,8 @@ test('registered report CLI resolves SDK operations with explicit credentials an
       '--json',
     ]);
   assert.deepEqual(process.listeners('SIGINT'), listeners);
-  assert.equal(fetch.mock.calls.length, 7);
-  assert.equal(output.length, 7);
+  assert.equal(fetch.mock.calls.length, 9);
+  assert.equal(output.length, 9);
   assert.deepEqual(JSON.parse(String(fetch.mock.calls[0][1]?.body)), input);
   assert.deepEqual(JSON.parse(String(fetch.mock.calls[5][1]?.body)), {
     operationKey: 'stop',
@@ -593,6 +641,13 @@ test('registered report CLI resolves SDK operations with explicit credentials an
     operationKey: 'finish',
     expectedRevision: 1,
     cancelOperationKey: 'stop',
+  });
+  assert.deepEqual(JSON.parse(String(fetch.mock.calls[7][1]?.body)), syncInput);
+  assert.deepEqual(JSON.parse(String(fetch.mock.calls[8][1]?.body)), {
+    operationKey: 'finish-sync',
+    expectedRevision: 1,
+    syncOperationKey: 'sync',
+    preparedDigest,
   });
   for (const [, init] of fetch.mock.calls)
     assert.equal(

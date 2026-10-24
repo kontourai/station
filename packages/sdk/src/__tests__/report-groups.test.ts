@@ -1,12 +1,15 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import {
   createReportGroup,
+  finalizeReportGroupSync,
   listReportGroups,
   parseReportGroupInput,
+  type ReportGroupContextSyncView,
   ReportGroupProtocolError,
   readReportGroupEvents,
   readReportGroupResult,
   subscribeReportGroupEvents,
+  syncReportGroupContext,
 } from '../client/report-groups';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -213,4 +216,72 @@ test('report continuation parser preserves explicit finite limits and refuses im
     expect(() => parseReportGroupInput(sent)).toThrow();
   const { continuation: _continuation, ...legacy } = input;
   expect(parseReportGroupInput(legacy)).toEqual(legacy);
+});
+
+test('context-sync SDK keeps one explicit operation, admits receipt-only finalization and rejects contradictory ACK evidence', async () => {
+  const command = {
+    operationKey: 'sync-a',
+    expectedRevision: 2,
+    seatId: 's',
+    flowHead: 'a'.repeat(64),
+    text: 'Private context',
+  };
+  const digest = `sha256:${'b'.repeat(64)}`;
+  const syncView: ReportGroupContextSyncView = {
+    operationKey: 'sync-a',
+    seatId: 's',
+    flowHead: command.flowHead,
+    state: 'acknowledged',
+    reason: 'exact_ack',
+    preparedDigest: digest,
+    attempts: [
+      {
+        invocationId: 'i',
+        allocation: { inputTokens: 10, outputTokens: 10, costMicros: 20 },
+        usage: { inputTokens: 1, outputTokens: 1, costMicros: 2 },
+        accountingTerminal: true,
+        terminal: {
+          id: 'proof',
+          domain: 'station.report-observation.v1',
+          digest: `sha256:${'c'.repeat(64)}`,
+        },
+      },
+    ],
+  };
+  const view = {
+    ...groupView('g'),
+    topology: { kind: 'flow', runId: 'run' },
+    revision: 5,
+    contextSyncs: [syncView],
+    accounting: {
+      invocationCount: 1,
+      unsettledInvocations: 0,
+      knownTerminalUsage: { inputTokens: 1, outputTokens: 1, costMicros: 2 },
+      unsettledAllocation: { inputTokens: 0, outputTokens: 0, costMicros: 0 },
+    },
+  };
+  const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+    envelope({ replayed: false, group: view }),
+  );
+  vi.stubGlobal('fetch', fetch);
+  expect(
+    (await syncReportGroupContext(base, 'g', command)).group.contextSyncs?.[0]
+      .state,
+  ).toBe('acknowledged');
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(String(fetch.mock.calls[0][0])).toContain('/g/sync');
+  expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toEqual(command);
+  const finalize = {
+    operationKey: 'final-a',
+    expectedRevision: 5,
+    syncOperationKey: 'sync-a',
+    preparedDigest: digest,
+  };
+  await finalizeReportGroupSync(base, 'g', finalize);
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(JSON.parse(String(fetch.mock.calls[1][1]?.body))).toEqual(finalize);
+  expect(syncView.attempts).not.toBeNull();
+  syncView.attempts![0].usage = null;
+  await expect(syncReportGroupContext(base, 'g', command)).rejects.toThrow();
+  expect(fetch).toHaveBeenCalledTimes(3);
 });

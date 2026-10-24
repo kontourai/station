@@ -354,6 +354,8 @@ export function executeReservedStationTurn(
   signal.throwIfAborted();
   value.claimed = true;
   const assertSessionCurrent = (): undefined => {
+    if (value.attempt.assertSessionCurrent)
+      assertSynchronous(value.attempt.assertSessionCurrent);
     assertSession(value, sessionRecord);
     return undefined;
   };

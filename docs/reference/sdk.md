@@ -5649,7 +5649,8 @@ and reconnect checkpoints. They do not prove mounted routes or live providers.
 
 `@kontourai/station-sdk/client` exports `createReportGroup`, `getReportGroup`,
 `listReportGroups`, `cancelReportGroup`, `finalizeReportGroupCancel`, `readReportGroupEvents`,
-`subscribeReportGroupEvents` and `readReportGroupResult`. Public shapes live at
+`subscribeReportGroupEvents`, `readReportGroupResult`, `syncReportGroupContext`
+and `finalizeReportGroupSync`. Public shapes live at
 `@kontourai/station-contracts/report-group`. This is the personal-host advisory
 report surface, separate from CLI session groups. Optional create `flow` selectors
 bind a run ID and exact seat-to-step map; workspace and grants remain server-owned.
@@ -5660,9 +5661,13 @@ do not qualify Flow execution: the controlled HTTP composition still fails its
 deadline, and installed Flow module bindings differ. The API reference records
 the alignment prerequisite and remaining runtime proof. `parseReportGroupInput`
 preserves explicitly supplied finite initial continuation limits and rejects
-limits without Flow or beyond aggregate attempt capacity. This does not enable
-fresh paid, sync, renewal or retry operations. Legacy creates retain their
-single-attempt defaults, and changing limits on exact replay refuses.
+limits without Flow or beyond aggregate attempt capacity. The returning-request sync and receipt-only finalization clients are implemented
+as a candidate surface, but the combined initial-report/returning-Session journey
+is not qualified: the current published Flow policy refuses initial release for
+an opted-in sync group. Upstream contract publication and compatible runtime
+adoption remain prerequisites. Renewal and retry serving remain open. Legacy
+creates retain their single-attempt defaults, and changing limits on exact
+replay refuses.
 
 Create accepts configured Agent IDs, immutable operator intent and explicit
 aggregate token/inference-micro budgets. The server resolves runtime/model
@@ -5679,6 +5684,25 @@ event pages carry references/identities, not prompts or private authority data.
 Event subscriptions checkpoint only after `onPage` succeeds, reject foreign
 cursor domains, and terminal-stop malformed protocol data. Closing a stream is
 observation-only. The strict reader/server shapes ship together.
+
+`syncReportGroupContext` accepts an explicit operation key, displayed revision,
+seat, exact Flow head and private context text of at most 64 KiB UTF-8. It makes
+one HTTP request and leaves the server deadline in charge unless the caller
+supplies a shorter timeout. The server owns source, runtime, recipient and
+budget admission. Exact replay observes retained intent; it never resumes a
+paid exchange. `finalizeReportGroupSync` sends only a new operation key, revision,
+original sync key and retained prepared digest; its server path cannot launch a
+model.
+
+Views optionally carry `contextSyncs` with pending/prepared/acknowledged/incomplete
+state, closed reason codes, prepared digests and retained accounting/terminal
+observations. Null attempts means no complete operation-level snapshot was
+retained, not zero spend. Root accounting includes all invocations, including
+sync and unknown holds; known terminal usage and unsettled allocations are
+separate. Readers refuse contradictory ACK/usage/terminal shapes. These fields
+carry no prompt, context bytes or execution capability. ACK does not establish
+semantic understanding, gate acceptance or billing reconciliation.
+
 
 The [API reference](api.md#report-groups) lists inputs, availability and remaining
 qualification. The controlled HTTP owner test exercises real SDK calls, serving,

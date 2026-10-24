@@ -5,8 +5,10 @@ import {
   REPORT_GROUP_VERSION,
   type ReportGroupCancelInput,
   type ReportGroupCancelResult,
+  type ReportGroupContextSyncInput,
   type ReportGroupEventPage,
   type ReportGroupFinalizeCancelInput,
+  type ReportGroupFinalizeSyncInput,
   type ReportGroupInput,
   type ReportGroupListPage,
   type ReportGroupOperation,
@@ -30,9 +32,12 @@ import {
 export type {
   ReportGroupCancelInput,
   ReportGroupCancelResult,
+  ReportGroupContextSyncInput,
+  ReportGroupContextSyncView,
   ReportGroupContinuation,
   ReportGroupEventPage,
   ReportGroupFinalizeCancelInput,
+  ReportGroupFinalizeSyncInput,
   ReportGroupInput,
   ReportGroupListPage,
   ReportGroupOperation,
@@ -129,6 +134,63 @@ const viewSchema = z
     cancellation: z.enum(['none', 'pending', 'requested']),
     authorityRevoked: z.boolean(),
     acceptance: z.literal('unassessed'),
+    contextSyncs: z
+      .array(
+        z
+          .object({
+            operationKey: id,
+            seatId: id,
+            flowHead: z.string().regex(/^[a-f0-9]{64}$/),
+            state: z.enum([
+              'pending',
+              'prepared',
+              'acknowledged',
+              'incomplete',
+            ]),
+            reason: z
+              .enum([
+                'exact_ack',
+                'ack_mismatch',
+                'unexpected_tools',
+                'execution_incomplete',
+              ])
+              .nullable(),
+            preparedDigest: z
+              .string()
+              .regex(/^sha256:[a-f0-9]{64}$/)
+              .nullable(),
+            attempts: z
+              .array(
+                z
+                  .object({
+                    invocationId: id,
+                    allocation: amounts,
+                    usage: amounts.nullable(),
+                    accountingTerminal: z.boolean(),
+                    terminal: reference.nullable(),
+                  })
+                  .strict(),
+              )
+              .max(2)
+              .nullable(),
+          })
+          .strict(),
+      )
+      .max(REPORT_GROUP_CONTINUATION_LIMITS.maxSyncs)
+      .optional(),
+    accounting: z
+      .object({
+        invocationCount: integer.max(
+          REPORT_GROUP_CONTINUATION_LIMITS.maxAttempts,
+        ),
+        unsettledInvocations: integer.max(
+          REPORT_GROUP_CONTINUATION_LIMITS.maxAttempts,
+        ),
+        knownTerminalUsage: amounts,
+        unsettledAllocation: amounts,
+      })
+      .strict()
+      .optional(),
     members: z
       .array(
         z
@@ -158,7 +220,45 @@ const viewSchema = z
       .min(1)
       .max(16),
   })
-  .strict();
+  .strict()
+  .superRefine((view, context) => {
+    const syncs = view.contextSyncs ?? [];
+    const invalid = syncs.some(
+      (sync) =>
+        !view.members.some((m) => m.seatId === sync.seatId) ||
+        (sync.state === 'pending'
+          ? sync.reason !== null ||
+            sync.preparedDigest !== null ||
+            sync.attempts !== null
+          : sync.reason === null ||
+            sync.preparedDigest === null ||
+            sync.attempts === null) ||
+        (sync.state === 'acknowledged' &&
+          (sync.reason !== 'exact_ack' ||
+            !sync.attempts?.length ||
+            sync.attempts.some(
+              (a) =>
+                !a.accountingTerminal ||
+                a.usage === null ||
+                a.terminal === null,
+            ))) ||
+        (sync.state === 'incomplete' && sync.reason === 'exact_ack') ||
+        (sync.attempts &&
+          new Set(sync.attempts.map((a) => a.invocationId)).size !==
+            sync.attempts.length),
+    );
+    if (
+      invalid ||
+      (syncs.length > 0 && view.topology.kind !== 'flow') ||
+      new Set(syncs.map((sync) => sync.operationKey)).size !== syncs.length ||
+      (view.accounting &&
+        view.accounting.unsettledInvocations > view.accounting.invocationCount)
+    )
+      context.addIssue({
+        code: 'custom',
+        message: 'Inconsistent report continuation observations.',
+      });
+  });
 const operation = z
   .object({ replayed: z.boolean(), group: viewSchema })
   .strict();
@@ -267,6 +367,81 @@ export function parseReportGroupInput(value: unknown): ReportGroupInput {
   const input = inputSchema.parse(value);
   assertReportGroupContinuation(input);
   return input;
+}
+const syncInput = z
+  .object({
+    operationKey: id,
+    expectedRevision: revision,
+    seatId: id,
+    flowHead: z.string().regex(/^[a-f0-9]{64}$/),
+    text: z.string().min(1).max(65_536),
+  })
+  .strict();
+export function parseReportGroupContextSyncInput(
+  input: unknown,
+): ReportGroupContextSyncInput {
+  const value = syncInput.parse(input);
+  if (new TextEncoder().encode(value.text).byteLength > 65_536)
+    throw new ReportGroupProtocolError(
+      'Report context exceeds its byte limit.',
+    );
+  return value;
+}
+export async function syncReportGroupContext(
+  base: string,
+  groupId: string,
+  input: ReportGroupContextSyncInput,
+  options?: ClientRequestOptions,
+): Promise<ReportGroupOperation> {
+  const sent = parseReportGroupContextSyncInput(input);
+  const result = operation.parse(
+    await post(`${path(base, groupId)}/sync`, sent, {
+      timeoutMs: null,
+      ...options,
+    }),
+  );
+  const sync = result.group.contextSyncs?.find(
+    (s) => s.operationKey === sent.operationKey && s.seatId === sent.seatId,
+  );
+  if (
+    result.group.groupId !== groupId ||
+    !sync ||
+    sync.flowHead !== sent.flowHead ||
+    (!result.replayed && sync.state !== 'acknowledged')
+  )
+    throw new ReportGroupProtocolError('Unexpected context sync operation.');
+  return result;
+}
+export async function finalizeReportGroupSync(
+  base: string,
+  groupId: string,
+  input: ReportGroupFinalizeSyncInput,
+  options?: ClientRequestOptions,
+): Promise<ReportGroupOperation> {
+  const sent = cancelInput
+    .extend({
+      syncOperationKey: id,
+      preparedDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+    })
+    .strict()
+    .parse(input);
+  const result = operation.parse(
+    await post(`${path(base, groupId)}/sync/finalize`, sent, {
+      timeoutMs: null,
+      ...options,
+    }),
+  );
+  if (
+    result.group.groupId !== groupId ||
+    !result.group.contextSyncs?.some(
+      (s) =>
+        s.operationKey === sent.syncOperationKey &&
+        s.preparedDigest === sent.preparedDigest &&
+        ['acknowledged', 'incomplete'].includes(s.state),
+    )
+  )
+    throw new ReportGroupProtocolError('Unexpected context sync finalization.');
+  return result;
 }
 /** Aborting stops request admission/supervision; it does not establish physical termination. */
 export async function createReportGroup(

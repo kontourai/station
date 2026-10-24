@@ -1,8 +1,13 @@
 import { lstatSync, mkdirSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
+import { preparedRoundsSyncDigest } from '@kontourai/flow-agents/delegation-group-rounds';
 import type {
+  ReportGroupAmounts,
+  ReportGroupContextSyncInput,
+  ReportGroupContextSyncView,
   ReportGroupFinalizeCancelInput,
+  ReportGroupFinalizeSyncInput,
   ReportGroupView,
 } from '@kontourai/station-contracts/report-group';
 import { AnthropicSealedPreparation } from '../../runtime/conversation/anthropic-sealed-preparation.js';
@@ -24,12 +29,14 @@ import {
 import { pageByBytes } from './delegation-group-transport.js';
 import { FileFinalWireIntentStore } from './delegation-group-wire-intent-store.js';
 import type { OrchestrationService } from './orchestration-service.js';
+import { StationReportGroupContinuation } from './station-report-group-continuation.js';
 import {
   StationReportCustodyUnavailable,
   StationReportGroupCustody,
 } from './station-report-group-custody.js';
 import { StationReportGroupExecution } from './station-report-group-execution.js';
 import { StationReportGroupPreparation } from './station-report-group-preparation.js';
+import { StationReportRetainedTurns } from './station-report-retained-turn.js';
 
 function directory(path: string) {
   try {
@@ -53,6 +60,57 @@ type Historical = NonNullable<
 >;
 function view(value: Historical): ReportGroupView {
   const { admission, group, authority } = value;
+  const contextSyncs: ReportGroupContextSyncView[] = (
+    group?.continuations ?? []
+  ).flatMap((entry) => {
+    if (entry.command.kind !== 'sync') return [];
+    const prepared = entry.prepared;
+    return [
+      {
+        operationKey: entry.command.operationKey,
+        seatId: entry.command.seatId,
+        flowHead: entry.command.flowHead,
+        state: entry.receipt
+          ? entry.receipt.acknowledged
+            ? 'acknowledged'
+            : 'incomplete'
+          : prepared
+            ? 'prepared'
+            : 'pending',
+        reason: prepared?.receipt.reason ?? null,
+        preparedDigest: prepared ? preparedRoundsSyncDigest(prepared) : null,
+        attempts: prepared
+          ? prepared.invocations.map((invocation) => {
+              const current =
+                authority?.invocations.find(
+                  (i) => i.invocationId === invocation.invocationId,
+                ) ?? invocation;
+              return {
+                invocationId: current.invocationId,
+                allocation: current.allocation,
+                usage: current.usage,
+                accountingTerminal: current.terminal,
+                terminal:
+                  prepared.terminalProofs.find(
+                    (proof) => proof.invocationId === current.invocationId,
+                  )?.reference ?? null,
+              };
+            })
+          : null,
+      },
+    ];
+  });
+  const sum = (rows: ReportGroupAmounts[]): ReportGroupAmounts =>
+    rows.reduce(
+      (total, row) => ({
+        inputTokens: total.inputTokens + row.inputTokens,
+        outputTokens: total.outputTokens + row.outputTokens,
+        costMicros: total.costMicros + row.costMicros,
+      }),
+      { inputTokens: 0, outputTokens: 0, costMicros: 0 },
+    );
+  const unsettled =
+    authority?.invocations.filter((i) => !i.terminal || i.usage === null) ?? [];
   return {
     version: 'station.report-group/v1' as const,
     groupId: admission.spec.groupId,
@@ -72,6 +130,21 @@ function view(value: Historical): ReportGroupView {
     cancellation: group?.cancellation ?? 'none',
     authorityRevoked: authority?.cancelled ?? false,
     acceptance: 'unassessed' as const,
+    ...(contextSyncs.length ? { contextSyncs } : {}),
+    ...(authority
+      ? {
+          accounting: {
+            invocationCount: authority.invocations.length,
+            unsettledInvocations: unsettled.length,
+            knownTerminalUsage: sum(
+              authority.invocations.flatMap((i) =>
+                i.terminal && i.usage !== null ? [i.usage] : [],
+              ),
+            ),
+            unsettledAllocation: sum(unsettled.map((i) => i.allocation)),
+          },
+        }
+      : {}),
     members: admission.members.map((member) => ({
       seatId: member.seatId,
       agentId: member.agentId,
@@ -102,6 +175,7 @@ function view(value: Historical): ReportGroupView {
 export class StationReportGroupRuntime {
   readonly #custody: StationReportGroupCustody;
   readonly #execution: StationReportGroupExecution;
+  readonly #continuation: StationReportGroupContinuation;
   readonly #dispatch: FileAuthorizationLedger;
   constructor(
     private readonly owners: {
@@ -134,6 +208,23 @@ export class StationReportGroupRuntime {
       owners.runtime.environmentSecurityService,
       sourcesRoot,
     );
+    const wireIntents = new FileFinalWireIntentStore(root);
+    this.#continuation = new StationReportGroupContinuation({
+      custody: this.#custody,
+      persistence,
+      orchestration: owners.orchestration,
+      dispatchLedger: this.#dispatch,
+      wireIntents,
+      authorize: (context) => this.authorizeResponse(context),
+      turns: new StationReportRetainedTurns({
+        runtime: owners.runtime,
+        sources,
+        custody: this.#custody,
+        persistence,
+        orchestration: owners.orchestration,
+        rawFetch: owners.rawFetch,
+      }),
+    });
     let prepared: Promise<StationReportGroupPreparation> | undefined;
     this.#execution = new StationReportGroupExecution({
       preparation: () =>
@@ -150,7 +241,7 @@ export class StationReportGroupRuntime {
       persistence,
       orchestration: owners.orchestration,
       dispatchLedger: this.#dispatch,
-      wireIntents: new FileFinalWireIntentStore(root),
+      wireIntents,
     });
   }
 
@@ -193,6 +284,31 @@ export class StationReportGroupRuntime {
     const result = await this.#execution.execute(context, input);
     if (!result.group) throw new StationReportCustodyUnavailable();
     return { replayed: result.replayed, group: view(result.group) };
+  }
+  async sync(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    command: ReportGroupContextSyncInput,
+  ) {
+    const result = await this.#continuation.sync(context, groupId, command);
+    const historical = await this.#custody.inspectForMutation(context, groupId);
+    if (!historical) throw new StationReportCustodyUnavailable();
+    return { replayed: result.replayed, group: view(historical) };
+  }
+  async finalizeSync(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    command: ReportGroupFinalizeSyncInput,
+  ) {
+    const result = await this.#custody.finalizeSync(
+      context,
+      groupId,
+      command,
+      this.#dispatch,
+    );
+    const historical = await this.#custody.inspectForMutation(context, groupId);
+    if (!historical) throw new StationReportCustodyUnavailable();
+    return { replayed: result.replayed, group: view(historical) };
   }
   async get(context: RuntimeSourceRequestContext, groupId: string) {
     const result = await this.#custody.inspect(context, groupId);

@@ -26,6 +26,23 @@ const cancel = z
   .strict();
 
 const finalizeCancel = cancel.extend({ cancelOperationKey: id }).strict();
+const sync = cancel
+  .extend({
+    seatId: id,
+    flowHead: z.string().regex(/^[a-f0-9]{64}$/),
+    text: z
+      .string()
+      .min(1)
+      .max(65_536)
+      .refine((value) => Buffer.byteLength(value) <= 65_536),
+  })
+  .strict();
+const finalizeSync = cancel
+  .extend({
+    syncOperationKey: id,
+    preparedDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  })
+  .strict();
 
 export function createReportGroupRoutes(
   runtime: StationReportGroupRuntime | null,
@@ -205,6 +222,26 @@ export function createReportGroupRoutes(
       );
     }
   });
+  app.post('/:groupId/sync/finalize', (c) =>
+    respond(c, async (owner) => {
+      noQuery(c);
+      return owner.finalizeSync(
+        c,
+        id.parse(c.req.param('groupId')),
+        finalizeSync.parse(await body(c)),
+      );
+    }),
+  );
+  app.post('/:groupId/sync', (c) =>
+    respond(c, async (owner) => {
+      noQuery(c);
+      return owner.sync(
+        c,
+        id.parse(c.req.param('groupId')),
+        sync.parse(await body(c)),
+      );
+    }),
+  );
   app.post('/:groupId/cancel/finalize', (c) =>
     respond(c, async (owner) => {
       noQuery(c);

@@ -931,7 +931,17 @@ station group report-events <group-id> --after-revision=0 --follow --json
 station group report-result <group-id> <seat-id> <invocation-id> --after-offset=0 --json
 station group report-cancel <group-id> --operation=<cancel-key> --revision=<revision> --json
 station group report-finalize-cancel <group-id> --operation=<recovery-key> --cancel-operation=<cancel-key> --revision=<revision> --json
+station group report-sync <group-id> --file=context-sync.json --json
+station group report-finalize-sync <group-id> --operation=<recovery-key> --sync-operation=<sync-key> --prepared-digest=<sha256:digest> --revision=<revision> --json
 ```
+
+`report-sync` reads a bounded JSON file containing the explicit operation key,
+revision, seat, exact Flow head and private context text. `report-finalize-sync`
+only publishes a prepared receipt; it never resends an ACK request. Each command
+makes one SDK mutation and uses caller cancellation with the server deadline.
+These commands are candidate source, not qualified serving: the current published
+initial-sync policy and split Flow runtime still block the combined journey.
+Inspect `report-get` and retained sync/accounting state after an unknown response.
 
 `report-create` reads one regular UTF-8 JSON file of at most 256 KiB. Its fields
 are the [report-group API input](api.md#report-groups): an immutable operation ID,

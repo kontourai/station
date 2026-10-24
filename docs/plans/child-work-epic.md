@@ -1505,3 +1505,26 @@ journey, provider acceptance, or compatible installed Flow runtime identity.
 Private original-input custody is also capacity-limited: publication before
 signed admission can leave orphan records, and those records consume the
 128-record lifetime allowance. No cleanup or rollback is claimed.
+
+
+### Returning-request continuation candidate
+
+The in-progress consumer now composes private intent loading, fresh source
+re-admission, a fresh qualifier/credential/SDK holder, and attachment to the
+same canonical live Session. It compares the original retained recipient receipt
+and rechecks canonical adapter currency at launch while retaining already
+observed response evidence independently. Sync and receipt-only finalization
+have API/SDK/CLI shapes and bounded public accounting/state projections.
+SDK/CLI transport controls pass, but this is not execution acceptance.
+
+The new real initial-to-returning test fails at
+`rounds_current_seat_sync_required`: published 9.5.1 requires an initial ACK for
+any positive-sync policy, while Station's actual Session is created by its first
+reserved report. Upstream PR1551 adds explicit immutable initial-request
+admission while preserving every-release synchronization as the default, and
+exports the controller's reservation identity derivation. Source review accepts
+that scoped contract; it is not yet published or consumed here. The separate
+runtime-alignment PR1540 also remains a prerequisite. No sibling source is used
+as a Station dependency. Actual returning sync, storage recovery fault proofs,
+renewal/retry serving, model-family/elicitation and native/device qualification
+remain open.

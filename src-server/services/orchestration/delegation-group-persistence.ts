@@ -373,7 +373,13 @@ export class StationDelegationPersistence {
 
   async retainReportFlowObservation(
     groupId: string,
-    kind: 'schedule' | 'member' | 'evaluation' | 'recipient',
+    kind:
+      | 'schedule'
+      | 'member'
+      | 'evaluation'
+      | 'recipient'
+      | 'context'
+      | 'continuation',
     value: unknown,
     finalizeCurrent: DelegationPersistenceFinalizer,
   ) {
@@ -412,6 +418,104 @@ export class StationDelegationPersistence {
         digest: `sha256:${digest}`,
       };
     });
+  }
+
+  async readReportFlowObservation(
+    groupId: string,
+    reference: ReportGroupReference,
+    finalizeCurrent: DelegationPersistenceFinalizer,
+  ) {
+    const expected = structuredClone(reference);
+    requirePersistence(
+      expected.domain === 'station.report-flow-observation.v1' &&
+        /^[a-f0-9]{64}$/.test(expected.id) &&
+        expected.digest === `sha256:${expected.id}`,
+      'report_flow_observation_reference_invalid',
+    );
+    const domain = this.#flowObservations;
+    return domain.locked(finalizeCurrent, async () => {
+      const bytes = readBytes(
+        join(domain.directory, `${expected.id}.json`),
+        128 * 1024,
+      );
+      requirePersistence(bytes !== null, 'report_flow_observation_missing');
+      const record = z
+        .object({
+          version: z.literal(1),
+          groupId: reportObservationId,
+          kind: z.enum([
+            'schedule',
+            'member',
+            'evaluation',
+            'recipient',
+            'context',
+            'continuation',
+          ]),
+          value: z.unknown(),
+        })
+        .strict()
+        .parse(JSON.parse(bytes));
+      requirePersistence(
+        record.groupId === groupId &&
+          createHash('sha256').update(canonicalJson(record)).digest('hex') ===
+            expected.id,
+        'report_flow_observation_reference_mismatch',
+      );
+      assertCurrent(finalizeCurrent);
+      return record;
+    });
+  }
+
+  async retainReportContext(
+    groupId: string,
+    text: string,
+    current: DelegationPersistenceFinalizer,
+  ) {
+    requirePersistence(
+      typeof text === 'string' && Buffer.byteLength(text) <= 65_536,
+      'report_context_too_large',
+    );
+    const retained = await this.retainReportFlowObservation(
+      groupId,
+      'context',
+      text,
+      current,
+    );
+    return {
+      domain: 'station.report-context.v1',
+      id: retained.id,
+      digest: `sha256:${createHash('sha256').update(text).digest('hex')}`,
+    };
+  }
+
+  async readReportContext(
+    groupId: string,
+    reference: ReportGroupReference,
+    current: DelegationPersistenceFinalizer,
+  ) {
+    const expected = structuredClone(reference);
+    requirePersistence(
+      expected.domain === 'station.report-context.v1',
+      'report_context_reference_invalid',
+    );
+    const record = await this.readReportFlowObservation(
+      groupId,
+      {
+        ...expected,
+        domain: 'station.report-flow-observation.v1',
+        digest: `sha256:${expected.id}`,
+      },
+      current,
+    );
+    requirePersistence(
+      record.kind === 'context' &&
+        typeof record.value === 'string' &&
+        Buffer.byteLength(record.value) <= 65_536 &&
+        `sha256:${createHash('sha256').update(record.value).digest('hex')}` ===
+          expected.digest,
+      'report_context_reference_mismatch',
+    );
+    return record.value;
   }
 
   async retainReportObservation(
@@ -889,6 +993,79 @@ export class StationDelegationPersistence {
         bytes !== null && same(JSON.parse(bytes), record),
         'delegation_provider_evidence_unavailable',
       );
+    });
+  }
+
+  async assertProviderEvidenceReference(
+    reference: ReportGroupReference,
+    expected: {
+      groupId: string;
+      rootId: string;
+      invocationId: string;
+      executionId: string;
+      usage: { inputTokens: number; outputTokens: number; costMicros: number };
+    },
+    finalizeCurrent: DelegationPersistenceFinalizer,
+  ) {
+    const ref = structuredClone(reference);
+    const scope = structuredClone(expected);
+    const expectedId = createHash('sha256')
+      .update(canonicalJson([scope.rootId, scope.invocationId]))
+      .digest('hex');
+    requirePersistence(
+      ref.domain === 'station.provider-evidence' &&
+        ref.id === expectedId &&
+        /^sha256:[a-f0-9]{64}$/.test(ref.digest),
+      'delegation_provider_evidence_mismatch',
+    );
+    await this.#providerEvidence.locked(finalizeCurrent, async () => {
+      const bytes = readBytes(
+        join(this.#providerEvidence.directory, `${expectedId}.json`),
+        20 * 1024 * 1024,
+      );
+      requirePersistence(
+        bytes !== null,
+        'delegation_provider_evidence_unavailable',
+      );
+      const value: unknown = JSON.parse(bytes);
+      const record = z
+        .object({
+          version: z.literal(1),
+          evidence: z
+            .object({
+              intent: z
+                .object({
+                  groupId: reportObservationId,
+                  invocationId: reportObservationId,
+                  executionId: reportObservationId,
+                  root: z.object({ id: reportObservationId }).passthrough(),
+                })
+                .passthrough(),
+              usage: z
+                .object({
+                  inputTokens: z.number().int().nonnegative().safe(),
+                  outputTokens: z.number().int().nonnegative().safe(),
+                  costMicros: z.number().int().nonnegative().safe(),
+                })
+                .passthrough(),
+            })
+            .passthrough(),
+        })
+        .strict()
+        .parse(value);
+      requirePersistence(
+        ref.digest ===
+          `sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}` &&
+          record.evidence.intent.groupId === scope.groupId &&
+          record.evidence.intent.root.id === scope.rootId &&
+          record.evidence.intent.invocationId === scope.invocationId &&
+          record.evidence.intent.executionId === scope.executionId &&
+          record.evidence.usage.inputTokens === scope.usage.inputTokens &&
+          record.evidence.usage.outputTokens === scope.usage.outputTokens &&
+          record.evidence.usage.costMicros === scope.usage.costMicros,
+        'delegation_provider_evidence_mismatch',
+      );
+      assertCurrent(finalizeCurrent);
     });
   }
 

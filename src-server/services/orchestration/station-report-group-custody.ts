@@ -9,6 +9,7 @@ import { canonicalJson } from '@kontourai/relay';
 import type {
   ReportGroupCancelInput,
   ReportGroupFinalizeCancelInput,
+  ReportGroupFinalizeSyncInput,
 } from '@kontourai/station-contracts/report-group';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { createOrchestrationRequestPrincipalResolver } from '../../runtime/bootstrap/orchestration-request-principal.js';
@@ -228,6 +229,12 @@ export class StationReportGroupCustody {
 
   async inspect(context: RuntimeSourceRequestContext, groupId: string) {
     return this.#inspect(await this.#context(context, 'GET'), groupId);
+  }
+  async inspectForMutation(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+  ) {
+    return this.#inspect(await this.#context(context, 'POST'), groupId);
   }
   async loadIntentForMutation(
     context: RuntimeSourceRequestContext,
@@ -470,6 +477,117 @@ export class StationReportGroupCustody {
     });
     owner.current();
     return result;
+  }
+
+  async finalizeSync(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    input: ReportGroupFinalizeSyncInput,
+    dispatchLedger: AuthorizationLedger,
+  ) {
+    const command = structuredClone(input);
+    id(command.operationKey);
+    id(command.syncOperationKey);
+    const authorized = await this.#context(context, 'POST');
+    const before = await this.#inspect(authorized, groupId);
+    const group = before?.group;
+    const root = before?.authority?.epochs.at(-1)?.root;
+    if (!before || !group || !root) refuse();
+    const service = createDelegationAuthorityServiceV3(
+      this.owners.persistence.roundsAuthorityStore(authorized.current),
+      {
+        now: () => new Date().toISOString(),
+        authorize: async (action, candidate) => {
+          authorized.current();
+          return action === 'inspect' && same(candidate, root);
+        },
+        confirmExecution: async () => false,
+        authenticateRenewal: async () => null,
+      },
+      { maxRenewals: 0 },
+    );
+    const controller = createDelegationRoundsController({
+      store: this.owners.persistence.roundsStore(authorized.current),
+      authorityService: service,
+      dispatchLedger,
+      host: {
+        authorize: async ({ action, groupId: candidate, current }) => {
+          authorized.current();
+          return ['finalizeSync', 'replay'].includes(action) &&
+            candidate === groupId &&
+            current &&
+            same(current, group)
+            ? root.authenticated_principal_ref
+            : null;
+        },
+        retainContinuation: async (spec, receipt) => {
+          authorized.current();
+          if (!same(spec, group.spec)) refuse();
+          const pending = group.continuations.find(
+            (c) => c.command.operationKey === command.syncOperationKey,
+          );
+          if (
+            !pending?.prepared ||
+            pending.command.kind !== 'sync' ||
+            !same(pending.prepared, receipt)
+          )
+            refuse();
+          const seatId = pending.command.seatId;
+          const member = before.admission.members.find(
+            (m) => m.seatId === seatId,
+          );
+          if (!member) refuse();
+          for (const proof of pending.prepared.terminalProofs) {
+            const observation =
+              await this.owners.persistence.readReportObservation(
+                groupId,
+                proof.invocationId,
+                proof.reference,
+                authorized.current,
+              );
+            const invocation = before.authority!.invocations.find(
+              (i) => i.invocationId === proof.invocationId,
+            );
+            if (
+              observation.seatId !== member.seatId ||
+              observation.observation.kind !== 'terminal' ||
+              observation.observation.sessionId !== member.reservedTaskId ||
+              !invocation?.terminal ||
+              invocation.usage === null
+            )
+              refuse();
+            await this.owners.persistence.assertProviderEvidenceReference(
+              observation.observation.evidence,
+              {
+                groupId,
+                rootId: root.authority_id,
+                invocationId: proof.invocationId,
+                executionId: member.reservedTaskId,
+                usage: invocation.usage,
+              },
+              authorized.current,
+            );
+          }
+          return this.owners.persistence.retainReportFlowObservation(
+            groupId,
+            'continuation',
+            receipt,
+            authorized.current,
+          );
+        },
+        executionHost: () => refuse(),
+        prepareRequest: async () => refuse(),
+        retainObservation: async () => refuse(),
+        confirmTerminal: async () => refuse(),
+        requestDescendantCancellation: async () => refuse(),
+      },
+    });
+    return controller.finalizeSync({
+      kind: 'finalizeSync',
+      groupId,
+      ...command,
+      controller: group.spec.controller,
+    });
   }
 
   async readResult(

@@ -78,6 +78,42 @@ export function assertReportGroupContinuation(input: ReportGroupInput): void {
   )
     throw Error('report_continuation_capacity');
 }
+export type ReportGroupContextSyncInput = {
+  operationKey: string;
+  expectedRevision: number;
+  seatId: string;
+  flowHead: string;
+  text: string;
+};
+export type ReportGroupFinalizeSyncInput = {
+  operationKey: string;
+  expectedRevision: number;
+  syncOperationKey: string;
+  preparedDigest: string;
+};
+export type ReportGroupContextSyncView = {
+  operationKey: string;
+  seatId: string;
+  flowHead: string;
+  state: 'pending' | 'prepared' | 'acknowledged' | 'incomplete';
+  reason:
+    | 'exact_ack'
+    | 'ack_mismatch'
+    | 'unexpected_tools'
+    | 'execution_incomplete'
+    | null;
+  preparedDigest: string | null;
+  /** Null means no complete operation-level accounting snapshot was retained. */
+  attempts:
+    | {
+        invocationId: string;
+        allocation: ReportGroupAmounts;
+        usage: ReportGroupAmounts | null;
+        accountingTerminal: boolean;
+        terminal: ReportGroupReference | null;
+      }[]
+    | null;
+};
 export type ReportGroupView = {
   version: typeof REPORT_GROUP_VERSION;
   groupId: string;
@@ -88,6 +124,13 @@ export type ReportGroupView = {
   cancellation: 'none' | 'pending' | 'requested';
   authorityRevoked: boolean;
   acceptance: 'unassessed';
+  contextSyncs?: ReportGroupContextSyncView[];
+  accounting?: {
+    invocationCount: number;
+    unsettledInvocations: number;
+    knownTerminalUsage: ReportGroupAmounts;
+    unsettledAllocation: ReportGroupAmounts;
+  };
   members: {
     seatId: string;
     agentId: string;
