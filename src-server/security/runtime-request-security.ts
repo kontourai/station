@@ -27,6 +27,12 @@ export type RuntimeCredentialAuthority =
 export const RUNTIME_CREDENTIAL_AUTHORITY_VAR =
   'stationRuntimeCredentialAuthority';
 
+declare module 'hono' {
+  interface ContextVariableMap {
+    stationRuntimeCredentialAuthority?: RuntimeCredentialAuthority;
+  }
+}
+
 /**
  * The authenticated ingress credential is held only for the lifetime of its
  * Request. Runtime seams use this instead of reparsing a particular transport

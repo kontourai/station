@@ -1144,10 +1144,7 @@ function configureRuntimeSecurity(
             ),
         },
       });
-      (c as unknown as { set(key: string, value: unknown): void }).set(
-        RUNTIME_CREDENTIAL_AUTHORITY_VAR,
-        'operator-session',
-      );
+      c.set(RUNTIME_CREDENTIAL_AUTHORITY_VAR, 'operator-session');
       setBudgetPrincipal(
         c as unknown as PairingScopeContextStore,
         deriveBudgetPrincipal('session', deviceCredential),
