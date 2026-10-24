@@ -196,6 +196,7 @@ import {
   requiredMissingPrerequisites,
   resolveRuntimeAdapterReadiness,
 } from '../../runtime/frameworks/runtime-adapter-readiness.js';
+import { revokeStationControlMcpToken } from '../../runtime/mcp/station-control-mcp-token.js';
 import { createNativeOutputDeclarationOperation } from '../../runtime/native-output-declaration.js';
 import type { NativeOutputCallFacts } from '../../runtime/native-output-turn-grant.js';
 import {
@@ -1667,9 +1668,9 @@ function isWithinDirectory(root: string, candidate: string): boolean {
  * it gets no id and an explicit `localProjectIdRefused: true`, so a reader
  * cannot fall back to looking the slug up.
  *
- * The containment check is LEXICAL: paths are resolved and compared as
- * strings, and symlinks inside the root are not followed. A symlink under
- * the Project root that points elsewhere still counts as inside.
+ * Runtime composition canonicalizes the root and cwd before containment.
+ * Embedded callers without a resource resolver retain lexical containment;
+ * server-admitted workspaces retain their exact admitted coordinate.
  */
 async function withSessionLocalProjectId(
   input: ProviderSessionStartInput,
@@ -1701,7 +1702,11 @@ async function withSessionLocalProjectId(
   const currentProject = slug
     ? listProjects?.().find((entry) => entry.slug === slug)
     : undefined;
-  const root = resolvedRoot ? resolve(expandTilde(resolvedRoot)) : undefined;
+  const root = resolvedRoot
+    ? resolveProjectDirectory && !admittedCwd
+      ? canonicalPath(resolvedRoot)
+      : resolve(expandTilde(resolvedRoot))
+    : undefined;
   const cwdVerified =
     cwd !== undefined &&
     ((root !== undefined && isWithinDirectory(root, cwd)) || admittedCwd);
@@ -1764,7 +1769,7 @@ async function resolveStartSessionCwd(
     typeof rawProjectSlug === 'string' && rawProjectSlug
       ? rawProjectSlug
       : undefined;
-  const suppliedCwd = input.cwd ? resolve(expandTilde(input.cwd)) : undefined;
+  let suppliedCwd = input.cwd ? resolve(expandTilde(input.cwd)) : undefined;
   if (
     admittedWorkspace &&
     (admittedWorkspace.threadId !== input.threadId ||
@@ -1811,7 +1816,14 @@ async function resolveStartSessionCwd(
   }
 
   if (projectSlug && resolveProjectDirectory && !admittedWorkspace) {
-    projectCwd = await resolveProjectDirectory(projectSlug);
+    const resolvedRoot = await resolveProjectDirectory(projectSlug);
+    if (resolvedRoot && !existsSync(resolvedRoot))
+      throw new Error(
+        `Project '${projectSlug}' working directory no longer exists: ${resolvedRoot}`,
+      );
+    projectCwd = resolvedRoot ? canonicalPath(resolvedRoot) : undefined;
+    if (suppliedCwd && existsSync(suppliedCwd))
+      suppliedCwd = canonicalPath(suppliedCwd);
   }
 
   const cwd = suppliedCwd ?? projectCwd;
@@ -6855,6 +6867,26 @@ export class OrchestrationService {
               // runs outside that boundary, which would record a throw as
               // an uncertain start.
               await this.retainedSessionAdmittedWorkspace(input);
+              const localProjectId =
+                input.metadata?.[SESSION_LOCAL_PROJECT_ID_METADATA_KEY];
+              const projectSlug = input.metadata?.projectSlug;
+              if (
+                typeof localProjectId === 'string' &&
+                typeof projectSlug === 'string' &&
+                input.cwd &&
+                !internal?.foregroundInvocationAdmission
+                  ?.provisionedWorkspace &&
+                !readExecutionWorkspaceBinding(internal?.executionWorkspace) &&
+                !internal?.receiverExecutionAdmission?.admitted &&
+                !input.metadata?.worktree
+              )
+                await this.options.resolveProjectSessionDirectory?.(
+                  projectSlug,
+                  {
+                    localProjectId,
+                    cwd: input.cwd,
+                  },
+                );
               const binding = context.dispatchCwdAdmission
                 ? await this.dispatchCwdBinding(input, internal)
                 : undefined;
@@ -6944,6 +6976,33 @@ export class OrchestrationService {
           });
           return session;
         },
+        cleanupFailedStart: async (adapter, threadId) => {
+          // Revoke even if provider teardown fails or exceeds its deadline.
+          revokeStationControlMcpToken(threadId);
+          try {
+            await this.adapterRetirement.runCleanupWithinDeadline(
+              () => adapter.stopSession(threadId),
+              `${adapter.provider} failed start cleanup`,
+            );
+          } catch (error) {
+            this.options.logger.warn('Failed start session cleanup failed', {
+              provider: adapter.provider,
+              threadId,
+              error: errorMessage(error),
+            });
+            // A current adapter owns unrelated sessions and its shared event stream.
+            if (!this.isAdapterCurrent(adapter))
+              this.adapterRetirement.retireAfterCleanupFailure(adapter);
+            return;
+          }
+          const tracked = this.sessionReadModel.get(threadId);
+          if (tracked)
+            this.finalizeStoppedAdapterSessions(
+              adapter,
+              new Map([[threadId, tracked]]),
+              'Session start failed.',
+            );
+        },
         recordStarted: (adapter, input) => {
           this.modelLaunch.recordAcceptedModelLaunchPlan(
             adapter,
@@ -6984,19 +7043,11 @@ export class OrchestrationService {
             this.portableConsentByThread.delete(input.threadId);
           }
         },
-        ensureStartedSessionCurrent: async (adapter, session, signal) => {
+        ensureStartedSessionCurrent: async (adapter, _session, signal) => {
           if (signal?.aborted) {
-            await this.adapterRetirement.cleanupObsoleteStartedSession(
-              adapter,
-              session.threadId,
-            );
             throwIfAborted(signal);
           }
           if (!this.isAdapterCurrent(adapter)) {
-            await this.adapterRetirement.cleanupObsoleteStartedSession(
-              adapter,
-              session.threadId,
-            );
             throw new Error(
               `${adapter.provider} adapter was replaced while the session was starting.`,
             );

@@ -387,6 +387,10 @@ interface SessionCommandDependencies {
       context: SessionCommandContext,
       internal: SessionCommandInternalOptions | undefined,
     ): Promise<ProviderSession>;
+    cleanupFailedStart(
+      adapter: ProviderAdapterShape,
+      threadId: string,
+    ): Promise<void>;
     recordStarted(
       adapter: ProviderAdapterShape,
       input: ProviderSessionStartInput,
@@ -731,30 +735,35 @@ export function createSessionCommandModule(
           context,
           internal,
         );
-        deps.launchPolicy.recordStarted(adapter, startInput);
-        await deps.launchPolicy.ensureStartedSessionCurrent(
-          adapter,
-          session,
-          startInput.signal,
-        );
-        deps.sessionState.attachStarted(
-          session,
-          adapter,
-          context.tenantExecutionContext,
-          startInput,
-        );
-        deps.launchPolicy.logStarted(adapter, startInput);
-        await deps.bindings.bind(startInput, internal);
-        const persisted = persist(receipt, 'persist-accepted');
-        const publicSession = deps.publicSession(session);
-        if (persisted.kind === 'unavailable')
-          return acceptedAfterReceiptFault(persisted.error, publicSession);
-        return {
-          status: 'accepted',
-          receipt,
-          receiptStatus: 'persisted',
-          session: publicSession,
-        };
+        try {
+          deps.launchPolicy.recordStarted(adapter, startInput);
+          await deps.launchPolicy.ensureStartedSessionCurrent(
+            adapter,
+            session,
+            startInput.signal,
+          );
+          deps.sessionState.attachStarted(
+            session,
+            adapter,
+            context.tenantExecutionContext,
+            startInput,
+          );
+          deps.launchPolicy.logStarted(adapter, startInput);
+          await deps.bindings.bind(startInput, internal);
+          const persisted = persist(receipt, 'persist-accepted');
+          const publicSession = deps.publicSession(session);
+          if (persisted.kind === 'unavailable')
+            return acceptedAfterReceiptFault(persisted.error, publicSession);
+          return {
+            status: 'accepted',
+            receipt,
+            receiptStatus: 'persisted',
+            session: publicSession,
+          };
+        } catch (error) {
+          await deps.launchPolicy.cleanupFailedStart(adapter, session.threadId);
+          throw error;
+        }
       } catch (error) {
         if (adapter) deps.launchPolicy.recordGateBlocked(adapter, error);
         throw error;
