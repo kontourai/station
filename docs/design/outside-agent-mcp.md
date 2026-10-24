@@ -61,7 +61,7 @@ New components, all proposed:
 
 ## 2. Exposure and origins
 
-Enable explicitly per instance. Configure one canonical external origin `O`;
+Enable explicitly per instance. Configure one canonical HTTPS external origin `O`;
 its exact resource identifier `R` is `O + /mcp`, with no query or fragment.
 The issuer is exactly `O`. These are persisted configuration, never inferred
 from Host, forwarded headers or tool arguments. An origin/issuer change revokes
@@ -77,7 +77,8 @@ itself does not become a paired Device.
 
 | Station address | Serve `/mcp` and OAuth on O? | Approval channel |
 | --- | --- | --- |
-| Literal loopback HTTP, e.g. `http://127.0.0.1:43141` | Yes, explicit local-only mode. Bind to loopback; verify direct socket and configured Host, reject forwarding ingress. No alternative hostname aliases. | Host CLI. A separately configured valid C may support passkeys; plain loopback alone does not enable them. |
+| Literal loopback HTTP, e.g. `http://127.0.0.1:43141` | No OAuth issuer or outside MCP surface. HTTPS is required for authorization-server endpoints even locally. Internal engine routes retain their existing local transport. | Configure a trusted local HTTPS issuer before outside-client sign-in. |
+| Loopback reached through configured, trusted HTTPS | Yes, local-only TLS listener or explicit trusted TLS ingress, with exact configured Host. No hostname aliases. | Host CLI; optional separately configured valid C enables the existing passkey path. |
 | LAN or tailnet IP over HTTP | No; no discovery, registration, token or MCP access. Return 404. Tailnet encryption does not make an HTTP browser origin a WebAuthn origin. | Host CLI can administer local grants, but cannot enable insecure remote OAuth. |
 | Configured HTTPS DNS origin on LAN or Tailscale | Yes, through an explicitly trusted TLS ingress that strips untrusted forwarding headers. All other hosts are refused. | C with S4 step-up, or host CLI. |
 | HTTPS IP literal, or HTTPS DNS origin without C | OAuth transport can be enabled with valid TLS, but D10 still forbids remote operator sign-in on an IP-only Station. | Host CLI only. No app-origin approval fallback. |
@@ -308,7 +309,7 @@ not interchangeable with an IP literal. Private schemes are outside v1.
 
 B is a 256-bit random authorization-browser ticket, hashed server-side, in a
 host-only HttpOnly SameSite=Strict cookie scoped to `/oauth/authorize`, Secure
-on HTTPS. Bind it to request ID and issuer; five-minute expiry. The initial GET
+always. Bind it to request ID and issuer; five-minute expiry. The initial GET
 may be cross-site, but any status/complete action requires the bound ticket,
 and completion requires a separate one-use nonce. C's review link identifies
 the request, not the ticket. S3 sign-in occurs through its existing page; the
@@ -664,13 +665,14 @@ real-client/browser execution and hosted/release qualification.
 | Immediate revoke | Hold one live stream, queued mutation, paused search and descendant call; commit revoke through H and separately P. Release each paused action and prove no later effect/content or session resume; pre-revoke committed effect remains identifiable. Repeat for downgrade, expiry and authority loss. |
 | Crash/restart | Crash around grant/outbox commit, code consume and refresh rotation; reconcile once by decision ID, never mint a duplicate grant or return a plaintext secret later. Restart preserves active token expiry and revoked/replay state; pending requests require fresh flow. |
 | Existing surfaces | Existing internal child initializes/calls `/mcp/station-control`; its loopback/token behavior stays intact. Exercise engine OAuth proxy negotiation/sign-in regression from #4094/#4108. Cross-present each token at outside/internal/proxy/general API/consent routes and prove refusal. |
-| Exposure/UX | Loopback host-only flow without C; HTTPS DNS + C paired-browser passkey flow; LAN/tailnet HTTP refusal; HTTPS IP no operator sign-in; unknown Host/proxy headers; hosted registry disabled. Verify Connections read/change/revoke with operator and ordinary Device. |
+| Exposure/UX | Trusted HTTPS over loopback, host-only approval without C; HTTPS DNS + C paired-browser passkey flow; all plain HTTP issuer attempts refused; HTTPS IP no operator sign-in; unknown Host/proxy headers; hosted registry disabled. Verify Connections read/change/revoke with operator and ordinary Device. |
 
 Real acceptance uses a fresh Station home and instance name, isolated client
 profiles, synthetic Project/conversations and non-default allocated ports
 (for example runtime 43141, UI 43001, consent 43143 after checking availability).
 Never use the operator's everyday home or ports 3141/3000. Use the documented
-TLS consent mapping and existing paired Device/passkey setup; no fixture may
+TLS issuer mapping with certificates trusted by both real clients, and the
+documented consent mapping and existing paired Device/passkey setup; no fixture may
 stand in for the real browser assertion.
 
 Run **real `claude mcp login station` and `codex mcp login station`** against
