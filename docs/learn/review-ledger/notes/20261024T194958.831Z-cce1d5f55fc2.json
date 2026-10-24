@@ -1,0 +1,7 @@
+{
+  "revision": "b49a21af150fbc3da2550f2c00636c99c3b83b31",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Corrected shared action font from undefined --k-font-sans to the published --k-font-ui token, verified in installed @kontourai/ui tokens/tokens.css. Existing undefined-property regression passed 9 tests after CI caught the typo; all four light/dark narrow/wide browser cases passed. Public control props, defaults, pending behavior and independent-host stylesheet prerequisites remain accurate. No broad font or device qualification claimed.","inputs":["docs/reference/sdk.md","packages/sdk/src/components/ActionControl.css"]}
+  ]
+}

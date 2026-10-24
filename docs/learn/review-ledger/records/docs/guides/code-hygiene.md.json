@@ -30,7 +30,17 @@
 
     ".veritas/repo-standards/default.repo-standards.json",
 
-    "scripts/gate-for.mjs"
+    "scripts/gate-for.mjs",
+
+    "scripts/component-style-hygiene.mjs",
+
+    "scripts/component-style-hygiene-baseline.json",
+
+    "packages/sdk/src/components/ActionControl.tsx",
+
+    "src-ui/src/components/notifications/NoticeAction.tsx",
+
+    "src-ui/src/styles/control-recipes.css"
   ],
 
   "checks": []
