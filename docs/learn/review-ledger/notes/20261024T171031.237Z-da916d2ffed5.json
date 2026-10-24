@@ -1,0 +1,7 @@
+{
+  "revision": "1eac6bd2738125ff3249a5efaa68d490ff60faba",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed against the docs/reference/sdk.md note that a turn-start anchor may arrive elided on a full newest-turn page. This routing file makes no claim about window anchors; no prose change.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}
