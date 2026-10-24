@@ -1,0 +1,7 @@
+{
+  "revision": "5eb0b3bb746e5acbea3532387b7b64a1c118e7ca",
+
+  "notes": [
+    {"path":"docs/design/README.md","note":"Reviewed the generated design index: the only added entry links outside-agent-mcp.md and matches its H1. The record is explicitly a proposal; the index makes no implementation or qualification claim. Existing navigation and generator boundaries are unchanged.","inputs":["docs/design/README.md"]}
+  ]
+}
