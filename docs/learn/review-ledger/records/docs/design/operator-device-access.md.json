@@ -54,7 +54,9 @@
 
     "packages/connect/src/react/DevicePairingPanel.tsx",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-device-pairing-wiring.test.ts"
+    "src-server/runtime/routes/__tests__/runtime-routes-device-pairing-wiring.test.ts",
+
+    "src-server/services/ssh/device-pairing-service.ts"
   ],
 
   "checks": [

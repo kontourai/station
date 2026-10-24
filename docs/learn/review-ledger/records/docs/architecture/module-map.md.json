@@ -1236,7 +1236,15 @@
 
     "src-server/services/connections/lan-discovery.ts",
 
-    "src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx"
+    "src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx",
+
+    "src-server/services/consent/consent-transactions.ts",
+
+    "src-server/runtime/consent/consent-listener.ts",
+
+    "src-server/services/identity/operator-sessions.ts",
+
+    "src-server/services/ssh/device-pairing-service.ts"
   ],
 
   "checks": [
