@@ -5700,7 +5700,8 @@ state, closed reason codes, prepared digests and retained accounting/terminal
 observations. Null attempts means no complete operation-level snapshot was
 retained, not zero spend. Root accounting includes all invocations, including
 sync and unknown holds; known terminal usage and unsettled allocations are
-separate. Readers refuse contradictory ACK/usage/terminal shapes. These fields
+separate. Readers refuse contradictory ACK/usage/terminal shapes. `contextSyncAllowance` is the declared operation ceiling and count of recorded
+sync commands, not a claim of current execution eligibility. These fields
 carry no prompt, context bytes or execution capability. ACK does not establish
 semantic understanding, gate acceptance or billing reconciliation.
 
@@ -5729,6 +5730,14 @@ with the original cancel operation key and a distinct recovery key. The
 inspector offers it only for pending cancellation; a still-pending result
 confirms neither interruption nor termination. It never resends interrupts. Both
 mutation hooks check authority before and after the request and disable retries.
+`useSyncReportGroupContext` and `useFinalizeReportGroupSync` accept a scoped
+`{groupId, command}` mutation. Each has one active request, no automatic retry,
+current-authority checks and abort on authority change/unmount. A late response
+after abort is rejected before success data or invalidation. `useReportGroupContextCheckpoint`
+uses the same scoped lifetime for an explicit non-model checkpoint read; it
+does not invalidate group accounting. The checkpoint client checks group, seat
+and exact requested revision. It is an observation, not a source/SDK grant.
+
 `useCreateReportGroup` drives the inspector’s explicit paid-report form. The
 operator supplies Project/resource selectors, configured Agent IDs, separate
 briefs, per-member output limits and aggregate token/inference-cost budgets. A

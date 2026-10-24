@@ -1547,3 +1547,22 @@ ordinary brief allowance. SDK/CLI HTTP JSON and private context records allow
 2 MiB while ordinary report wire retains 1 MiB. Token/attempt/micro reservations
 are unchanged. Boundary controls cover ASCII and NUL-heavy context, large
 configured instructions, one-byte-over refusal and exact retained round-trip.
+
+
+### Scoped context UI and checkpoint observation
+
+The inspector now displays recorded context state and root accounting, offers
+one explicit context submission, and offers storage-only publication for a
+prepared receipt. A new current-authority checkpoint observation reads the
+original source receipt and Flow state without an SDK, runtime or provider;
+operators do not have to construct a private token. Its group/seat/revision join
+is checked by the client and at the server. It grants no future execution.
+Unsent drafts use the existing discard guard. Hooks stop admission/waiting on
+unmount or authority loss and reject late responses even when a transport ignores
+abort; they never retry unknown mutations. Controlled mounted/SDK/source tests
+and typechecks are separate from real serving and physical-device evidence.
+The inherited test-only credential restart forwarder was removed; its eight
+call sites now use the actual recovery collaborator through test support, with
+683 posture/confinement/orchestration controls passing. The original returning
+execution prerequisite remains failed until the published Flow contracts are
+adopted and runtime identity is proved.

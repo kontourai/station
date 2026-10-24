@@ -536,3 +536,249 @@ test.each(['returned', 'refused', 'authority-loss', 'unmount'] as const)(
     expect(sent).toHaveLength(1);
   },
 );
+
+test.each(['acknowledged', 'refused', 'authority-loss', 'unmount'] as const)(
+  'explicit paid context uses the displayed revision and never resends after %s',
+  async (outcome) => {
+    let displayed: ReportGroupView = {
+      ...group,
+      authorityRevoked: false,
+      cancellation: 'none',
+      topology: { kind: 'flow', runId: 'flow-one' },
+      contextSyncAllowance: { maximumOperations: 1, recordedOperations: 0 },
+      accounting: {
+        invocationCount: 1,
+        unsettledInvocations: 1,
+        knownTerminalUsage: { inputTokens: 0, outputTokens: 0, costMicros: 0 },
+        unsettledAllocation: {
+          inputTokens: 10,
+          outputTokens: 5,
+          costMicros: 100,
+        },
+      },
+    };
+    let settle!: (response: Response) => void;
+    let signal: AbortSignal | undefined;
+    const sent: { path: string; command: Record<string, unknown> }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof globalThis.fetch>(async (url, init) => {
+        if (new URL(String(url)).pathname.endsWith('/context-checkpoint'))
+          return envelope({
+            groupId: group.groupId,
+            seatId: 'reviewer',
+            revision: 4,
+            flowHead: 'a'.repeat(64),
+          });
+        if (init?.method === 'POST') {
+          sent.push({
+            path: new URL(String(url)).pathname,
+            command: JSON.parse(String(init.body)),
+          });
+          signal = init.signal ?? undefined;
+          return new Promise<Response>((resolve) => {
+            settle = resolve;
+          });
+        }
+        return envelope({
+          groups: [displayed],
+          hasMore: false,
+          nextGroupId: null,
+        });
+      }),
+    );
+    const view = mount();
+    fireEvent.click(screen.getByRole('button', { name: 'Show report groups' }));
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Send updated report context',
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Read current Flow checkpoint' }),
+    );
+    await screen.findByText(/Current Flow checkpoint read for reviewer/);
+    fireEvent.change(
+      screen.getByRole('textbox', { name: 'Private context text' }),
+      { target: { value: 'PRIVATE_SYNC_CONTEXT' } },
+    );
+    const leave = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(leave);
+    expect(leave.defaultPrevented).toBe(true);
+    const send = screen.getByRole('button', {
+      name: 'Send paid context request',
+    });
+    fireEvent.click(send);
+    await waitFor(() => expect(sent).toHaveLength(1));
+    fireEvent.click(send);
+    expect(sent).toEqual([
+      {
+        path: '/api/orchestration/report-groups/group-a/sync',
+        command: {
+          operationKey: expect.stringMatching(/^context:/),
+          expectedRevision: 4,
+          seatId: 'reviewer',
+          flowHead: 'a'.repeat(64),
+          text: 'PRIVATE_SYNC_CONTEXT',
+        },
+      },
+    ]);
+    if (outcome === 'authority-loss') view.revoke();
+    if (outcome === 'unmount') view.unmount();
+    if (outcome === 'unmount' || outcome === 'authority-loss')
+      await waitFor(() => expect(signal?.aborted).toBe(true));
+    displayed = {
+      ...displayed,
+      revision: 7,
+      contextSyncAllowance: { maximumOperations: 1, recordedOperations: 1 },
+      contextSyncs: [
+        {
+          operationKey: String(sent[0].command.operationKey),
+          seatId: 'reviewer',
+          flowHead: 'a'.repeat(64),
+          state: 'acknowledged',
+          reason: 'exact_ack',
+          preparedDigest: `sha256:${'b'.repeat(64)}`,
+          attempts: [
+            {
+              invocationId: 'sync-one',
+              allocation: { inputTokens: 10, outputTokens: 5, costMicros: 100 },
+              usage: { inputTokens: 2, outputTokens: 1, costMicros: 21 },
+              accountingTerminal: true,
+              terminal: {
+                id: 'terminal-sync',
+                domain: 'station.report-observation.v1',
+                digest: `sha256:${'c'.repeat(64)}`,
+              },
+            },
+          ],
+        },
+      ],
+      accounting: {
+        invocationCount: 2,
+        unsettledInvocations: 1,
+        knownTerminalUsage: { inputTokens: 2, outputTokens: 1, costMicros: 21 },
+        unsettledAllocation: {
+          inputTokens: 10,
+          outputTokens: 5,
+          costMicros: 100,
+        },
+      },
+    };
+    await act(async () =>
+      settle(
+        outcome === 'refused'
+          ? new Response('{}', { status: 409 })
+          : envelope({ replayed: false, group: displayed }),
+      ),
+    );
+    if (outcome === 'acknowledged') {
+      expect(
+        await screen.findByText(/Exact context ACK retained/),
+      ).toBeTruthy();
+      expect(
+        screen.getByText(/All invocations, including context sync: 2/),
+      ).toBeTruthy();
+      expect(
+        screen.getByText(
+          /Unsettled allocations: 10 input tokens, 5 output tokens, 100 inference microdollars/,
+        ),
+      ).toBeTruthy();
+      expect(
+        view.client.getQueryData([
+          'report-groups',
+          'https://report-ui.test',
+          'operator-one',
+          null,
+        ]),
+      ).toMatchObject({ groups: [displayed] });
+    } else if (outcome === 'refused') {
+      expect(await screen.findByText(/Context outcome unknown/)).toBeTruthy();
+      fireEvent.click(send);
+    } else {
+      expect(screen.queryByText(/Exact context ACK retained/)).toBeNull();
+      expect(
+        view.client
+          .getMutationCache()
+          .getAll()
+          .every((mutation) => mutation.state.data === undefined),
+      ).toBe(true);
+    }
+    expect(sent).toHaveLength(1);
+  },
+);
+
+test('prepared context publication sends only the retained digest and preserves unknown accounting', async () => {
+  const prepared: ReportGroupView = {
+    ...group,
+    topology: { kind: 'flow', runId: 'flow-one' },
+    contextSyncAllowance: { maximumOperations: 1, recordedOperations: 1 },
+    contextSyncs: [
+      {
+        operationKey: 'original-sync',
+        seatId: 'reviewer',
+        flowHead: 'a'.repeat(64),
+        state: 'prepared',
+        reason: 'execution_incomplete',
+        preparedDigest: `sha256:${'b'.repeat(64)}`,
+        attempts: [
+          {
+            invocationId: 'sync-unknown',
+            allocation: { inputTokens: 10, outputTokens: 5, costMicros: 100 },
+            usage: null,
+            accountingTerminal: false,
+            terminal: null,
+          },
+        ],
+      },
+    ],
+  };
+  const sent: unknown[] = [];
+  const released: ReportGroupView = {
+    ...prepared,
+    revision: 5,
+    contextSyncs: prepared.contextSyncs?.map((sync) => ({
+      ...sync,
+      state: 'incomplete',
+    })),
+  };
+  vi.stubGlobal(
+    'fetch',
+    vi.fn<typeof globalThis.fetch>(async (url, init) => {
+      if (init?.method === 'POST') {
+        expect(new URL(String(url)).pathname).toBe(
+          '/api/orchestration/report-groups/group-a/sync/finalize',
+        );
+        sent.push(JSON.parse(String(init.body)));
+        return envelope({ replayed: false, group: released });
+      }
+      return envelope({
+        groups: [sent.length ? released : prepared],
+        hasMore: false,
+        nextGroupId: null,
+      });
+    }),
+  );
+  mount();
+  fireEvent.click(screen.getByRole('button', { name: 'Show report groups' }));
+  const publish = await screen.findByRole('button', {
+    name: 'Publish retained sync receipt',
+  });
+  fireEvent.click(publish);
+  fireEvent.click(publish);
+  await screen.findByText(/Context sync incomplete/);
+  expect(sent).toEqual([
+    {
+      operationKey: expect.stringMatching(/^sync-receipt:/),
+      expectedRevision: 4,
+      syncOperationKey: 'original-sync',
+      preparedDigest: `sha256:${'b'.repeat(64)}`,
+    },
+  ]);
+  expect(
+    screen.queryByRole('button', { name: 'Send updated report context' }),
+  ).toBeNull();
+  expect(
+    screen.getByText(/sync-unknown: Usage unresolved; allocation retained/),
+  ).toBeTruthy();
+});

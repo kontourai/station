@@ -144,6 +144,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/orchestration/__tests__/reserved-station-session-binding.test.ts',
   'src-server/services/orchestration/__tests__/station-report-group-continuation.test.ts',
   'src-server/services/orchestration/__tests__/station-report-sync-recovery.test.ts',
+  'src-server/services/orchestration/__tests__/station-report-checkpoint.test.ts',
   'src-server/services/orchestration/__tests__/delegation-group-sdk-source-wire-owner.test.ts',
   // Two cache-enabled server bootstrap processes drive real MCP, Strands, CLI and shell children.
   'src-server/runtime/bootstrap/__tests__/server-compile-cache.process.test.ts',

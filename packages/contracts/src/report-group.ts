@@ -82,6 +82,12 @@ export function assertReportGroupContinuation(input: ReportGroupInput): void {
   )
     throw Error('report_continuation_capacity');
 }
+export type ReportGroupContextCheckpoint = {
+  groupId: string;
+  seatId: string;
+  revision: number;
+  flowHead: string;
+};
 export type ReportGroupContextSyncInput = {
   operationKey: string;
   expectedRevision: number;
@@ -129,6 +135,10 @@ export type ReportGroupView = {
   authorityRevoked: boolean;
   acceptance: 'unassessed';
   contextSyncs?: ReportGroupContextSyncView[];
+  contextSyncAllowance?: {
+    maximumOperations: number;
+    recordedOperations: number;
+  };
   accounting?: {
     invocationCount: number;
     unsettledInvocations: number;

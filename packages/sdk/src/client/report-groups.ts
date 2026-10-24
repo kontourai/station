@@ -6,6 +6,7 @@ import {
   REPORT_GROUP_VERSION,
   type ReportGroupCancelInput,
   type ReportGroupCancelResult,
+  type ReportGroupContextCheckpoint,
   type ReportGroupContextSyncInput,
   type ReportGroupEventPage,
   type ReportGroupFinalizeCancelInput,
@@ -33,6 +34,7 @@ import {
 export type {
   ReportGroupCancelInput,
   ReportGroupCancelResult,
+  ReportGroupContextCheckpoint,
   ReportGroupContextSyncInput,
   ReportGroupContextSyncView,
   ReportGroupContinuation,
@@ -135,6 +137,17 @@ const viewSchema = z
     cancellation: z.enum(['none', 'pending', 'requested']),
     authorityRevoked: z.boolean(),
     acceptance: z.literal('unassessed'),
+    contextSyncAllowance: z
+      .object({
+        maximumOperations: integer.max(
+          REPORT_GROUP_CONTINUATION_LIMITS.maxSyncs,
+        ),
+        recordedOperations: integer.max(
+          REPORT_GROUP_CONTINUATION_LIMITS.maxSyncs,
+        ),
+      })
+      .strict()
+      .optional(),
     contextSyncs: z
       .array(
         z
@@ -250,6 +263,11 @@ const viewSchema = z
     );
     if (
       invalid ||
+      (view.contextSyncAllowance &&
+        (view.topology.kind !== 'flow' ||
+          view.contextSyncAllowance.recordedOperations !== syncs.length ||
+          view.contextSyncAllowance.recordedOperations >
+            view.contextSyncAllowance.maximumOperations)) ||
       (syncs.length > 0 && view.topology.kind !== 'flow') ||
       new Set(syncs.map((sync) => sync.operationKey)).size !== syncs.length ||
       (view.accounting &&
@@ -385,6 +403,37 @@ export function parseReportGroupContextSyncInput(
       'Report context exceeds its byte limit.',
     );
   return value;
+}
+export async function readReportGroupContextCheckpoint(
+  base: string,
+  groupId: string,
+  input: { seatId: string; expectedRevision: number },
+  options?: ClientRequestOptions,
+): Promise<ReportGroupContextCheckpoint> {
+  const seatId = id.parse(input.seatId);
+  const expectedRevision = revision.parse(input.expectedRevision);
+  const result = z
+    .object({
+      groupId: id,
+      seatId: id,
+      revision,
+      flowHead: z.string().regex(/^[a-f0-9]{64}$/),
+    })
+    .strict()
+    .parse(
+      await post(
+        `${path(base, groupId)}/members/${encodeURIComponent(seatId)}/context-checkpoint`,
+        { expectedRevision },
+        options,
+      ),
+    );
+  if (
+    result.groupId !== groupId ||
+    result.seatId !== seatId ||
+    result.revision !== expectedRevision
+  )
+    throw new ReportGroupProtocolError('Unexpected report context checkpoint.');
+  return result;
 }
 export async function syncReportGroupContext(
   base: string,

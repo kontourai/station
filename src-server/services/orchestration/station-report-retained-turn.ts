@@ -66,6 +66,76 @@ export class StationReportRetainedTurns {
     );
   }
 
+  async checkpoint(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    seatId: string,
+    expectedRevision: number,
+  ) {
+    const loaded = await this.owners.custody.loadIntentForMutation(
+      context,
+      groupId,
+    );
+    const group = loaded.group;
+    const member = loaded.admission.members.find(
+      (member) => member.seatId === seatId,
+    );
+    const grant = group?.grants.envelopes.find(
+      (grant) => grant.seatId === seatId,
+    );
+    const envelope = loaded.authority?.epochs
+      .at(-1)
+      ?.envelopes.find(
+        (envelope) => envelope.envelope_id === grant?.envelope.id,
+      );
+    if (
+      !group ||
+      group.revision !== expectedRevision ||
+      group.spec.topology.kind !== 'flow' ||
+      !member ||
+      !envelope ||
+      !loaded.intent.flow ||
+      !loaded.intent.continuation?.maxSyncs ||
+      Date.now() >= loaded.intent.deadlineAt ||
+      group.cancellation !== 'none' ||
+      loaded.authority?.cancelled
+    )
+      refuse();
+    const source = await this.owners.sources.readmitSnapshot(
+      context,
+      { groupId, workItemId: member.reservedTaskId },
+      envelope.execution_binding.source,
+    );
+    try {
+      const flow = await this.owners.sources.prepareFlowSnapshot(
+        context,
+        { groupId, workItemId: member.reservedTaskId },
+        source.capability,
+        loaded.intent.flow.runId,
+      );
+      const schedule = await flow.readSchedule();
+      const current = await this.owners.custody.inspectForMutation(
+        context,
+        groupId,
+      );
+      if (
+        !current?.group ||
+        !same(current.group, group) ||
+        !same(current.authority, loaded.authority)
+      )
+        refuse();
+      flow.assertCurrent();
+      return {
+        groupId,
+        seatId,
+        revision: group.revision,
+        flowHead: schedule.runHead,
+      };
+    } finally {
+      this.owners.sources.releaseSnapshot(source.capability);
+    }
+  }
+
   async prepare(
     context: RuntimeSourceRequestContext,
     groupId: string,

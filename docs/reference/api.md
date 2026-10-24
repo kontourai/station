@@ -1924,7 +1924,13 @@ that still consumes a slot. No orphan collection or transactional rollback is
 currently provided.
 
 The candidate continuation routes are `POST /:groupId/sync` and
-`POST /:groupId/sync/finalize`. Sync accepts `operationKey`, `expectedRevision`,
+`POST /:groupId/sync/finalize`. An explicit
+`POST /:groupId/members/:seatId/context-checkpoint` accepts `expectedRevision`
+and returns `{groupId, seatId, revision, flowHead}` after current source/Project
+Flow authority checks. It re-observes source under the original receipt and
+expiry and reads Flow; it never resolves a runtime, qualifies an SDK request,
+reserves budget or invokes a provider. Concurrent group/accounting drift refuses
+the read. The token is an observation; the paid final-fetch fence checks it again. Sync accepts `operationKey`, `expectedRevision`,
 `seatId`, exact `flowHead` and private `text` (at most 64 KiB UTF-8). This route
 allows a 512 KiB JSON body so worst-case text escaping fits; other report
 mutations retain their 256 KiB request bound. It reloads

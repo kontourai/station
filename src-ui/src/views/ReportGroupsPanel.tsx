@@ -9,6 +9,7 @@ import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { useState } from 'react';
 import { Button } from '../components/Button';
 import { ReportGroupCreateForm } from './ReportGroupCreateForm';
+import { ReportGroupSyncForm } from './ReportGroupSyncForm';
 import './CliSessionGroupsPanel.css';
 import './ReportGroupsPanel.css';
 
@@ -155,6 +156,31 @@ function Group({ scope, group }: { scope: Scope; group: ReportGroupView }) {
           reservations remain.
         </p>
       )}
+      {group.accounting && (
+        <section aria-label="Group inference accounting">
+          <p>
+            All invocations, including context sync:{' '}
+            {group.accounting.invocationCount}. Unsettled:{' '}
+            {group.accounting.unsettledInvocations}.
+          </p>
+          <p>
+            Known terminal usage:{' '}
+            {group.accounting.knownTerminalUsage.inputTokens} input tokens,{' '}
+            {group.accounting.knownTerminalUsage.outputTokens} output tokens,{' '}
+            {group.accounting.knownTerminalUsage.costMicros} inference
+            microdollars.
+          </p>
+          <p>
+            Unsettled allocations:{' '}
+            {group.accounting.unsettledAllocation.inputTokens} input tokens,{' '}
+            {group.accounting.unsettledAllocation.outputTokens} output tokens,{' '}
+            {group.accounting.unsettledAllocation.costMicros} inference
+            microdollars. These are retained holds, not refunds or provider
+            invoices.
+          </p>
+        </section>
+      )}
+      <ReportGroupSyncForm scope={scope} group={group} />
       <ul>
         {group.members.map((member) => (
           <li key={member.seatId}>

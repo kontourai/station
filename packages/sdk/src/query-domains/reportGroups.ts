@@ -1,21 +1,29 @@
 import type {
   ReportGroupAmounts,
   ReportGroupCancelInput,
+  ReportGroupContextCheckpoint,
+  ReportGroupContextSyncInput,
   ReportGroupFinalizeCancelInput,
+  ReportGroupFinalizeSyncInput,
   ReportGroupInput,
+  ReportGroupOperation,
 } from '@kontourai/station-contracts/report-group';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 import {
   type ApiRequestScope,
+  type ClientRequestOptions,
   StationRequestAuthorityError,
 } from '../client/http';
 import {
   cancelReportGroup,
   createReportGroup,
   finalizeReportGroupCancel,
+  finalizeReportGroupSync,
   listReportGroups,
+  readReportGroupContextCheckpoint,
   readReportGroupResult,
+  syncReportGroupContext,
 } from '../client/report-groups';
 import { useApiQuery } from '../query-core';
 
@@ -208,4 +216,87 @@ export function useCreateReportGroup(scope: Scope) {
     networkMode: 'always',
     gcTime: 0,
   });
+}
+
+function useReportContextOperation<Input, Result = ReportGroupOperation>(
+  scope: Scope,
+  kind: 'sync' | 'finalize-sync' | 'checkpoint',
+  perform: (
+    base: string,
+    groupId: string,
+    input: Input,
+    options: ClientRequestOptions,
+  ) => Promise<Result>,
+) {
+  const client = useQueryClient();
+  const active = useRef<AbortController | undefined>(undefined);
+  const current = scope.isCurrent();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: Each authority tuple owns its in-flight mutation.
+  useEffect(
+    () => () => active.current?.abort(),
+    [scope.apiBase, scope.authorityKey, current],
+  );
+  return useMutation({
+    mutationKey: [
+      'report-group-context',
+      kind,
+      scope.apiBase,
+      scope.authorityKey,
+    ],
+    mutationFn: async ({
+      groupId,
+      command,
+    }: {
+      groupId: string;
+      command: Input;
+    }) => {
+      if (!scope.isCurrent()) throw new StationRequestAuthorityError();
+      if (active.current)
+        throw new Error('A report context operation is already active.');
+      const stop = new AbortController();
+      active.current = stop;
+      try {
+        const result = await perform(scope.apiBase, groupId, command, {
+          requestScope: scope,
+          signal: stop.signal,
+        });
+        stop.signal.throwIfAborted();
+        if (!scope.isCurrent()) throw new StationRequestAuthorityError();
+        return result;
+      } finally {
+        if (active.current === stop) active.current = undefined;
+      }
+    },
+    onSuccess: () => {
+      if (kind !== 'checkpoint' && scope.isCurrent())
+        void client.invalidateQueries({
+          queryKey: ['report-groups', scope.apiBase, scope.authorityKey],
+        });
+    },
+    retry: false,
+    networkMode: 'always',
+    gcTime: 0,
+  });
+}
+
+export function useSyncReportGroupContext(scope: Scope) {
+  return useReportContextOperation<ReportGroupContextSyncInput>(
+    scope,
+    'sync',
+    syncReportGroupContext,
+  );
+}
+export function useFinalizeReportGroupSync(scope: Scope) {
+  return useReportContextOperation<ReportGroupFinalizeSyncInput>(
+    scope,
+    'finalize-sync',
+    finalizeReportGroupSync,
+  );
+}
+
+export function useReportGroupContextCheckpoint(scope: Scope) {
+  return useReportContextOperation<
+    { seatId: string; expectedRevision: number },
+    ReportGroupContextCheckpoint
+  >(scope, 'checkpoint', readReportGroupContextCheckpoint);
 }

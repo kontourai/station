@@ -1441,8 +1441,11 @@ export {
   useCancelReportGroup,
   useCreateReportGroup,
   useFinalizeReportGroupCancel,
+  useFinalizeReportGroupSync,
+  useReportGroupContextCheckpoint,
   useReportGroupResultQuery,
   useReportGroupsQuery,
+  useSyncReportGroupContext,
 } from './query-domains/reportGroups';
 export type {
   SetupImportItem,

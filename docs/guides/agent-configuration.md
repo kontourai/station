@@ -268,6 +268,25 @@ continuation remain unavailable on this report surface.
    retained receipts without resending interrupts. Missing receipts remain
    pending; requested cancellation does not confirm physical termination.
 
+For retained Flow groups that declare remaining context-sync operations, the
+inspector offers **Send updated report context**. Choose the report seat, then
+**Read current Flow checkpoint**. This reads the currently authorized source
+and Flow state; it sends no model request and grants no future admission. Enter
+the private context, keep the operation key, and choose **Send paid context
+request** once. The displayed group revision and observed checkpoint are sent
+together. A stale source, checkpoint, receiver, authority or budget refuses at
+the server. An unknown response leaves the form disabled; inspect retained state
+rather than resending it. Current combined serving qualification remains open
+as described above; the form and declared allowance do not prove availability.
+
+Prepared sync receipts offer **Publish retained sync receipt**. This sends the
+original sync key and prepared digest to the receipt-only endpoint; it never
+resends the context request. Pending, prepared, acknowledged and incomplete
+states remain distinct. An exact ACK proves neither understanding nor acceptance.
+Root accounting includes context requests and unknown holds. It displays known
+terminal usage and unsettled allocations separately, without implying refunds
+or provider-invoice settlement.
+
 Unsent draft edits use the normal unsaved-changes guard. Paid-report operations
 have no automatic retries. Historical reports remain readable when a provider
 profile expires, subject to current read authority.

@@ -223,6 +223,21 @@ export function createReportGroupRoutes(
       );
     }
   });
+  app.post('/:groupId/members/:seatId/context-checkpoint', (c) =>
+    respond(c, async (owner) => {
+      noQuery(c);
+      const input = z
+        .object({ expectedRevision: z.number().int().nonnegative().safe() })
+        .strict()
+        .parse(await body(c));
+      return owner.checkpoint(
+        c,
+        id.parse(c.req.param('groupId')),
+        id.parse(c.req.param('seatId')),
+        input.expectedRevision,
+      );
+    }),
+  );
   app.post('/:groupId/sync/finalize', (c) =>
     respond(c, async (owner) => {
       noQuery(c);

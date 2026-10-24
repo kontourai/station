@@ -131,6 +131,14 @@ function view(value: Historical): ReportGroupView {
     authorityRevoked: authority?.cancelled ?? false,
     acceptance: 'unassessed' as const,
     ...(contextSyncs.length ? { contextSyncs } : {}),
+    ...(group?.spec.topology.kind === 'flow'
+      ? {
+          contextSyncAllowance: {
+            maximumOperations: group.spec.policy.maxSyncs ?? 0,
+            recordedOperations: contextSyncs.length,
+          },
+        }
+      : {}),
     ...(authority
       ? {
           accounting: {
@@ -176,6 +184,7 @@ export class StationReportGroupRuntime {
   readonly #custody: StationReportGroupCustody;
   readonly #execution: StationReportGroupExecution;
   readonly #continuation: StationReportGroupContinuation;
+  readonly #retainedTurns: StationReportRetainedTurns;
   readonly #dispatch: FileAuthorizationLedger;
   constructor(
     private readonly owners: {
@@ -209,6 +218,14 @@ export class StationReportGroupRuntime {
       sourcesRoot,
     );
     const wireIntents = new FileFinalWireIntentStore(root);
+    this.#retainedTurns = new StationReportRetainedTurns({
+      runtime: owners.runtime,
+      sources,
+      custody: this.#custody,
+      persistence,
+      orchestration: owners.orchestration,
+      rawFetch: owners.rawFetch,
+    });
     this.#continuation = new StationReportGroupContinuation({
       custody: this.#custody,
       persistence,
@@ -216,14 +233,7 @@ export class StationReportGroupRuntime {
       dispatchLedger: this.#dispatch,
       wireIntents,
       authorize: (context) => this.authorizeResponse(context),
-      turns: new StationReportRetainedTurns({
-        runtime: owners.runtime,
-        sources,
-        custody: this.#custody,
-        persistence,
-        orchestration: owners.orchestration,
-        rawFetch: owners.rawFetch,
-      }),
+      turns: this.#retainedTurns,
     });
     let prepared: Promise<StationReportGroupPreparation> | undefined;
     this.#execution = new StationReportGroupExecution({
@@ -284,6 +294,22 @@ export class StationReportGroupRuntime {
     const result = await this.#execution.execute(context, input);
     if (!result.group) throw new StationReportCustodyUnavailable();
     return { replayed: result.replayed, group: view(result.group) };
+  }
+  async checkpoint(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    seatId: string,
+    expectedRevision: number,
+  ) {
+    const current = await this.authorizeResponse(context);
+    const result = await this.#retainedTurns.checkpoint(
+      context,
+      groupId,
+      seatId,
+      expectedRevision,
+    );
+    current();
+    return result;
   }
   async sync(
     context: RuntimeSourceRequestContext,
