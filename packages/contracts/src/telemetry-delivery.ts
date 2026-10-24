@@ -25,6 +25,8 @@ export interface TelemetryCompanionArchivePreparation {
   receivedBytes: number;
   createdAt: string;
   installationAuthority: false;
+  /** Present only after fixed companion files were materialized and byte-verified. */
+  payloadPrepared?: true;
 }
 
 /** Lock presence is not process liveness; permission fields are request-local hints. */

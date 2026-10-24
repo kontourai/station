@@ -1,5 +1,6 @@
 import { createHash, generateKeyPairSync, randomUUID } from 'node:crypto';
 import {
+  cp,
   mkdir,
   readFile,
   rename,
@@ -254,6 +255,68 @@ test.skipIf(process.platform === 'win32')(
       'retain operator evidence',
     );
     expect(fetchFn).not.toHaveBeenCalled();
+    const outside = join(home, 'outside');
+    await writeFile(outside, 'retain outside data');
+    for (const fault of ['corrupt', 'foreign-source', 'link'] as const) {
+      const variant = join(home, fault);
+      await mkdir(variant);
+      await cp(stage, join(variant, PORTABLE_ARCHIVE_ROOT), {
+        recursive: true,
+      });
+      const companion = join(
+        variant,
+        PORTABLE_ARCHIVE_ROOT,
+        'telemetry-companion',
+      );
+      if (fault === 'corrupt')
+        await writeFile(join(companion, 'dist/main.mjs'), 'changed bundle');
+      else if (fault === 'foreign-source')
+        await writeFile(
+          join(companion, 'companion-manifest.json'),
+          JSON.stringify({ ...candidate.manifest, source: '0'.repeat(40) }),
+        );
+      else {
+        await rm(join(companion, 'dist/main.mjs'));
+        await symlink(outside, join(companion, 'dist/main.mjs'));
+      }
+      const variantArchive = join(variant, 'parent.tar.gz');
+      const packedVariant = spawnSyncBounded(
+        archiveTool(),
+        ['-czf', variantArchive, '-C', variant, PORTABLE_ARCHIVE_ROOT],
+        { encoding: 'utf8', windowsHide: true, timeout: 30_000 },
+      );
+      expect(packedVariant.error).toBeUndefined();
+      expect(packedVariant.status, packedVariant.stderr).toBe(0);
+      const variantBytes = await readFile(variantArchive);
+      const variantArtifact = {
+        ...artifact,
+        size: variantBytes.length,
+        sha256: createHash('sha256').update(variantBytes).digest('hex'),
+      };
+      await writeFile(
+        envelopeFile,
+        JSON.stringify(
+          signEnvelope(
+            { ...payload, artifacts: [variantArtifact] },
+            'fixture-preparation',
+            key.privateKey,
+          ),
+        ),
+      );
+      const rejected = await prepareTelemetryCompanionArchive(provenance, {
+        ...input,
+        operationId: randomUUID(),
+        fetchFn: async () => new Response(Uint8Array.from(variantBytes)),
+      });
+      expect(rejected, fault).toMatchObject({
+        phase: 'failed',
+        receivedBytes: variantBytes.length,
+        artifactSha256: variantArtifact.sha256,
+        installationAuthority: false,
+      });
+      expect(rejected).not.toHaveProperty('payloadPrepared');
+      expect(await readFile(outside, 'utf8')).toBe('retain outside data');
+    }
     const lockPath = join(root, 'preparation.lock');
     await writeFile(lockPath, 'retain interrupted owner', {
       mode: 0o600,

@@ -36,10 +36,12 @@ const preparationReceipt = z
       .max(TELEMETRY_COMPANION_ARCHIVE_MAX_BYTES),
     createdAt: time,
     installationAuthority: z.literal(false),
+    payloadPrepared: z.literal(true).optional(),
   })
   .strict()
   .refine(
     (value) =>
+      (!value.payloadPrepared || value.phase === 'authenticated') &&
       value.receivedBytes <= value.expectedBytes &&
       (value.phase !== 'authenticated' ||
         value.receivedBytes === value.expectedBytes),

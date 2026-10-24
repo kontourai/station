@@ -20,6 +20,7 @@ import { writeJsonAtomically } from '@kontourai/station-shared/service-launcher-
 import { z } from 'zod/v3';
 import type { InstallProvenance } from '../routes/system/install-provenance.js';
 import { readCompanionFile } from './telemetry-companion-artifact.mjs';
+import { materializeTelemetryCompanion } from './telemetry-companion-extract.js';
 import {
   type CompanionParentVerificationOptions,
   readTelemetryCompanionVerifiedParent,
@@ -38,10 +39,12 @@ const receiptSchema = z
     receivedBytes: z.number().int().nonnegative().max(MAX_ARCHIVE_BYTES),
     createdAt: z.string().datetime(),
     installationAuthority: z.literal(false),
+    payloadPrepared: z.literal(true).optional(),
   })
   .strict()
   .refine(
     (value) =>
+      (!value.payloadPrepared || value.phase === 'authenticated') &&
       value.receivedBytes <= value.expectedBytes &&
       (value.phase !== 'authenticated' ||
         value.receivedBytes === value.expectedBytes),
@@ -274,7 +277,7 @@ async function receiveArchive(
   return hash.digest('hex');
 }
 
-/** Authenticates bytes only; never extracts, executes, installs, enables sending or retries. */
+/** Authenticates and prepares fixed files; never executes, activates, enables sending or retries. */
 export async function prepareTelemetryCompanionArchive(
   provenance: InstallProvenance,
   input: {
@@ -395,12 +398,23 @@ export async function prepareTelemetryCompanionArchive(
     }
     await input.requireOperator();
     signal.throwIfAborted();
+    await materializeTelemetryCompanion({
+      archive: join(directory, 'parent-archive.tar.gz'),
+      destination: join(directory, 'payload'),
+      source: parent.release.sourceSha,
+      expectedBytes: parent.artifact.size,
+      expectedSha256: parent.artifact.sha256,
+      signal,
+      requireOperator: input.requireOperator,
+    });
     receipt.phase = 'authenticated';
+    receipt.payloadPrepared = true;
     await durableJson(join(directory, 'receipt.json'), receipt);
     return receipt;
   } catch {
     if (!directoryOwned) throw new CompanionArchivePreparationBusyError();
     receipt.phase = 'failed';
+    delete receipt.payloadPrepared;
     await durableJson(join(directory, 'receipt.json'), receipt);
     return receipt;
   } finally {

@@ -90,8 +90,8 @@ export function CompanionArchivePreparation({
     <section aria-label="Companion archive preparation">
       <p>
         Prepare the signed parent archive in this Station's private storage.
-        This downloads and verifies bytes; it does not install, start services
-        or enable sending.
+        This downloads, verifies and prepares companion files; it does not start
+        services or enable sending.
       </p>
       {!state.data.supported ? (
         <p>
@@ -119,6 +119,9 @@ export function CompanionArchivePreparation({
               ? 'Preparation failed. Captured files were retained; a new attempt requires another explicit action.'
               : 'Preparation intent recorded. This does not confirm a running operation.'}
         </p>
+      ) : null}
+      {receipt?.payloadPrepared ? (
+        <p>Companion files prepared and verified in private storage.</p>
       ) : null}
       {unconfirmed ? (
         <p role="alert">

@@ -86,6 +86,8 @@ interface GroupRunOptions {
   /** Written to the child's stdin, which is then closed. Without it the
    * child's stdin is the null device. */
   input?: Buffer | string;
+  /** An already-open read descriptor, inherited as stdin without buffering it. */
+  inputFileDescriptor?: number;
   /** Aborting stops the process group, as the deadline does. */
   signal?: AbortSignal;
 }
@@ -127,7 +129,8 @@ export function runInProcessGroup(
         env: options.env,
         detached: OWN_PROCESS_GROUP,
         stdio: [
-          options.input === undefined ? 'ignore' : 'pipe',
+          options.inputFileDescriptor ??
+            (options.input === undefined ? 'ignore' : 'pipe'),
           'pipe',
           'pipe',
         ],
