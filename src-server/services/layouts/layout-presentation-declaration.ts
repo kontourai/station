@@ -7,7 +7,10 @@ import {
   type LayoutPresentationReadFields,
   parseLayoutPresentationDeclaration,
 } from '@kontourai/station-contracts/layout';
-import { enumerateLayoutDefinitionPanes } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
+import {
+  enumerateLayoutDefinitionPanes,
+  MAX_WORKSPACE_PANE_IDENTITY_SEGMENT_LENGTH,
+} from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 
 /**
  * The pane ids a plugin layout's own tabs adapt into: the descriptors the
@@ -41,11 +44,53 @@ export function parsePluginLayoutDeclaration(
   layoutSlug: string,
 ): LayoutPresentationDeclaration {
   const ownPaneIds = pluginLayoutOwnPaneIds(definition, pluginName, layoutSlug);
-  return parseLayoutPresentationDeclaration(definition, {
-    label: `Plugin '${pluginName}' layout`,
+  const label = `Plugin '${pluginName}' layout`;
+  const declaration = parseLayoutPresentationDeclaration(definition, {
+    label,
     resolvesDrillIn: (paneId) => ownPaneIds.has(paneId),
   });
+  const tooLong = (declaration.drillIns ?? []).find(
+    (paneId) =>
+      (projectOccurrenceIdLength(definition, pluginName, layoutSlug, paneId) ??
+        0) > MAX_WORKSPACE_PANE_IDENTITY_SEGMENT_LENGTH,
+  );
+  if (tooLong !== undefined) {
+    throw new InvalidLayoutDeclarationError(
+      label,
+      `drill-in '${tooLong}' gets a Project occurrence id longer than the ${MAX_WORKSPACE_PANE_IDENTITY_SEGMENT_LENGTH} characters the pane host and navigation accept, so it could never be shown; shorten the plugin name, layout slug or tab id (#4130)`,
+    );
+  }
+  return declaration;
 }
+
+/**
+ * The length of the longest identity (instance id or state key) the Project
+ * pane catalog issues for `paneId` — composed exactly as
+ * `workspace-pane-catalog.ts` composes it, through the same adapter, with a
+ * Project id of a UUID's fixed length (every Project id is a UUID). The pane
+ * host's segment check and the navigation store's `?pane=` both refuse an id
+ * over {@link MAX_WORKSPACE_PANE_IDENTITY_SEGMENT_LENGTH}.
+ */
+function projectOccurrenceIdLength(
+  definition: unknown,
+  pluginName: string,
+  layoutSlug: string,
+  paneId: string,
+): number | undefined {
+  const adaptation = enumerateLayoutDefinitionPanes(definition, {
+    layoutSlug,
+    pluginId: pluginName,
+    instanceScope: `project:${UUID_SHAPED_PROJECT_ID}:source:plugin:${pluginName}:${layoutSlug}`,
+  })?.find((candidate) => candidate.descriptor.id === paneId);
+  return adaptation
+    ? Math.max(
+        adaptation.instance.instanceId.length,
+        adaptation.instance.stateKey.length,
+      )
+    : undefined;
+}
+
+const UUID_SHAPED_PROJECT_ID = '00000000-0000-0000-0000-000000000000';
 
 /**
  * The install-time refusal (#2995): a plugin whose layout declaration does
@@ -153,8 +198,11 @@ export function resolveLayoutReadDeclaration(
   if (provenance?.origin === 'plugin') {
     const pluginName = nonEmpty(provenance.pluginId);
     if (!pluginName) return TABS;
-    if (claimedPlugin !== undefined && claimedPlugin !== pluginName)
-      return TABS;
+    // The record must still be the plugin's: its `config.plugin` names the
+    // attributed plugin. A member who replaced `config` wholesale (dropping
+    // the binding) or re-pointed it has a layout of their own, which keeps
+    // no plugin's Chat claim. A rename leaves `config` as it was.
+    if (claimedPlugin !== pluginName) return TABS;
     const declared = options.sources.pluginDeclaration(
       pluginName,
       layout.catalogContribution?.id,

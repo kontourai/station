@@ -1611,23 +1611,25 @@ export function createProjectRoutes(
       const canSee = viewerPluginSight(c);
       const sources = layoutDeclarationSources();
       const data: LayoutMetadataReadView[] = layouts.map((layout) => {
-        const withheld =
-          canSee !== undefined &&
-          layout.plugin !== undefined &&
-          !canSee(layout.plugin);
-        let record: LayoutDeclarationRecord = layout;
-        if (!withheld) {
-          try {
-            record = storageAdapter.getLayout(slug, layout.slug);
-          } catch {
-            // Unreadable here, though it listed: the row keeps its listing
-            // facts, which name no attribution, so it states no plugin's
-            // declaration.
-          }
+        // Withholding is decided from the stored record — its attribution
+        // as well as its `config.plugin` — with the same predicate the
+        // detail read uses, because the declaration is read from that
+        // attribution. A record that cannot be read here fails closed:
+        // its row is withheld and states `tabs`.
+        let record: LayoutDeclarationRecord | undefined;
+        try {
+          record = storageAdapter.getLayout(slug, layout.slug);
+        } catch {
+          record = undefined;
         }
+        const withheld =
+          record === undefined ||
+          (canSee !== undefined &&
+            ((layout.plugin !== undefined && !canSee(layout.plugin)) ||
+              layoutPluginBindingWithheld(record, { canSeePlugin: canSee })));
         return {
           ...(withheld ? { ...layout, plugin: undefined } : layout),
-          ...layoutReadDeclaration(record, withheld, sources),
+          ...layoutReadDeclaration(record ?? layout, withheld, sources),
         };
       });
       return c.json({ success: true, data });

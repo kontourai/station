@@ -33,9 +33,9 @@ const { grantPermissions } = await import(
 );
 
 const NOW = '2026-08-01T00:00:00.000Z';
-const PLUGIN = 'stack-fixture';
-const PANE_ONE = `pane:plugin%3A${PLUGIN}:stack:one`;
-const PANE_TWO = `pane:plugin%3A${PLUGIN}:stack:two`;
+const PLUGIN = 'sfx';
+const PANE_ONE = `pane:plugin%3A${PLUGIN}:st:one`;
+const PANE_TWO = `pane:plugin%3A${PLUGIN}:st:two`;
 const tempHome = trackTempDirs();
 
 function home(): string {
@@ -55,14 +55,14 @@ function writeStackPlugin(
       name: PLUGIN,
       version: '1.0.0',
       permissions: ['layout.primaryChat'],
-      layout: { slug: 'stack', source: 'layout.json' },
+      layout: { slug: 'st', source: 'layout.json' },
     }),
   );
   writeFileSync(
     join(dir, 'layout.json'),
     JSON.stringify({
       name: 'Stack fixture',
-      slug: 'stack',
+      slug: 'st',
       tabs: [
         { id: 'one', label: 'One', component: 'stack-fixture-one' },
         { id: 'two', label: 'Two', component: 'stack-fixture-two' },
@@ -142,7 +142,7 @@ const STORED_PLUGIN = {
   name: 'Stack fixture',
   type: 'custom',
   catalogContribution: {
-    id: `plugin:${PLUGIN}:stack`,
+    id: `plugin:${PLUGIN}:st`,
     version: '1.0.0',
     sourceIdentity: { id: PLUGIN, kind: 'local', source: `plugins/${PLUGIN}` },
     provenance: { origin: 'plugin', pluginId: PLUGIN },
@@ -398,6 +398,51 @@ describe('layout reads state the contributor’s declaration (#2995)', () => {
       });
       expect(res.status).toBe(200);
       expect((await json(res)).data).toMatchObject(STACK);
+    });
+
+    test('replacing config wholesale drops the plugin binding, and with it the declaration', async () => {
+      const { app, storage } = await grantedApp();
+      await seed(storage, [STORED_PLUGIN]);
+      const res = await app.request('/demo/layouts/stack', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          config: { tabs: [{ id: 'mine', label: 'Mine', component: 'mine' }] },
+        }),
+      });
+      expect(res.status).toBe(200);
+      statesNoClaim((await json(res)).data);
+      statesNoClaim(
+        (await json(await app.request('/demo/layouts/stack'))).data,
+      );
+      const row = (await json(await app.request('/demo/layouts'))).data.find(
+        (candidate: { slug: string }) => candidate.slug === 'stack',
+      );
+      statesNoClaim(row);
+    });
+
+    test('the list withholds an attributed row from a caller who cannot see its plugin, even without config.plugin', async () => {
+      // The delta review's sequence: apply, PUT config without the plugin
+      // binding, then list as a caller who cannot see the plugin.
+      const { projectHome, app, storage } = await grantedApp();
+      await seed(storage, [STORED_PLUGIN]);
+      await app.request('/demo/layouts/stack', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          config: { tabs: [{ id: 'one', label: 'One', component: 'x' }] },
+        }),
+      });
+      const hidden = appFor(projectHome, () => false);
+      const row = (
+        await json(await hidden.app.request('/demo/layouts'))
+      ).data.find((candidate: { slug: string }) => candidate.slug === 'stack');
+      statesNoClaim(row);
+      expect(JSON.stringify(row)).not.toContain(PLUGIN);
+      const detail = (
+        await json(await hidden.app.request('/demo/layouts/stack'))
+      ).data;
+      statesNoClaim(detail);
     });
 
     test('a pre-attribution record naming a plugin states tabs', async () => {

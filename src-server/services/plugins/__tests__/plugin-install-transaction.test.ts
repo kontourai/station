@@ -2796,16 +2796,16 @@ describe('installPluginFromSource', () => {
       permissions: string[] = ['layout.primaryChat'],
     ): void {
       writePlugin(sourceDir, {
-        name: 'stack-plugin',
+        name: 'stk',
         version: '1.0.0',
         permissions,
-        layout: { slug: 'stack', source: 'layout.json' },
+        layout: { slug: 'st', source: 'layout.json' },
       });
       writeFileSync(
         join(sourceDir, 'layout.json'),
         JSON.stringify({
           name: 'Stack',
-          slug: 'stack',
+          slug: 'st',
           tabs: [
             { id: 'one', label: 'One', component: 'stack-one' },
             { id: 'two', label: 'Two', component: 'stack-two' },
@@ -2814,10 +2814,7 @@ describe('installPluginFromSource', () => {
         }),
       );
     }
-    const OWN_PANES = [
-      'pane:plugin%3Astack-plugin:stack:one',
-      'pane:plugin%3Astack-plugin:stack:two',
-    ];
+    const OWN_PANES = ['pane:plugin%3Astk:st:one', 'pane:plugin%3Astk:st:two'];
 
     test.each([
       [
@@ -2850,7 +2847,7 @@ describe('installPluginFromSource', () => {
             consent: await approvedConsent(source, root),
           }),
         ).rejects.toThrow(refusal);
-        expect(existsSync(join(root, 'plugins', 'stack-plugin'))).toBe(false);
+        expect(existsSync(join(root, 'plugins', 'stk'))).toBe(false);
       },
     );
 
@@ -2869,7 +2866,7 @@ describe('installPluginFromSource', () => {
       ).rejects.toThrow(
         /primary 'chat' needs the 'layout.primaryChat' permission in the plugin manifest/,
       );
-      expect(existsSync(join(root, 'plugins', 'stack-plugin'))).toBe(false);
+      expect(existsSync(join(root, 'plugins', 'stk'))).toBe(false);
     });
 
     test('installs a stack layout declaring its own two drill-ins', async () => {
@@ -2885,9 +2882,8 @@ describe('installPluginFromSource', () => {
       });
       expect(result.success, result.error).toBe(true);
       expect(
-        new DistributionProfileService(root).resolveForCatalog(
-          'plugin:stack-plugin:stack',
-        ).definition,
+        new DistributionProfileService(root).resolveForCatalog('plugin:stk:st')
+          .definition,
       ).toMatchObject({
         primary: 'chat',
         presentation: 'stack',
