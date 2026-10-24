@@ -1,6 +1,8 @@
 import { execFile } from 'node:child_process';
 import type { TelemetryCompanionPrerequisites } from '@kontourai/station-contracts/telemetry-delivery';
 import { z } from 'zod/v3';
+import type { InstallProvenance } from '../routes/system/install-provenance.js';
+import { readTelemetryCompanionArtifactEvidence } from './telemetry-companion-release.js';
 
 const dockerServer = z.object({
   Os: z.literal('linux'),
@@ -36,7 +38,9 @@ function localEndpoint(endpoint: string): boolean {
 }
 
 /** Reads only the selected local Docker context; never starts or pulls a service. */
-export async function readTelemetryCompanionPrerequisites(): Promise<TelemetryCompanionPrerequisites> {
+export async function readTelemetryCompanionPrerequisites(
+  provenance?: InstallProvenance,
+): Promise<TelemetryCompanionPrerequisites> {
   const unavailable = (
     reason: Extract<
       TelemetryCompanionPrerequisites,
@@ -100,5 +104,8 @@ export async function readTelemetryCompanionPrerequisites(): Promise<TelemetryCo
     architecture: parsedServer.data.Arch,
     dockerVersion: parsedServer.data.Version,
     composeVersion,
+    ...(provenance
+      ? { artifact: await readTelemetryCompanionArtifactEvidence(provenance) }
+      : {}),
   };
 }

@@ -1,3 +1,22 @@
+/** A signed parent envelope and local byte inventory are not install authority. */
+export type TelemetryCompanionArtifactEvidence =
+  | {
+      kind: 'unavailable';
+      reason:
+        | 'archive-install-required'
+        | 'release-envelope-missing'
+        | 'release-envelope-invalid'
+        | 'companion-payload-invalid';
+    }
+  | {
+      kind: 'parent-envelope-verified';
+      version: string;
+      source: string;
+      artifactSha256: string;
+      qualification: 'build-only';
+      installationAuthority: false;
+    };
+
 /** A request-local host probe, never installation or release authority. */
 export type TelemetryCompanionPrerequisites = {
   checkedAt: string;
@@ -8,6 +27,8 @@ export type TelemetryCompanionPrerequisites = {
       architecture: 'amd64' | 'arm64';
       dockerVersion: string;
       composeVersion: string;
+      /** Optional for compatibility with prerequisite-only servers. */
+      artifact?: TelemetryCompanionArtifactEvidence;
     }
   | {
       kind: 'unavailable';

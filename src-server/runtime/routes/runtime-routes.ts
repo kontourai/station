@@ -6045,7 +6045,8 @@ export function configureRuntimeRoutes(
           throw new ProjectMembershipRefusal('forbidden');
         await projectMembershipAuthority(request).operator();
       },
-      prerequisites: readTelemetryCompanionPrerequisites,
+      prerequisites: () =>
+        readTelemetryCompanionPrerequisites(resolveThisServerProvenance()),
     }),
   );
   context.app.use('/api/projects/:slug/access/*', async (c, next) => {

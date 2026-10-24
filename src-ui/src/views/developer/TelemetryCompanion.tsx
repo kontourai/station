@@ -22,6 +22,17 @@ const missing: Record<
     'Install Docker Compose 2.24 or later on the Station host, then check again.',
 };
 
+const missingArtifact = {
+  'archive-install-required':
+    'This Station needs an installer-owned release archive to check companion release evidence.',
+  'release-envelope-missing':
+    'This installed version has no retained signed release envelope. Use a release installed with envelope retention.',
+  'release-envelope-invalid':
+    'The retained release envelope could not be verified for this Station version, channel and host.',
+  'companion-payload-invalid':
+    'The bundled companion files are missing or do not match their build inventory.',
+};
+
 export function TelemetryCompanion() {
   const authority = useHostRequestAuthorityScope();
   return (
@@ -78,6 +89,16 @@ function CompanionHost({
                 Installation is not available yet. A qualified companion release
                 is still required.
               </p>
+              {query.data.artifact?.kind === 'parent-envelope-verified' ? (
+                <p>
+                  Parent release {query.data.artifact.version} has a verified
+                  signed envelope and matching companion build inventory. The
+                  companion remains build-only; archive-byte authentication and
+                  runtime qualification are still required before installation.
+                </p>
+              ) : query.data.artifact?.kind === 'unavailable' ? (
+                <p>{missingArtifact[query.data.artifact.reason]}</p>
+              ) : null}
             </>
           ) : (
             <p>{missing[query.data.reason]}</p>

@@ -103,6 +103,31 @@ test('renders the host observation from the real SDK/route without claiming inst
   expect(screen.queryByRole('button', { name: 'Install' })).toBeNull();
 });
 
+test('renders verified parent evidence through the SDK while refusing installation authority', async () => {
+  mount({
+    prerequisites: async () => ({
+      ...available,
+      artifact: {
+        kind: 'parent-envelope-verified',
+        version: '0.7.0-nightly.12',
+        source: 'a'.repeat(40),
+        artifactSha256: 'b'.repeat(64),
+        qualification: 'build-only',
+        installationAuthority: false,
+      },
+    }),
+  });
+  expect(
+    await screen.findByText(
+      /Parent release 0.7.0-nightly.12 has a verified signed envelope/,
+    ),
+  ).toBeTruthy();
+  expect(
+    screen.getByText(/archive-byte authentication and runtime qualification/),
+  ).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Install' })).toBeNull();
+});
+
 test('a refused operator read shows the required authority and launches no probe', async () => {
   const h = mount({ operator: false });
   expect(await screen.findByRole('alert')).toHaveProperty(
@@ -125,6 +150,32 @@ test('a malformed refresh replaces prior success with an error', async () => {
     expect.stringContaining('host check is unavailable'),
   );
   expect(screen.queryByText(/Host prerequisites passed/)).toBeNull();
+});
+
+test('the SDK refuses a response that promotes build evidence to installation authority', async () => {
+  mount();
+  await screen.findByText(/Host prerequisites passed/);
+  vi.mocked(fetch).mockResolvedValueOnce(
+    Response.json({
+      data: {
+        ...available,
+        artifact: {
+          kind: 'parent-envelope-verified',
+          version: '0.7.0-nightly.12',
+          source: 'a'.repeat(40),
+          artifactSha256: 'b'.repeat(64),
+          qualification: 'build-only',
+          installationAuthority: true,
+        },
+      },
+    }),
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Check host again' }));
+  expect(await screen.findByRole('alert')).toHaveProperty(
+    'textContent',
+    expect.stringContaining('host check is unavailable'),
+  );
+  expect(screen.queryByText(/Parent release/)).toBeNull();
 });
 
 test('a delayed prior-authority result cannot replace the newly selected authority', async () => {

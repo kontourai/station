@@ -1,3 +1,4 @@
+import { generateKeyPairSync } from 'node:crypto';
 import {
   mkdir,
   readFile,
@@ -10,6 +11,8 @@ import { join } from 'node:path';
 import { load } from 'js-yaml';
 import { beforeAll, expect, test } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
+import type { InstallProvenance } from '../../src-server/routes/system/install-provenance.js';
+import { readTelemetryCompanionArtifactEvidence } from '../../src-server/services/telemetry-companion-release.js';
 import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 import {
   archiveTool,
@@ -19,8 +22,109 @@ import {
   packageTelemetryCompanion,
   verifyTelemetryCompanion,
 } from '../package-telemetry-companion.mjs';
+import {
+  platformPayload,
+  signEnvelope,
+} from './fixtures/release-manifest-v2.js';
 
 const makeTempDir = trackTempDirs();
+
+test('retained parent signature and build inventory remain distinct from companion installation authority', async () => {
+  const root = makeTempDir('companion-release-evidence-');
+  const { directory, manifest } = await packageTelemetryCompanion(
+    join(root, 'output'),
+  );
+  const archiveRoot = join(root, 'archive');
+  await mkdir(archiveRoot);
+  await rename(directory, join(archiveRoot, 'telemetry-companion'));
+  const key = generateKeyPairSync('ed25519');
+  const keys = {
+    keys: [
+      {
+        keyId: 'fixture-companion',
+        algorithm: 'ed25519',
+        channels: ['nightly'],
+        publicKeySpkiPem: key.publicKey
+          .export({ type: 'spki', format: 'pem' })
+          .toString(),
+      },
+    ],
+  };
+  const payload = platformPayload({ sourceSha: manifest.source });
+  const envelope = signEnvelope(payload, 'fixture-companion', key.privateKey);
+  const file = join(archiveRoot, '.station-signed-release-manifest.json');
+  const provenance: InstallProvenance = {
+    installKind: 'archive',
+    archiveRoot,
+    installRoot: root,
+    version: '0.7.0-nightly.12',
+    release: {
+      schemaVersion: 2,
+      sha: manifest.source,
+      ref: 'v0.7.0-nightly.12',
+      createdAt: '2026-09-25T00:00:00.000Z',
+      channel: 'nightly',
+      releaseChannel: 'nightly',
+      prerelease: true,
+    },
+  };
+  const options = { keys, platform: 'linux', arch: 'x64' };
+  expect(
+    await readTelemetryCompanionArtifactEvidence(provenance, options),
+  ).toEqual({ kind: 'unavailable', reason: 'release-envelope-missing' });
+  await writeFile(file, JSON.stringify(envelope));
+  expect(
+    await readTelemetryCompanionArtifactEvidence(provenance, options),
+  ).toEqual({
+    kind: 'parent-envelope-verified',
+    version: provenance.version,
+    source: manifest.source,
+    artifactSha256: '4'.repeat(64),
+    qualification: 'build-only',
+    installationAuthority: false,
+  });
+  expect(await readTelemetryCompanionArtifactEvidence(provenance)).toEqual({
+    kind: 'unavailable',
+    reason: 'release-envelope-invalid',
+  });
+  expect(
+    await readTelemetryCompanionArtifactEvidence(provenance, {
+      ...options,
+      platform: 'freebsd',
+    }),
+  ).toEqual({ kind: 'unavailable', reason: 'release-envelope-invalid' });
+  await writeFile(
+    file,
+    JSON.stringify({
+      ...envelope,
+      signature: Buffer.alloc(64).toString('base64'),
+    }),
+  );
+  expect(
+    await readTelemetryCompanionArtifactEvidence(provenance, options),
+  ).toEqual({ kind: 'unavailable', reason: 'release-envelope-invalid' });
+  await writeFile(
+    file,
+    JSON.stringify(
+      signEnvelope(
+        { ...payload, sourceSha: 'a'.repeat(40) },
+        'fixture-companion',
+        key.privateKey,
+      ),
+    ),
+  );
+  expect(
+    await readTelemetryCompanionArtifactEvidence(provenance, options),
+  ).toEqual({ kind: 'unavailable', reason: 'release-envelope-invalid' });
+  await writeFile(file, JSON.stringify(envelope));
+  await writeFile(
+    join(archiveRoot, 'telemetry-companion/dist/main.mjs'),
+    'corrupted',
+  );
+  expect(
+    await readTelemetryCompanionArtifactEvidence(provenance, options),
+  ).toEqual({ kind: 'unavailable', reason: 'companion-payload-invalid' });
+});
 beforeAll(() => {
   const result = spawnSyncBounded(
     process.execPath,

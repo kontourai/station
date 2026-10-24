@@ -11,6 +11,29 @@ import { unlessDeadline } from '../client/request-deadline';
 import { type QueryConfig, useApiQuery } from '../query-core';
 
 const time = z.string().datetime();
+const companionArtifactEvidence = z.discriminatedUnion('kind', [
+  z
+    .object({
+      kind: z.literal('unavailable'),
+      reason: z.enum([
+        'archive-install-required',
+        'release-envelope-missing',
+        'release-envelope-invalid',
+        'companion-payload-invalid',
+      ]),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal('parent-envelope-verified'),
+      version: z.string().min(1).max(128),
+      source: z.string().regex(/^[a-f0-9]{40}$/),
+      artifactSha256: z.string().regex(/^[a-f0-9]{64}$/),
+      qualification: z.literal('build-only'),
+      installationAuthority: z.literal(false),
+    })
+    .strict(),
+]);
 const companionPrerequisites = z.discriminatedUnion('kind', [
   z
     .object({
@@ -20,6 +43,7 @@ const companionPrerequisites = z.discriminatedUnion('kind', [
       architecture: z.enum(['amd64', 'arm64']),
       dockerVersion: z.string().min(1).max(64),
       composeVersion: z.string().min(1).max(64),
+      artifact: companionArtifactEvidence.optional(),
     })
     .strict(),
   z
