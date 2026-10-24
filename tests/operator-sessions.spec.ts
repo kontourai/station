@@ -320,9 +320,10 @@ test('paired browser signs in on consent origin and gains inventory reads only',
     retainCapture('other-browser-refused.png');
     await host('DELETE', `/api/pairing/devices/${first.device.id}`);
     await expect(
-      page.getByText('Sign in as operator to view paired devices.', {
-        exact: true,
-      }),
+      page.getByText(
+        "This device's access to this Station needs review. Reconnect it, then try again.",
+        { exact: true },
+      ),
     ).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText('Second browser', { exact: true })).toHaveCount(
       0,

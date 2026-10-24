@@ -125,6 +125,26 @@ describe('PairedDevicesPanel', () => {
     },
   );
 
+  test('a 401 operator-session refusal asks to reconnect the device', async () => {
+    renderPanel({
+      request: vi.fn(async () =>
+        Response.json(
+          {
+            error: { code: 'operator_session_required' },
+            signInUrl: 'https://station.example.ts.net:8443/operator/sign-in',
+          },
+          { status: 401 },
+        ),
+      ),
+    });
+    expect(
+      await screen.findByText(/Reconnect it, then try again/),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('link', { name: 'Sign in as operator' }),
+    ).toBeNull();
+  });
+
   test('initial load is user activity and automatic refreshes carry the background marker', async () => {
     vi.useFakeTimers();
     const request = vi.fn(

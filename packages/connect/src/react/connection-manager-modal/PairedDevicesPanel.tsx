@@ -146,7 +146,9 @@ export function PairedDevicesPanel({
           if (current !== generation.current) return;
           setDevices(null);
           setOperatorSession(null);
-          if (typeof body?.signInUrl === 'string') {
+          if (response.status === 401) {
+            setSignInUrl(null);
+          } else if (typeof body?.signInUrl === 'string') {
             try {
               const url = new URL(body.signInUrl);
               setSignInUrl(url.protocol === 'https:' ? url.href : null);
@@ -155,10 +157,9 @@ export function PairedDevicesPanel({
             }
           }
           setLoadError(
-            (response.status === 401 || response.status === 403) &&
+            response.status === 403 &&
               (body?.error?.code === 'operator_session_required' ||
-                (response.status === 403 &&
-                  typeof body?.signInUrl === 'string'))
+                typeof body?.signInUrl === 'string')
               ? 'Sign in as operator to view paired devices.'
               : response.status === 401
                 ? "This device's access to this Station needs review. Reconnect it, then try again."

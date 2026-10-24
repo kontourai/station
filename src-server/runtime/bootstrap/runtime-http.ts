@@ -1310,10 +1310,7 @@ function configureRuntimeSecurity(
       }));
     if (valid) {
       const aliasFailure = checkAliasAdmission(credential!);
-      if (aliasFailure) {
-        const sessionResponse = await admitOperatorSession();
-        return sessionResponse ?? aliasFailure;
-      }
+      if (aliasFailure) return aliasFailure;
       const authority = security.resolveCredentialAuthority?.(credential!);
       const deviceId = security.resolveCredentialDeviceId?.(credential!);
       const deviceKind = deviceId
@@ -1429,7 +1426,14 @@ function configureRuntimeSecurity(
       return next();
     }
 
-    const sessionResponse = await admitOperatorSession();
+    const recognizedCredential =
+      credential !== undefined &&
+      (await security.recognizeCredential?.(credential));
+    const sessionResponse = await admitOperatorSession(
+      recognizedCredential &&
+        security.resolveCredentialAuthority?.(credential!) ===
+          'device-credential',
+    );
     if (sessionResponse) return sessionResponse;
 
     // Admission refused a credential the server still recognizes. A 401
@@ -1439,10 +1443,7 @@ function configureRuntimeSecurity(
     // desktop and mobile, and an ordinary device credential is not admitted
     // to that inventory. Answer 403, the same status an authenticated caller
     // already receives when a route will not serve them.
-    if (
-      credential !== undefined &&
-      (await security.recognizeCredential?.(credential))
-    ) {
+    if (recognizedCredential) {
       if (cookieCredential) {
         deviceSessionAuthorizations.add(1, {
           outcome: 'denied',

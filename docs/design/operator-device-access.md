@@ -434,9 +434,13 @@ All new paths are proposals. Existing paths are cited.
    - Ordinary bearer/device admission runs first, so an operator cookie never
      blocks an independently authorized request. If ordinary admission fails,
      an invalid session answers `403 operator_session_required` with a sign-in
-     URL when the Device independently passes admission. Only a request with
-     no admitted Device receives 401; session expiry must not discard a live
-     Device credential.
+     URL when the caller presents a recognized, live Device credential by
+     bearer or device cookie. Revoked and reset credentials do not count;
+     only a request with no live Device receives 401. This status decision
+     adds no authority and session expiry must not discard a live credential.
+     Alias account-continuation failures retain `401
+     account_authentication_required` and the account-failure header before
+     session fallback.
    - On success, it stamps a principal with `authority: 'operator-session'`
      and does **not** set `RUNTIME_CREDENTIAL_AUTHORITY_VAR` to
      `operator-credential`.
@@ -584,8 +588,9 @@ All new paths are proposals. Existing paths are cited.
       (`:54, :74-97, :271-291`) on non-native surfaces (D2).
     - Read the inventory with the session cookie (same-origin
       `credentials: 'include'`).
-    - On 401 `operator_session_required`, or 403 from a non-operator device,
-      show **Sign in as operator**, which opens `/operator/sign-in` on the
+    - On 401 `operator_session_required`, show **Reconnect it** because the
+      Device is no longer live. On 403 from a non-operator device, show
+      **Sign in as operator**, which opens `/operator/sign-in` on the
       operator origin in a new window, then poll `GET /api/operator/session`.
     - On a 202 from a scope change, open `reviewUrl` in a new window, poll the
       transaction, and render `FullAccessRevocationNotice` from `effect`.

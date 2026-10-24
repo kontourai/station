@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { ConnectionStore } from '../../../../packages/connect/src/core/ConnectionStore.js';
 import {
+  authenticatedFetch,
   StationHttpError,
   setClientCredentialResolver,
 } from '../../../../packages/sdk/src/client/http.js';
@@ -795,6 +797,81 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
     expect(credential).toBeUndefined();
   });
 
+  test.each(['valid', 'expired', 'other-device', 'revoked'] as const)(
+    'SDK bearer with a %s operator cookie preserves only live device credentials on reads and mutations',
+    async (state) => {
+      const h = await build();
+      const signed = await h.signIn(
+        state === 'other-device' ? h.second.credential : h.first.credential,
+      );
+      if (state === 'expired') h.clock.now += OPERATOR_SESSION_IDLE_MS;
+      if (state === 'revoked')
+        h.pairing.revokeDevice(h.first.device.id, 'operator-credential');
+      expect(h.security.verifyCredential(h.first.credential)).toBe(
+        state !== 'revoked',
+      );
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+        const headers = new Headers(init?.headers);
+        expect(headers.get('authorization')).toBe(
+          `Bearer ${h.first.credential}`,
+        );
+        // Native bearer and host-scoped operator cookie, with no device cookie.
+        headers.set('cookie', signed.setCookie.split(';')[0]);
+        headers.set('origin', APP);
+        return h.api.request(String(input), { ...init, headers });
+      });
+      for (const method of ['GET', 'DELETE']) {
+        const data = new Map<string, string>();
+        const store = new ConnectionStore({
+          storage: {
+            get: (key) => data.get(key) ?? null,
+            set: (key, value) => {
+              data.set(key, value);
+            },
+            remove: (key) => {
+              data.delete(key);
+            },
+          },
+        });
+        const connection = store.add('Operator browser', APP);
+        store.setCredential(connection.id, h.first.credential);
+        const onUnauthorized = vi.fn(() =>
+          store.removeCredential(connection.id),
+        );
+        setClientCredentialResolver(() => ({
+          origin: APP,
+          credential: store.getCredential(connection.id) ?? undefined,
+          onUnauthorized,
+        }));
+        const status = state === 'revoked' ? 401 : 403;
+        if (method === 'GET') {
+          await expect(fetchPairedDevices(APP)).rejects.toMatchObject({
+            status,
+          });
+        } else {
+          const response = await authenticatedFetch(
+            `${APP}/api/pairing/devices/${h.second.device.id}`,
+            { method },
+          );
+          expect(response.status).toBe(status);
+          expect(await response.json()).toMatchObject({
+            error: { code: 'operator_session_required' },
+          });
+        }
+        expect(onUnauthorized).toHaveBeenCalledTimes(
+          state === 'revoked' ? 1 : 0,
+        );
+        expect(store.getCredential(connection.id)).toBe(
+          state === 'revoked' ? null : h.first.credential,
+        );
+      }
+      expect(
+        h.pairing.listDevices().find((d) => d.id === h.second.device.id)
+          ?.revokedAt,
+      ).toBeNull();
+    },
+  );
+
   test('an alias-bound operator session still requires its proof-bound account continuation', async () => {
     const h = await build();
     const alias = h.pairing.issueRelayCredentialAlias(
@@ -832,6 +909,39 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
     }
     const ordinary = await h.signIn();
     expect((await h.read(ordinary.cookie)).status).toBe(200);
+  });
+
+  test('SDK alias bearer reports account continuation failure before operator-session fallback', async () => {
+    const h = await build();
+    const alias = h.pairing.issueRelayCredentialAlias(
+      h.first.credential,
+      h.first.device.id,
+    );
+    const signed = await h.signIn(alias.credential);
+    const onUnauthorized = vi.fn();
+    const onAccountUnauthorized = vi.fn();
+    setClientCredentialResolver(() => ({
+      origin: APP,
+      credential: alias.credential,
+      onUnauthorized,
+      onAccountUnauthorized,
+    }));
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const headers = new Headers(init?.headers);
+      headers.set('cookie', signed.setCookie.split(';')[0]);
+      headers.set('origin', APP);
+      return h.api.request(String(input), { ...init, headers });
+    });
+    const response = await authenticatedFetch(`${APP}/api/operator/session`);
+    expect(response.status).toBe(401);
+    expect(response.headers.get('X-Station-Authentication-Failure')).toBe(
+      'account',
+    );
+    expect(await response.json()).toMatchObject({
+      error: { code: 'account_authentication_required' },
+    });
+    expect(onAccountUnauthorized).toHaveBeenCalledOnce();
+    expect(onUnauthorized).not.toHaveBeenCalled();
   });
 
   test('operator-session admission clears the home-possession bearer local-operator flag', async () => {

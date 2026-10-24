@@ -62,7 +62,9 @@ passkey step-up is S4 of [#3257](https://github.com/kontourai/station/issues/325
 ## Sign in from a paired browser
 
 1. Open **Paired devices**. A browser without inventory access offers **Sign in
-   as operator** when an HTTPS consent origin is available.
+   as operator** when an HTTPS consent origin is available. If the Device
+   credential is no longer live, the panel asks you to **Reconnect it** first;
+   operator sign-in requires a paired Device.
 2. Open that link, or go directly to `<consent origin>/operator/sign-in`.
    Choose **Sign in with passkey** and complete user verification (biometric
    or PIN). A passkey prompt on the app origin is never part of this flow.

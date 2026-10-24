@@ -4848,9 +4848,15 @@ The server enforces 15 minutes without operator activity and a 12-hour
 absolute deadline. User-initiated reads extend idle time; requests marked
 `X-Station-Background-Refresh: 1` validate expiry without extending it. Device or passkey revocation, environment reset and operator
 credential rotation end the session. An expired, mismatched or invalid session
-returns 403 `operator_session_required` with `signInUrl` when an independently
-admitted Device remains valid. It returns 401 only when no Device passes
-admission. Ordinary admission runs first, independently of the operator cookie.
+returns 403 `operator_session_required` with `signInUrl` when the caller
+presents a recognized, live Device credential by bearer or device cookie.
+Revoked and reset credentials do not count; it returns 401 only when no live
+Device is presented. This changes only the refusal status, not authority.
+Ordinary admission runs first, independently of the operator cookie. Alias
+account-continuation failures retain 401 `account_authentication_required`
+and `X-Station-Authentication-Failure: account`, prompting account sign-in
+without removing the Device credential. The panel offers operator sign-in
+for the 403 and asks to reconnect the Device for `401 operator_session_required`.
 The session binding still requires device verification, alias admission and
 account-bound policy. A refused inventory read can include `signInUrl`
 when remote sign-in is configured. Same-origin plugin code can make these reads
