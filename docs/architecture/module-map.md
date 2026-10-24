@@ -4884,10 +4884,10 @@ composition controls have exercised paging, owner/tenant selection and queued
 revocation with controlled identity fixtures. The scoped SDK fetcher and lazy
 query leaf validate page facts and refuse changed waiting selections; their
 focused controls have executed. Source bounds are not measured latency
-or full runtime acceptance. Coverage remains unknown. Narrow grants, destination
-credential custody, deletion invalidations, restore-generation fencing,
-receiver index/checkpoint transactions, clone identity and deployment remain
-open. A backed-up stream epoch is not a restore fence. See
+or full runtime acceptance. Coverage remains unknown. The grant, credential
+custody and narrow admission owners are described below. Deletion invalidations,
+restore-generation fencing, receiver index/checkpoint transactions, clone
+identity and deployment remain open. A backed-up stream epoch is not a restore fence. See
 [monitoring](../guides/monitoring.md#canonical-usage-export-source).
 
 The [enrollment intent owner](../../src-server/analytics/source-enrollment-store.ts)
@@ -4896,8 +4896,9 @@ metadata-only proposals under the same verified-person ingress and owner-selecti
 policy. The source derives private owner/tenant bindings, checks current authority
 through storage and queued delivery, and retains cancellation/idempotency receipts
 in a bounded private file. Proposed destinations remain unverified; no source
-credential, active grant or copied usage is created. Destination verification,
-person credential custody and the narrow export consumer remain unfinished.
+credential, active grant or copied usage is created by preparing an intent.
+The approval, credential custody and export owners below are separate steps;
+destination verification and receiving sync remain unfinished.
 
 The [recipient key owner](../../src-server/analytics/recipient-store.ts) and
 [protected routes](../../src-server/routes/operations/recipient-candidates.ts)
@@ -4970,7 +4971,8 @@ precede the optional prepared-file receipt. The SDK and pane recover the same
 operation after a lost reply or reopening; a pending receipt or lock is not
 process liveness. Preparation activates no deployment. Conditional install/start
 and product-view owners below compose separate admission and observations;
-official qualification and personal source authority remain unfinished.
+official qualification and the complete personal source enrollment/sync journey
+remain unfinished.
 
 The [conditional installation owner](../../src-server/services/telemetry-companion-install.ts)
 re-extracts authenticated archive bytes, requires matching profile qualification
