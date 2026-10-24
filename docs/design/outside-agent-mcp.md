@@ -3,8 +3,8 @@
 > **Status: design revision 1, 2026-10-24; owner-delegated decisions recorded in section 12. Design only; no implementation or runtime qualification.**
 > Owner: Station operator/identity and Station Control maintainers. This proposal
 > builds on [operator device access](operator-device-access.md), S3 (#4102) and
-> S4 (#4107). The draft is stacked on #4107 until it merges; integrate subsequent
-> main changes with `git merge origin/main`, never rebase.
+> S4 (#4107), merged into main on 2026-10-24 and integrated in this revision
+> with `git merge origin/main`. This remains a draft; never rebase it.
 
 ## 0. Outcome and boundaries
 
@@ -1008,7 +1008,8 @@ configuration and revoke test grants on completion; retain only redacted receipt
 
 Do not start these slices until the owner reviews this draft. Each slice is
 independently reviewable but not feature qualification; keep exposure disabled
-until the complete read-only chain passes. Merge S4 and integrate main before implementation.
+until the complete read-only chain passes. S4 is merged and main has been
+integrated; implementation still requires review of this design.
 
 | Slice | Scope and acceptance | Depends on |
 | --- | --- | --- |
@@ -1047,8 +1048,8 @@ guides to claim planned behavior.
 ### Decided (owner-delegated, 2026-10-24)
 
 These are the owner's delegate's decisions for design revision 1, not unresolved
-recommendations or authorization to implement. Existing unchanged bounds are
-retained as design defaults; implementation and runtime qualification are separate.
+recommendations or authorization to implement. Unchanged proposal defaults are
+listed separately below; implementation and runtime qualification are separate.
 
 | Item | Decision |
 | --- | --- |
@@ -1060,13 +1061,17 @@ retained as design defaults; implementation and runtime qualification are separa
 | M5 | Bounded 30-day client-ID tombstones support local error pages naming CLI logout/re-login, never redirects for unknown/retired clients. |
 | M7 / Q1 | Read-only 23 tools; later full 36, excluding `delete_conversation`. Rename/interrupt/steering only on grant-created work. Reject any `navigate` parameter on `send_message`/`delegate_task`. |
 | M8 (clarified) | Read-only → CIMD → full/child-work limits. Keep OAuth endpoints then `/mcp` as separate read-only slices, and supersession-at-approval within read-only. The owner's 2026-10-24 clarification selects M4's ordering over the original conflicting M8 ordering (section 11). |
-| Q2 | One stable Project or explicitly selected global per grant; no multi-Project/all-project default. |
 | Q4 | Host-only approval without valid C; hosted Station tenants disabled. Non-loopback exposure requires HTTPS. Explicit literal-loopback-bound HTTP issuer opt-in for same-machine agents is a deliberate MCP HTTPS-requirement exception (section 2). |
 | Q5 | Revoke on revocation of **the passkey that last decided** a grant, or loss/rotation of its applicable host/delegator authority. Ordinary operator-session expiry alone does not end a durable grant. |
-| Q6 | Keep bounded registration/pending/storage/audit defaults; revise refresh budgets for the measured client cadence and derive peers per ingress. Ninety-day private audit retention remains the default. |
-| Q8 | Every authorization-code login needs new explicit approval; refresh handles ordinary reconnects. No registration/name/browser-session-based silent approval. |
+| Q6 adjustments | Size refresh budgets for the measured client cadence and derive peers per ingress. Other bounded quotas and retention remain proposal defaults. |
 | Protocol and routing minors | Insufficient-level tools: HTTP 200 JSON-RPC unknown tool, never 403 `insufficient_scope`. Both-scope requests are normal; preselect read-only. Exact-path outside `/mcp` classification with hosted-mode refusal and two-way VoltAgent/internal isolation; anonymous GET challenge; unknown-method JSON-RPC errors; protocol 2025-06-18 and 2025-11-25. |
 | Browser and proof minors | Up to five pending requests per browser ticket; no mutual cancellation of simultaneous CLI logins. Audience, dispatch catalog, replay revocation, per-emission live grant and pre-count Project-filter fault injections are named in section 10. |
+
+Unchanged proposal defaults (not newly delegated decisions): Q2 retains one
+stable Project or explicitly selected global per grant; Q6 retains the other
+bounded quotas and 90-day private audit retention; Q8 retains explicit approval
+for every authorization-code login, with refresh handling ordinary reconnects
+and no registration/name/browser-session-based silent approval.
 
 ### Open: host-execution visibility (M6)
 
