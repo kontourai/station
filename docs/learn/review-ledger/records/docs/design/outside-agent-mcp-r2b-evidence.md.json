@@ -44,7 +44,9 @@
 
     "docs/learn/media/outside-agent-r2b-cors-remove.png",
 
-    "docs/learn/media/outside-agent-r2b-approve-desktop.png"
+    "docs/learn/media/outside-agent-r2b-approve-desktop.png",
+
+    "docs/learn/media/outside-agent-r2b-approve-loopback.png"
   ],
 
   "checks": [
