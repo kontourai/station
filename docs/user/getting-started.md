@@ -491,6 +491,15 @@ its engine does not offer: a default that an engine advertising its own model
 list left out is skipped, and a kept choice that list no longer contains is
 refused at **Start** with the message kept, so you can choose another.
 
+A Project can choose how its new chats start, in Project settings → **New
+chats**. **Last model used in this project** starts on the model your last
+chat there started with for the same Agent; if that model is no longer offered,
+the usual default applies and the Model chip's tooltip says why. The approval
+mode can be set for the Project (Ask first, Auto or full access) or follow your
+last chat there; it applies below the Agent's own mode, and full access is only
+reused when you can grant it. **Permissions** on the composer names where its
+mode came from.
+
 Until Station has loaded your projects, the chips show placeholders and
 **Start** waits, so a start never runs in a project Station has guessed. If
 the project list cannot be read, the composer says so instead. A

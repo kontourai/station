@@ -1209,7 +1209,8 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   - `PUT /config/app` when `terminalShell` changes. An agent's station-control
     call (the Station-internal principal, otherwise exempt) may not change it,
     in the tool (`update_config`) and in the route, as it may not raise the
-    default approval mode to full access;
+    default approval mode (the Station's, or a Project's new-chat mode through
+    `PUT /api/projects/:slug`) to full access;
   - `/api/secret-bindings`, which the default grant reaches (it includes
     `access:manage`, which is not `coding:exec`): `POST /:id/bind` with an
     `integrationId`, `POST /integrations/:id/migrate-stored-env` and its alias

@@ -114,7 +114,8 @@ allowlist: it excludes device administration even with an Admin group and an
 operator channel. The CLI reports this policy refusal distinctly.
 
 **Full access** (`approval:full-access`) is the scope that lets a device put a
-chat, or an Agent's default, at approval mode `never`: the agent runs with no
+chat, an Agent's default, or a Project's new-chat approval mode at approval mode
+`never`: the agent runs with no
 sandbox and no approval prompts, as the operator. A device without it that
 asks for full access is refused (`approval-full-access-not-granted`). The
 refusal names the device (its short id, and its name shown as plain text),
