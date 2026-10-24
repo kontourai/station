@@ -137,6 +137,7 @@ import {
   createLocalPluginInstallationHost,
 } from './plugin-installation-local.js';
 import {
+  PluginInstallationConflict,
   type PluginInstallationHost,
   PluginInstallationPending,
   type PluginInstallationService,
@@ -3765,6 +3766,9 @@ async function installPluginFromSourceUnderContext(
         const installed = deps.packageMcpJournal.currentInstallation(
           approval.id,
         );
+        // An unreadable journal is a conflict, as in captureLocalPluginInstallation.
+        if (installed.state === 'unavailable')
+          throw new PluginInstallationConflict();
         if (installed.state !== 'observed') continue;
         const trust = deps.packageMcpJournal.registryAcquisition(
           installed.installation,

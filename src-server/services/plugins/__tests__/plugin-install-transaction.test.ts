@@ -77,6 +77,7 @@ import {
   synchronizePluginAgentDefinitions,
   uninstallInstalledPlugin,
 } from '../plugin-install-transaction.js';
+import { PluginInstallationConflict } from '../plugin-installation-service.js';
 import { readPluginManifestFile } from '../plugin-manifest-loader.js';
 import {
   copyPluginDependencyOwnership,
@@ -2626,6 +2627,263 @@ describe('installPluginFromSource', () => {
       expect(observePluginGrantRevisions(root).revisionFor(id)).toBe(
         revisionsBefore.revisionFor(id),
       );
+    // An unreadable journal entry for a pinned dependency is a conflict
+    // before the parent builds, as in captureLocalPluginInstallation.
+    const unreadableJournal: typeof journal = {
+      ...journal,
+      currentInstallation: (id: string) =>
+        id === 'pin-child'
+          ? { state: 'unavailable' }
+          : journal.currentInstallation(id),
+    };
+    await expect(
+      installPluginFromSource(
+        parentSource,
+        [],
+        { ...installDeps, packageMcpJournal: unreadableJournal },
+        {
+          registryId: 'pin-parent',
+          registryKey: registryPath,
+          consent: {
+            kind: 'operator-decision',
+            contentDigest: parent.contentDigest,
+            permissions: parent.permissions.required,
+            grantRevision: parent.grantRevision,
+            registryTrustRevision: parent.registryTrustRevision,
+            dependencies: parent.dependencies.map((entry) => entry.id),
+            dependencyApprovals: parent.dependencies.map((entry) => ({
+              id: entry.id,
+              contentDigest: entry.consent.contentDigest,
+              permissions: entry.consent.permissions,
+              dependencies: entry.consent.dependencies,
+              registryTrustRevision: entry.consent.registryTrustRevision,
+            })),
+          },
+        },
+      ),
+    ).rejects.toBeInstanceOf(PluginInstallationConflict);
+    expect(installDeps.buildPlugin).not.toHaveBeenCalled();
+  });
+
+  test('#1521: a fresh dependency whose claim changed after preview refuses with its closed trust reason', async () => {
+    const root = trackedTempDir('station-dependency-changed-claim-');
+    await ensureStationHomeSchema(root);
+    const parentSource = join(root, 'parent-source');
+    const childSource = join(root, 'child-source');
+    const registryPath = join(root, 'catalog.json');
+    const schema = 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json';
+    writePlugin(parentSource, {
+      $schema: schema,
+      name: 'claim-parent',
+      version: '1.0.0',
+      extensions: {
+        'io.kontourai.station': {
+          schemaVersion: '1.0',
+          dependencies: [{ name: 'claim-child', version: '1.0.0' }],
+        },
+      },
+    });
+    writePlugin(childSource, {
+      $schema: schema,
+      name: 'claim-child',
+      version: '1.0.0',
+    });
+    const primary = generateKeyPairSync('ed25519');
+    const secondary = generateKeyPairSync('ed25519');
+    const pem = (pair: typeof primary) =>
+      pair.publicKey.export({ type: 'spki', format: 'pem' }).toString();
+    const configuration = {
+      profiles: [
+        {
+          registryKey: registryPath,
+          signatures: 'required' as const,
+          trustedEd25519Keys: {
+            primary: pem(primary),
+            secondary: pem(secondary),
+          },
+        },
+      ],
+    };
+    const loader = new ConfigLoader({ projectHomeDir: root });
+    await loader.mutateAppConfig(() => ({ registryTrust: configuration }));
+    const store = new EventStore(join(root, 'events.sqlite'));
+    packageStores.push(store);
+    const policy = createLocalRegistryTrustPolicyAuthority(
+      root,
+      store.createRegistryTrustPolicyDecisions(),
+    );
+    await policy.publishApplied(
+      await policy.captureApplication(),
+      configuration,
+    );
+    const parentConsent = await approvedConsent(parentSource, root);
+    const childConsent = await approvedConsent(childSource, root);
+    const entry = (
+      id: string,
+      source: string,
+      digest: string,
+      keyId: 'primary' | 'secondary',
+    ) => {
+      const claim: RegistryPackageClaim = {
+        packageSchema: schema,
+        registryId: id,
+        registryKey: registryPath,
+        pluginName: id,
+        packageVersion: '1.0.0',
+        source,
+        packageDigest: digest,
+      };
+      return {
+        id,
+        source,
+        claim: {
+          ...claim,
+          signature: {
+            algorithm: 'ed25519',
+            keyId,
+            value: sign(
+              null,
+              registryPackageSignaturePayload(claim),
+              (keyId === 'primary' ? primary : secondary).privateKey,
+            ).toString('base64'),
+          },
+        },
+      };
+    };
+    const writeCatalog = (childKey: 'primary' | 'secondary') =>
+      writeFileSync(
+        registryPath,
+        JSON.stringify({
+          version: 1,
+          plugins: [
+            entry(
+              'claim-parent',
+              parentSource,
+              parentConsent.contentDigest,
+              'primary',
+            ),
+            entry(
+              'claim-child',
+              childSource,
+              childConsent.contentDigest,
+              childKey,
+            ),
+          ],
+        }),
+      );
+    writeCatalog('primary');
+    getPluginRegistryProviders.mockReturnValue([
+      {
+        source: 'signed-graph',
+        provider: new JsonManifestRegistryProvider(registryPath, root),
+      },
+    ]);
+    const journal = store.createPackageMcpAdmissionJournal();
+    const installDeps = {
+      ...deps(root),
+      registryTrustPolicyAuthority: policy,
+      packageMcpJournal: journal,
+    };
+    const app = new Hono();
+    bindOperatorPrincipal(app);
+    registerPluginInstallRoutes(app, {
+      ...installDeps,
+      projectVisiblePlugins: () => (installed) => installed,
+    });
+    const previewResponse = await app.request('http://localhost/preview', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ registryId: 'claim-parent' }),
+    });
+    expect(previewResponse.status).toBe(200);
+    const parent = (await previewResponse.json()) as {
+      contentDigest: string;
+      registryTrustRevision: string;
+      grantRevision: string;
+      permissions: { required: string[] };
+      dependencies: Array<{
+        id: string;
+        status: string;
+        consent: {
+          contentDigest: string;
+          registryTrustRevision?: string;
+          grantRevision: string;
+          permissions: string[];
+          dependencies: string[];
+        };
+      }>;
+    };
+    // The child is not installed, so the preview pins a fresh acquisition.
+    expect(parent.dependencies).toEqual([
+      expect.objectContaining({
+        id: 'claim-child',
+        status: 'will-install',
+        consent: expect.objectContaining({
+          registryTrustRevision: expect.stringMatching(/^sha256:/),
+        }),
+      }),
+    ]);
+    // The registry re-signs the child with another trusted key: same bytes,
+    // a different receipt, so the child's own transaction finds its pin stale.
+    writeCatalog('secondary');
+    const registryApp = withOperatorPrincipal(
+      createRegistryRoutes(loader, async () => {}, undefined, undefined, {
+        ...installDeps,
+        applyConfigurationMutation: (operation) => operation(() => {}),
+      }),
+    );
+    const buildSpy = vi
+      .spyOn(pluginBundles, 'buildPlugin')
+      .mockImplementation(async (_dir, name) =>
+        installDeps.buildPlugin(_dir, name),
+      );
+    const grantsBefore = readPluginGrantState(root, 'claim-child');
+    try {
+      const response = await registryApp.request(
+        'http://localhost/plugins/install',
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            id: 'claim-parent',
+            consent: {
+              contentDigest: parent.contentDigest,
+              permissions: parent.permissions.required,
+              grantRevision: parent.grantRevision,
+              registryTrustRevision: parent.registryTrustRevision,
+              dependencies: parent.dependencies.map((item) => item.id),
+              dependencyApprovals: parent.dependencies.map((item) => ({
+                id: item.id,
+                contentDigest: item.consent.contentDigest,
+                permissions: item.consent.permissions,
+                dependencies: item.consent.dependencies,
+                grantRevision: item.consent.grantRevision,
+                registryTrustRevision: item.consent.registryTrustRevision,
+              })),
+            },
+          }),
+        },
+      );
+      const body = await response.json();
+      expect(response.status, JSON.stringify(body)).toBe(409);
+      expect(body).toMatchObject({
+        code: 'registry-trust-refused',
+        reason: 'stale-review',
+      });
+    } finally {
+      buildSpy.mockRestore();
+    }
+    // The verified parent is staged, built and its configuration mutation
+    // begun before dependencies install, as for every dependency failure; the
+    // transaction then rolls back. The refused child never builds or lands.
+    expect(
+      installDeps.buildPlugin.mock.calls.map((call) => (call as unknown[])[1]),
+    ).not.toContain('claim-child');
+    for (const id of ['claim-parent', 'claim-child'])
+      expect(existsSync(join(root, 'plugins', id))).toBe(false);
+    for (const id of ['claim-parent', 'claim-child'])
+      expect(journal.currentInstallation(id).state).not.toBe('observed');
+    expect(readPluginGrantState(root, 'claim-child')).toEqual(grantsBefore);
   });
 
   test('#1521: a reviewed registry pin refuses an install that no longer produces a receipt, and an unpinned review refuses one that does', async () => {
