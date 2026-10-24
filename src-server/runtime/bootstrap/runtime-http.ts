@@ -1116,7 +1116,9 @@ function configureRuntimeSecurity(
     const operatorCookiePresent = (c.req.header('cookie') ?? '')
       .split(';')
       .some((part) => part.trim().startsWith(`${OPERATOR_SESSION_COOKIE}=`));
-    const admitOperatorSession = async (): Promise<Response | undefined> => {
+    const admitOperatorSession = async (
+      admittedDevice = false,
+    ): Promise<Response | undefined> => {
       if (
         !(
           isOperatorSessionLeaf(c.req.method, c.req.path) &&
@@ -1127,14 +1129,6 @@ function configureRuntimeSecurity(
         )
       )
         return undefined;
-      const refuse = () =>
-        c.json(
-          {
-            error: { code: 'operator_session_required' },
-            signInUrl: security.operatorSessions?.signInUrl ?? null,
-          },
-          401,
-        );
       const sessionSecret = parseOperatorSessionCookie(c.req.header('cookie'));
       const deviceCredential = parseDeviceSessionCookie(
         c.req.header('cookie'),
@@ -1142,6 +1136,23 @@ function configureRuntimeSecurity(
           security.resolveCredentialAuthority?.(candidate) ===
           'device-credential',
       );
+      // Session expiry withdraws the added read scope, not the independently
+      // admitted Device. A 401 would make SDK clients discard its credential.
+      const bindingDeviceAdmitted =
+        !!deviceCredential &&
+        (await security.verifyCredential(deviceCredential, {
+          method: 'GET',
+          path: '/api/auth/authority',
+          tenant: getTenantRequestContext(c.req.raw),
+        }));
+      const refuse = () =>
+        c.json(
+          {
+            error: { code: 'operator_session_required' },
+            signInUrl: security.operatorSessions?.signInUrl ?? null,
+          },
+          admittedDevice || bindingDeviceAdmitted ? 403 : 401,
+        );
       if (
         !isOperatorSessionRead(c.req.method, c.req.path) ||
         !sessionSecret ||
@@ -1152,14 +1163,7 @@ function configureRuntimeSecurity(
       // Validate the binding credential through ordinary device admission on
       // its neutral self-read. The session supplies the additional read scope;
       // alias and account policy still apply to the binding device.
-      if (
-        !(await security.verifyCredential(deviceCredential, {
-          method: 'GET',
-          path: '/api/auth/authority',
-          tenant: getTenantRequestContext(c.req.raw),
-        }))
-      )
-        return refuse();
+      if (!bindingDeviceAdmitted) return refuse();
       const aliasFailure = checkAliasAdmission(deviceCredential);
       if (aliasFailure) return aliasFailure;
       const session = security.operatorSessions?.resolve(
@@ -1186,6 +1190,7 @@ function configureRuntimeSecurity(
             ),
         },
       });
+      bindRuntimeLocalOperator(c.req.raw);
       c.header(ACCOUNT_AUTHENTICATION_FAILURE_HEADER, undefined);
       c.set(RUNTIME_CREDENTIAL_AUTHORITY_VAR, 'operator-session');
       setBudgetPrincipal(
@@ -1358,7 +1363,9 @@ function configureRuntimeSecurity(
           locality === 'home-possession',
         );
       if (!permitted) {
-        const sessionResponse = await admitOperatorSession();
+        const sessionResponse = await admitOperatorSession(
+          authority === 'device-credential',
+        );
         if (sessionResponse) return sessionResponse;
         if (cookieCredential) {
           deviceSessionAuthorizations.add(1, {

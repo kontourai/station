@@ -285,9 +285,13 @@ Stations (refused in v1, D11), and confirming pairing requests remotely (D9).
    origin from configuration, never from the request `Host`. A new optional
    `STATION_TRUSTED_CONSENT_ORIGIN` (exact HTTPS origin) changes
    `ConsentChannelService.reviewUrlFor` (`consent-channel.ts:72-89`) to issue
-   that origin instead of `http://<host>:<port>`. Loopback
-   `http://localhost:<consent port>` is a secure context and stays valid for
-   host and test use.
+   that origin instead of `http://<host>:<port>`.
+   Without `STATION_TRUSTED_CONSENT_ORIGIN`, the listener keeps issuing
+   `http://<request host>:<consent port>` review URLs for ordinary consent
+   transactions, including loopback `http://localhost:<consent port>`.
+   Operator passkey enrollment and sign-in, however, run only on the configured
+   HTTPS origin; without it they are unavailable (503) on every host, loopback
+   included.
 3. **Operator session.**
    - Created only by a passkey assertion with UV on the operator origin.
    - Stored server-side; the cookie holds a 256-bit random id. The cookie is
@@ -429,7 +433,10 @@ All new paths are proposals. Existing paths are cited.
      - an exact `Origin` on unsafe methods (same rule as `:889-898`).
    - Ordinary bearer/device admission runs first, so an operator cookie never
      blocks an independently authorized request. If ordinary admission fails,
-     an invalid session answers `401 operator_session_required`.
+     an invalid session answers `403 operator_session_required` with a sign-in
+     URL when the Device independently passes admission. Only a request with
+     no admitted Device receives 401; session expiry must not discard a live
+     Device credential.
    - On success, it stamps a principal with `authority: 'operator-session'`
      and does **not** set `RUNTIME_CREDENTIAL_AUTHORITY_VAR` to
      `operator-credential`.
@@ -856,7 +863,7 @@ record was updated later; these were already owner decisions.
 | D10 | IP-only Stations get no remote operator sign-in because WebAuthn needs a domain. This is documented. |
 | D11 | Hosted tenants are out of scope. |
 
-### Changed (owner, 2026-10-24)
+### Changed ([owner, 2026-10-24](https://github.com/kontourai/station/issues/3257#issuecomment-6380816712))
 
 | # | Change |
 |---|---|

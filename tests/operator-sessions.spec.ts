@@ -281,7 +281,7 @@ test('paired browser signs in on consent origin and gains inventory reads only',
       return { status: response.status, body: await response.json() };
     }, second.device.id);
     expect(mutation).toMatchObject({
-      status: 401,
+      status: 403,
       body: { error: { code: 'operator_session_required' } },
     });
     expect(
@@ -298,7 +298,7 @@ test('paired browser signs in on consent origin and gains inventory reads only',
       `${appOrigin}/api/pairing/devices`,
       { headers: { Origin: appOrigin } },
     );
-    expect(refused.status()).toBe(401);
+    expect(refused.status()).toBe(403);
     expect(await refused.json()).toMatchObject({
       error: { code: 'operator_session_required' },
     });

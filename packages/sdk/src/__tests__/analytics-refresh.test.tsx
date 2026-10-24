@@ -209,9 +209,15 @@ test.each([401, 403])(
     const client = new QueryClient({
       defaultOptions: { queries: { retry: false } },
     });
-    const view = renderHook(() => usePairedDevicesQuery(), {
-      wrapper: wrapperFor(client),
-    });
+    const view = renderHook(
+      () => {
+        const { data, isError, refetch } = usePairedDevicesQuery();
+        return { data, isError, refetch };
+      },
+      {
+        wrapper: wrapperFor(client),
+      },
+    );
     try {
       await act(() => vi.advanceTimersByTimeAsync(10));
       expect(view.result.current.isError).toBe(true);
@@ -238,3 +244,51 @@ test.each([401, 403])(
     }
   },
 );
+
+test('paired-device data observers keep refetch identity and ignore unobserved fetching state', async () => {
+  vi.useFakeTimers();
+  fetch
+    .mockReset()
+    .mockImplementation(async () => Response.json({ devices: [] }));
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  let renders = 0;
+  const view = renderHook(
+    () => {
+      renders++;
+      const query = usePairedDevicesQuery();
+      return { data: query.data, refetch: query.refetch };
+    },
+    { wrapper: wrapperFor(client) },
+  );
+  try {
+    await act(() => vi.advanceTimersByTimeAsync(10));
+    expect(view.result.current.data).toEqual([]);
+    const refetch = view.result.current.refetch;
+    view.rerender();
+    expect(view.result.current.refetch).toBe(refetch);
+    const settledRenders = renders;
+    let finishPoll!: (response: Response) => void;
+    fetch.mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          finishPoll = resolve;
+        }),
+    );
+    await act(() => vi.advanceTimersByTimeAsync(15_010));
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(renders).toBe(settledRenders);
+    await act(async () => {
+      finishPoll(Response.json({ devices: [] }));
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    expect(renders).toBe(settledRenders);
+    expect(view.result.current.refetch).toBe(refetch);
+  } finally {
+    view.unmount();
+    client.clear();
+    vi.useRealTimers();
+    fetch.mockReset();
+  }
+});

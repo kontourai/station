@@ -155,8 +155,10 @@ export function PairedDevicesPanel({
             }
           }
           setLoadError(
-            response.status === 401 &&
-              body?.error?.code === 'operator_session_required'
+            (response.status === 401 || response.status === 403) &&
+              (body?.error?.code === 'operator_session_required' ||
+                (response.status === 403 &&
+                  typeof body?.signInUrl === 'string'))
               ? 'Sign in as operator to view paired devices.'
               : response.status === 401
                 ? "This device's access to this Station needs review. Reconnect it, then try again."

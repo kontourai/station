@@ -99,6 +99,32 @@ afterEach(() => {
 });
 
 describe('PairedDevicesPanel', () => {
+  test.each(['operator_session_required', 'insufficient_scope'])(
+    'offers operator sign-in after a 403 %s inventory refusal',
+    async (code) => {
+      renderPanel({
+        request: vi.fn(async () =>
+          Response.json(
+            {
+              error: { code },
+              signInUrl: 'https://station.example.ts.net:8443/operator/sign-in',
+            },
+            { status: 403 },
+          ),
+        ),
+      });
+      expect(
+        await screen.findByText('Sign in as operator to view paired devices.'),
+      ).toBeTruthy();
+      expect(
+        screen
+          .getByRole('link', { name: 'Sign in as operator' })
+          .getAttribute('href'),
+      ).toBe('https://station.example.ts.net:8443/operator/sign-in');
+      expect(screen.queryByText(/Reconnect it/)).toBeNull();
+    },
+  );
+
   test('initial load is user activity and automatic refreshes carry the background marker', async () => {
     vi.useFakeTimers();
     const request = vi.fn(

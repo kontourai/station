@@ -2,10 +2,16 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import {
+  StationHttpError,
+  setClientCredentialResolver,
+} from '../../../../packages/sdk/src/client/http.js';
+import { fetchPairedDevices } from '../../../../packages/sdk/src/query-domains/devicePairingRequests.js';
 import { SoftwareAuthenticator } from '../../../__test-utils__/software-authenticator.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
+  isBoundRuntimeLocalOperator,
   isRuntimeRequestPrincipalCurrent,
 } from '../../../security/runtime-request-security.js';
 import { ConsentChannelService } from '../../../services/consent/consent-channel.js';
@@ -30,6 +36,8 @@ const APP = 'https://station.example.test';
 const makeTemp = trackTempDirs();
 const registries: LazyOperatorPasskeyRegistry[] = [];
 afterEach(() => {
+  setClientCredentialResolver(undefined);
+  vi.restoreAllMocks();
   for (const registry of registries.splice(0)) registry.close();
 });
 
@@ -60,6 +68,7 @@ async function build(
     scope = 'orchestration:read',
     kind: 'device' | 'delegation' = 'device',
     accountBound = false,
+    localGrant = false,
   ) {
     const offer = pairing.createOffer({ endpoint: APP, scope, kind });
     const pending = pairing.requestPairing({
@@ -90,6 +99,12 @@ async function build(
       offerId: offer.offerId,
       proof: offer.challenge,
       requestId: pending.requestId,
+      ...(localGrant
+        ? {
+            locality: 'home-possession' as const,
+            mintKind: 'local-grant' as const,
+          }
+        : {}),
     });
   }
   const first = pair(
@@ -148,6 +163,7 @@ async function build(
                 sessionId: 'account-session',
                 authenticatedAt: new Date(clock.now - 1000).toISOString(),
                 expiresAt: new Date(clock.now + 60_000).toISOString(),
+                contacts: [],
               },
             },
       handle: async () => new Response(null, { status: 404 }),
@@ -183,6 +199,10 @@ async function build(
             : undefined,
       resolveCredentialAliasId: (credential) =>
         pairing.credentialAliasId(credential),
+      resolveCredentialLocality: (credential) =>
+        pairing.credentialLocality(credential),
+      resolveCredentialMintKind: (credential) =>
+        pairing.credentialMintKind(credential),
       resolveGrantedScope: (credential) =>
         security.resolveGrantedScope(credential),
     },
@@ -191,6 +211,13 @@ async function build(
     identifyDevice: (credential) => security.identifyDevice(credential),
     identifyIngress: () => null,
     deploymentAuthentication: { service: accountAuthentication },
+  });
+  api.use('/api/*', async (c, next) => {
+    await next();
+    c.header(
+      'X-Fixture-Local-Operator',
+      String(isBoundRuntimeLocalOperator(c.req.raw)),
+    );
   });
   configureDevicePairingHostRoutes(api as never, pairing, {
     verifyOperatorCredential: (credential) =>
@@ -289,13 +316,18 @@ async function build(
       }),
     });
   }
-  async function signIn() {
+  async function signIn(credential = first.credential) {
     const enrolled = await enroll();
-    const ceremony = await challenge();
-    const result = await finish(ceremony, enrolled.authenticator);
+    const ceremony = await challenge(credential);
+    const result = await finish(
+      ceremony,
+      enrolled.authenticator,
+      {},
+      credential,
+    );
     expect(result.status).toBe(200);
     const setCookie = result.headers.get('set-cookie')!;
-    const cookie = `__Host-station-device=${first.credential}; ${setCookie.split(';')[0]}`;
+    const cookie = `__Host-station-device=${credential}; ${setCookie.split(';')[0]}`;
     return { ...enrolled, cookie, setCookie, ceremony };
   }
   const read = (cookie: string, path = '/api/pairing/devices') =>
@@ -474,7 +506,7 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
       expect((await poll()).status).toBe(200);
     }
     h.clock.now = start + OPERATOR_SESSION_IDLE_MS;
-    expect((await poll()).status).toBe(401);
+    expect((await poll()).status).toBe(403);
 
     const next = await h.signIn();
     h.clock.now += OPERATOR_SESSION_IDLE_MS - 1;
@@ -575,7 +607,7 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
     expect((await h.read(signed.cookie)).status).toBe(200);
     h.registry.close();
     h.clock.now += OPERATOR_SESSION_IDLE_MS;
-    expect((await h.read(signed.cookie)).status).toBe(401);
+    expect((await h.read(signed.cookie)).status).toBe(403);
   });
 
   test('challenge and render nonce expiry, replacement and rate limits fail closed', async () => {
@@ -617,7 +649,7 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
     const out = await h.consent.request('/operator/sign-out', init);
     expect(out.status).toBe(200);
     expect(out.headers.get('set-cookie')).toContain('Max-Age=0');
-    expect((await h.read(signed.cookie)).status).toBe(401);
+    expect((await h.read(signed.cookie)).status).toBe(403);
     expect((await h.consent.request('/operator/sign-out', init)).status).toBe(
       401,
     );
@@ -654,7 +686,7 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
                 })
               : undefined,
         });
-        expect(result.status).toBe(401);
+        expect(result.status).toBe(403);
         expect(await result.json()).toMatchObject({
           error: { code: 'operator_session_required' },
         });
@@ -721,17 +753,114 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
     );
   });
 
-  test('idle expiry is enforced at the server boundary, even with a fresh browser cookie', async () => {
+  test('idle expiry refuses SDK inventory reads without invalidating the admitted device credential', async () => {
     const h = await build();
     const signed = await h.signIn();
-    h.clock.now += OPERATOR_SESSION_IDLE_MS;
-    const expired = await h.read(signed.cookie);
-    expect(expired.status).toBe(401);
-    expect(await expired.json()).toMatchObject({
-      error: { code: 'operator_session_required' },
+    let credential: string | undefined = h.first.credential;
+    const onUnauthorized = vi.fn(() => {
+      credential = undefined;
     });
-    h.clock.now++;
-    expect((await h.read(signed.cookie)).status).toBe(401);
+    setClientCredentialResolver(() => ({
+      origin: APP,
+      onUnauthorized,
+    }));
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const headers = new Headers(init?.headers);
+      headers.set('cookie', signed.cookie);
+      headers.set('origin', APP);
+      return h.api.request(String(input), { ...init, headers });
+    });
+    expect((await fetchPairedDevices(APP)).map((d) => d.id)).toContain(
+      h.first.device.id,
+    );
+    h.clock.now += OPERATOR_SESSION_IDLE_MS;
+    await expect(fetchPairedDevices(APP)).rejects.toBeInstanceOf(
+      StationHttpError,
+    );
+    await expect(fetchPairedDevices(APP)).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(onUnauthorized).not.toHaveBeenCalled();
+    expect(credential).toBe(h.first.credential);
+    expect(await (await h.read(signed.cookie)).json()).toMatchObject({
+      error: { code: 'operator_session_required' },
+      signInUrl: `${ORIGIN}/operator/sign-in`,
+    });
+
+    h.pairing.revokeDevice(h.first.device.id, 'operator-credential');
+    await expect(fetchPairedDevices(APP)).rejects.toMatchObject({
+      status: 401,
+    });
+    expect(onUnauthorized).toHaveBeenCalledOnce();
+    expect(credential).toBeUndefined();
+  });
+
+  test('an alias-bound operator session still requires its proof-bound account continuation', async () => {
+    const h = await build();
+    const alias = h.pairing.issueRelayCredentialAlias(
+      h.first.credential,
+      h.first.device.id,
+    );
+    const signed = await h.signIn(alias.credential);
+    expect(h.security.identifyDevice(alias.credential)?.id).toBe(
+      h.first.device.id,
+    );
+    expect(
+      h.security.authorizeCredential(alias.credential, {
+        method: 'GET',
+        path: '/api/auth/authority',
+      }),
+    ).toBe(true);
+    expect(
+      h.sessionService.resolve(
+        signed.setCookie.split(';')[0].split('=')[1],
+        alias.credential,
+      ),
+    ).not.toBeNull();
+    for (const cookie of [
+      signed.cookie,
+      `${signed.cookie}; fixture_account=valid`,
+    ]) {
+      const response = await h.read(cookie);
+      expect({
+        status: response.status,
+        body: await response.json(),
+      }).toMatchObject({
+        status: 401,
+        body: { error: { code: 'account_authentication_required' } },
+      });
+    }
+    const ordinary = await h.signIn();
+    expect((await h.read(ordinary.cookie)).status).toBe(200);
+  });
+
+  test('operator-session admission clears the home-possession bearer local-operator flag', async () => {
+    const h = await build();
+    const signed = await h.signIn();
+    const local = h.pair(
+      'Host device',
+      'orchestration:read',
+      'device',
+      false,
+      true,
+    );
+    const headers = {
+      authorization: `Bearer ${local.credential}`,
+      cookie: signed.cookie,
+      origin: APP,
+    };
+    const deviceRead = await h.api.request('/api/projects', { headers });
+    expect(deviceRead.status).toBe(200);
+    expect(deviceRead.headers.get('X-Fixture-Local-Operator')).toBe('true');
+    expect(await deviceRead.json()).toMatchObject({
+      authority: 'device-credential',
+    });
+    const sessionRead = await h.api.request('/api/pairing/devices', {
+      headers,
+    });
+    expect(sessionRead.status).toBe(200);
+    expect(await sessionRead.json()).toHaveProperty('operatorSession');
+    expect(sessionRead.headers.get('X-Fixture-Local-Operator')).toBe('false');
   });
 
   test('absolute expiry wins over recent activity, at the boundary and after it', async () => {
@@ -746,9 +875,9 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
       expect((await h.read(signed.cookie)).status).toBe(200);
     }
     h.clock.now = 1_800_000_000_000 + OPERATOR_SESSION_ABSOLUTE_MS;
-    expect((await h.read(signed.cookie)).status).toBe(401);
+    expect((await h.read(signed.cookie)).status).toBe(403);
     h.clock.now++;
-    expect((await h.read(signed.cookie)).status).toBe(401);
+    expect((await h.read(signed.cookie)).status).toBe(403);
   });
 
   test('a session cannot read with another device cookie or with no live paired cookie', async () => {
@@ -758,7 +887,7 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
       h.first.credential,
       h.second.credential,
     );
-    expect((await h.read(other)).status).toBe(401);
+    expect((await h.read(other)).status).toBe(403);
     expect((await h.read(signed.setCookie.split(';')[0])).status).toBe(401);
     expect((await h.read(signed.cookie)).status).toBe(200);
     expect(
@@ -770,11 +899,11 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
           ),
         )
       ).status,
-    ).toBe(401);
+    ).toBe(403);
     expect(
       (await h.read(`${signed.cookie}; ${signed.setCookie.split(';')[0]}`))
         .status,
-    ).toBe(401);
+    ).toBe(403);
   });
 
   test.each(['device', 'passkey', 'rotation', 'reset'] as const)(
@@ -787,7 +916,9 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
       if (event === 'passkey') h.registry.existing()!.revoke(signed.passkey.id);
       if (event === 'rotation') await h.security.rotateCredential();
       if (event === 'reset') await h.security.resetEnvironment();
-      expect((await h.read(signed.cookie)).status).toBe(401);
+      expect((await h.read(signed.cookie)).status).toBe(
+        event === 'device' || event === 'reset' ? 401 : 403,
+      );
     },
   );
 
@@ -840,9 +971,7 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
               })
             : undefined,
       });
-      expect(response.status).toBe(
-        path === '/api/operator/session' ? 403 : 401,
-      );
+      expect(response.status).toBe(403);
       expect(await response.json()).toMatchObject({
         error: {
           code:

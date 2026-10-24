@@ -1,5 +1,5 @@
 import type { PairedDevice } from '@kontourai/station-contracts/environment-security';
-import { useRef } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import {
   authenticatedFetch,
   type ClientRequestOptions,
@@ -95,13 +95,26 @@ export function usePairedDevicesQuery(
         (config?.enabled ?? true) && (!config?.requireRequestScope || !!scope),
     },
   );
-  return {
-    ...result,
-    refetch: (...args: Parameters<typeof result.refetch>) => {
+  const queryRefetch = result.refetch;
+  const refetch = useCallback(
+    (...args: Parameters<typeof queryRefetch>) => {
       lastActivityKey.current = undefined;
-      return result.refetch(...args);
+      return queryRefetch(...args);
     },
-  };
+    [queryRefetch],
+  );
+  // Forward reads lazily so React Query tracks only the caller's properties.
+  return useMemo(
+    () =>
+      new Proxy(result, {
+        get(target, property, receiver) {
+          return property === 'refetch'
+            ? refetch
+            : Reflect.get(target, property, receiver);
+        },
+      }),
+    [result, refetch],
+  );
 }
 
 /**
