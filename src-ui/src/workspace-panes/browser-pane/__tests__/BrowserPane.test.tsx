@@ -13,7 +13,7 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('../../../contexts/ApiBaseContext', () => ({
@@ -270,6 +270,99 @@ describe('BrowserPane honest states', () => {
 });
 
 describe('BrowserPane address bar', () => {
+  test('searches human text from the address field', async () => {
+    const { calls } = renderPane({
+      'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+      [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(sessionView()),
+      [`POST /api/browser/sessions/${SESSION}/navigate`]: ok({
+        session: sessionView(),
+      }),
+    });
+    const address = await screen.findByLabelText('Address');
+    fireEvent.change(address, { target: { value: 'station browser parity' } });
+    fireEvent.submit(address.closest('form')!);
+    await waitFor(() =>
+      expect(
+        calls.find((call) => call.path.endsWith('/navigate'))?.body,
+      ).toEqual({
+        url: 'https://duckduckgo.com/?q=station%20browser%20parity',
+        generation: 1,
+      }),
+    );
+  });
+
+  test('tab selection and reordering preserve targets; closing addresses exactly the chosen session', async () => {
+    const first = sessionView({ title: 'First page' });
+    const second = sessionView({
+      browserSessionId: OTHER,
+      title: 'Second page',
+      surfaceId: 'other-surface',
+      url: 'https://second.test/',
+    });
+    const station = fakeStation({
+      'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+      'GET /api/browser/sessions?projectSlug=alpha': ok([first, second]),
+      [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(first),
+      [`GET /api/browser/sessions/${OTHER}?view=summary`]: ok(second),
+      [`DELETE /api/browser/sessions/${OTHER}`]: ok({
+        ...second,
+        state: 'closed',
+      }),
+    });
+    let currentIds: string[] = [];
+    function Tabs() {
+      const [ids, setIds] = useState([SESSION, OTHER]);
+      const [selected, setSelected] = useState(SESSION);
+      currentIds = ids;
+      return (
+        <BrowserPane
+          projectSlug="alpha"
+          browserSessionIds={ids}
+          target={{ kind: 'session', browserSessionId: selected }}
+          transport={station.transport as never}
+          onAttach={setSelected}
+          onTabsChange={(next, selected) => {
+            setIds(next);
+            setSelected(selected);
+          }}
+        />
+      );
+    }
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <Tabs />
+      </QueryClientProvider>,
+    );
+    const secondTab = await screen.findByRole('tab', { name: 'Second page' });
+    fireEvent.click(secondTab);
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('live-canvas').getAttribute('data-surface'),
+      ).toBe('other-surface'),
+    );
+    fireEvent.keyDown(secondTab, { key: 'ArrowLeft', altKey: true });
+    await waitFor(() => expect(currentIds).toEqual([OTHER, SESSION]));
+    expect(station.calls.filter((call) => call.method !== 'GET')).toEqual([]);
+    fireEvent.click(screen.getByRole('button', { name: 'Close Second page' }));
+    await waitFor(() => expect(currentIds).toEqual([SESSION]));
+    expect(station.calls.filter((call) => call.method !== 'GET')).toEqual([
+      {
+        method: 'DELETE',
+        path: `/api/browser/sessions/${OTHER}`,
+        body: undefined,
+      },
+    ]);
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('live-canvas').getAttribute('data-surface'),
+      ).toBe(first.surfaceId),
+    );
+    expect(screen.getByRole('button', { name: 'Reopen tab' })).toBeTruthy();
+  });
   test('Escape cancels an address draft without navigating the shared page', async () => {
     const { calls } = renderPane({
       'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,

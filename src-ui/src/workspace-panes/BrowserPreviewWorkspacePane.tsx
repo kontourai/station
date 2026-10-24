@@ -1,5 +1,5 @@
 import {
-  migrateWorkspaceBrowserPaneState,
+  BROWSER_PANE_TAB_LIMIT,
   parseWorkspaceBrowserPaneState,
   WORKSPACE_BROWSER_PANE_STATE_VERSION,
 } from '@kontourai/station-contracts/workspace-browser-pane';
@@ -54,25 +54,30 @@ export function BrowserPreviewWorkspacePane({
     (browserSessionId: string) => {
       if (!storedProject) return;
       const updatedAt = new Date().toISOString();
-      const next = !stored
-        ? parseWorkspaceBrowserPaneState({
-            version: WORKSPACE_BROWSER_PANE_STATE_VERSION,
-            projectId: storedProject,
-            browserSessionId,
-            updatedAt,
-          })
-        : stored.version === '1.0'
-          ? migrateWorkspaceBrowserPaneState(
-              stored.migration,
-              browserSessionId,
-              updatedAt,
-            )
-          : parseWorkspaceBrowserPaneState({
-              version: WORKSPACE_BROWSER_PANE_STATE_VERSION,
-              projectId: stored.state.projectId,
-              browserSessionId,
-              updatedAt,
-            });
+      const previous = readBrowserPreviewPaneState(
+        window.localStorage,
+        instance.stateKey,
+      );
+      const ids =
+        previous?.version === '2.0'
+          ? (previous.state.browserSessionIds ?? [
+              previous.state.browserSessionId,
+            ])
+          : [];
+      if (
+        !ids.includes(browserSessionId) &&
+        ids.length >= BROWSER_PANE_TAB_LIMIT
+      )
+        return;
+      const next = parseWorkspaceBrowserPaneState({
+        version: WORKSPACE_BROWSER_PANE_STATE_VERSION,
+        projectId: storedProject,
+        browserSessionId,
+        browserSessionIds: ids.includes(browserSessionId)
+          ? ids
+          : [...ids, browserSessionId],
+        updatedAt,
+      });
       if (
         next &&
         writeBrowserPreviewPaneState(
@@ -83,7 +88,30 @@ export function BrowserPreviewWorkspacePane({
       )
         setRevision((current) => current + 1);
     },
-    [instance.stateKey, stored, storedProject],
+    [instance.stateKey, storedProject],
+  );
+  const onTabsChange = useCallback(
+    (browserSessionIds: string[], selected: string) => {
+      if (!storedProject) return;
+      const next = parseWorkspaceBrowserPaneState({
+        version: WORKSPACE_BROWSER_PANE_STATE_VERSION,
+        projectId: storedProject,
+        browserSessionId: selected,
+        browserSessionIds,
+        updatedAt: new Date().toISOString(),
+      });
+      if (
+        next &&
+        writeBrowserPreviewPaneState(
+          window.localStorage,
+          instance.stateKey,
+          next,
+        )
+      ) {
+        setRevision((current) => current + 1);
+      }
+    },
+    [instance.stateKey, storedProject],
   );
   if (identity.state !== 'resolved')
     return <WorkspacePaneBindingUnavailable identity={identity} />;
@@ -105,6 +133,13 @@ export function BrowserPreviewWorkspacePane({
         projectSlug: identity.project.slug,
         target,
         onAttach,
+        browserSessionIds:
+          stored?.version === '2.0'
+            ? (stored.state.browserSessionIds ?? [
+                stored.state.browserSessionId,
+              ])
+            : [],
+        onTabsChange,
       }}
       pending={<SkeletonBlock count={2} label="Loading the browser" />}
     />

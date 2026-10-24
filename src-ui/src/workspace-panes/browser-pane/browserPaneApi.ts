@@ -3,6 +3,7 @@ import type {
   BrowserConsoleView,
   BrowserLocalTargetSuggestionsView,
   BrowserLocalTargetView,
+  BrowserNavigationView,
   BrowserPaneAccessView,
   BrowserSessionView,
   BrowserUrlRejectionView,
@@ -72,6 +73,8 @@ async function call<T>(
 const enc = encodeURIComponent;
 
 export const browserPaneKeys = {
+  navigation: (apiBase: string, id: string) =>
+    ['browser-pane', apiBase, 'navigation', id] as const,
   access: (apiBase: string, projectSlug: string) =>
     ['browser-pane', apiBase, 'access', projectSlug] as const,
   acquisition: (apiBase: string) =>
@@ -102,6 +105,12 @@ export interface BrowserProjectSettingsView {
 export function browserPaneApi(apiBase: string, fetcher: BrowserFetch) {
   const root = `${apiBase}/api/browser`;
   return {
+    navigation: (id: string, signal?: AbortSignal) =>
+      call<BrowserNavigationView>(
+        fetcher,
+        `${root}/sessions/${enc(id)}/navigation`,
+        { signal },
+      ),
     access: (projectSlug: string, signal?: AbortSignal) =>
       call<BrowserPaneAccessView>(
         fetcher,
@@ -157,7 +166,7 @@ export function browserPaneApi(apiBase: string, fetcher: BrowserFetch) {
       }),
     history: (
       browserSessionId: string,
-      action: 'back' | 'forward' | 'reload',
+      action: 'back' | 'forward' | 'reload' | 'hard-reload' | 'stop',
       generation?: number,
     ) =>
       call<BrowserSessionView>(
@@ -329,6 +338,8 @@ export function describeBrowserFailure(error: unknown, typed = ''): string {
       return 'The browser restarted. Reload this session to continue.';
     case 'no-history-entry':
       return 'There is no page to go to in that direction.';
+    case 'session-limit':
+      return 'Close a browser tab before opening another. Each profile supports up to 12 open pages.';
     case 'not-found':
       return 'This browser session no longer exists.';
     case 'invalid-viewport':

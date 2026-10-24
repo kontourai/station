@@ -17,6 +17,8 @@ const mocks = vi.hoisted(() => ({
     projectSlug: string;
     target: unknown;
     onAttach: (browserSessionId: string) => void;
+    browserSessionIds: string[];
+    onTabsChange: (ids: string[], selected: string) => void;
   }>,
 }));
 
@@ -69,6 +71,46 @@ afterEach(() => {
 });
 
 describe('BrowserPreviewWorkspacePane (v2 renderer in the v1 slot)', () => {
+  test('keeps tab identity and order through selection, reorder, close and remount', async () => {
+    const other = 'bs_11111111-2222-4333-8444-555555555555';
+    const view = renderSlot();
+    await screen.findByTestId('browser-pane');
+    mocks.paneProps.at(-1)!.onAttach(SESSION);
+    await waitFor(() =>
+      expect(mocks.paneProps.at(-1)!.browserSessionIds).toEqual([SESSION]),
+    );
+    mocks.paneProps.at(-1)!.onAttach(other);
+    await waitFor(() =>
+      expect(mocks.paneProps.at(-1)!.browserSessionIds).toEqual([
+        SESSION,
+        other,
+      ]),
+    );
+    mocks.paneProps.at(-1)!.onAttach(SESSION);
+    await waitFor(() =>
+      expect(mocks.paneProps.at(-1)!.target).toMatchObject({
+        browserSessionId: SESSION,
+      }),
+    );
+    mocks.paneProps.at(-1)!.onTabsChange([other, SESSION], SESSION);
+    await waitFor(() =>
+      expect(mocks.paneProps.at(-1)!.browserSessionIds).toEqual([
+        other,
+        SESSION,
+      ]),
+    );
+    mocks.paneProps.at(-1)!.onTabsChange([other], other);
+    await waitFor(() =>
+      expect(mocks.paneProps.at(-1)!.browserSessionIds).toEqual([other]),
+    );
+    view.unmount();
+    renderSlot();
+    await screen.findByTestId('browser-pane');
+    expect(mocks.paneProps.at(-1)).toMatchObject({
+      browserSessionIds: [other],
+      target: { browserSessionId: other },
+    });
+  });
   test('a v2 record renders the pane attached to its server session', async () => {
     window.localStorage.setItem(
       storageKey,

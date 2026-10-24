@@ -26,7 +26,8 @@
  *   line.
  * - Downloads are denied (`Browser.setDownloadBehavior`). Headless Chrome's
  *   default otherwise writes into the user's real Downloads folder.
- * - Popups load in their opener's tab and the popup target is closed, so the
+ * - Popups are admitted as exact targets by the session registry; without a
+ *   registry listener they fold into their opener, so the
  *   pane stays on one tab and no second target is left open.
  * - Permissions are denied.
  * - Clipboard: measured 2026-09-22 on macOS with Chrome 153 `--headless=new`,
@@ -40,6 +41,7 @@
  */
 import { mkdirSync } from 'node:fs';
 import type { Readable, Writable } from 'node:stream';
+import { BROWSER_PANE_TAB_LIMIT } from '@kontourai/station-contracts/workspace-browser-pane';
 import {
   spawnOwnedChild,
   terminateProcessTree,
@@ -478,6 +480,7 @@ export const launchChromiumProcess: ChromiumLauncher = ({
 
 interface TargetState {
   sessionId: string;
+  viewport: BrowserViewport;
   unsubscribe: () => void;
 }
 
@@ -490,6 +493,7 @@ interface Running {
     string,
     { openerTargetId: string; folded: boolean; timer?: NodeJS.Timeout }
   >;
+  popupAdoptions: Map<string, Promise<boolean>>;
   unsubscribe: Array<() => void>;
   /** Target.createTarget calls in flight (their targets are not yet known). */
   creating: number;
@@ -520,6 +524,33 @@ function withTimeout<T>(
 }
 
 export class ChromiumServerHost implements BrowserHost {
+  private popupListener:
+    | ((openerTargetId: string, target: BrowserTarget, url: string) => boolean)
+    | undefined;
+
+  onPopup(
+    fn: (openerTargetId: string, target: BrowserTarget, url: string) => boolean,
+  ): () => void {
+    this.popupListener = fn;
+    return () => {
+      if (this.popupListener === fn) this.popupListener = undefined;
+    };
+  }
+  private readonly titleListeners = new Set<
+    (targetId: string, title: string) => void
+  >();
+
+  onTitleChanged(fn: (targetId: string, title: string) => void): () => void {
+    this.titleListeners.add(fn);
+    return () => this.titleListeners.delete(fn);
+  }
+  private readonly targetClosedListeners = new Set<
+    (targetId: string) => void
+  >();
+  onTargetClosed(fn: (targetId: string) => void): () => void {
+    this.targetClosedListeners.add(fn);
+    return () => this.targetClosedListeners.delete(fn);
+  }
   readonly kind: BrowserHostKind = 'server-chromium';
   private running: Running | undefined;
   private starting: Promise<Running> | undefined;
@@ -550,7 +581,7 @@ export class ChromiumServerHost implements BrowserHost {
     const running = await this.ensureRunning(p.profileDir);
     const transport = running.launch.transport;
     running.creating += 1;
-    let targetId: string;
+    let targetId: string | undefined;
     try {
       ({ targetId } = await transport.send<{ targetId: string }>(
         'Target.createTarget',
@@ -558,16 +589,16 @@ export class ChromiumServerHost implements BrowserHost {
       ));
       // Known as ours before the (possibly slow) attach completes.
       running.created.add(targetId);
-    } finally {
-      running.creating -= 1;
-    }
-    try {
       const { sessionId } = await transport.send<{ sessionId: string }>(
         'Target.attachToTarget',
         { targetId, flatten: true },
       );
       const unsubscribe = this.watchCommittedUrls(running, targetId, sessionId);
-      running.targets.set(targetId, { sessionId, unsubscribe });
+      running.targets.set(targetId, {
+        sessionId,
+        unsubscribe,
+        viewport: { ...p.viewport },
+      });
       const pending = running.pendingUntracked.get(targetId);
       if (pending) clearTimeout(pending);
       running.pendingUntracked.delete(targetId);
@@ -592,8 +623,10 @@ export class ChromiumServerHost implements BrowserHost {
         );
       return { targetId, cdpSessionId: sessionId };
     } catch (error) {
-      await this.closeTarget(targetId).catch(() => {});
+      if (targetId) await this.closeTarget(targetId).catch(() => {});
       throw error;
+    } finally {
+      running.creating -= 1;
     }
   }
 
@@ -606,6 +639,7 @@ export class ChromiumServerHost implements BrowserHost {
     const target = running.targets.get(targetId);
     target?.unsubscribe();
     running.targets.delete(targetId);
+    running.created.delete(targetId);
     await running.launch.transport.send('Target.closeTarget', { targetId });
   }
 
@@ -701,6 +735,7 @@ export class ChromiumServerHost implements BrowserHost {
       proxy,
       targets: new Map(),
       popups: new Map(),
+      popupAdoptions: new Map(),
       unsubscribe: [],
       creating: 0,
       created: new Set(),
@@ -852,9 +887,30 @@ export class ChromiumServerHost implements BrowserHost {
       transport.on('Target.targetCreated', (params) =>
         this.onTargetSeen(running, params),
       ),
-      transport.on('Target.targetInfoChanged', (params) =>
-        this.onTargetSeen(running, params),
-      ),
+      transport.on('Target.targetDestroyed', (params) => {
+        const targetId = (params as { targetId?: unknown })?.targetId;
+        if (typeof targetId !== 'string') return;
+        const target = running.targets.get(targetId);
+        target?.unsubscribe();
+        running.targets.delete(targetId);
+        running.created.delete(targetId);
+        if (target)
+          for (const listener of this.targetClosedListeners) listener(targetId);
+      }),
+      transport.on('Target.targetInfoChanged', (params) => {
+        this.onTargetSeen(running, params);
+        const info = (
+          params as { targetInfo?: { targetId?: unknown; title?: unknown } }
+        )?.targetInfo;
+        if (
+          typeof info?.targetId !== 'string' ||
+          typeof info.title !== 'string' ||
+          !running.targets.has(info.targetId)
+        )
+          return;
+        for (const listener of this.titleListeners)
+          listener(info.targetId, info.title.slice(0, 300));
+      }),
     );
     await transport.send('Fetch.enable', {
       patterns: [
@@ -895,11 +951,35 @@ export class ChromiumServerHost implements BrowserHost {
         interfaceAddresses: this.options.egressPolicy.interfaceAddresses(),
         popupFrameIds: new Set(
           [...running.popups.entries()]
-            .filter(([, popup]) => !popup.folded)
+            .filter(
+              ([id, popup]) => !popup.folded || running.popupAdoptions.has(id),
+            )
             .map(([id]) => id),
         ),
       },
     );
+    if (
+      decision.action === 'fail' &&
+      decision.reason === 'popup' &&
+      this.popupListener &&
+      p.frameId &&
+      isAllowedBrowserUrl(p.request.url)
+    ) {
+      this.foldPopup(running, p.frameId, p.request.url);
+      const adoption = running.popupAdoptions.get(p.frameId);
+      void Promise.resolve(adoption)
+        .then((accepted) =>
+          transport.send(
+            accepted ? 'Fetch.continueRequest' : 'Fetch.failRequest',
+            {
+              requestId: p.requestId,
+              ...(accepted ? {} : { errorReason: 'BlockedByClient' }),
+            },
+          ),
+        )
+        .catch(() => {});
+      return;
+    }
     if (decision.action === 'continue') {
       void transport
         .send('Fetch.continueRequest', { requestId: p.requestId })
@@ -926,6 +1006,7 @@ export class ChromiumServerHost implements BrowserHost {
       .targetInfo;
     if (info?.type !== 'page' || typeof info.targetId !== 'string') return;
     const targetId = info.targetId;
+    if (running.targets.has(targetId) || running.created.has(targetId)) return;
     const url = typeof info.url === 'string' ? info.url : '';
     let popup = running.popups.get(targetId);
     if (!popup) {
@@ -1006,6 +1087,23 @@ export class ChromiumServerHost implements BrowserHost {
     if (!popup || popup.folded) return;
     popup.folded = true;
     if (popup.timer) clearTimeout(popup.timer);
+    if (this.popupListener) {
+      const adoption = this.adoptPopup(
+        running,
+        popupId,
+        popup.openerTargetId,
+        url,
+      ).catch(async () => {
+        await this.closeTarget(popupId).catch(() => {});
+        return false;
+      });
+      running.popupAdoptions.set(popupId, adoption);
+      void adoption.finally(() => {
+        running.popups.delete(popupId);
+        running.popupAdoptions.delete(popupId);
+      });
+      return;
+    }
     const transport = running.launch.transport;
     void transport
       .send('Target.closeTarget', { targetId: popupId })
@@ -1030,6 +1128,66 @@ export class ChromiumServerHost implements BrowserHost {
       () => running.popups.delete(popupId),
       POPUP_URL_GRACE_MS,
     ).unref?.();
+  }
+
+  private async adoptPopup(
+    running: Running,
+    targetId: string,
+    openerTargetId: string,
+    url: string | undefined,
+  ): Promise<boolean> {
+    const opener = running.targets.get(openerTargetId);
+    if (
+      !opener ||
+      !url ||
+      !isAllowedBrowserUrl(url) ||
+      running.targets.size + running.creating >= BROWSER_PANE_TAB_LIMIT
+    ) {
+      await this.closeTarget(targetId);
+      return false;
+    }
+    const transport = running.launch.transport;
+    running.creating += 1;
+    try {
+      const { sessionId } = await transport.send<{ sessionId: string }>(
+        'Target.attachToTarget',
+        { targetId, flatten: true },
+      );
+      const unsubscribe = this.watchCommittedUrls(running, targetId, sessionId);
+      running.targets.set(targetId, {
+        sessionId,
+        unsubscribe,
+        viewport: { ...opener.viewport },
+      });
+      await transport.send('Page.enable', {}, sessionId);
+      await transport.send(
+        'Emulation.setDeviceMetricsOverride',
+        { ...opener.viewport, mobile: opener.viewport.mobile === true },
+        sessionId,
+      );
+      if (opener.viewport.mobile)
+        await transport.send(
+          'Emulation.setTouchEmulationEnabled',
+          { enabled: true },
+          sessionId,
+        );
+      if (
+        this.running !== running ||
+        running.targets.get(openerTargetId) !== opener ||
+        !running.targets.has(targetId) ||
+        !this.popupListener?.(
+          openerTargetId,
+          { targetId, cdpSessionId: sessionId },
+          url,
+        )
+      ) {
+        await this.closeTarget(targetId);
+        return false;
+      }
+      return true;
+    } finally {
+      running.creating -= 1;
+    }
   }
 
   private watchCommittedUrls(
@@ -1151,7 +1309,23 @@ export class ChromiumServerHost implements BrowserHost {
           if (!entry || !isAllowedBrowserUrl(entry.url))
             return refuse(method, 'url-not-allowed');
         }
-        return running.launch.transport.send<R>(method, params, sessionId);
+        const result = await running.launch.transport.send<R>(
+          method,
+          params,
+          sessionId,
+        );
+        if (method === 'Emulation.setDeviceMetricsOverride') {
+          const viewport = params as BrowserViewport;
+          for (const target of running.targets.values())
+            if (target.sessionId === sessionId)
+              target.viewport = {
+                width: viewport.width,
+                height: viewport.height,
+                deviceScaleFactor: viewport.deviceScaleFactor,
+                mobile: viewport.mobile === true,
+              };
+        }
+        return result;
       },
       // Subscribe after openTarget: before launch there is no channel, and a
       // subscription that silently never fires would read as "no events".
