@@ -94,6 +94,93 @@ test('packaging validates payload-bound qualification metadata and refuses diagn
     'qualification',
     receipt,
   );
+  if (process.platform !== 'win32') {
+    const stage = join(root, 'signed-stage');
+    await mkdir(stage);
+    await mkdir(join(stage, 'station'));
+    await cp(qualified.directory, join(stage, 'station/telemetry-companion'), {
+      recursive: true,
+    });
+    const archive = join(root, 'qualified-parent.tar.gz');
+    const packed = spawnSyncBounded(
+      archiveTool(),
+      ['-czf', archive, '-C', stage, 'station'],
+      {
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 30000,
+        env: { ...process.env, COPYFILE_DISABLE: '1' },
+      },
+    );
+    expect(packed.error).toBeUndefined();
+    expect(packed.status, packed.stderr).toBe(0);
+    const bytes = await readFile(archive);
+    const name = `station-server-${process.platform}-${process.arch}.tar.gz`;
+    const artifact = {
+      os: process.platform,
+      arch: process.arch,
+      name,
+      url: `https://github.com/kontourai/station/releases/download/v0.7.0-nightly.12/${name}`,
+      format: 'tar.gz',
+      size: bytes.length,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+    };
+    const payload = platformPayload({
+      sourceSha: manifest.source,
+      artifacts: [artifact],
+    });
+    const signing = generateKeyPairSync('ed25519');
+    const keys = {
+      keys: [
+        {
+          keyId: 'fixture-prepared-profile',
+          algorithm: 'ed25519',
+          channels: ['nightly'],
+          publicKeySpkiPem: signing.publicKey
+            .export({ type: 'spki', format: 'pem' })
+            .toString(),
+        },
+      ],
+    };
+    const home = join(root, 'profile-home');
+    await mkdir(home, { mode: 0o700 });
+    const archiveRoot = join(home, 'version');
+    await mkdir(archiveRoot);
+    await writeFile(
+      join(archiveRoot, '.station-signed-release-manifest.json'),
+      JSON.stringify(
+        signEnvelope(payload, 'fixture-prepared-profile', signing.privateKey),
+      ),
+    );
+    const provenance: InstallProvenance = {
+      installKind: 'archive',
+      archiveRoot,
+      installRoot: home,
+      version: '0.7.0-nightly.12',
+      release: {
+        schemaVersion: 2,
+        sha: manifest.source,
+        ref: 'v0.7.0-nightly.12',
+        createdAt: '2026-09-25T00:00:00.000Z',
+        channel: 'nightly',
+        releaseChannel: 'nightly',
+        prerelease: true,
+      },
+    };
+    const prepared = await prepareTelemetryCompanionArchive(provenance, {
+      home,
+      operationId: randomUUID(),
+      verification: { keys },
+      requireOperator: async () => {},
+      fetchFn: async () => new Response(Uint8Array.from(bytes)),
+    });
+    expect(prepared).toMatchObject({
+      phase: 'authenticated',
+      payloadPrepared: true,
+      qualifiedArchitectures: ['arm64'],
+      installationAuthority: false,
+    });
+  }
   const invalid = [
     { ...receipt, source: '0'.repeat(40) },
     { ...receipt, contentSha256: '0'.repeat(64) },

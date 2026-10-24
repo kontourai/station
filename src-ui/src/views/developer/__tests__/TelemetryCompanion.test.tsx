@@ -307,6 +307,7 @@ test.each(['recovered', 'unconfirmed'] as const)(
       storage: 'not-checked',
       observedAt: '2026-10-24T00:00:00.000Z',
     };
+    let profileAvailable = false;
     const install = vi.fn(
       async (
         _request: Request,
@@ -375,7 +376,9 @@ test.each(['recovered', 'unconfirmed'] as const)(
         mayPrepare: true,
         hasOperationLock: false,
         latestOperationId: prepared.operationId,
-        latest: prepared,
+        latest: profileAvailable
+          ? prepared
+          : { ...prepared, qualifiedArchitectures: undefined },
       }),
       managedState: async () => ({ ...current }),
       install,
@@ -393,6 +396,12 @@ test.each(['recovered', 'unconfirmed'] as const)(
       screen.getByRole('checkbox', {
         name: /Install on the selected Station using managed Docker volumes/,
       }),
+    );
+    await waitFor(() => expect(h.client.isFetching()).toBe(0));
+    expect(button).toHaveProperty('disabled', true);
+    profileAvailable = true;
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Check companion status' }),
     );
     await waitFor(() => expect(button).toHaveProperty('disabled', false));
     fireEvent.click(button);
