@@ -80,7 +80,13 @@
 
     "src-server/routes/system/boot-history.ts",
 
-    "src-server/index.ts"
+    "src-server/index.ts",
+
+    "src-server/services/telemetry-companion-qualification.mjs",
+
+    "scripts/build-portable-server-archive.mjs",
+
+    "scripts/lib/portable-server-archive.mjs"
   ],
 
   "checks": [
