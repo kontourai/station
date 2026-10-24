@@ -89,7 +89,10 @@ export class OutsideAgentGrantStore {
     string,
     { state: string; comparisonCode: string }
   >();
-  readonly #origins: readonly string[] = [];
+  #decisionInProgress = false;
+  get #origins(): readonly string[] {
+    return this.policy('redirect').origins;
+  }
   private constructor(
     db: DatabaseSync,
     readonly options: OutsideOAuthStoreOptions,
@@ -125,7 +128,11 @@ export class OutsideAgentGrantStore {
     CREATE INDEX IF NOT EXISTS outside_oauth_expiry ON outside_oauth_records(kind, json_extract(data, '$.expiresAt'));
     CREATE INDEX IF NOT EXISTS outside_oauth_retention ON outside_oauth_records(kind, json_extract(data, '$.retainUntil'));
     CREATE UNIQUE INDEX IF NOT EXISTS outside_oauth_approval_decision ON outside_oauth_records(json_extract(data, '$.decisionId')) WHERE kind='event' AND json_extract(data, '$.kind')='approved';
-    CREATE TABLE IF NOT EXISTS outside_oauth_binding (id INTEGER PRIMARY KEY CHECK(id=1), station TEXT NOT NULL, issuer TEXT NOT NULL);`);
+    CREATE TABLE IF NOT EXISTS outside_oauth_binding (id INTEGER PRIMARY KEY CHECK(id=1), station TEXT NOT NULL, issuer TEXT NOT NULL);
+    CREATE TRIGGER IF NOT EXISTS outside_oauth_terminal_immutable
+    BEFORE UPDATE ON outside_oauth_records
+    WHEN OLD.kind='grant' AND json_extract(OLD.data, '$.state')!='active' AND NEW.data!=OLD.data
+    BEGIN SELECT RAISE(ABORT, 'Outside OAuth terminal grant is immutable'); END;`);
     const check = db.prepare('PRAGMA quick_check').get();
     if (check?.quick_check !== 'ok')
       throw new Error('Outside OAuth storage corrupt');
@@ -195,6 +202,11 @@ export class OutsideAgentGrantStore {
       .run(kind, id);
   }
   #write<T>(operation: () => T | OutsideOAuthRefusal): T {
+    if (this.#decisionInProgress) {
+      const nested = operation();
+      if (nested instanceof OutsideOAuthRefusal) throw nested;
+      return nested;
+    }
     this.#db.exec('BEGIN IMMEDIATE');
     let result: T | OutsideOAuthRefusal;
     try {
@@ -256,6 +268,8 @@ export class OutsideAgentGrantStore {
       | 'grantId'
       | 'decisionId'
       | 'version'
+      | 'before'
+      | 'after'
       | 'reason'
       | 'actor'
       | 'projectScope'
@@ -264,7 +278,7 @@ export class OutsideAgentGrantStore {
   ): void {
     // Only terminal/request-ended/retired events are exempt after saturation.
     // Every path that creates live state must still require audit capacity.
-    if (!['terminal', 'request-ended', 'retired'].includes(kind))
+    if (!['terminal', 'request-ended', 'retired', 'decision'].includes(kind))
       this.#requireAuditCapacity();
     const id = random();
     this.#put('event', id, {
@@ -282,9 +296,9 @@ export class OutsideAgentGrantStore {
     return client;
   }
   register(metadata: unknown): Records['client'] {
-    const accepted = acceptedMetadata(metadata, this.#origins);
     return this.#write(() => {
       this.#sweep();
+      const accepted = acceptedMetadata(metadata, this.#origins);
       const clients = this.#all('client');
       const day = Math.floor(this.#now() / DAY);
       const quota = this.#get('quota', String(day)) ?? { day, count: 0 };
@@ -872,7 +886,7 @@ export class OutsideAgentGrantStore {
       this.#terminal(grantId, 'revoked', 'revoked');
     });
   }
-  /** Private admission primitive; R4 supplies live authority and dispatch/stream guards. */
+  /** Returns live selection, including host changes, for existing tokens. R4 must re-admit dispatch/stream work against this version. */
   access(token: string, resource: string): Records['grant'] | undefined {
     return this.#write(() => {
       this.#sweep();
@@ -889,7 +903,7 @@ export class OutsideAgentGrantStore {
       const family = this.#get('family', access.familyId);
       return grant?.state === 'active' &&
         family?.state === 'active' &&
-        grant.version === access.version &&
+        access.version <= grant.version &&
         grant.familyId === family.id
         ? grant
         : undefined;
@@ -899,6 +913,131 @@ export class OutsideAgentGrantStore {
     return this.#write(() => {
       this.#sweep();
       return this.#all('grant');
+    });
+  }
+  /** Shared synchronous decision span: expected-state reads, mutation and outbox are atomic. */
+  decide<T>(operation: () => T): T {
+    return this.#write(() => {
+      this.#decisionInProgress = true;
+      try {
+        return operation();
+      } finally {
+        this.#decisionInProgress = false;
+      }
+    });
+  }
+  decision(id: string): Records['decision'] | undefined {
+    return this.#get('decision', id);
+  }
+  recordDecision(decision: Records['decision']): void {
+    if (!this.#decisionInProgress) throw new Error('Decision lock required');
+    this.#put('decision', decision.id, decision);
+    this.#event('decision', {
+      decisionId: decision.id,
+      actor: decision.actor,
+      reason: String(decision.effect.status),
+    });
+  }
+  pending() {
+    return this.#write(() => {
+      this.#sweep();
+      return this.#pending().map((request) => ({
+        request,
+        comparisonCode: this.#volatile.get(request.id)?.comparisonCode ?? null,
+      }));
+    });
+  }
+  deny(requestId: string, expectedVersion: number): void {
+    this.#write(() => {
+      this.#sweep();
+      const request = this.#get('request', requestId);
+      if (request?.state !== 'pending' || request.version !== expectedVersion)
+        throw new OutsideOAuthRefusal('target_changed');
+      this.#endRequest(request, 'denied');
+    });
+  }
+  change(
+    grantId: string,
+    expectedVersion: number,
+    expectedDigest: string,
+    selection: GrantSelection,
+  ): void {
+    this.#write(() => {
+      this.#sweep();
+      const grant = this.#get('grant', grantId);
+      if (
+        grant?.state !== 'active' ||
+        grant.version !== expectedVersion ||
+        !equalHash(this.grantDigest(grant), expectedDigest)
+      )
+        throw new OutsideOAuthRefusal('target_changed');
+      const next = selectionSchema.parse(selection);
+      if (
+        next.delegatingPrincipalId !== grant.selection.delegatingPrincipalId ||
+        !next.scopes.every((scope) => grant.requestedScopes.includes(scope)) ||
+        next.expiresAt < this.#now() + 5 * MINUTE ||
+        next.expiresAt > grant.createdAt + GRANT_TTL
+      )
+        throw new OutsideOAuthRefusal('target_changed');
+      this.#requireAuditCapacity();
+      const changed = {
+        ...grant,
+        version: grant.version + 1,
+        selection: next,
+        expiresAt: next.expiresAt,
+      };
+      this.#put('grant', grantId, changed);
+      this.#event('changed', {
+        actor: next.actor,
+        projectScope: next.projectScope,
+        accessLevel: next.accessLevel,
+        grantId,
+        clientId: grant.clientId,
+        version: changed.version,
+        before: { version: grant.version, selection: grant.selection },
+        after: { version: changed.version, selection: next },
+      });
+    });
+  }
+  policy(kind: 'redirect' | 'cors'): Records['policy'] {
+    return this.#get('policy', kind) ?? { kind, revision: 0, origins: [] };
+  }
+  changePolicy(
+    kind: 'redirect' | 'cors',
+    operation: 'add' | 'remove',
+    origin: string,
+    expectedRevision: number,
+  ): void {
+    this.#write(() => {
+      this.#sweep();
+      const policy = this.policy(kind);
+      if (
+        policy.revision !== expectedRevision ||
+        policy.origins.includes(origin) !== (operation === 'remove')
+      )
+        throw new OutsideOAuthRefusal('target_changed');
+      const origins =
+        operation === 'add'
+          ? [...policy.origins, origin].sort()
+          : policy.origins.filter((value) => value !== origin);
+      if (origins.length > 100) throw new OutsideOAuthRefusal('capacity');
+      this.#put('policy', kind, {
+        kind,
+        revision: policy.revision + 1,
+        origins,
+      });
+      if (kind === 'redirect' && operation === 'remove') {
+        for (const request of this.#pending())
+          if (new URL(request.redirectUri).origin === origin)
+            this.#endRequest(request, 'denied');
+        for (const grant of this.#active())
+          if (new URL(grant.redirectUri).origin === origin)
+            this.#terminal(grant.id, 'revoked', 'redirect_origin_removed');
+      }
+      this.#event('policy-changed', {
+        reason: kind,
+        version: policy.revision + 1,
+      });
     });
   }
   sweep(): void {
@@ -929,6 +1068,11 @@ export class OutsideAgentGrantStore {
       if (deadline <= now || request.bootId !== this.options.bootId)
         this.#endRequest(request, 'expired');
     }
+    this.#db
+      .prepare(
+        "DELETE FROM outside_oauth_records WHERE kind='decision' AND json_extract(data,'$.createdAt')<=?",
+      )
+      .run(now - 90 * DAY);
     for (const kind of ['code', 'refresh'] as const)
       this.#db
         .prepare(

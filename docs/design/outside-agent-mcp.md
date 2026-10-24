@@ -212,8 +212,12 @@ For both allowlists, canonicalize an origin before review, storage and compariso
 parse an absolute HTTPS origin with no userinfo, query, fragment or non-root
 path; convert IDN to validated ASCII punycode, lowercase the host, remove a
 single DNS trailing dot, and omit the default `:443` port. Reject malformed IDN,
-multiple trailing dots, opaque/`null` origins and ambiguous authorities. Show the
-canonical ASCII origin in review. Compare scheme/host/effective port exactly;
+multiple trailing dots, port 0, single-label DNS hosts, opaque/`null` origins
+and ambiguous authorities. Validate each `xn--` label by decoding it and
+round-tripping to the same ASCII label; an undecodable label is refused.
+**Decision:** canonical IPv4 and bracketed IPv6 literals remain accepted. Station
+never fetches these allowlist origins; entries grant exact origin permission only.
+Show the canonical ASCII origin in review. Compare scheme/host/effective port exactly;
 canonical equivalence never permits subdomains. This origin normalization does
 not normalize registered redirect URI bytes or relax the exact O Host check.
 
@@ -455,6 +459,18 @@ again, which needs a fresh operator approval (host CLI or passkey).**
 Proposed commands under `station environment outside-clients` are `list`,
 `approve <request-id> --project <slug> [--access read-only|full] [--expires-in 30d]`,
 `deny <request-id>`, `change <grant-id> …` and `revoke <grant-id>`.
+
+Host management has one 120/minute budget per host process. Only current
+host-proof holders reach it, so sharing that budget is acceptable: all holders
+already have the same host authority. It is not a distributed abuse limit.
+The [host CLI channel](../../packages/cli/src/commands/outside-host-channel.ts)
+uses a dedicated stable `clientInstanceId` per Station home so reminting supersedes
+its own previous credential, independently of the desktop. When an OS keyring
+is available it reuses that credential after the owner-secret eligibility route
+confirms it is still live, preserving the desktop's shared 5/minute local-grant
+mint budget. Without a keyring, it remints under the same stable identity and
+remains subject to that budget; no bearer is stored in an ordinary file.
+
 Global space needs an explicit `--global`; never infer it from an unknown slug.
 `redirect-origins list|add <https-origin>|remove <https-origin>` manages section
 2's redirect allowlist under H, with expected-revision checks;
@@ -1103,9 +1119,16 @@ Report that boundary honestly. Phase two must prove the ordering at the actual
 side-effect seam and across inherited work, not only at transport admission.
 
 Access/Project/expiry changes require step-up or host confirmation. Any change
-bumps the version, invalidates all existing codes/tokens/families/sessions and
-ends the client's access until a new login/approval. Never upgrade an old token
-silently. Each successful first code exchange produces one family and a new
+updates the active grant in place and bumps its version in one `BEGIN IMMEDIATE`,
+with expected version and current-selection digest checks and a before → after
+audit event. H may narrow or widen Project/level/expiry within the originally
+requested OAuth scopes and the 30-day absolute ceiling from grant creation;
+the selected Project must exist. Existing access and refresh tokens retain their
+family and immediately use the live selection. Token issuance versions are not
+a cached authority ceiling: admission reads the current grant on every request.
+R4 must re-admit dispatch, streams and continuation state against that live
+version and selection. A terminal grant is immutable and can never be changed
+back to active. Each successful first code exchange produces one family and a new
 active grant, atomically revoking any reviewed selected supersessions from section 4.1; repeat login is a new explicit
 approval. Revoked/expired grants remain visible as bounded history;
 removing history never reactivates them. No unreviewed client metadata change
@@ -1299,12 +1322,13 @@ integrated; implementation still requires review of this design.
 | Slice | Scope and acceptance | Depends on |
 | --- | --- | --- |
 | R1 | Hash-only private store, immutable DCR metadata, per-ticket pending bounds/replacement, tombstones, grant versions/intents, strict rotation and atomic outbox; only-family replay/idle transitions revoke/expire the grant with `refresh_replay`/`idle` under one lock and free active capacity; code-reuse revocation; lifecycle/fault tests. No envelopes/key or public access. | Reviewed design, S4 |
-| R2 | Typed approval/revoke/change and both origin-allowlist targets; all host commands (including stable public pre-registration), host listing/comparison with ID-only decisions, passkey review, shared guarded decisions and exchange-time activation/supersession. | R1 |
-| R3 | **OAuth server endpoints only:** metadata, DCR, authorize/long-poll or SSE wait/automatic completion, token/strict refresh, issuer/exposure/redirect/CORS policy and budgets. Per-request loopback predicate, Serve checks and tested UI proxy exclusions. No `/mcp` transport. | R1, R2 |
+| R2a | Shared guarded approval/grant/allowlist decision service; host commands including pending codes/details, request-ID-only approve/deny, grant list/change/revoke, stable public pre-registration and canonical exact redirect/CORS origin management. Approval records intent; activation/supersession remains at exchange. Compiled refusal remains. Owner split from R2 on 2026-10-24; #4115 owns delivery. | R1 |
+| R2b | Follow-up: S4 typed ConsentTransaction targets and consent-origin review for approve/deny/revoke/level change and both allowlists, decided by `operator-passkey`; uses R2a's shared semantics without another host implementation. Compiled refusal remains. | R2a |
+| R3 | **OAuth server endpoints only:** metadata, DCR, authorize/long-poll or SSE wait/automatic completion, token/strict refresh, issuer/exposure/redirect/CORS policy and budgets. Per-request loopback predicate, Serve checks and tested UI proxy exclusions. No `/mcp` transport. | R1, R2a, R2b |
 | R4a | Separate `/mcp` router, transport/version negotiation, auth, exact route classification, catalog listing/dispatch gate with a couple of scoped reads (e.g. `list_projects`, `get_project`), revocation at each emission. Other tools fail closed; full selection disabled. | R3 |
 | R4b | Grant caller/read admission for discovery plus `search_conversations`/`list_active_work`, pre-projection Project filtering, host-exclusion partial/count semantics and foreign-ID/cursor refusal. | R4a, existing read owners |
 | R4c | Remaining reads completing the exact 23-tool catalog; `conversation-message-reader.ts`, `conversations.ts` message/list routes and `conversation-reference-read.ts` caller/admission branches explicitly require live grant Project checks across file/native/lineage reads. Exhaustive outside-caller handling in `isPrincipalScopedAgentRequest`; unknown callers refuse. Named foreign-Project ID negative evidence for each of 23 reads, plus the sixth reader-Project fault injection and per-emission revocation. | R4b |
-| R5 | Connections grant/pending listing, review/change/revoke, audit/expiry/recovery UX; consumes R2's commands and decision service without a second host-command implementation. H/P revoke live transports. | R2, R4c |
+| R5 | Connections grant/pending listing, review/change/revoke, audit/expiry/recovery UX; consumes R2's commands and decision service without a second host-command implementation. H/P revoke live transports. | R2a, R2b, R4c |
 | R6 — read-only milestone | Real Claude login and Codex **config-file + `login --no-browser` harness**, no host browser; timed host/real passkey approval, protocol/token lifecycle, 23-tool reads/denied mutation, tombstone/pending replacement, exchange-time supersession and live revoke/fault proof. Only after this passes may the compiled refusal be removed and explicit read-only opt-in ship. | R3–R5 |
 | C1 — next interoperability follow-up | CIMD with bounded validated fetching/cache and SSRF/metadata-change review; real Codex 0.163.0 `--oauth-client-registration CIMD` acceptance, explicit review/redirect policy. DCR and R2 stable public pre-registration remain supported. | R6 |
 | F1 — separate full milestone | Add 13 full-only tools (36 total), parameter policy in section 6.2, grant-created ownership, no delete/UI navigation, transitive ceiling and atomic child-work limits. **Entry criteria:** C1 with reviewed work continuity, or explicitly reviewed atomic transfer of running-work `createdByOutsideGrantId` with visible work inventory; no silent cancellation by supersession. Prove every parameter policy, scoped writes, provider enforcement, replay/revoke/effect ordering and real two-client full acceptance before enabling full. | R6 and the stated continuity/parameter criteria |

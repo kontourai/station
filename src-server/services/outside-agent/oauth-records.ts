@@ -128,6 +128,8 @@ const grantSchema = z.object({
       'superseded',
       'revoked',
       'authority',
+      'changed',
+      'redirect_origin_removed',
     ])
     .nullable(),
 });
@@ -200,8 +202,11 @@ const eventSchema = z.object({
     'approved',
     'activated',
     'terminal',
+    'changed',
     'request-ended',
     'retired',
+    'policy-changed',
+    'decision',
   ]),
   clientId: z.string().optional(),
   requestId: z.string().optional(),
@@ -209,6 +214,18 @@ const eventSchema = z.object({
   decisionId: z.string().optional(),
   version: z.number().optional(),
   reason: z.string().optional(),
+  before: z
+    .object({
+      version: z.number().int().positive(),
+      selection: selectionSchema,
+    })
+    .optional(),
+  after: z
+    .object({
+      version: z.number().int().positive(),
+      selection: selectionSchema,
+    })
+    .optional(),
   deliveredAt: timestamp.nullable(),
 });
 const quotaSchema = z.object({
@@ -229,6 +246,19 @@ export const recordSchemas = {
   tombstone: tombstoneSchema,
   event: eventSchema,
   quota: quotaSchema,
+  policy: z.object({
+    kind: z.enum(['redirect', 'cors']),
+    revision: z.number().int().nonnegative(),
+    origins: z.array(z.string()),
+  }),
+  decision: z.object({
+    id: z.string(),
+    fingerprint: z.string(),
+    actionDigest: digest,
+    actor: actorSchema,
+    effect: z.record(z.string(), z.unknown()),
+    createdAt: timestamp,
+  }),
 };
 export type Records = {
   [K in keyof typeof recordSchemas]: z.infer<(typeof recordSchemas)[K]>;
