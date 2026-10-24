@@ -7,6 +7,7 @@ import { TASK_ROOM_CONTEXT_VERSION } from '@kontourai/station-contracts/task-roo
 import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge-root-identity';
 import { zodSchema } from 'ai';
 import packageJson from '../../../package.json' with { type: 'json' };
+import { SourceEnrollmentStore } from '../../analytics/source-enrollment-store.js';
 import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
@@ -18,6 +19,7 @@ import { createHomeTransferRoomRoutes } from '../../routes/environments/home-tra
 import { createLiveSurfaceRoutes } from '../../routes/live-surface.js';
 import { createAccountPreferencesRoutes } from '../../routes/me/account-preferences.js';
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
+import { createSourceEnrollmentRoutes } from '../../routes/operations/source-enrollments.js';
 import { createHtmlReplyRoutes } from '../../routes/orchestration/html-replies.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
 import { createProjectRoomRoutes } from '../../routes/projects/project-room-routes.js';
@@ -113,6 +115,7 @@ import { DeviceToolchainService } from '../../services/devices/toolchain/device-
 import { HtmlReplyPreview } from '../../services/html-reply-preview.js';
 import { AccountPreferencesStore } from '../../services/identity/account-preferences.js';
 import type { ApplicationSessionService } from '../../services/identity/application-session-service.js';
+import type { AuthorityObservationRequestContext } from '../../services/identity/authority-observation.js';
 import type { LoadedDeploymentAuthentication } from '../../services/identity/deployment-authentication-loader.js';
 import {
   type DeploymentAuthenticationService,
@@ -2328,6 +2331,10 @@ export function configureRuntimeRoutes(
     '/api/spatial-board/resolved',
     bindConversationReadAuthority,
   );
+  context.app.use(
+    '/api/analytics/source-enrollments/*',
+    bindConversationReadAuthority,
+  );
   context.app.on(
     'GET',
     ['/api/analytics/usage-rollup', '/api/analytics/usage-export'],
@@ -3097,6 +3104,79 @@ export function configureRuntimeRoutes(
       },
       context.logger,
     ),
+  );
+  const captureAnalyticsPerson = async (
+    requestContext: AuthorityObservationRequestContext,
+  ) => {
+    const {
+      captureAuthorityObservation,
+      revalidateAuthorityObservation,
+      AuthorityObservationRejected,
+    } = await import('../../services/identity/authority-observation.js');
+    const captured = await captureAuthorityObservation({
+      context: requestContext,
+      request: requestContext.req.raw,
+      runtimePrincipal: getRuntimeAuthenticatedRequestPrincipal(
+        requestContext.req.raw,
+      ),
+      security: context.environmentSecurityService,
+      deploymentAuthentication: context.deploymentAuthentication,
+      resolveRequestPrincipal: resolveOrchestrationRequestPrincipal,
+    });
+    if (
+      connectedAccountOwnerId(
+        resolveOrchestrationRequestPrincipal(requestContext),
+      ) === undefined ||
+      captured.envelope.principal.id === LOCAL_OPERATOR_PRINCIPAL_ID
+    )
+      throw new AuthorityObservationRejected(403, 'authority_changed');
+    return {
+      captured,
+      authority: conversationReadAuthorityForRequest(requestContext.req.raw),
+      assertCurrent: () =>
+        revalidateAuthorityObservation({
+          request: requestContext.req.raw,
+          captured,
+          security: context.environmentSecurityService,
+          deploymentAuthentication: context.deploymentAuthentication,
+        }),
+    };
+  };
+  context.app.route(
+    '/api/analytics/source-enrollments',
+    createSourceEnrollmentRoutes({
+      store: new SourceEnrollmentStore(
+        context.configLoader.getProjectHomeDir(),
+      ),
+      capture: async (requestContext, scope) => {
+        const person = await captureAnalyticsPerson(requestContext);
+        const ownerIds = context.orchestrationService.usageExportOwnerIds(
+          person.authority,
+          scope,
+        );
+        return {
+          sourceStationId: person.captured.envelope.environmentId,
+          userId: person.authority.userId,
+          mode: person.authority.mode,
+          tenantId: person.authority.tenantExecutionContext?.tenantId ?? null,
+          ownerIds,
+          async assertCurrent() {
+            await person.assertCurrent();
+            const currentOwners =
+              context.orchestrationService.usageExportOwnerIds(
+                person.authority,
+                scope,
+              );
+            if (JSON.stringify(currentOwners) !== JSON.stringify(ownerIds)) {
+              const { AuthorityObservationRejected } = await import(
+                '../../services/identity/authority-observation.js'
+              );
+              throw new AuthorityObservationRejected(403, 'authority_changed');
+            }
+          },
+        };
+      },
+    }),
   );
   context.app.route(
     '/api/analytics',

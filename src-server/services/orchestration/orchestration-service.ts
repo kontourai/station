@@ -151,6 +151,7 @@ import type { OrchestrationSessionUsage } from '../../analytics/usage-aggregator
 import {
   readAuthorizedUsageExport,
   UsageExportRejected,
+  usageExportOwnerIds,
 } from '../../analytics/usage-export-reader.js';
 import type { UsagePricingSnapshotCapture } from '../../analytics/usage-pricing-snapshot-capture.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
@@ -5965,6 +5966,15 @@ export class OrchestrationService {
       authority,
       stationId,
       request,
+    );
+  }
+
+  usageExportOwnerIds(
+    authority: SessionReadAuthority,
+    scope: import('@kontourai/station-contracts/usage-export').UsageExportScope,
+  ) {
+    return usageExportOwnerIds(authority, scope, () =>
+      this.options.personalConversationAccess?.ownerIds(authority.userId),
     );
   }
 

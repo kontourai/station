@@ -4890,6 +4890,15 @@ receiver index/checkpoint transactions, clone identity and deployment remain
 open. A backed-up stream epoch is not a restore fence. See
 [monitoring](../guides/monitoring.md#canonical-usage-export-source).
 
+The [enrollment intent owner](../../src-server/analytics/source-enrollment-store.ts)
+and [routes](../../src-server/routes/operations/source-enrollments.ts) persist
+metadata-only proposals under the same verified-person ingress and owner-selection
+policy. The source derives private owner/tenant bindings, checks current authority
+through storage and queued delivery, and retains cancellation/idempotency receipts
+in a bounded private file. Proposed destinations remain unverified; no source
+credential, active grant or copied usage is created. Destination verification,
+person credential custody and the narrow export consumer remain unfinished.
+
 ## ProductTelemetryReceiver
 
 The Station-side [companion route](../../src-server/routes/system/telemetry-companion-routes.ts)

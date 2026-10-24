@@ -139,6 +139,35 @@ receipt observation clocks, source/window/scope, committed order and a captured
 continuation snapshot without folding page facts into totals. Its fetcher and
 two-observer query controls have executed; a query key grants no source access.
 
+### Source enrollment proposals
+
+`/api/analytics/source-enrollments` now records a verified person's explicit
+proposal for a source/destination relationship. This is the first stage of #3459,
+not an active analytics grant. Every result has `exportAuthority:false` and
+`destinationVerified:false`; no credential is issued, destination contacted,
+usage copied or sending enabled. The enrollment UI and credential consumer remain
+unfinished.
+
+POST supplies an operation UUID, proposed destination Station/origin, individual
+or personal-account scope, expiry within 30 days and an explicit live-mirror or
+bounded retained-copy policy. The source derives the person, tenant, owner set
+and source identity from current verified ingress and the canonical export policy;
+body identity or authority fields are refused. Hosted personal-account scope
+remains unsupported. Agent/plugin callers and unbound/operator-only attribution
+cannot prepare a proposal. Authority and membership are rechecked across storage
+and queued response delivery.
+
+GET lists the latest 20 own intents; GET `/<operationId>` recovers one. Repeating
+the same immutable intent returns its record; changing it conflicts. DELETE
+`/<operationId>` cancels the proposal and retains its receipt. Reusing a cancelled
+ID does not reactivate it. Records are private, bounded and atomically replaced
+under a cross-process lock. Corrupt or unsafe bytes refuse reads/writes without
+resetting the store. At most 20 unexpired prepared intents per person/tenant and
+1,000 retained intents per source are accepted. These metadata bounds do not
+establish authorization, data retention or sync completeness. Destination/person
+verification, narrow credential issuance/custody, revocation of active grants,
+source/deletion/restore fencing and durable synchronization still need delivery.
+
 ## Developer diagnostics
 
 Developer → Monitoring → Companion checks the selected Station's local container

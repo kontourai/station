@@ -83,6 +83,26 @@ function continuation(value: string | undefined): Continuation | undefined {
   };
 }
 
+/** One owner-selection policy for retained exports and enrollment proposals. */
+export function usageExportOwnerIds(
+  authority: SessionReadAuthority,
+  scope: UsageExportRequest['scope'],
+  personalOwnerIds: () => readonly string[] | undefined,
+): string[] {
+  if (
+    !isSessionReadAuthority(authority) ||
+    (authority.mode === 'hosted' && !authority.tenantExecutionContext)
+  )
+    throw new UsageExportRejected('usage_export_authority_changed', 403);
+  if (scope === 'individual') return [authority.userId];
+  if (scope !== 'personal-account' || authority.mode === 'hosted')
+    throw new UsageExportRejected('invalid_usage_export', 400);
+  const members = personalOwnerIds();
+  if (!members?.includes(authority.userId))
+    throw new UsageExportRejected('usage_export_authority_changed', 403);
+  return [...new Set(members)].sort();
+}
+
 export function readAuthorizedUsageExport(input: {
   store: Pick<
     EventStore,
@@ -113,13 +133,8 @@ export function readAuthorizedUsageExport(input: {
     (authority.mode === 'hosted' && request.scope === 'personal-account')
   )
     throw new UsageExportRejected('invalid_usage_export', 400);
-  const owners = () => {
-    if (request.scope === 'individual') return [authority.userId];
-    const members = input.personalOwnerIds();
-    if (!members?.includes(authority.userId))
-      throw new UsageExportRejected('usage_export_authority_changed', 403);
-    return [...new Set(members)].sort();
-  };
+  const owners = () =>
+    usageExportOwnerIds(authority, request.scope, input.personalOwnerIds);
   const ownerIds = owners();
   if (!ownerIds.includes(authority.userId))
     throw new UsageExportRejected('usage_export_authority_changed', 403);

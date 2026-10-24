@@ -90,6 +90,14 @@ It neither describes an analytics authorization credential nor proves a
 durable sync/restore fence. See [monitoring](../guides/monitoring.md#canonical-usage-export-source)
 for current implementation and unexecuted acceptance limits.
 
+The usage-export module also declares `AnalyticsSourceEnrollmentIntent`: an
+immutable proposed source/destination, requested scope, expiry and retention
+choice with a prepared/cancelled phase. `destinationVerified:false` and
+`exportAuthority:false` are required literals. The source's private person,
+tenant and owner-set binding is not a caller-supplied DTO. This proposal neither
+issues a credential nor authorizes export; see the
+[proposal API](api.md#prepare-a-personal-source-enrollment-proposal).
+
 The `@kontourai/station-contracts/html-reply` subpath defines prepared page
 bytes, publication references, byte/height limits and theme variable names for
 [visual replies](../user/html-replies.md). It grants no publication or

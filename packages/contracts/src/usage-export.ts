@@ -26,3 +26,18 @@ export interface UsageExportPage {
     reason: 'retained-observations-do-not-prove-provider-or-deletion-coverage';
   };
 }
+
+/** A saved proposal only. It grants no export, ingestion or destination access. */
+export interface AnalyticsSourceEnrollmentIntent {
+  protocol: 'station-analytics-source-enrollment-intent/v1';
+  operationId: string;
+  sourceStationId: string;
+  proposedDestination: { stationId: string; origin: string };
+  destinationVerified: false;
+  scope: UsageExportScope;
+  expiresAt: string;
+  retention: { mode: 'live-mirror' } | { mode: 'retained-copy'; days: number };
+  phase: 'prepared' | 'cancelled';
+  createdAt: string;
+  exportAuthority: false;
+}

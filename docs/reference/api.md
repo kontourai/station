@@ -2350,6 +2350,33 @@ restore-generation fence or durable sync checkpoint/index. A backup copies
 [the monitoring guide](../guides/monitoring.md#canonical-usage-export-source)
 for source bounds and the open #3459/#3460 acceptance.
 
+### Prepare a personal source enrollment proposal
+
+`POST /api/analytics/source-enrollments` accepts exactly `operationId` (lowercase
+UUIDv4), `proposedDestination:{stationId,origin}`, `scope` (`individual` or
+`personal-account`), canonical ISO `expiresAt` within 30 days, and `retention`
+(`{mode:"live-mirror"}` or `{mode:"retained-copy",days:1..90}`). The origin must
+be canonical HTTPS or HTTP loopback and is not contacted. The body is bounded to
+4 KiB. The current verified person and server-derived owner/tenant policy bind
+the record; callers cannot supply those identities or authority flags.
+
+GET on the collection returns the latest 20 own records. GET `/<operationId>`
+reads one; DELETE cancels it. Results use `{data: AnalyticsSourceEnrollmentIntent}`
+(or an array for the collection), with protocol
+`station-analytics-source-enrollment-intent/v1`, source Station, proposed target,
+scope/policy/expiry, recorded phase/time, `destinationVerified:false` and
+`exportAuthority:false`. A prepared receipt is not a credential or an active
+export grant. Repeated identical IDs return their receipt; altered intents
+conflict and cancelled IDs remain cancelled. Unowned records return 404.
+
+These routes require `orchestration:read` plus a verified person; agents,
+plugins, unbound Devices and operator-only fallback are refused. They preserve
+current authority through queued response release. Hosted mode accepts only
+individual scope. Invalid input returns 400, conflicts/quotas 409, unsafe storage
+503. Responses are no-store. Destination verification, credential issuance,
+enrollment UI and active-grant synchronization remain unfinished; see
+[monitoring](../guides/monitoring.md#source-enrollment-proposals).
+
 ### Get Achievements
 
 `GET /api/analytics/achievements` returns

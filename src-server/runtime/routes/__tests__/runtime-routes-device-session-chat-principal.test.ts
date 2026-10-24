@@ -686,6 +686,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
                 orchestration!.attachmentCandidateOwnerIds.bind(orchestration),
               readUsageReceiptExport:
                 orchestration!.readUsageReceiptExport.bind(orchestration),
+              usageExportOwnerIds:
+                orchestration!.usageExportOwnerIds.bind(orchestration),
               ...(orchestrationExtras.flowReads
                 ? {
                     listSessionReadModel:
@@ -2853,7 +2855,60 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           REMOTE_TAILNET_ENV,
         );
         expect(boundResponse.status, await boundResponse.text()).toBe(200);
+        const enrollmentPath = '/api/analytics/source-enrollments';
+        const enrollmentId = '01234567-89ab-4cde-8fab-0123456789ab';
+        const enrollmentBody = JSON.stringify({
+          operationId: enrollmentId,
+          proposedDestination: {
+            stationId: 'destination-fixture',
+            origin: 'https://destination.example.test',
+          },
+          scope: 'individual',
+          expiresAt: new Date(Date.now() + 86400000).toISOString(),
+          retention: { mode: 'live-mirror' },
+        });
+        const unboundEnrollment = await h.app.request(
+          enrollmentPath,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${h.paired.credential}` },
+            body: enrollmentBody,
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(unboundEnrollment.status, await unboundEnrollment.text()).toBe(
+          403,
+        );
+        const enrollment = await h.app.request(
+          enrollmentPath,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${bound.credential}` },
+            body: enrollmentBody,
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        const enrollmentResult = await enrollment.json();
+        expect(enrollment.status, JSON.stringify(enrollmentResult)).toBe(200);
+        expect(enrollmentResult).toMatchObject({
+          data: {
+            phase: 'prepared',
+            destinationVerified: false,
+            exportAuthority: false,
+          },
+        });
+        const heldEnrollment = await h.app.request(
+          `${enrollmentPath}/${enrollmentId}`,
+          {
+            headers: { Authorization: `Bearer ${bound.credential}` },
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(heldEnrollment.status).toBe(200);
         h.pairing.revokeDevice(bound.device.id, 'operator-credential');
+        await expect(heldEnrollment.text()).rejects.toThrow(
+          'Authority observation ended',
+        );
         expect(
           (
             await h.app.request(

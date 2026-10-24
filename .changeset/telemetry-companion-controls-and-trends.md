@@ -8,3 +8,5 @@ Add scoped Companion installation, start/stop, retained-operation recovery and r
 Add additive preparation metadata, managed lifecycle DTOs and a bounded product-trends contract with a pure decoder. Product aggregates preserve retention, producer-clock time and unknown delivery coverage; they do not represent personal usage or billing. Engine and outcome dimensions must match the existing disclosure inventory.
 
 These APIs require a compatible server. Installation and start admission still require an authenticated architecture-qualified artifact and explicit operator intent. This change does not issue that qualification, enable sending, acknowledge disclosure or grant personal source access.
+
+Add the metadata-only `AnalyticsSourceEnrollmentIntent` DTO for preparing or cancelling a personal source enrollment proposal. Its destination-verification and export-authority flags remain false; it neither issues a credential nor enables synchronization.
