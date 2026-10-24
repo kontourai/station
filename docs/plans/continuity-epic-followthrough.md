@@ -1,6 +1,6 @@
 # Continuity and existing-client follow-through
 
-Status: active implementation plan; unfinished acceptance is not qualified.
+Status: source integration and PR delivery; unfinished live acceptance is not qualified.
 
 This is the single ongoing branch `feat/continuity-epic-followthrough`, owned by
 the continuity/Happier thread `7d385283-8974-4eeb-8f3b-8ba915efc58a`.
@@ -9,7 +9,9 @@ Its initial base is published master #3991 at
 on main as `1dd83e0f305149b2d28e2eaff6645358cde5ad7f` and was merged normally
 into this branch at `750f63e4a94`. Continue merging relevant main changes
 normally before publication. Preserve the superseded original branches, unfinished index and
-evidence. Open one PR only after this branch's agreed work is complete.
+evidence. The owner authorized delivery of completed source on 2026-10-24
+without waiting for the deferred second-account sign-in. Keep one PR for this
+branch and retain live acceptance as explicit unfinished work.
 
 ## Work already supplied by the master or earlier main
 
@@ -507,3 +509,27 @@ They do not qualify this repair. Full-source readiness and independent review
 of the repair remain pending. Public-client onboarding, installed-provider
 lifecycle and real two-account quota/selection/credential application remain
 unverified; account sign-in is deferred at the user's request.
+
+
+### Source delivery after current-main integration (2026-10-24)
+
+Main `993a6f0a7c004ab9eba2d6277b3248eafd86e8ce` was merged normally at
+`4324cb1764a`. The resolution composes OAuth-proxy token purposes and revocation
+callbacks with independent external-client leases; preserves account-owner
+context and the final context-start guard; and initializes both migration
+families. Existing review decisions and source lists were combined without
+advancing the documentation baseline.
+
+The merged head passed 447 focused tests across token/issuer/OAuth-proxy,
+EventStore, native completion, fork and handoff owners. Server-test types passed.
+These are local scripted observations. The pre-merge independent review remains
+evidence for its exact source; the merge resolution was reviewed locally and
+does not inherit an independent exact-head review or an old CI pass. Normal
+hooks, hosted checks and protected queue qualification still govern delivery.
+
+Installed-provider/native lifecycle, fresh public-client onboarding and real
+two-account identity/quota/selection/credential application remain unverified.
+They are retained acceptance work and do not block the completed-source PR
+under the owner's current instruction. No login, provider inference or new
+review worker was started for this integration. Source delivery is not a claim
+that the full epic's live acceptance has passed.
