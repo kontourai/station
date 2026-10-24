@@ -271,6 +271,9 @@ the same unchanged regular file. The fixed members are read through tar stdout;
 tar never extracts paths onto the host filesystem. Station writes only its fixed
 file names, bounds output, verifies the complete inventory and matching source,
 and syncs files and directories before recording `payloadPrepared:true`.
+Preparation and the prerequisite evidence read also apply the packager's shared
+receiver-provenance and deployment-image consistency checks. A valid signature
+and matching file hashes cannot substitute for a matching pinned image inventory.
 Failed or interrupted preparation retains partial files without granting that
 state. Older authenticated receipts without the field prove archive bytes only.
 
