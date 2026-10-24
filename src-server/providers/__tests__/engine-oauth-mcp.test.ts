@@ -703,3 +703,32 @@ test('SSE endpoint events stay on the authenticated proxy and message POSTs inje
   ).toBe(202);
   expect(seen).toEqual([endpoint, remoteMessage]);
 });
+
+test('a fresh token read cannot swallow a concurrent remote-401 refresh', async () => {
+  const provider = await account('human:local:operator');
+  await provider.saveTokens(
+    {
+      access_token: 'current',
+      refresh_token: 'refresh',
+      token_type: 'Bearer',
+      expires_in: 3600,
+      ...issuer,
+    },
+    issuer,
+  );
+  const refresh = vi.fn(async () =>
+    Response.json({
+      access_token: 'after-401',
+      refresh_token: 'next-refresh',
+      token_type: 'Bearer',
+      expires_in: 3600,
+    }),
+  );
+  vi.stubGlobal('fetch', refresh);
+  const [, rejected] = await Promise.all([
+    provider.accessToken(),
+    provider.accessToken('current'),
+  ]);
+  expect(rejected).toBe('after-401');
+  expect(refresh).toHaveBeenCalledTimes(1);
+});

@@ -565,16 +565,7 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
     await this.writeBound(KEYS.client, value, this.resolveIssuer(value, ctx));
   }
   async tokens(ctx?: OAuthClientInformationContext) {
-    const tokens = await this.readBound<StoredOAuthTokens>(KEYS.tokens, ctx);
-    if (
-      readJson<BoundRecord<StoredOAuthTokens>>(
-        this.store,
-        this.bucket,
-        KEYS.tokens,
-      )?.needsSignIn
-    )
-      return undefined;
-    return tokens;
+    return this.readBound<StoredOAuthTokens>(KEYS.tokens, ctx);
   }
 
   /** A repeated 401 retires only the exact credential the remote rejected. */
@@ -632,8 +623,18 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
     });
   }
 
-  /** All Station account consumers join the same document/bucket/resource flight. */
+  /** All Station refreshes join the same document/bucket/resource flight. */
   async accessToken(rejectedToken?: string): Promise<string> {
+    const available = await this.tokens();
+    const expiresAt = available ? await this.accessTokenExpiresAt() : undefined;
+    // Ordinary reads cannot absorb a simultaneous 401 that requires refresh.
+    if (
+      available?.access_token &&
+      available.token_type.toLowerCase() === 'bearer' &&
+      rejectedToken !== available.access_token &&
+      (expiresAt === undefined || expiresAt > Date.now() + 120_000)
+    )
+      return available.access_token;
     const key = JSON.stringify([
       this.store.coordinationKey,
       this.bucket,
@@ -886,6 +887,7 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
     }
     if (ctx && (!record.issuer || record.issuer !== ctx.issuer))
       return undefined;
+    if (key === KEYS.tokens && record.needsSignIn) return undefined;
     return record.value;
   }
 }
