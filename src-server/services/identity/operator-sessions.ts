@@ -240,6 +240,66 @@ export class OperatorSessionService {
     return touch ? { ...session, lastUsedAt: now } : session;
   }
 
+  stepUpOptions(challenge: string) {
+    return {
+      challenge,
+      rpId: this.deps.origin ? new URL(this.deps.origin).hostname : '',
+      userVerification: 'required' as const,
+      timeout: CHALLENGE_MS,
+      allowCredentials: (
+        this.deps.registry.existing()?.activeCredentialIds() ?? []
+      ).map(({ id }) => ({ id, type: 'public-key' as const })),
+    };
+  }
+
+  /** Verify one transaction assertion without touching either session deadline. */
+  async verifyStepUp(
+    secret: string,
+    credential: string,
+    response: AuthenticationResponseJSON,
+    challenge: string,
+  ): Promise<string> {
+    const session = this.resolve(secret, credential);
+    const registry = this.deps.registry.existing();
+    const stored = registry?.authenticationCredential(response.id);
+    const origin = this.deps.origin;
+    if (
+      !session ||
+      !registry ||
+      !stored ||
+      !origin ||
+      stored.passkey.origin !== origin ||
+      stored.passkey.rpId !== new URL(origin).hostname
+    )
+      throw new OperatorSignInError('verification_failed');
+    let verified: Awaited<ReturnType<typeof verifyAuthenticationResponse>>;
+    try {
+      verified = await verifyAuthenticationResponse({
+        response,
+        expectedChallenge: challenge,
+        expectedOrigin: origin,
+        expectedRPID: new URL(origin).hostname,
+        expectedType: 'webauthn.get',
+        credential: stored.credential,
+        requireUserVerification: true,
+      });
+    } catch {
+      throw new OperatorSignInError('verification_failed');
+    }
+    if (
+      !verified.verified ||
+      !verified.authenticationInfo.userVerified ||
+      this.resolve(secret, credential)?.sessionId !== session.sessionId ||
+      !registry.recordAuthentication(
+        stored.passkey.id,
+        stored.credential.counter,
+        verified.authenticationInfo.newCounter,
+      )
+    )
+      throw new OperatorSignInError('verification_failed');
+    return stored.passkey.id;
+  }
+
   signOut(secret: string, credential: string): boolean {
     const session = this.resolve(secret, credential);
     if (!session) return false;
@@ -273,12 +333,14 @@ export function parseOperatorSessionCookie(
 
 export function isOperatorSessionRead(method: string, path: string): boolean {
   return (
-    method === 'GET' &&
-    [
-      '/api/pairing/devices',
-      '/api/operator/session',
-      '/api/operator/passkeys',
-    ].includes(path)
+    (method === 'GET' &&
+      [
+        '/api/pairing/devices',
+        '/api/operator/session',
+        '/api/operator/passkeys',
+      ].includes(path)) ||
+    (method === 'GET' &&
+      /^\/api\/pairing\/device-access-transactions\/[^/]+$/.test(path))
   );
 }
 export function isOperatorSessionLeaf(method: string, path: string): boolean {
@@ -287,6 +349,10 @@ export function isOperatorSessionLeaf(method: string, path: string): boolean {
     (method === 'POST' &&
       /^\/api\/pairing\/devices\/[^/]+\/scope$/.test(path)) ||
     (method === 'DELETE' &&
-      /^\/api\/pairing\/devices\/[^/]+(?:\/record)?$/.test(path))
+      (/^\/api\/pairing\/devices\/[^/]+(?:\/record)?$/.test(path) ||
+        /^\/api\/pairing\/people\/[^/]+\/tokens\/[^/]+$/.test(path) ||
+        /^\/api\/pairing\/operator-passkeys\/[^/]+$/.test(path))) ||
+    (method === 'PUT' && /^\/api\/pairing\/people\/[^/]+\/group$/.test(path)) ||
+    (method === 'POST' && /^\/api\/pairing\/people\/[^/]+\/tokens$/.test(path))
   );
 }
