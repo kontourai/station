@@ -47,6 +47,21 @@ qualification. Its `qualification` remains `build-only` and
 `installationAuthority` must be `false`; promoted or malformed values are
 refused by the SDK.
 
+Archive preparation uses `fetchTelemetryCompanionPreparationState`,
+`fetchTelemetryCompanionArchivePreparation` and
+`prepareTelemetryCompanionArchive`; the corresponding hooks are
+`useTelemetryCompanionPreparationStateQuery`,
+`useTelemetryCompanionArchivePreparationQuery` and
+`usePrepareTelemetryCompanionArchiveMutation`. Pass the captured `requestScope`
+to each. Queries partition by Station and authority, discard unused cached data,
+do not retain previous data and do not retry automatically. The mutation accepts
+a UUIDv4 operation ID, submits it once, and invalidates scoped preparation reads
+when settled. A lost reply requires reading that same operation's receipt,
+not replaying the mutation. State includes the durable latest-operation ID and
+observed lock presence; neither a lock nor a `pending` receipt proves liveness.
+Strict receipt decoding requires `installationAuthority:false`; authenticated
+archive bytes do not authorize installation or start services.
+
 `@kontourai/station-sdk/secret-bindings` also exports
 `listTelemetrySecretBindings(apiBase, options?)` and
 `updateTelemetrySecretBindingGrant(apiBase, id, operation, input, options?)`.

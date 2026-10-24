@@ -148,6 +148,13 @@ On capable servers it also shows retained parent-release evidence, distinguishin
 missing/invalid envelopes and payloads from a verified parent signature and
 matching build inventory. That evidence does not authenticate the original
 archive bytes or establish runtime qualification.
+An authorized operator can choose **Prepare signed archive** to download and
+verify the signed parent archive in the selected Station's private storage.
+**Check preparation status** reads the retained receipt. After a lost response,
+the pane checks the same operation; it never automatically repeats the download.
+Reopening the pane recovers the latest recorded operation. An unconfirmed result,
+pending receipt, lock or missing receipt requires reconciliation before another
+attempt; a recorded intent or lock does not establish that a process is running.
 The pane does not install or start the companion yet; a passed host check is
 not artifact qualification, storage readiness or delivery proof. Sending and
 personal source access remain separate choices. See the

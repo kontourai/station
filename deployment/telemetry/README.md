@@ -264,8 +264,17 @@ the retained receipt under current operator authority. Reusing an operation ID
 returns its receipt without another download. `pending` records intent, not
 process liveness; `authenticated` records the successful byte check, not a fresh
 execution permit. Every receipt has `installationAuthority:false`. The backend
-does not extract, execute, install, start services or enable telemetry. SDK/pane
-preparation controls and qualified lifecycle activation remain unfinished.
+does not extract, execute, install, start services or enable telemetry.
+
+Developer → Monitoring → Companion exposes **Prepare signed archive** to an
+authorized operator when the host and retained release evidence are available.
+The SDK mutation submits one caller-generated operation ID without automatic
+retries. **Check preparation status** performs reads only. If the response is
+lost, the pane looks up that same operation rather than starting another
+download. Reopening the pane reads the durable latest-operation pointer through
+`GET /api/operator/telemetry-companion/archive-preparations`. A lock, pending
+receipt or missing receipt blocks another preparation and requires reconciliation;
+none proves a process is running. Qualified install/start controls remain unfinished.
 
 ## Render, validate, then run
 
