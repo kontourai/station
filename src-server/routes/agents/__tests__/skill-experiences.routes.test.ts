@@ -399,15 +399,16 @@ class ExperienceAdapter extends GateTestAdapter {
   }
   override async startSession(input: ProviderSessionStartInput) {
     this.sessions.add(input.threadId);
-    this.events.push({
-      eventId: `${input.threadId}:configured`,
-      provider: this.provider,
-      threadId: input.threadId,
-      sessionId: input.threadId,
-      method: 'session.configured',
-      createdAt: new Date().toISOString(),
-      metadata: input.metadata,
-    });
+    for (const method of ['session.started', 'session.configured'] as const)
+      this.events.push({
+        eventId: `${input.threadId}:${method}`,
+        provider: this.provider,
+        threadId: input.threadId,
+        sessionId: input.threadId,
+        method,
+        createdAt: new Date().toISOString(),
+        metadata: input.metadata,
+      });
     return { ...(await super.startSession(input)), metadata: input.metadata };
   }
   override async sendTurn(input: ProviderSendTurnInput) {

@@ -75,15 +75,16 @@ class SlowCatalogClaudeAdapter extends GateTestAdapter {
 
   override async startSession(input: ProviderSessionStartInput) {
     const now = new Date().toISOString();
-    this.events.push({
-      eventId: `${input.threadId}:configured`,
-      method: 'session.configured',
-      provider: this.provider,
-      threadId: input.threadId,
-      sessionId: input.threadId,
-      createdAt: now,
-      metadata: input.metadata,
-    } as CanonicalRuntimeEvent);
+    for (const method of ['session.started', 'session.configured'] as const)
+      this.events.push({
+        eventId: `${input.threadId}:${method}`,
+        method,
+        provider: this.provider,
+        threadId: input.threadId,
+        sessionId: input.threadId,
+        createdAt: now,
+        metadata: input.metadata,
+      } as CanonicalRuntimeEvent);
     return {
       provider: this.provider,
       threadId: input.threadId,
