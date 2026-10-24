@@ -742,7 +742,17 @@
 
     "src-server/services/telemetry-companion-archive.ts",
 
-    "src-ui/src/views/developer/CompanionArchivePreparation.tsx"
+    "src-ui/src/views/developer/CompanionArchivePreparation.tsx",
+
+    "packages/sdk/src/query-domains/telemetryCompanion.ts",
+
+    "packages/contracts/src/product-telemetry.ts",
+
+    "src-ui/src/views/developer/CompanionManaged.tsx",
+
+    "src-ui/src/views/developer/CompanionProductTrends.tsx",
+
+    "src-ui/src/views/developer/__tests__/TelemetryCompanion.test.tsx"
   ],
 
   "checks": [
