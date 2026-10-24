@@ -98,7 +98,9 @@
 
     "src-server/services/orchestration/prepared-turn-intent.ts",
 
-    "packages/monument/src/memory.ts"
+    "packages/monument/src/memory.ts",
+
+    "packages/monument/src/__tests__/sqlite-bound-tables.test.ts"
   ],
 
   "checks": []
