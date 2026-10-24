@@ -268,15 +268,25 @@ export class RuntimeFencedCredentialObservationOwner {
         selected.agentIds,
         () => owners.runtime.getAgentConfigurationRevision(),
       );
-      const assertCurrent = () => {
+      const assertScopeCurrent = () => {
         if (
           request.signal.aborted ||
           owners.runtime.getAgentConfigurationRevision() !== revision
         )
           refuse();
         this.#requireSameHome();
+      };
+      const configurationCurrent = () => {
+        assertScopeCurrent();
         configuration();
+      };
+      const runtimeCurrent = () => {
+        assertScopeCurrent();
         runtime();
+      };
+      const assertCurrent = () => {
+        configurationCurrent();
+        runtimeCurrent();
       };
       assertCurrent();
       const authority = await captureEnvironmentLocalGrantObservationOwner(
@@ -290,8 +300,8 @@ export class RuntimeFencedCredentialObservationOwner {
         {
           adapter: owners.storageAdapter,
           authority,
-          captureConfigurationFence: () => assertCurrent,
-          captureRuntimeFence: () => assertCurrent,
+          captureConfigurationFence: () => configurationCurrent,
+          captureRuntimeFence: () => runtimeCurrent,
         },
       );
       let credential: ObservedSdkProviderCredential | undefined;

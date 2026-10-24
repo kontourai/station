@@ -706,6 +706,33 @@ for (const mode of ['observation', 'sdk'] as const) {
   });
 }
 
+test('SDK capture rejects configuration bytes changing between the configuration and runtime fence captures before persistence', async () => {
+  const h = await setup();
+  try {
+    const capture =
+      h.owners.agentService.capturePreparationConfigurationFence.bind(
+        h.owners.agentService,
+      );
+    h.owners.agentService.capturePreparationConfigurationFence = (...args) => {
+      const path = join(h.home, 'config', 'app.json');
+      writeFileSync(path, `${readFileSync(path, 'utf8')}\n`, { mode: 0o600 });
+      return capture(...args);
+    };
+    await assert.rejects(
+      () =>
+        h.service.captureSdkCredential(h.request, {
+          agentIds: ['station'],
+          connectionId: 'selected',
+          provider: 'anthropic',
+        }),
+      RuntimeCredentialObservationUnavailable,
+    );
+    assert.equal(h.records().length, 0);
+  } finally {
+    h.cleanup();
+  }
+});
+
 test('actual runtime lease issues an opaque SDK credential that remains bound to its request and capture fences', async () => {
   const h = await setup();
   try {

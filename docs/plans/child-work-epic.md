@@ -1719,3 +1719,22 @@ typechecking passes. The combined run has 23 passing cases and the Flow HTTP
 control still fails at its unchanged 120-second deadline. This is a contention
 repair, not a latency acceptance receipt. Further work must retain that failure
 until the full request passes without wider deadlines or weaker fences.
+
+
+### Paired credential fence cost
+
+A probe at the actual opaque SDK credential caller observed each of its two
+captured configuration witnesses run 120 times for ten reads. The credential
+store previously received the same combined configuration/runtime callback for
+both fence roles. Each role now gets its own captured check plus current
+request, stable runtime revision and home checks. Existing async boundaries
+still call the combined pair. Neither original capture is dropped or shared
+across requests, and provider bytes, authority and final-wire checks remain.
+
+With the same probe, each witness ran 60 times for ten reads. Measured elapsed
+read time changed from about 700 to 171 milliseconds on this host; that small
+sample is diagnostic, not a general latency guarantee. The 37-case credential
+selection passes, including an added configuration-change-between-captures
+control that refuses before persistence. Instrumentation was restored. The
+full Flow request deadline failure remains open until an end-to-end run proves
+otherwise.
