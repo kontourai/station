@@ -1429,13 +1429,6 @@ function configureRuntimeSecurity(
     const recognizedCredential =
       credential !== undefined &&
       (await security.recognizeCredential?.(credential));
-    const sessionResponse = await admitOperatorSession(
-      recognizedCredential &&
-        security.resolveCredentialAuthority?.(credential!) ===
-          'device-credential',
-    );
-    if (sessionResponse) return sessionResponse;
-
     // Admission refused a credential the server still recognizes. A 401
     // tells the browser the device session is dead: it drops the cookie,
     // remounts the protected tree, and asks again. Settings does that on a
@@ -1444,6 +1437,13 @@ function configureRuntimeSecurity(
     // to that inventory. Answer 403, the same status an authenticated caller
     // already receives when a route will not serve them.
     if (recognizedCredential) {
+      const aliasFailure = checkAliasAdmission(credential!);
+      if (aliasFailure) return aliasFailure;
+      const sessionResponse = await admitOperatorSession(
+        security.resolveCredentialAuthority?.(credential!) ===
+          'device-credential',
+      );
+      if (sessionResponse) return sessionResponse;
       if (cookieCredential) {
         deviceSessionAuthorizations.add(1, {
           outcome: 'denied',
@@ -1501,7 +1501,10 @@ function configureRuntimeSecurity(
       transport: 'http',
       timestamp: security.now?.() ?? Date.now(),
     });
-    return c.json({ error: { code: 'authentication_required' } }, 401);
+    return (
+      (await admitOperatorSession()) ??
+      c.json({ error: { code: 'authentication_required' } }, 401)
+    );
   });
 
   // ── archive#514: authenticated mutation budget ──

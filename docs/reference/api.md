@@ -4850,6 +4850,9 @@ absolute deadline. User-initiated reads extend idle time; requests marked
 credential rotation end the session. An expired, mismatched or invalid session
 returns 403 `operator_session_required` with `signInUrl` when the caller
 presents a recognized, live Device credential by bearer or device cookie.
+A bearer-only caller also receives this 403 even with a valid operator session:
+the session requires its bound Device cookie. Signing in again cannot make a
+bearer-only transport use the session; use the paired browser with that cookie.
 Revoked and reset credentials do not count; it returns 401 only when no live
 Device is presented. This changes only the refusal status, not authority.
 Ordinary admission runs first, independently of the operator cookie. Alias

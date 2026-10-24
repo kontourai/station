@@ -179,11 +179,14 @@ async function build(
     debug: vi.fn(),
     trace: vi.fn(),
   } as unknown as Logger;
+  const audit = vi.fn();
   configureRuntimeHttp({
     app: api as never,
     logger,
     eventBus: { emit: vi.fn() } as unknown as EventBus,
     security: {
+      audit,
+      now: () => clock.now,
       deploymentAuthentication: accountAuthentication,
       operatorSessions: options.hosted ? undefined : sessionService,
       allowedOrigins: [APP],
@@ -336,6 +339,7 @@ async function build(
     api.request(path, { headers: { cookie, origin: APP } });
   return {
     home,
+    audit,
     account,
     clock,
     security,
@@ -484,6 +488,47 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
         h.pairing.listDevices().find((d) => d.id === h.second.device.id)
           ?.revokedAt,
       ).not.toBeNull();
+    },
+  );
+
+  test.each(['absent', 'junk'] as const)(
+    'invalid bearer failures with an %s operator cookie share the ordinary limiter and audit',
+    async (cookie) => {
+      const h = await build();
+      const headers = {
+        origin: APP,
+        authorization: 'Bearer garbage',
+        ...(cookie === 'junk'
+          ? { cookie: '__Host-station-operator=junk' }
+          : {}),
+      };
+      for (let attempt = 0; attempt < 10; attempt++) {
+        expect(
+          (await h.api.request('/api/pairing/devices', { headers })).status,
+        ).toBe(401);
+      }
+      // Both a cookie-charged budget and one tripped without a cookie must
+      // refuse the next request before returning a session-specific failure.
+      const limited = await h.api.request('/api/pairing/devices', {
+        headers: { ...headers, cookie: '__Host-station-operator=junk' },
+      });
+      expect(limited.status).toBe(429);
+      expect(limited.headers.get('Retry-After')).toBe('60');
+      expect(h.audit.mock.calls.slice(0, 10).map(([record]) => record)).toEqual(
+        Array.from({ length: 10 }, () =>
+          expect.objectContaining({
+            event: 'station.auth.failure',
+            reason: 'credential_invalid',
+            path: '/api/pairing/devices',
+          }),
+        ),
+      );
+      expect(h.audit).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          event: 'station.auth.rate_limited',
+          reason: 'too_many_failures',
+        }),
+      );
     },
   );
 
@@ -911,38 +956,41 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
     expect((await h.read(ordinary.cookie)).status).toBe(200);
   });
 
-  test('SDK alias bearer reports account continuation failure before operator-session fallback', async () => {
-    const h = await build();
-    const alias = h.pairing.issueRelayCredentialAlias(
-      h.first.credential,
-      h.first.device.id,
-    );
-    const signed = await h.signIn(alias.credential);
-    const onUnauthorized = vi.fn();
-    const onAccountUnauthorized = vi.fn();
-    setClientCredentialResolver(() => ({
-      origin: APP,
-      credential: alias.credential,
-      onUnauthorized,
-      onAccountUnauthorized,
-    }));
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
-      const headers = new Headers(init?.headers);
-      headers.set('cookie', signed.setCookie.split(';')[0]);
-      headers.set('origin', APP);
-      return h.api.request(String(input), { ...init, headers });
-    });
-    const response = await authenticatedFetch(`${APP}/api/operator/session`);
-    expect(response.status).toBe(401);
-    expect(response.headers.get('X-Station-Authentication-Failure')).toBe(
-      'account',
-    );
-    expect(await response.json()).toMatchObject({
-      error: { code: 'account_authentication_required' },
-    });
-    expect(onAccountUnauthorized).toHaveBeenCalledOnce();
-    expect(onUnauthorized).not.toHaveBeenCalled();
-  });
+  test.each(['/api/operator/session', '/api/pairing/devices'])(
+    'SDK alias bearer reports account continuation failure before operator-session fallback on %s',
+    async (path) => {
+      const h = await build();
+      const alias = h.pairing.issueRelayCredentialAlias(
+        h.first.credential,
+        h.first.device.id,
+      );
+      const signed = await h.signIn(alias.credential);
+      const onUnauthorized = vi.fn();
+      const onAccountUnauthorized = vi.fn();
+      setClientCredentialResolver(() => ({
+        origin: APP,
+        credential: alias.credential,
+        onUnauthorized,
+        onAccountUnauthorized,
+      }));
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+        const headers = new Headers(init?.headers);
+        headers.set('cookie', signed.setCookie.split(';')[0]);
+        headers.set('origin', APP);
+        return h.api.request(String(input), { ...init, headers });
+      });
+      const response = await authenticatedFetch(`${APP}${path}`);
+      expect(response.status).toBe(401);
+      expect(response.headers.get('X-Station-Authentication-Failure')).toBe(
+        'account',
+      );
+      expect(await response.json()).toMatchObject({
+        error: { code: 'account_authentication_required' },
+      });
+      expect(onAccountUnauthorized).toHaveBeenCalledOnce();
+      expect(onUnauthorized).not.toHaveBeenCalled();
+    },
+  );
 
   test('operator-session admission clears the home-possession bearer local-operator flag', async () => {
     const h = await build();
