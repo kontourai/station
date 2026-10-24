@@ -59,6 +59,11 @@ import type { InvocationTerminalFact } from './records.js';
 const LONE_SURROGATE =
   /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
 
+function assertSteerReceiptText(value: string): void {
+  if (typeof value !== 'string' || LONE_SURROGATE.test(value))
+    throw new TypeError('Steer receipt strings must be well-formed Unicode.');
+}
+
 /**
  * The limits a command runs under, or a `RangeError` for one that is not
  * valid. Every command resolves its limits, so an invalid one fails at its
@@ -763,6 +768,20 @@ export function runKernelTransactionStep<C extends KernelCommand, Host>(
   host: Host,
   facts?: KernelTerminalFacts,
 ): KernelResult<C> {
+  switch (command.type) {
+    case 'steerReceipts.read':
+    case 'steerReceipts.claim':
+    case 'steerReceipts.confirm':
+      assertSteerReceiptText(command.threadId);
+      assertSteerReceiptText(command.clientInputId);
+      assertSteerReceiptText(command.inputDigest);
+      if (command.type === 'steerReceipts.confirm')
+        assertSteerReceiptText(command.confirmedTurnId);
+      break;
+    case 'steerReceipts.forgetThread':
+      assertSteerReceiptText(command.threadId);
+      break;
+  }
   if (command.type === 'turnBoundary.acceptInvocation')
     assertAcceptInvocationCommand(command);
   if (
