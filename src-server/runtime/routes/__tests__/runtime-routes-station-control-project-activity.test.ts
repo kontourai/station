@@ -26,6 +26,7 @@ import { join } from 'node:path';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { scaleLivenessMs } from '../../../../scripts/lib/liveness-scale.mjs';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
@@ -738,49 +739,61 @@ describe('station-control Project activity, digest and read anchor (#3413)', () 
       .sort();
 
   describe('work discovery through MCP tools/call', () => {
-    test('other Projects do not exhaust this caller’s admitted search scan', async () => {
-      const { tool, memory } = await setup();
-      for (let n = 0; n < 2_001; n += 1)
-        await memory.createConversation({
-          id: `other-project-${n}`,
-          userId: A,
-          resourceId: 'default',
-          title: 'Unrelated conversation',
-          metadata: { projectSlug: 'project-2' },
+    test(
+      'other Projects do not exhaust this caller’s admitted search scan',
+      async () => {
+        const { tool, memory } = await setup();
+        for (let start = 0; start < 2_001; start += 32)
+          await Promise.all(
+            Array.from({ length: Math.min(32, 2_001 - start) }, (_, offset) =>
+              memory.createConversation({
+                id: `other-project-${start + offset}`,
+                userId: A,
+                resourceId: 'default',
+                title: 'Unrelated conversation',
+                metadata: { projectSlug: 'project-2' },
+              }),
+            ),
+          );
+        const result = await tool(bearer('a-caller'), 'search_conversations', {
+          query: 'zephyrquartz',
         });
-      const result = await tool(bearer('a-caller'), 'search_conversations', {
-        query: 'zephyrquartz',
-      });
-      expect(result.isError, JSON.stringify(result.body)).toBe(false);
-      expect(result.body.data).toMatchObject({
-        state: 'available',
-        results: [expect.objectContaining({ conversationId: 'a-anchor' })],
-        incompleteSources: [],
-      });
-    });
+        expect(result.isError, JSON.stringify(result.body)).toBe(false);
+        expect(result.body.data).toMatchObject({
+          state: 'available',
+          results: [expect.objectContaining({ conversationId: 'a-anchor' })],
+          incompleteSources: [],
+        });
+      },
+      scaleLivenessMs(90_000),
+    );
 
-    test('bounds admitted metadata scans and still returns indexed hits beyond the scan window', async () => {
-      const { tool, startSession, p1 } = await setup();
-      for (let n = 0; n < 2_001; n += 1)
-        startSession(`scan-${n}`, A, p1, {
-          metadata: { delegationTitle: 'Unrelated metadata' },
+    test(
+      'bounds admitted metadata scans and still returns indexed hits beyond the scan window',
+      async () => {
+        const { tool, startSession, p1 } = await setup();
+        for (let n = 0; n < 2_001; n += 1)
+          startSession(`scan-${n}`, A, p1, {
+            metadata: { delegationTitle: 'Unrelated metadata' },
+          });
+        const result = await tool(bearer('a-caller'), 'search_conversations', {
+          query: 'zephyrquartz',
         });
-      const result = await tool(bearer('a-caller'), 'search_conversations', {
-        query: 'zephyrquartz',
-      });
-      expect(result.isError, JSON.stringify(result.body)).toBe(false);
-      expect(result.body.data).toMatchObject({
-        state: 'partial',
-        results: [expect.objectContaining({ conversationId: 'a-anchor' })],
-        incompleteSources: expect.arrayContaining([
-          {
-            source: 'station.conversations',
-            state: 'partial',
-            reason: 'metadata-scan-limit',
-          },
-        ]),
-      });
-    });
+        expect(result.isError, JSON.stringify(result.body)).toBe(false);
+        expect(result.body.data).toMatchObject({
+          state: 'partial',
+          results: [expect.objectContaining({ conversationId: 'a-anchor' })],
+          incompleteSources: expect.arrayContaining([
+            {
+              source: 'station.conversations',
+              state: 'partial',
+              reason: 'metadata-scan-limit',
+            },
+          ]),
+        });
+      },
+      scaleLivenessMs(90_000),
+    );
 
     test('skips an unreadable file lineage without losing readable indexed matches', async () => {
       const { tool, memory, store, startSession, p1, at } = await setup();
