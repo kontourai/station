@@ -6,10 +6,21 @@
  *
  * `--control` defaults to the endpoint derived from home and instance, which
  * is what clients derive too. Tuning flags exist for operators and tests.
+ *
+ *   node station-supervisor.js --request <status|stop|handoff> --home <dir> --instance <id>
+ *     [--entry <core entry>]
+ *
+ * runs this bundle as a client of the supervisor already serving that home
+ * and instance (see client-command.ts).
  */
 import { realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import {
+  CLIENT_REQUESTS,
+  type ClientRequest,
+  runClientCommand,
+} from './client-command.ts';
 import { createEntryBoundary } from './entry-boundary.ts';
 import {
   breakInstanceLock,
@@ -51,6 +62,10 @@ const USAGE = [
   "  --build-root   handoff entries must be inside this directory (default: the entry's directory)",
   '  --control      control socket path (default: derived from --home and --instance)',
   '',
+  'usage: station-supervisor --request <status|stop|handoff> --home <dir> --instance <id> [--entry <core entry>]',
+  '  Sends one control request to the supervisor serving that home and instance',
+  '  and prints its replies as NDJSON. Exit 3: no supervisor is running there.',
+  '',
   'usage: station-supervisor --break-lock --home <dir> --instance <id> [--force] [--reason <text>]',
   '  Marks a stuck instance lock released. Refuses while the holder is a running',
   '  supervisor; asks for --force when the holder cannot be verified.',
@@ -85,6 +100,7 @@ function parseCommandLine(): Record<string, string | boolean | undefined> {
       options: {
         help: { type: 'boolean', short: 'h' },
         'break-lock': { type: 'boolean' },
+        request: { type: 'string' },
         force: { type: 'boolean' },
         reason: { type: 'string' },
         entry: { type: 'string' },
@@ -151,6 +167,38 @@ async function main(): Promise<void> {
       `station-supervisor: ${result.message}\n`,
     );
     process.exit(result.code);
+  }
+  if (parsed.request !== undefined) {
+    const request = parsed.request;
+    const home = parsed.home;
+    const instance = parsed.instance;
+    if (
+      typeof request !== 'string' ||
+      !(CLIENT_REQUESTS as readonly string[]).includes(request)
+    ) {
+      fail(`--request must be one of ${CLIENT_REQUESTS.join(', ')}`, true);
+    }
+    if (typeof home !== 'string' || typeof instance !== 'string') {
+      fail('--request needs --home and --instance', true);
+    }
+    if (!isValidInstanceId(instance)) fail(`invalid --instance: ${instance}`);
+    const entry = typeof parsed.entry === 'string' ? parsed.entry : undefined;
+    if (entry !== undefined && request !== 'handoff') {
+      fail('--entry applies only to --request handoff', true);
+    }
+    const result = await runClientCommand({
+      request: request as ClientRequest,
+      endpoint: endpointOrFail({ home, instance }),
+      ...(entry !== undefined ? { entry: resolve(entry) } : {}),
+      write: (line) => process.stdout.write(`${line}\n`),
+    });
+    if (result.message) {
+      process.stderr.write(`station-supervisor: ${result.message}\n`);
+    }
+    // Not process.exit: on Windows stdout to a pipe is asynchronous, and the
+    // caller reads these lines.
+    process.exitCode = result.code;
+    return;
   }
   const raw = parsed as Record<string, string | undefined>;
   if (!raw.entry || !raw.home || !raw.instance) {

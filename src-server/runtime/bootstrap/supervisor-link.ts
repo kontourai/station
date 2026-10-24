@@ -28,7 +28,9 @@ import type {
 } from 'node:http';
 import { Server as NetServer, Socket } from 'node:net';
 import {
+  type CoreHandoffOutcomeMessage,
   type CoreToSupervisorMessage,
+  type HandoffPhase,
   MAX_LISTENER_SPARES,
   SUPERVISOR_ENV,
 } from '@kontourai/station-supervisor/protocol';
@@ -162,8 +164,33 @@ function isEventStream(res: ServerResponse): boolean {
 export type HandoffRequestOutcome =
   | { status: 'refused'; reason: string }
   | { status: 'draining' }
+  /** The handoff failed before this generation was drained; it still serves. */
+  | { status: 'rolled-back'; reason?: string }
   | { status: 'unanswered' }
   | { status: 'unsupervised' };
+
+/**
+ * What a handoff left serving, told to the generation that serves (protocol
+ * 1.2). `requestId` is the `handoff.request` that started it, or null for a
+ * handoff a control client (`station restart`) started.
+ */
+export interface HandoffOutcomeReport {
+  requestId: string | null;
+  outcome: CoreHandoffOutcomeMessage['outcome'];
+  reason?: string;
+  generation: number;
+}
+
+export interface SupervisorHandoffOptions {
+  /** The next generation's entry; default the entry running now. */
+  entry?: string;
+  readinessTimeoutMs?: number;
+  drainDeadlineMs?: number;
+  /** How long to wait for the handoff to start (this generation drains) or be refused. */
+  timeoutMs?: number;
+  /** Each phase of this handoff the supervisor reports while this generation runs. */
+  onProgress?: (phase: HandoffPhase, generation: number) => void;
+}
 
 interface ClosableHandle {
   close(): void;
@@ -288,6 +315,15 @@ export class SupervisorLink implements ListenerLink {
     string,
     (outcome: HandoffRequestOutcome) => void
   >();
+  private readonly handoffProgress = new Map<
+    string,
+    (phase: HandoffPhase, generation: number) => void
+  >();
+  private readonly outcomeListeners = new Set<
+    (report: HandoffOutcomeReport) => void
+  >();
+  /** An outcome that arrived before anything listened; the first listener gets it. */
+  private unheardOutcome: HandoffOutcomeReport | null = null;
   private resolvePark: (() => void) | null = null;
   private rejectPark: ((error: Error) => void) | null = null;
   private adoptTimer: ReturnType<typeof setTimeout> | null = null;
@@ -321,7 +357,11 @@ export class SupervisorLink implements ListenerLink {
       this.resolvePark = resolve;
       this.rejectPark = reject;
     });
-    this.send({ type: 'parked', adoptsConnections: true });
+    this.send({
+      type: 'parked',
+      adoptsConnections: true,
+      capabilities: ['handoff-events'],
+    });
     return parked;
   }
 
@@ -468,12 +508,7 @@ export class SupervisorLink implements ListenerLink {
    * or as `unanswered` after the timeout.
    */
   requestHandoff(
-    options: {
-      entry?: string;
-      readinessTimeoutMs?: number;
-      drainDeadlineMs?: number;
-      timeoutMs?: number;
-    } = {},
+    options: SupervisorHandoffOptions = {},
   ): Promise<HandoffRequestOutcome> {
     if (this.draining) return Promise.resolve({ status: 'draining' });
     const requestId = randomUUID();
@@ -486,9 +521,17 @@ export class SupervisorLink implements ListenerLink {
       const finish = (outcome: HandoffRequestOutcome) => {
         clearTimeout(timer);
         this.handoffWaiters.delete(requestId);
+        // Progress keeps flowing while this generation drains; a refusal,
+        // a rollback or a timeout ends it.
+        if (outcome.status !== 'draining') {
+          this.handoffProgress.delete(requestId);
+        }
         resolve(outcome);
       };
       this.handoffWaiters.set(requestId, finish);
+      if (options.onProgress) {
+        this.handoffProgress.set(requestId, options.onProgress);
+      }
       const sent = this.send({
         type: 'handoff.request',
         requestId,
@@ -502,6 +545,24 @@ export class SupervisorLink implements ListenerLink {
       });
       if (!sent) finish({ status: 'unanswered' });
     });
+  }
+
+  /**
+   * Reports each handoff outcome this generation is told about: the handoff
+   * that left it serving, whether it is the new generation (`committed`) or
+   * the previous entry serving again (`rolled-back`). An outcome that arrived
+   * before any listener goes to the first one.
+   */
+  onHandoffOutcome(
+    listener: (report: HandoffOutcomeReport) => void,
+  ): () => void {
+    this.outcomeListeners.add(listener);
+    const unheard = this.unheardOutcome;
+    if (unheard) {
+      this.unheardOutcome = null;
+      listener(unheard);
+    }
+    return () => this.outcomeListeners.delete(listener);
   }
 
   // -------------------------------------------------------------------------
@@ -650,6 +711,22 @@ export class SupervisorLink implements ListenerLink {
           'supervisor',
         );
         return;
+      case 'handoff.progress': {
+        const requestId =
+          typeof message.requestId === 'string' ? message.requestId : '';
+        const listener = this.handoffProgress.get(requestId);
+        if (
+          listener &&
+          typeof message.phase === 'string' &&
+          typeof message.generation === 'number'
+        ) {
+          listener(message.phase as HandoffPhase, message.generation);
+        }
+        return;
+      }
+      case 'handoff.outcome':
+        this.onHandoffOutcomeMessage(message);
+        return;
       case 'handoff.refused': {
         const requestId =
           typeof message.requestId === 'string' ? message.requestId : '';
@@ -662,6 +739,36 @@ export class SupervisorLink implements ListenerLink {
       default:
       // Minor protocol versions may add messages; ignore unknown ones.
     }
+  }
+
+  private onHandoffOutcomeMessage(message: Record<string, unknown>): void {
+    const outcome = message.outcome;
+    if (
+      (outcome !== 'committed' && outcome !== 'rolled-back') ||
+      typeof message.generation !== 'number'
+    ) {
+      this.log('ignored a malformed handoff.outcome');
+      return;
+    }
+    const report: HandoffOutcomeReport = {
+      requestId:
+        typeof message.requestId === 'string' ? message.requestId : null,
+      outcome,
+      ...(typeof message.reason === 'string' ? { reason: message.reason } : {}),
+      generation: message.generation,
+    };
+    // This generation asked and was never drained: its own request failed.
+    if (report.requestId !== null && outcome === 'rolled-back') {
+      this.handoffWaiters.get(report.requestId)?.({
+        status: 'rolled-back',
+        ...(report.reason !== undefined ? { reason: report.reason } : {}),
+      });
+    }
+    if (this.outcomeListeners.size === 0) {
+      this.unheardOutcome = report;
+      return;
+    }
+    for (const listener of [...this.outcomeListeners]) listener(report);
   }
 
   private onPromote(listeners: unknown): void {
@@ -883,6 +990,36 @@ const homeAccessAllowed = new Promise<void>((resolve) => {
 
 export function installListenerLink(link: ListenerLink | null): void {
   installedLink = link;
+}
+
+/**
+ * Asks this process's supervisor to hand off to a new generation: the
+ * in-place restart path for code that has just been rebuilt or updated.
+ * Settles `draining` once the handoff has started (this generation is being
+ * drained and will exit), `refused` or `rolled-back` when this generation
+ * keeps serving, `unanswered` after the timeout, and `unsupervised` when no
+ * supervisor runs this process.
+ */
+export function requestSupervisorHandoff(
+  options: SupervisorHandoffOptions = {},
+): Promise<HandoffRequestOutcome> {
+  const link = installedLink;
+  if (!(link instanceof SupervisorLink)) {
+    return Promise.resolve({ status: 'unsupervised' });
+  }
+  return link.requestHandoff(options);
+}
+
+/**
+ * Reports the outcome of the handoff that left this generation serving
+ * (see `SupervisorLink.onHandoffOutcome`). A no-op when unsupervised.
+ */
+export function onHandoffOutcome(
+  listener: (report: HandoffOutcomeReport) => void,
+): () => void {
+  const link = installedLink;
+  if (!(link instanceof SupervisorLink)) return () => {};
+  return link.onHandoffOutcome(listener);
 }
 
 /** The link every stable listener binds through. */
