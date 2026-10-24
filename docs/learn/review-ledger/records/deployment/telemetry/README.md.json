@@ -102,7 +102,9 @@
 
     "packages/sdk/src/query-domains/telemetryCompanion.ts",
 
-    "src-server/routes/system/__tests__/telemetry-companion-routes.test.ts"
+    "src-server/routes/system/__tests__/telemetry-companion-routes.test.ts",
+
+    "src-ui/src/views/developer/CompanionManaged.css"
   ],
 
   "checks": [
