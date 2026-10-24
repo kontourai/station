@@ -107,6 +107,13 @@ verification are deliberate: the candidate is neither remote person
 authentication nor source authorization. Private keys and private tenant/owner
 records remain server-owned; see the [candidate API](api.md#prepare-a-receiving-analytics-key-candidate).
 
+`AnalyticsSourceApproval` records requester-bound source consent for the reviewed
+source scope and receiving key, with immutable provenance and approved/revoked
+phase. `sourceApproved:true` is historical, while `exportAuthority:false` and
+`recipientAssurance:"source-user-approved-key"` prevent treating it as an active
+credential or remote-person authentication. Identity/tenant fields used for
+source authorization remain private and server-derived.
+
 The `@kontourai/station-contracts/html-reply` subpath defines prepared page
 bytes, publication references, byte/height limits and theme variable names for
 [visual replies](../user/html-replies.md). It grants no publication or

@@ -190,6 +190,38 @@ export class SourceEnrollmentStore {
       return view;
     });
   }
+  async forApproval(actor: EnrollmentActor, operationId: string) {
+    if (!enrollmentOperationId.safeParse(operationId).success)
+      throw new SourceEnrollmentRejected('source_enrollment_invalid', 400);
+    await actor.assertCurrent();
+    const entry = this.read(actor.sourceStationId).intents.find(
+      (item) =>
+        item.view.operationId === operationId && this.owned(actor, item),
+    );
+    if (!entry)
+      throw new SourceEnrollmentRejected('source_enrollment_not_found', 404);
+    const current = enrollmentOwnerSchema.parse({
+      userId: actor.userId,
+      mode: actor.mode,
+      tenantId: actor.tenantId,
+      ownerIds: actor.ownerIds,
+    });
+    if (
+      entry.view.phase !== 'prepared' ||
+      Date.parse(entry.view.expiresAt) <= this.now() ||
+      JSON.stringify(entry.owner) !== JSON.stringify(current)
+    )
+      throw new SourceEnrollmentRejected('source_enrollment_conflict', 409);
+    await actor.assertCurrent();
+    return entry.view;
+  }
+  async guardApproval<T>(
+    actor: EnrollmentActor,
+    apply: () => Promise<T>,
+  ): Promise<T> {
+    return this.file.withLock(actor.assertCurrent, apply);
+  }
+
   async cancel(
     actor: EnrollmentActor,
     operationId: string,

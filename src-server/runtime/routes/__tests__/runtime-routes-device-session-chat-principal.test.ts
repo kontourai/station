@@ -1,4 +1,7 @@
+import { z } from 'zod/v3';
+import { recipientCandidateSchema } from '../../../analytics/recipient-candidate.js';
 import { enrollmentIntentSchema } from '../../../analytics/source-enrollment-protocol.js';
+import { ConsentChannelService } from '../../../services/consent/consent-channel.js';
 /**
  * station#4518: a freshly APPROVED paired-device session (the Android app
  * over tailscale-served HTTPS, exactly the owner-reproduced repro) sent a
@@ -578,7 +581,10 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           (value) => pairing.identifyDevice(value),
         )
       : undefined;
+    const consentChannel = new ConsentChannelService();
+    consentChannel.markListening(4322);
     const context = deepStub({
+      consentChannel,
       projectMembership: membership?.service,
       projectSharedTasks: membership?.sharedTasks,
       ...(membershipStorage ? { storageAdapter: membershipStorage } : {}),
@@ -2964,6 +2970,50 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           REMOTE_TAILNET_ENV,
         );
         expect(heldRecipient.status).toBe(200);
+        const sourceApprovalBody = JSON.stringify({
+          operationId: '21234567-89ab-4cde-8fab-0123456789ab',
+          sourceOperationId: enrollmentId,
+          recipientCandidate: z
+            .object({ data: z.object({ candidate: recipientCandidateSchema }) })
+            .parse(recipientResult).data.candidate,
+        });
+        const sourceApprovalPath = '/api/analytics/source-grant-approvals';
+        const unboundApproval = await h.app.request(
+          sourceApprovalPath,
+          {
+            method: 'POST',
+            headers: {
+              host: 'station.example.test',
+              Authorization: `Bearer ${h.paired.credential}`,
+            },
+            body: sourceApprovalBody,
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(unboundApproval.status, await unboundApproval.text()).toBe(403);
+        const sourceApproval = await h.app.request(
+          sourceApprovalPath,
+          {
+            method: 'POST',
+            headers: {
+              host: 'station.example.test',
+              Authorization: `Bearer ${bound.credential}`,
+            },
+            body: sourceApprovalBody,
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        const sourceApprovalResult = await sourceApproval.json();
+        expect(
+          sourceApproval.status,
+          JSON.stringify(sourceApprovalResult),
+        ).toBe(200);
+        expect(sourceApprovalResult).toMatchObject({
+          approval: { status: 'pending' },
+        });
+        expect(sourceApproval.headers.get('set-cookie')).toContain(
+          'station-consent=',
+        );
         h.pairing.revokeDevice(bound.device.id, 'operator-credential');
         await expect(heldRecipient.text()).rejects.toThrow(
           'Authority observation ended',

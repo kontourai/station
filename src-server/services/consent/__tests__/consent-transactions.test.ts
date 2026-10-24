@@ -625,3 +625,30 @@ describe('ConsentTransactionStore', () => {
     expect(commitApproval).toHaveBeenCalledTimes(1);
   });
 });
+
+test('a failing target guard yields a closed refusal without committing approval', async () => {
+  const store = new ConsentTransactionStore();
+  const { init, commitApproval } = makeInit({
+    guardDecision: async () => {
+      throw new Error('private guard failure');
+    },
+  });
+  const created = store.create(init);
+  if (!created.ok) throw new Error('Fixture creation failed');
+  const rendered = store.renderReview(TENANT, created.transaction.id);
+  if (!rendered.ok) throw new Error('Fixture render failed');
+  await expect(
+    store.decide(
+      TENANT,
+      created.transaction.id,
+      'approved',
+      rendered.nonce,
+      'operator-credential',
+    ),
+  ).resolves.toMatchObject({
+    ok: false,
+    reason: 'commit_refused',
+    status: 'pending',
+  });
+  expect(commitApproval).not.toHaveBeenCalled();
+});

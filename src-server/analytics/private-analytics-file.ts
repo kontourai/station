@@ -14,7 +14,10 @@ export class AnalyticsPrivateFile<T> {
   private readonly path: string;
   constructor(
     home: string,
-    name: 'analytics-source-enrollments.json' | 'analytics-recipients.json',
+    name:
+      | 'analytics-source-enrollments.json'
+      | 'analytics-recipients.json'
+      | 'analytics-source-approvals.json',
     private readonly schema: z.ZodType<T>,
     private readonly maxBytes: number,
   ) {
@@ -71,15 +74,26 @@ export class AnalyticsPrivateFile<T> {
       throw new Error('Analytics private storage unavailable');
     }
   }
-  async update<R>(
-    initial: T,
+  async withLock<R>(
     assertCurrent: () => Promise<void>,
-    apply: (file: T) => R,
+    apply: () => Promise<R>,
   ): Promise<R> {
     await assertCurrent();
     this.ensure();
     const release = await acquireFileMutationLockAsync(`${this.path}.mutation`);
     try {
+      return await apply();
+    } finally {
+      await release();
+    }
+  }
+
+  async update<R>(
+    initial: T,
+    assertCurrent: () => Promise<void>,
+    apply: (file: T) => R,
+  ): Promise<R> {
+    return this.withLock(assertCurrent, async () => {
       const file = this.read(initial);
       const result = apply(file);
       await assertCurrent();
@@ -92,8 +106,6 @@ export class AnalyticsPrivateFile<T> {
       fsyncDirectorySync(this.directory);
       await assertCurrent();
       return result;
-    } finally {
-      await release();
-    }
+    });
   }
 }

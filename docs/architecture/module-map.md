@@ -4911,6 +4911,17 @@ owner/tenant scoped and queued replies revalidate current authority. Independent
 destination confirmation, source approval and encrypted credential delivery are
 still required before any source sync can begin.
 
+The [source approval controller](../../src-server/routes/operations/source-grant-approvals.ts)
+uses the existing consent transaction/listener with an actor-scoped partition and
+requester-session-only decision policy. It revalidates the saved source-owner
+snapshot and receiving-key binding under the intent's mutation lock before
+[recording source consent](../../src-server/analytics/source-grant-store.ts).
+Ordinary operator consent cannot override that personal decision. Approval is
+revocable, but remains distinct from credential issuance and export admission.
+A receiving key signature is not promoted to remote-person identity. Browser
+cookie-host/listener prerequisites refuse explicitly; native operator consent
+is not reused for this personal approval family.
+
 ## ProductTelemetryReceiver
 
 The Station-side [companion route](../../src-server/routes/system/telemetry-companion-routes.ts)

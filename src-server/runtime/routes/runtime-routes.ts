@@ -9,6 +9,10 @@ import { zodSchema } from 'ai';
 import packageJson from '../../../package.json' with { type: 'json' };
 import { RecipientStore } from '../../analytics/recipient-store.js';
 import { SourceEnrollmentStore } from '../../analytics/source-enrollment-store.js';
+import {
+  type SourceApprovalActor,
+  SourceGrantApprovalStore,
+} from '../../analytics/source-grant-store.js';
 import { parseProjectPortableIdentity } from '../../domain/project-identity-record.js';
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
@@ -22,6 +26,7 @@ import { createAccountPreferencesRoutes } from '../../routes/me/account-preferen
 import { createMobileDeviceRoutes } from '../../routes/mobile-device.js';
 import { createRecipientCandidateRoutes } from '../../routes/operations/recipient-candidates.js';
 import { createSourceEnrollmentRoutes } from '../../routes/operations/source-enrollments.js';
+import { createSourceGrantApprovalRoutes } from '../../routes/operations/source-grant-approvals.js';
 import { createHtmlReplyRoutes } from '../../routes/orchestration/html-replies.js';
 import { createProjectMembershipRoutes } from '../../routes/projects/project-membership-routes.js';
 import { createProjectRoomRoutes } from '../../routes/projects/project-room-routes.js';
@@ -2341,6 +2346,10 @@ export function configureRuntimeRoutes(
     '/api/analytics/recipient-candidates/*',
     bindConversationReadAuthority,
   );
+  context.app.use(
+    '/api/analytics/source-grant-approvals/*',
+    bindConversationReadAuthority,
+  );
   context.app.on(
     'GET',
     ['/api/analytics/usage-rollup', '/api/analytics/usage-export'],
@@ -3192,6 +3201,73 @@ export function configureRuntimeRoutes(
       store: new RecipientStore(context.configLoader.getProjectHomeDir()),
       capture: (context) =>
         captureAnalyticsEnrollmentActor(context, 'individual'),
+    }),
+  );
+  context.app.route(
+    '/api/analytics/source-grant-approvals',
+    createSourceGrantApprovalRoutes({
+      channel: context.consentChannel,
+      enrollments: new SourceEnrollmentStore(
+        context.configLoader.getProjectHomeDir(),
+      ),
+      approvals: new SourceGrantApprovalStore(
+        context.configLoader.getProjectHomeDir(),
+      ),
+      capture: async (requestContext, scope): Promise<SourceApprovalActor> => {
+        const actor = await captureAnalyticsEnrollmentActor(
+          requestContext,
+          scope,
+        );
+        const principal = getRuntimeAuthenticatedRequestPrincipal(
+          requestContext.req.raw,
+        );
+        const device =
+          principal?.kind === 'credential' &&
+          principal.authority === 'device-credential'
+            ? context.environmentSecurityService.identifyDevice(
+                principal.credential,
+              )
+            : null;
+        const { AuthorityObservationRejected } = await import(
+          '../../services/identity/authority-observation.js'
+        );
+        if (
+          !device?.principalBinding ||
+          device.kind !== 'device' ||
+          device.credentialKind === 'personal-token' ||
+          principalForDeviceBinding(device.principalBinding).id !== actor.userId
+        )
+          throw new AuthorityObservationRejected(403, 'authority_changed');
+        const bindingSha256 = createHash('sha256')
+          .update(JSON.stringify(device.principalBinding))
+          .digest('hex');
+        const since = Date.now();
+        const assertCurrent = async () => {
+          await actor.assertCurrent();
+          const current = context.environmentSecurityService.devicePairing
+            .listDevices()
+            .find((item) => item.id === device.id);
+          if (
+            !current?.principalBinding ||
+            createHash('sha256')
+              .update(JSON.stringify(current.principalBinding))
+              .digest('hex') !== bindingSha256 ||
+            !context.environmentSecurityService.devicePairing.credentialHoldsScope(
+              device.id,
+              'orchestration:read',
+              since,
+            )
+          )
+            throw new AuthorityObservationRejected(403, 'authority_changed');
+        };
+        await assertCurrent();
+        return {
+          ...actor,
+          approvalCredentialId: device.id,
+          approvalBindingSha256: bindingSha256,
+          assertCurrent,
+        };
+      },
     }),
   );
   context.app.route(

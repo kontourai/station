@@ -195,6 +195,35 @@ portable authorization credential. Independent destination confirmation, source
 approval, encrypted credential delivery/rotation and actual sync remain
 unfinished. No Station/F1 signing key or generic personal-token bearer is reused.
 
+### Source approval review
+
+`/api/analytics/source-grant-approvals` now requests an actual Station consent
+review for an immutable source intent and receiving-key candidate. The source
+person must use a live, person-bound Device with read access; operator fallback,
+unbound Devices, generic personal tokens, agents and plugins cannot originate
+this approval. Recipient/source principal IDs must match exactly: matching local
+usernames across distinct issuers is not an identity link.
+
+The source checks the saved owner/tenant snapshot, requested scope, expiry,
+recipient signature/digest and destination binding. The separate-origin review
+shows the source person, owner count, scope, target/origin, public receiving key
+and confirmation code, expiry and retention choice. A signature is still only
+key possession: the user must compare the key with the authenticated receiving
+Station. The review is partitioned by source/person/tenant and accepts only its
+transaction-bound requester session; ordinary operator or promoted-device
+consent authority cannot render or decide it. A one-use render nonce, expected
+Origin/Fetch Metadata and re-derived target guard precede the commit.
+
+Source cancellation or changed eligibility refuses the decision without granting
+anything. The committed `AnalyticsSourceApproval` records source-user approval
+of the exact key/policy, not remote-person authentication. It retains
+`exportAuthority:false`; source credentials, encrypted delivery, narrow export
+admission and synchronization remain unfinished. GET `/<operationId>` reads the
+own receipt, DELETE revokes the recorded approval, and GET `/requests/<id>` reads
+the own pending review status. The requester-only browser path needs a listening
+consent origin on the same hostname for its host-only cookie; it does not borrow
+native operator authority as a substitute for person consent.
+
 ## Developer diagnostics
 
 Developer → Monitoring → Companion checks the selected Station's local container

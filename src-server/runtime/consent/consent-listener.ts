@@ -130,6 +130,7 @@ function statusPage(title: string, detail: string): string {
 function reviewPage(
   transaction: ConsentTransactionView,
   nonce: string,
+  partition?: string,
 ): string {
   const description = transaction.description;
   const items = description.items
@@ -148,7 +149,7 @@ function reviewPage(
 <h1>${escapeHtml(description.title)}</h1>
 <p>${escapeHtml(description.summary)}</p>
 <ul>${items}</ul>${warning}
-<form method="post" action="./${encodeURIComponent(transaction.id)}/decide" class="actions">
+<form method="post" action="./${encodeURIComponent(transaction.id)}/decide${partition ? `?scope=${encodeURIComponent(partition)}` : ''}" class="actions">
 <input type="hidden" name="nonce" value="${escapeHtml(nonce)}">
 <button class="deny" type="submit" name="decision" value="deny">${escapeHtml(description.denyLabel)}</button>
 <button class="approve" type="submit" name="decision" value="approve">${escapeHtml(description.approveLabel)}</button>
@@ -196,6 +197,7 @@ function resolveListenerAuthority(
   deps: ConsentListenerDeps,
   cookieHeader: string | undefined,
   transactionId: string,
+  partition: string,
 ): ListenerAuthority | null {
   const deviceCredential = parseDeviceSessionCookie(
     cookieHeader,
@@ -203,18 +205,26 @@ function resolveListenerAuthority(
       deps.credentials.verifyOperatorCredential(candidate) ||
       deps.credentials.identifyDevice(candidate) !== null,
   );
-  if (deviceCredential !== undefined) {
+  if (deviceCredential !== undefined && partition === deps.channel.tenantId) {
     const authority = consentDecisionAuthority(
       deps.credentials,
       deviceCredential,
     );
-    if (authority !== null) return authority;
+    if (
+      authority !== null &&
+      deps.channel.store.allowsDecisionAuthority(
+        partition,
+        transactionId,
+        authority,
+      )
+    )
+      return authority;
   }
   const sessionSecret = parseConsentSessionCookie(cookieHeader);
   if (
     sessionSecret !== undefined &&
     deps.channel.store.verifyDecisionSession(
-      deps.channel.tenantId,
+      partition,
       transactionId,
       sessionSecret,
     )
@@ -272,6 +282,15 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
 
   app.get('/consent/:id', (c) => {
     const id = c.req.param('id');
+    const partition = c.req.query('scope') ?? deps.channel.tenantId;
+    if (
+      !/^[A-Za-z0-9:_-]{1,128}$/.test(partition) ||
+      new URL(c.req.url).searchParams.getAll('scope').length > 1
+    )
+      return c.html(
+        statusPage('Decision refused', 'Invalid consent scope.'),
+        403,
+      );
     // Review MED 3: rendering is a WRITE — it replaces the one-use nonce and
     // appends audit — and the transaction cookie's site (not origin) scoping
     // means same-site plugin code can fire credentialed cross-origin GETs
@@ -299,6 +318,7 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
       deps,
       c.req.header('cookie'),
       id,
+      partition,
     );
     if (authority === null) {
       // No transaction detail leaks to an unauthenticated caller — not even
@@ -311,7 +331,7 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
         403,
       );
     }
-    const rendered = deps.channel.store.renderReview(deps.channel.tenantId, id);
+    const rendered = deps.channel.store.renderReview(partition, id, authority);
     if (!rendered.ok) {
       if (rendered.reason === 'not_found') {
         return c.html(
@@ -342,11 +362,26 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
         ),
       );
     }
-    return c.html(reviewPage(rendered.transaction, rendered.nonce));
+    return c.html(
+      reviewPage(
+        rendered.transaction,
+        rendered.nonce,
+        partition === deps.channel.tenantId ? undefined : partition,
+      ),
+    );
   });
 
   app.post('/consent/:id/decide', async (c) => {
     const id = c.req.param('id');
+    const partition = c.req.query('scope') ?? deps.channel.tenantId;
+    if (
+      !/^[A-Za-z0-9:_-]{1,128}$/.test(partition) ||
+      new URL(c.req.url).searchParams.getAll('scope').length > 1
+    )
+      return c.html(
+        statusPage('Decision refused', 'Invalid consent scope.'),
+        403,
+      );
     const state = deps.channel.state();
     const consentPort = state.status === 'listening' ? state.port : null;
     const refuse = (reason: string, title: string, detail: string) => {
@@ -419,6 +454,7 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
       deps,
       c.req.header('cookie'),
       id,
+      partition,
     );
     if (authority === null) {
       return refuse(
@@ -450,7 +486,7 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
     // 5+6: one-use nonce, pending status, and target revalidation — all
     // inside the store's atomic decide.
     const result = await deps.channel.store.decide(
-      deps.channel.tenantId,
+      partition,
       id,
       decision,
       nonce,

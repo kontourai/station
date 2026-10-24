@@ -2410,6 +2410,32 @@ This is receiving-key custody and key-possession evidence only. It is not
 remote-person authentication, a source grant or approval of a destination.
 Source approval, encrypted credential materialization and sync are unfinished.
 
+### Request source-user approval
+
+`POST /api/analytics/source-grant-approvals` accepts exactly `operationId`
+(UUIDv4), `sourceOperationId` and `recipientCandidate`, bounded to 16 KiB. It
+requires a live person-bound Device, current verified person and read scope;
+generic personal tokens, operator fallback, agents and plugins are refused.
+The saved source scope/owner/tenant snapshot must remain current. The candidate
+must match source, intent digest, proposed destination/origin and exact canonical
+person ID, with valid signature and unexpired five-minute lifetime. A local
+username match across different identity issuers is not accepted.
+
+The reply contains `{approval:{id,status,reviewUrl}}` and a host-only HttpOnly
+transaction cookie. The separate-origin review URL uses an opaque source/person/
+tenant partition. Only that transaction's requester session can render/decide it;
+operator or promoted-device consent authority does not override the policy.
+The one-use review nonce and unchanged-target guard remain mandatory. Listener
+unavailability or a different cookie hostname refuses creation with 503.
+
+GET `/requests/<id>` returns own review status and any recorded result. GET
+`/<operationId>` reads the own `AnalyticsSourceApproval`; DELETE revokes it.
+Recorded results identify the source, receiving key/person claim, scope, expiry,
+retention, consent transaction and approved/revoked phase. `sourceApproved:true`
+is historical source-user consent; `exportAuthority:false` remains mandatory.
+It does not authenticate a remote person, issue a credential or activate export.
+See [source approval](../guides/monitoring.md#source-approval-review).
+
 ### Get Achievements
 
 `GET /api/analytics/achievements` returns

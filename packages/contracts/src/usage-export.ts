@@ -76,3 +76,23 @@ export interface AnalyticsRecipientCandidateView {
   confirmationCode: string;
   candidate: AnalyticsRecipientCandidate;
 }
+
+/** Recorded source-user approval, not an active export credential. */
+export interface AnalyticsSourceApproval {
+  protocol: 'station-analytics-source-approval/v1';
+  operationId: string;
+  sourceOperationId: string;
+  sourceStationId: string;
+  destinationStationId: string;
+  recipientId: string;
+  recipientPrincipalId: string;
+  scope: UsageExportScope;
+  expiresAt: string;
+  retention: AnalyticsSourceEnrollmentIntent['retention'];
+  phase: 'approved' | 'revoked';
+  approvedAt: string;
+  approvalTransactionId: string;
+  sourceApproved: true;
+  exportAuthority: false;
+  recipientAssurance: 'source-user-approved-key';
+}

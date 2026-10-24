@@ -743,6 +743,38 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   // carries the token, so a paired phone cannot consent to egress on the
   // operator's behalf. That is the line this scope is drawn to hold.
   {
+    id: '/api/analytics/source-grant-approvals:request',
+    method: 'POST',
+    prefix: '/api/analytics/source-grant-approvals',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/source-grant-approvals:status',
+    method: 'GET',
+    prefix: '/api/analytics/source-grant-approvals/requests/:id',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/source-grant-approvals:receipt',
+    method: 'GET',
+    prefix: '/api/analytics/source-grant-approvals/:operationId',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/analytics/source-grant-approvals:revoke',
+    method: 'DELETE',
+    prefix: '/api/analytics/source-grant-approvals/:operationId',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
+  {
     id: '/api/analytics/recipient-candidates:list',
     method: 'GET',
     prefix: '/api/analytics/recipient-candidates',
