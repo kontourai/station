@@ -249,6 +249,25 @@ describe('findPrimaryChatLayout (#2995)', () => {
     expect(findPrimaryChatLayout([tasks, legacyCoding])).toBe(legacyCoding);
   });
 
+  test('prefers built-in Coding, then the lowest id, whatever the listing order', () => {
+    const plugin = (id: string) => ({
+      id,
+      slug: id,
+      type: 'custom',
+      plugin: 'fixture',
+      primary: 'chat',
+      presentation: 'stack',
+    });
+    const coding = { id: 'z-coding', slug: 'code', type: 'coding' };
+    expect(findPrimaryChatLayout([plugin('a'), coding, plugin('b')])).toBe(
+      coding,
+    );
+    const a = plugin('a');
+    const b = plugin('b');
+    expect(findPrimaryChatLayout([b, a])).toBe(a);
+    expect(findPrimaryChatLayout([a, b])).toBe(a);
+  });
+
   test('ignores a contributed coding word and a stack without the claim', () => {
     expect(
       findPrimaryChatLayout([

@@ -1,6 +1,7 @@
 {
   "name": "Stack Parity",
   "slug": "fx",
+  "icon": "💬",
   "description": "A contributed layout that owns Chat and pushes two drill-ins",
   "primary": "chat",
   "presentation": "stack",

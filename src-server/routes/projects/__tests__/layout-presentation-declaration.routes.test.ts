@@ -318,4 +318,95 @@ describe('layout reads state the contributor’s declaration (#2995)', () => {
     expect(read.presentation).toBe('tabs');
     expect(read).not.toHaveProperty('primary');
   });
+
+  describe('the contributor comes from server-owned attribution only', () => {
+    async function grantedApp() {
+      const projectHome = home();
+      writeStackPlugin(projectHome, STACK);
+      await grantPermissions(projectHome, PLUGIN, ['layout.primaryChat']);
+      return { projectHome, ...appFor(projectHome) };
+    }
+    const statesNoClaim = (data: Record<string, unknown>) => {
+      expect(data.presentation).toBe('tabs');
+      expect(data).not.toHaveProperty('primary');
+      expect(data).not.toHaveProperty('drillIns');
+    };
+
+    test('a created layout that names a granted plugin in config.plugin gets no declaration', async () => {
+      const { app, storage } = await grantedApp();
+      await seed(storage, []);
+      const res = await app.request('/demo/layouts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          slug: 'forged',
+          name: 'Forged',
+          type: 'custom',
+          config: { plugin: PLUGIN },
+        }),
+      });
+      expect(res.status).toBe(201);
+      statesNoClaim((await json(res)).data);
+      statesNoClaim(
+        (await json(await app.request('/demo/layouts/forged'))).data,
+      );
+      const row = (await json(await app.request('/demo/layouts'))).data.find(
+        (candidate: { slug: string }) => candidate.slug === 'forged',
+      );
+      statesNoClaim(row);
+    });
+
+    test('an update re-pointing a layout at a granted plugin gets no declaration', async () => {
+      const { app, storage } = await grantedApp();
+      await seed(storage, [
+        { id: 'layout-mine', slug: 'mine', name: 'Mine', type: 'custom' },
+      ]);
+      const res = await app.request('/demo/layouts/mine', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: { plugin: PLUGIN } }),
+      });
+      expect(res.status, JSON.stringify(await res.clone().json())).toBe(200);
+      statesNoClaim((await json(res)).data);
+      statesNoClaim((await json(await app.request('/demo/layouts/mine'))).data);
+      const row = (await json(await app.request('/demo/layouts'))).data.find(
+        (candidate: { slug: string }) => candidate.slug === 'mine',
+      );
+      statesNoClaim(row);
+    });
+
+    test('a config.plugin contradicting the recorded attribution is ignored', async () => {
+      const { app, storage } = await grantedApp();
+      await seed(storage, [
+        {
+          ...STORED_PLUGIN,
+          config: { ...STORED_PLUGIN.config, plugin: 'other' },
+        },
+      ]);
+      statesNoClaim(
+        (await json(await app.request('/demo/layouts/stack'))).data,
+      );
+    });
+
+    test('an attributed layout keeps its declaration after an update', async () => {
+      const { app, storage } = await grantedApp();
+      await seed(storage, [STORED_PLUGIN]);
+      const res = await app.request('/demo/layouts/stack', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Renamed stack' }),
+      });
+      expect(res.status).toBe(200);
+      expect((await json(res)).data).toMatchObject(STACK);
+    });
+
+    test('a pre-attribution record naming a plugin states tabs', async () => {
+      const { app, storage } = await grantedApp();
+      const { catalogContribution: _attribution, ...legacy } = STORED_PLUGIN;
+      await seed(storage, [legacy]);
+      statesNoClaim(
+        (await json(await app.request('/demo/layouts/stack'))).data,
+      );
+    });
+  });
 });

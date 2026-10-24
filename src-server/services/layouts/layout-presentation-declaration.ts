@@ -78,23 +78,33 @@ export function assertInstallablePluginLayoutDeclaration(
   return declaration;
 }
 
-/** What a stored layout record or listing says about who contributed it. */
+/** What a stored layout record says about who contributed it. */
 export interface LayoutDeclarationRecord {
   type?: string;
-  /** `LayoutMetadata.plugin`. */
+  /** `LayoutMetadata.plugin`: a listing's copy of `config.plugin`. */
   plugin?: string;
   config?: Record<string, unknown> | null;
+  /**
+   * The server-owned attribution the catalog apply path records. Create and
+   * update strip it from request bodies, so it is the only fact here a client
+   * cannot write.
+   */
   catalogContribution?: {
+    id?: string;
     provenance: { origin: string; pluginId?: string };
   };
 }
 
 export interface LayoutDeclarationSources {
   /**
-   * The installed plugin's current, parsed declaration, or `null` when the
-   * plugin's layout cannot be read as an installed, enabled contribution.
+   * The installed plugin's current, parsed declaration for the catalog item
+   * `contributionId`, or `null` when that item is not an installed, enabled
+   * layout of `pluginName`.
    */
-  pluginDeclaration(pluginName: string): LayoutPresentationDeclaration | null;
+  pluginDeclaration(
+    pluginName: string,
+    contributionId: string | undefined,
+  ): LayoutPresentationDeclaration | null;
   /** Whether the plugin holds {@link LAYOUT_PRIMARY_CHAT_PERMISSION}. */
   pluginHoldsPermission(pluginName: string, permission: string): boolean;
 }
@@ -103,27 +113,28 @@ const TABS: LayoutPresentationReadFields = Object.freeze({
   presentation: 'tabs',
 });
 
-function contributingPlugin(
-  layout: LayoutDeclarationRecord,
-): string | undefined {
-  const configPlugin = layout.config?.plugin;
-  if (typeof configPlugin === 'string' && configPlugin.length > 0)
-    return configPlugin;
-  if (typeof layout.plugin === 'string' && layout.plugin.length > 0)
-    return layout.plugin;
-  const provenance = layout.catalogContribution?.provenance;
-  return provenance?.origin === 'plugin' ? provenance.pluginId : undefined;
+function nonEmpty(value: unknown): string | undefined {
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
 /**
  * The declaration a layout READ states (#2995): the CONTRIBUTOR's, never the
  * stored record's — so no request body can write a layout a Chat centre.
  *
+ * The contributor is decided from server-owned provenance only
+ * (`catalogContribution.provenance`, issued by catalog apply). `config.plugin`
+ * is client-writable (create and update accept it), so it never selects a
+ * plugin's declaration:
+ *
  * - A read whose plugin binding is withheld from the caller (#2090) states
  *   `tabs` and nothing else: the drill-in ids name the plugin.
- * - A contributed layout states its installed plugin's current declaration,
- *   less `primary` unless the plugin holds `layout.primaryChat`. An
- *   unreadable, disabled or MCP contribution states `tabs`.
+ * - A record attributed to a plugin states that plugin's current declaration
+ *   for the attributed catalog item, less `primary` unless the plugin holds
+ *   `layout.primaryChat`. A `config.plugin` naming any other plugin makes the
+ *   record contradict its attribution, and it states `tabs`.
+ * - A record that names a plugin without attribution (hand-written, or from
+ *   before attribution was recorded) states `tabs`: nothing the server
+ *   issued vouches for the binding. MCP contributions state `tabs`.
  * - Anything else states the declaration of the built-in starter of its
  *   `type` (Coding's `primary: 'chat'`, `presentation: 'stack'` and
  *   drill-ins), or `tabs`.
@@ -136,10 +147,18 @@ export function resolveLayoutReadDeclaration(
   options: { withheld: boolean; sources: LayoutDeclarationSources },
 ): LayoutPresentationReadFields {
   if (options.withheld) return TABS;
-  const origin = layout.catalogContribution?.provenance.origin;
-  const pluginName = contributingPlugin(layout);
-  if (pluginName !== undefined) {
-    const declared = options.sources.pluginDeclaration(pluginName);
+  const provenance = layout.catalogContribution?.provenance;
+  const claimedPlugin =
+    nonEmpty(layout.config?.plugin) ?? nonEmpty(layout.plugin);
+  if (provenance?.origin === 'plugin') {
+    const pluginName = nonEmpty(provenance.pluginId);
+    if (!pluginName) return TABS;
+    if (claimedPlugin !== undefined && claimedPlugin !== pluginName)
+      return TABS;
+    const declared = options.sources.pluginDeclaration(
+      pluginName,
+      layout.catalogContribution?.id,
+    );
     if (!declared) return TABS;
     const granted =
       declared.primary === 'chat' &&
@@ -153,11 +172,40 @@ export function resolveLayoutReadDeclaration(
       ...(declared.drillIns ? { drillIns: [...declared.drillIns] } : {}),
     };
   }
-  if (origin === 'plugin' || origin === 'mcp') return TABS;
+  if (provenance?.origin === 'mcp' || claimedPlugin !== undefined) return TABS;
   const builtin = BUILTIN_PROJECT_LAYOUTS.find(
     (candidate) => candidate.type === layout.type,
   );
   return builtin ? builtinLayoutPresentationDeclaration(builtin) : TABS;
+}
+
+/**
+ * Declaration sources for ONE request: the catalog listing, each plugin's
+ * parsed declaration and each grant are read at most once, however many
+ * layout rows the request answers.
+ */
+export function memoizeLayoutDeclarationSources(
+  sources: LayoutDeclarationSources,
+): LayoutDeclarationSources {
+  const declarations = new Map<string, LayoutPresentationDeclaration | null>();
+  const grants = new Map<string, boolean>();
+  return {
+    pluginDeclaration(pluginName, contributionId) {
+      const key = JSON.stringify([pluginName, contributionId ?? null]);
+      if (!declarations.has(key))
+        declarations.set(
+          key,
+          sources.pluginDeclaration(pluginName, contributionId),
+        );
+      return declarations.get(key) ?? null;
+    },
+    pluginHoldsPermission(pluginName, permission) {
+      const key = JSON.stringify([pluginName, permission]);
+      if (!grants.has(key))
+        grants.set(key, sources.pluginHoldsPermission(pluginName, permission));
+      return grants.get(key) === true;
+    },
+  };
 }
 
 /**

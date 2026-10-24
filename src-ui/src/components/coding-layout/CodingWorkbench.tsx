@@ -134,7 +134,6 @@ const readHistoryIndex = () => navigationStore.getHistoryIndex();
 const readActiveChat = () => navigationStore.getSnapshot().activeChat;
 const NO_BADGES: Readonly<Record<string, number>> = {};
 const PERSISTENCE_NOTICE_DELAY_MS = 1500;
-const NO_DRILL_IN_ORDER: readonly string[] = [];
 /** A pane's place on the rail: its declared drill-in order, then the rest. */
 function railRank(order: readonly string[], descriptorId: string): number {
   const rank = order.indexOf(descriptorId);
@@ -157,12 +156,12 @@ export interface CodingWorkbenchProps {
    * name otherwise. It names the breadcrumb's navigation landmark and the
    * stack's chords in the shortcut list.
    */
-  stackName?: string;
+  stackName: string;
   /**
    * The layout's declared drill-ins (`drillIns`), in rail order. Panes the
    * reader added follow them, in the host's own order.
    */
-  drillInOrder?: readonly string[];
+  drillInOrder: readonly string[];
   /**
    * Whether this layout's centre shows Chat (`resolveLayoutChatPlacement`'s
    * `center`). False on a bottom-only device, whose Chat is the dock: the
@@ -259,8 +258,8 @@ export interface CodingWorkbenchProps {
 export function CodingWorkbench({
   projectId,
   projectSlug,
-  stackName = 'Coding',
-  drillInOrder = NO_DRILL_IN_ORDER,
+  stackName,
+  drillInOrder,
   centerChat,
   wide = false,
   location,

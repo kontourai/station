@@ -358,6 +358,8 @@ export function parseLayoutPresentationDeclaration(
 
 /** The facts the declaration reader needs off a layout record or listing. */
 export interface LayoutPresentationFacts {
+  id?: unknown;
+  slug?: unknown;
   type?: string;
   primary?: unknown;
   presentation?: unknown;
@@ -444,11 +446,29 @@ export function layoutPresentsAsStack(
 /**
  * The project's layout that claims the centre for Chat: where "open this
  * conversation in its layout" goes. Replaces the `type === 'coding'` lookups.
+ *
+ * Deterministic when several layouts claim Chat: the built-in Coding record
+ * first (it hosts Coding's own panes), then the lowest `id`, then the lowest
+ * `slug` — never the order a store happened to list them in.
  */
 export function findPrimaryChatLayout<T extends LayoutPresentationFacts>(
   layouts: readonly T[] | null | undefined,
 ): T | undefined {
-  return layouts?.find((layout) => layoutClaimsPrimaryChat(layout));
+  const claimants = (layouts ?? []).filter((layout) =>
+    layoutClaimsPrimaryChat(layout),
+  );
+  const rank = (layout: T) =>
+    layout.type === BUILTIN_CODING_LAYOUT.type &&
+    !isContributedLayoutRecord(layout)
+      ? 0
+      : 1;
+  const key = (value: unknown) => (typeof value === 'string' ? value : '');
+  return [...claimants].sort(
+    (left, right) =>
+      rank(left) - rank(right) ||
+      key(left.id).localeCompare(key(right.id)) ||
+      key(left.slug).localeCompare(key(right.slug)),
+  )[0];
 }
 
 /** A built-in starter's declaration, copied so callers cannot share arrays. */

@@ -81,6 +81,7 @@ import {
 import {
   type LayoutDeclarationRecord,
   type LayoutDeclarationSources,
+  memoizeLayoutDeclarationSources,
   resolveLayoutReadDeclaration,
   withoutClientLayoutDeclaration,
 } from '../../services/layouts/layout-presentation-declaration.js';
@@ -609,45 +610,49 @@ export function createProjectRoutes(
   /**
    * Where a layout read's declaration comes from (#2995): the installed
    * plugin's current catalog definition — parsed once, by the catalog, with
-   * its refusals — and the plugin's own permission grants.
+   * its refusals — and the plugin's own permission grants. One set per
+   * request: the catalog listing, each declaration and each grant are read at
+   * most once however many rows the request answers.
    */
-  const layoutDeclarationSources: LayoutDeclarationSources = {
-    pluginDeclaration(pluginName) {
-      try {
-        const item = layoutCatalog
-          .listLayouts()
-          .find(
+  function layoutDeclarationSources(): LayoutDeclarationSources {
+    let listed: ReturnType<typeof layoutCatalog.listLayouts> | undefined;
+    return memoizeLayoutDeclarationSources({
+      pluginDeclaration(pluginName, contributionId) {
+        try {
+          listed ??= layoutCatalog.listLayouts();
+          const item = listed.find(
             (candidate) =>
-              candidate.source === 'plugin' && candidate.plugin === pluginName,
+              candidate.source === 'plugin' &&
+              candidate.plugin === pluginName &&
+              (contributionId === undefined || candidate.id === contributionId),
           );
-        if (item?.lifecycle.state !== 'installed' || !item.enabled) return null;
-        const { definition } = layoutCatalog.resolveForCatalog(item.id);
-        return {
-          ...(definition.primary ? { primary: definition.primary } : {}),
-          ...(definition.presentation
-            ? { presentation: definition.presentation }
-            : {}),
-          ...(definition.drillIns ? { drillIns: definition.drillIns } : {}),
-        };
-      } catch (error) {
-        logger.debug('Layout declaration unavailable', {
-          plugin: pluginName,
-          error,
-        });
-        return null;
-      }
-    },
-    pluginHoldsPermission: (pluginName, permission) =>
-      hasGrant(projectHomeDir, pluginName, permission, logger),
-  };
+          if (item?.lifecycle.state !== 'installed' || !item.enabled)
+            return null;
+          const { definition } = layoutCatalog.resolveForCatalog(item.id);
+          return {
+            ...(definition.primary ? { primary: definition.primary } : {}),
+            ...(definition.presentation
+              ? { presentation: definition.presentation }
+              : {}),
+            ...(definition.drillIns ? { drillIns: definition.drillIns } : {}),
+          };
+        } catch (error) {
+          logger.debug('Layout declaration unavailable', {
+            plugin: pluginName,
+            error,
+          });
+          return null;
+        }
+      },
+      pluginHoldsPermission: (pluginName, permission) =>
+        hasGrant(projectHomeDir, pluginName, permission, logger),
+    });
+  }
   const layoutReadDeclaration = (
     layout: LayoutDeclarationRecord,
     withheld: boolean,
-  ) =>
-    resolveLayoutReadDeclaration(layout, {
-      withheld,
-      sources: layoutDeclarationSources,
-    });
+    sources: LayoutDeclarationSources = layoutDeclarationSources(),
+  ) => resolveLayoutReadDeclaration(layout, { withheld, sources });
 
   async function readKnownAgents(): Promise<AgentOwnershipRef[] | undefined> {
     return deps.listAgents ? await deps.listAgents() : undefined;
@@ -1599,15 +1604,30 @@ export function createProjectRoutes(
       // #2995 — each row also states its contributor's declaration, so a
       // reader finds the layout that owns Chat (`findPrimaryChatLayout`)
       // without a detail read per row. A withheld row states only `tabs`.
+      // A listing carries no attribution, and the declaration is decided
+      // from server-owned attribution alone, so each visible row reads its
+      // stored record for it. The catalog and grant reads behind those
+      // records happen once per request (`layoutDeclarationSources`).
       const canSee = viewerPluginSight(c);
+      const sources = layoutDeclarationSources();
       const data: LayoutMetadataReadView[] = layouts.map((layout) => {
         const withheld =
           canSee !== undefined &&
           layout.plugin !== undefined &&
           !canSee(layout.plugin);
+        let record: LayoutDeclarationRecord = layout;
+        if (!withheld) {
+          try {
+            record = storageAdapter.getLayout(slug, layout.slug);
+          } catch {
+            // Unreadable here, though it listed: the row keeps its listing
+            // facts, which name no attribution, so it states no plugin's
+            // declaration.
+          }
+        }
         return {
           ...(withheld ? { ...layout, plugin: undefined } : layout),
-          ...layoutReadDeclaration(layout, withheld),
+          ...layoutReadDeclaration(record, withheld, sources),
         };
       });
       return c.json({ success: true, data });
