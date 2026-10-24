@@ -40,7 +40,7 @@ import {
 
 const sdkCode = (code: string) => (e: unknown) =>
   e instanceof SdkSourceRefusal && e.code === code;
-function mockResponse(provider: 'anthropic' | 'google') {
+function mockResponse(provider: 'anthropic' | 'google', continued = false) {
   return new Response(
     JSON.stringify(
       provider === 'anthropic'
@@ -63,7 +63,10 @@ function mockResponse(provider: 'anthropic' | 'google') {
             modelVersion: 'fixture-revision',
             candidates: [
               {
-                finishReason: 'STOP',
+                finishReason: continued ? 'CONTINUATION' : 'STOP',
+                ...(continued
+                  ? { continuationToken: 'controlled-continuation' }
+                  : {}),
                 index: 0,
                 content: { role: 'model', parts: [{ text: 'OK' }] },
               },
@@ -207,6 +210,39 @@ for (const provider of ['anthropic', 'google'] as const)
       }),
     );
   });
+
+test('Google SDK automatic continuation cannot send another physical request from a consumed source', async () => {
+  let responses = 0;
+  const f = await sdkFixture('google', '/api/orchestration/chat', () =>
+    mockResponse('google', ++responses === 1),
+  );
+  const prepared = await f.owner.prepareSdkSnapshot(
+    f.context(),
+    subject,
+    f.sealed.capability,
+    f.sdkOwner,
+  );
+  try {
+    const { wire } = inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+    const response = enterFinalFetch(f.sdkOwner, prepared.sdkHandle, wire.url, {
+      method: 'POST',
+      headers: Object.fromEntries(wire.headers),
+      body: wire.body,
+      redirect: 'error',
+    });
+    deliverSdkResponse(f.sdkOwner, prepared.sdkHandle, await response);
+    await assert.rejects(
+      sdkResultPromise(f.sdkOwner, prepared.sdkHandle),
+      sdkCode('sdk_attempt_failed'),
+    );
+    assert.equal(f.starts, 1);
+    assert.equal(responses, 1);
+  } finally {
+    f.owner.releaseSnapshot(f.sealed.capability);
+    disposeSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
+    await sdkDisposalPromise(f.sdkOwner, prepared.sdkHandle);
+  }
+});
 
 test.each(['release', 'revoke'] as const)(
   'Flow admission survives consumed SDK bytes but still refuses explicit %s',
