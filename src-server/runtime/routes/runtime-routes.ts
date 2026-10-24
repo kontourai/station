@@ -11554,6 +11554,23 @@ export function configureDevicePairingHostRoutes(
   });
   app.get('/api/pairing/devices', (c) => {
     const principal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+    let localGrant = false;
+    try {
+      localGrant =
+        principal?.authority === 'device-credential' &&
+        pairing.isLocalGrantMintedCredential(principal.credential) &&
+        isRequestPrincipalCurrent(c.req.raw) === true;
+    } catch {
+      // An unanswerable principal check grants no inventory authority.
+    }
+    if (
+      !currentOperator(c, c.req.raw) &&
+      !currentDeviceAccessApproval(c, c.req.raw) &&
+      !localGrant &&
+      !operatorSession(c.req.raw)
+    )
+      return c.json({ error: 'authentication_required' }, 401);
+
     if (
       principal?.authority === 'operator-session' &&
       !principal.operatorSession?.isCurrent()

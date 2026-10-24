@@ -27,6 +27,11 @@ import {
 } from '../../../services/identity/operator-sessions.js';
 import type { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import {
+  getInternalApiToken,
+  INTERNAL_API_TOKEN_HEADER,
+  INTERNAL_PROXY_CALLER_HEADER,
+} from '../../../utils/internal-api-token.js';
 import type { Logger } from '../../../utils/logger.js';
 import { installAccountBoundDeviceGate } from '../../bootstrap/account-bound-device-gate.js';
 import { configureRuntimeHttp } from '../../bootstrap/runtime-http.js';
@@ -70,7 +75,7 @@ async function build(
     scope = 'orchestration:read',
     kind: 'device' | 'delegation' = 'device',
     accountBound = false,
-    localGrant = false,
+    localGrant: boolean | 'ui-bootstrap' = false,
   ) {
     const offer = pairing.createOffer({ endpoint: APP, scope, kind });
     const pending = pairing.requestPairing({
@@ -104,7 +109,10 @@ async function build(
       ...(localGrant
         ? {
             locality: 'home-possession' as const,
-            mintKind: 'local-grant' as const,
+            mintKind:
+              localGrant === 'ui-bootstrap'
+                ? ('ui-bootstrap' as const)
+                : ('local-grant' as const),
           }
         : {}),
     });
@@ -1917,4 +1925,86 @@ describe('S4 action lifecycle and admission boundaries', () => {
     expect((await commitChange(h, signed, t.id, r)).status).toBe(409);
     expect(h.registry.existing()!.get(signed.passkey.id)?.revokedAt).toBeNull();
   });
+});
+
+describe('S4 authority matrix for the independent host and Device paths', () => {
+  test.each(['local-grant', 'ui-bootstrap', 'internal'] as const)(
+    '%s has no operator-session authority on the new action leaves',
+    async (authority) => {
+      const h = await build();
+      const device =
+        authority === 'internal'
+          ? null
+          : h.pair(
+              authority,
+              'access:manage',
+              'device',
+              false,
+              authority === 'ui-bootstrap' ? 'ui-bootstrap' : true,
+            );
+      const headers = device
+        ? { authorization: `Bearer ${device.credential}`, origin: APP }
+        : {
+            [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+            [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+            origin: APP,
+          };
+      const environment = {
+        incoming: { socket: { remoteAddress: '127.0.0.1' } },
+      };
+      const list = await h.api.request(
+        '/api/pairing/devices',
+        { headers },
+        environment,
+      );
+      expect(list.status).toBe(authority === 'internal' ? 401 : 200);
+      for (const [method, path] of [
+        ['GET', '/api/pairing/device-access-transactions/unknown'],
+        ['PUT', '/api/pairing/people/human:test:casey/group'],
+        ['POST', '/api/pairing/people/human:test:casey/tokens'],
+        ['DELETE', '/api/pairing/people/human:test:casey/tokens/unknown'],
+        ['DELETE', '/api/pairing/operator-passkeys/unknown'],
+      ]) {
+        const response = await h.api.request(
+          path,
+          { method, headers },
+          environment,
+        );
+        expect(response.status).toBe(authority === 'ui-bootstrap' ? 403 : 401);
+        expect(await response.json()).toEqual(
+          authority === 'ui-bootstrap'
+            ? { error: { code: 'insufficient_scope' } }
+            : { error: 'authentication_required' },
+        );
+      }
+      const scope = await h.api.request(
+        `/api/pairing/devices/${h.second.device.id}/scope`,
+        {
+          method: 'POST',
+          headers: {
+            ...headers,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({
+            scope: ['orchestration:read', 'orchestration:operate'],
+          }),
+        },
+        environment,
+      );
+      expect(scope.status).toBe(authority === 'ui-bootstrap' ? 200 : 401);
+      const revoke = await h.api.request(
+        `/api/pairing/devices/${h.second.device.id}`,
+        { method: 'DELETE', headers },
+        environment,
+      );
+      expect(revoke.status).toBe(authority === 'ui-bootstrap' ? 200 : 401);
+      h.pairing.revokeDevice(h.second.device.id, 'operator-credential');
+      const remove = await h.api.request(
+        `/api/pairing/devices/${h.second.device.id}/record`,
+        { method: 'DELETE', headers },
+        environment,
+      );
+      expect(remove.status).toBe(authority === 'ui-bootstrap' ? 200 : 401);
+    },
+  );
 });

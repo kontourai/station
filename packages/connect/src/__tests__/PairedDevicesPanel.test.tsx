@@ -603,6 +603,10 @@ describe('PairedDevicesPanel', () => {
             }),
           );
         }
+        if (applied)
+          expect(
+            new Headers(init?.headers).get('X-Station-Background-Refresh'),
+          ).toBe('1');
         return new Response(
           JSON.stringify({
             devices: [device({ revokedAt: applied ? Date.now() : null })],

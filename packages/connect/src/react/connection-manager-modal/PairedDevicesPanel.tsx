@@ -134,12 +134,15 @@ export function PairedDevicesPanel({
         });
       });
       if (review) review.location.replace(url.href);
-      const effect = await completion;
-      setReviewUrl(null);
-      return new Response(JSON.stringify(effect), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      try {
+        const effect = await completion;
+        return new Response(JSON.stringify(effect), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      } finally {
+        setReviewUrl(null);
+      }
     },
     [apiBase, authenticatedFetch, operatorSession],
   );
@@ -320,7 +323,7 @@ export function PairedDevicesPanel({
             device.name,
           ),
         );
-        await refresh();
+        await refresh(true);
       } catch (error) {
         setActionError(
           error instanceof Error
@@ -378,7 +381,7 @@ export function PairedDevicesPanel({
               device.name,
             ),
           );
-          await refresh();
+          await refresh(true);
         } catch (error) {
           setActionError(
             error instanceof Error
@@ -421,7 +424,7 @@ export function PairedDevicesPanel({
             );
             return;
           }
-          await refresh();
+          await refresh(true);
         } catch (error) {
           setActionError(
             error instanceof Error
