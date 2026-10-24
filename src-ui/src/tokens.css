@@ -35,18 +35,18 @@
   --weight-semibold: 600;
   --weight-bold: 700;
 
-  /* Spacing scale */
-  --space-1: 2px;
-  --space-2: 4px;
-  --space-3: 6px;
-  --space-4: 8px;
-  --space-5: 10px;
-  --space-6: 12px;
-  --space-8: 16px;
-  --space-10: 20px;
-  --space-12: 24px;
-  --space-16: 32px;
-  --space-20: 40px;
+  /* Legacy spacing aliases preserve their original values; the shared scale owns the base values. */
+  --space-1: calc(var(--k-space-1) / 2);
+  --space-2: var(--k-space-1);
+  --space-3: calc(var(--k-space-3) / 2);
+  --space-4: var(--k-space-2);
+  --space-5: calc(var(--k-space-1) * 2.5);
+  --space-6: var(--k-space-3);
+  --space-8: var(--k-space-4);
+  --space-10: calc(var(--k-space-1) * 5);
+  --space-12: var(--k-space-5);
+  --space-16: var(--k-space-6);
+  --space-20: calc(var(--k-space-2) * 5);
 
   /* Responsive breakpoints (documentation/reference only).
      NOTE: CSS @media queries cannot consume a custom property, so the literal

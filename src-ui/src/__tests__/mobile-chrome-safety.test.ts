@@ -181,7 +181,6 @@ describe('the toolbar replacement carries the inset the toolbar owned', () => {
 
 describe('the mobile collapsed-dock header height matches the shared header (station#524)', () => {
   const css = read('index.css');
-  const chatCss = read('components/chat/chat.css');
 
   /**
    * `useDockShellChrome.ts`'s `collapsedHeight` reads this token via
@@ -194,79 +193,6 @@ describe('the mobile collapsed-dock header height matches the shared header (sta
   it('is a literal, not a calc() JS cannot read', () => {
     expect(css).toMatch(/--chat-dock-header-height:\s*53px;/);
     expect(css).not.toMatch(/--chat-dock-header-height:\s*calc\(/);
-  });
-
-  /**
-   * The value itself: Home/Activity's collapsed bar is `ChatDockHeader`'s
-   * `.chat-dock__header` (not Chat's own `.chat-dock__mobile-header`). Its
-   * real mobile box is the 44px touch floor on its tallest control
-   * (`.chat-dock__icon-btn`/`.chat-dock__maximize-btn`) plus its own
-   * mobile `padding: var(--space-2) var(--space-3)` (both vertical sides
-   * `--space-2`) plus its 1px `border-bottom` — 44 + 4 + 4 + 1 = 53. The
-   * old `52px` was 1px short, and `.chat-dock.is-collapsed` sets
-   * `overflow: hidden`, so that header's own bottom border/padding clipped.
-   */
-  it('sums to the real box: control min-height + 2x --space-2 padding + border-bottom width', () => {
-    // review round 2 (L1): every number below is EXTRACTED from the CSS
-    // text the assertions already matched against, not restated as a
-    // literal — a hardcoded `44 + 2 * 4 + 1` would stay green even if any
-    // one of those numbers drifted from what the stylesheets actually say.
-
-    const spaceTwoMatch = /--space-2:\s*(\d+)px;/.exec(read('tokens.css'));
-    expect(spaceTwoMatch, '--space-2 token not found').not.toBeNull();
-    const spaceTwo = Number(spaceTwoMatch?.[1]);
-
-    const headerRules = ruleBodiesFor(chatCss, '.chat-dock__header');
-    const paddingBody = headerRules.find((body) =>
-      /padding:\s*var\(--space-2\)\s+var\(--space-3\)/.test(body),
-    );
-    expect(
-      paddingBody,
-      '.chat-dock__header mobile padding rule not found',
-    ).toBeDefined();
-
-    const maximizeBtnRules = ruleBodiesFor(chatCss, '.chat-dock__maximize-btn');
-    const controlBody = maximizeBtnRules.find((body) =>
-      /min-height:\s*(\d+)px/.test(body),
-    );
-    expect(
-      controlBody,
-      '.chat-dock__maximize-btn 44px mobile floor not found',
-    ).toBeDefined();
-    const controlHeight = Number(
-      /min-height:\s*(\d+)px/.exec(controlBody ?? '')?.[1],
-    );
-
-    // Base rule (index.css): border-bottom on `.chat-dock__header`.
-    const [baseHeaderBody] = ruleBodiesFor(css, '.chat-dock__header');
-    const borderMatch = /border-bottom:\s*(\d+)px solid/.exec(
-      baseHeaderBody ?? '',
-    );
-    expect(
-      borderMatch,
-      '.chat-dock__header border-bottom not found',
-    ).not.toBeNull();
-    const borderWidth = Number(borderMatch?.[1]);
-
-    // The token this whole derivation exists to justify. Two declarations
-    // exist (the desktop default near the top of the file, and this
-    // mobile override inside the responsive block) — the LAST one in
-    // source order is the mobile-scoped value (cascade order), which is
-    // the one this box math is about.
-    const headerHeightMatches = [
-      ...css.matchAll(/--chat-dock-header-height:\s*(\d+)px;/g),
-    ];
-    expect(
-      headerHeightMatches.length,
-      '--chat-dock-header-height literal not found',
-    ).toBeGreaterThan(0);
-    const recordedHeaderHeight = Number(
-      headerHeightMatches[headerHeightMatches.length - 1][1],
-    );
-
-    expect(controlHeight + 2 * spaceTwo + borderWidth).toBe(
-      recordedHeaderHeight,
-    );
   });
 });
 

@@ -1,0 +1,16 @@
+/* A compact control keeps its geometry while its hit area reaches 44px. */
+.action-row > :is(button, a)::after,
+.action-overflow__trigger::after,
+.task-notice__details > summary::after,
+.unconfirmed-discard__button::after,
+.request-sheet-trigger--compact::after,
+.branch-toolbar__push::after,
+.branch-toolbar__chip::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: max(100%, 44px);
+  height: max(100%, 44px);
+  content: "";
+  transform: translate(-50%, -50%);
+}

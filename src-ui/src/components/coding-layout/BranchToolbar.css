@@ -143,18 +143,6 @@
   cursor: default;
 }
 
-/* The 44px hit area without a bigger box (the same device ActionRow uses). */
-.branch-toolbar__push::after,
-.branch-toolbar__chip::after {
-  content: "";
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: max(100%, 44px);
-  height: max(100%, 44px);
-  transform: translate(-50%, -50%);
-}
-
 .branch-toolbar__sync {
   font-size: var(--text-sm);
   font-weight: 600;

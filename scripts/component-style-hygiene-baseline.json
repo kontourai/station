@@ -1,0 +1,2336 @@
+{
+  "version": 1,
+  "files": {
+    "packages/sdk/src/components/AuthStatusBadge.css": {
+      "legacy-token:--text-secondary": 3,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--accent-primary": 1,
+      "legacy-token:--text-on-accent": 1
+    },
+    "packages/sdk/src/components/AuthStatusBadge.tsx": {
+      "bespoke-dialog:div": 1,
+      "bespoke-action:\"auth-badge-modal__confirm\"": 1
+    },
+    "packages/sdk/src/components/AutoSelectModal.css": {
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--border-primary": 8,
+      "legacy-token:--bg-secondary": 2,
+      "legacy-token:--text-primary": 3,
+      "legacy-token:--text-muted": 3,
+      "legacy-token:--accent-primary": 3,
+      "legacy-token:--text-on-accent": 3,
+      "legacy-token:--text-secondary": 1
+    },
+    "packages/sdk/src/components/AutoSelectModal.tsx": {
+      "bespoke-dialog:div": 1
+    },
+    "packages/sdk/src/components/ErrorState.css": {
+      "legacy-token:--color-error": 1
+    },
+    "packages/sdk/src/components/FullScreen.css": {
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--text-secondary": 3,
+      "legacy-token:--accent-primary": 3,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--text-muted": 4,
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--bg-tertiary": 2,
+      "legacy-token:--text-on-accent": 1,
+      "legacy-token:--accent-hover-fill": 1,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--border-secondary": 1
+    },
+    "packages/sdk/src/components/KnowledgeRecall.css": {
+      "legacy-token:--text-secondary": 5
+    },
+    "packages/sdk/src/components/LayoutHeader.css": {
+      "legacy-token:--color-border": 4,
+      "legacy-token:--border-primary": 6,
+      "legacy-token:--color-bg": 4,
+      "legacy-token:--bg-primary": 4,
+      "legacy-token:--color-text-secondary": 3,
+      "legacy-token:--text-secondary": 4,
+      "legacy-token:--color-text-primary": 3,
+      "legacy-token:--text-primary": 3,
+      "legacy-token:--color-bg-hover": 3,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--color-primary": 3,
+      "legacy-token:--accent-primary": 7,
+      "legacy-token:--bg-tertiary": 2,
+      "legacy-token:--font-sans": 1,
+      "legacy-token:--accent-hover": 1,
+      "legacy-token:--bg-hover": 3
+    },
+    "packages/sdk/src/components/Loading.tsx": {
+      "bespoke-action:\"fs-btn fs-btn--primary\"": 1,
+      "bespoke-action:\"fs-btn fs-btn--secondary\"": 1
+    },
+    "src-ui/src/app-shell/AppViewContent.tsx": {
+      "bespoke-action:\"editor-btn editor-btn--primary\"": 1
+    },
+    "src-ui/src/app-shell/route-pending-skeleton.css": {
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--border-primary": 1
+    },
+    "src-ui/src/components/ActionOverflowMenu.css": {
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--radius-md": 1,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--text-lg": 1,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--space-3": 1,
+      "legacy-token:--text-muted": 4,
+      "legacy-token:--space-2": 1,
+      "legacy-token:--text-sm": 1,
+      "legacy-token:--space-6": 1,
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--text-xs": 1
+    },
+    "src-ui/src/components/ActionOverflowMenu.tsx": {
+      "bespoke-action:{`${triggerClassName} ${triggerText ? 'button button--secondary button--small action-overflow__trigger--labelled' : ''}${open ? ' is-active' : ''}`}": 1,
+      "bespoke-action:{`menu-row${action.tone === 'danger' ? ' action-overflow__row--danger' : ''}${explained ? ' action-overflow__row--explained' : ''}`}": 1
+    },
+    "src-ui/src/components/ActionRow.css": {
+      "legacy-token:--space-4": 1
+    },
+    "src-ui/src/components/ActivityTimeline.css": {
+      "legacy-token:--text-secondary": 5,
+      "legacy-token:--border-primary": 3,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--bg-secondary": 1
+    },
+    "src-ui/src/components/AgentReadinessCell.css": {
+      "legacy-token:--space-3": 1,
+      "legacy-token:--space-2": 3,
+      "legacy-token:--space-4": 1,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--radius-sm": 1,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--text-base": 1,
+      "legacy-token:--accent-primary": 2,
+      "legacy-token:--text-xs": 1
+    },
+    "src-ui/src/components/AgentReadinessCell.tsx": {
+      "bespoke-action:{className ?? 'agent-readiness__action'}": 2
+    },
+    "src-ui/src/components/Checkbox.css": {
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--accent-primary": 6,
+      "legacy-token:--text-md": 1,
+      "legacy-token:--text-primary": 1
+    },
+    "src-ui/src/components/CommandPalette.css": {
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--border-primary": 4,
+      "legacy-token:--radius-overlay": 1,
+      "legacy-token:--text-tertiary": 6,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--text-lg": 1,
+      "legacy-token:--text-xs": 4,
+      "legacy-token:--text-md": 1,
+      "legacy-token:--bg-hover": 1,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--text-secondary": 2,
+      "legacy-token:--text-sm": 1
+    },
+    "src-ui/src/components/CommandPalette.tsx": {
+      "bespoke-dialog:div": 1
+    },
+    "src-ui/src/components/CreatePlusButton.css": {
+      "legacy-token:--radius-pill": 1
+    },
+    "src-ui/src/components/DetailHeader.css": {
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--bg-primary": 2,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--text-xs": 1,
+      "legacy-token:--accent-primary": 3,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--text-muted": 2,
+      "legacy-token:--space-4": 2,
+      "legacy-token:--space-3": 3,
+      "legacy-token:--space-2": 1,
+      "legacy-token:--accent-medium": 1,
+      "legacy-token:--accent-border": 1,
+      "legacy-token:--accent-light": 1
+    },
+    "src-ui/src/components/DisclosureToggle.css": {
+      "legacy-token:--space-2": 1,
+      "legacy-token:--text-tertiary": 1,
+      "legacy-token:--accent-primary": 1,
+      "legacy-token:--radius-sm": 1
+    },
+    "src-ui/src/components/EnginePicker.css": {
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--text-sm": 3,
+      "legacy-token:--text-4xl": 2,
+      "legacy-token:--text-md": 4,
+      "legacy-token:--text-secondary": 2,
+      "legacy-token:--radius-pill": 1,
+      "legacy-token:--text-tertiary": 2,
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--accent-primary": 5,
+      "legacy-token:--text-on-accent": 1,
+      "legacy-token:--border-secondary": 1,
+      "legacy-token:--color-text-secondary": 1,
+      "legacy-token:--space-4": 2,
+      "legacy-token:--radius-md": 1,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--text-muted": 1
+    },
+    "src-ui/src/components/EnginePicker.tsx": {
+      "bespoke-dialog:div": 1
+    },
+    "src-ui/src/components/GuidedConnect.css": {
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--border-primary": 3,
+      "legacy-token:--bg-secondary": 3,
+      "legacy-token:--text-secondary": 5,
+      "legacy-token:--bg-hover": 1,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--accent-primary": 2,
+      "legacy-token:--text-on-accent": 1,
+      "legacy-token:--accent-hover-fill": 1,
+      "legacy-token:--text-tertiary": 1
+    },
+    "src-ui/src/components/GuidedConnect.tsx": {
+      "bespoke-action:{\n                isLocal\n                  ? 'guided-connect__action'\n                  : 'guided-connect__action guided-connect__action--primary'\n              }": 1
+    },
+    "src-ui/src/components/IconButton.css": {
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--text-md": 1,
+      "legacy-token:--accent-primary": 2,
+      "legacy-token:--text-muted": 1
+    },
+    "src-ui/src/components/ImageInspector.css": {
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--accent-primary": 1,
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--text-sm": 1
+    },
+    "src-ui/src/components/InfoTip.css": {
+      "legacy-token:--space-3": 1,
+      "legacy-token:--border-secondary": 2,
+      "legacy-token:--radius-pill": 1,
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--text-xs": 1,
+      "legacy-token:--accent-primary": 3,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--space-6": 1,
+      "legacy-token:--space-8": 1,
+      "legacy-token:--radius-lg": 1,
+      "legacy-token:--bg-elevated": 1,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--text-sm": 1
+    },
+    "src-ui/src/components/OnboardingGate.css": {
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--space-4": 3,
+      "legacy-token:--space-8": 1,
+      "legacy-token:--radius-lg": 1,
+      "legacy-token:--text-sm": 2,
+      "legacy-token:--text-xl": 1,
+      "legacy-token:--text-md": 1,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--radius-pill": 1,
+      "legacy-token:--text-tertiary": 1,
+      "legacy-token:--text-4xl": 1,
+      "legacy-token:--space-3": 2,
+      "legacy-token:--space-6": 1
+    },
+    "src-ui/src/components/PageCallout.css": {
+      "legacy-token:--space-3": 1,
+      "legacy-token:--space-5": 1,
+      "legacy-token:--space-4": 2,
+      "legacy-token:--radius-lg": 1,
+      "legacy-token:--color-surface-raised": 1,
+      "legacy-token:--bg-elevated": 1,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--text-15": 1,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--space-1": 2,
+      "legacy-token:--text-md": 1,
+      "legacy-token:--text-muted": 1
+    },
+    "src-ui/src/components/PathAutocomplete.css": {
+      "legacy-token:--text-muted": 3,
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--radius-md": 1,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--accent-primary": 1,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--font-mono": 2
+    },
+    "src-ui/src/components/PdfCanvasViewer.css": {
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--accent-primary": 1
+    },
+    "src-ui/src/components/PickerCreateAction.css": {
+      "legacy-token:--bg-primary": 1
+    },
+    "src-ui/src/components/ResponsiveDialogSurface.tsx": {
+      "bespoke-dialog:div": 2
+    },
+    "src-ui/src/components/ShortcutsCheatsheet.css": {
+      "legacy-token:--text-primary": 3,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--font-mono": 1
+    },
+    "src-ui/src/components/Skeleton.css": {
+      "legacy-token:--text-secondary": 1
+    },
+    "src-ui/src/components/SplitPaneLayout.css": {
+      "legacy-token:--bg-primary": 5,
+      "legacy-token:--bg-secondary": 5,
+      "legacy-token:--border-primary": 10,
+      "legacy-token:--text-secondary": 7,
+      "legacy-token:--text-primary": 5,
+      "legacy-token:--bg-tertiary": 2,
+      "legacy-token:--accent-primary": 13,
+      "legacy-token:--accent-hover": 2,
+      "legacy-token:--text-muted": 5,
+      "legacy-token:--font-mono": 3,
+      "legacy-token:--bg-hover-panel": 1,
+      "legacy-token:--bg-elevated": 1,
+      "legacy-token:--space-2": 1,
+      "legacy-token:--border-secondary": 1,
+      "legacy-token:--space-10": 1,
+      "legacy-token:--space-8": 1,
+      "legacy-token:--space-6": 1
+    },
+    "src-ui/src/components/TasksLayout.css": {
+      "legacy-token:--space-5": 1,
+      "legacy-token:--color-accent": 1,
+      "legacy-token:--space-3": 1
+    },
+    "src-ui/src/components/Toggle.css": {
+      "legacy-token:--text-tertiary": 2,
+      "legacy-token:--accent-primary": 1,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--space-2": 1,
+      "legacy-token:--text-secondary": 1
+    },
+    "src-ui/src/components/acp-connections/ACPConnectionDetailModal.tsx": {
+      "bespoke-action:\"button button--secondary\"": 1
+    },
+    "src-ui/src/components/acp-connections/ACPConnections.css": {
+      "legacy-token:--space-12": 1,
+      "legacy-token:--text-secondary": 4,
+      "legacy-token:--text-sm": 8,
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--radius-sm": 1,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--text-primary": 4,
+      "legacy-token:--accent-primary": 3,
+      "legacy-token:--radius-card": 2,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--text-muted": 1
+    },
+    "src-ui/src/components/acp-connections/EngineCapabilitySummary.css": {
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--text-tertiary": 1,
+      "legacy-token:--text-sm": 3,
+      "legacy-token:--text-secondary": 2,
+      "legacy-token:--text-md": 1,
+      "legacy-token:--bg-input": 1,
+      "legacy-token:--text-muted": 1
+    },
+    "src-ui/src/components/action-operations/ActionOperationsSection.css": {
+      "legacy-token:--space-3": 2,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--radius-md": 1,
+      "legacy-token:--space-2": 3,
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--text-sm": 1
+    },
+    "src-ui/src/components/attention/AttentionCard.css": {
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--accent-primary": 2,
+      "legacy-token:--font-mono": 3,
+      "legacy-token:--text-sm": 3,
+      "legacy-token:--text-muted": 5,
+      "legacy-token:--text-lg": 1,
+      "legacy-token:--text-base": 2
+    },
+    "src-ui/src/components/attention/AttentionHistoryItem.tsx": {
+      "bespoke-action:\"notification-history__action\"": 2,
+      "bespoke-action:{\n                isApprovalLivePending(item)\n                  ? 'notification-history__action notification-history__action--quiet'\n                  : 'notification-history__action'\n              }": 1
+    },
+    "src-ui/src/components/attention/PluginProposalAttentionActions.tsx": {
+      "bespoke-action:\"attention-item__action attention-item__action--ghost\"": 1
+    },
+    "src-ui/src/components/attention/RequestInspectionDialog.css": {
+      "legacy-token:--space-4": 2,
+      "legacy-token:--space-5": 1,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--radius-lg": 1,
+      "legacy-token:--text-md": 1,
+      "legacy-token:--space-2": 2,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--accent-primary": 1,
+      "legacy-token:--space-3": 1
+    },
+    "src-ui/src/components/badges/AchievementsBadge.css": {
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--bg-primary": 2,
+      "legacy-token:--text-secondary": 3,
+      "legacy-token:--text-base": 1,
+      "legacy-token:--accent-primary": 1
+    },
+    "src-ui/src/components/badges/AttributionChip.css": {
+      "legacy-token:--text-xs": 1,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--text-secondary": 1
+    },
+    "src-ui/src/components/badges/ComposerModeSheet.tsx": {
+      "bespoke-dialog:div": 1,
+      "bespoke-action:\"composer-mode-sheet__confirm-cancel\"": 1,
+      "bespoke-action:\"composer-mode-sheet__confirm-accept\"": 1
+    },
+    "src-ui/src/components/badges/EngineChip.css": {
+      "legacy-token:--text-xs": 1,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--text-tertiary": 1
+    },
+    "src-ui/src/components/chat-dock/ActiveWorkContextFrame.tsx": {
+      "bespoke-dialog:div": 1
+    },
+    "src-ui/src/components/chat-dock/BackgroundTasksSheet.css": {
+      "legacy-token:--border-primary": 4,
+      "legacy-token:--radius-lg": 3,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--space-3": 4,
+      "legacy-token:--space-4": 2,
+      "legacy-token:--text-sm": 2,
+      "legacy-token:--space-2": 11,
+      "legacy-token:--space-1": 2,
+      "legacy-token:--text-tertiary": 5,
+      "legacy-token:--text-xs": 5,
+      "legacy-token:--radius-md": 1,
+      "legacy-token:--bg-tertiary": 3,
+      "legacy-token:--text-secondary": 4,
+      "legacy-token:--radius-sm": 2,
+      "legacy-token:--bg-secondary": 2,
+      "legacy-token:--text-2xs": 4,
+      "legacy-token:--border-secondary": 1,
+      "legacy-token:--radius-pill": 1
+    },
+    "src-ui/src/components/chat-dock/ChatDockBody.tsx": {
+      "bespoke-action:\"button button--secondary session-history-error__retry\"": 1,
+      "bespoke-action:\"button button--secondary\"": 4
+    },
+    "src-ui/src/components/chat-dock/ChatDockHeader.css": {
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--radius-md": 4,
+      "legacy-token:--radius-pill": 1,
+      "legacy-token:--text-2xs": 1,
+      "legacy-token:--accent-primary": 1
+    },
+    "src-ui/src/components/chat-dock/ChatDockInboxPanel.css": {
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--space-2": 8,
+      "legacy-token:--space-3": 5,
+      "legacy-token:--space-1": 3,
+      "legacy-token:--text-tertiary": 1,
+      "legacy-token:--text-xs": 1,
+      "legacy-token:--radius-sm": 1,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--bg-tertiary": 2,
+      "legacy-token:--radius-md": 1,
+      "legacy-token:--text-secondary": 1
+    },
+    "src-ui/src/components/chat-dock/ChatDockInboxRows.tsx": {
+      "bespoke-action:\"chat-dock-inbox__row-action inbox-row__action\"": 4,
+      "bespoke-action:\"menu-row action-overflow__row--danger\"": 1
+    },
+    "src-ui/src/components/chat-dock/ChatDockProjectContext.css": {
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--radius-md": 2,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--text-sm": 1,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--text-primary": 1
+    },
+    "src-ui/src/components/chat-dock/ChatInboxHoverCard.css": {
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--border-primary": 4,
+      "legacy-token:--text-sm": 2,
+      "legacy-token:--text-primary": 3,
+      "legacy-token:--text-muted": 6,
+      "legacy-token:--text-2xs": 7,
+      "legacy-token:--space-2": 1,
+      "legacy-token:--accent-primary": 1,
+      "legacy-token:--text-secondary": 4,
+      "legacy-token:--text-xs": 6,
+      "legacy-token:--font-mono": 3,
+      "legacy-token:--space-8": 3
+    },
+    "src-ui/src/components/chat-dock/CommandLauncher.tsx": {
+      "bespoke-dialog:div": 1,
+      "bespoke-action:\"command-launcher__confirm\"": 1
+    },
+    "src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx": {
+      "bespoke-action:\"button button--primary\"": 1
+    },
+    "src-ui/src/components/chat-dock/ConversationOpenRecoveryNotice.tsx": {
+      "bespoke-action:\"button button--secondary\"": 2
+    },
+    "src-ui/src/components/chat-dock/DelegationLauncher.tsx": {
+      "bespoke-dialog:form": 1
+    },
+    "src-ui/src/components/chat-dock/ImportedConversationPane.css": {
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--text-sm": 1
+    },
+    "src-ui/src/components/chat-dock/MobileTaskSwitcher.tsx": {
+      "bespoke-dialog:section": 1
+    },
+    "src-ui/src/components/chat-dock/SessionContextCard.css": {
+      "legacy-token:--border-primary": 3,
+      "legacy-token:--bg-secondary": 2,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--text-muted": 4,
+      "legacy-token:--text-2xs": 1,
+      "legacy-token:--bg-tertiary": 2,
+      "legacy-token:--accent-primary": 4,
+      "legacy-token:--text-xs": 4,
+      "legacy-token:--text-sm": 2,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--font-mono": 2,
+      "legacy-token:--radius-lg": 1,
+      "legacy-token:--bg-primary": 1
+    },
+    "src-ui/src/components/chat-dock/SessionContextCard.tsx": {
+      "bespoke-action:\"session-context-card__action\"": 1
+    },
+    "src-ui/src/components/chat-dock/SessionContextChip.css": {
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--radius-pill": 1,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--text-xs": 1,
+      "legacy-token:--accent-primary": 3,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--text-muted": 1
+    },
+    "src-ui/src/components/chat-dock/SessionInventoryCompact.css": {
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--text-2xs": 1,
+      "legacy-token:--text-secondary": 2,
+      "legacy-token:--text-sm": 2,
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--accent-primary": 2
+    },
+    "src-ui/src/components/chat-dock/SessionScheduledSection.css": {
+      "legacy-token:--bg-tertiary": 1
+    },
+    "src-ui/src/components/chat-dock/UsageLimitBanner.css": {
+      "legacy-token:--space-2": 2,
+      "legacy-token:--space-3": 2,
+      "legacy-token:--radius-md": 1,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--text-md": 1,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--text-secondary": 1
+    },
+    "src-ui/src/components/chat-dock/backgroundTaskRows.tsx": {
+      "bespoke-action:\"background-tasks-sheet__action\"": 1,
+      "bespoke-action:\"background-tasks-sheet__action background-tasks-sheet__action--stop\"": 2
+    },
+    "src-ui/src/components/chat-start/StartComposer.css": {
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--bg-secondary": 2,
+      "legacy-token:--text-primary": 2
+    },
+    "src-ui/src/components/chat/AttachmentPreviewMenu.tsx": {
+      "bespoke-dialog:div": 1
+    },
+    "src-ui/src/components/chat/BackgroundTaskNoticeCard.css": {
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--color-success": 1,
+      "legacy-token:--color-error": 1,
+      "legacy-token:--color-warning": 1
+    },
+    "src-ui/src/components/chat/ChatLinkChip.css": {
+      "legacy-token:--accent-primary": 2,
+      "legacy-token:--font-mono": 1
+    },
+    "src-ui/src/components/chat/ChatMessageList.tsx": {
+      "bespoke-action:\"button button--secondary session-history-controls__more\"": 1
+    },
+    "src-ui/src/components/chat/CheckpointRestoreButton.tsx": {
+      "bespoke-action:\"button button--secondary\"": 2,
+      "bespoke-action:\"button button--danger\"": 1
+    },
+    "src-ui/src/components/chat/CodeBlockFrame.css": {
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--text-sm": 1,
+      "legacy-token:--text-base": 1,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--font-mono": 1
+    },
+    "src-ui/src/components/chat/ComposerAttachmentStrip.tsx": {
+      "bespoke-action:\"composer-attachments__action\"": 2
+    },
+    "src-ui/src/components/chat/ConversationHandoff.css": {
+      "legacy-token:--space-5": 1,
+      "legacy-token:--space-4": 1,
+      "legacy-token:--text-muted": 4,
+      "legacy-token:--border-primary": 3,
+      "legacy-token:--radius-md": 3,
+      "legacy-token:--bg-secondary": 2,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--accent-primary": 2
+    },
+    "src-ui/src/components/chat/ConversationTimeline.css": {
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--text-secondary": 2,
+      "legacy-token:--text-sm": 1,
+      "legacy-token:--text-xs": 3,
+      "legacy-token:--accent-primary": 2,
+      "legacy-token:--bg-elevated": 1,
+      "legacy-token:--bg-primary": 1
+    },
+    "src-ui/src/components/chat/ConversationTimeline.tsx": {
+      "bespoke-action:\"button button--secondary\"": 3,
+      "bespoke-action:\"button button--primary\"": 1
+    },
+    "src-ui/src/components/chat/EphemeralMessage.tsx": {
+      "bespoke-action:\"ephemeral-message__action\"": 2
+    },
+    "src-ui/src/components/chat/OutboundQueuedMessages.tsx": {
+      "bespoke-action:\"queued-message__btn queued-message__btn--danger\"": 1
+    },
+    "src-ui/src/components/chat/QueuedMessages.css": {
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--text-tertiary": 1,
+      "legacy-token:--text-sm": 4,
+      "legacy-token:--bg-input": 1,
+      "legacy-token:--text-secondary": 4,
+      "legacy-token:--text-md": 1,
+      "legacy-token:--text-muted": 2,
+      "legacy-token:--space-1": 3,
+      "legacy-token:--space-2": 1,
+      "legacy-token:--radius-sm": 1,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--accent-primary": 2,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--text-lg": 1
+    },
+    "src-ui/src/components/chat/QueuedMessages.tsx": {
+      "bespoke-action:\"queued-message__btn queued-message__btn--danger\"": 2
+    },
+    "src-ui/src/components/chat/ReplayCaptureControls.tsx": {
+      "bespoke-action:\"button button--secondary\"": 4
+    },
+    "src-ui/src/components/chat/ReplayTransport.css": {
+      "legacy-token:--space-2": 3,
+      "legacy-token:--space-3": 1,
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--bg-primary": 1
+    },
+    "src-ui/src/components/chat/ReplayTransport.tsx": {
+      "bespoke-action:\"button button--secondary\"": 7,
+      "bespoke-action:\"button button--primary\"": 1
+    },
+    "src-ui/src/components/chat/SessionSummaryCard.tsx": {
+      "bespoke-dialog:div": 1
+    },
+    "src-ui/src/components/chat/ShareAnswerButton.css": {
+      "legacy-token:--font-mono": 1
+    },
+    "src-ui/src/components/chat/ShareTargetPickerModal.tsx": {
+      "bespoke-dialog:div": 1
+    },
+    "src-ui/src/components/chat/SystemEventMessage.tsx": {
+      "bespoke-action:\"system-event__action\"": 1
+    },
+    "src-ui/src/components/chat/TaskPicker.css": {
+      "legacy-token:--text-muted": 3,
+      "legacy-token:--accent-primary": 3,
+      "legacy-token:--text-xs": 2,
+      "legacy-token:--text-primary": 3,
+      "legacy-token:--text-sm": 2,
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--bg-input": 1,
+      "legacy-token:--bg-primary": 2,
+      "legacy-token:--font-mono": 1
+    },
+    "src-ui/src/components/chat/ToolCallBatch.css": {
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--text-secondary": 1
+    },
+    "src-ui/src/components/chat/ToolCallDetails.css": {
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--text-secondary": 1
+    },
+    "src-ui/src/components/chat/ToolCallDisplay.tsx": {
+      "bespoke-action:\"tool-call__approve-btn tool-call__approve-btn--secondary\"": 1
+    },
+    "src-ui/src/components/chat/TurnActionsMenu.css": {
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--radius-md": 1,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--text-tertiary": 1,
+      "legacy-token:--text-xs": 1
+    },
+    "src-ui/src/components/chat/TurnActionsMenu.tsx": {
+      "bespoke-action:\"turn-footer__overflow-item--danger\"": 1
+    },
+    "src-ui/src/components/chat/TurnProvenanceCard.css": {
+      "legacy-token:--font-mono": 1
+    },
+    "src-ui/src/components/chat/UnconfirmedDiscardConfirm.css": {
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--bg-tertiary": 1
+    },
+    "src-ui/src/components/chat/UnconfirmedDiscardConfirm.tsx": {
+      "bespoke-action:\"unconfirmed-discard__button unconfirmed-discard__button--danger\"": 1
+    },
+    "src-ui/src/components/chat/UnsentMessages.css": {
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--text-tertiary": 1,
+      "legacy-token:--text-sm": 3,
+      "legacy-token:--bg-input": 1,
+      "legacy-token:--text-secondary": 2,
+      "legacy-token:--text-md": 1,
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--text-primary": 1
+    },
+    "src-ui/src/components/chat/UnsentMessages.tsx": {
+      "bespoke-action:\"unsent-message__action\"": 2
+    },
+    "src-ui/src/components/chat/agent-message/agent-message.css": {
+      "legacy-token:--text-secondary": 8,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--space-3": 4,
+      "legacy-token:--text-md": 2,
+      "legacy-token:--radius-sm": 3,
+      "legacy-token:--accent-primary": 1,
+      "legacy-token:--space-4": 3,
+      "legacy-token:--space-6": 3,
+      "legacy-token:--radius-md": 1,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--border-secondary": 2,
+      "legacy-token:--text-base": 1
+    },
+    "src-ui/src/components/chat/chat.css": {
+      "legacy-token:--bg-hover": 7,
+      "legacy-token:--bg-tertiary": 9,
+      "legacy-token:--space-4": 5,
+      "legacy-token:--text-secondary": 24,
+      "legacy-token:--text-primary": 20,
+      "legacy-token:--text-base": 3,
+      "legacy-token:--bg-selected": 1,
+      "legacy-token:--accent-primary": 24,
+      "legacy-token:--space-3": 9,
+      "legacy-token:--font-sans": 1,
+      "legacy-token:--text-lg": 2,
+      "legacy-token:--text-xs": 14,
+      "legacy-token:--space-2": 15,
+      "legacy-token:--border-primary": 20,
+      "legacy-token:--accent-secondary": 2,
+      "legacy-token:--bg-secondary": 11,
+      "legacy-token:--font-mono": 5,
+      "legacy-token:--text-muted": 13,
+      "legacy-token:--space-1": 7,
+      "legacy-token:--bg-primary": 7,
+      "legacy-token:--text-tertiary": 4,
+      "legacy-token:--text-2xs": 2,
+      "legacy-token:--text-sm": 4,
+      "legacy-token:--radius-pill": 2,
+      "legacy-token:--color-primary": 1,
+      "legacy-token:--text-on-accent": 2,
+      "legacy-token:--accent-hover-fill": 1,
+      "legacy-token:--radius-md": 6,
+      "legacy-token:--accent-yellow-text": 3,
+      "legacy-token:--accent-yellow": 4,
+      "legacy-token:--radius-lg": 3,
+      "legacy-token:--bg-elevated": 1,
+      "legacy-token:--text-xl": 1
+    },
+    "src-ui/src/components/chat/message-bubble/MessageDeliveryNote.tsx": {
+      "bespoke-action:\"message-delivery__action\"": 4
+    },
+    "src-ui/src/components/chat/share-target-picker.css": {
+      "legacy-token:--text-muted": 2,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--bg-input": 1,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--accent-primary": 1,
+      "legacy-token:--bg-hover": 1
+    },
+    "src-ui/src/components/coding-layout/BranchToolbar.css": {
+      "legacy-token:--space-4": 6,
+      "legacy-token:--border-primary": 6,
+      "legacy-token:--text-secondary": 10,
+      "legacy-token:--text-md": 6,
+      "legacy-token:--space-2": 1,
+      "legacy-token:--space-3": 3,
+      "legacy-token:--radius-pill": 2,
+      "legacy-token:--text-primary": 4,
+      "legacy-token:--bg-hover": 2,
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--text-base": 1,
+      "legacy-token:--accent-primary": 4,
+      "legacy-token:--text-sm": 5,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--radius-lg": 1,
+      "legacy-token:--radius-md": 4,
+      "legacy-token:--bg-tertiary": 3,
+      "legacy-token:--text-on-accent": 1
+    },
+    "src-ui/src/components/coding-layout/CodingDiffPaneBody.css": {
+      "legacy-token:--radius-pill": 2,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--space-5": 1,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--text-base": 1,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--bg-primary": 1
+    },
+    "src-ui/src/components/coding-layout/CodingInspectorPanel.css": {
+      "legacy-token:--text-secondary": 2,
+      "legacy-token:--text-sm": 4,
+      "legacy-token:--accent-primary": 3,
+      "legacy-token:--text-primary": 3,
+      "legacy-token:--text-base": 1,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--font-mono": 1
+    },
+    "src-ui/src/components/coding-layout/CodingLayout.css": {
+      "legacy-token:--border-primary": 15,
+      "legacy-token:--text-muted": 5,
+      "legacy-token:--space-6": 1,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--text-md": 11,
+      "legacy-token:--text-primary": 16,
+      "legacy-token:--text-secondary": 11,
+      "legacy-token:--text-sm": 5,
+      "legacy-token:--space-2": 1,
+      "legacy-token:--color-error": 3,
+      "legacy-token:--accent-primary": 12,
+      "legacy-token:--text-xs": 3,
+      "legacy-token:--text-lg": 3,
+      "legacy-token:--bg-hover": 2,
+      "legacy-token:--text-5xl": 1,
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--radius-md": 1,
+      "legacy-token:--radius-sm": 1,
+      "legacy-token:--bg-primary": 4,
+      "legacy-token:--color-text-secondary": 1,
+      "legacy-token:--color-bg-secondary": 1,
+      "legacy-token:--text-base": 3,
+      "legacy-token:--text-xl": 1,
+      "legacy-token:--text-2xl": 1,
+      "legacy-token:--bg-tertiary": 1
+    },
+    "src-ui/src/components/coding-layout/CodingWorkbench.css": {
+      "legacy-token:--space-6": 4,
+      "legacy-token:--border-primary": 12,
+      "legacy-token:--space-2": 11,
+      "legacy-token:--space-4": 6,
+      "legacy-token:--radius-md": 2,
+      "legacy-token:--bg-primary": 3,
+      "legacy-token:--text-primary": 6,
+      "legacy-token:--text-md": 7,
+      "legacy-token:--accent-primary": 22,
+      "legacy-token:--text-secondary": 7,
+      "legacy-token:--space-1": 2,
+      "legacy-token:--space-3": 3,
+      "legacy-token:--text-sm": 2,
+      "legacy-token:--accent-yellow": 1,
+      "legacy-token:--radius-lg": 2,
+      "legacy-token:--radius-sm": 2,
+      "legacy-token:--bg-hover": 1,
+      "legacy-token:--radius-pill": 6,
+      "legacy-token:--text-xl": 1,
+      "legacy-token:--text-on-accent": 4,
+      "legacy-token:--text-2xs": 2,
+      "legacy-token:--text-lg": 1
+    },
+    "src-ui/src/components/coding-layout/DiffPanel.css": {
+      "legacy-token:--space-4": 2,
+      "legacy-token:--text-md": 1,
+      "legacy-token:--text-muted": 7,
+      "legacy-token:--radius-pill": 1,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--text-lg": 1,
+      "legacy-token:--accent-primary": 9,
+      "legacy-token:--text-base": 1,
+      "legacy-token:--space-1": 1,
+      "legacy-token:--text-on-accent": 2,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--font-sans": 1,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--bg-primary": 1
+    },
+    "src-ui/src/components/coding-layout/FileTreeContextMenu.tsx": {
+      "bespoke-action:{`file-tree-context-menu__item${\n              action.danger ? ' file-tree-context-menu__item--danger' : ''\n            }`}": 1
+    },
+    "src-ui/src/components/coding-layout/FileTreePanel.css": {
+      "legacy-token:--text-muted": 4,
+      "legacy-token:--text-primary": 5,
+      "legacy-token:--bg-hover": 4,
+      "legacy-token:--bg-input": 1,
+      "legacy-token:--bg-secondary": 2,
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--accent-primary": 2,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--bg-selected": 1,
+      "legacy-token:--color-brand": 1,
+      "legacy-token:--bg-elevated": 1
+    },
+    "src-ui/src/components/coding-layout/FileTreePanel.tsx": {
+      "bespoke-action:\"file-tree-panel__action\"": 1
+    },
+    "src-ui/src/components/coding-layout/PullRequestDependencyStacks.css": {
+      "legacy-token:--space-2": 4,
+      "legacy-token:--text-xs": 2,
+      "legacy-token:--text-tertiary": 1,
+      "legacy-token:--text-sm": 2,
+      "legacy-token:--space-3": 3,
+      "legacy-token:--radius-md": 1,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--bg-hover": 1,
+      "legacy-token:--text-md": 1,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--font-mono": 1
+    },
+    "src-ui/src/components/coding-layout/PullRequestReviewPanel.css": {
+      "legacy-token:--text-md": 2,
+      "legacy-token:--space-2": 1,
+      "legacy-token:--text-lg": 2,
+      "legacy-token:--text-secondary": 5,
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--text-sm": 5,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--text-tertiary": 1,
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--text-xs": 1,
+      "legacy-token:--accent-primary": 2,
+      "legacy-token:--border-secondary": 1,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--radius-sm": 1
+    },
+    "src-ui/src/components/coding-layout/PullRequestsPanel.css": {
+      "legacy-token:--space-3": 2,
+      "legacy-token:--space-4": 3,
+      "legacy-token:--radius-pill": 1,
+      "legacy-token:--text-secondary": 2,
+      "legacy-token:--text-md": 3,
+      "legacy-token:--bg-hover": 2,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--accent-primary": 2,
+      "legacy-token:--space-2": 2,
+      "legacy-token:--text-xs": 1,
+      "legacy-token:--text-tertiary": 2,
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--border-primary": 1
+    },
+    "src-ui/src/components/conversation-stats/ContextPercentage.css": {
+      "legacy-token:--radius-pill": 2,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--text-xs": 1,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--accent-primary": 1,
+      "legacy-token:--border-primary": 1
+    },
+    "src-ui/src/components/drafts/DiscardDraftButton.css": {
+      "legacy-token:--space-1": 1,
+      "legacy-token:--text-xs": 1
+    },
+    "src-ui/src/components/editor-controls.css": {
+      "legacy-token:--space-8": 1,
+      "legacy-token:--space-4": 2,
+      "legacy-token:--text-secondary": 5,
+      "legacy-token:--text-md": 3,
+      "legacy-token:--space-2": 1,
+      "legacy-token:--text-muted": 5,
+      "legacy-token:--text-base": 4,
+      "legacy-token:--space-6": 1,
+      "legacy-token:--border-primary": 4,
+      "legacy-token:--bg-secondary": 2,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--text-lg": 1,
+      "legacy-token:--accent-primary": 6,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--bg-elevated": 1,
+      "legacy-token:--text-2xl": 1,
+      "legacy-token:--text-sm": 3,
+      "legacy-token:--space-1": 1,
+      "legacy-token:--text-xs": 1,
+      "legacy-token:--text-on-accent": 2
+    },
+    "src-ui/src/components/engine-install/EngineInstallHint.css": {
+      "legacy-token:--space-2": 3,
+      "legacy-token:--text-sm": 2,
+      "legacy-token:--color-text-secondary": 1,
+      "legacy-token:--color-border": 1,
+      "legacy-token:--radius-sm": 1,
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--color-text": 1,
+      "legacy-token:--space-3": 1
+    },
+    "src-ui/src/components/engine-install/PublicRegistry.css": {
+      "legacy-token:--space-2": 5,
+      "legacy-token:--space-4": 1,
+      "legacy-token:--text-base": 1,
+      "legacy-token:--color-text": 1,
+      "legacy-token:--text-sm": 5,
+      "legacy-token:--color-text-secondary": 5,
+      "legacy-token:--space-1": 2,
+      "legacy-token:--space-3": 3,
+      "legacy-token:--color-border": 1,
+      "legacy-token:--radius-sm": 1
+    },
+    "src-ui/src/components/first-run/AboutYouStep.css": {
+      "legacy-token:--space-3": 3,
+      "legacy-token:--space-2": 5,
+      "legacy-token:--radius-sm": 3,
+      "legacy-token:--text-sm": 5,
+      "legacy-token:--space-4": 2,
+      "legacy-token:--text-md": 2,
+      "legacy-token:--space-1": 3,
+      "legacy-token:--color-border": 2,
+      "legacy-token:--border-secondary": 1,
+      "legacy-token:--color-accent": 1,
+      "legacy-token:--color-primary": 1,
+      "legacy-token:--color-text-secondary": 3,
+      "legacy-token:--color-surface-sunken": 1,
+      "legacy-token:--color-surface": 1,
+      "legacy-token:--font-mono": 1
+    },
+    "src-ui/src/components/first-run/AboutYouStep.tsx": {
+      "bespoke-action:{\n              destination === 'chat'\n                ? 'editor-btn editor-btn--primary'\n                : 'editor-btn'\n            }": 1
+    },
+    "src-ui/src/components/first-run/Coachmark.css": {
+      "legacy-token:--space-4": 2,
+      "legacy-token:--radius-lg": 1,
+      "legacy-token:--border-secondary": 2,
+      "legacy-token:--color-surface-raised": 1,
+      "legacy-token:--color-surface": 1,
+      "legacy-token:--color-text": 2,
+      "legacy-token:--text-sm": 1,
+      "legacy-token:--color-text-secondary": 3,
+      "legacy-token:--space-2": 4,
+      "legacy-token:--space-1": 1,
+      "legacy-token:--text-15": 1,
+      "legacy-token:--text-md": 2,
+      "legacy-token:--space-3": 1,
+      "legacy-token:--radius-sm": 1,
+      "legacy-token:--color-accent": 2,
+      "legacy-token:--color-primary": 2,
+      "legacy-token:--text-on-accent-yellow": 1,
+      "legacy-token:--color-border": 1
+    },
+    "src-ui/src/components/first-run/Coachmark.tsx": {
+      "bespoke-dialog:div": 1
+    },
+    "src-ui/src/components/first-run/EnginesStep.css": {
+      "legacy-token:--space-4": 4,
+      "legacy-token:--space-1": 3,
+      "legacy-token:--space-2": 2,
+      "legacy-token:--color-border": 1,
+      "legacy-token:--radius-sm": 1,
+      "legacy-token:--text-md": 2,
+      "legacy-token:--color-accent": 2,
+      "legacy-token:--color-primary": 2,
+      "legacy-token:--color-text-secondary": 5,
+      "legacy-token:--text-sm": 4,
+      "legacy-token:--space-3": 1
+    },
+    "src-ui/src/components/first-run/EnginesStep.tsx": {
+      "bespoke-action:\"editor-btn editor-btn--primary\"": 2
+    },
+    "src-ui/src/components/first-run/FirstRunHomeChapter.css": {
+      "legacy-token:--space-4": 5,
+      "legacy-token:--space-5": 1,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--radius-lg": 1,
+      "legacy-token:--text-md": 3,
+      "legacy-token:--color-text-secondary": 2,
+      "legacy-token:--space-2": 3,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--color-accent": 1,
+      "legacy-token:--color-primary": 1
+    },
+    "src-ui/src/components/first-run/UnpairedSampleWorkspace.css": {
+      "legacy-token:--bg-primary": 2,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--border-primary": 9,
+      "legacy-token:--bg-secondary": 4,
+      "legacy-token:--text-secondary": 9,
+      "legacy-token:--text-tertiary": 1,
+      "legacy-token:--accent-primary": 1,
+      "legacy-token:--text-on-accent": 1
+    },
+    "src-ui/src/components/flow/WorkflowPlanPanel.tsx": {
+      "bespoke-action:{`workflow-plan-panel__action${\n                copyState === 'failed' ? ' copy-affordance--failed' : ''\n              }`}": 1
+    },
+    "src-ui/src/components/flow/WorkflowStatusLine.css": {
+      "legacy-token:--text-sm": 1,
+      "legacy-token:--text-muted": 7,
+      "legacy-token:--font-mono": 2,
+      "legacy-token:--text-xs": 5,
+      "legacy-token:--text-secondary": 2,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--accent-primary": 1
+    },
+    "src-ui/src/components/header/LayoutSwitcher.css": {
+      "legacy-token:--text-md": 1,
+      "legacy-token:--space-2": 1
+    },
+    "src-ui/src/components/home/HomeActionSection.tsx": {
+      "bespoke-action:{`home-view__action${className ? ` ${className}` : ''}`}": 1
+    },
+    "src-ui/src/components/host-action/HostAction.css": {
+      "legacy-token:--space-2": 1,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--text-sm": 2,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--font-mono": 1
+    },
+    "src-ui/src/components/icons/BrandIcon.css": {
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--text-muted": 1
+    },
+    "src-ui/src/components/icons/ProjectIcon.css": {
+      "legacy-token:--radius-pill": 1
+    },
+    "src-ui/src/components/inbox-row/InboxRow.css": {
+      "legacy-token:--text-base": 1,
+      "legacy-token:--text-sm": 1,
+      "legacy-token:--space-3": 4,
+      "legacy-token:--space-4": 1,
+      "legacy-token:--radius-md": 3,
+      "legacy-token:--space-1": 6,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--border-secondary": 2,
+      "legacy-token:--bg-tertiary": 3,
+      "legacy-token:--accent-primary": 4,
+      "legacy-token:--space-2": 9,
+      "legacy-token:--text-tertiary": 5,
+      "legacy-token:--text-secondary": 4,
+      "legacy-token:--radius-sm": 1,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--radius-pill": 2,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--text-xs": 1
+    },
+    "src-ui/src/components/inbox-row/WorkGroupLabel.css": {
+      "legacy-token:--font-sans": 1,
+      "legacy-token:--text-sm": 1
+    },
+    "src-ui/src/components/mcp-ui/MCPToolUIFrame.css": {
+      "legacy-token:--bg-secondary": 2,
+      "legacy-token:--text-primary": 3,
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--text-tertiary": 2,
+      "legacy-token:--text-secondary": 2
+    },
+    "src-ui/src/components/modals/FolderBrowserModal.css": {
+      "legacy-token:--bg-primary": 2,
+      "legacy-token:--border-primary": 3,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--text-on-accent": 1,
+      "legacy-token:--accent-primary": 2
+    },
+    "src-ui/src/components/modals/ImportSkillsModal.css": {
+      "legacy-token:--text-lg": 1,
+      "legacy-token:--border-primary": 3,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--text-md": 2,
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--color-primary": 2,
+      "legacy-token:--bg-primary": 2,
+      "legacy-token:--text-base": 1,
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--text-secondary": 1
+    },
+    "src-ui/src/components/modals/NewChatModal.tsx": {
+      "bespoke-dialog:div": 1
+    },
+    "src-ui/src/components/modals/NewProjectModal.css": {
+      "legacy-token:--accent-primary": 6,
+      "legacy-token:--bg-primary": 7,
+      "legacy-token:--border-primary": 6,
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--text-primary": 3,
+      "legacy-token:--text-secondary": 5,
+      "legacy-token:--bg-secondary": 4
+    },
+    "src-ui/src/components/modals/PromptModal.css": {
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--bg-input": 1,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--accent-primary": 1
+    },
+    "src-ui/src/components/monitoring/InsightsDashboard.css": {
+      "legacy-token:--text-primary": 3,
+      "legacy-token:--border-primary": 5,
+      "legacy-token:--bg-secondary": 4,
+      "legacy-token:--text-secondary": 6,
+      "legacy-token:--accent-primary": 7,
+      "legacy-token:--text-on-accent": 1,
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--space-2": 2,
+      "legacy-token:--space-3": 1,
+      "legacy-token:--bg-hover": 1,
+      "legacy-token:--text-muted": 1
+    },
+    "src-ui/src/components/notifications/NotificationContainer.css": {
+      "legacy-token:--accent-primary": 8,
+      "legacy-token:--border-primary": 4,
+      "legacy-token:--bg-primary": 2,
+      "legacy-token:--text-primary": 4,
+      "legacy-token:--text-on-accent": 2,
+      "legacy-token:--text-muted": 4,
+      "legacy-token:--text-tertiary": 1,
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--text-secondary": 2,
+      "legacy-token:--bg-tertiary": 4
+    },
+    "src-ui/src/components/notifications/NotificationContainer.tsx": {
+      "bespoke-action:\"toast-card__action toast-card__action--primary\"": 3,
+      "bespoke-action:\"toast-card__action toast-card__action--danger\"": 1
+    },
+    "src-ui/src/components/notifications/NotificationHistory.css": {
+      "legacy-token:--border-primary": 7,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--text-muted": 4,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--space-3": 2,
+      "legacy-token:--space-4": 1,
+      "legacy-token:--text-sm": 1,
+      "legacy-token:--accent-primary": 1,
+      "legacy-token:--text-secondary": 1
+    },
+    "src-ui/src/components/notifications/NotificationHistory.tsx": {
+      "bespoke-action:\"notification-history__action\"": 1
+    },
+    "src-ui/src/components/notifications/NotificationHistoryItem.tsx": {
+      "bespoke-action:\"notification-history__action\"": 2
+    },
+    "src-ui/src/components/page-frame/page-frame.css": {
+      "legacy-token:--font-sans": 4,
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--accent-primary": 3,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--text-muted": 2,
+      "legacy-token:--text-on-accent": 1,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--bg-tertiary": 1
+    },
+    "src-ui/src/components/plugins/PluginProposalSummary.css": {
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--border-primary": 1
+    },
+    "src-ui/src/components/project-icon/ProjectIconPicker.css": {
+      "legacy-token:--space-3": 3,
+      "legacy-token:--space-4": 1,
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--radius-lg": 2,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--space-1": 1,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--text-sm": 1,
+      "legacy-token:--text-secondary": 2,
+      "legacy-token:--text-xs": 3,
+      "legacy-token:--space-2": 1,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--accent-primary": 6,
+      "legacy-token:--radius-md": 1,
+      "legacy-token:--text-xl": 1,
+      "legacy-token:--space-6": 1
+    },
+    "src-ui/src/components/project-sidebar/ProjectSidebar.css": {
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--text-lg": 1,
+      "legacy-token:--text-primary": 8,
+      "legacy-token:--text-xs": 2,
+      "legacy-token:--bg-hover": 6,
+      "legacy-token:--text-muted": 3,
+      "legacy-token:--text-tertiary": 3,
+      "legacy-token:--accent-primary": 3,
+      "legacy-token:--text-on-accent": 1,
+      "legacy-token:--bg-tertiary": 2,
+      "legacy-token:--text-md": 1,
+      "legacy-token:--text-sm": 1
+    },
+    "src-ui/src/components/project-sidebar/ProjectSidebarBoards.css": {
+      "legacy-token:--accent-primary": 1,
+      "legacy-token:--bg-tertiary": 2,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--text-md": 1,
+      "legacy-token:--text-muted": 2,
+      "legacy-token:--bg-hover": 1,
+      "legacy-token:--space-2": 1,
+      "legacy-token:--space-6": 1,
+      "legacy-token:--text-xs": 1
+    },
+    "src-ui/src/components/project-sidebar/ProjectSidebarPresenceTray.css": {
+      "legacy-token:--text-muted": 4,
+      "legacy-token:--text-sm": 2,
+      "legacy-token:--border-primary": 3,
+      "legacy-token:--text-primary": 3,
+      "legacy-token:--bg-secondary": 2,
+      "legacy-token:--bg-tertiary": 2,
+      "legacy-token:--text-secondary": 2,
+      "legacy-token:--text-xs": 4,
+      "legacy-token:--accent-primary": 1
+    },
+    "src-ui/src/components/project-sidebar/ProjectSidebarPresenceTray.tsx": {
+      "bespoke-dialog:div": 1
+    },
+    "src-ui/src/components/project-sidebar/SidebarPopover.tsx": {
+      "bespoke-dialog:div": 1
+    },
+    "src-ui/src/components/pull-requests/ConversationPullRequestLinks.css": {
+      "legacy-token:--space-3": 1,
+      "legacy-token:--space-4": 1,
+      "legacy-token:--text-md": 2,
+      "legacy-token:--text-muted": 1
+    },
+    "src-ui/src/components/pull-requests/LinkPullRequestField.css": {
+      "legacy-token:--space-3": 1
+    },
+    "src-ui/src/components/pull-requests/PullRequestRow.css": {
+      "legacy-token:--space-4": 2,
+      "legacy-token:--space-3": 3,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--space-2": 5,
+      "legacy-token:--radius-md": 1,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--bg-hover": 2,
+      "legacy-token:--text-md": 1,
+      "legacy-token:--text-sm": 2,
+      "legacy-token:--text-secondary": 3,
+      "legacy-token:--accent-primary": 1,
+      "legacy-token:--text-tertiary": 1,
+      "legacy-token:--radius-pill": 1,
+      "legacy-token:--text-lg": 1
+    },
+    "src-ui/src/components/pull-requests/pull-request-chips.css": {
+      "legacy-token:--space-4": 1,
+      "legacy-token:--radius-pill": 1,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--text-tertiary": 1,
+      "legacy-token:--text-sm": 1
+    },
+    "src-ui/src/components/registry/ProjectLayoutCatalog.css": {
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--bg-secondary": 3,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--accent-primary": 5,
+      "legacy-token:--text-md": 1,
+      "legacy-token:--text-muted": 2,
+      "legacy-token:--text-sm": 1,
+      "legacy-token:--text-xs": 1
+    },
+    "src-ui/src/components/review/review-detail.css": {
+      "legacy-token:--accent-primary": 2,
+      "legacy-token:--border-primary": 5,
+      "legacy-token:--text-primary": 3,
+      "legacy-token:--text-muted": 2,
+      "legacy-token:--font-mono": 4,
+      "legacy-token:--bg-secondary": 3,
+      "legacy-token:--text-secondary": 2,
+      "legacy-token:--bg-primary": 1
+    },
+    "src-ui/src/components/scheduler/JobDetail.tsx": {
+      "bespoke-action:\"schedule__action-btn\"": 1
+    },
+    "src-ui/src/components/session-detail/SessionDetail.css": {
+      "legacy-token:--space-2": 4,
+      "legacy-token:--space-3": 6,
+      "legacy-token:--space-1": 1,
+      "legacy-token:--radius-sm": 1,
+      "legacy-token:--text-secondary": 6,
+      "legacy-token:--text-base": 3,
+      "legacy-token:--bg-primary": 2,
+      "legacy-token:--text-md": 3,
+      "legacy-token:--text-lg": 1,
+      "legacy-token:--space-4": 2,
+      "legacy-token:--space-5": 2,
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--radius-md": 1,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--text-primary": 2
+    },
+    "src-ui/src/components/session-detail/SessionDetailMoreMenu.tsx": {
+      "bespoke-action:\"button button--secondary session-detail-more__trigger\"": 1
+    },
+    "src-ui/src/components/session-failure/SessionFailureAlert.css": {
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--text-muted": 1
+    },
+    "src-ui/src/components/session/ModelPickerDialogFrame.tsx": {
+      "bespoke-dialog:div": 1
+    },
+    "src-ui/src/components/session/SessionConversationItem.tsx": {
+      "bespoke-action:{`session-item__action-btn${\n            copyState === 'failed' ? ' copy-affordance--failed' : ''\n          }`}": 1,
+      "bespoke-action:\"session-item__action-btn\"": 2,
+      "bespoke-action:\"session-item__action-btn session-item__action-btn--delete\"": 1
+    },
+    "src-ui/src/components/setup/ExistingSetupImportStepper.css": {
+      "legacy-token:--space-3": 4,
+      "legacy-token:--space-4": 2,
+      "legacy-token:--color-border": 2,
+      "legacy-token:--border-primary": 4,
+      "legacy-token:--radius-md": 1,
+      "legacy-token:--color-surface-raised": 1,
+      "legacy-token:--bg-secondary": 2,
+      "legacy-token:--text-15": 1,
+      "legacy-token:--space-1": 2,
+      "legacy-token:--color-text-secondary": 3,
+      "legacy-token:--text-muted": 4,
+      "legacy-token:--text-md": 4,
+      "legacy-token:--space-2": 3,
+      "legacy-token:--radius-sm": 1
+    },
+    "src-ui/src/components/state/FilteredEmpty.css": {
+      "legacy-token:--space-4": 1,
+      "legacy-token:--space-8": 1,
+      "legacy-token:--border-secondary": 1,
+      "legacy-token:--radius-md": 1,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--accent-primary": 2,
+      "legacy-token:--bg-hover": 1
+    },
+    "src-ui/src/components/status/StatusGlyph.css": {
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--accent-primary": 1,
+      "legacy-token:--color-warning": 1,
+      "legacy-token:--color-success": 1,
+      "legacy-token:--color-error": 1
+    },
+    "src-ui/src/components/status/live-status.css": {
+      "legacy-token:--border-primary": 5,
+      "legacy-token:--bg-primary": 3,
+      "legacy-token:--text-secondary": 2,
+      "legacy-token:--text-sm": 1,
+      "legacy-token:--accent-primary": 3,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--text-xs": 1
+    },
+    "src-ui/src/components/usage-stats/UsageRollupPanel.css": {
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--accent-primary": 2,
+      "legacy-token:--bg-secondary": 1
+    },
+    "src-ui/src/components/usage-stats/UsageRollupPanel.tsx": {
+      "bespoke-dialog:div": 2
+    },
+    "src-ui/src/components/usage-stats/UsageStatsPanel.css": {
+      "legacy-token:--text-primary": 3,
+      "legacy-token:--bg-tertiary": 2,
+      "legacy-token:--border-primary": 6,
+      "legacy-token:--text-secondary": 16,
+      "legacy-token:--bg-secondary": 3,
+      "legacy-token:--bg-primary": 2,
+      "legacy-token:--accent-primary": 6,
+      "legacy-token:--text-on-accent": 2,
+      "legacy-token:--text-2xl": 1,
+      "legacy-token:--text-lg": 3,
+      "legacy-token:--text-md": 1,
+      "legacy-token:--text-sm": 2
+    },
+    "src-ui/src/components/voice/VoiceOrb.css": {
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--text-xl": 1,
+      "legacy-token:--text-muted": 1
+    },
+    "src-ui/src/components/voice/VoicePill.css": {
+      "legacy-token:--bg-secondary": 2,
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--text-md": 1,
+      "legacy-token:--text-xs": 1
+    },
+    "src-ui/src/float-over-chat/FloatOverChat.css": {
+      "legacy-token:--bg-secondary": 3,
+      "legacy-token:--radius-md": 3,
+      "legacy-token:--border-primary": 4,
+      "legacy-token:--accent-primary": 4,
+      "legacy-token:--text-muted": 2,
+      "legacy-token:--bg-primary": 3,
+      "legacy-token:--radius-sm": 1,
+      "legacy-token:--text-secondary": 2,
+      "legacy-token:--text-primary": 1
+    },
+    "src-ui/src/index.css": {
+      "legacy-token:--accent-primary": 80,
+      "legacy-token:--accent-yellow": 3,
+      "legacy-token:--text-muted": 78,
+      "legacy-token:--bg-primary": 36,
+      "legacy-token:--bg-secondary": 47,
+      "legacy-token:--text-primary": 85,
+      "legacy-token:--text-secondary": 61,
+      "legacy-token:--border-primary": 111,
+      "legacy-token:--accent-darker": 2,
+      "legacy-token:--border-secondary": 9,
+      "legacy-token:--font-sans": 3,
+      "legacy-token:--bg-tertiary": 30,
+      "legacy-token:--radius-sm": 10,
+      "legacy-token:--bg-elevated": 2,
+      "legacy-token:--text-md": 18,
+      "legacy-token:--radius-md": 11,
+      "legacy-token:--bg-hover": 9,
+      "legacy-token:--space-3": 17,
+      "legacy-token:--text-xs": 36,
+      "legacy-token:--space-4": 11,
+      "legacy-token:--radius-overlay": 3,
+      "legacy-token:--font-mono": 15,
+      "legacy-token:--text-2xl": 4,
+      "legacy-token:--text-lg": 17,
+      "legacy-token:--radius-lg": 3,
+      "legacy-token:--text-sm": 41,
+      "legacy-token:--text-base": 23,
+      "legacy-token:--accent-light": 1,
+      "legacy-token:--bg-input": 1,
+      "legacy-token:--text-on-accent": 12,
+      "legacy-token:--accent-strong": 1,
+      "legacy-token:--space-2": 35,
+      "legacy-token:--space-6": 3,
+      "legacy-token:--text-tertiary": 14,
+      "legacy-token:--space-1": 12,
+      "legacy-token:--space-8": 5,
+      "legacy-token:--bg-selected": 2,
+      "legacy-token:--radius-pill": 6,
+      "legacy-token:--text-2xs": 6,
+      "legacy-token:--accent-border": 2,
+      "legacy-token:--color-error": 4,
+      "legacy-token:--color-primary": 8,
+      "legacy-token:--accent-hover-fill": 2,
+      "legacy-token:--text-micro": 1,
+      "legacy-token:--text-muted-light": 1,
+      "legacy-token:--color-bg": 3,
+      "legacy-token:--color-text": 3,
+      "legacy-token:--color-border": 2,
+      "legacy-token:--color-bg-secondary": 1,
+      "legacy-token:--color-text-secondary": 1,
+      "legacy-token:--radius-xl": 1,
+      "legacy-token:--text-muted-lighter": 1,
+      "legacy-token:--text-subtle": 3,
+      "legacy-token:--text-3xl": 3,
+      "legacy-token:--text-xl": 2,
+      "legacy-token:--text-5xl": 1,
+      "legacy-token:--text-15": 2,
+      "legacy-token:--accent-hover": 1,
+      "legacy-token:--accent-acp": 1
+    },
+    "src-ui/src/live-surface/LiveSurfaceCanvas.css": {
+      "legacy-token:--space-2": 6,
+      "legacy-token:--accent-warning": 2,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--radius-md": 1,
+      "legacy-token:--accent-primary": 1,
+      "legacy-token:--radius-sm": 1,
+      "legacy-token:--space-1": 1
+    },
+    "src-ui/src/pages/AppearancePage.css": {
+      "legacy-token:--accent-primary": 6,
+      "legacy-token:--text-on-accent": 2
+    },
+    "src-ui/src/pages/NotificationsPage.css": {
+      "legacy-token:--text-secondary": 4,
+      "legacy-token:--border-primary": 7,
+      "legacy-token:--radius-md": 1,
+      "legacy-token:--bg-secondary": 3,
+      "legacy-token:--color-error": 1,
+      "legacy-token:--color-warning": 1,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--text-muted": 6,
+      "legacy-token:--text-sm": 8,
+      "legacy-token:--bg-tertiary": 4,
+      "legacy-token:--border-secondary": 2,
+      "legacy-token:--accent-primary": 7,
+      "legacy-token:--accent-secondary": 1,
+      "legacy-token:--font-mono": 3,
+      "legacy-token:--text-lg": 1,
+      "legacy-token:--text-base": 2
+    },
+    "src-ui/src/pages/ProfilePage.css": {
+      "legacy-token:--text-lg": 1,
+      "legacy-token:--text-muted": 6,
+      "legacy-token:--font-mono": 6,
+      "legacy-token:--border-primary": 3,
+      "legacy-token:--accent-primary": 6,
+      "legacy-token:--text-secondary": 2,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--bg-tertiary": 1
+    },
+    "src-ui/src/tailwind.css": {
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--border-secondary": 1,
+      "legacy-token:--accent-primary": 1
+    },
+    "src-ui/src/views/BoardView.css": {
+      "legacy-token:--space-4": 2,
+      "legacy-token:--space-2": 1,
+      "legacy-token:--space-3": 1
+    },
+    "src-ui/src/views/DeveloperView.css": {
+      "legacy-token:--space-4": 5,
+      "legacy-token:--text-secondary": 3,
+      "legacy-token:--space-3": 3,
+      "legacy-token:--space-1": 2,
+      "legacy-token:--space-2": 1,
+      "legacy-token:--space-5": 1
+    },
+    "src-ui/src/views/EngineAddFlow.css": {
+      "legacy-token:--space-12": 1,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--radius-card": 1,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--text-sm": 1
+    },
+    "src-ui/src/views/HomeView.css": {
+      "legacy-token:--radius-md": 2,
+      "legacy-token:--bg-secondary": 2,
+      "legacy-token:--accent-primary": 8,
+      "legacy-token:--text-sm": 6,
+      "legacy-token:--radius-sm": 1,
+      "legacy-token:--text-secondary": 5,
+      "legacy-token:--text-xs": 1,
+      "legacy-token:--text-muted": 4,
+      "legacy-token:--border-primary": 8,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--bg-hover": 2,
+      "legacy-token:--text-tertiary": 1,
+      "legacy-token:--text-lg": 1,
+      "legacy-token:--text-base": 1,
+      "legacy-token:--space-5": 1,
+      "legacy-token:--space-2": 1
+    },
+    "src-ui/src/views/IntegrationsView.css": {
+      "legacy-token:--text-primary": 3,
+      "legacy-token:--bg-secondary": 4,
+      "legacy-token:--border-primary": 2
+    },
+    "src-ui/src/views/KnowledgeConnectionView.css": {
+      "legacy-token:--text-muted": 5,
+      "legacy-token:--text-15": 1,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--text-sm": 3,
+      "legacy-token:--bg-tertiary": 2,
+      "legacy-token:--text-md": 2,
+      "legacy-token:--text-3xl": 1,
+      "legacy-token:--accent-primary": 1
+    },
+    "src-ui/src/views/KnowledgeConnectionView.tsx": {
+      "bespoke-action:\"editor-btn editor-btn--primary\"": 1
+    },
+    "src-ui/src/views/LayoutView.css": {
+      "legacy-token:--space-3": 1,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--border-primary": 1
+    },
+    "src-ui/src/views/LayoutView.tsx": {
+      "bespoke-action:\"editor-btn editor-btn--primary\"": 1
+    },
+    "src-ui/src/views/MonitoringWidgets.css": {
+      "legacy-token:--bg-tertiary": 23,
+      "legacy-token:--border-primary": 31,
+      "legacy-token:--text-tertiary": 5,
+      "legacy-token:--text-secondary": 30,
+      "legacy-token:--text-primary": 14,
+      "legacy-token:--bg-hover": 6,
+      "legacy-token:--bg-secondary": 15,
+      "legacy-token:--accent-primary": 20,
+      "legacy-token:--text-on-accent": 8,
+      "legacy-token:--font-mono": 7,
+      "legacy-token:--bg-primary": 2,
+      "legacy-token:--text-sm": 1,
+      "legacy-token:--text-base": 1
+    },
+    "src-ui/src/views/PluginManagementView.css": {
+      "legacy-token:--bg-secondary": 2,
+      "legacy-token:--border-primary": 13,
+      "legacy-token:--font-mono": 5,
+      "legacy-token:--accent-primary": 11,
+      "legacy-token:--text-primary": 12,
+      "legacy-token:--text-muted": 18,
+      "legacy-token:--font-sans": 4,
+      "legacy-token:--text-on-accent": 3,
+      "legacy-token:--bg-hover": 1,
+      "legacy-token:--bg-primary": 6,
+      "legacy-token:--text-secondary": 12,
+      "legacy-token:--text-md": 4,
+      "legacy-token:--border-secondary": 3,
+      "legacy-token:--text-tertiary": 4,
+      "legacy-token:--text-lg": 1,
+      "legacy-token:--text-base": 5,
+      "legacy-token:--text-sm": 2
+    },
+    "src-ui/src/views/ProjectPage.css": {
+      "legacy-token:--text-6xl": 1,
+      "legacy-token:--text-4xl": 1,
+      "legacy-token:--text-primary": 22,
+      "legacy-token:--text-md": 10,
+      "legacy-token:--text-muted": 39,
+      "legacy-token:--text-sm": 19,
+      "legacy-token:--text-base": 18,
+      "legacy-token:--border-primary": 28,
+      "legacy-token:--bg-primary": 6,
+      "legacy-token:--font-mono": 11,
+      "legacy-token:--accent-primary": 35,
+      "legacy-token:--bg-secondary": 16,
+      "legacy-token:--bg-tertiary": 13,
+      "legacy-token:--text-on-accent": 4,
+      "legacy-token:--text-5xl": 2,
+      "legacy-token:--text-15": 2,
+      "legacy-token:--text-xs": 10,
+      "legacy-token:--border-secondary": 2,
+      "legacy-token:--text-xl": 2,
+      "legacy-token:--text-lg": 2,
+      "legacy-token:--text-secondary": 4,
+      "legacy-token:--accent-yellow": 2,
+      "legacy-token:--space-2": 2,
+      "legacy-token:--space-3": 1,
+      "legacy-token:--radius-md": 1
+    },
+    "src-ui/src/views/ProjectSettingsView.css": {
+      "legacy-token:--border-primary": 10,
+      "legacy-token:--text-md": 3,
+      "legacy-token:--text-primary": 8,
+      "legacy-token:--text-sm": 6,
+      "legacy-token:--text-muted": 6,
+      "legacy-token:--bg-secondary": 5,
+      "legacy-token:--text-base": 4,
+      "legacy-token:--text-secondary": 9,
+      "legacy-token:--bg-primary": 5,
+      "legacy-token:--bg-hover": 1,
+      "legacy-token:--text-xl": 1,
+      "legacy-token:--font-mono": 5,
+      "legacy-token:--accent-primary": 2,
+      "legacy-token:--radius-lg": 1,
+      "legacy-token:--space-2": 1,
+      "legacy-token:--space-3": 1,
+      "legacy-token:--text-xs": 1
+    },
+    "src-ui/src/views/ProjectSettingsView.tsx": {
+      "bespoke-action:\"editor-btn editor-btn--primary\"": 1,
+      "bespoke-action:\"editor-btn editor-btn--danger\"": 1
+    },
+    "src-ui/src/views/ProviderSettingsView.tsx": {
+      "bespoke-action:\"editor-btn editor-btn--danger\"": 1,
+      "bespoke-action:\"editor-btn editor-btn--primary\"": 1
+    },
+    "src-ui/src/views/ScheduleView.css": {
+      "legacy-token:--text-primary": 20,
+      "legacy-token:--accent-primary": 26,
+      "legacy-token:--text-secondary": 18,
+      "legacy-token:--bg-tertiary": 15,
+      "legacy-token:--bg-secondary": 20,
+      "legacy-token:--border-primary": 22,
+      "legacy-token:--font-mono": 8,
+      "legacy-token:--font-sans": 4,
+      "legacy-token:--text-muted": 16,
+      "legacy-token:--accent-hover": 1,
+      "legacy-token:--text-on-accent": 1,
+      "legacy-token:--text-base": 1,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--border-secondary": 1,
+      "legacy-token:--bg-elevated": 1,
+      "legacy-token:--bg-input": 1,
+      "legacy-token:--bg-highlight": 1,
+      "legacy-token:--bg-hover": 1
+    },
+    "src-ui/src/views/SessionsView.css": {
+      "legacy-token:--space-2": 8,
+      "legacy-token:--space-1": 4,
+      "legacy-token:--text-secondary": 3,
+      "legacy-token:--text-xs": 4,
+      "legacy-token:--space-4": 1,
+      "legacy-token:--accent-primary": 11,
+      "legacy-token:--radius-pill": 1,
+      "legacy-token:--border-primary": 7,
+      "legacy-token:--bg-secondary": 5,
+      "legacy-token:--text-primary": 9,
+      "legacy-token:--font-mono": 5,
+      "legacy-token:--text-muted": 6,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--bg-elevated": 1
+    },
+    "src-ui/src/views/SettingsView.css": {
+      "legacy-token:--border-primary": 18,
+      "legacy-token:--text-primary": 11,
+      "legacy-token:--font-sans": 4,
+      "legacy-token:--accent-primary": 20,
+      "legacy-token:--text-on-accent": 3,
+      "legacy-token:--text-secondary": 17,
+      "legacy-token:--bg-secondary": 4,
+      "legacy-token:--text-muted": 15,
+      "legacy-token:--bg-primary": 6,
+      "legacy-token:--font-mono": 8,
+      "legacy-token:--radius-md": 1
+    },
+    "src-ui/src/views/SkillsView.tsx": {
+      "bespoke-action:\"split-pane__add-btn split-pane__add-btn--secondary\"": 2
+    },
+    "src-ui/src/views/SortableTable.css": {
+      "legacy-token:--font-sans": 1,
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--bg-tertiary": 3,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--accent-primary": 2,
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--bg-secondary": 2
+    },
+    "src-ui/src/views/TaskWorkspaceView.css": {
+      "legacy-token:--border-primary": 18,
+      "legacy-token:--bg-secondary": 5,
+      "legacy-token:--text-primary": 14,
+      "legacy-token:--text-muted": 16,
+      "legacy-token:--bg-primary": 15,
+      "legacy-token:--accent-primary": 16,
+      "legacy-token:--font-mono": 13,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--text-secondary": 3
+    },
+    "src-ui/src/views/TaskWorkspaceView.tsx": {
+      "bespoke-action:\"editor-btn editor-btn--primary\"": 2
+    },
+    "src-ui/src/views/account/account-entry.css": {
+      "legacy-token:--bg-primary": 6,
+      "legacy-token:--text-primary": 4,
+      "legacy-token:--border-primary": 13,
+      "legacy-token:--bg-secondary": 4
+    },
+    "src-ui/src/views/activity/ActivityRowMenu.css": {
+      "legacy-token:--radius-md": 1,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--text-lg": 1,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--bg-hover": 1,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--accent-primary": 1
+    },
+    "src-ui/src/views/activity/ActivityRowMenu.tsx": {
+      "bespoke-action:{`menu-row${action.tone === 'danger' ? ' activity-row-menu__item--danger' : ''}`}": 1
+    },
+    "src-ui/src/views/agent-editor/AgentsViewEditorPane.tsx": {
+      "bespoke-action:\"editor-btn editor-btn--primary agent-editor__save-btn\"": 2
+    },
+    "src-ui/src/views/agent-editor/agentsViewHelpers.tsx": {
+      "bespoke-action:\"editor-btn editor-btn--primary\"": 1
+    },
+    "src-ui/src/views/commands-view.css": {
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--text-muted": 2
+    },
+    "src-ui/src/views/connections-hub/AddMachineModal.css": {
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--accent-primary": 3,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--text-sm": 3,
+      "legacy-token:--text-secondary": 1
+    },
+    "src-ui/src/views/connections-hub/SshComputerCreatorDialog.css": {
+      "legacy-token:--space-4": 1,
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--text-tertiary": 1,
+      "legacy-token:--text-sm": 3,
+      "legacy-token:--space-2": 1,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--font-mono": 1
+    },
+    "src-ui/src/views/developer/SystemTab.css": {
+      "legacy-token:--space-3": 5,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--radius-md": 1,
+      "legacy-token:--text-secondary": 2,
+      "legacy-token:--bg-tertiary": 1
+    },
+    "src-ui/src/views/editor-layout.css": {
+      "legacy-token:--bg-primary": 5,
+      "legacy-token:--font-sans": 5,
+      "legacy-token:--space-2": 3,
+      "legacy-token:--text-xl": 3,
+      "legacy-token:--text-primary": 16,
+      "legacy-token:--font-mono": 6,
+      "legacy-token:--text-sm": 8,
+      "legacy-token:--bg-tertiary": 5,
+      "legacy-token:--text-secondary": 10,
+      "legacy-token:--border-primary": 22,
+      "legacy-token:--bg-secondary": 13,
+      "legacy-token:--text-muted": 17,
+      "legacy-token:--text-lg": 3,
+      "legacy-token:--accent-primary": 18,
+      "legacy-token:--text-md": 7,
+      "legacy-token:--accent-yellow": 2,
+      "legacy-token:--text-base": 3,
+      "legacy-token:--text-xs": 1,
+      "legacy-token:--space-4": 6,
+      "legacy-token:--space-3": 1,
+      "legacy-token:--space-6": 4,
+      "legacy-token:--radius-md": 2,
+      "legacy-token:--space-8": 1,
+      "legacy-token:--radius-lg": 1
+    },
+    "src-ui/src/views/home/blocks/activity-bars.css": {
+      "legacy-token:--text-xs": 3,
+      "legacy-token:--text-muted": 4,
+      "legacy-token:--accent-primary": 3,
+      "legacy-token:--text-primary": 1
+    },
+    "src-ui/src/views/integrations/IntegrationEditorPanel.tsx": {
+      "bespoke-action:\"editor-btn editor-btn--danger\"": 1,
+      "bespoke-action:\"editor-btn editor-btn--primary\"": 2
+    },
+    "src-ui/src/views/learning-review/LearningSourceDialog.css": {
+      "legacy-token:--space-4": 2,
+      "legacy-token:--space-5": 1,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--radius-lg": 1,
+      "legacy-token:--space-3": 2,
+      "legacy-token:--space-2": 2,
+      "legacy-token:--text-secondary": 1
+    },
+    "src-ui/src/views/monitoring/MonitoringHeader.tsx": {
+      "bespoke-action:\"button button--secondary\"": 1
+    },
+    "src-ui/src/views/page-layout.css": {
+      "legacy-token:--font-sans": 3,
+      "legacy-token:--space-8": 2,
+      "legacy-token:--border-primary": 16,
+      "legacy-token:--bg-secondary": 6,
+      "legacy-token:--accent-primary": 12,
+      "legacy-token:--font-mono": 4,
+      "legacy-token:--text-primary": 8,
+      "legacy-token:--text-muted": 14,
+      "legacy-token:--text-secondary": 2,
+      "legacy-token:--bg-tertiary": 4,
+      "legacy-token:--border-secondary": 1,
+      "legacy-token:--bg-hover": 2,
+      "legacy-token:--bg-active": 1,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--space-12": 1,
+      "legacy-token:--space-4": 1,
+      "legacy-token:--space-2": 1,
+      "legacy-token:--text-lg": 1,
+      "legacy-token:--text-md": 1,
+      "legacy-token:--text-on-accent": 2,
+      "legacy-token:--text-xs": 1,
+      "legacy-token:--bg-selected": 1
+    },
+    "src-ui/src/views/plugin-management/InstallPreviewModal.tsx": {
+      "bespoke-action:\"plugins__confirm-cancel\"": 1
+    },
+    "src-ui/src/views/plugin-management/PluginDetailPanel.tsx": {
+      "bespoke-action:\"editor-btn editor-btn--primary\"": 3,
+      "bespoke-action:\"editor-btn editor-btn--danger\"": 1
+    },
+    "src-ui/src/views/plugin-management/PluginModalStack.tsx": {
+      "bespoke-action:\"plugins__confirm-cancel\"": 2,
+      "bespoke-action:\"plugins__confirm-delete\"": 1
+    },
+    "src-ui/src/views/plugin-management/PluginPermissionsSection.css": {
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--text-muted": 3,
+      "legacy-token:--font-mono": 1
+    },
+    "src-ui/src/views/project-page-frame.css": {
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--text-base": 1
+    },
+    "src-ui/src/views/project-page/PluginPublishDialog.css": {
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--text-muted": 1
+    },
+    "src-ui/src/views/project-page/ProjectKnowledgeRulesEditor.tsx": {
+      "bespoke-action:\"project-page__add-btn project-page__add-btn--primary\"": 1
+    },
+    "src-ui/src/views/project-page/ProjectKnowledgeScanModal.tsx": {
+      "bespoke-action:\"project-page__add-btn project-page__add-btn--primary\"": 1
+    },
+    "src-ui/src/views/project-page/ProjectKnowledgeSection.tsx": {
+      "bespoke-action:\"project-page__add-btn project-page__add-btn--danger\"": 1
+    },
+    "src-ui/src/views/project-page/ProjectTasksSection.tsx": {
+      "bespoke-action:\"project-page__add-btn project-page__add-btn--primary\"": 1
+    },
+    "src-ui/src/views/project-settings/KnowledgeSection.tsx": {
+      "bespoke-action:\"knowledge-section__action-btn\"": 3
+    },
+    "src-ui/src/views/project-settings/LayoutsSection.tsx": {
+      "bespoke-action:\"knowledge-section__action-btn\"": 3
+    },
+    "src-ui/src/views/project-settings/ResourcesSection.tsx": {
+      "bespoke-action:\"editor-btn editor-btn--primary\"": 1
+    },
+    "src-ui/src/views/schedule/ScheduleJobsTable.tsx": {
+      "bespoke-action:\"schedule__action-btn\"": 3,
+      "bespoke-action:\"schedule__action-btn schedule__action-btn--danger\"": 1
+    },
+    "src-ui/src/views/sessions/RunBoardSummary.css": {
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--bg-hover-panel": 1,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--accent-primary": 1,
+      "legacy-token:--color-warning": 2
+    },
+    "src-ui/src/views/settings/AccentColorPicker.css": {
+      "legacy-token:--text-secondary": 2,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--text-muted": 1
+    },
+    "src-ui/src/views/settings/AnswerSharesSection.css": {
+      "legacy-token:--text-secondary": 2,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--text-primary": 1
+    },
+    "src-ui/src/views/settings/AnswerSharesSection.tsx": {
+      "bespoke-action:\"button button--danger\"": 1
+    },
+    "src-ui/src/views/settings/KeyboardShortcutsSection.css": {
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--text-muted": 3,
+      "legacy-token:--border-secondary": 2,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--bg-secondary": 2,
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--accent-primary": 2
+    },
+    "src-ui/src/views/settings/KnowledgeStoreSection.css": {
+      "legacy-token:--text-secondary": 2,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--border-primary": 1
+    },
+    "src-ui/src/views/settings/KnowledgeStoreSection.tsx": {
+      "bespoke-action:\"button button--secondary button--small\"": 2,
+      "bespoke-action:\"button button--primary button--small\"": 1,
+      "bespoke-action:\"button button--primary\"": 1
+    },
+    "src-ui/src/views/settings/PluginVisibilitySection.css": {
+      "legacy-token:--text-secondary": 2,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--text-primary": 2
+    },
+    "src-ui/src/views/settings/SettingInheritanceLayers.css": {
+      "legacy-token:--text-secondary": 3,
+      "legacy-token:--text-primary": 1
+    },
+    "src-ui/src/views/settings/SettingRowStatus.css": {
+      "legacy-token:--text-secondary": 2,
+      "legacy-token:--text-primary": 1
+    },
+    "src-ui/src/views/settings/VoiceFeaturesSection.tsx": {
+      "bespoke-action:\"button button--secondary button--small\"": 2
+    },
+    "src-ui/src/views/skills-view.css": {
+      "legacy-token:--bg-tertiary": 3,
+      "legacy-token:--text-secondary": 4,
+      "legacy-token:--text-sm": 2,
+      "legacy-token:--text-md": 2,
+      "legacy-token:--text-tertiary": 2,
+      "legacy-token:--text-xs": 2,
+      "legacy-token:--font-mono": 2,
+      "legacy-token:--text-base": 1,
+      "legacy-token:--text-muted": 1,
+      "legacy-token:--accent-primary": 2,
+      "legacy-token:--accent-hover": 1
+    },
+    "src-ui/src/workspace-panes/BasisWorkspacePane.tsx": {
+      "bespoke-action:\"button button--secondary button--small\"": 1
+    },
+    "src-ui/src/workspace-panes/BrowserPreviewPaneLauncher.css": {
+      "legacy-token:--space-2": 3,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--text-sm": 2,
+      "legacy-token:--space-1": 1,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--radius-md": 1,
+      "legacy-token:--text-primary": 1
+    },
+    "src-ui/src/workspace-panes/DeviceWorkspacePane.css": {
+      "legacy-token:--space-3": 2,
+      "legacy-token:--space-2": 13,
+      "legacy-token:--space-1": 2,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--radius-2": 1
+    },
+    "src-ui/src/workspace-panes/FilePreviewPane.css": {
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--text-base": 1,
+      "legacy-token:--text-secondary": 4,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--text-sm": 4,
+      "legacy-token:--accent-primary": 3,
+      "legacy-token:--text-xs": 1,
+      "legacy-token:--text-on-accent": 1,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--text-md": 1
+    },
+    "src-ui/src/workspace-panes/PluginDraftPreviewPane.css": {
+      "legacy-token:--text-md": 1,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--text-sm": 2,
+      "legacy-token:--border-primary": 3,
+      "legacy-token:--radius-md": 3,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--text-primary": 1
+    },
+    "src-ui/src/workspace-panes/RegionEmptyChooser.css": {
+      "legacy-token:--space-2": 4,
+      "legacy-token:--space-4": 1,
+      "legacy-token:--space-3": 1,
+      "legacy-token:--space-6": 2,
+      "legacy-token:--text-secondary": 2,
+      "legacy-token:--text-sm": 3,
+      "legacy-token:--text-tertiary": 1,
+      "legacy-token:--text-muted": 2
+    },
+    "src-ui/src/workspace-panes/SessionInventory.css": {
+      "legacy-token:--border-primary": 20,
+      "legacy-token:--text-primary": 13,
+      "legacy-token:--text-secondary": 7,
+      "legacy-token:--text-tertiary": 5,
+      "legacy-token:--bg-secondary": 10,
+      "legacy-token:--accent-primary": 11,
+      "legacy-token:--bg-primary": 3,
+      "legacy-token:--bg-hover": 2,
+      "legacy-token:--bg-selected": 2,
+      "legacy-token:--bg-tertiary": 2
+    },
+    "src-ui/src/workspace-panes/SpatialBoardWorkspacePane.css": {
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--accent-primary": 2,
+      "legacy-token:--space-3": 10,
+      "legacy-token:--space-2": 9,
+      "legacy-token:--text-muted": 6,
+      "legacy-token:--space-1": 4,
+      "legacy-token:--radius-md": 3,
+      "legacy-token:--space-4": 1,
+      "legacy-token:--radius-lg": 2,
+      "legacy-token:--radius-sm": 1,
+      "legacy-token:--text-sm": 1,
+      "legacy-token:--text-primary": 1
+    },
+    "src-ui/src/workspace-panes/WorkspacePaneAvailabilityList.css": {
+      "legacy-token:--border-primary": 5,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--accent-primary": 7,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--text-muted": 2,
+      "legacy-token:--text-on-accent": 1,
+      "legacy-token:--text-secondary": 2
+    },
+    "src-ui/src/workspace-panes/WorkspacePaneFailure.css": {
+      "legacy-token:--accent-primary": 2,
+      "legacy-token:--color-error": 1
+    },
+    "src-ui/src/workspace-panes/WorkspacePaneHost.css": {
+      "legacy-token:--text-muted": 2,
+      "legacy-token:--border-primary": 3,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--accent-primary": 2
+    },
+    "src-ui/src/workspace-panes/WorkspacePaneHostActions.css": {
+      "legacy-token:--space-6": 2,
+      "legacy-token:--space-8": 1,
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--space-4": 6,
+      "legacy-token:--space-2": 1,
+      "legacy-token:--text-secondary": 3,
+      "legacy-token:--text-md": 2,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--text-lg": 1,
+      "legacy-token:--bg-secondary": 1
+    },
+    "src-ui/src/workspace-panes/agents/AgentsWorkspacePane.css": {
+      "legacy-token:--space-1": 2,
+      "legacy-token:--space-2": 3,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--border-primary": 1,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--text-tertiary": 2,
+      "legacy-token:--text-xs": 1
+    },
+    "src-ui/src/workspace-panes/agents/ChildWorkRow.css": {
+      "legacy-token:--space-4": 1,
+      "legacy-token:--space-2": 5,
+      "legacy-token:--space-3": 2,
+      "legacy-token:--radius-md": 1,
+      "legacy-token:--bg-tertiary": 2,
+      "legacy-token:--accent-primary": 3,
+      "legacy-token:--text-secondary": 5,
+      "legacy-token:--text-sm": 1,
+      "legacy-token:--text-tertiary": 5,
+      "legacy-token:--text-xs": 4,
+      "legacy-token:--radius-pill": 1,
+      "legacy-token:--text-2xs": 5,
+      "legacy-token:--border-secondary": 1,
+      "legacy-token:--radius-sm": 1,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--space-1": 1,
+      "legacy-token:--font-mono": 1
+    },
+    "src-ui/src/workspace-panes/agents/ChildWorkTranscript.css": {
+      "legacy-token:--space-2": 3,
+      "legacy-token:--text-tertiary": 2,
+      "legacy-token:--text-2xs": 3,
+      "legacy-token:--text-primary": 1,
+      "legacy-token:--space-1": 1,
+      "legacy-token:--radius-sm": 1,
+      "legacy-token:--bg-tertiary": 1,
+      "legacy-token:--font-mono": 1
+    },
+    "src-ui/src/workspace-panes/browser-pane/BrowserOverflowMenu.tsx": {
+      "bespoke-action:{`menu-row browser-pane__menu-row${item.kind === 'danger' ? ' browser-pane__menu-row--danger' : ''}`}": 1
+    },
+    "src-ui/src/workspace-panes/browser-pane/BrowserPageDialog.css": {
+      "legacy-token:--bg-primary": 2,
+      "legacy-token:--border-primary": 2,
+      "legacy-token:--radius-md": 2,
+      "legacy-token:--space-2": 3,
+      "legacy-token:--space-3": 1,
+      "legacy-token:--text-primary": 1
+    },
+    "src-ui/src/workspace-panes/browser-pane/BrowserPageDialog.tsx": {
+      "bespoke-dialog:form": 1
+    },
+    "src-ui/src/workspace-panes/browser-pane/BrowserPane.css": {
+      "legacy-token:--space-2": 24,
+      "legacy-token:--bg-primary": 2,
+      "legacy-token:--border-primary": 8,
+      "legacy-token:--radius-md": 4,
+      "legacy-token:--text-primary": 5,
+      "legacy-token:--space-1": 5,
+      "legacy-token:--space-4": 1,
+      "legacy-token:--accent-warning": 2,
+      "legacy-token:--space-6": 1,
+      "legacy-token:--text-secondary": 6,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--font-mono": 1,
+      "legacy-token:--accent-danger": 1,
+      "legacy-token:--radius-sm": 1
+    },
+    "src-ui/src/workspace-panes/device/DeviceSetupWizard.css": {
+      "legacy-token:--space-3": 3,
+      "legacy-token:--space-2": 9,
+      "legacy-token:--border-primary": 4,
+      "legacy-token:--radius-2": 3,
+      "legacy-token:--space-1": 4,
+      "legacy-token:--accent-primary": 1,
+      "legacy-token:--text-secondary": 1,
+      "legacy-token:--text-primary": 1
+    },
+    "src-ui/src/workspace-panes/device/DeviceToolsDrawer.css": {
+      "legacy-token:--bg-primary": 1,
+      "legacy-token:--border-primary": 3,
+      "legacy-token:--space-2": 7,
+      "legacy-token:--space-3": 2,
+      "legacy-token:--space-4": 2,
+      "legacy-token:--accent-danger": 1,
+      "legacy-token:--text-primary": 2,
+      "legacy-token:--bg-secondary": 1,
+      "legacy-token:--radius-md": 1,
+      "legacy-token:--space-1": 1,
+      "legacy-token:--font-mono": 1
+    }
+  }
+}

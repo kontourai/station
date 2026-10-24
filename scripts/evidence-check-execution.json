@@ -20,5 +20,6 @@
   "fallow-advisory": "advisory",
   "style-standard": "enforced",
   "documentation-truth": "enforced",
-  "code-hygiene": "scoped"
+  "code-hygiene": "scoped",
+  "component-style-hygiene": "enforced"
 }

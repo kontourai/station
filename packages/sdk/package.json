@@ -78,7 +78,9 @@
     "./project-rooms": "./src/query-domains/projectRooms.ts",
     "./task-relationships": "./src/query-domains/taskRelationships.ts",
     "./client/task-relationships": "./src/client/task-relationships.ts",
-    "./engine-sign-in": "./src/engine-sign-in.ts"
+    "./engine-sign-in": "./src/engine-sign-in.ts",
+    "./action-control": "./src/components/ActionControl.tsx",
+    "./action-control.css": "./src/components/ActionControl.css"
   },
   "scripts": {
     "build": "tsc && npm run copy-assets",

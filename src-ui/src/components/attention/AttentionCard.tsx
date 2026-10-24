@@ -68,6 +68,7 @@ import { formatNotificationTime } from '../../utils/notifications';
 import { StationToolLibraryProvider } from '../../views/agent-editor/ToolLibraryContext';
 import { Dialog } from '../Dialog';
 import { LazyBoundary } from '../LazyBoundary';
+import { NoticeAction } from '../notifications/NoticeAction';
 import { SkeletonList } from '../state';
 import './AttentionCard.css';
 import { useProposedChangeDecision } from '../review/proposedChangeDecision';
@@ -271,9 +272,9 @@ function ExactRequestAction({
   }, [authority, selected]);
   return (
     <>
-      <button
+      <NoticeAction
         type="button"
-        className="attention-item__action attention-item__action--primary"
+        className="notice-action--primary"
         onClick={() => {
           if (!authority?.isCurrent()) {
             setError('Reconnect to inspect this request.');
@@ -284,7 +285,7 @@ function ExactRequestAction({
         }}
       >
         Inspect request
-      </button>
+      </NoticeAction>
       {error ? <p role="alert">{error}</p> : null}
       {selected ? (
         <LazyBoundary
@@ -348,10 +349,10 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
     );
   }
   const decision = (
-    <div className="attention-item__actions">
-      <button
+    <div className="notice-actions">
+      <NoticeAction
         type="button"
-        className="attention-item__action attention-item__action--primary"
+        className="notice-action--primary"
         disabled={busy}
         onClick={() => {
           const scope = requestedScope
@@ -368,10 +369,10 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
         }}
       >
         Approve
-      </button>
-      <button
+      </NoticeAction>
+      <NoticeAction
         type="button"
-        className="attention-item__action attention-item__action--danger"
+        className="notice-action--danger"
         disabled={busy}
         onClick={() =>
           denyMutation.mutate(item.source.requestId, {
@@ -380,19 +381,19 @@ function DevicePairingActions({ item }: { item: DevicePairingAttentionItem }) {
         }
       >
         Deny
-      </button>
+      </NoticeAction>
     </div>
   );
   return (
     <>
-      <div className="attention-item__actions">
-        <button
+      <div className="notice-actions">
+        <NoticeAction
           type="button"
-          className="attention-item__action attention-item__action--primary"
+          className="notice-action--primary"
           onClick={() => setReviewing(true)}
         >
           Review
-        </button>
+        </NoticeAction>
       </div>
       {reviewing && (
         <Dialog
@@ -536,32 +537,32 @@ function ProposedChangeActions({
   const decision = useProposedChangeDecision(INBOX_DECISION_SURFACE);
   return (
     <>
-      <div className="attention-item__actions">
-        <button
+      <div className="notice-actions">
+        <NoticeAction
           type="button"
-          className="attention-item__action attention-item__action--primary"
+          className="notice-action--primary"
           disabled={decision.pending}
           onClick={() =>
             decision.decide(item.source.proposedChangeId, 'approve')
           }
         >
           Approve
-        </button>
-        <button
+        </NoticeAction>
+        <NoticeAction
           type="button"
-          className="attention-item__action attention-item__action--danger"
+          className="notice-action--danger"
           disabled={decision.pending}
           onClick={() =>
             decision.decide(item.source.proposedChangeId, 'reject')
           }
         >
           Reject
-        </button>
+        </NoticeAction>
       </div>
       {/* The diff itself is not in the inbox; deciding blind is not the only
           option offered. */}
       <a
-        className="attention-item__action attention-item__action--secondary"
+        className="button notice-action notice-action--secondary"
         href={item.openHref}
       >
         Open in Review
@@ -583,7 +584,7 @@ function ProposedChangeActions({
 function GateReviewAction({ item }: { item: GateReviewAttentionItem }) {
   return (
     <a
-      className="attention-item__action attention-item__action--secondary"
+      className="button notice-action notice-action--secondary"
       href={item.openHref}
     >
       Open review
@@ -601,12 +602,12 @@ function ApprovalActions({ item }: { item: ApprovalAttentionItem }) {
   const dismiss = () => dismissMutation.mutate(item.source.notificationId);
   return (
     <>
-      <div className="attention-item__actions">
+      <div className="notice-actions">
         {item.actions.map((action) => (
-          <button
+          <NoticeAction
             key={action.id}
             type="button"
-            className={`attention-item__action attention-item__action--${action.variant ?? 'secondary'}`}
+            className={`notice-action--${action.variant ?? 'secondary'}`}
             disabled={mutation.isPending}
             onClick={() =>
               mutation.mutate(
@@ -623,7 +624,7 @@ function ApprovalActions({ item }: { item: ApprovalAttentionItem }) {
             }
           >
             {action.label}
-          </button>
+          </NoticeAction>
         ))}
         {/*
          * Non-actionable/terminal (no live actions, or no resolvable
@@ -632,14 +633,14 @@ function ApprovalActions({ item }: { item: ApprovalAttentionItem }) {
          * nothing else useful left to do with this item.
          */}
         {!livePending && (
-          <button
+          <NoticeAction
             type="button"
-            className="attention-item__action attention-item__action--ghost"
+            className="notice-action--ghost"
             disabled={dismissMutation.isPending}
             onClick={dismiss}
           >
             {DISMISS_NOTIFICATION_ACTION.label}
-          </button>
+          </NoticeAction>
         )}
       </div>
       {item.openHref && <OpenSessionLink href={item.openHref} />}
@@ -729,23 +730,23 @@ function PeerRequestDecisionActions({
   });
   return (
     <>
-      <div className="attention-item__actions">
-        <button
+      <div className="notice-actions">
+        <NoticeAction
           type="button"
-          className="attention-item__action attention-item__action--primary"
+          className="notice-action--primary"
           disabled={mutation.isPending || mutation.isSuccess}
           onClick={() => mutation.mutate('accept')}
         >
           Allow
-        </button>
-        <button
+        </NoticeAction>
+        <NoticeAction
           type="button"
-          className="attention-item__action attention-item__action--danger"
+          className="notice-action--danger"
           disabled={mutation.isPending || mutation.isSuccess}
           onClick={() => mutation.mutate('decline')}
         >
           Deny
-        </button>
+        </NoticeAction>
       </div>
       <MutationError error={mutation.error} />
     </>
@@ -822,16 +823,16 @@ function PeerInputAnswer({
           value={answer}
           onChange={(event) => setAnswer(event.target.value)}
         />
-        <div className="attention-item__actions">
-          <button
+        <div className="notice-actions">
+          <NoticeAction
             type="submit"
-            className="attention-item__action attention-item__action--primary"
+            className="notice-action--primary"
             disabled={
               !answer.trim() || mutation.isPending || mutation.isSuccess
             }
           >
             Send answer
-          </button>
+          </NoticeAction>
         </div>
       </form>
       <MutationError error={mutation.error} />
@@ -898,13 +899,13 @@ function LegacyNeedsInputAction({ item }: { item: NeedsInputAttentionItem }) {
           value={answer}
           onChange={(event) => setAnswer(event.target.value)}
         />
-        <button
+        <NoticeAction
           type="submit"
-          className="attention-item__action attention-item__action--primary"
+          className="notice-action--primary"
           disabled={!answer.trim() || mutation.isPending}
         >
           Send answer
-        </button>
+        </NoticeAction>
       </form>
       <OpenSessionLink href={item.openHref} />
       <MutationError error={mutation.error} />
@@ -916,7 +917,7 @@ function LegacyNeedsInputAction({ item }: { item: NeedsInputAttentionItem }) {
 function OpenSessionAction({ item }: { item: ReviewPendingAttentionItem }) {
   return (
     <a
-      className="attention-item__action attention-item__action--secondary"
+      className="button notice-action notice-action--secondary"
       href={item.openHref}
     >
       Open session
@@ -966,15 +967,15 @@ function DismissAttentionItem({ item }: { item: AttentionItem }) {
   const { apiBase } = useApiBase();
   const mutation = useAcknowledgeAttentionItemMutation(apiBase);
   return (
-    <div className="attention-item__actions">
-      <button
+    <div className="notice-actions">
+      <NoticeAction
         type="button"
-        className="attention-item__action attention-item__action--ghost"
+        className="notice-action--ghost"
         disabled={mutation.isPending}
         onClick={() => mutation.mutate(item.id)}
       >
         {ACKNOWLEDGE_ATTENTION_ACTION.label}
-      </button>
+      </NoticeAction>
       <MutationError error={mutation.error} />
     </div>
   );
@@ -1022,15 +1023,15 @@ function GateReEvaluateAction({
   });
   return (
     <>
-      <div className="attention-item__actions">
-        <button
+      <div className="notice-actions">
+        <NoticeAction
           type="button"
-          className="attention-item__action attention-item__action--secondary"
+          className="notice-action--secondary"
           disabled={mutation.isPending}
           onClick={() => mutation.mutate()}
         >
           Re-evaluate
-        </button>
+        </NoticeAction>
       </div>
       <OpenFlowConsoleLink href={item.openHref} />
       <MutationError error={mutation.error} />
@@ -1063,14 +1064,14 @@ function GateExceptionAction({ item }: { item: GateExceptionAttentionItem }) {
   });
   return (
     <>
-      <div className="attention-item__actions">
-        <button
+      <div className="notice-actions">
+        <NoticeAction
           type="button"
-          className="attention-item__action attention-item__action--primary"
+          className="notice-action--primary"
           onClick={() => setIsOpen(true)}
         >
           Accept exception…
-        </button>
+        </NoticeAction>
       </div>
       <OpenFlowConsoleLink href={item.openHref} />
       <MutationError error={mutation.error} />
@@ -1096,75 +1097,54 @@ function AcceptExceptionDialog({
 }) {
   const [reason, setReason] = useState('');
   const [authority, setAuthority] = useState('');
-  const titleId = useId();
   const reasonId = useId();
   const authorityId = useId();
   const canSubmit = reason.trim().length > 0 && authority.trim().length > 0;
   return (
-    // Backdrop dismiss, same idiom as ResponsiveDialogSurface's overlay:
-    // role="presentation" + onPointerDown with a target check (not a
-    // stopPropagation handler on the panel below) so only an actual press on
-    // the backdrop itself closes the dialog. The Cancel button below is the
-    // keyboard path (no Escape binding here), so this stays a mouse-only
-    // convenience rather than a second, unlabelled keyboard path.
-    <div
-      className="modal-overlay"
-      role="presentation"
-      onPointerDown={(event) => {
-        if (event.target === event.currentTarget) onCancel();
-      }}
+    <Dialog
+      title="Accept exception"
+      closeLabel="Close accept exception"
+      onClose={onCancel}
+      historyMode="none"
     >
-      <div
-        className="modal-dialog"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (canSubmit && !isPending) onSubmit({ reason, authority });
+        }}
       >
-        <div className="modal-header">
-          <h3 id={titleId}>Accept exception</h3>
+        <div className="attention-exception-fields">
+          <label htmlFor={reasonId}>Reason</label>
+          <textarea
+            id={reasonId}
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            required
+          />
+          <label htmlFor={authorityId}>Authority</label>
+          <input
+            id={authorityId}
+            type="text"
+            value={authority}
+            onChange={(event) => setAuthority(event.target.value)}
+            required
+          />
         </div>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (canSubmit) onSubmit({ reason, authority });
-          }}
-        >
-          <div className="modal-body attention-exception-fields">
-            <label htmlFor={reasonId}>Reason</label>
-            <textarea
-              id={reasonId}
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-              required
-            />
-            <label htmlFor={authorityId}>Authority</label>
-            <input
-              id={authorityId}
-              type="text"
-              value={authority}
-              onChange={(event) => setAuthority(event.target.value)}
-              required
-            />
-          </div>
-          <div className="modal-footer">
-            <button
-              type="button"
-              className="attention-item__action attention-item__action--secondary"
-              onClick={onCancel}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="attention-item__action attention-item__action--primary"
-              disabled={!canSubmit || isPending}
-            >
-              Accept exception
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        <div className="notice-actions">
+          <NoticeAction type="button" onClick={onCancel}>
+            Cancel
+          </NoticeAction>
+          <NoticeAction
+            type="submit"
+            className="notice-action--primary"
+            disabled={!canSubmit}
+            pending={isPending}
+          >
+            Accept exception
+          </NoticeAction>
+        </div>
+      </form>
+    </Dialog>
   );
 }
 

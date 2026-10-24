@@ -362,6 +362,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/composer-file-mentions.spec.ts',
     'tests/attention-file-replies.spec.ts',
     'tests/dialog-return-focus.spec.ts',
+    'tests/component-style.spec.ts',
     'tests/server-older-banner.spec.ts',
     'tests/toggle-contrast.spec.ts',
     'tests/agent-editor-geometry.spec.ts',
@@ -798,6 +799,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'Real runner-owned EventStore, authenticated runtime and browser: exact historical Session/event selection, old target outside newest history window, canonical text pagination and keyboard focus without current-child substitution or parallel legacy search.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/component-style.spec.ts',
+    bucket: 'product',
+    surface: 'Core accessibility',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real-source component harness for shared shell/SDK actions, notice contrast and touch geometry, confirmation keyboard dismissal and focus return, and pending activation refusal in both themes and narrow/wide viewports. Does not qualify provider or server mutations.',
     exceptions: [],
   },
   {

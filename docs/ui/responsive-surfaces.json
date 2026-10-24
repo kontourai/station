@@ -87,7 +87,7 @@
       "path": "src-ui/src/components/chat-dock/SessionContextSheet.tsx",
       "strategy": "covered",
       "contract": "ResponsiveDialogSurface",
-      "evidence": "src-ui/src/__tests__/SessionContextCard.dock.test.tsx drives SessionContextSheet through the real ChatWorkspacePane: the desktop chip opens it anchored, Escape closes it and returns focus to the chip, a row closes it before opening its surface, and on a phone the Chat actions row opens it with data-sheet and closing returns focus to the ⋯ trigger; src-ui/src/__tests__/session-context-popover.browser.test.tsx renders the real sheet and stylesheets in Chromium at 1280x820 and measures the anchored popover opening above a chip low in the window and below a chip near the top, inside the viewport with no internal scroll (#3888)"
+      "evidence": "src-ui/src/__tests__/SessionContextCard.dock.test.tsx drives SessionContextSheet through the real ChatWorkspacePane: the desktop chip opens it anchored, Escape closes it and returns focus to the chip, a row closes it before opening its surface, and on a phone the Chat actions row opens it with data-sheet and closing returns focus to the \u22ef trigger; src-ui/src/__tests__/session-context-popover.browser.test.tsx renders the real sheet and stylesheets in Chromium at 1280x820 and measures the anchored popover opening above a chip low in the window and below a chip near the top, inside the viewport with no internal scroll (#3888)"
     },
     {
       "path": "src-ui/src/components/chat/ApprovalSheetProvider.tsx",
@@ -223,8 +223,7 @@
     {
       "path": "src-ui/src/views/integrations/DeleteIntegrationModal.tsx",
       "strategy": "covered",
-      "contract": "ResponsiveDialogSurface",
-      "evidence": "src-ui/src/__tests__/responsive-dialog-contract.test.ts"
+      "evidence": "tests/component-style.spec.ts; shared ConfirmModal composes Dialog and ResponsiveDialogSurface for focus, Escape and narrow geometry"
     },
     {
       "path": "src-ui/src/views/plugin-management/InstallPluginModal.tsx",

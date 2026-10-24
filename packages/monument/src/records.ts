@@ -184,3 +184,11 @@ export interface InvocationTerminalRetirement {
   readonly boundary: TurnBoundaryRecord;
   readonly dedup?: TurnDedupRecord;
 }
+
+/** The host supplies the input digest; the kernel never stores steer text. */
+export interface SteerReceiptRecord {
+  readonly threadId: string;
+  readonly clientInputId: string;
+  readonly inputDigest: string;
+  readonly confirmedTurnId: string | null;
+}

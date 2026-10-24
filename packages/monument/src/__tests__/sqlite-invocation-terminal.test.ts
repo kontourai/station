@@ -977,7 +977,7 @@ for (const failure of [false, true])
       db
         .prepare("SELECT value FROM monument_meta WHERE key='schema_version'")
         .get(),
-    ).toEqual({ value: '4' });
+    ).toEqual({ value: '5' });
     expect(
       db
         .prepare('SELECT * FROM monument_turn_boundaries ORDER BY boundary_id')

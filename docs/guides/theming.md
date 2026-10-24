@@ -226,8 +226,10 @@ palette.
 ## Components and evidence
 
 Shared package primitives are used in surfaces such as Trust, Readiness and
-Flow views. Other components remain local: Station's `Button`, `Toggle`,
-`Dialog` and responsive shell are not all replaced by package components.
+Flow views. Shell `Button` and SDK `Button` now share the SDK's focused
+`action-control` export and canonical token-based stylesheet. This is a Station
+contract: the published UI Button does not supply its pending and sizing API.
+`Toggle`, `Dialog` and the responsive shell retain their Station owners.
 Follow [responsive UI contracts](responsive-ui.md) for local dialog composition,
 focus and viewport behavior; never mix the package's `.dialog` classes with
 Station's `station-dialog__*` chrome.

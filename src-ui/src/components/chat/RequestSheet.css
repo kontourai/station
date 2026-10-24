@@ -62,16 +62,6 @@
   min-height: 0;
 }
 
-.request-sheet-trigger--compact::after {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: max(100%, 44px);
-  height: max(100%, 44px);
-  content: "";
-  transform: translate(-50%, -50%);
-}
-
 .request-card .request-sheet-trigger {
   justify-self: start;
   min-height: 44px;

@@ -536,20 +536,28 @@
         "command": "npm run lint:hygiene",
         "method": "validation",
         "summary": "Published Veritas Oxlint policy pack: explained suppressions across source/tests and deterministic clocks/timer waits in pure contract tests. Comment heuristics remain a separate advisory scan."
+      },
+      {
+        "id": "component-style-hygiene",
+        "command": "npm run lint:component-style",
+        "method": "validation",
+        "summary": "Prevent new legacy-token references, bespoke standard action recipes and ad-hoc native dialog shells against a named per-file signature baseline. Composite controls remain valid; clone candidates remain advisory."
       }
     ],
     "requiredEvidenceCheckIds": [
       "repo-governance",
       "style-standard",
       "documentation-truth",
-      "code-hygiene"
+      "code-hygiene",
+      "component-style-hygiene"
     ],
     "defaultEvidenceCheckIds": [
       "repo-governance",
       "verification-policy",
       "style-standard",
       "documentation-truth",
-      "code-hygiene"
+      "code-hygiene",
+      "component-style-hygiene"
     ],
     "evidenceCheckRoutes": [
       {

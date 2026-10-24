@@ -12,6 +12,7 @@ import type {
   InvocationTerminalRetirement,
   RequestKeyId,
   RequestKeyRecord,
+  SteerReceiptRecord,
   TurnBoundaryRecord,
   TurnDedupRecord,
 } from './records.js';
@@ -161,6 +162,14 @@ export interface CommitParticipant<HostTransaction = unknown> {
  * implement this; consumers use {@link KernelStorage}.
  */
 export interface KernelTransaction {
+  readonly steerReceipts: {
+    get(
+      threadId: string,
+      clientInputId: string,
+    ): SteerReceiptRecord | undefined;
+    put(record: SteerReceiptRecord): void;
+    deleteThread(threadId: string): number;
+  };
   readonly turnDedup: {
     get(key: string): TurnDedupRecord | undefined;
     put(record: TurnDedupRecord): void;

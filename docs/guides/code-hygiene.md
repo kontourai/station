@@ -191,3 +191,56 @@ an owner, recent catch evidence, low false-positive risk, a review trigger,
 and a reason ordinary tests do not already cover the failure. Record catches
 from the nightly issue as that evidence. A promoted check runs with
 `--strict`, which fails only on findings; NOT_VERIFIED already fails.
+
+## Component and style ownership
+
+Standard shell actions use `components/Button`, a re-export of the SDK's
+`action-control` entry. The SDK's public `Button` retains its API defaults over
+that same control. Notice cards use `NoticeAction` for their compact chrome;
+feature owners retain callbacks, pending state and authority checks. Use
+`Dialog` for standard dialog chrome and `ConfirmModal` for a confirmation.
+`ResponsiveDialogSurface` remains the lower-level behavior/geometry primitive
+for surfaces that deliberately own custom chrome. Inline disclosures and
+composite widget controls are separate interaction patterns.
+
+Shared token definitions come from `@kontourai/ui`. Legacy Station spacing
+names are compatibility aliases mapped by value, not by suffix: old
+`--space-1` remains 2px while `--k-space-1` is 4px. New and migrated styles use
+canonical tokens; do not mechanically rename numbered tokens. Shared compact
+hit-target geometry lives in `styles/control-recipes.css`, with existing
+selector specificity preserved. Input hiding, responsive-only targets and
+feature-specific geometry are not blanket utility conversions.
+
+`npm run lint:component-style` scans shipped shell/SDK TSX and CSS, including
+untracked non-ignored source. Its baseline names each inherited file/signature:
+new legacy-token references, standard-action native-button recipes and native
+`dialog`/`alertdialog` shells fail. Native switches, menu triggers, ordinary
+geometry and literal code examples are not rejected solely for using native
+elements. A passing scan is not rendered-layout, accessibility or behavioral
+proof. Existing Fallow clone findings remain advisory candidates requiring
+source review; repeated small layout declarations are not automatically defects.
+
+The baseline records inherited migration debt, not permission to add more.
+Reduce matching entries when consolidating an owner. New exceptions need owner
+review and a specific reason. Check both themes, narrow layouts, keyboard focus,
+44px hit targets, pending/error states and the actual consumer behavior before
+removing replaced styles. Do not merge authority, cancellation or retry state
+machines simply because their UI looks similar.
+
+The consolidation audit found parallel shell/SDK button implementations,
+identical notice-action recipes in attention and notification styles, dialog
+consumers rebuilding shared chrome, repeated hit-target/hidden-text recipes,
+and duplicated elapsed/word-count helpers. These grew across separate owners;
+the existing broad ceilings allowed inherited patterns to be copied while
+remaining green. The shared owners above replace those concrete copies.
+
+The remaining migration is incremental: migrate an inherited signature with
+its affected consumer, shrink its baseline entry, and verify rendered behavior.
+Do not merge all repeated CSS into a generic component: responsive scope,
+input semantics and domain authority can require separate owners. UI core owns
+the new guard; revisit its signatures when the action/dialog contracts change
+or a false positive appears. Ordinary behavior tests cannot detect a new,
+visually equivalent copy of a recipe, which is why the syntactic guard runs
+alongside them. Injected legacy-token/action/dialog violations must fail the
+real command, and canonical controls and literal examples must remain green
+before changing its required coverage.

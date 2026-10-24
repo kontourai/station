@@ -534,7 +534,41 @@ export type InboxListResult = {
 
 // ---------------------------------------------------------------------------
 
+/** A key remains occupied even when its steer outcome is unknown. */
+export interface SteerReceiptKey {
+  readonly threadId: string;
+  readonly clientInputId: string;
+}
+export interface SteerReceiptReadCommand extends SteerReceiptKey {
+  readonly type: 'steerReceipts.read';
+  readonly inputDigest: string;
+}
+export type SteerReceiptReadResult =
+  | { readonly kind: 'absent' }
+  | { readonly kind: 'indeterminate' }
+  | { readonly kind: 'confirmed'; readonly turnId: string };
+export interface SteerReceiptClaimCommand extends SteerReceiptKey {
+  readonly type: 'steerReceipts.claim';
+  readonly inputDigest: string;
+}
+export interface SteerReceiptConfirmCommand extends SteerReceiptKey {
+  readonly type: 'steerReceipts.confirm';
+  readonly inputDigest: string;
+  readonly confirmedTurnId: string;
+}
+export interface SteerReceiptForgetThreadCommand {
+  readonly type: 'steerReceipts.forgetThread';
+  readonly threadId: string;
+}
+
 export interface KernelResults {
+  'steerReceipts.read': SteerReceiptReadResult;
+  'steerReceipts.claim': { readonly kind: 'claimed' | 'occupied' };
+  'steerReceipts.confirm': { readonly kind: 'applied' | 'stale' };
+  'steerReceipts.forgetThread': {
+    readonly kind: 'applied';
+    readonly removed: number;
+  };
   'turnDedup.claim': TurnDedupClaimResult;
   'turnDedup.beginInvocation': TurnDedupBeginInvocationResult;
   'turnDedup.resolve': TurnDedupSettleResult;
@@ -573,6 +607,10 @@ export interface KernelResults {
 }
 
 export type KernelCommand =
+  | SteerReceiptReadCommand
+  | SteerReceiptClaimCommand
+  | SteerReceiptConfirmCommand
+  | SteerReceiptForgetThreadCommand
   | TurnDedupClaimCommand
   | TurnDedupBeginInvocationCommand
   | TurnDedupResolveCommand

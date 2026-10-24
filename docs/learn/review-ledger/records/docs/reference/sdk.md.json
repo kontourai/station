@@ -742,7 +742,11 @@
 
     "packages/sdk/src/query-domains/stationPeople.ts",
 
-    "packages/sdk/src/__tests__/stationPeople.test.ts"
+    "packages/sdk/src/__tests__/stationPeople.test.ts",
+
+    "packages/sdk/src/components/ActionControl.tsx",
+
+    "packages/sdk/src/components/ActionControl.css"
   ],
 
   "checks": [

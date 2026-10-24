@@ -124,6 +124,7 @@ describe('veritas repo map (1.5)', () => {
       'style-standard',
       'documentation-truth',
       'code-hygiene',
+      'component-style-hygiene',
     ]);
     expect(repoMap.evidence.defaultEvidenceCheckIds).toContain(
       'repo-governance',
