@@ -45,7 +45,8 @@ async function fixture() {
     receivingHome = temporary('credential-receiver-');
   let sourceTenant = 'tenant-a';
   let sourceIdentity = 'source-station';
-  let wireMode: 'normal' | 'oversized' | 'content' = 'normal';
+  let wireMode: 'normal' | 'oversized' | 'content' | 'head-unsupported' =
+    'normal';
   let canceledBodies = 0;
   const networkRequests: Array<{ path: string; authenticated: boolean }> = [];
   let exportOwnerCheck = async () => {};
@@ -104,6 +105,12 @@ async function fixture() {
       if (url.pathname === '/.well-known/station/v1')
         expect(authenticated).toBe(false);
       let response = await source.request(url.href, init);
+      if (
+        wireMode === 'head-unsupported' &&
+        init?.method === 'HEAD' &&
+        response.status === 204
+      )
+        response = new Response(null, { status: 200 });
       if (
         url.pathname.includes('/source-grant-export/') &&
         init?.method !== 'HEAD' &&
@@ -324,7 +331,7 @@ async function fixture() {
     sourceHome,
     facts,
     networkRequests,
-    wireMode(value: 'normal' | 'oversized' | 'content') {
+    wireMode(value: 'normal' | 'oversized' | 'content' | 'head-unsupported') {
       wireMode = value;
     },
     canceledBodies: () => canceledBodies,
@@ -736,6 +743,41 @@ test('narrow export selects canonical owner/tenant facts and fences proof, scope
       )
     ).status,
   ).toBe(403);
+  await h.confirmSource();
+  const receivedSequences = new Set<number>();
+  let receivingCursor: string | undefined;
+  let receivingSnapshot:
+    | { streamEpoch: string; highWater: number; afterGlobalSequence: number }
+    | undefined;
+  do {
+    const received = await h.readSource({
+      from: day,
+      to: day,
+      pageSize: 100,
+      ...(receivingCursor
+        ? { cursor: receivingCursor, snapshot: receivingSnapshot }
+        : {}),
+    });
+    expect(received.status).toBe(200);
+    const page = pageSchema.parse(await received.json()).data;
+    for (const item of page.observations) {
+      expect(receivedSequences.has(item.globalSequence)).toBe(false);
+      receivedSequences.add(item.globalSequence);
+    }
+    receivingCursor = page.nextCursor;
+    const last = page.observations.at(-1);
+    if (last)
+      receivingSnapshot = {
+        streamEpoch: page.streamEpoch,
+        highWater: page.highWater,
+        afterGlobalSequence: last.globalSequence,
+      };
+    if (receivedSequences.size > 506)
+      throw new Error(
+        'Receiving pagination repeated or widened source observations',
+      );
+  } while (receivingCursor);
+  expect([...receivedSequences]).toEqual(sequences);
   const held = await h.source.request(path, { headers });
   expect(held.status).toBe(200);
   let signalEntered = () => {};
@@ -829,6 +871,8 @@ test('receiving person confirms the HTTPS source before scoped fetch and queued 
   expect((await h.readSource(query)).status).toBe(503);
   expect(h.canceledBodies()).toBe(1);
   h.wireMode('content');
+  expect((await h.readSource(query)).status).toBe(503);
+  h.wireMode('head-unsupported');
   expect((await h.readSource(query)).status).toBe(503);
   h.wireMode('normal');
   const selected = await h.readSource(query);

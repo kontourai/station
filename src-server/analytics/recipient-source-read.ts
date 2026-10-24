@@ -90,6 +90,8 @@ export async function readRecipientSourcePage(input: {
     }
     if (init.method === 'HEAD') {
       void response.body?.cancel();
+      if (response.status !== 204)
+        throw new Error('Source authorization response is unsupported');
       return undefined;
     }
     const body = await readBoundedRequestBody(response, maxBytes);
