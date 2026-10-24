@@ -46,7 +46,7 @@ checkout so it cannot become an input to a later build.
 The packager uses the server-owned byte/inventory verifier in
 [`telemetry-companion-artifact.mjs`](../../src-server/services/telemetry-companion-artifact.mjs),
 then checks receiver provenance and deployment image pins. These checks retain
-the build-only boundary. New public-manifest archive installs retain their
+the build-only boundary. New `install.sh` public-manifest archive installs retain their
 signed parent envelope in the sealed version directory; that retained evidence
 is not yet wired to companion lifecycle admission and grants no install permit.
 

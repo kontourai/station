@@ -74,7 +74,7 @@ manifests use `releases/` and run dependencies/build steps. This does not change
 the default GitHub-attested source path described above. See the
 [manifest consumer table](../../packaging/manifest/README.md#formats-and-consumers).
 
-Newly installed prebuilt versions retain the exact verified public envelope as
+New prebuilt versions installed by `install.sh` retain the exact verified public envelope as
 `.station-signed-release-manifest.json` before the completion sentinel and
 read-only seal. Existing sealed caches are not backfilled. A consumer must
 verify the retained signature and relevant artifact identity again; the file's
