@@ -87,9 +87,11 @@ acceptance. It is diagnostic evidence, not a qualified release or install permit
 ### Station host prerequisite API
 
 `GET /api/operator/telemetry-companion/prerequisites` is an uncached read for
-the operator in person, excluding agent-originated and internal-token callers.
-It probes the selected local container host. Paired callers additionally
-need `orchestration:read`; that scope does not replace operator authorization. The
+the operator or an explicitly promoted human operator device, excluding
+agent-originated, internal-token and delegation callers. It probes the selected
+local container host. Paired callers need `orchestration:read` and explicit
+`telemetry:manage` promotion plus verified operator role; neither scope replaces
+operator authorization. The
 route checks current operator authority before probing and before returning its
 result. It does not start Docker, pull images, create services or enable export.
 

@@ -2478,21 +2478,26 @@ describe('device scope change (station#3816)', () => {
     },
   );
 
-  test('promotion to consent:decide works; a default-grant-only token is refused with its own code', async () => {
+  test('explicit promotion includes companion management; default-grant-only tokens remain refused', async () => {
     const harness = createHarness();
     const paired = await pairDevice(harness, 'Phone');
 
-    const promoted = await harness.request(
-      `/api/pairing/devices/${paired.device.id}/scope`,
-      harness.json(
-        { scope: ['orchestration:read', 'consent:decide'] },
-        MASTER_CREDENTIAL,
-      ),
-    );
-    expect(promoted.status).toBe(200);
-    expect(((await promoted.json()) as PairedDevice).scope).toBe(
-      'orchestration:read consent:decide',
-    );
+    for (const token of ['consent:decide', 'telemetry:manage']) {
+      const promoted = await harness.request(
+        `/api/pairing/devices/${paired.device.id}/scope`,
+        harness.json(
+          { scope: ['orchestration:read', token] },
+          MASTER_CREDENTIAL,
+        ),
+      );
+      expect(promoted.status).toBe(200);
+      expect(await promoted.json()).toMatchObject({
+        scope: `orchestration:read ${token}`,
+      });
+      expect(harness.pairing.identifyDevice(paired.credential)?.scope).toBe(
+        `orchestration:read ${token}`,
+      );
+    }
 
     // access:manage has no legitimate promotion path: its holder population
     // is inherited and permanently ambiguous, and the contracts say it must
