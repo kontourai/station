@@ -4932,7 +4932,10 @@ checks the opaque credential and receiving delivery proof against current source
 approval, Device/account standing, tenant and owner set. It shares the canonical
 usage reader, binds cursors to the grant generation and fences queued bytes on
 revocation. Source transport verification and receiving synchronization remain
-required. Existing personal-token, peer, MCP and F1 signing authorities
+required. Source rotation uses the same guarded mutation owner, with an expected
+revision, bounded retained operation IDs and atomic hash/envelope replacement;
+receiving materialization rejects revision rollback. Existing personal-token,
+peer, MCP and F1 signing authorities
 are not reused as analytics credentials.
 
 ## ProductTelemetryReceiver

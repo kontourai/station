@@ -413,7 +413,7 @@ test('narrow export selects canonical owner/tenant facts and fences proof, scope
     privateFile.records[0]?.sourceCredential.payload.credential;
   if (!credential) throw new Error('Missing private credential');
   const path = `/api/analytics/source-grant-export/${approvalId}?from=${day}&to=${day}`;
-  const headers = {
+  let headers = {
     authorization: `Bearer ${credential}`,
     'x-station-analytics-proof': Buffer.from(
       JSON.stringify(stored.deliveryProof),
@@ -455,6 +455,7 @@ test('narrow export selects canonical owner/tenant facts and fences proof, scope
   });
   const sequences: number[] = [];
   let cursor: string | undefined;
+  let firstCursor: string | undefined;
   let snapshot: { streamEpoch: string; highWater: number } | undefined;
   do {
     const pageResponse = await h.source.request(
@@ -468,6 +469,7 @@ test('narrow export selects canonical owner/tenant facts and fences proof, scope
     sequences.push(...data.observations.map((item) => item.globalSequence));
     cursor = data.nextCursor;
     if (cursor && sequences.length === 100) {
+      firstCursor = cursor;
       const authority = sessionReadAuthorityFromRequest(
         'human:tailscale:alice',
         { tenantId: tenantId('tenant-a') },
@@ -514,6 +516,92 @@ test('narrow export selects canonical owner/tenant facts and fences proof, scope
   h.sourceTenant('tenant-b');
   expect((await h.source.request(path, { headers })).status).toBe(403);
   h.sourceTenant('tenant-a');
+  const oldQueued = await h.source.request(path, { headers });
+  const rotation = {
+    rotationId: '31234567-89ab-4cde-8fab-0123456789ab',
+    expectedRevision: 1,
+  };
+  const rotate = (input: typeof rotation) =>
+    h.source.request(`${sourceBase}/${approvalId}/rotate`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
+  h.sourceSignout();
+  expect((await rotate(rotation)).status).toBe(403);
+  h.sourceSignin();
+  const rotatedResponse = await rotate(rotation);
+  expect(rotatedResponse.status).toBe(200);
+  const rotated = z
+    .object({ data: sourceCredentialDeliverySchema })
+    .parse(await rotatedResponse.json()).data;
+  expect(rotated.revision).toBe(2);
+  expect(rotated.envelope === wire.envelope).toBe(false);
+  const replay = await rotate(rotation);
+  expect(replay.status).toBe(200);
+  expect(
+    z
+      .object({ data: sourceCredentialDeliverySchema })
+      .parse(await replay.json()).data,
+  ).toEqual(rotated);
+  expect(
+    (
+      await rotate({
+        ...rotation,
+        rotationId: '41234567-89ab-4cde-8fab-0123456789ab',
+      })
+    ).status,
+  ).toBe(409);
+  await expect(oldQueued.text()).rejects.toThrow('Authority observation ended');
+  expect((await h.source.request(path, { headers })).status).toBe(403);
+  const rotatedStoredResponse = await h.materialize(rotated);
+  expect(rotatedStoredResponse.status).toBe(200);
+  const rotatedStored = z
+    .object({ data: z.object({ deliveryProof: sourceDeliveryProofSchema }) })
+    .parse(await rotatedStoredResponse.json()).data;
+  expect((await h.materialize(wire)).status).toBe(409);
+  const currentPrivate = z
+    .object({
+      records: z.array(
+        z.object({
+          sourceCredential: z.object({
+            payload: z.object({ credential: z.string() }),
+          }),
+        }),
+      ),
+    })
+    .parse(
+      JSON.parse(
+        await readFile(
+          join(h.receivingHome, 'security/analytics-recipients.json'),
+          'utf8',
+        ),
+      ),
+    );
+  const currentCredential =
+    currentPrivate.records[0]?.sourceCredential.payload.credential;
+  if (!currentCredential) throw new Error('Missing rotated credential');
+  const oldProof = headers['x-station-analytics-proof'];
+  headers = {
+    authorization: `Bearer ${currentCredential}`,
+    'x-station-analytics-proof': Buffer.from(
+      JSON.stringify(rotatedStored.deliveryProof),
+    ).toString('base64url'),
+  };
+  expect(
+    (
+      await h.source.request(path, {
+        headers: { ...headers, 'x-station-analytics-proof': oldProof },
+      })
+    ).status,
+  ).toBe(403);
+  expect(
+    (
+      await h.source.request(
+        `${path}&cursor=${encodeURIComponent(firstCursor ?? '')}`,
+        { headers },
+      )
+    ).status,
+  ).toBe(403);
   const held = await h.source.request(path, { headers });
   expect(held.status).toBe(200);
   let signalEntered = () => {};

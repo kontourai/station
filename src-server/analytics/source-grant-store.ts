@@ -40,6 +40,13 @@ export const sourceApprovalInput = z
   })
   .strict();
 type Input = z.infer<typeof sourceApprovalInput>;
+export const sourceCredentialRotationInput = z
+  .object({
+    rotationId: enrollmentOperationId,
+    expectedRevision: z.number().int().positive().refine(Number.isSafeInteger),
+  })
+  .strict();
+
 const approvalSchema = z
   .object({
     protocol: z.literal('station-analytics-source-approval/v1'),
@@ -69,6 +76,7 @@ const recordSchema = z
     targetSha256: z.string().regex(/^[a-f0-9]{64}$/),
     sourceIntent: enrollmentIntentSchema,
     candidate: recipientCandidateSchema,
+    rotationIds: z.array(enrollmentOperationId).max(128).optional(),
     delivery: z
       .object({
         view: sourceCredentialDeliverySchema,
@@ -196,6 +204,15 @@ export class SourceGrantApprovalStore {
       intent = record.sourceIntent,
       claims = candidate.claims;
     const delivery = record.delivery?.view;
+    const rotationIds = record.rotationIds ?? [];
+    if (
+      new Set(rotationIds).size !== rotationIds.length ||
+      (delivery
+        ? delivery.revision !== rotationIds.length + 1
+        : rotationIds.length !== 0)
+    )
+      throw new Error('Delivery revision changed');
+
     if (
       delivery &&
       (delivery.sourceApprovalId !== view.operationId ||
@@ -374,7 +391,11 @@ export class SourceGrantApprovalStore {
     };
   }
 
-  async prepareDelivery(actor: SourceApprovalActor, operationId: string) {
+  async prepareDelivery(
+    actor: SourceApprovalActor,
+    operationId: string,
+    rotation?: z.infer<typeof sourceCredentialRotationInput>,
+  ) {
     if (!enrollmentOperationId.safeParse(operationId).success)
       throw new SourceApprovalRejected('source_approval_invalid', 400);
     try {
@@ -398,7 +419,29 @@ export class SourceGrantApprovalStore {
           )
             throw new SourceApprovalRejected('source_approval_conflict', 409);
           await actor.assertApprovalCurrent(record.view.approvedAt);
-          if (record.delivery) return record.delivery.view;
+          const rotationIds = record.rotationIds ?? [];
+          if (rotation) {
+            const parsed = sourceCredentialRotationInput.safeParse(rotation);
+            if (!parsed.success)
+              throw new SourceApprovalRejected('source_approval_invalid', 400);
+            const existing = rotationIds.indexOf(rotation.rotationId);
+            if (existing >= 0) {
+              if (
+                existing === rotationIds.length - 1 &&
+                rotation.expectedRevision === existing + 1 &&
+                record.delivery
+              )
+                return record.delivery.view;
+              throw new SourceApprovalRejected('source_approval_conflict', 409);
+            }
+            if (
+              !record.delivery ||
+              record.delivery.view.revision !== rotation.expectedRevision ||
+              rotationIds.length >= 128
+            )
+              throw new SourceApprovalRejected('source_approval_conflict', 409);
+          } else if (record.delivery) return record.delivery.view;
+          const revision = (record.delivery?.view.revision ?? 0) + 1;
           const credential = `stax_${randomBytes(32).toString('base64url')}`;
           const view = await sealSourceCredential(
             {
@@ -412,7 +455,7 @@ export class SourceGrantApprovalStore {
               recipientId: record.view.recipientId,
               recipientBindingSha256:
                 record.candidate.claims.recipientBindingSha256,
-              revision: 1,
+              revision,
               expiresAt: record.view.expiresAt,
               scope: record.view.scope,
               retention: record.view.retention,
@@ -428,6 +471,8 @@ export class SourceGrantApprovalStore {
             view,
             credentialSha256: sourceCredentialHash(credential),
           };
+          if (rotation)
+            record.rotationIds = [...rotationIds, rotation.rotationId];
           return view;
         },
       );
@@ -514,6 +559,7 @@ export class SourceGrantApprovalStore {
           };
           file.approvals.push({
             view,
+            rotationIds: [],
             owner: owner(actor),
             approvalCredentialId: actor.approvalCredentialId,
             approvalBindingSha256: actor.approvalBindingSha256,

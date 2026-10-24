@@ -13,6 +13,7 @@ import {
   type SourceGrantApprovalStore,
   sourceApprovalInput,
   sourceApprovalTarget,
+  sourceCredentialRotationInput,
 } from '../../analytics/source-grant-store.js';
 import { UsageExportRejected } from '../../analytics/usage-export-reader.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
@@ -269,6 +270,35 @@ export function createSourceGrantApprovalRoutes(deps: {
     return guardAuthorityObservationResponse(
       c.json({
         data: await deps.approvals.prepareDelivery(actor, approval.operationId),
+      }),
+      actor.assertCurrent,
+    );
+  });
+  app.post('/:operationId/rotate', async (c) => {
+    const body = await readBoundedRequestBody(c.req.raw, 1024);
+    let rotation: ReturnType<typeof sourceCredentialRotationInput.parse>;
+    try {
+      if (body.status !== 'ok') throw new Error('Invalid body');
+      rotation = sourceCredentialRotationInput.parse(JSON.parse(body.body));
+    } catch {
+      return c.json({ error: { code: 'source_approval_invalid' } }, 400);
+    }
+    const context = { env: c.env, req: c.req };
+    const reader = await deps.capture(context, 'individual');
+    const approval = await deps.approvals.get(
+      reader,
+      c.req.param('operationId'),
+    );
+    if (!approval)
+      return c.json({ error: { code: 'source_approval_not_found' } }, 404);
+    const actor = await deps.capture(context, approval.scope);
+    return guardAuthorityObservationResponse(
+      c.json({
+        data: await deps.approvals.prepareDelivery(
+          actor,
+          approval.operationId,
+          rotation,
+        ),
       }),
       actor.assertCurrent,
     );

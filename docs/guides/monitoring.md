@@ -192,8 +192,7 @@ and `exportAuthority:false`. A self-signed candidate does not authenticate a
 remote person, approve Station trust, establish current source authorization or
 grant home-transfer authority. Its recipient ID is a locally derived echo, not a
 portable authorization credential. Independent destination confirmation, source
-approval and encrypted credential delivery are separate steps. Credential
-rotation and actual sync remain unfinished. No Station/F1 signing key or generic personal-token bearer is reused.
+approval and encrypted credential delivery are separate steps. Actual sync remains unfinished. No Station/F1 signing key or generic personal-token bearer is reused.
 
 ### Source approval review
 
@@ -248,9 +247,25 @@ activate a data pipeline. `sourceVerified:false` and `exportAuthority:false`
 remain explicit. No source origin is contacted by materialization. Source grant
 revocation stops further delivery and narrow export reads, including queued
 responses. Person-scoped synchronization remains unfinished. The
-enrollment UI, source transport verification, credential rotation and actual sync
+enrollment UI, source transport verification and actual sync
 remain unfinished. Generic personal, peer, MCP and provider credentials are not
 used for this delivery.
+
+### Rotate a source credential
+
+POST `/api/analytics/source-grant-approvals/<operationId>/rotate` accepts a fresh
+`rotationId` UUID and `expectedRevision`. The same currently eligible approving
+Device/person and exact approved policy are required. Rotation changes only the
+credential generation; it does not extend expiry, broaden scope or confirm a
+source address. The source atomically replaces the hash and encrypted delivery.
+Old credentials, proofs, cursors and queued export responses stop working.
+
+Repeating the current rotation ID with its original expected revision recovers
+the same ciphertext. A stale revision, reused ID with changed input or replay of
+an older rotation conflicts. A grant retains at most 128 rotation IDs; after
+that, enroll a new policy rather than pruning its replay history. Materialize the
+new envelope at the receiving slot before using it; the receiving owner refuses
+revision rollback. Automatic rotation and transfer remain separate work.
 
 ### Scoped source export
 
@@ -266,8 +281,8 @@ export. Every page and queued response rechecks current approval. Cursors bind
 the grant revision and credential hash in addition to the canonical snapshot;
 they cannot be exchanged with interactive export cursors. Retained observations
 still carry unknown coverage. Receiving custody does not authenticate a proposed
-source origin: automatic fetching, trusted source transport, enrollment UI and
-rotation remain unfinished.
+source origin: automatic fetching, trusted source transport and enrollment UI
+remain unfinished.
 
 ## Developer diagnostics
 

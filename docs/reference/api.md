@@ -2459,8 +2459,26 @@ The reply `{data: AnalyticsStoredSourceCredential}` has source/approval/recipien
 IDs, revision, expiry, `credentialStored:true`, `sourceVerified:false` and
 `exportAuthority:false`. Plaintext stays in private receiving custody. A slot
 read also reports credential-stored phase and this metadata. Storage is not source
-identity verification or active export authority. Rotation and actual
-synchronization remain unfinished.
+identity verification or active export authority. Actual synchronization remains unfinished.
+
+### Rotate an approved source credential
+
+`POST /api/analytics/source-grant-approvals/<operationId>/rotate` accepts exactly
+`{rotationId: UUID, expectedRevision: positiveInteger}` in a body of at most
+1 KiB. It requires the same current approving Device/person, owner set and
+policy eligibility as delivery, and returns
+`{data: AnalyticsSourceCredentialDelivery}` with a fresh credential and the next
+revision. The source stores only its hash and recipient-encrypted envelope.
+
+The expected revision is a compare-and-set condition. Repeating the latest
+rotation ID and original expected revision returns the same envelope. Stale
+revisions, older rotation replays or changed input conflict (409); invalid input
+returns 400. Each grant retains at most 128 rotation IDs, after which a new
+enrollment is required. Rotation does not change scope, retention or expiry.
+Old credentials and continuation contexts refuse, including queued export
+bodies. Materialization accepts the new revision and refuses rollback. A reply
+lost after commit is recovered by repeating the same operation, never by blindly
+creating another rotation ID.
 
 ### Read an approved source export
 
