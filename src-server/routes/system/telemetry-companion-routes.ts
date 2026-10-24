@@ -3,7 +3,9 @@ import { Hono } from 'hono';
 
 export function createTelemetryCompanionRoutes(deps: {
   requireOperator(request: Request): Promise<void>;
-  prerequisites(): Promise<TelemetryCompanionPrerequisites>;
+  prerequisites(
+    includeArtifactEvidence: boolean,
+  ): Promise<TelemetryCompanionPrerequisites>;
 }) {
   const app = new Hono();
   app.get('/prerequisites', async (c) => {
@@ -15,7 +17,7 @@ export function createTelemetryCompanionRoutes(deps: {
     }
     let data: TelemetryCompanionPrerequisites;
     try {
-      data = await deps.prerequisites();
+      data = await deps.prerequisites(c.req.query('artifactEvidence') === '1');
     } catch {
       return c.json({ error: { code: 'companion_probe_unavailable' } }, 503);
     }

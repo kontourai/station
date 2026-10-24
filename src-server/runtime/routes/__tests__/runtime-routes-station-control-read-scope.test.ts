@@ -493,6 +493,12 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
       },
     });
     expect(companionProbe).toHaveBeenCalledTimes(1);
+    expect(companionProbe).toHaveBeenLastCalledWith(undefined);
+    await asOperatorUi(base, `${path}?artifactEvidence=1`);
+    expect(companionProbe).toHaveBeenCalledTimes(2);
+    expect(companionProbe).toHaveBeenLastCalledWith(
+      expect.objectContaining({ installKind: expect.any(String) }),
+    );
     const agentMarked = await fetch(`${base}${path}`, {
       headers: {
         authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
@@ -510,7 +516,7 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
       expect(response.data).toBeUndefined();
       expect(response.code ?? response.error?.code).toBeTruthy();
     }
-    expect(companionProbe).toHaveBeenCalledTimes(1);
+    expect(companionProbe).toHaveBeenCalledTimes(2);
   });
 
   const conversationIds = (body: any): string[] =>

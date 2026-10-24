@@ -6045,8 +6045,10 @@ export function configureRuntimeRoutes(
           throw new ProjectMembershipRefusal('forbidden');
         await projectMembershipAuthority(request).operator();
       },
-      prerequisites: () =>
-        readTelemetryCompanionPrerequisites(resolveThisServerProvenance()),
+      prerequisites: (includeArtifactEvidence) =>
+        readTelemetryCompanionPrerequisites(
+          includeArtifactEvidence ? resolveThisServerProvenance() : undefined,
+        ),
     }),
   );
   context.app.use('/api/projects/:slug/access/*', async (c, next) => {

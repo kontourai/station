@@ -229,7 +229,7 @@ export async function fetchTelemetryCompanionPrerequisites(
 ): Promise<TelemetryCompanionPrerequisites> {
   const base = options?.requestScope?.apiBase ?? apiBase;
   const response = await getJson(
-    `${base}/api/operator/telemetry-companion/prerequisites`,
+    `${base}/api/operator/telemetry-companion/prerequisites?artifactEvidence=1`,
     { ...options, maxResponseBytes: 8192 },
   );
   const body: unknown = await response.json().catch(unlessDeadline(() => null));
