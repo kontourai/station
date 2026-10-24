@@ -1,4 +1,8 @@
-import { spawn } from 'node:child_process';
+import {
+  type ChildProcess,
+  type ChildProcessWithoutNullStreams,
+  spawn,
+} from 'node:child_process';
 import { once } from 'node:events';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
@@ -50,6 +54,11 @@ if (process.argv[2] === 'orphan-owner') {
   process.exit(0);
 }
 const held = new Map<number, ReturnType<typeof spawnChildWorkload>>();
+function hasPipedStdio(
+  child: ChildProcess,
+): child is ChildProcessWithoutNullStreams {
+  return child.stdin !== null && child.stdout !== null && child.stderr !== null;
+}
 const server = createServer(async (request, response) => {
   try {
     const url = new URL(request.url ?? '/', 'http://localhost');
@@ -59,6 +68,8 @@ const server = createServer(async (request, response) => {
         '-e',
         'console.log("ready");process.stdin.once("data",()=>Buffer.alloc(128*1048576,7));setInterval(()=>{},1000)',
       ]);
+      if (!hasPipedStdio(proc))
+        throw new Error('Codex fixture requires piped stdio');
       const transport = new CodexAdapterTransport(() => new Date());
       const record = createCodexSessionRecord({
         externalThreadId: 'resource-proof',
