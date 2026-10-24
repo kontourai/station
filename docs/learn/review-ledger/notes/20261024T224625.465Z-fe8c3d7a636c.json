@@ -1,0 +1,9 @@
+{
+  "revision": "349bf3115059048d958a4131ef1688af9305ff77",
+
+  "notes": [
+    {"path":"docs/design/knowledge-recall-ui.md","note":"Delta-only source review at 084108a053b: read complete recall decision and compared origin/main...HEAD SDK barrel changes. Changes add CLI-session/ensemble/report query exports only; named recall exports remain. No branch changes to KnowledgeRecall, metadata-key owner, or either named example caller. Prior recall implementation evidence retains its original scope; this note establishes no new plugin builds, live Knowledge/provider/Neo4j or native acceptance.","inputs":["docs/design/knowledge-recall-ui.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"Delta-only source review at 084108a053b: read full design and classification limits; compared origin/main...HEAD SDK barrel additions. CLI-session/ensemble/report query exports do not alter the published workspace-pane host contract or either adapter; those owner paths have no branch changes. Retain classified design status and existing limits on payload clone safety, both-runtime artifact compatibility and install trust. No runtime or publication evidence added.","inputs":["docs/design/pane-host-contract.md","packages/sdk/src/index.ts"]}
+  ]
+}
