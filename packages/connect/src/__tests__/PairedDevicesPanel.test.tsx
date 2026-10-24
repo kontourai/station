@@ -567,89 +567,96 @@ describe('PairedDevicesPanel', () => {
     expect(alert.textContent).toContain('Sign in as operator');
   });
 
-  test('a cookie session offers the consent review, polls once, and applies the result without a paste field', async () => {
-    vi.useFakeTimers();
-    vi.spyOn(window, 'open').mockReturnValue(null);
-    const writes: string[] = [];
-    let applied = false;
-    let statusReads = 0;
-    const request = vi.fn(
-      async (input: URL | RequestInfo, init?: RequestInit) => {
-        const url = String(input);
-        expect(new Headers(init?.headers).has('Authorization')).toBe(false);
-        if (init?.method === 'DELETE') {
-          writes.push(url);
+  test.each(['approved', 'denied'] as const)(
+    'a cookie session polls a %s review without a paste field',
+    async (outcome) => {
+      vi.useFakeTimers();
+      vi.spyOn(window, 'open').mockReturnValue(null);
+      const writes: string[] = [];
+      let applied = false;
+      let statusReads = 0;
+      const request = vi.fn(
+        async (input: URL | RequestInfo, init?: RequestInit) => {
+          const url = String(input);
+          expect(new Headers(init?.headers).has('Authorization')).toBe(false);
+          if (init?.method === 'DELETE') {
+            writes.push(url);
+            return new Response(
+              JSON.stringify({
+                status: 'step_up_required',
+                transaction: {
+                  id: 'transaction-1',
+                  reviewUrl:
+                    'https://station.example.ts.net:8443/consent/transaction-1',
+                  expiresAt: Date.now() + 1_000,
+                },
+              }),
+              { status: 202 },
+            );
+          }
+          if (url.endsWith('/device-access-transactions/transaction-1')) {
+            expect(
+              new Headers(init?.headers).get('X-Station-Background-Refresh'),
+            ).toBe('1');
+            if (++statusReads === 1)
+              return new Response(JSON.stringify({ status: 'pending' }));
+            applied = outcome === 'approved';
+            return new Response(
+              JSON.stringify({
+                status: outcome,
+                effect: device({ revokedAt: Date.now() }),
+              }),
+            );
+          }
+          if (applied)
+            expect(
+              new Headers(init?.headers).get('X-Station-Background-Refresh'),
+            ).toBe('1');
           return new Response(
             JSON.stringify({
-              status: 'step_up_required',
-              transaction: {
-                id: 'transaction-1',
-                reviewUrl:
-                  'https://station.example.ts.net:8443/consent/transaction-1',
-                expiresAt: Date.now() + 1_000,
-              },
-            }),
-            { status: 202 },
-          );
-        }
-        if (url.endsWith('/device-access-transactions/transaction-1')) {
-          expect(
-            new Headers(init?.headers).get('X-Station-Background-Refresh'),
-          ).toBe('1');
-          if (++statusReads === 1)
-            return new Response(JSON.stringify({ status: 'pending' }));
-          applied = true;
-          return new Response(
-            JSON.stringify({
-              status: 'approved',
-              effect: device({ revokedAt: Date.now() }),
+              devices: [device({ revokedAt: applied ? Date.now() : null })],
+              operatorSession: { expiresAt: Date.now() + HOUR },
             }),
           );
-        }
-        if (applied)
-          expect(
-            new Headers(init?.headers).get('X-Station-Background-Refresh'),
-          ).toBe('1');
-        return new Response(
-          JSON.stringify({
-            devices: [device({ revokedAt: applied ? Date.now() : null })],
-            operatorSession: { expiresAt: Date.now() + HOUR },
-          }),
+        },
+      );
+      await act(async () => {
+        renderPanel({ request, getCredential: () => undefined });
+      });
+      expect(
+        screen.queryByLabelText('Operator credential for device changes'),
+      ).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Revoke Pixel 9' }));
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+      });
+      expect(
+        screen
+          .getByRole('link', { name: 'Review access change' })
+          .getAttribute('href'),
+      ).toContain(':8443/consent/transaction-1');
+      expect(applied).toBe(false);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+      expect(
+        screen.getByRole('link', { name: 'Review access change' }),
+      ).toBeTruthy();
+      expect(applied).toBe(false);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+      expect(writes).toHaveLength(1);
+      expect(applied).toBe(outcome === 'approved');
+      if (outcome === 'denied')
+        expect(screen.getByRole('alert').textContent).toContain(
+          'Cancelled. Nothing was applied.',
         );
-      },
-    );
-    await act(async () => {
-      renderPanel({ request, getCredential: () => undefined });
-    });
-    expect(
-      screen.queryByLabelText('Operator credential for device changes'),
-    ).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Revoke Pixel 9' }));
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
-    });
-    expect(
-      screen
-        .getByRole('link', { name: 'Review access change' })
-        .getAttribute('href'),
-    ).toContain(':8443/consent/transaction-1');
-    expect(applied).toBe(false);
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(15_000);
-    });
-    expect(
-      screen.getByRole('link', { name: 'Review access change' }),
-    ).toBeTruthy();
-    expect(applied).toBe(false);
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(15_000);
-    });
-    expect(writes).toHaveLength(1);
-    expect(applied).toBe(true);
-    expect(
-      screen.queryByRole('link', { name: 'Review access change' }),
-    ).toBeNull();
-  });
+      expect(
+        screen.queryByRole('link', { name: 'Review access change' }),
+      ).toBeNull();
+    },
+  );
 
   test('does not render or use a manual credential when the native host owns it', async () => {
     const { calls } = stubHost({

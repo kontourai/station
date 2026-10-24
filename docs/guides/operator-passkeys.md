@@ -2,9 +2,9 @@
 
 An operator passkey lets you sign in as this Station's operator from a paired
 browser without pasting the operator credential. Enrollment requires confirmation
-on the host. Signing in grants **reads only**: paired devices and the operator's
-own passkey and current-session metadata. A device-access change requires a
-fresh passkey confirmation on the separate consent origin for that exact action
+on the host. A session reads paired devices and the operator's own passkey and
+current-session metadata, and requests step-up for writes. A device-access change
+requires a fresh passkey confirmation on the separate consent origin for that exact action
 ([#3257 S4](https://github.com/kontourai/station/issues/3257)). There is no
 step-up window. The host and separately granted device-administration channels
 remain independent.
@@ -103,6 +103,10 @@ the host channel remains available with no identity provider or passkey setup.
 
 ## Change device access from the browser
 
+A browser on the Station host without a configured HTTPS consent origin can no
+longer change device access from this panel. Use `station environment access …`
+on the host instead.
+
 1. Sign in as operator. Choose **Change access**, select permissions, and choose
    **Apply**. Revoking a device or removing its revoked record uses the same flow.
 2. The panel opens a separate consent-origin review. If the browser blocks the
@@ -112,8 +116,10 @@ the host channel remains available with no identity provider or passkey setup.
    One assertion applies one action. It cannot approve another transaction.
 4. Return to the panel. It polls without extending the session and shows the
    updated Device and any full-access reset result. A review expires after five
-   minutes. Cancelling the passkey prompt or closing the review before confirming applies nothing;
-   the pending request expires. A changed Device scope, expired session, revoked
+   minutes. Choose **Cancel** on the review to deny the transaction immediately;
+   the panel shows **Cancelled** and a later approval is refused. Cancelling only
+   the operating-system passkey prompt or closing the review applies nothing;
+   that pending request expires. A changed Device scope, expired session, revoked
    Device or revoked passkey refuses the commit. Open a new request after
    reviewing the current state; do not blindly repeat an indeterminate write.
 
@@ -142,8 +148,9 @@ Passkeys are kept in `authentication/operator-passkeys.sqlite` under the
 Station home. The file is created when the first enrollment begins; a Station
 without `STATION_TRUSTED_CONSENT_ORIGIN` never creates it. It is a private file (mode 0600 in a 0700 directory) that
 holds each passkey's credential id, public key, signature counter, transports and label.
-Read-only operator sessions share this private store; their random cookie secrets
-are stored only as hashes, alongside device/passkey bindings and expiry times.
+Operator sessions share this private store for reads and per-action step-up. Their
+random cookie secrets are stored only as hashes, alongside device/passkey bindings
+and expiry times.
 
 ## What can go wrong
 

@@ -166,9 +166,9 @@ export class ConsentSecretEffect {
   ) {}
 }
 
-interface PasskeyDecisionProof {
+interface OperatorDecisionProof {
   readonly sessionId: string;
-  readonly verify: (challenge: string) => Promise<string>;
+  readonly verify?: (challenge: string) => Promise<string>;
 }
 
 interface ConsentTransactionInit {
@@ -255,7 +255,9 @@ export type ConsentDecisionAuthority =
    * operator credential file itself.
    */
   | 'native-host'
-  | 'operator-passkey';
+  | 'operator-passkey'
+  /** May only deny the initiating session's WebAuthn transaction. */
+  | 'operator-session';
 
 export interface ConsentTransactionView {
   readonly ceremony?: 'webauthn';
@@ -577,7 +579,7 @@ export class ConsentTransactionStore {
     decision: ConsentDecision,
     presentedNonce: string | undefined,
     via: ConsentDecisionAuthority,
-    proof?: PasskeyDecisionProof,
+    proof?: OperatorDecisionProof,
   ): Promise<ConsentDecideResult> {
     // Review HIGH 2: expiry is evaluated exactly ONCE per decision, here at
     // decision entry (the sweep flips a past-TTL record to `expired`, which
@@ -602,9 +604,11 @@ export class ConsentTransactionStore {
     };
     if (
       record.ceremony === 'webauthn' &&
-      (via !== 'operator-passkey' ||
-        !proof ||
-        proof.sessionId !== record.operatorSessionId)
+      (!proof ||
+        proof.sessionId !== record.operatorSessionId ||
+        (decision === 'approved'
+          ? via !== 'operator-passkey' || !proof.verify
+          : via !== 'operator-session'))
     )
       return refuse('authority_required');
     if (record.status !== 'pending') {
@@ -629,9 +633,16 @@ export class ConsentTransactionStore {
     record.decisionInFlight = true;
     try {
       let passkeyId: string | undefined;
+      if (record.ceremony === 'webauthn' && decision === 'denied') {
+        record.status = 'denied';
+        record.decidedAt = this.#now();
+        record.decidedVia = via;
+        this.#pushAudit(record, { at: record.decidedAt, event: 'denied' });
+        return { ok: true, status: 'denied' };
+      }
       if (record.ceremony === 'webauthn') {
         try {
-          passkeyId = await proof!.verify(
+          passkeyId = await proof!.verify!(
             this.#challenge(record, presentedNonce),
           );
         } catch {

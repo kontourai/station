@@ -130,19 +130,21 @@ const encode = value => btoa(String.fromCharCode(...new Uint8Array(value))).repl
 form.addEventListener('submit', async event => {
   event.preventDefault();
   const button = event.submitter;
-  if (button.value === 'deny') { status.textContent = 'Cancelled. Nothing changed. You can close this page.'; form.remove(); return; }
   for (const item of form.querySelectorAll('button')) item.disabled = true;
   try {
-    const options = JSON.parse(form.dataset.options);
-    options.challenge = decode(options.challenge);
-    options.allowCredentials = options.allowCredentials.map(item => ({...item, id:decode(item.id)}));
-    const credential = await navigator.credentials.get({publicKey:options});
-    if (!credential) throw new Error('The passkey prompt was cancelled.');
-    const response = {id:credential.id, rawId:encode(credential.rawId), type:credential.type, clientExtensionResults:credential.getClientExtensionResults(), response:{authenticatorData:encode(credential.response.authenticatorData), clientDataJSON:encode(credential.response.clientDataJSON), signature:encode(credential.response.signature), userHandle:credential.response.userHandle ? encode(credential.response.userHandle) : null}};
-    const result = await fetch(form.action, {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({nonce:form.elements.nonce.value, response})});
+    let response;
+    if (button.value !== 'deny') {
+      const options = JSON.parse(form.dataset.options);
+      options.challenge = decode(options.challenge);
+      options.allowCredentials = options.allowCredentials.map(item => ({...item, id:decode(item.id)}));
+      const credential = await navigator.credentials.get({publicKey:options});
+      if (!credential) throw new Error('The passkey prompt was cancelled.');
+      response = {id:credential.id, rawId:encode(credential.rawId), type:credential.type, clientExtensionResults:credential.getClientExtensionResults(), response:{authenticatorData:encode(credential.response.authenticatorData), clientDataJSON:encode(credential.response.clientDataJSON), signature:encode(credential.response.signature), userHandle:credential.response.userHandle ? encode(credential.response.userHandle) : null}};
+    }
+    const result = await fetch(form.action, {method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({nonce:form.elements.nonce.value, decision:button.value, response})});
     const body = await result.json();
     if (!result.ok) throw new Error('The change was refused. Open a new request to review the current state.');
-    status.textContent = 'Applied. Return to Station.';
+    status.textContent = body.status === 'denied' ? 'Cancelled. Nothing changed. You can close this page.' : 'Applied. Return to Station.';
     if (body.secret) { const secret = document.createElement('code'); secret.textContent = body.secret; status.after(secret); status.textContent += ' Copy this token now; it will never be shown again.'; }
   } catch (error) { status.textContent = error.message + ' Nothing further will be submitted from this page.'; }
 });`;
@@ -331,27 +333,28 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
         c.req.header('sec-fetch-site') !== 'same-origin'
       )
         return c.json({ error: 'origin_mismatch' }, 403);
-      const actor = stepUpSession(c.req.header('cookie'));
-      if (!actor || transaction.operatorSessionId !== actor.session.sessionId)
-        return c.json({ error: 'not_found' }, 404);
       if (
         c.req.header('content-type')?.split(';')[0].trim() !==
         'application/json'
       )
         return c.json({ error: 'invalid_request' }, 400);
       const body = await c.req.json().catch(() => null);
+      const actor = stepUpSession(c.req.header('cookie'));
+      if (!actor || transaction.operatorSessionId !== actor.session.sessionId)
+        return c.json({ error: 'not_found' }, 404);
+      const denied = body?.decision === 'deny';
       if (
         typeof body?.nonce !== 'string' ||
-        typeof body?.response?.id !== 'string' ||
-        !body.response.response
+        (!denied &&
+          (typeof body?.response?.id !== 'string' || !body.response.response))
       )
         return c.json({ error: 'assertion_required' }, 403);
       const result = await deps.channel.store.decide(
         deps.channel.tenantId,
         transaction.id,
-        'approved',
+        denied ? 'denied' : 'approved',
         body.nonce,
-        'operator-passkey',
+        denied ? 'operator-session' : 'operator-passkey',
         {
           sessionId: actor.session.sessionId,
           verify: (challenge) =>
@@ -365,7 +368,7 @@ export function createConsentApp(deps: ConsentListenerDeps): Hono {
       );
       deps.logger?.info('Operator step-up decision', {
         id: transaction.id,
-        result: result.ok ? 'approved' : result.reason,
+        result: result.ok ? result.status : result.reason,
       });
       return result.ok
         ? c.json({

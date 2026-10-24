@@ -769,6 +769,14 @@ call its `reset()` once the secret is captured; the settled mutation is then
 evicted at once. `setStationPersonGroup` resolves `{ person, revocations }`,
 where `revocations` is keyed by each device whose full access was reset.
 
+The three operator writes explicitly reject HTTP 202 `step_up_required` with
+`StationStepUpRequiredError` (a `StationAccessError` with `status: 202` and
+`code: 'step_up_required'`). Its `transaction` contains `id`, `reviewUrl` and
+`expiresAt` for the UI's consent review and status handoff. The pending request
+has applied nothing; callers must wait for confirmed approval before reporting
+success. A token secret is returned only by the initiating consent commit.
+See [operator passkeys](../guides/operator-passkeys.md#change-device-access-from-the-browser).
+
 #### `useConnectionsQuery()`
 
 Returns the merged Connections list used by the Connections hub. The result includes both model and runtime rows from `GET /api/connections`.

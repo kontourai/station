@@ -276,10 +276,10 @@
       "path": "docs/learn/media/operator-s4-other-refused.png",
       "kind": "image",
       "digest": "1ca05464c64570402123e93021303b2c30c8024a9a1b458e0c0b423ffcf53352",
-      "alt": "A different paired browser remains refused after receiving the first browser’s operator cookie.",
-      "caption": "A different paired browser remains refused after receiving the first browser’s operator cookie.",
+      "alt": "The paired-devices panel asks this browser to sign in as operator. This image alone does not demonstrate copied-cookie refusal.",
+      "caption": "The paired-devices panel asks this browser to sign in as operator. This image alone does not demonstrate copied-cookie refusal.",
       "scenario": "Per-action operator passkey step-up (#3257 S4)",
-      "evidence": "EXECUTED: inspected this unedited 390px Chromium capture at source cc7ad6868826570516991cfe157cc6f5d58b8bc1. Actual PairedDevicesPanel and app CSS in a fixture shell, real pairing flow and private Station home, host CLI enrollment confirmation and independent device-access read-back, consent-origin WebAuthn review, virtual authenticator UV success and disabled-UV refusal, copied-cookie isolation and host Device revocation. No real DNS, physical/synced/hybrid authenticator, native, hosted, release or production qualification.",
+      "evidence": "EXECUTED: inspected the existing unedited 390px Chromium capture at source cc7ad6868826570516991cfe157cc6f5d58b8bc1. It shows the sign-in prompt and no device inventory; it is byte-identical to operator-s4-before-sign-in.png. Copied-cookie mutation isolation requires the separate status/code and host read-back assertions in tests/operator-sessions.spec.ts, not this image. No new capture or live qualification is claimed.",
       "capturedRevision": "cc7ad6868826570516991cfe157cc6f5d58b8bc1",
       "documents": [
         "docs/guides/operator-passkeys.md"

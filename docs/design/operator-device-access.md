@@ -301,8 +301,8 @@ Stations (refused in v1, D11), and confirming pairing requests remotely (D9).
      during sign-in (D3).
    - Lifetime: 15 minutes idle and 12 hours absolute (D4). No silent
      renewal past the absolute limit.
-   - Grants **reads only**: the device inventory and the operator's own
-     passkey and session list.
+   - Reads the device inventory and the operator's own passkey and session
+     list, and requests per-action step-up for writes.
 4. **Step-up = a ConsentTransaction decided by an operator passkey.**
    - New target kind: `device-access-change`.
    - Fingerprint: canonical JSON of `{op: 'scope'|'revoke'|'remove-record',
@@ -318,7 +318,7 @@ Stations (refused in v1, D11), and confirming pairing requests remotely (D9).
    JSON with the fields in the order below, no omitted required fields, and
    `null` for an absent expiry. Device `nextScope` arrays use the vocabulary order. Every
    target requires `ceremony: 'webauthn'`, is owned by the initiating session,
-   and is decided **only** by `operator-passkey`. A nonce and assertion apply
+   and is approved **only** by `operator-passkey`. A nonce and assertion apply
    to one exact transaction and fingerprint, once; there is no step-up window.
 
    | Target | Canonical fingerprint | Expected-state precondition |
@@ -544,12 +544,18 @@ All new paths are proposals. Existing paths are cited.
      - an exact Origin;
      - `Sec-Fetch-Site: same-origin`;
      - the render nonce;
-     - the assertion.
+     - the assertion for approval.
 
      It drops the `navigate`/`?1` requirement only for this kind; the
      assertion's UV replaces user activation as the user-presence proof.
-   - The challenge is `H(transactionId ‖ renderNonce ‖ fingerprint ‖ random)`,
-     stored server-side and consumed atomically together with the nonce.
+   - The challenge is SHA-256 of the JSON array
+     `[transactionId, renderNonce, fingerprint, decisionSessionSecret]`. It is
+     derived from the per-transaction secret and current render nonce; no
+     challenge is stored. Consuming the nonce atomically prevents reuse.
+   - **Cancel** uses the same consent-origin, render-nonce and initiating-session
+     checks, without a passkey assertion. It records terminal `denied` through
+     `operator-session` denial authority; a later approval is refused. Only
+     `operator-passkey` can approve and commit a write.
    - Server verification:
      - `type === 'webauthn.get'`;
      - origin equals the operator origin;

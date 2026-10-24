@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import * as fileLocks from '@kontourai/station-shared/lifecycle-events';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -1347,6 +1348,178 @@ async function commitChange(
 }
 
 describe('per-action operator passkey step-up (#3257 S4)', () => {
+  test.each(['group', 'mint', 'revoke'] as const)(
+    '%s rechecks session and target after a host write inside mutation acquisition',
+    async (op) => {
+      const h = await build(),
+        signed = await h.signIn();
+      const principalId = 'human:tailscale-serve:casey';
+      const offer = h.pairing.createOffer({
+        endpoint: APP,
+        scope: 'orchestration:read',
+      });
+      const pending = h.pairing.requestPairing({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        deviceName: 'Casey',
+        source: 'tailnet',
+        requesterPosition: 'off-box',
+        requester: { provider: 'tailscale-serve', login: 'casey' },
+      });
+      h.pairing.confirmRequest(
+        pending.requestId,
+        { kind: 'presented-credential' },
+        { kind: 'verified-ingress', principalId },
+      );
+      const personDevice = h.pairing.exchange({
+        offerId: offer.offerId,
+        proof: offer.challenge,
+        requestId: pending.requestId,
+      });
+      const existing = await h.pairing.mintPersonalToken({
+        name: 'Existing',
+        ownerPrincipalId: principalId,
+        binding: personDevice.device.principalBinding!,
+        scope: 'orchestration:read',
+        expiresAt: null,
+      });
+      const path = `/api/pairing/people/${principalId}`;
+      const transaction =
+        op === 'group'
+          ? await requestChange(h, signed, 'PUT', `${path}/group`, {
+              group: 'admin',
+            })
+          : op === 'mint'
+            ? await requestChange(h, signed, 'POST', `${path}/tokens`, {
+                name: 'New',
+                scope: 'orchestration:read',
+              })
+            : await requestChange(
+                h,
+                signed,
+                'DELETE',
+                `${path}/tokens/${existing.token.id}`,
+              );
+      const review = await reviewChange(h, signed, transaction.id);
+      let enter!: () => void, release!: () => void;
+      const entered = new Promise<void>((resolve) => {
+        enter = resolve;
+      });
+      const resume = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const acquire = fileLocks.acquireFileMutationLockAsync;
+      const lock = vi
+        .spyOn(fileLocks, 'acquireFileMutationLockAsync')
+        .mockImplementationOnce(async (...args) => {
+          expect(args[0]).toBe(
+            join(
+              h.home,
+              'security',
+              op === 'group'
+                ? 'station-groups.json.mutation'
+                : 'personal-tokens.json.mutation',
+            ),
+          );
+          enter();
+          await resume;
+          return acquire(...args);
+        });
+      const committing = commitChange(h, signed, transaction.id, review);
+      try {
+        await entered;
+        if (op === 'mint') await h.security.assignGroup(principalId, 'admin');
+        else h.pairing.revokeDevice(h.first.device.id, 'operator-credential');
+      } finally {
+        release();
+        lock.mockRestore();
+      }
+      const result = await committing;
+      expect(result.status).toBe(409);
+      expect(await result.json()).toEqual({ error: 'commit_refused' });
+      expect(h.security.groupOf(principalId)).toBe(
+        op === 'mint' ? 'admin' : 'member',
+      );
+      expect(
+        h.pairing.listPersonalTokens(principalId).map((token) => token.id),
+      ).toEqual([existing.token.id]);
+    },
+  );
+
+  test('Cancel denies on the server without a passkey and a later approve cannot commit', async () => {
+    const h = await build(),
+      signed = await h.signIn();
+    const transaction = await requestChange(h, signed);
+    const review = await reviewChange(h, signed, transaction.id);
+    const deny = await h.consent.request(`/consent/${transaction.id}/decide`, {
+      method: 'POST',
+      headers: { ...h.headers(), cookie: signed.cookie },
+      body: JSON.stringify({ decision: 'deny', nonce: review.nonce }),
+    });
+    expect(deny.status).toBe(200);
+    expect(await deny.json()).toEqual({ status: 'denied' });
+    const status = await h.read(
+      signed.cookie,
+      `/api/pairing/device-access-transactions/${transaction.id}`,
+    );
+    expect(await status.json()).toMatchObject({ status: 'denied' });
+    const later = await commitChange(h, signed, transaction.id, review);
+    expect(later.status).toBe(409);
+    expect(await later.json()).toEqual({ error: 'not_pending' });
+    expect(
+      h.pairing.listDevices().find((d) => d.id === h.second.device.id)?.scope,
+    ).toBe(h.second.device.scope);
+  });
+
+  test.each([
+    'origin',
+    'host',
+    'metadata',
+    'nonce',
+    'device cookie',
+    'operator cookie',
+    'other session',
+  ])(
+    'Cancel refuses a missing or wrong %s without closing the transaction',
+    async (missing) => {
+      const h = await build(),
+        signed = await h.signIn();
+      const transaction = await requestChange(h, signed),
+        review = await reviewChange(h, signed, transaction.id);
+      const headers = { ...h.headers(), cookie: signed.cookie };
+      if (missing === 'origin') headers.origin = APP;
+      if (missing === 'host') headers.host = new URL(APP).host;
+      if (missing === 'metadata') headers['sec-fetch-site'] = 'same-site';
+      if (missing === 'device cookie')
+        headers.cookie = signed.cookie.split('; ')[1];
+      if (missing === 'operator cookie')
+        headers.cookie = signed.cookie.split('; ')[0];
+      if (missing === 'other session')
+        headers.cookie = (await h.signIn(h.second.credential)).cookie;
+      const result = await h.consent.request(
+        `/consent/${transaction.id}/decide`,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            decision: 'deny',
+            nonce: missing === 'nonce' ? 'wrong' : review.nonce,
+          }),
+        },
+      );
+      expect(result.status).toBe(
+        missing.includes('cookie') || missing === 'other session'
+          ? 404
+          : missing === 'nonce'
+            ? 409
+            : 403,
+      );
+      expect(
+        h.channel.store.get(h.channel.tenantId, transaction.id)?.status,
+      ).toBe('pending');
+    },
+  );
+
   test('one assertion commits one device change, response effect matches the direct body and replay refuses', async () => {
     const h = await build(),
       signed = await h.signIn();
@@ -1509,6 +1682,7 @@ describe('per-action operator passkey step-up (#3257 S4)', () => {
     'device-consent-scope',
     'consent-session',
     'native-host',
+    'operator-session',
   ] as const)(
     '%s cannot decide a WebAuthn transaction even with its valid nonce',
     async (authority) => {
@@ -1523,6 +1697,11 @@ describe('per-action operator passkey step-up (#3257 S4)', () => {
           'approved',
           r.nonce,
           authority,
+          {
+            sessionId: h.channel.store.get(h.channel.tenantId, t.id)!
+              .operatorSessionId!,
+            verify: async () => signed.passkey.id,
+          },
         ),
       ).toMatchObject({ ok: false, reason: 'authority_required' });
       expect(

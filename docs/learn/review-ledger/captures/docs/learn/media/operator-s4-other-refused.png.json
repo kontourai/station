@@ -25,5 +25,7 @@
     "src-server/services/consent/consent-transactions.ts"
   ],
 
-  "reviewNotes": []
+  "reviewNotes": [
+    "PR #4107 fix round 1: inspected the existing capture. It shows only the operator sign-in prompt and no inventory, is byte-identical to operator-s4-before-sign-in.png, and does not independently prove copied-cookie refusal. Caption and media evidence state that limit; captured bytes and revision are unchanged."
+  ]
 }

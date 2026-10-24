@@ -186,7 +186,9 @@ export function PairedDevicesPanel({
             pendingTransactions.current.delete(id);
             pending.reject(
               new Error(
-                'The review was cancelled or expired. Nothing was applied.',
+                transaction.status === 'denied'
+                  ? 'Cancelled. Nothing was applied.'
+                  : 'The review expired. Nothing was applied.',
               ),
             );
           }
@@ -470,9 +472,11 @@ export function PairedDevicesPanel({
 
       {!allowManualCredentials && (
         <p className="station-connect-edit__hint">
-          {hostAppName ?? 'This native host'} can list devices. An explicit
-          Manage device access grant allows changes here; otherwise use{' '}
-          <code>station environment access</code> on the host.
+          {hostAppName ?? 'This native host'} can list devices but does not hold
+          the operator credential. To change device access, sign in with an
+          operator passkey in a paired browser when an HTTPS consent origin is
+          configured, or run <code>station environment access …</code> on the
+          host. An explicit Manage device access grant also allows changes here.
         </p>
       )}
       {reviewUrl && (

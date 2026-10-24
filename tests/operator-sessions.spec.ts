@@ -380,6 +380,34 @@ test('paired browser signs in and changes access only after consent-origin passk
     });
     retainCapture('paired-after-step-up.png');
 
+    // Cancel closes the server transaction and the initiating panel without WebAuthn.
+    await page
+      .getByRole('button', { name: 'Revoke Second browser', exact: true })
+      .click();
+    const cancelPopup = first.context.waitForEvent('page');
+    await page.getByRole('button', { name: 'Confirm', exact: true }).click();
+    const cancelReview = await cancelPopup;
+    await cancelReview.waitForURL(`${consentOrigin}/consent/**`);
+    await cancelReview
+      .getByRole('button', { name: 'Cancel', exact: true })
+      .click();
+    await expect(cancelReview.getByRole('status')).toContainText(
+      'Cancelled. Nothing changed.',
+    );
+    await expect(page.getByRole('alert')).toContainText(
+      'Cancelled. Nothing was applied.',
+      { timeout: 30_000 },
+    );
+    await expect(
+      page.getByRole('link', { name: 'Review access change' }),
+    ).toHaveCount(0);
+    expect(await hostInventory()).toEqual(changed);
+    await cancelReview.screenshot({
+      path: testInfo.outputPath('consent-step-up-cancelled.png'),
+      fullPage: true,
+    });
+    retainCapture('consent-step-up-cancelled.png');
+
     // The same paired browser cannot make a second change without new UV.
     await page
       .getByRole('button', {
@@ -443,6 +471,23 @@ test('paired browser signs in and changes access only after consent-origin passk
       (cookie) => cookie.name === '__Host-station-operator',
     );
     expect(operatorCookie).toBeDefined();
+    const mutationUrl = `${appOrigin}/api/pairing/devices/${first.device.id}/scope`;
+    const mutationInput = {
+      headers: { Origin: appOrigin },
+      data: {
+        scope: ['orchestration:read'],
+        expectedScope: first.device.scope,
+      },
+    };
+    const withoutOperatorCookie = await second.context.request.post(
+      mutationUrl,
+      mutationInput,
+    );
+    expect(withoutOperatorCookie.status()).toBe(403);
+    const noCookieBody = await withoutOperatorCookie.json();
+    expect(noCookieBody).toMatchObject({
+      error: { code: 'insufficient_scope' },
+    });
     await second.context.addCookies([operatorCookie!]);
     const refused = await second.context.request.get(
       `${appOrigin}/api/pairing/devices`,
@@ -453,16 +498,16 @@ test('paired browser signs in and changes access only after consent-origin passk
       error: { code: 'operator_session_required' },
     });
     const refusedMutation = await second.context.request.post(
-      `${appOrigin}/api/pairing/devices/${first.device.id}/scope`,
-      {
-        headers: { Origin: appOrigin },
-        data: {
-          scope: ['orchestration:read'],
-          expectedScope: first.device.scope,
-        },
-      },
+      mutationUrl,
+      mutationInput,
     );
     expect(refusedMutation.status()).toBe(403);
+    const copiedCookieBody = await refusedMutation.json();
+    expect(copiedCookieBody).toMatchObject({
+      error: { code: 'operator_session_required' },
+    });
+    expect(copiedCookieBody.error.code).not.toBe(noCookieBody.error.code);
+    expect(await hostInventory()).toEqual(unchanged);
     const unprivileged = await second.context.newPage();
     await unprivileged.goto(appOrigin);
     await expect(

@@ -48,6 +48,40 @@ export class StationAccessError extends Error {
   }
 }
 
+/** A pending per-action review; no change has been applied. */
+export class StationStepUpRequiredError extends StationAccessError {
+  constructor(
+    readonly transaction: { id: string; reviewUrl: string; expiresAt: number },
+  ) {
+    super(202, 'step_up_required');
+    this.name = 'StationStepUpRequiredError';
+  }
+}
+
+async function requireCompletedWrite(response: Response): Promise<Response> {
+  if (response.status === 202) {
+    const body: unknown = await response.json();
+    const transaction = isObject(body) ? body.transaction : undefined;
+    if (
+      !isObject(body) ||
+      body.status !== 'step_up_required' ||
+      !isObject(transaction) ||
+      typeof transaction.id !== 'string' ||
+      typeof transaction.reviewUrl !== 'string' ||
+      typeof transaction.expiresAt !== 'number' ||
+      !Number.isFinite(transaction.expiresAt)
+    )
+      throw new Error('Invalid step-up response');
+    throw new StationStepUpRequiredError({
+      id: transaction.id,
+      reviewUrl: transaction.reviewUrl,
+      expiresAt: transaction.expiresAt,
+    });
+  }
+  if (!response.ok) throw await accessError(response);
+  return response;
+}
+
 /** The refusal the desktop's local grant gets for a People change. */
 export function isOperatorCredentialRequired(error: unknown): boolean {
   return error instanceof StationAccessError && error.status === 401;
@@ -153,9 +187,11 @@ export async function setStationPersonGroup(
 ): Promise<StationGroupChange> {
   const base = await resolveApiBase(apiBase);
   const body = await readJson(
-    await authenticatedFetch(
-      `${base}${personPath(principalId)}/group`,
-      json('PUT', { group }),
+    await requireCompletedWrite(
+      await authenticatedFetch(
+        `${base}${personPath(principalId)}/group`,
+        json('PUT', { group }),
+      ),
     ),
     (value): value is { person: StationPerson; revocations?: unknown } =>
       isObject(value) && isObject(value.person),
@@ -175,9 +211,11 @@ export async function mintStationPersonToken(
 ): Promise<MintedPersonalAccessToken> {
   const base = await resolveApiBase(apiBase);
   return readJson(
-    await authenticatedFetch(
-      `${base}${personPath(principalId)}/tokens`,
-      json('POST', input),
+    await requireCompletedWrite(
+      await authenticatedFetch(
+        `${base}${personPath(principalId)}/tokens`,
+        json('POST', input),
+      ),
     ),
     isMinted,
     'Token',
@@ -195,7 +233,7 @@ export async function revokeStationPersonToken(
     `${base}${personPath(principalId)}/tokens/${encodeURIComponent(tokenId)}`,
     { method: 'DELETE' },
   );
-  if (!response.ok) throw await accessError(response);
+  await requireCompletedWrite(response);
 }
 
 /** `GET /api/access/tokens`: the calling person's own tokens. */
