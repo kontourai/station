@@ -1,5 +1,7 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { hostname } from 'node:os';
+import { join } from 'node:path';
 import {
   decodeDevicePairingPayload,
   encodeDevicePairingPayload,
@@ -23,6 +25,7 @@ import {
   DEFAULT_PAIRING_SCOPE_PRESET,
   PAIRING_SCOPES,
   type PairingScope,
+  PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
   PUBLIC_STATION_PROOF_PATH,
   pairingScopePresetString,
   parsePairingScope,
@@ -60,6 +63,10 @@ import {
   runDevicesCommand,
 } from './device-access.js';
 import { DEFAULT_SERVER_PORT } from './helpers.js';
+import {
+  assertOutsideClientsAvailable,
+  runOutsideClientsCommand,
+} from './outside-clients.js';
 import {
   collectPairingFlags,
   pairingBooleanFlag,
@@ -251,6 +258,7 @@ const USAGE = `Usage:
   station environment access revoke <device-id|id-prefix|name> [--force] [--api-base=<url>|--station=<name>]
   station environment access remove <device-id|id-prefix|name> [--force] [--api-base=<url>|--station=<name>]
   station environment access request --api-base=<host-url> [--station=<name>] [--device-name=<name>] [--timeout=<seconds>] [--force]
+  station environment outside-clients <command> (not yet available; #4115)
   station environment operator passkeys [list] [--json] [--api-base=<loopback-url>|--station=<name>]
   station environment operator passkeys approve <code> [--device=<id-prefix>] [--api-base=<loopback-url>|--station=<name>]
   station environment operator passkeys deny <code> [--api-base=<loopback-url>|--station=<name>]
@@ -370,6 +378,65 @@ export async function runEnvironmentCommand(
     return;
   }
 
+  if (args[0] === 'outside-clients') {
+    assertOutsideClientsAvailable();
+    await runOutsideClientsCommand(args.slice(1), {
+      write: stdout,
+      confirm: dependencies.isInteractive ? dependencies.confirm : undefined,
+      openChannel: async () => {
+        const parsed = parseCoreArgs(normalizeEnvironmentArgsForParsing(args));
+        const local = await openLocalOperatorChannel(
+          parsed,
+          'outside-clients',
+          dependencies,
+        );
+        const profile = local.resolved.station
+          ? findProfile(local.resolved.station)
+          : undefined;
+        const home = profile?.localService?.baseDir ?? dependencies.projectHome;
+        if (!home)
+          throw new Error(
+            'Outside-client administration requires this Station’s explicit local home.',
+          );
+        const secret = readFileSync(
+          join(home, 'runtime', 'local-grant.secret'),
+          'utf8',
+        ).trim();
+        const request = dependencies.request ?? requestBareJson;
+        const exchanged = await request(
+          local.apiBase,
+          PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              secret,
+              deviceName: 'Outside-client host CLI',
+            }),
+          },
+        );
+        if (
+          !exchanged ||
+          typeof exchanged !== 'object' ||
+          !('credential' in exchanged) ||
+          typeof exchanged.credential !== 'string'
+        )
+          throw new Error('Station refused host-possession proof.');
+        return {
+          request: (path, init) =>
+            request(local.apiBase, path, {
+              ...init,
+              headers: {
+                ...init?.headers,
+                Authorization: `Bearer ${exchanged.credential}`,
+                'x-station-host-proof': secret,
+              },
+            }),
+        };
+      },
+    });
+    return;
+  }
   if (await runAccessRequestCommand(args, dependencies)) return;
   if (await runEnvironmentOfferCommand(args, dependencies)) return;
   if (await runLocalAccessCommand(args, dependencies)) return;

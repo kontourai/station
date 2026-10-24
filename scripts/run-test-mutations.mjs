@@ -56,6 +56,57 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'outside-host-authority',
+    test: 'src-server/routes/outside-agent/__tests__/host-routes.test.ts',
+    failure:
+      'every host route refuses non-host credentials, raw operator/session without step-up, missing and prior-boot proof before domain work',
+    files: [
+      {
+        path: 'src-server/routes/outside-agent/host-routes.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            '!isBoundLocalGrantMintedOperator(c.req.raw)',
+            'false',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'outside-host-release-refusal',
+    test: 'src-server/routes/outside-agent/__tests__/host-routes.test.ts',
+    failure:
+      'released composition refuses every actual host route with valid host proof and zero outside writes',
+    files: [
+      {
+        path: 'src-server/security/outside-agent-release-guard.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'isOutsideAgentPath(path) ||\n    (path !== rawPath && isOutsideAgentPath(rawPath))',
+            'false',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'outside-host-command-refusal',
+    test: 'packages/cli/src/__tests__/outside-clients.test.ts',
+    failure:
+      'every released outside-clients command refuses with a not-yet-available message before home, auth, network or store access',
+    files: [
+      {
+        path: 'packages/cli/src/commands/outside-clients.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "throw new Error(\n    'Outside-agent clients are not yet available. Host commands remain disabled until R6 qualification (#4115).',\n  );",
+            'return;',
+          ),
+      },
+    ],
+  },
+  {
     id: 'outside-oauth-refresh-family',
     test: 'src-server/services/outside-agent/__tests__/oauth-store.test.ts',
     failure:

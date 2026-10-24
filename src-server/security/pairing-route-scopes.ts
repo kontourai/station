@@ -1102,6 +1102,40 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ACCESS_MANAGE,
     origin: 'explicit',
   },
+  // R2a: scopes never replace the additional host-secret proof. Compiled refusal remains until R6.
+  ...[
+    '/api/outside-agent/clients',
+    '/api/outside-agent/redirect-origins',
+    '/api/outside-agent/cors-origins',
+  ].map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:read`,
+      method: 'GET',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ACCESS_MANAGE,
+      origin: 'explicit',
+    }),
+  ),
+  ...[
+    '/api/outside-agent/host/review',
+    '/api/outside-agent/host/confirm',
+    '/api/outside-agent/host/deny',
+    '/api/outside-agent/host/register',
+    '/api/outside-agent/grants/:id/change',
+    '/api/outside-agent/grants/:id/revoke',
+    '/api/outside-agent/redirect-origins/change',
+    '/api/outside-agent/cors-origins/change',
+  ].map(
+    (prefix): PairingScopeRouteRule => ({
+      id: `${prefix}:host`,
+      method: 'POST',
+      prefix,
+      exact: true,
+      scope: PAIRING_SCOPE_ACCESS_MANAGE,
+      origin: 'explicit',
+    }),
+  ),
   {
     id: '/api/pairing:manage',
     method: '*',

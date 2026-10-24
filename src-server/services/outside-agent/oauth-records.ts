@@ -128,6 +128,8 @@ const grantSchema = z.object({
       'superseded',
       'revoked',
       'authority',
+      'changed',
+      'redirect_origin_removed',
     ])
     .nullable(),
 });
@@ -202,6 +204,8 @@ const eventSchema = z.object({
     'terminal',
     'request-ended',
     'retired',
+    'policy-changed',
+    'decision',
   ]),
   clientId: z.string().optional(),
   requestId: z.string().optional(),
@@ -229,6 +233,19 @@ export const recordSchemas = {
   tombstone: tombstoneSchema,
   event: eventSchema,
   quota: quotaSchema,
+  policy: z.object({
+    kind: z.enum(['redirect', 'cors']),
+    revision: z.number().int().nonnegative(),
+    origins: z.array(z.string()),
+  }),
+  decision: z.object({
+    id: z.string(),
+    fingerprint: z.string(),
+    actionDigest: digest,
+    actor: actorSchema,
+    effect: z.record(z.string(), z.unknown()),
+    createdAt: timestamp,
+  }),
 };
 export type Records = {
   [K in keyof typeof recordSchemas]: z.infer<(typeof recordSchemas)[K]>;

@@ -2687,6 +2687,14 @@ The legacy/ad-hoc `3141`/`3000` pair remains user-testing territory; `dev` is a 
 
 ### `environment`
 
+`station environment outside-clients …` is reserved for outside-agent OAuth
+([design, #4115](../design/outside-agent-mcp.md#11-pr-sized-implementation-slices-and-documentation-owners)).
+Every command currently refuses with “not yet available,” before reading a home
+or contacting a Station. The compiled server guard likewise returns 404 for
+`/api/outside-agent/*`. R2a's host command/shared-service implementation is
+exercised only in isolated tests; R2b adds passkey review, and R6 owns exposure.
+The comparison code is display-only; approval selects a request ID.
+
 Inspect and maintain Station's stable local identity and connect to saved
 Station backends through system OpenSSH. Local identity commands operate on the
 selected Station home. SSH commands call the selected local Station API, which
