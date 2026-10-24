@@ -56,7 +56,11 @@
 
     "src-ui/src/components/review/ReviewLayout.tsx",
 
-    "src-ui/src/contexts/MonitoringContext.tsx"
+    "src-ui/src/contexts/MonitoringContext.tsx",
+
+    "src-server/services/orchestration/cli-session-group.ts",
+
+    "src-server/services/orchestration/station-report-group-runtime.ts"
   ],
 
   "checks": [
