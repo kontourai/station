@@ -80,7 +80,7 @@ async function request(
   return { status: response.status, body: JSON.parse(text) };
 }
 
-export async function qualifyTelemetryCompanion(candidate, output) {
+async function qualifyTelemetryCompanion(candidate, output) {
   if (process.platform === 'win32')
     throw new Error('Unix private-file runtime qualification is required');
   candidate = resolve(candidate);
@@ -186,7 +186,12 @@ export async function qualifyTelemetryCompanion(candidate, output) {
         bytes.stdout.text + bytes.stderr.text,
         { mode: 0o600 },
       );
-      complete = cleanup.settled && !bytes.truncated && !bytes.invalidUtf8;
+      complete =
+        cleanup.settled &&
+        !cleanup.escalated &&
+        cleanup.errors.length === 0 &&
+        !bytes.truncated &&
+        !bytes.invalidUtf8;
       await save();
     }
     if (failure) throw failure;
