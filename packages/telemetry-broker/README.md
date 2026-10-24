@@ -75,6 +75,17 @@ keys cannot submit source events. Rotating the operator key requires restarting
 the receiver; rotating a source means provisioning a fresh source and revoking
 the old one.
 
+After restoring a compatible database, keep receivers stopped and run
+`node packages/telemetry-broker/dist/main.mjs --fence-product-sources-after-restore`
+with the same private credential configuration. This one-shot operator command
+validates existing schema without migrations, revokes active product-source
+credentials, closes its pool and exits without serving HTTP or starting
+maintenance. It emits `station-product-restore-fence/v1` with product-only scope
+and an explicit unreconciled publisher state. No-argument serving is unchanged;
+unknown command arguments refuse startup. Observations and publisher privacy
+state are not modified. See the [restore boundary](../../deployment/telemetry/README.md#backup-restore-and-upgrade-acceptance)
+for snapshot rollback risks, enrollment and remaining qualification limits.
+
 The [private companion profile](../../deployment/telemetry/README.md) composes
 an explicit standalone image target and separate pinned diagnostic stores.
 Its source exists; image/configuration/runtime and upgrade/restore qualification

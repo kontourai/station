@@ -272,7 +272,11 @@
 
     "src-ui/src/views/project-page/ProjectRoom.tsx",
 
-    "src-ui/src/lib/project-onboarding-recovery.ts"
+    "src-ui/src/lib/project-onboarding-recovery.ts",
+
+    "src-server/routes/system/telemetry-companion-routes.ts",
+
+    "src-server/services/telemetry-companion.ts"
   ],
 
   "checks": [

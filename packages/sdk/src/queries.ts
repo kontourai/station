@@ -831,8 +831,10 @@ export {
 } from './query-domains/taskMemory';
 export {
   checkTelemetryConnection,
+  fetchTelemetryCompanionPrerequisites,
   fetchTelemetryDeliveryStatus,
   useCheckTelemetryConnectionMutation,
+  useTelemetryCompanionPrerequisitesQuery,
   useTelemetryDeliveryStatusQuery,
 } from './query-domains/telemetryDelivery';
 export {

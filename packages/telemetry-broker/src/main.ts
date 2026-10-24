@@ -7,6 +7,14 @@ import { createProductBroker } from './app.js';
 import { clientAddressPolicy } from './client-address.js';
 import { PgProductRepository } from './store.js';
 
+const commands = process.argv.slice(2);
+if (
+  commands.length > 1 ||
+  (commands.length === 1 &&
+    commands[0] !== '--fence-product-sources-after-restore')
+)
+  throw new Error('Unknown telemetry receiver command');
+
 const addresses = clientAddressPolicy(
   process.env.STATION_TELEMETRY_BROKER_TRUSTED_PROXY,
   process.env.STATION_TELEMETRY_BROKER_CLIENT_IP_HEADER,
@@ -81,58 +89,77 @@ pool.on('error', () =>
   process.stderr.write('Telemetry database connection failed\n'),
 );
 const store = new PgProductRepository(pool);
-await store.migrate();
-const app = createProductBroker(store, operatorKey, addresses);
-const server = createServer(getRequestListener(app.fetch));
-server.listen(port, process.env.STATION_TELEMETRY_BROKER_HOST ?? '127.0.0.1');
-server.maxConnections = 64;
-server.setTimeout(5000);
-server.requestTimeout = 5000;
-server.headersTimeout = 5000;
-const credentialRefresh = setInterval(() => {
-  void store
-    .refreshCredentials()
-    .catch(() =>
-      process.stderr.write('Telemetry credential refresh did not complete\n'),
-    );
-}, 30_000);
-credentialRefresh.unref();
-const finalizeClosedDays = () => {
-  void store.lite
-    .finalize()
-    .catch(() =>
-      process.stderr.write('Telemetry finalization did not complete\n'),
-    );
-};
-const finalization = setInterval(finalizeClosedDays, 3600000);
-finalization.unref();
-finalizeClosedDays();
-const retainExpiredRows = () => {
-  void store
-    .retain()
-    .catch(() =>
-      process.stderr.write('Telemetry retention did not complete\n'),
-    );
-};
-const retention = setInterval(retainExpiredRows, 3600000);
-retention.unref();
-retainExpiredRows();
-let stopping = false;
-const stop = () => {
-  if (stopping) return;
-  stopping = true;
-  clearInterval(retention);
-  clearInterval(finalization);
-  clearInterval(credentialRefresh);
-  const deadline = setTimeout(() => {
-    server.closeAllConnections();
-    process.exitCode = 1;
-  }, 6000);
-  deadline.unref();
-  server.close(() => {
-    void pool.end().finally(() => clearTimeout(deadline));
-  });
-};
-process.once('SIGTERM', stop);
-process.once('SIGINT', stop);
-process.stdout.write(`Telemetry product receiver listening on port ${port}\n`);
+if (commands.length === 1) {
+  let revokedSources: number;
+  try {
+    revokedSources = await store.fenceProductSourcesAfterRestore();
+  } finally {
+    await pool.end();
+  }
+  process.stdout.write(
+    `${JSON.stringify({
+      protocol: 'station-product-restore-fence/v1',
+      scope: 'product-sources-only',
+      revokedSources,
+      publisherState: 'unreconciled',
+    })}\n`,
+  );
+} else {
+  await store.migrate();
+  const app = createProductBroker(store, operatorKey, addresses);
+  const server = createServer(getRequestListener(app.fetch));
+  server.listen(port, process.env.STATION_TELEMETRY_BROKER_HOST ?? '127.0.0.1');
+  server.maxConnections = 64;
+  server.setTimeout(5000);
+  server.requestTimeout = 5000;
+  server.headersTimeout = 5000;
+  const credentialRefresh = setInterval(() => {
+    void store
+      .refreshCredentials()
+      .catch(() =>
+        process.stderr.write('Telemetry credential refresh did not complete\n'),
+      );
+  }, 30_000);
+  credentialRefresh.unref();
+  const finalizeClosedDays = () => {
+    void store.lite
+      .finalize()
+      .catch(() =>
+        process.stderr.write('Telemetry finalization did not complete\n'),
+      );
+  };
+  const finalization = setInterval(finalizeClosedDays, 3600000);
+  finalization.unref();
+  finalizeClosedDays();
+  const retainExpiredRows = () => {
+    void store
+      .retain()
+      .catch(() =>
+        process.stderr.write('Telemetry retention did not complete\n'),
+      );
+  };
+  const retention = setInterval(retainExpiredRows, 3600000);
+  retention.unref();
+  retainExpiredRows();
+  let stopping = false;
+  const stop = () => {
+    if (stopping) return;
+    stopping = true;
+    clearInterval(retention);
+    clearInterval(finalization);
+    clearInterval(credentialRefresh);
+    const deadline = setTimeout(() => {
+      server.closeAllConnections();
+      process.exitCode = 1;
+    }, 6000);
+    deadline.unref();
+    server.close(() => {
+      void pool.end().finally(() => clearTimeout(deadline));
+    });
+  };
+  process.once('SIGTERM', stop);
+  process.once('SIGINT', stop);
+  process.stdout.write(
+    `Telemetry product receiver listening on port ${port}\n`,
+  );
+}

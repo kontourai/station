@@ -1436,8 +1436,10 @@ export type {
 } from './query-domains/setupImports';
 export {
   checkTelemetryConnection,
+  fetchTelemetryCompanionPrerequisites,
   fetchTelemetryDeliveryStatus,
   useCheckTelemetryConnectionMutation,
+  useTelemetryCompanionPrerequisitesQuery,
   useTelemetryDeliveryStatusQuery,
 } from './query-domains/telemetryDelivery';
 export { extractUIBlocks } from './query-domains/uiBlocks.js';

@@ -79,6 +79,17 @@ import {
 } from '../../mcp/station-knowledge-native-tools.js';
 import { configureRuntimeRoutes } from '../runtime-routes.js';
 
+const companionProbe = vi.hoisted(() =>
+  vi.fn(async () => ({
+    kind: 'unavailable',
+    checkedAt: '2026-10-23T00:00:00.000Z',
+    reason: 'container-daemon-unavailable',
+  })),
+);
+vi.mock('../../../services/telemetry-companion.js', () => ({
+  readTelemetryCompanionPrerequisites: companionProbe,
+}));
+
 vi.mock('../runtime-route-support.js', () => {
   const stub = new Proxy({}, { get: () => () => undefined });
   return {
@@ -469,6 +480,38 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     });
     return response.json();
   }
+
+  test('companion host prerequisites require the operator in person through the production auth boundary', async () => {
+    const { base } = await setup();
+    companionProbe.mockClear();
+    const path = '/api/operator/telemetry-companion/prerequisites';
+    expect(await asOperatorUi(base, path)).toEqual({
+      data: {
+        kind: 'unavailable',
+        checkedAt: '2026-10-23T00:00:00.000Z',
+        reason: 'container-daemon-unavailable',
+      },
+    });
+    expect(companionProbe).toHaveBeenCalledTimes(1);
+    const agentMarked = await fetch(`${base}${path}`, {
+      headers: {
+        authorization: `Bearer ${OPERATOR_CREDENTIAL}`,
+        [STATION_CONTROL_ORIGIN_HEADER]: STATION_CONTROL_ORIGIN_AGENT_TOOL,
+      },
+    });
+    expect(agentMarked.status).toBe(403);
+    for (const caller of [
+      BOUND_OPERATOR,
+      DELEGATED_OPERATOR,
+      ...Object.values(B_CALLERS),
+      'raw-token' as const,
+    ]) {
+      const response = await asTool(caller, path);
+      expect(response.data).toBeUndefined();
+      expect(response.code ?? response.error?.code).toBeTruthy();
+    }
+    expect(companionProbe).toHaveBeenCalledTimes(1);
+  });
 
   const conversationIds = (body: any): string[] =>
     ((body?.data?.items ?? []) as { id: string }[]).map((item) => item.id);

@@ -166,7 +166,13 @@
 
     "deployment/telemetry/dashboards/station.json",
 
-    "deployment/telemetry/compose.dev.yaml"
+    "deployment/telemetry/compose.dev.yaml",
+
+    "src-ui/src/views/developer/TelemetryCompanion.tsx",
+
+    "src-ui/src/views/developer/TelemetryTab.tsx",
+
+    "packages/sdk/src/query-domains/telemetryDelivery.ts"
   ],
 
   "checks": [

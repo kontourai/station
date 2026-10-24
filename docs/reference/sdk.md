@@ -24,6 +24,18 @@ and collector HTTP acceptance remain distinct from downstream delivery. See
 [Monitoring](../guides/monitoring.md#environment-variables) for the operator
 journey and limits. This surface requires a published SDK version containing it.
 
+`fetchTelemetryCompanionPrerequisites(apiBase, options?)` and
+`useTelemetryCompanionPrerequisitesQuery(apiBase, config?)` read the operator's
+companion host capabilities. Pass the render-captured `requestScope`; the hook
+partitions by Station and authority, does not retain previous data or retry
+automatically, and refreshes when mounted or explicitly requested. A server
+refusal, unsupported response or malformed capability result is an error,
+not a passed prerequisite. The bounded response contains versions and container
+architecture, never credentials or raw host output. A passed host check is not
+artifact qualification or installation readiness. The Developer → Monitoring →
+Companion tab consumes this read; qualified install/start controls remain
+pending. See the [host prerequisite API](../../deployment/telemetry/README.md#station-host-prerequisite-api).
+
 `@kontourai/station-sdk/secret-bindings` also exports
 `listTelemetrySecretBindings(apiBase, options?)` and
 `updateTelemetrySecretBindingGrant(apiBase, id, operation, input, options?)`.

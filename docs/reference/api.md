@@ -1808,6 +1808,16 @@ The [usage reference](usage-telemetry.md) owns the program and deployment limits
 
 ### Telemetry delivery status and connection checks
 
+`GET /api/operator/telemetry-companion/prerequisites` is a separate, no-store
+host-capability read. It requires the operator in person and `orchestration:read` for
+paired credentials; agents and raw internal-token callers are refused. It
+returns `{data: TelemetryCompanionPrerequisites}`: either observed local
+Docker/Compose versions and Linux container architecture, or a typed missing
+capability. Operator authority is checked before probing and before response.
+Unexpected probe failures return 503 `companion_probe_unavailable` without raw
+host output. This route starts no service and proves neither artifact admission
+nor storage/ingestion readiness. See the [companion profile](../../deployment/telemetry/README.md#station-host-prerequisite-api).
+
 `GET /api/usage-telemetry/delivery-status` requires `orchestration:read` and
 returns the current process's product queue, exact-receipt acknowledgements,
 loss/failure counters and OTel callback/probe state. It carries presence flags

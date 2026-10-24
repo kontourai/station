@@ -10,6 +10,10 @@ and a separate authenticated OTel Collector, Prometheus, Tempo and Grafana.
 [`compose.yaml`](compose.yaml) holds the receiver and PostgreSQL and includes
 the diagnostic services from [`compose.diagnostics.yaml`](compose.diagnostics.yaml).
 The Grafana dashboard is [`dashboards/station.json`](dashboards/station.json).
+Grafana uses the plugins bundled in its pinned image. Plugin preinstallation and
+automatic updates are disabled: startup must not replace a bundled datasource
+with an unpinned download or unload it while an update fails on the read-only
+filesystem.
 The [developer profile](#developer-profile) runs the diagnostic half alone.
 The trace transform clears typed span-event and span-link slices with `nil`.
 An empty OTTL list (`[]`) is not a typed slice in the pinned Collector and
@@ -45,6 +49,52 @@ is neither publisher authentication nor a release qualification receipt.
 It does not authorize installation, change consent or configure a destination.
 The managed in-Station lifecycle and qualified release descriptor remain
 pending; these commands do not implement that journey.
+
+The maintained source-checkout runtime exercise takes an exact candidate and a
+new private output directory outside the checkout:
+
+```sh
+npm run qualify:telemetry-companion -- /absolute/candidate /absolute/new-private-output
+```
+
+It requires clean matching source and a local Unix Docker endpoint, captures and
+verifies the candidate, builds a labelled image, and uses a unique Compose
+project, private generated credentials and unused loopback ports. It checks
+host storage readiness, credential refusals, network placement, authenticated
+synthetic DELTA metric samples (2+3) queried as cumulative 5 through Grafana's
+Prometheus datasource, synthetic product commit/replay and the one-shot product
+fence before normal receiver restart. It also stops and restarts the diagnostic
+services on their retained volumes, then queries the exact previously observed
+metric timestamp without sending any more samples.
+Docker/HTTP mutation intents precede effects; uncertain outcomes require manual
+inspection rather than retry. Commands and response bodies are bounded, and
+cleanup stops only the owned project while retaining private files and volumes.
+
+`report.json` is explicitly `synthetic-component-runtime-only` with
+`installationAuthority: false`. This command does not yet exercise trace
+query semantics, trace/product restart durability beyond the product fence,
+fresh backup/restore, real Station
+export, version rollback, publisher reconciliation, personal grants or native
+acceptance. It is diagnostic evidence, not a qualified release or install permit.
+
+### Station host prerequisite API
+
+`GET /api/operator/telemetry-companion/prerequisites` is an uncached read for
+the operator in person, excluding agent-originated and internal-token callers.
+It probes the selected local container host. Paired callers additionally
+need `orchestration:read`; that scope does not replace operator authorization. The
+route checks current operator authority before probing and before returning its
+result. It does not start Docker, pull images, create services or enable export.
+
+The probe requires a local Unix socket or Windows named-pipe context, Linux
+containers on amd64 or arm64, and Compose 2.24 or later. It pins the selected
+endpoint for the daemon query instead of resolving a possibly changed context
+again. Each CLI invocation has a five-second deadline and bounded output.
+Missing CLI, unavailable daemon, remote context, unsupported host and unavailable
+Compose are separate typed results; raw daemon errors and socket paths are not
+returned. A successful prerequisite read proves host capability only. Qualified
+artifact admission, installation, storage readiness and pane controls remain
+separate work.
 
 Portable-server builds can include this candidate with
 `build:portable-server -- --with-telemetry-companion` after the receiver build.
@@ -214,6 +264,13 @@ These are pending qualification commands, not recorded successes. All published
 ports bind numeric loopback: product 44481, authenticated OTLP HTTP 44482 and
 authenticated Grafana 44484. PostgreSQL, Prometheus and Tempo publish no host
 port. Dedicated internal product/diagnostic networks separate their stores.
+The receiver additionally joins `product-ingress`; Collector and Grafana join
+`diagnostics-ingress`. These separate regular bridges enable the explicit
+loopback port publications. PostgreSQL, Prometheus and Tempo do not join an
+ingress bridge. The front-end services have outbound network connectivity;
+the profile does not claim a network-level egress deny for them. Authentication,
+separate credentials and disabled Grafana reporting remain required. Neither
+bridge joins the product and diagnostic namespaces together.
 Use an explicitly owned SSH forward or separately qualified private TLS ingress
 to reach the profile from another computer; do not change a binding to `0.0.0.0`
 as a connectivity workaround. Existing user ports 3141 and 3000 remain outside
@@ -392,8 +449,16 @@ not present missing samples, dropped streams or exporter refusal as zero.
 
 Trace processing projects the declared operational attributes, replaces span
 names, removes status text/events/links, and propagates transformation failures.
-No OTLP log pipeline is enabled. Exact pinned-binary validation and injected
-private-content refusal remain pending. Grafana provisions `dashboards/station.json`;
+No OTLP log pipeline is enabled. Local synthetic checks of the packaged profile
+at `79e77a7f28b` exercised authenticated DELTA samples queried as cumulative
+2 then 5 in Prometheus, and a Tempo trace retaining its allowed operation while
+removing injected private fields, events, links and trace state. Historical
+samples and the same projected trace survived a stopped-process restart without
+resending either payload. The run also checked private dashboard credentials,
+credential refusals, loopback bindings and backend network membership. These
+checks do not qualify real Station export, cardinality/expiry behavior, all
+privacy/error paths, fresh restore, other hosts or release installation.
+Grafana provisions `dashboards/station.json`;
 a panel or trace ID does not prove delivery or accurate aggregation.
 
 Product storage retains its existing 90-day policy, row/storage caps, schema
@@ -411,6 +476,44 @@ owners. Restore into a fresh isolated project and private files, never over the
 existing owner. Prove acknowledged events, exact deduplication, revocation,
 migration state and queries survive receiver/database restart and restored
 storage. Retain failed-control stores and records.
+
+A local product fixture at `79e77a7f28b` acknowledged two synthetic events,
+enforced source-scoped receipt lookup and conflicting-event refusal, and
+retained receipts, replay deduplication and revocation across receiver/database
+restart. Its complete PostgreSQL logical backup restored into a fresh isolated
+project with matching row digests for all 14 application tables. The restored
+receiver returned the original receipt, deduplicated replay and refused the
+source revoked before the snapshot. Public publication tables were empty in
+this fixture; this is not a public-release rollback or diagnostic-store backup
+qualification.
+
+Snapshot preservation does not preserve authority changes made later. An
+additional control revoked a source after the backup: the original receiver
+refused it, but the older restored database still accepted its credential.
+Managed restore therefore needs current-authority reconciliation or source
+credential invalidation before receiver activation. The product-only one-shot
+command below now performs that invalidation. Keep all receivers stopped and
+start only the restored PostgreSQL service first; use a compatible artifact
+that implements the command:
+
+```sh
+docker compose --env-file /absolute/private/telemetry.env \
+  -f deployment/telemetry/compose.yaml run --rm --no-deps receiver \
+  node dist/main.mjs --fence-product-sources-after-restore
+```
+
+This invocation publishes no service ports. Require successful process exit and
+the `station-product-restore-fence/v1` receipt with `scope: product-sources-only`.
+It validates the existing schema without migrations, revokes all active copied
+product-source credentials atomically, closes its pool and exits without an
+HTTP listener or maintenance timers. Observations, receipts and existing
+revocation timestamps remain intact. Source enrollment is explicit afterward.
+
+The command reports publisher state as `unreconciled`: it does not alter
+publisher keys, noise keys or publication records, nor prove that an old public
+privacy snapshot is safe. Managed restore orchestration and public-state
+reconciliation remain unfinished. Do not treat raw snapshot restoration or this
+product-only fence as a complete restore/installation qualification.
 
 Do not remove volumes with `down -v`, edit migration records or strip new grant
 fields to make an older binary start. An incompatible upgrade/rollback must

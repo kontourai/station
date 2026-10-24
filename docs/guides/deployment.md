@@ -178,6 +178,12 @@ It requires private credential files and loopback exposure; consumer validation,
 actual delivery, backup/restore and release qualification are still pending.
 Its source is distinct from existing dogfood receipts.
 
+Developer → Monitoring → Companion exposes the operator-only host prerequisite
+check. A normal host-browser grant can read it; agents and ordinary paired
+devices cannot. This read does not install, start or qualify the deployment.
+See the [prerequisite API](../../deployment/telemetry/README.md#station-host-prerequisite-api)
+for supported container capabilities and explicit failure states.
+
 The same directory provides the only checked-in monitoring stack. Its
 [developer profile](../../deployment/telemetry/README.md#developer-profile) runs
 the digest-pinned Collector, Prometheus, Tempo and Grafana without the product

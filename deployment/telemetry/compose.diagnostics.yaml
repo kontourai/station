@@ -27,7 +27,7 @@ services:
         read_only: true
         bind: {create_host_path: false}
     ports: ["127.0.0.1:${TELEMETRY_OTLP_PORT:-44482}:4318"]
-    networks: [diagnostics]
+    networks: [diagnostics, diagnostics-ingress]
     depends_on: [tempo]
     cpus: 1.0
     mem_limit: 512m
@@ -71,6 +71,8 @@ services:
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
       GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+      GF_PLUGINS_PREINSTALL_AUTO_UPDATE: "false"
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana-datasources.yaml:/etc/grafana/provisioning/datasources/telemetry.yaml:ro
@@ -82,7 +84,7 @@ services:
         read_only: true
         bind: {create_host_path: false}
     ports: ["127.0.0.1:${TELEMETRY_GRAFANA_PORT:-44484}:3000"]
-    networks: [diagnostics]
+    networks: [diagnostics, diagnostics-ingress]
     depends_on: [prometheus, tempo]
     tmpfs: [/tmp:size=16m]
     cpus: 0.5
@@ -91,6 +93,8 @@ services:
 networks:
   diagnostics:
     internal: true
+  diagnostics-ingress:
+    internal: false
 
 volumes:
   prometheus-data:

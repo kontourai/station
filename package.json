@@ -163,6 +163,7 @@
     "build:telemetry-companion": "node scripts/package-telemetry-companion.mjs pack",
     "verify:telemetry-companion": "node scripts/package-telemetry-companion.mjs verify",
     "qualify:telemetry-broker": "node packages/telemetry-broker/qualify.mjs",
+    "qualify:telemetry-companion": "node scripts/qualify-telemetry-companion.mjs",
     "typecheck:contracts": "node scripts/tsc-slot.mjs -p packages/contracts/tsconfig.json --noEmit",
     "typecheck:sdk": "node scripts/tsc-slot.mjs -p packages/sdk/tsconfig.tests.json --noEmit",
     "typecheck:board-pane": "node scripts/tsc-slot.mjs -p packages/board-pane/tsconfig.tests.json --noEmit",

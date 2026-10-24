@@ -213,6 +213,13 @@ exact instance destination grants, never account, Project or peer inference gran
 See [usage telemetry](../reference/usage-telemetry.md#delivery-status-and-connection-checks)
 for the status/probe boundary and failure limits.
 
+The companion host-prerequisite GET has `orchestration:read` scope and an
+additional current operator-in-person check before the bounded local Docker
+probe and before its response. A read scope alone never admits an ordinary
+paired Device or agent. It returns capability metadata, not credentials,
+installation authority or personal analytics access. No bootstrap grant was
+expanded for this route; lifecycle mutations need their own admission.
+
 The [external-surface table](../../src-server/security/pairing-route-scopes.ts)
 owns the method/path-specific exceptions; a public classification at the Device
 gate does not waive the endpoint's own checks. The station-control HTTP/SSE

@@ -75,7 +75,7 @@ services:
         read_only: true
         bind: {create_host_path: false}
     ports: ["127.0.0.1:${TELEMETRY_PRODUCT_PORT:-44481}:43891"]
-    networks: [product]
+    networks: [product, product-ingress]
     depends_on:
       postgres:
         condition: service_healthy
@@ -86,6 +86,8 @@ services:
 networks:
   product:
     internal: true
+  product-ingress:
+    internal: false
 
 volumes:
   postgres-data:
