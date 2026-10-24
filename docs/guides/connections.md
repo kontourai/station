@@ -1517,6 +1517,10 @@ and [Codex delivery](../../src-server/providers/adapters/codex-mcp-passthrough.t
 Local fixtures cover OAuth registration, resource indicators, paste-back, refresh,
 launch refusal and both engine configuration outputs. Live end-to-end use against
 T3 Code is **NOT_VERIFIED**.
+The [sign-in comparison](../learn/media/oauth-mcp-sign-in-comparison.png) and
+[personal-source assignment comparison](../learn/media/oauth-mcp-picker-comparison.png)
+show mounted browser components with synthetic API responses; they do not show
+a live T3 Code sign-in or tool call.
 
 ## Developer services and computers
 

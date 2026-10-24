@@ -1,9 +1,7 @@
-import { mkdtemp, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import type { ResolvedAgentToolServer } from '@kontourai/station-contracts/provider';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
   createEngineMcpOAuthResolver,
   engineMcpTokenEnvName,
@@ -26,12 +24,13 @@ const server: ResolvedAgentToolServer = {
   transport: 'streamable-http',
   endpoint,
 };
+const makeTempDir = trackTempDirs();
 let home: string;
 let def: ToolDef;
 let resolve: ReturnType<typeof createEngineMcpOAuthResolver>;
 
-beforeEach(async () => {
-  home = await mkdtemp(join(tmpdir(), 'station-engine-oauth-'));
+beforeEach(() => {
+  home = makeTempDir('station-engine-oauth-');
   def = { ...server, kind: 'mcp', credentialOwnership: { owner: 'principal' } };
   resolve = createEngineMcpOAuthResolver({
     homeDir: () => home,
@@ -39,10 +38,9 @@ beforeEach(async () => {
     getIntegration: async () => def,
   });
 });
-afterEach(async () => {
+afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
-  await rm(home, { recursive: true, force: true });
 });
 
 async function account(principalId?: string, project?: string) {
