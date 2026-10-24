@@ -32,7 +32,7 @@ export async function runMcpClientsCommand(
 ): Promise<void> {
   if (!isLoopbackSelfAuthEndpoint(apiBase))
     throw new Error(
-      'External-client setup requires an IP-literal loopback Station profile.',
+      'External-client setup requires a saved Station with an IP-literal loopback address.',
     );
   const action = parsed.positionals[0];
   if (action === 'authorize') {
