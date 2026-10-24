@@ -100,7 +100,8 @@ export function useBasisPaneLauncher(): {
     [host],
   );
   const fallbackTitle =
-    fallbackState?.scope.kind === 'session-inventory'
+    fallbackState?.scope.kind === 'session-inventory' &&
+    fallbackState.scope.initialScope?.kind !== 'current-answer'
       ? 'Chat inventory'
       : 'Basis';
   const fallbackSurface = fallbackState ? (
