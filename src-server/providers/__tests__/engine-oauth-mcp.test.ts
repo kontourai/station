@@ -452,7 +452,7 @@ const loopbackEnv = (remoteAddress = '127.0.0.1') => ({
   incoming: { socket: { remoteAddress } },
 });
 
-async function proxyFixture() {
+async function proxyFixture(mode: 'legacy' | 'auto' = 'legacy') {
   const provider = await account('human:local:operator');
   await provider.saveTokens(
     {
@@ -511,7 +511,10 @@ async function proxyFixture() {
   const urls = await resolve([server], 'human:local:operator');
   const url = urls.get('t3')!;
   const proxy = createEngineOAuthProxyRoutes();
-  const client = new Client({ name: 'engine-fixture', version: '1.0' });
+  const client = new Client(
+    { name: 'engine-fixture', version: '1.0' },
+    { versionNegotiation: { mode } },
+  );
   const transport = new StreamableHTTPClientTransport(new URL(url), {
     fetch: async (input, init) => proxy.request(input, init, loopbackEnv()),
   });
@@ -529,54 +532,57 @@ async function proxyFixture() {
   };
 }
 
-test('the proxy reaches real MCP tools, refreshes mid-session expiry and 401, and fails visibly after disconnect', async () => {
-  const fixture = await proxyFixture();
-  try {
-    expect(
-      await fixture.client.callTool({
-        name: 'fixture_echo',
-        arguments: { text: 'authenticated call' },
-      }),
-    ).toMatchObject({ content: [{ text: 'authenticated call' }] });
-    await fixture.provider.saveTokens(
-      {
-        access_token: 'remote-secret',
-        refresh_token: 'refresh-secret',
-        token_type: 'Bearer',
-        expires_in: 61,
-        ...issuer,
-      },
-      issuer,
-    );
-    expect(
-      await fixture.client.callTool({
-        name: 'fixture_echo',
-        arguments: { text: 'near expiry' },
-      }),
-    ).toMatchObject({ content: [{ text: 'near expiry' }] });
-    expect(fixture.refreshes()).toBe(1);
-    fixture.rejectCurrent();
-    expect(
-      await fixture.client.callTool({
-        name: 'fixture_echo',
-        arguments: { text: 'after 401' },
-      }),
-    ).toMatchObject({ content: [{ text: 'after 401' }] });
-    expect(fixture.refreshes()).toBe(2);
-    expect(fixture.seen).toContain('Bearer remote-secret');
-    expect(fixture.seen).toContain('Bearer rotated-2');
-    await fixture.provider.clearCredentials();
-    await expect(
-      fixture.client.callTool({
-        name: 'fixture_echo',
-        arguments: { text: 'disconnected' },
-      }),
-    ).rejects.toThrow('needs sign-in');
-    expect(fixture.seen).not.toContain('');
-  } finally {
-    await fixture.client.close();
-  }
-});
+test.each(['legacy', 'auto'] as const)(
+  '%s proxy reaches real MCP tools, refreshes mid-session expiry and 401, and fails visibly after disconnect',
+  async (mode) => {
+    const fixture = await proxyFixture(mode);
+    try {
+      expect(
+        await fixture.client.callTool({
+          name: 'fixture_echo',
+          arguments: { text: 'authenticated call' },
+        }),
+      ).toMatchObject({ content: [{ text: 'authenticated call' }] });
+      await fixture.provider.saveTokens(
+        {
+          access_token: 'remote-secret',
+          refresh_token: 'refresh-secret',
+          token_type: 'Bearer',
+          expires_in: 61,
+          ...issuer,
+        },
+        issuer,
+      );
+      expect(
+        await fixture.client.callTool({
+          name: 'fixture_echo',
+          arguments: { text: 'near expiry' },
+        }),
+      ).toMatchObject({ content: [{ text: 'near expiry' }] });
+      expect(fixture.refreshes()).toBe(1);
+      fixture.rejectCurrent();
+      expect(
+        await fixture.client.callTool({
+          name: 'fixture_echo',
+          arguments: { text: 'after 401' },
+        }),
+      ).toMatchObject({ content: [{ text: 'after 401' }] });
+      expect(fixture.refreshes()).toBe(2);
+      expect(fixture.seen).toContain('Bearer remote-secret');
+      expect(fixture.seen).toContain('Bearer rotated-2');
+      await fixture.provider.clearCredentials();
+      await expect(
+        fixture.client.callTool({
+          name: 'fixture_echo',
+          arguments: { text: 'disconnected' },
+        }),
+      ).rejects.toThrow('needs sign-in');
+      expect(fixture.seen).not.toContain('');
+    } finally {
+      await fixture.client.close();
+    }
+  },
+);
 
 test('proxy auth binds session and server, excludes Station-control credentials, and refuses non-loopback and ended sessions', async () => {
   const fixture = await proxyFixture();
