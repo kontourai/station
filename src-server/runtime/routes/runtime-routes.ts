@@ -152,6 +152,10 @@ import {
 } from '../../services/pull-requests/pull-request-review-guide-normalize.js';
 import { PullRequestReviewGuideStore } from '../../services/pull-requests/pull-request-review-guide-store.js';
 import { readTelemetryCompanionPrerequisites } from '../../services/telemetry-companion.js';
+import {
+  prepareTelemetryCompanionArchive,
+  readTelemetryCompanionArchivePreparation,
+} from '../../services/telemetry-companion-archive.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { canonicalPath } from '../../utils/path-containment.js';
 import { STATION_KNOWLEDGE_MCP_PATH } from '../mcp/station-control-mcp-token.js';
@@ -6037,17 +6041,30 @@ export function configureRuntimeRoutes(
       (request) => projectMembershipAuthority(request).operator(),
     ),
   );
+  const requireTelemetryCompanionOperator = async (request: Request) => {
+    if (!isOperatorInPersonNotAgent(request))
+      throw new ProjectMembershipRefusal('forbidden');
+    await projectMembershipAuthority(request).operator();
+  };
   context.app.route(
     '/api/operator/telemetry-companion',
     createTelemetryCompanionRoutes({
-      requireOperator: async (request) => {
-        if (!isOperatorInPersonNotAgent(request))
-          throw new ProjectMembershipRefusal('forbidden');
-        await projectMembershipAuthority(request).operator();
-      },
+      requireOperator: requireTelemetryCompanionOperator,
       prerequisites: (includeArtifactEvidence) =>
         readTelemetryCompanionPrerequisites(
           includeArtifactEvidence ? resolveThisServerProvenance() : undefined,
+        ),
+      prepareArchive: (request, operationId) =>
+        prepareTelemetryCompanionArchive(resolveThisServerProvenance(), {
+          home: context.configLoader.getProjectHomeDir(),
+          operationId,
+          requireOperator: () => requireTelemetryCompanionOperator(request),
+          signal: request.signal,
+        }),
+      archivePreparation: (operationId) =>
+        readTelemetryCompanionArchivePreparation(
+          context.configLoader.getProjectHomeDir(),
+          operationId,
         ),
     }),
   );

@@ -542,6 +542,14 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     origin: 'explicit',
   },
   {
+    id: '/api/operator/telemetry-companion:archive-preparation',
+    method: 'POST',
+    prefix: '/api/operator/telemetry-companion/archive-preparations',
+    exact: true,
+    scope: PAIRING_SCOPE_HOME_CONTROL,
+    origin: 'explicit',
+  },
+  {
     id: '/api/operator/accounts/:accountId/actions:operator-action',
     method: 'POST',
     prefix: '/api/operator/accounts/:accountId/actions',

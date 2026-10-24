@@ -1,17 +1,23 @@
-import { generateKeyPairSync } from 'node:crypto';
+import { createHash, generateKeyPairSync, randomUUID } from 'node:crypto';
 import {
   mkdir,
   readFile,
   rename,
   rm,
+  stat,
   symlink,
   writeFile,
 } from 'node:fs/promises';
 import { join } from 'node:path';
 import { load } from 'js-yaml';
-import { beforeAll, expect, test } from 'vitest';
+import { beforeAll, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import type { InstallProvenance } from '../../src-server/routes/system/install-provenance.js';
+import {
+  CompanionArchivePreparationBusyError,
+  prepareTelemetryCompanionArchive,
+  readTelemetryCompanionArchivePreparation,
+} from '../../src-server/services/telemetry-companion-archive.js';
 import { readTelemetryCompanionArtifactEvidence } from '../../src-server/services/telemetry-companion-release.js';
 import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 import {
@@ -28,6 +34,185 @@ import {
 } from './fixtures/release-manifest-v2.js';
 
 const makeTempDir = trackTempDirs();
+
+test('prepares only exact signed bytes after durable intent, retains failures and never repeats an operation', async () => {
+  const home = makeTempDir('companion-archive-preparation-');
+  const archiveRoot = join(home, 'installed-version');
+  await mkdir(archiveRoot);
+  const bytes = Buffer.from('signed parent archive byte fixture');
+  const key = generateKeyPairSync('ed25519');
+  const keys = {
+    keys: [
+      {
+        keyId: 'fixture-preparation',
+        algorithm: 'ed25519',
+        channels: ['nightly'],
+        publicKeySpkiPem: key.publicKey
+          .export({ type: 'spki', format: 'pem' })
+          .toString(),
+      },
+    ],
+  };
+  const artifact = {
+    os: 'linux',
+    arch: 'x64',
+    name: 'station-server-linux-x64.tar.gz',
+    url: 'https://github.com/kontourai/station/releases/download/v0.7.0-nightly.12/station-server-linux-x64.tar.gz',
+    sha256: createHash('sha256').update(bytes).digest('hex'),
+    size: bytes.length,
+    format: 'tar.gz',
+  };
+  const payload = platformPayload({
+    artifacts: [artifact],
+    sourceSha: 'a'.repeat(40),
+  });
+  const envelope = signEnvelope(payload, 'fixture-preparation', key.privateKey);
+  const envelopeFile = join(
+    archiveRoot,
+    '.station-signed-release-manifest.json',
+  );
+  await writeFile(envelopeFile, JSON.stringify(envelope));
+  const provenance: InstallProvenance = {
+    installKind: 'archive',
+    archiveRoot,
+    installRoot: home,
+    version: '0.7.0-nightly.12',
+    release: {
+      schemaVersion: 2,
+      sha: 'a'.repeat(40),
+      ref: 'v0.7.0-nightly.12',
+      createdAt: '2026-09-25T00:00:00.000Z',
+      channel: 'nightly',
+      releaseChannel: 'nightly',
+      prerelease: true,
+    },
+  };
+  const root = join(home, 'telemetry-companion', 'archive-preparations');
+  const verification = { keys, platform: 'linux', arch: 'x64' };
+  for (const fault of [
+    'none',
+    'digest',
+    'oversize',
+    'truncated',
+    'redirect',
+    'revoked',
+    'aborted',
+  ] as const) {
+    const operationId = randomUUID();
+    let authorized = true;
+    const controller = new AbortController();
+    if (fault === 'aborted') controller.abort();
+    const fetchFn = vi.fn(async () => {
+      expect(
+        JSON.parse(
+          await readFile(join(root, operationId, 'intent.json'), 'utf8'),
+        ),
+      ).toMatchObject({ operationId, envelope, artifact });
+      expect(
+        await readTelemetryCompanionArchivePreparation(home, operationId),
+      ).toMatchObject({ phase: 'pending', installationAuthority: false });
+      if (fault === 'revoked') authorized = false;
+      if (fault === 'redirect')
+        return new Response(null, {
+          status: 302,
+          headers: { location: 'http://private.test/archive' },
+        });
+      const body =
+        fault === 'digest'
+          ? Buffer.alloc(bytes.length, 120)
+          : fault === 'oversize'
+            ? Buffer.concat([bytes, Buffer.from('x')])
+            : fault === 'truncated'
+              ? bytes.subarray(1)
+              : bytes;
+      return new Response(Uint8Array.from(body));
+    });
+    const input = {
+      home,
+      operationId,
+      verification,
+      fetchFn,
+      signal: controller.signal,
+      requireOperator: async () => {
+        if (!authorized) throw new Error('withdrawn');
+      },
+    };
+    const receipt = await prepareTelemetryCompanionArchive(provenance, input);
+    expect(receipt.phase).toBe(fault === 'none' ? 'authenticated' : 'failed');
+    expect(receipt.installationAuthority).toBe(false);
+    expect(
+      (await stat(join(root, operationId, 'parent-archive.tar.gz'))).size,
+    ).toBeLessThanOrEqual(bytes.length);
+    expect((await stat(join(root, operationId))).mode & 0o077).toBe(0);
+    expect(
+      await readTelemetryCompanionArchivePreparation(home, operationId),
+    ).toEqual(receipt);
+    if (fault === 'none')
+      expect(
+        await readFile(join(root, operationId, 'parent-archive.tar.gz')),
+      ).toEqual(bytes);
+    const calls = fetchFn.mock.calls.length;
+    authorized = true;
+    expect(await prepareTelemetryCompanionArchive(provenance, input)).toEqual(
+      receipt,
+    );
+    expect(fetchFn).toHaveBeenCalledTimes(calls);
+    expect(calls).toBe(fault === 'aborted' ? 0 : 1);
+  }
+  const untouched = randomUUID();
+  await mkdir(join(root, untouched), { mode: 0o700 });
+  await writeFile(
+    join(root, untouched, 'intent.json'),
+    'retain operator evidence',
+  );
+  const fetchFn = vi.fn(async () => new Response(Uint8Array.from(bytes)));
+  const input = {
+    home,
+    operationId: untouched,
+    verification,
+    fetchFn,
+    requireOperator: async () => {},
+  };
+  await expect(
+    prepareTelemetryCompanionArchive(provenance, input),
+  ).rejects.toBeInstanceOf(CompanionArchivePreparationBusyError);
+  expect(await readFile(join(root, untouched, 'intent.json'), 'utf8')).toBe(
+    'retain operator evidence',
+  );
+  expect(fetchFn).not.toHaveBeenCalled();
+  const lockPath = join(root, 'preparation.lock');
+  await writeFile(lockPath, 'retain interrupted owner', {
+    mode: 0o600,
+    flag: 'wx',
+  });
+  await expect(
+    prepareTelemetryCompanionArchive(provenance, {
+      ...input,
+      operationId: randomUUID(),
+    }),
+  ).rejects.toBeInstanceOf(CompanionArchivePreparationBusyError);
+  expect(await readFile(lockPath, 'utf8')).toBe('retain interrupted owner');
+  expect(fetchFn).not.toHaveBeenCalled();
+  await rm(lockPath);
+  await writeFile(
+    envelopeFile,
+    JSON.stringify({
+      ...envelope,
+      signature: Buffer.alloc(64).toString('base64'),
+    }),
+  );
+  const rejectedId = randomUUID();
+  await expect(
+    prepareTelemetryCompanionArchive(provenance, {
+      ...input,
+      operationId: rejectedId,
+    }),
+  ).rejects.toThrow('parent archive unavailable');
+  expect(
+    await readTelemetryCompanionArchivePreparation(home, rejectedId),
+  ).toBeNull();
+  expect(fetchFn).not.toHaveBeenCalled();
+});
 
 test('retained parent signature and build inventory remain distinct from companion installation authority', async () => {
   const root = makeTempDir('companion-release-evidence-');

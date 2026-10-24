@@ -16,19 +16,33 @@ import {
   verifyTelemetryCompanionFiles,
 } from './telemetry-companion-artifact.mjs';
 
-/** Reads evidence only. The original archive bytes and runtime qualification remain separate. */
-export async function readTelemetryCompanionArtifactEvidence(
+export interface CompanionParentVerificationOptions {
+  keys?: ReleaseManifestKeyTable;
+  platform?: string;
+  arch?: string;
+}
+
+type UnavailableEvidence = Extract<
+  TelemetryCompanionArtifactEvidence,
+  { kind: 'unavailable' }
+>;
+type VerifiedParent = {
+  kind: 'verified';
+  archiveRoot: string;
+  envelope: unknown;
+  release: ReleaseManifestPayload;
+  artifact: ReleaseManifestArtifact;
+};
+
+/** Re-read the signed authority at each preparation boundary; never use a pane DTO as authority. */
+export async function readTelemetryCompanionVerifiedParent(
   provenance: InstallProvenance,
   {
     keys = PINNED_KEYS,
     platform = process.platform,
     arch = process.arch,
-  }: {
-    keys?: ReleaseManifestKeyTable;
-    platform?: string;
-    arch?: string;
-  } = {},
-): Promise<TelemetryCompanionArtifactEvidence> {
+  }: CompanionParentVerificationOptions = {},
+): Promise<UnavailableEvidence | VerifiedParent> {
   if (provenance.installKind !== 'archive' || !provenance.installRoot)
     return { kind: 'unavailable', reason: 'archive-install-required' };
   let envelope: unknown;
@@ -65,20 +79,39 @@ export async function readTelemetryCompanionArtifactEvidence(
   } catch {
     return { kind: 'unavailable', reason: 'release-envelope-invalid' };
   }
+  return {
+    kind: 'verified',
+    archiveRoot: provenance.archiveRoot,
+    envelope,
+    release,
+    artifact,
+  };
+}
+
+/** Reads evidence only. The original archive bytes and runtime qualification remain separate. */
+export async function readTelemetryCompanionArtifactEvidence(
+  provenance: InstallProvenance,
+  options: CompanionParentVerificationOptions = {},
+): Promise<TelemetryCompanionArtifactEvidence> {
+  const parent = await readTelemetryCompanionVerifiedParent(
+    provenance,
+    options,
+  );
+  if (parent.kind === 'unavailable') return parent;
   try {
     const manifest = await verifyTelemetryCompanionFiles(
-      join(provenance.archiveRoot, 'telemetry-companion'),
+      join(parent.archiveRoot, 'telemetry-companion'),
     );
-    if (manifest.source !== release.sourceSha)
+    if (manifest.source !== parent.release.sourceSha)
       return { kind: 'unavailable', reason: 'companion-payload-invalid' };
   } catch {
     return { kind: 'unavailable', reason: 'companion-payload-invalid' };
   }
   return {
     kind: 'parent-envelope-verified',
-    version: release.version,
-    source: release.sourceSha,
-    artifactSha256: artifact.sha256,
+    version: parent.release.version,
+    source: parent.release.sourceSha,
+    artifactSha256: parent.artifact.sha256,
     qualification: 'build-only',
     installationAuthority: false,
   };

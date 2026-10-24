@@ -1,3 +1,31 @@
+export const TELEMETRY_COMPANION_ARCHIVE_PREPARATION_PROTOCOL =
+  'station-companion-archive-preparation/v1';
+
+export function isTelemetryCompanionOperationId(
+  value: unknown,
+): value is string {
+  return (
+    typeof value === 'string' &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+      value,
+    )
+  );
+}
+
+/** Pending records intent, not process liveness. No state grants installation authority. */
+export interface TelemetryCompanionArchivePreparation {
+  protocol: typeof TELEMETRY_COMPANION_ARCHIVE_PREPARATION_PROTOCOL;
+  operationId: string;
+  phase: 'pending' | 'authenticated' | 'failed';
+  version: string;
+  source: string;
+  artifactSha256: string;
+  expectedBytes: number;
+  receivedBytes: number;
+  createdAt: string;
+  installationAuthority: false;
+}
+
 /** A signed parent envelope and local byte inventory are not install authority. */
 export type TelemetryCompanionArtifactEvidence =
   | {

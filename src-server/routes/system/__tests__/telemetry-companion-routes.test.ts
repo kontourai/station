@@ -1,4 +1,7 @@
-import type { TelemetryCompanionPrerequisites } from '@kontourai/station-contracts/telemetry-delivery';
+import type {
+  TelemetryCompanionArchivePreparation,
+  TelemetryCompanionPrerequisites,
+} from '@kontourai/station-contracts/telemetry-delivery';
 import { Hono } from 'hono';
 import { expect, test, vi } from 'vitest';
 import { requiredPairingScope } from '../../../security/pairing-route-scopes.js';
@@ -12,6 +15,19 @@ const unavailable: TelemetryCompanionPrerequisites = {
 
 function fixture(prerequisites = vi.fn(async () => unavailable)) {
   let operator = false;
+  const prepareArchive = vi.fn(
+    async (
+      _request: Request,
+      _operationId: string,
+    ): Promise<TelemetryCompanionArchivePreparation> => {
+      throw new Error('private download details');
+    },
+  );
+  const archivePreparation = vi.fn(
+    async (
+      _operationId: string,
+    ): Promise<TelemetryCompanionArchivePreparation | null> => null,
+  );
   const app = new Hono().route(
     '/api/operator/telemetry-companion',
     createTelemetryCompanionRoutes({
@@ -19,10 +35,15 @@ function fixture(prerequisites = vi.fn(async () => unavailable)) {
         if (!operator) throw new Error('Operator authority required');
       },
       prerequisites,
+      prepareArchive,
+      archivePreparation,
     }),
   );
   return {
     prerequisites,
+    app,
+    prepareArchive,
+    archivePreparation,
     setOperator(value: boolean) {
       operator = value;
     },
@@ -30,6 +51,47 @@ function fixture(prerequisites = vi.fn(async () => unavailable)) {
       app.request('/api/operator/telemetry-companion/prerequisites'),
   };
 }
+
+test('archive preparation requires a person operator and accepts no caller URL or key policy', async () => {
+  const h = fixture();
+  const path = '/api/operator/telemetry-companion/archive-preparations';
+  const operationId = '01234567-89ab-4cde-8fab-0123456789ab';
+  const post = (body: unknown) =>
+    h.app.request(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  expect((await post({ operationId })).status).toBe(403);
+  expect((await h.app.request(`${path}/${operationId}`)).status).toBe(403);
+  expect(h.prepareArchive).not.toHaveBeenCalled();
+  expect(h.archivePreparation).not.toHaveBeenCalled();
+  expect(requiredPairingScope('POST', path)).toBe('home:control');
+  h.setOperator(true);
+  expect(
+    (await post({ operationId, url: 'https://caller.test/archive' })).status,
+  ).toBe(400);
+  expect((await post({ operationId, keys: {} })).status).toBe(400);
+  expect((await post({ operationId: '../escape' })).status).toBe(400);
+  expect(
+    (
+      await h.app.request(path, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: ' '.repeat(2048) + JSON.stringify({ operationId }),
+      })
+    ).status,
+  ).toBe(400);
+  expect(h.prepareArchive).not.toHaveBeenCalled();
+  const response = await post({ operationId });
+  expect(response.status).toBe(503);
+  expect(await response.json()).toEqual({
+    error: { code: 'companion_preparation_unavailable' },
+  });
+  expect(response.headers.get('cache-control')).toBe('no-store');
+  expect(h.prepareArchive).toHaveBeenCalledTimes(1);
+  expect((await h.app.request(`${path}/${operationId}`)).status).toBe(404);
+});
 
 test('a mounted unauthorized prerequisite request cannot launch the host probe', async () => {
   const h = fixture();
