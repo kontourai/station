@@ -1590,7 +1590,21 @@ export class StationRuntime {
             );
           });
         void this.orchestrationService
-          .readSession(sessionId, INTERNAL_SESSION_READ_SCOPE)
+          .readSession(sessionId, INTERNAL_SESSION_READ_SCOPE, {
+            eventMethods: [
+              'session.started',
+              'session.configured',
+              'session.exited',
+              'session.state-changed',
+              'turn.started',
+              'turn.completed',
+              'turn.aborted',
+              'runtime.error',
+              'request.opened',
+              'request.resolved',
+              'session.stop-settled',
+            ],
+          })
           .then(async (detail) => {
             if (!detail) return;
             const binding =
@@ -4366,7 +4380,7 @@ export class StationRuntime {
         const path = 'plain-text-100k-lines-v1.txt';
         let rebuilt = input.phase === 'cold';
         try {
-          const current = this.fileTreeService.readFileWithin(
+          const current = await this.fileTreeService.readFileWithin(
             workingDirectory,
             path,
           );
@@ -4634,8 +4648,8 @@ export class StationRuntime {
       monitoringEvents: this.monitoringEvents,
       monitoringEmitter: this.monitoringEmitter,
       eventLogPath: this.eventLogPath,
-      queryEventsFromDisk: (start: number, end: number, userId: string) =>
-        this.eventLog.queryEvents(start, end, userId),
+      queryEventsFromDisk: (start, end, userId, options) =>
+        this.eventLog.queryEvents(start, end, userId, options ?? {}),
       checkOllamaAvailability,
       buildRuntimeContext: () => this.buildRuntimeContext(),
       getAgentConfigurationRevision: () =>

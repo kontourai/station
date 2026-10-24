@@ -1024,6 +1024,86 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     unmount();
   });
 
+  it.each(['access-first', 'identity-first'] as const)(
+    'waits for local access before fetching boot data and identity before publishing it (%s)',
+    async (order) => {
+      const urlA = homeUrl('parallel-boot');
+      const harness = createHarness();
+      harness.observationPlan.set('default', async () => OBS_DEFAULT);
+      const observation = deferred<AuthorityObservation>();
+      const payloadFetched = vi.fn();
+      const storageRead = vi.spyOn(harness.asyncStorage.storage, 'getItem');
+      stubFetch(async (url) => {
+        if (url === `${urlA}/api/boot`) {
+          payloadFetched();
+          return new Response(
+            JSON.stringify({
+              version: 1,
+              sections: {
+                branding: {
+                  data: {
+                    success: true,
+                    data: { name: 'parallel-boot-marker' },
+                  },
+                },
+              },
+            }),
+          );
+        }
+        return new Response('not found', { status: 404 });
+      });
+      const localAccess =
+        deferred<Awaited<ReturnType<typeof resolveLocalUiSession>>>();
+      vi.mocked(resolveLocalUiSession).mockImplementation((apiBase) =>
+        apiBase === urlA
+          ? localAccess.promise
+          : Promise.resolve({ kind: 'host-unavailable' }),
+      );
+      const mounted = renderTree(harness, { localUiApiBase: urlA });
+      const { id } = await addHome('parallel-boot', urlA);
+      harness.observationPlan.set(urlA, () => observation.promise);
+      try {
+        await switchTo(id);
+        await waitFor(() =>
+          expect(resolveLocalUiSession).toHaveBeenCalledWith(urlA),
+        );
+        if (order === 'identity-first') {
+          await act(async () => observation.resolve(OBS_A));
+          await waitFor(() =>
+            expect(probe().getAttribute('data-namespace')).toBe(NS_A),
+          );
+        }
+        expect(payloadFetched).not.toHaveBeenCalled();
+        await act(async () => localAccess.resolve({ kind: 'authenticated' }));
+        await waitFor(() => expect(payloadFetched).toHaveBeenCalled());
+        if (order === 'access-first') {
+          expect(screen.queryByTestId('probe')).toBeNull();
+          expect(
+            harness.asyncStorage.data.has(authorityPersistenceKey(NS_A)),
+          ).toBe(false);
+          expect(
+            storageRead.mock.calls.some(
+              ([key]) => key === authorityPersistenceKey(NS_A),
+            ),
+          ).toBe(false);
+          await act(async () => observation.resolve(OBS_A));
+          await waitFor(() =>
+            expect(probe().getAttribute('data-namespace')).toBe(NS_A),
+          );
+        }
+        await waitFor(() =>
+          expect(harness.activeClient?.getQueryData(['branding'])).toEqual(
+            expect.objectContaining({ appName: 'parallel-boot-marker' }),
+          ),
+        );
+      } finally {
+        localAccess.resolve({ kind: 'host-unavailable' });
+        observation.resolve(OBS_A);
+        mounted.unmount();
+      }
+    },
+  );
+
   it("a delayed boot payload never seeds another identity's shelf", async () => {
     const urlA = homeUrl('homea');
     const harness = createHarness();
@@ -1032,10 +1112,7 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     const bootPayload = {
       version: 1,
       sections: {
-        projects: {
-          data: [{ id: 'p1', home: 'boot-A-marker' }],
-          success: true,
-        },
+        branding: { data: { success: true, data: { name: 'boot-A-marker' } } },
       },
     };
     stubFetch(async (url) => {
@@ -1057,6 +1134,7 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
     await waitFor(() =>
       expect(probe().getAttribute('data-namespace')).toBe(NS_A),
     );
+    const heldClient = harness.activeClient!;
     // A's seed holds its boot fetch (at A's captured origin) open…
     await waitFor(() => {
       const calls = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>)
@@ -1077,6 +1155,8 @@ describe('authority query isolation (real provider tree, mocked wire)', () => {
       bootGate.resolve(null);
     });
     await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(heldClient.getQueryData(['branding'])).toBeUndefined();
+    expect(harness.activeClient?.getQueryData(['branding'])).toBeUndefined();
     expect(probe().getAttribute('data-projects')).toContain(idB);
     expect(probe().getAttribute('data-projects')).not.toContain(
       'boot-A-marker',

@@ -107,9 +107,6 @@ import {
 import './SessionsView.css';
 import './page-layout.css';
 
-/** Live-refresh cadence for the all-sessions list (the SSE feed is per-session). */
-const SESSION_LIST_REFRESH_MS = 5000;
-
 /** How often relative times and lanes re-derive. */
 const ACTIVITY_CLOCK_MS = 30_000;
 const SETTLED_PAGE_SIZE = 20;
@@ -328,18 +325,12 @@ export function SessionsView({
    */
   onContinueInChat?: (threadId: string, draft: string) => void;
 }) {
-  // The SSE feed is per-session, so the list itself is kept fresh by polling.
-  // The query owns that poll: an interval beside it calling `refetch()` was a
-  // second scheduler over the same cache entry, and it kept running through
-  // every state React Query already pauses a `refetchInterval` for.
   const {
     data: inventory = [],
     isLoading,
     error: sessionsError,
     refetch,
-  } = useOrchestrationSessionsQuery({
-    refetchInterval: SESSION_LIST_REFRESH_MS,
-  });
+  } = useOrchestrationSessionsQuery();
   const showSurface = useShowSurface();
   const routeKey = JSON.stringify([apiBase, sessionId, intentToken]);
   const [dismissedRoute, setDismissedRoute] = useState<string | null>(null);
