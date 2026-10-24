@@ -292,6 +292,7 @@ package evidence.
 | --- | --- | --- |
 | Network access | Android `INTERNET`; iOS local-network rationale | Connect to the selected Station host, including a LAN or tailnet address. |
 | Network state | Android `ACCESS_NETWORK_STATE` | Observe the default network and metered status so native transport and polling can react to connection changes. Required in source, merged, and packaged manifests. |
+| Nearby discovery | Android `ACCESS_LOCAL_NETWORK`, contributed by the `station-discovery` library manifest | Browse nearby Stations. Android 17 requires runtime permission admission before browsing; see [Nearby Station discovery](native-shell-verification.md#nearby-station-discovery) for the separate permission and scan lifetimes. |
 | Camera | Android `CAMERA` plus optional camera hardware; iOS camera rationale | Scan a pairing QR code. |
 | Microphone | Android `RECORD_AUDIO`/`MODIFY_AUDIO_SETTINGS` plus optional microphone hardware; iOS microphone rationale | Voice conversations with an agent. |
 | Notifications | Android `POST_NOTIFICATIONS` | Show requested Station attention on supported Android releases. |

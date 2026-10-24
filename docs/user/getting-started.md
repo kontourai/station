@@ -106,8 +106,8 @@ replies, continue chats, and review work. Start on your computer:
 2. Open the Station name at the top of the computer’s window and choose
    **Pair phone**. Check the address before creating the invitation.
    **Settings → Pairing → Pair device** opens the same screen.
-3. On a new phone, open Station and choose **Scan QR code**. Scan the
-   invitation from the computer. **Enter pairing code** is available if the
+3. On a new phone, open Station and choose **Scan pairing QR code**. Scan the
+   invitation from the computer. **Enter a pairing code** is available if the
    camera cannot be used. Keep the computer running.
 
 Pairing codes require a reachable HTTPS address. The computer can suggest its
@@ -115,7 +115,7 @@ own configured Tailscale Serve address; choose **Use this address** after checki
 it. Both devices still need access to that address.
 
 For local network access, enable **Settings → Pairing → Discover this Station
-nearby** on the computer, then choose **Nearby Stations** on the native phone
+nearby** on the computer, then choose **Find nearby Stations** on the native phone
 app. Discovery is off by default and shows names and local addresses without
 granting access. Select the intended computer, confirm the exact address and any
 unencrypted HTTP warning, request access, and approve on the computer. Android
