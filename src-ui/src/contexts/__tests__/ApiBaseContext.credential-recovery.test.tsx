@@ -104,6 +104,7 @@ vi.mock('@kontourai/station-connect', async (importOriginal) => ({
 import {
   authenticatedFetch,
   fetchEventStreamResumeCapability,
+  fetchPairedDevices,
 } from '@kontourai/station-sdk';
 import { WorkspaceStationState } from '../../components/notifications/StationConditions';
 import { OnboardingGate } from '../../components/OnboardingGate';
@@ -199,38 +200,48 @@ describe('the reconnect banner is retired by an authenticated 2xx — and only b
     expect(screen.queryByText(BANNER)).toBeNull();
   });
 
-  it('keeps a saved bearer on operator-session 403 and removes it on 401 through the app handler', async () => {
-    await renderShell();
-    const active = connections?.activeConnection;
-    if (!active) throw new Error('no active connection');
-    const credential = 'operator-session-device-bearer';
-    await act(async () => {
-      connections?.setCredential(active.id, credential);
-    });
-    for (const status of [403, 401]) {
-      fetchByPath({
-        '/api/pairing/devices': async () =>
-          new Response(
-            JSON.stringify({ error: { code: 'operator_session_required' } }),
-            { status },
-          ),
-      });
+  it.each(['GET', 'DELETE'])(
+    'keeps a saved bearer on operator-session 403 and removes it on 401 through the app handler for %s',
+    async (method) => {
+      await renderShell();
+      const active = connections?.activeConnection;
+      if (!active) throw new Error('no active connection');
+      const credential = 'operator-session-device-bearer';
       await act(async () => {
-        const response = await authenticatedFetch(
-          `${window.location.origin}/api/pairing/devices`,
-        );
-        expect(response.status).toBe(status);
+        connections?.setCredential(active.id, credential);
       });
-      expect(connections?.getConnectionCredential(active.id)).toBe(
-        status === 403 ? credential : undefined,
-      );
-      expect(connections?.activeConnection?.credentialState).toBe(
-        status === 403 ? 'saved' : 'required',
-      );
-      if (status === 403) expect(screen.queryByText(BANNER)).toBeNull();
-      else expect(await screen.findByText(BANNER)).toBeTruthy();
-    }
-  });
+      for (const status of [403, 401]) {
+        fetchByPath({
+          '/api/pairing/devices': async () =>
+            new Response(
+              JSON.stringify({ error: { code: 'operator_session_required' } }),
+              { status },
+            ),
+        });
+        await act(async () => {
+          if (method === 'GET') {
+            await expect(
+              fetchPairedDevices(window.location.origin),
+            ).rejects.toMatchObject({ status });
+          } else {
+            const response = await authenticatedFetch(
+              `${window.location.origin}/api/pairing/devices/other-device`,
+              { method },
+            );
+            expect(response.status).toBe(status);
+          }
+        });
+        expect(connections?.getConnectionCredential(active.id)).toBe(
+          status === 403 ? credential : undefined,
+        );
+        expect(connections?.activeConnection?.credentialState).toBe(
+          status === 403 ? 'saved' : 'required',
+        );
+        if (status === 403) expect(screen.queryByText(BANNER)).toBeNull();
+        else expect(await screen.findByText(BANNER)).toBeTruthy();
+      }
+    },
+  );
 
   it('keeps the banner when a 2xx that was issued BEFORE the 401 lands after it', async () => {
     // The lockout ordering. Request A is accepted but slow; request B meets a

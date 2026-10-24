@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { ConnectionStore } from '../../../../packages/connect/src/core/ConnectionStore.js';
 import {
   authenticatedFetch,
   StationHttpError,
@@ -843,7 +842,7 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
   });
 
   test.each(['valid', 'expired', 'other-device', 'revoked'] as const)(
-    'SDK bearer with a %s operator cookie preserves only live device credentials on reads and mutations',
+    'SDK bearer with a %s operator cookie distinguishes live and revoked devices on reads and mutations',
     async (state) => {
       const h = await build();
       const signed = await h.signIn(
@@ -866,26 +865,10 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
         return h.api.request(String(input), { ...init, headers });
       });
       for (const method of ['GET', 'DELETE']) {
-        const data = new Map<string, string>();
-        const store = new ConnectionStore({
-          storage: {
-            get: (key) => data.get(key) ?? null,
-            set: (key, value) => {
-              data.set(key, value);
-            },
-            remove: (key) => {
-              data.delete(key);
-            },
-          },
-        });
-        const connection = store.add('Operator browser', APP);
-        store.setCredential(connection.id, h.first.credential);
-        const onUnauthorized = vi.fn(() =>
-          store.removeCredential(connection.id),
-        );
+        const onUnauthorized = vi.fn();
         setClientCredentialResolver(() => ({
           origin: APP,
-          credential: store.getCredential(connection.id) ?? undefined,
+          credential: h.first.credential,
           onUnauthorized,
         }));
         const status = state === 'revoked' ? 401 : 403;
@@ -905,9 +888,6 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
         }
         expect(onUnauthorized).toHaveBeenCalledTimes(
           state === 'revoked' ? 1 : 0,
-        );
-        expect(store.getCredential(connection.id)).toBe(
-          state === 'revoked' ? null : h.first.credential,
         );
       }
       expect(
