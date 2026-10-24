@@ -167,6 +167,58 @@
       "documents": [
         "docs/design/chat-composer.md"
       ]
+    },
+    {
+      "path": "docs/learn/media/operator-s3-paired-before-sign-in.png",
+      "kind": "image",
+      "digest": "89ff71514d79206632a3dff8560371f70939b3a4fce641caedfbded3a3ec7eff",
+      "alt": "A paired browser offers operator sign-in without disclosing the device inventory.",
+      "caption": "A paired browser offers operator sign-in without disclosing the device inventory.",
+      "scenario": "Operator passkey sign-in and read-only paired-device inventory (#3257 S3)",
+      "evidence": "EXECUTED: inspected this unedited 390px Chromium capture at source 1e508a83804b819edac6fcfe5034a4979e1f851b. Actual PairedDevicesPanel and app CSS in a fixture shell; real pairing, host CLI enrollment confirmation, consent listener, private registry and HTTP admission; Chromium virtual authenticator. Browser B received browser A operator cookie and the binding refusal returned 403 without disclosing inventory. Pre-sign-in and copied-cookie refusals now intentionally show the same operator sign-in guidance. No deployed Station, real DNS, physical/synced/hybrid authenticator, native, hosted or production qualification.",
+      "capturedRevision": "1e508a83804b819edac6fcfe5034a4979e1f851b",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/operator-s3-consent-sign-in.png",
+      "kind": "image",
+      "digest": "f79d73e1f320b2e8d76ed07b52547f7f8bec271f872834daa9b6f9b93d875c67",
+      "alt": "The separate consent origin offers a passkey sign-in prompt.",
+      "caption": "The separate consent origin offers a passkey sign-in prompt.",
+      "scenario": "Operator passkey sign-in and read-only paired-device inventory (#3257 S3)",
+      "evidence": "EXECUTED: inspected this unedited 390px Chromium capture at source 1e508a83804b819edac6fcfe5034a4979e1f851b. Actual PairedDevicesPanel and app CSS in a fixture shell; real pairing, host CLI enrollment confirmation, consent listener, private registry and HTTP admission; Chromium virtual authenticator. Browser B received browser A operator cookie and the binding refusal returned 403 without disclosing inventory. Pre-sign-in and copied-cookie refusals now intentionally show the same operator sign-in guidance. No deployed Station, real DNS, physical/synced/hybrid authenticator, native, hosted or production qualification.",
+      "capturedRevision": "1e508a83804b819edac6fcfe5034a4979e1f851b",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/operator-s3-paired-after-sign-in.png",
+      "kind": "image",
+      "digest": "635e460cf7afbc2cd6a058cd135012ba542f1c92cd43e610fe42c094fd977070",
+      "alt": "A signed-in paired browser lists both devices with disabled access-change controls.",
+      "caption": "A signed-in paired browser lists both devices with disabled access-change controls.",
+      "scenario": "Operator passkey sign-in and read-only paired-device inventory (#3257 S3)",
+      "evidence": "EXECUTED: inspected this unedited 390px Chromium capture at source 1e508a83804b819edac6fcfe5034a4979e1f851b. Actual PairedDevicesPanel and app CSS in a fixture shell; real pairing, host CLI enrollment confirmation, consent listener, private registry and HTTP admission; Chromium virtual authenticator. Browser B received browser A operator cookie and the binding refusal returned 403 without disclosing inventory. Pre-sign-in and copied-cookie refusals now intentionally show the same operator sign-in guidance. No deployed Station, real DNS, physical/synced/hybrid authenticator, native, hosted or production qualification.",
+      "capturedRevision": "1e508a83804b819edac6fcfe5034a4979e1f851b",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
+      ]
+    },
+    {
+      "path": "docs/learn/media/operator-s3-other-browser-refused.png",
+      "kind": "image",
+      "digest": "89ff71514d79206632a3dff8560371f70939b3a4fce641caedfbded3a3ec7eff",
+      "alt": "A different paired browser refuses the operator cookie copied from the signed-in browser.",
+      "caption": "A different paired browser refuses the operator cookie copied from the signed-in browser.",
+      "scenario": "Operator passkey sign-in and read-only paired-device inventory (#3257 S3)",
+      "evidence": "EXECUTED: inspected this unedited 390px Chromium capture at source 1e508a83804b819edac6fcfe5034a4979e1f851b. Actual PairedDevicesPanel and app CSS in a fixture shell; real pairing, host CLI enrollment confirmation, consent listener, private registry and HTTP admission; Chromium virtual authenticator. Browser B received browser A operator cookie and the binding refusal returned 403 without disclosing inventory. Pre-sign-in and copied-cookie refusals now intentionally show the same operator sign-in guidance. No deployed Station, real DNS, physical/synced/hybrid authenticator, native, hosted or production qualification.",
+      "capturedRevision": "1e508a83804b819edac6fcfe5034a4979e1f851b",
+      "documents": [
+        "docs/guides/operator-passkeys.md"
+      ]
     }
   ]
 }
