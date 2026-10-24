@@ -5451,3 +5451,13 @@ and prose, with excerpts and line notes removed. See the
 state and process-local run status without a forge snapshot.
 `writePullRequestGuide` accepts a fourth `{ force?: boolean }` argument; absent
 or false reuses a completed guide for the current head.
+
+## Workspace visual files
+
+`@kontourai/station-sdk/workspace-file-preview` exports
+`readProjectWorkspaceVisualFile(apiBase, projectSlug, path, options?, thread?)`.
+Pass the render-captured request scope and abort signal in `options`. The
+read-only POST returns a validated HTML page plus isolated frame origin, or a
+bounded raster preview. `thread` selects an authorized Session workspace;
+verified Git worktrees of that repository are also eligible. The returned bytes
+are display data, not permission to navigate to a host filesystem URL.

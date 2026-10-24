@@ -918,6 +918,42 @@ export class CodexAdapterTransport {
       return;
     }
 
+    // Approval details must remain complete: a truncated command or permission
+    // profile cannot safely be approved. Leave room below EventStore's 64 KiB
+    // ingress ceiling for orchestration stamps and return an error to the peer
+    // instead of stranding an invisible request in pendingApprovals.
+    const fitsStructure = (value: unknown, depth = 0): boolean => {
+      if (value === null || typeof value !== 'object') return true;
+      if (depth >= 30) return false;
+      const values = Object.values(value);
+      return (
+        values.length <= 512 &&
+        values.every((child) => fitsStructure(child, depth + 1))
+      );
+    };
+    if (
+      !fitsStructure(event) ||
+      Buffer.byteLength(JSON.stringify(event), 'utf8') > 48 * 1024
+    ) {
+      this.sendErrorResponse(
+        record,
+        requestId,
+        'Approval request is too large or structurally complex to display safely. Split the operation into smaller requests.',
+      );
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: this.now().toISOString(),
+        method: 'runtime.warning',
+        severity: 'warning',
+        code: 'codex-approval-request-too-large',
+        message:
+          'Codex requested approval for an operation too large to display safely. Station refused it; ask the Agent to split it into smaller operations.',
+      });
+      return;
+    }
+
     const payload = (request.params ?? {}) as Record<string, unknown>;
     const toolName = deriveApprovalToolName(request.method, payload);
     // Tool-level session grant: "Allow for this session" covers every later

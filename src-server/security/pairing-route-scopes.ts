@@ -756,6 +756,14 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     scope: PAIRING_SCOPE_ORCHESTRATION_READ,
     origin: 'explicit',
   },
+  {
+    id: '/api/projects/:slug/file-preview/visual:read',
+    method: 'POST',
+    prefix: '/api/projects/:slug/file-preview/visual',
+    exact: true,
+    scope: PAIRING_SCOPE_ORCHESTRATION_READ,
+    origin: 'explicit',
+  },
   // Which of a message's path mentions are previewable files: the same
   // project-owned, root-contained read as the preview itself, answering only
   // with the subset of the caller's own paths that resolve.
