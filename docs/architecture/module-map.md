@@ -4848,7 +4848,7 @@ from this host-capability observation.
 
 The negotiated [parent-envelope check](../../src-server/services/telemetry-companion-release.ts)
 re-verifies pinned channel/source/version/host identity and the shared
-[byte inventory](../../src-server/services/telemetry-companion-artifact.mjs),
+[byte inventory, receiver provenance and deployment-image consistency checks](../../src-server/services/telemetry-companion-artifact.mjs),
 without inferring install authority. The
 [archive preparation owner](../../src-server/services/telemetry-companion-archive.ts)
 adds a human-operator management POST with a caller operation UUID. Existing
@@ -4858,9 +4858,22 @@ ordinary operation grants do not confer companion authority. It records
 private synced intent before download, exact signed size/digest checks and
 retained failure receipts. It selects the URL from the signed envelope, accepts
 no caller command/path/key policy, and never resumes a pending record or replaces
-interrupted data. Receipt reads recheck operator authority. This Unix backend
-does not extract or activate a deployment; qualified install/start/view and
-personal source authority remain separate unfinished work.
+interrupted data. Receipt reads recheck operator authority. Its
+[fixed-file materializer](../../src-server/services/telemetry-companion-extract.ts)
+rehashes the archive, reads fixed members through bounded tar stdout and writes
+only private fixed paths. File/directory sync and full payload verification
+precede the optional prepared-file receipt. The SDK and pane recover the same
+operation after a lost reply or reopening; a pending receipt or lock is not
+process liveness. Preparation activates no deployment; qualified install/start/view
+and personal source authority remain separate unfinished work.
+
+The [diagnostic qualifier](../../scripts/qualify-telemetry-companion.mjs) exercises
+authenticated component queries and same-volume diagnostic restart. Its
+[source Station fixture](../../scripts/lib/telemetry-station-export.mjs) additionally
+boots the real entrypoint with private home/temp/process-registry roots, verifies
+actual OTel boot and HTTP observations, and requires owned process settlement.
+That source/component evidence is not installed-release qualification or an
+installation permit.
 
 **Purpose.** The optional [receiver](../../packages/telemetry-broker/README.md)
 accepts the shared disclosed product envelope. Its

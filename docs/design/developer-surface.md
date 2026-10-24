@@ -36,7 +36,11 @@ readiness observation, not successful execution of a turn.
 
 Monitoring has Activity and Companion tabs. Companion reads operator-only host
 prerequisites through the authority-bound SDK query; it exposes missing
-capabilities and observed versions without installing or starting services.
+capabilities and observed versions. An explicitly authorized operator can prepare
+the signed archive and fixed companion files. Receipt reads recover a lost reply
+or reopened pane without automatically repeating the mutation. Unknown outcomes,
+pending receipts and locks block another preparation; they do not prove liveness.
+The pane does not yet install or start services.
 Its host check is separate from artifact qualification and ingestion readiness.
 The Activity tab separates Activity, Tool latency, Usage, Context, and Routing.
 Activity keeps the event explorer and adds expandable current session diagnostics.
