@@ -3971,9 +3971,10 @@ history. The returned events remain in chronological order. Pass the opaque
 event id and sequence. A turn-start anchor may repeat across pages.
 
 The opt-in reader retains the existing 150-event and response-byte bounds.
-Terminal message payloads can use up to 48,000 bytes within the bounded window;
-larger payloads still carry an explicit `elided` marker and must not be presented
-as complete. Tool-result previews retain their smaller allowance. Cursor mode
+Terminal message payloads and open requests (`request.opened`, so an approval
+can be rebuilt after a reload) can use up to 48,000 bytes within the bounded
+window; larger payloads still carry an explicit `elided` marker and must not be
+presented as complete. Tool-result previews retain their smaller allowance. Cursor mode
 is preserved across requests; existing forward cursors keep their old behavior.
 Older servers that do not implement `direction` retain their legacy ordering.
 Live delivery remains owned by the orchestration SSE stream.
