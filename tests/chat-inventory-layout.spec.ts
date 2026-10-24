@@ -282,7 +282,10 @@ test.describe('Chat inventory beside the transcript (#3882)', () => {
       .toBe(400);
     const basis = dock.getByRole('button', { name: /^Basis/ }).first();
     await basis.click();
-    const inventory = dock.getByLabel('Chat inventory', { exact: true });
+    const inventory = dock.getByRole('complementary', {
+      name: 'Chat inventory',
+      exact: true,
+    });
     await expect(inventory).toBeVisible();
     await expect(dock.locator('.chat-dock__content-area')).toBeHidden();
     await expect
