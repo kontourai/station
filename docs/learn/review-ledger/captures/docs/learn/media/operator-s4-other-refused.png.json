@@ -1,0 +1,29 @@
+{
+  "path": "docs/learn/media/operator-s4-other-refused.png",
+
+  "sources": [
+    "packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx",
+
+    "packages/connect/src/react/connection-manager-modal/PairedDeviceList.tsx",
+
+    "packages/connect/src/react/connection-manager-modal/DeviceScopeEditor.tsx",
+
+    "src-server/__test-utils__/operator-session-browser-fixture.ts",
+
+    "tests/operator-sessions.spec.ts",
+
+    "src-ui/src/index.css",
+
+    "src-server/runtime/bootstrap/runtime-http.ts",
+
+    "src-server/runtime/routes/runtime-routes.ts",
+
+    "src-server/runtime/consent/consent-listener.ts",
+
+    "src-server/services/identity/operator-sessions.ts",
+
+    "src-server/services/consent/consent-transactions.ts"
+  ],
+
+  "reviewNotes": []
+}
