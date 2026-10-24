@@ -1264,7 +1264,17 @@
 
     "src-server/services/telemetry-companion-control.ts",
 
-    "src-server/services/__tests__/telemetry-companion-control.test.ts"
+    "src-server/services/__tests__/telemetry-companion-control.test.ts",
+
+    "packages/sdk/src/query-domains/telemetryCompanion.ts",
+
+    "packages/contracts/src/product-telemetry.ts",
+
+    "src-ui/src/views/developer/CompanionManaged.tsx",
+
+    "src-ui/src/views/developer/CompanionProductTrends.tsx",
+
+    "src-ui/src/views/developer/CompanionManaged.css"
   ],
 
   "checks": [
