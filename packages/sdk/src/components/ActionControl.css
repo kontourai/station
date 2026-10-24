@@ -1,5 +1,5 @@
 .button {
-  font-family: var(--k-font-sans);
+  font-family: var(--k-font-ui);
   padding: calc(var(--k-space-1) * 2.5) var(--k-space-4);
   border-radius: var(--k-radius-sm);
   border: 1px solid transparent;
