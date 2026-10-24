@@ -183,16 +183,24 @@ export function composeAuthorizedSessionAnswerBasis(
         stationInput.contributions[1]!,
         stationInput.contributions[0]!,
       ]) {
-        const unavailable: ContributionRead = {
-          owner: read.owner,
-          state: 'unavailable',
+        const unavailable = {
+          state: 'unavailable' as const,
           observedAt: read.observedAt,
         };
+        const ownerRead: ContributionRead =
+          read.owner.authority === '@kontourai/station'
+            ? { ...unavailable, owner: { authority: '@kontourai/station' } }
+            : read.owner.authority === '@kontourai/thread'
+              ? { ...unavailable, owner: { authority: '@kontourai/thread' } }
+              : {
+                  ...unavailable,
+                  owner: { authority: '@kontourai/flow-agents' },
+                };
         input.contributions = input.contributions.map((item) =>
-          item === read ? unavailable : item,
+          item === read ? ownerRead : item,
         );
         stationInput.contributions = stationInput.contributions.map((item) =>
-          item === read ? unavailable : item,
+          item === read ? ownerRead : item,
         );
         stationOwned = parseBasisComposition(stationInput);
         if (stationOwned.ok) break;
