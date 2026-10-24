@@ -244,7 +244,6 @@ export class OutsideAgentGrantStore {
         ),
         admissionClosed: retainedEvents >= this.#limits.audit,
         health: retainedEvents >= this.#limits.audit ? 'audit_capacity' : 'ok',
-        terminalHeadroom: 350,
       };
     });
   }
@@ -263,8 +262,8 @@ export class OutsideAgentGrantStore {
       | 'accessLevel'
     > = {},
   ): void {
-    // Terminal transitions settle at most 100 grants, 50 requests and 200 clients
-    // admitted before saturation. Their audit rows are never refused or dropped.
+    // Only terminal/request-ended/retired events are exempt after saturation.
+    // Every path that creates live state must still require audit capacity.
     if (!['terminal', 'request-ended', 'retired'].includes(kind))
       this.#requireAuditCapacity();
     const id = random();
@@ -609,10 +608,10 @@ export class OutsideAgentGrantStore {
     });
   }
   grantDigest(grant: Records['grant']): string {
-    return secretHash(
-      'grant',
-      JSON.stringify(recordSchemas.grant.parse(grant)),
-    );
+    // Refresh usage does not change the authority reviewed for supersession.
+    const { lastUsedAt: _lastUsedAt, ...authority } =
+      recordSchemas.grant.parse(grant);
+    return secretHash('grant', JSON.stringify(authority));
   }
   exchange(input: Exchange) {
     return this.#write(() => {

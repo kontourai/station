@@ -357,9 +357,15 @@ redirect-origin or CORS-origin change:
 ```
 
 `registrationDigest` binds **all** accepted registration metadata, including
-the entire redirect list and displayed name; `expectedGrantDigest` binds all
-current grant fields, including expiry. The requested access level is derived
-from validated scopes, not a display string. Selection cannot exceed requested
+the entire redirect list and displayed name. `expectedGrantDigest` binds the
+validated grant's ID, version, state, terminal reason, client ID, registration
+digest, exact redirect URI, issuer, resource, station ID, requested scopes,
+refresh-family ID, creation time and absolute expiry, plus the full selection:
+delegating principal, actor (kind, ID and authority revision), Project scope,
+access level, selected scopes, selected expiry and redirect-policy revision.
+It excludes `lastUsedAt`: refresh activity alone must not invalidate a reviewed
+supersession. A revoke, version or other bound authority change still does.
+The requested access level is derived from validated scopes, not a display string. Selection cannot exceed requested
 scopes or the approver's current authority. Until the full slice ships, review
 offers read-only only, even when both scopes were requested. Show the narrower
 selection before assertion and returned explicitly in the token response. Editing a
@@ -1137,6 +1143,7 @@ text are untrusted. A consent-origin passkey does not prove the client publisher
 | `search_conversations` crosses Projects or leaks another person's work | Stable approved Project + live delegator view at search, transcript admission and activity projection before reading/counting; test native and file-backed sources, foreign IDs/cursors and slug reuse. Content is context, not instructions. |
 | Stale connection after revoke or downgrade | Durable version/family checks, effect serialization, per-emission checks and active cancellation. MCP session ID and reconnect never bypass the token. Already committed effects cannot be recalled. |
 | Registration spam / operator prompt bombing | Persistent peer/global budgets, hard live caps/TTLs and no notifications on DCR; bounded pending view and explicit operator-initiated ceremony. Quota denial of service remains visible. |
+| Same-station home backup restore | Restoring an older backup can roll back revocations: revoked grants and unused refresh tokens from that snapshot can become usable again within their original expiry. After restoring, the operator must revoke all outside grants before resuming outside access. R1 has no issuer key to rotate; hash-only storage cannot detect this rollback. Moving a backup to a different station or issuer is separately refused by the persisted binding. |
 | Cross-instance/tenant/token confusion | Exact configured issuer/R/station binding, token format separation, D11 refusal, no wildcard routes or forwarded-host trust. Test all existing auth surfaces reject outside tokens. |
 
 Rejected alternatives:
@@ -1276,7 +1283,12 @@ management/host route**, refuses all `station environment outside-clients`
 commands (including `register`, approval/change/revoke and redirect/CORS
 allowlist edits), and omits or leaves the Connections outside-client UI inert.
 No outside-agent store write may reach a released build through any of these
-surfaces, even with valid host/operator proof. The guard refuses feature enablement;
+surfaces, even with valid host/operator proof. The HTTP guard runs before
+hosted/auth middleware and route handlers. It matches Hono's once-decoded
+`c.req.path` and refuses encoded spellings of guarded segments as well as their
+literal paths, including trailing slashes. It preserves Hono's case-sensitive,
+strict slash semantics: no case folding, slash collapse or recursive decoding.
+The guard refuses feature enablement;
 no environment variable, operator command, configuration or UI toggle can turn
 it on. R1–R5 exercise routes only in isolated non-distributable test builds with
 a test-only composition entry point. R6 removes the compiled refusal only in
@@ -1350,7 +1362,7 @@ below; implementation and runtime qualification are separate.
 | Q4 | Host-only approval without valid C; hosted Station tenants disabled. Non-loopback exposure requires HTTPS. Explicit same-machine literal-loopback HTTP uses the per-request predicate, UI proxy exclusions and periodic Serve checks; local traffic/TLS practicality justify it, with raw TCP forwarding as an operator residual (section 2). |
 | Q5 | Revoke on revocation of **the passkey that last decided** a grant, or loss/rotation of its applicable host/delegator authority. Ordinary operator-session expiry alone does not end a durable grant. |
 | Q6 adjustments | Size refresh budgets for the measured client cadence and derive peers per ingress. Other bounded quotas and retention remain proposal defaults. |
-| R1 audit capacity (owner, 2026-10-24) | Admission ceiling: **100,000 retained security/lifecycle audit events**, configurable downward only. Registration, pending/request terminal outcomes, approval, activation, supersession, replay, idle expiry, revocation and code reuse count. Individual successful refresh rotations and MCP requests do not create audit events; durable consumed/successor hashes retain rotation state. Prune delivered events past 90 days before capacity checks; never evict undelivered events. At capacity, refuse new OAuth state with `audit_capacity` and an unhealthy diagnostic. Terminal settlement remains available and audited using bounded headroom: at most 100 live grants, 50 pending requests and 200 retained registrations can settle after saturation (at most 350 additional rows). Revocation, replay/code-reuse revocation and idle expiry must still succeed. This is R1 private-store policy, not release exposure or client qualification. |
+| R1 audit capacity (owner, 2026-10-24) | Admission ceiling: **100,000 retained security/lifecycle audit events**, configurable downward only. Registration, pending/request terminal outcomes, approval, activation, supersession, replay, idle expiry, revocation and code reuse count. Individual successful refresh rotations and MCP requests do not create audit events; durable consumed/successor hashes retain rotation state. Prune delivered events past 90 days before capacity checks; never evict undelivered events. At capacity, refuse new OAuth state with `audit_capacity` and an unhealthy diagnostic. After saturation, only `terminal`, `request-ended` and `retired` audit events are exempt from the ceiling; every path that creates live rows is refused. These settlement events are never refused or dropped for audit capacity. Revocation, replay/code-reuse revocation and idle expiry must still succeed. This is R1 private-store policy, not release exposure or client qualification. |
 | Protocol and routing minors | Insufficient-level tools: HTTP 200 JSON-RPC unknown tool, never 403 `insufficient_scope`. Both-scope requests are normal; preselect read-only. Exact-path outside `/mcp` classification with hosted-mode refusal and two-way VoltAgent/internal isolation; anonymous GET challenge; unknown-method JSON-RPC errors; protocol 2025-06-18 and 2025-11-25. |
 | Browser and proof minors | Up to five pending requests per browser ticket; no cancellation across tickets or independent CLI logins. Audience, dispatch catalog, terminal family/grant replay/idle transitions, per-emission live grant, pre-count Project filter and message-reader Project admission are the six named fault injections in section 10. Every read has negative scope evidence. Section 11's compiled refusal covers protocol, management/host APIs, commands and Connections through R6. |
 

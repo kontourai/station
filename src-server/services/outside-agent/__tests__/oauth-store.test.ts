@@ -351,21 +351,44 @@ describe('private R1 store boundary', () => {
     );
   });
 
-  test('activation revalidates live authority, leaves selected old grants intact on stale version or lost approval', () => {
+  test('supersession survives refresh between approval and exchange, and revokes the refreshed credentials', () => {
+    const f = fixture();
+    const old = f.login();
+    const replacement = f.prepare(f.client.id, [selected(f.store, old.grant)]);
+    f.advance(1);
+    const refreshed = rotate(f.store, f.client.id, old.refreshToken);
+    expect(f.store.access(refreshed.accessToken, resource)?.lastUsedAt).toBe(
+      f.now(),
+    );
+    const activated = f.store.exchange(replacement.exchange);
+    expect(f.store.access(activated.accessToken, resource)?.id).toBe(
+      activated.grant.id,
+    );
+    expect(f.store.grants().find((g) => g.id === old.grant.id)).toMatchObject({
+      state: 'revoked',
+      reason: 'superseded',
+      version: 2,
+    });
+    expect(f.store.access(refreshed.accessToken, resource)).toBeUndefined();
+    expect(() => rotate(f.store, f.client.id, refreshed.refreshToken)).toThrow(
+      'invalid_grant',
+    );
+  });
+
+  test('activation refuses a revoked supersession target, expired code or lost live approval', () => {
     const f = fixture();
     const old = f.login();
     const stale = f.prepare(f.client.id, [selected(f.store, old.grant)]);
-    // Last-use changes are part of the reviewed full digest.
-    f.advance(1);
-    rotate(f.store, f.client.id, old.refreshToken);
+    f.store.revoke(old.grant.id, old.grant.version);
     expect(() => f.store.exchange(stale.exchange)).toThrow('invalid_grant');
-    expect(f.store.grants()[0].state).toBe('active');
-    const expired = f.prepare(f.client.id, [
-      selected(f.store, f.store.grants()[0]),
+    expect(f.store.grants()).toMatchObject([
+      { id: old.grant.id, state: 'revoked' },
     ]);
+    const current = f.login();
+    const expired = f.prepare(f.client.id, [selected(f.store, current.grant)]);
     f.advance(CODE_TTL);
     expect(() => f.store.exchange(expired.exchange)).toThrow('invalid_grant');
-    expect(f.store.grants()[0].state).toBe('active');
+    expect(f.store.access(current.accessToken, resource)?.state).toBe('active');
     const revokedAuthority = f.prepare();
     f.validateReview.mockReturnValue(false);
     expect(() => f.store.exchange(revokedAuthority.exchange)).toThrow(
