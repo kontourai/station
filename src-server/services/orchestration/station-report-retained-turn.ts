@@ -31,6 +31,8 @@ import type {
 } from './delegation-group-source-admission.js';
 import { assertSynchronous } from './delegation-group-wire-intent-store.js';
 import type { OrchestrationService } from './orchestration-service.js';
+import { reportAdmissionSignature } from './station-report-group-admission.js';
+import { signReportContinuationTurn } from './station-report-group-cancellation.js';
 import type { StationReportGroupCustody } from './station-report-group-custody.js';
 import { StationReportPreparationUnavailable } from './station-report-group-input.js';
 
@@ -144,6 +146,7 @@ export class StationReportRetainedTurns {
     syncInput: { runId: string; text: string },
   ) {
     const sync = structuredClone(syncInput);
+    const environment = this.owners.runtime.environmentSecurityService;
     const { custody, orchestration, sources, persistence } = this.owners;
     const loaded = await custody.loadIntentForMutation(context, groupId);
     const epoch = loaded.authority?.epochs.at(-1);
@@ -392,6 +395,36 @@ export class StationReportRetainedTurns {
             },
             session,
           );
+          const sessionReceipt = recipient.sessionReceipt;
+          if (sessionReceipt.domain !== 'station.reserved-session.v1') refuse();
+          const continuationTurn = signReportContinuationTurn(
+            {
+              groupId,
+              seatId,
+              invocationId,
+              hostId: scope.environmentId,
+              principalId,
+              admissionSignature: reportAdmissionSignature(
+                loaded.admission,
+                environment,
+              ),
+              taskId: member.reservedTaskId,
+              clientTurnId,
+              recipient: {
+                ...recipient,
+                sessionReceipt: {
+                  ...sessionReceipt,
+                  domain: sessionReceipt.domain,
+                },
+              },
+            },
+            environment,
+          );
+          await persistence.retainReportContinuationTurn(
+            continuationTurn,
+            assertLaunchCurrent,
+          );
+          assertLaunchCurrent();
           const sent = await orchestration.dispatchWithReceipt(
             {
               type: 'sendTurn',

@@ -18,6 +18,7 @@ import {
   captureEnvironmentLocalGrantObservationOwner,
   captureEnvironmentLocalGrantReadOwner,
 } from '../../runtime/conversation/local-grant-observation-owner.js';
+import { reservedStationSessionRecipient } from '../../runtime/conversation/reserved-station-turn.js';
 import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
 import {
   type CurrentRuntimeRequestPrincipalSecurity,
@@ -39,6 +40,7 @@ import {
   reportInterruptReference,
   reportInterruptResultSchema,
   signReportInterrupt,
+  verifyReportContinuationTurn,
   verifyReportInterrupt,
 } from './station-report-group-cancellation.js';
 import type {
@@ -327,7 +329,7 @@ export class StationReportGroupCustody {
         if (!same(spec, before.admission.spec)) refuse();
         const receipts = [];
         // Flow holds the group lock here. Read only the independent signed receipt sidecar.
-        for (const attempt of group.attempts) {
+        for (const attempt of this.#cancellationWork(before)) {
           authorized.current();
           if (attempt.terminal) {
             receipts.push({
@@ -340,6 +342,7 @@ export class StationReportGroupCustody {
             authorized,
             before,
             attempt.seatId,
+            attempt.continuation ? attempt.invocationId : undefined,
           );
           if (
             !retained?.reference ||
@@ -374,7 +377,7 @@ export class StationReportGroupCustody {
         )
           refuse();
         const receipts = [];
-        for (const attempt of state.group.attempts) {
+        for (const attempt of this.#cancellationWork(state)) {
           authorized.current();
           if (attempt.terminal) {
             receipts.push({
@@ -389,6 +392,7 @@ export class StationReportGroupCustody {
             attempt.seatId,
             requestOperationKey,
             orchestration,
+            attempt.continuation ? attempt.invocationId : undefined,
           );
           authorized.current();
           if (!requested.reference) refuse();
@@ -636,12 +640,98 @@ export class StationReportGroupCustody {
     seatId: string,
     orchestration: OrchestrationService,
   ) {
-    return this.#delivery(
+    const delivery = await this.#delivery(
       await this.#context(context, 'GET'),
       groupId,
       seatId,
       orchestration,
     );
+    if (delivery?.outcome !== 'started') return delivery;
+    const { clientTurnId: _clientTurnId, ...projection } = delivery;
+    return projection;
+  }
+
+  #cancellationWork(
+    state: NonNullable<
+      Awaited<ReturnType<StationReportGroupCustody['inspect']>>
+    >,
+  ) {
+    if (!state.group || !state.authority) refuse();
+    const work = state.group.attempts.map((attempt) => ({
+      ...attempt,
+      continuation: false,
+    }));
+    for (const invocation of state.authority.invocations) {
+      if (
+        work.some((attempt) => attempt.invocationId === invocation.invocationId)
+      )
+        continue;
+      const seat = state.group.spec.seats.find(
+        (s) => s.envelope.id === invocation.envelopeId,
+      );
+      if (!seat) refuse();
+      const terminal =
+        state.group.continuations
+          .flatMap((c) => c.prepared?.terminalProofs ?? [])
+          .find((p) => p.invocationId === invocation.invocationId)?.reference ??
+        null;
+      work.push({
+        round: 0,
+        seatId: seat.seatId,
+        invocationId: invocation.invocationId,
+        previousInvocationId: null,
+        observation: null,
+        terminal,
+        continuation: true,
+      });
+    }
+    return work;
+  }
+
+  async #continuationTurn(
+    authorized: ReadContext,
+    historical: NonNullable<
+      Awaited<ReturnType<StationReportGroupCustody['inspect']>>
+    >,
+    seatId: string,
+    invocationId: string,
+  ) {
+    const record = await this.owners.persistence.readReportContinuationTurn(
+      historical.admission.spec.groupId,
+      invocationId,
+      authorized.current,
+    );
+    const member = historical.admission.members.find(
+      (m) => m.seatId === seatId,
+    );
+    const seat = historical.admission.spec.seats.find(
+      (s) => s.seatId === seatId,
+    );
+    if (
+      !record ||
+      !member ||
+      !seat ||
+      !verifyReportContinuationTurn(record, this.owners.environment) ||
+      record.intent.groupId !== historical.admission.spec.groupId ||
+      record.intent.seatId !== seatId ||
+      record.intent.invocationId !== invocationId ||
+      record.intent.taskId !== member.reservedTaskId ||
+      record.intent.hostId !== authorized.lease.hostContextId ||
+      record.intent.principalId !== authorized.principal.id ||
+      record.intent.admissionSignature !==
+        reportAdmissionSignature(
+          historical.admission,
+          this.owners.environment,
+        ) ||
+      !historical.authority?.invocations.some(
+        (i) =>
+          i.invocationId === invocationId && i.envelopeId === seat.envelope.id,
+      ) ||
+      historical.group?.attempts.some((a) => a.invocationId === invocationId)
+    )
+      refuse();
+    authorized.current();
+    return record.intent;
   }
 
   async #delivery(
@@ -649,6 +739,7 @@ export class StationReportGroupCustody {
     groupId: string,
     seatId: string,
     orchestration: OrchestrationService,
+    continuationInvocationId?: string,
   ) {
     id(seatId);
     const historical = await this.#inspect(authorized, groupId);
@@ -657,9 +748,36 @@ export class StationReportGroupCustody {
       (m) => m.seatId === seatId,
     );
     if (!member) refuse();
+    const continuation = continuationInvocationId
+      ? await this.#continuationTurn(
+          authorized,
+          historical,
+          seatId,
+          continuationInvocationId,
+        )
+      : null;
+    const clientTurnId =
+      continuation?.clientTurnId ?? member.reservedClientTurnId;
+    if (continuation) {
+      const session = orchestration.captureReservedStationSession(
+        member.reservedTaskId,
+        { userId: authorized.principal.id },
+      );
+      if (
+        !same(
+          reservedStationSessionRecipient(session, {
+            principalId: authorized.principal.id,
+            environmentId: authorized.lease.hostContextId,
+            threadId: member.reservedTaskId,
+          }),
+          continuation.recipient,
+        )
+      )
+        refuse();
+    }
     const attempts =
       historical.group?.attempts.filter((a) => a.seatId === seatId) ?? [];
-    if (attempts.length === 0) return null;
+    if (!continuation && attempts.length === 0) return null;
     const authority = historical.authority;
     const seat = historical.admission.spec.seats.find(
       (s) => s.seatId === seatId,
@@ -679,7 +797,7 @@ export class StationReportGroupCustody {
     authorized.current();
     const delivery = orchestration.inspectTurnDelivery(
       member.reservedTaskId,
-      member.reservedClientTurnId,
+      clientTurnId,
       sessionReadAuthorityFromRequest(
         authorized.principal.id,
         undefined,
@@ -697,6 +815,7 @@ export class StationReportGroupCustody {
     if (delivery.sessionId !== member.reservedTaskId) refuse();
     return {
       seatId,
+      clientTurnId,
       taskId: member.reservedTaskId,
       outcome: delivery.outcome,
       sessionId: delivery.sessionId,
@@ -721,16 +840,28 @@ export class StationReportGroupCustody {
       Awaited<ReturnType<StationReportGroupCustody['inspect']>>
     >,
     seatId: string,
+    continuationInvocationId?: string,
   ) {
     const groupId = historical.admission.spec.groupId;
     const member = historical.admission.members.find(
       (entry) => entry.seatId === seatId,
     );
     if (!member) refuse();
+    const continuation = continuationInvocationId
+      ? await this.#continuationTurn(
+          authorized,
+          historical,
+          seatId,
+          continuationInvocationId,
+        )
+      : null;
+    const clientTurnId =
+      continuation?.clientTurnId ?? member.reservedClientTurnId;
     const record = await this.owners.persistence.readReportInterrupt(
       groupId,
       seatId,
       authorized.current,
+      clientTurnId,
     );
     if (!record) return null;
     if (
@@ -743,7 +874,7 @@ export class StationReportGroupCustody {
           this.owners.environment,
         ) ||
       record.intent.taskId !== member.reservedTaskId ||
-      record.intent.clientTurnId !== member.reservedClientTurnId
+      record.intent.clientTurnId !== clientTurnId
     )
       refuse();
     authorized.current();
@@ -761,6 +892,7 @@ export class StationReportGroupCustody {
     seatId: string,
     operationId: string,
     orchestration: OrchestrationService,
+    continuationInvocationId?: string,
   ) {
     id(operationId);
     const authorized = await this.#context(context, 'POST');
@@ -771,6 +903,7 @@ export class StationReportGroupCustody {
       groupId,
       seatId,
       orchestration,
+      continuationInvocationId,
     );
     if (
       delivery?.outcome !== 'started' ||
@@ -782,6 +915,35 @@ export class StationReportGroupCustody {
       (entry) => entry.seatId === seatId,
     );
     if (!member) refuse();
+    const continuation = continuationInvocationId
+      ? await this.#continuationTurn(
+          authorized,
+          historical,
+          seatId,
+          continuationInvocationId,
+        )
+      : null;
+    const assertTargetCurrent = (): undefined => {
+      authorized.current();
+      if (continuation) {
+        const session = orchestration.captureReservedStationSession(
+          member.reservedTaskId,
+          { userId: authorized.principal.id },
+        );
+        if (
+          !same(
+            reservedStationSessionRecipient(session, {
+              principalId: authorized.principal.id,
+              environmentId: authorized.lease.hostContextId,
+              threadId: member.reservedTaskId,
+            }),
+            continuation.recipient,
+          )
+        )
+          refuse();
+      }
+      return undefined;
+    };
     const admissionSignature = reportAdmissionSignature(
       historical.admission,
       this.owners.environment,
@@ -795,7 +957,7 @@ export class StationReportGroupCustody {
         principalId: authorized.principal.id,
         admissionSignature,
         taskId: delivery.taskId,
-        clientTurnId: member.reservedClientTurnId,
+        clientTurnId: delivery.clientTurnId,
         sessionId: delivery.sessionId,
         turnId: delivery.turnId,
       },
@@ -807,10 +969,10 @@ export class StationReportGroupCustody {
       intent,
       authorized.current,
       async () => {
-        authorized.current();
+        assertTargetCurrent();
         const still = orchestration.inspectTurnDelivery(
           member.reservedTaskId,
-          member.reservedClientTurnId,
+          delivery.clientTurnId,
           sessionReadAuthorityFromRequest(
             authorized.principal.id,
             undefined,
@@ -835,7 +997,7 @@ export class StationReportGroupCustody {
             principal: authorized.principal,
             requestCurrent: () => {
               try {
-                authorized.current();
+                assertTargetCurrent();
                 return true;
               } catch {
                 return false;

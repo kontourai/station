@@ -12,6 +12,13 @@ import type { ModelRuntime } from '@kontourai/relay';
 import { test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
+import { EventBus } from '../event-bus.js';
+import { OrchestrationService } from '../orchestration-service.js';
+import {
+  signReportContinuationTurn,
+  signReportInterrupt,
+  verifyReportContinuationTurn,
+} from '../station-report-group-cancellation.js';
 import { StationReportGroupCustody } from '../station-report-group-custody.js';
 import { createReportFlow } from './delegation-source-fixtures/flow.js';
 import { requestFor, setup } from './delegation-source-fixtures/report.js';
@@ -291,6 +298,51 @@ test('current sync finalization passes null-state preflight and reaches prepared
     assert.deepEqual(retained?.authority?.invocations, originalLedger);
     assert.equal(modelCalls, 1);
     assert.equal(h.rawFetch.mock.calls.length, 0);
+    assert.ok(retained?.group);
+    const orchestration = new OrchestrationService({
+      adapterRegistry: { register: forbid, get: forbid, list: () => [] },
+      eventBus: new EventBus(),
+      logger: { debug() {}, warn() {} },
+    });
+    const cancel = {
+      operationKey: 'cancel-held-context',
+      expectedRevision: retained.group.revision,
+    };
+    await assert.rejects(
+      reader.cancel(
+        h.f.context(requestFor(h, 'POST')),
+        groupId,
+        cancel,
+        orchestration,
+        dispatchLedger,
+      ),
+      { code: 'group_custody_unavailable' },
+    );
+    const cancelled = await reader.inspect(h.f.context(requestFor(h)), groupId);
+    assert.equal(cancelled?.group?.cancellation, 'pending');
+    assert.equal(cancelled?.authority?.cancelled, true);
+    assert.deepEqual(cancelled?.authority?.invocations, originalLedger);
+    assert.ok(cancelled?.group);
+    await assert.rejects(
+      reader.finalizeCancel(
+        h.f.context(requestFor(h, 'POST')),
+        groupId,
+        {
+          operationKey: 'finish-held-cancel',
+          expectedRevision: cancelled.group.revision,
+          cancelOperationKey: cancel.operationKey,
+        },
+        orchestration,
+        dispatchLedger,
+      ),
+      { code: 'group_custody_unavailable' },
+    );
+    assert.equal(
+      (await reader.inspect(h.f.context(requestFor(h)), groupId))?.group
+        ?.cancellation,
+      'pending',
+    );
+    assert.equal(modelCalls, 1);
     h.f.environment.devicePairing.revokeDevice(
       h.f.paired.device.id,
       'operator-credential',
@@ -307,4 +359,140 @@ test('current sync finalization passes null-state preflight and reaches prepared
   } finally {
     h.owner.close(handle);
   }
+});
+
+test('continuation turn custody refuses rebinds and retains distinct interrupt receipts for two turns on one seat', async () => {
+  const h = await setup();
+  const persistence = h.custodyOwners.persistence;
+  const current = (): undefined => undefined;
+  // Storage contract fixture only; this does not stand in for an actual Session activation.
+  const intent = {
+    groupId: 'binding-group',
+    seatId: 'left',
+    invocationId: 'sync-one',
+    hostId: h.f.record.environmentId,
+    principalId: 'human:local:operator',
+    admissionSignature: 'a'.repeat(43),
+    taskId: 'task:storage-fixture',
+    clientTurnId: 'context:first',
+    recipient: {
+      hostId: h.f.record.environmentId,
+      recipientId: 'recipient:storage-fixture',
+      generation: 1,
+      executionId: 'task:storage-fixture',
+      sessionReceipt: {
+        id: 'recipient:storage-fixture',
+        domain: 'station.reserved-session.v1' as const,
+        digest: `sha256:${'a'.repeat(64)}`,
+      },
+    },
+  };
+  const signed = signReportContinuationTurn(intent, h.f.environment);
+  assert.equal(verifyReportContinuationTurn(signed, h.f.environment), true);
+  await persistence.retainReportContinuationTurn(signed, current);
+  intent.clientTurnId = 'caller-mutated';
+  const returning = new StationDelegationPersistence(h.f.root);
+  assert.deepEqual(
+    await returning.readReportContinuationTurn(
+      'binding-group',
+      'sync-one',
+      current,
+    ),
+    signed,
+  );
+  await returning.retainReportContinuationTurn(signed, current);
+  for (const changed of [
+    { ...signed.intent, clientTurnId: 'context:replacement' },
+    { ...signed.intent, seatId: 'foreign-seat' },
+    {
+      ...signed.intent,
+      recipient: { ...signed.intent.recipient, generation: 2 },
+    },
+  ]) {
+    await assert.rejects(
+      returning.retainReportContinuationTurn(
+        signReportContinuationTurn(changed, h.f.environment),
+        current,
+      ),
+      { code: 'report_continuation_turn_conflict' },
+    );
+  }
+  assert.equal(
+    await returning.readReportContinuationTurn(
+      'foreign-group',
+      'sync-one',
+      current,
+    ),
+    null,
+  );
+  assert.equal(
+    verifyReportContinuationTurn(
+      { ...signed, intent: { ...signed.intent, clientTurnId: 'tampered' } },
+      h.f.environment,
+    ),
+    false,
+  );
+  let issued = 0;
+  for (const [clientTurnId, turnId] of [
+    ['context:first', 'turn:first'],
+    ['context:second', 'turn:second'],
+  ]) {
+    const interrupt = signReportInterrupt(
+      {
+        groupId: 'binding-group',
+        seatId: 'left',
+        operationId: 'cancel-group',
+        hostId: signed.intent.hostId,
+        principalId: signed.intent.principalId,
+        admissionSignature: signed.intent.admissionSignature,
+        taskId: signed.intent.taskId,
+        sessionId: signed.intent.taskId,
+        clientTurnId,
+        turnId,
+      },
+      null,
+      h.f.environment,
+    );
+    const issue = async () => {
+      issued++;
+      return signReportInterrupt(
+        interrupt.intent,
+        {
+          outcome: 'termination-unconfirmed',
+          threadId: interrupt.intent.taskId,
+          turnId,
+        },
+        h.f.environment,
+      );
+    };
+    const first = await returning.recordReportInterrupt(
+      interrupt,
+      current,
+      issue,
+    );
+    assert.equal(first.replayed, false);
+    assert.equal(
+      (await returning.recordReportInterrupt(interrupt, current, issue))
+        .replayed,
+      true,
+    );
+    assert.deepEqual(
+      await returning.readReportInterrupt(
+        'binding-group',
+        'left',
+        current,
+        clientTurnId,
+      ),
+      first.record,
+    );
+  }
+  assert.equal(issued, 2);
+  assert.deepEqual(
+    await returning.readReportContinuationTurn(
+      'binding-group',
+      'sync-one',
+      current,
+    ),
+    signed,
+  );
 });

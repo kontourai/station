@@ -1566,3 +1566,17 @@ call sites now use the actual recovery collaborator through test support, with
 683 posture/confinement/orchestration controls passing. The original returning
 execution prerequisite remains failed until the published Flow contracts are
 adopted and runtime identity is proved.
+
+
+### Context cancellation identity candidate
+
+The returning-turn producer now durably retains a signed invocation/client-turn
+binding to its captured Session before dispatch. Cancellation checks all root
+invocations, preserves exact Session currency and names only the bound turn.
+Private interrupt custody distinguishes multiple turns on one seat. Missing or
+changed bindings refuse; authority remains revoked and cancellation pending,
+with unresolved accounting held. The published-controller unknown-usage recovery
+case exercises this refusal without another model call, and storage tests bind
+immutable custody and per-turn receipt replay. Actual held-context interruption,
+positive returning-Session receipt recovery and provider/device acceptance remain
+open until the published initial-request contract is adopted and exercised.

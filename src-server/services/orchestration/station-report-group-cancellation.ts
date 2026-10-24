@@ -62,14 +62,17 @@ export const reportInterruptLedgerSchema = z
   .object({
     version: z.literal(1),
     groupId: id,
-    entries: z.array(reportInterruptRecordSchema).min(1).max(16),
+    entries: z.array(reportInterruptRecordSchema).min(1).max(128),
   })
   .strict()
   .superRefine((ledger, context) => {
     if (
       ledger.entries.some((entry) => entry.intent.groupId !== ledger.groupId) ||
-      new Set(ledger.entries.map((entry) => entry.intent.seatId)).size !==
-        ledger.entries.length
+      new Set(
+        ledger.entries.map((entry) =>
+          canonicalJson([entry.intent.seatId, entry.intent.clientTurnId]),
+        ),
+      ).size !== ledger.entries.length
     )
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -110,4 +113,83 @@ export function reportInterruptReference(record: ReportInterruptRecord) {
     id: `cancel:${createHash('sha256').update(canonicalJson(record.intent)).digest('hex')}`,
     digest: `sha256:${createHash('sha256').update(canonicalJson(record)).digest('hex')}`,
   };
+}
+
+const continuationTurnIntent = z
+  .object({
+    groupId: id,
+    seatId: id,
+    invocationId: id,
+    hostId: id,
+    principalId: id,
+    admissionSignature: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+    taskId: id,
+    clientTurnId: id,
+    recipient: z
+      .object({
+        hostId: id,
+        recipientId: id,
+        generation: z.number().int().nonnegative().safe(),
+        executionId: id,
+        sessionReceipt: z
+          .object({
+            id,
+            domain: z.literal('station.reserved-session.v1'),
+            digest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+          })
+          .strict(),
+      })
+      .strict(),
+  })
+  .strict();
+export const reportContinuationTurnSchema = z
+  .object({
+    intent: continuationTurnIntent,
+    signature: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+  })
+  .strict();
+export type ReportContinuationTurn = z.infer<
+  typeof reportContinuationTurnSchema
+>;
+export const reportContinuationTurnLedgerSchema = z
+  .object({
+    version: z.literal(1),
+    groupId: id,
+    entries: z.array(reportContinuationTurnSchema).max(128),
+  })
+  .strict()
+  .superRefine((ledger, context) => {
+    if (
+      ledger.entries.some((e) => e.intent.groupId !== ledger.groupId) ||
+      new Set(ledger.entries.map((e) => e.intent.invocationId)).size !==
+        ledger.entries.length
+    )
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Report continuation turn identity mismatch',
+      });
+  });
+const TURN_DOMAIN = 'station.report-continuation-turn.v1';
+export function signReportContinuationTurn(
+  intent: z.infer<typeof continuationTurnIntent>,
+  environment: EnvironmentSecurityService,
+): ReportContinuationTurn {
+  const captured = continuationTurnIntent.parse(intent);
+  return reportContinuationTurnSchema.parse({
+    intent: captured,
+    signature: environment.signRevisionEvidenceAuthorityBinding(
+      canonicalJson([TURN_DOMAIN, captured]),
+    ),
+  });
+}
+export function verifyReportContinuationTurn(
+  record: ReportContinuationTurn,
+  environment: EnvironmentSecurityService,
+): boolean {
+  const expected = Buffer.from(
+    signReportContinuationTurn(record.intent, environment).signature,
+    'base64url',
+  );
+  const actual = Buffer.from(record.signature, 'base64url');
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
 }

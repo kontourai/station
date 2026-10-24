@@ -55,7 +55,10 @@ import {
   validateStationReportAdmission,
 } from './station-report-group-admission.js';
 import {
+  type ReportContinuationTurn,
   type ReportInterruptRecord,
+  reportContinuationTurnLedgerSchema,
+  reportContinuationTurnSchema,
   reportInterruptLedgerSchema,
   reportInterruptRecordSchema,
 } from './station-report-group-cancellation.js';
@@ -326,6 +329,7 @@ export class StationDelegationPersistence {
   readonly #reportAdmissions: PrivateDomain;
   readonly #reportIntents: PrivateDomain;
   readonly #reportInterrupts: PrivateDomain;
+  readonly #reportContinuationTurns: PrivateDomain;
   readonly #reportObservations: PrivateDomain;
   readonly #flowObservations: PrivateDomain;
   constructor(privateRoot: string) {
@@ -353,6 +357,10 @@ export class StationDelegationPersistence {
       'station-report-admissions-v1',
     );
     this.#reportIntents = new PrivateDomain(root, 'station-report-intents-v1');
+    this.#reportContinuationTurns = new PrivateDomain(
+      root,
+      'station-report-continuation-turns-v1',
+    );
     this.#reportInterrupts = new PrivateDomain(
       root,
       'station-report-interrupts-v1',
@@ -603,6 +611,90 @@ export class StationDelegationPersistence {
     });
   }
 
+  async retainReportContinuationTurn(
+    value: ReportContinuationTurn,
+    current: DelegationPersistenceFinalizer,
+  ) {
+    const record = reportContinuationTurnSchema.parse(value);
+    const domain = this.#reportContinuationTurns;
+    return domain.locked(current, async () => {
+      const file = address(record.intent.groupId);
+      const bytes = readBytes(join(domain.directory, file), 256 * 1024);
+      const ledger =
+        bytes === null
+          ? {
+              version: 1 as const,
+              groupId: record.intent.groupId,
+              entries: [] as ReportContinuationTurn[],
+            }
+          : reportContinuationTurnLedgerSchema.parse(JSON.parse(bytes));
+      requirePersistence(
+        ledger.groupId === record.intent.groupId,
+        'report_continuation_group_conflict',
+      );
+      const prior = ledger.entries.find(
+        (e) => e.intent.invocationId === record.intent.invocationId,
+      );
+      if (prior) {
+        requirePersistence(
+          same(prior, record),
+          'report_continuation_turn_conflict',
+        );
+        return prior;
+      }
+      requirePersistence(
+        ledger.entries.length < 128 &&
+          (bytes !== null || domain.files().length < 128),
+        'report_continuation_turn_capacity',
+      );
+      ledger.entries.push(record);
+      await domain.publish(
+        file,
+        reportContinuationTurnLedgerSchema.parse(ledger),
+        256 * 1024,
+        current,
+      );
+      const confirmed = readBytes(join(domain.directory, file), 256 * 1024);
+      requirePersistence(
+        confirmed !== null &&
+          same(
+            reportContinuationTurnLedgerSchema.parse(JSON.parse(confirmed)),
+            ledger,
+          ),
+        'report_continuation_turn_unconfirmed',
+      );
+      return record;
+    });
+  }
+
+  async readReportContinuationTurn(
+    groupId: string,
+    invocationId: string,
+    current: DelegationPersistenceFinalizer,
+  ) {
+    delegationIdV2(groupId);
+    delegationIdV2(invocationId);
+    const domain = this.#reportContinuationTurns;
+    return domain.locked(current, async () => {
+      const bytes = readBytes(
+        join(domain.directory, address(groupId)),
+        256 * 1024,
+      );
+      if (bytes === null) return null;
+      const ledger = reportContinuationTurnLedgerSchema.parse(
+        JSON.parse(bytes),
+      );
+      requirePersistence(
+        ledger.groupId === groupId,
+        'report_continuation_group_conflict',
+      );
+      return (
+        ledger.entries.find((e) => e.intent.invocationId === invocationId) ??
+        null
+      );
+    });
+  }
+
   async recordReportInterrupt(
     value: ReportInterruptRecord,
     finalizeCurrent: DelegationPersistenceFinalizer,
@@ -630,7 +722,9 @@ export class StationDelegationPersistence {
         'report_interrupt_group_conflict',
       );
       const prior = ledger.entries.find(
-        (entry) => entry.intent.seatId === intent.intent.seatId,
+        (entry) =>
+          entry.intent.seatId === intent.intent.seatId &&
+          entry.intent.clientTurnId === intent.intent.clientTurnId,
       );
       if (prior) {
         requirePersistence(
@@ -640,7 +734,7 @@ export class StationDelegationPersistence {
         return { record: prior, replayed: true };
       }
       requirePersistence(
-        ledger.entries.length < 16 &&
+        ledger.entries.length < 128 &&
           (bytes !== null || domain.files().length < 128),
         'report_interrupt_capacity',
       );
@@ -676,7 +770,9 @@ export class StationDelegationPersistence {
         'report_interrupt_group_conflict',
       );
       const index = ledger.entries.findIndex(
-        (entry) => entry.intent.seatId === intent.intent.seatId,
+        (entry) =>
+          entry.intent.seatId === intent.intent.seatId &&
+          entry.intent.clientTurnId === intent.intent.clientTurnId,
       );
       requirePersistence(
         index >= 0 && same(ledger.entries[index], intent),
@@ -701,6 +797,7 @@ export class StationDelegationPersistence {
     groupId: string,
     seatId: string,
     finalizeCurrent: DelegationPersistenceFinalizer,
+    clientTurnId?: string,
   ) {
     const domain = this.#reportInterrupts,
       file = address(groupId);
@@ -713,7 +810,12 @@ export class StationDelegationPersistence {
         'report_interrupt_group_conflict',
       );
       return (
-        ledger.entries.find((entry) => entry.intent.seatId === seatId) ?? null
+        ledger.entries.find(
+          (entry) =>
+            entry.intent.seatId === seatId &&
+            (clientTurnId === undefined ||
+              entry.intent.clientTurnId === clientTurnId),
+        ) ?? null
       );
     });
   }

@@ -1940,6 +1940,15 @@ server never opens a replacement Session or reconstructs authority from a cursor
 Flow owns reserved attempts, exact ACK and accounting. Duplicate intent observes
 state without resending; changed intent with the same key refuses.
 
+Before a context turn is dispatched, private signed custody retains its exact
+invocation, client-turn and captured Session recipient binding. That binding
+cannot be replaced. Cancellation includes context invocations as well as report
+attempts, and names the bound native turn rather than the Session's latest turn.
+Missing delivery custody leaves cancellation pending with allocations retained.
+Interrupt receipts are distinct per seat/client-turn and replay does not resend.
+This candidate has controlled storage and missing-binding refusal evidence;
+active-context interruption through the full serving path remains unqualified.
+
 Finalization accepts `operationKey`, `expectedRevision`, `syncOperationKey` and
 `preparedDigest`. It checks retained terminal/provider evidence and publishes a
 prepared receipt through the storage-only Flow operation, without resolving a
