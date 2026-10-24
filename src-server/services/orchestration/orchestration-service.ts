@@ -1668,9 +1668,9 @@ function isWithinDirectory(root: string, candidate: string): boolean {
  * it gets no id and an explicit `localProjectIdRefused: true`, so a reader
  * cannot fall back to looking the slug up.
  *
- * The containment check is LEXICAL: paths are resolved and compared as
- * strings, and symlinks inside the root are not followed. A symlink under
- * the Project root that points elsewhere still counts as inside.
+ * Runtime composition canonicalizes the root and cwd before containment.
+ * Embedded callers without a resource resolver retain lexical containment;
+ * server-admitted workspaces retain their exact admitted coordinate.
  */
 async function withSessionLocalProjectId(
   input: ProviderSessionStartInput,

@@ -1505,22 +1505,31 @@ describe('OrchestrationService', () => {
       const engine = new FakeAdapter(provider);
       const home = join(tmp, 'late-start-home');
       const servers = ['first', 'second'].map((id) => ({
-        id, kind: 'mcp' as const, transport: 'streamable-http' as const,
+        id,
+        kind: 'mcp' as const,
+        transport: 'streamable-http' as const,
         endpoint: `https://remote-mcp.example/${id}`,
       }));
       for (const server of servers) {
         const account = new StationToolServerOAuthProvider(
-          new ToolServerCredentialStore(home), server.id, server.endpoint,
+          new ToolServerCredentialStore(home),
+          server.id,
+          server.endpoint,
           'http://127.0.0.1:43143/callback',
         );
-        await account.saveTokens({ access_token: 'remote-secret', token_type: 'Bearer' });
+        await account.saveTokens({
+          access_token: 'remote-secret',
+          token_type: 'Bearer',
+        });
       }
       const resolver = createEngineMcpOAuthResolver({
-        homeDir: () => home, port: () => 43143,
+        homeDir: () => home,
+        port: () => 43143,
         getIntegration: async (id) => servers.find((server) => server.id === id)!,
       });
       const child = spawn(process.execPath, ['-e', 'process.stdin.resume()'], {
-        windowsHide: true, stdio: ['pipe', 'ignore', 'ignore'],
+        windowsHide: true,
+        stdio: ['pipe', 'ignore', 'ignore'],
       });
       const exited = once(child, 'exit');
       const proxy = createEngineOAuthProxyRoutes();
@@ -1541,25 +1550,37 @@ describe('OrchestrationService', () => {
         engine.sessions.delete(id);
       });
       const runtime = new OrchestrationService({
-        adapterRegistry: createRegistry([engine]), eventBus, eventStore,
+        adapterRegistry: createRegistry([engine]),
+        eventBus,
+        eventStore,
         logger: { debug: vi.fn(), warn: vi.fn() },
       });
       const persistSession = eventStore.upsertSession.bind(eventStore);
-      const persistence = vi.spyOn(eventStore, 'upsertSession').mockImplementation((session) => {
-        if (session.threadId === threadId) throw new Error('injected late session persistence failure');
-        return persistSession(session);
-      });
-      vi.stubGlobal('fetch', async () => Response.json({ jsonrpc: '2.0', id: 1, result: {} }));
+      const persistence = vi
+        .spyOn(eventStore, 'upsertSession')
+        .mockImplementation((session) => {
+          if (session.threadId === threadId)
+            throw new Error('injected late session persistence failure');
+          return persistSession(session);
+        });
+      vi.stubGlobal('fetch', async () =>
+        Response.json({ jsonrpc: '2.0', id: 1, result: {} }),
+      );
       try {
         await once(child, 'spawn');
-        await expect(runtime.dispatch({
-          type: 'startSession', input: { threadId, provider },
-        })).rejects.toThrow('injected late session persistence failure');
+        await expect(
+          runtime.dispatch({
+            type: 'startSession',
+            input: { threadId, provider },
+          }),
+        ).rejects.toThrow('injected late session persistence failure');
         expect(engine.startSession).toHaveBeenCalledOnce();
         expect(urls.size).toBe(2);
         for (const url of urls.values())
           expect.soft((await proxy.request(url, {}, loopback)).status).toBe(401);
-        expect.soft(child.exitCode !== null || child.signalCode !== null).toBe(true);
+        expect
+          .soft(child.exitCode !== null || child.signalCode !== null)
+          .toBe(true);
         expect.soft(() => process.kill(child.pid!, 0)).toThrow();
         expect.soft(engine.sessions.has(threadId)).toBe(false);
       } finally {
@@ -18554,25 +18575,42 @@ describe('OrchestrationService', () => {
       const start = engine.startSession.getMockImplementation()!;
       engine.startSession.mockImplementation(async (input) => {
         eventStore.appendEvent({
-          eventId: randomUUID(), provider: 'claude', threadId,
-          createdAt: new Date().toISOString(), method: 'session.started',
-          sessionId: threadId, metadata: input.metadata,
+          eventId: randomUUID(),
+          provider: 'claude',
+          threadId,
+          createdAt: new Date().toISOString(),
+          method: 'session.started',
+          sessionId: threadId,
+          metadata: input.metadata,
         });
         return start(input);
       });
       await runtime.dispatch({
-        type: 'startSession', input: {
-          threadId, provider: 'claude', cwd: link,
+        type: 'startSession',
+        input: {
+          threadId,
+          provider: 'claude',
+          cwd: link,
           metadata: { projectSlug: project.slug },
         },
       });
-      expect(engine.startSession).toHaveBeenCalledWith(expect.objectContaining({ cwd: realpathSync.native(boundPath) }));
-      await runtime.dispatch({ type: 'sendTurn', input: { threadId, input: 'first turn' } });
+      expect(engine.startSession).toHaveBeenCalledWith(
+        expect.objectContaining({ cwd: realpathSync.native(boundPath) }),
+      );
+      await runtime.dispatch({
+        type: 'sendTurn',
+        input: { threadId, input: 'first turn' },
+      });
       expect(engine.sendTurn).toHaveBeenCalledOnce();
       // A canonical coordinate replaced by a symlink must still refuse.
       rmSync(boundPath, { recursive: true });
       symlinkSync(tmp, boundPath, 'dir');
-      await expect(runtime.dispatch({ type: 'sendTurn', input: { threadId, input: 'after retarget' } })).rejects.toThrow('workspace directory changed');
+      await expect(
+        runtime.dispatch({
+          type: 'sendTurn',
+          input: { threadId, input: 'after retarget' },
+        }),
+      ).rejects.toThrow('workspace directory changed');
       expect(engine.sendTurn).toHaveBeenCalledOnce();
     });
 
