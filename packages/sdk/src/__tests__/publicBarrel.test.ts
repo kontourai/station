@@ -67,6 +67,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'taskMemory',
   'taskRoomWork',
   'telemetryDelivery',
+  'telemetryCompanion',
   'trustBundles',
   'veritasReadiness',
   'workflowTasks',

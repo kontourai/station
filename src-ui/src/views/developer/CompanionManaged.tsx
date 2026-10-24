@@ -10,6 +10,7 @@ import { StationHttpError } from '@kontourai/station-sdk/client';
 import { useState } from 'react';
 import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
+import { Checkbox } from '../../components/Checkbox';
 import { SkeletonBlock } from '../../components/state';
 import type { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { newCompanionOperationId } from './companion-operation-id';
@@ -257,15 +258,13 @@ export function CompanionManaged({
         </>
       ) : (
         <>
-          <label>
-            <input
-              type="checkbox"
-              checked={storageChosen}
-              disabled={pending || current.hasOperationLock}
-              onChange={(event) => setStorageChosen(event.target.checked)}
-            />{' '}
+          <Checkbox
+            checked={storageChosen}
+            disabled={pending || current.hasOperationLock}
+            onChange={setStorageChosen}
+          >
             Install on the selected Station using managed Docker volumes
-          </label>
+          </Checkbox>
           <p>
             Database and diagnostic data stay in that host's managed volumes.
             Stopping services preserves them.
