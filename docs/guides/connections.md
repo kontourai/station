@@ -1520,6 +1520,14 @@ engine argv, environment or MCP configuration. Other stdio MCP children do not
 inherit the remote token. Proxy request bodies are limited to 8 MiB (HTTP 413
 on overflow); remote protocol-negotiation error bodies are limited to 64 KiB.
 Both limits refuse oversized bodies rather than truncating them.
+Remote HTTP errors retain their status with sanitized JSON-RPC error text;
+a GET refusal with HTTP 405 (and `Allow`, when supplied) tells the engine that
+this remote MCP server has no optional SSE stream. Remote authentication headers
+and cookies are never forwarded to the engine. Missing authorization returns
+HTTP 401 with needs-sign-in; transient refresh failures return HTTP 503.
+A failed start after engine creation stops that engine and revokes its proxy
+credentials. An indeterminate accepted-receipt write retains the known Session
+for reconciliation and must not be retried automatically.
 
 Station injects the remote bearer when forwarding HTTP or SSE traffic. It checks
 known access-token expiry before each request, refreshing within two minutes of

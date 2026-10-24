@@ -147,16 +147,16 @@ export function createEngineOAuthProxyRoutes(): Hono {
     } catch {
       return c.text('Invalid MCP request', 400, securityHeaders);
     }
-    const failure = (message: string) =>
-      c.json(
+    const failure = (message: string, status = 502, headers = {}) =>
+      Response.json(
         {
           jsonrpc: '2.0',
           id: rpc.id ?? null,
           error: { code: -32001, message },
         },
-        200,
-        securityHeaders,
+        { status, headers: { ...securityHeaders, ...headers } },
       );
+    let remoteStatus: number | undefined;
     try {
       const messageRoute = c.req.path.endsWith('/messages');
       const target = messageRoute ? binding.messageEndpoint : binding.endpoint;
@@ -177,6 +177,7 @@ export function createEngineOAuthProxyRoutes(): Hono {
         await binding.needsSignIn();
         return failure(
           `Integration '${serverId}' needs sign-in. Open Connections → Tools and sign in to its account.`,
+          401,
         );
       }
       const send = async () => {
@@ -204,6 +205,7 @@ export function createEngineOAuthProxyRoutes(): Hono {
           await binding.needsSignIn();
           return failure(
             `Integration '${serverId}' needs sign-in. Open Connections → Tools and sign in to its account.`,
+            401,
           );
         }
         response = await send();
@@ -212,9 +214,11 @@ export function createEngineOAuthProxyRoutes(): Hono {
           await binding.needsSignIn(token);
           return failure(
             `Integration '${serverId}' needs sign-in. Open Connections → Tools and sign in to its account.`,
+            401,
           );
         }
       }
+      remoteStatus = response.status;
       if (response.status === 400) {
         // Preserve only the SDK's protocol-negotiation data, never remote error prose.
         const refusal = negotiationRefusal.safeParse(
@@ -245,7 +249,12 @@ export function createEngineOAuthProxyRoutes(): Hono {
       }
       if (!response.ok) {
         await response.body?.cancel();
-        return failure('Remote MCP request failed.');
+        const allow = response.headers.get('allow');
+        return failure(
+          'Remote MCP request failed.',
+          response.status,
+          allow ? { Allow: allow } : {},
+        );
       }
       await isCurrent();
       const outgoing = new Headers(securityHeaders);
@@ -278,12 +287,12 @@ export function createEngineOAuthProxyRoutes(): Hono {
       });
     } catch (error) {
       if (error instanceof ProxyBodyLimitError)
-        return failure('Remote MCP request failed.');
+        return failure('Remote MCP request failed.', remoteStatus ?? 502);
       if (error instanceof ToolServerOAuthUnavailableError)
-        return failure(error.message);
+        return failure(error.message, 503);
       if (error instanceof EngineMcpNeedsSignInError) {
         await binding.needsSignIn();
-        return failure(error.message);
+        return failure(error.message, 401);
       }
       return failure(
         'MCP proxy connection is unavailable. Start the session again if the integration changed.',

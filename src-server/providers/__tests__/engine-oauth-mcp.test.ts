@@ -556,6 +556,74 @@ test('runtime OAuth proxy ignores stray operator cookies and requires its own sc
   expect(forwarded).toHaveBeenCalledTimes(2);
 });
 
+test.each([400, 403, 404, 405, 408, 429, 500, 502, 503])(
+  'the proxy preserves remote HTTP %s without exposing remote errors or credentials',
+  async (status) => {
+    const { url, proxy } = await proxyAccount();
+    const remote = vi.fn(
+      async () =>
+        new Response('opaque-remote-secret', {
+          status,
+          headers: {
+            Allow: 'POST, DELETE',
+            'set-cookie': 'remote-secret',
+            'www-authenticate': 'Bearer remote-secret',
+            authorization: 'Bearer remote-secret',
+          },
+        }),
+    );
+    vi.stubGlobal('fetch', remote);
+    const response = await proxy.request(url, { method: 'GET' }, loopbackEnv());
+    expect(response.status).toBe(status);
+    expect(response.headers.get('allow')).toBe('POST, DELETE');
+    for (const name of ['set-cookie', 'www-authenticate', 'authorization'])
+      expect(response.headers.has(name)).toBe(false);
+    expect(await response.json()).toMatchObject({
+      error: { code: -32001, message: 'Remote MCP request failed.' },
+    });
+    expect(remote).toHaveBeenCalledExactlyOnceWith(
+      endpoint,
+      expect.objectContaining({ method: 'GET' }),
+    );
+  },
+);
+
+test('a streamable HTTP client makes one optional SSE GET when the remote refuses it with 405', async () => {
+  const { url, proxy } = await proxyAccount();
+  const remote = vi.fn(
+    async (_input: unknown, init?: RequestInit) =>
+      new Response(null, {
+        status: init?.method === 'GET' ? 405 : 202,
+        headers: { Allow: 'POST, DELETE' },
+      }),
+  );
+  vi.stubGlobal('fetch', remote);
+  const observed: number[] = [];
+  const transport = new StreamableHTTPClientTransport(new URL(url), {
+    fetch: async (input, init) => {
+      const response = await proxy.request(input, init, loopbackEnv());
+      if (init?.method === 'GET') observed.push(response.status);
+      return response;
+    },
+  });
+  const errors = vi.fn();
+  transport.onerror = errors;
+  try {
+    await transport.start();
+    await transport.send({
+      jsonrpc: '2.0',
+      method: 'notifications/initialized',
+    });
+    await vi.waitFor(() => expect(observed).toEqual([405]));
+    expect(errors).not.toHaveBeenCalled();
+    expect(
+      remote.mock.calls.filter(([, init]) => init?.method === 'GET'),
+    ).toHaveLength(1);
+  } finally {
+    await transport.close();
+  }
+});
+
 async function proxyFixture(mode: 'legacy' | 'auto' = 'legacy') {
   const { provider, url, proxy } = await proxyAccount();
   let acceptedToken = 'remote-secret';
