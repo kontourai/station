@@ -1758,5 +1758,23 @@ configuration/revocation controls, source/Flow claim controls, the mixed-family
 HTTP case and the Flow HTTP case under its original 120-second deadline.
 Server-test typechecking passes. This closes the reproduced controlled deadline
 failure for that selection, not a general latency SLA or live/provider/native
-acceptance. Post-repair allocation profiling and independent delta review remain
-pending.
+acceptance. The matching profile completes the request in about 113.4 seconds,
+with about 720 MB of requested zero-filled allocations and 2.1 MB in allocations
+at least 1 MB. It runs slightly more checks than the deadline-limited baseline;
+these measurements do not establish RSS, throughput or a general speedup.
+Independent source reviews of both the paired-fence and descriptor-read deltas
+found no actionable findings. They did not execute timing or live-provider proof.
+
+Main through `3381f971638` is merged normally at `ee66a6fd952`, without conflicts.
+Managed dependencies and the real PTY check pass. A frozen six-file post-merge
+selection passes 88 cases, including the report/credential/source controls and
+Codex transport changes; server-test typechecking and the 122-topic shipped-doc
+check pass. This is focused local evidence, not hosted or whole-epic acceptance.
+
+Independent Google verifier R3 runs all six issuer cases, catches a different
+exact-expiry-boundary mutation with five controls passing, and restores all six
+green. Its SDK hash inventory occurred after generation rather than before;
+strict requested sequencing remains NOT_VERIFIED. The two preceding verifier
+rounds ran zero tests because of generated-module and workspace-link setup
+failures. None of these results establishes live model access, billing,
+elicitation or two-family runtime acceptance.
