@@ -67,7 +67,7 @@ test('archive preparation requires a person operator and accepts no caller URL o
   expect((await h.app.request(`${path}/${operationId}`)).status).toBe(403);
   expect(h.prepareArchive).not.toHaveBeenCalled();
   expect(h.archivePreparation).not.toHaveBeenCalled();
-  expect(requiredPairingScope('POST', path)).toBe('home:control');
+  expect(requiredPairingScope('POST', path)).toBe('telemetry:manage');
   h.setOperator(true);
   expect(
     (await post({ operationId, url: 'https://caller.test/archive' })).status,

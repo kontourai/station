@@ -66,6 +66,7 @@ import {
   PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   PAIRING_SCOPE_ORCHESTRATION_READ,
   PAIRING_SCOPE_RELAY_MANAGE,
+  PAIRING_SCOPE_TELEMETRY_MANAGE,
   PAIRING_SCOPE_TERMINAL_OPERATE,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts';
@@ -219,6 +220,11 @@ export function pairingScopeSatisfiesHttpRoute(
 ): boolean {
   return (
     pairingScopeIncludes(grantedScope, requiredScope) ||
+    ((verifiedOperator || verifiedHomeOperator) &&
+      requiredScope === PAIRING_SCOPE_TELEMETRY_MANAGE &&
+      request.method === 'POST' &&
+      request.path ===
+        '/api/operator/telemetry-companion/archive-preparations') ||
     (requiredScope === PAIRING_SCOPE_ORCHESTRATION_OPERATE &&
       isProjectAccessManagementLeaf(request) &&
       pairingScopeIncludes(grantedScope, PAIRING_SCOPE_RELAY_MANAGE)) ||
@@ -546,7 +552,7 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     method: 'POST',
     prefix: '/api/operator/telemetry-companion/archive-preparations',
     exact: true,
-    scope: PAIRING_SCOPE_HOME_CONTROL,
+    scope: PAIRING_SCOPE_TELEMETRY_MANAGE,
     origin: 'explicit',
   },
   {

@@ -20,6 +20,7 @@ import {
   PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS,
   PAIRING_SCOPE_FAMILY_INHERITED_LEAVES,
   PAIRING_WS_SCOPES,
+  pairingScopeSatisfiesHttpRoute,
   requiredExternalSurfaceCapability,
   requiredPairingScope,
 } from '../pairing-route-scopes.js';
@@ -29,6 +30,56 @@ import {
 } from './pairing-route-leaf-scan.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+test('companion preparation has its own promoted permission, not home continuity or ordinary operation', () => {
+  const route = {
+    method: 'POST',
+    path: '/api/operator/telemetry-companion/archive-preparations',
+  };
+  expect(requiredPairingScope(route.method, route.path)).toBe(
+    'telemetry:manage',
+  );
+  for (const scope of [
+    DEFAULT_GRANT_PAIRING_SCOPE,
+    'orchestration:read orchestration:operate home:control',
+  ])
+    expect(
+      pairingScopeSatisfiesHttpRoute(scope, 'telemetry:manage', route),
+    ).toBe(false);
+  expect(
+    pairingScopeSatisfiesHttpRoute(
+      'orchestration:read telemetry:manage',
+      'telemetry:manage',
+      route,
+    ),
+  ).toBe(true);
+  expect(
+    pairingScopeSatisfiesHttpRoute(
+      DEFAULT_GRANT_PAIRING_SCOPE,
+      'telemetry:manage',
+      route,
+      true,
+    ),
+  ).toBe(true);
+  expect(
+    pairingScopeSatisfiesHttpRoute(
+      DEFAULT_GRANT_PAIRING_SCOPE,
+      'telemetry:manage',
+      route,
+      false,
+      true,
+    ),
+  ).toBe(true);
+  expect(
+    pairingScopeSatisfiesHttpRoute(
+      DEFAULT_GRANT_PAIRING_SCOPE,
+      'telemetry:manage',
+      { ...route, path: '/api/unrelated' },
+      true,
+      true,
+    ),
+  ).toBe(false);
+});
 const RUNTIME_ROUTES_PATH = join(
   __dirname,
   '../../runtime/routes/runtime-routes.ts',

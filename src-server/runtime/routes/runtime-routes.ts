@@ -38,6 +38,7 @@ import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
   isOperatorInPersonNotAgent,
   mayRunCommandsOnHostCurrently,
+  requestMayBeAnAgent,
 } from '../../security/coding-authority.js';
 import {
   classifyOperatorCredentialPosition,
@@ -6042,9 +6043,28 @@ export function configureRuntimeRoutes(
     ),
   );
   const requireTelemetryCompanionOperator = async (request: Request) => {
-    if (!isOperatorInPersonNotAgent(request))
+    const currentActorMayManage = () => {
+      if (requestMayBeAnAgent(request)) return false;
+      if (isOperatorInPersonNotAgent(request)) return true;
+      const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+      return (
+        principal?.authority === 'device-credential' &&
+        principal.deviceKind === 'device' &&
+        runtimeRequestPrincipalMayAccessHttpRoute(
+          request,
+          context.environmentSecurityService,
+          {
+            method: 'POST',
+            path: '/api/operator/telemetry-companion/archive-preparations',
+          },
+        )
+      );
+    };
+    if (!currentActorMayManage())
       throw new ProjectMembershipRefusal('forbidden');
     await projectMembershipAuthority(request).operator();
+    if (!currentActorMayManage())
+      throw new ProjectMembershipRefusal('forbidden');
   };
   context.app.route(
     '/api/operator/telemetry-companion',

@@ -4851,7 +4851,10 @@ re-verifies pinned channel/source/version/host identity and the shared
 [byte inventory](../../src-server/services/telemetry-companion-artifact.mjs),
 without inferring install authority. The
 [archive preparation owner](../../src-server/services/telemetry-companion-archive.ts)
-adds an operator-in-person, `home:control` POST with a caller operation UUID,
+adds a human-operator management POST with a caller operation UUID. Existing
+operator identities act directly; other person devices need explicit
+`telemetry:manage` promotion and current operator role. Home continuity and
+ordinary operation grants do not confer companion authority. It records
 private synced intent before download, exact signed size/digest checks and
 retained failure receipts. It selects the URL from the signed envelope, accepts
 no caller command/path/key policy, and never resumes a pending record or replaces

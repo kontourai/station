@@ -214,6 +214,9 @@ export const PAIRING_SCOPE_HOME_TRANSFER = 'home:transfer' as const;
  */
 export const PAIRING_SCOPE_HOME_CONTROL = 'home:control' as const;
 
+/** Companion management is separate from home continuity, export consent and personal analytics grants. */
+export const PAIRING_SCOPE_TELEMETRY_MANAGE = 'telemetry:manage' as const;
+
 /**
  * Start, read and cancel a device-code login for an engine credential profile
  * (station#device-code). Deliberately its own token rather than a reuse of
@@ -301,6 +304,7 @@ export const PAIRING_SCOPES = [
   PAIRING_SCOPE_CONSENT_DECIDE,
   PAIRING_SCOPE_HOME_TRANSFER,
   PAIRING_SCOPE_HOME_CONTROL,
+  PAIRING_SCOPE_TELEMETRY_MANAGE,
   PAIRING_SCOPE_ENGINE_LOGIN,
   PAIRING_SCOPE_CODING_EXEC,
   PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
@@ -473,6 +477,7 @@ export const PAIRING_SCOPE_GRANT_PATHS: Record<
   [PAIRING_SCOPE_CONSENT_DECIDE]: ['operator-promotion'],
   [PAIRING_SCOPE_HOME_TRANSFER]: ['preset'],
   [PAIRING_SCOPE_HOME_CONTROL]: ['operator-promotion'],
+  [PAIRING_SCOPE_TELEMETRY_MANAGE]: ['operator-promotion'],
   // Operator promotion only, for the same reason as the two tokens above --
   // and for one more that is specific to adding a token to a preset at all:
   // `parsePairingScope` refuses a WHOLE scope string containing one unknown
@@ -553,6 +558,11 @@ export const PAIRING_SCOPE_DESCRIPTIONS: Record<
     label: 'Home control',
     summary:
       'Allows home-control sessions. Room access and Agent execution still require their own permissions.',
+  },
+  [PAIRING_SCOPE_TELEMETRY_MANAGE]: {
+    label: 'Manage telemetry companion',
+    summary:
+      'Can prepare companion archives when signed in as an operator. Does not enable telemetry sending or grant personal source access.',
   },
   [PAIRING_SCOPE_ENGINE_LOGIN]: {
     label: 'Start engine sign-in',

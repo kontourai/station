@@ -240,7 +240,11 @@ source change.
 
 The Unix backend accepts `POST /api/operator/telemetry-companion/archive-preparations`
 with exactly `{ "operationId": "<lowercase UUID v4>" }`. It requires both the
-operator in person and `home:control`; ordinary read/operate grants are unchanged.
+operator authority and companion-management permission. Existing operator
+credentials and proven host operators act by identity. Other human devices need
+explicit operator promotion to `telemetry:manage` and a verified operator role;
+agent and delegation callers are refused. Default and preset grants are unchanged.
+`home:control` remains a continuity fence and grants no companion authority.
 The server selects the archive from its re-verified retained envelope. Callers
 cannot supply a URL, path, key table or command. Windows preparation is explicitly
 unsupported by this backend; this is not Windows or native qualification.
