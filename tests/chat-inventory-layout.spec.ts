@@ -142,7 +142,7 @@ test.describe('Chat inventory beside the transcript (#3882)', () => {
     page,
     authenticatedRequest,
     baseURL,
-  }) => {
+  }, testInfo) => {
     test.setTimeout(240_000);
     if (!baseURL) throw new Error('Playwright baseURL is required');
     const browserHealth = await monitorBrowserHealth(page);
@@ -331,7 +331,7 @@ test.describe('Chat inventory beside the transcript (#3882)', () => {
         reader.getByRole('button', { name: 'Open session', exact: true }),
       ).toBeVisible();
       await reader.screenshot({
-        path: test.info().outputPath(`inventory-details-${width}.png`),
+        path: testInfo.outputPath(`inventory-details-${width}.png`),
       });
       await reader
         .getByRole('button', { name: 'Close Chat inventory', exact: true })
