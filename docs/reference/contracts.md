@@ -358,6 +358,7 @@ No existing diagnostic code is renamed or removed.
 | `engine-turn-failed` | `provider_error` | `false` |
 | `execution_engine_changed` | `conflict` | `false` |
 | `foreground_message_indeterminate` | `indeterminate` | `false` |
+| `mcp_sign_in_required` | `auth` | `false` |
 | `model_not_advertised` | `model_unavailable` | `false` |
 | `model-override-unsupported` | `input_unsupported` | `false` |
 | `muse_turn_slot_releasing` | `busy` | `true` |
