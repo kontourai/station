@@ -86,7 +86,11 @@
 
     "scripts/build-portable-server-archive.mjs",
 
-    "scripts/lib/portable-server-archive.mjs"
+    "scripts/lib/portable-server-archive.mjs",
+
+    "src-server/services/telemetry-companion-install.ts",
+
+    "src-server/services/telemetry-companion-storage.ts"
   ],
 
   "checks": [

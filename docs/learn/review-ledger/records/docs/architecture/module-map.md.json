@@ -1256,7 +1256,11 @@
 
     "scripts/lib/telemetry-station-export.mjs",
 
-    "scripts/lib/telemetry-station-child.mjs"
+    "scripts/lib/telemetry-station-child.mjs",
+
+    "src-server/services/telemetry-companion-install.ts",
+
+    "src-server/services/telemetry-companion-storage.ts"
   ],
 
   "checks": [
