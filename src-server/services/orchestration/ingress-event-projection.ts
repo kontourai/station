@@ -20,8 +20,9 @@ const BUDGET_HEADROOM_BYTES = 4 * 1024;
 export const REQUEST_OPENED_PROJECTION_BUDGET_BYTES =
   REQUEST_OPENED_SNAPSHOT_MAX_BYTES - BUDGET_HEADROOM_BYTES;
 /**
- * A `tool.started` is projected only when EventStore would refuse it, and
- * then under this size. Every tool start EventStore can store is published
+ * A `tool.started` is projected only when EventStore would (or, after a
+ * retry, could) refuse it, and then under this size. Every tool start at or
+ * under {@link TOOL_STARTED_PROJECTION_THRESHOLD_BYTES} is published
  * byte-identical: the live arguments are what transcript MCP Apps receive as
  * their tool input, so shortening a storable call would change what they get.
  * A large tool start the window read cannot return whole is a reload limit,
@@ -29,6 +30,15 @@ export const REQUEST_OPENED_PROJECTION_BUDGET_BYTES =
  */
 export const TOOL_STARTED_PROJECTION_BUDGET_BYTES =
   MAX_EVENT_STORE_INGRESS_BYTES - 16 * 1024;
+/**
+ * The size above which a `tool.started` is projected. 1 KiB under the
+ * ceiling: a contention retry restamps the admitted event's lifecycle fields
+ * (`renormalize` in `publishObservedEvent`), which can change its size by a
+ * few bytes, so a start admitted just under the ceiling must not be refused
+ * on its retry.
+ */
+export const TOOL_STARTED_PROJECTION_THRESHOLD_BYTES =
+  MAX_EVENT_STORE_INGRESS_BYTES - 1024;
 /** Room kept for the {@link REQUEST_TRUNCATION_KEY} receipt. */
 const RECEIPT_RESERVE_BYTES = 2 * 1024;
 /**
@@ -73,7 +83,8 @@ function marker(omittedBytes: number): string {
  *   receipt. No adapter answers the engine or mints a grant from the
  *   stored copy (each keeps its raw request).
  * - `tool.started`: `arguments`, and only when the event exceeds the
- *   ingress ceiling (it would otherwise be lost). The contract has no
+ *   projection threshold, 1 KiB under the ingress ceiling (it would
+ *   otherwise be lost). The contract has no
  *   receipt field, so the marker in each cut string is the record. Flow
  *   policy and command evidence read the unprojected event
  *   (`consumeAdapterEvents`).
@@ -95,7 +106,7 @@ export function projectEventForIngress(
     });
   if (event.method === 'tool.started')
     return project(event, {
-      threshold: MAX_EVENT_STORE_INGRESS_BYTES,
+      threshold: TOOL_STARTED_PROJECTION_THRESHOLD_BYTES,
       budget: TOOL_STARTED_PROJECTION_BUDGET_BYTES,
       isRequest: false,
     });

@@ -878,10 +878,10 @@ Adapters publish engine material verbatim, so orchestration admission bounds
 A `request.opened` is bounded under the size a window read returns whole: a
 reload and a second device rebuild open approvals from that read, and window
 reads give `request.opened` the same 48,000-byte allowance as `turn.completed`.
-A `tool.started` is bounded only when EventStore would otherwise refuse it;
-every tool start EventStore can store is stored and published byte-identical,
-so shortened live arguments appear only for calls that would otherwise have
-been lost. (A stored tool start over the window read's ordinary per-event
+A `tool.started` is bounded only above 1 KiB under the ingress ceiling (the
+margin covers a contention retry restamping its lifecycle fields); every
+smaller tool start is stored and published byte-identical, so shortened live
+arguments appear only for calls that EventStore would refuse, or nearly so. (A stored tool start over the window read's ordinary per-event
 ceiling still reads back elided after a reload.) A projected event keeps its
 short fields exact and has its longest strings shortened, each ending in a
 visible "Station shortened this value" marker: in a request's `title`,
@@ -894,10 +894,7 @@ refuses, for its size or its structure, is not observation loss: the consumer
 publishes `runtime.warning` with code `request-too-large-to-show`, declines
 the request with the adapter so the engine continues rather than waiting (a
 decline, not a cancel, which would interrupt a Claude turn), and continues
-with the next event. On the newest-turn window read, a turn-start anchor
-appended after the page's byte budget gets only the room that budget left,
-and is reduced to its identity fields (`elided`) rather than overrunning the
-response budget; the older page carries it.
+with the next event.
 
 Surfaces (`orchestration.ts`: `TurnSupervisionFacts`; delegation
 `snapshotFor` → `DelegatedTaskSnapshot`

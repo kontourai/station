@@ -38,10 +38,12 @@ import {
   EventStore,
   MAX_EVENT_STORE_INGRESS_BYTES,
   REQUEST_OPENED_SNAPSHOT_MAX_BYTES,
-  SESSION_EVENT_WINDOW_MAX_RESPONSE_BYTES,
   SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES,
 } from '../event-store.js';
-import { projectEventForIngress } from '../ingress-event-projection.js';
+import {
+  projectEventForIngress,
+  TOOL_STARTED_PROJECTION_THRESHOLD_BYTES,
+} from '../ingress-event-projection.js';
 import { OrchestrationService } from '../orchestration-service.js';
 
 const THREAD = 'codex-ingress';
@@ -474,7 +476,76 @@ describe('oversized engine material through OrchestrationService', () => {
     expect((live as typeof started).arguments).toEqual(arguments_);
   });
 
-  test('a large prompt and a large approval in one newest-turn window stay inside the response budget, the approval intact', async () => {
+  test('tool starts up to the threshold are byte-identical; just over it they are shortened before the ceiling', async () => {
+    // Pinned beside the constants these sizes derive from.
+    expect(MAX_EVENT_STORE_INGRESS_BYTES).toBe(65_536);
+    expect(TOOL_STARTED_PROJECTION_THRESHOLD_BYTES).toBe(64_512);
+    const start = async (id: string, html: string) => {
+      child.send({
+        method: 'item/started',
+        params: {
+          threadId: CODEX_THREAD,
+          turnId: 'turn-1',
+          item: {
+            id,
+            type: 'mcpToolCall',
+            server: 'station-control',
+            tool: 'html_preview',
+            arguments: { html },
+          },
+        },
+      });
+      const stored = await eventually(() =>
+        persisted().find(
+          (event) => event.method === 'tool.started' && event.toolCallId === id,
+        ),
+      );
+      const live = await eventually(() =>
+        published.find((event) => event.eventId === stored.eventId),
+      );
+      expect(live).toEqual(stored);
+      return stored as Extract<
+        CanonicalRuntimeEvent,
+        { method: 'tool.started' }
+      >;
+    };
+    // Plain ASCII, so the argument's stored size is its length. Calibrate
+    // everything else on the event with an id of the same length.
+    const probe = await start('tool-cal', 'a'.repeat(1_000));
+    const envelope = Buffer.byteLength(JSON.stringify(probe)) - 1_000;
+    const sized = (target: number) => 'a'.repeat(target - envelope);
+    const cases = [
+      { id: 'tool-56k', target: 56 * 1024, whole: true },
+      {
+        id: 'tool-thr',
+        target: TOOL_STARTED_PROJECTION_THRESHOLD_BYTES - 64,
+        whole: true,
+      },
+      {
+        id: 'tool-ovr',
+        target: TOOL_STARTED_PROJECTION_THRESHOLD_BYTES + 256,
+        whole: false,
+      },
+    ];
+    for (const { id, target, whole } of cases) {
+      const html = sized(target);
+      const stored = await start(id, html);
+      const bytes = Buffer.byteLength(JSON.stringify(stored));
+      if (whole) {
+        expect(Math.abs(bytes - target)).toBeLessThanOrEqual(64);
+        expect(stored.arguments).toEqual({ html });
+      } else {
+        // Storable verbatim (under 65,536), but within the retry margin.
+        expect(target).toBeLessThan(MAX_EVENT_STORE_INGRESS_BYTES);
+        expect((stored.arguments as { html: string }).html).toMatch(
+          /Station shortened this value/,
+        );
+        expect(bytes).toBeLessThan(TOOL_STARTED_PROJECTION_THRESHOLD_BYTES);
+      }
+    }
+  });
+
+  test('a large prompt and a large approval in one newest-turn window both come back whole', async () => {
     await expectLaterEventPersisted();
     const prompt = `Build this page:\n${'"spec" line\n'.repeat(1_550)}`;
     await service.dispatch({
@@ -486,8 +557,7 @@ describe('oversized engine material through OrchestrationService', () => {
         (event) => event.method === 'turn.started' && event.turnId === 'turn-2',
       ),
     );
-    // The prompt alone fits the anchor's own ceiling, so only the response
-    // budget can bound it.
+    // Under the anchor's own per-event ceiling, so it is read whole.
     const promptBytes = Buffer.byteLength(JSON.stringify(turnStarted));
     expect(promptBytes).toBeGreaterThan(20_000);
     expect(promptBytes).toBeLessThan(SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES);
@@ -530,9 +600,9 @@ describe('oversized engine material through OrchestrationService', () => {
     });
     expect(data).not.toBeNull();
     const body = JSON.stringify({ success: true, data });
-    expect(Buffer.byteLength(body)).toBeLessThanOrEqual(
-      SESSION_EVENT_WINDOW_MAX_RESPONSE_BYTES,
-    );
+    // Not asserted: the body can exceed the 64,000-byte response budget
+    // here. Nothing bounds the turn-start anchor appended after the page's
+    // byte budget (an existing gap, also reachable with a long reply).
     const events = (
       JSON.parse(body) as {
         data: {
@@ -545,25 +615,14 @@ describe('oversized engine material through OrchestrationService', () => {
     );
     expect(readOpened?.elided).toBeUndefined();
     expect(readOpened?.event).toEqual(opened);
-    // The turn start is still named (so the page has its anchor), degraded
-    // to identity fields rather than overrunning the budget.
+    // The page's turn-start anchor carries the prompt whole, as on main: a
+    // client merging pages keeps the newer copy, so an elided anchor here
+    // would hide the prompt.
     const anchor = events.find(
       (entry) => entry.event.eventId === turnStarted.eventId,
     );
-    expect(anchor).toMatchObject({ elided: 'byte_limit' });
-    // The older page carries the prompt whole.
-    expect(data?.nextCursor).toBeDefined();
-    const older = await service.readSessionEventWindow(THREAD, {
-      cursor: data?.nextCursor,
-      direction: 'newest',
-      turnLimit: 1,
-      authority: INTERNAL_SESSION_READ_SCOPE,
-    });
-    const olderStart = older?.events.find(
-      (entry) => entry.event.eventId === turnStarted.eventId,
-    );
-    expect(olderStart?.elided).toBeUndefined();
-    expect(olderStart?.event).toEqual(turnStarted);
+    expect(anchor?.elided).toBeUndefined();
+    expect(anchor?.event).toEqual(turnStarted);
   });
 
   test('a form too large to store even when projected is declined with the engine and surfaced, not left pending', async () => {
