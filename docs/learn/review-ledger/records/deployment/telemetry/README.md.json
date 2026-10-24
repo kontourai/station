@@ -68,7 +68,11 @@
 
     "src-server/services/telemetry-companion-extract.ts",
 
-    "src-server/utils/process-group-exec.ts"
+    "src-server/utils/process-group-exec.ts",
+
+    "src-server/services/telemetry-companion-artifact.mjs",
+
+    "src-server/services/telemetry-companion-release.ts"
   ],
 
   "checks": [
