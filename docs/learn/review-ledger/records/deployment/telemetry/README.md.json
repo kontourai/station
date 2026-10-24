@@ -60,7 +60,9 @@
 
     "src-server/services/telemetry-companion.ts",
 
-    "packages/contracts/src/telemetry-delivery.ts"
+    "packages/contracts/src/telemetry-delivery.ts",
+
+    "scripts/qualify-telemetry-companion.mjs"
   ],
 
   "checks": [
