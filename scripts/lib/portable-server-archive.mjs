@@ -429,6 +429,7 @@ async function stagePortableServerTree({
   nodeDistributionBytes,
   release,
   includeTelemetryCompanion,
+  companionQualificationReceipt,
 }) {
   const uiIndex = join(projectRoot, 'dist-ui', 'index.html');
   if (!existsSync(uiIndex)) {
@@ -469,7 +470,10 @@ async function stagePortableServerTree({
   stageBundledRegistry({ projectRoot, outputRoot: stageRoot });
   if (includeTelemetryCompanion) {
     const output = join(stageRoot, '.companion-package');
-    const candidate = await packageTelemetryCompanion(output, { projectRoot });
+    const candidate = await packageTelemetryCompanion(output, {
+      projectRoot,
+      qualificationReceiptPath: companionQualificationReceipt,
+    });
     const manifest = await verifyTelemetryCompanion(candidate.directory);
     if (manifest.source !== release.sha)
       throw new Error(
@@ -583,7 +587,10 @@ export async function buildPortableServerArchive({
   keepStage = false,
   expectedRing,
   includeTelemetryCompanion = false,
+  companionQualificationReceipt,
 }) {
+  if (companionQualificationReceipt && !includeTelemetryCompanion)
+    throw new Error('Companion qualification requires the companion payload');
   const target = resolvePortableServerTarget(
     platform,
     arch,
@@ -624,6 +631,7 @@ export async function buildPortableServerArchive({
       nodeDistributionBytes: distributionBytes,
       release,
       includeTelemetryCompanion,
+      companionQualificationReceipt,
     });
     const archivePath = createPortableArchive({
       stageParent,

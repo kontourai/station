@@ -1,6 +1,20 @@
 import type { Buffer } from 'node:buffer';
 import type { BinaryLike } from 'node:crypto';
 
+export interface CompanionQualification {
+  protocol: 'station-companion-qualification/v1';
+  profile: 'station-companion-product-diagnostics/v1';
+  source: string;
+  contentSha256: string;
+  installationAuthority: false;
+  qualifications: Array<{
+    containerOs: 'linux';
+    architecture: 'amd64' | 'arm64';
+    evidenceSha256: string;
+    checks: Array<{ id: string; state: 'passed' }>;
+  }>;
+}
+
 export interface CompanionBuildManifest {
   schemaVersion: 1;
   kind: 'station-telemetry-companion';
@@ -9,6 +23,7 @@ export interface CompanionBuildManifest {
   target: 'node24-unix';
   images: string[];
   files: Array<{ path: string; bytes: number; sha256: string }>;
+  qualification?: CompanionQualification;
 }
 
 export const COMPANION_DEPLOYMENT_FILES: readonly string[];

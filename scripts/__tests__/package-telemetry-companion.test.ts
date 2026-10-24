@@ -38,6 +38,113 @@ import {
 
 const makeTempDir = trackTempDirs();
 
+test('package qualification is bound to exact payload and complete per-architecture evidence, never aggregate diagnostic green', async () => {
+  const root = makeTempDir('companion-qualified-package-');
+  const candidate = await packageTelemetryCompanion(join(root, 'base'));
+  const manifest = candidate.manifest;
+  const receipt = {
+    protocol: 'station-companion-qualification/v1',
+    profile: 'station-companion-product-diagnostics/v1',
+    source: manifest.source,
+    contentSha256: createHash('sha256')
+      .update(
+        JSON.stringify({
+          source: manifest.source,
+          target: manifest.target,
+          images: manifest.images,
+          files: manifest.files,
+        }),
+      )
+      .digest('hex'),
+    installationAuthority: false,
+    qualifications: [
+      {
+        containerOs: 'linux',
+        architecture: 'arm64',
+        evidenceSha256: 'e'.repeat(64),
+        checks: [
+          'real-station-metric-query',
+          'real-station-trace-query',
+          'diagnostic-privacy',
+          'delta-counter-rate-histogram',
+          'station-collector-restart',
+          'product-commit-deduplication',
+          'real-station-product-query',
+          'product-disclosure-and-destination-separation',
+          'receiver-store-restart',
+          'fresh-backup-restore-fence',
+          'publisher-privacy-reconciliation',
+          'version-upgrade-rollback',
+          'credential-network-isolation',
+        ].map((id) => ({ id, state: 'passed' })),
+      },
+    ],
+  };
+  const receiptPath = join(root, 'qualification.json');
+  await writeFile(receiptPath, JSON.stringify(receipt));
+  const qualified = await packageTelemetryCompanion(join(root, 'qualified'), {
+    qualificationReceiptPath: receiptPath,
+  });
+  expect(await verifyTelemetryCompanion(qualified.directory)).toHaveProperty(
+    'qualification',
+    receipt,
+  );
+  const invalid = [
+    { ...receipt, source: '0'.repeat(40) },
+    { ...receipt, contentSha256: '0'.repeat(64) },
+    { ...receipt, installationAuthority: true },
+    { ...receipt, qualifications: [] },
+    {
+      ...receipt,
+      qualifications: [{ ...receipt.qualifications[0], architecture: 'x64' }],
+    },
+    {
+      ...receipt,
+      qualifications: [
+        {
+          ...receipt.qualifications[0],
+          checks: receipt.qualifications[0].checks.slice(1),
+        },
+      ],
+    },
+    {
+      ...receipt,
+      qualifications: [
+        {
+          ...receipt.qualifications[0],
+          checks: receipt.qualifications[0].checks.map((check, index) =>
+            index === 0 ? { ...check, state: 'failed' } : check,
+          ),
+        },
+      ],
+    },
+    {
+      protocol: 'station-companion-runtime-diagnostic/v1',
+      state: 'passed',
+      scope: 'source-Station-OTel-and-component-runtime-only',
+      installationAuthority: false,
+    },
+  ];
+  for (const [index, value] of invalid.entries()) {
+    await writeFile(receiptPath, JSON.stringify(value));
+    await expect(
+      packageTelemetryCompanion(join(root, `invalid-${index}`), {
+        qualificationReceiptPath: receiptPath,
+      }),
+    ).rejects.toThrow(/Companion install/);
+  }
+  await writeFile(
+    join(qualified.directory, 'companion-manifest.json'),
+    JSON.stringify({
+      ...manifest,
+      qualification: invalid[5],
+    }),
+  );
+  await expect(verifyTelemetryCompanion(qualified.directory)).rejects.toThrow(
+    'profile is incomplete',
+  );
+});
+
 test('the byte verifier refuses a coercible source array rather than returning a falsely typed manifest', async () => {
   const { directory, manifest } = await packageTelemetryCompanion(
     join(makeTempDir('companion-source-type-'), 'output'),

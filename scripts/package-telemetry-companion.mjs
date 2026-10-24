@@ -11,6 +11,7 @@ import {
   COMPANION_FILES as FILES,
   verifyTelemetryCompanion,
 } from '../src-server/services/telemetry-companion-artifact.mjs';
+import { assertCompanionQualification } from '../src-server/services/telemetry-companion-qualification.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -18,7 +19,7 @@ const COMPOSE_SCHEMA = CORE_SCHEMA.withTags(mergeTag);
 
 export async function packageTelemetryCompanion(
   output,
-  { projectRoot = ROOT } = {},
+  { projectRoot = ROOT, qualificationReceiptPath } = {},
 ) {
   output = resolve(output);
   projectRoot = resolve(projectRoot);
@@ -82,6 +83,14 @@ export async function packageTelemetryCompanion(
       sha256: digest(snapshots.get(path)),
     })),
   };
+  if (qualificationReceiptPath) {
+    manifest.qualification = assertCompanionQualification(
+      JSON.parse(
+        (await bytes(resolve(qualificationReceiptPath), 64 * 1024)).toString(),
+      ),
+      manifest,
+    );
+  }
   const stage = await mkdtemp(join(dirname(output), '.telemetry-companion-'));
   try {
     for (const [path, value] of snapshots) {

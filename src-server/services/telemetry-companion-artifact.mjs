@@ -3,6 +3,7 @@ import { constants } from 'node:fs';
 import { lstat, open, opendir } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { CORE_SCHEMA, load, mergeTag } from 'js-yaml';
+import { assertCompanionQualification } from './telemetry-companion-qualification.mjs';
 
 const COMPOSE_SCHEMA = CORE_SCHEMA.withTags(mergeTag);
 
@@ -129,6 +130,8 @@ export function companionImagePins(document) {
 export async function verifyTelemetryCompanion(directory) {
   directory = resolve(directory);
   const manifest = await verifyTelemetryCompanionFiles(directory);
+  if (manifest.qualification !== undefined)
+    assertCompanionQualification(manifest.qualification, manifest);
   const receiver = JSON.parse(
     (
       await readCompanionFile(join(directory, 'dist/artifact-manifest.json'))

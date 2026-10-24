@@ -8,6 +8,7 @@
 //     [--ring stable|preview|nightly] [--sha <40-hex>] [--created-at <ISO>] [--output-dir dist-portable-server] \
 //     [--node-distribution <path to the pinned node-v*.tar.gz|zip>] [--keep-stage]
 //     [--with-telemetry-companion]
+//     [--companion-qualification-receipt <complete source/payload-bound profile receipt>]
 //
 // The build refuses a --sha other than HEAD, and a dirty working tree.
 // --allow-unverified-source lifts that for tests and local experiments only;
@@ -33,6 +34,7 @@ const { values } = parseArgs({
     'keep-stage': { type: 'boolean', default: false },
     'allow-unverified-source': { type: 'boolean', default: false },
     'with-telemetry-companion': { type: 'boolean', default: false },
+    'companion-qualification-receipt': { type: 'string' },
   },
   strict: true,
 });
@@ -79,6 +81,13 @@ try {
         : {}),
       keepStage: values['keep-stage'],
       includeTelemetryCompanion: values['with-telemetry-companion'],
+      ...(values['companion-qualification-receipt']
+        ? {
+            companionQualificationReceipt: resolve(
+              values['companion-qualification-receipt'],
+            ),
+          }
+        : {}),
       ...(values.ring ? { expectedRing: values.ring } : {}),
     });
   console.log(`Created ${archivePath}`);
