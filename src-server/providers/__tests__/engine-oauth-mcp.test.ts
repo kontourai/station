@@ -1105,9 +1105,9 @@ test('the proxy forwards just before its twelve-hour credential expiry and refus
   );
   vi.stubGlobal('fetch', remote);
   vi.setSystemTime(issuedAt + proxyTtlMs - 60_000);
-  expect(
-    await (await proxyPost(fixture.proxy, fixture.url)).json(),
-  ).toMatchObject({
+  const beforeExpiry = await proxyPost(fixture.proxy, fixture.url);
+  expect(beforeExpiry.status).toBe(200);
+  expect(await beforeExpiry.json()).toMatchObject({
     result: { tools: [] },
   });
   expect(remote).toHaveBeenCalledOnce();
