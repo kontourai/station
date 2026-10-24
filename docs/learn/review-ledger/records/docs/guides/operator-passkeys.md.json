@@ -5,9 +5,9 @@
 
   "state": "source-reviewed",
 
-  "summary": "Host-confirmed enrollment and device-bound passkey sign-in for the three operator-session read leaves; consent-origin sign-out, expiry and revocation/recovery behavior.",
+  "summary": "Host-confirmed enrollment, device-bound operator sessions and per-action consent-origin passkey confirmation for device, group, token and passkey changes.",
 
-  "limits": "S3 reads only. S4 per-action step-up, D5 two-passkey allowance, remote CLI and native shells are not implemented here. Local software/Chromium authenticator evidence is not real DNS, physical authenticator, synced/hybrid, hosted or release qualification.",
+  "limits": "D5 two-passkey allowance, remote revoke-all (follow-up), S1b raw-credential enforcement, remote CLI and native handoff remain outside S4. Local software and Chromium evidence does not qualify real DNS, physical, synced or hybrid authenticators, hosted deployment or releases.",
 
   "sources": [
     "src-server/services/identity/operator-passkey-enrollment.ts",
@@ -36,7 +36,17 @@
 
     "packages/connect/src/react/DevicePairingPanel.tsx",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-device-pairing-wiring.test.ts"
+    "src-server/runtime/routes/__tests__/runtime-routes-device-pairing-wiring.test.ts",
+
+    "src-server/services/consent/consent-transactions.ts",
+
+    "src-server/runtime/consent/consent-listener.ts",
+
+    "src-server/services/ssh/device-pairing-service.ts",
+
+    "src-ui/src/views/settings/PeopleSection.tsx",
+
+    "src-ui/src/views/settings/PersonalTokens.tsx"
   ],
 
   "checks": [

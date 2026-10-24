@@ -146,14 +146,28 @@ accepted read disclosure: app-origin plugin code can read
 `GET /api/operator/session` while the session is live. Exact-leaf admission
 stamps `operator-session`, never `operator-credential`. Ordinary bearer/Device
 admission runs first; an operator cookie cannot block that authority. The
-session read path verifies the binding Device and enforces alias/account policy. App-origin
-device mutations refuse this authority in S3. Sign-out runs on the consent
-origin with its own one-use page nonce and the same exact Origin/Fetch Metadata
-checks. Per-action passkey step-up remains S4. Existing `access:devices` grants
-remain a separate administration path. Hosted tenant registries and absent
-HTTPS consent configuration disable operator sign-in.
-Revoking a passkey is a host action (`... passkeys revoke <id>`) until remote
-revoke with a step-up from another passkey (D8) lands. See
+session path verifies the binding Device and enforces alias/account policy.
+S4 admits exact scope/revoke/removal, group, token and passkey-revocation requests
+only to create a transaction: 202, with no mutation. The owning session alone can
+read or review it. Its canonical fingerprint and one-use render nonce bind a
+fresh UV assertion on the consent origin to that exact action. Only
+`operator-passkey` approves it; ordinary consent cookies, raw credentials and
+native consent cannot substitute. The initiating live session may deny through
+the same exact consent-origin and one-use nonce checks without a passkey. Denial
+is terminal and cannot commit a write; a later approval is refused.
+Commit rechecks expected target state and live
+session authority. There is no step-up window. Step-up and automatic status or
+inventory refreshes never extend the operator session. Token secrets exist only
+in the initiating commit response, never in the transaction record or later reads.
+
+Sign-out remains on the consent origin with its own one-use page nonce and exact
+Origin/Fetch Metadata checks. Remote revoke-all is a follow-up; both API DELETE
+spellings remain refused. The host can revoke a bound Device or rotate the
+credential to end sessions. Existing `access:devices` grants remain a separate
+direct administration path. Hosted tenant registries and absent HTTPS consent
+configuration disable operator sign-in.
+Revoking a passkey is a host action (`... passkeys revoke <id>`) or a remote
+transaction confirmed by a **different** active passkey (D8). See
 [Enroll an operator passkey](../guides/operator-passkeys.md).
 
 Origin and authentication are independent controls:
@@ -599,7 +613,8 @@ reads as a Station that never ran groups, and seeds again; whoever can remove
 them from the owner-only security directory can rewrite the device registry
 too. The operator, or the desktop's own local
 grant, lists people (`GET /api/pairing/people`, the pairing family's boundary);
-only the operator credential changes a group. Device scopes may also be changed
+a group change requires the operator credential directly or an operator session
+with a fresh per-action passkey confirmation. Device scopes may also be changed
 by an explicitly granted `access:devices` administrator.
 
 **Personal access tokens act as their person, never as more (#3557).** A
@@ -771,7 +786,9 @@ device, never silently at pairing (a device may ask for `coding:exec` or
 `approval:full-access`, and only the operator may keep them when approving),
 using `station environment access scope <device> --add|--remove|--set <scope>`
 (#1796). `POST /api/pairing/devices/:id/scope` accepts the operator credential
-or a device deliberately granted `access:devices`. Remote CLI and UI calls use
+or a device deliberately granted `access:devices` directly. An operator session
+instead receives a 202 transaction and must confirm that exact action with a
+fresh passkey assertion on the consent origin. Remote CLI and UI calls use
 their authenticated principal; the host CLI still proves Station-home possession
 before sending its operator credential. Holding `approval:full-access` permits
 using full access, not changing device grants. Legacy `access:manage` remains
@@ -783,8 +800,7 @@ The operator deliberately delegates administration, not a subset-copy operation.
 A stolen credential with this explicit grant can therefore change device access
 until the grant is removed or the credential revoked. There is no passkey
 step-up on this scoped path. Operator passkey enrollment remains separate;
-operator sessions add inventory reads only in S3. Fresh per-action verification
-remains proposed for S4 ([operator device access](../design/operator-device-access.md), #3257).
+operator sessions add inventory reads and S4's per-action transaction path ([operator device access](../design/operator-device-access.md), #3257).
 Account-bound guest principals remain restricted by their separate route
 allowlist: it excludes device administration even with an Admin group and an
 `access:devices` grant. Use an operator-approved personal Device or the host
@@ -794,8 +810,8 @@ Scope, revoke and remove check current authority before their commit. The servic
 also revalidates the administrative credential; scope parsing that yields cannot
 keep a grant after its holder has been revoked or demoted. Administrative changes
 emit a credential-free audit event naming the actor Device and target Device,
-and durable revocation provenance records `device-access` rather than claiming
-the raw operator credential performed it.
+and durable revocation provenance records `device-access` or `operator-passkey`
+for those paths rather than claiming the raw operator credential performed it.
 
 Each change is sent with the scope it replaces (`expectedScope`) and a
 concurrent change returns 409 `scope_changed` instead of being overwritten;

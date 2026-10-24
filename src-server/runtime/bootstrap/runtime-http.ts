@@ -1153,12 +1153,7 @@ function configureRuntimeSecurity(
           },
           admittedDevice || bindingDeviceAdmitted ? 403 : 401,
         );
-      if (
-        !isOperatorSessionRead(c.req.method, c.req.path) ||
-        !sessionSecret ||
-        !deviceCredential ||
-        hasCredentialQuery(c.req.url)
-      )
+      if (!sessionSecret || !deviceCredential || hasCredentialQuery(c.req.url))
         return refuse();
       // Validate the binding credential through ordinary device admission on
       // its neutral self-read. The session supplies the additional read scope;
@@ -1169,7 +1164,9 @@ function configureRuntimeSecurity(
       const session = security.operatorSessions?.resolve(
         sessionSecret,
         deviceCredential,
-        c.req.header('x-station-background-refresh') !== '1',
+        isOperatorSessionRead(c.req.method, c.req.path) &&
+          !c.req.path.startsWith('/api/pairing/device-access-transactions/') &&
+          c.req.header('x-station-background-refresh') !== '1',
       );
       if (!session) return refuse();
       setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {

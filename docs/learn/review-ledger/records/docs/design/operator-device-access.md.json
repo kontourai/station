@@ -5,9 +5,9 @@
 
   "state": "source-reviewed",
 
-  "summary": "Dated operator passkey and per-action step-up design, with owner decisions through 2026-10-24. S2b enrollment and S3 device-bound read sessions are implemented; S4 step-up remains proposed. Separate access:devices and launcher-browser administration retain their existing contracts.",
+  "summary": "Operator access design and owner-approved S4 target contracts: exact device fingerprints, group and token expected-state checks, different-passkey revocation and commit-only token secrets. Separate access:devices and launcher-browser administration remain independent.",
 
-  "limits": "The dated body includes future S4-S6 routes and older source line citations. D5 two-passkey enrollment allowance is decided but not implemented and is tracked in #4100. S3 focused and local Chromium evidence is not hosted, native, real DNS, physical authenticator, synced/hybrid or release qualification.",
+  "limits": "Older dated citations and future S1b/S5/S6 mechanisms remain explicitly qualified. D5 is tracked in #4100; remote revoke-all is a follow-up. Real-origin verification in section 7.8 is owner-run and NOT_VERIFIED.",
 
   "sources": [
     "packages/connect/src/react/connection-manager-modal/PairedDevicesPanel.tsx",
@@ -54,7 +54,9 @@
 
     "packages/connect/src/react/DevicePairingPanel.tsx",
 
-    "src-server/runtime/routes/__tests__/runtime-routes-device-pairing-wiring.test.ts"
+    "src-server/runtime/routes/__tests__/runtime-routes-device-pairing-wiring.test.ts",
+
+    "src-server/services/ssh/device-pairing-service.ts"
   ],
 
   "checks": [
