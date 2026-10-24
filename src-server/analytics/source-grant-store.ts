@@ -165,6 +165,51 @@ export class SourceGrantApprovalStore {
   private checked(file: File, actor: EnrollmentActor) {
     if (file.sourceStationId !== actor.sourceStationId)
       throw new SourceApprovalRejected('source_approval_unavailable', 503);
+    try {
+      for (const record of file.approvals.filter((item) =>
+        this.owned(actor, item),
+      )) {
+        const candidate = verifyRecipientCandidateSignature(record.candidate);
+        const view = record.view,
+          intent = record.sourceIntent,
+          claims = candidate.claims;
+        const fingerprint = createHash('sha256')
+          .update(
+            JSON.stringify([
+              view.operationId,
+              record.owner,
+              record.approvalCredentialId,
+              record.approvalBindingSha256,
+              intent,
+              candidate,
+            ]),
+          )
+          .digest('hex');
+        if (
+          fingerprint !== record.targetSha256 ||
+          view.sourceOperationId !== intent.operationId ||
+          view.scope !== intent.scope ||
+          view.expiresAt !== intent.expiresAt ||
+          JSON.stringify(view.retention) !== JSON.stringify(intent.retention) ||
+          view.destinationStationId !== intent.proposedDestination.stationId ||
+          view.recipientId !== claims.recipientId ||
+          view.recipientPrincipalId !== claims.recipientPrincipalId ||
+          claims.recipientPrincipalId !== record.owner.userId ||
+          claims.sourceStationId !== file.sourceStationId ||
+          claims.sourceOperationId !== intent.operationId ||
+          claims.sourceIntentSha256 !== analyticsIntentDigest(intent) ||
+          claims.destinationStationId !==
+            intent.proposedDestination.stationId ||
+          claims.proposedDestinationOrigin !==
+            intent.proposedDestination.origin ||
+          Date.parse(view.approvedAt) >= claims.expiresAt ||
+          Date.parse(view.approvedAt) + 30_000 < claims.createdAt
+        )
+          throw new Error('Approval binding changed');
+      }
+    } catch {
+      throw new SourceApprovalRejected('source_approval_unavailable', 503);
+    }
     return file;
   }
   private owned(actor: EnrollmentActor, record: File['approvals'][number]) {

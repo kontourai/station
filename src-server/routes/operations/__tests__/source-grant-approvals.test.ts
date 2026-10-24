@@ -1,5 +1,8 @@
+import { readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import { Hono } from 'hono';
 import { expect, test } from 'vitest';
+import { z } from 'zod/v3';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { RecipientStore } from '../../../analytics/recipient-store.js';
 import { SourceEnrollmentStore } from '../../../analytics/source-enrollment-store.js';
@@ -42,10 +45,8 @@ async function fixture() {
     temporary('source-consent-'),
     () => now,
   );
-  const approvals = new SourceGrantApprovalStore(
-    temporary('source-approval-'),
-    () => now,
-  );
+  const approvalHome = temporary('source-approval-');
+  const approvals = new SourceGrantApprovalStore(approvalHome, () => now);
   const sourceActor = makeActor('source-station');
   const intent = await source.prepare(sourceActor, {
     operationId: sourceId,
@@ -93,6 +94,7 @@ async function fixture() {
   };
   return {
     app,
+    approvalHome,
     consent,
     channel,
     source,
@@ -212,6 +214,22 @@ test('only the requester session can render and approve a personal source; appro
       await h.app.request(`${base}/${approvalId}`, { method: 'DELETE' })
     ).json(),
   ).toMatchObject({ data: { phase: 'revoked' } });
+  const file = join(h.approvalHome, 'security/analytics-source-approvals.json');
+  const content = z
+    .object({
+      approvals: z.array(
+        z
+          .object({ view: z.object({ scope: z.string() }).passthrough() })
+          .passthrough(),
+      ),
+    })
+    .passthrough()
+    .parse(JSON.parse(await readFile(file, 'utf8')));
+  const first = content.approvals[0];
+  if (!first) throw new Error('Missing approval record');
+  first.view.scope = 'personal-account';
+  await writeFile(file, JSON.stringify(content), { mode: 0o600 });
+  expect((await h.app.request(`${base}/${approvalId}`)).status).toBe(503);
 });
 
 test('a source cancelled after review cannot be approved by echoing its old nonce and key candidate', async () => {
