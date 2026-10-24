@@ -42,21 +42,28 @@ import {
   projectDelegationGroupV2,
 } from '@kontourai/flow-agents/delegation-group-v2';
 import { canonicalJson } from '@kontourai/relay';
+import type {
+  ReportGroupInput,
+  ReportGroupReference,
+} from '@kontourai/station-contracts/report-group';
 import { publishJsonFileWithOwnedLock } from '@kontourai/station-shared/json-file-storage';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { z } from 'zod/v3';
-
 import type { ReservedProviderEvidence } from '../../runtime/conversation/reserved-provider-fetch.js';
 import {
   type StationReportAdmission,
   validateStationReportAdmission,
 } from './station-report-group-admission.js';
-
 import {
   type ReportInterruptRecord,
   reportInterruptLedgerSchema,
   reportInterruptRecordSchema,
 } from './station-report-group-cancellation.js';
+import {
+  encodeReportIntent,
+  parseStationReportGroupInput,
+  REPORT_INTENT_DOMAIN,
+} from './station-report-group-input.js';
 
 const reportObservationId = z
   .string()
@@ -317,6 +324,7 @@ export class StationDelegationPersistence {
   readonly #roundsAuthorities: PrivateDomain;
   readonly #rounds: PrivateDomain;
   readonly #reportAdmissions: PrivateDomain;
+  readonly #reportIntents: PrivateDomain;
   readonly #reportInterrupts: PrivateDomain;
   readonly #reportObservations: PrivateDomain;
   readonly #flowObservations: PrivateDomain;
@@ -344,6 +352,7 @@ export class StationDelegationPersistence {
       root,
       'station-report-admissions-v1',
     );
+    this.#reportIntents = new PrivateDomain(root, 'station-report-intents-v1');
     this.#reportInterrupts = new PrivateDomain(
       root,
       'station-report-interrupts-v1',
@@ -596,6 +605,77 @@ export class StationDelegationPersistence {
       return (
         ledger.entries.find((entry) => entry.intent.seatId === seatId) ?? null
       );
+    });
+  }
+
+  async retainReportIntent(
+    groupId: string,
+    input: ReportGroupInput,
+    finalizeCurrent: DelegationPersistenceFinalizer,
+  ) {
+    const encoded = encodeReportIntent(groupId, input);
+    requirePersistence(
+      Buffer.byteLength(encoded.serialized) <= 512 * 1024,
+      'report_intent_too_large',
+    );
+    const domain = this.#reportIntents;
+    return domain.locked(finalizeCurrent, async () => {
+      const file = `${encoded.reference.id}.json`;
+      const before = readBytes(join(domain.directory, file), 512 * 1024);
+      if (before !== null)
+        requirePersistence(
+          same(JSON.parse(before), encoded.record),
+          'report_intent_conflict',
+        );
+      else {
+        requirePersistence(
+          domain.files().length < 128,
+          'report_intent_capacity',
+        );
+        await domain.publish(file, encoded.record, 512 * 1024, finalizeCurrent);
+      }
+      const confirmed = readBytes(join(domain.directory, file), 512 * 1024);
+      requirePersistence(
+        confirmed !== null && same(JSON.parse(confirmed), encoded.record),
+        'report_intent_unconfirmed',
+      );
+      return encoded.reference;
+    });
+  }
+
+  async readReportIntent(
+    groupId: string,
+    reference: ReportGroupReference,
+    finalizeCurrent: DelegationPersistenceFinalizer,
+  ): Promise<ReportGroupInput> {
+    delegationIdV2(groupId);
+    const expected = structuredClone(reference);
+    requirePersistence(
+      expected.domain === REPORT_INTENT_DOMAIN &&
+        /^[0-9a-f]{64}$/.test(expected.id) &&
+        expected.digest === `sha256:${expected.id}`,
+      'report_intent_reference_invalid',
+    );
+    const domain = this.#reportIntents;
+    return domain.locked(finalizeCurrent, async () => {
+      const serialized = readBytes(
+        join(domain.directory, `${expected.id}.json`),
+        512 * 1024,
+      );
+      requirePersistence(serialized !== null, 'report_intent_missing');
+      const stored: { version: number; groupId: string; intent: unknown } =
+        JSON.parse(serialized);
+      requirePersistence(
+        stored.version === 1 && stored.groupId === groupId,
+        'report_intent_identity_invalid',
+      );
+      const input = parseStationReportGroupInput(stored.intent);
+      const encoded = encodeReportIntent(groupId, input);
+      requirePersistence(
+        same(stored, encoded.record) && same(encoded.reference, expected),
+        'report_intent_digest_invalid',
+      );
+      return input;
     });
   }
 

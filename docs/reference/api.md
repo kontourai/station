@@ -1905,7 +1905,11 @@ qualified per-call reservation multiplied by its attempt ceiling; the server
 never raises the supplied aggregate budget. A seat's per-call allocation stays
 unchanged. Omitting `continuation` preserves one attempt per member and no sync
 or renewal allowance. These limits enter immutable create intent: replay cannot
-add or raise them.
+add or raise them. Opt-in input is retained in bounded private storage for
+explicit operation recovery, with only a digest reference in signed admission
+metadata. Public projections still omit prompts. Missing or altered private input
+refuses mutation loading; historical metadata remains readable. Older records
+without that reference gain no reconstructed intent or continuation permission.
 
 This records initial capacity; it does not expose continuation commands or
 prepare another paid call. Fresh source/recipient admission, sync, renewal and

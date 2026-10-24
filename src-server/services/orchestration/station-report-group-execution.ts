@@ -23,9 +23,9 @@ import type { RuntimeSourceRequestContext } from './delegation-group-source-admi
 import type { FileFinalWireIntentStore } from './delegation-group-wire-intent-store.js';
 import type { OrchestrationService } from './orchestration-service.js';
 import type { StationReportGroupCustody } from './station-report-group-custody.js';
+import { parseStationReportGroupInput } from './station-report-group-input.js';
 import {
   type PreparedStationReportGroup,
-  parseStationReportGroupInput,
   type StationReportGroupPreparation,
 } from './station-report-group-preparation.js';
 

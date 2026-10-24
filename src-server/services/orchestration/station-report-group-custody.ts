@@ -32,6 +32,7 @@ import {
   reportAdmissionSignatureMatches,
   reportCredentialDigest,
   type StationReportAdmission,
+  validateReportIntent,
 } from './station-report-group-admission.js';
 import {
   reportInterruptReference,
@@ -64,8 +65,8 @@ function refuse(): never {
   throw new StationReportCustodyUnavailable();
 }
 
-/** Historical admission and current request authorization only. No method issues
- * a live source/SDK capability or reconstructs one from persisted references. */
+/** Historical admission, private intent custody and current request authorization.
+ * No method issues a live source/SDK capability from persisted references. */
 export class StationReportGroupCustody {
   readonly #personal = createPersonalRuntimeRequestGuard();
   constructor(
@@ -119,6 +120,29 @@ export class StationReportGroupCustody {
       prepared.root.issuer_host_id !== lease.hostContextId
     )
       refuse();
+    const preparationCurrent = (): undefined => {
+      lease.assertCurrent();
+      this.#request(context, 'POST');
+      if (!same(preparer.read(handle, context.req.raw), prepared)) refuse();
+      return undefined;
+    };
+    if (prepared.intent.continuation) {
+      const reference = await this.owners.persistence.retainReportIntent(
+        prepared.spec.groupId,
+        prepared.intent,
+        preparationCurrent,
+      );
+      if (
+        !same(
+          reference,
+          reportAdmissionData(
+            prepared,
+            reportCredentialDigest(lease.principalCredential),
+          ).intentRef,
+        )
+      )
+        refuse();
+    }
     const data = reportAdmissionData(
       prepared,
       reportCredentialDigest(lease.principalCredential),
@@ -128,9 +152,7 @@ export class StationReportGroupCustody {
       signature: reportAdmissionSignature(data, this.owners.environment),
     };
     const current = (): undefined => {
-      lease.assertCurrent();
-      this.#request(context, 'POST');
-      if (!same(preparer.read(handle, context.req.raw), prepared)) refuse();
+      preparationCurrent();
       this.#verify(record);
       return undefined;
     };
@@ -207,6 +229,23 @@ export class StationReportGroupCustody {
   async inspect(context: RuntimeSourceRequestContext, groupId: string) {
     return this.#inspect(await this.#context(context, 'GET'), groupId);
   }
+  async loadIntentForMutation(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+  ) {
+    const authorized = await this.#context(context, 'POST');
+    const before = await this.#inspect(authorized, groupId);
+    if (!before?.admission.intentRef) refuse();
+    const intent = await this.owners.persistence.readReportIntent(
+      groupId,
+      before.admission.intentRef,
+      authorized.current,
+    );
+    const after = await this.#inspect(authorized, groupId);
+    if (!after || !same(after.admission, before.admission)) refuse();
+    return { ...after, intent: validateReportIntent(after.admission, intent) };
+  }
+
   async revokeExecutionAuthority(
     context: RuntimeSourceRequestContext,
     groupId: string,

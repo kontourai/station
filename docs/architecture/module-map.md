@@ -2366,6 +2366,16 @@ protocol fixture exercises two funded fake-provider SDK calls on one canonical
 Session and ledger refusal of an unadmitted epoch; it does not qualify the public
 Flow continuation or renewal path. Fresh qualification also needs new request-bound custody;
 old SDK/credential observations cannot authorize a later request.
+Opt-in groups also retain their original bounded input in a separate private
+intent file. Signed admission metadata contains only its content reference;
+ordinary group views, events and historical metadata reads do not load or expose
+the prompt. Explicit mutation loading rechecks current operator authority and
+matches the record's group/digest, original policy hash, roster/Agent/Flow joins,
+budget/deadline and continuation limits. A missing or altered intent refuses that
+load without breaking historical metadata reads. Legacy admissions have no intent
+reference and remain readable; their assignment is never reconstructed from model
+output or an unsigned hash. Retained input is data, not a live source, Session or
+execution capability.
 The report resolver remains scoped to the initial authenticated preparation. Terminal observations link an immutable
 retained recipient observation; that saved reference cannot resolve a session
 after replacement or restart. This does not enable continuation or prove

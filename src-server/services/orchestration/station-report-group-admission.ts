@@ -15,8 +15,17 @@ import {
   validateDelegationRoundsSpec,
 } from '@kontourai/flow-agents/delegation-group-rounds';
 import { canonicalJson } from '@kontourai/relay';
+import type {
+  ReportGroupInput,
+  ReportGroupReference,
+} from '@kontourai/station-contracts/report-group';
 import { z } from 'zod/v3';
 import type { EnvironmentSecurityService } from '../ssh/environment-security-service.js';
+import {
+  encodeReportIntent,
+  parseStationReportGroupInput,
+  REPORT_INTENT_DOMAIN,
+} from './station-report-group-input.js';
 
 const id = z
   .string()
@@ -38,6 +47,14 @@ const schema = z
       .object({
         version: z.literal(1),
         credentialDigest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+        intentRef: z
+          .object({
+            id: z.string().regex(/^[0-9a-f]{64}$/),
+            domain: z.literal(REPORT_INTENT_DOMAIN),
+            digest: z.string().regex(/^sha256:[0-9a-f]{64}$/),
+          })
+          .strict()
+          .optional(),
         root: z.unknown(),
         envelopes: z.array(z.unknown()).min(2).max(17),
         spec: z.unknown(),
@@ -51,6 +68,7 @@ export type StationReportAdmission = {
   data: {
     version: 1;
     credentialDigest: string;
+    intentRef?: ReportGroupReference;
     root: RootAuthorityV2;
     envelopes: DelegationEnvelopeV2[];
     spec: DelegationRoundsSpec;
@@ -65,6 +83,7 @@ export function reportCredentialDigest(credential: string): string {
 }
 export function reportAdmissionData(
   prepared: {
+    intent?: ReportGroupInput;
     root: RootAuthorityV2;
     envelopes: DelegationEnvelopeV2[];
     spec: DelegationRoundsSpec;
@@ -81,6 +100,12 @@ export function reportAdmissionData(
   return structuredClone({
     version: 1,
     credentialDigest,
+    ...(prepared.intent?.continuation
+      ? {
+          intentRef: encodeReportIntent(prepared.spec.groupId, prepared.intent)
+            .reference,
+        }
+      : {}),
     root: prepared.root,
     envelopes: prepared.envelopes,
     spec: prepared.spec,
@@ -158,8 +183,85 @@ export function validateStationReportAdmission(
       '0000-01-01T00:00:00.000Z',
     );
   }
+  if (
+    parsed.data.intentRef &&
+    parsed.data.intentRef.digest !== `sha256:${parsed.data.intentRef.id}`
+  )
+    throw Error('report_admission_intent_invalid');
   return {
-    data: { ...parsed.data, root, envelopes, spec },
+    data: {
+      ...parsed.data,
+      root,
+      envelopes,
+      spec,
+    },
     signature: parsed.signature,
   };
+}
+
+/** Private operation input only; a signed reference does not itself admit execution. */
+export function validateReportIntent(
+  admission: StationReportAdmission['data'],
+  sent: unknown,
+): ReportGroupInput {
+  const { root, spec, members } = admission;
+  const intent = parseStationReportGroupInput(sent);
+  const attempts =
+    intent.members.length * (intent.continuation?.attemptsPerMember ?? 1);
+  const policy: DelegationRoundsSpec['policy'] = {
+    reference: root.revisions.policy,
+    maxConcurrent: intent.maxConcurrent,
+    maxAttempts: attempts,
+    maxRounds:
+      intent.continuation?.maxRounds ??
+      (intent.flow ? intent.members.length : 1),
+    ...(intent.flow
+      ? { maxEvaluations: intent.continuation?.maxEvaluations ?? 0 }
+      : {}),
+    ...(intent.continuation
+      ? {
+          maxSyncs: intent.continuation.maxSyncs,
+          maxRenewals: intent.continuation.maxRenewals,
+          maxRecoveries: intent.continuation.maxRecoveries,
+        }
+      : {}),
+  };
+  if (
+    canonicalJson(spec.policy) !== canonicalJson(policy) ||
+    root.budget.max_attempts !== attempts ||
+    root.budget.max_concurrent_children !== intent.maxConcurrent ||
+    root.revisions.policy.id !== intent.operationId ||
+    root.revisions.policy.digest !==
+      `sha256:${createHash('sha256').update(canonicalJson(intent)).digest('hex')}` ||
+    intent.members.length !== members.length ||
+    intent.deadlineAt !== Date.parse(root.budget.expires_at) ||
+    intent.budget.inputTokens !== root.budget.max_input_tokens ||
+    intent.budget.outputTokens !== root.budget.max_output_tokens ||
+    intent.budget.costMicros !== root.budget.max_cost_micros ||
+    intent.maxConcurrent !== spec.policy.maxConcurrent ||
+    intent.members.some(
+      (member) =>
+        !members.some(
+          (stored) =>
+            stored.seatId === member.seatId &&
+            stored.agentId === member.agentId,
+        ),
+    ) ||
+    (intent.flow
+      ? spec.topology.kind !== 'flow' ||
+        intent.flow.runId !== spec.topology.runId ||
+        spec.seats.some(
+          (seat) => intent.flow?.steps[seat.seatId] !== seat.stepId,
+        )
+      : spec.topology.kind !== 'independent-advisory')
+  )
+    throw Error('report_admission_intent_invalid');
+  if (
+    !intent.continuation ||
+    !admission.intentRef ||
+    canonicalJson(encodeReportIntent(spec.groupId, intent).reference) !==
+      canonicalJson(admission.intentRef)
+  )
+    throw Error('report_admission_intent_invalid');
+  return intent;
 }

@@ -20,6 +20,7 @@ import {
   inspectSdkSourceWire,
   sdkDisposalPromise,
 } from '../delegation-group-sdk-source-wire-owner.js';
+import { validateReportIntent } from '../station-report-group-admission.js';
 import { signReportInterrupt } from '../station-report-group-cancellation.js';
 import { StationReportGroupCustody } from '../station-report-group-custody.js';
 import {
@@ -636,6 +637,14 @@ test('signed admission refuses a well-shaped metadata substitution and restored 
       'claude-sonnet-4-6',
     );
     assert.ok(!original.includes('Review correctness'));
+    assert.equal(restored?.admission.intentRef, undefined);
+    await assert.rejects(
+      h.custody.loadIntentForMutation(
+        h.f.context(requestFor(h, 'POST')),
+        groupId,
+      ),
+      { code: 'group_custody_unavailable' },
+    );
     assert.ok(!original.includes('synthetic-not-a-live-key'));
     assert.equal(h.rawFetch.mock.calls.length, 0);
   } finally {
@@ -1000,6 +1009,71 @@ test('initial Flow continuation limits are immutable intent and reserve aggregat
     );
     assert.ok(child);
     assert.equal(child.budget.max_attempts, 3);
+    const groupId = await h.custody.retain(h.f.context(), h.owner, handle);
+    const stored = await h.custodyOwners.persistence.readReportAdmission(
+      groupId,
+      () => undefined,
+    );
+    assert.ok(stored?.data.intentRef);
+    assert.ok(!JSON.stringify(stored).includes('Review correctness'));
+    const loaded = await h.custody.loadIntentForMutation(
+      h.f.context(requestFor(h, 'POST')),
+      groupId,
+    );
+    assert.deepEqual(loaded.intent, input);
+    const widened = structuredClone(loaded.admission);
+    widened.spec.policy.maxRenewals = 3;
+    assert.throws(
+      () => validateReportIntent(widened, loaded.intent),
+      /report_admission_intent_invalid/,
+    );
+    loaded.intent.members[0].brief = 'returned copies are detached';
+    assert.equal(
+      (
+        await h.custody.loadIntentForMutation(
+          h.f.context(requestFor(h, 'POST')),
+          groupId,
+        )
+      ).intent.members[0].brief,
+      'Review correctness',
+    );
+    const intentFile = join(
+      h.f.root,
+      'station-report-intents-v1',
+      `${stored.data.intentRef.id}.json`,
+    );
+    const intentBytes = readFileSync(intentFile);
+    try {
+      const changed = JSON.parse(intentBytes.toString());
+      changed.intent.members[0].brief = 'tampered saved assignment';
+      writeFileSync(intentFile, JSON.stringify(changed), { mode: 0o600 });
+      await assert.rejects(
+        h.custodyOwners.persistence.readReportIntent(
+          groupId,
+          stored.data.intentRef,
+          () => undefined,
+        ),
+        { code: 'report_intent_digest_invalid' },
+      );
+      await assert.rejects(
+        h.custody.loadIntentForMutation(
+          h.f.context(requestFor(h, 'POST')),
+          groupId,
+        ),
+      );
+      assert.ok(await h.custody.inspect(h.f.context(requestFor(h)), groupId));
+      unlinkSync(intentFile);
+      await assert.rejects(
+        h.custody.loadIntentForMutation(
+          h.f.context(requestFor(h, 'POST')),
+          groupId,
+        ),
+        { code: 'report_intent_missing' },
+      );
+      assert.ok(await h.custody.inspect(h.f.context(requestFor(h)), groupId));
+    } finally {
+      writeFileSync(intentFile, intentBytes, { mode: 0o600 });
+    }
     const original = h.owner.sdk(handle, h.f.req, 'left');
     const initialWire = inspectSdkSourceWire(
       original.owner,
