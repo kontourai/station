@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { execGitSync } from '../../../utils/git-exec.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
@@ -21,6 +22,7 @@ const { createWorkspacePanePreviewRoutes } = await import(
 );
 
 describe('Workspace Pane preview routes', () => {
+  const makeTempDir = trackTempDirs();
   const tempDirs: string[] = [];
 
   afterEach(() => {
@@ -55,8 +57,7 @@ describe('Workspace Pane preview routes', () => {
   }
 
   test('serves visual bytes from a registered Project worktree and refuses unrelated or escaped files', async () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-visual-route-'));
-    tempDirs.push(root);
+    const root = makeTempDir('station-visual-route-');
     const project = join(root, 'project');
     const worktree = join(root, 'project-worktrees', 'queue-ui-concepts');
     const outside = join(root, 'outside');
@@ -344,6 +345,7 @@ describe('Workspace Pane preview routes', () => {
 });
 
 describe('a preview for one session reads that session’s directory (#2476)', () => {
+  const makeTempDir = trackTempDirs();
   const tempDirs: string[] = [];
   afterEach(() => {
     for (const dir of tempDirs.splice(0))
