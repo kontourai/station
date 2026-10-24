@@ -84,13 +84,21 @@ export interface OutsideManagementAuthority {
   ): boolean;
   resolveProject(slug: string): { id: string } | null;
   projectExists(id: string): boolean;
+  describeProject(id: string): { name: string; slug?: string } | null;
 }
 const refuse = () => {
   throw new OutsideOAuthRefusal('target_changed');
 };
 const hash = (value: unknown) =>
   secretHash('management', JSON.stringify(value));
-const safeLabel = (value: string) => value.replace(/[\p{Cc}\p{Cf}]/gu, '');
+const safeLabel = (value: string) =>
+  value
+    .replace(
+      /[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}\u2028\u2029\u2800]/gu,
+      '',
+    )
+    .trim();
+const clientLabel = (value: string) => safeLabel(value) || '(unnamed)';
 
 function canonicalOutsideOrigin(input: string) {
   if (
@@ -229,7 +237,7 @@ export class OutsideAgentManagementService {
             ageMs: this.now() - request.createdAt,
             expiresAt: request.expiresAt,
             clientId: client.id,
-            clientName: safeLabel(client.metadata.client_name ?? ''),
+            clientName: clientLabel(client.metadata.client_name ?? ''),
             softwareId: safeLabel(client.metadata.software_id ?? ''),
             redirectUri: request.redirectUri,
             resource: request.resource,
@@ -249,7 +257,7 @@ export class OutsideAgentManagementService {
           version: g.version,
           digest: this.store.grantDigest(g),
           clientId: g.clientId,
-          clientName: safeLabel(
+          clientName: clientLabel(
             this.store.client(g.clientId)?.metadata.client_name ?? '',
           ),
           redirectUri: g.redirectUri,
@@ -269,6 +277,14 @@ export class OutsideAgentManagementService {
   origins(actor: OutsideDecisionActor, kind: 'redirect' | 'cors') {
     this.#assertActor(actor);
     return this.store.policy(kind);
+  }
+  projectScopeDescription(
+    scope: Records['intent']['selection']['projectScope'],
+  ) {
+    if (scope.kind === 'global') return 'All Projects (global)';
+    const project = this.authority.describeProject(scope.projectId);
+    if (!project) return refuse();
+    return `Project: ${safeLabel(project.name)} (${safeLabel(project.slug ?? scope.projectId)})`;
   }
   #selection(
     action: Extract<
@@ -356,7 +372,6 @@ export class OutsideAgentManagementService {
         expectedRegistrationVersion: client.version,
         registrationDigest: client.digest,
         redirectUri: request.redirectUri,
-        expectedRedirectPolicyRevision: this.store.policy('redirect').revision,
         responseType: 'code',
         codeChallengeMethod: 'S256',
         codeChallenge: request.challenge,
@@ -375,7 +390,7 @@ export class OutsideAgentManagementService {
       };
       const warning =
         new URL(request.redirectUri).protocol === 'https:'
-          ? `sends access to ${new URL(request.redirectUri).origin}, a remote site`
+          ? `Sends access to ${new URL(request.redirectUri).origin}, a remote site.`
           : null;
       const candidates = selected
         ? this.store
@@ -407,7 +422,7 @@ export class OutsideAgentManagementService {
               expectedVersion: g.version,
               expectedDigest: this.store.grantDigest(g),
               clientId: g.clientId,
-              name: safeLabel(
+              name: clientLabel(
                 this.store.client(g.clientId)?.metadata.client_name ?? '',
               ),
               redirectUri: g.redirectUri,
@@ -610,7 +625,7 @@ export class OutsideAgentManagementService {
           ? {
               clientId: client.id,
               unverified: true,
-              clientName: safeLabel(client.metadata.client_name ?? ''),
+              clientName: clientLabel(client.metadata.client_name ?? ''),
               softwareId: safeLabel(client.metadata.software_id ?? ''),
             }
           : null,

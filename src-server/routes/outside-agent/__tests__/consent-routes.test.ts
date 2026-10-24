@@ -351,7 +351,15 @@ test('approval review binds selected Project/expiry/supersession and client meta
   expect(page.html).toContain('&lt;Client&gt;');
   expect(page.html).not.toContain('\u202e');
   expect(page.html).toContain('not proof of identity');
-  expect(page.html).toContain(flow.comparisonCode);
+  expect(page.html).toContain(`<strong>${flow.comparisonCode}</strong>`);
+  expect(page.html).toContain(
+    'Check this matches the code shown where you started sign-in.',
+  );
+  expect(page.html.indexOf('Comparison code')).toBeLessThan(
+    page.html.indexOf('Station resource'),
+  );
+  expect(page.html).toContain('Project: Alpha workspace (alpha)');
+  expect(page.html).not.toContain('project-alpha');
   expect(page.html).toContain('Unselected matching grant');
   expect(page.html).toContain('This installation will keep its access.');
   const base = h.channel.store.get('local', page.id)!.target.fingerprint;
@@ -374,6 +382,14 @@ test('approval review binds selected Project/expiry/supersession and client meta
       h.channel.store.get('local', changed.id)!.target.fingerprint,
     ).not.toBe(base);
   }
+  h.projectNames.set('project-alpha', 'Renamed Project');
+  const renamed = await create(h, action);
+  expect(renamed.html).toContain('Project: Renamed Project (alpha)');
+  expect(h.channel.store.get('local', renamed.id)!.target.fingerprint).toBe(
+    base,
+  );
+  const global = await create(h, { ...action, project: { kind: 'global' } });
+  expect(global.html).toContain('All Projects (global)');
   const target = JSON.parse(base);
   expect(target).toMatchObject({
     clientId: h.client.id,
@@ -393,6 +409,68 @@ test('approval review binds selected Project/expiry/supersession and client meta
     }).fingerprint,
   ).toBe(base);
 });
+
+test('grant change describes both Projects by their current display names', async () => {
+  const h = await fixture();
+  h.projectNames.set('project-alpha', 'Renamed Alpha');
+  h.projectNames.set('project-beta', 'Renamed Beta');
+  const page = await create(h, actionFor(h, 'change'));
+  expect(page.html).toContain('Project: Renamed Alpha (alpha)');
+  expect(page.html).toContain('Project: Renamed Beta (beta)');
+  expect(page.html).not.toMatch(/project-alpha|project-beta|&quot;kind&quot;/);
+});
+
+for (const [name, expected] of [
+  [' \t\n ', '(unnamed)'],
+  ['\u3164\uffa0\u115f\u1160', '(unnamed)'],
+  ['\u200b\u200d\ufeff\u034f\u2800', '(unnamed)'],
+  ['\u2028\u2029', '(unnamed)'],
+  [
+    'Station\u2028Station resource\u2029https://spoof.example.test',
+    'StationStation resourcehttps://spoof.example.test',
+  ],
+] as const)
+  test(`crafted client name ${JSON.stringify(name)} is safely rendered`, async () => {
+    const h = await fixture();
+    const client = h.management.store.register({
+      application_type: 'native',
+      client_name: name,
+      redirect_uris: ['http://127.0.0.1:43498/callback'],
+    });
+    const page = await create(h, h.approval(h.start(client.id)));
+    const description = h.channel.store.get('local', page.id)!.description;
+    expect(
+      description.items.find(
+        (item) => item.label === 'Client name (unverified)',
+      )?.detail,
+    ).toBe(expected);
+    expect(page.html).toContain(`<span>${expected}</span>`);
+    expect(page.html).not.toMatch(
+      /\u3164|\uffa0|\u115f|\u1160|\u200b|\u200d|\ufeff|\u034f|\u2800|\u2028|\u2029/u,
+    );
+  });
+
+for (const operation of ['approve', 'deny'] as const)
+  test(`${operation} refuses a redirect-policy ABA through the request fingerprint`, async () => {
+    const h = await fixture();
+    const action = actionFor(h, operation);
+    const page = await create(h, action);
+    for (const [index, change] of (['add', 'remove'] as const).entries())
+      h.hostCommit({
+        operation: 'origin',
+        policy: 'redirect',
+        action: change,
+        origin: 'https://other.example.test',
+        expectedRevision: index,
+      });
+    const response = await h.decide(page.id, page.nonce, sign(h, page));
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({ error: 'target_changed' });
+    if (action.operation !== 'approve' && action.operation !== 'deny')
+      throw new Error('fixture');
+    expect(h.management.store.request(action.requestId)?.state).toBe('pending');
+    expect(h.management.store.grants()).toHaveLength(0);
+  });
 
 test('Project slug reuse after review refuses at the actual passkey commit', async () => {
   const h = await fixture();
@@ -433,13 +511,33 @@ test('remote callback warning and explicit supersession remain intent-only until
   ];
   const page = await create(h, action);
   expect(page.html).toContain(
-    'sends access to https://client.example.test, a remote site',
+    'Sends access to https://client.example.test, a remote site.',
   );
   expect(page.html).toContain(
     'This will disconnect this installation when the new login completes.',
   );
   expect(page.html).not.toContain('Full access permits');
+  expect(page.html).toContain('Exact redirect URI (remote site)');
+  expect(page.html).toContain(
+    'a remote site.</div><div class="warning">Approval records intent only.',
+  );
+  expect(page.html.match(/Sends access to/g)).toHaveLength(1);
   expect((await h.decide(page.id, page.nonce, sign(h, page))).status).toBe(200);
+  const decided = await h.consent.request(
+    `${OUTSIDE_TEST_CONSENT}/consent/${page.id}`,
+    {
+      headers: {
+        host: new URL(OUTSIDE_TEST_CONSENT).host,
+        cookie: h.cookie,
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-dest': 'document',
+      },
+    },
+  );
+  expect(decided.status).toBe(409);
+  expect(await decided.text()).toContain(
+    'Access activates only when the requesting client completes sign-in.',
+  );
   expect(h.channel.store.get('local', page.id)?.effect?.status).toBe(
     'approved-awaiting-exchange',
   );
@@ -489,7 +587,7 @@ test('remote callback warning and explicit supersession remain intent-only until
             accessLevel: 'read-only',
           };
     expect((await create(h, next)).html).toContain(
-      'sends access to https://client.example.test, a remote site',
+      'Sends access to https://client.example.test, a remote site.',
     );
   }
 });
@@ -620,21 +718,35 @@ test('compiled guard refuses new consent review/decision routes with no nonce, a
     const audit = [...h.channel.store.auditTrail('local', page.id)];
     const assertion = sign(h, page);
     for (const spelling of [`/consent/${page.id}`, `/%63onsent/${page.id}`]) {
-      expect(
-        (
-          await h.releasedConsent.request(
-            `${OUTSIDE_TEST_CONSENT}${spelling}`,
-            {
-              headers: {
-                host: new URL(OUTSIDE_TEST_CONSENT).host,
-                cookie: h.cookie,
-                'sec-fetch-mode': 'navigate',
-                'sec-fetch-dest': 'document',
-              },
-            },
-          )
-        ).status,
-      ).toBe(404);
+      const headers = {
+        host: new URL(OUTSIDE_TEST_CONSENT).host,
+        cookie: `__Host-station-device=${h.other.credential}`,
+        'sec-fetch-mode': 'navigate',
+        'sec-fetch-dest': 'document',
+      };
+      const hidden = await h.releasedConsent.request(
+        `${OUTSIDE_TEST_CONSENT}${spelling}`,
+        { headers },
+      );
+      const unknown = await h.releasedConsent.request(
+        `${OUTSIDE_TEST_CONSENT}/consent/unknown-id`,
+        { headers },
+      );
+      expect(hidden.status).toBe(404);
+      expect(unknown.status).toBe(404);
+      expect(await hidden.text()).toBe(await unknown.text());
+      for (const header of [
+        'content-security-policy',
+        'x-content-type-options',
+        'cache-control',
+        'referrer-policy',
+        'cross-origin-opener-policy',
+      ]) {
+        expect(hidden.headers.get(header), header).toBeTruthy();
+        expect(hidden.headers.get(header), header).toBe(
+          unknown.headers.get(header),
+        );
+      }
       expect(
         (
           await h.releasedConsent.request(

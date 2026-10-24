@@ -53,18 +53,13 @@ function description(
     items.push({
       label:
         new URL(target.redirectUri).protocol === 'https:'
-          ? `Exact redirect URI — sends access to ${new URL(target.redirectUri).origin}, a remote site`
+          ? 'Exact redirect URI (remote site)'
           : 'Exact redirect URI',
       detail: target.redirectUri,
     });
   if ('requestId' in target)
     items.push(
       { label: 'Request', detail: target.requestId },
-      {
-        label: 'Comparison code',
-        detail:
-          review.comparisonCode ?? 'Unavailable — open a new login request.',
-      },
       { label: 'Requested scopes', detail: target.requestedScopes.join(', ') },
     );
   if ('grantId' in target) {
@@ -76,7 +71,7 @@ function description(
       { label: 'Grant', detail: target.grantId },
       {
         label: 'Before',
-        detail: `${before.accessLevel}; ${JSON.stringify(before.projectScope)}; expires ${new Date(before.expiresAt).toISOString()}`,
+        detail: `${before.accessLevel}; ${service.projectScopeDescription(before.projectScope)}; expires ${new Date(before.expiresAt).toISOString()}`,
       },
       { label: 'Requested scopes', detail: target.requestedScopes.join(', ') },
     );
@@ -90,7 +85,10 @@ function description(
             : 'Selected access',
         detail: `${target.selectedAccessLevel}; ${target.selectedScopes.join(', ')}`,
       },
-      { label: 'Project scope', detail: JSON.stringify(target.projectScope) },
+      {
+        label: 'Project scope',
+        detail: service.projectScopeDescription(target.projectScope!),
+      },
       {
         label: 'Expiry (UTC)',
         detail: new Date(target.expiresAt!).toISOString(),
@@ -127,18 +125,24 @@ function description(
     review.warning ??
       ('redirectUri' in target &&
       new URL(target.redirectUri).protocol === 'https:'
-        ? `sends access to ${new URL(target.redirectUri).origin}, a remote site`
+        ? `Sends access to ${new URL(target.redirectUri).origin}, a remote site.`
         : null),
     action.operation === 'approve'
       ? 'Approval records intent only. Access and selected disconnections commit at code exchange. Changing the selection requires a new review.'
       : null,
-  ].filter(Boolean);
+  ].filter((warning): warning is string => Boolean(warning));
   return {
     title,
     summary:
       'Review this exact action. Client names and client IDs do not prove the identity of the requesting software or installation.',
     items,
-    ...(warnings.length ? { warning: warnings.join(' ') } : {}),
+    warnings,
+    ...('requestId' in target
+      ? {
+          comparisonCode:
+            review.comparisonCode ?? 'Unavailable — open a new login request.',
+        }
+      : {}),
     approveLabel:
       action.operation === 'deny'
         ? 'Deny request with passkey'

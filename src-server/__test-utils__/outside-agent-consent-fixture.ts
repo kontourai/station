@@ -133,6 +133,10 @@ export async function outsideConsentFixture(home: string) {
     ['alpha', 'project-alpha'],
     ['beta', 'project-beta'],
   ]);
+  const projectNames = new Map([
+    ['project-alpha', 'Alpha workspace'],
+    ['project-beta', 'Beta workspace'],
+  ]);
   const hostActor = {
     kind: 'host' as const,
     id: 'host-cli',
@@ -156,6 +160,12 @@ export async function outsideConsentFixture(home: string) {
       resolveProject: (slug) =>
         projects.has(slug) ? { id: projects.get(slug)! } : null,
       projectExists: (id) => [...projects.values()].includes(id),
+      describeProject: (id) => {
+        const slug = [...projects].find(
+          ([, projectId]) => projectId === id,
+        )?.[0];
+        return slug ? { name: projectNames.get(id) ?? slug, slug } : null;
+      },
     },
   );
   const adapter = new OutsideAgentConsentService(
@@ -370,6 +380,7 @@ export async function outsideConsentFixture(home: string) {
     cookie,
     channel,
     projects,
+    projectNames,
     management,
     adapter,
     api,

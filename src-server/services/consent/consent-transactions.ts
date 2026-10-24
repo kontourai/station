@@ -99,6 +99,8 @@ export interface ConsentDescription {
   readonly summary: string;
   readonly items: readonly ConsentDescriptionItem[];
   readonly warning?: string;
+  readonly warnings?: readonly string[];
+  readonly comparisonCode?: string;
   readonly approveLabel: string;
   readonly denyLabel: string;
 }
