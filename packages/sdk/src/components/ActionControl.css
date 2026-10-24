@@ -19,10 +19,6 @@
   cursor: not-allowed;
 }
 
-.button.copy-affordance--failed {
-  color: var(--status-error);
-}
-
 .button.is-pending {
   display: inline-flex;
   align-items: center;
@@ -39,13 +35,6 @@
   border-radius: 50%;
   animation: station-action-spin var(--motion-status-spin, 0.8s)
     var(--ease-linear, linear) infinite;
-}
-
-.empty__action .button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 44px;
 }
 
 .button--primary {

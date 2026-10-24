@@ -5365,6 +5365,18 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
    coarse)` is not that constant. A touch-target floor is the `(pointer: coarse)`
    question anyway, not the mobile-layout one. */
 
+/* Shell-specific consumers of the shared action control. */
+.button.copy-affordance--failed {
+  color: var(--status-error);
+}
+
+.empty__action .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+}
+
 .empty__description {
   color: var(--text-secondary);
 }
