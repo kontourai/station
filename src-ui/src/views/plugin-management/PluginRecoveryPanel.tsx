@@ -111,10 +111,6 @@ export function PluginRecoveryPanel({
           Recovery uses the retained code and data. It does not download a
           replacement or reset stored data.
         </p>
-        <PluginRegistryTrustSection
-          trust={plugin.registryTrust}
-          context="installed"
-        />
         {notice && <p role="status">{notice}</p>}
         {preview.error && (
           <p role="alert">{userFacingErrorMessage(preview.error)}</p>
@@ -122,6 +118,10 @@ export function PluginRecoveryPanel({
         {basis && (
           <section aria-label="Recovery review">
             <h3>Review recovery</h3>
+            <PluginRegistryTrustSection
+              trust={basis.registryTrust}
+              context="installed"
+            />
             <p>
               Permissions: {basis.permissions.required.join(', ') || 'None'}
             </p>

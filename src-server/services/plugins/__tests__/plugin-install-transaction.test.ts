@@ -2074,6 +2074,27 @@ describe('installPluginFromSource', () => {
         'signed-tools',
         installDeps,
       );
+      // #1521: the recovery review shows the receipt this recovery binds,
+      // exactly as the selected generation persisted it, via the real route.
+      const recoverySelection = journal.currentInstallation('signed-tools');
+      if (recoverySelection.state !== 'observed')
+        throw new Error('Expected installation under recovery');
+      const recoveryRoute = await app.request(
+        'http://localhost/signed-tools/recovery-preview',
+      );
+      expect(recoveryRoute.status).toBe(200);
+      const recoveryView = (await recoveryRoute.json()) as {
+        registryTrust?: unknown;
+      };
+      const recoveryTrust = {
+        state: 'verified',
+        revision: recoveryPreview.registryTrustRevision,
+        receipt: journal.activationPlan(recoverySelection.installation)
+          ?.registryAcquisition,
+      };
+      expect(recoveryTrust.receipt).toBeDefined();
+      expect(recoveryView.registryTrust).toEqual(recoveryTrust);
+      expect(recoveryPreview.registryTrust).toEqual(recoveryTrust);
       await recoverInstalledPlugin('signed-tools', installDeps, {
         recoveryRevision: recoveryPreview.recoveryRevision,
         consent: {

@@ -1,12 +1,20 @@
 /** @vitest-environment jsdom */
 import type { PluginRegistryTrust } from '@kontourai/station-contracts/registry-trust';
-import { cleanup, render, screen, within } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { afterEach, expect, test, vi } from 'vitest';
 
+const recovery = vi.hoisted(() => ({ data: undefined as unknown }));
 vi.mock('@kontourai/station-sdk', () => ({
   usePluginRecoveryPreviewQuery: () => ({
-    data: undefined,
-    refetch: vi.fn(),
+    data: recovery.data,
+    refetch: async () => ({ data: recovery.data }),
     isFetching: false,
   }),
   usePluginRecoveryMutation: () => ({ mutateAsync: vi.fn(), isPending: false }),
@@ -59,7 +67,7 @@ test('a verified claim shows the persisted source, digest, signer, pin and polic
   expect(value('Signer')).toBe(`Key primaryFingerprint ${digest('e')}`);
   expect(value('Pin')).toBe(`${digest('f')}Claim ${digest('c')}`);
   expect(value('Policy')).toBe(
-    `Signature verified with a key this policy trusts.local, epoch epoch-7Fingerprint ${digest('a')}`,
+    `Signature verified with a key this policy trusts.Scope local, epoch epoch-7Fingerprint ${digest('a')}`,
   );
   expect(region.getByText(/Installing binds this exact claim and pin/));
 });
@@ -74,11 +82,20 @@ test('an unsigned receipt names no signer and never claims a signature', () => {
   const text = section().textContent ?? '';
   expect(text).toContain('Unsigned. No signer was verified.');
   expect(text).toContain(
-    'Unsigned package accepted because this policy does not require signatures.',
+    'Unsigned package accepted because the recorded policy did not require signatures.',
   );
   expect(text).toContain('This is the stored receipt, not a fresh check.');
   expect(text).not.toContain('Signature verified');
   expect(text).not.toContain('Fingerprint sha256:e');
+});
+
+test('an installation reports the recorded policy in the past tense', () => {
+  render(<PluginRegistryTrustSection trust={signed} context="installed" />);
+  const text = section().textContent ?? '';
+  expect(text).toContain(
+    'Signature verified with a key the recorded policy trusted.',
+  );
+  expect(text).not.toContain('this policy trusts');
 });
 
 test.each([
@@ -140,7 +157,16 @@ test('a preview with no verified claim says so instead of staying silent', () =>
   );
 });
 
-test('installed recovery diagnostics render the installation’s stored receipt', () => {
+test('the recovery review shows the recovery view’s receipt, not the list row’s', async () => {
+  recovery.data = {
+    recoveryRevision: 'review-1',
+    contentDigest: digest('d'),
+    grantRevision: 'grant-1',
+    registryTrustRevision: signed.revision,
+    registryTrust: signed,
+    permissions: { required: [], autoGranted: [], pendingConsent: [] },
+    dependencies: [],
+  };
   render(
     <PluginRecoveryPanel
       plugin={{
@@ -149,13 +175,20 @@ test('installed recovery diagnostics render the installation’s stored receipt'
         version: '1.0.0',
         hasBundle: false,
         installationReadiness: { state: 'pending', recovery: 'review' },
-        registryTrust: signed,
+        // A stale list row must not stand in for the reviewed receipt.
+        registryTrust: { state: 'none' },
       }}
       onRemove={vi.fn()}
     />,
   );
-  expect(section().textContent).toContain(digest('d'));
+  expect(
+    screen.queryByRole('region', { name: 'Registry verification' }),
+  ).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Review recovery' }));
+  await waitFor(() => expect(section().textContent).toContain(digest('d')));
   expect(section().textContent).toContain(
     'Recorded when this installation was verified.',
   );
+  expect(section().textContent).not.toContain('No verified registry claim');
+  recovery.data = undefined;
 });

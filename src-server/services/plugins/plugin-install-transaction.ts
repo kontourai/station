@@ -185,6 +185,7 @@ import {
 } from './plugin-source.js';
 import {
   findRegistryAcquisitionRefusal,
+  pluginRegistryTrust,
   RegistryAcquisitionRefused,
   registryAcquisitionRevision,
   verifyRegistryAcquisition,
@@ -3019,6 +3020,8 @@ async function inspectRetainedPluginRecovery(
       registryTrustRevision: priorTrust.receipt
         ? registryAcquisitionRevision(priorTrust.receipt)
         : undefined,
+      // #1521: the receipt this recovery binds, shown by the recovery review.
+      registryTrust: pluginRegistryTrust(priorTrust),
       permissions: {
         required: basis.required,
         autoGranted: basis.autoGranted,

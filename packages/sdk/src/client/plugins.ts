@@ -285,6 +285,8 @@ export interface PluginRecoveryPreview {
   contentDigest: string;
   grantRevision: string;
   registryTrustRevision?: string;
+  /** The persisted registry receipt this recovery binds; absent from an older server. */
+  registryTrust?: PluginRegistryTrust;
   permissions: {
     required: string[];
     autoGranted: string[];
@@ -331,6 +333,12 @@ export async function previewPluginRecovery(
     throw new Error('Plugin recovery preview response is malformed');
   if ('success' in result && result.success === false)
     throw envelopeError(response, result, refused);
+  if (
+    'registryTrust' in result &&
+    result.registryTrust !== undefined &&
+    !isPluginRegistryTrust(result.registryTrust)
+  )
+    throw new Error('Plugin recovery preview response is malformed');
   return result as PluginRecoveryPreview;
 }
 

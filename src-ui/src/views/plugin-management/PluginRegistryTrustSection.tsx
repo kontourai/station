@@ -98,11 +98,10 @@ function RegistryTrustBody({
         </dd>
         <dt>Policy</dt>
         <dd>
-          {receipt.signer
-            ? 'Signature verified with a key this policy trusts.'
-            : 'Unsigned package accepted because this policy does not require signatures.'}
+          {policyOutcome(context, receipt.signer !== null)}
           <span className="plugin-registry-trust__detail">
-            {receipt.policyScope}, epoch <code>{receipt.policyEpoch}</code>
+            Scope <code>{receipt.policyScope}</code>, epoch{' '}
+            <code>{receipt.policyEpoch}</code>
           </span>
           <span className="plugin-registry-trust__detail">
             Fingerprint <code>{receipt.policyFingerprint}</code>
@@ -111,4 +110,16 @@ function RegistryTrustBody({
       </dl>
     </>
   );
+}
+
+/** A preview states the policy it was just checked against; an installation
+ * reports the policy recorded with its receipt, which is not re-checked here. */
+function policyOutcome(context: 'preview' | 'installed', signed: boolean) {
+  if (context === 'preview')
+    return signed
+      ? 'Signature verified with a key this policy trusts.'
+      : 'Unsigned package accepted because this policy does not require signatures.';
+  return signed
+    ? 'Signature verified with a key the recorded policy trusted.'
+    : 'Unsigned package accepted because the recorded policy did not require signatures.';
 }
