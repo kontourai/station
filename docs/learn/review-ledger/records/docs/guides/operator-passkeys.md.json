@@ -42,7 +42,11 @@
 
     "src-server/runtime/consent/consent-listener.ts",
 
-    "src-server/services/ssh/device-pairing-service.ts"
+    "src-server/services/ssh/device-pairing-service.ts",
+
+    "src-ui/src/views/settings/PeopleSection.tsx",
+
+    "src-ui/src/views/settings/PersonalTokens.tsx"
   ],
 
   "checks": [
