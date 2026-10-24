@@ -885,6 +885,7 @@ describe('#2493: who may start a session unconfined', () => {
     // already hold a recorded concrete never.
     const f = await fixture();
     f.claude.completeTurns = true;
+    f.codex.completeTurns = true;
     const phone = f.pair('Phone');
     const { conversationId } = await f.chat(
       f.bearer(phone.credential),
@@ -945,6 +946,16 @@ describe('#2493: who may start a session unconfined', () => {
     expect(f.codex.starts.length).toBe(codexStarts + 1);
     const child = f.codex.starts.at(-1)!;
     expect(child.threadId).not.toBe(root);
+    await vi.waitFor(async () => {
+      expect(
+        (
+          await f.service.readCurrentConversationSession(
+            conversationId,
+            f.readAuthority('operator'),
+          )
+        )?.session.lifecycleState,
+      ).toBe('idle');
+    });
     // Host through the recorded never; the stamp is the phone's own grant.
     expect.soft(lastStart(f, 'codex-agent')).toEqual({
       confinement: 'host',

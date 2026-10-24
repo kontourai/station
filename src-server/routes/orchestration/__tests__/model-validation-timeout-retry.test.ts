@@ -88,6 +88,7 @@ class SlowCatalogClaudeAdapter extends GateTestAdapter {
       provider: this.provider,
       threadId: input.threadId,
       status: 'ready' as const,
+      metadata: input.metadata,
       createdAt: now,
       updatedAt: now,
     };
@@ -97,6 +98,7 @@ class SlowCatalogClaudeAdapter extends GateTestAdapter {
     this.turns += 1;
     const turnId = `turn-${this.turns}`;
     const base = {
+      invocationId: input.invocationId,
       provider: this.provider,
       threadId: input.threadId,
       turnId,

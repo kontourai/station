@@ -408,7 +408,7 @@ class ExperienceAdapter extends GateTestAdapter {
       createdAt: new Date().toISOString(),
       metadata: input.metadata,
     });
-    return super.startSession(input);
+    return { ...(await super.startSession(input)), metadata: input.metadata };
   }
   override async sendTurn(input: ProviderSendTurnInput) {
     this.turns.push(input);
