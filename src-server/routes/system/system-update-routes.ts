@@ -29,6 +29,10 @@ import {
 import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
 import { readServiceUpdateProgress } from '@kontourai/station-shared/service-launcher-protocol';
 import { type Context, Hono } from 'hono';
+import {
+  isSupervisedEnvironment,
+  requestSupervisorHandoff,
+} from '../../runtime/bootstrap/supervisor-link.js';
 import { systemOps } from '../../telemetry/metrics.js';
 import { execGit } from '../../utils/git-exec.js';
 import { isRecord } from '../../utils/is-record.js';
@@ -97,6 +101,11 @@ const DEFAULT_INSTANCE_ID = 'default';
 function coreUpdateSupervision(
   env: NodeJS.ProcessEnv = process.env,
 ): SelfUpdateUnavailableCode | null {
+  // Under the process supervisor nothing exits: the update rebuilds and asks
+  // for a handoff, which replaces this generation in place whatever started
+  // the supervisor (the service included). The PID below is the supervisor's
+  // own then, set on every generation it forks.
+  if (isSupervisedEnvironment(env)) return null;
   if (env.STATION_SERVICE_MANAGED === '1') return 'service-managed';
   if (env.STATION_SUPERVISOR_PID?.trim()) return 'supervised';
   return null;
@@ -551,6 +560,81 @@ export function performGitPullRestart(input: GitPullRestartInput): void {
 }
 
 /**
+ * The supervised restart (#3851): asks the supervisor for a handoff instead
+ * of spawning a replacement and exiting. The pending record is already
+ * written; the generation the handoff leaves serving resolves it
+ * (`resolveSupervisedRestart`). Here only the outcomes this generation
+ * survives are settled: a refusal is recorded as failed, a rollback was
+ * already recorded by this generation's own outcome listener, and no answer
+ * leaves the record pending, since the handoff may still be running.
+ */
+async function restartUnderSupervisor(
+  c: Context,
+  input: {
+    restartStatePath: string;
+    pending: {
+      instanceId: string;
+      hash: string;
+      port: number;
+      startedAt: string;
+    };
+    deadlineAt: string;
+    restartStateWriter: typeof writeSelfUpdateRestartRecord;
+    logger: any;
+  },
+) {
+  const { pending } = input;
+  const outcome = await requestSupervisorHandoff();
+  if (outcome.status === 'draining') {
+    input.logger.info('Core restart: supervisor handoff started', {
+      hash: pending.hash,
+    });
+    return c.json({
+      success: true,
+      hash: pending.hash,
+      message: `Build succeeded (${pending.hash}). Handing over to the new build and verifying it comes up healthy…`,
+      restarting: true,
+      restart: {
+        expectedHash: pending.hash,
+        expectedInstanceId: pending.instanceId,
+        deadlineAt: input.deadlineAt,
+      },
+    });
+  }
+  if (outcome.status === 'refused') {
+    input.restartStateWriter(input.restartStatePath, {
+      ...pending,
+      pid: process.pid,
+      status: 'failed',
+      resolvedAt: new Date().toISOString(),
+      failureCode: 'handoff-refused',
+    });
+  }
+  input.logger.warn('Core restart: supervisor handoff did not start', {
+    hash: pending.hash,
+    status: outcome.status,
+    ...('reason' in outcome && outcome.reason
+      ? { reason: outcome.reason }
+      : {}),
+  });
+  const detail =
+    outcome.status === 'refused'
+      ? `the supervisor refused the handoff (${outcome.reason})`
+      : outcome.status === 'rolled-back'
+        ? `the new build failed to start${outcome.reason ? ` (${outcome.reason})` : ''}`
+        : outcome.status === 'unanswered'
+          ? 'the supervisor did not answer the handoff request'
+          : 'no supervisor runs this server';
+  return c.json(
+    {
+      success: false,
+      error: `Build succeeded (${pending.hash}), but ${detail}. This server keeps running its current build; restart Station to run the new one.`,
+    },
+    outcome.status === 'unanswered' ? 504 : 409,
+  );
+}
+
+/**
  * Output ceiling for the install and build subprocesses. `execFile` buffers
  * stdout/stderr and kills the child when the default 1 MiB is exceeded — a
  * full dependency install plus a Vite build prints far more than that, which
@@ -564,7 +648,10 @@ const CORE_UPDATE_STEP_MAX_BUFFER = 64 * 1024 * 1024;
  * this fails, but the install may already have replaced dependencies under
  * the running server — which is why the message says so.
  */
-async function runInstallAndBuild(gitRoot: string): Promise<string | null> {
+async function runInstallAndBuild(
+  gitRoot: string,
+  buildInstance: string,
+): Promise<string | null> {
   const stepOptions = {
     cwd: gitRoot,
     timeout: 600000,
@@ -582,11 +669,13 @@ async function runInstallAndBuild(gitRoot: string): Promise<string | null> {
     // CLI is the one that knows how to build the pulled tree, and the server
     // does not reach into the CLI package. `--instance=default` targets
     // dist-server/dist-ui — the same directories the raw builds wrote and
-    // the restart below launches.
+    // the restart below launches. A supervised server builds its own
+    // instance instead: the handoff reruns the entry it runs, which lives in
+    // that instance's build directory.
     step = 'building';
     await execFileAsync(
       join(gitRoot, 'station'),
-      ['build', `--instance=${DEFAULT_INSTANCE_ID}`],
+      ['build', `--instance=${buildInstance}`],
       stepOptions,
     );
     return null;
@@ -1256,7 +1345,11 @@ export function createSystemUpdateRoutes(
           500,
         );
       }
-      const installAndBuildFailure = await runInstallAndBuild(gitRoot);
+      const supervised = isSupervisedEnvironment();
+      const installAndBuildFailure = await runInstallAndBuild(
+        gitRoot,
+        supervised ? currentInstanceId : DEFAULT_INSTANCE_ID,
+      );
       if (installAndBuildFailure !== null) {
         return c.json({ success: false, error: installAndBuildFailure }, 500);
       }
@@ -1282,8 +1375,9 @@ export function createSystemUpdateRoutes(
       // Written BEFORE anything is scheduled, so a crash before the watchdog
       // even spawns still leaves a durable, non-silent `pending` trail
       // (self-update-boot-report.ts ages an unresolved `pending` into a
-      // boot-time warning rather than reading it as fine). The watchdog is
-      // the only thing that ever moves this to `verified`/`failed`.
+      // boot-time warning rather than reading it as fine). Only the watchdog
+      // moves this to `verified`/`failed`, or, under the process supervisor,
+      // the generation the handoff leaves serving (self-update-handoff.ts).
       const restartStateWrite = restartStateWriter(restartStatePath, {
         instanceId: currentInstanceId,
         hash: newHash,
@@ -1301,6 +1395,21 @@ export function createSystemUpdateRoutes(
             hash: newHash,
           },
         );
+      }
+
+      if (supervised) {
+        return await restartUnderSupervisor(c, {
+          restartStatePath,
+          pending: {
+            instanceId: currentInstanceId,
+            hash: newHash,
+            port: Number(port),
+            startedAt,
+          },
+          deadlineAt,
+          restartStateWriter,
+          logger,
+        });
       }
 
       setTimeout(() => {

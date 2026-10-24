@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join as joinPath } from 'node:path';
@@ -33,6 +34,9 @@ vi.mock('../../../utils/git-exec.js', () => ({
 
 const { createSystemUpdateRoutes, performGitPullRestart } = await import(
   '../system-update-routes.js'
+);
+const { installListenerLink, SupervisorLink } = await import(
+  '../../../runtime/bootstrap/supervisor-link.js'
 );
 const {
   resolveInstallProvenance,
@@ -1040,6 +1044,138 @@ describe('POST /core-update git-pull restart (station#1903)', () => {
     expect(body.updateAvailable).toBe(true);
     expect(body.selfUpdateUnavailableCode).toBeNull();
     expect(body.selfUpdateUnavailableReason).toBeNull();
+  });
+});
+
+describe('POST /core-update under the process supervisor (#3851 handoff)', () => {
+  /** The supervisor's side of the generation IPC channel. */
+  class SupervisorChannel extends EventEmitter {
+    readonly env: NodeJS.ProcessEnv = { STATION_SUPERVISOR_IPC: '1' };
+    connected = true;
+    readonly sent: Array<{ type: string } & Record<string, unknown>> = [];
+    exit = vi.fn();
+    send = (
+      message: { type: string } & Record<string, unknown>,
+      _handle?: unknown,
+      _options?: undefined,
+      callback?: (error: Error | null) => void,
+    ) => {
+      this.sent.push(message);
+      callback?.(null);
+      return true;
+    };
+    deliver(message: unknown): void {
+      this.emit('message', message, undefined);
+    }
+  }
+
+  let gitRoot: string;
+  let channel: SupervisorChannel;
+
+  beforeEach(async () => {
+    gitRoot = mkdtempSync(joinPath(tmpdir(), 'core-update-supervised-'));
+    writeOwnedDependencyLifecycle(gitRoot);
+    vi.mocked(resolveInstallProvenance).mockReturnValue({
+      installKind: 'source-checkout',
+      gitRoot,
+      branch: 'main',
+      sha: 'abc1234',
+    });
+    vi.mocked(execGit).mockImplementation(async (args: string[]) => {
+      if (args[0] === 'rev-parse' && args[1] === 'HEAD') {
+        return { stdout: `${SHA}\n`, stderr: '' } as never;
+      }
+      return { stdout: '', stderr: '' } as never;
+    });
+    spawnMock.mockReset();
+    execFileMock.mockClear();
+    // What a supervisor sets on every generation it forks.
+    vi.stubEnv('STATION_SUPERVISOR_IPC', '1');
+    vi.stubEnv('STATION_SUPERVISOR_PID', '4242');
+    vi.stubEnv('STATION_SERVICE_MANAGED', '1');
+    vi.stubEnv('STATION_INSTANCE_ID', 'work');
+    channel = new SupervisorChannel();
+    const link = new SupervisorLink({
+      process: channel,
+      log: () => {},
+      drainIdleGraceMs: 10,
+    });
+    const parked = link.park();
+    channel.deliver({ type: 'promote', listeners: [] });
+    await parked;
+    link.onDrain(() => {});
+    installListenerLink(link);
+  });
+
+  afterEach(() => {
+    installListenerLink(null);
+    vi.unstubAllEnvs();
+    rmSync(gitRoot, { recursive: true, force: true });
+  });
+
+  async function postWhenAsked(
+    answer: (requestId: unknown) => unknown,
+  ): Promise<Response> {
+    const response = createApp().request('/core-update', { method: 'POST' });
+    await vi.waitFor(() =>
+      expect(channel.sent.some((m) => m.type === 'handoff.request')).toBe(true),
+    );
+    const request = channel.sent.find((m) => m.type === 'handoff.request');
+    channel.deliver(answer(request?.requestId));
+    return response;
+  }
+
+  test('GET offers the update although the supervisor and service markers are set', async () => {
+    vi.mocked(execGit).mockImplementation(async (args: string[]) => {
+      if (args[0] === 'rev-list') return { stdout: '0\n', stderr: '' } as never;
+      return { stdout: `${SHA}\n`, stderr: '' } as never;
+    });
+    const body = await json(await createApp().request('/core-update'));
+    expect(body.selfUpdateUnavailableCode).toBeNull();
+    expect(body.selfUpdateUnavailableReason).toBeNull();
+  });
+
+  test('builds its own instance and hands off instead of spawning a replacement', async () => {
+    const response = await postWhenAsked(() => ({
+      type: 'drain',
+      deadlineMs: 1_000,
+    }));
+    const body = await json(response);
+    expect(response.status, JSON.stringify(body)).toBe(200);
+    expect(body).toMatchObject({
+      success: true,
+      restarting: true,
+      restart: { expectedHash: SHA.slice(0, 7), expectedInstanceId: 'work' },
+    });
+    expect(execFileCommands()).toContainEqual([
+      joinPath(gitRoot, 'station'),
+      ['build', '--instance=work'],
+    ]);
+    // No replacement process and no watchdog: the handoff replaces it.
+    expect(spawnMock).not.toHaveBeenCalled();
+    expect(
+      readSelfUpdateRestartRecord(restartStateFilePath(gitRoot)),
+    ).toMatchObject({ status: 'pending', hash: SHA.slice(0, 7), pid: 0 });
+  });
+
+  test('a refused handoff keeps this server, says so, and records the failure', async () => {
+    const response = await postWhenAsked((requestId) => ({
+      type: 'handoff.refused',
+      requestId,
+      reason: 'busy',
+    }));
+    expect(response.status).toBe(409);
+    const body = await json(response);
+    expect(body.success).toBe(false);
+    expect(body.error).toContain('the supervisor refused the handoff (busy)');
+    expect(spawnMock).not.toHaveBeenCalled();
+    expect(
+      readSelfUpdateRestartRecord(restartStateFilePath(gitRoot)),
+    ).toMatchObject({
+      status: 'failed',
+      failureCode: 'handoff-refused',
+      pid: process.pid,
+    });
   });
 });
 
