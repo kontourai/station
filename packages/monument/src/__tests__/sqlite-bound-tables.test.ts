@@ -412,6 +412,88 @@ describe('bound steer receipt authority', () => {
     expect(tableNames(db)).toEqual(['host_steer_inputs']);
   });
 
+  it.each([
+    ['thread_id', 'NUMERIC'],
+    ['client_input_id', 'INTEGER'],
+    ['input_digest', 'REAL'],
+    ['confirmed_turn_id', 'BLOB'],
+    ['thread_id', 'TEXTINT'],
+  ])(
+    'rejects non-text affinity for %s declared %s before adopting host rows',
+    (field, declaredType) => {
+      const columns = [
+        'thread_id',
+        'client_input_id',
+        'input_digest',
+        'confirmed_turn_id',
+      ];
+      const db =
+        host(`CREATE TABLE host_steer_inputs (${columns.map((name) => `${name} ${name === field ? declaredType : 'TEXT'}`).join(',')}, PRIMARY KEY(thread_id,client_input_id));
+      INSERT INTO host_steer_inputs VALUES ('01','01','01',NULL);`);
+      const before = db.prepare('SELECT * FROM host_steer_inputs').all();
+      expect(() => storage(db, STEER_TABLES)).toThrow(/TEXT affinity/);
+      expect(db.prepare('SELECT * FROM host_steer_inputs').all()).toEqual(
+        before,
+      );
+      expect(tableNames(db)).toEqual(['host_steer_inputs']);
+    },
+  );
+
+  it.each(['TEXT', 'VARCHAR(128)', 'CLOB'])(
+    'preserves numeric-looking string identities with %s affinity',
+    (declaredType) => {
+      const db = host(`CREATE TABLE host_steer_inputs (
+      thread_id ${declaredType} NOT NULL, client_input_id ${declaredType} NOT NULL,
+      input_digest ${declaredType} NOT NULL, confirmed_turn_id ${declaredType},
+      PRIMARY KEY(thread_id, client_input_id)
+    )`);
+      const kernel = storage(db, STEER_TABLES);
+      for (const id of ['01', '1']) {
+        const key = { threadId: id, clientInputId: id, inputDigest: id };
+        expect(
+          kernel.executeSync(
+            { type: 'steerReceipts.claim', ...key },
+            context(),
+          ),
+        ).toEqual({ kind: 'claimed' });
+        expect(
+          kernel.executeSync(
+            { type: 'steerReceipts.confirm', ...key, confirmedTurnId: id },
+            context(),
+          ),
+        ).toEqual({ kind: 'applied' });
+        expect(
+          kernel.executeSync({ type: 'steerReceipts.read', ...key }, context()),
+        ).toEqual({ kind: 'confirmed', turnId: id });
+      }
+      expect(
+        kernel.executeSync(
+          { type: 'steerReceipts.forgetThread', threadId: '01' },
+          context(),
+        ),
+      ).toEqual({ kind: 'applied', removed: 1 });
+      expect(
+        kernel.executeSync(
+          {
+            type: 'steerReceipts.read',
+            threadId: '1',
+            clientInputId: '1',
+            inputDigest: '1',
+          },
+          context(),
+        ),
+      ).toEqual({ kind: 'confirmed', turnId: '1' });
+      expect(db.prepare('SELECT * FROM host_steer_inputs').all()).toEqual([
+        {
+          thread_id: '1',
+          client_input_id: '1',
+          input_digest: '1',
+          confirmed_turn_id: '1',
+        },
+      ]);
+    },
+  );
+
   it.each(['NOCASE', 'RTRIM'])(
     'rejects %s uniqueness that aliases distinct receipt identities',
     (collation) => {
