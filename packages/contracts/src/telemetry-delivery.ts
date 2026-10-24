@@ -1,5 +1,6 @@
 export const TELEMETRY_COMPANION_ARCHIVE_PREPARATION_PROTOCOL =
   'station-companion-archive-preparation/v1';
+export const TELEMETRY_COMPANION_ARCHIVE_MAX_BYTES = 1024 * 1024 * 1024;
 
 export function isTelemetryCompanionOperationId(
   value: unknown,
@@ -24,6 +25,15 @@ export interface TelemetryCompanionArchivePreparation {
   receivedBytes: number;
   createdAt: string;
   installationAuthority: false;
+}
+
+/** Lock presence is not process liveness; permission fields are request-local hints. */
+export interface TelemetryCompanionPreparationState {
+  supported: boolean;
+  mayPrepare: boolean;
+  hasOperationLock: boolean;
+  latestOperationId: string | null;
+  latest: TelemetryCompanionArchivePreparation | null;
 }
 
 /** A signed parent envelope and local byte inventory are not install authority. */

@@ -17,6 +17,7 @@ import {
   CompanionArchivePreparationBusyError,
   prepareTelemetryCompanionArchive,
   readTelemetryCompanionArchivePreparation,
+  readTelemetryCompanionPreparationState,
 } from '../../src-server/services/telemetry-companion-archive.js';
 import { verifyTelemetryCompanionFiles } from '../../src-server/services/telemetry-companion-artifact.mjs';
 import { readTelemetryCompanionArtifactEvidence } from '../../src-server/services/telemetry-companion-release.js';
@@ -153,6 +154,13 @@ test.skipIf(process.platform === 'win32')(
         expect(
           await readTelemetryCompanionArchivePreparation(home, operationId),
         ).toMatchObject({ phase: 'pending', installationAuthority: false });
+        expect(
+          await readTelemetryCompanionPreparationState(home),
+        ).toMatchObject({
+          hasOperationLock: true,
+          latestOperationId: operationId,
+          latest: { phase: 'pending' },
+        });
         if (fault === 'revoked') authorized = false;
         if (fault === 'redirect')
           return new Response(null, {
@@ -189,6 +197,11 @@ test.skipIf(process.platform === 'win32')(
       expect(
         await readTelemetryCompanionArchivePreparation(home, operationId),
       ).toEqual(receipt);
+      expect(await readTelemetryCompanionPreparationState(home)).toEqual({
+        hasOperationLock: false,
+        latestOperationId: operationId,
+        latest: receipt,
+      });
       if (fault === 'none')
         expect(
           await readFile(join(root, operationId, 'parent-archive.tar.gz')),

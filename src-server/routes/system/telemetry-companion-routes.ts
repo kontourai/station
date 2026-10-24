@@ -1,6 +1,7 @@
 import {
   isTelemetryCompanionOperationId,
   type TelemetryCompanionArchivePreparation,
+  type TelemetryCompanionPreparationState,
   type TelemetryCompanionPrerequisites,
 } from '@kontourai/station-contracts/telemetry-delivery';
 import { Hono } from 'hono';
@@ -23,8 +24,39 @@ export function createTelemetryCompanionRoutes(deps: {
   archivePreparation?(
     operationId: string,
   ): Promise<TelemetryCompanionArchivePreparation | null>;
+  preparationState?(
+    request: Request,
+  ): Promise<TelemetryCompanionPreparationState>;
 }) {
   const app = new Hono();
+  app.get('/archive-preparations', async (c) => {
+    c.header('Cache-Control', 'no-store');
+    try {
+      await deps.requireOperator(c.req.raw);
+    } catch {
+      return c.json({ error: { code: 'operator_required' } }, 403);
+    }
+    if (!deps.preparationState)
+      return c.json(
+        { error: { code: 'companion_preparation_unavailable' } },
+        503,
+      );
+    try {
+      const data = await deps.preparationState(c.req.raw);
+      await deps.requireOperator(c.req.raw);
+      return c.json({ data });
+    } catch {
+      try {
+        await deps.requireOperator(c.req.raw);
+      } catch {
+        return c.json({ error: { code: 'operator_required' } }, 403);
+      }
+      return c.json(
+        { error: { code: 'companion_preparation_unavailable' } },
+        503,
+      );
+    }
+  });
   app.get('/prerequisites', async (c) => {
     c.header('Cache-Control', 'no-store');
     try {

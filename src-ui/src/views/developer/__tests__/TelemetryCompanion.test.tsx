@@ -1,5 +1,10 @@
 /** @vitest-environment jsdom */
-import type { TelemetryCompanionPrerequisites } from '@kontourai/station-contracts/telemetry-delivery';
+import {
+  TELEMETRY_COMPANION_ARCHIVE_PREPARATION_PROTOCOL,
+  type TelemetryCompanionArchivePreparation,
+  type TelemetryCompanionPreparationState,
+  type TelemetryCompanionPrerequisites,
+} from '@kontourai/station-contracts/telemetry-delivery';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -59,6 +64,15 @@ function mount(
   options: {
     operator?: boolean;
     prerequisites?: () => Promise<TelemetryCompanionPrerequisites>;
+    preparationState?: () => Promise<TelemetryCompanionPreparationState>;
+    prepareArchive?: (
+      request: Request,
+      operationId: string,
+    ) => Promise<TelemetryCompanionArchivePreparation>;
+    archivePreparation?: (
+      operationId: string,
+    ) => Promise<TelemetryCompanionArchivePreparation | null>;
+    dropPreparationReply?: boolean;
   } = {},
 ) {
   const probe = vi.fn(options.prerequisites ?? (async () => available));
@@ -69,13 +83,32 @@ function mount(
         if (options.operator === false) throw new Error('operator required');
       },
       prerequisites: probe,
+      preparationState:
+        options.preparationState ??
+        (async () => ({
+          supported: true,
+          mayPrepare: false,
+          hasOperationLock: false,
+          latestOperationId: null,
+          latest: null,
+        })),
+      prepareArchive: options.prepareArchive,
+      archivePreparation: options.archivePreparation,
     }),
   );
   vi.stubGlobal(
     'fetch',
-    vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
-      app.fetch(new Request(input, init)),
-    ),
+    vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const request = new Request(input, init);
+      const response = await app.fetch(request);
+      if (
+        options.dropPreparationReply &&
+        request.method === 'POST' &&
+        new URL(request.url).pathname.endsWith('/archive-preparations')
+      )
+        throw new TypeError('reply lost');
+      return response;
+    }),
   );
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -88,8 +121,79 @@ function mount(
   );
   const rendered = render(tree());
   fireEvent.click(screen.getByRole('tab', { name: 'Companion' }));
-  return { probe, client, rerender: () => rendered.rerender(tree()) };
+  return {
+    probe,
+    client,
+    unmount: rendered.unmount,
+    rerender: () => rendered.rerender(tree()),
+  };
 }
+
+test('prepares through the SDK and mounted route, recovers a lost reply and reopens without resending', async () => {
+  let latest: TelemetryCompanionArchivePreparation | null = null;
+  const prepareArchive = vi.fn(
+    async (
+      _request: Request,
+      operationId: string,
+    ): Promise<TelemetryCompanionArchivePreparation> => {
+      latest = {
+        protocol: TELEMETRY_COMPANION_ARCHIVE_PREPARATION_PROTOCOL,
+        operationId,
+        phase: 'authenticated',
+        version: '0.7.0-nightly.12',
+        source: 'a'.repeat(40),
+        artifactSha256: 'b'.repeat(64),
+        expectedBytes: 10,
+        receivedBytes: 10,
+        createdAt: '2026-10-23T00:00:00.000Z',
+        installationAuthority: false,
+      };
+      return latest;
+    },
+  );
+  const options = {
+    prerequisites: async (): Promise<TelemetryCompanionPrerequisites> => ({
+      ...available,
+      artifact: {
+        kind: 'parent-envelope-verified',
+        version: '0.7.0-nightly.12',
+        source: 'a'.repeat(40),
+        artifactSha256: 'b'.repeat(64),
+        qualification: 'build-only',
+        installationAuthority: false,
+      },
+    }),
+    preparationState:
+      async (): Promise<TelemetryCompanionPreparationState> => ({
+        supported: true,
+        mayPrepare: true,
+        hasOperationLock: false,
+        latestOperationId: latest?.operationId ?? null,
+        latest,
+      }),
+    prepareArchive,
+    archivePreparation: async (operationId: string) =>
+      latest?.operationId === operationId ? latest : null,
+    dropPreparationReply: true,
+  };
+  const first = mount(options);
+  const button = await screen.findByRole('button', {
+    name: 'Prepare signed archive',
+  });
+  await waitFor(() => expect(button).toHaveProperty('disabled', false));
+  fireEvent.click(button);
+  expect(
+    await screen.findByText(/Archive bytes verified for 0.7.0-nightly.12/),
+  ).toBeTruthy();
+  expect(prepareArchive).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('button', { name: 'Install' })).toBeNull();
+  first.unmount();
+  mount(options);
+  expect(
+    await screen.findByText(/Archive bytes verified for 0.7.0-nightly.12/),
+  ).toBeTruthy();
+  expect(prepareArchive).toHaveBeenCalledTimes(1);
+});
 
 test('renders the host observation from the real SDK/route without claiming installation', async () => {
   const h = mount();

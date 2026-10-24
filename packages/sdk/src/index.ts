@@ -1436,9 +1436,15 @@ export type {
 } from './query-domains/setupImports';
 export {
   checkTelemetryConnection,
+  fetchTelemetryCompanionArchivePreparation,
+  fetchTelemetryCompanionPreparationState,
   fetchTelemetryCompanionPrerequisites,
   fetchTelemetryDeliveryStatus,
+  prepareTelemetryCompanionArchive,
   useCheckTelemetryConnectionMutation,
+  usePrepareTelemetryCompanionArchiveMutation,
+  useTelemetryCompanionArchivePreparationQuery,
+  useTelemetryCompanionPreparationStateQuery,
   useTelemetryCompanionPrerequisitesQuery,
   useTelemetryDeliveryStatusQuery,
 } from './query-domains/telemetryDelivery';

@@ -5,6 +5,7 @@ import { Button } from '../../components/Button';
 import { PageSection } from '../../components/PageSection';
 import { SkeletonBlock } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { CompanionArchivePreparation } from './CompanionArchivePreparation';
 
 const missing: Record<
   Extract<TelemetryCompanionPrerequisites, { kind: 'unavailable' }>['reason'],
@@ -113,6 +114,15 @@ function CompanionHost({
       >
         Check host again
       </Button>
+      {query.data && !query.isError ? (
+        <CompanionArchivePreparation
+          authority={authority}
+          artifactReady={
+            query.data.kind === 'available' &&
+            query.data.artifact?.kind === 'parent-envelope-verified'
+          }
+        />
+      ) : null}
     </>
   );
 }

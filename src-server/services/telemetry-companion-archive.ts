@@ -11,8 +11,10 @@ import {
 import { dirname, join } from 'node:path';
 import {
   isTelemetryCompanionOperationId,
+  TELEMETRY_COMPANION_ARCHIVE_MAX_BYTES,
   TELEMETRY_COMPANION_ARCHIVE_PREPARATION_PROTOCOL,
   type TelemetryCompanionArchivePreparation,
+  type TelemetryCompanionPreparationState,
 } from '@kontourai/station-contracts/telemetry-delivery';
 import { writeJsonAtomically } from '@kontourai/station-shared/service-launcher-protocol';
 import { z } from 'zod/v3';
@@ -23,7 +25,7 @@ import {
   readTelemetryCompanionVerifiedParent,
 } from './telemetry-companion-release.js';
 
-const MAX_ARCHIVE_BYTES = 1024 * 1024 * 1024;
+const MAX_ARCHIVE_BYTES = TELEMETRY_COMPANION_ARCHIVE_MAX_BYTES;
 const receiptSchema = z
   .object({
     protocol: z.literal(TELEMETRY_COMPANION_ARCHIVE_PREPARATION_PROTOCOL),
@@ -136,6 +138,51 @@ export async function readTelemetryCompanionArchivePreparation(
     if (errno(error, 'ENOENT')) return null;
     throw error;
   }
+}
+
+export async function readTelemetryCompanionPreparationState(
+  home: string,
+): Promise<
+  Omit<TelemetryCompanionPreparationState, 'supported' | 'mayPrepare'>
+> {
+  let root: string;
+  try {
+    root = await preparationRoot(home, false);
+  } catch (error) {
+    if (errno(error, 'ENOENT'))
+      return { hasOperationLock: false, latestOperationId: null, latest: null };
+    throw error;
+  }
+  let hasOperationLock = false;
+  try {
+    const lock = await lstat(join(root, 'preparation.lock'));
+    if (!lock.isFile() || lock.isSymbolicLink())
+      throw new Error('Companion lock requires reconciliation');
+    hasOperationLock = true;
+  } catch (error) {
+    if (!errno(error, 'ENOENT')) throw error;
+  }
+  let latestOperationId: string | null = null;
+  try {
+    latestOperationId = z
+      .object({
+        operationId: z.string().refine(isTelemetryCompanionOperationId),
+      })
+      .strict()
+      .parse(
+        JSON.parse(
+          (
+            await readCompanionFile(join(root, 'current.json'), 1024)
+          ).toString(),
+        ),
+      ).operationId;
+  } catch (error) {
+    if (!errno(error, 'ENOENT')) throw error;
+  }
+  const latest = latestOperationId
+    ? await readTelemetryCompanionArchivePreparation(home, latestOperationId)
+    : null;
+  return { hasOperationLock, latestOperationId, latest };
 }
 
 async function downloadResponse(
@@ -305,6 +352,9 @@ export async function prepareTelemetryCompanionArchive(
       artifact: parent.artifact,
     });
     await durableJson(join(directory, 'receipt.json'), receipt);
+    await durableJson(join(root, 'current.json'), {
+      operationId: input.operationId,
+    });
     const signal = AbortSignal.any([
       AbortSignal.timeout(120_000),
       ...(input.signal ? [input.signal] : []),

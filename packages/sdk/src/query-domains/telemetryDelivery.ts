@@ -1,7 +1,12 @@
-import type {
-  TelemetryCompanionPrerequisites,
-  TelemetryConnectionProbeStatus,
-  TelemetryDeliveryStatus,
+import {
+  isTelemetryCompanionOperationId,
+  TELEMETRY_COMPANION_ARCHIVE_MAX_BYTES,
+  TELEMETRY_COMPANION_ARCHIVE_PREPARATION_PROTOCOL,
+  type TelemetryCompanionArchivePreparation,
+  type TelemetryCompanionPreparationState,
+  type TelemetryCompanionPrerequisites,
+  type TelemetryConnectionProbeStatus,
+  type TelemetryDeliveryStatus,
 } from '@kontourai/station-contracts/telemetry-delivery';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { z } from 'zod';
@@ -11,6 +16,203 @@ import { unlessDeadline } from '../client/request-deadline';
 import { type QueryConfig, useApiQuery } from '../query-core';
 
 const time = z.string().datetime();
+const preparationReceipt = z
+  .object({
+    protocol: z.literal(TELEMETRY_COMPANION_ARCHIVE_PREPARATION_PROTOCOL),
+    operationId: z.string().refine(isTelemetryCompanionOperationId),
+    phase: z.enum(['pending', 'authenticated', 'failed']),
+    version: z.string().min(1).max(128),
+    source: z.string().regex(/^[a-f0-9]{40}$/),
+    artifactSha256: z.string().regex(/^[a-f0-9]{64}$/),
+    expectedBytes: z
+      .number()
+      .int()
+      .positive()
+      .max(TELEMETRY_COMPANION_ARCHIVE_MAX_BYTES),
+    receivedBytes: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(TELEMETRY_COMPANION_ARCHIVE_MAX_BYTES),
+    createdAt: time,
+    installationAuthority: z.literal(false),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      value.receivedBytes <= value.expectedBytes &&
+      (value.phase !== 'authenticated' ||
+        value.receivedBytes === value.expectedBytes),
+  );
+const preparationState = z
+  .object({
+    supported: z.boolean(),
+    mayPrepare: z.boolean(),
+    hasOperationLock: z.boolean(),
+    latestOperationId: z
+      .string()
+      .refine(isTelemetryCompanionOperationId)
+      .nullable(),
+    latest: preparationReceipt.nullable(),
+  })
+  .strict()
+  .refine(
+    (value) =>
+      !value.latest || value.latest.operationId === value.latestOperationId,
+  );
+
+async function companionResponse<T>(
+  response: Response,
+  schema: z.ZodType<T>,
+): Promise<T> {
+  const body: unknown = await response.json().catch(unlessDeadline(() => null));
+  if (!response.ok)
+    throw envelopeError(response, body, 'Companion preparation unavailable');
+  const parsed = z
+    .object({ success: z.literal(true).optional(), data: schema })
+    .safeParse(body);
+  if (!parsed.success)
+    throw new Error('Companion preparation response is invalid or unsupported');
+  return parsed.data.data;
+}
+
+const preparationKey = (apiBase: string, options?: ClientRequestOptions) =>
+  [
+    'telemetry-companion-preparations',
+    options?.requestScope?.apiBase ?? apiBase,
+    options?.requestScope?.authorityKey ?? 'default',
+  ] as const;
+
+export async function fetchTelemetryCompanionPreparationState(
+  apiBase: string,
+  options?: ClientRequestOptions,
+): Promise<TelemetryCompanionPreparationState> {
+  const base = options?.requestScope?.apiBase ?? apiBase;
+  return companionResponse(
+    await getJson(
+      `${base}/api/operator/telemetry-companion/archive-preparations`,
+      { ...options, maxResponseBytes: 8192 },
+    ),
+    preparationState,
+  );
+}
+
+export async function fetchTelemetryCompanionArchivePreparation(
+  apiBase: string,
+  operationId: string,
+  options?: ClientRequestOptions,
+): Promise<TelemetryCompanionArchivePreparation> {
+  if (!isTelemetryCompanionOperationId(operationId))
+    throw new Error('Invalid companion operation');
+  const base = options?.requestScope?.apiBase ?? apiBase;
+  const result = await companionResponse(
+    await getJson(
+      `${base}/api/operator/telemetry-companion/archive-preparations/${operationId}`,
+      { ...options, maxResponseBytes: 8192 },
+    ),
+    preparationReceipt,
+  );
+  if (result.operationId !== operationId)
+    throw new Error('Companion preparation identity changed');
+  return result;
+}
+
+export async function prepareTelemetryCompanionArchive(
+  apiBase: string,
+  operationId: string,
+  options?: ClientRequestOptions,
+): Promise<TelemetryCompanionArchivePreparation> {
+  if (!isTelemetryCompanionOperationId(operationId))
+    throw new Error('Invalid companion operation');
+  const base = options?.requestScope?.apiBase ?? apiBase;
+  const result = await companionResponse(
+    await mutateJson(
+      `${base}/api/operator/telemetry-companion/archive-preparations`,
+      'POST',
+      { operationId },
+      {
+        ...options,
+        maxResponseBytes: 8192,
+        timeoutMs:
+          options?.timeoutMs === undefined ? 130_000 : options.timeoutMs,
+      },
+    ),
+    preparationReceipt,
+  );
+  if (result.operationId !== operationId)
+    throw new Error('Companion preparation identity changed');
+  return result;
+}
+
+type PreparationQueryConfig<T> = QueryConfig<T> & {
+  requestScope?: ClientRequestOptions['requestScope'];
+};
+
+export function useTelemetryCompanionPreparationStateQuery(
+  apiBase: string,
+  config?: PreparationQueryConfig<TelemetryCompanionPreparationState>,
+) {
+  return useApiQuery<TelemetryCompanionPreparationState>(
+    [...preparationKey(apiBase, config), 'state'],
+    (signal) =>
+      fetchTelemetryCompanionPreparationState(apiBase, {
+        signal,
+        requestScope: config?.requestScope,
+      }),
+    {
+      ...config,
+      staleTime: 0,
+      gcTime: 0,
+      refetchOnMount: 'always',
+      refetchOnWindowFocus: false,
+      retry: false,
+      keepPreviousData: false,
+    },
+  );
+}
+
+export function useTelemetryCompanionArchivePreparationQuery(
+  apiBase: string,
+  operationId: string | null,
+  config?: PreparationQueryConfig<TelemetryCompanionArchivePreparation>,
+) {
+  return useApiQuery<TelemetryCompanionArchivePreparation>(
+    [...preparationKey(apiBase, config), 'receipt', operationId],
+    (signal) => {
+      if (!operationId) throw new Error('Companion operation required');
+      return fetchTelemetryCompanionArchivePreparation(apiBase, operationId, {
+        signal,
+        requestScope: config?.requestScope,
+      });
+    },
+    {
+      ...config,
+      enabled: config?.enabled !== false && operationId !== null,
+      staleTime: 0,
+      gcTime: 0,
+      refetchOnMount: 'always',
+      refetchOnWindowFocus: false,
+      retry: false,
+      keepPreviousData: false,
+    },
+  );
+}
+
+export function usePrepareTelemetryCompanionArchiveMutation(
+  apiBase: string,
+  options?: ClientRequestOptions,
+) {
+  const client = useQueryClient();
+  const key = preparationKey(apiBase, options);
+  return useMutation({
+    mutationKey: key,
+    gcTime: 0,
+    retry: false,
+    mutationFn: (operationId: string) =>
+      prepareTelemetryCompanionArchive(apiBase, operationId, options),
+    onSettled: () => client.invalidateQueries({ queryKey: key }),
+  });
+}
 const companionArtifactEvidence = z.discriminatedUnion('kind', [
   z
     .object({

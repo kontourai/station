@@ -156,6 +156,7 @@ import { readTelemetryCompanionPrerequisites } from '../../services/telemetry-co
 import {
   prepareTelemetryCompanionArchive,
   readTelemetryCompanionArchivePreparation,
+  readTelemetryCompanionPreparationState,
 } from '../../services/telemetry-companion-archive.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { canonicalPath } from '../../utils/path-containment.js';
@@ -6086,6 +6087,20 @@ export function configureRuntimeRoutes(
           context.configLoader.getProjectHomeDir(),
           operationId,
         ),
+      preparationState: async (request) => ({
+        ...(await readTelemetryCompanionPreparationState(
+          context.configLoader.getProjectHomeDir(),
+        )),
+        supported: process.platform !== 'win32',
+        mayPrepare: runtimeRequestPrincipalMayAccessHttpRoute(
+          request,
+          context.environmentSecurityService,
+          {
+            method: 'POST',
+            path: '/api/operator/telemetry-companion/archive-preparations',
+          },
+        ),
+      }),
     }),
   );
   context.app.use('/api/projects/:slug/access/*', async (c, next) => {
