@@ -827,6 +827,17 @@ confirmed an empty `git status --short`. Original SHA-256:
 The merge of `origin/main` after #4102 landed preserved these source bytes;
 its only incoming source difference was the unrelated offline-reader CSS fix.
 
+The four injections were repeated after the merge and complete scope-policy
+preflight at `55cb447cde6040d1e6c7e2837eb3ea985bdee6a8`, from a clean
+652-test / 13-file baseline. Each reproduced the same named failure above and
+restored to 94/94 green. `operator-sessions.ts` retained the digest above;
+`runtime-routes.ts` was restored to SHA-256
+`21ea1067b000e2e2fc04af407a8dcd63459b9226a2854ef48f11dc25fcc42c2a`.
+A separate rendered-panel regression proved that a server-reported `pending`
+commit stays pending when the browser's local review deadline has passed:
+red before the correction, then green. The panel trusts the server's terminal
+status and never treats its local clock as proof that no mutation occurred.
+
 Section 7.8 remains **NOT_VERIFIED**: real DNS, a physical phone/security key,
 synced passkeys and hybrid sign-in require the owner's real-origin run.
 

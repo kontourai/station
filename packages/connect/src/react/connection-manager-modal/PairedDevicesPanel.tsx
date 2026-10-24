@@ -73,7 +73,6 @@ export function PairedDevicesPanel({
     new Map<
       string,
       {
-        expiresAt: number;
         resolve: (effect: unknown) => void;
         reject: (error: Error) => void;
       }
@@ -128,7 +127,6 @@ export function PairedDevicesPanel({
       setReviewUrl(url.href);
       const completion = new Promise<unknown>((resolve, reject) => {
         pendingTransactions.current.set(transaction.id, {
-          expiresAt: transaction.expiresAt,
           resolve,
           reject,
         });
@@ -184,10 +182,7 @@ export function PairedDevicesPanel({
           if (transaction.status === 'approved') {
             pendingTransactions.current.delete(id);
             pending.resolve(transaction.effect);
-          } else if (
-            transaction.status !== 'pending' ||
-            Date.now() >= pending.expiresAt
-          ) {
+          } else if (transaction.status !== 'pending') {
             pendingTransactions.current.delete(id);
             pending.reject(
               new Error(

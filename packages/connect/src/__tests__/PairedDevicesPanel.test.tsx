@@ -572,6 +572,7 @@ describe('PairedDevicesPanel', () => {
     vi.spyOn(window, 'open').mockReturnValue(null);
     const writes: string[] = [];
     let applied = false;
+    let statusReads = 0;
     const request = vi.fn(
       async (input: URL | RequestInfo, init?: RequestInit) => {
         const url = String(input);
@@ -585,7 +586,7 @@ describe('PairedDevicesPanel', () => {
                 id: 'transaction-1',
                 reviewUrl:
                   'https://station.example.ts.net:8443/consent/transaction-1',
-                expiresAt: Date.now() + 300_000,
+                expiresAt: Date.now() + 1_000,
               },
             }),
             { status: 202 },
@@ -595,6 +596,8 @@ describe('PairedDevicesPanel', () => {
           expect(
             new Headers(init?.headers).get('X-Station-Background-Refresh'),
           ).toBe('1');
+          if (++statusReads === 1)
+            return new Response(JSON.stringify({ status: 'pending' }));
           applied = true;
           return new Response(
             JSON.stringify({
@@ -630,6 +633,13 @@ describe('PairedDevicesPanel', () => {
         .getByRole('link', { name: 'Review access change' })
         .getAttribute('href'),
     ).toContain(':8443/consent/transaction-1');
+    expect(applied).toBe(false);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    expect(
+      screen.getByRole('link', { name: 'Review access change' }),
+    ).toBeTruthy();
     expect(applied).toBe(false);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(15_000);
