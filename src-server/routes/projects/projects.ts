@@ -19,6 +19,7 @@ import {
   assertNoRetiredLayoutKeys,
   BUILTIN_SESSION_BOARD_LAYOUT,
   type LayoutConfig,
+  type LayoutMetadataReadView,
   type LayoutReadView,
   type LayoutWorkspaceBinding,
   layoutUsesRepositoryWorkspace,
@@ -77,7 +78,14 @@ import {
   withoutPluginBinding,
   withPluginBindingRestored,
 } from '../../services/layouts/layout-pane-reference.js';
+import {
+  type LayoutDeclarationRecord,
+  type LayoutDeclarationSources,
+  resolveLayoutReadDeclaration,
+  withoutClientLayoutDeclaration,
+} from '../../services/layouts/layout-presentation-declaration.js';
 import { DistributionProfileService } from '../../services/plugins/distribution-profile-service.js';
+import { hasGrant } from '../../services/plugins/plugin-permissions.js';
 import type { CheckoutRemoteReader } from '../../services/projects/checkout-remote-reader.js';
 import { findGitEntryOnPath } from '../../services/projects/checkout-remote-reader.js';
 import type { ProjectBindingsStore } from '../../services/projects/project-binding-store.js';
@@ -597,6 +605,49 @@ export function createProjectRoutes(
   );
   const layoutCatalog =
     deps.layoutCatalog ?? new DistributionProfileService(projectHomeDir);
+
+  /**
+   * Where a layout read's declaration comes from (#2995): the installed
+   * plugin's current catalog definition — parsed once, by the catalog, with
+   * its refusals — and the plugin's own permission grants.
+   */
+  const layoutDeclarationSources: LayoutDeclarationSources = {
+    pluginDeclaration(pluginName) {
+      try {
+        const item = layoutCatalog
+          .listLayouts()
+          .find(
+            (candidate) =>
+              candidate.source === 'plugin' && candidate.plugin === pluginName,
+          );
+        if (item?.lifecycle.state !== 'installed' || !item.enabled) return null;
+        const { definition } = layoutCatalog.resolveForCatalog(item.id);
+        return {
+          ...(definition.primary ? { primary: definition.primary } : {}),
+          ...(definition.presentation
+            ? { presentation: definition.presentation }
+            : {}),
+          ...(definition.drillIns ? { drillIns: definition.drillIns } : {}),
+        };
+      } catch (error) {
+        logger.debug('Layout declaration unavailable', {
+          plugin: pluginName,
+          error,
+        });
+        return null;
+      }
+    },
+    pluginHoldsPermission: (pluginName, permission) =>
+      hasGrant(projectHomeDir, pluginName, permission, logger),
+  };
+  const layoutReadDeclaration = (
+    layout: LayoutDeclarationRecord,
+    withheld: boolean,
+  ) =>
+    resolveLayoutReadDeclaration(layout, {
+      withheld,
+      sources: layoutDeclarationSources,
+    });
 
   async function readKnownAgents(): Promise<AgentOwnershipRef[] | undefined> {
     return deps.listAgents ? await deps.listAgents() : undefined;
@@ -1544,17 +1595,22 @@ export function createProjectRoutes(
       // would make the detail route's withholding theatre, so the same
       // predicate answers both. `tabCount` stays: it is a fact about the
       // project's own record, and it is what the picker reads.
+      //
+      // #2995 — each row also states its contributor's declaration, so a
+      // reader finds the layout that owns Chat (`findPrimaryChatLayout`)
+      // without a detail read per row. A withheld row states only `tabs`.
       const canSee = viewerPluginSight(c);
-      return c.json({
-        success: true,
-        data: canSee
-          ? layouts.map((layout) =>
-              layout.plugin !== undefined && !canSee(layout.plugin)
-                ? { ...layout, plugin: undefined }
-                : layout,
-            )
-          : layouts,
+      const data: LayoutMetadataReadView[] = layouts.map((layout) => {
+        const withheld =
+          canSee !== undefined &&
+          layout.plugin !== undefined &&
+          !canSee(layout.plugin);
+        return {
+          ...(withheld ? { ...layout, plugin: undefined } : layout),
+          ...layoutReadDeclaration(layout, withheld),
+        };
       });
+      return c.json({ success: true, data });
     } catch (error: unknown) {
       const message = errorMessage(error);
       return c.json(
@@ -1714,7 +1770,11 @@ export function createProjectRoutes(
       // the list read.
       const now = new Date().toISOString();
       const persisted = withoutPersistedWorkingDirectory({
-        ...withoutClientLayoutOwner(withoutClientCatalogContribution(body)),
+        ...withoutClientLayoutOwner(
+          withoutClientCatalogContribution(
+            withoutClientLayoutDeclaration(body),
+          ),
+        ),
         id: randomUUID(),
         projectSlug: slug,
         slug: body.slug,
@@ -1725,13 +1785,16 @@ export function createProjectRoutes(
       } as LayoutConfig);
       await projectRevision.createLayout(persisted.slug, persisted);
       projectOps.add(1, { op: 'add_layout' });
-      return c.json(
-        {
-          success: true,
-          data: withDerivedWorkingDirectory(persisted, derived),
-        },
-        201,
-      );
+      const created: LayoutReadView = {
+        ...withDerivedWorkingDirectory(persisted, derived),
+        ...layoutReadDeclaration(
+          persisted,
+          layoutPluginBindingWithheld(persisted, {
+            canSeePlugin: viewerPluginSight(c),
+          }),
+        ),
+      };
+      return c.json({ success: true, data: created }, 201);
     } catch (error: unknown) {
       if (error instanceof FileStorageConflictError) {
         return c.json(
@@ -1754,6 +1817,7 @@ export function createProjectRoutes(
       assertSafeLayoutPathSegment('project slug', slug);
       assertSafeLayoutPathSegment('layout slug', layoutSlug);
       let layout = storageAdapter.getLayout(slug, layoutSlug);
+      const storedForDeclaration = layout;
 
       // #2103 — this route was an enumeration oracle: `config` is
       // `z.record(z.unknown())` and create strips only `owner` and
@@ -1839,6 +1903,9 @@ export function createProjectRoutes(
       // typed binding does error (probed: TS2551).
       const data: LayoutReadView & { _integrityDiagnostics?: unknown } = {
         ...derived,
+        // #2995: the contributor's declaration, decided from the record as
+        // stored (before the withheld strip) and from the withheld verdict.
+        ...layoutReadDeclaration(storedForDeclaration, withheld),
       };
       if (diagnostics.length > 0) data._integrityDiagnostics = diagnostics;
       // #2090. Response-only, and absent unless something really is
@@ -1923,7 +1990,9 @@ export function createProjectRoutes(
         const layout = {
           ...existing,
           ...withoutClientLayoutOwner(
-            withoutClientCatalogContribution(withoutPaneReferences(body)),
+            withoutClientCatalogContribution(
+              withoutClientLayoutDeclaration(withoutPaneReferences(body)),
+            ),
           ),
           id: existing.id,
           projectSlug: slug,
@@ -1990,6 +2059,10 @@ export function createProjectRoutes(
           : persisted;
         const data: LayoutReadView = {
           ...withDerivedWorkingDirectory(answered, derived),
+          ...layoutReadDeclaration(
+            persisted,
+            layoutPluginBindingWithheld(persisted, { canSeePlugin: canSee }),
+          ),
         };
         if (paneReferences) data.paneReferences = paneReferences;
         return c.json({ success: true, data });
@@ -2224,15 +2297,24 @@ export function createProjectRoutes(
           return c.json(
             {
               success: true,
-              data: withDerivedWorkingDirectory(
-                layout,
-                project.workingDirectory,
-              ),
+              data: {
+                ...withDerivedWorkingDirectory(
+                  layout,
+                  project.workingDirectory,
+                ),
+                ...layoutReadDeclaration(layout, false),
+              },
             },
             201,
           );
         }
-        return c.json({ success: true, data: layout }, 201);
+        return c.json(
+          {
+            success: true,
+            data: { ...layout, ...layoutReadDeclaration(layout, false) },
+          },
+          201,
+        );
       } catch (error: unknown) {
         if (error instanceof ProjectCreationConflict)
           return c.json(
@@ -2287,7 +2369,13 @@ export function createProjectRoutes(
           item.id,
           canSee,
         );
-        return c.json({ success: true, data: layout }, 201);
+        return c.json(
+          {
+            success: true,
+            data: { ...layout, ...layoutReadDeclaration(layout, false) },
+          },
+          201,
+        );
       } catch (error: unknown) {
         return c.json(
           { success: false, error: projectMutationMessage(error) },

@@ -2789,6 +2789,118 @@ describe('installPluginFromSource', () => {
     expect(existsSync(join(root, 'plugins', 'candidate-plugin'))).toBe(false);
   });
 
+  describe('layout contract fields are refused at install (#2995)', () => {
+    function writeStackSource(
+      sourceDir: string,
+      declaration: Record<string, unknown>,
+      permissions: string[] = ['layout.primaryChat'],
+    ): void {
+      writePlugin(sourceDir, {
+        name: 'stack-plugin',
+        version: '1.0.0',
+        permissions,
+        layout: { slug: 'stack', source: 'layout.json' },
+      });
+      writeFileSync(
+        join(sourceDir, 'layout.json'),
+        JSON.stringify({
+          name: 'Stack',
+          slug: 'stack',
+          tabs: [
+            { id: 'one', label: 'One', component: 'stack-one' },
+            { id: 'two', label: 'Two', component: 'stack-two' },
+          ],
+          ...declaration,
+        }),
+      );
+    }
+    const OWN_PANES = [
+      'pane:plugin%3Astack-plugin:stack:one',
+      'pane:plugin%3Astack-plugin:stack:two',
+    ];
+
+    test.each([
+      [
+        "primary: 'terminal'",
+        { primary: 'terminal', presentation: 'stack' },
+        /primary must be 'chat' when supplied, not "terminal"/,
+      ],
+      [
+        'a drill-in that is not one of its own panes',
+        {
+          primary: 'chat',
+          presentation: 'stack',
+          drillIns: [OWN_PANES[0], 'pane:builtin:coding:diff'],
+        },
+        /drill-in 'pane:builtin:coding:diff' does not resolve/,
+      ],
+      [
+        'an unknown presentation',
+        { presentation: 'grid' },
+        /presentation must be 'stack' or 'tabs'/,
+      ],
+    ])(
+      'refuses %s and installs nothing',
+      async (_name, declaration, refusal) => {
+        const root = mkdtempSync(
+          join(tmpdir(), 'station-plugin-stack-install-'),
+        );
+        cleanupDirs.push(root);
+        const source = join(root, 'source');
+        writeStackSource(source, declaration);
+        await expect(
+          installPluginFromSource(source, [], deps(root), {
+            consent: await approvedConsent(source, root),
+          }),
+        ).rejects.toThrow(refusal);
+        expect(existsSync(join(root, 'plugins', 'stack-plugin'))).toBe(false);
+      },
+    );
+
+    test('refuses a Chat centre whose plugin does not request layout.primaryChat', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-stack-install-'));
+      cleanupDirs.push(root);
+      const source = join(root, 'source');
+      writeStackSource(
+        source,
+        { primary: 'chat', presentation: 'stack', drillIns: OWN_PANES },
+        [],
+      );
+      await expect(
+        installPluginFromSource(source, [], deps(root), {
+          consent: await approvedConsent(source, root),
+        }),
+      ).rejects.toThrow(
+        /primary 'chat' needs the 'layout.primaryChat' permission in the plugin manifest/,
+      );
+      expect(existsSync(join(root, 'plugins', 'stack-plugin'))).toBe(false);
+    });
+
+    test('installs a stack layout declaring its own two drill-ins', async () => {
+      const root = mkdtempSync(join(tmpdir(), 'station-plugin-stack-install-'));
+      cleanupDirs.push(root);
+      const source = join(root, 'source');
+      writeStackSource(source, {
+        primary: 'chat',
+        presentation: 'stack',
+        drillIns: OWN_PANES,
+      });
+      const result = await installPluginFromSource(source, [], deps(root), {
+        consent: await approvedConsent(source, root),
+      });
+      expect(result.success, result.error).toBe(true);
+      expect(
+        new DistributionProfileService(root).resolveForCatalog(
+          'plugin:stack-plugin:stack',
+        ).definition,
+      ).toMatchObject({
+        primary: 'chat',
+        presentation: 'stack',
+        drillIns: OWN_PANES,
+      });
+    });
+  });
+
   test('serializes concurrent same-home Pane publication so exactly one wins and catalog stays readable', async () => {
     const root = mkdtempSync(join(tmpdir(), 'station-plugin-pane-install-'));
     cleanupDirs.push(root);

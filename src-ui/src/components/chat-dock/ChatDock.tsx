@@ -1499,7 +1499,11 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
       ? [
           {
             key: 'open-code-layout',
-            label: 'Open in Coding',
+            // The built-in Coding row keeps its name; a contributed layout
+            // that owns Chat is named by its own layout name.
+            label: sessionCodingLayout.plugin
+              ? `Open in ${sessionCodingLayout.name}`
+              : 'Open in Coding',
             onSelect: () => {
               handleOpenLayout(
                 activeSession.projectSlug as string,

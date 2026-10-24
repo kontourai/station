@@ -3,40 +3,12 @@ import {
   WORKSPACE_BASIS_PANE_DESCRIPTOR,
   WORKSPACE_BASIS_PANE_DESCRIPTOR_ID,
 } from '@kontourai/station-basis-pane/workspace-basis-pane';
-import { BUILTIN_REVIEW_LAYOUT } from '@kontourai/station-contracts/layout';
+import {
+  BUILTIN_CODING_LAYOUT,
+  BUILTIN_REVIEW_LAYOUT,
+} from '@kontourai/station-contracts/layout';
 import { WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-browser-preview';
-import {
-  type CodingDiffCompositionControl,
-  resolveBuiltinCodingGitDiffGrant,
-  selectCodingDiffComposition,
-} from '@kontourai/station-contracts/workspace-coding-diff-composition';
-import {
-  type CodingEvidenceCompositionControl,
-  resolveBuiltinCodingEvidenceGrant,
-  selectCodingEvidenceComposition,
-} from '@kontourai/station-contracts/workspace-coding-evidence-composition';
-import {
-  type CodingFileCompositionControl,
-  resolveBuiltinCodingFileReadGrant,
-  selectCodingFileComposition,
-} from '@kontourai/station-contracts/workspace-coding-file-composition';
-import {
-  isCanonicalWorkspaceCodingDiffPaneInstance,
-  isCanonicalWorkspaceCodingFileBrowserPaneInstance,
-  isCanonicalWorkspaceCodingTerminalPaneInstance,
-  WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR_ID,
-  WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR_ID,
-  WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR_ID,
-} from '@kontourai/station-contracts/workspace-coding-panels';
-import {
-  isCanonicalWorkspacePlanPaneInstance,
-  isCanonicalWorkspaceReadinessPaneInstance,
-  isCanonicalWorkspaceTrustPaneInstance,
-  WORKSPACE_PLAN_PANE_DESCRIPTOR_ID,
-  WORKSPACE_READINESS_PANE_DESCRIPTOR_ID,
-  WORKSPACE_TRUST_PANE_DESCRIPTOR_ID,
-} from '@kontourai/station-contracts/workspace-evidence-panels';
-import { WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-file-preview';
+import { WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR_ID } from '@kontourai/station-contracts/workspace-coding-panels';
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import {
   parseWorkspacePaneInstance,
@@ -45,7 +17,6 @@ import {
 import type { WorkspacePaneHostDocumentV1 } from '@kontourai/station-contracts/workspace-pane-host';
 import { createWorkspacePaneHostBaselineDocument } from '@kontourai/station-contracts/workspace-pane-host';
 import {
-  telemetry,
   useGitStatusQuery,
   useProjectLayoutQuery,
 } from '@kontourai/station-sdk';
@@ -87,14 +58,7 @@ import { builtinWorkspacePaneName } from '../workspace-panes/builtinWorkspacePan
 import {
   getBuiltinWorkspacePaneRenderer,
   isCanonicalBuiltinBrowserPreviewDescriptor,
-  isCanonicalBuiltinCodingDiffDescriptor,
-  isCanonicalBuiltinCodingFileBrowserDescriptor,
   isCanonicalBuiltinCodingOccurrence,
-  isCanonicalBuiltinCodingTerminalDescriptor,
-  isCanonicalBuiltinFilePreviewDescriptor,
-  isCanonicalBuiltinPlanDescriptor,
-  isCanonicalBuiltinReadinessDescriptor,
-  isCanonicalBuiltinTrustDescriptor,
 } from '../workspace-panes/builtinWorkspacePaneRegistry';
 import { DockOnlyWorkspacePaneNotice } from '../workspace-panes/DockOnlyWorkspacePaneNotice';
 import {
@@ -131,15 +95,22 @@ import {
 import { WorkspacePaneHostRuntime } from '../workspace-panes/workspacePaneHostRuntime';
 import { createWorkspacePaneOperationalEventContext } from '../workspace-panes/workspacePaneOperationalEvents';
 import { resolveClientTrustedPluginLayout } from '../workspace-panes/workspacePaneRendererSelection';
-import { trackCodingDiffCompositionReceipt } from './codingDiffCompositionTelemetry';
-import { trackCodingEvidenceCompositionReceipt } from './codingEvidenceCompositionTelemetry';
-import { codingEvidenceUnavailableCopy } from './codingEvidenceUnavailableCopy';
-import { trackCodingFileCompositionReceipt } from './codingFileCompositionTelemetry';
+import {
+  type BuiltinCodingStackControls,
+  builtinCodingStackControls,
+  resolveBuiltinCodingStack,
+} from './builtinCodingStack';
 import { reconcileCodingWorkspaceDocument } from './codingWorkspaceDocument';
 import { isUnplacedLayoutRecord } from './layout-record-absent';
 import { layoutTypeRegistry } from './layoutRegistry';
 import {
+  type LayoutStackDrillInOutcome,
+  resolveDeclaredStackDrillIns,
+} from './layoutStackDrillIns';
+import {
+  isBuiltinCodingLayout,
   resolveLayoutChatPlacement,
+  resolveLayoutDeclaration,
   resolveProjectLayoutRendererKind,
 } from './project-layout-kind';
 
@@ -169,86 +140,6 @@ type WorkspacePanePopOutCatalogEntry = Pick<
   WorkspacePaneAvailabilityCatalogEntry,
   'availability' | 'descriptor' | 'instance'
 >;
-
-function CodingFileCompositionReceiptTracker({
-  receipt,
-}: {
-  receipt: Parameters<typeof trackCodingFileCompositionReceipt>[0];
-}) {
-  const { control, outcome, restorationIdentityMatched, fallbackUsed, reason } =
-    receipt;
-  useEffect(() => {
-    trackCodingFileCompositionReceipt(
-      {
-        control,
-        outcome,
-        restorationIdentityMatched,
-        fallbackUsed,
-        ...(reason ? { reason } : {}),
-      },
-      telemetry.track,
-    );
-  }, [control, fallbackUsed, outcome, reason, restorationIdentityMatched]);
-  return null;
-}
-
-function CodingDiffCompositionReceiptTracker({
-  receipt,
-}: {
-  receipt: Parameters<typeof trackCodingDiffCompositionReceipt>[0];
-}) {
-  const { control, outcome, restorationIdentityMatched, fallbackUsed, reason } =
-    receipt;
-  useEffect(() => {
-    trackCodingDiffCompositionReceipt(
-      {
-        control,
-        outcome,
-        restorationIdentityMatched,
-        fallbackUsed,
-        ...(reason ? { reason } : {}),
-      },
-      telemetry.track,
-    );
-  }, [control, fallbackUsed, outcome, reason, restorationIdentityMatched]);
-  return null;
-}
-
-function CodingEvidenceCompositionReceiptTracker({
-  receipt,
-}: {
-  receipt: Parameters<typeof trackCodingEvidenceCompositionReceipt>[0];
-}) {
-  const {
-    category,
-    control,
-    outcome,
-    restorationIdentityMatched,
-    fallbackUsed,
-    reason,
-  } = receipt;
-  useEffect(() => {
-    trackCodingEvidenceCompositionReceipt(
-      {
-        category,
-        control,
-        outcome,
-        restorationIdentityMatched,
-        fallbackUsed,
-        ...(reason ? { reason } : {}),
-      },
-      telemetry.track,
-    );
-  }, [
-    category,
-    control,
-    fallbackUsed,
-    outcome,
-    reason,
-    restorationIdentityMatched,
-  ]);
-  return null;
-}
 
 // archive#3969: "occurrence" is our word for one open copy of a pane; the
 // reader just has this pane, here.
@@ -452,20 +343,46 @@ const LOWER_PANE_PRESENTATION: WorkspacePaneHostPanePresentation = {
   requestDisplayMode: (mode) => mode === 'inline',
 };
 
-function BuiltinCodingLayoutHost({
+/** A layout record as the stack host reads it: its identity and declaration. */
+type LayoutStackRecord = Parameters<
+  typeof withWorkspacePaneInstanceLayoutBinding
+>[1] &
+  Parameters<typeof resolveLayoutChatPlacement>[0] & {
+    config?: Record<string, unknown> | null;
+  };
+
+/**
+ * The generic stack host (#2995): the host for any layout declaring
+ * `presentation: 'stack'`, built-in Coding or contributed. Chat is the
+ * Chat page of a navigation stack (the centre, when the layout declares
+ * `primary: 'chat'`), and each declared drill-in is a page pushed from it,
+ * with the breadcrumb, the icon rail and Back (`CodingWorkbench`). The
+ * drill-ins resolve through the ordinary pane catalog and render through the
+ * same renderer seam as any placed pane — built-in, plugin or MCP — so the
+ * host grants nothing a pane's own availability does not.
+ *
+ * `builtinCoding` adds built-in Coding's own composition (its occurrence
+ * gate, Files/Diff/Terminal/evidence through their composition controls, the
+ * Browser launcher); `ProjectLayoutRenderer` passes it only for the built-in
+ * record. Without it the drill-ins are exactly the layout's declared ones.
+ */
+export function LayoutStackHost({
   projectSlug,
   layoutSlug,
   layout,
-  fileCompositionControl,
-  diffCompositionControl,
-  evidenceCompositionControl,
+  drillIns: declaredDrillIns,
+  stackName,
+  builtinCoding,
 }: {
   projectSlug: string;
   layoutSlug: string;
-  layout: Parameters<typeof withWorkspacePaneInstanceLayoutBinding>[1];
-  fileCompositionControl: CodingFileCompositionControl;
-  diffCompositionControl: CodingDiffCompositionControl;
-  evidenceCompositionControl: CodingEvidenceCompositionControl;
+  layout: LayoutStackRecord;
+  /** The declared drill-ins, in rail order (`layout.drillIns`). */
+  drillIns: readonly string[];
+  /** What the stack is called in its navigation and chords ("Coding"). */
+  stackName: string;
+  /** Built-in Coding's own composition; the built-in record only. */
+  builtinCoding?: BuiltinCodingStackControls;
 }) {
   /** One UI-local runtime owns renderer callback results for this mounted host. */
   const workspacePaneRuntime = useRef<WorkspacePaneHostRuntime | null>(null);
@@ -532,11 +449,11 @@ function BuiltinCodingLayoutHost({
     },
     [],
   );
-  // The Coding stack (#928): which page the URL names, and whether the
-  // centre shows Chat — the same derivation App suspends the dock's Chat by.
+  // The stack (#928): which page the URL names, and whether the centre shows
+  // Chat — the same derivation App suspends the dock's Chat by, read off this
+  // layout's own declaration (`primary: 'chat'`).
   const stackSelection = useCodingStackSelection();
-  const centerChat =
-    resolveLayoutChatPlacement({ type: 'coding' }) === 'center';
+  const centerChat = resolveLayoutChatPlacement(layout) === 'center';
   // Past the wide fold a pane opens beside the centre's Chat (#3040) — only
   // where the centre HAS Chat; a bottom-only device keeps the drill-in.
   const wide = useCodingWide() && centerChat;
@@ -557,9 +474,7 @@ function BuiltinCodingLayoutHost({
    * it: the git status the Coding panes (the branch toolbar, the Diff) read
    * and cache. Read passively — the rail never adds a git read of its own.
    */
-  const layoutWorkingDirectory = (
-    layout as { config?: Record<string, unknown> | null }
-  ).config?.workingDirectory;
+  const layoutWorkingDirectory = layout.config?.workingDirectory;
   const gitStatus = useGitStatusQuery(
     typeof layoutWorkingDirectory === 'string' && layoutWorkingDirectory.trim()
       ? { projectSlug, workingDir: layoutWorkingDirectory.trim() }
@@ -851,102 +766,34 @@ function BuiltinCodingLayoutHost({
       ),
     [catalog.entries],
   );
-  const codingOccurrence = catalog.entries.find(
-    (candidate) =>
-      candidate.instance &&
-      isWorkspacePaneInstanceOwnedByProject(candidate.instance, projectId) &&
-      isCanonicalBuiltinCodingOccurrence(
-        candidate.instance,
-        candidate.descriptor,
-      ),
-  );
-  const entry = catalog.entries.find(
-    (candidate) =>
-      candidate.instance &&
-      candidate.availability.state === 'available' &&
-      isWorkspacePaneInstanceOwnedByProject(candidate.instance, projectId) &&
-      isCanonicalBuiltinCodingOccurrence(
-        candidate.instance,
-        candidate.descriptor,
-      ),
-  );
-  const filePreviewEntry = catalog.entries.find(
-    (candidate) =>
-      candidate.descriptor.id === WORKSPACE_FILE_PREVIEW_PANE_DESCRIPTOR_ID &&
-      candidate.availability.state === 'available' &&
-      isCanonicalBuiltinFilePreviewDescriptor(candidate.descriptor),
-  );
   // The Browser pane's catalogue entry, whether or not the server issued
-  // its per-Project occurrence (#90 wave 2 issues one for the Add-pane grid).
+  // its per-Project occurrence (#90 wave 2 issues one for the Add-pane grid):
+  // a placed Browser pane reads its availability.
   const browserPreviewEntry = catalog.entries.find(
     (candidate) =>
       candidate.descriptor.id ===
         WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR_ID &&
       isCanonicalBuiltinBrowserPreviewDescriptor(candidate.descriptor),
   );
-  const fileBrowserEntry = catalog.entries.find(
-    (candidate) =>
-      candidate.instance &&
-      candidate.descriptor.id ===
-        WORKSPACE_CODING_FILE_BROWSER_PANE_DESCRIPTOR_ID &&
-      candidate.instance.boundContext?.projectId === projectId &&
-      isCanonicalWorkspaceCodingFileBrowserPaneInstance(candidate.instance) &&
-      isCanonicalBuiltinCodingFileBrowserDescriptor(candidate.descriptor),
-  );
-  const diffEntry = catalog.entries.find(
-    (candidate) =>
-      candidate.instance &&
-      candidate.descriptor.id === WORKSPACE_CODING_DIFF_PANE_DESCRIPTOR_ID &&
-      candidate.instance.boundContext?.projectId === projectId &&
-      isCanonicalWorkspaceCodingDiffPaneInstance(candidate.instance) &&
-      isCanonicalBuiltinCodingDiffDescriptor(candidate.descriptor),
-  );
-  const terminalEntry = catalog.entries.find(
-    (candidate) =>
-      candidate.instance &&
-      candidate.descriptor.id ===
-        WORKSPACE_CODING_TERMINAL_PANE_DESCRIPTOR_ID &&
-      candidate.instance.boundContext?.projectId === projectId &&
-      isCanonicalWorkspaceCodingTerminalPaneInstance(candidate.instance) &&
-      isCanonicalBuiltinCodingTerminalDescriptor(candidate.descriptor),
-  );
-  const planEntry = catalog.registeredEntries.find(
-    (candidate) =>
-      candidate.instance &&
-      candidate.descriptor.id === WORKSPACE_PLAN_PANE_DESCRIPTOR_ID &&
-      candidate.instance.boundContext?.projectId === projectId &&
-      isCanonicalWorkspacePlanPaneInstance(candidate.instance) &&
-      isCanonicalBuiltinPlanDescriptor(candidate.descriptor),
-  );
-  const readinessEntry = catalog.registeredEntries.find(
-    (candidate) =>
-      candidate.instance &&
-      candidate.descriptor.id === WORKSPACE_READINESS_PANE_DESCRIPTOR_ID &&
-      candidate.instance.boundContext?.projectId === projectId &&
-      isCanonicalWorkspaceReadinessPaneInstance(candidate.instance) &&
-      isCanonicalBuiltinReadinessDescriptor(candidate.descriptor),
-  );
-  const trustEntry = catalog.registeredEntries.find(
-    (candidate) =>
-      candidate.instance &&
-      candidate.descriptor.id === WORKSPACE_TRUST_PANE_DESCRIPTOR_ID &&
-      candidate.instance.boundContext?.projectId === projectId &&
-      isCanonicalWorkspaceTrustPaneInstance(candidate.instance) &&
-      isCanonicalBuiltinTrustDescriptor(candidate.descriptor),
-  );
+  // Built-in Coding's copy is unchanged; any other stack names its layout.
+  const workspaceName = builtinCoding
+    ? 'coding workspace'
+    : `${stackName} workspace`;
 
   /**
    * Every state before the host can mount — the catalog loading or failing,
    * an unavailable Coding occurrence, a composition or document that cannot
    * be admitted — still renders the Chat page, with the state as a notice
-   * above it. App suspends the dock's Chat as soon as it knows the layout is
-   * the built-in Coding one, so a state that rendered only its message would
+   * above it. App suspends the dock's Chat as soon as it knows the layout
+   * claims the centre, so a state that rendered only its message would
    * leave the route with no Chat at all.
    */
   const chatOnly = (notice: ReactNode, provisional = false) => (
     <CodingWorkbench
       projectId={projectId ?? ''}
       projectSlug={projectSlug}
+      stackName={stackName}
+      drillInOrder={declaredDrillIns}
       centerChat={centerChat}
       wide={wide}
       // While the catalog loads, a deep link's drill-in is the page it names
@@ -977,7 +824,7 @@ function BuiltinCodingLayoutHost({
   );
   if (catalog.isLoading) {
     return chatOnly(
-      <SkeletonList count={1} label="Loading coding workspace panes" />,
+      <SkeletonList count={1} label={`Loading ${workspaceName} panes`} />,
       true,
     );
   }
@@ -986,7 +833,7 @@ function BuiltinCodingLayoutHost({
   if (catalog.isError && catalog.data === undefined) {
     return chatOnly(
       <ErrorState
-        title="Could not load coding workspace"
+        title={`Could not load ${workspaceName}`}
         description="Station could not read this Project’s pane catalog."
         action={
           <button type="button" onClick={() => void catalog.refetch()}>
@@ -997,264 +844,52 @@ function BuiltinCodingLayoutHost({
     );
   }
 
-  // The Coding occurrence is the host's only structural dependency: the
-  // baseline document needs one available catalog-issued instance. Other
-  // issued occurrences keep their slots so an unavailable pane can explain
-  // itself in place; absent occurrences have no slot to render.
-  if (!projectId || !entry?.instance) {
-    const unavailablePresentation = codingOccurrence
-      ? presentWorkspacePaneAvailability(
-          codingOccurrence.availability,
-          codingOccurrence.rendererGate,
-          codingOccurrence.rendererResolution,
-        )
-      : undefined;
-    return chatOnly(
-      <ErrorState
-        title="Coding workspace unavailable"
-        description={
-          unavailablePresentation?.reasonLabel ??
-          'Station could not find an available Coding pane for this Project.'
-        }
-        action={
-          unavailablePresentation?.reviewExtensions ? (
-            <StationExtensionsAccess onlyWhenOff />
-          ) : (
-            <button type="button" onClick={() => void catalog.refetch()}>
-              Retry
-            </button>
-          )
-        }
-      />,
-    );
-  }
   // Layout slugs address routes; the host and its pane occurrences persist the
   // resolved LayoutConfig ID. This is deliberately at the host seam, where the
   // catalog instance becomes an admitted renderer-facing occurrence.
-  const bindToLayout = (instance: typeof entry.instance) =>
+  const bindToLayout = (instance: WorkspacePaneInstance) =>
     withWorkspacePaneInstanceLayoutBinding(instance, layout);
-  const codingInstance = bindToLayout(entry.instance);
-  const fileBrowserInstance = fileBrowserEntry?.instance
-    ? bindToLayout(fileBrowserEntry.instance)
-    : undefined;
-  const diffInstance = diffEntry?.instance
-    ? bindToLayout(diffEntry.instance)
-    : undefined;
-  const terminalInstance = terminalEntry?.instance
-    ? bindToLayout(terminalEntry.instance)
-    : undefined;
-  const planInstance = planEntry?.instance
-    ? bindToLayout(planEntry.instance)
-    : undefined;
-  const readinessInstance = readinessEntry?.instance
-    ? bindToLayout(readinessEntry.instance)
-    : undefined;
-  const trustInstance = trustEntry?.instance
-    ? bindToLayout(trustEntry.instance)
-    : undefined;
-  if (
-    !codingInstance ||
-    (fileBrowserEntry?.instance && !fileBrowserInstance) ||
-    (diffEntry?.instance && !diffInstance) ||
-    (terminalEntry?.instance && !terminalInstance) ||
-    (planEntry?.instance && !planInstance) ||
-    (readinessEntry?.instance && !readinessInstance) ||
-    (trustEntry?.instance && !trustInstance)
-  ) {
-    return chatOnly(
-      <ErrorState
-        title="Coding workspace unavailable"
-        description="Station could not bind its pane occurrences to this layout."
-      />,
-    );
-  }
-  const fileComposition =
-    fileBrowserEntry &&
-    fileBrowserInstance &&
-    fileCompositionControl !== 'legacy'
-      ? selectCodingFileComposition({
-          control: fileCompositionControl,
+  const declared =
+    !builtinCoding && projectId
+      ? resolveDeclaredStackDrillIns({
+          entries: catalog.entries,
           projectId,
-          layoutId: layout.id,
-          descriptor: fileBrowserEntry.descriptor,
-          catalogInstance: fileBrowserInstance,
-          fileReadGrant: resolveBuiltinCodingFileReadGrant(
-            fileBrowserEntry.descriptor,
+          drillIns: declaredDrillIns,
+          bind: bindToLayout,
+        })
+      : null;
+  const outcome: LayoutStackDrillInOutcome = builtinCoding
+    ? resolveBuiltinCodingStack({
+        entries: catalog.entries,
+        registeredEntries: catalog.registeredEntries,
+        projectId,
+        bind: bindToLayout,
+        layoutId: layout.id,
+        controls: builtinCoding,
+        developerFeatures,
+        onRetry: () => void catalog.refetch(),
+      })
+    : declared
+      ? { state: 'ready', drillIns: declared }
+      : {
+          state: 'blocked',
+          notice: (
+            <ErrorState
+              title={`${stackName} workspace unavailable`}
+              description={
+                projectId
+                  ? 'Station could not bind its pane occurrences to this layout.'
+                  : 'Station could not read this Project’s identity.'
+              }
+            />
           ),
-          fileReadAvailability:
-            fileBrowserEntry.availability.state === 'available'
-              ? 'available'
-              : 'unavailable',
-        })
-      : null;
-  const fileCompositionReceipt =
-    fileComposition?.receipt ??
-    (fileCompositionControl !== 'legacy'
-      ? {
-          control: fileCompositionControl,
-          outcome: 'unavailable' as const,
-          restorationIdentityMatched: false,
-          fallbackUsed: false as const,
-          reason: 'descriptor-incompatible' as const,
-        }
-      : null);
-  if (
-    fileCompositionControl !== 'legacy' &&
-    (!fileBrowserEntry?.instance || !fileComposition?.instance)
-  ) {
-    return chatOnly(
-      <>
-        {fileCompositionReceipt ? (
-          <CodingFileCompositionReceiptTracker
-            receipt={fileCompositionReceipt}
-          />
-        ) : null}
-        <ErrorState
-          title="Coding file workspace unavailable"
-          description="The Workspace Composition file pane could not be admitted. Station did not fall back to the legacy Coding host."
-        />
-      </>,
-    );
+        };
+  if (outcome.state === 'blocked' || !projectId) {
+    return chatOnly(outcome.state === 'blocked' ? outcome.notice : null);
   }
-  const selectedFileBrowserInstance =
-    fileComposition?.instance ?? fileBrowserInstance;
-  const diffComposition =
-    diffEntry && diffInstance && diffCompositionControl !== 'legacy'
-      ? selectCodingDiffComposition({
-          control: diffCompositionControl,
-          projectId,
-          layoutId: layout.id,
-          descriptor: diffEntry.descriptor,
-          catalogInstance: diffInstance,
-          gitDiffGrant: resolveBuiltinCodingGitDiffGrant(diffEntry.descriptor),
-          gitDiffAvailability:
-            diffEntry.availability.state === 'available'
-              ? 'available'
-              : 'unavailable',
-        })
-      : null;
-  const diffCompositionReceipt =
-    diffComposition?.receipt ??
-    (diffCompositionControl !== 'legacy'
-      ? {
-          control: diffCompositionControl,
-          outcome: 'unavailable' as const,
-          restorationIdentityMatched: false,
-          fallbackUsed: false as const,
-          reason: 'descriptor-incompatible' as const,
-        }
-      : null);
-  if (
-    diffCompositionControl !== 'legacy' &&
-    (!diffEntry?.instance || !diffComposition?.instance)
-  ) {
-    return chatOnly(
-      <>
-        {diffCompositionReceipt ? (
-          <CodingDiffCompositionReceiptTracker
-            receipt={diffCompositionReceipt}
-          />
-        ) : null}
-        <ErrorState
-          title="Coding Diff workspace unavailable"
-          description="The Workspace Composition Diff pane could not be admitted. Station did not fall back to the legacy Coding host."
-        />
-      </>,
-    );
-  }
-  const selectedDiffInstance = diffComposition?.instance ?? diffInstance;
-  const evidenceEntries = [
-    ['plan', planEntry, developerFeatures.flow],
-    ['readiness', readinessEntry, developerFeatures.readiness],
-    ['trust', trustEntry, developerFeatures.trust],
-  ] as const;
-  const enabledEvidenceEntries = evidenceEntries.filter(
-    ([, , enabled]) => enabled,
-  );
-  const admittedEvidenceEntries = enabledEvidenceEntries.filter(
-    ([, candidate]) => candidate?.instance,
-  );
-  const evidenceCompositionActive =
-    evidenceCompositionControl !== 'legacy' &&
-    enabledEvidenceEntries.length > 0;
-  const evidenceComposition =
-    evidenceCompositionActive && admittedEvidenceEntries.length > 0
-      ? selectCodingEvidenceComposition({
-          control: evidenceCompositionControl,
-          projectId,
-          layoutId: layout.id,
-          panes: admittedEvidenceEntries.map(([category, candidate]) => ({
-            category,
-            descriptor: candidate!.descriptor,
-            catalogInstance:
-              category === 'plan'
-                ? planInstance!
-                : category === 'readiness'
-                  ? readinessInstance!
-                  : trustInstance!,
-            grant: resolveBuiltinCodingEvidenceGrant(
-              category,
-              candidate!.descriptor,
-            ),
-            availability:
-              candidate!.availability.state === 'available'
-                ? 'available'
-                : 'unavailable',
-          })),
-        })
-      : null;
-  const evidenceCompositionReceipts = [
-    ...(evidenceComposition?.receipts ?? []),
-    ...(evidenceCompositionActive
-      ? enabledEvidenceEntries
-          .filter(([, candidate]) => !candidate?.instance)
-          .map(([category]) => ({
-            category,
-            control: evidenceCompositionControl,
-            outcome: 'unavailable' as const,
-            restorationIdentityMatched: false,
-            fallbackUsed: false as const,
-            reason: 'descriptor-incompatible' as const,
-          }))
-      : []),
-  ];
-  const evidenceCompositionUnavailable =
-    evidenceCompositionActive &&
-    (!evidenceComposition?.document ||
-      admittedEvidenceEntries.length !== enabledEvidenceEntries.length);
-  const selectedEvidence = (descriptorId: string) =>
-    evidenceComposition?.instances.find(
-      (instance) => instance.descriptorId === descriptorId,
-    );
-  const selectedPlanInstance = !developerFeatures.flow
-    ? undefined
-    : evidenceCompositionControl === 'legacy'
-      ? planInstance
-      : selectedEvidence(WORKSPACE_PLAN_PANE_DESCRIPTOR_ID);
-  const selectedReadinessInstance = !developerFeatures.readiness
-    ? undefined
-    : evidenceCompositionControl === 'legacy'
-      ? readinessInstance
-      : selectedEvidence(WORKSPACE_READINESS_PANE_DESCRIPTOR_ID);
-  const selectedTrustInstance = !developerFeatures.trust
-    ? undefined
-    : evidenceCompositionControl === 'legacy'
-      ? trustInstance
-      : selectedEvidence(WORKSPACE_TRUST_PANE_DESCRIPTOR_ID);
-  // The Coding occurrence gates the host (above) but is not one of its panes:
-  // the layout's Chat position is the stack's Chat page (`CodingWorkbench`).
-  // A document persisted before the stack still lists it; the host's restore
-  // drops an occurrence its catalog no longer issues and prunes the group it
-  // leaves empty, keeping every other pane and its state
-  // (`restoreWorkspacePaneHostDocument`), so the stored id is reused as is.
-  const drillInInstances = [
-    ...(selectedFileBrowserInstance ? [selectedFileBrowserInstance] : []),
-    ...(selectedDiffInstance ? [selectedDiffInstance] : []),
-    ...(terminalInstance ? [terminalInstance] : []),
-    ...(selectedPlanInstance ? [selectedPlanInstance] : []),
-    ...(selectedReadinessInstance ? [selectedReadinessInstance] : []),
-    ...(selectedTrustInstance ? [selectedTrustInstance] : []),
-  ];
+  const stack = outcome.drillIns;
+  const drillInInstances = stack.instances;
+  const terminalInstance = stack.terminal;
   const hostScope = {
     kind: 'project' as const,
     projectId,
@@ -1265,7 +900,8 @@ function BuiltinCodingLayoutHost({
       ? retainWorkspacePaneHostDocument(
           publishedDocument,
           createWorkspacePaneHostBaselineDocument(
-            `builtin-coding-${layoutSlug}`,
+            // Built-in Coding keeps the id its saved documents carry.
+            `${builtinCoding ? 'builtin-coding' : 'layout-stack'}-${layoutSlug}`,
             hostScope,
             drillInInstances,
           ),
@@ -1290,7 +926,7 @@ function BuiltinCodingLayoutHost({
   if (drillInInstances.length > 0 && !document) {
     return chatOnly(
       <ErrorState
-        title="Coding workspace cannot mount"
+        title={`${builtinCoding ? 'Coding' : stackName} workspace cannot mount`}
         description="Station could not create the required workspace pane host."
       />,
     );
@@ -1358,32 +994,14 @@ function BuiltinCodingLayoutHost({
       paneEntry?.descriptor ??
       (instance.descriptorId === WORKSPACE_BASIS_PANE_DESCRIPTOR.id
         ? WORKSPACE_BASIS_PANE_DESCRIPTOR
-        : instance.descriptorId === entry.descriptor.id
-          ? entry.descriptor
-          : instance.descriptorId === fileBrowserEntry?.descriptor.id
-            ? fileBrowserEntry?.descriptor
-            : instance.descriptorId === diffEntry?.descriptor.id
-              ? diffEntry?.descriptor
-              : instance.descriptorId === terminalEntry?.descriptor.id
-                ? terminalEntry?.descriptor
-                : instance.descriptorId === planEntry?.descriptor.id
-                  ? planEntry?.descriptor
-                  : instance.descriptorId === readinessEntry?.descriptor.id
-                    ? readinessEntry?.descriptor
-                    : instance.descriptorId === trustEntry?.descriptor.id
-                      ? trustEntry?.descriptor
-                      : instance.descriptorId ===
-                          filePreviewEntry?.descriptor.id
-                        ? filePreviewEntry?.descriptor
-                        : instance.descriptorId ===
-                            browserPreviewEntry?.descriptor.id
-                          ? browserPreviewEntry.descriptor
-                          : null);
+        : stack.descriptorFor(instance.descriptorId));
     const Pane =
       descriptor &&
       getBuiltinWorkspacePaneRenderer(
         descriptor,
-        instance.descriptorId === entry.descriptor.id ? instance : undefined,
+        instance.descriptorId === stack.occurrenceDescriptorId
+          ? instance
+          : undefined,
       );
     if (paneEntry && paneEntry.availability.state !== 'available') {
       const presentation = presentWorkspacePaneAvailability(
@@ -1555,6 +1173,8 @@ function BuiltinCodingLayoutHost({
     <CodingWorkbench
       projectId={projectId}
       projectSlug={projectSlug}
+      stackName={stackName}
+      drillInOrder={declaredDrillIns}
       centerChat={centerChat}
       wide={wide}
       location={location}
@@ -1581,7 +1201,7 @@ function BuiltinCodingLayoutHost({
       paneDetail={stackPaneDetail}
       hostOpen={hostOpen}
       onOpenCatalog={requestCatalog}
-      browserPreviewAvailability={browserPreviewEntry?.availability}
+      browserPreviewAvailability={stack.browserPreviewAvailability}
       badges={railBadges}
       popOut={popOut}
       persistence={document ? hostPersistence : 'owned'}
@@ -1591,38 +1211,7 @@ function BuiltinCodingLayoutHost({
         )
       }
     >
-      {fileCompositionReceipt ? (
-        <CodingFileCompositionReceiptTracker receipt={fileCompositionReceipt} />
-      ) : null}
-      {diffCompositionReceipt ? (
-        <CodingDiffCompositionReceiptTracker receipt={diffCompositionReceipt} />
-      ) : null}
-      {evidenceCompositionUnavailable && (
-        <ErrorState
-          title="Experimental evidence panes unavailable"
-          description="Some opted-in tools could not be admitted. Your Coding workspace remains available."
-        />
-      )}
-      {evidenceCompositionReceipts.map((receipt) => (
-        <CodingEvidenceCompositionReceiptTracker
-          key={`${receipt.category}:${receipt.outcome}:${receipt.reason ?? 'none'}`}
-          receipt={receipt}
-        />
-      ))}
-      {(evidenceComposition?.unavailablePanes ?? [])
-        .filter((entry) =>
-          entry.category === 'plan'
-            ? developerFeatures.flow
-            : entry.category === 'readiness'
-              ? developerFeatures.readiness
-              : developerFeatures.trust,
-        )
-        .map((entry) => (
-          <Empty
-            key={entry.category}
-            {...codingEvidenceUnavailableCopy(entry)}
-          />
-        ))}
+      {stack.notices}
       {document ? (
         <WorkspacePaneHost
           document={document}
@@ -1781,30 +1370,26 @@ export function ProjectLayoutRenderer({
     return <LayoutView projectSlug={projectSlug} layoutSlug={layoutSlug} />;
   }
 
-  if (rendererKind === 'coding') {
-    const fileCompositionControl =
-      config.workspaceCompositionFilePane === 'composition' ||
-      config.workspaceCompositionFilePane === 'compare'
-        ? config.workspaceCompositionFilePane
-        : 'legacy';
-    const diffCompositionControl =
-      config.workspaceCompositionDiffPane === 'composition' ||
-      config.workspaceCompositionDiffPane === 'compare'
-        ? config.workspaceCompositionDiffPane
-        : 'legacy';
-    const evidenceCompositionControl =
-      config.workspaceCompositionEvidencePanes === 'composition' ||
-      config.workspaceCompositionEvidencePanes === 'compare'
-        ? config.workspaceCompositionEvidencePanes
-        : 'legacy';
+  if (rendererKind === 'stack') {
+    // The host is chosen by the declaration (`presentation: 'stack'`); only
+    // the built-in record also brings Coding's own composition.
+    const builtinCoding = isBuiltinCodingLayout(layoutConfig);
     return (
-      <BuiltinCodingLayoutHost
+      <LayoutStackHost
         projectSlug={projectSlug}
         layoutSlug={layoutSlug}
         layout={layoutConfig}
-        fileCompositionControl={fileCompositionControl}
-        diffCompositionControl={diffCompositionControl}
-        evidenceCompositionControl={evidenceCompositionControl}
+        drillIns={resolveLayoutDeclaration(layoutConfig).drillIns ?? []}
+        stackName={
+          builtinCoding
+            ? BUILTIN_CODING_LAYOUT.name
+            : typeof layoutConfig.name === 'string' && layoutConfig.name.trim()
+              ? layoutConfig.name.trim()
+              : 'Layout'
+        }
+        {...(builtinCoding
+          ? { builtinCoding: builtinCodingStackControls(config) }
+          : {})}
       />
     );
   }

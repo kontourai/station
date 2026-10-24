@@ -1,0 +1,23 @@
+{
+  "name": "Stack Parity",
+  "slug": "fx",
+  "description": "A contributed layout that owns Chat and pushes two drill-ins",
+  "primary": "chat",
+  "presentation": "stack",
+  "drillIns": [
+    "pane:plugin%3Astack-fx:fx:notes",
+    "pane:plugin%3Astack-fx:fx:checks"
+  ],
+  "tabs": [
+    {
+      "id": "notes",
+      "label": "Parity notes",
+      "component": "stack-fx-notes"
+    },
+    {
+      "id": "checks",
+      "label": "Parity checks",
+      "component": "stack-fx-checks"
+    }
+  ]
+}

@@ -548,6 +548,69 @@ describe('DistributionProfileService', () => {
     },
   );
 
+  test('a plugin layout carries its declaration, and built-in Coding its own (#2995)', () => {
+    const projectHome = home();
+    const directory = writePlugin(projectHome, 'stack-layout', 'stack');
+    const ownPanes = [
+      'pane:plugin%3Astack-layout:stack:one',
+      'pane:plugin%3Astack-layout:stack:two',
+    ];
+    writeFileSync(
+      join(directory, 'layout.json'),
+      JSON.stringify({
+        name: 'Stack',
+        slug: 'stack',
+        primary: 'chat',
+        presentation: 'stack',
+        drillIns: ownPanes,
+        tabs: [
+          { id: 'one', label: 'One', component: 'stack-one' },
+          { id: 'two', label: 'Two', component: 'stack-two' },
+        ],
+      }),
+    );
+    const service = new DistributionProfileService(projectHome);
+    expect(
+      service.resolveForCatalog('plugin:stack-layout:stack').definition,
+    ).toMatchObject({
+      primary: 'chat',
+      presentation: 'stack',
+      drillIns: ownPanes,
+    });
+    expect(
+      service.resolveForCatalog('builtin:coding').definition,
+    ).toMatchObject({ primary: 'chat', presentation: 'stack' });
+    expect(
+      service.resolveForCatalog('builtin:tasks').definition.presentation,
+    ).toBe('tabs');
+  });
+
+  test.each([
+    [{ primary: 'terminal', presentation: 'stack' }],
+    [{ presentation: 'grid' }],
+    [{ presentation: 'stack', drillIns: ['pane:builtin:coding:diff'] }],
+    [{ primary: 'chat', presentation: 'tabs' }],
+  ])(
+    'refuses an invalid plugin layout declaration %j at catalog resolution',
+    (declaration) => {
+      const projectHome = home();
+      const directory = writePlugin(projectHome, 'bad-stack');
+      writeFileSync(
+        join(directory, 'layout.json'),
+        JSON.stringify({
+          name: 'Bad stack',
+          slug: 'bad-stack',
+          tabs: [{ id: 'one', label: 'One', component: 'bad-one' }],
+          ...declaration,
+        }),
+      );
+      const service = new DistributionProfileService(projectHome);
+      expect(() =>
+        service.resolveForApply('plugin:bad-stack:bad-stack'),
+      ).toThrow('known installed contribution');
+    },
+  );
+
   test('reads a disabled installed plugin descriptor without authorizing application', () => {
     const projectHome = home();
     writePlugin(projectHome, 'disabled-layout', 'disabled');

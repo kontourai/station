@@ -193,6 +193,275 @@ export function parseLayoutWorkspaceBinding(
   );
 }
 
+/**
+ * The layout contract fields of `docs/design/shell-plugins-distributions.md`
+ * ("Layout contract fields", slice a, #2995). Any layout, built-in or
+ * contributed, may declare them, and the shell honours them generically:
+ *
+ * - `primary: 'chat'` claims the centre for Chat. While such a layout is
+ *   mounted the shell suspends the dock's Chat, and ⌘D (`dock.toggle`)
+ *   focuses the layout's Chat instead of toggling the dock. A contributed
+ *   layout keeps the claim only while its plugin holds
+ *   {@link LAYOUT_PRIMARY_CHAT_PERMISSION}.
+ * - `presentation: 'stack'` is the Chat → drill-in navigation stack, with a
+ *   breadcrumb, an icon rail and Back. `tabs`, the default, is the tab host.
+ * - `drillIns` are the pane descriptor ids a stack layout may push, in rail
+ *   order. Each resolves at runtime through the ordinary pane availability
+ *   check; one the catalog does not issue is simply not on the rail.
+ */
+export type LayoutPrimary = 'chat';
+export type LayoutPresentation = 'stack' | 'tabs';
+
+export interface LayoutPresentationDeclaration {
+  readonly primary?: LayoutPrimary;
+  readonly presentation?: LayoutPresentation;
+  readonly drillIns?: readonly string[];
+}
+
+/**
+ * The plugin permission a contributed layout needs for `primary: 'chat'`
+ * (the design's `layout.primaryChat` grant). It is an ordinary install-time
+ * plugin permission (`PERMISSION_TIERS`), granted when the operator approves
+ * it; without the grant the server answers the layout without its claim.
+ */
+export const LAYOUT_PRIMARY_CHAT_PERMISSION = 'layout.primaryChat';
+
+/** Upper bound on declared drill-ins; one more is refused, not truncated. */
+export const MAX_LAYOUT_DRILL_INS = 16;
+
+/**
+ * A layout author's declaration that cannot be honoured — its own type so a
+ * route reports the author's fault instead of a storage failure, as
+ * {@link RetiredLayoutKeyError} does.
+ */
+export class InvalidLayoutDeclarationError extends TypeError {
+  readonly code = 'INVALID_LAYOUT_DECLARATION';
+
+  constructor(label: string, reason: string) {
+    super(`${label} declaration is invalid: ${reason}`);
+    this.name = 'InvalidLayoutDeclarationError';
+  }
+}
+
+export interface ParseLayoutPresentationDeclarationOptions {
+  /**
+   * Whether a drill-in id names a pane this layout's contributor can place.
+   * For a plugin layout that is one of its own declared Workspace Panes.
+   */
+  resolvesDrillIn(paneId: string): boolean;
+  /** Names the source in a refusal (a plugin, a file). */
+  label?: string;
+}
+
+/**
+ * Parse the three fields off an author's raw layout definition. Absent fields
+ * stay absent; every other value is refused by name:
+ *
+ * - `primary` other than `'chat'` (`'terminal'` is not a primary);
+ * - `presentation` other than `'stack'` or `'tabs'`;
+ * - `drillIns` that is not an array of distinct, non-empty ids, that has more
+ *   than {@link MAX_LAYOUT_DRILL_INS} entries, or names an id that does not
+ *   resolve;
+ * - `drillIns` or `primary: 'chat'` on a layout that is not `stack`: only the
+ *   stack host pushes drill-ins and renders a Chat centre, so on a tab host
+ *   the dock's Chat would be suspended with nothing in its place.
+ */
+export function parseLayoutPresentationDeclaration(
+  value: unknown,
+  options: ParseLayoutPresentationDeclarationOptions,
+): LayoutPresentationDeclaration {
+  const label = options.label ?? 'Layout';
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new InvalidLayoutDeclarationError(label, 'it must be an object');
+  }
+  const raw = value as Record<string, unknown>;
+  const declaration: {
+    primary?: LayoutPrimary;
+    presentation?: LayoutPresentation;
+    drillIns?: string[];
+  } = {};
+
+  if (raw.primary !== undefined) {
+    if (raw.primary !== 'chat') {
+      throw new InvalidLayoutDeclarationError(
+        label,
+        `primary must be 'chat' when supplied, not ${JSON.stringify(raw.primary)}`,
+      );
+    }
+    declaration.primary = 'chat';
+  }
+
+  if (raw.presentation !== undefined) {
+    if (raw.presentation !== 'stack' && raw.presentation !== 'tabs') {
+      throw new InvalidLayoutDeclarationError(
+        label,
+        `presentation must be 'stack' or 'tabs', not ${JSON.stringify(raw.presentation)}`,
+      );
+    }
+    declaration.presentation = raw.presentation;
+  }
+
+  if (raw.drillIns !== undefined) {
+    if (!Array.isArray(raw.drillIns)) {
+      throw new InvalidLayoutDeclarationError(
+        label,
+        'drillIns must be an array of pane ids',
+      );
+    }
+    if (raw.drillIns.length > MAX_LAYOUT_DRILL_INS) {
+      throw new InvalidLayoutDeclarationError(
+        label,
+        `drillIns may name at most ${MAX_LAYOUT_DRILL_INS} panes, not ${raw.drillIns.length}`,
+      );
+    }
+    const seen = new Set<string>();
+    for (const paneId of raw.drillIns) {
+      if (typeof paneId !== 'string' || paneId.trim() !== paneId || !paneId) {
+        throw new InvalidLayoutDeclarationError(
+          label,
+          `drill-in ${JSON.stringify(paneId)} is not a pane id`,
+        );
+      }
+      if (seen.has(paneId)) {
+        throw new InvalidLayoutDeclarationError(
+          label,
+          `drill-in '${paneId}' is listed twice`,
+        );
+      }
+      if (!options.resolvesDrillIn(paneId)) {
+        throw new InvalidLayoutDeclarationError(
+          label,
+          `drill-in '${paneId}' does not resolve to a pane this layout can place`,
+        );
+      }
+      seen.add(paneId);
+    }
+    declaration.drillIns = [...seen];
+  }
+
+  if (declaration.presentation !== 'stack') {
+    if (declaration.drillIns !== undefined) {
+      throw new InvalidLayoutDeclarationError(
+        label,
+        "drillIns are pushed only by presentation 'stack'",
+      );
+    }
+    if (declaration.primary === 'chat') {
+      throw new InvalidLayoutDeclarationError(
+        label,
+        "primary 'chat' needs presentation 'stack': no other host renders the layout's Chat",
+      );
+    }
+  }
+  return declaration;
+}
+
+/** The facts the declaration reader needs off a layout record or listing. */
+export interface LayoutPresentationFacts {
+  type?: string;
+  primary?: unknown;
+  presentation?: unknown;
+  drillIns?: unknown;
+  /** `LayoutMetadata.plugin`: a listing's stored `config.plugin`. */
+  plugin?: unknown;
+  config?: Record<string, unknown> | null;
+  catalogContribution?: { provenance: { origin: string } };
+  paneReferences?: unknown;
+}
+
+/**
+ * Whether a record is contributed: catalog provenance `plugin`/`mcp`, or a
+ * stored plugin binding from before attribution was recorded.
+ */
+function isContributedLayoutRecord(layout: LayoutPresentationFacts): boolean {
+  const origin = layout.catalogContribution?.provenance.origin;
+  if (origin === 'plugin' || origin === 'mcp') return true;
+  const configPlugin = layout.config?.plugin;
+  if (typeof configPlugin === 'string' && configPlugin.length > 0) return true;
+  return typeof layout.plugin === 'string' && layout.plugin.length > 0;
+}
+
+/**
+ * The declaration a layout record carries, as the shell reads it. The ONE
+ * field reader: the renderer's host choice, App's dock suspension and ⌘D
+ * routing, and {@link findPrimaryChatLayout} all answer from it.
+ *
+ * - A record whose plugin binding was withheld from this reader (#2090)
+ *   declares nothing: the facts that would justify a claim are gone.
+ * - A record that states `presentation` is a server's answer: Station's
+ *   layout reads always state it, and it is read as stated (an unknown value
+ *   reads as absent, never as a claim).
+ * - **Legacy rule (removed by slice j):** a record stating nothing that is
+ *   the built-in Coding layout — `type: 'coding'`, contributed by nobody —
+ *   reads as {@link BUILTIN_CODING_LAYOUT}'s declaration. That is the shape
+ *   every stored Coding record and every older server's answer has. A
+ *   contributed layout that merely carries the word `coding` gets nothing.
+ */
+export function layoutPresentationDeclaration(
+  layout: LayoutPresentationFacts | null | undefined,
+): LayoutPresentationDeclaration {
+  if (!layout || layout.paneReferences !== undefined) return {};
+  if (layout.presentation !== undefined) {
+    const presentation =
+      layout.presentation === 'stack' || layout.presentation === 'tabs'
+        ? layout.presentation
+        : undefined;
+    const stack = presentation === 'stack';
+    const drillIns =
+      stack && Array.isArray(layout.drillIns)
+        ? layout.drillIns.filter(
+            (paneId): paneId is string =>
+              typeof paneId === 'string' && paneId.length > 0,
+          )
+        : undefined;
+    return {
+      ...(stack && layout.primary === 'chat' ? { primary: 'chat' } : {}),
+      ...(presentation ? { presentation } : {}),
+      ...(drillIns ? { drillIns } : {}),
+    };
+  }
+  if (layout.type === BUILTIN_CODING_LAYOUT.type) {
+    if (isContributedLayoutRecord(layout)) return {};
+    return builtinLayoutPresentationDeclaration(BUILTIN_CODING_LAYOUT);
+  }
+  return {};
+}
+
+/** Whether the layout claims the centre for Chat (`primary: 'chat'`). */
+export function layoutClaimsPrimaryChat(
+  layout: LayoutPresentationFacts | null | undefined,
+): boolean {
+  return layoutPresentationDeclaration(layout).primary === 'chat';
+}
+
+/** Whether the layout renders through the stack host (`presentation: 'stack'`). */
+export function layoutPresentsAsStack(
+  layout: LayoutPresentationFacts | null | undefined,
+): boolean {
+  return layoutPresentationDeclaration(layout).presentation === 'stack';
+}
+
+/**
+ * The project's layout that claims the centre for Chat: where "open this
+ * conversation in its layout" goes. Replaces the `type === 'coding'` lookups.
+ */
+export function findPrimaryChatLayout<T extends LayoutPresentationFacts>(
+  layouts: readonly T[] | null | undefined,
+): T | undefined {
+  return layouts?.find((layout) => layoutClaimsPrimaryChat(layout));
+}
+
+/** A built-in starter's declaration, copied so callers cannot share arrays. */
+export function builtinLayoutPresentationDeclaration(
+  layout: AvailableProjectLayout,
+): LayoutPresentationDeclaration {
+  return {
+    ...(layout.primary ? { primary: layout.primary } : {}),
+    presentation: layout.presentation ?? 'tabs',
+    ...(layout.drillIns ? { drillIns: [...layout.drillIns] } : {}),
+  };
+}
+
 export interface LayoutConfig {
   /** Derive the workspace from the owning Project; this grants no file access. */
   workspaceBinding?: LayoutWorkspaceBinding;
@@ -265,9 +534,24 @@ export interface LayoutPaneReferences {
  * and it is `.strict()` — a record carrying this key is a hard storage
  * rejection, which is why the write paths strip it.
  */
-export type LayoutReadView = LayoutConfig & {
-  paneReferences?: LayoutPaneReferences;
-};
+export type LayoutReadView = LayoutConfig &
+  LayoutPresentationReadFields & {
+    paneReferences?: LayoutPaneReferences;
+  };
+
+/**
+ * Response-only, like {@link LayoutPaneReferences}: a layout read (detail and
+ * list) states the declaration of the layout's CONTRIBUTOR — the built-in
+ * starter, or the installed plugin's current layout definition, less any
+ * claim its plugin is not granted. Never persisted and never accepted from a
+ * request body, so a client cannot write itself a Chat centre. Read through
+ * {@link layoutPresentationDeclaration}, never directly.
+ */
+export interface LayoutPresentationReadFields {
+  primary?: LayoutPrimary;
+  presentation?: LayoutPresentation;
+  drillIns?: readonly string[];
+}
 
 export interface LayoutMetadata {
   id: string;
@@ -284,9 +568,17 @@ export interface LayoutMetadata {
   tabCount?: number;
 }
 
+/** A listing as the list read answers it; see {@link LayoutPresentationReadFields}. */
+export type LayoutMetadataReadView = LayoutMetadata &
+  LayoutPresentationReadFields;
+
 export interface AvailableProjectLayout {
   /** Derive the workspace from the owning Project; this grants no file access. */
   workspaceBinding?: LayoutWorkspaceBinding;
+  /** The layout contract fields; see {@link LayoutPresentationDeclaration}. */
+  primary?: LayoutPrimary;
+  presentation?: LayoutPresentation;
+  drillIns?: readonly string[];
   source: 'builtin' | 'plugin';
   plugin?: string;
   name: string;
@@ -308,6 +600,19 @@ export const BUILTIN_CODING_LAYOUT: AvailableProjectLayout = Object.freeze({
   description: 'Files, changes, terminal, and chat',
   type: 'coding',
   workspaceBinding: 'repository',
+  // Chat is the centre and every tool a drill-in, in rail order. The ids
+  // are restated literals because `workspace-pane.ts` imports this module;
+  // `layout-presentation-declaration.test.ts` pins each to its constant.
+  primary: 'chat',
+  presentation: 'stack',
+  drillIns: Object.freeze([
+    'pane:builtin:coding:diff',
+    'pane:builtin:coding:file-browser',
+    'pane:builtin:coding:terminal',
+    'pane:builtin:evidence:plan',
+    'pane:builtin:evidence:readiness',
+    'pane:builtin:evidence:trust',
+  ]),
 });
 
 /** Dependency-free task starter backed by Station's existing task service. */
@@ -470,6 +775,10 @@ export interface LayoutTemplate {
 export interface LayoutDefinition {
   /** Derive the workspace from the owning Project; this grants no file access. */
   workspaceBinding?: LayoutWorkspaceBinding;
+  /** The layout contract fields; see {@link LayoutPresentationDeclaration}. */
+  primary?: LayoutPrimary;
+  presentation?: LayoutPresentation;
+  drillIns?: readonly string[];
   dashboard?: PersonalBoardDefinition;
   name: string;
   slug: string;

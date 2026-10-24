@@ -1009,6 +1009,16 @@ export const e2eManifest = [
     exceptions: [],
   },
   {
+    path: 'tests/layout-stack-parity.spec.ts',
+    bucket: 'extended',
+    surface: 'Plugins',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Proves the layout contract fields (#2995) are honoured generically: one set of assertions against built-in Coding and a test-only plugin layout installed through real preview and consent that declares primary chat, a stack presentation and two drill-ins — the dock Chat suspended, ⌘D focusing the layout Chat, the rail and breadcrumb drilling in, and browser Back and the stack chord popping. Nothing is intercepted.',
+    exceptions: [],
+  },
+  {
     path: 'tests/workspace-pane-host-actions.spec.ts',
     bucket: 'extended',
     surface: 'Plugins',

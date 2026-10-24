@@ -125,7 +125,8 @@ import { WorkspacePaneBindingUnavailable } from './WorkspacePaneBindingUnavailab
  * whose action navigates to the layout (`setLayout`). Two of those are
  * refused by design and the rest by scope:
  *
- * - `coding` is a whole `WorkspacePaneHost` (`BuiltinCodingLayoutHost`)
+ * - `stack` (built-in Coding, or any layout declaring `presentation:
+ *   'stack'`) is a whole `WorkspacePaneHost` (`LayoutStackHost`)
  *   whose storage key, `?pane=` scope and DOM ids derive from
  *   `(projectId, layoutId)`; a docked copy would share the main region's
  *   persisted document and duplicate element ids.
@@ -314,8 +315,8 @@ function mainOnlyReason(
   kind: ReturnType<typeof resolveProjectLayoutRendererKind>,
 ): string {
   switch (kind) {
-    case 'coding':
-      return 'A Coding layout is a pane host of its own; a docked copy would share the main region’s saved panes.';
+    case 'stack':
+      return 'This layout is a pane host of its own; a docked copy would share the main region’s saved panes.';
     case 'chat':
       return 'A Chat layout takes the whole viewport, including the region this tab is in.';
     default:
