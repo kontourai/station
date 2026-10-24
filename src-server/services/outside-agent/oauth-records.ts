@@ -11,7 +11,7 @@ export const ACCESS_TTL = 60 * MINUTE;
 const timestamp = z.number().int().nonnegative();
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const scope = z.enum(['station-control:read', 'station-control:full']);
-export const projectScopeSchema = z.discriminatedUnion('kind', [
+const projectScopeSchema = z.discriminatedUnion('kind', [
   z
     .object({ kind: z.literal('project'), projectId: z.string().min(1) })
     .strict(),
