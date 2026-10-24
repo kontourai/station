@@ -3,9 +3,11 @@
 An operator passkey lets you sign in as this Station's operator from a paired
 browser without pasting the operator credential. Enrollment requires confirmation
 on the host. Signing in grants **reads only**: paired devices and the operator's
-own passkey and current-session metadata. Device-access changes still require
-the existing host or separately granted device-administration channel; per-action
-passkey step-up is S4 of [#3257](https://github.com/kontourai/station/issues/3257).
+own passkey and current-session metadata. A device-access change requires a
+fresh passkey confirmation on the separate consent origin for that exact action
+([#3257 S4](https://github.com/kontourai/station/issues/3257)). There is no
+step-up window. The host and separately granted device-administration channels
+remain independent.
 
 ## Before you start
 
@@ -69,9 +71,9 @@ passkey step-up is S4 of [#3257](https://github.com/kontourai/station/issues/325
    Choose **Sign in with passkey** and complete user verification (biometric
    or PIN). A passkey prompt on the app origin is never part of this flow.
 3. Return to Paired devices. Its next refresh loads the inventory and shows
-   the session's absolute expiry. Access-change controls are disabled for
-   this read-only operator session. The pasted-credential field stays until
-   S4; the session does not authorize changes through that field.
+   the session's absolute expiry. Choose **Change access**, **Revoke** or
+   **Remove record** to request a fresh passkey confirmation. The panel has no
+   operator-credential paste field.
 4. Choose **Sign out**, then confirm on the consent-origin page to end the
    session. Closing the browser window alone does not sign out.
 
@@ -80,7 +82,7 @@ SameSite=Strict cookie with Path=/ and no Domain. Cookies are scoped by hostname
 not port: the same-host app origin receives it too. While signed in, app-origin
 plugin code can read the device inventory and the operator's passkey/session
 metadata. It cannot run a passkey ceremony or mutate with operator-session
-authority. Do not treat HttpOnly as isolation from same-origin code using the
+authority directly: a write only requests a transaction and cannot approve it. Do not treat HttpOnly as isolation from same-origin code using the
 session to make allowed requests.
 
 The server enforces **15 minutes without operator activity** and
@@ -90,11 +92,37 @@ it. Expiry requires a new passkey assertion.
 A different paired-device cookie cannot use the session. Revoking the bound
 device or the signing passkey, resetting the environment, or rotating the
 operator credential makes the session unusable, including after a restart.
-Rotation keeps the enrolled passkeys.
+Rotation keeps the enrolled passkeys. Remote revoke-all is not implemented
+(follow-up); both `DELETE /api/operator/session` and
+`DELETE /api/operator/sessions` remain refused. Use the consent-origin sign-out
+for this browser, or the host to revoke bound Devices or rotate the credential.
 
 Hosted tenant registries disable operator passkey routes. Stations with no
 configured HTTPS consent origin, or reachable only by IP, have no remote sign-in;
 the host channel remains available with no identity provider or passkey setup.
+
+## Change device access from the browser
+
+1. Sign in as operator. Choose **Change access**, select permissions, and choose
+   **Apply**. Revoking a device or removing its revoked record uses the same flow.
+2. The panel opens a separate consent-origin review. If the browser blocks the
+   new window, choose **Review access change** in the panel. Review the Device
+   name and ID and the before/after access. Granting full access shows a warning.
+3. Choose **Confirm with passkey** and complete biometric or PIN verification.
+   One assertion applies one action. It cannot approve another transaction.
+4. Return to the panel. It polls without extending the session and shows the
+   updated Device and any full-access reset result. A review expires after five
+   minutes. Cancelling the passkey prompt or closing the review before confirming applies nothing;
+   the pending request expires. A changed Device scope, expired session, revoked
+   Device or revoked passkey refuses the commit. Open a new request after
+   reviewing the current state; do not blindly repeat an indeterminate write.
+
+Group changes and operator-managed personal-token actions also require per-action
+step-up. A newly minted token's secret appears **once**, in the consent-origin
+commit response and review page. The transaction's later status reads contain
+only token metadata. Copy the secret then; a lost response requires revoking
+that token and minting another. Another operator session cannot read the action
+or retrieve its secret. See the [target contracts](../design/operator-device-access.md#31-components).
 
 ## Manage passkeys on the host
 
@@ -107,8 +135,8 @@ station environment operator passkeys revoke <id>     # revoke a passkey by the 
 
 These commands run only against a Station on this machine, the same as
 `station environment access approve`. Revoking from the host needs no passkey.
-Revoking a passkey remotely, with a step-up from a different passkey, comes
-later.
+The remote passkey-revocation API requires a fresh step-up from a **different**
+active passkey. The host command remains the recovery path when none is available.
 
 Passkeys are kept in `authentication/operator-passkeys.sqlite` under the
 Station home. The file is created when the first enrollment begins; a Station

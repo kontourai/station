@@ -564,37 +564,77 @@ describe('PairedDevicesPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
 
     const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toContain(
-      'requires this Station’s operator credential',
-    );
+    expect(alert.textContent).toContain('Sign in as operator');
   });
 
-  test('uses an explicitly entered operator credential only for device changes', async () => {
-    const { calls } = stubHost({
-      devices: [device({ id: 'abc', name: 'Pixel 9' })],
-    });
-    renderPanel({
-      allowManualCredentials: true,
-      getCredential: () => undefined,
-    });
-
-    fireEvent.change(
-      await screen.findByLabelText('Operator credential for device changes'),
-      { target: { value: 'operator-credential' } },
+  test('a cookie session offers the consent review, polls once, and applies the result without a paste field', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    const writes: string[] = [];
+    let applied = false;
+    const request = vi.fn(
+      async (input: URL | RequestInfo, init?: RequestInit) => {
+        const url = String(input);
+        expect(new Headers(init?.headers).has('Authorization')).toBe(false);
+        if (init?.method === 'DELETE') {
+          writes.push(url);
+          return new Response(
+            JSON.stringify({
+              status: 'step_up_required',
+              transaction: {
+                id: 'transaction-1',
+                reviewUrl:
+                  'https://station.example.ts.net:8443/consent/transaction-1',
+                expiresAt: Date.now() + 300_000,
+              },
+            }),
+            { status: 202 },
+          );
+        }
+        if (url.endsWith('/device-access-transactions/transaction-1')) {
+          expect(
+            new Headers(init?.headers).get('X-Station-Background-Refresh'),
+          ).toBe('1');
+          applied = true;
+          return new Response(
+            JSON.stringify({
+              status: 'approved',
+              effect: device({ revokedAt: Date.now() }),
+            }),
+          );
+        }
+        return new Response(
+          JSON.stringify({
+            devices: [device({ revokedAt: applied ? Date.now() : null })],
+            operatorSession: { expiresAt: Date.now() + HOUR },
+          }),
+        );
+      },
     );
+    await act(async () => {
+      renderPanel({ request, getCredential: () => undefined });
+    });
+    expect(
+      screen.queryByLabelText('Operator credential for device changes'),
+    ).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Revoke Pixel 9' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
-
-    await waitFor(() => {
-      expect(calls).toContainEqual({
-        method: 'DELETE',
-        url: 'https://station.example.ts.net/api/pairing/devices/abc',
-        auth: 'Bearer operator-credential',
-      });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     });
-    expect(calls.filter((call) => call.method === 'GET')).toEqual(
-      expect.arrayContaining([expect.objectContaining({ auth: null })]),
-    );
+    expect(
+      screen
+        .getByRole('link', { name: 'Review access change' })
+        .getAttribute('href'),
+    ).toContain(':8443/consent/transaction-1');
+    expect(applied).toBe(false);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(15_000);
+    });
+    expect(writes).toHaveLength(1);
+    expect(applied).toBe(true);
+    expect(
+      screen.queryByRole('link', { name: 'Review access change' }),
+    ).toBeNull();
   });
 
   test('does not render or use a manual credential when the native host owns it', async () => {
@@ -607,9 +647,7 @@ describe('PairedDevicesPanel', () => {
     });
 
     expect(
-      await screen.findByText(
-        /Station Desktop can list devices but does not hold the operator credential/,
-      ),
+      await screen.findByText(/Station Desktop can list devices/),
     ).toBeTruthy();
     expect(
       screen.queryByLabelText('Operator credential for device changes'),

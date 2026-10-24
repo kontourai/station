@@ -1,4 +1,4 @@
-/** S3 browser evidence: real pairing routes, private registry, consent listener,
+/** S3 browser evidence: real pairing routes, private registry, consent listener and per-action step-up,
  * HTTP admission and Chromium WebAuthn. The surrounding shell mounts the actual
  * PairedDevicesPanel, keeping this journey independent of provider availability. */
 import { type ChildProcess, execFile, spawn } from 'node:child_process';
@@ -19,10 +19,10 @@ import { test } from './helpers/fixture-audit';
 
 const run = promisify(execFile);
 
-test('paired browser signs in on consent origin and gains inventory reads only', async ({
+test('paired browser signs in and changes access only after consent-origin passkey step-up', async ({
   browser,
 }, testInfo) => {
-  test.setTimeout(180_000);
+  test.setTimeout(300_000);
   const home = mkdtempSync(join(tmpdir(), 'station-operator-s3-browser-'));
   let fixture: ChildProcess | undefined;
   const contexts: BrowserContext[] = [];
@@ -195,16 +195,19 @@ test('paired browser signs in on consent origin and gains inventory reads only',
     const ceremony = await first.context.newPage();
     const cdp = await first.context.newCDPSession(ceremony);
     await cdp.send('WebAuthn.enable');
-    await cdp.send('WebAuthn.addVirtualAuthenticator', {
-      options: {
-        protocol: 'ctap2',
-        transport: 'internal',
-        hasResidentKey: true,
-        hasUserVerification: true,
-        isUserVerified: true,
-        automaticPresenceSimulation: true,
+    const { authenticatorId } = await cdp.send(
+      'WebAuthn.addVirtualAuthenticator',
+      {
+        options: {
+          protocol: 'ctap2',
+          transport: 'internal',
+          hasResidentKey: true,
+          hasUserVerification: true,
+          isUserVerified: true,
+          automaticPresenceSimulation: true,
+        },
       },
-    });
+    );
     await ceremony.goto(`${consentOrigin}/operator/passkeys/enroll`);
     const opened = ceremony.waitForResponse(
       (response) =>
@@ -265,7 +268,7 @@ test('paired browser signs in on consent origin and gains inventory reads only',
     );
     await expect(
       page.getByRole('button', { name: 'Revoke Second browser', exact: true }),
-    ).toBeDisabled();
+    ).toBeEnabled();
     await page
       .getByRole('heading', { name: 'Paired devices', exact: true })
       .scrollIntoViewIfNeeded();
@@ -274,21 +277,168 @@ test('paired browser signs in on consent origin and gains inventory reads only',
       fullPage: true,
     });
     retainCapture('paired-after-sign-in.png');
-    const mutation = await page.evaluate(async (id) => {
-      const response = await fetch(`/api/pairing/devices/${id}`, {
-        method: 'DELETE',
+    async function hostInventory() {
+      const result = await run(
+        process.execPath,
+        [
+          '--import',
+          'tsx',
+          resolve('scripts/station-cli.ts'),
+          'environment',
+          'access',
+          'devices',
+          '--json',
+          `--api-base=${cliOrigin}`,
+        ],
+        {
+          cwd: process.cwd(),
+          env: {
+            ...process.env,
+            STATION_HOME: home,
+            STATION_INSTANCE: 'operator-s3-browser',
+          },
+          windowsHide: true,
+          timeout: 60_000,
+          maxBuffer: 1024 * 1024,
+        },
+      );
+      const inventory = JSON.parse(result.stdout) as {
+        devices: { id: string; scopes: string[] }[];
+      };
+      expect(Array.isArray(inventory.devices)).toBe(true);
+      return {
+        devices: inventory.devices.map((device) => ({
+          id: device.id,
+          scope: device.scopes.join(' '),
+        })),
+      };
+    }
+    await page
+      .getByRole('button', {
+        name: 'Change access for Second browser',
+        exact: true,
+      })
+      .click();
+    await page.getByRole('checkbox', { name: /Skip approval prompts/ }).check();
+    const popup = first.context.waitForEvent('page');
+    await page.getByRole('button', { name: 'Apply', exact: true }).click();
+    const review = await popup;
+    await review.waitForURL(`${consentOrigin}/consent/**`);
+    const stepCdp = await first.context.newCDPSession(review);
+    await stepCdp.send('WebAuthn.enable');
+    const { authenticatorId: stepId } = await stepCdp.send(
+      'WebAuthn.addVirtualAuthenticator',
+      {
+        options: {
+          protocol: 'ctap2',
+          transport: 'internal',
+          hasResidentKey: true,
+          hasUserVerification: true,
+          isUserVerified: true,
+          automaticPresenceSimulation: true,
+        },
+      },
+    );
+    const keys = await cdp.send('WebAuthn.getCredentials', { authenticatorId });
+    for (const credential of keys.credentials)
+      await stepCdp.send('WebAuthn.addCredential', {
+        authenticatorId: stepId,
+        credential,
       });
-      return { status: response.status, body: await response.json() };
-    }, second.device.id);
-    expect(mutation).toMatchObject({
-      status: 403,
-      body: { error: { code: 'operator_session_required' } },
+    await expect(
+      review.getByRole('heading', { name: 'Review access change' }),
+    ).toBeVisible();
+    await expect(
+      review.getByText(/Change access for “Second browser”/),
+    ).toBeVisible();
+    await expect(review.getByText(/Full access allows/)).toBeVisible();
+    await review.screenshot({
+      path: testInfo.outputPath('consent-step-up-review.png'),
+      fullPage: true,
     });
+    retainCapture('consent-step-up-review.png');
+    const before = await hostInventory();
     expect(
-      (await host('GET', '/api/pairing/devices')).devices.find(
+      before.devices.find(
         (device: { id: string }) => device.id === second.device.id,
-      ).revokedAt,
-    ).toBeNull();
+      )!.scope,
+    ).not.toContain('approval:full-access');
+    await review.getByRole('button', { name: 'Confirm with passkey' }).click();
+    await expect(review.getByRole('status')).toContainText('Applied.');
+    const changed = await hostInventory();
+    expect(
+      changed.devices.find(
+        (device: { id: string }) => device.id === second.device.id,
+      )!.scope,
+    ).toContain('approval:full-access');
+    await expect(
+      page.getByRole('link', { name: 'Review access change' }),
+    ).toHaveCount(0, { timeout: 30_000 });
+    await page.screenshot({
+      path: testInfo.outputPath('paired-after-step-up.png'),
+      fullPage: true,
+    });
+    retainCapture('paired-after-step-up.png');
+
+    // The same paired browser cannot make a second change without new UV.
+    await page
+      .getByRole('button', {
+        name: 'Change access for Second browser',
+        exact: true,
+      })
+      .click();
+    await page
+      .getByRole('checkbox', { name: /Skip approval prompts/ })
+      .uncheck();
+    const secondPopup = first.context.waitForEvent('page');
+    await page.getByRole('button', { name: 'Apply', exact: true }).click();
+    const refusedReview = await secondPopup;
+    await refusedReview.waitForURL(`${consentOrigin}/consent/**`);
+    const refusedCdp = await first.context.newCDPSession(refusedReview);
+    await refusedCdp.send('WebAuthn.enable');
+    const { authenticatorId: refusedId } = await refusedCdp.send(
+      'WebAuthn.addVirtualAuthenticator',
+      {
+        options: {
+          protocol: 'ctap2',
+          transport: 'internal',
+          hasResidentKey: true,
+          hasUserVerification: true,
+          isUserVerified: false,
+          automaticPresenceSimulation: true,
+        },
+      },
+    );
+    const updatedKeys = await stepCdp.send('WebAuthn.getCredentials', {
+      authenticatorId: stepId,
+    });
+    for (const credential of updatedKeys.credentials)
+      await refusedCdp.send('WebAuthn.addCredential', {
+        authenticatorId: refusedId,
+        credential,
+      });
+    await refusedCdp.send('WebAuthn.setUserVerified', {
+      authenticatorId: refusedId,
+      isUserVerified: false,
+    });
+    await refusedReview
+      .getByRole('button', { name: 'Confirm with passkey' })
+      .click();
+    await expect(refusedReview.getByRole('status')).toContainText(
+      /refused|cancelled|not allowed|timed out/i,
+      { timeout: 140_000 },
+    );
+    const unchanged = await hostInventory();
+    expect(
+      unchanged.devices.find(
+        (device: { id: string }) => device.id === second.device.id,
+      )!.scope,
+    ).toBe(
+      changed.devices.find(
+        (device: { id: string }) => device.id === second.device.id,
+      )!.scope,
+    );
+
     const operatorCookie = (await first.context.cookies()).find(
       (cookie) => cookie.name === '__Host-station-operator',
     );
@@ -302,6 +452,17 @@ test('paired browser signs in on consent origin and gains inventory reads only',
     expect(await refused.json()).toMatchObject({
       error: { code: 'operator_session_required' },
     });
+    const refusedMutation = await second.context.request.post(
+      `${appOrigin}/api/pairing/devices/${first.device.id}/scope`,
+      {
+        headers: { Origin: appOrigin },
+        data: {
+          scope: ['orchestration:read'],
+          expectedScope: first.device.scope,
+        },
+      },
+    );
+    expect(refusedMutation.status()).toBe(403);
     const unprivileged = await second.context.newPage();
     await unprivileged.goto(appOrigin);
     await expect(

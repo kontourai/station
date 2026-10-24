@@ -68,7 +68,17 @@ export function PairedDevicesPanel({
   // #1796 (G3): what the last access change or revoke did to full access.
   const [revocation, setRevocation] =
     useState<FullAccessRevocationOutcome | null>(null);
-  const [operatorCredential, setOperatorCredential] = useState('');
+  const [reviewUrl, setReviewUrl] = useState<string | null>(null);
+  const pendingTransactions = useRef(
+    new Map<
+      string,
+      {
+        expiresAt: number;
+        resolve: (effect: unknown) => void;
+        reject: (error: Error) => void;
+      }
+    >(),
+  );
   const [busyIds, setBusyIds] = useState<ReadonlySet<string>>(() => new Set());
   const [now, setNow] = useState(() => Date.now());
   const busyIdsRef = useRef(new Set<string>());
@@ -89,30 +99,49 @@ export function PairedDevicesPanel({
     [allowManualCredentials, apiBase, getCredential, request],
   );
 
-  // Device changes require an explicit access:devices grant or the operator.
-  // Keep an operator credential entered for this one management action in
-  // component state only; it is neither persisted nor used for inventory reads.
   const deviceAdminFetch = useCallback(
-    (path: string, init: RequestInit = {}) => {
-      const credential = allowManualCredentials
-        ? operatorCredential.trim() || getCredential()
-        : undefined;
-      return request(new URL(path, apiBase), {
-        ...init,
-        credentials: 'include',
-        headers: {
-          ...(credential ? { Authorization: `Bearer ${credential}` } : {}),
-          ...init.headers,
-        },
+    async (path: string, init: RequestInit = {}) => {
+      // Open during the action's click, before the request yields user activation.
+      const review =
+        operatorSession && path.startsWith('/api/pairing/devices/')
+          ? window.open('about:blank', '_blank')
+          : null;
+      const response = await authenticatedFetch(path, init);
+      if (response.status !== 202) {
+        review?.close();
+        return response;
+      }
+      const body = await response.json();
+      const transaction = body.transaction;
+      const url = new URL(transaction.reviewUrl);
+      if (
+        body.status !== 'step_up_required' ||
+        url.protocol !== 'https:' ||
+        url.origin === new URL(apiBase).origin ||
+        url.hostname !== new URL(apiBase).hostname ||
+        typeof transaction.id !== 'string' ||
+        !Number.isFinite(transaction.expiresAt)
+      ) {
+        review?.close();
+        throw new Error('Invalid step-up response');
+      }
+      setReviewUrl(url.href);
+      const completion = new Promise<unknown>((resolve, reject) => {
+        pendingTransactions.current.set(transaction.id, {
+          expiresAt: transaction.expiresAt,
+          resolve,
+          reject,
+        });
+      });
+      if (review) review.location.replace(url.href);
+      const effect = await completion;
+      setReviewUrl(null);
+      return new Response(JSON.stringify(effect), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
       });
     },
-    [
-      allowManualCredentials,
-      apiBase,
-      getCredential,
-      operatorCredential,
-      request,
-    ],
+    [apiBase, authenticatedFetch, operatorSession],
   );
 
   // #2898: "Stop now" on a session the revocation left running unconfined,
@@ -136,6 +165,42 @@ export function PairedDevicesPanel({
   const refresh = useCallback(
     async (background = false) => {
       const current = ++generation.current;
+      for (const [id, pending] of pendingTransactions.current) {
+        try {
+          const response = await authenticatedFetch(
+            `/api/pairing/device-access-transactions/${encodeURIComponent(id)}`,
+            {
+              headers: { 'X-Station-Background-Refresh': '1' },
+            },
+          );
+          if (!response.ok)
+            throw new Error(
+              'The step-up status is unavailable. Check device access before starting another request.',
+            );
+          const transaction = await response.json();
+          if (transaction.status === 'approved') {
+            pendingTransactions.current.delete(id);
+            pending.resolve(transaction.effect);
+          } else if (
+            transaction.status !== 'pending' ||
+            Date.now() >= pending.expiresAt
+          ) {
+            pendingTransactions.current.delete(id);
+            pending.reject(
+              new Error(
+                'The review was cancelled or expired. Nothing was applied.',
+              ),
+            );
+          }
+        } catch (error) {
+          pendingTransactions.current.delete(id);
+          pending.reject(
+            error instanceof Error
+              ? error
+              : new Error('Review status unavailable'),
+          );
+        }
+      }
       try {
         const response = await authenticatedFetch('/api/pairing/devices', {
           headers: background ? { 'X-Station-Background-Refresh': '1' } : {},
@@ -197,6 +262,13 @@ export function PairedDevicesPanel({
     return () => {
       clearInterval(timer);
       generation.current += 1;
+      for (const pending of pendingTransactions.current.values())
+        pending.reject(
+          new Error(
+            'Panel closed; check access before starting another request.',
+          ),
+        );
+      pendingTransactions.current.clear();
     };
   }, [refresh]);
 
@@ -228,7 +300,7 @@ export function PairedDevicesPanel({
           setActionError(
             response.status === 401
               ? allowManualCredentials
-                ? 'Changing a device’s access requires this Station’s operator credential. Enter it below and try again.'
+                ? 'Sign in as operator to change device access with a passkey.'
                 : hostCliRefusal(
                     hostAppName,
                     'change a device’s access',
@@ -249,9 +321,11 @@ export function PairedDevicesPanel({
           ),
         );
         await refresh();
-      } catch {
+      } catch (error) {
         setActionError(
-          `This Station could not change access for “${device.name}”. Check the connection — its current access is unchanged.`,
+          error instanceof Error
+            ? error.message
+            : `Check device access before starting another request for “${device.name}”.`,
         );
       } finally {
         busyIdsRef.current.delete(device.id);
@@ -290,7 +364,7 @@ export function PairedDevicesPanel({
             setActionError(
               response.status === 401
                 ? allowManualCredentials
-                  ? 'Revoking a device requires this Station’s operator credential. Enter it below and try again.'
+                  ? 'Sign in as operator to revoke this device with a passkey.'
                   : hostCliRefusal(hostAppName, 'revoke a device', 'revoke')
                 : response.status === 403
                   ? 'Revoking devices requires Manage device access and a principal allowed by this Station’s account policy.'
@@ -305,9 +379,11 @@ export function PairedDevicesPanel({
             ),
           );
           await refresh();
-        } catch {
+        } catch (error) {
           setActionError(
-            `This Station could not revoke “${device.name}”. Check the connection, then try again.`,
+            error instanceof Error
+              ? error.message
+              : `Check whether “${device.name}” was revoked before trying again.`,
           );
         }
       });
@@ -333,7 +409,7 @@ export function PairedDevicesPanel({
             setActionError(
               response.status === 401
                 ? allowManualCredentials
-                  ? 'Removing a revoked device record requires this Station’s operator credential. Enter it above and try again.'
+                  ? 'Sign in as operator to remove this record with a passkey.'
                   : hostCliRefusal(
                       hostAppName,
                       'remove a device record',
@@ -346,9 +422,11 @@ export function PairedDevicesPanel({
             return;
           }
           await refresh();
-        } catch {
+        } catch (error) {
           setActionError(
-            `This Station could not remove the revoked record for “${device.name}”. Check the connection, then try again.`,
+            error instanceof Error
+              ? error.message
+              : `Check whether the record for “${device.name}” was removed before trying again.`,
           );
         }
       });
@@ -382,7 +460,7 @@ export function PairedDevicesPanel({
               >
                 Sign out
               </a>
-              . Device changes still require the host.
+              . Each access change requires a separate passkey confirmation.
             </>
           ) : (
             <a href={signInUrl} target="_blank" rel="noopener noreferrer">
@@ -392,30 +470,19 @@ export function PairedDevicesPanel({
         </p>
       )}
 
-      {allowManualCredentials ? (
-        <label className="station-connect-edit__label">
-          Operator credential for device changes
-          <span className="station-connect-edit__hint">
-            Optional when this device has Manage device access. Otherwise the
-            operator credential authorizes access changes. It is kept for this
-            open panel and is never saved as a paired-device credential.
-          </span>
-          <input
-            type="password"
-            value={operatorCredential}
-            onChange={(event) => setOperatorCredential(event.target.value)}
-            placeholder="Paste this Station’s operator credential"
-            autoComplete="off"
-            aria-label="Operator credential for device changes"
-            className="station-connect-input"
-          />
-        </label>
-      ) : (
+      {!allowManualCredentials && (
         <p className="station-connect-edit__hint">
-          {hostAppName ?? 'This native host'} can list devices but does not hold
-          the operator credential. An explicit Manage device access grant allows
-          changes here; otherwise use <code>station environment access</code> on
-          the host.
+          {hostAppName ?? 'This native host'} can list devices. An explicit
+          Manage device access grant allows changes here; otherwise use{' '}
+          <code>station environment access</code> on the host.
+        </p>
+      )}
+      {reviewUrl && (
+        <p role="status">
+          Waiting for your passkey confirmation.{' '}
+          <a href={reviewUrl} target="_blank" rel="noreferrer">
+            Review access change
+          </a>
         </p>
       )}
 
@@ -437,7 +504,6 @@ export function PairedDevicesPanel({
           }
           onRemoveRevoked={(device) => void removeRevoked(device)}
           busyIds={busyIds}
-          readOnly={operatorSession !== null}
         />
       )}
 
