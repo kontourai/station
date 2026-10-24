@@ -44,7 +44,13 @@
 
     "packages/agent-runtime/src/__tests__/r1-retention.test.ts",
 
-    "packages/agent-runtime/src/__tests__/r4-replay.test.ts"
+    "packages/agent-runtime/src/__tests__/r4-replay.test.ts",
+
+    "src-server/services/orchestration/station-report-group-runtime.ts",
+
+    "src-server/services/orchestration/station-report-retained-turn.ts",
+
+    "src-server/services/orchestration/station-report-group-custody.ts"
   ],
 
   "checks": [
