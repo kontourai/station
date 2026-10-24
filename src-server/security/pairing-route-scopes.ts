@@ -1115,6 +1115,7 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       exact: true,
       scope: PAIRING_SCOPE_ACCESS_MANAGE,
       origin: 'explicit',
+      personalTokens: 'refused',
     }),
   ),
   ...[
@@ -1134,6 +1135,7 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
       exact: true,
       scope: PAIRING_SCOPE_ACCESS_MANAGE,
       origin: 'explicit',
+      personalTokens: 'refused',
     }),
   ),
   {

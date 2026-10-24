@@ -346,7 +346,7 @@ test('comparison codes cannot select a request or enter route decisions; unknown
   expect(f.service.store.request(flow.request.id)?.state).toBe('pending');
 });
 
-test('deny, stable registration, grant change/revoke and both exact-origin policies execute through host CLI and routes', async () => {
+test('deny, stable registration, grant revoke and both exact-origin policies execute through host CLI and routes', async () => {
   const f = fixture();
   const denied = f.start();
   await f.cli(['deny', denied.request.id]);
@@ -371,28 +371,6 @@ test('deny, stable registration, grant change/revoke and both exact-origin polic
     'https://browser.example',
   );
   await f.cli(['cors-origins', 'remove', 'https://browser.example']);
-  const flow = f.start();
-  await f.cli([
-    'approve',
-    flow.request.id,
-    '--project=alpha',
-    '--expires-in=2d',
-  ]);
-  const old = f.exchange(flow);
-  f.advance(60_000);
-  await f.cli(['change', old.grant.id, '--project=beta']);
-  expect(
-    f.service.store.grants().find((g) => g.id === old.grant.id)?.expiresAt,
-  ).toBe(old.grant.expiresAt);
-  expect(
-    f.service.store.access(old.accessToken, `${issuer}/mcp`),
-  ).toBeUndefined();
-  expect(
-    f.service.store.grants().find((g) => g.id === old.grant.id),
-  ).toMatchObject({
-    reason: 'changed',
-    selection: { projectScope: { projectId: 'project-b' } },
-  });
   const next = f.start();
   await f.cli(['approve', next.request.id, '--global', '--expires-in=1d']);
   const active = f.exchange(next);
@@ -452,6 +430,10 @@ test.each([
   'https://127.1',
   'https://2130706433',
   'https://0x7f000001',
+  'https://xn--a.com',
+  'https://xn--zz.com',
+  'https://example.com:0',
+  'https://com',
 ])('origin input %s cannot widen an allowlist', async (origin) => {
   const f = fixture();
   expect(
@@ -653,3 +635,129 @@ test('JSON review treats escaped quotes, braces and backslashes in untrusted lab
   ]);
   expect(output).toContain('registered');
 });
+
+test('host changes apply in place to existing access and refresh tokens with before/after audit and stale-state refusal', async () => {
+  const f = fixture();
+  const flow = f.start();
+  await f.cli(['approve', flow.request.id, '--global', '--expires-in=2d']);
+  const issued = f.exchange(flow);
+  const changePath = `/api/outside-agent/grants/${issued.grant.id}/change`;
+  const expected = (grant: typeof issued.grant) => ({
+    operation: 'change' as const,
+    grantId: grant.id,
+    expectedVersion: grant.version,
+    expectedDigest: f.service.store.grantDigest(grant),
+    project: { kind: 'project' as const, slug: 'alpha' },
+    accessLevel: 'read-only' as const,
+    expiresAt: f.now() + DAY,
+  });
+  const staleAction = expected(issued.grant);
+  const staleReview = f.service.review(staleAction, actor);
+  await f.cli([
+    'change',
+    issued.grant.id,
+    '--project=alpha',
+    '--expires-in=1d',
+  ]);
+  const narrow = f.service.store.access(issued.accessToken, `${issuer}/mcp`)!;
+  expect(narrow).toMatchObject({
+    id: issued.grant.id,
+    state: 'active',
+    reason: null,
+    version: 2,
+    familyId: issued.grant.familyId,
+    selection: { projectScope: { kind: 'project', projectId: 'project-a' } },
+    expiresAt: f.now() + DAY,
+  });
+  for (const action of [
+    staleAction,
+    { ...expected(narrow), expectedDigest: staleAction.expectedDigest },
+  ])
+    expect(
+      (
+        await f.send(changePath, {
+          action,
+          fingerprint: staleReview.fingerprint,
+          decisionId: randomBytes(32).toString('base64url'),
+        })
+      ).status,
+    ).toBe(409);
+  const missingProject = {
+    ...expected(narrow),
+    project: { kind: 'project', slug: 'deleted' },
+  };
+  expect(
+    (await f.send('/api/outside-agent/host/review', { action: missingProject }))
+      .status,
+  ).toBe(409);
+  // Project/global is host-selected; OAuth requested scopes bound the permitted access level.
+  const beyondRequested = { ...expected(narrow), accessLevel: 'full' };
+  expect(
+    (
+      await f.send('/api/outside-agent/host/review', {
+        action: beyondRequested,
+      })
+    ).status,
+  ).toBe(400);
+  expect(f.service.store.grants()[0]).toEqual(narrow);
+  await f.cli(['change', issued.grant.id, '--global', '--expires-in=2d']);
+  const wide = f.service.store.access(issued.accessToken, `${issuer}/mcp`)!;
+  expect(wide).toMatchObject({
+    id: issued.grant.id,
+    state: 'active',
+    reason: null,
+    version: 3,
+    familyId: issued.grant.familyId,
+    selection: { projectScope: { kind: 'global' } },
+    expiresAt: f.now() + 2 * DAY,
+  });
+  const refreshed = f.service.store.rotate({
+    refreshToken: issued.refreshToken,
+    clientId: issued.grant.clientId,
+    resource: `${issuer}/mcp`,
+  });
+  expect(
+    f.service.store.access(refreshed.accessToken, `${issuer}/mcp`),
+  ).toEqual(wide);
+  expect(
+    f.service.store
+      .outbox()
+      .filter((event) => event.kind === 'changed')
+      .sort((a, b) => a.version! - b.version!),
+  ).toMatchObject([
+    {
+      grantId: wide.id,
+      before: { version: 1, selection: issued.grant.selection },
+      after: { version: 2, selection: narrow.selection },
+    },
+    {
+      grantId: wide.id,
+      before: { version: 2, selection: narrow.selection },
+      after: { version: 3, selection: wide.selection },
+    },
+  ]);
+  await f.cli(['revoke', wide.id]);
+  const terminal = f.service.store.grants()[0]!;
+  expect(terminal).toMatchObject({
+    state: 'revoked',
+    version: 4,
+    selection: wide.selection,
+  });
+  expect(
+    (
+      await f.send('/api/outside-agent/host/review', {
+        action: expected(terminal),
+      })
+    ).status,
+  ).toBe(409);
+  expect(f.service.store.grants()[0]).toEqual(terminal);
+});
+
+test.each(['https://127.0.0.1', 'https://[::1]:43197'])(
+  'exact IP origin %s is allowed without fetching it',
+  async (origin) => {
+    const f = fixture();
+    await f.cli(['cors-origins', 'add', origin]);
+    expect(f.service.store.policy('cors').origins).toEqual([origin]);
+  },
+);

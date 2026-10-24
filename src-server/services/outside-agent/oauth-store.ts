@@ -128,7 +128,11 @@ export class OutsideAgentGrantStore {
     CREATE INDEX IF NOT EXISTS outside_oauth_expiry ON outside_oauth_records(kind, json_extract(data, '$.expiresAt'));
     CREATE INDEX IF NOT EXISTS outside_oauth_retention ON outside_oauth_records(kind, json_extract(data, '$.retainUntil'));
     CREATE UNIQUE INDEX IF NOT EXISTS outside_oauth_approval_decision ON outside_oauth_records(json_extract(data, '$.decisionId')) WHERE kind='event' AND json_extract(data, '$.kind')='approved';
-    CREATE TABLE IF NOT EXISTS outside_oauth_binding (id INTEGER PRIMARY KEY CHECK(id=1), station TEXT NOT NULL, issuer TEXT NOT NULL);`);
+    CREATE TABLE IF NOT EXISTS outside_oauth_binding (id INTEGER PRIMARY KEY CHECK(id=1), station TEXT NOT NULL, issuer TEXT NOT NULL);
+    CREATE TRIGGER IF NOT EXISTS outside_oauth_terminal_immutable
+    BEFORE UPDATE ON outside_oauth_records
+    WHEN OLD.kind='grant' AND json_extract(OLD.data, '$.state')!='active' AND NEW.data!=OLD.data
+    BEGIN SELECT RAISE(ABORT, 'Outside OAuth terminal grant is immutable'); END;`);
     const check = db.prepare('PRAGMA quick_check').get();
     if (check?.quick_check !== 'ok')
       throw new Error('Outside OAuth storage corrupt');
@@ -264,6 +268,8 @@ export class OutsideAgentGrantStore {
       | 'grantId'
       | 'decisionId'
       | 'version'
+      | 'before'
+      | 'after'
       | 'reason'
       | 'actor'
       | 'projectScope'
@@ -880,7 +886,7 @@ export class OutsideAgentGrantStore {
       this.#terminal(grantId, 'revoked', 'revoked');
     });
   }
-  /** Private admission primitive; R4 supplies live authority and dispatch/stream guards. */
+  /** Returns live selection, including host changes, for existing tokens. R4 must re-admit dispatch/stream work against this version. */
   access(token: string, resource: string): Records['grant'] | undefined {
     return this.#write(() => {
       this.#sweep();
@@ -897,7 +903,7 @@ export class OutsideAgentGrantStore {
       const family = this.#get('family', access.familyId);
       return grant?.state === 'active' &&
         family?.state === 'active' &&
-        grant.version === access.version &&
+        access.version <= grant.version &&
         grant.familyId === family.id
         ? grant
         : undefined;
@@ -953,20 +959,43 @@ export class OutsideAgentGrantStore {
   change(
     grantId: string,
     expectedVersion: number,
+    expectedDigest: string,
     selection: GrantSelection,
   ): void {
     this.#write(() => {
       this.#sweep();
       const grant = this.#get('grant', grantId);
-      if (grant?.state !== 'active' || grant.version !== expectedVersion)
+      if (
+        grant?.state !== 'active' ||
+        grant.version !== expectedVersion ||
+        !equalHash(this.grantDigest(grant), expectedDigest)
+      )
         throw new OutsideOAuthRefusal('target_changed');
-      selectionSchema.parse(selection);
-      // Access changes terminate the existing family. A new login creates a new grant.
-      this.#terminal(grantId, 'revoked', 'changed');
-      this.#put('grant', grantId, {
-        ...this.#get('grant', grantId)!,
-        selection,
-        expiresAt: selection.expiresAt,
+      const next = selectionSchema.parse(selection);
+      if (
+        next.delegatingPrincipalId !== grant.selection.delegatingPrincipalId ||
+        !next.scopes.every((scope) => grant.requestedScopes.includes(scope)) ||
+        next.expiresAt < this.#now() + 5 * MINUTE ||
+        next.expiresAt > grant.createdAt + GRANT_TTL
+      )
+        throw new OutsideOAuthRefusal('target_changed');
+      this.#requireAuditCapacity();
+      const changed = {
+        ...grant,
+        version: grant.version + 1,
+        selection: next,
+        expiresAt: next.expiresAt,
+      };
+      this.#put('grant', grantId, changed);
+      this.#event('changed', {
+        actor: next.actor,
+        projectScope: next.projectScope,
+        accessLevel: next.accessLevel,
+        grantId,
+        clientId: grant.clientId,
+        version: changed.version,
+        before: { version: grant.version, selection: grant.selection },
+        after: { version: changed.version, selection: next },
       });
     });
   }

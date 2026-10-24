@@ -925,3 +925,34 @@ describe('private R1 store boundary', () => {
     expect(f.store.access(issued.accessToken, resource)?.state).toBe('active');
   });
 });
+
+test('terminal grant records are immutable even at the storage boundary', () => {
+  const f = fixture();
+  const issued = f.login();
+  f.store.revoke(issued.grant.id, issued.grant.version);
+  const terminal = f.store.grants()[0]!;
+  const db = new DatabaseSync(
+    join(f.home, 'authentication', 'outside-agent-oauth.sqlite'),
+  );
+  try {
+    expect(() =>
+      db
+        .prepare(
+          "UPDATE outside_oauth_records SET data=? WHERE kind='grant' AND id=?",
+        )
+        .run(
+          JSON.stringify({
+            ...terminal,
+            selection: {
+              ...terminal.selection,
+              projectScope: { kind: 'global' },
+            },
+          }),
+          terminal.id,
+        ),
+    ).toThrow('terminal grant is immutable');
+  } finally {
+    db.close();
+  }
+  expect(f.store.grants()[0]).toEqual(terminal);
+});

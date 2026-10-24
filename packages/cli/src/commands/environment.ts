@@ -1,7 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { hostname } from 'node:os';
-import { join } from 'node:path';
 import {
   decodeDevicePairingPayload,
   encodeDevicePairingPayload,
@@ -25,7 +23,6 @@ import {
   DEFAULT_PAIRING_SCOPE_PRESET,
   PAIRING_SCOPES,
   type PairingScope,
-  PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
   PUBLIC_STATION_PROOF_PATH,
   pairingScopePresetString,
   parsePairingScope,
@@ -67,6 +64,7 @@ import {
   assertOutsideClientsAvailable,
   runOutsideClientsCommand,
 } from './outside-clients.js';
+import { openOutsideHostChannel } from './outside-host-channel.js';
 import {
   collectPairingFlags,
   pairingBooleanFlag,
@@ -233,6 +231,7 @@ interface EnvironmentCommandDependencies {
    */
   createSshEnvironmentProfileStore?: SshEnvironmentProfileStoreFactory;
   projectHome: string;
+  credentialStore?: ProfileCredentialStore;
   request?: OperatorJsonRequest;
   stdout?: (value: string) => void;
   stderr?: (value: string) => void;
@@ -398,41 +397,13 @@ export async function runEnvironmentCommand(
           throw new Error(
             'Outside-client administration requires this Station’s explicit local home.',
           );
-        const secret = readFileSync(
-          join(home, 'runtime', 'local-grant.secret'),
-          'utf8',
-        ).trim();
-        const request = dependencies.request ?? requestBareJson;
-        const exchanged = await request(
-          local.apiBase,
-          PUBLIC_DEVICE_PAIRING_LOCAL_GRANT_PATH,
-          {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              secret,
-              deviceName: 'Outside-client host CLI',
-            }),
-          },
-        );
-        if (
-          !exchanged ||
-          typeof exchanged !== 'object' ||
-          !('credential' in exchanged) ||
-          typeof exchanged.credential !== 'string'
-        )
-          throw new Error('Station refused host-possession proof.');
-        return {
-          request: (path, init) =>
-            request(local.apiBase, path, {
-              ...init,
-              headers: {
-                ...init?.headers,
-                Authorization: `Bearer ${exchanged.credential}`,
-                'x-station-host-proof': secret,
-              },
-            }),
-        };
+        return openOutsideHostChannel({
+          home,
+          apiBase: local.apiBase,
+          request: dependencies.request ?? requestBareJson,
+          credentialStore:
+            dependencies.credentialStore ?? getProfileCredentialStore(),
+        });
       },
     });
     return;

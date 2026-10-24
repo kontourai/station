@@ -212,8 +212,12 @@ For both allowlists, canonicalize an origin before review, storage and compariso
 parse an absolute HTTPS origin with no userinfo, query, fragment or non-root
 path; convert IDN to validated ASCII punycode, lowercase the host, remove a
 single DNS trailing dot, and omit the default `:443` port. Reject malformed IDN,
-multiple trailing dots, opaque/`null` origins and ambiguous authorities. Show the
-canonical ASCII origin in review. Compare scheme/host/effective port exactly;
+multiple trailing dots, port 0, single-label DNS hosts, opaque/`null` origins
+and ambiguous authorities. Validate each `xn--` label by decoding it and
+round-tripping to the same ASCII label; an undecodable label is refused.
+**Decision:** canonical IPv4 and bracketed IPv6 literals remain accepted. Station
+never fetches these allowlist origins; entries grant exact origin permission only.
+Show the canonical ASCII origin in review. Compare scheme/host/effective port exactly;
 canonical equivalence never permits subdomains. This origin normalization does
 not normalize registered redirect URI bytes or relax the exact O Host check.
 
@@ -455,6 +459,18 @@ again, which needs a fresh operator approval (host CLI or passkey).**
 Proposed commands under `station environment outside-clients` are `list`,
 `approve <request-id> --project <slug> [--access read-only|full] [--expires-in 30d]`,
 `deny <request-id>`, `change <grant-id> …` and `revoke <grant-id>`.
+
+Host management has one 120/minute budget per host process. Only current
+host-proof holders reach it, so sharing that budget is acceptable: all holders
+already have the same host authority. It is not a distributed abuse limit.
+The [host CLI channel](../../packages/cli/src/commands/outside-host-channel.ts)
+uses a dedicated stable `clientInstanceId` per Station home so reminting supersedes
+its own previous credential, independently of the desktop. When an OS keyring
+is available it reuses that credential after the owner-secret eligibility route
+confirms it is still live, preserving the desktop's shared 5/minute local-grant
+mint budget. Without a keyring, it remints under the same stable identity and
+remains subject to that budget; no bearer is stored in an ordinary file.
+
 Global space needs an explicit `--global`; never infer it from an unknown slug.
 `redirect-origins list|add <https-origin>|remove <https-origin>` manages section
 2's redirect allowlist under H, with expected-revision checks;
@@ -1103,9 +1119,16 @@ Report that boundary honestly. Phase two must prove the ordering at the actual
 side-effect seam and across inherited work, not only at transport admission.
 
 Access/Project/expiry changes require step-up or host confirmation. Any change
-bumps the version, invalidates all existing codes/tokens/families/sessions and
-ends the client's access until a new login/approval. Never upgrade an old token
-silently. Each successful first code exchange produces one family and a new
+updates the active grant in place and bumps its version in one `BEGIN IMMEDIATE`,
+with expected version and current-selection digest checks and a before → after
+audit event. H may narrow or widen Project/level/expiry within the originally
+requested OAuth scopes and the 30-day absolute ceiling from grant creation;
+the selected Project must exist. Existing access and refresh tokens retain their
+family and immediately use the live selection. Token issuance versions are not
+a cached authority ceiling: admission reads the current grant on every request.
+R4 must re-admit dispatch, streams and continuation state against that live
+version and selection. A terminal grant is immutable and can never be changed
+back to active. Each successful first code exchange produces one family and a new
 active grant, atomically revoking any reviewed selected supersessions from section 4.1; repeat login is a new explicit
 approval. Revoked/expired grants remain visible as bounded history;
 removing history never reactivates them. No unreviewed client metadata change

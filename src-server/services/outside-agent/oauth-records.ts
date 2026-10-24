@@ -202,6 +202,7 @@ const eventSchema = z.object({
     'approved',
     'activated',
     'terminal',
+    'changed',
     'request-ended',
     'retired',
     'policy-changed',
@@ -213,6 +214,18 @@ const eventSchema = z.object({
   decisionId: z.string().optional(),
   version: z.number().optional(),
   reason: z.string().optional(),
+  before: z
+    .object({
+      version: z.number().int().positive(),
+      selection: selectionSchema,
+    })
+    .optional(),
+  after: z
+    .object({
+      version: z.number().int().positive(),
+      selection: selectionSchema,
+    })
+    .optional(),
   deliveredAt: timestamp.nullable(),
 });
 const quotaSchema = z.object({

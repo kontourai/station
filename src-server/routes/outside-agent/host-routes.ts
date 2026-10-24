@@ -31,6 +31,7 @@ export function registerOutsideAgentHostRoutes(
 ): void {
   const attempts = new WeakSet<Request>();
   const bodies = new WeakMap<Request, unknown>();
+  // Per-host-process budget: only current host-proof holders reach it; they share host authority.
   let windowStart = deps.service.now();
   let count = 0;
   app.use('/api/outside-agent/*', async (c, next) => {

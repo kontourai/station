@@ -56,6 +56,57 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'outside-host-grant-change',
+    test: 'src-server/routes/outside-agent/__tests__/host-routes.test.ts',
+    failure:
+      'host changes apply in place to existing access and refresh tokens with before/after audit and stale-state refusal',
+    files: [
+      {
+        path: 'src-server/services/outside-agent/oauth-store.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "this.#put('grant', grantId, changed);",
+            "this.#terminal(grantId, 'revoked', 'changed');\n      this.#put('grant', grantId, { ...this.#get('grant', grantId)!, selection: next, expiresAt: next.expiresAt });",
+          ),
+      },
+    ],
+  },
+  {
+    id: 'outside-host-channel-reuse',
+    test: 'src-server/runtime/__tests__/device-pairing-routes.test.ts',
+    failure:
+      'outside host CLI channels reuse live keyring credentials without growing devices or spending the desktop mint budget',
+    files: [
+      {
+        path: 'packages/cli/src/commands/outside-host-channel.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "const canCache = input.credentialStore.status(ref) !== 'unavailable';",
+            'const canCache = false;',
+          ),
+      },
+    ],
+  },
+  {
+    id: 'outside-host-channel-supersession',
+    test: 'src-server/runtime/__tests__/device-pairing-routes.test.ts',
+    failure:
+      'outside host CLI channels reuse live keyring credentials without growing devices or spending the desktop mint budget',
+    files: [
+      {
+        path: 'packages/cli/src/commands/outside-host-channel.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            "      deviceName: 'Outside-client host CLI',\n      clientInstanceId,",
+            "      deviceName: 'Outside-client host CLI',",
+          ),
+      },
+    ],
+  },
+  {
     id: 'outside-host-authority',
     test: 'src-server/routes/outside-agent/__tests__/host-routes.test.ts',
     failure:

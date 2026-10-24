@@ -1,3 +1,4 @@
+import { domainToASCII, domainToUnicode } from 'node:url';
 // UNWIRED(#4115): R2a shared decisions; isolated composition only until R6. R2b adds S4 adapters.
 import { z } from 'zod';
 import {
@@ -113,7 +114,8 @@ function canonicalOutsideOrigin(input: string) {
     url.password ||
     url.pathname !== '/' ||
     !url.hostname ||
-    url.hostname.endsWith('..')
+    url.hostname.endsWith('..') ||
+    url.port === '0'
   )
     throw new OutsideOAuthRefusal('invalid_request');
   const rawHost = input.match(
@@ -127,6 +129,12 @@ function canonicalOutsideOrigin(input: string) {
   url.hostname = url.hostname.replace(/\.$/, '');
   if (
     !url.hostname ||
+    (!url.hostname.startsWith('[') && !url.hostname.includes('.')) ||
+    url.hostname.split('.').some((label) => {
+      if (!label.startsWith('xn--')) return false;
+      const unicode = domainToUnicode(label);
+      return unicode === label || domainToASCII(unicode) !== label;
+    }) ||
     (!url.hostname.startsWith('[') &&
       url.hostname
         .split('.')
@@ -456,7 +464,7 @@ export class OutsideAgentManagementService {
       if (
         next &&
         (!next.scopes.every((scope) => grant.requestedScopes.includes(scope)) ||
-          next.expiresAt > grant.expiresAt)
+          next.expiresAt > grant.createdAt + GRANT_TTL)
       )
         return refuse();
       const target = {
@@ -492,10 +500,16 @@ export class OutsideAgentManagementService {
         warning: null,
         candidates: [],
         commit: () => {
-          if (next) this.store.change(grant.id, grant.version, next);
+          if (next)
+            this.store.change(
+              grant.id,
+              grant.version,
+              action.expectedDigest,
+              next,
+            );
           else this.store.revoke(grant.id, grant.version);
           return {
-            status: next ? 'changed-requires-login' : 'revoked',
+            status: next ? 'changed' : 'revoked',
             grantId: grant.id,
           };
         },
