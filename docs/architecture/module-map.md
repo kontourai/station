@@ -1952,12 +1952,13 @@ block historical reads or replay. Current operator authority is checked through
 awaits and again before HTTP release. Independent advisory and explicitly selected
 Flow-run topology share this custody. The source owner privately supplies the
 workspace, definition and actor; published Flow rounds own readiness, claims,
-joins and evaluation. The concurrent HTTP composition is not qualified: its
-controlled test still fails at the deadline, and installed Flow 5.2.2 and Flow
-Agents 9.5.1's Flow 5.2.0 dependency have different runtime bindings. Earlier
-probes found conflicting same-process lock registries; a timeout alone does not
-establish whether a provider call occurred. Published dependency alignment and
-installed-module/serving proof remain required. Same-session
+joins and evaluation. The concurrent HTTP composition remains unqualified.
+Earlier Flow Agents 9.5.1 and direct Flow 5.2.2 used different runtime bindings.
+Published Flow Agents 9.5.2 is now installed, and the actual Flow references pass
+its public same-realm assertion. The controlled HTTP test still reaches its
+deadline; profiling found repeated durability work, and the candidate consumer
+also needed distinct round checkpoints. Those controls do not establish live
+provider behavior or a successful group join. Same-session
 context continuation also remains open. The Ensemble inspector uses
 [scoped SDK query hooks](../../packages/sdk/src/query-domains/reportGroups.ts) for
 explicit metadata and raw-report reads; closing/revoking the view cancels reads.

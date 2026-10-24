@@ -959,7 +959,8 @@ caller cancellation; paid sync retains the server deadline. Finite report
 list/get/events/result reads retain the configured client deadline alongside
 SIGINT.
 These commands are candidate source, not qualified serving: the current published
-initial-sync policy and split Flow runtime still block the combined journey.
+initial-sync policy still blocks first release for opted-in sync groups. Runtime
+alignment is installed and identity-checked, but serving remains unqualified.
 Inspect `report-get` and retained sync/accounting state after an unknown response.
 
 `report-create` reads one regular UTF-8 JSON file of at most 256 KiB. Its fields

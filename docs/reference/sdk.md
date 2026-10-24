@@ -5689,8 +5689,9 @@ preserves explicitly supplied finite initial continuation limits and rejects
 limits without Flow or beyond aggregate attempt capacity. The returning-request sync and receipt-only finalization clients are implemented
 as a candidate surface, but the combined initial-report/returning-Session journey
 is not qualified: the current published Flow policy refuses initial release for
-an opted-in sync group. Upstream contract publication and compatible runtime
-adoption remain prerequisites. Renewal and retry serving remain open. Legacy
+an opted-in sync group. Initial-request contract publication/adoption remains a prerequisite. Published
+Flow Agents 9.5.2 is installed and the actual Flow runtime references pass its
+public assertion, but the controlled HTTP serving caller remains unqualified. Renewal and retry serving remain open. Legacy
 creates retain their single-attempt defaults, and changing limits on exact
 replay refuses.
 

@@ -1963,11 +1963,14 @@ private context observations allow 512 KiB. Neither allowance changes token,
 attempt or inference-micro reservations.
 
 
-This serving composition is not qualified. Its current end-to-end test fails
-before initial release because published Flow Agents 9.5.1 requires an ACK even
-before the first report creates its Session. The explicit upstream initial-request
-policy and public reservation identity contract must be published and adopted;
-the installed Flow module identity mismatch remains a separate prerequisite.
+This serving composition is not qualified. The installed Flow Agents 9.5.2
+still requires an ACK before an opted-in sync group's first report creates its
+Session. The explicit initial-request policy and public reservation identity
+contract must be published and adopted. Runtime alignment is now installed:
+Station's actual Flow references pass the public same-realm assertion. That
+identity check does not establish serving; the controlled Flow HTTP caller still
+reaches its deadline, and its fresh-round checkpoint repair remains under
+verification.
 Renewal and paid/evaluation retry serving remain unfinished. A declared limit or
 ACK is not semantic acceptance or permission to resend an uncertain attempt.
 

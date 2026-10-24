@@ -98,8 +98,8 @@ attach to the original live Session; signed turn custody cannot recreate or
 rebind that activation. Unknown usage retains its allocation, and cancellation
 without exact delivery evidence stays pending. This is separate from the CLI
 session-group path above. Full returning-request serving is not qualified:
-the published initial-request policy and compatible Flow runtime must first be
-adopted and exercised. Source controls do not establish provider, native or
+the published initial-request policy must be adopted, and the aligned runtime
+must pass serving checks. Source controls do not establish provider, native or
 device acceptance; the [report-group API](../../reference/api.md#report-groups)
 records the current candidate and its limits.
 
