@@ -1,0 +1,17 @@
+{
+  "path": "docs/design/outside-agent-mcp.md",
+  "kind": "design",
+  "state": "classified",
+  "summary": "Outside-client OAuth design; R2a/R2b split and R2b denial/cancellation and compiled-consent-refusal receipt are recorded.",
+  "limits": "R2b source and isolated tests/renders do not qualify remaining proposed OAuth, MCP, real-client, device, release or production behavior.",
+  "sources": [
+    "src-server/services/outside-agent/consent-service.ts",
+    "src-server/services/outside-agent/management-service.ts",
+    "src-server/runtime/consent/consent-listener.ts",
+    "src-server/security/outside-agent-release-guard.ts",
+    "docs/design/outside-agent-mcp-r2b-evidence.md"
+  ],
+  "checks": [
+    "REASONED scoped R2b source review and EXECUTED evidence retained in the linked receipt. Other slices remain proposals."
+  ]
+}

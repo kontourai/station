@@ -190,3 +190,13 @@ and expiry times.
 | Too many wrong codes | Wait for the five-minute window, then retry. |
 | The passkey could not be verified for this Station | The browser's origin or the authenticator's relying-party ID did not match the configured origin, or user verification was skipped. Nothing was saved; start again. |
 | Open this page from a browser paired with this Station | The browser has no paired-device cookie for this host name. |
+
+## Outside-client approvals remain disabled
+
+The [outside-agent MCP design](../design/outside-agent-mcp.md) adds per-action
+passkey targets for client approval/denial, grant change/revocation and exact
+redirect/CORS origin edits. These remain inert behind a compiled release refusal
+until R6; an operator session cannot enable them. The [R2b evidence](../design/outside-agent-mcp-r2b-evidence.md)
+records isolated target tests and rendered reviews, not an available Connections
+flow or qualified OAuth login. Existing device and passkey administration above
+keeps its own authority and behavior.
