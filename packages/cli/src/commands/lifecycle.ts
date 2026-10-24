@@ -141,6 +141,13 @@ import {
   IGNORE_SERVICE_STATE_FLAG,
   renderSupervisingServiceRefusal,
 } from './service-upgrade-guard.js';
+import {
+  DIRECT_LAUNCH_ENV,
+  planServerLaunch,
+  requestSupervisorSync,
+  runSupervisorHandoff,
+  SUPERVISOR_BUNDLE_FILENAME,
+} from './supervisor-launch.js';
 import { UI_PROXY_BACKEND_PREFIXES } from './ui-proxy-prefixes.js';
 import {
   assertWindowsPathsTrusted,
@@ -1253,6 +1260,13 @@ export interface InstanceStateRecord {
   uiPort: number;
   readinessFile?: string;
   hostedProbeAuthority?: string;
+  /**
+   * The server runs under the Station process supervisor: `serverPid` and
+   * `serverFingerprint` are the supervisor's, which owns the instance while
+   * core server generations come and go beneath it. Absent for a direct
+   * start, including every record an earlier CLI wrote.
+   */
+  supervised?: boolean;
 }
 
 /**
@@ -1654,6 +1668,7 @@ function readInstanceStateFile(path: string): InstanceStateRecord {
         parsed.hostedProbeAuthority,
         path,
       ),
+      ...(parsed.supervised === true ? { supervised: true } : {}),
       statePath: path,
       stateIdentity: { dev: info.dev, ino: info.ino },
       stateContent,
@@ -1915,6 +1930,69 @@ function processCheckCommand(pid: number): string {
     : `ps -p ${pid} -o command=`;
 }
 
+/**
+ * How long a stopping supervisor may take: its stop drain cap (30s, voice
+ * calls included) and kill grace (5s), with margin. Longer than
+ * `killProcessTree`'s 5s, which would cut a draining core off.
+ */
+const SUPERVISOR_STOP_BUDGET_MS = 45_000;
+
+/** The supervisor bundles that can reach a record's supervisor, newest first. */
+function supervisorBundlesFor(record: InstanceStateRecord): string[] {
+  const relative = join(
+    resolveBuildPaths(record.instanceId).server,
+    SUPERVISOR_BUNDLE_FILENAME,
+  );
+  return [...new Set([join(CWD, relative), join(record.cwd, relative)])];
+}
+
+function supervisorTarget(record: InstanceStateRecord) {
+  return {
+    bundles: supervisorBundlesFor(record),
+    home: record.baseDir,
+    instanceId: record.instanceId,
+  };
+}
+
+function waitForProcessExit(pid: number, timeoutMs: number): boolean {
+  const deadline = Date.now() + timeoutMs;
+  while (isProcessAlive(pid)) {
+    if (Date.now() >= deadline) return false;
+    sleepSync(200);
+  }
+  return true;
+}
+
+/**
+ * Stops a supervised instance's supervisor, which drains its core server and
+ * exits. The `stop` request over the control channel first; when nothing
+ * answers there, a signal. On POSIX SIGTERM is the same graceful stop. On
+ * Windows a signal ends the process outright, and its core dies with it
+ * (Node's job object), so the tree kill there loses only the drain.
+ */
+function stopSupervisor(record: InstanceStateRecord, pid: number): void {
+  const asked = requestSupervisorSync(
+    supervisorTarget(record),
+    'stop',
+    SUPERVISOR_STOP_BUDGET_MS + 5_000,
+  );
+  if (asked.status === 'ok' && waitForProcessExit(pid, 10_000)) return;
+  if (asked.status !== 'ok') {
+    console.error(
+      `The supervisor of ${record.instanceId} did not take a stop request (${asked.detail}); signalling pid ${pid}.`,
+    );
+  }
+  if (process.platform !== 'win32') {
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch {
+      // Already gone.
+    }
+    if (waitForProcessExit(pid, SUPERVISOR_STOP_BUDGET_MS)) return;
+  }
+  killProcessTree(pid);
+}
+
 function stopRecord(
   record: InstanceStateRecord,
   announce = true,
@@ -2117,6 +2195,10 @@ function stopRecord(
         );
       }
     }
+    if (record.supervised && pid === record.serverPid) {
+      stopSupervisor(record, pid);
+      continue;
+    }
     killProcessTree(pid);
   }
   if (!waitForInstanceShutdown(record, managed ? 15_000 : 5_000)) {
@@ -2200,6 +2282,7 @@ function writeInstanceState(record: InstanceStateRecord): void {
       logFile: record.logFile,
       readinessFile: record.readinessFile,
       hostedProbeAuthority: record.hostedProbeAuthority,
+      supervised: record.supervised,
     },
     null,
     2,
@@ -4664,13 +4747,30 @@ export async function start(opts: StartOptions = {}): Promise<void> {
   } catch {
     // The server records the log receipt asynchronously after HTTP readiness.
   }
+  // The supervisor, when this start runs one, is the process spawned here:
+  // it forks the core server and owns the instance from now on.
+  const launch = planServerLaunch({
+    serverDir: join(CWD, buildPaths.server),
+    entry: join(CWD, buildPaths.server, SERVER_ENTRY_FILENAME),
+    projectHome,
+    instanceId,
+    codeRoot: CWD,
+    watch: Boolean(watch),
+    lifecycleJournal: opts.lifecycleJournal,
+    env: process.env,
+  });
+  if (!launch.supervised && launch.notice) console.error(launch.notice);
+  // An operator's opt-out applies to this start, not to the server's own
+  // children (a server-initiated start is not this operator's).
+  delete serverEnv[DIRECT_LAUNCH_ENV];
   let serverProc: ReturnType<typeof spawn>;
   try {
     serverProc = spawn(
       watchPlan?.server.command ?? process.execPath,
-      watchPlan?.server.args ?? [
-        `${buildPaths.server}/${SERVER_ENTRY_FILENAME}`,
-      ],
+      watchPlan?.server.args ??
+        (launch.supervised
+          ? launch.args
+          : [`${buildPaths.server}/${SERVER_ENTRY_FILENAME}`]),
       {
         cwd: CWD,
         stdio: serverStdio,
@@ -4682,7 +4782,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     if (logDescriptor !== null) {
       writeSync(
         logDescriptor,
-        `\n--- ${new Date().toISOString()} station lifecycle start instance=${instanceId} build=${serverEnv.STATION_BUILD_SHA} pid=${serverProc.pid ?? 'unknown'} ---\n`,
+        `\n--- ${new Date().toISOString()} station lifecycle start instance=${instanceId} build=${serverEnv.STATION_BUILD_SHA} pid=${serverProc.pid ?? 'unknown'}${launch.supervised ? ' supervised' : ''} ---\n`,
       );
     }
   } finally {
@@ -4809,6 +4909,7 @@ export async function start(opts: StartOptions = {}): Promise<void> {
       logFile,
       readinessFile: opts.readinessFile,
       hostedProbeAuthority,
+      ...(launch.supervised ? { supervised: true } : {}),
     };
     writeInstanceState(generation);
     opts.onSpawned?.(generation);
@@ -4952,6 +5053,11 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     console.log(
       `  ✓ Home:   ${projectHome} (${describeHomeSource(homeSource)})`,
     );
+    if (launch.supervised) {
+      console.log(
+        `  ✓ Supervisor: pid ${serverProc.pid} (\`station restart\` hands off in place)`,
+      );
+    }
     console.log(`  ✓ Instance: ${instanceId}`);
     console.log(
       `\n  Stop with: ${renderStopCommand(instanceId, projectHome, homeSource)}`,
@@ -5050,6 +5156,130 @@ export function stop(opts: StopOptions = {}): void {
     return;
   }
   stopRecord(match, true, opts.intent ?? 'operator_stop');
+}
+
+/** The one running instance a supervisor command targets. */
+function findRunningTarget(
+  opts: StopOptions,
+  action: string,
+): InstanceStateRecord {
+  const selector = normalizeSelector(opts);
+  const match = ensureSingleMatch(
+    listRunningInstances({
+      projectHome: opts.stateHome ?? selector.baseDir,
+    }).filter((record) => matchesSelector(record, selector)),
+    action,
+  );
+  if (!match) {
+    throw new Error(
+      `No running Station instance matches${selector.instanceId ? ` '${selector.instanceId}'` : ''}. Start one with \`station start\`.`,
+    );
+  }
+  return match;
+}
+
+function describeDirectStart(record: InstanceStateRecord): string {
+  return `Station instance ${record.instanceId} runs without the process supervisor (an earlier CLI started it, or ${DIRECT_LAUNCH_ENV}=1 was set)`;
+}
+
+/**
+ * `station restart`: hands the instance to a new core server generation
+ * through its supervisor. Connections wait in the supervisor's listeners
+ * while the generations swap; a generation that fails to come up is rolled
+ * back to the entry that was serving. Resolves once the new generation
+ * serves; throws when the handoff rolled back or was refused.
+ */
+export async function restart(opts: StopOptions = {}): Promise<void> {
+  const record = findRunningTarget(opts, 'restart');
+  if (!record.supervised) {
+    throw new Error(
+      `${describeDirectStart(record)}, so it cannot restart in place. Restart it with \`station start --force\`, passing the options it was started with.`,
+    );
+  }
+  console.log(`Handing ${record.instanceId} to a new core generation…`);
+  const result = await runSupervisorHandoff(
+    supervisorTarget(record),
+    (message) => {
+      if (message.type === 'handoff.progress') {
+        console.log(`  · ${message.phase} (generation ${message.generation})`);
+      }
+    },
+  );
+  const final = result.messages.find(
+    (message) => message.type === 'handoff.result',
+  );
+  if (final?.type !== 'handoff.result') {
+    throw new Error(
+      `Could not restart ${record.instanceId} through its supervisor: ${result.detail || 'it gave no result'}.`,
+    );
+  }
+  if (final.outcome === 'committed') {
+    console.log(
+      `  ✓ Restarted: generation ${final.generation} serves${final.bootId ? ` (boot ${final.bootId})` : ''}`,
+    );
+    return;
+  }
+  if (final.outcome === 'rolled-back') {
+    throw new Error(
+      `Restart of ${record.instanceId} rolled back (${final.reason ?? 'no reason given'}); ${final.generation ? `generation ${final.generation} serves the previous entry` : 'the supervisor is restarting the previous entry'}.`,
+    );
+  }
+  throw new Error(
+    `The supervisor of ${record.instanceId} refused the restart (${final.reason ?? 'no reason given'}).`,
+  );
+}
+
+/** `station supervisor status`: what the instance's supervisor reports. */
+export function supervisorStatus(
+  opts: StopOptions & { json?: boolean } = {},
+): void {
+  const record = findRunningTarget(opts, 'supervisor status');
+  if (!record.supervised) {
+    if (opts.json) {
+      console.log(
+        JSON.stringify({ instanceId: record.instanceId, supervised: false }),
+      );
+    } else {
+      console.log(`${describeDirectStart(record)}.`);
+    }
+    return;
+  }
+  const result = requestSupervisorSync(
+    supervisorTarget(record),
+    'status',
+    15_000,
+  );
+  const reply = result.messages.find(
+    (message) => message.type === 'status.result',
+  );
+  if (reply?.type !== 'status.result') {
+    throw new Error(
+      `Could not read the supervisor status of ${record.instanceId}: ${result.detail || 'no answer'}.`,
+    );
+  }
+  const status = reply.status;
+  if (opts.json) {
+    console.log(JSON.stringify(status, null, 2));
+    return;
+  }
+  const { supervisor, active, trial, listeners, restarts } = status;
+  console.log(
+    [
+      `Supervisor of ${supervisor.instance}: ${status.state}`,
+      `  pid ${supervisor.pid}, version ${supervisor.version}, protocol ${supervisor.protocol.major}.${supervisor.protocol.minor}`,
+      active
+        ? `  Active: generation ${active.generation} (pid ${active.pid ?? 'unknown'}, ${active.state}${active.bootId ? `, boot ${active.bootId}` : ''})`
+        : '  Active: none',
+      ...(active ? [`          ${active.entry}`] : []),
+      ...(trial
+        ? [
+            `  Trial:  generation ${trial.generation} (pid ${trial.pid ?? 'unknown'}, ${trial.state})`,
+          ]
+        : []),
+      `  Listeners: ${listeners.length > 0 ? listeners.map((listener) => `${listener.name} ${listener.port}`).join(', ') : 'none held'}`,
+      `  Restarts: ${restarts.consecutiveFailures} consecutive failure(s)${restarts.lastBackoffMs !== null ? `, last backoff ${restarts.lastBackoffMs}ms` : ''}`,
+    ].join('\n'),
+  );
 }
 
 export function link(): void {
