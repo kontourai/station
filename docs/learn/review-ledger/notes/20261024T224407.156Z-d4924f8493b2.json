@@ -1,0 +1,7 @@
+{
+  "revision": "084108a053b8fc88db7fb381113a5398be75af06",
+
+  "notes": [
+    {"path":"docs/design/cli-triage.md","note":"Source review at 084108a053b: read the complete triage design and current CLI-reference triage section; traced registration, source-doctor injection, distribution identity, private UUID artifacts, allowlisted authenticated diagnostics, byte/text limits, shared pattern redaction, consented fixed issue search, argv launch modes, bounded stored stdout and raw terminal output. Current reference changes outside triage do not alter this diagnostic contract. Explicit unavailable selection retains artifacts then fails; design says only that artifacts remain usable. No prose correction required. No installed-agent/provider/remote/keyring or sandbox-enforcement execution; source review only.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]}
+  ]
+}
