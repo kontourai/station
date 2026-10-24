@@ -1481,9 +1481,9 @@ in T3 Code, for example `https://environment.example/mcp`. The Station host
 must be able to reach that address.
 
 1. In Station's **Connections → Tools**, add a remote MCP integration with
-   transport **Streamable HTTP** and that URL. Save the integration. Use personal
-   accounts when each person should connect their own account.
-2. Choose **Connect your account → Open sign-in page**. Station discovers the
+   connection type **HTTP** (Streamable HTTP) and that URL. Save the integration.
+2. Choose **Sign in → Open sign-in page** (or **Connect your account** for a
+   source configured for personal accounts). Station discovers the
    OAuth metadata and registers its client automatically; no client secret is
    needed for servers that support dynamic registration.
 3. On T3 Code's approval page, enter a pairing code from that environment's
@@ -1496,7 +1496,8 @@ must be able to reach that address.
    **Claude Code** or **Codex** engine and start a new session. Read tools such as
    `t3_thread_search` and `t3_thread_read` are available within the access you granted.
 
-Station selects the session owner's Project account first, then their personal
+A custom integration uses the shared Station account by default. For sources
+configured for personal accounts, Station selects the session owner's Project account first, then their personal
 account. A shared account is used for a personal integration only when its
 settings explicitly allow that fallback. ACP engines do not support this
 connected-account delivery.

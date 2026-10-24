@@ -98,6 +98,7 @@ function IntegrationAccountControls({
   }
 
   const status = account.data;
+  const sharedAccount = status?.ownership === 'instance';
   const ownAccountConnected = projectSlug
     ? status?.project?.connected
     : status?.personal?.connected;
@@ -115,10 +116,13 @@ function IntegrationAccountControls({
       className="agent-editor__section"
       aria-label="Your connected account"
     >
-      <h3 className="agent-editor__section-title">Your account</h3>
+      <h3 className="agent-editor__section-title">
+        {sharedAccount ? 'Shared account' : 'Your account'}
+      </h3>
       <p className="agent-editor__section-desc">
-        Each person connects their own account. Connecting does not grant
-        Project membership or change the integration's allowed tools.
+        {sharedAccount
+          ? 'This integration uses the shared Station account.'
+          : 'Each person connects their own account. Connecting does not grant Project membership or change the integration’s allowed tools.'}
       </p>
       {requireSave ? (
         <p>Save the integration changes before managing your account.</p>
@@ -136,9 +140,11 @@ function IntegrationAccountControls({
           <Button onClick={() => void begin()} disabled={pending}>
             {start.isPending
               ? 'Preparing sign-in…'
-              : ownAccountConnected
-                ? 'Reconnect your account'
-                : 'Connect your account'}
+              : sharedAccount
+                ? 'Sign in'
+                : ownAccountConnected
+                  ? 'Reconnect your account'
+                  : 'Connect your account'}
           </Button>
           {ownAccountConnected && (
             <Button
