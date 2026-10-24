@@ -18,6 +18,7 @@ import {
   prepareTelemetryCompanionArchive,
   readTelemetryCompanionArchivePreparation,
 } from '../../src-server/services/telemetry-companion-archive.js';
+import { verifyTelemetryCompanionFiles } from '../../src-server/services/telemetry-companion-artifact.mjs';
 import { readTelemetryCompanionArtifactEvidence } from '../../src-server/services/telemetry-companion-release.js';
 import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 import {
@@ -34,6 +35,19 @@ import {
 } from './fixtures/release-manifest-v2.js';
 
 const makeTempDir = trackTempDirs();
+
+test('the byte verifier refuses a coercible source array rather than returning a falsely typed manifest', async () => {
+  const { directory, manifest } = await packageTelemetryCompanion(
+    join(makeTempDir('companion-source-type-'), 'output'),
+  );
+  await writeFile(
+    join(directory, 'companion-manifest.json'),
+    JSON.stringify({ ...manifest, source: [manifest.source] }),
+  );
+  await expect(verifyTelemetryCompanionFiles(directory)).rejects.toThrow(
+    'Invalid build-only companion manifest',
+  );
+});
 
 test.runIf(process.platform === 'win32')(
   'refuses Windows preparation before authority or download work',
