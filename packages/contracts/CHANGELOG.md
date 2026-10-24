@@ -1,5 +1,16 @@
 # @kontourai/station-contracts
 
+## 0.13.1
+
+### Patch Changes
+
+- 68e6f96: Share session-list reads across authority-bound shell and Board consumers, use stream invalidation with a 60-second safety poll even with a healthy stream, and share public capability discovery between session history and stream resume.
+  
+  Notify connected session lists after committed Draft and alias deletion without retaining private thread identity, and refuse ambient host authority when a Board has no request scope.
+- fa98d8a: Forward connected OAuth MCP accounts to Claude Code and Codex through a loopback proxy with session-and-server-scoped credentials. Keep remote tokens in Station, coordinate refresh across clients, and surface sign-in refusals before launch and during tool use.
+- 06d2a34: Record operator-passkey provenance when a per-action passkey confirmation revokes a paired Device.
+- 74dc7e0: Add Project-authorized local HTML and raster previews for inline conversation visuals.
+
 ## 0.13.0
 
 ### Minor Changes

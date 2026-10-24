@@ -58,8 +58,8 @@
     "url": "https://github.com/kontourai/station/issues"
   },
   "dependencies": {
-    "@kontourai/station-contracts": "^0.13.0",
-    "@kontourai/station-shared": "^0.13.0",
+    "@kontourai/station-contracts": "^0.13.1",
+    "@kontourai/station-shared": "^0.13.1",
     "jsqr": "^1.4.0",
     "qrcode": "^1.5.4"
   },
