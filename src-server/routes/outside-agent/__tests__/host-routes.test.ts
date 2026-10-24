@@ -123,7 +123,11 @@ function fixture(released = false) {
     software_id: 'test',
     redirect_uris: [redirectUri],
   });
-  const start = (clientId = client.id, callback = redirectUri) => {
+  const start = (
+    clientId = client.id,
+    callback = redirectUri,
+    scopes = ['station-control:read', 'station-control:full'],
+  ) => {
     const verifier = randomBytes(32).toString('base64url');
     const flow = service.store.start({
       clientId,
@@ -131,7 +135,7 @@ function fixture(released = false) {
       resource: `${issuer}/mcp`,
       state: 'private-state',
       challenge: pkceChallenge(verifier),
-      scopes: ['station-control:read', 'station-control:full'],
+      scopes,
     });
     return { ...flow, verifier };
   };
@@ -638,9 +642,10 @@ test('JSON review treats escaped quotes, braces and backslashes in untrusted lab
 
 test('host changes apply in place to existing access and refresh tokens with before/after audit and stale-state refusal', async () => {
   const f = fixture();
-  const flow = f.start();
+  const flow = f.start(undefined, undefined, ['station-control:read']);
   await f.cli(['approve', flow.request.id, '--global', '--expires-in=2d']);
   const issued = f.exchange(flow);
+  expect(issued.grant.requestedScopes).toEqual(['station-control:read']);
   const changePath = `/api/outside-agent/grants/${issued.grant.id}/change`;
   const expected = (grant: typeof issued.grant) => ({
     operation: 'change' as const,
