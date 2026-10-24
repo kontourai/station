@@ -1,0 +1,100 @@
+{
+  "schemaVersion": 1,
+  "id": "policy-change-2026-10-24T19-27-31-217Z-170a49f6f993",
+  "kind": "policy-change",
+  "actor": {
+    "id": "brian",
+    "displayName": "Brian Anderson",
+    "identityEvidence": {
+      "gitEmail": null,
+      "signingKeyFingerprint": null
+    }
+  },
+  "attestedAt": "2026-10-24T19:27:31.217Z",
+  "repoStandardsHash": "sha256:ce854cf0c349acadd78e5fd6aad01e9d17cae4eb8619af700c9637e6010984da",
+  "repoMapHash": "sha256:c509a7c4abc7ca3c67d79a4b73616e6e01cee7474f520ea75f490e45f4985482",
+  "repoMapHashAlgorithm": "public-policy-v1",
+  "authoritySettingsHash": "sha256:b47233d5d20d847ee85c5b77ccbd991ff13159270690a6adb957134b72cf57ac",
+  "priorAttestationId": "policy-change-2026-10-23T16-49-17-865Z-590c196100a2",
+  "validUntilDays": 90,
+  "notes": "Require the reviewed component/style hygiene evidence check for shared action/dialog contracts and canonical tokens; preserve named inherited debt without global headroom.",
+  "authorizing": {
+    "kind": "explicit-statement",
+    "statement": "Do it all full send combine locally for least amount of prs"
+  },
+  "metadata": {
+    "protectedStandardsPaths": {
+      "repoStandardsPath": ".veritas/repo-standards/default.repo-standards.json",
+      "repoMapPath": ".veritas/repo-map.json",
+      "authoritySettingsPath": ".veritas/authority/default.authority-settings.json"
+    },
+    "supersedes": "policy-change-2026-10-23T16-49-17-865Z-590c196100a2",
+    "approvalRef": "t3-thread://v1/12ac6680-20bf-41a7-89d1-80ca514588bb",
+    "approvalRefPolicy": {
+      "mode": "reference-only",
+      "matchedPrefix": null,
+      "requiresResolution": false
+    },
+    "approvalResolution": null
+  },
+  "surface": {
+    "claim": {
+      "id": "veritas.attestation.policy-change-2026-10-24T19-27-31-217Z-170a49f6f993",
+      "subjectType": "veritas-protected-standards",
+      "subjectId": "protected-standards",
+      "facet": "veritas.attestations",
+      "claimType": "veritas-human-attestation",
+      "fieldOrBehavior": "policy-change",
+      "value": {
+        "contentHash": "6762c060487e11401a33eedcd51bd7bff618acb4d7b722330d0c3ee64ce73be2",
+        "validUntil": "2027-01-22T19:27:31.217Z"
+      },
+      "createdAt": "2026-10-24T19:27:31.217Z",
+      "updatedAt": "2026-10-24T19:27:31.217Z",
+      "status": "proposed",
+      "impactLevel": "high",
+      "confidenceBasis": {
+        "sourceQuality": "weak",
+        "reviewerAuthority": "none",
+        "evidenceStrength": "weak",
+        "impactLevel": "high"
+      }
+    },
+    "evidence": {
+      "id": "evidence.attestation.veritas.attestation.policy-change-2026-10-24T19-27-31-217Z-170a49f6f993",
+      "claimId": "veritas.attestation.policy-change-2026-10-24T19-27-31-217Z-170a49f6f993",
+      "evidenceType": "attestation",
+      "method": "attestation",
+      "sourceRef": "veritas:protected-standards",
+      "excerptOrSummary": "Require the reviewed component/style hygiene evidence check for shared action/dialog contracts and canonical tokens; preserve named inherited debt without global headroom.",
+      "observedAt": "2026-10-24T19:27:31.217Z",
+      "collectedBy": "brian",
+      "integrityRef": "6762c060487e11401a33eedcd51bd7bff618acb4d7b722330d0c3ee64ce73be2",
+      "metadata": {
+        "actor": {
+          "id": "brian",
+          "displayName": "Brian Anderson"
+        },
+        "attestedAt": "2026-10-24T19:27:31.217Z",
+        "validUntil": "2027-01-22T19:27:31.217Z",
+        "contentHash": "6762c060487e11401a33eedcd51bd7bff618acb4d7b722330d0c3ee64ce73be2"
+      },
+      "sourceLocator": ".veritas/attestations"
+    },
+    "event": {
+      "id": "veritas.attestation.policy-change-2026-10-24T19-27-31-217Z-170a49f6f993.proposed",
+      "claimId": "veritas.attestation.policy-change-2026-10-24T19-27-31-217Z-170a49f6f993",
+      "status": "proposed",
+      "actor": "brian",
+      "method": "human attestation",
+      "evidenceIds": [
+        "evidence.attestation.veritas.attestation.policy-change-2026-10-24T19-27-31-217Z-170a49f6f993"
+      ],
+      "createdAt": "2026-10-24T19:27:31.217Z"
+    }
+  },
+  "recordIntegrity": {
+    "algorithm": "veritas-attestation-record-v1",
+    "digest": "ee6630cab756efc194257398b13613978ff292b7602d680124612a3d079aa4dd"
+  }
+}

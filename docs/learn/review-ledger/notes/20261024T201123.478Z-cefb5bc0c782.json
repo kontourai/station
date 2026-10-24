@@ -1,0 +1,7 @@
+{
+  "revision": "d88ac865c89655f0670069b57229a871015dfe6a",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Shared action color review at d88ac865c89: preserve separation by mixing filled hover backgrounds and tinted status-label inks toward --k-text. The public props/defaults and canonical token stylesheet prerequisites remain accurate. Hosted request-sheet regression measured Deny at4.211<4.5 before repair; the exact isolated Station smoke case now passes at360/720px and narrow desktop in both themes. Expanded component browser covers seven variants rest/hover across390/1280 light/dark; restoring the old primary hover caused intended contrast failures and byte restoration returned green. These are tested themes/backgrounds, not arbitrary custom-accent qualification.","inputs":["docs/reference/sdk.md","packages/sdk/src/components/ActionControl.css"]}
+  ]
+}

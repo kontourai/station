@@ -1,9 +1,14 @@
-import { spawn } from 'node:child_process';
+import {
+  type ChildProcess,
+  type ChildProcessWithoutNullStreams,
+  spawn,
+} from 'node:child_process';
 import { once } from 'node:events';
 import { readFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { pathToFileURL } from 'node:url';
 import {
+  childWorkloadOutcome,
   closeChildWorkload,
   execFileChildWorkload,
   ownWorkloadTransport,
@@ -14,6 +19,10 @@ import { createMCPTransport } from '@kontourai/station-shared/mcp';
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { NodePtyAdapter } from '../../../../adapters/node-pty-adapter.js';
+import {
+  CodexAdapterTransport,
+  createCodexSessionRecord,
+} from '../../../../providers/adapters/codex-adapter-transport.js';
 import { spawnOwnedChild, terminateProcessTree } from '../../process-utils.js';
 import {
   initializeWorkloadResources,
@@ -45,9 +54,54 @@ if (process.argv[2] === 'orphan-owner') {
   process.exit(0);
 }
 const held = new Map<number, ReturnType<typeof spawnChildWorkload>>();
+function hasPipedStdio(
+  child: ChildProcess,
+): child is ChildProcessWithoutNullStreams {
+  return child.stdin !== null && child.stdout !== null && child.stderr !== null;
+}
 const server = createServer(async (request, response) => {
   try {
     const url = new URL(request.url ?? '/', 'http://localhost');
+    if (url.pathname === '/codex-exit') {
+      const oom = url.searchParams.get('cause') === 'oom';
+      const { proc } = spawnOwnedChild(process.execPath, [
+        '-e',
+        'console.log("ready");process.stdin.once("data",()=>Buffer.alloc(128*1048576,7));setInterval(()=>{},1000)',
+      ]);
+      if (!hasPipedStdio(proc))
+        throw new Error('Codex fixture requires piped stdio');
+      const transport = new CodexAdapterTransport(() => new Date());
+      const record = createCodexSessionRecord({
+        externalThreadId: 'resource-proof',
+        process: proc,
+        provider: 'codex',
+        threadId: 'resource-proof',
+        model: 'process-fixture',
+        nowIso: () => new Date().toISOString(),
+      });
+      record.activeTurnId = 'resource-proof-turn';
+      transport.registerSession(record);
+      const ready = once(proc.stdout!, 'data');
+      transport.handleProcess(record);
+      await ready;
+      const terminal = (async () => {
+        const events = [];
+        for await (const event of transport.streamEvents()) {
+          events.push(event);
+          if (event.method === 'session.exited') return events;
+        }
+        throw new Error('No session terminal');
+      })();
+      if (oom) proc.stdin!.write('allocate');
+      else proc.kill('SIGKILL');
+      response.end(
+        JSON.stringify({
+          events: await terminal,
+          workloads: await inspectWorkloadResources(),
+        }),
+      );
+      return;
+    }
     if (url.pathname === '/exec') {
       const result = await execFileChildWorkload(
         process.execPath,
@@ -388,6 +442,7 @@ const server = createServer(async (request, response) => {
           first,
           code,
           signal,
+          outcome: await childWorkloadOutcome(child),
           workloads: await inspectWorkloadResources(),
         }),
       );
