@@ -437,7 +437,7 @@ describe('bound steer receipt authority', () => {
       thread_id TEXT COLLATE ${collation} NOT NULL,
       client_input_id TEXT COLLATE ${collation} NOT NULL,
       input_digest TEXT NOT NULL, confirmed_turn_id TEXT,
-      PRIMARY KEY(thread_id COLLATE BINARY, client_input_id COLLATE BINARY)
+      PRIMARY KEY(thread_id COLLATE binary, client_input_id COLLATE binary)
     )`);
       const kernel = storage(db, STEER_TABLES);
       const original = {

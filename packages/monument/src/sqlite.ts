@@ -852,7 +852,7 @@ function migrate(db: SqliteKernelDatabase, tables: ResolvedTables): void {
           }>
         ).filter((column) => column.key === 1);
         if (!exactKey(columns.map((column) => column.name))) continue;
-        if (columns.some((column) => column.coll !== 'BINARY'))
+        if (columns.some((column) => column.coll?.toUpperCase() !== 'BINARY'))
           throw new SqliteKernelConfigurationError(
             `bound table ${table} requires BINARY uniqueness for steer receipt identities.`,
           );
