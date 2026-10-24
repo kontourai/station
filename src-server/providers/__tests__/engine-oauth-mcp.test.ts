@@ -25,6 +25,7 @@ import {
   INSTANCE_CREDENTIAL_OWNER,
   principalCredentialOwner,
   StationToolServerOAuthProvider,
+  ToolServerOAuthUnavailableError,
   toolServerCredentialStoreFor,
 } from '../../services/plugins/tool-server-oauth.js';
 import { resolveClaudeMcpServers } from '../adapters/claude-mcp-passthrough.js';
@@ -41,12 +42,15 @@ const server: ResolvedAgentToolServer = {
 const makeTempDir = trackTempDirs();
 let home: string;
 let def: ToolDef;
+const needsSignIn = vi.fn(async (_id: string, _resource: string) => {});
 let resolve: ReturnType<typeof createEngineMcpOAuthResolver>;
 
 beforeEach(() => {
+  needsSignIn.mockClear();
   home = makeTempDir('station-engine-oauth-');
   def = { ...server, kind: 'mcp', credentialOwnership: { owner: 'principal' } };
   const resolver = createEngineMcpOAuthResolver({
+    needsSignIn,
     homeDir: () => home,
     port: () => 43143,
     getIntegration: async (id) => ({ ...def, id }),
@@ -55,6 +59,7 @@ beforeEach(() => {
     resolver(servers, principal, project, session);
 });
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -452,7 +457,7 @@ const loopbackEnv = (remoteAddress = '127.0.0.1') => ({
   incoming: { socket: { remoteAddress } },
 });
 
-async function proxyFixture(mode: 'legacy' | 'auto' = 'legacy') {
+async function proxyAccount() {
   const provider = await account('human:local:operator');
   await provider.saveTokens(
     {
@@ -464,6 +469,16 @@ async function proxyFixture(mode: 'legacy' | 'auto' = 'legacy') {
     },
     issuer,
   );
+  const urls = await resolve([server], 'human:local:operator');
+  return {
+    provider,
+    url: urls.get('t3')!,
+    proxy: createEngineOAuthProxyRoutes(),
+  };
+}
+
+async function proxyFixture(mode: 'legacy' | 'auto' = 'legacy') {
+  const { provider, url, proxy } = await proxyAccount();
   let acceptedToken = 'remote-secret';
   let refreshes = 0;
   const seen: string[] = [];
@@ -508,9 +523,6 @@ async function proxyFixture(mode: 'legacy' | 'auto' = 'legacy') {
     },
   );
   vi.stubGlobal('fetch', fetchSpy);
-  const urls = await resolve([server], 'human:local:operator');
-  const url = urls.get('t3')!;
-  const proxy = createEngineOAuthProxyRoutes();
   const client = new Client(
     { name: 'engine-fixture', version: '1.0' },
     { versionNegotiation: { mode } },
@@ -737,4 +749,316 @@ test('a fresh token read cannot swallow a concurrent remote-401 refresh', async 
   ]);
   expect(rejected).toBe('after-401');
   expect(refresh).toHaveBeenCalledTimes(1);
+});
+
+const proxyPost = (
+  proxy: Hono,
+  url: string,
+  body = '{"jsonrpc":"2.0","id":1,"method":"tools/list"}',
+) =>
+  proxy.request(
+    url,
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        accept: 'application/json, text/event-stream',
+      },
+      body,
+    },
+    loopbackEnv(),
+  );
+
+test.each(['503', 'network', 'timeout'] as const)(
+  '%s refresh failure preserves early and expired accounts and recovers through managed transport and engine admission',
+  async (kind) => {
+    const provider = await account('human:local:operator');
+    let unavailable = true;
+    let attempts = 0;
+    vi.stubGlobal('fetch', async (_input: unknown, init?: RequestInit) => {
+      attempts++;
+      if (unavailable) {
+        if (kind === '503') return new Response(null, { status: 503 });
+        if (kind === 'network') throw new TypeError('network failure');
+        // Exercise the production timeout signal without a 15-second wall-clock sleep.
+        return new Promise<Response>((_resolve, reject) => {
+          init!.signal!.addEventListener(
+            'abort',
+            () => reject(init!.signal!.reason),
+            { once: true },
+          );
+        });
+      }
+      return Response.json({
+        access_token: 'recovered',
+        token_type: 'Bearer',
+        expires_in: 3600,
+      });
+    });
+    const realTimeout = AbortSignal.timeout.bind(AbortSignal);
+    if (kind === 'timeout')
+      vi.spyOn(AbortSignal, 'timeout').mockImplementation((ms) => {
+        expect(ms).toBe(15_000);
+        return realTimeout(1);
+      });
+    for (const expires_in of [90, -1]) {
+      await provider.saveTokens(
+        {
+          access_token: 'retained',
+          refresh_token: 'refresh',
+          token_type: 'Bearer',
+          expires_in,
+          ...issuer,
+        },
+        issuer,
+      );
+      const transport = await provider.forTransport();
+      if (!('token' in transport))
+        throw new Error('Expected managed account transport');
+      if (expires_in > 0) {
+        expect(await transport.token()).toBe('retained');
+        await resolve([server], 'human:local:operator');
+        await expect(provider.accessToken('retained')).rejects.toBeInstanceOf(
+          ToolServerOAuthUnavailableError,
+        );
+      } else {
+        await expect(transport.token()).rejects.toBeInstanceOf(
+          ToolServerOAuthUnavailableError,
+        );
+        await expect(
+          resolve([server], 'human:local:operator'),
+        ).rejects.toBeInstanceOf(ToolServerOAuthUnavailableError);
+      }
+      expect((await provider.tokens())?.access_token).toBe('retained');
+      expect(needsSignIn).not.toHaveBeenCalled();
+      unavailable = false;
+      expect(await provider.accessToken()).toBe('recovered');
+      unavailable = true;
+    }
+    expect(attempts).toBe(7);
+  },
+);
+
+test.each(['invalid_grant', 'invalid_client', 'unauthorized_client'])(
+  '%s retires the account and records authorization health',
+  async (error) => {
+    const provider = await account('human:local:operator');
+    await provider.saveTokens(
+      {
+        access_token: 'rejected',
+        refresh_token: 'refresh',
+        token_type: 'Bearer',
+        expires_in: 90,
+        ...issuer,
+      },
+      issuer,
+    );
+    const remote = vi.fn(async () => Response.json({ error }, { status: 400 }));
+    vi.stubGlobal('fetch', remote);
+    await expect(resolve([server], 'human:local:operator')).rejects.toThrow(
+      'needs sign-in',
+    );
+    expect(await provider.tokens()).toBeUndefined();
+    await expect(provider.accessToken()).rejects.toThrow(
+      'Connect your account',
+    );
+    expect(remote).toHaveBeenCalledTimes(1);
+    expect(needsSignIn).toHaveBeenCalledWith('t3', endpoint);
+  },
+);
+
+test('a parallel request refresh between token selection and send uses the current bearer without marking health', async () => {
+  const fixture = await proxyAccount();
+  const seen: string[] = [];
+  vi.stubGlobal(
+    'fetch',
+    async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input) === `${origin}/token`)
+        return Response.json({
+          access_token: 'rotated-1',
+          token_type: 'Bearer',
+          expires_in: 3600,
+        });
+      seen.push(new Headers(init?.headers).get('authorization') ?? '');
+      return Response.json({ jsonrpc: '2.0', id: 1, result: { tools: [] } });
+    },
+  );
+  const access = StationToolServerOAuthProvider.prototype.accessToken;
+  let entered = false;
+  vi.spyOn(
+    StationToolServerOAuthProvider.prototype,
+    'accessToken',
+  ).mockImplementation(async function (
+    this: StationToolServerOAuthProvider,
+    rejected,
+  ) {
+    const selected = await access.call(this, rejected);
+    if (!entered) {
+      entered = true;
+      // A second request refreshes the same account after this request selected its token.
+      await access.call(fixture.provider, selected);
+    }
+    return selected;
+  });
+  const response = await proxyPost(fixture.proxy, fixture.url);
+  expect(await response.json()).toMatchObject({
+    result: { tools: expect.any(Array) },
+  });
+  expect(seen.at(-1)).toBe('Bearer rotated-1');
+  expect(needsSignIn).not.toHaveBeenCalled();
+  expect((await fixture.provider.tokens())?.access_token).toBe('rotated-1');
+});
+
+test.each([
+  'disconnect',
+  'missing-at-send',
+  'missing-refresh',
+  'rejected-without-refresh',
+  'repeated-401',
+] as const)(
+  '%s through the proxy marks authorization health and repeated rejection cannot burn a refresh family',
+  async (condition) => {
+    const fixture = await proxyAccount();
+    if (condition === 'disconnect') await fixture.provider.clearCredentials();
+    else if (condition === 'missing-at-send') {
+      const access = StationToolServerOAuthProvider.prototype.accessToken;
+      vi.spyOn(
+        StationToolServerOAuthProvider.prototype,
+        'accessToken',
+      ).mockImplementationOnce(async function (
+        this: StationToolServerOAuthProvider,
+      ) {
+        const token = await access.call(this);
+        await fixture.provider.clearCredentials();
+        return token;
+      });
+    } else if (condition === 'rejected-without-refresh') {
+      await fixture.provider.saveTokens(
+        {
+          access_token: 'rejected',
+          token_type: 'Bearer',
+          expires_in: 3600,
+          ...issuer,
+        },
+        issuer,
+      );
+      vi.stubGlobal('fetch', async () => new Response(null, { status: 401 }));
+    } else if (condition === 'missing-refresh')
+      await fixture.provider.saveTokens(
+        {
+          access_token: 'expired',
+          token_type: 'Bearer',
+          expires_in: -1,
+          ...issuer,
+        },
+        issuer,
+      );
+    else {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (input: string | URL | Request) => {
+          if (String(input) === `${origin}/token`)
+            return Response.json({
+              access_token: 'rejected-again',
+              refresh_token: 'rotating-family',
+              token_type: 'Bearer',
+              expires_in: 3600,
+            });
+          return new Response(null, { status: 401 });
+        }),
+      );
+    }
+    needsSignIn.mockClear();
+    expect(
+      await (await proxyPost(fixture.proxy, fixture.url)).json(),
+    ).toMatchObject({
+      error: { message: expect.stringContaining('needs sign-in') },
+    });
+    expect(needsSignIn).toHaveBeenCalledWith('t3', endpoint);
+    expect(await fixture.provider.tokens()).toBeUndefined();
+    if (condition === 'repeated-401') {
+      const remote = vi.mocked(fetch);
+      const calls = remote.mock.calls.length;
+      expect(calls).toBe(3);
+      expect(
+        await (await proxyPost(fixture.proxy, fixture.url)).json(),
+      ).toMatchObject({
+        error: { message: expect.stringContaining('needs sign-in') },
+      });
+      expect(remote).toHaveBeenCalledTimes(calls);
+    }
+  },
+);
+
+test('an expired-token refresh outage through the proxy is retryable without changing account health', async () => {
+  const fixture = await proxyAccount();
+  await fixture.provider.saveTokens(
+    {
+      access_token: 'expired',
+      refresh_token: 'refresh',
+      token_type: 'Bearer',
+      expires_in: -1,
+      ...issuer,
+    },
+    issuer,
+  );
+  vi.stubGlobal('fetch', async () => new Response(null, { status: 503 }));
+  const response = await proxyPost(fixture.proxy, fixture.url);
+  const body = await response.text();
+  expect(body).toContain('unavailable');
+  expect(body).not.toContain('needs sign-in');
+  expect(await fixture.provider.tokens()).toBeDefined();
+  expect(needsSignIn).not.toHaveBeenCalled();
+});
+
+test('the proxy refuses a credential at its twelve-hour expiry without forwarding', async () => {
+  const fixture = await proxyAccount();
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(Date.now() + 12 * 60 * 60 * 1000);
+  const remote = vi.fn();
+  vi.stubGlobal('fetch', remote);
+  expect((await proxyPost(fixture.proxy, fixture.url)).status).toBe(401);
+  expect(remote).not.toHaveBeenCalled();
+  vi.useRealTimers();
+});
+
+test('oversized streamed requests are cancelled with 413 before forwarding, and remote negotiation bodies are bounded', async () => {
+  const fixture = await proxyAccount();
+  const cancelled = vi.fn();
+  const remote = vi.fn();
+  vi.stubGlobal('fetch', remote);
+  const requestOptions: RequestInit & { duplex: 'half' } = {
+    method: 'POST',
+    body: new ReadableStream({
+      pull(c) {
+        c.enqueue(new Uint8Array(1024 * 1024));
+      },
+      cancel: cancelled,
+    }),
+    duplex: 'half',
+  };
+  const request = new Request(fixture.url, requestOptions);
+  expect((await fixture.proxy.request(request, {}, loopbackEnv())).status).toBe(
+    413,
+  );
+  expect(cancelled).toHaveBeenCalledOnce();
+  expect(remote).not.toHaveBeenCalled();
+  const remoteCancelled = vi.fn();
+  remote.mockImplementation(
+    async () =>
+      new Response(
+        new ReadableStream({
+          pull(c) {
+            c.enqueue(new Uint8Array(8192));
+          },
+          cancel: remoteCancelled,
+        }),
+        { status: 400 },
+      ),
+  );
+  const result = await proxyPost(fixture.proxy, fixture.url);
+  expect(await result.json()).toMatchObject({
+    error: { message: expect.stringContaining('unavailable') },
+  });
+  expect(remoteCancelled).toHaveBeenCalledOnce();
 });

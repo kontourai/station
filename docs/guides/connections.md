@@ -1503,19 +1503,23 @@ settings explicitly allow that fallback. ACP engines do not support this
 connected-account delivery.
 
 Before launching Claude Code or Codex, Station checks that each known OAuth
-integration has a usable account. A missing token or a failed required refresh
+integration has a usable account. A missing token or an OAuth rejection during a required refresh
 refuses launch with **needs sign-in** and the deterministic
 `mcp_sign_in_required` code. No engine session has started for that refusal.
 The chat offers **Sign in to tool**, which opens **Connections → Tools**.
 
 Station gives the engine a loopback MCP proxy URL carrying a Station credential,
 scoped to that session and integration. The agent can read this proxy credential
-(including in engine configuration or argv); it can use it only on loopback for
-that integration. The credential expires after 12 hours and is revoked when the
+(including in engine configuration or argv). The route requires a loopback socket
+peer and this credential for that integration. A same-host reverse proxy or
+Tailscale Serve also presents a loopback peer; the credential remains the
+authorization gate, so this check does not prove that the original caller is local. The credential expires after 12 hours and is revoked when the
 session ends or its engine restarts. A session that reaches this limit needs a
 new engine session. Station does not put the remote access or refresh token in
 engine argv, environment or MCP configuration. Other stdio MCP children do not
-inherit the remote token.
+inherit the remote token. Proxy request bodies are limited to 8 MiB (HTTP 413
+on overflow); remote protocol-negotiation error bodies are limited to 64 KiB.
+Both limits refuse oversized bodies rather than truncating them.
 
 Station injects the remote bearer when forwarding HTTP or SSE traffic. It checks
 known access-token expiry before each request, refreshing within two minutes of
@@ -1527,12 +1531,24 @@ publication re-reads a concurrent writer's winning credential; disconnects canno
 be overwritten by a late refresh. This does not coordinate separate Station
 processes operating the same home.
 
-An unavailable refresh or a repeated 401 returns an MCP **needs sign-in** error
+A transient refresh failure (including a server outage, network error or timeout)
+preserves the account. During early refresh, an access token that is still valid
+remains usable; an expired or rejected token returns a retryable connection error.
+An OAuth grant/client rejection, missing refresh prerequisites or repeated 401
+returns an MCP **needs sign-in** error
 and updates integration authorization health. A conditional account marker holds
 failed credentials at needs-sign-in until fresh consent replaces them; later tool
 requests do not repeatedly send the failed refresh grant. Open the integration's account
 panel, sign in again and start a new session. A provider controls consent and
 refresh lifetimes; Station does not promise a fixed T3 Code sign-in lifetime.
+
+Known limitation: tool-server credentials are plaintext JSON with mode `0600` in
+`<home>/security/tool-server-credentials.json` (personal accounts use
+`tool-server-principal-credentials.json` in the same directory). A process running
+as the Station user, including an agent outside the macOS Seatbelt confinement,
+can read these files and obtain remote tokens. The proxy avoids delivering those
+tokens to engines; it does not encrypt credentials at rest or isolate them from
+same-user filesystem access. This is a pre-existing Station-wide storage property.
 
 Implementation: [account selection and proxy binding](../../src-server/services/plugins/engine-mcp-oauth.ts),
 [loopback proxy](../../src-server/routes/mcp/engine-oauth-proxy-route.ts),

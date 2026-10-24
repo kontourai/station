@@ -5,6 +5,10 @@ import {
   EngineMcpNeedsSignInError,
   engineMcpProxyBinding,
 } from '../../services/plugins/engine-mcp-oauth.js';
+import {
+  ConnectAccountRequiredError,
+  ToolServerOAuthUnavailableError,
+} from '../../services/plugins/tool-server-oauth.js';
 
 const negotiationRefusal = z.object({
   error: z.object({
@@ -14,6 +18,36 @@ const negotiationRefusal = z.object({
     }),
   }),
 });
+
+const MAX_REQUEST_BYTES = 8 * 1024 * 1024;
+const MAX_NEGOTIATION_BYTES = 64 * 1024;
+
+class ProxyBodyLimitError extends Error {}
+
+async function boundedText(
+  body: ReadableStream<Uint8Array> | null,
+  limit: number,
+): Promise<string> {
+  if (!body) return '';
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let size = 0;
+  let text = '';
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) return text + decoder.decode();
+      size += value.byteLength;
+      if (size > limit) {
+        await reader.cancel();
+        throw new ProxyBodyLimitError();
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
 
 const securityHeaders = {
   'Cache-Control': 'no-store',
@@ -80,14 +114,22 @@ export function createEngineOAuthProxyRoutes(): Hono {
       /^Bearer\s+(\S+)$/i.exec(c.req.header('authorization') ?? '')?.[1];
     const binding = engineMcpProxyBinding(candidate, sessionId!, serverId!);
     if (!binding) return c.text('Unauthorized', 401, securityHeaders);
-    const isCurrent = async (token?: string) => {
-      await binding.current(token);
+    const isCurrent = async () => {
+      const token = await binding.current();
       if (engineMcpProxyBinding(candidate, sessionId!, serverId!) !== binding)
         throw new Error('MCP proxy credential revoked');
+      return token;
     };
-    const body = ['GET', 'HEAD'].includes(c.req.method)
-      ? undefined
-      : await c.req.text();
+    let body: string | undefined;
+    try {
+      body = ['GET', 'HEAD'].includes(c.req.method)
+        ? undefined
+        : await boundedText(c.req.raw.body, MAX_REQUEST_BYTES);
+    } catch (error) {
+      if (error instanceof ProxyBodyLimitError)
+        return c.text('MCP request exceeds proxy limit', 413, securityHeaders);
+      throw error;
+    }
     let rpc: { id?: unknown; method?: string } = {};
     try {
       if (body) {
@@ -130,14 +172,15 @@ export function createEngineOAuthProxyRoutes(): Hono {
       let token: string;
       try {
         token = await binding.accessToken();
-      } catch {
+      } catch (error) {
+        if (!(error instanceof ConnectAccountRequiredError)) throw error;
         await binding.needsSignIn();
         return failure(
           `Integration '${serverId}' needs sign-in. Open Connections → Tools and sign in to its account.`,
         );
       }
       const send = async () => {
-        await isCurrent(token);
+        token = await isCurrent();
         headers.set('authorization', `Bearer ${token}`);
         return fetch(target, {
           method: c.req.method,
@@ -156,7 +199,8 @@ export function createEngineOAuthProxyRoutes(): Hono {
         await response.body?.cancel();
         try {
           token = await binding.accessToken(token);
-        } catch {
+        } catch (error) {
+          if (!(error instanceof ConnectAccountRequiredError)) throw error;
           await binding.needsSignIn();
           return failure(
             `Integration '${serverId}' needs sign-in. Open Connections → Tools and sign in to its account.`,
@@ -174,10 +218,12 @@ export function createEngineOAuthProxyRoutes(): Hono {
       if (response.status === 400) {
         // Preserve only the SDK's protocol-negotiation data, never remote error prose.
         const refusal = negotiationRefusal.safeParse(
-          await response
-            .clone()
-            .json()
-            .catch(() => undefined),
+          await boundedText(response.body, MAX_NEGOTIATION_BYTES)
+            .then((text) => JSON.parse(text))
+            .catch((error) => {
+              if (error instanceof ProxyBodyLimitError) throw error;
+              return undefined;
+            }),
         );
         if (refusal.success) {
           return c.json(
@@ -231,6 +277,8 @@ export function createEngineOAuthProxyRoutes(): Hono {
         headers: outgoing,
       });
     } catch (error) {
+      if (error instanceof ToolServerOAuthUnavailableError)
+        return failure(error.message);
       if (error instanceof EngineMcpNeedsSignInError) {
         await binding.needsSignIn();
         return failure(error.message);
@@ -240,7 +288,7 @@ export function createEngineOAuthProxyRoutes(): Hono {
       );
     }
   };
-  app.all(`${ENGINE_OAUTH_PROXY_PATH}/:serverId/:sessionId`, handler);
-  app.all(`${ENGINE_OAUTH_PROXY_PATH}/:serverId/:sessionId/messages`, handler);
+  app.all('/mcp/oauth-proxy/:serverId/:sessionId', handler);
+  app.all('/mcp/oauth-proxy/:serverId/:sessionId/messages', handler);
   return app;
 }

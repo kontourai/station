@@ -11,14 +11,22 @@ import { join } from 'node:path';
 import { ensureStationHomeSchemaSync } from '@kontourai/station-shared/station-home-schema';
 import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { ConfigLoader } from '../../../domain/config-loader.js';
+import type { EngineMcpOAuthResolver } from '../../../services/plugins/engine-mcp-oauth.js';
 
 const hoisted = vi.hoisted(() => ({
   claude: undefined as
     | undefined
-    | { getAppHomeEnv?: (ref?: string) => Promise<unknown> },
+    | {
+        getAppHomeEnv?: (ref?: string) => Promise<unknown>;
+        resolveMcpOAuth?: EngineMcpOAuthResolver;
+      },
   codex: undefined as
     | undefined
-    | { getAppHomeEnv?: (ref?: string) => Promise<unknown> },
+    | {
+        getAppHomeEnv?: (ref?: string) => Promise<unknown>;
+        resolveMcpOAuth?: EngineMcpOAuthResolver;
+      },
 }));
 
 /** Answers every member with an inert, non-thenable callable proxy. */
@@ -90,7 +98,7 @@ vi.mock('../../../services/discord/discord-gateway-service.js', () => ({
 const makeTempDir = trackTempDirs();
 
 describe('StationRuntime wires the credential profile env resolver per engine (#2966)', () => {
-  it('claude and codex each resolve their own profile overlay; an invalid overlay fails closed', {
+  it('claude and codex wire runtime OAuth admission and their own profile overlays; invalid overlays fail closed', {
     timeout: 120_000,
   }, async () => {
     const homeDir = makeTempDir('station-runtime-profile-env-');
@@ -151,6 +159,35 @@ describe('StationRuntime wires the credential profile env resolver per engine (#
         CODEX_HOME: credentialProfileAppHomeDir('codex', 'proxy'),
       },
     });
+    const input = {
+      threadId: 'oauth-session',
+      agent: {
+        slug: 'oauth-agent',
+        toolServers: [
+          {
+            id: 't3',
+            transport: 'streamable-http' as const,
+            endpoint: 'https://example.test/mcp',
+          },
+        ],
+      },
+    };
+    const admissionFailure = new Error('runtime OAuth admission reached');
+    const loadAgent = vi
+      .spyOn(ConfigLoader.prototype, 'loadAgent')
+      .mockRejectedValue(admissionFailure);
+    try {
+      for (const options of [hoisted.claude, hoisted.codex]) {
+        expect(options?.resolveMcpOAuth).toBeTypeOf('function');
+        await expect(options!.resolveMcpOAuth!(input)).rejects.toBe(
+          admissionFailure,
+        );
+      }
+      expect(loadAgent.mock.calls).toEqual([['oauth-agent'], ['oauth-agent']]);
+    } finally {
+      loadAgent.mockRestore();
+    }
+
     for (const options of [hoisted.claude, hoisted.codex]) {
       await expect(options?.getAppHomeEnv?.('tampered')).rejects.toBeInstanceOf(
         CredentialProfileEnvUnavailableError,

@@ -491,6 +491,14 @@ export class ConnectAccountRequiredError extends StationOwnedToolServerError {
   }
 }
 
+/** A refresh outage preserves consent and may be retried on the next request. */
+export class ToolServerOAuthUnavailableError extends StationOwnedToolServerError {
+  override name = 'ToolServerOAuthUnavailableError';
+  constructor() {
+    super('OAuth token refresh is temporarily unavailable. Try again.');
+  }
+}
+
 function readJson<T>(
   store: ToolServerCredentialStore,
   id: string,
@@ -711,11 +719,18 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
         )
           return committed.access_token;
       }
-    } catch {
+    } catch (error) {
       // An external writer may have won even when our refresh was rejected.
       tokens = await this.tokens({ issuer });
-      if (!tokens?.access_token || isDeepStrictEqual(tokens, expected))
-        throw needsSignIn();
+      if (!tokens?.access_token) throw needsSignIn();
+      if (isDeepStrictEqual(tokens, expected)) {
+        const { code } = classifyOAuthFailure(error);
+        if (code === 'invalid_grant' || code === 'invalid_client')
+          throw needsSignIn();
+        if (!rejected && expiresAt !== undefined && expiresAt > Date.now())
+          return tokens.access_token;
+        throw new ToolServerOAuthUnavailableError();
+      }
     }
     tokens = await this.tokens({ issuer });
     if (

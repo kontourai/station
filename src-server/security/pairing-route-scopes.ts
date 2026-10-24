@@ -2288,7 +2288,8 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
       prefix: '/mcp/oauth-proxy',
       match: 'prefix',
       capability: 'mcp-token',
-      reason: 'loopback-only session and server scoped OAuth MCP proxy',
+      reason:
+        'session and server scoped OAuth MCP credential; direct socket peer must be loopback',
     },
     {
       id: 'mcp-token:station-knowledge',

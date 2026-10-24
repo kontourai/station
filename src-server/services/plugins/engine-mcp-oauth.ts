@@ -51,7 +51,7 @@ type ProxyBinding = {
   signal: AbortSignal;
   endpoint: string;
   transport: string;
-  current: (token?: string) => Promise<void>;
+  current: () => Promise<string>;
   accessToken: (rejected?: string) => Promise<string>;
   needsSignIn: (rejectedToken?: string) => Promise<void>;
   messageEndpoint?: string;
@@ -166,13 +166,15 @@ export function createEngineMcpOAuthResolver(options: {
           binding: {
             endpoint: resource,
             transport: server.transport,
-            current: async (token) => {
+            current: async () => {
               await current();
+              const tokens = await provider.tokens();
               if (
-                token !== undefined &&
-                (await provider.tokens())?.access_token !== token
+                !tokens?.access_token ||
+                tokens.token_type.toLowerCase() !== 'bearer'
               )
                 throw new EngineMcpNeedsSignInError(server.id);
+              return tokens.access_token;
             },
             needsSignIn: async (rejectedToken) => {
               if (rejectedToken)
