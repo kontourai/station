@@ -1,0 +1,7 @@
+{
+  "revision": "a0790ebf992856b4491035dd91839d59704a5254",
+
+  "notes": [
+    {"path":"docs/strategy/kontour-integration-surface.md","note":"Reviewed the current dependency-policy section and the changed Flow Agents citation through a0790ebf992. Installed package 9.5.2 declares Flow 5.2.2 and exports delegation-flow-runtime; the actual Node imports of loadRun/withRunMutationLock pass assertDelegationFlowRuntime. Station report execution consumes that public guard and rounds/v3 subpaths; FlowRunService consumes the direct published Flow API. Current reading routes and historical classification remain accurate; July-August package tables, incidents and pipeline remain dated history, not re-executed or current acceptance. Corrected the absolute claim that npm installation physically prevents sibling filesystem imports: this is a required dependency policy, not physical containment. No provider/native/hosted or full-epic claim.","inputs":["docs/strategy/kontour-integration-surface.md","package.json#/dependencies/@kontourai~1flow-agents"]}
+  ]
+}
