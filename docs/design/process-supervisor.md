@@ -1,23 +1,31 @@
 # Station process supervisor
 
-Status: Proposal — unscheduled; no tracking issue as of 2026-10-20 (phases 2–4; phase 1 shipped in #3811).
+Status: Proposal — unscheduled; no tracking issue as of 2026-10-24 (phases 2–6; phase 1 shipped in #3811, #3900 and #3971, and is adopted by `station start` and `station service run`).
 
-> **Reading status: proposal (2026-10-17), phase 1 core implemented.** The
-> supervisor package ([`packages/supervisor`](../../packages/supervisor/src/generation-manager.ts))
+> **Reading status: proposal (2026-10-17), phase 1 implemented and adopted
+> outside Desktop (2026-10-24).** The supervisor package
+> ([`packages/supervisor`](../../packages/supervisor/src/generation-manager.ts))
 > implements the control channel, listener handoff, sequential generation
 > handoff with rollback, and crash restart, verified against a fixture core
-> server. The core server also runs as a supervised generation
+> server. The core server runs as a supervised generation
 > ([`supervisor-link.ts`](../../src-server/runtime/bootstrap/supervisor-link.ts)),
-> verified by running the built supervisor and core bundles together. No
-> launch mode runs it yet. The [process supervisor decision](../decisions/process-supervisor.md)
-> records the ownership change. Until adoption, the
-> current lifecycle is owned by the Desktop sidecar supervisor
+> verified by running the built supervisor and core bundles together.
+> `station start` launches the supervisor
+> ([`supervisor-launch.ts`](../../packages/cli/src/commands/supervisor-launch.ts)),
+> and so does [`station service run`](../../packages/cli/src/commands/service-run.ts),
+> which starts through it: the installed service, the container image, and
+> the [archive launcher](../../packaging/portable-server/bin/station-launcher.mjs)'s
+> service child. `service run`'s health loop and the archive launcher's update
+> transaction still run above the supervisor. `station restart`,
+> `station supervisor status`, and the in-app git-pull update use the control
+> channel or a core handoff. `STATION_DIRECT_LAUNCH=1` keeps the direct
+> start. Desktop still owns its sidecar
 > (`run_sidecar_supervisor` in [`src-desktop/src/lib.rs`](../../src-desktop/src/lib.rs)),
-> [`station service run`](../../packages/cli/src/commands/service-run.ts), the
-> [archive launcher](../../packaging/portable-server/bin/station-launcher.mjs),
-> and [owned-child tracking](../../src-server/services/infra/process-utils.ts).
-> Claims about current behavior are from source inspection on 2026-10-17, not
-> from executed journeys.
+> and [owned-child tracking](../../src-server/services/infra/process-utils.ts)
+> is unchanged. The [process supervisor decision](../decisions/process-supervisor.md)
+> records the ownership change. Claims about Desktop and owned children are
+> from source inspection on 2026-10-17; the adoption claims are from the
+> journeys named under Verification.
 
 ## Why
 
@@ -323,6 +331,11 @@ product decisions.
   - Requests are `status`, `handoff` (streams progress, then a result of
     `committed`, `rolled-back`, or `refused`), `stop`, and, with the
     `events` capability, `subscribe`.
+  - The CLI reaches the channel by running the supervisor bundle as a
+    client: `station-supervisor.js --request <status|stop|handoff> --home
+    <home> --instance <id>` prints the replies as NDJSON and exits 3 when no
+    supervisor runs there. `station stop`, `station restart`, and
+    `station supervisor status` use it.
   - A handoff entry must be a `.js` or `.mjs` file whose real path is inside
     the supervisor's build root; otherwise it is refused as
     `entry-outside-build-root` without starting a process. This bounds where
@@ -435,10 +448,10 @@ live in the core server.
 | Mode | Launcher | Change |
 | --- | --- | --- |
 | Desktop | Per-user login service | Desktop no longer owns a server. On first launch it asks to install the per-user service, then is a client of it. The Rust sidecar supervisor and restart loop are removed. |
-| Installed service | launchd `KeepAlive`, systemd `Restart=always`, Windows Task Scheduler | Runs the supervisor instead of `service run`. The same service Desktop uses. |
-| Archive install | Fixed launcher | Starts the supervisor, which owns the update transaction. |
-| `station start` | CLI, detached | Starts the supervisor. The separate UI server becomes a core server route. |
-| Container | `tini` | Runs the supervisor. |
+| Installed service | launchd `KeepAlive`, systemd `Restart=always`, Windows Task Scheduler | Runs the supervisor instead of `service run`. The same service Desktop uses. Today `service run` starts the supervisor through `station start` and keeps its own health loop above it. |
+| Archive install | Fixed launcher | Starts the supervisor, which owns the update transaction. Today the launcher's service child starts it, with `--build-root <install root>/versions` so a later handoff may name another version; the launcher still owns the update transaction. |
+| `station start` | CLI, detached | Starts the supervisor (implemented). The separate UI server becomes a core server route. |
+| Container | `tini` | Runs the supervisor (today through `service run`, as above). |
 | Mobile | None | No change; mobile never runs a server. |
 
 Station runs in the background by default, through the service, and the tray
@@ -470,10 +483,20 @@ Every path becomes a generation handoff:
 - the Desktop updater;
 - the archive launcher;
 - the in-app git-pull update and `install.sh --relaunch`. Under supervision
-  the core server sends `handoff.request` over its IPC channel instead of
-  exiting, so the update is not disabled when supervised. The supervisor
-  answers `handoff.refused` when it cannot run one, for example while a
-  handoff is already in progress;
+  the in-app update builds the instance it runs and sends `handoff.request`
+  over its IPC channel instead of exiting
+  ([`requestSupervisorHandoff`](../../src-server/runtime/bootstrap/supervisor-link.ts)),
+  so the update is not disabled when supervised. The supervisor answers
+  `handoff.refused` when it cannot run one, for example while a handoff is
+  already in progress. With protocol 1.2 a core that parks announcing the
+  `handoff-events` capability hears `handoff.progress` (`requestId`, phase,
+  generation) for its own request while it runs, and the generation the
+  handoff leaves serving hears `handoff.outcome` (`committed` or
+  `rolled-back`, with the request id, or null for a control-channel
+  handoff); that generation resolves the update's durable restart record, as
+  the detached watchdog does for an unsupervised restart. A 1.0 or 1.1 core
+  announces nothing and is sent neither. `install.sh --relaunch` and the
+  archive and Desktop updaters do not hand off yet;
 - `station upgrade`, which no longer needs the service stopped. A rollback
   relaunches the previous generation's entry, so that entry must still exist
   unchanged after the new build. This needs build directories pinned per
@@ -580,10 +603,13 @@ verification, and fault injection.
 1. **Supervisor core:** package, control protocol, listener handle passing,
    sequential generation handoff with rollback, crash restart. The package is
    implemented, and so is the core server's supervised mode; adoption by
-   `station start`, `service run`, and containers follow in their own pull
-   requests. The core's `handoff.request` sender exists but nothing calls it
-   yet: the in-app update still refuses under supervision. Handle passing must be verified on a real Windows host before
-   adoption.
+   `station start`, `service run`, and containers is implemented: they start
+   the supervisor, `station restart` and `station supervisor status` use its
+   control channel, `station stop` drains through it, and the in-app git-pull
+   update hands off through `handoff.request`. Instance records, the home
+   registry, and the active-local-station record name the supervisor's pid.
+   Handle passing was verified on a Windows host (see Windows above); the
+   adopted launch modes have not been run there.
 2. **Workloads and terminals:** workload host and journals, then the terminal
    redesign on top of it (see [terminal.md](terminal.md)).
 3. **Engines:** workload-stream transport per adapter, reattach before
@@ -643,3 +669,16 @@ verification, and fault injection.
   group still gets a chance to clean up. SIGKILL goes to the group only if
   the leader is still running then; a group member that ignores SIGTERM can
   outlive a trial whose leader exited, as it can after any SIGTERM stop.
+- **Adoption evidence:** a journey
+  ([`supervised-lifecycle.real.test.ts`](../../packages/cli/src/__tests__/supervised-lifecycle.real.test.ts))
+  runs this checkout's CLI against the built server and supervisor bundles,
+  an isolated home, and loopback ports. `station start` records the
+  supervisor, whose child serves the API and which `lsof` lists on the API
+  port; `station restart` hands generation 1 to 2 under keep-alive and
+  fresh-connection HTTP load with no refused or reset connection; `station
+  stop` drains through the control channel and every process exits. A
+  second start with `STATION_DIRECT_LAUNCH=1` writes the record shape an
+  earlier CLI wrote, which `restart` refuses and `stop` still stops. The
+  in-app update's handoff is tested through its route with a real core link
+  over a fake IPC channel, not through a real pull and build. These ran on
+  macOS only: the journey is skipped on Windows, and no Linux host ran it.
