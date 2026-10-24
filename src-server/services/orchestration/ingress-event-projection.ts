@@ -3,7 +3,7 @@ import { truncateJsonString } from '../../providers/tool-output-projection.js';
 import {
   MAX_EVENT_STORE_INGRESS_BYTES,
   REQUEST_OPENED_SNAPSHOT_MAX_BYTES,
-} from './event-store.js';
+} from './event-store-limits.js';
 
 /**
  * Room kept under the request budget below: lifecycle normalization stamps a
@@ -28,7 +28,7 @@ export const REQUEST_OPENED_PROJECTION_BUDGET_BYTES =
  * A large tool start the window read cannot return whole is a reload limit,
  * not a reason to cut what is shown live.
  */
-export const TOOL_STARTED_PROJECTION_BUDGET_BYTES =
+const TOOL_STARTED_PROJECTION_BUDGET_BYTES =
   MAX_EVENT_STORE_INGRESS_BYTES - 16 * 1024;
 /**
  * The size above which a `tool.started` is projected. 1 KiB under the
@@ -63,7 +63,7 @@ const MAX_RECEIPT_FIELD_CHARS = 96;
  * payload keys, and the visible marker in each cut string is what a person
  * reads.
  */
-export const REQUEST_TRUNCATION_KEY = 'stationTruncation';
+const REQUEST_TRUNCATION_KEY = 'stationTruncation';
 
 type Path = (string | number)[];
 type Candidate = { path: Path; value: string; bytes: number };

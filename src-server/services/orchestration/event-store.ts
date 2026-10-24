@@ -231,6 +231,12 @@ import {
   type DelegationResultStore,
   migrateDelegationResultSchema,
 } from './delegation-result-delivery.js';
+import {
+  MAX_EVENT_STORE_INGRESS_BYTES,
+  REQUEST_OPENED_SNAPSHOT_MAX_BYTES,
+  SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES,
+  TURN_COMPLETED_SNAPSHOT_MAX_BYTES,
+} from './event-store-limits.js';
 import { createHtmlReplyPages } from './html-reply-pages.js';
 import {
   createNativeInvocationRuns,
@@ -367,6 +373,8 @@ import {
   SESSION_WORK_ITEM_READ_MAX_SERIALIZED_BYTES,
 } from './work-item-result-projector.js';
 
+export { MAX_EVENT_STORE_INGRESS_BYTES };
+
 const require = createRequire(import.meta.url);
 const logger = createLogger({ name: 'event-store' });
 
@@ -453,8 +461,6 @@ const CANONICAL_TERMINAL_TARGET = `state NOT IN ('lifecycle','settled') AND purp
   AND prepared_settlement IS NULL
   AND (invocation_id IS NOT NULL OR input_digest IS NOT NULL OR intent_digest IS NOT NULL OR body_ref IS NOT NULL OR dedup_key IS NOT NULL)`;
 const MESSAGE_SEARCH_BACKGROUND_WRITE = Symbol('message-search-backfill');
-/** Last-resort ingress ceiling; upstream adapters own useful projection. */
-export const MAX_EVENT_STORE_INGRESS_BYTES = 64 * 1024;
 /**
  * Structural limits make the last-resort byte ceiling cheap to enforce even
  * when a provider hands the store an object that is merely *typed* as a
@@ -1405,34 +1411,6 @@ const SESSION_EVENT_WINDOW_MAX_EVENTS = 150;
  */
 const ATTACHMENT_CANDIDATE_THREAD_LIMIT = 4;
 const SNAPSHOT_TOOL_OUTPUT_MAX_CHARS = 84;
-/**
- * Per-event ceiling for a window read. Sized to clear the 16 KiB transcript
- * chunks the session sources persist (`MAX_TEXT_CHUNK_BYTES` in
- * `claude-transcript-session-source.ts` / `codex-rollout-session-source.ts`):
- * at 4 KiB every one of those deltas stripped to identity fields and any
- * turn whose text lived only in them vanished from the transcript while its
- * short user prompt survived. The window-wide
- * `SESSION_EVENT_WINDOW_MAX_SERIALIZED_BYTES` budget still bounds each page;
- * this ceiling only decides when a single event stops being an event.
- */
-export const SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES = 24_576;
-/**
- * A `turn.completed` carries the turn's full reply text, so it gets the same
- * headroom on every window path (the newest-first path always allowed it;
- * the turn and conversation paths did not, and dropped long replies there).
- */
-const TURN_COMPLETED_SNAPSHOT_MAX_BYTES = 48_000;
-/**
- * A `request.opened` is an open decision that a reload, or a second device,
- * rebuilds from a window read (the approval card and toast). Reduced to its
- * identity fields it has no request id, title or form, so it cannot be
- * answered from there. It gets the reply's headroom, and orchestration
- * admission projects every `request.opened` under it
- * (`ingress-event-projection.ts`).
- */
-export const REQUEST_OPENED_SNAPSHOT_MAX_BYTES =
-  TURN_COMPLETED_SNAPSHOT_MAX_BYTES;
-
 function windowSnapshotMaxBytes(method: string): number {
   if (method === 'turn.completed') return TURN_COMPLETED_SNAPSHOT_MAX_BYTES;
   if (method === 'request.opened') return REQUEST_OPENED_SNAPSHOT_MAX_BYTES;

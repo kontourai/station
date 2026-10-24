@@ -34,12 +34,12 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { CodexAdapter } from '../../../providers/adapters/codex-adapter.js';
 import { codexInputRequest } from '../../../providers/adapters/harness-questions.js';
 import { EventBus } from '../event-bus.js';
+import { EventStore } from '../event-store.js';
 import {
-  EventStore,
   MAX_EVENT_STORE_INGRESS_BYTES,
   REQUEST_OPENED_SNAPSHOT_MAX_BYTES,
   SNAPSHOT_EVENT_MAX_SERIALIZED_BYTES,
-} from '../event-store.js';
+} from '../event-store-limits.js';
 import {
   projectEventForIngress,
   REQUEST_OPENED_PROJECTION_BUDGET_BYTES,
