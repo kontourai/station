@@ -155,12 +155,14 @@ jobs:
           STATION_AUTHOR_TELEMETRY_ENDPOINT: ${{ ((github.repository == 'kontourai/station' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.repository == 'kontourai/station' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && github.workflow_ref == 'kontourai/station/.github/workflows/nightly.yml@refs/heads/main' && inputs.ring == 'nightly')) && inputs.version != '' && inputs.ring != '' && vars.STATION_AUTHOR_TELEMETRY_ENDPOINT || '' }}
           RELEASE_REF: ${{ inputs.version != '' && format('v{0}', inputs.version) || 'v0.0.0' }}
           RELEASE_RING: ${{ inputs.ring }}
-        run: npm run build:portable-server -- --ref "$RELEASE_REF" ${RELEASE_RING:+--ring "$RELEASE_RING"} --sha "$(git rev-parse HEAD)" --output-dir "$RUNNER_TEMP/portable-server"
+        run: |
+          npm run build:telemetry-broker
+          npm run build:portable-server -- --ref "$RELEASE_REF" ${RELEASE_RING:+--ring "$RELEASE_RING"} --sha "$(git rev-parse HEAD)" --with-telemetry-companion --output-dir "$RUNNER_TEMP/portable-server"
 
       - name: Smoke the archive with no Node.js on PATH
         # --long-path extracts beneath a directory long enough that the
         # deepest node_modules path crosses Windows MAX_PATH (#2484).
-        run: npm run smoke:portable-server -- --archive "$RUNNER_TEMP/portable-server/station-server-${{ matrix.target }}.${{ matrix.format }}" --long-path
+        run: npm run smoke:portable-server -- --archive "$RUNNER_TEMP/portable-server/station-server-${{ matrix.target }}.${{ matrix.format }}" --long-path --require-telemetry-companion
 
       # Uploads only for main, dispatch, and same-repository pull requests. A
       # fork's archive is never published even as a run artifact; for forks

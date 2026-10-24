@@ -3,6 +3,11 @@ name: "Main: Publish packages"
 on:
   push:
     branches: [main]
+    # Generated deployment receipts do not change the package release plan.
+    # Regenerating here would replace reviews added to the existing version PR.
+    paths-ignore:
+      - docs/reference/deploy-ledger.json
+      - docs/reference/deploy-ledger.md
   workflow_dispatch:
 
 # A push-triggered VERSION run and a dispatched PUBLISH run are different

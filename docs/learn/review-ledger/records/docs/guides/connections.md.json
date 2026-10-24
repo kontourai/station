@@ -390,7 +390,13 @@
 
     "src-ui/src/components/modals/NewProjectModalContent.tsx",
 
-    "src-ui/src/lib/project-onboarding-recovery.ts"
+    "src-ui/src/lib/project-onboarding-recovery.ts",
+
+    "src-ui/src/views/agent-editor/useAgentsViewModel.ts",
+
+    "src-server/routes/agents/enriched-agents.ts",
+
+    "src-ui/src/hooks/useServerEvents.ts"
   ],
 
   "checks": [

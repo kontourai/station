@@ -83,13 +83,19 @@ export function resolveAuthoritativeLoadedAgent(
  * copy picker and anything else that offers the repair — the label and the
  * destination must not be decided in two places.
  */
-function navigateFix(route: AgentFixRoute) {
+function navigateFix(agent: AgentData, route: AgentFixRoute) {
   if (route === 'models') {
     navigationStore.navigate('/connections?section=models');
     return;
   }
   if (route === 'engines') {
-    navigationStore.navigate('/connections?section=engines');
+    const connectionId =
+      agent.unavailableFix?.target || agent.execution?.agentConnectionId;
+    navigationStore.navigate(
+      connectionId
+        ? `/connections/engines/${encodeURIComponent(connectionId)}`
+        : '/connections?section=engines',
+    );
     return;
   }
   navigationStore.navigate('/connections');
@@ -372,7 +378,7 @@ export function useAgentsViewModel({
                 agentSlug: agent.slug,
               },
             }),
-          onFix: (_agent, route) => navigateFix(route),
+          onFix: navigateFix,
         },
         { readinessKnown, devicePresentation },
       ),
@@ -975,8 +981,7 @@ export function useAgentsViewModel({
     handleStartWithCli,
     handleCopyAgent,
     handleDuplicate,
-    handleFixAgent: (_agent: AgentData, route: AgentFixRoute) =>
-      navigateFix(route),
+    handleFixAgent: navigateFix,
     engineKind,
     setEngineKindOverride,
     createBlocked,

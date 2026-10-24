@@ -165,9 +165,9 @@ export function endedTurnStopDetail(
 /**
  * Drops the restart notice recovery writes after a turn Station's restart
  * cut off (`[SYSTEM_EVENT] [TURN_INTERRUPTED] …`) when the row just above it
- * already says so: a row that drew nothing reads "Stopped / Station
- * restarted mid-turn", and one with content ends with the same sentence. A
- * notice with no such row above it stays.
+ * already says so: an empty row reads "Stopped / Station restarted mid-turn",
+ * or a legacy row contains the notice text. Partial answers retain their
+ * separate notice without appending recovery text to the answer.
  */
 export function withoutRepeatedRestartNotice<
   M extends Pick<

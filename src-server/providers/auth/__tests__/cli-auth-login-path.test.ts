@@ -147,6 +147,32 @@ describe('login-shell PATH fallback', () => {
     expect(execFileMock).not.toHaveBeenCalled();
   });
 
+  test('finds OpenCode in its standard install directory when the service PATH omits it and the shell capture fails', async () => {
+    platformMock.mockReturnValue('linux');
+    vi.stubEnv('PATH', '/usr/bin');
+    rejectLoginPathResolve();
+    existsSyncMock.mockImplementation(
+      (candidate) =>
+        candidate === '/home/test-user/.opencode/bin' ||
+        candidate === '/home/test-user/.opencode/bin/opencode',
+    );
+
+    const { findCliBinaryAsync, resolveAugmentedPath } = await import(
+      '../cli-auth.js'
+    );
+
+    expect(await findCliBinaryAsync('opencode')).toBe(
+      '/home/test-user/.opencode/bin/opencode',
+    );
+    expect((await resolveAugmentedPath()).split(':')).toContain(
+      '/home/test-user/.opencode/bin',
+    );
+
+    vi.stubEnv('STATION_DISABLE_LOGIN_PATH_RESOLVE', '1');
+    expect(await findCliBinaryAsync('opencode')).toBeNull();
+    expect(await resolveAugmentedPath()).toBe('/usr/bin');
+  });
+
   // archive#977 review HIGH: -ic (interactive) can print a MOTD/banner,
   // a prompt fragment, or rc-file echo/debug output to stdout around the
   // captured PATH. The sentinel extraction must pull out exactly the PATH

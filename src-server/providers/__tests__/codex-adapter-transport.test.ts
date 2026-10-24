@@ -268,6 +268,7 @@ describe('CodexAdapterTransport', () => {
       nowIso: () => '2026-04-11T00:00:00Z',
     });
     record.activeTurnId = 'turn-mid-flight';
+    record.turnInvocationIds.set('turn-mid-flight', 'owned-invocation');
     transport.registerSession(record);
     transport.handleProcess(record);
     const iterator = transport.streamEvents()[Symbol.asyncIterator]();
@@ -281,6 +282,7 @@ describe('CodexAdapterTransport', () => {
       method: 'runtime.error',
       severity: 'error',
       turnId: 'turn-mid-flight',
+      invocationId: 'owned-invocation',
       threadId: 'thread-orphaned-exit',
     });
     expect(await nextEvent(iterator, 'session.exited')).toMatchObject({
@@ -537,6 +539,7 @@ describe('CodexAdapterTransport', () => {
       nowIso: () => '2026-04-11T00:00:00Z',
     });
     record.activeTurnId = 'turn-stopped-mid-flight';
+    record.turnInvocationIds.set('turn-stopped-mid-flight', 'owned-invocation');
     transport.registerSession(record);
     transport.handleProcess(record);
     const iterator = transport.streamEvents()[Symbol.asyncIterator]();
@@ -552,6 +555,7 @@ describe('CodexAdapterTransport', () => {
       method: 'runtime.error',
       severity: 'error',
       turnId: 'turn-stopped-mid-flight',
+      invocationId: 'owned-invocation',
     });
     expect(await nextEvent(iterator, 'session.exited')).toMatchObject({
       method: 'session.exited',

@@ -7,6 +7,7 @@
 //   node scripts/build-portable-server-archive.mjs --ref v0.0.0 \
 //     [--ring stable|preview|nightly] [--sha <40-hex>] [--created-at <ISO>] [--output-dir dist-portable-server] \
 //     [--node-distribution <path to the pinned node-v*.tar.gz|zip>] [--keep-stage]
+//     [--with-telemetry-companion]
 //
 // The build refuses a --sha other than HEAD, and a dirty working tree.
 // --allow-unverified-source lifts that for tests and local experiments only;
@@ -31,6 +32,7 @@ const { values } = parseArgs({
     'node-distribution': { type: 'string' },
     'keep-stage': { type: 'boolean', default: false },
     'allow-unverified-source': { type: 'boolean', default: false },
+    'with-telemetry-companion': { type: 'boolean', default: false },
   },
   strict: true,
 });
@@ -61,6 +63,8 @@ try {
   if (!values['allow-unverified-source']) {
     assertBuildSourceIsCheckout({ sha, git });
   }
+  if (values['with-telemetry-companion'] && values['allow-unverified-source'])
+    throw new Error('Companion payloads require verified checkout source');
   const { archivePath, descriptorPath, descriptor } =
     await buildPortableServerArchive({
       projectRoot,
@@ -74,6 +78,7 @@ try {
         ? { nodeDistribution: resolve(values['node-distribution']) }
         : {}),
       keepStage: values['keep-stage'],
+      includeTelemetryCompanion: values['with-telemetry-companion'],
       ...(values.ring ? { expectedRing: values.ring } : {}),
     });
   console.log(`Created ${archivePath}`);

@@ -1,0 +1,7 @@
+{
+  "revision": "0165eb8388a8b17ad6f1702289795d5dca9ee023",
+
+  "notes": [
+    {"path":"packaging/homebrew/README.md","note":"Reviewed the linked manifest README delta: portable server archives may contain authenticated build-only companion bytes, but the signer, schema-v1 macOS artifact shape and cask renderer are unchanged. The cask CLI still refuses schema-v2 server manifests, and no new key, tap command, publish gate or installation authority was added. The existing distinction between rendering/dry-run and live publication remains accurate; no live key/tap state is asserted.","inputs":["packaging/homebrew/README.md","packaging/manifest/README.md"]}
+  ]
+}

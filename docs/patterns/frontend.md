@@ -113,6 +113,15 @@ refresh on focus/remount; a hook opts one read back in with
 placeholder content from the answer for the new key. Preserve loading, empty,
 unavailable and error as different states.
 
+Engine availability events refresh active reads of the Agents catalog and cached
+connection lists, details and ACP discovery through
+[useServerEvents](../../src-ui/src/hooks/useServerEvents.ts). Connection caches
+refresh even while unobserved because their hooks do not refetch on mount;
+disabled queries stay disabled. Credential usage and sign-in reads are excluded.
+The Agents catalog and persisted model-picker data refresh while active and
+revalidate invalidated answers on their next mount. Marking these queries stale
+without refetching can leave failure messages visible after an engine recovers.
+
 Protected data also needs the current request authority and cache partition.
 Use existing `ApiRequestScope`/authority-key owners for that family; credentials
 must never become query keys. Review both the cache result and the waiting

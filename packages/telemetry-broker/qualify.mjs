@@ -414,6 +414,8 @@ async function qualifyReceiver(snapshot, buildManifest, activeEntrypoints) {
   const database = `station_telemetry_qa_${randomUUID().replaceAll('-', '')}`;
   const config = {
     connectionString,
+    // The deployment role matches the application schema; do not rely on a DBA's search path.
+    options: '-c search_path=station_telemetry,public',
     max: 4,
     connectionTimeoutMillis: 1500,
     statement_timeout: 3000,
@@ -442,9 +444,18 @@ async function qualifyReceiver(snapshot, buildManifest, activeEntrypoints) {
     await admin.query(`CREATE DATABASE "${database}"`);
     created = true;
     pool = new Pool({ ...config, connectionString: url.href });
+    const callerSearchPath = (await pool.query('SHOW search_path')).rows[0]
+      .search_path;
     const store = new PgProductRepository(pool);
     await store.migrate();
     await store.ready();
+    assert.equal(
+      (await pool.query('SHOW search_path')).rows[0].search_path,
+      callerSearchPath,
+    );
+    checks.push(
+      'schema validation with the deployment schema in the caller search path; caller session setting preserved',
+    );
     const postgresVersion = (await pool.query('SHOW server_version')).rows[0]
       .server_version;
     const operatorKey = `sto_${randomBytes(32).toString('base64url')}`;

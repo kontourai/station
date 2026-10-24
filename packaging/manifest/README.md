@@ -61,6 +61,12 @@ assembles v2 and can publish its signed rolling manifest only behind the owner
 gate. For Nightly the installers default to that rolling manifest; other
 channels need an explicit public manifest URL.
 
+The server archive may contain a source-matched `telemetry-companion/` build
+candidate. Its bytes are covered by the archive's existing signed size/hash;
+there is no separate key or envelope. This does not promote its `build-only`
+descriptor to installation authority. A companion lifecycle consumer still
+needs companion-specific runtime qualification before installing or starting it.
+
 The [ecosystem dry-run](../../scripts/exercise-ecosystem-packaging-dry-run.sh)
 uses v1 through a disposable local endpoint. The separate
 [prebuilt installer smoke](../../scripts/smoke-install-prebuilt-archive.sh)

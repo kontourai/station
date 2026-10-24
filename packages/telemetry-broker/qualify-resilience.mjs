@@ -152,19 +152,34 @@ export async function qualifyResilience(
     )
   ).rows[0];
   // Fixture loading is chunked, outside production transaction deadlines. No runtime limits are raised.
-  for (let offset = 0; offset < 100000; offset += 5000)
+  const seedBatchRows = 500;
+  for (let offset = 0; offset < 100000; offset += seedBatchRows)
     await pool.query(
       `INSERT INTO station_telemetry.lite_pings(source_id,event_id,ping,received_at,client_hash,contributions)
      SELECT $1,event_id,jsonb_set($2::jsonb,'{event_id}',to_jsonb(event_id::text)),$3::date::timestamp AT TIME ZONE 'UTC',decode(md5(i::text)||md5(i::text),'hex'),$4::jsonb
-     FROM (SELECT i,gen_random_uuid() AS event_id FROM generate_series($5::int,$5::int+4999) i) fixture`,
+     FROM (SELECT i,gen_random_uuid() AS event_id FROM generate_series($5::int,$5::int+$6::int-1) i) fixture`,
       [
         scaleSource,
         JSON.stringify(template.ping),
         day,
         JSON.stringify(template.contributions),
         offset,
+        Math.min(seedBatchRows, 100000 - offset),
       ],
     );
+  assert.equal(
+    Number(
+      (
+        await pool.query(
+          `SELECT count(*) AS n FROM station_telemetry.lite_pings
+           WHERE source_id=$1 AND received_at=$2::date::timestamp AT TIME ZONE 'UTC'`,
+          [scaleSource, day],
+        )
+      ).rows[0].n,
+    ),
+    100000,
+    'scale fixture must contain all 100000 observations before measuring finalization',
+  );
   await pool.query(
     'UPDATE station_telemetry.lite_capacity SET pings=pings+100000 WHERE singleton',
   );

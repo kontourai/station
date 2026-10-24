@@ -504,8 +504,13 @@ for the failed leg; a green or skipped later job does not prove recovery.
 Preview
 and Stable are evidence-driven owner decisions, not automatic calendar releases.
 No public release is created merely by merging a normal PR. Package-version
-PR maintenance still runs on main pushes; the manual package-publish operation
-also requires exact-source qualification. The separately authorized published
+PR maintenance runs on main pushes except those changing only the generated
+`docs/reference/deploy-ledger.json` and `docs/reference/deploy-ledger.md` outputs.
+Those receipt updates do not change the package release plan; regenerating the
+version PR would replace its scoped review notes and formatting corrections.
+Mixed pushes and every other changed path still trigger maintenance. Manual
+package publication remains available and requires exact-source qualification.
+The separately authorized published
 pointer-repair break glass retains its existing inventory/provenance checks and
 can skip new qualification to restore an already-published update authority;
 normal draft publication cannot use that exception.

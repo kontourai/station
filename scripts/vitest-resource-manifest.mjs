@@ -25,6 +25,8 @@ import { spawnSyncBounded } from './lib/bounded-capture.mjs';
 export const ORDINARY_MAX_WORKERS = 4;
 
 export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
+  // Builds the actual receiver dist before packaging its source-bound companion candidate.
+  'scripts/__tests__/package-telemetry-companion.test.ts',
   // Builds the real CLI before checking its shim freshness; owns packages/cli/dist.
   'scripts/__tests__/station-dev.test.ts',
   // Packs the CLI once, then verifies both the symlinked offline layout and an

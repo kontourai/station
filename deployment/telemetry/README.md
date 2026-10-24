@@ -11,11 +11,51 @@ and a separate authenticated OTel Collector, Prometheus, Tempo and Grafana.
 the diagnostic services from [`compose.diagnostics.yaml`](compose.diagnostics.yaml).
 The Grafana dashboard is [`dashboards/station.json`](dashboards/station.json).
 The [developer profile](#developer-profile) runs the diagnostic half alone.
+The trace transform clears typed span-event and span-link slices with `nil`.
+An empty OTTL list (`[]`) is not a typed slice in the pinned Collector and
+causes runtime rejection even when configuration validation succeeds. Keep
+`error_mode: propagate`; do not turn projection failures into accepted exports.
+
 Product observations never enter the diagnostic stores. Neither path supplies
 personal usage accounting, person identity or an analytics source grant.
 Station's normal install enables none of these services or destinations.
 
 ## Artifact and private files
+
+A source-bound **build candidate** can be staged outside the checkout:
+
+```bash
+npm run build:telemetry-broker
+npm run build:telemetry-companion -- /absolute/new-output-directory
+npm run verify:telemetry-companion -- /absolute/new-output-directory/candidate
+```
+
+Run these from a clean checkout. The packager validates the receiver's captured
+build inputs and bundles against that revision, then snapshots the pinned
+deployment files and bundles into a new private directory. It refuses an
+existing output directory. The generated Dockerfile consumes the bundled
+receiver; the packaged Compose profile requires an explicitly selected image
+and cannot build from the caller's checkout. Verification rejects changed
+files, extra payloads, links, and special files. Keep the output outside the
+checkout so it cannot become an input to a later build.
+
+`companion-manifest.json` binds the exact file bytes, image digests and source
+revision. Its `build-only` scope is mandatory: this unsigned integrity record
+is neither publisher authentication nor a release qualification receipt.
+It does not authorize installation, change consent or configure a destination.
+The managed in-Station lifecycle and qualified release descriptor remain
+pending; these commands do not implement that journey.
+
+Portable-server builds can include this candidate with
+`build:portable-server -- --with-telemetry-companion` after the receiver build.
+The archive workflow selects that option and requires the extracted payload in
+its smoke check (`--require-telemetry-companion`). The companion's source must
+match the server release SHA. Existing signed server manifests authenticate the
+whole archive, including these bytes; no additional signing key is introduced.
+That authenticates a build candidate, not a qualified companion deployment.
+The lifecycle installer must still require companion-specific runtime evidence
+before accepting it for installation.
+
 
 The root Dockerfile's explicit `telemetry-runtime` target bundles the receiver
 with its JavaScript dependencies and an existing Station release provenance

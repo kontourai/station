@@ -160,6 +160,8 @@
     "typecheck:monument": "node scripts/tsc-slot.mjs -p packages/monument/tsconfig.json --noEmit",
     "typecheck:supervisor": "node scripts/tsc-slot.mjs -p packages/supervisor/tsconfig.json --noEmit",
     "build:telemetry-broker": "node packages/telemetry-broker/build.mjs",
+    "build:telemetry-companion": "node scripts/package-telemetry-companion.mjs pack",
+    "verify:telemetry-companion": "node scripts/package-telemetry-companion.mjs verify",
     "qualify:telemetry-broker": "node packages/telemetry-broker/qualify.mjs",
     "typecheck:contracts": "node scripts/tsc-slot.mjs -p packages/contracts/tsconfig.json --noEmit",
     "typecheck:sdk": "node scripts/tsc-slot.mjs -p packages/sdk/tsconfig.tests.json --noEmit",

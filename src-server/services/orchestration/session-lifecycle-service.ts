@@ -19,6 +19,7 @@ import {
   validateSessionLifecycleTransition,
 } from '@kontourai/station-contracts/session-lifecycle';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
+import { withoutCompletedTurnRecovery } from '@kontourai/station-shared/runtime-event-projection';
 import {
   formatProviderQuotaEventText,
   PROVIDER_PLAN_QUOTA_EXHAUSTED_CODE,
@@ -159,7 +160,7 @@ export function projectSessionLifecycle(options: {
   // discard it) without disturbing `nextActiveTurnId`'s "is a turn open"
   // semantics anywhere else. See `nextTurnIdentityAnchor`'s doc.
   let turnIdentityAnchor: TurnIdentityAnchor | undefined;
-  for (const event of options.events) {
+  for (const event of withoutCompletedTurnRecovery(options.events)) {
     const transition = deriveLifecycleTransition(
       event,
       lifecycleState,

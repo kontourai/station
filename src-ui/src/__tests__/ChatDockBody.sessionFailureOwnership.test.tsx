@@ -273,6 +273,19 @@ function renderDock(
 }
 
 describe('ChatDockBody session-failure ownership (station#3299)', () => {
+  test('a failed continuation check does not repeat a historical failure beside the composer', async () => {
+    renderDock(
+      buildSession({
+        conversationId: 'old-conversation',
+        conversationOpenFailed: true,
+      }),
+      failedOrchestrationSession(),
+    );
+
+    expect(await screen.findByText(/Couldn't check this chat/)).toBeTruthy();
+    expect(screen.queryByTestId('chat-dock-session-failure')).toBeNull();
+  });
+
   test('REPRO: a failure the transcript already carries renders exactly once — the banner defers to the turn-adjacent card', async () => {
     // The live shape: `handleRuntimeErrorEvent` appended the failure marker
     // into this chat's messages when the runtime.error arrived, and the

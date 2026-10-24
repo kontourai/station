@@ -11,6 +11,10 @@ author endpoint, or authorizes collecting telemetry from an installation.
 
 The qualified storage profile is PostgreSQL 16 with `fsync` and
 `full_page_writes` enabled. Each transaction sets `synchronous_commit=on`.
+Transactions use a local `pg_catalog` search path while accessing explicitly
+qualified application tables. Schema validation therefore does not depend on
+the login role's default search path, including the deployment role named
+`station_telemetry`. The caller's session setting is restored after the transaction.
 HTTP 202 means PostgreSQL acknowledged the transaction's commit; a disconnected
 or timed-out commit returns a failure. Retrying the same source/event UUID with
 the same observation does not insert another event. Reusing an ID with different
@@ -526,7 +530,7 @@ estimates cannot safely be replaced with an independent release.
 Ingest journals one job per (day,publisher,dimension). Each closed-day dimension
 commits its exact counts and job removal in its own transaction. A failed
 publisher/day is skipped for that pass while other publishers/days continue.
-Separate 2,000-row transactions erase contributor hashes and contribution arrays
+Separate 500-row transactions erase contributor hashes and contribution arrays
 only for publisher/days with no pending dimensions. A stuck dimension retains
 its own associations but does not block other publishers' erasure. The original
 failure is recorded as a content-free code in the exact operator response's
