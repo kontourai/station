@@ -5,6 +5,7 @@ import type {
 import { Hono } from 'hono';
 import { expect, test, vi } from 'vitest';
 import { requiredPairingScope } from '../../../security/pairing-route-scopes.js';
+import { CompanionArchivePreparationUnsupportedError } from '../../../services/telemetry-companion-archive.js';
 import { createTelemetryCompanionRoutes } from '../telemetry-companion-routes.js';
 
 const unavailable: TelemetryCompanionPrerequisites = {
@@ -90,6 +91,14 @@ test('archive preparation requires a person operator and accepts no caller URL o
   });
   expect(response.headers.get('cache-control')).toBe('no-store');
   expect(h.prepareArchive).toHaveBeenCalledTimes(1);
+  h.prepareArchive.mockRejectedValueOnce(
+    new CompanionArchivePreparationUnsupportedError(),
+  );
+  const unsupported = await post({ operationId });
+  expect(unsupported.status).toBe(501);
+  expect(await unsupported.json()).toEqual({
+    error: { code: 'companion_preparation_unsupported' },
+  });
   expect((await h.app.request(`${path}/${operationId}`)).status).toBe(404);
 });
 

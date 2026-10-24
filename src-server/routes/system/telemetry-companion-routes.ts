@@ -6,7 +6,10 @@ import {
 import { Hono } from 'hono';
 import { z } from 'zod/v3';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
-import { CompanionArchivePreparationBusyError } from '../../services/telemetry-companion-archive.js';
+import {
+  CompanionArchivePreparationBusyError,
+  CompanionArchivePreparationUnsupportedError,
+} from '../../services/telemetry-companion-archive.js';
 
 export function createTelemetryCompanionRoutes(deps: {
   requireOperator(request: Request): Promise<void>;
@@ -77,6 +80,11 @@ export function createTelemetryCompanionRoutes(deps: {
       } catch {
         return c.json({ error: { code: 'operator_required' } }, 403);
       }
+      if (error instanceof CompanionArchivePreparationUnsupportedError)
+        return c.json(
+          { error: { code: 'companion_preparation_unsupported' } },
+          501,
+        );
       return c.json(
         {
           error: {

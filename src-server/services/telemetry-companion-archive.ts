@@ -105,6 +105,12 @@ export class CompanionArchivePreparationBusyError extends Error {
   }
 }
 
+export class CompanionArchivePreparationUnsupportedError extends Error {
+  constructor() {
+    super('Companion archive preparation unsupported');
+  }
+}
+
 /** This read never resumes work or interprets a pending receipt as a live process. */
 export async function readTelemetryCompanionArchivePreparation(
   home: string,
@@ -233,11 +239,10 @@ export async function prepareTelemetryCompanionArchive(
     verification?: CompanionParentVerificationOptions;
   },
 ): Promise<TelemetryCompanionArchivePreparation> {
-  if (
-    process.platform === 'win32' ||
-    !isTelemetryCompanionOperationId(input.operationId)
-  )
-    throw new Error('Companion archive preparation unsupported');
+  if (process.platform === 'win32')
+    throw new CompanionArchivePreparationUnsupportedError();
+  if (!isTelemetryCompanionOperationId(input.operationId))
+    throw new Error('Invalid companion operation');
   await input.requireOperator();
   const existing = await readTelemetryCompanionArchivePreparation(
     input.home,

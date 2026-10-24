@@ -4846,6 +4846,19 @@ shape. It launches no deployment and grants no artifact, export, source or
 personal analytics authority. Installation and ingestion readiness are separate
 from this host-capability observation.
 
+The negotiated [parent-envelope check](../../src-server/services/telemetry-companion-release.ts)
+re-verifies pinned channel/source/version/host identity and the shared
+[byte inventory](../../src-server/services/telemetry-companion-artifact.mjs),
+without inferring install authority. The
+[archive preparation owner](../../src-server/services/telemetry-companion-archive.ts)
+adds an operator-in-person, `home:control` POST with a caller operation UUID,
+private synced intent before download, exact signed size/digest checks and
+retained failure receipts. It selects the URL from the signed envelope, accepts
+no caller command/path/key policy, and never resumes a pending record or replaces
+interrupted data. Receipt reads recheck operator authority. This Unix backend
+does not extract or activate a deployment; qualified install/start/view and
+personal source authority remain separate unfinished work.
+
 **Purpose.** The optional [receiver](../../packages/telemetry-broker/README.md)
 accepts the shared disclosed product envelope. Its
 [HTTP owner](../../packages/telemetry-broker/src/app.ts) separates source ingest

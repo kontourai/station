@@ -236,6 +236,31 @@ responses are not cached. Failed credential refresh beyond 60 seconds returns
 downtime delays them. No production endpoint or data flow is enabled by this
 source change.
 
+## Signed parent archive preparation API
+
+The Unix backend accepts `POST /api/operator/telemetry-companion/archive-preparations`
+with exactly `{ "operationId": "<lowercase UUID v4>" }`. It requires both the
+operator in person and `home:control`; ordinary read/operate grants are unchanged.
+The server selects the archive from its re-verified retained envelope. Callers
+cannot supply a URL, path, key table or command. Windows preparation is explicitly
+unsupported by this backend; this is not Windows or native qualification.
+
+Preparation records and syncs private intent before the HTTP request, downloads
+without credentials or automatic retries, permits at most three HTTPS redirects,
+and verifies the exact signed size and SHA-256. The download is capped at 1 GiB
+and has a 120-second deadline. Original and partial files remain under the
+Station home's `telemetry-companion/archive-preparations/<operationId>`.
+An incomplete directory or interrupted lock requires explicit reconciliation;
+it is not overwritten or automatically resumed.
+
+`GET /api/operator/telemetry-companion/archive-preparations/<operationId>` reads
+the retained receipt under current operator authority. Reusing an operation ID
+returns its receipt without another download. `pending` records intent, not
+process liveness; `authenticated` records the successful byte check, not a fresh
+execution permit. Every receipt has `installationAuthority:false`. The backend
+does not extract, execute, install, start services or enable telemetry. SDK/pane
+preparation controls and qualified lifecycle activation remain unfinished.
+
 ## Render, validate, then run
 
 Use a unique, persistent `COMPOSE_PROJECT_NAME`. Keep it stable across upgrades
