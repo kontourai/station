@@ -63,6 +63,8 @@ export interface TelemetryCompanionArchivePreparation {
   installationAuthority: false;
   /** Present only after fixed companion files were materialized and byte-verified. */
   payloadPrepared?: true;
+  /** Declaration from authenticated archive bytes; never an execution permission. */
+  qualifiedArchitectures?: Array<'amd64' | 'arm64'>;
 }
 
 /** Lock presence is not process liveness; permission fields are request-local hints. */

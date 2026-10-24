@@ -44,11 +44,19 @@ const receiptSchema = z
     createdAt: z.string().datetime(),
     installationAuthority: z.literal(false),
     payloadPrepared: z.literal(true).optional(),
+    qualifiedArchitectures: z
+      .array(z.enum(['amd64', 'arm64']))
+      .min(1)
+      .max(2)
+      .refine((values) => new Set(values).size === values.length)
+      .optional(),
   })
   .strict()
   .refine(
     (value) =>
       (!value.payloadPrepared || value.phase === 'authenticated') &&
+      (!value.qualifiedArchitectures ||
+        (value.phase === 'authenticated' && value.payloadPrepared === true)) &&
       value.receivedBytes <= value.expectedBytes &&
       (value.phase !== 'authenticated' ||
         value.receivedBytes === value.expectedBytes),
@@ -356,7 +364,7 @@ export async function prepareTelemetryCompanionArchive(
     }
     await input.requireOperator();
     signal.throwIfAborted();
-    await materializeTelemetryCompanion({
+    const manifest = await materializeTelemetryCompanion({
       archive: join(directory, 'parent-archive.tar.gz'),
       destination: join(directory, 'payload'),
       source: parent.release.sourceSha,
@@ -367,12 +375,18 @@ export async function prepareTelemetryCompanionArchive(
     });
     receipt.phase = 'authenticated';
     receipt.payloadPrepared = true;
+    if (manifest.qualification)
+      receipt.qualifiedArchitectures =
+        manifest.qualification.qualifications.map(
+          (value) => value.architecture,
+        );
     await durableJson(join(directory, 'receipt.json'), receipt);
     return receipt;
   } catch {
     if (!directoryOwned) throw new CompanionArchivePreparationBusyError();
     receipt.phase = 'failed';
     delete receipt.payloadPrepared;
+    delete receipt.qualifiedArchitectures;
     await durableJson(join(directory, 'receipt.json'), receipt);
     return receipt;
   } finally {

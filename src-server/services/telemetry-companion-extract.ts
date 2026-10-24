@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { runInProcessGroup } from '../utils/process-group-exec.js';
 import {
   COMPANION_FILES,
+  type CompanionBuildManifest,
   verifyTelemetryCompanion,
 } from './telemetry-companion-artifact.mjs';
 
@@ -17,7 +18,7 @@ export async function materializeTelemetryCompanion(input: {
   expectedSha256: string;
   signal: AbortSignal;
   requireOperator(): Promise<void>;
-}): Promise<void> {
+}): Promise<CompanionBuildManifest> {
   const original = await open(
     input.archive,
     constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK,
@@ -123,6 +124,7 @@ export async function materializeTelemetryCompanion(input: {
     }
     await input.requireOperator();
     input.signal.throwIfAborted();
+    return manifest;
   } finally {
     await original.close();
   }

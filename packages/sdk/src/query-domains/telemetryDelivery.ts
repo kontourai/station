@@ -37,11 +37,19 @@ const preparationReceipt = z
     createdAt: time,
     installationAuthority: z.literal(false),
     payloadPrepared: z.literal(true).optional(),
+    qualifiedArchitectures: z
+      .array(z.enum(['amd64', 'arm64']))
+      .min(1)
+      .max(2)
+      .refine((values) => new Set(values).size === values.length)
+      .optional(),
   })
   .strict()
   .refine(
     (value) =>
       (!value.payloadPrepared || value.phase === 'authenticated') &&
+      (!value.qualifiedArchitectures ||
+        (value.phase === 'authenticated' && value.payloadPrepared === true)) &&
       value.receivedBytes <= value.expectedBytes &&
       (value.phase !== 'authenticated' ||
         value.receivedBytes === value.expectedBytes),

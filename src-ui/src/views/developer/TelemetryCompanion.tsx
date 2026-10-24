@@ -6,6 +6,7 @@ import { PageSection } from '../../components/PageSection';
 import { SkeletonBlock } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { CompanionArchivePreparation } from './CompanionArchivePreparation';
+import { CompanionManaged } from './CompanionManaged';
 
 const missing: Record<
   Extract<TelemetryCompanionPrerequisites, { kind: 'unavailable' }>['reason'],
@@ -87,15 +88,15 @@ function CompanionHost({
                 {query.data.composeVersion}.
               </p>
               <p>
-                Installation is not available yet. A qualified companion release
-                is still required.
+                Host capability alone does not establish artifact qualification
+                or telemetry delivery.
               </p>
               {query.data.artifact?.kind === 'parent-envelope-verified' ? (
                 <p>
                   Parent release {query.data.artifact.version} has a verified
                   signed envelope and matching companion build inventory. The
-                  companion remains build-only; archive-byte authentication and
-                  runtime qualification are still required before installation.
+                  archive must be authenticated and include the required profile
+                  declaration before installation.
                 </p>
               ) : query.data.artifact?.kind === 'unavailable' ? (
                 <p>{missingArtifact[query.data.artifact.reason]}</p>
@@ -120,6 +121,26 @@ function CompanionHost({
           artifactReady={
             query.data.kind === 'available' &&
             query.data.artifact?.kind === 'parent-envelope-verified'
+          }
+        />
+      ) : null}
+      {!(
+        query.isError &&
+        query.error instanceof StationHttpError &&
+        [403, 404].includes(query.error.status)
+      ) ? (
+        <CompanionManaged
+          authority={authority}
+          hostReady={
+            !query.isError &&
+            !query.isFetching &&
+            query.data?.kind === 'available' &&
+            query.data.artifact?.kind === 'parent-envelope-verified'
+          }
+          architecture={
+            !query.isError && query.data?.kind === 'available'
+              ? query.data.architecture
+              : null
           }
         />
       ) : null}

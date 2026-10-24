@@ -1435,6 +1435,18 @@ export type {
   SetupImportReceipt,
 } from './query-domains/setupImports';
 export {
+  controlTelemetryCompanion,
+  fetchTelemetryCompanionAction,
+  fetchTelemetryCompanionInstallation,
+  fetchTelemetryCompanionManagedState,
+  installTelemetryCompanion,
+  useControlTelemetryCompanionMutation,
+  useInstallTelemetryCompanionMutation,
+  useTelemetryCompanionActionQuery,
+  useTelemetryCompanionInstallationQuery,
+  useTelemetryCompanionManagedStateQuery,
+} from './query-domains/telemetryCompanion';
+export {
   checkTelemetryConnection,
   fetchTelemetryCompanionArchivePreparation,
   fetchTelemetryCompanionPreparationState,
