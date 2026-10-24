@@ -1591,3 +1591,24 @@ while excluding disabled configuration from the request. Both report forms
 share token-based controls and mobile target sizing. Mounted tests exercise
 exact Flow/continuation payload, invalid reserved capacity refusal and no resend;
 these do not establish serving availability or runtime-family diversity.
+
+
+### Published runtime alignment adoption checkpoint
+
+Flow Agents9.5.2 is now consumed through the managed installer, with registry
+integrity `sha512-Apv1BrSsR1MzoYByCHqnp60cxG1YVh/WFY6iLEFeebS+6nB76vvmnz6WYpjx3keCzyrhbAou7vZUmrOM0n0LQQ==`.
+Its release commit is `e78dccc77d665235119255ed88904df3d1396c79` and publish
+run40109279530 passed. Registry retrieval initially returned404 after publisher
+success; later install metadata exposed the version and the managed install
+completed. Actual Node composition passes the public runtime assertion with
+Station's `loadRun` and `withRunMutationLock`; Flow Agents resolves Flow5.2.2.
+New Flow create/continuation paths assert this identity before new preparation,
+while retained create/sync replay bypasses execution qualification.
+
+This does not qualify the serving path. The first aligned controlled HTTP run
+still hit its120-second Flow deadline. Its independent advisory control passed.
+The separately executed sync-recovery fixture hit its30-second test timeout;
+causation and host-load contribution are unproved. Server-test types pass. These
+negatives remain required diagnosis work; no timeout extension, lock bypass,
+provider acceptance or initial-request policy adoption is claimed. The positive
+sync bootstrap contract fromPR1551 remains a separate publication prerequisite.

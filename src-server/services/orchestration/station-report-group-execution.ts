@@ -1,8 +1,10 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import type { AuthorizationLedger } from '@kontourai/dispatch';
+import { loadRun, withRunMutationLock } from '@kontourai/flow';
 import { createDelegationAuthorityServiceV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
 import type { DelegationEnvelopeV2 } from '@kontourai/flow-agents/delegation-envelope-v2';
+import { assertDelegationFlowRuntime } from '@kontourai/flow-agents/delegation-flow-runtime';
 import {
   createDelegationRoundsController,
   type DelegationRoundsHost,
@@ -81,6 +83,8 @@ export class StationReportGroupExecution {
         refuse();
       return { replayed: true, group: existing };
     }
+    if (input.flow)
+      assertDelegationFlowRuntime({ loadRun, withRunMutationLock });
     const preparation =
       typeof this.owners.preparation === 'function'
         ? await this.owners.preparation()
