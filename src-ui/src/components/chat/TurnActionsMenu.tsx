@@ -9,6 +9,7 @@ import {
 import { createPortal } from 'react-dom';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { useMenuTriggerToggle } from '../../hooks/useMenuTriggerToggle';
+import { countWords } from '../../utils/text-display';
 import { Dialog } from '../Dialog';
 import { LazyBoundary } from '../LazyBoundary';
 import type { ForkTurnSource } from './fork-turn-source';
@@ -120,33 +121,6 @@ export interface TurnActionsMenuProps {
   reasoning?: { content: string };
 }
 
-/**
- * Word count for the reasoning menu item, mirroring ReasoningSection's
- * Intl.Segmenter count with the same regex fallback.
- */
-function countReasoningWords(content: string): number {
-  const trimmed = content.trim();
-  if (!trimmed) return 0;
-  const Segmenter = (
-    Intl as typeof Intl & {
-      Segmenter?: new (
-        locale?: string,
-        options?: { granularity?: string },
-      ) => { segment(input: string): Iterable<{ isWordLike?: boolean }> };
-    }
-  ).Segmenter;
-  if (Segmenter) {
-    let count = 0;
-    for (const segment of new Segmenter(undefined, {
-      granularity: 'word',
-    }).segment(trimmed)) {
-      if (segment.isWordLike) count += 1;
-    }
-    return count;
-  }
-  return trimmed.match(/\S+/gu)?.length ?? 0;
-}
-
 /** Lazy per-turn overflow, using the same focus primitive as app header menus. */
 export default function TurnActionsMenu({
   taskTarget,
@@ -165,9 +139,7 @@ export default function TurnActionsMenu({
   const closeDialog = () => setView('closed');
   const menuRef = useMenuFocus<HTMLDivElement>(open, close);
 
-  const reasoningWordCount = reasoning
-    ? countReasoningWords(reasoning.content)
-    : 0;
+  const reasoningWordCount = reasoning ? countWords(reasoning.content) : 0;
   const rowCount =
     (provenance ? 1 : 0) +
     (reasoning && reasoningWordCount > 0 ? 1 : 0) +

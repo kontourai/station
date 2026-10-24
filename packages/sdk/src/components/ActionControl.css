@@ -1,0 +1,161 @@
+.button {
+  font-family: var(--k-font-sans);
+  padding: calc(var(--k-space-1) * 2.5) var(--k-space-4);
+  border-radius: var(--k-radius-sm);
+  border: 1px solid transparent;
+  font-size: var(--k-text-md);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color var(--motion-base, 0.2s) var(--ease-standard, ease),
+    border-color var(--motion-base, 0.2s) var(--ease-standard, ease),
+    color var(--motion-base, 0.2s) var(--ease-standard, ease),
+    box-shadow var(--motion-base, 0.2s) var(--ease-standard, ease),
+    transform var(--motion-base, 0.2s) var(--ease-standard, ease);
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.button.copy-affordance--failed {
+  color: var(--status-error);
+}
+
+.button.is-pending {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--k-space-2);
+}
+
+.button__spinner {
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+  border: 2px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: station-action-spin var(--motion-status-spin, 0.8s)
+    var(--ease-linear, linear) infinite;
+}
+
+.empty__action .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+}
+
+.button--primary {
+  background: var(--k-action);
+  color: var(--k-action-contrast);
+  border-color: var(--k-action);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  transition:
+    background-color var(--motion-base, 0.2s) var(--ease-standard, ease),
+    border-color var(--motion-base, 0.2s) var(--ease-standard, ease),
+    color var(--motion-base, 0.2s) var(--ease-standard, ease),
+    box-shadow var(--motion-base, 0.2s) var(--ease-standard, ease),
+    transform var(--motion-fast, 0.15s) var(--ease-standard, ease);
+}
+
+.button--primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--k-action) 85%, var(--k-bg));
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+}
+
+.button--primary:active:not(:disabled) {
+  transform: scale(0.97);
+  transition: transform var(--motion-instant, 0ms) var(--ease-standard, ease);
+}
+
+.button--secondary {
+  background: transparent;
+  color: var(--k-text);
+  border-color: var(--k-line-strong);
+}
+
+.button--secondary:hover:not(:disabled) {
+  border-color: var(--k-action);
+  background: var(--k-panel-raised);
+}
+
+.button--secondary.is-active {
+  border-color: var(--k-action);
+  color: var(--k-action);
+}
+
+.button--danger {
+  background: var(--k-negative);
+  color: var(--k-status-contrast);
+  border-color: var(--k-negative);
+}
+
+.button--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--k-negative) 90%, var(--k-bg));
+}
+
+.button--small {
+  padding: calc(var(--k-space-1) * 1.5) var(--k-space-3);
+  font-size: var(--k-text-sm);
+}
+
+.button--success {
+  background: color-mix(in srgb, var(--k-positive) 12%, transparent);
+  color: var(--k-positive);
+  border-color: color-mix(in srgb, var(--k-positive) 25%, transparent);
+}
+
+.button--danger-outline {
+  background: color-mix(in srgb, var(--k-negative) 10%, transparent);
+  color: var(--k-negative);
+  border-color: color-mix(in srgb, var(--k-negative) 25%, transparent);
+}
+
+.button--link {
+  background: transparent;
+  border: none;
+  color: var(--k-action);
+  padding: var(--k-space-1) var(--k-space-2);
+  font-size: var(--k-text-sm);
+  cursor: pointer;
+}
+
+.button--link:hover {
+  color: var(--k-action);
+  text-decoration: underline;
+}
+
+.button--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--k-text-muted);
+  padding: calc(var(--k-space-1) * 1.5) calc(var(--k-space-1) * 2.5);
+}
+.button--ghost:hover:not(:disabled) {
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+}
+
+.button--large {
+  padding: var(--k-space-3) var(--k-space-5);
+  font-size: var(--k-text-lg);
+}
+@keyframes station-action-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .button,
+  .button--primary {
+    transition-duration: 0.01ms;
+  }
+  .button__spinner {
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+  }
+}
