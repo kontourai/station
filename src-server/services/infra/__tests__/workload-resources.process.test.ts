@@ -223,6 +223,36 @@ describe.skipIf(!manager)('running server workload containment', () => {
     ).toBe('ready');
   });
 
+  test.each(['oom', 'signal'])(
+    'a real %s reaches Codex terminal diagnostics without losing the server or sibling',
+    async (cause) => {
+      const result = await request<{
+        events: Array<{
+          method: string;
+          message?: string;
+          details?: { workload?: { result: string } };
+        }>;
+        workloads: Snapshot;
+      }>(`/codex-exit?cause=${cause}`);
+      const error = result.events.find(
+        (event) => event.method === 'runtime.error',
+      );
+      expect(error?.message).toContain(
+        cause === 'oom' ? 'memory was exhausted' : 'signal: SIGKILL',
+      );
+      if (cause === 'oom')
+        expect(error?.details?.workload?.result).toBe('oom-kill');
+      else expect(error?.message).not.toContain('memory was exhausted');
+      expect(await gone(sibling.pid)).toBe(false);
+      expect(
+        (await request<{ workloads: Snapshot }>('/status')).workloads.state,
+      ).toBe('ready');
+      const next = await request<{ pid: number }>('/launch');
+      expect(next.pid).toBeGreaterThan(1);
+      await request(`/close?pid=${next.pid}`);
+    },
+  );
+
   test('leader exit reaps descendants that start a new session and retain no process-group membership', async () => {
     const result = await request<{ escapedPid: number }>('/launch?mode=escape');
     expect(result.escapedPid).toBeGreaterThan(1);
