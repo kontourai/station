@@ -1267,6 +1267,19 @@ correct:
 | `GET /api/orchestration/sessions/:threadId/events` | JSON array, one-shot response | A point-in-time replay of everything persisted so far. Not a stream — call it again to see new events (or use `event-page` below to poll a cursor). |
 | `GET /api/orchestration/events` | `text/event-stream` (SSE), long-lived connection | The live feed. Optional `?threadId=<id>` query param narrows it to one session; omitted, it streams every session the caller can read. |
 
+### Exact inventory input detail
+
+`GET /api/orchestration/sessions/:threadId/inputs/:eventId?turnId=...`
+returns `{success:true,data:{sessionId,eventId,turnId,input:{prompt,attachments}}}`
+for the exact authored input. Attachment entries contain name, media type and
+size, not attachment bytes. The existing Session query owner resolves the
+input by event identity; the route checks Session, event and turn identity and
+rechecks the current principal and Session permission after the read. Missing
+or refused inputs return the same 404. An unavailable owner or JSON result
+over 256 KiB returns 503. Every response is private/no-store. Hosted mode is
+unavailable until it has a tenant-scoped input reader. This read neither loads
+the full transcript nor changes an inventory descriptor or a kept reference.
+
 ### Bounded session detail
 
 `GET /api/orchestration/sessions/:threadId?view=window-v1&turnLimit=10`

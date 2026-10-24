@@ -2844,6 +2844,18 @@ export function ChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 // Mobile parity for the desktop More menu's clipboard rows —
                 // the sheet is a coarse device's only home for these IDs.
                 copyActions,
+                onOpenInventory:
+                  sessionInventoryControls && sessionInventoryReady
+                    ? (trigger) => {
+                        toggleSessionInventoryOccurrence({
+                          full: true,
+                          hostId: sessionInventoryHostId,
+                          projectId: inventoryProjectId,
+                          executionRead: activeOrchestrationSessionRead,
+                          trigger,
+                        });
+                      }
+                    : undefined,
                 sessionInventory:
                   !conversationOpenRecovery &&
                   inventoryExecutionId &&
