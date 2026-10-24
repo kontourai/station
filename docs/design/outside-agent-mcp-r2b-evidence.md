@@ -142,3 +142,70 @@ transport cancellation, physical/synced/hybrid passkeys, real DNS/TLS, hosted,
 native, release and production qualification. The compiled refusal remains.
 There is no unresolved R2b decision: denial versus cancellation follows S4,
 and all access-change semantics remain those of the shared R2a service.
+
+## Round 1 review fixes (2026-10-24)
+
+**EXECUTED:** Source `cc7823687711769bc4c2efbd7f77409d6ac090ef` passed
+401 checks across the five focused files listed above plus
+`src-server/runtime/consent/__tests__/consent-listener.test.ts`. The outside
+consent route suite now owns 65 checks. It exercises current Project display
+names, rename without changing the bound Project ID, global scope, before/after
+Project changes, separate capitalized remote/intent warnings, the prominent
+comparison code and instruction, and reload of a decided approval. The compiled
+consent guard's response body and security headers match an authenticated unknown
+ID; neither route renders a nonce or changes the audit/domain state.
+
+**REASONED:** The removed `expectedRedirectPolicyRevision` target field was
+redundant. `#requestFingerprint` hashes the full request, registration digest and
+current redirect-policy revision; `#prepare` validates the action's expected
+request fingerprint before deriving a review or committing. **EXECUTED:** Both
+approval and denial refuse after a redirect-policy ABA even when the origin list
+returns to identical bytes. The canonical consent fingerprint continues to bind
+the stable Project ID; display names are resolved from live authority when the
+review description is created.
+
+**REASONED:** The design route table now says the two per-ID GET routes require
+an operator session, and transaction status requires its initiating session.
+The inventory omits comparison codes for sessions, while passkey review
+intentionally displays the code for the same human to compare across devices.
+No host read route was added.
+
+### Crafted-name fault proof
+
+**EXECUTED:** At the clean source commit above, the outside consent route suite
+passed 65/65. Restoring the old `safeLabel` implementation (only removing Cc/Cf)
+made exactly five crafted-name cases fail, with 60 checks still passing and exit
+1. These cover whitespace, Hangul fillers including U+3164, zero-width/default
+ignorable and Braille blank characters, U+2028/U+2029-only names, and separators
+inside a spoofed name. Failures reported the unsafe rendered client label at the
+owning consent route. There was no import, timeout or prerequisite failure.
+
+**EXECUTED:** Before restoration, the source still matched the injected bytes.
+Restoration reproduced both the saved original and `git show HEAD:<path>` bytes;
+the checkout was clean before recapture. The restored suite passed 65/65, exit 0.
+The restored management-service SHA-256 is
+`f397074c715a89444ee28bde3ddbe0663d0db691715f6f198886a11c3088bd92`.
+No injected fault was committed.
+
+### Recaptured review pages
+
+**EXECUTED:** All nine prior outside review captures were recaptured from the
+committed source above, plus a [loopback approval](../learn/media/outside-agent-r2b-approve-loopback.png)
+whose invisible-only name renders as `(unnamed)`. Each of the ten images was
+opened and visually inspected, including remote approval at 390px and 1280px,
+loopback approval, denial, change, revocation and all four allowlist actions.
+All 390px pages measured `scrollWidth = innerWidth = 390`. The four allowlist
+images retained identical bytes. Comparison instructions, warning separation,
+Project names, escaping, readable wrapping and 44px action controls were checked.
+
+**EXECUTED:** A private snapshot server on loopback port 43491 served the actual
+registrar's HTML without editing it. The collaborative preview first returned
+`Preview automation navigate timed out after 15000ms.`; retrying the same step
+failed with a transport send error to the local MCP endpoint. Playwright then
+captured the retained images. These are rendering receipts using private stores
+and synthetic clients, not a browser assertion or real OAuth sign-in. The
+compiled release refusal and all remaining qualification limits above remain.
+
+**EXECUTED:** Foreground `content:excluded-names`, `typecheck:server-tests`,
+`typecheck:ui` and `typecheck:connect` passed. The reported main-branch
+`runtime-http` file-preview defect was outside this fix and was not changed.
