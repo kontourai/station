@@ -56,14 +56,16 @@ npm run qualify:telemetry-companion -- /absolute/candidate /absolute/new-private
 It requires clean matching source and a local Unix Docker endpoint, captures and
 verifies the candidate, builds a labelled image, and uses a unique Compose
 project, private generated credentials and unused loopback ports. It checks
-host storage readiness, credential refusals, network placement, synthetic product
-commit/replay and the one-shot product fence before normal receiver restart.
+host storage readiness, credential refusals, network placement, authenticated
+synthetic DELTA metric samples (2+3) queried as cumulative 5 through Grafana's
+Prometheus datasource, synthetic product commit/replay and the one-shot product
+fence before normal receiver restart.
 Docker/HTTP mutation intents precede effects; uncertain outcomes require manual
 inspection rather than retry. Commands and response bodies are bounded, and
 cleanup stops only the owned project while retaining private files and volumes.
 
 `report.json` is explicitly `synthetic-component-runtime-only` with
-`installationAuthority: false`. This command does not yet exercise diagnostic
+`installationAuthority: false`. This command does not yet exercise trace
 query semantics, same-volume durability, fresh backup/restore, real Station
 export, version rollback, publisher reconciliation, personal grants or native
 acceptance. It is diagnostic evidence, not a qualified release or install permit.

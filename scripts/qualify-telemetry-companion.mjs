@@ -46,9 +46,11 @@ async function unusedPort() {
 async function request(
   port,
   path,
-  { key, operator = false, body, method } = {},
+  { key, operator = false, basic, body, method } = {},
 ) {
   const headers = {};
+  if (basic)
+    headers.authorization = `Basic ${Buffer.from(basic).toString('base64')}`;
   if (key)
     headers[operator ? 'authorization' : 'x-api-key'] = operator
       ? `Bearer ${key}`
@@ -124,7 +126,7 @@ async function qualifyTelemetryCompanion(candidate, output) {
     effects: [],
     notVerified: [
       'real Station export',
-      'diagnostic metric/trace query semantics',
+      'diagnostic trace query semantics',
       'same-volume data durability',
       'fresh backup/restore',
       'version upgrade/rollback',
@@ -294,13 +296,14 @@ async function qualifyTelemetryCompanion(candidate, output) {
     await mkdir(privateDir, { mode: 0o700 });
     const password = token(),
       operatorKey = `sto_${token()}`,
-      otelKey = token();
+      otelKey = token(),
+      grafanaPassword = token();
     for (const [name, value] of Object.entries({
       'postgres-password': password,
       'database-url': `postgresql://station_telemetry:${password}@postgres:5432/station_telemetry`,
       'product-operator-key': operatorKey,
       'otel-key': otelKey,
-      'grafana-password': token(),
+      'grafana-password': grafanaPassword,
     }))
       await writeFile(join(privateDir, name), value, {
         mode: 0o400,
@@ -453,6 +456,83 @@ async function qualifyTelemetryCompanion(candidate, output) {
     }
     await check(
       'loopback-only frontends and unpublished separately networked backends',
+    );
+    const metricName = `companion_qualification_${owner}_requests`;
+    const metricStart = BigInt(Date.now() - 2000) * 1_000_000n;
+    for (const [index, value] of [2, 3].entries()) {
+      const result = await mutate(
+        ports[1],
+        '/v1/metrics',
+        {
+          key: otelKey,
+          body: {
+            resourceMetrics: [
+              {
+                resource: {
+                  attributes: [
+                    {
+                      key: 'service.name',
+                      value: { stringValue: 'station-qualification' },
+                    },
+                  ],
+                },
+                scopeMetrics: [
+                  {
+                    scope: { name: 'companion-runtime-qualification' },
+                    metrics: [
+                      {
+                        name: metricName,
+                        sum: {
+                          aggregationTemporality: 1,
+                          isMonotonic: true,
+                          dataPoints: [
+                            {
+                              startTimeUnixNano: String(
+                                metricStart + BigInt(index) * 1_000_000_000n,
+                              ),
+                              timeUnixNano: String(
+                                metricStart +
+                                  BigInt(index + 1) * 1_000_000_000n,
+                              ),
+                              asInt: String(value),
+                            },
+                          ],
+                        },
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        `send synthetic delta metric ${index + 1}`,
+      );
+      assert.equal(result.status, 200);
+      assert(
+        !result.body.partialSuccess,
+        'Collector partially rejected metrics',
+      );
+    }
+    await poll(
+      'Grafana queries cumulative diagnostic metric',
+      async () => {
+        const result = await request(
+          ports[2],
+          `/api/datasources/proxy/uid/station-prometheus/api/v1/query?query=${encodeURIComponent(metricName)}`,
+          { basic: `admin:${grafanaPassword}` },
+        );
+        return (
+          result.status === 200 &&
+          result.body.status === 'success' &&
+          result.body.data.result.length === 1 &&
+          Number(result.body.data.result[0].value[1]) === 5
+        );
+      },
+      90_000,
+    );
+    await check(
+      'authenticated Collector delta samples 2+3 query as cumulative 5 through Grafana',
     );
     const sourceKey = `stp_${token()}`,
       sourceId = randomUUID();
