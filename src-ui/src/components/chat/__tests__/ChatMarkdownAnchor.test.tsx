@@ -118,7 +118,9 @@ afterEach(() => {
 describe('a link in a chat message (#2049)', () => {
   test('an absolute file outside the recorded roots cannot navigate away from the conversation', () => {
     tauri = true;
-    const anchor = mount('/home/brian/dev/github/kontourai/station-worktrees/queue-ui-concepts/notes.txt');
+    const anchor = mount(
+      '/home/brian/dev/github/kontourai/station-worktrees/queue-ui-concepts/notes.txt',
+    );
     expect(click(anchor)).toBe(false);
     expect(openNativeExternalLink).not.toHaveBeenCalled();
     expect(openFilePreviewInRegion).not.toHaveBeenCalled();
