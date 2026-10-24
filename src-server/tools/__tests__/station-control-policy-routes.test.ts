@@ -186,6 +186,7 @@ const ARGS: Record<string, Record<string, unknown>> = {
   read_conversation: { conversationId: 'c', limit: 5 },
   delete_conversation: { agent: 'a', conversationId: 'c' },
   search_sessions: { query: 'cobalt' },
+  search_conversations: { query: 'cobalt' },
   rename_session: { conversationId: 'c', title: 'A title' },
   board_pin: {
     reference: { kind: 'session', id: 's' },

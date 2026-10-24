@@ -1,0 +1,7 @@
+{
+  "revision": "5852563d8a08b90d082633b456a994b81e76f0e2",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"PR #4092 fix round 1: bounded review of Station Control work discovery only. Traced the tool, policy, mounted search route and shared transcript reader; corrected the local partial-source reasons, filtered/admitted 2000 metadata budget, 32 file-read budget and indexed-hit survival. Existing API claims outside this subsection remain outside this review. EXECUTED: 65/65 focused search/policy tests, including real MCP calls with temporary homes and ephemeral ports; no hosted/provider/device certification.","inputs":["docs/reference/api.md"]}
+  ]
+}

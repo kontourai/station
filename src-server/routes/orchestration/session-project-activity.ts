@@ -77,6 +77,11 @@ import {
 } from '../../tools/station-control-policy.js';
 import type { StationControlCaller } from '../../tools/station-control-shared.js';
 import {
+  ACTIVE_WORK_DEFAULT_MINUTES,
+  ACTIVE_WORK_MAX_MINUTES,
+  WORK_DISCOVERY_DEFAULT_LIMIT,
+} from '../chat/work-discovery-limits.js';
+import {
   type PrincipalResolutionContext,
   resolveActorPrincipal,
 } from './orchestration.js';
@@ -184,7 +189,7 @@ function parseBoundedInteger(
   max: number,
 ): number | undefined {
   if (value === undefined) return fallback;
-  if (!/^\d{1,4}$/u.test(value)) return undefined;
+  if (!/^\d{1,5}$/u.test(value)) return undefined;
   const parsed = Number(value);
   return parsed >= 1 && parsed <= max ? parsed : undefined;
 }
@@ -412,12 +417,14 @@ export function createSessionProjectActivityRoutes(
     };
   };
 
-  app.get('/', async (c) => {
+  const listActivity = async (c: Context, activeOnly: boolean) => {
     const caller = callerOf(c);
     if (caller instanceof Response) return caller;
     const limit = parseBoundedInteger(
       c.req.query('limit'),
-      PROJECT_ACTIVITY_DEFAULT_LIMIT,
+      activeOnly
+        ? WORK_DISCOVERY_DEFAULT_LIMIT
+        : PROJECT_ACTIVITY_DEFAULT_LIMIT,
       PROJECT_ACTIVITY_MAX_LIMIT,
     );
     if (limit === undefined)
@@ -461,12 +468,25 @@ export function createSessionProjectActivityRoutes(
       readAuthorityFor(c),
       { threadIds: candidates },
     );
-    const { page, more } = visibleRowsPage(
-      caller,
-      activityRows(sessions),
-      cursor,
-      limit,
+    const minutes = parseBoundedInteger(
+      c.req.query('activeWithinMinutes'),
+      ACTIVE_WORK_DEFAULT_MINUTES,
+      ACTIVE_WORK_MAX_MINUTES,
     );
+    if (activeOnly && minutes === undefined)
+      return invalid(
+        c,
+        `activeWithinMinutes must be a whole number from 1 to ${ACTIVE_WORK_MAX_MINUTES}.`,
+      );
+    const since =
+      Date.now() - (minutes ?? ACTIVE_WORK_DEFAULT_MINUTES) * 60_000;
+    const rows = activityRows(sessions).filter(
+      ({ session, at }) =>
+        !activeOnly ||
+        session.hasActiveTurn === true ||
+        Date.parse(at) >= since,
+    );
+    const { page, more } = visibleRowsPage(caller, rows, cursor, limit);
     const last = page.at(-1);
     const claims = claimsByRow(caller, page);
     return c.json({
@@ -481,7 +501,9 @@ export function createSessionProjectActivityRoutes(
             : null,
       },
     });
-  });
+  };
+  app.get('/', (c) => listActivity(c, false));
+  app.get('/active-work', (c) => listActivity(c, true));
 
   /**
    * Delegated children: Sessions Station itself derived as launched from the

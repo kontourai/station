@@ -108,7 +108,7 @@ export function createRuntimeSelfIntegration() {
       id: selfIntegrationId,
       displayName: 'Station Control',
       description:
-        'Manage agents, skills, integrations, and jobs via natural language',
+        'Search conversations and active work before starting. Manage agents, skills, integrations, and jobs.',
       kind: 'mcp' as const,
       transport: 'stdio' as const,
     },

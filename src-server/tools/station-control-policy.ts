@@ -388,6 +388,15 @@ export const STATION_CONTROL_TOOL_POLICY = {
     routes: [del('/agents/:slug/conversations/:conversationId')],
   },
 
+  search_conversations: {
+    ...SELF_READ,
+    routes: [get('/api/conversations/work/search')],
+  },
+  list_active_work: {
+    ...SELF_READ,
+    routes: [get('/api/orchestration/session-activity/active-work')],
+  },
+
   // #176: search reads as the session's owner (`POST /api/search` answers
   // with that principal's transcripts and never another Station's). Renaming
   // is its own leaf, not the person's `PATCH`: it refuses a title a person set
